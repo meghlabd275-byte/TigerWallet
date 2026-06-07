@@ -1,0 +1,63 @@
+[package]
+name = "tiger_wallet_core"
+version = "1.0.0"
+edition = "2021"
+description = "TigerWallet Core - Secure wallet operations in Rust"
+authors = ["TigerWallet Team"]
+license = "MIT"
+
+[lib]
+name = "tiger_wallet_core"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+# Cryptography
+sha2 = "0.10.8"
+hmac = "0.12.1"
+pbkdf2 = "0.12.2"
+aes = "0.8.3"
+aes-gcm = "0.10.3"
+chacha20poly1305 = "0.10.1"
+ed25519-dalek = { version = "2.0.1", features = ["rand_core"] }
+secp256k1 = "0.27.0"
+k256 = "0.13.1"
+bip32 = "0.4.0"
+bip39 = "0.2.0"
+base58 = "0.21.0"
+hex = "0.4.3"
+rand = "0.8.5"
+zeroize = { version = "1.7.1", features = ["derive"] }
+
+# Async
+tokio = { version = "1.35.1", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0.193", features = ["derive"] }
+serde_json = "1.0.108"
+
+# Error handling
+thiserror = "1.0.50"
+anyhow = "1.0.75"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Time
+chrono = { version = "0.4.31", features = ["serde"] }
+
+# UUID
+uuid = { version = "1.6.1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+criterion = "0.5"
+tempfile = "3.8.1"
+
+[[bench]]
+name = "wallet_benches"
+harness = false
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

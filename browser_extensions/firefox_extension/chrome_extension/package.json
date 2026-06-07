@@ -1,0 +1,63 @@
+{
+  "name": "tiger-wallet-extension",
+  "version": "1.0.0",
+  "description": "TigerWallet - Multi-chain Web3 Wallet Extension",
+  "main": "dist/background.js",
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "tsc && vite build",
+    "test": "jest",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "ethers": "^6.10.0",
+    "@solana/web3.js": "^1.87.0",
+    "@solana/wallet-adapter-react": "^0.15.32",
+    "bn.js": "^5.2.1",
+    "bip39": "^3.0.4",
+    "@ethersproject/bip39": "^5.7.0",
+    "@ethersproject/hdnode": "^5.7.0",
+    "@web3-react/bridge-connector": "^6.0.9",
+    "@web3-react/core": "^6.1.9",
+    "@web3-react/injected-connector": "^6.0.7",
+    "@web3-react/network-connector": "^6.0.9",
+    "lucide-react": "^0.303.0",
+    "zustand": "^4.4.7",
+    "framer-motion": "^10.17.4"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.251",
+    "@types/node": "^20.10.5",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^8.56.0",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.10",
+    "webextension-polyfill": "^0.10.0"
+  },
+  "manifest_version": 3,
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab",
+    "scripting",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "*://*/*"
+  ],
+  "background": {
+    "service_worker": "dist/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["dist/content.js"]
+    }
+  ]
+  }
+}
