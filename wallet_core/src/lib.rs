@@ -17,6 +17,8 @@ pub mod transaction;
 pub mod encryption;
 pub mod multisig;
 pub mod account_abstraction;
+pub mod evm;
+pub mod bitcoin;
 
 pub use mnemonic::*;
 pub use key_derivation::*;
@@ -25,6 +27,8 @@ pub use transaction::*;
 pub use encryption::*;
 pub use multisig::*;
 pub use account_abstraction::*;
+pub use evm::*;
+pub use bitcoin::*;
 
 /// Chain types supported by TigerWallet
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
