@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { useTheme } from '../components/ThemeProvider'
+import { EVM_CHAINS, NON_EVM_CHAINS, POPULAR_TOKENS } from './lib/blockchains'
+import { swap, masterWallet, validateAddress, parseAmount } from './lib/transactions'
+import { encrypt, decrypt, hash, secureStore, checkRateLimit, recordAttempt, isValidSeedPhrase } from './lib/security'
 
 // Types
 interface Token {

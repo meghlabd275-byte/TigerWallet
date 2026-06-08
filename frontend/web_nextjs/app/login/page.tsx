@@ -4,22 +4,23 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { useTheme } from '../components/ThemeProvider';
+import { isValidSeedPhrase, secureStore, hash } from '../wallet/lib/security';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-interface User {
+interface AdminUser {
   id: string;
   email: string;
   username: string;
-  role: 'super_admin' | 'admin' | 'user';
+  role: 'super_admin' | 'admin';
   verified: boolean;
   twoFactorEnabled: boolean;
   createdAt: number;
   lastLogin: number;
   status: 'active' | 'suspended' | 'pending';
-  whiteLabelId?: string;
+  permissions: string[];
 }
 
 interface LoginCredentials {
