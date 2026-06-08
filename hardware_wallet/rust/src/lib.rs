@@ -4,10 +4,16 @@
 pub mod ledger;
 pub mod trezor;
 pub mod onekey;
+pub mod airgap;
+pub mod ellipal;
+pub mod safepal;
 
 pub use ledger::*;
 pub use trezor::*;
 pub use onekey::*;
+pub use airgap::*;
+pub use ellipal::*;
+pub use safepal::*;
 
 /// Hardware wallet trait for unified interface
 pub trait HardwareWallet {
