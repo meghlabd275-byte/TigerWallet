@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TigerWallet</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">🐯</span>
+        <span class="logo-text">TigerWallet</span>
+      </div>
+      <div class="header-actions">
+        <button id="settingsBtn" class="icon-btn" title="Settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Not Connected State -->
+      <div id="notConnected" class="state">
+        <div class="welcome-icon">🐯</div>
+        <h2>Welcome to TigerWallet</h2>
+        <p>Your secure multi-chain wallet</p>
+        <button id="createWalletBtn" class="btn btn-primary">
+          Create New Wallet
+        </button>
+        <button id="importWalletBtn" class="btn btn-secondary">
+          Import Existing Wallet
+        </button>
+      </div>
+
+      <!-- Connected State -->
+      <div id="connected" class="state hidden">
+        <!-- Network Selector -->
+        <div class="network-selector">
+          <button id="networkBtn" class="network-btn">
+            <span class="network-icon">🔷</span>
+            <span class="network-name">Ethereum</span>
+            <span class="dropdown-arrow">▼</span>
+          </button>
+        </div>
+
+        <!-- Balance -->
+        <div class="balance-card">
+          <div class="balance-label">Total Balance</div>
+          <div class="balance-amount">$0.00</div>
+          <div class="balance-actions">
+            <button class="action-btn send">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+              Send
+            </button>
+            <button class="action-btn receive">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Receive
+            </button>
+            <button class="action-btn swap">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="17 1 21 5 17 9"></polyline>
+                <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                <polyline points="7 23 3 19 7 15"></polyline>
+                <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+              </svg>
+              Swap
+            </button>
+          </div>
+        </div>
+
+        <!-- Assets List -->
+        <div class="assets-section">
+          <h3>Assets</h3>
+          <div class="assets-list">
+            <!-- ETH -->
+            <div class="asset-item">
+              <div class="asset-icon">🔷</div>
+              <div class="asset-info">
+                <div class="asset-name">Ethereum</div>
+                <div class="asset-balance">0 ETH</div>
+              </div>
+              <div class="asset-value">$0.00</div>
+            </div>
+            <!-- More assets will be added dynamically -->
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <button class="footer-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="16" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+        Support
+      </button>
+      <button class="footer-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+        Lock
+      </button>
+    </footer>
+  </div>
+
+  <!-- Create Wallet Modal -->
+  <div id="createWalletModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Create New Wallet</h2>
+        <button class="close-btn">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Wallet Name</label>
+          <input type="text" id="walletName" placeholder="My Wallet">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="walletPassword" placeholder="Min 8 characters">
+        </div>
+        <div class="form-group">
+          <label>Confirm Password</label>
+          <input type="password" id="confirmPassword" placeholder="Confirm password">
+        </div>
+        <div class="warning">
+          ⚠️ Write down your seed phrase and store it safely. Anyone with this phrase can access your funds.
+        </div>
+        <button id="generateBtn" class="btn btn-primary">Generate Seed Phrase</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import Wallet Modal -->
+  <div id="importWalletModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Import Wallet</h2>
+        <button class="close-btn">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Seed Phrase</label>
+          <textarea id="importSeed" placeholder="Enter your 12 or 24 word seed phrase"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Wallet Name</label>
+          <input type="text" id="importWalletName" placeholder="My Wallet">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="importPassword" placeholder="Min 8 characters">
+        </div>
+        <button id="importBtn" class="btn btn-primary">Import Wallet</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
