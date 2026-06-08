@@ -1,0 +1,20 @@
+[package]
+name = "tigerwallet-security"
+version = "1.0.0"
+edition = "2021"
+description = "TigerWallet Security Module - Hardware Wallet, Privacy, Risk Analysis"
+authors = ["TigerWallet"]
+
+[dependencies]
+sha2 = "0.10"
+
+[features]
+default = ["wasm"]
+wasm = []
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+opt-level = 3
+lto = true
