@@ -1,0 +1,27 @@
+[package]
+name = "tigerwallet-transaction-engine"
+version = "0.1.0"
+edition = "2021"
+description = "TigerWallet Transaction Engine - Ultra-low latency transaction processing"
+
+[dependencies]
+ethers = { version = "2.0", features = ["rustls"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+async-trait = "0.1"
+bn = "0.1"
+rlp = "0.5"
+hex = "0.4"
+
+[lib]
+name = "tigerwallet_transaction_engine"
+path = "src/lib.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
