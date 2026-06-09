@@ -1,0 +1,19 @@
+[package]
+name = "tigerwallet-security"
+version = "0.1.0"
+edition = "2021"
+description = "TigerWallet Security Engine - Critical security functions"
+
+[dependencies]
+aes-gcm = "0.10"
+pbkdf2 = { version = "0.12", features = ["simple"] }
+sha2 = "0.10"
+subtle = "2.5"
+rand = "0.8"
+hex = "0.4"
+
+[dev-dependencies]
+
+[lib]
+name = "tigerwallet_security"
+path = "src/lib.rs"
