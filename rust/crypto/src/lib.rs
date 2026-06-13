@@ -7,11 +7,13 @@
 //! - Encoding/decoding
 //! - Advanced encryption (AES-256-GCM, ChaCha20-Poly1305)
 //! - BIP-39 mnemonic and HD wallet derivation
+//! - Bitcoin, Ordinals, Lightning, Stacks support
 
 use std::ops::Deref;
 
 pub mod advanced_encryption;
 pub mod mnemonic;
+pub mod bitcoin_service;
 
 // ============================================================================
 // Error Types
