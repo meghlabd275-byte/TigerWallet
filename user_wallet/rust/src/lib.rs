@@ -212,7 +212,7 @@ impl WalletService {
             ("near", "NEAR", "24", "near", false, true, Some("near")),
             ("inj", "Injective", "INJ", 18, "injective", false, true, Some("injective-protocol")),
             ("tia", "Celestia", "TIA", 6, "celestia", false, true, Some("celestia")),
-            ("render", "Render", "RENDER", 8, "solana", false, True, Some("render-token")),
+            ("render", "Render", "RENDER", 8, "solana", false, true, Some("render-token")),
             ("jito", "Jito", "JITO", 9, "solana", false, true, Some("jito")),
             ("bonk", "Bonk", "BONK", 5, "solana", false, true, Some("bonk")),
             ("wif", "WIF", 9, "solana", false, true, Some("wif")),
