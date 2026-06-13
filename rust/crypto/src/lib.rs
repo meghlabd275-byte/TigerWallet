@@ -8,12 +8,16 @@
 //! - Advanced encryption (AES-256-GCM, ChaCha20-Poly1305)
 //! - BIP-39 mnemonic and HD wallet derivation
 //! - Bitcoin, Ordinals, Lightning, Stacks support
+//! - Analytics and reporting
+//! - Security features
 
 use std::ops::Deref;
 
 pub mod advanced_encryption;
 pub mod mnemonic;
 pub mod bitcoin_service;
+pub mod analytics;
+pub mod security_module;
 
 // ============================================================================
 // Error Types
