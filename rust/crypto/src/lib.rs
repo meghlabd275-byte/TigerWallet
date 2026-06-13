@@ -5,8 +5,13 @@
 //! - Signing and verification
 //! - Hashing
 //! - Encoding/decoding
+//! - Advanced encryption (AES-256-GCM, ChaCha20-Poly1305)
+//! - BIP-39 mnemonic and HD wallet derivation
 
 use std::ops::Deref;
+
+pub mod advanced_encryption;
+pub mod mnemonic;
 
 // ============================================================================
 // Error Types

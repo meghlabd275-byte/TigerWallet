@@ -5,20 +5,36 @@ edition = "2021"
 description = "TigerWallet Crypto Library - High-speed cryptographic operations"
 
 [dependencies]
+# Basic hashing
 sha2 = "0.10"
 sha3 = "0.10"
 keccak = "0.1"
 ripemd160 = "0.10"
+blake2 = "0.10"
+
+# Elliptic curve cryptography
 secp256k1 = { version = "0.24", features = ["recovery", "global-context"] }
 ed25519-dalek = { version = "2.0", features = ["rand_core"] }
-blake2 = "0.10"
+
+# Encoding
 hex = "0.4"
 base58 = "0.2"
 base64 = "0.21"
-twofish = "0.7"
+
+# Symmetric encryption (AES)
 aes = "0.8"
 cbc = "0.1"
+aes-gcm = "0.10"
+chacha20poly1305 = "0.10"
+
+# Password hashing (Argon2)
+argon2 = "0.5"
+argon2-autodetect = "0.5"
+
+# Utilities
 rand = "0.8"
+zeroize = "1"
+subtle = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"
