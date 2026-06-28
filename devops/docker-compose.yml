@@ -1,0 +1,136 @@
+version: '3.9'
+
+services:
+  api-gateway:
+    build:
+      context: .
+      dockerfile: devops/docker/api-gateway/Dockerfile
+    container_name: tigerwallet-api-gateway
+    ports:
+      - "8080:8080"
+      - "6060:6060"
+    environment:
+      DATABASE_URL: postgresql://user:password@postgres:5432/tigerwallet
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  wallet-core:
+    build:
+      context: .
+      dockerfile: devops/docker/wallet-core/Dockerfile
+    container_name: tigerwallet-wallet-core
+    ports:
+      - "9090:9090"
+    environment:
+      RUST_LOG: info
+      NETWORK: ethereum
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  ai-layer:
+    build:
+      context: .
+      dockerfile: devops/docker/ai-layer/Dockerfile
+    container_name: tigerwallet-ai-layer
+    ports:
+      - "8000:8000"
+    environment:
+      LOG_LEVEL: info
+      WORKERS: 4
+    depends_on:
+      - postgres
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: tigerwallet-postgres
+    environment:
+      POSTGRES_DB: tigerwallet
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d tigerwallet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: tigerwallet-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: tigerwallet-prometheus
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./devops/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: tigerwallet-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  tigerwallet:
+    driver: bridge
