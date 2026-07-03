@@ -50,3 +50,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --manifest-path backend_services/rust/Cargo.toml
       - run: cargo test --manifest-path core/rust/wallet_service/Cargo.toml
+      - run: cargo test --manifest-path rust/security/Cargo.toml
+
+  security-static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject API gateway wallet/market mocks
+        run: |
+          ! rg -n "For now, return mock data|Generate mock chart data|Generate mock history|Mnemonic:\\s+generateMnemonic|price := \"2500\\.00\"|Simulate price updates|price_update" backend_services/api_gateway/main.go
+      - name: Reject obvious committed secrets
+        run: |
+          ! rg -n "(PRIVATE_KEY|MNEMONIC|SEED_PHRASE|JWT_SECRET|ENCRYPTION_KEY)=[^[:space:]]+" -g '!node_modules' -g '!*.lock' .

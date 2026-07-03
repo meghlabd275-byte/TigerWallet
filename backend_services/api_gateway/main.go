@@ -38,6 +38,8 @@ type Config struct {
 	Port              string
 	RedisURL          string
 	WalletServiceURL  string
+	MarketDataURL     string
+	PortfolioURL      string
 	SwapServiceURL    string
 	StakingServiceURL string
 }
@@ -158,16 +160,16 @@ func setupRouter(cfg *Config) *gin.Engine {
 		// Market data
 		market := v1.Group("/market")
 		{
-			market.GET("/price/:token", getPrice)
-			market.GET("/prices", getPrices)
-			market.GET("/charts/:token", getPriceChart)
+			market.GET("/price/:token", getPrice(cfg))
+			market.GET("/prices", getPrices(cfg))
+			market.GET("/charts/:token", getPriceChart(cfg))
 		}
 
 		// Portfolio
 		portfolio := v1.Group("/portfolio")
 		{
-			portfolio.GET("/:address", getPortfolio)
-			portfolio.GET("/:address/history", getPortfolioHistory)
+			portfolio.GET("/:address", getPortfolio(cfg))
+			portfolio.GET("/:address/history", getPortfolioHistory(cfg))
 		}
 	}
 
@@ -719,60 +721,51 @@ func executeBridge(c *gin.Context) {
 // MARKET DATA HANDLERS
 // ============================================================================
 
-func getPrice(c *gin.Context) {
-	token := c.Param("token")
+func getPrice(cfg *Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token := c.Param("token")
 
-	// Check cache first
-	cacheKey := fmt.Sprintf("price:%s", token)
-	cached, err := redisClient.Get(context.Background(), cacheKey).Result()
-	if err == nil && cached != "" {
-		c.JSON(http.StatusOK, gin.H{
-			"token":  token,
-			"price":  cached,
-			"change": "2.5",
-		})
-		return
-	}
-
-	// Mock price - in production fetch from API
-	price := "2500.00"
-	redisClient.Set(context.Background(), cacheKey, price, 60*time.Second)
-
-	c.JSON(http.StatusOK, gin.H{
-		"token":  token,
-		"price":  price,
-		"change": "2.5",
-	})
-}
-
-func getPrices(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"prices": gin.H{
-			"ETH":   "2500.00",
-			"BTC":   "45000.00",
-			"USDC":  "1.00",
-			"MATIC": "0.85",
-		},
-	})
-}
-
-func getPriceChart(c *gin.Context) {
-	token := c.Param("token")
-
-	// Generate mock chart data
-	points := make([]gin.H, 24)
-	for i := 0; i < 24; i++ {
-		points[i] = gin.H{
-			"timestamp": time.Now().Add(-time.Duration(24-i) * time.Hour).Unix(),
-			"price":     2500 + float64(i)*10,
+		cacheKey := fmt.Sprintf("price:%s", token)
+		cached, err := redisClient.Get(context.Background(), cacheKey).Result()
+		if err == nil && cached != "" {
+			var cachedPayload map[string]interface{}
+			if err := json.Unmarshal([]byte(cached), &cachedPayload); err == nil {
+				c.JSON(http.StatusOK, cachedPayload)
+				return
+			}
+			redisClient.Del(context.Background(), cacheKey)
 		}
-	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"token":  token,
-		"chart":  points,
-		"period": "24h",
-	})
+		payload, ok := proxyServiceGET(c, cfg.MarketDataURL, "/price/"+token)
+		if !ok {
+			return
+		}
+		if encoded, err := json.Marshal(payload); err == nil {
+			redisClient.Set(context.Background(), cacheKey, string(encoded), 60*time.Second)
+		}
+		c.JSON(http.StatusOK, payload)
+	}
+}
+
+func getPrices(cfg *Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		payload, ok := proxyServiceGET(c, cfg.MarketDataURL, "/prices")
+		if !ok {
+			return
+		}
+		c.JSON(http.StatusOK, payload)
+	}
+}
+
+func getPriceChart(cfg *Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token := c.Param("token")
+		payload, ok := proxyServiceGET(c, cfg.MarketDataURL, "/charts/"+token)
+		if !ok {
+			return
+		}
+		c.JSON(http.StatusOK, payload)
+	}
 }
 
 // ============================================================================
@@ -787,51 +780,26 @@ type PortfolioAsset struct {
 	Change24h  float64 `json:"change_24h"`
 }
 
-func getPortfolio(c *gin.Context) {
-	address := c.Param("address")
-
-	response := gin.H{
-		"address":         address,
-		"total_value_usd": "12500.00",
-		"assets": []PortfolioAsset{
-			{
-				Token:      "ETH",
-				Balance:    "4.0",
-				ValueUSD:   "10000.00",
-				Allocation: 80.0,
-				Change24h:  2.5,
-			},
-			{
-				Token:      "USDC",
-				Balance:    "2500.00",
-				ValueUSD:   "2500.00",
-				Allocation: 20.0,
-				Change24h:  0.0,
-			},
-		},
-		"timestamp": time.Now().Unix(),
+func getPortfolio(cfg *Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		address := c.Param("address")
+		payload, ok := proxyServiceGET(c, cfg.PortfolioURL, "/portfolio/"+address)
+		if !ok {
+			return
+		}
+		c.JSON(http.StatusOK, payload)
 	}
-
-	c.JSON(http.StatusOK, response)
 }
 
-func getPortfolioHistory(c *gin.Context) {
-	address := c.Param("address")
-
-	// Generate mock history
-	points := make([]gin.H, 30)
-	for i := 0; i < 30; i++ {
-		points[i] = gin.H{
-			"timestamp":   time.Now().Add(-time.Duration(30-i) * 24 * time.Hour).Unix(),
-			"total_value": 12000 + float64(i)*20,
+func getPortfolioHistory(cfg *Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		address := c.Param("address")
+		payload, ok := proxyServiceGET(c, cfg.PortfolioURL, "/portfolio/"+address+"/history")
+		if !ok {
+			return
 		}
+		c.JSON(http.StatusOK, payload)
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"address": address,
-		"history": points,
-		"period":  "30d",
-	})
 }
 
 // ============================================================================
@@ -875,11 +843,9 @@ func handleWebSocket(c *gin.Context) {
 			}
 		}
 
-		// Simulate price updates
 		conn.WriteJSON(gin.H{
-			"type":  "price_update",
-			"token": "ETH",
-			"price": "2500.00",
+			"type":    "heartbeat",
+			"message": "connected",
 		})
 	}
 }
@@ -893,8 +859,49 @@ func loadConfig() *Config {
 		Port:             getEnv("PORT", "8080"),
 		RedisURL:         getEnv("REDIS_URL", "redis://localhost:6379"),
 		WalletServiceURL: getEnv("WALLET_SERVICE_URL", "http://localhost:8081"),
+		MarketDataURL:    getEnv("MARKET_DATA_URL", ""),
+		PortfolioURL:     getEnv("PORTFOLIO_SERVICE_URL", ""),
 		SwapServiceURL:   getEnv("SWAP_SERVICE_URL", "http://localhost:8082"),
 	}
+}
+
+func proxyServiceGET(c *gin.Context, baseURL, path string) (map[string]interface{}, bool) {
+	if baseURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "required upstream service is not configured; refusing to return mock data",
+		})
+		return nil, false
+	}
+
+	targetURL := baseURL + path
+	if c.Request.URL.RawQuery != "" {
+		targetURL += "?" + c.Request.URL.RawQuery
+	}
+
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, targetURL, nil)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "upstream request could not be created"})
+		return nil, false
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "upstream service unavailable"})
+		return nil, false
+	}
+	defer resp.Body.Close()
+
+	var payload map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "upstream service returned invalid JSON"})
+		return nil, false
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		c.JSON(resp.StatusCode, payload)
+		return nil, false
+	}
+	return payload, true
 }
 
 func initRedis(url string) *redis.Client {
