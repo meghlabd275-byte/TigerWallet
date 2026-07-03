@@ -11,7 +11,7 @@ import {
 } from '@mui/material';
 import {
   AccountBalanceWallet, Add, Edit, Delete, Refresh, Visibility,
-  VisibilityOff, ContentCopy, Send, Receive, SwapHoriz, Key,
+  VisibilityOff, ContentCopy, Send, CallReceived, SwapHoriz, Key,
   Security, Warning, CheckCircle, Error as ErrorIcon, Lock,
   AccountTree, Hexagon
 } from '@mui/icons-material';
@@ -532,12 +532,12 @@ export default function AdminWalletPage() {
                         label={tx.type.toUpperCase()} 
                         size="small"
                         color={tx.type === 'send' ? 'error' : tx.type === 'receive' ? 'success' : 'primary'}
-                        icon={tx.type === 'send' ? <Send /> : tx.type === 'receive' ? <Receive /> : <SwapHoriz />}
+                        icon={tx.type === 'send' ? <Send /> : tx.type === 'receive' ? <CallReceived /> : <SwapHoriz />}
                       />
                     </TableCell>
                     <TableCell>{wallet?.name}</TableCell>
                     <TableCell>{tx.token}</TableCell>
-                    <TableCell align="right" fontWeight="bold">{formatCurrency(tx.amountUSD)}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: "bold" }}>{formatCurrency(tx.amountUSD)}</TableCell>
                     <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
                       {tx.type === 'send' ? `→ ${tx.to.slice(0, 8)}...` : `← ${tx.from.slice(0, 8)}...`}
                     </TableCell>
