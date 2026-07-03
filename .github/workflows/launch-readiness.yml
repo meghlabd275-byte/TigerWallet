@@ -1,0 +1,52 @@
+name: Launch Readiness
+
+on:
+  pull_request:
+  push:
+    branches: [ main, work ]
+
+jobs:
+  web-and-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci || npm install
+      - run: npm test --workspaces --if-present
+      - run: npm run build --workspace frontend/web_nextjs
+
+  contracts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: smart_contracts/evm_contracts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci || npm install
+      - run: npm run compile
+      - run: npm test
+
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - run: go test ./...
+        working-directory: backend_services
+      - run: go test ./...
+        working-directory: admin_platform/go
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --manifest-path backend_services/rust/Cargo.toml
+      - run: cargo test --manifest-path core/rust/wallet_service/Cargo.toml

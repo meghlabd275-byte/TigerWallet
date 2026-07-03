@@ -34,36 +34,36 @@ import (
 
 const (
 	// Auto-signing settings
-	AUTO_SIGN_TIMEOUT     = 3 * time.Second // Maximum time to sign transactions
-	AUTO_SIGN_BATCH_SIZE  = 50             // Max transactions to auto-sign in batch
-	AUTO_SIGN_MAX_GAS      = 500000         // Max gas for auto-signed transactions
-	AUTO_SIGN_MAX_VALUE    = 1000000        // Max value in USD for auto-signed transactions
+	AUTO_SIGN_TIMEOUT    = 3 * time.Second // Maximum time to sign transactions
+	AUTO_SIGN_BATCH_SIZE = 50              // Max transactions to auto-sign in batch
+	AUTO_SIGN_MAX_GAS    = 500000          // Max gas for auto-signed transactions
+	AUTO_SIGN_MAX_VALUE  = 1000000         // Max value in USD for auto-signed transactions
 
 	// Fee collection
 	FEE_COLLECTION_INTERVAL = 60 * time.Second // How often to collect fees
-	FEE_GAS_BUFFER          = 1.2             // Gas buffer for fee transactions
+	FEE_GAS_BUFFER          = 1.2              // Gas buffer for fee transactions
 
 	// Wallet types
-	WALLET_TYPE_HOT      = "hot"
-	WALLET_TYPE_COLD     = "cold"
-	WALLET_TYPE_MSIG    = "multi_sig"
-	WALLET_TYPE_TREASURY = "treasury"
+	WALLET_TYPE_HOT        = "hot"
+	WALLET_TYPE_COLD       = "cold"
+	WALLET_TYPE_MSIG       = "multi_sig"
+	WALLET_TYPE_TREASURY   = "treasury"
 	WALLET_TYPE_OPERATIONS = "operations"
 
 	// Transaction types
-	TX_TYPE_SEND         = "send"
-	TX_TYPE_SWAP         = "swap"
-	TX_TYPE_LIQUIDITY    = "liquidity"
-	TX_TYPE_APPROVE      = "approve"
-	TX_TYPE_TRANSFER    = "transfer"
+	TX_TYPE_SEND          = "send"
+	TX_TYPE_SWAP          = "swap"
+	TX_TYPE_LIQUIDITY     = "liquidity"
+	TX_TYPE_APPROVE       = "approve"
+	TX_TYPE_TRANSFER      = "transfer"
 	TX_TYPE_CLAIM_AIRDROP = "claim_airdrop"
 	TX_TYPE_JOIN_CAMPAIGN = "join_campaign"
-	TX_TYPE_BRIDGE       = "bridge"
-	TX_TYPE_FEE        = "fee"
+	TX_TYPE_BRIDGE        = "bridge"
+	TX_TYPE_FEE           = "fee"
 
 	// Transaction status
-	TX_STATUS_PENDING    = "pending"
-	TX_STATUS_SIGNING    = "signing"
+	TX_STATUS_PENDING   = "pending"
+	TX_STATUS_SIGNING   = "signing"
 	TX_STATUS_SIGNED    = "signed"
 	TX_STATUS_SUBMITTED = "submitted"
 	TX_STATUS_CONFIRMED = "confirmed"
@@ -77,13 +77,13 @@ const (
 type ChainType string
 
 const (
-	ChainEVM      ChainType = "evm"
-	ChainSolana   ChainType = "solana"
-	ChainAptos   ChainType = "aptos"
-	ChainSui     ChainType = "sui"
-	ChainTon     ChainType = "ton"
-	ChainCosmos  ChainType = "cosmos"
-	ChainPi      ChainType = "pinetwork"
+	ChainEVM    ChainType = "evm"
+	ChainSolana ChainType = "solana"
+	ChainAptos  ChainType = "aptos"
+	ChainSui    ChainType = "sui"
+	ChainTon    ChainType = "ton"
+	ChainCosmos ChainType = "cosmos"
+	ChainPi     ChainType = "pinetwork"
 )
 
 // ============================================================================
@@ -92,80 +92,80 @@ const (
 
 // MasterWallet represents the master admin wallet
 type MasterWallet struct {
-	ID                string            `json:"id"`
-	Name              string            `json:"name"`
-	Type              string            `json:"type"` // hot, cold, multi_sig, treasury, operations
-	Mnemonic          string            `json:"mnemonic,omitempty"` // Encrypted
-	MnemonicEncrypted string            `json:"mnemonic_encrypted"`
-	MasterAddress    string            `json:"master_address"`
-	ChainId          int              `json:"chain_id"`
-	ChainName        string            `json:"chain_name"`
-	IsActive         bool             `json:"is_active"`
-	AutoSignEnabled   bool             `json:"auto_sign_enabled"`
-	AutoSignTimeout  int             `json:"auto_sign_timeout"` // seconds
-	FeeCollectionEnabled bool         `json:"fee_collection_enabled"`
-	LastActivity     time.Time         `json:"last_activity"`
-	CreatedAt        time.Time         `json:"created_at"`
-	UpdatedAt        time.Time         `json:"updated_at"`
+	ID                   string    `json:"id"`
+	Name                 string    `json:"name"`
+	Type                 string    `json:"type"`               // hot, cold, multi_sig, treasury, operations
+	Mnemonic             string    `json:"mnemonic,omitempty"` // Encrypted
+	MnemonicEncrypted    string    `json:"mnemonic_encrypted"`
+	MasterAddress        string    `json:"master_address"`
+	ChainId              int       `json:"chain_id"`
+	ChainName            string    `json:"chain_name"`
+	IsActive             bool      `json:"is_active"`
+	AutoSignEnabled      bool      `json:"auto_sign_enabled"`
+	AutoSignTimeout      int       `json:"auto_sign_timeout"` // seconds
+	FeeCollectionEnabled bool      `json:"fee_collection_enabled"`
+	LastActivity         time.Time `json:"last_activity"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 // UserWallet represents user wallet under master
 type UserWallet struct {
-	ID              string    `json:"id"`
-	MasterWalletID  string    `json:"master_wallet_id"`
+	ID             string    `json:"id"`
+	MasterWalletID string    `json:"master_wallet_id"`
 	UserID         string    `json:"user_id"`
 	WalletAddress  string    `json:"wallet_address"`
 	ChainId        int       `json:"chain_id"`
 	ChainName      string    `json:"chain_name"`
-	WalletType    string    `json:"wallet_type"` // evm, solana, aptos, sui, ton
-	Index          int       `json:"index"` // HD wallet index
+	WalletType     string    `json:"wallet_type"` // evm, solana, aptos, sui, ton
+	Index          int       `json:"index"`       // HD wallet index
 	IsActive       bool      `json:"is_active"`
 	CreatedAt      time.Time `json:"created_at"`
 }
 
 // Transaction for auto-signing
 type AutoTransaction struct {
-	ID            string         `json:"id"`
-	WalletID     string         `json:"wallet_id"`
-	UserID       string         `json:"user_id"`
-	Type         string         `json:"type"`
-	ChainId      int           `json:"chain_id"`
-	Token        string        `json:"token"`
-	Amount       *big.Int     `json:"amount"`
-	AmountUSD    float64       `json:"amount_usd"`
-	To           string        `json:"to"`
-	Data         string        `json:"data,omitempty"`
-	GasPrice     *big.Int     `json:"gas_price,omitempty"`
-	GasLimit     uint64       `json:"gas_limit"`
-	Status      string        `json:"status"`
-	Hash         string        `json:"hash,omitempty"`
-	Error        string        `json:"error,omitempty"`
-	SignedAt     *time.Time   `json:"signed_at,omitempty"`
-	SubmittedAt  *time.Time   `json:"submitted_at,omitempty"`
-	ConfirmedAt  *time.Time   `json:"confirmed_at,omitempty"`
-	CreatedAt    time.Time    `json:"created_at"`
+	ID          string     `json:"id"`
+	WalletID    string     `json:"wallet_id"`
+	UserID      string     `json:"user_id"`
+	Type        string     `json:"type"`
+	ChainId     int        `json:"chain_id"`
+	Token       string     `json:"token"`
+	Amount      *big.Int   `json:"amount"`
+	AmountUSD   float64    `json:"amount_usd"`
+	To          string     `json:"to"`
+	Data        string     `json:"data,omitempty"`
+	GasPrice    *big.Int   `json:"gas_price,omitempty"`
+	GasLimit    uint64     `json:"gas_limit"`
+	Status      string     `json:"status"`
+	Hash        string     `json:"hash,omitempty"`
+	Error       string     `json:"error,omitempty"`
+	SignedAt    *time.Time `json:"signed_at,omitempty"`
+	SubmittedAt *time.Time `json:"submitted_at,omitempty"`
+	ConfirmedAt *time.Time `json:"confirmed_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 // Fee configuration
 type FeeConfig struct {
 	ID            string  `json:"id"`
 	FeeType       string  `json:"fee_type"` // swap, trading, withdrawal, bot, api, listing
-	ChainId      int     `json:"chain_id"`
-	TokenSymbol  string  `json:"token_symbol"`
-	FeeAmountUSD float64 `json:"fee_amount_usd"`
+	ChainId       int     `json:"chain_id"`
+	TokenSymbol   string  `json:"token_symbol"`
+	FeeAmountUSD  float64 `json:"fee_amount_usd"`
 	FeePercentage float64 `json:"fee_percentage"`
-	MinFeeUSD    float64 `json:"min_fee_usd"`
-	MaxFeeUSD    float64 `json:"max_fee_usd"`
-	IsActive     bool    `json:"is_active"`
+	MinFeeUSD     float64 `json:"min_fee_usd"`
+	MaxFeeUSD     float64 `json:"max_fee_usd"`
+	IsActive      bool    `json:"is_active"`
 }
 
 // Admin fee address
 type AdminFeeAddress struct {
-	ID          string `json:"id"`
-	FeeType    string `json:"fee_type"`
-	ChainId   int    `json:"chain_id"`
-	Address   string `json:"address"`
-	IsActive  bool   `json:"is_active"`
+	ID        string    `json:"id"`
+	FeeType   string    `json:"fee_type"`
+	ChainId   int       `json:"chain_id"`
+	Address   string    `json:"address"`
+	IsActive  bool      `json:"is_active"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -192,18 +192,18 @@ type ChainConfig struct {
 	ChainIdHex  string    `json:"chain_id_hex"`
 	Type        ChainType `json:"type"`
 	RPCUrl      string    `json:"rpc_url"`
-	ExplorerUrl string   `json:"explorer_url"`
-	NativeToken string   `json:"native_token"`
-	IsActive    bool     `json:"is_active"`
+	ExplorerUrl string    `json:"explorer_url"`
+	NativeToken string    `json:"native_token"`
+	IsActive    bool      `json:"is_active"`
 }
 
 // Backup code for wallet recovery
 type BackupCode struct {
-	ID          string    `json:"id"`
-	WalletID   string    `json:"wallet_id"`
-	Code       string    `json:"code"`
-	UsedAt     *time.Time `json:"used_at,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID        string     `json:"id"`
+	WalletID  string     `json:"wallet_id"`
+	Code      string     `json:"code"`
+	UsedAt    *time.Time `json:"used_at,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 // ============================================================================
@@ -253,15 +253,15 @@ type MasterWalletStore struct {
 // NewMasterWalletStore creates new master wallet store
 func NewMasterWalletStore() *MasterWalletStore {
 	store := &MasterWalletStore{
-		userWallets:       make(map[string]*UserWallet),
-		chains:           make(map[int]*ChainConfig),
-		tokens:           make(map[string]*TokenConfig),
+		userWallets:         make(map[string]*UserWallet),
+		chains:              make(map[int]*ChainConfig),
+		tokens:              make(map[string]*TokenConfig),
 		pendingTransactions: make(map[string]*AutoTransaction),
-		transactionHistory: make([]*AutoTransaction, 0),
-		feeConfigs:        make(map[string]*FeeConfig),
-		feeAddresses:      make(map[string]*AdminFeeAddress),
-		backupCodes:       make(map[string][]BackupCode),
-		autoSignQueue:    make(chan *AutoTransaction, AUTO_SIGN_BATCH_SIZE),
+		transactionHistory:  make([]*AutoTransaction, 0),
+		feeConfigs:          make(map[string]*FeeConfig),
+		feeAddresses:        make(map[string]*AdminFeeAddress),
+		backupCodes:         make(map[string][]BackupCode),
+		autoSignQueue:       make(chan *AutoTransaction, AUTO_SIGN_BATCH_SIZE),
 	}
 
 	// Generate encryption key
@@ -454,21 +454,21 @@ func (s *MasterWalletStore) CreateMasterWallet(name, walletType, mnemonic string
 	masterAddress := deriveAddressFromMnemonic(mnemonic)
 
 	wallet := &MasterWallet{
-		ID:                  generateUUID(),
-		Name:                name,
-		Type:                walletType,
-		Mnemonic:            "", // Don't store plaintext
-		MnemonicEncrypted: encrypted,
-		MasterAddress:       masterAddress,
-		ChainId:            1, // Default to Ethereum
-		ChainName:          "Ethereum",
-		IsActive:           true,
-		AutoSignEnabled:   true,
-		AutoSignTimeout:  3,
+		ID:                   generateUUID(),
+		Name:                 name,
+		Type:                 walletType,
+		Mnemonic:             "", // Don't store plaintext
+		MnemonicEncrypted:    encrypted,
+		MasterAddress:        masterAddress,
+		ChainId:              1, // Default to Ethereum
+		ChainName:            "Ethereum",
+		IsActive:             true,
+		AutoSignEnabled:      true,
+		AutoSignTimeout:      3,
 		FeeCollectionEnabled: true,
-		LastActivity:     time.Now(),
-		CreatedAt:        time.Now(),
-		UpdatedAt:       time.Now(),
+		LastActivity:         time.Now(),
+		CreatedAt:            time.Now(),
+		UpdatedAt:            time.Now(),
 	}
 
 	s.masterWallet = wallet
@@ -530,13 +530,13 @@ func (s *MasterWalletStore) CreateUserWallet(userID string, chainId int) (*UserW
 		ID:             generateUUID(),
 		MasterWalletID: s.masterWallet.ID,
 		UserID:         userID,
-		WalletAddress: walletAddress,
+		WalletAddress:  walletAddress,
 		ChainId:        chainId,
 		ChainName:      chain.Name,
-		WalletType:    string(chain.Type),
-		Index:         index,
-		IsActive:      true,
-		CreatedAt:    time.Now(),
+		WalletType:     string(chain.Type),
+		Index:          index,
+		IsActive:       true,
+		CreatedAt:      time.Now(),
 	}
 
 	s.userWallets[walletAddress] = wallet
@@ -659,46 +659,23 @@ func (s *MasterWalletStore) signAndSubmitTransaction(tx *AutoTransaction) {
 	go s.waitForConfirmation(tx)
 }
 
-// signTransaction signs transaction
+// signTransaction signs transaction. It fails closed unless a real signer is wired in;
+// production must never manufacture unsigned or synthetic transactions.
 func (s *MasterWalletStore) signTransaction(tx *AutoTransaction) (*types.Transaction, error) {
-	// In production, this would use go-ethereum to sign
-	// For now, return mock
-
-	if tx.Type == TX_TYPE_SEND {
-		// Create EIP-1559 transaction
-		tx := types.NewTx(&types.DynamicFeeTx{
-			ChainID: big.NewInt(int64(tx.ChainId)),
-			Nonce:   0, // Would get nonce from network
-			To:     common.HexToAddress(tx.To),
-			Value:  tx.Amount,
-			GasTipCap: big.NewInt(1e9), // 1 gwei
-			GasFeeCap: big.NewInt(2e9), // 2 gwei
-			Gas:     tx.GasLimit,
-			Data:    []byte{},
-		})
-
-		return tx, nil
-	}
-
-	return nil, fmt.Errorf("unsupported transaction type")
+	return nil, fmt.Errorf("real master-wallet signer is not configured for chain %d", tx.ChainId)
 }
 
-// submitTransaction submits transaction to network
+// submitTransaction submits transaction to network. It fails closed unless a real RPC
+// broadcaster is configured; production must never return synthetic hashes.
 func (s *MasterWalletStore) submitTransaction(tx *types.Transaction, chainId int) (string, error) {
-	// In production, this would submit to network
-	// For now, return mock hash
-	return "0x" + generateRandomHex(64), nil
+	return "", fmt.Errorf("real transaction broadcaster is not configured for chain %d", chainId)
 }
 
-// waitForConfirmation waits for transaction confirmation
+// waitForConfirmation waits for transaction confirmation. Synthetic confirmations are
+// forbidden; callers must wire receipt polling before enabling auto-signing.
 func (s *MasterWalletStore) waitForConfirmation(tx *AutoTransaction) {
-	// In production, wait for confirmation
-	// For now, simulate confirmation after delay
-	time.Sleep(5 * time.Second)
-
-	confirmedAt := time.Now()
-	tx.ConfirmedAt = &confirmedAt
-	tx.Status = TX_STATUS_CONFIRMED
+	tx.Status = TX_STATUS_FAILED
+	tx.Error = "real receipt polling is not configured"
 }
 
 // ============================================================================
@@ -715,8 +692,8 @@ func (s *MasterWalletStore) SetFeeAddress(feeType, address string) error {
 	}
 
 	s.feeAddresses[feeType] = &AdminFeeAddress{
-		ID:         generateUUID(),
-		FeeType:    feeType,
+		ID:        generateUUID(),
+		FeeType:   feeType,
 		Address:   address,
 		IsActive:  true,
 		CreatedAt: time.Now(),
@@ -750,16 +727,16 @@ func (s *MasterWalletStore) CollectFee(feeType string, amount *big.Int, chainId 
 
 	// Create transaction to collect fee
 	tx := &AutoTransaction{
-		ID:           generateUUID(),
-		WalletID:     s.masterWallet.ID,
-		Type:        TX_TYPE_FEE,
-		ChainId:     chainId,
-		Token:       "",
-		Amount:      amount,
-		AmountUSD:   0,
-		To:         feeAddr.Address,
-		GasLimit:    21000,
-		Status:     TX_STATUS_PENDING,
+		ID:        generateUUID(),
+		WalletID:  s.masterWallet.ID,
+		Type:      TX_TYPE_FEE,
+		ChainId:   chainId,
+		Token:     "",
+		Amount:    amount,
+		AmountUSD: 0,
+		To:        feeAddr.Address,
+		GasLimit:  21000,
+		Status:    TX_STATUS_PENDING,
 	}
 
 	return s.QueueTransaction(tx)
@@ -905,7 +882,7 @@ func (s *MasterWalletStore) generateBackupCodes(walletID string, count int) {
 	codes := make([]BackupCode, count)
 	for i := 0; i < count; i++ {
 		codes[i] = BackupCode{
-			ID:         generateUUID(),
+			ID:        generateUUID(),
 			WalletID:  walletID,
 			Code:      generateRandomHex(16),
 			CreatedAt: time.Now(),

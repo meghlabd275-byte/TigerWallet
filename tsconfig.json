@@ -21,7 +21,7 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "composite": true,
-    "增量": true,
+    "incremental": true,
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],

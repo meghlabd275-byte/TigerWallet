@@ -495,7 +495,7 @@ export default function AdvancedTradingInterface() {
               )}
               
               {/* Stop Price */}
-              {(orderType === 'stop_loss' || orderType === 'stop_loss') && (
+              {(orderType === 'stop_loss' || orderType === 'take_profit') && (
                 <TextField
                   fullWidth
                   label="Stop Price"
