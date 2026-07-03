@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	cryptoRand "crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -24,19 +26,19 @@ import (
 // ============================================================================
 
 var (
-	logger zerolog.Logger
+	logger      zerolog.Logger
 	redisClient *redis.Client
-	upgrader = websocket.Upgrader{
+	upgrader    = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
 )
 
 // Configuration
 type Config struct {
-	Port            string
-	RedisURL        string
-	WalletServiceURL string
-	SwapServiceURL  string
+	Port              string
+	RedisURL          string
+	WalletServiceURL  string
+	SwapServiceURL    string
 	StakingServiceURL string
 }
 
@@ -113,7 +115,7 @@ func setupRouter(cfg *Config) *gin.Engine {
 		// Wallet routes
 		wallet := v1.Group("/wallet")
 		{
-			wallet.POST("/create", createWallet)
+			wallet.POST("/create", createWallet(cfg))
 			wallet.POST("/import", importWallet)
 			wallet.POST("/export", exportWallet)
 			wallet.GET("/:address", getWalletInfo)
@@ -242,41 +244,77 @@ func healthCheck(c *gin.Context) {
 // ============================================================================
 
 type CreateWalletRequest struct {
-	ChainID uint64 `json:"chain_id" binding:"required"`
-	Type    string `json:"type" binding:"required"` // "mnemonic", "private_key"
+	ChainID  uint64 `json:"chain_id" binding:"required"`
+	Type     string `json:"type" binding:"required"` // "mnemonic", "private_key"
 	Password string `json:"password" binding:"required"`
 }
 
 type CreateWalletResponse struct {
-	Address    string   `json:"address"`
-	PublicKey  string   `json:"public_key"`
-	Mnemonic   string   `json:"mnemonic,omitempty"`
-	ChainID    uint64  `json:"chain_id"`
-	CreatedAt  int64   `json:"created_at"`
+	Address   string `json:"address"`
+	PublicKey string `json:"public_key"`
+	Mnemonic  string `json:"mnemonic,omitempty"`
+	ChainID   uint64 `json:"chain_id"`
+	CreatedAt int64  `json:"created_at"`
 }
 
-func createWallet(c *gin.Context) {
-	var req CreateWalletRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+func createWallet(cfg *Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req CreateWalletRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		if cfg.WalletServiceURL == "" {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"error": "wallet service is not configured; refusing to create mock wallets",
+			})
+			return
+		}
+
+		body, err := json.Marshal(req)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid wallet creation request"})
+			return
+		}
+
+		httpReq, err := http.NewRequestWithContext(
+			c.Request.Context(),
+			http.MethodPost,
+			cfg.WalletServiceURL+"/wallet/create",
+			bytes.NewReader(body),
+		)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "wallet service request could not be created"})
+			return
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "wallet service unavailable"})
+			return
+		}
+		defer resp.Body.Close()
+
+		var response map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "wallet service returned invalid JSON"})
+			return
+		}
+
+		delete(response, "mnemonic")
+		delete(response, "seed_phrase")
+		delete(response, "private_key")
+
+		if address, ok := response["address"].(string); ok && address != "" {
+			cacheKey := fmt.Sprintf("wallet:%s", address)
+			redisClient.Set(context.Background(), cacheKey, address, 24*time.Hour)
+		}
+
+		c.JSON(resp.StatusCode, response)
 	}
-
-	// In production, this would call the wallet service
-	// For now, return mock data
-	response := CreateWalletResponse{
-		Address:   "0x" + generateRandomHex(40),
-		PublicKey: "0x" + generateRandomHex(66),
-		Mnemonic:  generateMnemonic(),
-		ChainID:   req.ChainID,
-		CreatedAt: time.Now().Unix(),
-	}
-
-	// Cache in Redis
-	cacheKey := fmt.Sprintf("wallet:%s", response.Address)
-	redisClient.Set(context.Background(), cacheKey, response.Address, 24*time.Hour)
-
-	c.JSON(http.StatusCreated, response)
 }
 
 type ImportWalletRequest struct {
@@ -312,7 +350,7 @@ func getWalletInfo(c *gin.Context) {
 	if err == nil && cached != "" {
 		c.JSON(http.StatusOK, gin.H{
 			"address":    address,
-			"chain_id":  1,
+			"chain_id":   1,
 			"created_at": time.Now().Add(-30 * 24 * time.Hour).Unix(),
 		})
 		return
@@ -322,18 +360,18 @@ func getWalletInfo(c *gin.Context) {
 }
 
 type BalanceResponse struct {
-	Address   string            `json:"address"`
-	ChainID   uint64           `json:"chain_id"`
-	Native    string           `json:"native"`
+	Address   string                  `json:"address"`
+	ChainID   uint64                  `json:"chain_id"`
+	Native    string                  `json:"native"`
 	Tokens    map[string]TokenBalance `json:"tokens"`
-	Timestamp int64            `json:"timestamp"`
+	Timestamp int64                   `json:"timestamp"`
 }
 
 type TokenBalance struct {
-	Balance   string `json:"balance"`
-	Symbol    string `json:"symbol"`
-	Decimals  uint8  `json:"decimals"`
-	ValueUSD  string `json:"value_usd"`
+	Balance  string `json:"balance"`
+	Symbol   string `json:"symbol"`
+	Decimals uint8  `json:"decimals"`
+	ValueUSD string `json:"value_usd"`
 }
 
 func getBalance(c *gin.Context) {
@@ -370,12 +408,12 @@ type TransferRequest struct {
 }
 
 type TransferResponse struct {
-	TxHash   string `json:"tx_hash"`
-	From     string `json:"from"`
-	To       string `json:"to"`
-	Amount   string `json:"amount"`
-	ChainID  uint64 `json:"chain_id"`
-	Status   string `json:"status"`
+	TxHash  string `json:"tx_hash"`
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Amount  string `json:"amount"`
+	ChainID uint64 `json:"chain_id"`
+	Status  string `json:"status"`
 }
 
 func transfer(c *gin.Context) {
@@ -416,22 +454,22 @@ type SwapQuoteRequest struct {
 }
 
 type SwapRoute struct {
-	DEX       string `json:"dex"`
-	FromToken string `json:"from_token"`
-	ToToken   string `json:"to_token"`
+	DEX        string `json:"dex"`
+	FromToken  string `json:"from_token"`
+	ToToken    string `json:"to_token"`
 	FromAmount string `json:"from_amount"`
-	ToAmount  string `json:"to_amount"`
+	ToAmount   string `json:"to_amount"`
 }
 
 type SwapQuoteResponse struct {
-	FromToken    string      `json:"from_token"`
-	ToToken      string      `json:"to_token"`
-	FromAmount   string      `json:"from_amount"`
-	ToAmount     string      `json:"to_amount"`
-	MinReceived  string      `json:"min_received"`
-	Route        []SwapRoute `json:"route"`
-	GasEstimate  string      `json:"gas_estimate"`
-	PriceImpact  float64     `json:"price_impact"`
+	FromToken   string      `json:"from_token"`
+	ToToken     string      `json:"to_token"`
+	FromAmount  string      `json:"from_amount"`
+	ToAmount    string      `json:"to_amount"`
+	MinReceived string      `json:"min_received"`
+	Route       []SwapRoute `json:"route"`
+	GasEstimate string      `json:"gas_estimate"`
+	PriceImpact float64     `json:"price_impact"`
 }
 
 func getSwapQuote(c *gin.Context) {
@@ -443,11 +481,11 @@ func getSwapQuote(c *gin.Context) {
 
 	// Mock quote - in production call swap service
 	response := SwapQuoteResponse{
-		FromToken:    req.FromToken,
-		ToToken:      req.ToToken,
-		FromAmount:   req.Amount,
-		ToAmount:     "1500000000000000000", // 1.5x output
-		MinReceived:  "1485000000000000000", // with slippage
+		FromToken:   req.FromToken,
+		ToToken:     req.ToToken,
+		FromAmount:  req.Amount,
+		ToAmount:    "1500000000000000000", // 1.5x output
+		MinReceived: "1485000000000000000", // with slippage
 		Route: []SwapRoute{
 			{
 				DEX:        "uniswap_v3",
@@ -465,13 +503,13 @@ func getSwapQuote(c *gin.Context) {
 }
 
 type ExecuteSwapRequest struct {
-	FromToken  string `json:"from_token" binding:"required"`
-	ToToken    string `json:"to_token" binding:"required"`
-	Amount     string `json:"amount" binding:"required"`
-	MinReceive string `json:"min_receive" binding:"required"`
-	FromAddress string `json:"from_address" binding:"required"`
-	ChainID    uint64 `json:"chain_id" binding:"required"`
-	Slippage   float64 `json:"slippage"`
+	FromToken   string  `json:"from_token" binding:"required"`
+	ToToken     string  `json:"to_token" binding:"required"`
+	Amount      string  `json:"amount" binding:"required"`
+	MinReceive  string  `json:"min_receive" binding:"required"`
+	FromAddress string  `json:"from_address" binding:"required"`
+	ChainID     uint64  `json:"chain_id" binding:"required"`
+	Slippage    float64 `json:"slippage"`
 }
 
 func executeSwap(c *gin.Context) {
@@ -482,11 +520,11 @@ func executeSwap(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"tx_hash":   "0x" + generateRandomHex(64),
-		"from":      req.FromAddress,
+		"tx_hash":    "0x" + generateRandomHex(64),
+		"from":       req.FromAddress,
 		"from_token": req.FromToken,
-		"to_token":  req.ToToken,
-		"status":    "pending",
+		"to_token":   req.ToToken,
+		"status":     "pending",
 	})
 }
 
@@ -508,12 +546,12 @@ func getSwapRoutes(c *gin.Context) {
 // ============================================================================
 
 type Validator struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Commission  float64 `json:"commission"`
-	StakedAmount string `json:"staked_amount"`
-	APY         float64 `json:"apy"`
-	Status      string  `json:"status"`
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	Commission   float64 `json:"commission"`
+	StakedAmount string  `json:"staked_amount"`
+	APY          float64 `json:"apy"`
+	Status       string  `json:"status"`
 }
 
 func getValidators(c *gin.Context) {
@@ -521,33 +559,33 @@ func getValidators(c *gin.Context) {
 
 	response := []Validator{
 		{
-			ID:          "validator_1",
-			Name:        "Lido",
-			Commission:  10.0,
+			ID:           "validator_1",
+			Name:         "Lido",
+			Commission:   10.0,
 			StakedAmount: "1000000000000000000000",
-			APY:         4.5,
-			Status:      "active",
+			APY:          4.5,
+			Status:       "active",
 		},
 		{
-			ID:          "validator_2",
-			Name:        "Rocket Pool",
-			Commission:  15.0,
+			ID:           "validator_2",
+			Name:         "Rocket Pool",
+			Commission:   15.0,
 			StakedAmount: "500000000000000000000",
-			APY:         4.2,
-			Status:      "active",
+			APY:          4.2,
+			Status:       "active",
 		},
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"chain":     chain,
+		"chain":      chain,
 		"validators": response,
 	})
 }
 
 type DelegateRequest struct {
 	ValidatorID string `json:"validator_id" binding:"required"`
-	Amount     string `json:"amount" binding:"required"`
-	ChainID    uint64 `json:"chain_id" binding:"required"`
+	Amount      string `json:"amount" binding:"required"`
+	ChainID     uint64 `json:"chain_id" binding:"required"`
 }
 
 func delegate(c *gin.Context) {
@@ -589,13 +627,13 @@ func getStakingRewards(c *gin.Context) {
 // ============================================================================
 
 type NFT struct {
-	TokenID    string   `json:"token_id"`
-	Contract   string   `json:"contract"`
-	Name       string   `json:"name"`
-	Symbol     string   `json:"symbol"`
-	ImageURL   string   `json:"image_url"`
-	Owner      string   `json:"owner"`
-	Attributes []gin.H  `json:"attributes"`
+	TokenID    string  `json:"token_id"`
+	Contract   string  `json:"contract"`
+	Name       string  `json:"name"`
+	Symbol     string  `json:"symbol"`
+	ImageURL   string  `json:"image_url"`
+	Owner      string  `json:"owner"`
+	Attributes []gin.H `json:"attributes"`
 }
 
 func getNFTs(c *gin.Context) {
@@ -627,8 +665,8 @@ func getNFTDetails(c *gin.Context) {
 	tokenID := c.Param("token_id")
 
 	c.JSON(http.StatusOK, gin.H{
-		"token_id": tokenID,
-		"name":     "Bored Ape #1",
+		"token_id":  tokenID,
+		"name":      "Bored Ape #1",
 		"image_url": "https://ipfs.io/ipfs/QmRRPWG96cmgTn2qSzjwr2qvfNEuhunv6FNeMFGa9bx6mQ",
 	})
 }
@@ -664,7 +702,7 @@ func getBridgeQuote(c *gin.Context) {
 		"from_amount":    req.Amount,
 		"to_amount":      "980000000000000000", // 2% fee
 		"fee":            "20000000000000000",
-		"estimated_time":  "15m",
+		"estimated_time": "15m",
 		"protocol":       "stargate",
 	})
 }
@@ -710,9 +748,9 @@ func getPrice(c *gin.Context) {
 func getPrices(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"prices": gin.H{
-			"ETH": "2500.00",
-			"BTC": "45000.00",
-			"USDC": "1.00",
+			"ETH":   "2500.00",
+			"BTC":   "45000.00",
+			"USDC":  "1.00",
 			"MATIC": "0.85",
 		},
 	})
@@ -742,18 +780,18 @@ func getPriceChart(c *gin.Context) {
 // ============================================================================
 
 type PortfolioAsset struct {
-	Token       string `json:"token"`
-	Balance     string `json:"balance"`
-	ValueUSD    string `json:"value_usd"`
-	Allocation  float64 `json:"allocation"`
-	Change24h   float64 `json:"change_24h"`
+	Token      string  `json:"token"`
+	Balance    string  `json:"balance"`
+	ValueUSD   string  `json:"value_usd"`
+	Allocation float64 `json:"allocation"`
+	Change24h  float64 `json:"change_24h"`
 }
 
 func getPortfolio(c *gin.Context) {
 	address := c.Param("address")
 
 	response := gin.H{
-		"address": address,
+		"address":         address,
 		"total_value_usd": "12500.00",
 		"assets": []PortfolioAsset{
 			{
@@ -784,15 +822,15 @@ func getPortfolioHistory(c *gin.Context) {
 	points := make([]gin.H, 30)
 	for i := 0; i < 30; i++ {
 		points[i] = gin.H{
-			"timestamp":     time.Now().Add(-time.Duration(30-i) * 24 * time.Hour).Unix(),
-			"total_value":   12000 + float64(i)*20,
+			"timestamp":   time.Now().Add(-time.Duration(30-i) * 24 * time.Hour).Unix(),
+			"total_value": 12000 + float64(i)*20,
 		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"address":  address,
-		"history":  points,
-		"period":   "30d",
+		"address": address,
+		"history": points,
+		"period":  "30d",
 	})
 }
 
@@ -852,10 +890,10 @@ func handleWebSocket(c *gin.Context) {
 
 func loadConfig() *Config {
 	return &Config{
-		Port:            getEnv("PORT", "8080"),
-		RedisURL:        getEnv("REDIS_URL", "redis://localhost:6379"),
+		Port:             getEnv("PORT", "8080"),
+		RedisURL:         getEnv("REDIS_URL", "redis://localhost:6379"),
 		WalletServiceURL: getEnv("WALLET_SERVICE_URL", "http://localhost:8081"),
-		SwapServiceURL:  getEnv("SWAP_SERVICE_URL", "http://localhost:8082"),
+		SwapServiceURL:   getEnv("SWAP_SERVICE_URL", "http://localhost:8082"),
 	}
 }
 
@@ -883,9 +921,8 @@ func getEnv(key, defaultValue string) string {
 
 func generateRandomHex(length int) string {
 	bytes := make([]byte, length/2)
-	for i := range bytes {
-		bytes[i] = byte(time.Now().UnixNano() % 256)
-		time.Sleep(time.Nanosecond)
+	if _, err := cryptoRand.Read(bytes); err != nil {
+		panic(fmt.Sprintf("secure random generation failed: %v", err))
 	}
 	return hex.EncodeToString(bytes)[:length]
 }
