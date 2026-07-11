@@ -1,0 +1,112 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+
+interface GasPrice {
+  slow: string;
+  standard: string;
+  fast: string;
+  slowWait: string;
+  standardWait: string;
+  fastWait: string;
+}
+
+interface ChainGas {
+  chainId: number;
+  chainName: string;
+  symbol: string;
+  gasPrice: GasPrice;
+}
+
+export default function GasEstimation() {
+  const [chainsGas, setChainsGas] = useState<ChainGas[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedChain, setSelectedChain] = useState<number>(1);
+  const [txType, setTxType] = useState<string>('transfer');
+  const [gasLimit, setGasLimit] = useState<string>('21000');
+
+  useEffect(() => {
+    const mockGas: ChainGas[] = [
+      { chainId: 1, chainName: 'Ethereum', symbol: 'ETH', gasPrice: { slow: '15', standard: '18', fast: '25', slowWait: '>10 min', standardWait: '3 min', fastWait: '<30 sec' } },
+      { chainId: 56, chainName: 'BNB Chain', symbol: 'BNB', gasPrice: { slow: '3', standard: '5', fast: '8', slowWait: '>1 min', standardWait: '15 sec', fastWait: '<5 sec' } },
+      { chainId: 137, chainName: 'Polygon', symbol: 'MATIC', gasPrice: { slow: '50', standard: '80', fast: '150', slowWait: '>2 min', standardWait: '30 sec', fastWait: '<10 sec' } },
+      { chainId: 42161, chainName: 'Arbitrum', symbol: 'ETH', gasPrice: { slow: '0.1', standard: '0.15', fast: '0.2', slowWait: '>5 min', standardWait: '1 min', fastWait: '<15 sec' } },
+      { chainId: 10, chainName: 'Optimism', symbol: 'ETH', gasPrice: { slow: '0.001', standard: '0.002', fast: '0.005', slowWait: '>5 min', standardWait: '1 min', fastWait: '<10 sec' } },
+      { chainId: 43114, chainName: 'Avalanche', symbol: 'AVAX', gasPrice: { slow: '25', standard: '30', fast: '40', slowWait: '>1 min', standardWait: '15 sec', fastWait: '<5 sec' } },
+      { chainId: 101, chainName: 'Solana', symbol: 'SOL', gasPrice: { slow: '0.00025', standard: '0.0005', fast: '0.001', slowWait: '>1 min', standardWait: '15 sec', fastWait: '<5 sec' } },
+      { chainId: 728126428, chainName: 'Tron', symbol: 'TRX', gasPrice: { slow: '5', standard: '10', fast: '20', slowWait: '>1 min', standardWait: '30 sec', fastWait: '<10 sec' } },
+    ];
+    setChainsGas(mockGas);
+    setLoading(false);
+
+    const interval = setInterval(() => {
+      setChainsGas(prev => prev.map(chain => ({
+        ...chain,
+        gasPrice: {
+          ...chain.gasPrice,
+          slow: (parseFloat(chain.gasPrice.slow) * (1 + (Math.random() - 0.5) * 0.1)).toFixed(4),
+          standard: (parseFloat(chain.gasPrice.standard) * (1 + (Math.random() - 0.5) * 0.1)).toFixed(4),
+          fast: (parseFloat(chain.gasPrice.fast) * (1 + (Math.random() - 0.5) * 0.1)).toFixed(4),
+        }
+      })));
+    }, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const calculateCost = (gasPrice: string, limit: string): string => {
+    const price = parseFloat(gasPrice);
+    const limitNum = parseFloat(limit);
+    return (price * limitNum / 1000000000).toFixed(6);
+  };
+
+  const getGasLimit = (type: string): string => {
+    const limits: Record<string, string> = { transfer: '21000', swap: '150000', nftTransfer: '85000', contractDeploy: '3000000', stake: '100000', approve: '50000' };
+    return limits[type] || '21000';
+  };
+
+  const selectedChainGas = chainsGas.find(c => c.chainId === selectedChain);
+  const currentGasLimit = getGasLimit(txType);
+
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-50">
+      <header className="bg-white dark:bg-slate-800 border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-4"><div className="flex items-center justify-between h-16"><div className="flex items-center gap-4"><a href="/" className="text-2xl">🐯</a><h1 className="text-xl font-bold">Gas Estimator</h1></div></div></div>
+      </header>
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-6">
+            <h2 className="text-xl font-semibold mb-4">Select Network & Transaction</h2>
+            <div className="mb-4"><label className="block text-sm text-slate-500 mb-2">Blockchain</label><select value={selectedChain} onChange={(e) => setSelectedChain(Number(e.target.value))} className="w-full bg-slate-100 dark:bg-slate-700 rounded-lg px-4 py-3">{chainsGas.map(c => <option key={c.chainId} value={c.chainId}>{c.chainName} ({c.symbol})</option>)}</select></div>
+            <div className="mb-4"><label className="block text-sm text-slate-500 mb-2">Transaction Type</label><select value={txType} onChange={(e) => { setTxType(e.target.value); setGasLimit(getGasLimit(e.target.value)); }} className="w-full bg-slate-100 dark:bg-slate-700 rounded-lg px-4 py-3"><option value="transfer">Token Transfer</option><option value="swap">Token Swap</option><option value="nftTransfer">NFT Transfer</option><option value="approve">Token Approval</option><option value="stake">Staking</option><option value="contractDeploy">Contract Deploy</option></select></div>
+            <div className="mb-4"><label className="block text-sm text-slate-500 mb-2">Gas Limit</label><input type="text" value={gasLimit} onChange={(e) => setGasLimit(e.target.value)} className="w-full bg-slate-100 dark:bg-slate-700 rounded-lg px-4 py-3" /></div>
+            {selectedChainGas && (
+              <div className="space-y-3">
+                <div className="p-4 bg-slate-100 dark:bg-slate-700 rounded-lg flex justify-between items-center"><div><div className="text-sm text-slate-500">Slow</div><div className="text-xl font-bold">{selectedChainGas.gasPrice.slow} Gwei</div></div><div className="text-sm text-slate-500">{selectedChainGas.gasPrice.slowWait}</div></div>
+                <div className="p-4 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex justify-between items-center border-2 border-orange-500"><div><div className="text-sm text-slate-500">Standard (Recommended)</div><div className="text-xl font-bold text-orange-600">{selectedChainGas.gasPrice.standard} Gwei</div></div><div className="text-sm text-slate-500">{selectedChainGas.gasPrice.standardWait}</div></div>
+                <div className="p-4 bg-slate-100 dark:bg-slate-700 rounded-lg flex justify-between items-center"><div><div className="text-sm text-slate-500">Fast</div><div className="text-xl font-bold">{selectedChainGas.gasPrice.fast} Gwei</div></div><div className="text-sm text-slate-500">{selectedChainGas.gasPrice.fastWait}</div></div>
+              </div>
+            )}
+          </div>
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-6">
+            <h2 className="text-xl font-semibold mb-4">Estimated Cost</h2>
+            {selectedChainGas && (
+              <div className="space-y-4">
+                <div className="p-4 bg-slate-100 dark:bg-slate-700 rounded-lg"><div className="text-sm text-slate-500 mb-1">Slow</div><div className="text-2xl font-bold">{calculateCost(selectedChainGas.gasPrice.slow, currentGasLimit)} {selectedChainGas.symbol}</div></div>
+                <div className="p-4 bg-orange-100 dark:bg-orange-900/30 rounded-lg border-2 border-orange-500"><div className="text-sm text-orange-600 mb-1">Standard (Recommended)</div><div className="text-2xl font-bold text-orange-600">{calculateCost(selectedChainGas.gasPrice.standard, currentGasLimit)} {selectedChainGas.symbol}</div></div>
+                <div className="p-4 bg-slate-100 dark:bg-slate-700 rounded-lg"><div className="text-sm text-slate-500 mb-1">Fast</div><div className="text-2xl font-bold">{calculateCost(selectedChainGas.gasPrice.fast, currentGasLimit)} {selectedChainGas.symbol}</div></div>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold mb-4">All Networks Gas Prices</h2>
+          <div className="bg-white dark:bg-slate-800 rounded-lg overflow-hidden">
+            <table className="w-full"><thead className="bg-slate-100 dark:bg-slate-700"><tr><th className="px-4 py-3 text-left">Network</th><th className="px-4 py-3 text-left">Symbol</th><th className="px-4 py-3 text-left">Slow</th><th className="px-4 py-3 text-left">Standard</th><th className="px-4 py-3 text-left">Fast</th></tr></thead>
+            <tbody>{chainsGas.map((chain) => <tr key={chain.chainId} className="border-t border-slate-200 dark:border-slate-700"><td className="px-4 py-3">{chain.chainName}</td><td className="px-4 py-3">{chain.symbol}</td><td className="px-4 py-3">{chain.gasPrice.slow} Gwei</td><td className="px-4 py-3 font-medium">{chain.gasPrice.standard} Gwei</td><td className="px-4 py-3">{chain.gasPrice.fast} Gwei</td></tr>)}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
