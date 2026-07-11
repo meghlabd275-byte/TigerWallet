@@ -18,10 +18,13 @@ export default function Home() {
       <header className="header">
         <div className="logo">🐯 TigerSwap</div>
         <nav className="nav">
+          <a href="/wallet" className="nav-link">Wallet</a>
           <a href="/swap" className="nav-link">Swap</a>
           <a href="/pool" className="nav-link">Pool</a>
           <a href="/bridge" className="nav-link">Bridge</a>
           <a href="/farming" className="nav-link">Farming</a>
+          <a href="/portfolio" className="nav-link">Portfolio</a>
+          <a href="/super_admin" className="nav-link text-orange-500">Admin</a>
         </nav>
         <div className="flex items-center gap-4">
           <ThemeToggle />
