@@ -1,0 +1,252 @@
+'use client';
+
+import React, { useState } from 'react';
+
+interface BugReport {
+  id: string;
+  title: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  status: 'open' | 'verified' | 'fixed' | 'rewarded';
+  reward: string;
+  reporter: string;
+  date: number;
+}
+
+const MOCK_REPORTS: BugReport[] = [
+  { id: '1', title: 'Privilege escalation in admin panel', severity: 'critical', status: 'rewarded', reward: '$50,000', reporter: 'security_ researcher_01', date: Date.now() - 86400000 * 30 },
+  { id: '2', title: 'Smart contract reentrancy vulnerability', severity: 'critical', status: 'verified', reward: '$45,000', reporter: 'defi_auditor', date: Date.now() - 86400000 * 15 },
+  { id: '3', title: 'Cross-site scripting in dApp browser', severity: 'high', status: 'fixed', reward: '$5,000', reporter: 'web3_bug_hunter', date: Date.now() - 86400000 * 45 },
+  { id: '4', title: 'Weak random number generation', severity: 'high', status: 'rewarded', reward: '$8,000', reporter: 'crypto_expert', date: Date.now() - 86400000 * 60 },
+  { id: '5', title: 'Gas limit manipulation', severity: 'medium', status: 'verified', reward: '$2,500', reporter: 'solidity_dev', date: Date.now() - 86400000 * 7 },
+];
+
+const SEVERITY_COLORS = {
+  critical: 'bg-red-100 text-red-800 border-red-200',
+  high: 'bg-orange-100 text-orange-800 border-orange-200',
+  medium: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  low: 'bg-green-100 text-green-800 border-green-200',
+};
+
+const REWARD_RANGES = [
+  { severity: 'Critical', range: '$25,000 - $100,000', examples: 'Smart contract bugs, wallet drainage, privilege escalation' },
+  { severity: 'High', range: '$5,000 - $25,000', examples: 'XSS, CSRF, authentication bypass' },
+  { severity: 'Medium', range: '$1,000 - $5,000', examples: 'Information disclosure, minor security issues' },
+  { severity: 'Low', range: '$100 - $1,000', examples: 'Minor bugs, UI issues, documentation' },
+];
+
+export default function BugBountyPage() {
+  const [activeTab, setActiveTab] = useState<'programs' | 'leaderboard' | 'report'>('programs');
+  const [showReportForm, setShowReportForm] = useState(false);
+
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
+      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-4">
+              <a href="/" className="text-2xl">🐯</a>
+              <h1 className="text-xl font-bold">Bug Bounty Program</h1>
+            </div>
+            <button
+              onClick={() => setShowReportForm(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Submit Report
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        {/* Hero */}
+        <div className="bg-gradient-to-r from-purple-600 to-blue-600 rounded-2xl p-8 mb-8 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-3xl font-bold mb-2">TigerWallet Bug Bounty</h2>
+              <p className="text-purple-100 mb-4">Help us secure the future of decentralized finance</p>
+              <div className="flex gap-6">
+                <div>
+                  <p className="text-3xl font-bold">$50,000+</p>
+                  <p className="text-purple-200">Max Reward</p>
+                </div>
+                <div>
+                  <p className="text-3xl font-bold">$180,000+</p>
+                  <p className="text-purple-200">Total Paid</p>
+                </div>
+                <div>
+                  <p className="text-3xl font-bold">47</p>
+                  <p className="text-purple-200">Bugs Fixed</p>
+                </div>
+              </div>
+            </div>
+            <div className="text-8xl">🦟</div>
+          </div>
+        </div>
+
+        {/* Reward Tiers */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 mb-8 border border-slate-200 dark:border-slate-700">
+          <h3 className="text-xl font-bold mb-4">Reward Tiers</h3>
+          <div className="grid grid-cols-4 gap-4">
+            {REWARD_RANGES.map(tier => (
+              <div key={tier.severity} className="p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                <p className="font-bold text-lg mb-1">{tier.severity}</p>
+                <p className="text-blue-600 font-bold mb-2">{tier.range}</p>
+                <p className="text-xs text-slate-500">{tier.examples}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+          <div className="flex border-b border-slate-200 dark:border-slate-700">
+            <button
+              onClick={() => setActiveTab('programs')}
+              className={`px-6 py-4 font-medium ${activeTab === 'programs' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500'}`}
+            >
+              Active Programs
+            </button>
+            <button
+              onClick={() => setActiveTab('leaderboard')}
+              className={`px-6 py-4 font-medium ${activeTab === 'leaderboard' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500'}`}
+            >
+              Leaderboard
+            </button>
+            <button
+              onClick={() => setActiveTab('report')}
+              className={`px-6 py-4 font-medium ${activeTab === 'report' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500'}`}
+            >
+              Rules & Guidelines
+            </button>
+          </div>
+
+          <div className="p-6">
+            {activeTab === 'programs' && (
+              <div className="space-y-4">
+                {MOCK_REPORTS.map(report => (
+                  <div key={report.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center text-white font-bold">
+                        {report.severity[0].toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-medium">{report.title}</p>
+                        <p className="text-sm text-slate-500">Reported by {report.reporter}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium border ${SEVERITY_COLORS[report.severity]}`}>
+                        {report.severity.toUpperCase()}
+                      </span>
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        report.status === 'rewarded' ? 'bg-green-100 text-green-800' :
+                        report.status === 'fixed' ? 'bg-blue-100 text-blue-800' :
+                        report.status === 'verified' ? 'bg-purple-100 text-purple-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {report.status.toUpperCase()}
+                      </span>
+                      <p className="font-bold text-green-600">{report.reward}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activeTab === 'leaderboard' && (
+              <div className="space-y-4">
+                {[
+                  { rank: 1, name: 'security_researcher_01', bugs: 8, reward: '$85,000' },
+                  { rank: 2, name: 'defi_auditor', bugs: 5, reward: '$62,000' },
+                  { rank: 3, name: 'crypto_expert', bugs: 4, reward: '$45,000' },
+                  { rank: 4, name: 'web3_bug_hunter', bugs: 3, reward: '$28,000' },
+                  { rank: 5, name: 'solidity_dev', bugs: 2, reward: '$15,000' },
+                ].map(user => (
+                  <div key={user.rank} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                    <div className="flex items-center gap-4">
+                      <span className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
+                        user.rank === 1 ? 'bg-yellow-400 text-yellow-900' :
+                        user.rank === 2 ? 'bg-gray-300 text-gray-700' :
+                        user.rank === 3 ? 'bg-orange-400 text-orange-900' :
+                        'bg-slate-200 dark:bg-slate-600'
+                      }`}>
+                        {user.rank}
+                      </span>
+                      <p className="font-medium">{user.name}</p>
+                    </div>
+                    <div className="flex items-center gap-6">
+                      <p className="text-slate-500">{user.bugs} bugs</p>
+                      <p className="font-bold text-green-600">{user.reward}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activeTab === 'report' && (
+              <div className="space-y-6">
+                <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                  <h4 className="font-bold text-green-800 dark:text-green-200 mb-2">In Scope</h4>
+                  <ul className="list-disc list-inside space-y-1 text-sm">
+                    <li>Smart contract vulnerabilities</li>
+                    <li>Wallet security issues</li>
+                    <li>Authentication/authorization bypass</li>
+                    <li>Cross-site scripting (XSS)</li>
+                    <li>Smart contract logic errors</li>
+                    <li>Frontend vulnerabilities</li>
+                  </ul>
+                </div>
+
+                <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                  <h4 className="font-bold text-red-800 dark:text-red-200 mb-2">Out of Scope</h4>
+                  <ul className="list-disc list-inside space-y-1 text-sm">
+                    <li>Social engineering attacks</li>
+                    <li>Physical security</li>
+                    <li>Denial of service attacks</li>
+                    <li>Issues in third-party services</li>
+                    <li>Previously reported vulnerabilities</li>
+                  </ul>
+                </div>
+
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <h4 className="font-bold text-blue-800 dark:text-blue-200 mb-2">How to Report</h4>
+                  <ol className="list-decimal list-inside space-y-1 text-sm">
+                    <li>Email security@tigerwallet.io with details</li>
+                    <li>Include steps to reproduce</li>
+                    <li>Provide proof of concept if possible</li>
+                    <li>Do not disclose publicly until fixed</li>
+                    <li>Response within 48 hours</li>
+                  </ol>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Report Form Modal */}
+      {showReportForm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 max-w-lg w-full mx-4">
+            <h3 className="text-xl font-bold mb-4">Submit Bug Report</h3>
+            <div className="space-y-4">
+              <input type="text" placeholder="Vulnerability Title" className="w-full p-3 border rounded-lg" />
+              <select className="w-full p-3 border rounded-lg">
+                <option>Select Severity</option>
+                <option>Critical</option>
+                <option>High</option>
+                <option>Medium</option>
+                <option>Low</option>
+              </select>
+              <textarea placeholder="Description and steps to reproduce..." className="w-full p-3 border rounded-lg h-32"></textarea>
+              <div className="flex gap-4">
+                <button onClick={() => setShowReportForm(false)} className="flex-1 p-3 bg-slate-200 rounded-lg">Cancel</button>
+                <button className="flex-1 p-3 bg-blue-600 text-white rounded-lg">Submit</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
