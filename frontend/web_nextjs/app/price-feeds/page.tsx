@@ -42,7 +42,7 @@ export default function PriceFeeds() {
     setPrices(mockPrices);
     setLoading(false);
     const interval = setInterval(() => {
-      setPrices(prev => prev.map(p => ({ ...p, price: p.price * (1 + (Math.random() - 0.5) * 0.001) }));
+      setPrices(prev => prev.map(p => ({ ...p, price: p.price * (1 + (Math.random() - 0.5) * 0.001) })));
     }, 5000);
     return () => clearInterval(interval);
   }, []);

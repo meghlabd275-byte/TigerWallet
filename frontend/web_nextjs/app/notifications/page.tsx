@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useWallet } from 'wagmi';
+import { useWallet } from '../wallet';
 
 // ================================================================================
 // Types

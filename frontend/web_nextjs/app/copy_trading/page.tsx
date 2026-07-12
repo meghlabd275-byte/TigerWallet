@@ -326,7 +326,7 @@ export default function CopyTrading() {
                 </div>
                 
                 <div className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-                  👥 {traders.followers.toLocaleString()} followers
+                  👥 {trader.followers.toLocaleString()} followers
                 </div>
                 
                 <button
