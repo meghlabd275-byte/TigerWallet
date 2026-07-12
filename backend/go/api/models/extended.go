@@ -195,3 +195,14 @@ type NFT struct {
 	IsListed      bool      `json:"is_listed"`
 	ListingPrice  string    `json:"listing_price"`
 }
+
+type Follower struct {
+	ID          string    `json:"id"`
+	FollowerID  string    `json:"follower_id"`
+	TraderID    string    `json:"trader_id"`
+	Allocation  string    `json:"allocation"`
+	MaxSlippage float64  `json:"max_slippage"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
