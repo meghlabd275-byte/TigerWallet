@@ -123,28 +123,10 @@ export default function SolanaWalletPage() {
         
         await refreshData(conn, pubKey);
       } else {
-        // For demo, create a mock wallet
-        const mockKey = new PublicKey("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU");
-        setPublicKey(mockKey);
-        
-        const conn = new Connection(SOLANA_NETWORKS[network].rpcUrl);
-        setConnection(conn);
-        
-        // Mock data for demo
-        setBalance(125.5);
-        setTokens([
-          { mint: "EPjFWdd5AufqSSQhM9oFLXtgwL9r5Z6KGZ1MVkJXN9n", amount: 5000, decimals: 6, symbol: "USDC", name: "USD Coin" },
-          { mint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", amount: 2500, decimals: 6, symbol: "USDT", name: "Tether USD" },
-          { mint: "mSoLzYCxHdYgdzU16g5QSh3i5K3z3ozZKk3GzDbtqX", amount: 1000, decimals: 9, symbol: "MSOL", name: "Marinade Staked SOL" },
-        ]);
-        setNFTs([
-          { mint: "8DeliY4B4dY5kfqWHx3R7wVvY3KxXxXxXxXxXxXxXxXxXxXxXx", name: "Degenerate #1234", collection: "Degenerate Ape Academy" },
-          { mint: "7DeliY4B4dY5kfqWHx3R7wVvY3KxXxXxXxXxXxXxXxXxXxXxXx", name: "Solana Monkey #567", collection: "Solana Monkey Business" },
-        ]);
-        setStakes([
-          { validator: "Lido", amount: 50, rewards: 2.5 },
-          { validator: "Marinade", amount: 30, rewards: 1.2 },
-        ]);
+        // No Solana wallet found - prompt user to install one
+        setError("Please install a Solana wallet extension like Phantom, Backpack, or Slope to use this feature.");
+        setIsLoading(false);
+        return;
       }
     } catch (err: any) {
       setError(err.message || "Failed to connect wallet");
