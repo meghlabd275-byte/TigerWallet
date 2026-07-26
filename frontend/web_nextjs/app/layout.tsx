@@ -3,8 +3,8 @@ import { ThemeProvider } from './components/ThemeProvider'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'TigerSwap - Multichain DEX',
-  description: 'Enterprise-grade multichain decentralized exchange with cross-chain swaps',
+  title: 'TigerWallet - Enterprise Web3 Wallet',
+  description: 'Enterprise-grade multichain decentralized Web3 wallet with 100+ blockchain support',
 }
 
 export default function RootLayout({
@@ -19,18 +19,24 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
-                // DEFAULT IS LIGHT THEME - as per requirement
-                var theme = localStorage.getItem('tigerswap-theme');
+                // Default to dark theme for crypto wallet
+                var theme = localStorage.getItem('tigerwallet-theme');
                 if (!theme) {
-                  theme = 'light'; // Default to light theme
+                  // Check system preference
+                  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    theme = 'dark';
+                  } else {
+                    theme = 'light';
+                  }
                 }
                 document.documentElement.classList.add(theme);
+                document.documentElement.setAttribute('data-theme', theme);
               })();
             `,
           }}
         />
       </head>
-      <body>
+      <body className="antialiased">
         <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
