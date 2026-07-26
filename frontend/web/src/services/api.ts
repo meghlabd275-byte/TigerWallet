@@ -319,15 +319,40 @@ class TigerWalletAPI {
 
   async broadcastTransaction(signedTx: string): Promise<ApiResponse<string>> {
     try {
-      return { success: true, data: '0x' + Array(64).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join('') };
-    } catch (error) {
-      return { success: false, error: { code: 'UNKNOWN', message: String(error) } };
+      // Call the backend API to broadcast the transaction
+      const response = await this.client.post('/api/v1/transactions/broadcast', {
+        signedTransaction: signedTx
+      });
+      return { success: true, data: response.data.txHash };
+    } catch (error: any) {
+      // Fallback: try to broadcast via blockchain node directly
+      try {
+        const txHash = await this.broadcastViaRPC(signedTx);
+        return { success: true, data: txHash };
+      } catch (rpcError) {
+        return { success: false, error: { code: 'BROADCAST_FAILED', message: String(error) } };
+      }
     }
+  }
+
+  // Broadcast transaction directly via RPC
+  private async broadcastViaRPC(signedTx: string): Promise<string> {
+    const { ethers } = await import('ethers');
+    const provider = new ethers.JsonRpcProvider('https://eth.llamarpc.com');
+    const tx = await provider.broadcastTransaction(signedTx);
+    return tx;
   }
 
   async getTransactions(walletId: string, params?: { page?: number; limit?: number; type?: string }): Promise<ApiResponse<Transaction[]>> {
     try {
-      return { success: true, data: [], meta: { page: 1, limit: 20, total: 0 } };
+      const response = await this.client.get(`/api/v1/wallets/${walletId}/transactions`, {
+        params: params || { page: 1, limit: 20 }
+      });
+      return { 
+        success: true, 
+        data: response.data.transactions, 
+        meta: response.data.meta 
+      };
     } catch (error) {
       return { success: false, error: { code: 'UNKNOWN', message: String(error) } };
     }
