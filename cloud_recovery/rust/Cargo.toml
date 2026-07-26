@@ -1,0 +1,52 @@
+[package]
+name = "tiger-cloud-recovery"
+version = "1.0.0"
+edition = "2021"
+description = "TigerWallet Cloud Recovery - iCloud/Google Drive backup"
+authors = ["TigerWallet"]
+license = "MIT"
+
+[dependencies]
+# Cryptography
+k256 = { version = "0.13", features = ["ecdsa", "arithmetic"] }
+sha2 = "0.10"
+aes-gcm = "0.10"
+base64 = "0.21"
+hex = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+
+# Cloud APIs
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+tokio = { version = "1.35", features = ["full"] }
+google-drive3 = "1"
+apple-api = "0.2"
+
+# Storage
+rusoto_core = "0.48"
+rusoto_s3 = "0.48"
+
+# Async
+async-trait = "0.1"
+futures = "0.3"
+
+# Utils
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+log = "0.4"
+env_logger = "0.10"
+rand = "0.8"
+zeroize = { version = "1.7", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3.8"
+tokio-test = "0.4"
+
+[lib]
+name = "cloud_recovery"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cloud-recovery-cli"
+path = "src/main.rs"
