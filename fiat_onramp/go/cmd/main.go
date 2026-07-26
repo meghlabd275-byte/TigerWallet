@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -125,10 +126,12 @@ type OffRampRequest struct {
 // ============ Fiat Service ============
 
 type FiatService struct {
-	config      *Config
-	httpClient  *http.Client
-	redis       *redis.Client
-	orderCache  map[string]*OnRampResponse
+	config         *Config
+	httpClient     *http.Client
+	redis          *redis.Client
+	orderCache     map[string]*OnRampResponse
+	offRampCache   map[string]*OffRampResponse
+	cacheMutex     sync.RWMutex
 }
 
 func NewFiatService(config *Config) (*FiatService, error) {
@@ -147,10 +150,11 @@ func NewFiatService(config *Config) (*FiatService, error) {
 	}
 
 	return &FiatService{
-		config:     config,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		redis:      redisClient,
-		orderCache: make(map[string]*OnRampResponse),
+		config:       config,
+		httpClient:   &http.Client{Timeout: 30 * time.Second},
+		redis:        redisClient,
+		orderCache:   make(map[string]*OnRampResponse),
+		offRampCache: make(map[string]*OffRampResponse),
 	}, nil
 }
 
@@ -387,6 +391,170 @@ func (s *FiatService) GetOrderStatus(ctx context.Context, orderID string) (*OnRa
 	return nil, fmt.Errorf("order not found: %s", orderID)
 }
 
+// Off-Ramp Order Model
+type OffRampResponse struct {
+	OrderID         string             `json:"orderId"`
+	Provider        FiatProvider      `json:"provider"`
+	WalletAddress   string            `json:"walletAddress"`
+	CryptoAmount    float64           `json:"cryptoAmount"`
+	CryptoCurrency  string            `json:"cryptoCurrency"`
+	FiatAmount      float64           `json:"fiatAmount"`
+	FiatCurrency    string            `json:"fiatCurrency"`
+	BankDetails     BankDetails       `json:"bankDetails"`
+	Status          TransactionStatus `json:"status"`
+	CryptoTxHash    string            `json:"cryptoTxHash"`
+	CreatedAt       time.Time         `json:"createdAt"`
+	ExpiresAt       time.Time         `json:"expiresAt"`
+}
+
+type BankDetails struct {
+	IBAN        string `json:"iban"`
+	SWIFTBIC    string `json:"swiftBic"`
+	BankName    string `json:"bankName"`
+	AccountName string `json:"accountName"`
+}
+
+// Create Off-Ramp Order - Sell crypto for fiat
+func (s *FiatService) CreateOffRampOrder(ctx context.Context, req OffRampRequest) (*OffRampResponse, error) {
+	orderID := uuid.New().String()
+
+	// Get sell quote from provider
+	var quote struct {
+		price         float64
+		quoteID       string
+		expiresAt     time.Time
+	}
+
+	switch req.Provider {
+	case ProviderMoonPay:
+		q, err := s.getMoonPaySellQuote(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		quote = *q
+	case ProviderTransak:
+		q, err := s.getTransakSellQuote(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		quote = *q
+	default:
+		// Use internal pricing for demo
+		quote.price = s.getInternalSellPrice(req.CryptoCurrency)
+		quote.quoteID = uuid.New().String()
+		quote.expiresAt = time.Now().Add(15 * time.Minute)
+	}
+
+	// Calculate fiat amount
+	fiatAmount := req.CryptoAmount * quote.price
+
+	response := &OffRampResponse{
+		OrderID:         orderID,
+		Provider:        req.Provider,
+		WalletAddress:   req.WalletAddress,
+		CryptoAmount:    req.CryptoAmount,
+		CryptoCurrency:  req.CryptoCurrency,
+		FiatAmount:      fiatAmount,
+		FiatCurrency:    req.FiatCurrency,
+		BankDetails: BankDetails{
+			IBAN:        req.IBAN,
+			SWIFTBIC:    req.SWIFTBIC,
+			BankName:    req.BankName,
+			AccountName: req.AccountName,
+		},
+		Status:    StatusPending,
+		CreatedAt: time.Now(),
+		ExpiresAt: quote.expiresAt,
+	}
+
+	// Store in cache
+	s.cacheMutex.Lock()
+	s.offRampCache[orderID] = response
+	s.cacheMutex.Unlock()
+
+	// Store in Redis if available
+	if s.redis != nil {
+		data, _ := json.Marshal(response)
+		s.redis.Set(ctx, fmt.Sprintf("fiat:offramp:%s", orderID), data, 30*time.Minute)
+	}
+
+	return response, nil
+}
+
+// Get Off-Ramp Status
+func (s *FiatService) GetOffRampStatus(ctx context.Context, orderID string) (*OffRampResponse, error) {
+	// Check Redis
+	if s.redis != nil {
+		data, err := s.redis.Get(ctx, fmt.Sprintf("fiat:offramp:%s", orderID)).Bytes()
+		if err == nil {
+			var order OffRampResponse
+			json.Unmarshal(data, &order)
+			return &order, nil
+		}
+	}
+
+	return nil, fmt.Errorf("order not found: %s", orderID)
+}
+
+// Internal sell price calculation
+func (s *FiatService) getInternalSellPrice(cryptoCurrency string) float64 {
+	// Demo prices - in production, fetch from real price feed
+	prices := map[string]float64{
+		"ETH":  2500.0,
+		"BTC":  45000.0,
+		"USDT": 1.0,
+		"USDC": 1.0,
+		"BNB":  350.0,
+		"MATIC": 0.85,
+		"AVAX": 35.0,
+		"SOL":  100.0,
+		"ARB":  1.10,
+		"OP":   1.85,
+	}
+	
+	if price, ok := prices[cryptoCurrency]; ok {
+		return price * 0.97 // 3% discount for selling
+	}
+	return 0
+}
+
+// MoonPay sell quote
+func (s *FiatService) getMoonPaySellQuote(ctx context.Context, req OffRampRequest) (*struct {
+	price     float64
+	quoteID   string
+	expiresAt time.Time
+}, error) {
+	// In production, call MoonPay API
+	// For demo, use internal pricing
+	return &struct {
+		price     float64
+		quoteID   string
+		expiresAt time.Time
+	}{
+		price:     s.getInternalSellPrice(req.CryptoCurrency),
+		quoteID:   uuid.New().String(),
+		expiresAt: time.Now().Add(15 * time.Minute),
+	}, nil
+}
+
+// Transak sell quote
+func (s *FiatService) getTransakSellQuote(ctx context.Context, req OffRampRequest) (*struct {
+	price     float64
+	quoteID   string
+	expiresAt time.Time
+}, error) {
+	// In production, call Transak API
+	return &struct {
+		price     float64
+		quoteID   string
+		expiresAt time.Time
+	}{
+		price:     s.getInternalSellPrice(req.CryptoCurrency),
+		quoteID:   uuid.New().String(),
+		expiresAt: time.Now().Add(15 * time.Minute),
+	}, nil
+}
+
 // Webhook Handler
 func (s *FiatService) HandleWebhook(ctx context.Context, provider FiatProvider, payload []byte, signature string) error {
 	// Verify signature
@@ -526,6 +694,73 @@ func (h *Handler) Webhook(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+// Create Off-Ramp Order - Sell Crypto for Fiat
+func (h *Handler) CreateOffRampOrder(c *gin.Context) {
+	var req OffRampRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	order, err := h.fiatService.CreateOffRampOrder(c.Request.Context(), req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, order)
+}
+
+// Get Off-Ramp Status
+func (h *Handler) GetOffRampStatus(c *gin.Context) {
+	orderID := c.Param("orderId")
+
+	order, err := h.fiatService.GetOffRampStatus(c.Request.Context(), orderID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, order)
+}
+
+// Get Supported Currencies
+func (h *Handler) GetSupportedCurrencies(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"fiat": []string{"USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "CNY", "INR", "KRW"},
+		"crypto": []string{
+			"ETH", "BTC", "USDT", "USDC", "BNB", "MATIC", "AVAX", "SOL", 
+			"ARB", "OP", "DOT", "ADA", "XRP", "DOGE", "LTC", "LINK",
+		},
+	})
+}
+
+// Get Supported Networks
+func (h *Handler) GetSupportedNetworks(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"networks": []map[string]string{
+			{"id": "ethereum", "name": "Ethereum", "chainId": "1"},
+			{"id": "polygon", "name": "Polygon", "chainId": "137"},
+			{"id": "bsc", "name": "BNB Smart Chain", "chainId": "56"},
+			{"id": "arbitrum", "name": "Arbitrum One", "chainId": "42161"},
+			{"id": "optimism", "name": "Optimism", "chainId": "10"},
+			{"id": "avalanche", "name": "Avalanche", "chainId": "43114"},
+			{"id": "solana", "name": "Solana", "chainId": "101"},
+		},
+	})
+}
+
+// Get Providers
+func (h *Handler) GetProviders(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"providers": []map[string]interface{}{
+			{"id": "moonpay", "name": "MoonPay", "fees": "1-4%", "minAmount": 30, "maxAmount": 50000},
+			{"id": "ramp", "name": "Ramp", "fees": "2-3%", "minAmount": 50, "maxAmount": 25000},
+			{"id": "transak", "name": "Transak", "fees": "1-3%", "minAmount": 30, "maxAmount": 30000},
+		},
+	})
+}
+
 // ============ Main ============
 
 func main() {
@@ -570,9 +805,13 @@ func main() {
 		api.GET("/onramp/:orderId", handler.GetOrderStatus)
 
 		// Off-ramp
-		api.POST("/offramp", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"status": "not implemented"})
-		})
+		api.POST("/offramp", handler.CreateOffRampOrder)
+		api.GET("/offramp/:orderId", handler.GetOffRampStatus)
+		
+		// Supported currencies and networks
+		api.GET("/supported/currencies", handler.GetSupportedCurrencies)
+		api.GET("/supported/networks", handler.GetSupportedNetworks)
+		api.GET("/supported/providers", handler.GetProviders)
 
 		// Webhooks
 		api.POST("/webhook/:provider", handler.Webhook)
