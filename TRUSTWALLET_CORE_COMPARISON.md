@@ -61,7 +61,7 @@ TrustWallet Core is an open-source, cross-platform, mobile-first blockchain libr
 | BIP-44 | ✅ | ✅ | ✅ COMPLETE |
 | BIP-49 | ✅ | ✅ | ✅ COMPLETE |
 | BIP-84 | ✅ | ✅ | ✅ COMPLETE |
-| BIP-85 | ✅ | ❌ | ❌ MISSING |
+| BIP-85 | ✅ | ✅ NOW ADDED | ✅ COMPLETE |
 
 ### 2.2 Blockchain Support
 
@@ -72,12 +72,12 @@ TrustWallet Core is an open-source, cross-platform, mobile-first blockchain libr
 | **Solana** | ✅ Full | ✅ SPL | ✅ COMPLETE |
 | **Cosmos** | ✅ Full | ✅ | ✅ COMPLETE |
 | **Aptos** | ✅ Full | ✅ | ✅ COMPLETE |
-| **Sui** | ✅ Full | ❌ | ❌ MISSING |
+| **Sui** | ✅ Full | ✅ NOW ADDED | ✅ COMPLETE |
 | **TRON** | ✅ Full | ✅ TRC-20 | ✅ COMPLETE |
 | **Toncoin** | ✅ Full | ✅ | ✅ COMPLETE |
 | **NEAR** | ✅ Full | ✅ | ✅ COMPLETE |
 | **Algorand** | ✅ Full | ✅ | ✅ COMPLETE |
-| **Substrate** | ✅ Full | ❌ | ❌ MISSING |
+| **Substrate** | ✅ Full | ✅ NOW ADDED | ✅ COMPLETE |
 | **Hedera** | ✅ Full | ✅ | ✅ COMPLETE |
 
 ### 2.3 Transaction Types
