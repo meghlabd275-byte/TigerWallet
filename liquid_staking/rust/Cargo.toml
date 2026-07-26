@@ -1,0 +1,38 @@
+[package]
+name = "tiger-liquid-staking"
+version = "1.0.0"
+edition = "2021"
+description = "TigerWallet Liquid Staking Token - PSOL equivalent"
+authors = ["TigerWallet"]
+license = "MIT"
+
+[dependencies]
+# Cryptography
+k256 = { version = "0.13", features = ["ecdsa", "arithmetic"] }
+sha2 = "0.10"
+keccak-hash = "0.10"
+hex = "0.4"
+base64 = "0.21"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+tokio = { version = "1.35", features = ["full"] }
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+rust_decimal = { version = "1.33", features = ["serde"] }
+num-bigint = "0.4"
+num-traits = "0.2"
+ethers = { version = "2.0", features = ["abigen", "solc"] }
+log = "0.4"
+env_logger = "0.10"
+
+[dev-dependencies]
+tempfile = "3.8"
+
+[lib]
+name = "liquid_staking"
+path = "src/lib.rs"
+
+[[bin]]
+name = "liquid-staking-cli"
+path = "src/main.rs"
