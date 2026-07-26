@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { ThemeProvider } from '../context/ThemeContext';
 
 export const metadata: Metadata = {
   title: 'TigerWallet - Enterprise Multi-Chain Wallet',
@@ -19,11 +20,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="bg-dark-950 text-white antialiased">
-        <div className="min-h-screen bg-gradient-to-br from-dark-900 via-dark-800 to-dark-900">
-          {children}
-        </div>
+    <html lang="en" suppressHydrationWarning>
+      <body className="antialiased" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
+        <ThemeProvider>
+          <div className="min-h-screen" style={{ background: 'var(--bg-primary)' }}>
+            {children}
+          </div>
+        </ThemeProvider>
       </body>
     </html>
   );
