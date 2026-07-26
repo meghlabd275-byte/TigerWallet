@@ -1,0 +1,591 @@
+/**
+ * TigerWallet API Service Layer
+ * Comprehensive API client for frontend-backend connectivity
+ * 
+ * All endpoints connect to Go backend services
+ */
+
+import { ethers } from 'ethers';
+
+// ============================================================================
+// Configuration
+// ============================================================================
+
+const API_CONFIG = {
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8443',
+  wsURL: process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8443',
+  timeout: 30000,
+  retries: 3,
+};
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface User {
+  id: string;
+  email: string;
+  username: string;
+  kycStatus: string;
+  kycLevel: number;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  mfaEnabled: boolean;
+  riskScore: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Wallet {
+  id: string;
+  userId: string;
+  whiteLabelId?: string;
+  walletType: 'user' | 'master';
+  address: string;
+  chainId: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Transaction {
+  id: string;
+  hash: string;
+  fromAddress: string;
+  toAddress: string;
+  value: string;
+  gasPrice: string;
+  gasLimit: number;
+  gasUsed?: number;
+  chainId: number;
+  status: 'pending' | 'broadcast' | 'confirmed' | 'failed';
+  errorMessage?: string;
+  blockNumber?: number;
+  timestamp: string;
+  createdAt: string;
+}
+
+export interface Token {
+  id: string;
+  address: string;
+  chainId: number;
+  name: string;
+  symbol: string;
+  decimals: number;
+  isEnabled: boolean;
+  isPopular: boolean;
+  logoUrl?: string;
+  priceUsd?: number;
+}
+
+export interface WhiteLabel {
+  id: string;
+  name: string;
+  domain: string;
+  email: string;
+  status: 'active' | 'paused' | 'halted';
+  feePercentage: number;
+  allowedChains: string[];
+  allowedFeatures: string[];
+  customBranding: boolean;
+  maxUsers: number;
+  currentUsers: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Broker {
+  id: string;
+  name: string;
+  email: string;
+  whiteLabelId?: string;
+  status: string;
+  commissionRate: number;
+  allowedIPs: string[];
+  maxDailyVolume: number;
+  currentVolume: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Institution {
+  id: string;
+  name: string;
+  email: string;
+  whiteLabelId?: string;
+  status: string;
+  kycStatus: string;
+  accountType: 'retail' | 'professional' | 'institutional';
+  tradingLimits: number;
+  feeTier: number;
+  allowedChains: string[];
+  webhookUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface APIKey {
+  id: string;
+  userId: string;
+  name: string;
+  permissions: string[];
+  rateLimit: number;
+  expiresAt?: string;
+  lastUsedAt?: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface AuditLog {
+  id: string;
+  userId: string;
+  action: string;
+  resource: string;
+  resourceId?: string;
+  details?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  createdAt: string;
+}
+
+// ============================================================================
+// API Client
+// ============================================================================
+
+class APIClient {
+  private baseURL: string;
+  private token: string | null = null;
+  private ws: WebSocket | null = null;
+  private listeners: Map<string, Set<(data: any) => void>> = new Map();
+
+  constructor(baseURL: string) {
+    this.baseURL = baseURL;
+    this.loadToken();
+  }
+
+  // Token Management
+  setToken(token: string) {
+    this.token = token;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tigerwallet_token', token);
+    }
+  }
+
+  clearToken() {
+    this.token = null;
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('tigerwallet_token');
+    }
+  }
+
+  private loadToken() {
+    if (typeof window !== 'undefined') {
+      this.token = localStorage.getItem('tigerwallet_token');
+    }
+  }
+
+  // HTTP Methods
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    const url = `${this.baseURL}${endpoint}`;
+    
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    };
+
+    if (this.token) {
+      (headers as Record<string, string>)['Authorization'] = `Bearer ${this.token}`;
+    }
+
+    const response = await fetch(url, {
+      ...options,
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  private get<T>(endpoint: string): Promise<T> {
+    return this.request<T>(endpoint, { method: 'GET' });
+  }
+
+  private post<T>(endpoint: string, data?: any): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'POST',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  private put<T>(endpoint: string, data?: any): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  private delete<T>(endpoint: string): Promise<T> {
+    return this.request<T>(endpoint, { method: 'DELETE' });
+  }
+
+  // WebSocket
+  connectWebSocket() {
+    if (this.ws?.readyState === WebSocket.OPEN) return;
+
+    this.ws = new WebSocket(API_CONFIG.wsURL);
+
+    this.ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        const type = data.type || 'default';
+        
+        const typeListeners = this.listeners.get(type);
+        if (typeListeners) {
+          typeListeners.forEach((listener) => listener(data.payload));
+        }
+      } catch (e) {
+        console.error('WebSocket message parse error:', e);
+      }
+    };
+
+    this.ws.onclose = () => {
+      setTimeout(() => this.connectWebSocket(), 5000);
+    };
+  }
+
+  subscribe(event: string, callback: (data: any) => void) {
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, new Set());
+    }
+    this.listeners.get(event)!.add(callback);
+
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'subscribe', event }));
+    }
+  }
+
+  unsubscribe(event: string, callback: (data: any) => void) {
+    const eventListeners = this.listeners.get(event);
+    if (eventListeners) {
+      eventListeners.delete(callback);
+      if (eventListeners.size === 0) {
+        this.listeners.delete(event);
+      }
+    }
+  }
+
+  // ==========================================================================
+  // Authentication
+  // ==========================================================================
+
+  async register(email: string, username: string, password: string): Promise<{ user: User; token: string }> {
+    const result = await this.post<{ user: User; token: string }>('/api/v1/auth/register', {
+      email,
+      username,
+      password,
+    });
+    this.setToken(result.token);
+    return result;
+  }
+
+  async login(email: string, password: string): Promise<{ user: User; token: string }> {
+    const result = await this.post<{ user: User; token: string }>('/api/v1/auth/login', {
+      email,
+      password,
+    });
+    this.setToken(result.token);
+    return result;
+  }
+
+  async logout(): Promise<void> {
+    await this.post('/api/v1/auth/logout');
+    this.clearToken();
+  }
+
+  async refreshToken(): Promise<string> {
+    const result = await this.post<{ token: string }>('/api/v1/auth/refresh');
+    this.setToken(result.token);
+    return result.token;
+  }
+
+  // ==========================================================================
+  // User Profile
+  // ==========================================================================
+
+  async getProfile(): Promise<User> {
+    return this.get<User>('/api/v1/profile');
+  }
+
+  async updateProfile(data: Partial<User>): Promise<User> {
+    return this.put<User>('/api/v1/profile', data);
+  }
+
+  // ==========================================================================
+  // Wallets
+  // ==========================================================================
+
+  async getWallets(): Promise<Wallet[]> {
+    const result = await this.get<{ wallets: Wallet[] }>('/api/v1/wallets');
+    return result.wallets;
+  }
+
+  async createWallet(walletType: string, chainId: number): Promise<Wallet> {
+    const result = await this.post<{ wallet: Wallet }>('/api/v1/wallets', {
+      walletType,
+      chainId,
+    });
+    return result.wallet;
+  }
+
+  async getBalance(address: string, chainId: number): Promise<string> {
+    const result = await this.get<{ balance: string }>(
+      `/api/v1/wallets/${address}/balance?chainId=${chainId}`
+    );
+    return result.balance;
+  }
+
+  // ==========================================================================
+  // Transactions
+  // ==========================================================================
+
+  async createTransaction(tx: {
+    toAddress: string;
+    value: string;
+    gasPrice?: string;
+    gasLimit?: number;
+    chainId: number;
+  }): Promise<Transaction> {
+    const result = await this.post<{ transaction: Transaction }>('/api/v1/transactions', tx);
+    return result.transaction;
+  }
+
+  async getTransactions(limit: number = 50): Promise<Transaction[]> {
+    const result = await this.get<{ transactions: Transaction[] }>(
+      `/api/v1/transactions?limit=${limit}`
+    );
+    return result.transactions;
+  }
+
+  async getTransaction(hash: string): Promise<Transaction> {
+    const result = await this.get<{ transaction: Transaction }>(
+      `/api/v1/transactions/${hash}`
+    );
+    return result.transaction;
+  }
+
+  // ==========================================================================
+  // API Keys
+  // ==========================================================================
+
+  async getAPIKeys(): Promise<APIKey[]> {
+    const result = await this.get<{ apiKeys: APIKey[] }>('/api/v1/api-keys');
+    return result.apiKeys;
+  }
+
+  async createAPIKey(name: string, permissions: string[]): Promise<{ apiKey: APIKey; key: string }> {
+    const result = await this.post<{ apiKey: APIKey; key: string }>('/api/v1/api-keys', {
+      name,
+      permissions,
+    });
+    return result;
+  }
+
+  async revokeAPIKey(id: string): Promise<void> {
+    await this.delete(`/api/v1/api-keys/${id}`);
+  }
+
+  // ==========================================================================
+  // White Label
+  // ==========================================================================
+
+  async getWhiteLabels(): Promise<WhiteLabel[]> {
+    const result = await this.get<{ whiteLabels: WhiteLabel[] }>('/api/v1/white-labels');
+    return result.whiteLabels;
+  }
+
+  async createWhiteLabel(data: {
+    name: string;
+    domain: string;
+    email: string;
+    feePercentage?: number;
+  }): Promise<WhiteLabel> {
+    const result = await this.post<{ whiteLabel: WhiteLabel }>('/api/v1/white-labels', data);
+    return result.whiteLabel;
+  }
+
+  async updateWhiteLabel(id: string, data: Partial<WhiteLabel>): Promise<WhiteLabel> {
+    const result = await this.put<{ whiteLabel: WhiteLabel }>(`/api/v1/white-labels/${id}`, data);
+    return result.whiteLabel;
+  }
+
+  // ==========================================================================
+  // Brokers
+  // ==========================================================================
+
+  async getBrokers(): Promise<Broker[]> {
+    const result = await this.get<{ brokers: Broker[] }>('/api/v1/brokers');
+    return result.brokers;
+  }
+
+  async createBroker(data: {
+    name: string;
+    email: string;
+    commissionRate?: number;
+  }): Promise<Broker> {
+    const result = await this.post<{ broker: Broker }>('/api/v1/brokers', data);
+    return result.broker;
+  }
+
+  // ==========================================================================
+  // Institutions
+  // ==========================================================================
+
+  async getInstitutions(): Promise<Institution[]> {
+    const result = await this.get<{ institutions: Institution[] }>('/api/v1/institutions');
+    return result.institutions;
+  }
+
+  async createInstitution(data: {
+    name: string;
+    email: string;
+    accountType?: string;
+  }): Promise<Institution> {
+    const result = await this.post<{ institution: Institution }>('/api/v1/institutions', data);
+    return result.institution;
+  }
+
+  // ==========================================================================
+  // Tokens
+  // ==========================================================================
+
+  async getTokens(chainId?: number): Promise<Token[]> {
+    const url = chainId ? `/api/v1/tokens?chainId=${chainId}` : '/api/v1/tokens';
+    const result = await this.get<{ tokens: Token[] }>(url);
+    return result.tokens;
+  }
+
+  async createToken(data: {
+    address: string;
+    chainId: number;
+    name: string;
+    symbol: string;
+    decimals: number;
+  }): Promise<Token> {
+    const result = await this.post<{ token: Token }>('/api/v1/tokens', data);
+    return result.token;
+  }
+
+  // ==========================================================================
+  // Audit Logs
+  // ==========================================================================
+
+  async getAuditLogs(limit: number = 100): Promise<AuditLog[]> {
+    const result = await this.get<{ auditLogs: AuditLog[] }>(
+      `/api/v1/audit-logs?limit=${limit}`
+    );
+    return result.auditLogs;
+  }
+}
+
+// ============================================================================
+// Singleton Instance
+// ============================================================================
+
+export const api = new APIClient(API_CONFIG.baseURL);
+
+// ============================================================================
+// Blockchain Service (for direct blockchain interactions)
+// ============================================================================
+
+export class BlockchainService {
+  private providers: Map<number, ethers.JsonRpcProvider> = new Map();
+
+  getProvider(chainId: number): ethers.JsonRpcProvider {
+    if (!this.providers.has(chainId)) {
+      const rpcURLs: Record<number, string> = {
+        1: 'https://eth.llamarpc.com',
+        137: 'https://polygon.llamarpc.com',
+        42161: 'https://arb1.arbitrum.io/rpc',
+        10: 'https://mainnet.optimism.io',
+        43114: 'https://api.avax.network/ext/bc/C/rpc',
+        56: 'https://bsc-dataseed1.binance.org',
+      };
+      
+      const rpcURL = rpcURLs[chainId] || `https://rpc.ankr.com/eth/${chainId}`;
+      this.providers.set(chainId, new ethers.JsonRpcProvider(rpcURL));
+    }
+    
+    return this.providers.get(chainId)!;
+  }
+
+  async getBalance(address: string, chainId: number): Promise<string> {
+    const provider = this.getProvider(chainId);
+    const balance = await provider.getBalance(address);
+    return balance.toString();
+  }
+
+  async getTransactionCount(address: string, chainId: number): Promise<number> {
+    const provider = this.getProvider(chainId);
+    return provider.getTransactionCount(address);
+  }
+
+  async getGasPrice(chainId: number): Promise<string> {
+    const provider = this.getProvider(chainId);
+    const feeData = await provider.getFeeData();
+    return feeData.gasPrice?.toString() || '0';
+  }
+
+  async sendTransaction(
+    signedTx: string,
+    chainId: number
+  ): Promise<string> {
+    const provider = this.getProvider(chainId);
+    const tx = await provider.broadcastTransaction(signedTx);
+    return tx;
+  }
+
+  async getTransactionReceipt(txHash: string, chainId: number) {
+    const provider = this.getProvider(chainId);
+    return provider.getTransactionReceipt(txHash);
+  }
+}
+
+export const blockchain = new BlockchainService();
+
+// ============================================================================
+// Wallet Service (for wallet operations)
+// ============================================================================
+
+export class WalletService {
+  async generateWallet(): Promise<{ address: string; privateKey: string }> {
+    const wallet = ethers.Wallet.createRandom();
+    return {
+      address: wallet.address,
+      privateKey: wallet.privateKey,
+    };
+  }
+
+  async importWallet(mnemonic: string): Promise<{ address: string; privateKey: string }> {
+    const wallet = ethers.Wallet.fromPhrase(mnemonic);
+    return {
+      address: wallet.address,
+      privateKey: wallet.privateKey,
+    };
+  }
+
+  signTransaction(tx: ethers.TransactionRequest, privateKey: string): Promise<string> {
+    const wallet = new ethers.Wallet(privateKey);
+    return wallet.signTransaction(tx);
+  }
+}
+
+export const walletService = new WalletService();
+
+export default api;
