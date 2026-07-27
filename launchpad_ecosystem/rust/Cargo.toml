@@ -1,0 +1,20 @@
+[package]
+name = "tigerwallet-launchpad"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.35", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.6", features = ["v4", "serde"] }
+sha2 = "0.10"
+ed25519-dalek = { version = "2.0", features = ["rand_core"] }
+rand = "0.8"
+base64 = "0.21"
+thiserror = "1.0"
+async-trait = "0.1"
+futures = "0.3"
+log = "0.4"
+env_logger = "0.11"
