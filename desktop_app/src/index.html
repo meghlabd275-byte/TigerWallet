@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TigerWallet Desktop</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Login Screen -->
+        <div id="login-screen" class="screen">
+            <div class="login-container">
+                <div class="logo">
+                    <h1>🐯 TigerWallet</h1>
+                </div>
+                <div class="login-form">
+                    <h2>Welcome Back</h2>
+                    <div class="input-group">
+                        <label>Master Password</label>
+                        <input type="password" id="master-password" placeholder="Enter master password">
+                    </div>
+                    <button id="unlock-btn" class="btn-primary">Unlock Wallet</button>
+                    <div class="login-options">
+                        <button id="create-wallet-btn" class="btn-secondary">Create New Wallet</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Dashboard -->
+        <div id="dashboard-screen" class="screen hidden">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <h2>🐯 TigerWallet</h2>
+                </div>
+                <nav class="sidebar-nav">
+                    <button class="nav-item active" data-page="wallet">
+                        <span class="icon">💰</span> Wallet
+                    </button>
+                    <button class="nav-item" data-page="send">
+                        <span class="icon">📤</span> Send
+                    </button>
+                    <button class="nav-item" data-page="receive">
+                        <span class="icon">📥</span> Receive
+                    </button>
+                    <button class="nav-item" data-page="swap">
+                        <span class="icon">🔄</span> Swap
+                    </button>
+                    <button class="nav-item" data-page="transactions">
+                        <span class="icon">📋</span> Transactions
+                    </button>
+                    <button class="nav-item" data-page="settings">
+                        <span class="icon">⚙️</span> Settings
+                    </button>
+                </nav>
+                <div class="sidebar-footer">
+                    <button id="lock-btn" class="btn-danger">🔒 Lock</button>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="main-content">
+                <!-- Header -->
+                <header class="header">
+                    <div class="header-left">
+                        <h3 id="page-title">My Wallet</h3>
+                    </div>
+                    <div class="header-right">
+                        <button id="theme-toggle" class="theme-btn">
+                            <span id="theme-icon">🌙</span>
+                        </button>
+                        <div class="network-selector">
+                            <select id="network-select">
+                                <option value="1">Ethereum</option>
+                                <option value="56">BNB Chain</option>
+                                <option value="137">Polygon</option>
+                                <option value="42161">Arbitrum</option>
+                                <option value="10">Optimism</option>
+                            </select>
+                        </div>
+                    </div>
+                </header>
+
+                <!-- Wallet Page -->
+                <div id="wallet-page" class="page active">
+                    <div class="wallet-cards">
+                        <div class="wallet-card main-balance">
+                            <h4>Total Balance</h4>
+                            <div class="balance-amount">$0.00</div>
+                            <div class="balance-change">+0.00% (24h)</div>
+                        </div>
+                    </div>
+                    
+                    <div class="assets-section">
+                        <h4>Assets</h4>
+                        <div id="assets-list" class="assets-list">
+                            <div class="asset-item">
+                                <div class="asset-icon">🔷</div>
+                                <div class="asset-info">
+                                    <div class="asset-name">Ethereum</div>
+                                    <div class="asset-address">0x1234...5678</div>
+                                </div>
+                                <div class="asset-balance">
+                                    <div class="balance">0.00 ETH</div>
+                                    <div class="usd-value">$0.00</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Send Page -->
+                <div id="send-page" class="page hidden">
+                    <div class="send-form">
+                        <h4>Send Transaction</h4>
+                        <div class="input-group">
+                            <label>Recipient Address</label>
+                            <input type="text" id="send-to" placeholder="0x...">
+                        </div>
+                        <div class="input-group">
+                            <label>Amount</label>
+                            <input type="text" id="send-amount" placeholder="0.0">
+                        </div>
+                        <div class="input-group">
+                            <label>Token</label>
+                            <select id="send-token">
+                                <option value="ETH">ETH</option>
+                                <option value="USDT">USDT</option>
+                                <option value="USDC">USDC</option>
+                            </select>
+                        </div>
+                        <div class="simulation-result" id="simulation-result"></div>
+                        <button id="simulate-btn" class="btn-secondary">Simulate First</button>
+                        <button id="send-btn" class="btn-primary">Send</button>
+                    </div>
+                </div>
+
+                <!-- Receive Page -->
+                <div id="receive-page" class="page hidden">
+                    <div class="receive-section">
+                        <h4>Receive</h4>
+                        <div class="qr-code">
+                            <div class="qr-placeholder">QR Code</div>
+                        </div>
+                        <div class="receive-address">
+                            <label>Your Address</label>
+                            <div class="address-display">
+                                <span id="receive-address">0x0000...0000</span>
+                                <button class="copy-btn">📋 Copy</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Transactions Page -->
+                <div id="transactions-page" class="page hidden">
+                    <h4>Transaction History</h4>
+                    <div id="transactions-list" class="transactions-list">
+                        <div class="no-transactions">No transactions yet</div>
+                    </div>
+                </div>
+
+                <!-- Settings Page -->
+                <div id="settings-page" class="page hidden">
+                    <div class="settings-section">
+                        <h4>Appearance</h4>
+                        <div class="setting-item">
+                            <label>Theme</label>
+                            <select id="settings-theme">
+                                <option value="dark">Dark</option>
+                                <option value="light">Light</option>
+                            </select>
+                        </div>
+                        <div class="setting-item">
+                            <label>Currency</label>
+                            <select id="settings-currency">
+                                <option value="USD">USD</option>
+                                <option value="EUR">EUR</option>
+                                <option value="GBP">GBP</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <h4>Security</h4>
+                        <div class="setting-item">
+                            <label>Auto-lock</label>
+                            <select id="settings-autolock">
+                                <option value="1">1 minute</option>
+                                <option value="5">5 minutes</option>
+                                <option value="15">15 minutes</option>
+                                <option value="30">30 minutes</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <h4>Networks</h4>
+                        <div id="networks-list" class="networks-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

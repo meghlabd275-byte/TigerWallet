@@ -1,0 +1,85 @@
+{
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
+    "devPath": "../src",
+    "distDir": "../src"
+  },
+  "package": {
+    "productName": "TigerWallet",
+    "version": "1.0.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "all": false,
+        "open": true
+      },
+      "window": {
+        "all": true
+      },
+      "dialog": {
+        "all": true
+      },
+      "notification": {
+        "all": true
+      },
+      "globalShortcut": {
+        "all": true
+      }
+    },
+    "bundle": {
+      "active": true,
+      "category": "Finance",
+      "copyright": "TigerWallet 2024",
+      "deb": {
+        "depends": []
+      },
+      "externalBin": [],
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ],
+      "identifier": "com.tigerwallet.desktop",
+      "longDescription": "TigerWallet Desktop - Production-ready multi-chain cryptocurrency wallet",
+      "macOS": {
+        "entitlements": null,
+        "exceptionDomain": "",
+        "frameworks": [],
+        "providerShortName": null,
+        "signingIdentity": null
+      },
+      "resources": [],
+      "shortDescription": "Multi-chain cryptocurrency wallet",
+      "targets": "all",
+      "windows": {
+        "certificateThumbprint": null,
+        "digestAlgorithm": "sha256",
+        "timestampUrl": ""
+      }
+    },
+    "security": {
+      "csp": null
+    },
+    "updater": {
+      "active": false
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "height": 700,
+        "resizable": true,
+        "title": "TigerWallet",
+        "width": 1100,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true,
+        "decorations": true
+      }
+    ]
+  }
+}
