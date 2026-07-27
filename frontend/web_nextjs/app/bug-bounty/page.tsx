@@ -1,23 +1,122 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { ethers } from 'ethers';
+
+// ============================================================================
+// Types
+// ============================================================================
 
 interface BugReport {
   id: string;
   title: string;
+  description: string;
   severity: 'critical' | 'high' | 'medium' | 'low';
-  status: 'open' | 'verified' | 'fixed' | 'rewarded';
+  status: 'submitted' | 'triaged' | 'accepted' | 'rejected' | 'fixed' | 'rewarded';
   reward: string;
   reporter: string;
   date: number;
+  program_id: string;
+  cvss_score: number;
+  impact: string;
+  poc_url: string;
 }
 
-const MOCK_REPORTS: BugReport[] = [
-  { id: '1', title: 'Privilege escalation in admin panel', severity: 'critical', status: 'rewarded', reward: '$50,000', reporter: 'security_ researcher_01', date: Date.now() - 86400000 * 30 },
-  { id: '2', title: 'Smart contract reentrancy vulnerability', severity: 'critical', status: 'verified', reward: '$45,000', reporter: 'defi_auditor', date: Date.now() - 86400000 * 15 },
-  { id: '3', title: 'Cross-site scripting in dApp browser', severity: 'high', status: 'fixed', reward: '$5,000', reporter: 'web3_bug_hunter', date: Date.now() - 86400000 * 45 },
-  { id: '4', title: 'Weak random number generation', severity: 'high', status: 'rewarded', reward: '$8,000', reporter: 'crypto_expert', date: Date.now() - 86400000 * 60 },
-  { id: '5', title: 'Gas limit manipulation', severity: 'medium', status: 'verified', reward: '$2,500', reporter: 'solidity_dev', date: Date.now() - 86400000 * 7 },
+interface Program {
+  id: string;
+  name: string;
+  description: string;
+  status: string;
+  total_pool: string;
+  paid_out: string;
+  rewards: {
+    critical: string;
+    high: string;
+    medium: string;
+    low: string;
+  };
+}
+
+interface Stats {
+  total_programs: number;
+  total_reports: number;
+  accepted_reports: number;
+  rewarded_reports: number;
+  pending_reports: number;
+  total_paid_out: string;
+  remaining_pool: string;
+  active_hackers: number;
+}
+
+// ============================================================================
+// API Functions
+// ============================================================================
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.tigerwallet.io';
+
+async function fetchStats(): Promise<Stats | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/bug-bounty/stats`);
+    const data = await res.json();
+    return data.data;
+  } catch (error) {
+    console.error('Failed to fetch stats:', error);
+    return null;
+  }
+}
+
+async function fetchPrograms(): Promise<Program[]> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/bug-bounty/programs`);
+    const data = await res.json();
+    return data.data || [];
+  } catch (error) {
+    console.error('Failed to fetch programs:', error);
+    return [];
+  }
+}
+
+async function fetchReports(programId?: string): Promise<BugReport[]> {
+  try {
+    const url = programId 
+      ? `${API_BASE}/api/v1/bug-bounty/reports?program_id=${programId}`
+      : `${API_BASE}/api/v1/bug-bounty/reports`;
+    const res = await fetch(url);
+    const data = await res.json();
+    return data.data || [];
+  } catch (error) {
+    console.error('Failed to fetch reports:', error);
+    return [];
+  }
+}
+
+async function submitReport(report: Partial<BugReport>): Promise<BugReport | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/bug-bounty/reports`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(report),
+    });
+    const data = await res.json();
+    return data.data;
+  } catch (error) {
+    console.error('Failed to submit report:', error);
+    return null;
+  }
+}
+
+// ============================================================================
+// Demo/Production Data
+// ============================================================================
+
+const DEMO_REPORTS: BugReport[] = [
+  { id: '1', title: 'Privilege escalation in admin panel', description: 'Found a way to escalate privileges in the admin panel through improper role validation', severity: 'critical', status: 'rewarded', reward: '$50,000', reporter: 'security_researcher_01', date: Date.now() - 86400000 * 30, program_id: 'tigerwallet', cvss_score: 9.5, impact: 'Full admin access', poc_url: 'https://example.com/poc1' },
+  { id: '2', title: 'Smart contract reentrancy vulnerability', description: 'Reentrancy bug in the swap contract allows draining of funds', severity: 'critical', status: 'accepted', reward: '$45,000', reporter: 'defi_auditor', date: Date.now() - 86400000 * 15, program_id: 'tigerwallet', cvss_score: 9.2, impact: 'Fund drainage', poc_url: 'https://example.com/poc2' },
+  { id: '3', title: 'Cross-site scripting in dApp browser', description: 'XSS vulnerability in the dApp browser allows stealing session tokens', severity: 'high', status: 'fixed', reward: '$5,000', reporter: 'web3_bug_hunter', date: Date.now() - 86400000 * 45, program_id: 'tigerwallet', cvss_score: 7.5, impact: 'Session hijacking', poc_url: 'https://example.com/poc3' },
+  { id: '4', title: 'Weak random number generation', description: 'PRNG in lottery contract uses blockhash which can be manipulated', severity: 'high', status: 'rewarded', reward: '$8,000', reporter: 'crypto_expert', date: Date.now() - 86400000 * 60, program_id: 'tigerwallet', cvss_score: 7.8, impact: 'Predictable lottery outcomes', poc_url: 'https://example.com/poc4' },
+  { id: '5', title: 'Gas limit manipulation', description: 'Transaction pool manipulation allows setting custom gas limits causing DoS', severity: 'medium', status: 'triaged', reward: '$2,500', reporter: 'solidity_dev', date: Date.now() - 86400000 * 7, program_id: 'tigerwallet', cvss_score: 5.5, impact: 'Network congestion', poc_url: 'https://example.com/poc5' },
+  { id: '6', title: 'Integer overflow in token contract', description: 'Integer overflow in transfer function allows unlimited minting', severity: 'critical', status: 'submitted', reward: 'TBD', reporter: 'whitehat_eth', date: Date.now() - 86400000 * 2, program_id: 'tigerwallet', cvss_score: 0, impact: 'Unlimited token minting', poc_url: 'https://example.com/poc6' },
+  { id: '7', title: 'Unverified external call', description: 'Contract makes unverified external calls leading to potential reentrancy', severity: 'high', status: 'verified', reward: 'TBD', reporter: 'bug_bounty_pro', date: Date.now() - 86400000 * 1, program_id: 'tigerwallet', cvss_score: 8.1, impact: 'Fund theft', poc_url: 'https://example.com/poc7' },
 ];
 
 const SEVERITY_COLORS = {
