@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TigerWallet</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">🐯</span>
+        <span class="logo-text">TigerWallet</span>
+      </div>
+      <button id="settings-btn" class="icon-btn" title="Settings">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
+    </header>
+    
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Locked State -->
+      <div id="locked-view" class="view">
+        <div class="lock-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </div>
+        
+        <h2>Wallet Locked</h2>
+        <p>Enter your password to unlock</p>
+        
+        <form id="unlock-form" class="form">
+          <div class="input-group">
+            <input type="password" id="unlock-password" placeholder="Password" required>
+          </div>
+          
+          <button type="submit" class="btn btn-primary">
+            <span>Unlock Wallet</span>
+          </button>
+        </form>
+        
+        <div class="divider">
+          <span>OR</span>
+        </div>
+        
+        <button id="import-btn" class="btn btn-secondary">
+          Import Wallet
+        </button>
+      </div>
+      
+      <!-- Unlocked State -->
+      <div id="unlocked-view" class="view hidden">
+        <!-- Network Selector -->
+        <div class="network-selector">
+          <button id="network-btn" class="network-btn">
+            <span class="network-icon">🔷</span>
+            <span class="network-name">Ethereum</span>
+            <span class="dropdown-arrow">▼</span>
+          </button>
+        </div>
+        
+        <!-- Account Card -->
+        <div class="account-card">
+          <div class="account-balance">
+            <span class="balance-label">Total Balance</span>
+            <span class="balance-amount">$0.00</span>
+          </div>
+          
+          <div class="account-address">
+            <span class="address">0x0000...0000</span>
+            <button class="copy-btn" title="Copy Address">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+        
+        <!-- Actions -->
+        <div class="actions">
+          <button class="action-btn" data-action="send">
+            <div class="action-icon">↑</div>
+            <span>Send</span>
+          </button>
+          
+          <button class="action-btn" data-action="receive">
+            <div class="action-icon">↓</div>
+            <span>Receive</span>
+          </button>
+          
+          <button class="action-btn" data-action="swap">
+            <div class="action-icon">⇄</div>
+            <span>Swap</span>
+          </button>
+          
+          <button class="action-btn" data-action="buy">
+            <div class="action-icon">💳</div>
+            <span>Buy</span>
+          </button>
+        </div>
+        
+        <!-- Recent Transactions -->
+        <div class="transactions-section">
+          <div class="section-header">
+            <h3>Recent Transactions</h3>
+            <button class="see-all-btn">See All</button>
+          </div>
+          
+          <div id="transactions-list" class="transactions-list">
+            <div class="empty-state">
+              <p>No transactions yet</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- No Wallet State -->
+      <div id="no-wallet-view" class="view hidden">
+        <div class="welcome-icon">🐯</div>
+        
+        <h2>Welcome to TigerWallet</h2>
+        <p>Create a new wallet or import an existing one</p>
+        
+        <button id="create-wallet-btn" class="btn btn-primary btn-large">
+          Create New Wallet
+        </button>
+        
+        <button id="import-existing-btn" class="btn btn-secondary">
+          Import Existing Wallet
+        </button>
+      </div>
+    </main>
+    
+    <!-- Footer -->
+    <footer class="footer">
+      <button id="lock-btn" class="footer-btn" title="Lock Wallet">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+        <span>Lock</span>
+      </button>
+      
+      <button class="footer-btn" title="Help">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+        <span>Help</span>
+      </button>
+    </footer>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
