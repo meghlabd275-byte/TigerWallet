@@ -1,0 +1,138 @@
+/**
+ * Blockchain Management - Add/manage blockchain networks
+ */
+
+import React, { useState } from 'react';
+
+function BlockchainManagement() {
+  const [activeTab, setActiveTab] = useState('networks');
+
+  const blockchains = [
+    { id: 1, name: 'Ethereum', symbol: 'ETH', chainId: 1, rpc: 'https://eth.llamarpc.com', explorer: 'https://etherscan.io', type: 'EVM', status: 'Active' },
+    { id: 2, name: 'Polygon', symbol: 'MATIC', chainId: 137, rpc: 'https://polygon-rpc.com', explorer: 'https://polygonscan.com', type: 'EVM', status: 'Active' },
+    { id: 3, name: 'BNB Chain', symbol: 'BNB', chainId: 56, rpc: 'https://bsc-dataseed.binance.org', explorer: 'https://bscscan.com', type: 'EVM', status: 'Active' },
+    { id: 4, name: 'Arbitrum', symbol: 'ARB', chainId: 42161, rpc: 'https://arb1.arbitrum.io/rpc', explorer: 'https://arbiscan.io', type: 'EVM', status: 'Active' },
+    { id: 5, name: 'Optimism', symbol: 'OP', chainId: 10, rpc: 'https://mainnet.optimism.io', explorer: 'https://optimistic.etherscan.io', type: 'EVM', status: 'Active' },
+    { id: 6, name: 'Avalanche', symbol: 'AVAX', chainId: 43114, rpc: 'https://api.avax.network/ext/bc/C/rpc', explorer: 'https://snowtrace.io', type: 'EVM', status: 'Active' },
+    { id: 7, name: 'Solana', symbol: 'SOL', chainId: null, rpc: 'https://api.mainnet-beta.solana.com', explorer: 'https://explorer.solana.com', type: 'Non-EVM', status: 'Active' },
+    { id: 8, name: 'Base', symbol: 'ETH', chainId: 8453, rpc: 'https://mainnet.base.org', explorer: 'https://basescan.org', type: 'EVM', status: 'Active' },
+  ];
+
+  return (
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Blockchain Management</h1>
+        <button className="btn btn-primary">+ Add Blockchain</button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="bg-slate-800 p-4 rounded-lg">
+          <p className="text-sm opacity-60">Total Networks</p>
+          <p className="text-2xl font-bold">{blockchains.length}</p>
+        </div>
+        <div className="bg-slate-800 p-4 rounded-lg">
+          <p className="text-sm opacity-60">EVM Chains</p>
+          <p className="text-2xl font-bold">{blockchains.filter(b => b.type === 'EVM').length}</p>
+        </div>
+        <div className="bg-slate-800 p-4 rounded-lg">
+          <p className="text-sm opacity-60">Non-EVM Chains</p>
+          <p className="text-2xl font-bold">{blockchains.filter(b => b.type === 'Non-EVM').length}</p>
+        </div>
+        <div className="bg-slate-800 p-4 rounded-lg">
+          <p className="text-sm opacity-60">Active</p>
+          <p className="text-2xl font-bold text-green-500">{blockchains.filter(b => b.status === 'Active').length}</p>
+        </div>
+      </div>
+
+      <div className="flex gap-2 mb-6">
+        {['Networks', 'RPC', 'Explorers', 'Nodes'].map(tab => (
+          <button key={tab} onClick={() => setActiveTab(tab.toLowerCase())} className={`px-4 py-2 rounded-lg ${activeTab === tab.toLowerCase() ? 'bg-amber-500 text-black' : 'bg-slate-800'}`}>
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'networks' && (
+        <div className="bg-slate-800 rounded-lg overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-slate-700">
+              <tr>
+                <th className="p-3 text-left">Blockchain</th>
+                <th className="p-3 text-left">Symbol</th>
+                <th className="p-3 text-left">Chain ID</th>
+                <th className="p-3 text-left">Type</th>
+                <th className="p-3 text-left">Status</th>
+                <th className="p-3 text-left">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {blockchains.map(chain => (
+                <tr key={chain.id} className="border-t border-slate-700">
+                  <td className="p-3 font-bold">{chain.name}</td>
+                  <td className="p-3 text-amber-500">{chain.symbol}</td>
+                  <td className="p-3">{chain.chainId || 'N/A'}</td>
+                  <td className="p-3">{chain.type}</td>
+                  <td className="p-3">
+                    <span className={`px-2 py-1 rounded text-xs ${chain.status === 'Active' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
+                      {chain.status}
+                    </span>
+                  </td>
+                  <td className="p-3">
+                    <div className="flex gap-2">
+                      <button className="btn btn-secondary text-xs">Edit</button>
+                      <button className="btn btn-danger text-xs">{chain.status === 'Active' ? 'Disable' : 'Enable'}</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {activeTab === 'rpc' && (
+        <div className="bg-slate-800 p-6 rounded-lg">
+          <h3 className="font-semibold mb-4">RPC Endpoints</h3>
+          <p className="text-sm opacity-60 mb-4">Manage RPC endpoints for each blockchain:</p>
+          <div className="space-y-3">
+            {blockchains.map(chain => (
+              <div key={chain.id} className="flex justify-between items-center p-3 bg-slate-700 rounded-lg">
+                <div>
+                  <p className="font-semibold">{chain.name}</p>
+                  <p className="text-xs opacity-60 font-mono">{chain.rpc}</p>
+                </div>
+                <button className="btn btn-secondary text-xs">Test</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'explorers' && (
+        <div className="bg-slate-800 p-6 rounded-lg">
+          <h3 className="font-semibold mb-4">Block Explorers</h3>
+          <div className="space-y-3">
+            {blockchains.map(chain => (
+              <div key={chain.id} className="flex justify-between items-center p-3 bg-slate-700 rounded-lg">
+                <div>
+                  <p className="font-semibold">{chain.name}</p>
+                  <p className="text-xs opacity-60 font-mono">{chain.explorer}</p>
+                </div>
+                <button className="btn btn-secondary text-xs">Open</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'nodes' && (
+        <div className="bg-slate-800 p-6 rounded-lg">
+          <h3 className="font-semibold mb-4">Node Infrastructure</h3>
+          <p className="text-sm opacity-60">Node management and monitoring coming soon...</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default BlockchainManagement;
