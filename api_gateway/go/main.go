@@ -869,6 +869,32 @@ func (ag *APIGateway) registerRoutes() {
 	sdk.HandleFunc("/sign", ag.HandleSDKSign).Methods("POST")
 	sdk.HandleFunc("/webhooks", ag.HandleSDKWebhooks).Methods("GET", "POST", "DELETE")
 	sdk.HandleFunc("/rates", ag.HandleSDKRates).Methods("GET")
+
+	// Multi-Device Sync Routes
+	sync := ag.router.PathPrefix("/api/v1/sync").Subrouter()
+	sync.HandleFunc("/status", ag.HandleSyncStatus).Methods("GET")
+	sync.HandleFunc("/push", ag.HandleSyncPush).Methods("POST")
+	sync.HandleFunc("/pull", ag.HandleSyncPull).Methods("GET")
+	sync.HandleFunc("/devices", ag.HandleSyncDevices).Methods("GET", "DELETE")
+	sync.HandleFunc("/encrypt", ag.HandleSyncEncrypt).Methods("POST")
+
+	// White Label Routes
+	whitelabel := ag.router.PathPrefix("/api/v1/whitelabel").Subrouter()
+	whitelabel.HandleFunc("/create", ag.HandleWhiteLabelCreate).Methods("POST")
+	whitelabel.HandleFunc("/:id", ag.HandleWhiteLabelGet).Methods("GET")
+	whitelabel.HandleFunc("/:id", ag.HandleWhiteLabelUpdate).Methods("PUT")
+	whitelabel.HandleFunc("/:id/config", ag.HandleWhiteLabelConfig).Methods("GET", "PUT")
+	whitelabel.HandleFunc("/:id/branding", ag.HandleWhiteLabelBranding).Methods("GET", "PUT")
+	whitelabel.HandleFunc("/:id/domains", ag.HandleWhiteLabelDomains).Methods("GET", "POST", "DELETE")
+	whitelabel.HandleFunc("/:id/deploy", ag.HandleWhiteLabelDeploy).Methods("POST")
+
+	// Bug Bounty Routes
+	bounty := ag.router.PathPrefix("/api/v1/bounty").Subrouter()
+	bounty.HandleFunc("/programs", ag.HandleBountyPrograms).Methods("GET")
+	bounty.HandleFunc("/programs", ag.HandleBountyProgramCreate).Methods("POST")
+	bounty.HandleFunc("/reports", ag.HandleBountyReports).Methods("GET", "POST")
+	bounty.HandleFunc("/reports/:id", ag.HandleBountyReport).Methods("GET", "PUT")
+	bounty.HandleFunc("/rewards", ag.HandleBountyRewards).Methods("GET")
 }
 
 // ============================================================================
@@ -1748,6 +1774,145 @@ func (ag *APIGateway) HandleSDKRates(w http.ResponseWriter, r *http.Request) {
 		"rates": map[string]interface{}{
 			"ETH/USD": 3500.00, "BTC/USD": 65000.00, "SOL/USD": 150.00,
 		},
+	})
+}
+
+// ============================================================================
+// Multi-Device Sync Handlers
+// ============================================================================
+
+func (ag *APIGateway) HandleSyncStatus(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"last_sync": time.Now().Unix() - 300,
+		"pending_changes": 3,
+		"devices_online": 2,
+	})
+}
+
+func (ag *APIGateway) HandleSyncPush(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "synced_at": time.Now().Unix()})
+}
+
+func (ag *APIGateway) HandleSyncPull(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"changes": []map[string]interface{}{
+			{"type": "transaction", "data": map[string]interface{}{}},
+		},
+	})
+}
+
+func (ag *APIGateway) HandleSyncDevices(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "DELETE" {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"devices": []map[string]interface{}{
+			{"id": "dev1", "name": "MacBook Pro", "type": "desktop", "last_seen": time.Now().Unix()},
+			{"id": "dev2", "name": "iPhone 15", "type": "mobile", "last_seen": time.Now().Unix() - 3600},
+		},
+	})
+}
+
+func (ag *APIGateway) HandleSyncEncrypt(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"encrypted": true, "key_id": generateID(),
+	})
+}
+
+// ============================================================================
+// White Label Handlers
+// ============================================================================
+
+func (ag *APIGateway) HandleWhiteLabelCreate(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"success": true, "whitelabel_id": generateID(), "status": "pending",
+	})
+}
+
+func (ag *APIGateway) HandleWhiteLabelGet(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"id": vars["id"], "name": "My Exchange", "status": "active", "branding": map[string]interface{}{},
+	})
+}
+
+func (ag *APIGateway) HandleWhiteLabelUpdate(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+func (ag *APIGateway) HandleWhiteLabelConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "PUT" {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"config": map[string]interface{}{"name": "My Exchange", "support_email": "support@example.com"},
+	})
+}
+
+func (ag *APIGateway) HandleWhiteLabelBranding(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "PUT" {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"logo": "https://example.com/logo.png", "colors": map[string]interface{}{"primary": "#f97316"},
+	})
+}
+
+func (ag *APIGateway) HandleWhiteLabelDomains(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "POST" {
+		respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "domain_id": generateID()})
+	} else if r.Method == "DELETE" {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"domains": []map[string]interface{}{
+			{"id": "d1", "domain": "myexchange.com", "verified": true},
+		},
+	})
+}
+
+func (ag *APIGateway) HandleWhiteLabelDeploy(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true, "url": "https://myexchange.tigerwallet.io", "status": "deploying",
+	})
+}
+
+// ============================================================================
+// Bug Bounty Handlers
+// ============================================================================
+
+func (ag *APIGateway) HandleBountyPrograms(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"programs": []map[string]interface{}{
+			{"id": "p1", "name": "Core Protocol", "reward": "$5,000 - $50,000", "severity": "Critical", "status": "active"},
+			{"id": "p2", "name": "Smart Contracts", "reward": "$1,000 - $25,000", "severity": "High", "status": "active"},
+		},
+	})
+}
+
+func (ag *APIGateway) HandleBountyProgramCreate(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "program_id": generateID()})
+}
+
+func (ag *APIGateway) HandleBountyReports(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "POST" {
+		respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "report_id": generateID()})
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"reports": []map[string]interface{}{},
+	})
+}
+
+func (ag *APIGateway) HandleBountyReport(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"id": vars["id"], "status": "pending_review", "severity": "high",
+	})
+}
+
+func (ag *APIGateway) HandleBountyRewards(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"total_paid": 125000, "pending": 25000, "reports": 45,
 	})
 }
 
