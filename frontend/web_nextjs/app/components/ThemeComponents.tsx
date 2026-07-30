@@ -43,7 +43,7 @@ export function WalletLayout({ children, title = 'TigerWallet' }: LayoutProps) {
       <footer className={`${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-t mt-auto`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <p className={`text-center text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            © 2024 TigerWallet. All rights reserved.
+            © 2026 TigerWallet. All rights reserved.
           </p>
         </div>
       </footer>
