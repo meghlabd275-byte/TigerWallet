@@ -805,6 +805,49 @@ func (ag *APIGateway) registerRoutes() {
 	terminal.HandleFunc("/trades/:symbol", ag.HandleTerminalTrades).Methods("GET")
 	terminal.HandleFunc("/kline/:symbol", ag.HandleTerminalKline).Methods("GET")
 	terminal.HandleFunc("/ticker/:symbol", ag.HandleTerminalTicker).Methods("GET")
+
+	// Fiat Ramp Routes
+	fiat := ag.router.PathPrefix("/api/v1/fiat").Subrouter()
+	fiat.HandleFunc("/providers", ag.HandleFiatProviders).Methods("GET")
+	fiat.HandleFunc("/quote", ag.HandleFiatQuote).Methods("POST")
+	fiat.HandleFunc("/order", ag.HandleFiatOrder).Methods("POST")
+	fiat.HandleFunc("/order/:id", ag.HandleFiatOrderStatus).Methods("GET")
+	fiat.HandleFunc("/kyc/status", ag.HandleKYCStatus).Methods("GET")
+	fiat.HandleFunc("/kyc/submit", ag.HandleKYCSubmit).Methods("POST")
+	fiat.HandleFunc("/transactions", ag.HandleFiatTransactions).Methods("GET")
+
+	// Hardware Wallet Routes
+	hw := ag.router.PathPrefix("/api/v1/hardware").Subrouter()
+	hw.HandleFunc("/devices", ag.HandleHWDevices).Methods("GET")
+	hw.HandleFunc("/connect", ag.HandleHWConnect).Methods("POST")
+	hw.HandleFunc("/disconnect", ag.HandleHWDisconnect).Methods("POST")
+	hw.HandleFunc("/sign", ag.HandleHWSign).Methods("POST")
+	hw.HandleFunc("/address", ag.HandleHWAddress).Methods("GET")
+
+	// Social Recovery Routes
+	recovery := ag.router.PathPrefix("/api/v1/recovery").Subrouter()
+	recovery.HandleFunc("/guardians", ag.HandleRecoveryGuardians).Methods("GET", "POST")
+	recovery.HandleFunc("/guardians/:id", ag.HandleRecoveryGuardian).Methods("PUT", "DELETE")
+	recovery.HandleFunc("/request", ag.HandleRecoveryRequest).Methods("POST")
+	recovery.HandleFunc("/approve", ag.HandleRecoveryApprove).Methods("POST")
+	recovery.HandleFunc("/execute", ag.HandleRecoveryExecute).Methods("POST")
+
+	// Plugin System Routes
+	plugins := ag.router.PathPrefix("/api/v1/plugins").Subrouter()
+	plugins.HandleFunc("/list", ag.HandlePluginList).Methods("GET")
+	plugins.HandleFunc("/install", ag.HandlePluginInstall).Methods("POST")
+	plugins.HandleFunc("/uninstall", ag.HandlePluginUninstall).Methods("POST")
+	plugins.HandleFunc("/enable", ag.HandlePluginEnable).Methods("POST")
+	plugins.HandleFunc("/disable", ag.HandlePluginDisable).Methods("POST")
+	plugins.HandleFunc("/:id/config", ag.HandlePluginConfig).Methods("GET", "PUT")
+
+	// Transaction Shield Routes
+	shield := ag.router.PathPrefix("/api/v1/shield").Subrouter()
+	shield.HandleFunc("/status", ag.HandleShieldStatus).Methods("GET")
+	shield.HandleFunc("/enable", ag.HandleShieldEnable).Methods("POST")
+	shield.HandleFunc("/disable", ag.HandleShieldDisable).Methods("POST")
+	shield.HandleFunc("/claim", ag.HandleShieldClaim).Methods("POST")
+	shield.HandleFunc("/history", ag.HandleShieldHistory).Methods("GET")
 }
 
 // ============================================================================
@@ -1393,6 +1436,186 @@ func (ag *APIGateway) HandleTerminalTicker(w http.ResponseWriter, r *http.Reques
 	symbol := vars["symbol"]
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"symbol": symbol, "price": 3500.00, "change24h": 2.5, "high24h": 3600.00, "low24h": 3400.00, "volume24h": 1000000.0,
+	})
+}
+
+// ============================================================================
+// Fiat Ramp Handlers
+// ============================================================================
+
+func (ag *APIGateway) HandleFiatProviders(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"providers": []map[string]interface{}{
+			{"id": "moonpay", "name": "MoonPay", "logo": "🌙", "methods": []string{"card", "bank"}, "min_amount": 30, "max_amount": 5000, "fees": 4.5},
+			{"id": "ramp", "name": "Ramp Network", "logo": "💳", "methods": []string{"card", "bank"}, "min_amount": 50, "max_amount": 10000, "fees": 3.5},
+			{"id": "transak", "name": "Transak", "logo": "🔄", "methods": []string{"card", "upi"}, "min_amount": 30, "max_amount": 5000, "fees": 3.0},
+		},
+	})
+}
+
+func (ag *APIGateway) HandleFiatQuote(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"quote_id": generateID(), "crypto_amount": 0.1, "fiat_amount": 350.00, "fees": 15.00, "expires_at": time.Now().Add(300).Unix(),
+	})
+}
+
+func (ag *APIGateway) HandleFiatOrder(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"order_id": generateID(), "status": "pending", "redirect_url": "https://moonpay.com/buy",
+	})
+}
+
+func (ag *APIGateway) HandleFiatOrderStatus(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"order_id": vars["id"], "status": "processing", "crypto_amount": 0.1, "fiat_amount": 350.00,
+	})
+}
+
+func (ag *APIGateway) HandleKYCStatus(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"level": 2, "status": "verified", "limits": map[string]interface{}{"daily": 10000, "monthly": 50000},
+	})
+}
+
+func (ag *APIGateway) HandleKYCSubmit(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "status": "pending"})
+}
+
+func (ag *APIGateway) HandleFiatTransactions(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"transactions": []map[string]interface{}{},
+	})
+}
+
+// ============================================================================
+// Hardware Wallet Handlers
+// ============================================================================
+
+func (ag *APIGateway) HandleHWDevices(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"devices": []map[string]interface{}{
+			{"id": "ledger_1", "type": "ledger", "name": "Ledger Nano X", "connected": true},
+			{"id": "trezor_1", "type": "trezor", "name": "Trezor Model T", "connected": false},
+		},
+	})
+}
+
+func (ag *APIGateway) HandleHWConnect(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "device_id": generateID()})
+}
+
+func (ag *APIGateway) HandleHWDisconnect(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+func (ag *APIGateway) HandleHWSign(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true, "signature": "0x1234567890abcdef", "tx_hash": generateTXHash(),
+	})
+}
+
+func (ag *APIGateway) HandleHWAddress(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"address": "0x742d35Cc6634C0532925a3b844Bc9e7595f12eB3",
+	})
+}
+
+// ============================================================================
+// Social Recovery Handlers
+// ============================================================================
+
+func (ag *APIGateway) HandleRecoveryGuardians(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "POST" {
+		respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "guardian_id": generateID()})
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"guardians": []map[string]interface{}{
+			{"id": "g1", "address": "0xABC123", "name": "Family Member", "approved": true},
+		},
+	})
+}
+
+func (ag *APIGateway) HandleRecoveryGuardian(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	respondJSON(w, http.StatusOK, map[string]interface{}{"id": vars["id"]})
+}
+
+func (ag *APIGateway) HandleRecoveryRequest(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"request_id": generateID(), "status": "pending", "approvals_needed": 2})
+}
+
+func (ag *APIGateway) HandleRecoveryApprove(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "approvals_received": 1})
+}
+
+func (ag *APIGateway) HandleRecoveryExecute(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "new_owner": "0xNewOwner"})
+}
+
+// ============================================================================
+// Plugin System Handlers
+// ============================================================================
+
+func (ag *APIGateway) HandlePluginList(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"plugins": []map[string]interface{}{
+			{"id": "p1", "name": "Price Alert", "version": "1.0.0", "enabled": true, "installed": true},
+			{"id": "p2", "name": "Auto-Stake", "version": "1.2.0", "enabled": false, "installed": true},
+		},
+	})
+}
+
+func (ag *APIGateway) HandlePluginInstall(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+func (ag *APIGateway) HandlePluginUninstall(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+func (ag *APIGateway) HandlePluginEnable(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+func (ag *APIGateway) HandlePluginDisable(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+func (ag *APIGateway) HandlePluginConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "PUT" {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{"config": map[string]interface{}{}})
+}
+
+// ============================================================================
+// Transaction Shield Handlers
+// ============================================================================
+
+func (ag *APIGateway) HandleShieldStatus(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"enabled": true, "protection_limit": 10000, "used_today": 500, "claims_available": 2,
+	})
+}
+
+func (ag *APIGateway) HandleShieldEnable(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "enabled": true})
+}
+
+func (ag *APIGateway) HandleShieldDisable(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "enabled": false})
+}
+
+func (ag *APIGateway) HandleShieldClaim(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "claim_id": generateID(), "status": "pending"})
+}
+
+func (ag *APIGateway) HandleShieldHistory(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"history": []map[string]interface{}{
+			{"id": "c1", "amount": 500, "status": "approved", "date": time.Now().Unix() - 86400},
+		},
 	})
 }
 
