@@ -760,6 +760,51 @@ func (ag *APIGateway) registerRoutes() {
 	admin.HandleFunc("/chains", ag.HandleAdminChains).Methods("GET", "POST")
 	admin.HandleFunc("/pools", ag.HandleAdminPools).Methods("GET", "POST")
 	admin.HandleFunc("/fees", ag.HandleAdminFees).Methods("GET", "PUT")
+
+	// Perpetual Trading Routes
+	perpetual := ag.router.PathPrefix("/api/v1/perpetual").Subrouter()
+	perpetual.HandleFunc("/markets", ag.HandlePerpetualMarkets).Methods("GET")
+	perpetual.HandleFunc("/markets/:symbol", ag.HandlePerpetualMarket).Methods("GET")
+	perpetual.HandleFunc("/positions", ag.HandlePerpetualPositions).Methods("GET", "POST")
+	perpetual.HandleFunc("/positions/:id", ag.HandlePerpetualPosition).Methods("GET", "PUT", "DELETE")
+	perpetual.HandleFunc("/orders", ag.HandlePerpetualOrders).Methods("GET", "POST")
+	perpetual.HandleFunc("/orders/:id", ag.HandlePerpetualOrder).Methods("GET", "PUT", "DELETE")
+	perpetual.HandleFunc("/funding", ag.HandlePerpetualFunding).Methods("GET")
+	perpetual.HandleFunc("/liquidations", ag.HandlePerpetualLiquidations).Methods("GET")
+
+	// Payment Card Routes
+	card := ag.router.PathPrefix("/api/v1/card").Subrouter()
+	card.HandleFunc("/issue", ag.HandleCardIssue).Methods("POST")
+	card.HandleFunc("/activate", ag.HandleCardActivate).Methods("POST")
+	card.HandleFunc("/freeze", ag.HandleCardFreeze).Methods("POST")
+	card.HandleFunc("/unfreeze", ag.HandleCardUnfreeze).Methods("POST")
+	card.HandleFunc("/limit", ag.HandleCardLimit).Methods("GET", "PUT")
+	card.HandleFunc("/transactions", ag.HandleCardTransactions).Methods("GET")
+	card.HandleFunc("/balance", ag.HandleCardBalance).Methods("GET")
+	card.HandleFunc("/topup", ag.HandleCardTopup).Methods("POST")
+
+	// Prediction Markets Routes
+	prediction := ag.router.PathPrefix("/api/v1/prediction").Subrouter()
+	prediction.HandleFunc("/markets", ag.HandlePredictionMarkets).Methods("GET")
+	prediction.HandleFunc("/markets/:id", ag.HandlePredictionMarket).Methods("GET")
+	prediction.HandleFunc("/bets", ag.HandlePredictionBets).Methods("GET", "POST")
+	prediction.HandleFunc("/bets/:id", ag.HandlePredictionBet).Methods("GET")
+	prediction.HandleFunc("/settle", ag.HandlePredictionSettle).Methods("POST")
+
+	// RWA Trading Routes
+	rwa := ag.router.PathPrefix("/api/v1/rwa").Subrouter()
+	rwa.HandleFunc("/assets", ag.HandleRWAAssets).Methods("GET")
+	rwa.HandleFunc("/assets/:id", ag.HandleRWAAsset).Methods("GET")
+	rwa.HandleFunc("/orders", ag.HandleRWAOrders).Methods("GET", "POST")
+	rwa.HandleFunc("/portfolio", ag.HandleRWAPortfolio).Methods("GET")
+	rwa.HandleFunc("/balance", ag.HandleRWABalance).Methods("GET")
+
+	// Terminal Trading Routes
+	terminal := ag.router.PathPrefix("/api/v1/terminal").Subrouter()
+	terminal.HandleFunc("/orderbook/:symbol", ag.HandleTerminalOrderbook).Methods("GET")
+	terminal.HandleFunc("/trades/:symbol", ag.HandleTerminalTrades).Methods("GET")
+	terminal.HandleFunc("/kline/:symbol", ag.HandleTerminalKline).Methods("GET")
+	terminal.HandleFunc("/ticker/:symbol", ag.HandleTerminalTicker).Methods("GET")
 }
 
 // ============================================================================
@@ -1101,6 +1146,256 @@ func (ag *APIGateway) HandleAdminFees(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ============================================================================
+// Perpetual Trading Handlers
+// ============================================================================
+
+func (ag *APIGateway) HandlePerpetualMarkets(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"markets": []map[string]interface{}{
+			{"symbol": "ETH/USDT", "name": "Ethereum", "price": 3500.00, "change24h": 2.5, "volume24h": 1250000000, "max_leverage": 100, "funding_rate": 0.01},
+			{"symbol": "BTC/USDT", "name": "Bitcoin", "price": 65000.00, "change24h": 1.8, "volume24h": 2500000000, "max_leverage": 100, "funding_rate": 0.01},
+			{"symbol": "SOL/USDT", "name": "Solana", "price": 150.00, "change24h": 5.2, "volume24h": 850000000, "max_leverage": 50, "funding_rate": 0.02},
+		},
+	})
+}
+
+func (ag *APIGateway) HandlePerpetualMarket(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	symbol := vars["symbol"]
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"symbol": symbol, "price": 3500.00, "change24h": 2.5, "volume24h": 1250000000, "max_leverage": 100, "funding_rate": 0.01,
+	})
+}
+
+func (ag *APIGateway) HandlePerpetualPositions(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "POST" {
+		respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "position_id": generateID()})
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"positions": []map[string]interface{}{},
+	})
+}
+
+func (ag *APIGateway) HandlePerpetualPosition(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"id": id, "symbol": "ETH/USDT", "side": "LONG", "size": 2.5, "leverage": 10, "entry_price": 3200.00,
+	})
+}
+
+func (ag *APIGateway) HandlePerpetualOrders(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "POST" {
+		respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "order_id": generateID()})
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"orders": []map[string]interface{}{},
+	})
+}
+
+func (ag *APIGateway) HandlePerpetualOrder(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"id": id, "symbol": "ETH/USDT", "side": "BUY", "type": "MARKET", "status": "FILLED",
+	})
+}
+
+func (ag *APIGateway) HandlePerpetualFunding(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"funding_rates": []map[string]interface{}{
+			{"symbol": "ETH/USDT", "rate": 0.01, "next_funding": time.Now().Add(8 * time.Hour).Unix()},
+			{"symbol": "BTC/USDT", "rate": 0.01, "next_funding": time.Now().Add(8 * time.Hour).Unix()},
+		},
+	})
+}
+
+func (ag *APIGateway) HandlePerpetualLiquidations(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"liquidations": []map[string]interface{}{},
+	})
+}
+
+// ============================================================================
+// Payment Card Handlers
+// ============================================================================
+
+func (ag *APIGateway) HandleCardIssue(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"success": true, "card_id": generateID(), "card_number": "4111111111111111", "status": "ACTIVE",
+	})
+}
+
+func (ag *APIGateway) HandleCardActivate(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+func (ag *APIGateway) HandleCardFreeze(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "status": "FROZEN"})
+}
+
+func (ag *APIGateway) HandleCardUnfreeze(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "status": "ACTIVE"})
+}
+
+func (ag *APIGateway) HandleCardLimit(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "PUT" {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"daily_limit": 10000, "monthly_limit": 50000, "used_today": 500,
+	})
+}
+
+func (ag *APIGateway) HandleCardTransactions(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"transactions": []map[string]interface{}{
+			{"id": "tx1", "merchant": "Amazon", "amount": -50.00, "currency": "USD", "timestamp": time.Now().Unix()},
+		},
+	})
+}
+
+func (ag *APIGateway) HandleCardBalance(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"balance": 5000.00, "currency": "USD", "available_credit": 10000.00,
+	})
+}
+
+func (ag *APIGateway) HandleCardTopup(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true, "new_balance": 10000.00, "transaction_id": generateID(),
+	})
+}
+
+// ============================================================================
+// Prediction Markets Handlers
+// ============================================================================
+
+func (ag *APIGateway) HandlePredictionMarkets(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"markets": []map[string]interface{}{
+			{"id": "pm1", "question": "Will ETH reach $5000 by Dec 2026?", "yes_price": 0.45, "no_price": 0.55, "volume": 500000, "end_time": 1767225600},
+			{"id": "pm2", "question": "Will BTC reach $100k by June 2026?", "yes_price": 0.60, "no_price": 0.40, "volume": 1200000, "end_time": 1759300800},
+		},
+	})
+}
+
+func (ag *APIGateway) HandlePredictionMarket(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"id": id, "question": "Will ETH reach $5000 by Dec 2026?", "yes_price": 0.45, "no_price": 0.55, "volume": 500000, "end_time": 1767225600,
+	})
+}
+
+func (ag *APIGateway) HandlePredictionBets(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "POST" {
+		respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "bet_id": generateID()})
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"bets": []map[string]interface{}{},
+	})
+}
+
+func (ag *APIGateway) HandlePredictionBet(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"id": id, "market_id": "pm1", "outcome": "YES", "amount": 100, "payout": 222.22,
+	})
+}
+
+func (ag *APIGateway) HandlePredictionSettle(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+// ============================================================================
+// RWA Trading Handlers
+// ============================================================================
+
+func (ag *APIGateway) HandleRWAAssets(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"assets": []map[string]interface{}{
+			{"id": "rwa1", "name": "Tesla Inc", "symbol": "TSLA", "type": "STOCK", "price": 250.00, "change24h": 1.5},
+			{"id": "rwa2", "name": "Apple Inc", "symbol": "AAPL", "type": "STOCK", "price": 180.00, "change24h": 0.8},
+			{"id": "rwa3", "name": "Gold", "symbol": "XAU", "type": "COMMODITY", "price": 2000.00, "change24h": 0.2},
+		},
+	})
+}
+
+func (ag *APIGateway) HandleRWAAsset(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"id": id, "name": "Tesla Inc", "symbol": "TSLA", "type": "STOCK", "price": 250.00, "change24h": 1.5,
+	})
+}
+
+func (ag *APIGateway) HandleRWAOrders(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "POST" {
+		respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "order_id": generateID()})
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"orders": []map[string]interface{}{},
+	})
+}
+
+func (ag *APIGateway) HandleRWAPortfolio(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"holdings": []map[string]interface{}{
+			{"asset_id": "rwa1", "symbol": "TSLA", "quantity": 10, "value": 2500.00},
+		},
+		"total_value": 2500.00,
+	})
+}
+
+func (ag *APIGateway) HandleRWABalance(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"balance": 50000.00, "currency": "USD", "available": 50000.00,
+	})
+}
+
+// ============================================================================
+// Terminal Trading Handlers
+// ============================================================================
+
+func (ag *APIGateway) HandleTerminalOrderbook(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	symbol := vars["symbol"]
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"symbol": symbol, "bids": [][]interface{}{{3500.00, 10.5}, {3499.00, 25.0}}, "asks": [][]interface{}{{3501.00, 15.0}, {3502.00, 30.0}},
+	})
+}
+
+func (ag *APIGateway) HandleTerminalTrades(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	symbol := vars["symbol"]
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"symbol": symbol, "trades": []map[string]interface{}{
+			{"id": "t1", "price": 3500.00, "amount": 1.5, "time": time.Now().Unix()},
+		},
+	})
+}
+
+func (ag *APIGateway) HandleTerminalKline(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	symbol := vars["symbol"]
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"symbol": symbol, "candles": [][]interface{}{
+			{1700000000, 3400.00, 3500.00, 3450.00, 1000.0},
+		},
+	})
+}
+
+func (ag *APIGateway) HandleTerminalTicker(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	symbol := vars["symbol"]
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"symbol": symbol, "price": 3500.00, "change24h": 2.5, "high24h": 3600.00, "low24h": 3400.00, "volume24h": 1000000.0,
+	})
+}
+
 // WebSocket handler
 func (ag *APIGateway) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := ag.upgrader.Upgrade(w, r, nil)
@@ -1146,6 +1441,14 @@ func generateTXHash() string {
 		b[i] = byte(i * 17 % 256)
 	}
 	return "0x" + hex.EncodeToString(b)
+}
+
+func generateID() string {
+	b := make([]byte, 16)
+	for i := range b {
+		b[i] = byte(i * 13 % 256)
+	}
+	return hex.EncodeToString(b)
 }
 
 // ============================================================================
