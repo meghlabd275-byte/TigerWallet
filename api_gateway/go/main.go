@@ -848,6 +848,27 @@ func (ag *APIGateway) registerRoutes() {
 	shield.HandleFunc("/disable", ag.HandleShieldDisable).Methods("POST")
 	shield.HandleFunc("/claim", ag.HandleShieldClaim).Methods("POST")
 	shield.HandleFunc("/history", ag.HandleShieldHistory).Methods("GET")
+
+	// NFT Marketplace Routes
+	nft := ag.router.PathPrefix("/api/v1/nft").Subrouter()
+	nft.HandleFunc("/market", ag.HandleNFTMarket).Methods("GET")
+	nft.HandleFunc("/collections", ag.HandleNFTCollections).Methods("GET")
+	nft.HandleFunc("/collections/:id", ag.HandleNFTCollection).Methods("GET")
+	nft.HandleFunc("/:id", ag.HandleNFTDetail).Methods("GET")
+	nft.HandleFunc("/buy", ag.HandleNFTBuy).Methods("POST")
+	nft.HandleFunc("/list", ag.HandleNFTList).Methods("POST")
+	nft.HandleFunc("/offer", ag.HandleNFTOffer).Methods("POST")
+	nft.HandleFunc("/transfer", ag.HandleNFTTransfer).Methods("POST")
+	nft.HandleFunc("/mint", ag.HandleNFTMint).Methods("POST")
+
+	// Developer SDK Routes
+	sdk := ag.router.PathPrefix("/api/v1/sdk").Subrouter()
+	sdk.HandleFunc("/auth", ag.HandleSDKAuth).Methods("POST")
+	sdk.HandleFunc("/wallets", ag.HandleSDKWallets).Methods("GET", "POST")
+	sdk.HandleFunc("/transactions", ag.HandleSDKTransactions).Methods("GET", "POST")
+	sdk.HandleFunc("/sign", ag.HandleSDKSign).Methods("POST")
+	sdk.HandleFunc("/webhooks", ag.HandleSDKWebhooks).Methods("GET", "POST", "DELETE")
+	sdk.HandleFunc("/rates", ag.HandleSDKRates).Methods("GET")
 }
 
 // ============================================================================
@@ -1615,6 +1636,117 @@ func (ag *APIGateway) HandleShieldHistory(w http.ResponseWriter, r *http.Request
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"history": []map[string]interface{}{
 			{"id": "c1", "amount": 500, "status": "approved", "date": time.Now().Unix() - 86400},
+		},
+	})
+}
+
+// ============================================================================
+// NFT Marketplace Handlers
+// ============================================================================
+
+func (ag *APIGateway) HandleNFTMarket(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"nfts": []map[string]interface{}{
+			{"id": "1", "tokenId": "1234", "name": "CryptoPunk #1234", "collection": "CryptoPunks", "price": 45, "currency": "ETH", "isListed": true},
+			{"id": "2", "tokenId": "5678", "name": "Bored Ape #5678", "collection": "Bored Ape Yacht Club", "price": 32, "currency": "ETH", "isListed": true},
+		},
+	})
+}
+
+func (ag *APIGateway) HandleNFTCollections(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"collections": []map[string]interface{}{
+			{"id": "1", "name": "CryptoPunks", "floorPrice": 35, "totalSupply": 10000, "volume": 250000},
+			{"id": "2", "name": "Bored Ape Yacht Club", "floorPrice": 28, "totalSupply": 10000, "volume": 180000},
+		},
+	})
+}
+
+func (ag *APIGateway) HandleNFTCollection(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"id": vars["id"], "name": "CryptoPunks", "floorPrice": 35, "totalSupply": 10000, "volume": 250000,
+	})
+}
+
+func (ag *APIGateway) HandleNFTDetail(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"id": vars["id"], "name": "CryptoPunk #1234", "price": 45, "currency": "ETH", "owner": "0x123",
+	})
+}
+
+func (ag *APIGateway) HandleNFTBuy(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "tx_hash": generateTXHash()})
+}
+
+func (ag *APIGateway) HandleNFTList(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+func (ag *APIGateway) HandleNFTOffer(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "offer_id": generateID()})
+}
+
+func (ag *APIGateway) HandleNFTTransfer(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "tx_hash": generateTXHash()})
+}
+
+func (ag *APIGateway) HandleNFTMint(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "tokenId": generateID(), "tx_hash": generateTXHash()})
+}
+
+// ============================================================================
+// Developer SDK Handlers
+// ============================================================================
+
+func (ag *APIGateway) HandleSDKAuth(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true, "api_key": "tk_" + generateID(), "api_secret": "sk_" + generateID(),
+	})
+}
+
+func (ag *APIGateway) HandleSDKWallets(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "POST" {
+		respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "wallet_id": generateID()})
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"wallets": []map[string]interface{}{
+			{"id": "w1", "address": "0x742d35Cc6634C0532925a3b844Bc9e7595f12eB3", "chain": "ethereum"},
+		},
+	})
+}
+
+func (ag *APIGateway) HandleSDKTransactions(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "POST" {
+		respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "tx_hash": generateTXHash()})
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"transactions": []map[string]interface{}{},
+	})
+}
+
+func (ag *APIGateway) HandleSDKSign(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true, "signature": "0x" + generateID() + generateID(),
+	})
+}
+
+func (ag *APIGateway) HandleSDKWebhooks(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "POST" {
+		respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "webhook_id": generateID()})
+	} else if r.Method == "DELETE" {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"webhooks": []map[string]interface{}{},
+	})
+}
+
+func (ag *APIGateway) HandleSDKRates(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"rates": map[string]interface{}{
+			"ETH/USD": 3500.00, "BTC/USD": 65000.00, "SOL/USD": 150.00,
 		},
 	})
 }
