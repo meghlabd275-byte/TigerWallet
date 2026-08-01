@@ -80,7 +80,7 @@ TigerWallet supports **unlimited EVM and Non-EVM blockchain networks** with full
 ## Project Structure
 
 ```
-TigerSwap/
+TigerWallet/
 ├── blockchain_layer/           # Native blockchain SDKs
 │   ├── solana_sdk/            # Solana RPC, SPL, AMM
 │   ├── aptos_sdk/            # Aptos Move, BCS
