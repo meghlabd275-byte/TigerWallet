@@ -974,7 +974,7 @@ impl CardanoClient {
         Ok(tx_hash)
     }
     
-    /// Get transaction
+    /// Get transaction with full parsing
     pub async fn get_transaction(&self, tx_hash: &str) -> Result<Transaction, CardanoError> {
         let url = format!("{}/txs/{}", self.rpc_url, tx_hash);
         
@@ -990,29 +990,228 @@ impl CardanoClient {
             ));
         }
         
-        // In production, would parse the transaction
-        // For now, return a placeholder
+        // Parse JSON response from Cardano API
+        let tx_json: serde_json::Value = response.json()
+            .await
+            .map_err(|e| CardanoError::SerializationError(e.to_string()))?;
+        
+        // Parse transaction body
+        let body = self.parse_transaction_body(&tx_json)?;
+        
+        // Parse witnesses if available
+        let witness = self.parse_witness(&tx_json)?;
+        
+        // Parse auxiliary data if available
+        let auxiliary_data = self.parse_auxiliary_data(&tx_json)?;
+        
         Ok(Transaction {
-            body: TransactionBody {
-                inputs: Vec::new(),
-                outputs: Vec::new(),
-                fee: 0,
-                ttl: None,
-                certificates: Vec::new(),
-                withdrawals: Vec::new(),
-                update: None,
-                auxiliary_data_hash: None,
-                validity_start: None,
-            },
-            witness: Witness {
-                vkey_witnesses: Vec::new(),
-                native_scripts: Vec::new(),
-                plutus_scripts: Vec::new(),
-                plutus_data: Vec::new(),
-                redeemers: Vec::new(),
-            },
-            auxiliary_data: None,
+            body,
+            witness,
+            auxiliary_data,
         })
+    }
+    
+    /// Parse transaction body from JSON response
+    fn parse_transaction_body(&self, tx_json: &serde_json::Value) -> Result<TransactionBody, CardanoError> {
+        let mut inputs = Vec::new();
+        let mut outputs = Vec::new();
+        let mut fee = 0u64;
+        let mut ttl = None;
+        let mut certificates = Vec::new();
+        let mut withdrawals = Vec::new();
+        
+        // Parse inputs (UTxO)
+        if let Some(inputs_arr) = tx_json.get("inputs").and_then(|v| v.as_array()) {
+            for input in inputs_arr {
+                if let Some(tx_id) = input.get("tx_id").and_then(|v| v.as_str()) {
+                    if let Some(index) = input.get("index").and_then(|v| v.as_u64()) {
+                        let tx_hash = hex::decode(tx_id)
+                            .map_err(|e| CardanoError::InvalidTransaction(format!("Invalid tx hash: {}", e)))?;
+                        inputs.push(TxInput {
+                            tx_hash: {
+                                let mut hash = [0u8; 32];
+                                hash.copy_from_slice(&tx_hash[..32.min(tx_hash.len())]);
+                                hash
+                            },
+                            index: index as u32,
+                        });
+                    }
+                }
+            }
+        }
+        
+        // Parse outputs
+        if let Some(outputs_arr) = tx_json.get("outputs").and_then(|v| v.as_array()) {
+            for output in outputs_arr {
+                let address = output.get("address")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| CardanoError::InvalidTransaction("Missing output address".to_string()))?;
+                
+                let address_obj = Address::from_bech32(address)?;
+                
+                let mut assets = HashMap::new();
+                if let Some(amount_obj) = output.get("amount") {
+                    // Parse ADA amount
+                    if let Some(lovelace) = amount_obj.get("lovelace").and_then(|v| v.as_u64()) {
+                        assets.insert("ADA".to_string(), lovelace);
+                    }
+                    
+                    // Parse multi-assets
+                    if let Some(multi_assets) = amount_obj.get("multiasset").and_then(|v| v.as_object()) {
+                        for (policy_id, assets_obj) in multi_assets {
+                            if let Some(assets_map) = assets_obj.as_object() {
+                                for (asset_name, quantity) in assets_map {
+                                    let key = format!("{}.{}", policy_id, asset_name);
+                                    if let Some(q) = quantity.as_u64() {
+                                        assets.insert(key, q);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                outputs.push(TxOutput {
+                    address: address_obj,
+                    amount: assets,
+                });
+            }
+        }
+        
+        // Parse fee
+        if let Some(fee_val) = tx_json.get("fee").and_then(|v| v.as_u64()) {
+            fee = fee_val;
+        }
+        
+        // Parse TTL (time to live)
+        if let Some(ttl_val) = tx_json.get("ttl").and_then(|v| v.as_u64()) {
+            ttl = Some(ttl_val as u32);
+        }
+        
+        // Parse certificates
+        if let Some(certs_arr) = tx_json.get("certs").and_then(|v| v.as_array()) {
+            for cert in certs_arr {
+                if let Some(cert_type) = cert.get("type").and_then(|v| v.as_str()) {
+                    match cert_type {
+                        "stakeRegistration" => {
+                            if let Some(stake_addr) = cert.get("address").and_then(|v| v.as_str()) {
+                                certificates.push(Certificate::StakeRegistration {
+                                    stake_address: Address::from_bech32(stake_addr)?,
+                                });
+                            }
+                        }
+                        "stakeDeregistration" => {
+                            if let Some(stake_addr) = cert.get("address").and_then(|v| v.as_str()) {
+                                certificates.push(Certificate::StakeDeregistration {
+                                    stake_address: Address::from_bech32(stake_addr)?,
+                                });
+                            }
+                        }
+                        "stakeDelegation" => {
+                            if let Some(stake_addr) = cert.get("address").and_then(|v| v.as_str()) {
+                                if let Some(pool_hash) = cert.get("poolId").and_then(|v| v.as_str()) {
+                                    let pool_keyhash = hex::decode(pool_hash)
+                                        .map_err(|e| CardanoError::InvalidTransaction(format!("Invalid pool hash: {}", e)))?;
+                                    let mut keyhash = [0u8; 32];
+                                    keyhash.copy_from_slice(&pool_keyhash[..32.min(pool_keyhash.len())]);
+                                    certificates.push(Certificate::StakeDelegation {
+                                        stake_address: Address::from_bech32(stake_addr)?,
+                                        pool_keyhash: keyhash,
+                                    });
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        
+        // Parse withdrawals
+        if let Some(withdrawals_arr) = tx_json.get("withdrawals").and_then(|v| v.as_array()) {
+            for withdrawal in withdrawals_arr {
+                if let Some(addr) = withdrawal.get("address").and_then(|v| v.as_str()) {
+                    if let Some(amt) = withdrawal.get("amount").and_then(|v| v.as_u64()) {
+                        withdrawals.push(Withdrawal {
+                            address: Address::from_bech32(addr)?,
+                            amount: amt,
+                        });
+                    }
+                }
+            }
+        }
+        
+        Ok(TransactionBody {
+            inputs,
+            outputs,
+            fee,
+            ttl,
+            certificates,
+            withdrawals,
+            update: None,
+            auxiliary_data_hash: None,
+            validity_start: None,
+        })
+    }
+    
+    /// Parse witness from JSON response
+    fn parse_witness(&self, tx_json: &serde_json::Value) -> Result<Witness, CardanoError> {
+        let mut vkey_witnesses = Vec::new();
+        
+        // Parse VKey witnesses
+        if let Some(witnesses) = tx_json.get("witness").and_then(|v| v.get("vkeys")) {
+            if let Some(witnesses_arr) = witnesses.as_array() {
+                for witness in witnesses_arr {
+                    if let Some(vkey) = witness.get("vkey").and_then(|v| v.as_str()) {
+                        if let Some(signature) = witness.get("signature").and_then(|v| v.as_str()) {
+                            let vkey_bytes = hex::decode(vkey)
+                                .map_err(|e| CardanoError::InvalidTransaction(format!("Invalid VKey: {}", e)))?;
+                            let sig_bytes = hex::decode(signature)
+                                .map_err(|e| CardanoError::InvalidTransaction(format!("Invalid signature: {}", e)))?;
+                            
+                            let mut vk = [0u8; 32];
+                            let mut sig = [0u8; 64];
+                            vk.copy_from_slice(&vkey_bytes[..32.min(vkey_bytes.len())]);
+                            sig.copy_from_slice(&sig_bytes[..64.min(sig_bytes.len())]);
+                            
+                            vkey_witnesses.push(VKeyWitness {
+                                vkey,
+                                signature: sig,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(Witness {
+            vkey_witnesses,
+            native_scripts: Vec::new(),
+            plutus_scripts: Vec::new(),
+            plutus_data: Vec::new(),
+            redeemers: Vec::new(),
+        })
+    }
+    
+    /// Parse auxiliary data from JSON response
+    fn parse_auxiliary_data(&self, tx_json: &serde_json::Value) -> Result<Option<AuxiliaryData>, CardanoError> {
+        if let Some(aux_data) = tx_json.get("auxiliary_data") {
+            let mut metadata = HashMap::new();
+            
+            if let Some(aux_obj) = aux_data.as_object() {
+                for (key, value) in aux_obj {
+                    if let Some(val_str) = value.as_str() {
+                        metadata.insert(key.clone(), val_str.to_string());
+                    }
+                }
+            }
+            
+            if !metadata.is_empty() {
+                return Ok(Some(AuxiliaryData { metadata }));
+            }
+        }
+        
+        Ok(None)
     }
     
     /// Get protocol parameters

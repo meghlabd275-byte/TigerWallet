@@ -6,11 +6,13 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useWallet } from '../contexts/WalletContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 function LoginPage() {
   const navigate = useNavigate();
   const { login, isLoading } = useAuth();
   const { createWallet, importFromMnemonic } = useWallet();
+  const { theme, toggleTheme } = useTheme();
   
   const [mode, setMode] = useState<'login' | 'create' | 'import'>('login');
   const [email, setEmail] = useState('');
@@ -80,14 +82,22 @@ function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900">
+    <div className={`min-h-screen flex items-center justify-center ${theme === 'dark' ? 'bg-gray-900' : 'bg-gray-100'}`}>
       <div className="w-full max-w-md p-8">
+        {/* Theme Toggle */}
+        <button 
+          onClick={toggleTheme}
+          className={`absolute top-4 right-4 p-2 rounded-lg ${theme === 'dark' ? 'bg-gray-800 text-amber-500' : 'bg-gray-200 text-gray-700'}`}
+        >
+          {theme === 'dark' ? '☀️' : '🌙'}
+        </button>
+
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-amber-500">TigerWallet</h1>
-          <p className="text-gray-400 mt-2">Enterprise Web3 Wallet</p>
+          <p className={`mt-2 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>Enterprise Web3 Wallet</p>
         </div>
 
-        <div className="flex mb-6 bg-gray-800 rounded-lg p-1">
+        <div className={`flex mb-6 rounded-lg p-1 ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-200'}`}>
           <button onClick={() => setMode('login')} className={`flex-1 py-2 rounded-md text-sm font-medium ${mode === 'login' ? 'bg-amber-500 text-black' : 'text-gray-400'}`}>Login</button>
           <button onClick={() => { setMode('create'); setStep(1); }} className={`flex-1 py-2 rounded-md text-sm font-medium ${mode === 'create' ? 'bg-amber-500 text-black' : 'text-gray-400'}`}>Create</button>
           <button onClick={() => setMode('import')} className={`flex-1 py-2 rounded-md text-sm font-medium ${mode === 'import' ? 'bg-amber-500 text-black' : 'text-gray-400'}`}>Import</button>
@@ -97,8 +107,8 @@ function LoginPage() {
 
         {mode === 'login' && (
           <form onSubmit={handleLogin} className="space-y-4">
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white" required />
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white" required />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className={`w-full px-4 py-3 border rounded-lg ${theme === 'dark' ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'}`} required />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" className={`w-full px-4 py-3 border rounded-lg ${theme === 'dark' ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'}`} required />
             <button type="submit" disabled={isLoading} className="w-full py-3 bg-amber-500 text-black font-semibold rounded-lg">{isLoading ? 'Loading...' : 'Login'}</button>
           </form>
         )}
