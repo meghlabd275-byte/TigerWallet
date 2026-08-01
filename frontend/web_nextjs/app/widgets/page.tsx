@@ -1,6 +1,29 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  error?: string;
+}
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.tigerwallet.io';
+
+const fetchAPI = async <T,>(endpoint: string, options?: RequestInit): Promise<T> => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options?.headers,
+    },
+  });
+  if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+  const data: ApiResponse<T> = await response.json();
+  return data.data;
+};
 
 const WIDGET_TYPES = [
   { id: 'portfolio', name: 'Portfolio Value', icon: '💰', description: 'Show total balance' },
@@ -12,9 +35,42 @@ const WIDGET_TYPES = [
 export default function Widgets() {
   const [activeWidgets, setActiveWidgets] = useState<string[]>(['portfolio', 'price']);
   const [theme, setTheme] = useState('light');
+  const [loading, setLoading] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  // Load widget preferences
+  useEffect(() => {
+    const loadPreferences = async () => {
+      try {
+        const prefs = await fetchAPI<{ widgets: string[]; theme: string }>('/user/preferences');
+        if (prefs?.widgets) setActiveWidgets(prefs.widgets);
+        if (prefs?.theme) setTheme(prefs.theme);
+      } catch (err) {
+        const savedWidgets = localStorage.getItem('tigerwallet-widgets');
+        if (savedWidgets) setActiveWidgets(JSON.parse(savedWidgets));
+      }
+    };
+    loadPreferences();
+  }, []);
 
   const toggleWidget = (id: string) => {
     setActiveWidgets(prev => prev.includes(id) ? prev.filter(w => w !== id) : [...prev, id]);
+    setSaved(false);
+  };
+
+  const saveWidgets = async () => {
+    setLoading(true);
+    try {
+      await fetchAPI('/user/preferences', {
+        method: 'PUT',
+        body: JSON.stringify({ widgets: activeWidgets, theme }),
+      });
+    } catch (err) {
+      localStorage.setItem('tigerwallet-widgets', JSON.stringify(activeWidgets));
+    }
+    setLoading(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
   };
 
   return (
@@ -33,7 +89,18 @@ export default function Widgets() {
             {activeWidgets.length === 0 && <div className="text-center text-slate-500 py-8">Select widgets to preview</div>}
           </div>
         </div>
-        <button className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-lg font-semibold">Save Widgets</button>
+        {saved && (
+          <div className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-4 py-2 rounded-lg mb-4 text-center">
+            ✓ Widget preferences saved!
+          </div>
+        )}
+        <button 
+          onClick={saveWidgets}
+          disabled={loading}
+          className="w-full bg-orange-500 hover:bg-orange-600 disabled:bg-slate-400 text-white py-4 rounded-lg font-semibold"
+        >
+          {loading ? 'Saving...' : 'Save Widgets'}
+        </button>
       </div>
     </div>
   );
