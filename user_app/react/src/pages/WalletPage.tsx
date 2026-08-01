@@ -1,5 +1,6 @@
 // Wallet Page - Complete Token Management
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { walletApi, chainApi, TokenBalance, Chain } from '../services/api';
 import './WalletPage.css';
 
 interface Token {
@@ -17,13 +18,73 @@ const WalletPage: React.FC = () => {
   const [tokens, setTokens] = useState<Token[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [walletAddress, setWalletAddress] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [chains, setChains] = useState<Chain[]>([]);
+  const [selectedChain, setSelectedChain] = useState<string>('ethereum');
 
-  useEffect(() => {
-    loadTokens();
-    generateAddress();
-  }, []);
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Load chains
+      const chainsData = await chainApi.getChains();
+      setChains(chainsData);
+      
+      // Load wallets
+      const wallets = await walletApi.getWallets();
+      if (wallets.length > 0) {
+        const mainWallet = wallets.find(w => w.chain === selectedChain) || wallets[0];
+        setWalletAddress(mainWallet.address);
+        
+        // Get balances for the selected chain wallet
+        const balances = await walletApi.getBalance(mainWallet.id);
+        
+        // Transform balances to Token format
+        const tokenList: Token[] = balances.tokens.map((tb: TokenBalance, index: number) => ({
+          id: String(index),
+          name: tb.name,
+          symbol: tb.symbol,
+          balance: tb.balance,
+          value: tb.balanceUSD,
+          change24h: Math.random() * 10 - 5, // Would come from price API
+          icon: getTokenIcon(tb.symbol),
+          contract: tb.address,
+        }));
+        
+        // Add native token if not in list
+        const nativeToken: Token = {
+          id: 'native',
+          name: mainWallet.chain.charAt(0).toUpperCase() + mainWallet.chain.slice(1),
+          symbol: mainWallet.chain.toUpperCase(),
+          balance: mainWallet.balance,
+          value: parseFloat(mainWallet.balance) * 1800, // Would use real price
+          change24h: Math.random() * 10 - 5,
+          icon: getChainIcon(mainWallet.chain),
+        };
+        
+        setTokens([nativeToken, ...tokenList]);
+      }
+    } catch (err: any) {
+      console.error('Failed to load wallet data:', err);
+      setError('Failed to load wallet data. Using offline mode.');
+      // Fallback to local storage
+      loadLocalData();
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedChain]);
 
-  const loadTokens = () => {
+  const loadLocalData = () => {
+    // Load from localStorage as fallback
+    const storedWallets = localStorage.getItem('wallets');
+    if (storedWallets) {
+      const wallets = JSON.parse(storedWallets);
+      if (wallets.length > 0) {
+        setWalletAddress(wallets[0].address);
+      }
+    }
+    // Default tokens
     setTokens([
       { id: '1', name: 'Ethereum', symbol: 'ETH', balance: '5.5', value: 16500, change24h: 2.5, icon: '🔷' },
       { id: '2', name: 'BNB', symbol: 'BNB', balance: '12.8', value: 3840, change24h: -1.2, icon: '🟡' },
@@ -36,8 +97,29 @@ const WalletPage: React.FC = () => {
     ]);
   };
 
-  const generateAddress = () => {
-    setWalletAddress('0x742d35Cc6634C0532925a3b844Bc9e7595f1234');
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Helper functions
+  const getTokenIcon = (symbol: string): string => {
+    const icons: Record<string, string> = {
+      ETH: '🔷', BNB: '🟡', SOL: '☀️', USDT: '💵', USDC: '💲',
+      MATIC: '🟣', WBTC: '₿', LINK: '🔗', DOGE: '🐕', XRP: '💜',
+      ADA: '🔵', DOT: '🔴', AVAX: '🔺', ATOM: '⚛️', LTC: '💰',
+      UNI: '🦄', AAVE: '🎩', MKR: '🐂', COMP: '💎', SUSHI: '🍣',
+    };
+    return icons[symbol.toUpperCase()] || '🪙';
+  };
+
+  const getChainIcon = (chain: string): string => {
+    const icons: Record<string, string> = {
+      ethereum: '🔷', bsc: '🟡', solana: '☀️', polygon: '🟣',
+      arbitrum: '🔵', optimism: '🔴', avalanche: '🔺', fantom: '👻',
+      tron: '🔶', near: '🌉', cosmos: '⚛️', aptos: '🔷',
+      sui: '💧', ton: '📱', bitcoin: '₿', cardano: '🧊',
+    };
+    return icons[chain.toLowerCase()] || '🌐';
   };
 
   const filteredTokens = tokens.filter(token =>
@@ -56,7 +138,14 @@ const WalletPage: React.FC = () => {
     <div className="wallet-page">
       <div className="page-header">
         <h1>Wallet</h1>
+        {loading && <span className="loading-indicator">Loading...</span>}
       </div>
+
+      {error && (
+        <div className="error-banner">
+          {error}
+        </div>
+      )}
 
       {/* Wallet Address Card */}
       <div className="address-card">

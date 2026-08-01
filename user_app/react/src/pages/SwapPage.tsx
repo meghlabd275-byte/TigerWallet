@@ -1,31 +1,130 @@
 // Swap Page
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { swapApi, walletApi, SwapQuote, Wallet } from '../services/api';
 import './SwapPage.css';
 
 const SwapPage: React.FC = () => {
   const [fromToken, setFromToken] = useState('ETH');
   const [toToken, setToToken] = useState('USDT');
   const [fromAmount, setFromAmount] = useState('');
+  const [toAmount, setToAmount] = useState('');
   const [slippage, setSlippage] = useState('0.5');
+  const [tokens, setTokens] = useState<{ symbol: string; name: string; icon: string }[]>([]);
+  const [quote, setQuote] = useState<SwapQuote | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [swapping, setSwapping] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [wallets, setWallets] = useState<Wallet[]>([]);
+  const [selectedWallet, setSelectedWallet] = useState<string>('');
 
-  const tokens = [
-    { symbol: 'ETH', name: 'Ethereum', icon: '🔷' },
-    { symbol: 'USDT', name: 'Tether USD', icon: '💵' },
-    { symbol: 'USDC', name: 'USD Coin', icon: '💲' },
-    { symbol: 'BNB', name: 'BNB', icon: '🟡' },
-    { symbol: 'SOL', name: 'Solana', icon: '☀️' },
-    { symbol: 'MATIC', name: 'Polygon', icon: '🟣' },
-  ];
+  // Load tokens on mount
+  useEffect(() => {
+    loadTokens();
+    loadWallets();
+  }, []);
+
+  const loadTokens = async () => {
+    try {
+      const tokenList = await swapApi.getTokens('ethereum');
+      setTokens(tokenList.map(t => ({
+        symbol: t.symbol,
+        name: t.name,
+        icon: getTokenIcon(t.symbol),
+      })));
+    } catch (err) {
+      console.error('Failed to load tokens:', err);
+      // Fallback
+      setTokens([
+        { symbol: 'ETH', name: 'Ethereum', icon: '🔷' },
+        { symbol: 'USDT', name: 'Tether USD', icon: '💵' },
+        { symbol: 'USDC', name: 'USD Coin', icon: '💲' },
+        { symbol: 'BNB', name: 'BNB', icon: '🟡' },
+        { symbol: 'SOL', name: 'Solana', icon: '☀️' },
+        { symbol: 'MATIC', name: 'Polygon', icon: '🟣' },
+      ]);
+    }
+  };
+
+  const loadWallets = async () => {
+    try {
+      const walletList = await walletApi.getWallets();
+      setWallets(walletList);
+      if (walletList.length > 0) {
+        setSelectedWallet(walletList[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to load wallets:', err);
+    }
+  };
+
+  // Get quote when amount or tokens change
+  useEffect(() => {
+    if (fromAmount && parseFloat(fromAmount) > 0) {
+      getQuote();
+    }
+  }, [fromAmount, fromToken, toToken]);
+
+  const getQuote = async () => {
+    setLoading(true);
+    try {
+      const swapQuote = await swapApi.getQuote(
+        fromToken,
+        toToken,
+        fromAmount,
+        parseFloat(slippage)
+      );
+      setQuote(swapQuote);
+      setToAmount(swapQuote.toAmount);
+    } catch (err) {
+      console.error('Failed to get quote:', err);
+      setQuote(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getTokenIcon = (symbol: string): string => {
+    const icons: Record<string, string> = {
+      ETH: '🔷', BNB: '🟡', SOL: '☀️', USDT: '💵', USDC: '💲',
+      MATIC: '🟣', WBTC: '₿', LINK: '🔗', DOGE: '🐕', XRP: '💜',
+    };
+    return icons[symbol.toUpperCase()] || '🪙';
+  };
 
   const exchangeTokens = () => {
     const temp = fromToken;
     setFromToken(toToken);
     setToToken(temp);
+    setFromAmount('');
+    setToAmount('');
   };
 
-  const handleSwap = () => {
-    if (fromAmount) {
-      alert(`Swapping ${fromAmount} ${fromToken} to ${toToken}`);
+  const handleSwap = async () => {
+    if (!fromAmount || !toAmount || !selectedWallet || !quote) {
+      setError('Please fill in all fields');
+      return;
+    }
+
+    setSwapping(true);
+    setError(null);
+
+    try {
+      const result = await swapApi.execute(
+        selectedWallet,
+        fromToken,
+        toToken,
+        fromAmount,
+        toAmount,
+        quote.route
+      );
+      alert(`Swap successful! Transaction hash: ${result.hash}`);
+      setFromAmount('');
+      setToAmount('');
+    } catch (err: any) {
+      console.error('Swap failed:', err);
+      setError(err.message || 'Swap failed. Please try again.');
+    } finally {
+      setSwapping(false);
     }
   };
 

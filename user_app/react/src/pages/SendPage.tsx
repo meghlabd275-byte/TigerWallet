@@ -1,5 +1,6 @@
 // Send Page
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { walletApi, transactionApi, Wallet, TokenBalance } from '../services/api';
 import './SendPage.css';
 
 const SendPage: React.FC = () => {
@@ -7,17 +8,131 @@ const SendPage: React.FC = () => {
   const [amount, setAmount] = useState('');
   const [selectedToken, setSelectedToken] = useState('ETH');
   const [memo, setMemo] = useState('');
+  const [wallets, setWallets] = useState<Wallet[]>([]);
+  const [selectedWallet, setSelectedWallet] = useState<string>('');
+  const [tokens, setTokens] = useState<{ symbol: string; name: string; icon: string; balance: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [estimatedFee, setEstimatedFee] = useState<string>('');
+  const [txHash, setTxHash] = useState<string | null>(null);
 
-  const tokens = [
-    { symbol: 'ETH', name: 'Ethereum', icon: '🔷' },
-    { symbol: 'USDT', name: 'Tether USD', icon: '💵' },
-    { symbol: 'USDC', name: 'USD Coin', icon: '💲' },
-    { symbol: 'BNB', name: 'BNB', icon: '🟡' },
-  ];
+  // Load wallets on mount
+  useEffect(() => {
+    loadWallets();
+  }, []);
 
-  const handleSend = () => {
-    if (recipient && amount) {
-      alert(`Sending ${amount} ${selectedToken} to ${recipient}`);
+  const loadWallets = async () => {
+    try {
+      const walletList = await walletApi.getWallets();
+      setWallets(walletList);
+      if (walletList.length > 0) {
+        setSelectedWallet(walletList[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to load wallets:', err);
+      // Use local wallets as fallback
+      const storedWallets = localStorage.getItem('wallets');
+      if (storedWallets) {
+        setWallets(JSON.parse(storedWallets));
+      }
+    }
+  };
+
+  // Load tokens when wallet changes
+  useEffect(() => {
+    if (selectedWallet) {
+      loadTokens();
+    }
+  }, [selectedWallet]);
+
+  const loadTokens = async () => {
+    try {
+      const balances = await walletApi.getBalance(selectedWallet);
+      const tokenList = balances.tokens.map((tb: TokenBalance) => ({
+        symbol: tb.symbol,
+        name: tb.name,
+        icon: getTokenIcon(tb.symbol),
+        balance: tb.balance,
+      }));
+      // Add native token
+      const nativeIndex = wallets.findIndex(w => w.id === selectedWallet);
+      if (nativeIndex >= 0) {
+        tokenList.unshift({
+          symbol: wallets[nativeIndex].chain.toUpperCase(),
+          name: wallets[nativeIndex].chain,
+          icon: '🔷',
+          balance: wallets[nativeIndex].balance,
+        });
+      }
+      setTokens(tokenList);
+    } catch (err) {
+      console.error('Failed to load tokens:', err);
+      // Fallback
+      setTokens([
+        { symbol: 'ETH', name: 'Ethereum', icon: '🔷', balance: '0' },
+        { symbol: 'USDT', name: 'Tether USD', icon: '💵', balance: '0' },
+        { symbol: 'USDC', name: 'USD Coin', icon: '💲', balance: '0' },
+        { symbol: 'BNB', name: 'BNB', icon: '🟡', balance: '0' },
+      ]);
+    }
+  };
+
+  // Estimate fee when recipient or amount changes
+  useEffect(() => {
+    if (recipient && amount && selectedWallet) {
+      estimateFee();
+    }
+  }, [recipient, amount, selectedWallet]);
+
+  const estimateFee = async () => {
+    try {
+      const wallet = wallets.find(w => w.id === selectedWallet);
+      if (!wallet) return;
+      
+      const fee = await transactionApi.estimateGas(
+        wallet.address,
+        recipient,
+        amount,
+        selectedToken === wallet.chain.toUpperCase() ? undefined : selectedToken
+      );
+      setEstimatedFee(fee.totalFee);
+    } catch (err) {
+      console.error('Failed to estimate fee:', err);
+      setEstimatedFee('~0.001 ETH');
+    }
+  };
+
+  const getTokenIcon = (symbol: string): string => {
+    const icons: Record<string, string> = {
+      ETH: '🔷', BNB: '🟡', SOL: '☀️', USDT: '💵', USDC: '💲',
+      MATIC: '🟣', WBTC: '₿', LINK: '🔗', DOGE: '🐕', XRP: '💜',
+    };
+    return icons[symbol.toUpperCase()] || '🪙';
+  };
+
+  const handleSend = async () => {
+    if (!recipient || !amount || !selectedWallet) {
+      setError('Please fill in all fields');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const result = await transactionApi.send(
+        selectedWallet,
+        recipient,
+        amount,
+        selectedToken
+      );
+      setTxHash(result.hash);
+      alert(`Transaction sent! Hash: ${result.hash}`);
+    } catch (err: any) {
+      console.error('Send failed:', err);
+      setError(err.message || 'Transaction failed. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
