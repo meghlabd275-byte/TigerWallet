@@ -1,6 +1,29 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  error?: string;
+}
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.tigerwallet.io';
+
+const fetchAPI = async <T,>(endpoint: string, options?: RequestInit): Promise<T> => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options?.headers,
+    },
+  });
+  if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+  const data: ApiResponse<T> = await response.json();
+  return data.data;
+};
 
 const LANGUAGES = [
   { code: 'en', name: 'English', native: 'English', flag: '🇺🇸' },
@@ -28,8 +51,50 @@ const LANGUAGES = [
 export default function I18n() {
   const [currentLang, setCurrentLang] = useState('en');
   const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [saved, setSaved] = useState(false);
 
-  const filteredLanguages = search ? LANGUAGES.filter(l => l.name.toLowerCase().includes(search.toLowerCase()) || l.native.includes(search)) : LANGUAGES;
+  // Load user preferences on mount
+  useEffect(() => {
+    const loadPreferences = async () => {
+      try {
+        const prefs = await fetchAPI<{ language: string }>('/user/preferences');
+        if (prefs?.language) {
+          setCurrentLang(prefs.language);
+        }
+      } catch (err) {
+        // Use localStorage fallback
+        const saved = localStorage.getItem('tigerwallet-language');
+        if (saved) setCurrentLang(saved);
+      }
+    };
+    loadPreferences();
+  }, []);
+
+  const handleLanguageChange = async (langCode: string) => {
+    setLoading(true);
+    setSaved(false);
+
+    try {
+      // Save to backend
+      await fetchAPI('/user/preferences', {
+        method: 'PUT',
+        body: JSON.stringify({ language: langCode }),
+      });
+    } catch (err) {
+      // Fallback to localStorage
+      localStorage.setItem('tigerwallet-language', langCode);
+    }
+
+    setCurrentLang(langCode);
+    setLoading(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const filteredLanguages = search 
+    ? LANGUAGES.filter(l => l.name.toLowerCase().includes(search.toLowerCase()) || l.native.includes(search)) 
+    : LANGUAGES;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
@@ -42,10 +107,21 @@ export default function I18n() {
             <span className="font-semibold">{LANGUAGES.find(l => l.code === currentLang)?.native}</span>
           </div>
         </div>
+        {saved && (
+          <div className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-4 py-2 rounded-lg mb-4">
+            ✓ Language preference saved!
+          </div>
+        )}
+        
         <div className="mb-6"><input type="text" placeholder="Search languages..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full bg-white dark:bg-slate-800 border rounded-lg px-4 py-3" /></div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {filteredLanguages.map(lang => (
-            <button key={lang.code} onClick={() => setCurrentLang(lang.code)} className={`flex items-center gap-3 p-4 rounded-lg border-2 ${currentLang === lang.code ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20' : 'border-transparent bg-white dark:bg-slate-800 hover:border-slate-300'}`}>
+            <button 
+              key={lang.code} 
+              onClick={() => handleLanguageChange(lang.code)}
+              disabled={loading}
+              className={`flex items-center gap-3 p-4 rounded-lg border-2 transition-all ${currentLang === lang.code ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20' : 'border-transparent bg-white dark:bg-slate-800 hover:border-slate-300'} ${loading ? 'opacity-50' : ''}`}
+            >
               <span className="text-2xl">{lang.flag}</span>
               <div className="text-left"><div className="font-semibold">{lang.native}</div><div className="text-xs text-slate-500">{lang.name}</div></div>
             </button>

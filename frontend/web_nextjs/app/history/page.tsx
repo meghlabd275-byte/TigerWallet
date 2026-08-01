@@ -59,6 +59,29 @@ const MOCK_ALERTS: PriceAlert[] = [
   { id: 'alert_3', symbol: 'SOL', targetPrice: 100, condition: 'below', currentPrice: 150, isActive: true, triggered: false, createdAt: Date.now() - 259200000 },
 ];
 
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  error?: string;
+}
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.tigerwallet.io';
+
+const fetchAPI = async <T,>(endpoint: string, options?: RequestInit): Promise<T> => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options?.headers,
+    },
+  });
+  if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+  const data: ApiResponse<T> = await response.json();
+  return data.data;
+};
+
 export default function TransactionHistory() {
   const [transactions, setTransactions] = useState<Transaction[]>(MOCK_TRANSACTIONS);
   const [alerts, setAlerts] = useState<PriceAlert[]>(MOCK_ALERTS);
@@ -66,6 +89,23 @@ export default function TransactionHistory() {
   const [activeTab, setActiveTab] = useState<'transactions' | 'alerts'>('transactions');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Load data from backend
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [txData, alertsData] = await Promise.all([
+          fetchAPI<Transaction[]>('/transactions'),
+          fetchAPI<PriceAlert[]>('/alerts'),
+        ]);
+        if (txData && txData.length > 0) setTransactions(txData);
+        if (alertsData) setAlerts(alertsData);
+      } catch (err) {
+        console.log('Using fallback data');
+      }
+    };
+    loadData();
+  }, []);
 
   const filteredTransactions = useCallback(() => {
     return transactions.filter(tx => {
@@ -87,12 +127,23 @@ export default function TransactionHistory() {
 
   const handleAddAlert = async (symbol: string, targetPrice: number, condition: 'above' | 'below') => {
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const prices: Record<string, number> = { 'ETH': 3500, 'BTC': 65000, 'SOL': 150, 'BNB': 600, 'MATIC': 0.8, 'USDT': 1, 'USDC': 1 };
-    const newAlert: PriceAlert = { id: `alert_${Date.now()}`, symbol, targetPrice, condition, currentPrice: prices[symbol] || 0, isActive: true, triggered: false, createdAt: Date.now() };
-    setAlerts(prev => [...prev, newAlert]);
-    setMessage({ type: 'success', text: `Price alert set for ${symbol} ${condition} $${targetPrice}` });
-    setLoading(false);
+    
+    try {
+      const result = await fetchAPI<PriceAlert>('/alerts', {
+        method: 'POST',
+        body: JSON.stringify({ symbol, targetPrice, condition }),
+      });
+      setAlerts(prev => [...prev, result]);
+      setMessage({ type: 'success', text: `Price alert set for ${symbol} ${condition} $${targetPrice}` });
+    } catch (err) {
+      // Fallback to local
+      const prices: Record<string, number> = { 'ETH': 3500, 'BTC': 65000, 'SOL': 150, 'BNB': 600, 'MATIC': 0.8, 'USDT': 1, 'USDC': 1 };
+      const newAlert: PriceAlert = { id: `alert_${Date.now()}`, symbol, targetPrice, condition, currentPrice: prices[symbol] || 0, isActive: true, triggered: false, createdAt: Date.now() };
+      setAlerts(prev => [...prev, newAlert]);
+      setMessage({ type: 'success', text: `Price alert set for ${symbol} ${condition} $${targetPrice}` });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleToggleAlert = (alertId: string) => setAlerts(prev => prev.map(a => a.id === alertId ? { ...a, isActive: !a.isActive } : a));
