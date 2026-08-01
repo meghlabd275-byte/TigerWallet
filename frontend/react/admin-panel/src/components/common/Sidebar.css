@@ -1,0 +1,182 @@
+/* TigerWallet Sidebar Styles */
+
+.sidebar {
+  width: 260px;
+  height: 100vh;
+  background-color: var(--color-sidebar-bg);
+  color: var(--color-sidebar-text);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 200;
+  transition: width var(--transition-normal);
+  overflow: hidden;
+}
+
+.sidebar--closed {
+  width: 72px;
+}
+
+.sidebar__logo {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-lg);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  min-height: 64px;
+}
+
+.sidebar__logo-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.sidebar__logo-text {
+  font-size: 1.25rem;
+  font-weight: 700;
+  white-space: nowrap;
+  background: linear-gradient(135deg, var(--color-primary), #8b5cf6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.sidebar__nav {
+  flex: 1;
+  padding: var(--spacing-md);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sidebar__nav::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar__nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar__nav::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-full);
+}
+
+.sidebar__nav-item {
+  margin-bottom: var(--spacing-xs);
+}
+
+.sidebar__nav-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: none;
+  background: transparent;
+  color: var(--color-sidebar-text);
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.sidebar__nav-btn:hover {
+  background-color: var(--color-sidebar-hover);
+}
+
+.sidebar__nav-btn--active {
+  background-color: var(--color-sidebar-active);
+  color: white;
+}
+
+.sidebar__nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.sidebar__nav-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar__nav-arrow {
+  transition: transform var(--transition-fast);
+  opacity: 0.7;
+}
+
+.sidebar__nav-arrow--expanded {
+  transform: rotate(180deg);
+}
+
+.sidebar__subnav {
+  padding-left: calc(var(--spacing-md) + 20px + var(--spacing-md));
+  margin-top: var(--spacing-xs);
+}
+
+.sidebar__subnav-btn {
+  display: block;
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: none;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-size: 0.8125rem;
+  text-align: left;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.sidebar__subnav-btn:hover {
+  background-color: var(--color-sidebar-hover);
+  color: var(--color-sidebar-text);
+}
+
+.sidebar__footer {
+  padding: var(--spacing-md);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sidebar__version {
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
+  text-align: center;
+}
+
+/* Collapsed state adjustments */
+.sidebar--closed .sidebar__logo {
+  justify-content: center;
+  padding: var(--spacing-lg) var(--spacing-sm);
+}
+
+.sidebar--closed .sidebar__nav-btn {
+  justify-content: center;
+  padding: var(--spacing-sm);
+}
+
+.sidebar--closed .sidebar__nav-label,
+.sidebar--closed .sidebar__nav-arrow {
+  display: none;
+}
+
+.sidebar--closed .sidebar__subnav {
+  display: none;
+}
+
+/* Dark mode specific overrides not needed since sidebar uses fixed colors */

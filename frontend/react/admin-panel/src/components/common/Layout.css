@@ -1,0 +1,55 @@
+/* TigerWallet Layout Styles */
+
+.layout {
+  display: flex;
+  min-height: 100vh;
+  background-color: var(--color-bg-secondary);
+}
+
+.layout__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-left: 260px;
+  transition: margin-left var(--transition-normal);
+}
+
+.layout__main--sidebar-open {
+  margin-left: 260px;
+}
+
+.layout__content {
+  flex: 1;
+  padding: var(--spacing-xl);
+  overflow-y: auto;
+}
+
+/* Dark mode specific */
+.layout--dark {
+  background-color: var(--color-bg-secondary);
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .layout__main {
+    margin-left: 72px;
+  }
+  
+  .layout__main--sidebar-open {
+    margin-left: 260px;
+  }
+}
+
+@media (max-width: 768px) {
+  .layout__main {
+    margin-left: 0;
+  }
+  
+  .layout__main--sidebar-open {
+    margin-left: 0;
+  }
+  
+  .layout__content {
+    padding: var(--spacing-md);
+  }
+}
