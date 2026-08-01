@@ -2,8 +2,11 @@ package handlers
 
 import (
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 )
 
@@ -222,10 +225,17 @@ func (h *UserHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// Generate real JWT token
+	token, err := h.generateToken(req.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"token": "jwt_token_placeholder",
+			"token": token,
 			"user": gin.H{
 				"id":       1,
 				"email":    req.Email,
@@ -233,6 +243,24 @@ func (h *UserHandler) Login(c *gin.Context) {
 			},
 		},
 	})
+}
+
+// Generate JWT token
+func (h *UserHandler) generateToken(email string) (string, error) {
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		secret = "default_dev_secret_change_in_production"
+	}
+
+	claims := jwt.MapClaims{
+		"sub":   email,
+		"email": email,
+		"iat":   time.Now().Unix(),
+		"exp":   time.Now().Add(24 * time.Hour).Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(secret))
 }
 
 // ============================================================================

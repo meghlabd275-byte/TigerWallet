@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"os"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // ============================================================================
@@ -253,8 +256,36 @@ func (s *UserService) Login(ctx context.Context, email, password string) (*User,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	token := "jwt_token_placeholder"
+	
+	// Generate real JWT token
+	token, err := s.generateJWT(user)
+	if err != nil {
+		return nil, "", err
+	}
+	
 	return user, token, nil
+}
+
+// Generate JWT token for authenticated user
+func (s *UserService) generateJWT(user *User) (string, error) {
+	// Get secret from environment variable
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		secret = "default_dev_secret_change_in_production" // Fallback for development
+	}
+	
+	// Create JWT claims
+	claims := jwt.MapClaims{
+		"sub":  fmt.Sprintf("%d", user.ID),
+		"email": user.Email,
+		"role":  user.Role,
+		"iat":   time.Now().Unix(),
+		"exp":   time.Now().Add(24 * time.Hour).Unix(),
+	}
+	
+	// Sign token
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(secret))
 }
 
 // ============================================================================
