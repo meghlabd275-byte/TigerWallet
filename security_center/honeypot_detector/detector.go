@@ -281,14 +281,125 @@ func (d *Detector) getRPC(chainID string) string {
 	}
 }
 
-// Get token info (simulated - in production use actual RPC calls)
+// Get token info from blockchain RPC
 func (d *Detector) getTokenInfo(rpcURL, tokenAddress string) (*TokenInfo, error) {
-	// In production: call token contract directly
-	// This is a placeholder
+	// Query ERC-20 token contract for metadata
+	client := &http.Client{Timeout: 10 * time.Second}
+	
+	// Call name()
+	nameData, err := json.Marshal(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "eth_call",
+		"params": []interface{}{
+			map[string]string{
+				"to":   tokenAddress,
+				"data": "0x06fdde03", // name() selector
+			},
+			"latest",
+		},
+		"id": 1,
+	})
+	if err != nil {
+		return nil, err
+	}
+	
+	nameReq, _ := http.NewRequest("POST", rpcURL, bytes.NewBuffer(nameData))
+	nameReq.Header.Set("Content-Type", "application/json")
+	nameResp, err := client.Do(nameReq)
+	if err != nil {
+		return nil, err
+	}
+	defer nameResp.Body.Close()
+	
+	var nameResult struct {
+		Result string `json:"result"`
+	}
+	if err := json.NewDecoder(nameResp.Body).Decode(&nameResult); err != nil {
+		return nil, err
+	}
+	
+	// Decode name from hex
+	name := "Unknown Token"
+	if len(nameResult.Result) > 2 {
+		nameBytes, _ := hex.DecodeString(nameResult.Result[2:])
+		// Remove null bytes
+		name = string(bytes.Trim(nameBytes, "\x00"))
+	}
+	
+	// Call symbol()
+	symbolData, _ := json.Marshal(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "eth_call",
+		"params": []interface{}{
+			map[string]string{
+				"to":   tokenAddress,
+				"data": "0x95d89b41", // symbol() selector
+			},
+			"latest",
+		},
+		"id": 1,
+	})
+	
+	symbolReq, _ := http.NewRequest("POST", rpcURL, bytes.NewBuffer(symbolData))
+	symbolReq.Header.Set("Content-Type", "application/json")
+	symbolResp, err := client.Do(symbolReq)
+	if err != nil {
+		return nil, err
+	}
+	defer symbolResp.Body.Close()
+	
+	var symbolResult struct {
+		Result string `json:"result"`
+	}
+	if err := json.NewDecoder(symbolResp.Body).Decode(&symbolResult); err != nil {
+		return nil, err
+	}
+	
+	symbol := "UNKNOWN"
+	if len(symbolResult.Result) > 2 {
+		symbolBytes, _ := hex.DecodeString(symbolResult.Result[2:])
+		symbol = string(bytes.Trim(symbolBytes, "\x00"))
+	}
+	
+	// Call decimals()
+	decimalsData, _ := json.Marshal(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "eth_call",
+		"params": []interface{}{
+			map[string]string{
+				"to":   tokenAddress,
+				"data": "0x313ce567", // decimals() selector
+			},
+			"latest",
+		},
+		"id": 1,
+	})
+	
+	decimalsReq, _ := http.NewRequest("POST", rpcURL, bytes.NewBuffer(decimalsData))
+	decimalsReq.Header.Set("Content-Type", "application/json")
+	decimalsResp, err := client.Do(decimalsReq)
+	if err != nil {
+		return nil, err
+	}
+	defer decimalsResp.Body.Close()
+	
+	var decimalsResult struct {
+		Result string `json:"result"`
+	}
+	if err := json.NewDecoder(decimalsResp.Body).Decode(&decimalsResult); err != nil {
+		return nil, err
+	}
+	
+	decimals := 18
+	if len(decimalsResult.Result) > 2 {
+		decimalsInt, _ := strconv.ParseInt(decimalsResult.Result[2:], 16, 64)
+		decimals = int(decimalsInt)
+	}
+	
 	return &TokenInfo{
-		Name:   "Sample Token",
-		Symbol: "SAMPLE",
-		Decimals: 18,
+		Name:     name,
+		Symbol:   symbol,
+		Decimals: decimals,
 	}, nil
 }
 
