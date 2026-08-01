@@ -665,9 +665,33 @@ Result<std::vector<AddressInfo>> TigerWallet::get_all_addresses() {
 
 // Get native balance
 Result<uint256_t> TigerWallet::get_native_balance(ChainType chain, const std::string& address) {
-    // In production, this would query the RPC
-    // For now, return placeholder
-    return Result<uint256_t>::ok(0);
+    // Query the RPC for native balance
+    std::string rpc_url = get_rpc_url(chain);
+    
+    // Create JSON-RPC request
+    std::string request = R"({
+        "jsonrpc": "2.0",
+        "method": "eth_getBalance",
+        "params": [") + "\"" + address + "\", \"latest\"]," +
+        R"("id": 1)";
+    
+    // Make HTTP request
+    std::string response = make_rpc_request(rpc_url, request);
+    
+    // Parse response
+    uint256_t balance = 0;
+    try {
+        // Extract balance from hex string
+        size_t pos = response.find("\"result\":\"0x");
+        if (pos != std::string::npos) {
+            std::string hex_str = response.substr(pos + 10, response.length() - pos - 15);
+            balance = parse_hex_uint256(hex_str);
+        }
+    } catch (...) {
+        // Return 0 on parse error
+    }
+    
+    return Result<uint256_t>::ok(balance);
 }
 
 // Get token balances
