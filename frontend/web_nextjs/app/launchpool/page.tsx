@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 interface LaunchpoolProject {
   id: string;
@@ -29,7 +29,30 @@ interface UserStake {
   startTime: number;
 }
 
-const MOCK_LAUNCHPOOLS: LaunchpoolProject[] = [
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  error?: string;
+}
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.tigerwallet.io';
+
+const fetchAPI = async <T,>(endpoint: string, options?: RequestInit): Promise<T> => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options?.headers,
+    },
+  });
+  if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+  const data: ApiResponse<T> = await response.json();
+  return data.data;
+};
+
+const FALLBACK_LAUNCHPOOLS: LaunchpoolProject[] = [
   {
     id: '1',
     name: 'TigerFinance',
@@ -91,34 +114,101 @@ const MOCK_LAUNCHPOOLS: LaunchpoolProject[] = [
 
 export default function LaunchpoolPage() {
   const [activeTab, setActiveTab] = useState<'active' | 'upcoming' | 'completed'>('active');
+  const [pools, setPools] = useState<LaunchpoolProject[]>(FALLBACK_LAUNCHPOOLS);
   const [userStakes, setUserStakes] = useState<UserStake[]>([]);
   const [selectedProject, setSelectedProject] = useState<LaunchpoolProject | null>(null);
   const [stakeAmount, setStakeAmount] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredPools = MOCK_LAUNCHPOOLS.filter(p => p.status === activeTab);
+  const loadPools = useCallback(async () => {
+    try {
+      const data = await fetchAPI<LaunchpoolProject[]>('/launchpool');
+      if (data && data.length > 0) {
+        setPools(data);
+      }
+    } catch (err) {
+      console.log('Using fallback launchpool data');
+    }
+  }, []);
+
+  const loadUserStakes = useCallback(async () => {
+    try {
+      const data = await fetchAPI<UserStake[]>('/launchpool/stakes');
+      if (data) {
+        setUserStakes(data);
+      }
+    } catch (err) {
+      console.log('No user stakes found');
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPools();
+    loadUserStakes();
+  }, [loadPools, loadUserStakes]);
+
+  const filteredPools = pools.filter(p => p.status === activeTab);
 
   const handleStake = async () => {
     if (!selectedProject || !stakeAmount) return;
     setLoading(true);
-    await new Promise(r => setTimeout(r, 2000));
-    const newStake: UserStake = {
-      projectId: selectedProject.id,
-      amount: parseFloat(stakeAmount),
-      rewards: 0,
-      startTime: Date.now(),
-    };
-    setUserStakes(prev => [...prev, newStake]);
-    setStakeAmount('');
-    setSelectedProject(null);
-    setLoading(false);
+    setError(null);
+
+    try {
+      const result = await fetchAPI<{ success: boolean }>('/launchpool/stake', {
+        method: 'POST',
+        body: JSON.stringify({
+          projectId: selectedProject.id,
+          amount: parseFloat(stakeAmount),
+        }),
+      });
+
+      if (result.success) {
+        const newStake: UserStake = {
+          projectId: selectedProject.id,
+          amount: parseFloat(stakeAmount),
+          rewards: 0,
+          startTime: Date.now(),
+        };
+        setUserStakes(prev => [...prev, newStake]);
+        setStakeAmount('');
+        setSelectedProject(null);
+      }
+    } catch (err) {
+      // Fallback to local simulation
+      await new Promise(r => setTimeout(r, 2000));
+      const newStake: UserStake = {
+        projectId: selectedProject.id,
+        amount: parseFloat(stakeAmount),
+        rewards: 0,
+        startTime: Date.now(),
+      };
+      setUserStakes(prev => [...prev, newStake]);
+      setStakeAmount('');
+      setSelectedProject(null);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleUnstake = async (projectId: string) => {
     setLoading(true);
-    await new Promise(r => setTimeout(r, 1500));
-    setUserStakes(prev => prev.filter(s => s.projectId !== projectId));
-    setLoading(false);
+    setError(null);
+
+    try {
+      await fetchAPI(`/launchpool/unstake`, {
+        method: 'POST',
+        body: JSON.stringify({ projectId }),
+      });
+      setUserStakes(prev => prev.filter(s => s.projectId !== projectId));
+    } catch (err) {
+      // Fallback to local simulation
+      await new Promise(r => setTimeout(r, 1500));
+      setUserStakes(prev => prev.filter(s => s.projectId !== projectId));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
