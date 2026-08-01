@@ -145,15 +145,18 @@ fn sign_p256(
         }
     }
     
-    // For P-256, would use p256 crate
-    // This is a placeholder - production would properly implement
-    let digest = Sha256::digest(message);
-    let hash = Sha256::digest(&secret_bytes);
+    // Use P-256 ECDSA for production MPC signing
+    use p256::ecdsa::{SigningKey, signature::Signer};
+    
+    let signing_key = SigningKey::from_bytes(secret_bytes.into())
+        .map_err(|e| MPCError::SigningError(format!("Invalid key: {}", e)))?;
+    
+    let signature: p256::ecdsa::Signature = signing_key.sign(message);
     
     Ok(SignResult {
-        signature: format!("{:?}{:?}", digest, hash).as_bytes().to_vec(),
+        signature: signature.to_bytes().to_vec(),
         public_key: public_key.to_vec(),
-        key_id: String::new(),
+        key_id: format!("p256-{}", hex::encode(&public_key[..8])),
     })
 }
 

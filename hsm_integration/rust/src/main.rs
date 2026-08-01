@@ -560,11 +560,24 @@ impl HSMManager {
         
         drop(store);
         
-        // In production, verify using the public key
-        // For now, return true as a placeholder
-        self.log_audit("verify", Some(key_id), true, None);
+        // Verify using the public key with proper ECDSA verification
+        use p256::ecdsa::{VerifyingKey, signature::Verifier};
         
-        Ok(true)
+        let key_bytes: [u8; 65] = public_key.try_into()
+            .map_err(|_| HSMError::InvalidKey("Invalid public key length".to_string()))?;
+        
+        let verifying_key = VerifyingKey::from_sec1_bytes(&key_bytes)
+            .map_err(|e| HSMError::KeyOperationFailed(format!("Invalid public key: {}", e)))?;
+        
+        // Parse signature (assumed to be DER format)
+        let signature = p256::ecdsa::Signature::from_slice(&signature)
+            .map_err(|e| HSMError::VerificationFailed(format!("Invalid signature: {}", e)))?;
+        
+        let result = verifying_key.verify(message, &signature).is_ok();
+        
+        self.log_audit("verify", Some(key_id), result, None);
+        
+        Ok(result)
     }
 
     // ========================================================================

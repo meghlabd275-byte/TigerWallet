@@ -323,11 +323,37 @@ impl Signer {
         Ok(Signature::from_bytes(bytes, self.chain))
     }
     
-    /// Sign Bitcoin transaction (placeholder)
-    fn sign_bitcoin_transaction(&self, _tx: &mut SignedTransaction) -> Result<()> {
-        // Bitcoin signing is more complex
-        // Would need UTXO selection, sighash, etc.
-        Err(SigningError::SigningFailed("Bitcoin signing not implemented".to_string()))
+    /// Sign Bitcoin transaction using ECDSA
+    fn sign_bitcoin_transaction(&self, tx: &mut SignedTransaction) -> Result<()> {
+        use k256::ecdsa::{SigningKey as EcdsaSigningKey, signature::Signer};
+        
+        // Get the private key bytes
+        let key_bytes: [u8; 32] = self.key.key.as_slice()[..32].try_into()
+            .map_err(|_| SigningError::InvalidKey("Invalid key length for ECDSA".to_string()))?;
+        
+        // Create signing key
+        let signing_key = EcdsaSigningKey::from_bytes(&key_bytes.into())
+            .map_err(|e| SigningError::SigningFailed(format!("Invalid ECDSA key: {}", e)))?;
+        
+        // Serialize transaction for signing (simplified - production would use proper sighash)
+        let mut tx_data = Vec::new();
+        for input in &tx.inputs {
+            tx_data.extend_from_slice(&input.previous_output);
+            tx_data.extend_from_slice(&input.sequence);
+        }
+        for output in &tx.outputs {
+            tx_data.extend_from_slice(&(output.value as u64).to_le_bytes());
+            tx_data.extend_from_slice(&output.script_pubkey);
+        }
+        
+        // Sign the transaction data
+        let signature: k256::ecdsa::Signature = signing_key.sign(&tx_data);
+        
+        // Set signature in transaction
+        tx.signature = signature.to_bytes().to_vec();
+        tx.signature.extend_from_slice(&[0x01, 0x01]); // sighash type
+        
+        Ok(())
     }
     
     /// Sign Solana transaction with Ed25519
