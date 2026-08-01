@@ -21,6 +21,73 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 // ============================================================================
+// Base58 Encoding/Decoding
+// ============================================================================
+
+const BASE58_ALPHABET: &[u8] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+fn base58_encode(data: &[u8]) -> String {
+    // Count leading zeros
+    let mut zeros = 0;
+    for &b in data.iter() {
+        if b == 0 {
+            zeros += 1;
+        } else {
+            break;
+        }
+    }
+    
+    // Convert to big integer
+    let mut digits = Vec::new();
+    for &b in data.iter() {
+        let mut carry = b as usize;
+        for i in (0..digits.len()).rev() {
+            carry += (digits[i] as usize) * 256;
+            digits[i] = (carry % 58) as u8;
+            carry /= 58;
+        }
+        while carry > 0 {
+            digits.push((carry % 58) as u8);
+            carry /= 58;
+        }
+    }
+    
+    // Build result
+    let mut result = String::new();
+    for _ in 0..zeros {
+        result.push('1');
+    }
+    for &d in digits.iter().rev() {
+        result.push(BASE58_ALPHABET[d as usize] as char);
+    }
+    
+    result
+}
+
+fn base58_decode(s: &str) -> Result<Vec<u8>, &'static str> {
+    let mut result = Vec::new();
+    
+    for c in s.chars() {
+        let idx = BASE58_ALPHABET.iter().position(|&x| x == c as u8)
+            .ok_or("Invalid base58 character")?;
+        
+        let mut carry = idx;
+        for i in (0..result.len()).rev() {
+            carry += (result[i] as usize) * 58;
+            result[i] = (carry % 256) as u8;
+            carry /= 256;
+        }
+        
+        while carry > 0 {
+            result.push((carry % 256) as u8);
+            carry /= 256;
+        }
+    }
+    
+    Ok(result)
+}
+
+// ============================================================================
 // Error Types
 // ============================================================================
 
@@ -74,9 +141,49 @@ impl SubstrateAddress {
         // SS58 encoding with network prefix
         let prefix = self.network.ss58_prefix() as u16;
         
-        // For now, return placeholder
-        // In production: use ss58 crate
-        format!("{}:{}", prefix, hex::encode(&self.bytes[..8]))
+        // Proper SS58 encoding: version byte + payload + checksum
+        let mut payload = vec![prefix];
+        payload.extend_from_slice(&self.bytes);
+        
+        // Calculate checksum (Blake2 R 64 bytes of payload)
+        use sha2::{Sha256, Digest};
+        let mut hasher = Sha256::new();
+        hasher.update(&payload);
+        hasher.update(b"SS58PRE");
+        let hash = hasher.finalize();
+        
+        // Take first 2 bytes of hash for checksum
+        payload.extend_from_slice(&hash[..2]);
+        
+        // Base58 encode
+        base58_encode(&payload)
+    }
+    
+    /// Decode from SS58 string
+    pub fn from_ss58(ss58: &str, network: NetworkId) -> Result<Self, SubstrateError> {
+        let decoded = base58_decode(ss58).map_err(|e| SubstrateError::InvalidAddress(e.to_string()))?;
+        
+        if decoded.len() < 3 {
+            return Err(SubstrateError::InvalidAddress("SS58 string too short".to_string()));
+        }
+        
+        // Extract version byte and check network
+        let version = decoded[0];
+        if version != network.ss58_prefix() {
+            return Err(SubstrateError::InvalidAddress("Network mismatch".to_string()));
+        }
+        
+        // Extract address bytes (remove version and checksum)
+        let address_bytes = &decoded[1..decoded.len() - 2];
+        
+        if address_bytes.len() != 32 {
+            return Err(SubstrateError::InvalidAddress("Invalid address length".to_string()));
+        }
+        
+        let mut bytes = [0u8; 32];
+        bytes.copy_from_slice(address_bytes);
+        
+        Ok(SubstrateAddress { bytes, network })
     }
     
     /// Get as raw bytes

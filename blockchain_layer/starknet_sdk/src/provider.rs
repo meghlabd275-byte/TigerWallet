@@ -368,14 +368,146 @@ impl Provider {
         }
     }
     
-    /// Send JSON-RPC request
+    /// Send JSON-RPC request to Starknet node
     async fn send_request<T: for<'de> Deserialize<'de>>(
         &self,
-        _request: RpcRequest<T>,
+        request: RpcRequest<T>,
     ) -> Result<RpcResponse<T>, ProviderError> {
-        // In production: actually send HTTP request
-        // For now: return placeholder
-        Err(ProviderError::NetworkError("Not implemented".to_string()))
+        // Send actual HTTP request to Starknet RPC endpoint
+        let response = self.client
+            .post(&self.rpc_url)
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        
+        // Parse response
+        let rpc_response: RpcResponse<T> = response
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        
+        // Check for RPC error
+        if let Some(error) = rpc_response.error {
+            return Err(ProviderError::RpcError(error.message));
+        }
+        
+        Ok(rpc_response)
+    }
+    
+    /// Get block by number
+    pub async fn get_block_by_number(&self, block_number: u64) -> Result<Block, ProviderError> {
+        let request = json!({
+            "jsonrpc": "2.0",
+            "method": "starknet_getBlockByNumber",
+            "params": [
+                {"block_number": block_number},
+                true
+            ],
+            "id": 1
+        });
+        
+        let request: RpcRequest<serde_json::Value> = serde_json::from_value(request)
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        
+        let response = self.send_request(request).await?;
+        
+        serde_json::from_value(response.result.unwrap_or(json!(null)))
+            .map_err(|e| ProviderError::ParseError(e.to_string()))
+    }
+    
+    /// Get block hash and number
+    pub async fn get_block_hash_and_number(&self) -> Result<(String, u64), ProviderError> {
+        let request = json!({
+            "jsonrpc": "2.0",
+            "method": "starknet_blockHashAndNumber",
+            "params": [],
+            "id": 1
+        });
+        
+        let request: RpcRequest<serde_json::Value> = serde_json::from_value(request)
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        
+        let response = self.send_request(request).await?;
+        
+        let result = response.result.unwrap_or(json!(null));
+        let hash = result["block_hash"].as_str().unwrap_or("").to_string();
+        let number = result["block_number"].as_u64().unwrap_or(0);
+        
+        Ok((hash, number))
+    }
+    
+    /// Estimate fee for transaction
+    pub async fn estimate_fee(
+        &self,
+        request: BroadcastedInvokeTransaction,
+        block_id: Option<BlockId>,
+    ) -> Result<FeeEstimate, ProviderError> {
+        let request = json!({
+            "jsonrpc": "2.0",
+            "method": "starknet_estimateFee",
+            "params": [request, block_id.unwrap_or(BlockId::Tag(Tag::Latest))],
+            "id": 1
+        });
+        
+        let request: RpcRequest<serde_json::Value> = serde_json::from_value(request)
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        
+        let response = self.send_request(request).await?;
+        
+        serde_json::from_value(response.result.unwrap_or(json!(null)))
+            .map_err(|e| ProviderError::ParseError(e.to_string()))
+    }
+    
+    /// Get class hash at address
+    pub async fn get_class_hash_at(
+        &self,
+        address: &StarknetAddress,
+        block_id: Option<BlockId>,
+    ) -> Result<String, ProviderError> {
+        let request = json!({
+            "jsonrpc": "2.0",
+            "method": "starknet_getClassHashAt",
+            "params": [
+                format!("0x{:064x}", address.as_u128()),
+                block_id.unwrap_or(BlockId::Tag(Tag::Latest))
+            ],
+            "id": 1
+        });
+        
+        let request: RpcRequest<String> = serde_json::from_value(request)
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        
+        let response = self.send_request(request).await?;
+        
+        Ok(response.result.unwrap_or_default())
+    }
+    
+    /// Get storage at key
+    pub async fn get_storage_at(
+        &self,
+        address: &StarknetAddress,
+        key: &str,
+        block_id: Option<BlockId>,
+    ) -> Result<String, ProviderError> {
+        let request = json!({
+            "jsonrpc": "2.0",
+            "method": "starknet_getStorageAt",
+            "params": [
+                format!("0x{:064x}", address.as_u128()),
+                key,
+                block_id.unwrap_or(BlockId::Tag(Tag::Latest))
+            ],
+            "id": 1
+        });
+        
+        let request: RpcRequest<String> = serde_json::from_value(request)
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        
+        let response = self.send_request(request).await?;
+        
+        Ok(response.result.unwrap_or_default())
     }
     
     /// Get supported endpoints

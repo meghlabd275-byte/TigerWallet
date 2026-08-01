@@ -18,6 +18,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"os"
 	"sort"
 	"sync"
 	"time"
@@ -331,9 +332,20 @@ func generateTxHash() string {
 func main() {
 	svc := NewSwapService()
 	
-	// Set API keys (in production, would be environment variables)
-	svc.SetAPIKey("tigerswap", "tiger_swap_key_placeholder")
-	svc.SetAPIKey("binance", "binance_api_key_placeholder")
+	// Set API keys from environment variables (secure)
+	tigerSwapKey := os.Getenv("TIGERSWAP_API_KEY")
+	binanceKey := os.Getenv("BINANCE_API_KEY")
+	coinbaseKey := os.Getenv("COINBASE_API_KEY")
+	
+	if tigerSwapKey != "" {
+		svc.SetAPIKey("tigerswap", tigerSwapKey)
+	}
+	if binanceKey != "" {
+		svc.SetAPIKey("binance", binanceKey)
+	}
+	if coinbaseKey != "" {
+		svc.SetAPIKey("coinbase", coinbaseKey)
+	}
 	
 	fmt.Println("Swap Service initialized")
 	fmt.Println("Supported DEXs:", len(svc.GetActiveDEXes()))
