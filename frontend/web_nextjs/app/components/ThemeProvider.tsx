@@ -1,57 +1,97 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react'
 
-type Theme = 'light' | 'dark'
+type ThemeMode = 'light' | 'dark' | 'system'
 
 interface ThemeContextType {
-  theme: Theme
+  theme: 'light' | 'dark'
+  themeMode: ThemeMode
   toggleTheme: () => void
-  setTheme: (theme: Theme) => void
+  setTheme: (theme: 'light' | 'dark') => void
+  setThemeMode: (mode: ThemeMode) => void
   isDark: boolean
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
+const THEME_MODE_KEY = 'tigerwallet_theme_mode'
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  // Default to dark theme for crypto wallets
-  const [theme, setThemeState] = useState<Theme>('dark')
+  const [themeMode, setThemeModeState] = useState<ThemeMode>('system')
+  const [systemPreference, setSystemPreference] = useState<'light' | 'dark'>('dark')
+  const [theme, setThemeState] = useState<'light' | 'dark'>('dark')
   const [mounted, setMounted] = useState(false)
 
+  // Get system preference
   useEffect(() => {
-    // Check localStorage first
-    const stored = localStorage.getItem('tigerwallet-theme') as Theme
-    if (stored && (stored === 'light' || stored === 'dark')) {
-      setThemeState(stored)
-    } else {
-      // Fall back to system preference
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      setThemeState(prefersDark ? 'dark' : 'light')
+    if (typeof window === 'undefined') return
+    
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    setSystemPreference(mediaQuery.matches ? 'dark' : 'light')
+
+    const handler = (e: MediaQueryListEvent) => {
+      setSystemPreference(e.matches ? 'dark' : 'light')
+    }
+
+    mediaQuery.addEventListener('change', handler)
+    return () => mediaQuery.removeEventListener('change', handler)
+  }, [])
+
+  // Initialize theme on mount
+  useEffect(() => {
+    const stored = localStorage.getItem(THEME_MODE_KEY) as ThemeMode
+    if (stored && (stored === 'light' || stored === 'dark' || stored === 'system')) {
+      setThemeModeState(stored)
     }
     setMounted(true)
   }, [])
 
+  // Calculate effective theme
   useEffect(() => {
-    if (mounted) {
-      localStorage.setItem('tigerwallet-theme', theme)
-      document.documentElement.classList.remove('light', 'dark')
-      document.documentElement.classList.add(theme)
-      
-      // Also set data-theme attribute for Tailwind
-      document.documentElement.setAttribute('data-theme', theme)
+    if (!mounted) return
+    
+    let effectiveTheme: 'light' | 'dark'
+    if (themeMode === 'system') {
+      effectiveTheme = systemPreference
+    } else {
+      effectiveTheme = themeMode
     }
-  }, [theme, mounted])
+    
+    setThemeState(effectiveTheme)
+    
+    // Apply to document
+    localStorage.setItem(THEME_MODE_KEY, themeMode)
+    document.documentElement.classList.remove('light', 'dark')
+    document.documentElement.classList.add(effectiveTheme)
+    document.documentElement.setAttribute('data-theme', effectiveTheme)
+  }, [themeMode, systemPreference, mounted])
 
-  const toggleTheme = () => {
-    setThemeState(prev => prev === 'dark' ? 'light' : 'dark')
-  }
+  const setThemeMode = useCallback((mode: ThemeMode) => {
+    setThemeModeState(mode)
+    localStorage.setItem(THEME_MODE_KEY, mode)
+  }, [])
 
-  const setTheme = (newTheme: Theme) => {
-    setThemeState(newTheme)
-  }
+  const toggleTheme = useCallback(() => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark'
+    setThemeModeState(newTheme)
+    localStorage.setItem(THEME_MODE_KEY, newTheme)
+  }, [theme])
+
+  const setTheme = useCallback((newTheme: 'light' | 'dark') => {
+    setThemeModeState(newTheme)
+    localStorage.setItem(THEME_MODE_KEY, newTheme)
+  }, [])
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme, setTheme, isDark: theme === 'dark' }}>
+    <ThemeContext.Provider value={{ 
+      theme, 
+      themeMode,
+      toggleTheme, 
+      setTheme, 
+      setThemeMode,
+      isDark: theme === 'dark' 
+    }}>
       {children}
     </ThemeContext.Provider>
   )

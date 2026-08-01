@@ -72,8 +72,7 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 // THEME STORAGE
 // ============================================================================
 
-const THEME_STORAGE_KEY = 'tigerwallet-theme';
-const COLOR_MODE_KEY = 'tigerwallet-color-mode';
+const THEME_MODE_KEY = 'tigerwallet_theme_mode';
 
 function getSystemTheme(): 'light' | 'dark' {
   if (typeof window === 'undefined') return 'dark';
@@ -82,7 +81,7 @@ function getSystemTheme(): 'light' | 'dark' {
 
 function getStoredTheme(): Theme {
   if (typeof window === 'undefined') return 'dark';
-  const stored = localStorage.getItem(THEME_STORAGE_KEY);
+  const stored = localStorage.getItem(THEME_MODE_KEY);
   if (stored === 'light' || stored === 'dark' || stored === 'system') {
     return stored;
   }
@@ -91,7 +90,7 @@ function getStoredTheme(): Theme {
 
 function setStoredTheme(theme: Theme): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(THEME_STORAGE_KEY, theme);
+  localStorage.setItem(THEME_MODE_KEY, theme);
 }
 
 // ============================================================================

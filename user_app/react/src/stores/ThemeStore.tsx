@@ -1,46 +1,82 @@
 // Theme Store - Light/Dark Theme Management
 // Works on every page throughout the user app
+// Consolidated with shared theme - uses consistent storage keys
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 
-type Theme = 'light' | 'dark';
+type ThemeMode = 'light' | 'dark' | 'system';
 
 interface ThemeContextType {
-  theme: Theme;
+  theme: 'light' | 'dark';
+  themeMode: ThemeMode;
   toggleTheme: () => void;
-  setTheme: (theme: Theme) => void;
+  setTheme: (theme: 'light' | 'dark') => void;
+  setThemeMode: (mode: ThemeMode) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [theme, setThemeState] = useState<Theme>('dark');
+const THEME_MODE_KEY = 'tigerwallet_theme_mode';
 
+export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [themeMode, setThemeModeState] = useState<ThemeMode>(() => {
+    const stored = localStorage.getItem(THEME_MODE_KEY);
+    return (stored as ThemeMode) || 'system';
+  });
+  
+  const [systemPreference, setSystemPreference] = useState<'light' | 'dark'>('dark');
+  const [theme, setThemeState] = useState<'light' | 'dark'>('dark');
+
+  // Get system preference
   useEffect(() => {
-    const savedTheme = localStorage.getItem('user_app_theme') as Theme;
-    if (savedTheme) {
-      setThemeState(savedTheme);
-    } else {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      setThemeState(prefersDark ? 'dark' : 'light');
-    }
+    if (typeof window === 'undefined') return;
+    
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    setSystemPreference(mediaQuery.matches ? 'dark' : 'light');
+
+    const handler = (e: MediaQueryListEvent) => {
+      setSystemPreference(e.matches ? 'dark' : 'light');
+    };
+
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
   }, []);
 
+  // Calculate effective theme
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('user_app_theme', theme);
+    let effectiveTheme: 'light' | 'dark';
+    if (themeMode === 'system') {
+      effectiveTheme = systemPreference;
+    } else {
+      effectiveTheme = themeMode;
+    }
+    setThemeState(effectiveTheme);
+    
+    // Apply to document
+    document.documentElement.setAttribute('data-theme', effectiveTheme);
+    document.documentElement.classList.remove('light', 'dark');
+    document.documentElement.classList.add(effectiveTheme);
+    localStorage.setItem(THEME_MODE_KEY, themeMode);
+  }, [themeMode, systemPreference]);
+
+  const setThemeMode = useCallback((mode: ThemeMode) => {
+    setThemeModeState(mode);
+    localStorage.setItem(THEME_MODE_KEY, mode);
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    setThemeModeState(newTheme);
+    localStorage.setItem(THEME_MODE_KEY, newTheme);
   }, [theme]);
 
-  const toggleTheme = () => {
-    setThemeState(prev => prev === 'light' ? 'dark' : 'light');
-  };
-
-  const setTheme = (newTheme: Theme) => {
-    setThemeState(newTheme);
-  };
+  const setTheme = useCallback((newTheme: 'light' | 'dark') => {
+    setThemeModeState(newTheme);
+    localStorage.setItem(THEME_MODE_KEY, newTheme);
+  }, []);
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>
+    <ThemeContext.Provider value={{ theme, themeMode, toggleTheme, setTheme, setThemeMode }}>
       {children}
     </ThemeContext.Provider>
   );

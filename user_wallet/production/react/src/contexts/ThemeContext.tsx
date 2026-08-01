@@ -1,58 +1,85 @@
 /**
  * Theme Context - Dark/Light Mode Support
  * Works everywhere across all pages
+ * Consolidated theme - uses same storage keys as other TigerWallet apps
  */
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 
-type Theme = 'light' | 'dark';
+type ThemeMode = 'light' | 'dark' | 'system';
 
 interface ThemeContextType {
-  theme: Theme;
+  theme: 'light' | 'dark';
+  themeMode: ThemeMode;
   toggleTheme: () => void;
-  setTheme: (theme: Theme) => void;
+  setTheme: (theme: 'light' | 'dark') => void;
+  setThemeMode: (mode: ThemeMode) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    // Check localStorage first
-    const stored = localStorage.getItem('tigerwallet-theme') as Theme;
-    if (stored) return stored;
-    
-    // Check system preference
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return 'dark';
-    }
-    
-    return 'dark'; // Default to dark
-  });
+const THEME_MODE_KEY = 'tigerwallet_theme_mode';
+const THEME_KEY = 'tigerwallet_user_theme';
 
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  const [themeMode, setThemeModeState] = useState<ThemeMode>(() => {
+    const stored = localStorage.getItem(THEME_MODE_KEY);
+    return (stored as ThemeMode) || 'system';
+  });
+  
+  const [systemPreference, setSystemPreference] = useState<'light' | 'dark'>('dark');
+  const [theme, setThemeState] = useState<'light' | 'dark'>('dark');
+
+  // Get system preference
   useEffect(() => {
-    // Save to localStorage
-    localStorage.setItem('tigerwallet-theme', theme);
+    if (typeof window === 'undefined') return;
+    
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    setSystemPreference(mediaQuery.matches ? 'dark' : 'light');
+
+    const handler = (e: MediaQueryListEvent) => {
+      setSystemPreference(e.matches ? 'dark' : 'light');
+    };
+
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, []);
+
+  // Calculate effective theme
+  useEffect(() => {
+    let effectiveTheme: 'light' | 'dark';
+    if (themeMode === 'system') {
+      effectiveTheme = systemPreference;
+    } else {
+      effectiveTheme = themeMode;
+    }
+    setThemeState(effectiveTheme);
     
     // Apply to document
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-      document.documentElement.classList.remove('light');
-    } else {
-      document.documentElement.classList.add('light');
-      document.documentElement.classList.remove('dark');
-    }
+    document.documentElement.setAttribute('data-theme', effectiveTheme);
+    document.documentElement.classList.remove('light', 'dark');
+    document.documentElement.classList.add(effectiveTheme);
+    localStorage.setItem(THEME_KEY, effectiveTheme);
+  }, [themeMode, systemPreference]);
+
+  const setThemeMode = useCallback((mode: ThemeMode) => {
+    setThemeModeState(mode);
+    localStorage.setItem(THEME_MODE_KEY, mode);
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    setThemeModeState(newTheme);
+    localStorage.setItem(THEME_MODE_KEY, newTheme);
   }, [theme]);
 
-  const toggleTheme = () => {
-    setThemeState(prev => prev === 'dark' ? 'light' : 'dark');
-  };
-
-  const setTheme = (newTheme: Theme) => {
-    setThemeState(newTheme);
-  };
+  const setTheme = useCallback((newTheme: 'light' | 'dark') => {
+    setThemeModeState(newTheme);
+    localStorage.setItem(THEME_MODE_KEY, newTheme);
+  }, []);
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>
+    <ThemeContext.Provider value={{ theme, themeMode, toggleTheme, setTheme, setThemeMode }}>
       {children}
     </ThemeContext.Provider>
   );
