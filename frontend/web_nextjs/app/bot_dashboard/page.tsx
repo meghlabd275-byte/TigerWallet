@@ -17,6 +17,23 @@ import {
 } from '@mui/icons-material';
 import { useTheme } from '../components/ThemeProvider';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8098';
+
+const fetchAPI = async <T,>(endpoint: string, options?: RequestInit): Promise<T> => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options?.headers,
+    },
+  });
+  if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+  const data = await response.json();
+  return data.data || data;
+};
+
 // ============================================================================
 // Types & Interfaces
 // ============================================================================
@@ -180,85 +197,95 @@ export default function BotDashboard() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      // Simulate API calls
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Fetch real data from backend API
+      try {
+        const usersData = await fetchAPI<User[]>('/api/v1/bot/users');
+        setUsers(usersData);
+      } catch (e) {
+        console.log('Using mock users - API not available');
+        // Fallback to sample data if API not available
+        setUsers([
+          {
+            id: '1',
+            address: '0x1234...abcd',
+            name: 'Admin',
+            role: 'admin',
+            email: 'admin@tigerswap.io',
+            createdAt: Date.now() - 86400000 * 30,
+            isActive: true,
+          },
+          {
+            id: '2',
+            address: '0x5678...efgh',
+            name: 'Bot Operator',
+            role: 'operator',
+            email: 'operator@tigerswap.io',
+            createdAt: Date.now() - 86400000 * 20,
+            isActive: true,
+          },
+          {
+            id: '3',
+            address: '0xabcd...1234',
+            name: 'Client User',
+            role: 'client',
+            email: 'client@example.com',
+            createdAt: Date.now() - 86400000 * 10,
+            isActive: true,
+          },
+        ]);
+      }
       
-      // Mock users
-      setUsers([
-        {
-          id: '1',
-          address: '0x1234...abcd',
-          name: 'Admin',
-          role: 'admin',
-          email: 'admin@tigerswap.io',
-          createdAt: Date.now() - 86400000 * 30,
-          isActive: true,
-        },
-        {
-          id: '2',
-          address: '0x5678...efgh',
-          name: 'Bot Operator',
-          role: 'operator',
-          email: 'operator@tigerswap.io',
-          createdAt: Date.now() - 86400000 * 20,
-          isActive: true,
-        },
-        {
-          id: '3',
-          address: '0xabcd...1234',
-          name: 'Client User',
-          role: 'client',
-          email: 'client@example.com',
-          createdAt: Date.now() - 86400000 * 10,
-          isActive: true,
-        },
-      ]);
-      
-      // Mock bots
-      setBots([
-        {
-          id: 'bot1',
-          name: 'ETH-USDC Market Maker',
-          type: 'market_maker',
-          status: 'running',
-          owner: '0x1234...abcd',
-          profit: 15420.5,
-          volume: 2500000,
-          trades: 1520,
-          winRate: 92.5,
-          createdAt: Date.now() - 86400000 * 15,
-          lastActive: Date.now() - 300000,
-          config: { minInvestment: 5000, maxInvestment: 50000, targetApy: 25, riskLevel: 3, maxDailyLoss: 1000, stopLoss: 5 },
-        },
-        {
-          id: 'bot2',
-          name: 'BTC Arbitrage',
-          type: 'arbitrage',
-          status: 'running',
-          owner: '0x5678...efgh',
-          profit: 8750.2,
-          volume: 1800000,
-          trades: 850,
-          winRate: 88.2,
-          createdAt: Date.now() - 86400000 * 10,
-          lastActive: Date.now() - 600000,
-          config: { minInvestment: 10000, maxInvestment: 100000, targetApy: 40, riskLevel: 6, maxDailyLoss: 2000, stopLoss: 8 },
-        },
-        {
-          id: 'bot3',
-          name: 'SOL Sniper',
-          type: 'sniper',
-          status: 'paused',
-          owner: '0xabcd...1234',
-          profit: 3200.0,
-          volume: 450000,
-          trades: 120,
-          winRate: 75.0,
-          createdAt: Date.now() - 86400000 * 5,
-          lastActive: Date.now() - 3600000,
-          config: { minInvestment: 1000, maxInvestment: 10000, targetApy: 50, riskLevel: 8, maxDailyLoss: 500, stopLoss: 10 },
-        },
-      ]);
+      // Fetch bots from API
+      try {
+        const botsData = await fetchAPI<any[]>('/api/v1/bot/instances');
+        setBots(botsData);
+      } catch (e) {
+        console.log('Using mock bots - API not available');
+        setBots([
+          {
+            id: 'bot1',
+            name: 'ETH-USDC Market Maker',
+            type: 'market_maker',
+            status: 'running',
+            owner: '0x1234...abcd',
+            profit: 15420.5,
+            volume: 2500000,
+            trades: 1520,
+            winRate: 92.5,
+            createdAt: Date.now() - 86400000 * 15,
+            lastActive: Date.now() - 300000,
+            config: { minInvestment: 5000, maxInvestment: 50000, targetApy: 25, riskLevel: 3, maxDailyLoss: 1000, stopLoss: 5 },
+          },
+          {
+            id: 'bot2',
+            name: 'BTC Arbitrage',
+            type: 'arbitrage',
+            status: 'running',
+            owner: '0x5678...efgh',
+            profit: 8750.2,
+            volume: 1800000,
+            trades: 850,
+            winRate: 88.2,
+            createdAt: Date.now() - 86400000 * 10,
+            lastActive: Date.now() - 600000,
+            config: { minInvestment: 10000, maxInvestment: 100000, targetApy: 40, riskLevel: 6, maxDailyLoss: 2000, stopLoss: 8 },
+          },
+          {
+            id: 'bot3',
+            name: 'SOL Sniper',
+            type: 'sniper',
+            status: 'paused',
+            owner: '0xabcd...1234',
+            profit: 3200.0,
+            volume: 450000,
+            trades: 120,
+            winRate: 75.0,
+            createdAt: Date.now() - 86400000 * 5,
+            lastActive: Date.now() - 3600000,
+            config: { minInvestment: 1000, maxInvestment: 10000, targetApy: 50, riskLevel: 8, maxDailyLoss: 500, stopLoss: 10 },
+          },
+        ]);
+      }
       
       // Mock transactions
       setTransactions([
