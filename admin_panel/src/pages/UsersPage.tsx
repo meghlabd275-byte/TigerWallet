@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 
+// Backend API URL
+const API_BASE_URL = 'https://api.tigerwallet.com/v1/admin';
+
 interface User {
   id: string;
   email: string;
@@ -12,21 +15,45 @@ interface User {
   lastLogin: string;
 }
 
+const defaultUsers: User[] = [
+  { id: '1', email: 'user1@example.com', wallet: '0x7a23...8f91', kyc: 'verified', status: 'active', createdAt: '2026-01-15', lastLogin: '2 hours ago' },
+  { id: '2', email: 'user2@example.com', wallet: '0x3b14...2c78', kyc: 'pending', status: 'active', createdAt: '2026-02-20', lastLogin: '5 hours ago' },
+  { id: '3', email: 'user3@example.com', wallet: 'Sol123...456', kyc: 'none', status: 'suspended', createdAt: '2026-03-10', lastLogin: '1 day ago' },
+];
+
 const UsersPage: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterKyc, setFilterKyc] = useState<string>('all');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadUsers();
   }, []);
 
-  const loadUsers = () => {
-    setUsers([
-      { id: '1', email: 'user1@example.com', wallet: '0x7a23...8f91', kyc: 'verified', status: 'active', createdAt: '2026-01-15', lastLogin: '2 hours ago' },
-      { id: '2', email: 'user2@example.com', wallet: '0x3b14...2c78', kyc: 'pending', status: 'active', createdAt: '2026-02-20', lastLogin: '5 hours ago' },
-      { id: '3', email: 'user3@example.com', wallet: 'Sol123...456', kyc: 'none', status: 'suspended', createdAt: '2026-03-10', lastLogin: '1 day ago' },
-    ]);
+  const loadUsers = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch(`${API_BASE_URL}/users`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setUsers(data.users || []);
+      } else {
+        setUsers(defaultUsers);
+      }
+    } catch (err) {
+      console.error('Failed to load users:', err);
+      setError('Unable to connect to user service. Using offline mode.');
+      setUsers(defaultUsers);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const filteredUsers = users.filter(user => {

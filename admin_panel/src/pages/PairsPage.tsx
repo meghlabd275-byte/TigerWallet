@@ -4,6 +4,9 @@
 import React, { useState, useEffect } from 'react';
 import './PairsPage.css';
 
+// Backend API URL
+const API_BASE_URL = 'https://api.tigerwallet.com/v1/admin';
+
 interface Pair {
   id: string;
   baseToken: string;
@@ -19,89 +22,71 @@ interface Pair {
   createdAt: string;
 }
 
+const defaultPairs: Pair[] = [
+  {
+    id: '1',
+    baseToken: 'ETH',
+    quoteToken: 'USDT',
+    pairAddress: '0x88e6A0c2d26E9B24D02D4ba1E3f3C0c3E8F3A3',
+    chainId: '1',
+    chainName: 'Ethereum',
+    price: 3000.50,
+    change24h: 2.5,
+    volume24h: 152384756,
+    liquidity: 38475629,
+    status: 'active',
+    createdAt: '2026-01-15',
+  },
+  {
+    id: '2',
+    baseToken: 'BTC',
+    quoteToken: 'USDT',
+    pairAddress: '0x99e6A0c2d26E9B24D02D4ba1E3f3C0c3E8F3A3',
+    chainId: '1',
+    chainName: 'Ethereum',
+    price: 43000.00,
+    change24h: -1.2,
+    volume24h: 293847561,
+    liquidity: 84729384,
+    status: 'active',
+    createdAt: '2026-01-10',
+  },
+];
+
 const PairsPage: React.FC = () => {
   const [pairs, setPairs] = useState<Pair[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showModal, setShowModal] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadPairs();
   }, []);
 
-  const loadPairs = () => {
-    setPairs([
-      {
-        id: '1',
-        baseToken: 'ETH',
-        quoteToken: 'USDT',
-        pairAddress: '0x88e6A0c2d26E9B24D02D4ba1E3f3C0c3E8F3A3',
-        chainId: '1',
-        chainName: 'Ethereum',
-        price: 3000.50,
-        change24h: 2.5,
-        volume24h: 152384756,
-        liquidity: 38475629,
-        status: 'active',
-        createdAt: '2026-01-15',
-      },
-      {
-        id: '2',
-        baseToken: 'BTC',
-        quoteToken: 'USDT',
-        pairAddress: '0x99e6A0c2d26E9B24D02D4ba1E3f3C0c3E8F3A3',
-        chainId: '1',
-        chainName: 'Ethereum',
-        price: 43000.00,
-        change24h: -1.2,
-        volume24h: 293847561,
-        liquidity: 84729384,
-        status: 'active',
-        createdAt: '2026-01-10',
-      },
-      {
-        id: '3',
-        baseToken: 'BNB',
-        quoteToken: 'USDT',
-        pairAddress: '0x77e6A0c2d26E9B24D02D4ba1E3f3C0c3E8F3A3',
-        chainId: '56',
-        chainName: 'BNB Chain',
-        price: 300.25,
-        change24h: 5.8,
-        volume24h: 84729384,
-        liquidity: 19238475,
-        status: 'active',
-        createdAt: '2026-02-01',
-      },
-      {
-        id: '4',
-        baseToken: 'SOL',
-        quoteToken: 'USDT',
-        pairAddress: '0x66d7A0c2d26E9B24D02D4ba1E3f3C0c3E8F3A3',
-        chainId: 'solana',
-        chainName: 'Solana',
-        price: 110.50,
-        change24h: -3.2,
-        volume24h: 47583920,
-        liquidity: 9384756,
-        status: 'active',
-        createdAt: '2026-02-15',
-      },
-      {
-        id: '5',
-        baseToken: 'MATIC',
-        quoteToken: 'USDT',
-        pairAddress: '0x55c6A0c2d26E9B24D02D4ba1E3f3C0c3E8F3A3',
-        chainId: '137',
-        chainName: 'Polygon',
-        price: 0.90,
-        change24h: 1.5,
-        volume24h: 29384756,
-        liquidity: 8472938,
-        status: 'halted',
-        createdAt: '2026-03-01',
-      },
-    ]);
+  const loadPairs = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch(`${API_BASE_URL}/pairs`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setPairs(data.pairs || []);
+      } else {
+        setPairs(defaultPairs);
+      }
+    } catch (err) {
+      console.error('Failed to load pairs:', err);
+      setError('Unable to connect to pairs service. Using offline mode.');
+      setPairs(defaultPairs);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleStatusChange = (id: string, status: 'active' | 'inactive' | 'halted') => {

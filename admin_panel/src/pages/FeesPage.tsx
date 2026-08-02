@@ -4,6 +4,9 @@
 import React, { useState, useEffect } from 'react';
 import './FeesPage.css';
 
+// Backend API URL
+const API_BASE_URL = 'https://api.tigerwallet.com/v1/admin';
+
 interface FeeConfig {
   id: string;
   feeType: 'withdrawal' | 'swap' | 'transfer' | 'trading';
@@ -18,84 +21,109 @@ interface FeeConfig {
   updatedAt: string;
 }
 
+const defaultFees: FeeConfig[] = [
+  {
+    id: '1',
+    feeType: 'withdrawal',
+    chainId: '1',
+    chainName: 'Ethereum',
+    tokenSymbol: 'ETH',
+    feePercent: 0.5,
+    feeFixed: 0.001,
+    minFee: 0.01,
+    maxFee: 50,
+    isActive: true,
+    updatedAt: '2026-07-28',
+  },
+  {
+    id: '2',
+    feeType: 'withdrawal',
+    chainId: '56',
+    chainName: 'BNB Chain',
+    tokenSymbol: 'BNB',
+    feePercent: 0.3,
+    feeFixed: 0.0005,
+    minFee: 0.005,
+    maxFee: 20,
+    isActive: true,
+    updatedAt: '2026-07-28',
+  },
+  {
+    id: '3',
+    feeType: 'swap',
+    chainId: 'all',
+    chainName: 'All Chains',
+    tokenSymbol: 'ALL',
+    feePercent: 0.3,
+    feeFixed: 0,
+    minFee: 0,
+    maxFee: 0,
+    isActive: true,
+    updatedAt: '2026-07-28',
+  },
+  {
+    id: '4',
+    feeType: 'trading',
+    chainId: 'all',
+    chainName: 'All Chains',
+    tokenSymbol: 'ALL',
+    feePercent: 0.1,
+    feeFixed: 0,
+    minFee: 0,
+    maxFee: 100,
+    isActive: true,
+    updatedAt: '2026-07-28',
+  },
+  {
+    id: '5',
+    feeType: 'transfer',
+    chainId: '1',
+    chainName: 'Ethereum',
+    tokenSymbol: 'ETH',
+    feePercent: 0,
+    feeFixed: 0.005,
+    minFee: 0.005,
+    maxFee: 0.005,
+    isActive: true,
+    updatedAt: '2026-07-28',
+  },
+];
+
 const FeesPage: React.FC = () => {
   const [fees, setFees] = useState<FeeConfig[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingFee, setEditingFee] = useState<FeeConfig | null>(null);
   const [filterType, setFilterType] = useState<string>('all');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadFees();
   }, []);
 
-  const loadFees = () => {
-    setFees([
-      {
-        id: '1',
-        feeType: 'withdrawal',
-        chainId: '1',
-        chainName: 'Ethereum',
-        tokenSymbol: 'ETH',
-        feePercent: 0.5,
-        feeFixed: 0.001,
-        minFee: 0.01,
-        maxFee: 50,
-        isActive: true,
-        updatedAt: '2026-07-28',
-      },
-      {
-        id: '2',
-        feeType: 'withdrawal',
-        chainId: '56',
-        chainName: 'BNB Chain',
-        tokenSymbol: 'BNB',
-        feePercent: 0.3,
-        feeFixed: 0.0005,
-        minFee: 0.005,
-        maxFee: 20,
-        isActive: true,
-        updatedAt: '2026-07-28',
-      },
-      {
-        id: '3',
-        feeType: 'swap',
-        chainId: 'all',
-        chainName: 'All Chains',
-        tokenSymbol: 'ALL',
-        feePercent: 0.3,
-        feeFixed: 0,
-        minFee: 0,
-        maxFee: 0,
-        isActive: true,
-        updatedAt: '2026-07-28',
-      },
-      {
-        id: '4',
-        feeType: 'trading',
-        chainId: 'all',
-        chainName: 'All Chains',
-        tokenSymbol: 'ALL',
-        feePercent: 0.1,
-        feeFixed: 0,
-        minFee: 0,
-        maxFee: 0,
-        isActive: true,
-        updatedAt: '2026-07-28',
-      },
-      {
-        id: '5',
-        feeType: 'transfer',
-        chainId: '1',
-        chainName: 'Ethereum',
-        tokenSymbol: 'ETH',
-        feePercent: 0,
-        feeFixed: 0.005,
-        minFee: 0.005,
-        maxFee: 0.005,
-        isActive: true,
-        updatedAt: '2026-07-28',
-      },
-    ]);
+  const loadFees = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch(`${API_BASE_URL}/fees`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setFees(data.fees || []);
+      } else {
+        // Fallback to default fees if API fails
+        setFees(defaultFees);
+      }
+    } catch (err) {
+      console.error('Failed to load fees:', err);
+      setError('Unable to connect to fee service. Using offline mode.');
+      setFees(defaultFees);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleToggleActive = (id: string) => {

@@ -4,6 +4,9 @@
 import React, { useState, useEffect } from 'react';
 import './BlockchainPage.css';
 
+// Backend API URL
+const API_BASE_URL = 'https://api.tigerwallet.com/v1/admin';
+
 interface Blockchain {
   id: string;
   name: string;
@@ -19,134 +22,79 @@ interface Blockchain {
   lastSync: string;
 }
 
+const defaultBlockchains: Blockchain[] = [
+  {
+    id: '1',
+    name: 'Ethereum',
+    symbol: 'ETH',
+    chainId: '1',
+    rpcUrl: 'https://eth.llamarpc.com',
+    explorerUrl: 'https://etherscan.io',
+    type: 'evm',
+    status: 'active',
+    gasToken: 'ETH',
+    avgBlockTime: 12,
+    transactions: 1523847,
+    lastSync: '2 seconds ago',
+  },
+  {
+    id: '2',
+    name: 'BNB Smart Chain',
+    symbol: 'BNB',
+    chainId: '56',
+    rpcUrl: 'https://bsc-dataseed.binance.org',
+    explorerUrl: 'https://bscscan.com',
+    type: 'evm',
+    status: 'active',
+    gasToken: 'BNB',
+    avgBlockTime: 3,
+    transactions: 2938475,
+    lastSync: '1 second ago',
+  },
+];
+
 const BlockchainPage: React.FC = () => {
   const [blockchains, setBlockchains] = useState<Blockchain[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingChain, setEditingChain] = useState<Blockchain | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadBlockchains();
   }, []);
 
-  const loadBlockchains = () => {
-    // Mock data - in production, fetch from API
-    setBlockchains([
-      {
-        id: '1',
-        name: 'Ethereum',
-        symbol: 'ETH',
-        chainId: '1',
-        rpcUrl: 'https://eth.llamarpc.com',
-        explorerUrl: 'https://etherscan.io',
-        type: 'evm',
-        status: 'active',
-        gasToken: 'ETH',
-        avgBlockTime: 12,
-        transactions: 1523847,
-        lastSync: '2 seconds ago',
-      },
-      {
-        id: '2',
-        name: 'BNB Smart Chain',
-        symbol: 'BNB',
-        chainId: '56',
-        rpcUrl: 'https://bsc-dataseed.binance.org',
-        explorerUrl: 'https://bscscan.com',
-        type: 'evm',
-        status: 'active',
-        gasToken: 'BNB',
-        avgBlockTime: 3,
-        transactions: 2839471,
-        lastSync: '1 seconds ago',
-      },
-      {
-        id: '3',
-        name: 'Solana',
-        symbol: 'SOL',
-        chainId: 'mainnet',
-        rpcUrl: 'https://api.mainnet-beta.solana.com',
-        explorerUrl: 'https://explorer.solana.com',
-        type: 'solana',
-        status: 'active',
-        gasToken: 'SOL',
-        avgBlockTime: 0.4,
-        transactions: 894372,
-        lastSync: '1 seconds ago',
-      },
-      {
-        id: '4',
-        name: 'Polygon',
-        symbol: 'MATIC',
-        chainId: '137',
-        rpcUrl: 'https://polygon-rpc.com',
-        explorerUrl: 'https://polygonscan.com',
-        type: 'evm',
-        status: 'active',
-        gasToken: 'MATIC',
-        avgBlockTime: 2,
-        transactions: 1283746,
-        lastSync: '3 seconds ago',
-      },
-      {
-        id: '5',
-        name: 'Arbitrum One',
-        symbol: 'ETH',
-        chainId: '42161',
-        rpcUrl: 'https://arb1.arbitrum.io/rpc',
-        explorerUrl: 'https://arbiscan.io',
-        type: 'evm',
-        status: 'active',
-        gasToken: 'ETH',
-        avgBlockTime: 1,
-        transactions: 647293,
-        lastSync: '2 seconds ago',
-      },
-      {
-        id: '6',
-        name: 'Optimism',
-        symbol: 'ETH',
-        chainId: '10',
-        rpcUrl: 'https://mainnet.optimism.io',
-        explorerUrl: 'https://optimistic.etherscan.io',
-        type: 'evm',
-        status: 'active',
-        gasToken: 'ETH',
-        avgBlockTime: 2,
-        transactions: 483927,
-        lastSync: '4 seconds ago',
-      },
-      {
-        id: '7',
-        name: 'Avalanche',
-        symbol: 'AVAX',
-        chainId: '43114',
-        rpcUrl: 'https://api.avax.network/ext/bc/C/rpc',
-        explorerUrl: 'https://snowtrace.io',
-        type: 'evm',
-        status: 'active',
-        gasToken: 'AVAX',
-        avgBlockTime: 2,
-        transactions: 392847,
-        lastSync: '2 seconds ago',
-      },
-      {
-        id: '8',
-        name: 'Base',
-        symbol: 'ETH',
-        chainId: '8453',
-        rpcUrl: 'https://mainnet.base.org',
-        explorerUrl: 'https://basescan.org',
-        type: 'evm',
-        status: 'active',
-        gasToken: 'ETH',
-        avgBlockTime: 2,
-        transactions: 183947,
-        lastSync: '1 seconds ago',
-      },
-    ]);
+  const loadBlockchains = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch(`${API_BASE_URL}/blockchains`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setBlockchains(data.blockchains || []);
+      } else {
+        setBlockchains(defaultBlockchains);
+      }
+    } catch (err) {
+      console.error('Failed to load blockchains:', err);
+      setError('Unable to connect to blockchain service. Using offline mode.');
+      setBlockchains(defaultBlockchains);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const handleAddChain = (chain: Blockchain) => {
+    setBlockchains(prev => [...prev, chain]);
+  };
+
+  const filteredBlockchains = blockchains;
 
   const handleStatusChange = async (id: string, newStatus: 'active' | 'inactive' | 'maintenance') => {
     setBlockchains(prev => prev.map(b => b.id === id ? { ...b, status: newStatus } : b));

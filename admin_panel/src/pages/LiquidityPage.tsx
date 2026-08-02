@@ -3,6 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import './LiquidityPage.css';
 
+// Backend API URL
+const API_BASE_URL = 'https://api.tigerwallet.com/v1/admin';
+
 interface LiquidityPool {
   id: string;
   pair: string;
@@ -16,77 +19,77 @@ interface LiquidityPool {
   status: 'active' | 'inactive';
 }
 
+const defaultPools: LiquidityPool[] = [
+  {
+    id: '1',
+    pair: 'ETH/USDT',
+    chainId: '1',
+    chainName: 'Ethereum',
+    tvl: 152384756,
+    volume24h: 84729384,
+    fees24h: 254187,
+    apy: 12.5,
+    providers: 1234,
+    status: 'active',
+  },
+  {
+    id: '2',
+    pair: 'BTC/USDT',
+    chainId: '1',
+    chainName: 'Ethereum',
+    tvl: 293847561,
+    volume24h: 152384756,
+    fees24h: 457154,
+    apy: 8.3,
+    providers: 2345,
+    status: 'active',
+  },
+  {
+    id: '3',
+    pair: 'BNB/USDT',
+    chainId: '56',
+    chainName: 'BNB Chain',
+    tvl: 84729384,
+    volume24h: 48392756,
+    fees24h: 145178,
+    apy: 15.2,
+    providers: 876,
+    status: 'active',
+  },
+];
+
 const LiquidityPage: React.FC = () => {
   const [pools, setPools] = useState<LiquidityPool[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadPools();
   }, []);
 
-  const loadPools = () => {
-    setPools([
-      {
-        id: '1',
-        pair: 'ETH/USDT',
-        chainId: '1',
-        chainName: 'Ethereum',
-        tvl: 152384756,
-        volume24h: 84729384,
-        fees24h: 254187,
-        apy: 12.5,
-        providers: 1234,
-        status: 'active',
-      },
-      {
-        id: '2',
-        pair: 'BTC/USDT',
-        chainId: '1',
-        chainName: 'Ethereum',
-        tvl: 293847561,
-        volume24h: 152384756,
-        fees24h: 457154,
-        apy: 8.3,
-        providers: 2345,
-        status: 'active',
-      },
-      {
-        id: '3',
-        pair: 'BNB/USDT',
-        chainId: '56',
-        chainName: 'BNB Chain',
-        tvl: 84729384,
-        volume24h: 48392756,
-        fees24h: 145178,
-        apy: 15.2,
-        providers: 892,
-        status: 'active',
-      },
-      {
-        id: '4',
-        pair: 'SOL/USDT',
-        chainId: 'solana',
-        chainName: 'Solana',
-        tvl: 38475629,
-        volume24h: 29384756,
-        fees24h: 88154,
-        apy: 22.8,
-        providers: 567,
-        status: 'active',
-      },
-      {
-        id: '5',
-        pair: 'MATIC/USDT',
-        chainId: '137',
-        chainName: 'Polygon',
-        tvl: 29384756,
-        volume24h: 15238475,
-        fees24h: 45715,
-        apy: 18.5,
-        providers: 423,
-        status: 'inactive',
-      },
-    ]);
+  const loadPools = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch(`${API_BASE_URL}/liquidity`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setPools(data.pools || []);
+      } else {
+        setPools(defaultPools);
+      }
+    } catch (err) {
+      console.error('Failed to load liquidity pools:', err);
+      setError('Unable to connect to liquidity service. Using offline mode.');
+      setPools(defaultPools);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleStatusChange = (id: string) => {

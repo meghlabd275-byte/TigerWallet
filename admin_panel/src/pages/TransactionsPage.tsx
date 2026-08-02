@@ -4,6 +4,9 @@
 import React, { useState, useEffect } from 'react';
 import './TransactionsPage.css';
 
+// Backend API URL
+const API_BASE_URL = 'https://api.tigerwallet.com/v1/admin';
+
 interface Transaction {
   id: string;
   txHash: string;
@@ -22,6 +25,43 @@ interface Transaction {
   userId: string;
 }
 
+const defaultTransactions: Transaction[] = [
+  {
+    id: '1',
+    txHash: '0x7a23...8f91',
+    chainId: '1',
+    chainName: 'Ethereum',
+    type: 'transfer',
+    fromAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f1234',
+    toAddress: '0x8f91...7a23',
+    tokenSymbol: 'ETH',
+    amount: '5.5',
+    fee: '0.005',
+    status: 'confirmed',
+    blockNumber: 18234567,
+    confirmations: 15,
+    timestamp: '2026-07-28 14:32:15',
+    userId: 'user123',
+  },
+  {
+    id: '2',
+    txHash: '0x3b14...2c78',
+    chainId: '56',
+    chainName: 'BNB Chain',
+    type: 'swap',
+    fromAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f1234',
+    toAddress: '0x8f91...7a23',
+    tokenSymbol: 'BNB',
+    amount: '10.25',
+    fee: '0.003',
+    status: 'confirmed',
+    blockNumber: 29475621,
+    confirmations: 20,
+    timestamp: '2026-07-28 13:15:42',
+    userId: 'user456',
+  },
+];
+
 const TransactionsPage: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -29,120 +69,35 @@ const TransactionsPage: React.FC = () => {
   const [filterType, setFilterType] = useState<string>('all');
   const [filterChain, setFilterChain] = useState<string>('all');
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadTransactions();
   }, []);
 
-  const loadTransactions = () => {
-    setTransactions([
-      {
-        id: '1',
-        txHash: '0x7a23...8f91',
-        chainId: '1',
-        chainName: 'Ethereum',
-        type: 'transfer',
-        fromAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f1234',
-        toAddress: '0x8f91...7a23',
-        tokenSymbol: 'ETH',
-        amount: '5.5',
-        fee: '0.005',
-        status: 'confirmed',
-        blockNumber: 18234567,
-        confirmations: 15,
-        timestamp: '2026-07-28 14:32:15',
-        userId: 'user123',
-      },
-      {
-        id: '2',
-        txHash: '0x3b14...2c78',
-        chainId: '56',
-        chainName: 'BNB Chain',
-        type: 'swap',
-        fromAddress: '0x111d35Cc6634C0532925a3b844Bc9e7595f5678',
-        toAddress: '0x2228914Cc6634C0532925a3b844Bc9e7595f9999',
-        tokenSymbol: 'USDT',
-        amount: '12500',
-        fee: '3.75',
-        status: 'confirmed',
-        blockNumber: 29384756,
-        confirmations: 20,
-        timestamp: '2026-07-28 14:28:42',
-        userId: 'user456',
-      },
-      {
-        id: '3',
-        txHash: '0x9f42...1a63',
-        chainId: '42161',
-        chainName: 'Arbitrum',
-        type: 'bridge',
-        fromAddress: '0x333d35Cc6634C0532925a3b844Bc9e7595f1111',
-        toAddress: '0x444e35Cc6634C0532925a3b844Bc9e7595f2222',
-        tokenSymbol: 'ETH',
-        amount: '2.0',
-        fee: '0.002',
-        status: 'pending',
-        blockNumber: 0,
-        confirmations: 0,
-        timestamp: '2026-07-28 14:25:30',
-        userId: 'user789',
-      },
-      {
-        id: '4',
-        txHash: '0x2e87...9b12',
-        chainId: '137',
-        chainName: 'Polygon',
-        type: 'stake',
-        fromAddress: '0x555d35Cc6634C0532925a3b844Bc9e7595f3333',
-        toAddress: '0x666e35Cc6634C0532925a3b844Bc9e7595f4444',
-        tokenSymbol: 'MATIC',
-        amount: '1000',
-        fee: '0.5',
-        status: 'confirmed',
-        blockNumber: 45678901,
-        confirmations: 25,
-        timestamp: '2026-07-28 14:20:18',
-        userId: 'user321',
-      },
-      {
-        id: '5',
-        txHash: '0x5c96...3d45',
-        chainId: '10',
-        chainName: 'Optimism',
-        type: 'approve',
-        fromAddress: '0x777f35Cc6634C0532925a3b844Bc9e7595f5555',
-        toAddress: '0x888g35Cc6634C0532925a3b844Bc9e7595f6666',
-        tokenSymbol: 'USDC',
-        amount: 'unlimited',
-        fee: '0.001',
-        status: 'confirmed',
-        blockNumber: 112345678,
-        confirmations: 30,
-        timestamp: '2026-07-28 14:15:45',
-        userId: 'user654',
-      },
-      {
-        id: '6',
-        txHash: '0x6d07...4e56',
-        chainId: '8453',
-        chainName: 'Base',
-        type: 'transfer',
-        fromAddress: '0x999h35Cc6634C0532925a3b844Bc9e7595f7777',
-        toAddress: '0xaaa i35Cc6634C0532925a3b844Bc9e7595f8888',
-        tokenSymbol: 'ETH',
-        amount: '0.5',
-        fee: '0.001',
-        status: 'failed',
-        blockNumber: 0,
-        confirmations: 0,
-        timestamp: '2026-07-28 14:10:22',
-        userId: 'user987',
-      },
-    ]);
-  };
-
-  const handleStatusUpdate = async (id: string, status: 'confirmed' | 'failed') => {
-    setTransactions(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+  const loadTransactions = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch(`${API_BASE_URL}/transactions`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setTransactions(data.transactions || []);
+      } else {
+        setTransactions(defaultTransactions);
+      }
+    } catch (err) {
+      console.error('Failed to load transactions:', err);
+      setError('Unable to connect to transaction service. Using offline mode.');
+      setTransactions(defaultTransactions);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const filteredTransactions = transactions.filter(tx => {
