@@ -1,12 +1,13 @@
 /**
  * TigerWallet User API Service - Production Ready
  * Complete backend connectivity for all wallet operations
+ * All endpoints connected to Go/Rust/C++ backend microservices
  */
 
 import axios, { AxiosInstance, AxiosError } from 'axios';
 
 // ============================================================================
-// Types
+// Types - Complete Wallet System
 // ============================================================================
 
 export interface Wallet {
@@ -17,6 +18,9 @@ export interface Wallet {
   balance: string;
   balanceUSD: number;
   tokens: TokenBalance[];
+  type: 'master' | 'user' | 'watch';
+  createdAt: number;
+  lastSynced: number;
 }
 
 export interface TokenBalance {
@@ -27,6 +31,9 @@ export interface TokenBalance {
   balanceUSD: number;
   logoUrl: string;
   decimals: number;
+  chainId: number;
+  isNative: boolean;
+  priceChange24h: number;
 }
 
 export interface Transaction {
@@ -38,8 +45,12 @@ export interface Transaction {
   symbol: string;
   status: 'pending' | 'confirmed' | 'failed';
   timestamp: number;
-  type: 'send' | 'receive' | 'swap' | 'approve';
+  type: 'send' | 'receive' | 'swap' | 'approve' | 'stake' | 'unstake' | 'bridge' | 'mint' | 'burn';
   fee: string;
+  gasUsed?: string;
+  gasPrice?: string;
+  blockNumber?: number;
+  confirmations?: number;
 }
 
 export interface SwapQuote {
@@ -50,6 +61,15 @@ export interface SwapQuote {
   priceImpact: number;
   route: string[];
   estimatedGas: string;
+  slippage: number;
+  priceRoute: PriceRoute[];
+}
+
+export interface PriceRoute {
+  pool: string;
+  fromToken: string;
+  toToken: string;
+  swapFee: number;
 }
 
 export interface Chain {
@@ -61,6 +81,15 @@ export interface Chain {
   chainId: number;
   isEVM: boolean;
   logoUrl: string;
+  color: string;
+  type: 'evm' | 'solana' | 'ton' | 'aptos' | 'sui' | 'tron' | 'cosmos' | 'bitcoin';
+  nativeCurrency: {
+    name: string;
+    symbol: string;
+    decimals: number;
+  };
+  rpcEndpoints: string[];
+  explorerApiUrl: string;
 }
 
 export interface Token {
@@ -72,6 +101,10 @@ export interface Token {
   chain: string;
   priceUSD: number;
   volume24h: number;
+  marketCap: number;
+  priceChange24h: number;
+  totalSupply: string;
+  isVerified: boolean;
 }
 
 export interface DApp {
@@ -81,6 +114,8 @@ export interface DApp {
   logoUrl: string;
   category: string;
   description: string;
+  chains: string[];
+  lastUsed?: number;
 }
 
 export interface User {
@@ -89,14 +124,97 @@ export interface User {
   username: string;
   kycStatus: 'none' | 'pending' | 'verified' | 'rejected';
   createdAt: number;
+  twoFactorEnabled: boolean;
+  referralCode: string;
+}
+
+export interface StakingPosition {
+  id: string;
+  validator: string;
+  amount: string;
+  reward: string;
+  unlockTime: number;
+  status: 'active' | 'unlocking' | 'unlocked';
+  chain: string;
+}
+
+export interface NFTCollection {
+  id: string;
+  name: string;
+  symbol: string;
+  address: string;
+  chain: string;
+  totalSupply: number;
+  floorPrice: string;
+  imageUrl: string;
+}
+
+export interface NFT {
+  id: string;
+  tokenId: string;
+  collectionAddress: string;
+  name: string;
+  description: string;
+  imageUrl: string;
+  attributes: NFTAttribute[];
+  owner: string;
+  price?: string;
+  chain: string;
+}
+
+export interface NFTAttribute {
+  trait_type: string;
+  value: string;
+}
+
+export interface BridgeTransaction {
+  id: string;
+  fromChain: string;
+  toChain: string;
+  fromToken: string;
+  toToken: string;
+  amount: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  depositTxHash?: string;
+  receiveTxHash?: string;
+  estimatedTime: number;
+}
+
+export interface MasterWallet extends Wallet {
+  withdrawFee: number;
+  swapFee: number;
+  transactionFee: number;
+  supportedChains: string[];
+  autoSettlement: boolean;
+}
+
+export interface WhiteLabelClient {
+  id: string;
+  name: string;
+  domain: string;
+  branding: {
+    logo: string;
+    primaryColor: string;
+    secondaryColor: string;
+  };
+  features: string[];
+  status: 'active' | 'suspended' | 'pending';
+  createdAt: number;
 }
 
 // ============================================================================
-// API Configuration
+// API Configuration - Production Backend
 // ============================================================================
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.tigerwallet.com/v1';
 const WS_URL = import.meta.env.VITE_WS_URL || 'wss://ws.tigerwallet.com';
+
+// C++ High-Performance Endpoints (Ultra-Low Latency)
+const TRADING_ENGINE_URL = import.meta.env.VITE_TRADING_ENGINE_URL || 'https://trading.tigerwallet.com';
+const PRICE_FEED_URL = import.meta.env.VITE_PRICE_FEED_URL || 'https://prices.tigerwallet.com';
+
+// Rust Security Endpoints
+const SECURITY_URL = import.meta.env.VITE_SECURITY_URL || 'https://security.tigerwallet.com';
 
 // ============================================================================
 // API Client
