@@ -1,7 +1,24 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWallet } from '../wallet';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8451';
+
+const fetchAPI = async <T,>(endpoint: string, options?: RequestInit): Promise<T> => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options?.headers,
+    },
+  });
+  if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+  const data = await response.json();
+  return data.data || data;
+};
 
 // ================================================================================
 // Types
@@ -137,6 +154,9 @@ export default function FiatRampPage() {
   // Buy/Sell tabs
   const [activeTab, setActiveTab] = useState<'buy' | 'sell'>('buy');
   
+  // Providers from API
+  const [providers, setProviders] = useState<FiatProvider[]>(FIAT_PROVIDERS);
+  
   // Form state
   const [selectedProvider, setSelectedProvider] = useState<FiatProvider | null>(null);
   const [fiatCurrency, setFiatCurrency] = useState('USD');
@@ -158,6 +178,30 @@ export default function FiatRampPage() {
     status: 'none',
     limits: { daily: 0, monthly: 0, yearly: 0 },
   });
+
+  // Load providers and KYC status from backend
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        // Fetch providers from API
+        const providersData = await fetchAPI<FiatProvider[]>('/api/v1/fiat-ramp/providers');
+        if (providersData && providersData.length > 0) {
+          setProviders(providersData);
+        }
+        
+        // Fetch KYC status
+        if (address) {
+          const kyc = await fetchAPI<KYCStatus>('/api/v1/kyc/status');
+          if (kyc) {
+            setKycStatus(kyc);
+          }
+        }
+      } catch (err) {
+        console.log('Using default providers - API not available');
+      }
+    };
+    loadData();
+  }, [address]);
 
   // Calculate crypto amount based on fiat (mock price)
   const calculateCryptoAmount = (fiat: string) => {
@@ -196,7 +240,7 @@ export default function FiatRampPage() {
 
   // Get available providers based on selected currencies
   const getAvailableProviders = () => {
-    return FIAT_PROVIDERS.filter(p => 
+    return providers.filter(p => 
       p.available &&
       p.supportedFiat.includes(fiatCurrency) &&
       p.supportedCrypto.includes(cryptoCurrency)
@@ -222,22 +266,22 @@ export default function FiatRampPage() {
     setError(null);
 
     try {
-      // Simulate order creation
-      const tx: Transaction = {
-        id: `tx_${Date.now()}`,
-        provider: selectedProvider.name,
-        type: activeTab,
-        fiatAmount: parseFloat(fiatAmount),
-        cryptoAmount: parseFloat(cryptoAmount),
-        cryptoCurrency,
-        fiatCurrency,
-        status: 'pending',
-        createdAt: Date.now(),
-        expiresAt: Date.now() + 15 * 60 * 1000, // 15 min expiry
-        paymentMethod,
-      };
+      // Call backend API to create order
+      const orderData = await fetchAPI<Transaction>('/api/v1/fiat-ramp/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          providerId: selectedProvider.id,
+          type: activeTab,
+          fiatAmount: parseFloat(fiatAmount),
+          cryptoCurrency,
+          fiatCurrency,
+          paymentMethod,
+          email,
+          walletAddress: address,
+        }),
+      });
 
-      setCurrentTransaction(tx);
+      setCurrentTransaction(orderData);
       setSuccess(`Order created! Redirecting to ${selectedProvider.name}...`);
       
       // Simulate redirect after 2 seconds
