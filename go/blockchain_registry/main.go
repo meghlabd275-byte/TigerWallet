@@ -147,6 +147,7 @@ func (r *BlockchainRegistry) initNetworks() {
 			{Ethereum: "canto", Name: "Canto", Symbol: "CANTO", ChainID: 0, NetworkType: "mainnet", Explorer: "https://tuber.build", RPCURL: "https://canto-rpc.polkachu.com", Logo: "canto.png", Color: "#FF6B6B", Decimals: 18, CoinType: 118, IsEVM: false, CanTokenList: true, CanStake: true, CanBridge: true, GasToken: "CANTO", BlockTime: 6, Category: "Layer1", Tier: 2, Status: "active"},
 			{Ethereum: "viction", Name: "Viction", Symbol: "VIC", ChainID: 0, NetworkType: "mainnet", Explorer: "https://tbc1.tomochain.com", RPCURL: "https://rpc.viction.xyz", Logo: "viction.png", Color: "#FF6B6B", Decimals: 18, CoinType: 118, IsEVM: false, CanTokenList: true, CanStake: true, CanBridge: true, GasToken: "VIC", BlockTime: 2, Category: "Layer1", Tier: 2, Status: "active"},
 			{Ethereum: "arweave", Name: "Arweave", Symbol: "AR", ChainID: 0, NetworkType: "mainnet", Explorer: "https://viewblock.io/arweave", RPCURL: "https://arweave.net", Logo: "arweave.png", Color: "#000000", Decimals: 12, CoinType: 131, IsEVM: false, CanTokenList: true, CanBridge: true, GasToken: "AR", BlockTime: 1, Category: "Layer1", Tier: 1, Status: "active"},
+			{Ethereum: "pi", Name: "Pi Network", Symbol: "PI", ChainID: 0, NetworkType: "mainnet", Explorer: "https://minepi.com/explorer", RPCURL: "https://rpc.minepi.com", Logo: "pi.png", Color: "#FF6B6B", Decimals: 18, CoinType: 314159, IsEVM: false, CanTokenList: true, CanBridge: false, GasToken: "PI", BlockTime: 1, Category: "Layer1", Tier: 2, Status: "active"},
 	}
 
 	for _, network := range networks {
