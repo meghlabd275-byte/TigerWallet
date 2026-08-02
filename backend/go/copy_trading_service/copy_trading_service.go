@@ -74,6 +74,14 @@ type CopyTrade struct {
 // Service
 // ============================================================================
 
+// CopyTradingFeeCollection for tracking copy trading fees
+type CopyTradingFeeCollection struct {
+	TotalCopyFees      float64 `json:"totalCopyFees"`
+	TotalPlatformFees  float64 `json:"totalPlatformFees"`
+	TotalFees          float64 `json:"totalFees"`
+	CopyTradesCount    int     `json:"copyTradesCount"`
+}
+
 type CopyTradingService struct {
 	mu           sync.RWMutex
 	traders      map[string]*Trader
@@ -81,6 +89,15 @@ type CopyTradingService struct {
 	settings     map[string]*CopySettings
 	trades       map[string][]CopyTrade
 	followers    map[string][]string // traderID -> userIDs
+	// Fee collection
+	feeCollection *CopyTradingFeeCollection
+	feeAccount   *FeeAccount
+}
+
+type FeeAccount struct {
+	Address            string  `json:"address"`
+	PlatformFeePercent float64 `json:"platformFeePercent"` // 20%
+	CopyFeePercent    float64 `json:"copyFeePercent"`    // 0.02%
 }
 
 func NewCopyTradingService() *CopyTradingService {
@@ -90,6 +107,12 @@ func NewCopyTradingService() *CopyTradingService {
 		settings:  make(map[string]*CopySettings),
 		trades:    make(map[string][]CopyTrade),
 		followers: make(map[string][]string),
+		feeCollection: &CopyTradingFeeCollection{},
+		feeAccount: &FeeAccount{
+			Address:            "0xTIGERWALLET_FEE_COLLECTION_ADDRESS",
+			PlatformFeePercent: 20.0,
+			CopyFeePercent:    0.02,
+		},
 	}
 	cts.initializeDefaultTraders()
 	return cts
@@ -141,6 +164,38 @@ func (cts *CopyTradingService) initializeDefaultTraders() {
 		}
 		cts.traders[trader.ID] = trader
 	}
+}
+
+// ============================================================================
+// Fee Collection Methods
+// ============================================================================
+
+// CalculateCopyTradeFee calculates the fee for a copy trade
+func (cts *CopyTradingService) CalculateCopyTradeFee(tradeValue float64, exchangeSharesFees bool) float64 {
+	copyFee := tradeValue * cts.feeAccount.CopyFeePercent / 100
+	
+	if exchangeSharesFees {
+		return copyFee
+	}
+	// Exchange doesn't share fees - TigerWallet takes 20% extra
+	platformFee := copyFee * cts.feeAccount.PlatformFeePercent / 100
+	return copyFee + platformFee
+}
+
+// CollectCopyTradeFee adds fees to the fee collection
+func (cts *CopyTradingService) CollectCopyTradeFee(fee float64) {
+	cts.mu.Lock()
+	defer cts.mu.Unlock()
+	cts.feeCollection.TotalCopyFees += fee
+	cts.feeCollection.TotalFees += fee
+	cts.feeCollection.CopyTradesCount++
+}
+
+// GetCopyTradingFeeCollection returns the current fee collection status
+func (cts *CopyTradingService) GetCopyTradingFeeCollection() *CopyTradingFeeCollection {
+	cts.mu.RLock()
+	defer cts.mu.RUnlock()
+	return cts.feeCollection
 }
 
 func (cts *CopyTradingService) GetAllTraders() []*Trader {

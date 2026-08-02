@@ -93,12 +93,39 @@ type UserBalance struct {
 	Orders      []Order   `json:"orders"`
 }
 
+// Fee Collection Account - TigerWallet platform fees
+type FeeCollectionAccount struct {
+	Address           string  `json:"address"`
+	PlatformFeePercent float64 `json:"platformFeePercent"` // TigerWallet's cut (20%)
+	ExchangeFeePercent float64 `json:"exchangeFeePercent"` // Exchange's cut (0.04%)
+}
+
+// TradeFee represents the fee breakdown for a trade
+type TradeFee struct {
+	OrderValue      float64 `json:"orderValue"`
+	ExchangeFee      float64 `json:"exchangeFee"`      // Fee paid to exchange
+	PlatformFee      float64 `json:"platformFee"`      // TigerWallet's fee (20% extra if exchange doesn't share)
+	TotalFee        float64 `json:"totalFee"`        // Total fee collected
+	ExchangeSharesFees bool   `json:"exchangeSharesFees"` // Whether exchange shares fees
+}
+
+// FeeCollection for tracking all collected fees
+type FeeCollection struct {
+	TotalExchangeFees float64 `json:"totalExchangeFees"`
+	TotalPlatformFees float64 `json:"totalPlatformFees"`
+	TotalFees         float64 `json:"totalFees"`
+	TransactionsCount int     `json:"transactionsCount"`
+}
+
 type FuturesService struct {
 	mu          sync.RWMutex
 	pairs       map[string]*TradingPair
 	positions   map[string][]Position
 	orders      map[string][]Order
 	balances    map[string]*UserBalance
+	// Fee collection
+	feeAccount     *FeeCollectionAccount
+	feeCollection *FeeCollection
 }
 
 // ============================================================================
@@ -107,10 +134,16 @@ type FuturesService struct {
 
 func NewFuturesService() *FuturesService {
 	fs := &FuturesService{
-		pairs:    make(map[string]*TradingPair),
-		positions: make(map[string][]Position),
-		orders:   make(map[string][]Order),
-		balances: make(map[string]*UserBalance),
+		pairs:       make(map[string]*TradingPair),
+		positions:   make(map[string][]Position),
+		orders:      make(map[string][]Order),
+		balances:    make(map[string]*UserBalance),
+		feeAccount: &FeeCollectionAccount{
+			Address:             "0xTIGERWALLET_FEE_COLLECTION_ADDRESS",
+			PlatformFeePercent:  20.0, // TigerWallet takes 20% extra if exchange doesn't share fees
+			ExchangeFeePercent:  0.04, // Standard exchange taker fee
+		},
+		feeCollection: &FeeCollection{},
 	}
 	fs.initializeDefaultPairs()
 	return fs
@@ -189,6 +222,70 @@ func (fs *FuturesService) getInitialPrice(base string) float64 {
 		return price
 	}
 	return 10.0 + float64(len(base))*0.5
+}
+
+// ============================================================================
+// Fee Collection Methods
+// ============================================================================
+
+// CalculateTradeFee calculates the fee for a trade
+// If exchange shares fees with TigerWallet, platform fee is 0
+// Otherwise, TigerWallet takes 20% extra on top of exchange fees
+func (fs *FuturesService) CalculateTradeFee(orderValue float64, exchangeSharesFees bool) *TradeFee {
+	fee := &TradeFee{
+		OrderValue:        orderValue,
+		ExchangeSharesFees: exchangeSharesFees,
+	}
+
+	// Calculate exchange fee (0.04% taker fee)
+	exchangeFee := orderValue * fs.feeAccount.ExchangeFeePercent / 100
+	fee.ExchangeFee = exchangeFee
+
+	if exchangeSharesFees {
+		// Exchange shares fees with TigerWallet - no extra platform fee
+		fee.PlatformFee = 0
+		fee.TotalFee = exchangeFee
+	} else {
+		// Exchange doesn't share fees - TigerWallet takes 20% extra
+		// Total = exchange fee + 20% of exchange fee = 120% of exchange fee
+		fee.PlatformFee = exchangeFee * fs.feeAccount.PlatformFeePercent / 100
+		fee.TotalFee = exchangeFee + fee.PlatformFee
+	}
+
+	return fee
+}
+
+// CollectTradeFee adds fees to the fee collection
+func (fs *FuturesService) CollectTradeFee(fee *TradeFee) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	fs.feeCollection.TotalExchangeFees += fee.ExchangeFee
+	fs.feeCollection.TotalPlatformFees += fee.PlatformFee
+	fs.feeCollection.TotalFees += fee.TotalFee
+	fs.feeCollection.TransactionsCount++
+}
+
+// GetFeeCollection returns the current fee collection status
+func (fs *FuturesService) GetFeeCollection() *FeeCollection {
+	fs.mu.RLock()
+	defer fs.mu.RUnlock()
+	return fs.feeCollection
+}
+
+// GetFeeAccount returns the fee collection account info
+func (fs *FuturesService) GetFeeAccount() *FeeCollectionAccount {
+	fs.mu.RLock()
+	defer fs.mu.RUnlock()
+	return fs.feeAccount
+}
+
+// SetExchangeFeeSharing configures whether exchanges share fees with TigerWallet
+func (fs *FuturesService) SetExchangeFeeSharing(exchange string, sharesFees bool) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	// In production, this would update per-exchange settings
+	// For now, we use a global setting
 }
 
 // ============================================================================

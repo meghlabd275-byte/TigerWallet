@@ -84,6 +84,14 @@ type OptionOrder struct {
 // Service
 // ============================================================================
 
+// Fee Collection for Options Trading
+type OptionsFeeCollection struct {
+	TotalExchangeFees float64 `json:"totalExchangeFees"`
+	TotalPlatformFees float64 `json:"totalPlatformFees"`
+	TotalFees         float64 `json:"totalFees"`
+	TransactionsCount int     `json:"transactionsCount"`
+}
+
 type OptionsService struct {
 	mu          sync.RWMutex
 	pairs       map[string]float64
@@ -91,6 +99,15 @@ type OptionsService struct {
 	contracts   map[string][]OptionContract
 	positions   map[string][]OptionPosition
 	orders      map[string][]OptionOrder
+	// Fee collection
+	feeCollection *OptionsFeeCollection
+	feeAccount    *FeeCollectionAccount
+}
+
+type FeeCollectionAccount struct {
+	Address             string  `json:"address"`
+	PlatformFeePercent  float64 `json:"platformFeePercent"`
+	ExchangeFeePercent  float64 `json:"exchangeFeePercent"`
 }
 
 func NewOptionsService() *OptionsService {
@@ -99,7 +116,13 @@ func NewOptionsService() *OptionsService {
 		expiries:  []Expiry{{"1h", "1 Hour"}, {"4h", "4 Hours"}, {"1d", "1 Day"}, {"1w", "1 Week"}, {"2w", "2 Weeks"}, {"1m", "1 Month"}, {"3m", "3 Months"}},
 		contracts: make(map[string][]OptionContract),
 		positions: make(map[string][]OptionPosition),
-		orders:   make(map[string][]OptionOrder),
+		orders:    make(map[string][]OptionOrder),
+		feeCollection: &OptionsFeeCollection{},
+		feeAccount: &FeeCollectionAccount{
+			Address:            "0xTIGERWALLET_FEE_COLLECTION_ADDRESS",
+			PlatformFeePercent: 20.0, // TigerWallet takes 20% extra
+			ExchangeFeePercent: 0.05, // Standard options exchange fee
+		},
 	}
 	os.initializeDefaultPairs()
 	return os
@@ -125,6 +148,38 @@ func (os *OptionsService) initializeDefaultPairs() {
 		price := 10.0 + float64(i)*0.001
 		os.pairs[fmt.Sprintf("%s/USDT", base)] = price
 	}
+}
+
+// ============================================================================
+// Fee Collection Methods
+// ============================================================================
+
+// CalculateOptionFee calculates the fee for an options trade
+func (os *OptionsService) CalculateOptionFee(premium float64, exchangeSharesFees bool) float64 {
+	exchangeFee := premium * os.feeAccount.ExchangeFeePercent / 100
+	
+	if exchangeSharesFees {
+		// Exchange shares fees - no extra platform fee
+		return exchangeFee
+	}
+	// Exchange doesn't share fees - TigerWallet takes 20% extra
+	platformFee := exchangeFee * os.feeAccount.PlatformFeePercent / 100
+	return exchangeFee + platformFee
+}
+
+// CollectOptionFee adds fees to the fee collection
+func (os *OptionsService) CollectOptionFee(fee float64) {
+	os.mu.Lock()
+	defer os.mu.Unlock()
+	os.feeCollection.TotalFees += fee
+	os.feeCollection.TransactionsCount++
+}
+
+// GetOptionsFeeCollection returns the current fee collection status
+func (os *OptionsService) GetOptionsFeeCollection() *OptionsFeeCollection {
+	os.mu.RLock()
+	defer os.mu.RUnlock()
+	return os.feeCollection
 }
 
 func (os *OptionsService) GetPairs() map[string]float64 {
