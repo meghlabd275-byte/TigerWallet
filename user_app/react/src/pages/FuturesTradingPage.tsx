@@ -1,7 +1,7 @@
 // Future Trading Page - Perpetual Futures Trading
 // Supports USDT/any tokens, USDC/any tokens, Cross/Isolated Margin
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './FuturesTradingPage.css';
 
 interface TradingPair {
@@ -65,9 +65,14 @@ const TOP_PAIRS: TradingPair[] = [
   { id: '20', symbol: 'INJ/USDT', base: 'INJ', quote: 'USDT', price: 35.50, change24h: 5.5, volume24h: 65000000, high24h: 37, low24h: 33.5, isPreInstalled: true },
 ];
 
+// Backend API URL for perpetual trading
+const API_BASE_URL = 'https://api.tigerwallet.com/v1/perpetual';
+
 const FuturesTradingPage: React.FC = () => {
-  const [selectedPair, setSelectedPair] = useState<TradingPair>(TOP_PAIRS[0]);
-  const [pairs, setPairs] = useState<TradingPair[]>(TOP_PAIRS);
+  const [selectedPair, setSelectedPair] = useState<TradingPair | null>(null);
+  const [pairs, setPairs] = useState<TradingPair[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [quoteCurrency, setQuoteCurrency] = useState<'USDT' | 'USDC'>('USDT');
   const [leverage, setLeverage] = useState(10);
@@ -80,35 +85,73 @@ const FuturesTradingPage: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeTab, setActiveTab] = useState<'trade' | 'positions' | 'orders'>('trade');
   const [showAllPairs, setShowAllPairs] = useState(false);
-  const [walletBalance] = useState({ USDT: 50000, USDC: 25000 });
+  const [walletBalance, setWalletBalance] = useState({ USDT: 0, USDC: 0 });
 
-  // Generate additional pairs to simulate 50,000+ pairs
+  // Load trading pairs from backend
   useEffect(() => {
-    const additionalPairs: TradingPair[] = [];
-    const bases = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'DOGE', 'ADA', 'AVAX', 'DOT', 'LINK', 'MATIC', 'LTC', 'UNI', 'ATOM', 'XLM', 'NEAR', 'APT', 'ARB', 'OP', 'INJ', 'PEPE', 'SHIB', 'TRX', 'FIL', 'ALGO', 'VET', 'ICP', 'HBAR', 'QNT', 'MKR', 'AAVE', 'GRT', 'SNX', 'CRV', 'LDO', 'RUNE', 'STX', 'KAVA', 'FLOW', 'AXS', 'SAND', 'MANA', 'ENJ', 'CHZ', 'BAT', 'ZEC', 'DASH', 'XMR', 'NEO', 'EOS', 'XTZ', 'ONE', 'ZIL', 'CELO', 'CAKE', 'GMT', 'GALA', 'ROSE', 'KLAY', 'MINA', 'COMP', 'BAL', 'YFI', 'SUSHI', '1INCH', 'CRV', 'SNX', 'RUNE', 'CEL', 'OKB', 'KCS', 'HT', 'FTT', 'BNB', 'TUSD', 'BUSD', 'USDP', 'USDC'];
-    const quotes = ['USDT', 'USDC'];
-    
-    bases.forEach((base, baseIdx) => {
-      quotes.forEach((quote) => {
-        if (base !== quote) {
-          const basePrice = Math.random() * 1000 + 0.001;
-          additionalPairs.push({
-            id: `${baseIdx}-${quote}`,
-            symbol: `${base}/${quote}`,
-            base,
-            quote,
-            price: basePrice,
-            change24h: (Math.random() - 0.5) * 10,
-            volume24h: Math.random() * 100000000,
-            high24h: basePrice * 1.05,
-            low24h: basePrice * 0.95,
-            isPreInstalled: false
+    const loadData = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const token = localStorage.getItem('user_token');
+        
+        // Load pairs
+        const pairsRes = await fetch(`${API_BASE_URL}/pairs?quote=${quoteCurrency}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        
+        if (pairsRes.ok) {
+          const pairsData = await pairsRes.json();
+          if (pairsData.pairs) {
+            setPairs(pairsData.pairs);
+            if (pairsData.pairs.length > 0 && !selectedPair) {
+              setSelectedPair(pairsData.pairs[0]);
+            }
+          }
+        }
+        
+        // Load positions
+        const posRes = await fetch(`${API_BASE_URL}/positions`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (posRes.ok) {
+          const posData = await posRes.json();
+          setPositions(posData.positions || []);
+        }
+        
+        // Load orders
+        const ordersRes = await fetch(`${API_BASE_URL}/orders`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (ordersRes.ok) {
+          const ordersData = await ordersRes.json();
+          setOrders(ordersData.orders || []);
+        }
+        
+        // Load balance
+        const balRes = await fetch('https://api.tigerwallet.com/v1/wallets/balance', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (balRes.ok) {
+          const balData = await balRes.json();
+          setWalletBalance({
+            USDT: balData.balances?.USDT || 0,
+            USDC: balData.balances?.USDC || 0
           });
         }
-      });
-    });
-    setPairs([...TOP_PAIRS, ...additionalPairs]);
-  }, []);
+      } catch (err) {
+        console.error('Failed to load data:', err);
+        setError('Unable to connect to trading service. Using offline mode.');
+        // Fall back to TOP_PAIRS in offline mode
+        setPairs(TOP_PAIRS);
+        if (!selectedPair) setSelectedPair(TOP_PAIRS[0]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadData();
+  }, [quoteCurrency]);
 
   const filteredPairs = pairs.filter(pair => 
     pair.quote === quoteCurrency &&
@@ -118,20 +161,42 @@ const FuturesTradingPage: React.FC = () => {
 
   const displayPairs = showAllPairs ? filteredPairs : filteredPairs.filter(p => p.isPreInstalled);
 
-  const handleOrderSubmit = (e: React.FormEvent) => {
+  const handleOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newOrder: Order = {
-      id: Date.now().toString(),
-      symbol: selectedPair.symbol,
-      side: orderSide,
-      type: orderType,
-      size: parseFloat(orderSize),
-      price: orderType === 'market' ? selectedPair.price : parseFloat(orderPrice),
-      filled: 0,
-      status: 'open',
-      timestamp: Date.now()
-    };
-    setOrders([newOrder, ...orders]);
+    if (!selectedPair) return;
+    
+    try {
+      const token = localStorage.getItem('user_token');
+      const response = await fetch(`${API_BASE_URL}/orders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          symbol: selectedPair.symbol,
+          side: orderSide,
+          orderType: orderType,
+          size: parseFloat(orderSize),
+          price: orderType === 'market' ? selectedPair.price : parseFloat(orderPrice),
+          leverage: leverage,
+          marginMode: marginMode
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.order) {
+          setOrders([data.order, ...orders]);
+        }
+        // Reload positions after order
+        loadPositions();
+        // Reload balance
+        loadBalance();
+      }
+    } catch (err) {
+      console.error('Failed to place order:', err);
+    }
     setOrderSize('');
     setOrderPrice('');
   };

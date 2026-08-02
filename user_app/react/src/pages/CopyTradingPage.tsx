@@ -1,7 +1,7 @@
 // Copy Trading Page - Follow Top Traders
 // Supports 50,000+ trading pairs for futures copy trading
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './CopyTradingPage.css';
 
 interface Trader {
@@ -270,7 +270,10 @@ const TOP_TRADERS: Trader[] = [
 ];
 
 const CopyTradingPage: React.FC = () => {
-  const [traders, setTraders] = useState<Trader[]>(TOP_TRADERS);
+  const [traders, setTraders] = useState<Trader[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const API_BASE_URL = 'https://api.tigerwallet.com/v1/copytrading';
   const [selectedTrader, setSelectedTrader] = useState<Trader | null>(null);
   const [copyPositions, setCopyPositions] = useState<CopyPosition[]>([]);
   const [activeTab, setActiveTab] = useState<'traders' | 'positions' | 'my-copies'>('traders');
