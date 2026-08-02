@@ -1,26 +1,87 @@
-import React, { useState } from 'react';
+// NFTs Page - Production Ready
+import React, { useState, useEffect } from 'react';
+import { walletApi, NFT, NFTCollection } from '../services/api';
+import { wsService } from '../services/api';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 
-// NFT Gallery Page - Complete
 const NFTsPage = () => {
   const [selectedTab, setSelectedTab] = useState('collectibles');
   const [searchQuery, setSearchQuery] = useState('');
+  const [nfts, setNfts] = useState<NFT[]>([]);
+  const [collections, setCollections] = useState<NFTCollection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedWallet, setSelectedWallet] = useState<string>('');
+  const [wallets, setWallets] = useState<any[]>([]);
 
-  const nfts = [
-    { id: 1, name: 'Bored Ape #1234', collection: 'Bored Ape Yacht Club', image: '🦍', price: '45.5 ETH' },
-    { id: 2, name: 'CryptoPunk #5678', collection: 'CryptoPunks', image: '👾', price: '32.0 ETH' },
-    { id: 3, name: 'Azuki #9012', collection: 'Azuki', image: '🥷', price: '15.2 ETH' },
-    { id: 4, name: 'Doodle #3456', collection: 'Doodles', image: '🎨', price: '3.5 ETH' },
-    { id: 5, name: 'Moonbird #7890', collection: 'Moonbirds', image: '🐦', price: '8.1 ETH' },
-    { id: 6, name: 'Pudgy #2345', collection: 'Pudgy Penguins', image: '🐧', price: '2.8 ETH' },
-  ];
+  useEffect(() => {
+    loadWallets();
+  }, []);
 
-  const activities = [
-    { id: 1, type: 'sent', name: 'Bored Ape #1234', time: '2 hours ago', amount: '-1 NFT' },
-    { id: 2, type: 'received', name: 'CryptoPunk #5678', time: '1 day ago', amount: '+1 NFT' },
-    { id: 3, type: 'listed', name: 'Azuki #9012', time: '2 days ago', amount: '2.5 ETH' },
-  ];
+  useEffect(() => {
+    if (selectedWallet) {
+      loadNFTs();
+    }
+  }, [selectedWallet]);
+
+  const loadWallets = async () => {
+    try {
+      const walletList = await walletApi.getWallets();
+      setWallets(walletList);
+      if (walletList.length > 0) {
+        setSelectedWallet(walletList[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to load wallets:', err);
+    }
+  };
+
+  const loadNFTs = async () => {
+    if (!selectedWallet) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const wallet = wallets.find(w => w.id === selectedWallet);
+      if (!wallet) return;
+      
+      // Fetch NFTs from API
+      const nftList = await walletApi.getNFTs(wallet.address, wallet.chain);
+      setNfts(nftList);
+      
+      // Extract unique collections
+      const collectionMap = new Map<string, NFTCollection>();
+      nftList.forEach((nft: NFT) => {
+        if (!collectionMap.has(nft.collectionAddress)) {
+          collectionMap.set(nft.collectionAddress, {
+            id: nft.collectionAddress,
+            name: nft.name.split('#')[0],
+            symbol: '',
+            address: nft.collectionAddress,
+            chain: nft.chain,
+            totalSupply: 0,
+            floorPrice: nft.price || '0',
+            imageUrl: nft.imageUrl
+          });
+        }
+      });
+      setCollections(Array.from(collectionMap.values()));
+    } catch (err: any) {
+      console.error('Failed to load NFTs:', err);
+      setError(err.message || 'Failed to load NFTs');
+      // Keep empty on error
+      setNfts([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredNFTs = nfts.filter(nft => 
+    nft.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    nft.collectionAddress.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <div className="app-container">
@@ -29,6 +90,32 @@ const NFTsPage = () => {
         <Header title="NFT Gallery" />
         
         <div className="page-content">
+          {/* Wallet Selector */}
+          {wallets.length > 0 && (
+            <div className="wallet-selector">
+              <select 
+                value={selectedWallet}
+                onChange={(e) => setSelectedWallet(e.target.value)}
+              >
+                {wallets.map(wallet => (
+                  <option key={wallet.id} value={wallet.id}>
+                    {wallet.name} ({wallet.chain})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {error && (
+            <div className="error-message">{error}</div>
+          )}
+
+          {/* Loading State */}
+          {loading && (
+            <div className="loading">Loading NFTs...</div>
+          )}
+
           {/* Search Bar */}
           <div className="search-bar">
             <input
@@ -46,63 +133,69 @@ const NFTsPage = () => {
               className={`tab ${selectedTab === 'collectibles' ? 'active' : ''}`}
               onClick={() => setSelectedTab('collectibles')}
             >
-              Collectibles
+              Collectibles ({filteredNFTs.length})
             </button>
             <button
-              className={`tab ${selectedTab === 'activity' ? 'active' : ''}`}
-              onClick={() => setSelectedTab('activity')}
+              className={`tab ${selectedTab === 'collections' ? 'active' : ''}`}
+              onClick={() => setSelectedTab('collections')}
             >
-              Activity
-            </button>
-            <button
-              className={`tab ${selectedTab === 'opensea' ? 'active' : ''}`}
-              onClick={() => setSelectedTab('opensea')}
-            >
-              OpenSea
+              Collections ({collections.length})
             </button>
           </div>
 
           {/* Content */}
-          {selectedTab === 'collectibles' && (
+          {!loading && selectedTab === 'collectibles' && (
             <div className="nft-grid">
-              {nfts.map((nft) => (
-                <div key={nft.id} className="nft-card">
-                  <div className="nft-image">{nft.image}</div>
-                  <div className="nft-info">
-                    <div className="nft-name">{nft.name}</div>
-                    <div className="nft-collection">{nft.collection}</div>
-                    <div className="nft-price">{nft.price}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {selectedTab === 'activity' && (
-            <div className="activity-list">
-              {activities.map((activity) => (
-                <div key={activity.id} className="activity-item">
-                  <div className="activity-icon">
-                    {activity.type === 'sent' ? '📤' : activity.type === 'received' ? '📥' : '📋'}
-                  </div>
-                  <div className="activity-info">
-                    <div className="activity-name">
-                      {activity.type === 'sent' ? 'Sent' : activity.type === 'received' ? 'Received' : 'Listed'} {activity.name}
+              {filteredNFTs.length > 0 ? (
+                filteredNFTs.map((nft) => (
+                  <div key={nft.id || nft.tokenId} className="nft-card">
+                    <div className="nft-image">
+                      {nft.imageUrl ? (
+                        <img src={nft.imageUrl} alt={nft.name} />
+                      ) : (
+                        '🖼️'
+                      )}
                     </div>
-                    <div className="activity-time">{activity.time}</div>
+                    <div className="nft-info">
+                      <div className="nft-name">{nft.name}</div>
+                      <div className="nft-collection">{nft.collectionAddress.slice(0, 6)}...</div>
+                      {nft.price && (
+                        <div className="nft-price">{nft.price}</div>
+                      )}
+                    </div>
                   </div>
-                  <div className="activity-amount">{activity.amount}</div>
+                ))
+              ) : (
+                <div className="empty-state">
+                  <p>No NFTs found</p>
                 </div>
-              ))}
+              )}
             </div>
           )}
 
-          {selectedTab === 'opensea' && (
-            <div className="opensea-connect">
-              <div className="opensea-icon">🌊</div>
-              <h3>OpenSea Integration</h3>
-              <p>Connect to OpenSea to view and trade your NFTs</p>
-              <button className="connect-btn">Connect OpenSea</button>
+          {!loading && selectedTab === 'collections' && (
+            <div className="nft-grid">
+              {collections.length > 0 ? (
+                collections.map((collection) => (
+                  <div key={collection.id} className="nft-card collection-card">
+                    <div className="nft-image">
+                      {collection.imageUrl ? (
+                        <img src={collection.imageUrl} alt={collection.name} />
+                      ) : (
+                        '🎨'
+                      )}
+                    </div>
+                    <div className="nft-info">
+                      <div className="nft-name">{collection.name}</div>
+                      <div className="nft-collection">Floor: {collection.floorPrice}</div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="empty-state">
+                  <p>No collections found</p>
+                </div>
+              )}
             </div>
           )}
         </div>
