@@ -115,19 +115,14 @@ export const WalletsPage: React.FC = () => {
 
   const loadWallets = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await fetchAPI('/admin/wallets');
       setWallets(data.wallets || []);
     } catch (err) {
       console.error('Failed to load wallets:', err);
-      setError('Failed to load wallets');
-      // Fallback data
-      setWallets([
-        { id: '1', name: 'Master Wallet', address: '0x742d35Cc6634C0532925a3b844Bc9e7595f1234', chain: 'Ethereum', balance: '1250.5', type: 'master', status: 'active', createdAt: '2024-01-15' },
-        { id: '2', name: 'User Wallet A', address: '0x1234...5678', chain: 'Ethereum', balance: '50.2', type: 'user', status: 'active', createdAt: '2024-02-20' },
-        { id: '3', name: 'User Wallet B', address: '0xabcd...efgh', chain: 'BSC', balance: '120.8', type: 'user', status: 'active', createdAt: '2024-03-10' },
-        { id: '4', name: 'User Wallet C', address: '0x9876...5432', chain: 'Polygon', balance: '0', type: 'user', status: 'frozen', createdAt: '2024-03-15' },
-      ]);
+      setError('Unable to connect to wallet service. Please ensure the backend is running.');
+      setWallets([]);
     } finally {
       setLoading(false);
     }
@@ -237,15 +232,7 @@ export const BlockchainPage: React.FC = () => {
       setBlockchains(data.blockchains || []);
     } catch (err) {
       console.error('Failed to load blockchains:', err);
-      setBlockchains([
-        { id: '1', name: 'Ethereum', symbol: 'ETH', chainId: 1, rpcUrl: 'https://eth.llamarpc.com', explorerUrl: 'https://etherscan.io', status: 'active', isEVM: true },
-        { id: '2', name: 'Binance Smart Chain', symbol: 'BNB', chainId: 56, rpcUrl: 'https://bsc-dataseed.binance.org', explorerUrl: 'https://bscscan.com', status: 'active', isEVM: true },
-        { id: '3', name: 'Polygon', symbol: 'MATIC', chainId: 137, rpcUrl: 'https://polygon-rpc.com', explorerUrl: 'https://polygonscan.com', status: 'active', isEVM: true },
-        { id: '4', name: 'Arbitrum', symbol: 'ETH', chainId: 42161, rpcUrl: 'https://arb1.arbitrum.io/rpc', explorerUrl: 'https://arbiscan.io', status: 'active', isEVM: true },
-        { id: '5', name: 'Optimism', symbol: 'ETH', chainId: 10, rpcUrl: 'https://mainnet.optimism.io', explorerUrl: 'https://optimistic.etherscan.io', status: 'active', isEVM: true },
-        { id: '6', name: 'Avalanche', symbol: 'AVAX', chainId: 43114, rpcUrl: 'https://api.avax.network/ext/bc/C/rpc', explorerUrl: 'https://snowtrace.io', status: 'active', isEVM: true },
-        { id: '7', name: 'Solana', symbol: 'SOL', chainId: -1, rpcUrl: 'https://api.mainnet-beta.solana.com', explorerUrl: 'https://solscan.io', status: 'active', isEVM: false },
-      ]);
+      setBlockchains([]);
     } finally {
       setLoading(false);
     }
@@ -916,9 +903,7 @@ export const LoginPage: React.FC = ({ onLogin }: { onLogin: (token: string) => v
       localStorage.setItem('admin_token', data.token);
       onLogin(data.token);
     } catch (err) {
-      setError('Invalid username or password');
-      // Demo login for testing
-      onLogin('demo-token-12345');
+      setError('Invalid username or password. Please check your credentials and try again.');
     } finally {
       setLoading(false);
     }
@@ -967,11 +952,26 @@ export const SendPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showQRScanner, setShowQRScanner] = useState(false);
-  const [wallets] = useState<Wallet[]>([
-    { id: '1', name: 'Master Wallet', address: '0x742d35Cc6634C0532925a3b844Bc9e7595f1234', chain: 'Ethereum', balance: '1250.5', type: 'master', status: 'active', createdAt: '2024-01-15' },
-    { id: '2', name: 'User Wallet A', address: '0x1234567890abcdef1234567890abcdef12345678', chain: 'Ethereum', balance: '50.2', type: 'user', status: 'active', createdAt: '2024-02-20' },
-  ]);
-  const [recentAddresses] = useState<string[]>([]);
+  const [wallets, setWallets] = useState<Wallet[]>([]);
+  const [recentAddresses, setRecentAddresses] = useState<string[]>([]);
+  const [walletsLoading, setWalletsLoading] = useState(true);
+
+  // Load wallets on mount
+  useEffect(() => {
+    const loadWallets = async () => {
+      try {
+        const data = await fetchAPI('/admin/wallets');
+        setWallets(data.wallets || []);
+        setRecentAddresses(data.recentAddresses || []);
+      } catch (err) {
+        console.error('Failed to load wallets:', err);
+        setError('Failed to load wallets. Please ensure the backend is running.');
+      } finally {
+        setWalletsLoading(false);
+      }
+    };
+    loadWallets();
+  }, []);
 
   const handleSend = async () => {
     if (!fromWallet || !recipient || !amount) {
@@ -984,10 +984,15 @@ export const SendPage: React.FC = () => {
     setSuccess(null);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      const txHash = '0x' + Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2);
-      setSuccess(`Transaction submitted! Hash: ${txHash}`);
+      const response = await fetchAPI(`/admin/wallets/${fromWallet}/send`, {
+        method: 'POST',
+        body: JSON.stringify({
+          to: recipient,
+          amount: amount,
+          token: selectedToken
+        })
+      });
+      setSuccess(`Transaction submitted! Hash: ${response.txHash}`);
       setRecipient('');
       setAmount('');
     } catch (err: any) {
@@ -1019,11 +1024,12 @@ export const SendPage: React.FC = () => {
             value={fromWallet} 
             onChange={(e) => setFromWallet(e.target.value)}
             className="form-select"
+            disabled={walletsLoading}
           >
-            <option value="">Select wallet...</option>
+            <option value="">{walletsLoading ? 'Loading wallets...' : 'Select wallet...'}</option>
             {wallets.map(wallet => (
               <option key={wallet.id} value={wallet.id}>
-                {wallet.name} ({wallet.balance} ETH)
+                {wallet.name} ({wallet.balance} {wallet.chain === 'Ethereum' ? 'ETH' : wallet.chain})
               </option>
             ))}
           </select>

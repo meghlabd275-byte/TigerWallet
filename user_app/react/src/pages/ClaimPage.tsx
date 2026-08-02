@@ -1,6 +1,7 @@
 // Claim Page - Claim Airdrops, Rewards, and Bonuses
+// Connected to backend claim service
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './ClaimPage.css';
 
 interface ClaimableReward {
@@ -26,134 +27,122 @@ interface ClaimHistory {
   txHash: string;
 }
 
+// Reward icons mapping
+const REWARD_ICONS: {[key: string]: string} = {
+  airdrop: '🎁', reward: '🏆', bonus: '💰', rebate: '🔄', cashback: '💵'
+};
+
 const ClaimPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'available' | 'history'>('available');
-  const [claimableRewards, setClaimableRewards] = useState<ClaimableReward[]>([
-    {
-      id: '1',
-      type: 'airdrop',
-      title: 'TigerWallet Launch Airdrop',
-      description: 'Welcome bonus for early users',
-      amount: 100,
-      token: 'TIGER',
-      expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
-      status: 'claimable',
-      source: 'TigerWallet',
-      icon: '🎁'
-    },
-    {
-      id: '2',
-      type: 'bonus',
-      title: 'First Deposit Bonus',
-      description: 'Get 20% bonus on your first deposit',
-      amount: 50,
-      token: 'USDT',
-      expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
-      status: 'claimable',
-      source: 'Promotion',
-      icon: '💰'
-    },
-    {
-      id: '3',
-      type: 'reward',
-      title: 'Trading Competition Reward',
-      description: 'You placed 3rd in weekly trading competition',
-      amount: 250,
-      token: 'USDT',
-      expiresAt: Date.now() + 14 * 24 * 60 * 60 * 1000,
-      status: 'claimable',
-      source: 'Competition',
-      icon: '🏆'
-    },
-    {
-      id: '4',
-      type: 'rebate',
-      title: 'Trading Fee Rebate',
-      description: 'Your weekly trading fee rebate',
-      amount: 15.5,
-      token: 'USDT',
-      expiresAt: Date.now() + 3 * 24 * 60 * 60 * 1000,
-      status: 'claimable',
-      source: 'Fee Rebate',
-      icon: '🔄'
-    },
-    {
-      id: '5',
-      type: 'cashback',
-      title: 'Cashback Reward',
-      description: 'Your monthly cashback from swaps',
-      amount: 8.25,
-      token: 'USDT',
-      expiresAt: Date.now() + 60 * 24 * 60 * 60 * 1000,
-      status: 'pending',
-      source: 'Swap Cashback',
-      icon: '💵'
-    },
-    {
-      id: '6',
-      type: 'airdrop',
-      title: 'Partner Airdrop - ChainX',
-      description: 'Exclusive airdrop from ChainX partnership',
-      amount: 500,
-      token: 'CX',
-      expiresAt: Date.now() - 2 * 24 * 60 * 60 * 1000,
-      status: 'expired',
-      source: 'ChainX',
-      icon: '🪂'
-    }
-  ]);
+  const [claimableRewards, setClaimableRewards] = useState<ClaimableReward[]>([]);
+  const [claimHistory, setClaimHistory] = useState<ClaimHistory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [claiming, setClaiming] = useState<string | null>(null);
 
-  const [claimHistory, setClaimHistory] = useState<ClaimHistory[]>([
-    {
-      id: '1',
-      type: 'bonus',
-      title: 'Sign-up Bonus',
-      amount: 10,
-      token: 'USDT',
-      claimedAt: Date.now() - 10 * 24 * 60 * 60 * 1000,
-      txHash: '0x1234...abcd'
-    },
-    {
-      id: '2',
-      type: 'reward',
-      title: 'Referral Bonus',
-      amount: 25,
-      token: 'USDT',
-      claimedAt: Date.now() - 5 * 24 * 60 * 60 * 1000,
-      txHash: '0x5678...efgh'
+  // Load claimable rewards from backend
+  const loadClaimableRewards = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('user_token');
+      const response = await fetch('https://api.tigerwallet.com/v1/claims/available', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to load rewards');
+      }
+      
+      const data = await response.json();
+      
+      if (data.rewards && Array.isArray(data.rewards)) {
+        const rewards = data.rewards.map((r: any) => ({
+          ...r,
+          icon: REWARD_ICONS[r.type] || '🎁'
+        }));
+        setClaimableRewards(rewards);
+      } else {
+        setClaimableRewards([]);
+      }
+    } catch (err) {
+      console.error('Failed to load claimable rewards:', err);
+      setError('Unable to load rewards. Please ensure the backend service is running.');
+      setClaimableRewards([]);
+    } finally {
+      setLoading(false);
     }
-  ]);
+  }, []);
 
-  const [claimingId, setClaimingId] = useState<string | null>(null);
+  // Load claim history from backend
+  const loadClaimHistory = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('user_token');
+      const response = await fetch('https://api.tigerwallet.com/v1/claims/history', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to load history');
+      }
+      
+      const data = await response.json();
+      setClaimHistory(data.history || []);
+    } catch (err) {
+      console.error('Failed to load claim history:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'available') {
+      loadClaimableRewards();
+    } else {
+      loadClaimHistory();
+    }
+  }, [activeTab, loadClaimableRewards, loadClaimHistory]);
+
+  // Handle claiming a reward
+  const handleClaim = async (rewardId: string) => {
+    setClaiming(rewardId);
+    setError(null);
+    
+    try {
+      const token = localStorage.getItem('user_token');
+      const response = await fetch(`https://api.tigerwallet.com/v1/claims/${rewardId}/claim`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        // Reload available rewards
+        loadClaimableRewards();
+        // Add to history
+        loadClaimHistory();
+        setActiveTab('history');
+      } else {
+        setError(data.error || 'Claim failed');
+      }
+    } catch (err) {
+      console.error('Claim failed:', err);
+      setError('Failed to claim reward. Please try again.');
+    } finally {
+      setClaiming(null);
+    }
+  };
+
   const [claimSuccess, setClaimSuccess] = useState<{show: boolean; reward?: ClaimableReward}>({show: false});
 
   const availableRewards = claimableRewards.filter(r => r.status === 'claimable');
   const pendingRewards = claimableRewards.filter(r => r.status === 'pending');
   const totalClaimable = availableRewards.reduce((sum, r) => sum + r.amount, 0);
 
-  const handleClaim = async (reward: ClaimableReward) => {
-    setClaimingId(reward.id);
-    
-    // Simulate claiming process
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Update reward status
-    setClaimableRewards(claimableRewards.map(r => 
-      r.id === reward.id ? { ...r, status: 'claimed' as const } : r
-    ));
-
-    // Add to history
-    setClaimHistory([{
-      id: Date.now().toString(),
-      type: reward.type,
-      title: reward.title,
-      amount: reward.amount,
-      token: reward.token,
-      claimedAt: Date.now(),
-      txHash: `0x${Math.random().toString(16).slice(2, 10)}...${Math.random().toString(16).slice(2, 6)}`
-    }, ...claimHistory]);
-
-    setClaimingId(null);
+  const handleClaimClick = async (reward: ClaimableReward) => {
+    await handleClaim(reward.id);
     setClaimSuccess({show: true, reward});
   };
 
