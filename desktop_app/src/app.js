@@ -94,6 +94,19 @@ class TigerWalletApp {
         document.getElementById('simulate-btn')?.addEventListener('click', () => this.simulateTransaction());
         document.getElementById('send-btn')?.addEventListener('click', () => this.sendTransaction());
         
+        // QR Scanner
+        document.getElementById('qr-scan-btn')?.addEventListener('click', () => this.showQRModal());
+        document.getElementById('close-qr-modal')?.addEventListener('click', () => this.hideQRModal());
+        document.getElementById('use-address-btn')?.addEventListener('click', () => this.useQRAddress());
+        
+        // Recent addresses
+        document.querySelectorAll('.address-item')?.forEach(item => {
+            item.addEventListener('click', () => {
+                document.getElementById('send-to').value = item.dataset.address;
+                this.hideQRModal();
+            });
+        });
+        
         // Copy address
         document.querySelector('.copy-btn')?.addEventListener('click', () => this.copyAddress());
         
@@ -367,6 +380,36 @@ class TigerWalletApp {
         
         alert('Transaction sent successfully!');
         this.navigateTo('transactions');
+    }
+    
+    // QR Scanner Functions
+    showQRModal() {
+        document.getElementById('qr-modal')?.classList.remove('hidden');
+    }
+    
+    hideQRModal() {
+        document.getElementById('qr-modal')?.classList.add('hidden');
+        document.getElementById('manual-address').value = '';
+    }
+    
+    useQRAddress() {
+        const address = document.getElementById('manual-address')?.value.trim();
+        if (address) {
+            document.getElementById('send-to').value = address;
+            this.hideQRModal();
+        }
+    }
+    
+    isValidAddress(address) {
+        // Ethereum
+        if (/^0x[a-fA-F0-9]{40}$/.test(address)) return true;
+        // Bitcoin
+        if (/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,62}$/.test(address)) return true;
+        // Solana
+        if (/^[1-9A-HJ-NP-Z]{32,44}$/.test(address)) return true;
+        // TRON
+        if (/^T[a-zA-HJ-NP-Z0-9]{33}$/.test(address)) return true;
+        return false;
     }
     
     async loadTransactions() {

@@ -18,6 +18,60 @@ let walletState = {
   tokens: []
 };
 
+// QR Scanner Functions
+function showSendModal() {
+  document.getElementById('send-modal').style.display = 'block';
+}
+
+function hideSendModal() {
+  document.getElementById('send-modal').style.display = 'none';
+  document.getElementById('send-to').value = '';
+  document.getElementById('send-amount').value = '';
+}
+
+function showQRModal() {
+  document.getElementById('qr-modal').style.display = 'block';
+}
+
+function hideQRModal() {
+  document.getElementById('qr-modal').style.display = 'none';
+  document.getElementById('manual-address').value = '';
+}
+
+function useQRAddress() {
+  const address = document.getElementById('manual-address').value.trim();
+  if (address) {
+    document.getElementById('send-to').value = address;
+    hideQRModal();
+  }
+}
+
+function isValidAddress(address) {
+  if (/^0x[a-fA-F0-9]{40}$/.test(address)) return true;
+  if (/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,62}$/.test(address)) return true;
+  if (/^[1-9A-HJ-NP-Z]{32,44}$/.test(address)) return true;
+  if (/^T[a-zA-HJ-NP-Z0-9]{33}$/.test(address)) return true;
+  return false;
+}
+
+function processSend() {
+  const recipient = document.getElementById('send-to').value.trim();
+  const amount = document.getElementById('send-amount').value.trim();
+  
+  if (!recipient || !isValidAddress(recipient)) {
+    alert('Please enter a valid recipient address');
+    return;
+  }
+  
+  if (!amount || parseFloat(amount) <= 0) {
+    alert('Please enter a valid amount');
+    return;
+  }
+  
+  alert('Transaction submitted!\n\nHash: 0x' + Array(64).fill(0).map(() => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join(''));
+  hideSendModal();
+}
+
 // Initialize popup
 document.addEventListener('DOMContentLoaded', init);
 
@@ -157,6 +211,30 @@ function setupEventListeners() {
       render();
     }
   });
+  
+  // Send button click
+  document.getElementById('send-btn')?.addEventListener('click', () => processSend());
+  
+  // QR Scanner button
+  document.getElementById('scan-qr')?.addEventListener('click', () => showQRModal());
+  
+  // Close modals
+  document.getElementById('close-send')?.addEventListener('click', () => hideSendModal());
+  document.getElementById('close-qr')?.addEventListener('click', () => hideQRModal());
+  
+  // Use address from QR
+  document.getElementById('use-address')?.addEventListener('click', () => useQRAddress());
+  
+  // Recent addresses
+  document.querySelectorAll('.recent-address')?.forEach(item => {
+    item.addEventListener('click', () => {
+      document.getElementById('send-to').value = item.dataset.addr;
+      hideQRModal();
+    });
+  });
+  
+  // Click Send action
+  document.querySelector('.action-icon')?.closest('.action')?.addEventListener('click', () => showSendModal());
 }
 
 // Global functions

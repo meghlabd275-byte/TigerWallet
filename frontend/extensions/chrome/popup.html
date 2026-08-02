@@ -67,6 +67,55 @@
   
   <button class="btn">Open Dashboard</button>
   
+  <!-- Send Modal with QR Scanner -->
+  <div id="send-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 100;">
+    <div style="background: #1e293b; margin: 20px; border-radius: 12px; padding: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h3 style="margin: 0;">Send</h3>
+        <button id="close-send" style="background: none; border: none; color: white; font-size: 24px; cursor: pointer;">×</button>
+      </div>
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; margin-bottom: 8px; color: #94a3b8; font-size: 12px;">Recipient Address</label>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="send-to" placeholder="0x..." style="flex: 1; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white;">
+          <button id="scan-qr" style="padding: 12px; background: #334155; border: none; border-radius: 8px; cursor: pointer;">📷</button>
+        </div>
+      </div>
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; margin-bottom: 8px; color: #94a3b8; font-size: 12px;">Amount</label>
+        <input type="number" id="send-amount" placeholder="0.0" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white;">
+      </div>
+      <button id="send-btn" style="width: 100%; padding: 14px; background: #f97316; border: none; border-radius: 8px; color: white; font-weight: 600; cursor: pointer;">Send</button>
+    </div>
+  </div>
+
+  <!-- QR Scanner Modal -->
+  <div id="qr-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 101;">
+    <div style="background: #1e293b; margin: 20px; border-radius: 12px; padding: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h3 style="margin: 0;">Scan QR Code</h3>
+        <button id="close-qr" style="background: none; border: none; color: white; font-size: 24px; cursor: pointer;">×</button>
+      </div>
+      <div style="background: #000; border-radius: 12px; min-height: 200px; display: flex; align-items: center; justify-content: center;">
+        <div style="text-align: center; color: #fff; padding: 30px;">
+          <span style="font-size: 48px;">📷</span>
+          <p>Camera QR Scanner</p>
+          <p style="font-size: 12px; color: #888;">Point camera at QR code</p>
+        </div>
+      </div>
+      <div style="margin-top: 20px;">
+        <label style="display: block; margin-bottom: 8px; color: #94a3b8; font-size: 12px;">Or enter manually:</label>
+        <input type="text" id="manual-address" placeholder="0x..." style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white;">
+        <button id="use-address" style="width: 100%; margin-top: 10px; padding: 12px; background: #f97316; border: none; border-radius: 8px; color: white; cursor: pointer;">Use Address</button>
+      </div>
+      <div style="margin-top: 20px;">
+        <label style="display: block; margin-bottom: 8px; color: #94a3b8; font-size: 12px;">Recent:</label>
+        <div class="recent-address" data-addr="0x742d35Cc6634C0532925a3b844Bc9e7595f1234" style="padding: 10px; background: #334155; border-radius: 8px; margin-bottom: 8px; cursor: pointer; font-family: monospace; font-size: 12px;">0x742d...f1234</div>
+        <div class="recent-address" data-addr="0x1234567890abcdef1234567890abcdef12345678" style="padding: 10px; background: #334155; border-radius: 8px; cursor: pointer; font-family: monospace; font-size: 12px;">0x1234...5678</div>
+      </div>
+    </div>
+  </div>
+  
   <script src="popup.js"></script>
 </body>
 </html>

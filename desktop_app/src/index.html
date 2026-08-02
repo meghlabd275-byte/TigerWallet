@@ -117,7 +117,10 @@
                         <h4>Send Transaction</h4>
                         <div class="input-group">
                             <label>Recipient Address</label>
-                            <input type="text" id="send-to" placeholder="0x...">
+                            <div style="display: flex; gap: 8px;">
+                                <input type="text" id="send-to" placeholder="0x... or scan QR" style="flex: 1;">
+                                <button id="qr-scan-btn" class="btn-secondary" style="padding: 12px 16px;" title="Scan QR Code">📷</button>
+                            </div>
                         </div>
                         <div class="input-group">
                             <label>Amount</label>
@@ -134,6 +137,37 @@
                         <div class="simulation-result" id="simulation-result"></div>
                         <button id="simulate-btn" class="btn-secondary">Simulate First</button>
                         <button id="send-btn" class="btn-primary">Send</button>
+                    </div>
+                </div>
+
+                <!-- QR Scanner Modal -->
+                <div id="qr-modal" class="modal hidden">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Scan QR Code</h3>
+                            <button id="close-qr-modal" class="close-btn">×</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="qr-scanner-area">
+                                <div class="qr-camera-placeholder">
+                                    <span style="font-size: 48px;">📷</span>
+                                    <p>Camera QR Scanner</p>
+                                    <p style="font-size: 12px; color: #888;">Point camera at QR code</p>
+                                </div>
+                            </div>
+                            <div style="margin-top: 20px;">
+                                <label style="display: block; margin-bottom: 8px;">Or enter address manually:</label>
+                                <input type="text" id="manual-address" placeholder="0x...">
+                                <button id="use-address-btn" class="btn-primary" style="margin-top: 10px; width: 100%;">Use Address</button>
+                            </div>
+                            <div style="margin-top: 20px;">
+                                <label style="display: block; margin-bottom: 8px;">Recent Addresses:</label>
+                                <div id="recent-addresses">
+                                    <div class="address-item" data-address="0x742d35Cc6634C0532925a3b844Bc9e7595f1234">0x742d...f1234</div>
+                                    <div class="address-item" data-address="0x1234567890abcdef1234567890abcdef12345678">0x1234...5678</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
