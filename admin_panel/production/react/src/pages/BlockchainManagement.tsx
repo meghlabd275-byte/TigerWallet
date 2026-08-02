@@ -1,29 +1,107 @@
 /**
  * Blockchain Management - Add/manage blockchain networks
+ * Connected to backend APIs
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
+
+interface Blockchain {
+  id: string;
+  name: string;
+  symbol: string;
+  chainId: number | null;
+  rpc: string;
+  explorer: string;
+  type: 'EVM' | 'Non-EVM';
+  status: 'active' | 'paused' | 'disabled';
+}
 
 function BlockchainManagement() {
   const [activeTab, setActiveTab] = useState('networks');
+  const [blockchains, setBlockchains] = useState<Blockchain[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const blockchains = [
-    { id: 1, name: 'Ethereum', symbol: 'ETH', chainId: 1, rpc: 'https://eth.llamarpc.com', explorer: 'https://etherscan.io', type: 'EVM', status: 'Active' },
-    { id: 2, name: 'Polygon', symbol: 'MATIC', chainId: 137, rpc: 'https://polygon-rpc.com', explorer: 'https://polygonscan.com', type: 'EVM', status: 'Active' },
-    { id: 3, name: 'BNB Chain', symbol: 'BNB', chainId: 56, rpc: 'https://bsc-dataseed.binance.org', explorer: 'https://bscscan.com', type: 'EVM', status: 'Active' },
-    { id: 4, name: 'Arbitrum', symbol: 'ARB', chainId: 42161, rpc: 'https://arb1.arbitrum.io/rpc', explorer: 'https://arbiscan.io', type: 'EVM', status: 'Active' },
-    { id: 5, name: 'Optimism', symbol: 'OP', chainId: 10, rpc: 'https://mainnet.optimism.io', explorer: 'https://optimistic.etherscan.io', type: 'EVM', status: 'Active' },
-    { id: 6, name: 'Avalanche', symbol: 'AVAX', chainId: 43114, rpc: 'https://api.avax.network/ext/bc/C/rpc', explorer: 'https://snowtrace.io', type: 'EVM', status: 'Active' },
-    { id: 7, name: 'Solana', symbol: 'SOL', chainId: null, rpc: 'https://api.mainnet-beta.solana.com', explorer: 'https://explorer.solana.com', type: 'Non-EVM', status: 'Active' },
-    { id: 8, name: 'Base', symbol: 'ETH', chainId: 8453, rpc: 'https://mainnet.base.org', explorer: 'https://basescan.org', type: 'EVM', status: 'Active' },
-  ];
+  // Fetch blockchains from backend
+  const fetchBlockchains = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('superadmin_token');
+      const response = await fetch(`${API_BASE_URL}/super-admin/blockchains`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch blockchains');
+      }
+      
+      const data = await response.json();
+      setBlockchains(data.blockchains || []);
+    } catch (err) {
+      console.error('Error fetching blockchains:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load blockchains');
+      setBlockchains([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchBlockchains();
+  }, [fetchBlockchains]);
+
+  // Update blockchain status
+  const handleStatusChange = async (chainId: string, newStatus: 'active' | 'paused' | 'disabled') => {
+    try {
+      const token = localStorage.getItem('superadmin_token');
+      const response = await fetch(`${API_BASE_URL}/super-admin/blockchains/${chainId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update blockchain status');
+      }
+      
+      await fetchBlockchains();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Status update failed');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-500"></div>
+      </div>
+    );
+  }
+
+  const evmChains = blockchains.filter(b => b.type === 'EVM').length;
+  const nonEvmChains = blockchains.filter(b => b.type === 'Non-EVM').length;
+  const activeChains = blockchains.filter(b => b.status === 'active').length;
 
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Blockchain Management</h1>
-        <button className="btn btn-primary">+ Add Blockchain</button>
       </div>
+
+      {error && (
+        <div className="bg-red-500/20 border border-red-500 text-red-500 px-4 py-3 rounded-lg mb-4">
+          {error}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-slate-800 p-4 rounded-lg">
@@ -32,15 +110,15 @@ function BlockchainManagement() {
         </div>
         <div className="bg-slate-800 p-4 rounded-lg">
           <p className="text-sm opacity-60">EVM Chains</p>
-          <p className="text-2xl font-bold">{blockchains.filter(b => b.type === 'EVM').length}</p>
+          <p className="text-2xl font-bold">{evmChains}</p>
         </div>
         <div className="bg-slate-800 p-4 rounded-lg">
           <p className="text-sm opacity-60">Non-EVM Chains</p>
-          <p className="text-2xl font-bold">{blockchains.filter(b => b.type === 'Non-EVM').length}</p>
+          <p className="text-2xl font-bold">{nonEvmChains}</p>
         </div>
         <div className="bg-slate-800 p-4 rounded-lg">
           <p className="text-sm opacity-60">Active</p>
-          <p className="text-2xl font-bold text-green-500">{blockchains.filter(b => b.status === 'Active').length}</p>
+          <p className="text-2xl font-bold text-green-500">{activeChains}</p>
         </div>
       </div>
 
