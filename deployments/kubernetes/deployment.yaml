@@ -1,0 +1,451 @@
+# TigerWallet Kubernetes Deployment
+# Production-ready K8s manifests
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tigerwallet
+  labels:
+    app.kubernetes.io/name: tigerwallet
+    app.kubernetes.io/component: namespace
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tigerwallet-secrets
+  namespace: tigerwallet
+type: Opaque
+stringData:
+  jwt-secret: "YOUR-JWT-SECRET-KEY-CHANGE-IN-PROD"
+  db-user: "tigerwallet"
+  db-password: "CHANGE-ME-IN-PROD"
+  redis-password: "CHANGE-ME-IN-PROD"
+  grafana-password: "CHANGE-ME-IN-PROD"
+  binance-api-key: ""
+  binance-api-secret: ""
+  coinbase-api-key: ""
+  coinbase-api-secret: ""
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tigerwallet-config
+  namespace: tigerwallet
+data:
+  NODE_ENV: "production"
+  DB_HOST: "postgres.tigerwallet.svc.cluster.local"
+  DB_PORT: "5432"
+  REDIS_HOST: "redis.tigerwallet.svc.cluster.local"
+  REDIS_PORT: "6379"
+  NATS_URL: "nats.tigerwallet.svc.cluster.local:4222"
+
+---
+# PostgreSQL
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: tigerwallet
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+  clusterIP: None
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: tigerwallet
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: tigerwallet-secrets
+                  key: db-user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tigerwallet-secrets
+                  key: db-password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "1"
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - tigerwallet
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - tigerwallet
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: postgres-storage
+          emptyDir: {}
+
+---
+# Redis
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: tigerwallet
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+  clusterIP: None
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: tigerwallet
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          command:
+            - redis-server
+            - --maxmemory
+            - "512mb"
+            - --maxmemory-policy
+            - allkeys-lru
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 3
+            periodSeconds: 5
+
+---
+# API Gateway
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: tigerwallet
+spec:
+  selector:
+    app: api-gateway
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: tigerwallet
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      containers:
+        - name: api-gateway
+          image: tigerwallet/api-gateway:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: tigerwallet-config
+            - secretRef:
+                name: tigerwallet-secrets
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "2"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+---
+# Listing Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: listing-service
+  namespace: tigerwallet
+spec:
+  selector:
+    app: listing-service
+  ports:
+    - port: 80
+      targetPort: 8080
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: listing-service
+  namespace: tigerwallet
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: listing-service
+  template:
+    metadata:
+      labels:
+        app: listing-service
+    spec:
+      containers:
+        - name: listing-service
+          image: tigerwallet/listing-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: tigerwallet-config
+            - secretRef:
+                name: tigerwallet-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
+
+---
+# WebSocket Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: websocket-service
+  namespace: tigerwallet
+spec:
+  selector:
+    app: websocket-service
+  ports:
+    - port: 80
+      targetPort: 8095
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: websocket-service
+  namespace: tigerwallet
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: websocket-service
+  template:
+    metadata:
+      labels:
+        app: websocket-service
+    spec:
+      containers:
+        - name: websocket-service
+          image: tigerwallet/websocket-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8095
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
+
+---
+# CEX Connector
+apiVersion: v1
+kind: Service
+metadata:
+  name: cex-connector
+  namespace: tigerwallet
+spec:
+  selector:
+    app: cex-connector
+  ports:
+    - port: 80
+      targetPort: 8090
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cex-connector
+  namespace: tigerwallet
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cex-connector
+  template:
+    metadata:
+      labels:
+        app: cex-connector
+    spec:
+      containers:
+        - name: cex-connector
+          image: tigerwallet/cex-connector:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8090
+          envFrom:
+            - secretRef:
+                name: tigerwallet-secrets
+
+---
+# Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tigerwallet-ingress
+  namespace: tigerwallet
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: api.tigerwallet.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 80
+    - host: ws.tigerwallet.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: websocket-service
+                port:
+                  number: 80
+
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-gateway-hpa
+  namespace: tigerwallet
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+---
+# PodDisruptionBudget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-gateway-pdb
+  namespace: tigerwallet
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: api-gateway

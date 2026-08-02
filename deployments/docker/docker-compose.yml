@@ -1,0 +1,389 @@
+# TigerWallet Production Docker Compose
+# Multi-service deployment with all backend services
+
+version: '3.8'
+
+services:
+  # ============================================
+  # CORE SERVICES
+  # ============================================
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./go/api_gateway
+      dockerfile: Dockerfile
+    container_name: tigerwallet-api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=production
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=tigerwallet
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Listing Service
+  listing-service:
+    build:
+      context: ./backend_services/go/listing_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-listing-service
+    ports:
+      - "8081:8080"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=tigerwallet_listing
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  # CEX Connector Service
+  cex-connector:
+    build:
+      context: ./go/cex_connector
+      dockerfile: Dockerfile
+    container_name: tigerwallet-cex-connector
+    ports:
+      - "8090:8090"
+    environment:
+      - BINANCE_API_KEY=${BINANCE_API_KEY}
+      - BINANCE_API_SECRET=${BINANCE_API_SECRET}
+      - COINBASE_API_KEY=${COINBASE_API_KEY}
+      - COINBASE_API_SECRET=${COINBASE_API_SECRET}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  # WebSocket Service
+  websocket-service:
+    build:
+      context: ./go/websocket_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-websocket
+    ports:
+      - "8095:8095"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  # ============================================
+  # WALLET SERVICES
+  # ============================================
+
+  wallet-service:
+    build:
+      context: ./go/wallet_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-wallet-service
+    ports:
+      - "8082:8080"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=tigerwallet_wallet
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  swap-service:
+    build:
+      context: ./go/swap_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-swap-service
+    ports:
+      - "8083:8080"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=tigerwallet_swap
+    depends_on:
+      - postgres
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  staking-service:
+    build:
+      context: ./go/staking_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-staking-service
+    ports:
+      - "8084:8080"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=tigerwallet_staking
+    depends_on:
+      - postgres
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  # ============================================
+  # TRADING & BOTS
+  # ============================================
+
+  bot-api:
+    build:
+      context: ./mm_bot_platform/bot_api
+      dockerfile: Dockerfile
+    container_name: tigerwallet-bot-api
+    ports:
+      - "8091:8080"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=tigerwallet_bots
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  # ============================================
+  # NFT & COLLECTIBLES
+  # ============================================
+
+  nft-service:
+    build:
+      context: ./go/nft_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-nft-service
+    ports:
+      - "8085:8080"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=tigerwallet_nft
+      - IPFS_HOST=ipfs
+      - IPFS_PORT=5001
+    depends_on:
+      - postgres
+      - ipfs
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  # ============================================
+  # INFRASTRUCTURE
+  # ============================================
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: tigerwallet-postgres
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_MULTIPLE_DATABASES=tigerwallet,tigerwallet_listing,tigerwallet_wallet,tigerwallet_swap,tigerwallet_staking,tigerwallet_bots,tigerwallet_nft
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+    command: postgres -c max_connections=200 -c shared_buffers=256MB
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: tigerwallet-redis
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  # IPFS for NFT Metadata
+  ipfs:
+    image: ipfs/kubo:latest
+    container_name: tigerwallet-ipfs
+    volumes:
+      - ipfs_data:/data/ipfs
+    ports:
+      - "5001:5001"
+      - "8080:8080"
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  # ============================================
+  # MONITORING
+  # ============================================
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: tigerwallet-prometheus
+    volumes:
+      - ./deployments/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    ports:
+      - "9090:9090"
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: tigerwallet-grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deployments/grafana/dashboards:/etc/grafana/provisioning/dashboards
+    ports:
+      - "3000:3000"
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  # ============================================
+  # MESSAGE QUEUE
+  # ============================================
+
+  nats:
+    image: nats:latest
+    container_name: tigerwallet-nats
+    ports:
+      - "4222:4222"
+      - "6222:6222"
+      - "8222:8222"
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: tigerwallet-kafka
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: tigerwallet-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  # ============================================
+  # BLOCKCHAIN NODES
+  # ============================================
+
+  ethereum-node:
+    image: ethereum/client-go:latest
+    container_name: tigerwallet-ethereum-node
+    command: --syncmode=light --http --http.addr=0.0.0.0 --http.port=8545 --http.api=eth,net,web3 --ws --ws.addr=0.0.0.0 --ws.port=8546 --ws.api=eth,net,web3
+    ports:
+      - "8545:8545"
+      - "8546:8546"
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  bsc-node:
+    image: bsc/client-go:latest
+    container_name: tigerwallet-bsc-node
+    command: --syncmode=light --http --http.addr=0.0.0.0 --http.port=8547 --http.api=eth,net,web3 --ws --ws.addr=0.0.0.0 --ws.port=8548 --ws.api=eth,net,web3
+    ports:
+      - "8547:8547"
+      - "8548:8548"
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+  polygon-node:
+    image: maticnetwork/bor:latest
+    container_name: tigrwallet-polygon-node
+    command: --config /etc/bor/config.toml
+    ports:
+      - "8549:8549"
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
+networks:
+  tigerwallet:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  ipfs_data:
+  prometheus_data:
+  grafana_data:
