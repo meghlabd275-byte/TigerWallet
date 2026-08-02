@@ -8,7 +8,9 @@ import { useTheme } from '../contexts/ThemeContext';
 import { authService } from '../services/api';
 
 interface LayoutProps {
-  children: ReactNode;
+  children?: ReactNode;
+  currentPage?: string;
+  setCurrentPage?: (page: string) => void;
 }
 
 interface NavItem {
@@ -40,10 +42,14 @@ const superAdminItems: NavItem[] = [
   { label: 'Settings', path: '/settings', icon: '⚙️' },
 ];
 
-export const Layout: React.FC<LayoutProps> = ({ children }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, currentPage: externalPage, setCurrentPage: externalSetPage }) => {
   const { theme, toggleTheme } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [currentPage, setCurrentPage] = useState('Dashboard');
+  const [internalPage, setInternalPage] = useState('Dashboard');
+  
+  const currentPage = externalPage ?? internalPage;
+  const setCurrentPage = externalSetPage ?? setInternalPage;
+  
   const user = authService.getUser();
   const isSuperAdmin = user?.role === 'super_admin';
 
