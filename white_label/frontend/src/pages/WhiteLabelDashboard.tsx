@@ -1,6 +1,6 @@
 /**
  * White Label Dashboard - Complete Admin Panel
- * Production-ready with full functionality
+ * Production-ready with full functionality with navigation
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -9,12 +9,23 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab,
   Chip, Typography, Box, Avatar, IconButton, Switch, FormControlLabel,
-  CircularProgress, Alert, Snackbar
+  CircularProgress, Alert, Snackbar, Drawer, List, ListItem, ListItemIcon, 
+  ListItemText, ListItemButton, AppBar, Toolbar
 } from '@mui/material';
 import { 
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
-  Visibility as ViewIcon, Security as SecurityIcon
+  Visibility as ViewIcon, Security as SecurityIcon, Dashboard, People,
+  Inventory, CurrencyBitcoin, TrendingUp, Assessment, Settings, Notifications,
+  DarkMode, LightMode, Menu as MenuIcon, AccountTree, BugReport
 } from '@mui/icons-material';
+import { useTheme, ThemeProvider } from '../context/ThemeContext';
+import AdminManagement from './AdminManagement';
+import ProductManagement from './ProductManagement';
+import TradingPairsPage from './TradingPairsPage';
+import BlockchainManagement from './BlockchainManagement';
+import AuditLogsPage from './AuditLogsPage';
+import NotificationsPage from './NotificationsPage';
+import SettingsPage from './SettingsPage';
 
 interface WhiteLabelClient {
   id: string;
