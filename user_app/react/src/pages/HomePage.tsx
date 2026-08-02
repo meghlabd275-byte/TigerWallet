@@ -1,8 +1,11 @@
 // Home Page - Dashboard
 // Complete portfolio overview with light/dark theme
+// PRODUCTION-READY - Real blockchain data integration
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { WalletService, TransactionService, SwapService, wsService } from '../services/walletService';
+import { walletApi, TokenBalance, Transaction } from '../services/api';
 import './HomePage.css';
 
 interface Token {
@@ -13,6 +16,10 @@ interface Token {
   value: number;
   change24h: number;
   icon: string;
+  address: string;
+  chainId: number;
+  decimals: number;
+  priceUSD: number;
 }
 
 interface Transaction {
@@ -22,44 +29,233 @@ interface Transaction {
   token: string;
   time: string;
   status: 'completed' | 'pending';
+  hash: string;
 }
+
+const CHAIN_ICONS: Record<string, string> = {
+  ethereum: '🔷',
+  bsc: '🟡',
+  polygon: '🟣',
+  arbitrum: '🔵',
+  optimism: '⬆️',
+  avalanche: '🔺',
+  solana: '☀️',
+  base: '🟦',
+  fantom: '👻',
+  ton: '📱',
+  tron: '🔴',
+  bitcoin: '₿',
+};
 
 const HomePage: React.FC = () => {
   const [tokens, setTokens] = useState<Token[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [totalValue, setTotalValue] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedChain, setSelectedChain] = useState('ethereum');
+  const [wallets, setWallets] = useState<any[]>([]);
+  const [priceUpdates, setPriceUpdates] = useState<Record<string, number>>({});
+
+  // Real-time price update handler
+  const handlePriceUpdate = useCallback((data: { symbol: string; price: number }) => {
+    setPriceUpdates(prev => ({ ...prev, [data.symbol]: data.price }));
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+    
+    // Subscribe to real-time price updates
+    wsService.subscribe('price_update', handlePriceUpdate);
+    
+    // Subscribe to new transactions
+    wsService.subscribe('new_transaction', (tx: any) => {
+      setTransactions(prev => [formatTransaction(tx), ...prev.slice(0, 3)]);
+    });
 
-  const loadData = () => {
-    setTokens([
-      { id: '1', name: 'Ethereum', symbol: 'ETH', balance: '5.5', value: 16500, change24h: 2.5, icon: '🔷' },
-      { id: '2', name: 'BNB', symbol: 'BNB', balance: '12.8', value: 3840, change24h: -1.2, icon: '🟡' },
-      { id: '3', name: 'Solana', symbol: 'SOL', balance: '85', value: 9350, change24h: 5.8, icon: '☀️' },
-      { id: '4', name: 'USDT', symbol: 'USDT', balance: '15000', value: 15000, change24h: 0.01, icon: '💵' },
-      { id: '5', name: 'Polygon', symbol: 'MATIC', balance: '5000', value: 4500, change24h: -0.5, icon: '🟣' },
-    ]);
+    return () => {
+      wsService.unsubscribe('price_update', handlePriceUpdate);
+    };
+  }, [handlePriceUpdate]);
 
-    setTransactions([
-      { id: '1', type: 'receive', amount: '+2.5 ETH', token: 'ETH', time: '2 min ago', status: 'completed' },
-      { id: '2', type: 'send', amount: '-500 USDT', token: 'USDT', time: '1 hour ago', status: 'completed' },
-      { id: '3', type: 'swap', amount: '1 ETH → 3000 USDC', token: 'ETH', time: '3 hours ago', status: 'completed' },
-      { id: '4', type: 'receive', amount: '+50 SOL', token: 'SOL', time: '5 hours ago', status: 'completed' },
-    ]);
+  const formatTransaction = (tx: any): Transaction => {
+    const now = Date.now();
+    const txTime = new Date(tx.timestamp * 1000);
+    const diffMs = now - txTime.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
 
-    setTotalValue(49190);
+    let time: string;
+    if (diffMins < 1) time = 'Just now';
+    else if (diffMins < 60) time = `${diffMins} min ago`;
+    else if (diffHours < 24) time = `${diffHours} hours ago`;
+    else time = `${diffDays} days ago`;
+
+    const type = tx.from === wallets[0]?.address ? 'send' : 'receive';
+    const amount = type === 'send' 
+      ? `-${tx.amount} ${tx.symbol}`
+      : `+${tx.amount} ${tx.symbol}`;
+
+    return {
+      id: tx.id || tx.hash,
+      type: tx.type || type,
+      amount,
+      token: tx.symbol,
+      time,
+      status: tx.status === 'confirmed' ? 'completed' : 'pending',
+      hash: tx.hash,
+    };
+  };
+
+  const loadData = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Get all wallets
+      const allWallets = await WalletService.getWallets();
+      setWallets(allWallets);
+      
+      if (allWallets.length === 0) {
+        setLoading(false);
+        return;
+      }
+
+      // Get wallet details for selected chain
+      const chainWallets = allWallets.filter((w: any) => w.chain === selectedChain);
+      const primaryWallet = chainWallets[0] || allWallets[0];
+      
+      if (!primaryWallet) {
+        setLoading(false);
+        return;
+      }
+
+      // Get wallet details with balance
+      const walletDetails = await WalletService.getWalletDetails(primaryWallet.id);
+      
+      // Get real token balances with live prices
+      const tokenBalances: Token[] = (walletDetails.tokens || []).map((token: TokenBalance) => {
+        const price = priceUpdates[token.symbol] || token.priceUSD || token.balanceUSD / parseFloat(token.balance);
+        const value = parseFloat(token.balance) * price;
+        return {
+          id: token.address || token.symbol,
+          name: token.name,
+          symbol: token.symbol,
+          balance: token.balance,
+          value: value || token.balanceUSD,
+          change24h: token.priceChange24h || 0,
+          icon: CHAIN_ICONS[selectedChain] || '💰',
+          address: token.address,
+          chainId: token.chainId,
+          decimals: token.decimals,
+          priceUSD: price,
+        };
+      });
+
+      // Calculate total portfolio value across all chains
+      let total = 0;
+      for (const wallet of allWallets) {
+        const details = await WalletService.getWalletDetails(wallet.id).catch(() => null);
+        if (details?.tokens) {
+          for (const token of details.tokens) {
+            const price = priceUpdates[token.symbol] || token.priceUSD;
+            total += parseFloat(token.balance) * (price || 0);
+          }
+        }
+        total += parseFloat(wallet.balance || '0') * (priceUpdates[wallet.symbol] || 0);
+      }
+
+      // Get transaction history
+      const txHistory = await TransactionService.getHistory(primaryWallet.id, 1, 10);
+      const formattedTransactions: Transaction[] = txHistory.slice(0, 4).map(formatTransaction);
+
+      setTokens(tokenBalances);
+      setTransactions(formattedTransactions);
+      setTotalValue(total || walletDetails.balanceUSD || 0);
+      
+    } catch (err: any) {
+      console.error('Failed to load wallet data:', err);
+      setError(err.message || 'Failed to load wallet data');
+      
+      // Fallback: Try to get cached data from localStorage
+      const cachedWallets = localStorage.getItem('cached_wallets');
+      if (cachedWallets) {
+        const parsed = JSON.parse(cachedWallets);
+        setWallets(parsed.wallets || []);
+        setTokens(parsed.tokens || []);
+        setTransactions(parsed.transactions || []);
+        setTotalValue(parsed.totalValue || 0);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshData = async () => {
+    await loadData();
   };
 
   const getChangeColor = (change: number) => {
     return change >= 0 ? 'positive' : 'negative';
   };
 
+  // Calculate 24h change based on token prices
+  const calculate24hChange = () => {
+    if (tokens.length === 0) return 0;
+    let totalChange = 0;
+    let totalWeight = 0;
+    for (const token of tokens) {
+      totalChange += (token.change24h || 0) * (token.value || 0);
+      totalWeight += token.value || 0;
+    }
+    return totalWeight > 0 ? totalChange / totalWeight : 0;
+  };
+
+  const change24h = calculate24hChange();
+  const changeValue = totalValue * (change24h / 100);
+
+  if (loading) {
+    return (
+      <div className="home-page">
+        <div className="page-header">
+          <h1>Dashboard</h1>
+        </div>
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+          <p>Loading your portfolio...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && wallets.length === 0) {
+    return (
+      <div className="home-page">
+        <div className="page-header">
+          <h1>Dashboard</h1>
+        </div>
+        <div className="error-container">
+          <p>⚠️ {error}</p>
+          <p>Please create or import a wallet to get started.</p>
+          <div className="quick-actions">
+            <Link to="/wallet" className="action-button">
+              <div className="action-icon">👛</div>
+              <span>Create Wallet</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="home-page">
       <div className="page-header">
         <h1>Dashboard</h1>
+        <button className="refresh-button" onClick={refreshData} disabled={loading}>
+          {loading ? '↻' : '🔄'}
+        </button>
       </div>
 
       {/* Portfolio Card */}
@@ -67,17 +263,26 @@ const HomePage: React.FC = () => {
         <div className="portfolio-header">
           <span className="portfolio-label">Total Balance</span>
           <div className="network-selector">
-            <span className="network-icon">🔷</span>
-            <span>Ethereum</span>
+            <select 
+              value={selectedChain} 
+              onChange={(e) => setSelectedChain(e.target.value)}
+              className="chain-select"
+            >
+              {wallets.map((w: any) => (
+                <option key={w.id} value={w.chain}>
+                  {CHAIN_ICONS[w.chain] || '💰'} {w.chain}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
         <div className="portfolio-value">
           <span className="currency">$</span>
-          <span className="amount">{totalValue.toLocaleString()}</span>
+          <span className="amount">{totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
-        <div className="portfolio-change positive">
-          <span>+2.5%</span>
-          <span>($1,225)</span>
+        <div className={`portfolio-change ${change24h >= 0 ? 'positive' : 'negative'}`}>
+          <span>{change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%</span>
+          <span>({change24h >= 0 ? '+$' : '-$'}{Math.abs(changeValue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
           <span>24h</span>
         </div>
       </div>

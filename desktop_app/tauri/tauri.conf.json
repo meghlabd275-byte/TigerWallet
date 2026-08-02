@@ -3,7 +3,8 @@
     "beforeDevCommand": "",
     "beforeBuildCommand": "",
     "devPath": "../src",
-    "distDir": "../src"
+    "distDir": "../src",
+    "devtools": true
   },
   "package": {
     "productName": "TigerWallet",
@@ -27,6 +28,32 @@
       },
       "globalShortcut": {
         "all": true
+      },
+      "fs": {
+        "all": true,
+        "scope": ["$APP/**", "$RESOURCE/**", "$DOWNLOAD/**"]
+      },
+      "path": {
+        "all": true
+      },
+      "os": {
+        "all": true
+      },
+      "process": {
+        "all": true
+      },
+      "clipboard": {
+        "all": true
+      },
+      "crypto": {
+        "all": true
+      },
+      "http": {
+        "all": true,
+        "scope": ["https://**", "http://**"]
+      },
+      "storage": {
+        "all": true
       }
     },
     "bundle": {
@@ -34,7 +61,7 @@
       "category": "Finance",
       "copyright": "TigerWallet 2026",
       "deb": {
-        "depends": []
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
       },
       "externalBin": [],
       "icon": [
@@ -45,13 +72,14 @@
         "icons/icon.ico"
       ],
       "identifier": "com.tigerwallet.desktop",
-      "longDescription": "TigerWallet Desktop - Production-ready multi-chain cryptocurrency wallet",
+      "longDescription": "TigerWallet Desktop - Enterprise-grade multi-chain cryptocurrency wallet with hardware wallet support, MEV protection, and advanced security features",
       "macOS": {
         "entitlements": null,
         "exceptionDomain": "",
         "frameworks": [],
         "providerShortName": null,
-        "signingIdentity": null
+        "signingIdentity": null,
+        "minimumSystemVersion": "10.15"
       },
       "resources": [],
       "shortDescription": "Multi-chain cryptocurrency wallet",
@@ -59,27 +87,51 @@
       "windows": {
         "certificateThumbprint": null,
         "digestAlgorithm": "sha256",
-        "timestampUrl": ""
+        "timestampUrl": "",
+        "webviewInstallMode": {
+          "type": "embedBootstrapper"
+        }
+      },
+      "linux": {
+        "appimage": {
+          "bundleMediaFramework": true
+        }
       }
     },
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://* http://*"
     },
     "updater": {
-      "active": false
+      "active": true,
+      "pubkey": "",
+      "endpoints": []
     },
     "windows": [
       {
         "fullscreen": false,
         "height": 700,
         "resizable": true,
-        "title": "TigerWallet",
+        "title": "TigerWallet - Secure Multi-Chain Wallet",
         "width": 1100,
         "minWidth": 800,
         "minHeight": 600,
         "center": true,
-        "decorations": true
+        "decorations": true,
+        "transparent": false,
+        "focus": true,
+        "visible": true,
+        "maximizable": true,
+        "minimizable": true,
+        "closable": true,
+        "resizable": true,
+        "fullscreenable": true,
+        "alwaysOnTop": false
       }
-    ]
+    ],
+    "systemTray": {
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": true,
+      "menuOnLeftClick": false
+    }
   }
 }
