@@ -1,13 +1,32 @@
 /**
- * Master Wallet Service - Owner of All User Wallets
+ * Master Wallet Service - Custom Branding Owner
+ * Each custom branding wallet has its own master wallet that controls their users
  */
 
 export type MasterWalletType = 'hot' | 'cold' | 'operations';
 
+// Master Wallet - OWNER of all user wallets for a specific branding
 export interface MasterWallet {
   id: string;
+  brandingId: string;           // Which branding this master belongs to
+  brandingName: string;        // e.g., "TigerWallet", "MyCrypto", etc.
   name: string;
   type: MasterWalletType;
+  blockchain: string;
+  address: string;             // Master wallet address (signs all transactions)
+  publicKey: string;
+  balance: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+// User Wallet - Owned by Master Wallet of that branding
+export interface UserWallet {
+  id: string;
+  userId: string;
+  brandingId: string;                    // Which branding this user belongs to
+  ownerMasterWalletId: string;            // WHO OWNS THIS WALLET
+  ownerMasterWalletAddress: string;       // Master wallet address
   blockchain: string;
   address: string;
   publicKey: string;
@@ -16,16 +35,13 @@ export interface MasterWallet {
   createdAt: string;
 }
 
-// User wallet OWNED by master wallet
-export interface UserWallet {
+// Custom Branding Platform (e.g., TigerWallet, MyCrypto, etc.)
+export interface Branding {
   id: string;
-  userId: string;
-  ownerMasterWalletId: string;   // WHO OWNS THIS WALLET
-  ownerAddress: string;          // Master wallet address
-  blockchain: string;
-  address: string;
-  publicKey: string;
-  balance: number;
+  name: string;                 // Display name
+  logo: string;
+  primaryColor: string;
+  masterWalletId: string;      // The master wallet for this branding
   isActive: boolean;
   createdAt: string;
 }
@@ -50,6 +66,7 @@ export interface CryptoToken {
   priceChange24h: number;
 }
 
+// Default networks
 const DEFAULT_NETWORKS: BlockchainNetwork[] = [
   { id: 'ethereum', name: 'Ethereum', symbol: 'ETH', chainId: 1, rpcUrl: 'https://eth.llamarpc.com', isEVM: true },
   { id: 'polygon', name: 'Polygon', symbol: 'MATIC', chainId: 137, rpcUrl: 'https://polygon-rpc.com', isEVM: true },
@@ -64,6 +81,7 @@ const DEFAULT_NETWORKS: BlockchainNetwork[] = [
 ];
 
 class MasterWalletService {
+  private brandings: Branding[] = [];
   private masterWallets: MasterWallet[] = [];
   private userWallets: UserWallet[] = [];
   private networks: BlockchainNetwork[] = DEFAULT_NETWORKS;
@@ -75,20 +93,20 @@ class MasterWalletService {
   }
 
   private loadFromStorage() {
-    const stored = localStorage.getItem('master_wallets');
-    if (stored) { try { this.masterWallets = JSON.parse(stored); } catch { this.masterWallets = []; } }
+    const stored = localStorage.getItem('brandings');
+    if (stored) { try { this.brandings = JSON.parse(stored); } catch { this.brandings = []; } }
+    
+    const storedMaster = localStorage.getItem('master_wallets');
+    if (storedMaster) { try { this.masterWallets = JSON.parse(storedMaster); } catch { this.masterWallets = []; } }
     
     const storedUser = localStorage.getItem('user_wallets');
     if (storedUser) { try { this.userWallets = JSON.parse(storedUser); } catch { this.userWallets = []; } }
-    
-    const storedNetworks = localStorage.getItem('master_networks');
-    if (storedNetworks) { try { this.networks = JSON.parse(storedNetworks); } catch { this.networks = DEFAULT_NETWORKS; } }
   }
 
   private saveToStorage() {
+    localStorage.setItem('brandings', JSON.stringify(this.brandings));
     localStorage.setItem('master_wallets', JSON.stringify(this.masterWallets));
     localStorage.setItem('user_wallets', JSON.stringify(this.userWallets));
-    localStorage.setItem('master_networks', JSON.stringify(this.networks));
   }
 
   private async loadTokensFromAPI() {
@@ -109,13 +127,45 @@ class MasterWalletService {
   }
 
   // ============================================================================
-  // MASTER WALLET - The Owner
+  // BRANDING MANAGEMENT (Custom Wallets like TigerWallet)
   // ============================================================================
 
-  createMasterWallet(name: string, type: MasterWalletType, blockchain: string): MasterWallet {
-    const wallet: MasterWallet = {
+  createBranding(name: string, logo: string, primaryColor: string): Branding {
+    // Create master wallet for this branding
+    const masterWallet = this.createMasterWalletInternal(
+      `Master ${name}`, 
+      'hot', 
+      'ethereum',
+      name.toLowerCase().replace(/\s/g, '_')
+    );
+
+    const branding: Branding = {
       id: this.generateUUID(),
       name,
+      logo,
+      primaryColor,
+      masterWalletId: masterWallet.id,
+      isActive: true,
+      createdAt: new Date().toISOString()
+    };
+
+    this.brandings.push(branding);
+    this.saveToStorage();
+    return branding;
+  }
+
+  getBrandings(): Branding[] { return this.brandings; }
+  getBranding(brandingId: string): Branding | undefined { return this.brandings.find(b => b.id === brandingId); }
+
+  // ============================================================================
+  // MASTER WALLET - Owns all user wallets for a specific branding
+  // ============================================================================
+
+  private createMasterWalletInternal(name: string, type: MasterWalletType, blockchain: string, brandingId: string): MasterWallet {
+    const wallet: MasterWallet = {
+      id: this.generateUUID(),
+      brandingId,
+      brandingName: name,
       type,
       blockchain,
       address: this.generateAddress(blockchain),
@@ -125,21 +175,18 @@ class MasterWalletService {
       createdAt: new Date().toISOString()
     };
     this.masterWallets.push(wallet);
-    this.saveToStorage();
     return wallet;
   }
 
   getMasterWallets(): MasterWallet[] { return this.masterWallets; }
-
-  getMasterWallet(walletId: string): MasterWallet | undefined {
-    return this.masterWallets.find(w => w.id === walletId);
+  getMasterWalletsByBranding(brandingId: string): MasterWallet[] { 
+    return this.masterWallets.filter(w => w.brandingId === brandingId); 
   }
 
   // ============================================================================
   // USER WALLETS - Owned by Master Wallet
   // ============================================================================
 
-  // Master wallet creates/owns user wallets
   createUserWallet(masterWalletId: string, userId: string, blockchain: string): UserWallet {
     const masterWallet = this.masterWallets.find(w => w.id === masterWalletId);
     if (!masterWallet) throw new Error('Master wallet not found');
@@ -147,8 +194,9 @@ class MasterWalletService {
     const userWallet: UserWallet = {
       id: this.generateUUID(),
       userId,
-      ownerMasterWalletId: masterWalletId,   // OWNERSHIP
-      ownerAddress: masterWallet.address,    // Master wallet address owns this
+      brandingId: masterWallet.brandingId,
+      ownerMasterWalletId: masterWalletId,
+      ownerMasterWalletAddress: masterWallet.address,
       blockchain,
       address: this.generateAddress(blockchain),
       publicKey: this.generatePublicKey(),
@@ -162,45 +210,43 @@ class MasterWalletService {
     return userWallet;
   }
 
-  // Master wallet can control any user wallet it owns
+  // Master wallet controls its user wallets
   controlUserWallet(masterWalletId: string, userWalletId: string): UserWallet | undefined {
     return this.userWallets.find(w => w.id === userWalletId && w.ownerMasterWalletId === masterWalletId);
   }
 
-  // Master wallet approves all transactions from user wallets
+  // Master wallet approves transactions
   approveTransaction(masterWalletId: string, userWalletId: string, txHash: string): boolean {
     return this.controlUserWallet(masterWalletId, userWalletId) !== undefined;
   }
 
-  // Get all user wallets owned by a master wallet
+  // Get user wallets for a master wallet
   getUserWallets(masterWalletId: string): UserWallet[] {
     return this.userWallets.filter(w => w.ownerMasterWalletId === masterWalletId);
   }
 
-  // Get all user wallets for a user
-  getUserWalletsByUser(userId: string): UserWallet[] {
-    return this.userWallets.filter(w => w.userId === userId);
+  // Get user wallets for a branding
+  getUserWalletsByBranding(brandingId: string): UserWallet[] {
+    return this.userWallets.filter(w => w.brandingId === brandingId);
+  }
+
+  // Get user wallets for a user
+  getUserWalletsByUser(userId: string, brandingId?: string): UserWallet[] {
+    return this.userWallets.filter(w => w.userId === userId && (!brandingId || w.brandingId === brandingId));
   }
 
   // ============================================================================
-  // Networks & Tokens
+  // NETWORKS & TOKENS
   // ============================================================================
 
   getNetworks(): BlockchainNetwork[] { return this.networks; }
   getTokens(): CryptoToken[] { return this.tokens; }
-  
-  addNetwork(network: BlockchainNetwork) {
-    if (!this.networks.find(n => n.id === network.id)) {
-      this.networks.push(network);
-      this.saveToStorage();
-    }
-  }
-  
-  addToken(token: CryptoToken) {
-    if (!this.tokens.find(t => t.id === token.id)) {
-      this.tokens.push(token);
-    }
-  }
+  addNetwork(network: BlockchainNetwork) { if (!this.networks.find(n => n.id === network.id)) { this.networks.push(network); } }
+  addToken(token: CryptoToken) { if (!this.tokens.find(t => t.id === token.id)) { this.tokens.push(token); } }
+
+  // ============================================================================
+  // UTILITIES
+  // ============================================================================
 
   private generateUUID(): string {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
