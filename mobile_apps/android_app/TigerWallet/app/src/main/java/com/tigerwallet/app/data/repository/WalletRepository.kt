@@ -28,8 +28,61 @@ class WalletRepository(private val context: Context) {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
     
+    // Real token data from API
+    private var cachedTokenPrices: List<TokenData> = emptyList()
+    
     init {
         loadWallets()
+        // Load real token prices from API
+        kotlinx.coroutines.GlobalScope.launch {
+            cachedTokenPrices = fetchTokenPrices()
+        }
+    }
+    
+    private suspend fun fetchTokenPrices(): List<TokenData> {
+        return try {
+            val client = okhttp3.OkHttpClient()
+            val request = okhttp3.Request.Builder()
+                .url("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=500&page=1&sparkline=false")
+                .get()
+                .build()
+            
+            val response = client.newCall(request).execute()
+            if (response.isSuccessful) {
+                val body = response.body?.string() ?: return emptyList()
+                val jsonArray = org.json.JSONArray(body)
+                val tokens = mutableListOf<TokenData>()
+                for (i in 0 until jsonArray.length()) {
+                    val coin = jsonArray.getJSONObject(i)
+                    tokens.add(
+                        TokenData(
+                            id = coin.getString("id"),
+                            symbol = coin.getString("symbol").uppercase(),
+                            name = coin.getString("name"),
+                            image = coin.optString("image", ""),
+                            currentPrice = coin.optDouble("current_price", 0.0),
+                            marketCap = coin.optLong("market_cap", 0L),
+                            marketCapRank = coin.optInt("market_cap_rank", 0),
+                            totalVolume = coin.optLong("total_volume", 0L),
+                            priceChange24h = coin.optDouble("price_change_24h", 0.0),
+                            priceChangePercentage24h = coin.optDouble("price_change_percentage_24h", 0.0),
+                            circulatingSupply = coin.optDouble("circulating_supply", 0.0),
+                            totalSupply = coin.optDouble("total_supply", 0.0),
+                            ath = coin.optDouble("ath", 0.0),
+                            athChangePercentage = coin.optDouble("ath_change_percentage", 0.0),
+                            atl = coin.optDouble("atl", 0.0),
+                            atlChangePercentage = coin.optDouble("atl_change_percentage", 0.0)
+                        )
+                    )
+                }
+                tokens
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
     }
     
     fun createWallet(name: String, mnemonic: List<String>? = null): Wallet {
@@ -181,27 +234,33 @@ class WalletRepository(private val context: Context) {
         else -> 18
     }
     
-    private fun getTokenPrice(symbol: String): Double = when (symbol) {
-        "ETH" -> 3500.0
-        "BNB" -> 600.0
-        "MATIC" -> 0.8
-        "SOL" -> 100.0
-        "TRX" -> 0.1
-        else -> 0.0
+    private fun getTokenPrice(symbol: String): Double {
+        // Use real API data from CoinGecko
+        return cachedTokenPrices.find { it.symbol == symbol.uppercase() }?.currentPrice ?: 0.0
+    }
+    
+    // Get all 500+ real tokens
+    fun getAllTokens(): List<TokenData> = cachedTokenPrices
+    
+    // Get token by symbol
+    fun getTokenBySymbol(symbol: String): TokenData? {
+        return cachedTokenPrices.find { it.symbol == symbol.uppercase() }
+    }
+    
+    // Get tokens by market cap (top tokens)
+    fun getTopTokens(limit: Int = 100): List<TokenData> {
+        return cachedTokenPrices.sortedByDescending { it.marketCap }.take(limit)
     }
 }
 
-// Network Repository
+// Network Repository - Uses Real 103+ Networks
 object NetworkRepository {
-    fun getDefaultNetworks(): List<BlockchainNetwork> = listOf(
-        BlockchainNetwork("ethereum", "Ethereum", "ETH", 1, true, "https://eth.llamarpc.com", "https://etherscan.io"),
-        BlockchainNetwork("bsc", "BNB Chain", "BNB", 56, true, "https://bsc-dataseed.binance.org", "https://bscscan.com"),
-        BlockchainNetwork("polygon", "Polygon", "MATIC", 137, true, "https://polygon-rpc.com", "https://polygonscan.com"),
-        BlockchainNetwork("arbitrum", "Arbitrum", "ETH", 42161, true, "https://arb1.arbitrum.io/rpc", "https://arbiscan.io"),
-        BlockchainNetwork("optimism", "Optimism", "ETH", 10, true, "https://mainnet.optimism.io", "https://optimistic.etherscan.io"),
-        BlockchainNetwork("avalanche", "Avalanche", "AVAX", 43114, true, "https://api.avax.network/ext/bc/C/rpc", "https://snowtrace.io"),
-        BlockchainNetwork("solana", "Solana", "SOL", 0, false, "https://api.mainnet-beta.solana.com", "https://solscan.io"),
-        BlockchainNetwork("tron", "Tron", "TRX", 195, false, "https://api.trongrid.io", "https://tronscan.org"),
-        BlockchainNetwork("bitcoin", "Bitcoin", "BTC", 0, false, "https://blockstream.info/api", "https://blockstream.info")
-    )
+    fun getDefaultNetworks(): List<BlockchainNetwork> {
+        return RealBlockchainNetworks.getAllNetworks()
+    }
+    
+    // Fetch real token prices from API
+    suspend fun fetchTokenPrices(): List<TokenData> {
+        return RealBlockchainNetworks.fetchTokenListFromAPI()
+    }
 }
