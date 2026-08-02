@@ -1,27 +1,319 @@
 //! Fetcher implementations for TigerWallet Full Fetchers
+//! Real implementations with actual blockchain API connections
 
 use super::types::*;
 use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::error::Error;
 use std::collections::HashMap;
+use reqwest::Client;
+use serde_json::json;
+use chrono::Utc;
+use tracing::{info, error, warn};
 
 /// Base fetcher trait
 pub trait Fetcher: Send + Sync {
     /// Initialize the fetcher
-    fn initialize(&self) -> Result<(), Box<dyn Error>>;
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>>;
     
     /// Fetch data
-    fn fetch(&self) -> Result<(), Box<dyn Error>>;
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>>;
     
     /// Shutdown the fetcher
-    fn shutdown(&self) -> Result<(), Box<dyn Error>>;
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>>;
     
     /// Clone as base fetcher
     fn clone_as_fetcher(&self) -> Arc<dyn Fetcher>;
     
     /// Get statistics
     fn get_stats(&self) -> FetcherStats;
+}
+
+/// Real HTTP client for blockchain APIs
+pub struct BlockchainClient {
+    client: Client,
+    ethereum_rpc: String,
+    bsc_rpc: String,
+    polygon_rpc: String,
+    coingecko_api: String,
+    etherscan_api: String,
+}
+
+impl BlockchainClient {
+    pub fn new() -> Self {
+        Self {
+            client: Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
+            ethereum_rpc: std::env::var("ETHEREUM_RPC")
+                .unwrap_or_else(|_| "https://eth.llamarpc.com".to_string()),
+            bsc_rpc: std::env::var("BSC_RPC")
+                .unwrap_or_else(|_| "https://bsc-dataseed.binance.org".to_string()),
+            polygon_rpc: std::env::var("POLYGON_RPC")
+                .unwrap_or_else(|_| "https://polygon-rpc.com".to_string()),
+            coingecko_api: "https://api.coingecko.com/api/v3".to_string(),
+            etherscan_api: std::env::var("ETHERSCAN_API")
+                .unwrap_or_else(|_| "".to_string()),
+        }
+    }
+
+    /// Make JSON-RPC call to Ethereum-compatible chain
+    pub async fn eth_call(&self, rpc_url: &str, method: &str, params: serde_json::Value) -> Result<serde_json::Value, Box<dyn Error + Send + Sync>> {
+        let request = json!({
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params,
+            "id": 1
+        });
+
+        let response = self.client
+            .post(rpc_url)
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await?;
+
+        let result: serde_json::Value = response.json().await?;
+        
+        if let Some(error) = result.get("error") {
+            return Err(format!("RPC error: {:?}", error).into());
+        }
+
+        Ok(result.get("result").cloned().unwrap_or(serde_json::Value::Null))
+    }
+
+    /// Get ETH balance for address
+    pub async fn get_eth_balance(&self, address: &str, chain: &str) -> Result<String, Box<dyn Error + Send + Sync>> {
+        let rpc_url = match chain {
+            "1" | "ethereum" => &self.ethereum_rpc,
+            "56" | "bsc" => &self.bsc_rpc,
+            "137" | "polygon" => &self.polygon_rpc,
+            _ => &self.ethereum_rpc,
+        };
+
+        let result = self.eth_call(
+            rpc_url,
+            "eth_getBalance",
+            json!([address, "latest"])
+        ).await?;
+
+        Ok(result.as_str().unwrap_or("0x0").to_string())
+    }
+
+    /// Get token balance using ERC-20 balanceOf
+    pub async fn get_erc20_balance(&self, token_address: &str, wallet_address: &str, chain: &str) -> Result<String, Box<dyn Error + Send + Sync>> {
+        let rpc_url = match chain {
+            "1" | "ethereum" => &self.ethereum_rpc,
+            "56" | "bsc" => &self.bsc_rpc,
+            "137" | "polygon" => &self.polygon_rpc,
+            _ => &self.ethereum_rpc,
+        };
+
+        // ERC-20 balanceOf function selector
+        let data = format!(
+            "0x70a08231000000000000000000000000{}",
+            &wallet_address[2..] // Remove 0x prefix
+        );
+
+        let result = self.eth_call(
+            rpc_url,
+            "eth_call",
+            json!([{
+                "to": token_address,
+                "data": data
+            }, "latest"])
+        ).await?;
+
+        Ok(result.as_str().unwrap_or("0x0").to_string())
+    }
+
+    /// Get current gas price
+    pub async fn get_gas_price(&self, chain: &str) -> Result<(u64, u64, u64), Box<dyn Error + Send + Sync>> {
+        let rpc_url = match chain {
+            "1" | "ethereum" => &self.ethereum_rpc,
+            "56" | "bsc" => &self.bsc_rpc,
+            "137" | "polygon" => &self.polygon_rpc,
+            _ => &self.ethereum_rpc,
+        };
+
+        let result = self.eth_call(rpc_url, "eth_gasPrice", json!([])).await?;
+        
+        let gas_price_hex = result.as_str().unwrap_or("0x0");
+        let gas_price = u64::from_str_radix(&gas_price_hex[2..], 16).unwrap_or(0);
+
+        // Estimate max fees for EIP-1559
+        let base_fee = gas_price;
+        let max_priority_fee = 2_000_000_000; // 2 Gwei
+        let max_fee = base_fee * 2 + max_priority_fee;
+
+        Ok((gas_price, max_fee, max_priority_fee))
+    }
+
+    /// Get block number
+    pub async fn get_block_number(&self, chain: &str) -> Result<u64, Box<dyn Error + Send + Sync>> {
+        let rpc_url = match chain {
+            "1" | "ethereum" => &self.ethereum_rpc,
+            "56" | "bsc" => &self.bsc_rpc,
+            "137" | "polygon" => &self.polygon_rpc,
+            _ => &self.ethereum_rpc,
+        };
+
+        let result = self.eth_call(rpc_url, "eth_blockNumber", json!([])).await?;
+        
+        let block_hex = result.as_str().unwrap_or("0x0");
+        Ok(u64::from_str_radix(&block_hex[2..], 16).unwrap_or(0))
+    }
+
+    /// Fetch token prices from CoinGecko
+    pub async fn get_token_prices(&self, token_ids: &[&str], vs_currencies: &[&str]) -> Result<HashMap<String, HashMap<String, f64>>, Box<dyn Error + Send + Sync>> {
+        let ids = token_ids.join(",");
+        let vs = vs_currencies.join(",");
+        
+        let url = format!(
+            "{}/simple/price?ids={}&vs_currencies={}&include_24hr_change=true",
+            self.coingecko_api, ids, vs
+        );
+
+        let response = self.client
+            .get(&url)
+            .header("Accept", "application/json")
+            .send()
+            .await?;
+
+        let prices: serde_json::Value = response.json().await?;
+        
+        let mut result = HashMap::new();
+        
+        for (token, price_data) in prices.as_object().unwrap_or(&serde_json::Map::new()) {
+            let mut currency_prices = HashMap::new();
+            if let Some(obj) = price_data.as_object() {
+                for (currency, price) in obj {
+                    if let Some(p) = price.as_f64() {
+                        currency_prices.insert(currency.clone(), p);
+                    }
+                }
+            }
+            result.insert(token.clone(), currency_prices);
+        }
+
+        Ok(result)
+    }
+
+    /// Fetch global market data
+    pub async fn get_global_market_data(&self) -> Result<serde_json::Value, Box<dyn Error + Send + Sync>> {
+        let url = format!("{}/global", self.coingecko_api);
+
+        let response = self.client
+            .get(&url)
+            .header("Accept", "application/json")
+            .send()
+            .await?;
+
+        let data: serde_json::Value = response.json().await?;
+        Ok(data)
+    }
+
+    /// Get transaction receipt
+    pub async fn get_transaction_receipt(&self, tx_hash: &str, chain: &str) -> Result<Option<serde_json::Value>, Box<dyn Error + Send + Sync>> {
+        let rpc_url = match chain {
+            "1" | "ethereum" => &self.ethereum_rpc,
+            "56" | "bsc" => &self.bsc_rpc,
+            "137" | "polygon" => &self.polygon_rpc,
+            _ => &self.ethereum_rpc,
+        };
+
+        let result = self.eth_call(rpc_url, "eth_getTransactionReceipt", json!([tx_hash])).await?;
+        
+        if result.is_null() {
+            Ok(None)
+        } else {
+            Ok(Some(result))
+        }
+    }
+
+    /// Get token metadata from ERC-20 contract
+    pub async fn get_token_metadata(&self, token_address: &str, chain: &str) -> Result<TokenMetadata, Box<dyn Error + Send + Sync>> {
+        let rpc_url = match chain {
+            "1" | "ethereum" => &self.ethereum_rpc,
+            "56" | "bsc" => &self.bsc_rpc,
+            "137" | "polygon" => &self.polygon_rpc,
+            _ => &self.ethereum_rpc,
+        };
+
+        // name()
+        let name_data = "0x06fdde03";
+        let name_result = self.eth_call(rpc_url, "eth_call", json!([{
+            "to": token_address,
+            "data": name_data
+        }, "latest"])).await?;
+        
+        // symbol()
+        let symbol_data = "0x95d89b41";
+        let symbol_result = self.eth_call(rpc_url, "eth_call", json!([{
+            "to": token_address,
+            "data": symbol_data
+        }, "latest"])).await?;
+        
+        // decimals()
+        let decimals_data = "0x313ce567";
+        let decimals_result = self.eth_call(rpc_url, "eth_call", json!([{
+            "to": token_address,
+            "data": decimals_data
+        }, "latest"])).await?;
+
+        Ok(TokenMetadata {
+            address: token_address.to_string(),
+            name: self.decode_string(&name_result)?,
+            symbol: self.decode_string(&symbol_result)?,
+            decimals: self.decode_uint(&decimals_result)?,
+            logo_url: "".to_string(),
+            total_supply: "".to_string(),
+            is_verified: false,
+            last_updated: current_timestamp(),
+        })
+    }
+
+    fn decode_string(&self, value: &serde_json::Value) -> Result<String, Box<dyn Error + Send + Sync>> {
+        let hex = value.as_str().unwrap_or("0x");
+        if hex == "0x" || hex.is_empty() {
+            return Ok("".to_string());
+        }
+        
+        // Skip first 64 chars (offset) and decode
+        let data = &hex[2..];
+        if data.len() < 64 {
+            return Ok("".to_string());
+        }
+        
+        let offset = u64::from_str_radix(&data[0..64], 16).unwrap_or(0) as usize;
+        let length = u64::from_str_radix(&data[64..96], 16).unwrap_or(0) as usize;
+        
+        if data.len() < 96 + length * 2 {
+            return Ok("".to_string());
+        }
+        
+        let string_data = &data[96..96 + length * 2];
+        let bytes = hex::decode(string_data).unwrap_or_default();
+        
+        Ok(String::from_utf8_lossy(&bytes).to_string())
+    }
+
+    fn decode_uint(&self, value: &serde_json::Value) -> Result<u8, Box<dyn Error + Send + Sync>> {
+        let hex = value.as_str().unwrap_or("0x0");
+        if hex == "0x" || hex.is_empty() {
+            return Ok(18);
+        }
+        
+        let num = u64::from_str_radix(&hex[2..], 16).unwrap_or(18);
+        Ok(num as u8)
+    }
+}
+
+impl Default for BlockchainClient {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Base fetcher implementation
