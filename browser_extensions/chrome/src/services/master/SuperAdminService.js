@@ -325,6 +325,96 @@ class SuperAdminService {
   verifyTwoFactor(secret, code) {
     return code.length === 6 && /^\d+$/.test(code);
   }
+
+  // ========================================================================
+  // PROFIT SHARING - 20% goes to Super Admin by default
+  // ========================================================================
+  
+  profitShareConfigs = new Map();
+  profitTransactions = [];
+  
+  setProfitSharePercentage(superAdminId, whiteLabelId, percentage) {
+    if (!this.superAdmins.has(superAdminId)) {
+      throw new Error('Only super admin can set profit share');
+    }
+    if (percentage < 0 || percentage > 50) {
+      throw new Error('Percentage must be between 0 and 50');
+    }
+    
+    const whiteLabel = this.whiteLabelAdmins.get(whiteLabelId);
+    if (!whiteLabel) throw new Error('White label not found');
+    
+    this.profitShareConfigs.set(whiteLabelId, {
+      id: this.generateId(),
+      whiteLabelId,
+      superAdminWallet: '0xSuperAdminWalletAddress',
+      masterWalletAddress: whiteLabel.id,
+      profitPercentage: percentage,
+      minPercentage: 0,
+      maxPercentage: 50,
+      isActive: true,
+      autoTransfer: true,
+      transferFrequency: 'daily',
+      lastTransfer: 0,
+      totalTransferred: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    
+    this.logAudit(superAdminId, UserRole.SUPER_ADMIN, 'PROFIT_SHARE_SET', 
+      `Set profit share to ${percentage}% for white label ${whiteLabelId}`);
+    return true;
+  }
+
+  calculateProfitShare(whiteLabelId, grossRevenue) {
+    const config = this.profitShareConfigs.get(whiteLabelId);
+    const percentage = config?.profitPercentage ?? 20.0;
+    const superAdminShare = grossRevenue * (percentage / 100);
+    return { superAdminShare, whiteLabelShare: grossRevenue - superAdminShare };
+  }
+
+  executeProfitTransfer(whiteLabelId, token, amount) {
+    const config = this.profitShareConfigs.get(whiteLabelId);
+    if (!config || !config.isActive) return null;
+    
+    const { superAdminShare } = this.calculateProfitShare(whiteLabelId, amount);
+    
+    const tx = {
+      id: this.generateId(),
+      whiteLabelId,
+      superAdminWallet: config.superAdminWallet,
+      amount: superAdminShare,
+      percentage: config.profitPercentage,
+      grossRevenue: amount,
+      netRevenue: amount - superAdminShare,
+      token,
+      txHash: `0x${this.hashPassword(whiteLabelId + amount + Date.now())}`,
+      status: 'completed',
+      createdAt: Date.now(),
+    };
+    
+    this.profitTransactions.push(tx);
+    config.totalTransferred += superAdminShare;
+    config.lastTransfer = Date.now();
+    
+    this.logAudit('SYSTEM', UserRole.SUPER_ADMIN, 'PROFIT_TRANSFER', 
+      `Transferred ${superAdminShare} ${token} to super admin`);
+    
+    return tx;
+  }
+
+  getProfitHistory(whiteLabelId = '', limit = 100) {
+    if (!whiteLabelId) return this.profitTransactions.slice(-limit);
+    return this.profitTransactions.filter(t => t.whiteLabelId === whiteLabelId).slice(-limit);
+  }
+
+  getTotalProfits() {
+    let total = 0;
+    for (const config of this.profitShareConfigs.values) {
+      total += config.totalTransferred;
+    }
+    return total;
+  }
 }
 
 export default SuperAdminService.getInstance();

@@ -28,8 +28,181 @@ import (
 )
 
 // ============================================================================
-// ENUMS
+// PROFIT SHARING SYSTEM
 // ============================================================================
+
+// ProfitShareConfig - Super Admin configures profit share percentage
+type ProfitShareConfig struct {
+    ID                    string    `json:"id"`
+    WhiteLabelID         string    `json:"white_label_id"`
+    SuperAdminWallet     string    `json:"super_admin_wallet"` // Super admin receives profit here
+    MasterWalletAddress   string    `json:"master_wallet_address"` // White label's master wallet
+    ProfitPercentage     float64   `json:"profit_percentage"` // Default 20%
+    MinPercentage        float64   `json:"min_percentage"` // 0%
+    MaxPercentage        float64   `json:"max_percentage"` // 50%
+    IsActive             bool      `json:"is_active"`
+    AutoTransfer         bool      `json:"auto_transfer"` // Auto transfer profits
+    TransferFrequency    string    `json:"transfer_frequency"` // daily, weekly, monthly
+    LastTransfer         int64     `json:"last_transfer"`
+    TotalTransferred     float64   `json:"total_transferred"`
+    CreatedAt            int64     `json:"created_at"`
+    UpdatedAt            int64     `json:"updated_at"`
+}
+
+// ProfitTransaction - Record of profit transfers
+type ProfitTransaction struct {
+    ID                string    `json:"id"`
+    WhiteLabelID     string    `json:"white_label_id"`
+    SuperAdminWallet string    `json:"super_admin_wallet"`
+    Amount            float64   `json:"amount"`
+    Percentage        float64   `json:"percentage"`
+    GrossRevenue      float64   `json:"gross_revenue"`
+    NetRevenue        float64   `json:"net_revenue"`
+    Token             string    `json:"token"` // ETH, USDT, USDC, etc.
+    TxHash            string    `json:"tx_hash"`
+    Status            string    `json:"status"` // pending, completed, failed
+    CreatedAt         int64     `json:"created_at"`
+}
+
+// ============================================================================
+// PROFIT SHARING METHODS TO ADD
+// ============================================================================
+
+// SetProfitSharePercentage - Super Admin sets profit share for white label
+func (s *SuperAdminService) SetProfitSharePercentage(superAdminID, whiteLabelID string, percentage float64) error {
+    // Verify super admin
+    if _, ok := s.superAdmins[superAdminID]; !ok {
+        return fmt.Errorf("unauthorized: only super admin can set profit share")
+    }
+    
+    // Validate percentage
+    if percentage < 0 || percentage > 50 {
+        return fmt.Errorf("percentage must be between 0 and 50")
+    }
+    
+    // Get white label
+    whiteLabel, ok := s.whiteLabelAdmins[whiteLabelID]
+    if !ok {
+        return fmt.Errorf("white label not found")
+    }
+    
+    // Update profit share config
+    config := &ProfitShareConfig{
+        ID:                  generateID(),
+        WhiteLabelID:       whiteLabelID,
+        SuperAdminWallet:   s.getSuperAdminWallet(),
+        MasterWalletAddress: whiteLabel.MasterWalletID,
+        ProfitPercentage:    percentage,
+        MinPercentage:      0,
+        MaxPercentage:      50,
+        IsActive:           true,
+        AutoTransfer:        true,
+        TransferFrequency:   "daily",
+        CreatedAt:          time.Now().Unix(),
+        UpdatedAt:          time.Now().Unix(),
+    }
+    
+    s.profitShareConfigs[whiteLabelID] = config
+    s.logAudit(superAdminID, string(RoleSuperAdmin), "PROFIT_SHARE_SET", 
+        fmt.Sprintf("Set profit share to %.2f%% for white label %s", percentage, whiteLabelID), "", "")
+    
+    return nil
+}
+
+// GetProfitShareConfig - Get profit share configuration
+func (s *SuperAdminService) GetProfitShareConfig(whiteLabelID string) *ProfitShareConfig {
+    return s.profitShareConfigs[whiteLabelID]
+}
+
+// CalculateProfitShare - Calculate profit to transfer to Super Admin
+func (s *SuperAdminService) CalculateProfitShare(whiteLabelID string, grossRevenue float64) (superAdminShare, whiteLabelShare float64, err error) {
+    config := s.profitShareConfigs[whiteLabelID]
+    if config == nil || !config.IsActive {
+        // Default 20% if not configured
+        config = &ProfitShareConfig{ProfitPercentage: 20.0}
+    }
+    
+    superAdminShare = grossRevenue * (config.ProfitPercentage / 100)
+    whiteLabelShare = grossRevenue - superAdminShare
+    
+    return superAdminShare, whiteLabelShare, nil
+}
+
+// ExecuteProfitTransfer - Transfer profit to Super Admin wallet
+func (s *SuperAdminService) ExecuteProfitTransfer(whiteLabelID, token string, amount float64) (*ProfitTransaction, error) {
+    config := s.profitShareConfigs[whiteLabelID]
+    if config == nil {
+        return nil, fmt.Errorf("profit share not configured")
+    }
+    
+    if !config.IsActive {
+        return nil, fmt.Errorf("profit share is inactive")
+    }
+    
+    superAdminShare, _, err := s.CalculateProfitShare(whiteLabelID, amount)
+    if err != nil {
+        return nil, err
+    }
+    
+    // Create transaction record
+    tx := &ProfitTransaction{
+        ID:                generateID(),
+        WhiteLabelID:      whiteLabelID,
+        SuperAdminWallet:  config.SuperAdminWallet,
+        Amount:            superAdminShare,
+        Percentage:        config.ProfitPercentage,
+        GrossRevenue:      amount,
+        NetRevenue:        amount - superAdminShare,
+        Token:             token,
+        TxHash:            "", // Will be populated after actual transfer
+        Status:            "pending",
+        CreatedAt:         time.Now().Unix(),
+    }
+    
+    s.profitTransactions = append(s.profitTransactions, tx)
+    
+    // In production, execute actual blockchain transfer here
+    // For demo, mark as completed
+    tx.Status = "completed"
+    tx.TxHash = "0x" + hashData(fmt.Sprintf("%d%s%f", time.Now().Unix(), whiteLabelID, amount))
+    
+    config.TotalTransferred += superAdminShare
+    config.LastTransfer = time.Now().Unix()
+    
+    s.logAudit("SYSTEM", string(RoleSuperAdmin), "PROFIT_TRANSFER", 
+        fmt.Sprintf("Transferred %.4f %s to super admin from white label %s", superAdminShare, token, whiteLabelID), "", "")
+    
+    return tx, nil
+}
+
+// GetProfitHistory - Get profit transfer history
+func (s *SuperAdminService) GetProfitHistory(whiteLabelID string, limit int) []*ProfitTransaction {
+    var result []*ProfitTransaction
+    count := 0
+    
+    for i := len(s.profitTransactions) - 1; i >= 0 && count < limit; i-- {
+        if whiteLabelID == "" || s.profitTransactions[i].WhiteLabelID == whiteLabelID {
+            result = append(result, s.profitTransactions[i])
+            count++
+        }
+    }
+    
+    return result
+}
+
+// GetTotalProfits - Get total profits transferred to Super Admin
+func (s *SuperAdminService) GetTotalProfits() float64 {
+    var total float64
+    for _, config := range s.profitShareConfigs {
+        total += config.TotalTransferred
+    }
+    return total
+}
+
+func (s *SuperAdminService) getSuperAdminWallet() string {
+    // In production, this would be configured in system settings
+    return "0xSuperAdminWalletAddress"
+}
 
 type UserRole string
 
@@ -178,6 +351,8 @@ type SuperAdminService struct {
 	authRequests    map[string]*AuthorizationRequest
 	featureControls map[string]*FeatureControl
 	auditLogs      []*AuditLog
+	profitShareConfigs map[string]*ProfitShareConfig
+	profitTransactions []*ProfitTransaction
 }
 
 // Singleton
@@ -186,12 +361,14 @@ var superAdminService *SuperAdminService
 func GetSuperAdminService() *SuperAdminService {
 	if superAdminService == nil {
 		superAdminService = &SuperAdminService{
-			superAdmins:      make(map[string]*SuperAdmin),
-			masterAdmins:    make(map[string]*MasterAdmin),
-			whiteLabelAdmins: make(map[string]*WhiteLabelAdmin),
-			authRequests:    make(map[string]*AuthorizationRequest),
-			featureControls: make(map[string]*FeatureControl),
-			auditLogs:      []*AuditLog{},
+			superAdmins:        make(map[string]*SuperAdmin),
+			masterAdmins:      make(map[string]*MasterAdmin),
+			whiteLabelAdmins:  make(map[string]*WhiteLabelAdmin),
+			authRequests:      make(map[string]*AuthorizationRequest),
+			featureControls:   make(map[string]*FeatureControl),
+			auditLogs:        []*AuditLog{},
+			profitShareConfigs: make(map[string]*ProfitShareConfig),
+			profitTransactions: []*ProfitTransaction{},
 		}
 		// Create default super admin
 		superAdminService.CreateDefaultSuperAdmin()

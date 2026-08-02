@@ -111,6 +111,38 @@ export interface AuditLog {
   timestamp: number;
 }
 
+// PROFIT SHARING
+export interface ProfitShareConfig {
+  id: string;
+  whiteLabelId: string;
+  superAdminWallet: string;
+  masterWalletAddress: string;
+  profitPercentage: number;
+  minPercentage: number;
+  maxPercentage: number;
+  isActive: boolean;
+  autoTransfer: boolean;
+  transferFrequency: string;
+  lastTransfer: number;
+  totalTransferred: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ProfitTransaction {
+  id: string;
+  whiteLabelId: string;
+  superAdminWallet: string;
+  amount: number;
+  percentage: number;
+  grossRevenue: number;
+  netRevenue: number;
+  token: string;
+  txHash: string;
+  status: string;
+  createdAt: number;
+}
+
 class SuperAdminServiceClass {
   private static instance: SuperAdminServiceClass;
   private superAdmins: Map<string, SuperAdmin> = new Map();
@@ -118,6 +150,9 @@ class SuperAdminServiceClass {
   private whiteLabelAdmins: Map<string, WhiteLabelAdmin> = new Map();
   private featureControls: Map<string, FeatureControl> = new Map();
   private auditLogs: AuditLog[] = [];
+  // PROFIT SHARING
+  private profitShareConfigs: Map<string, ProfitShareConfig> = new Map();
+  private profitTransactions: ProfitTransaction[] = [];
 
   static getInstance(): SuperAdminServiceClass {
     if (!SuperAdminServiceClass.instance) {

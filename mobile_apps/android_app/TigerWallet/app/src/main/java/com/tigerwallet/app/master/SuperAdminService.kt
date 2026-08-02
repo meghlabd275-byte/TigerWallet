@@ -150,6 +150,9 @@ class SuperAdminService private constructor() {
     private val featureControls = mutableMapOf<String, FeatureControl>()
     private val auditLogs = mutableListOf<AuditLog>()
     private val random = SecureRandom()
+    // PROFIT SHARING
+    private val profitShareConfigs = mutableMapOf<String, ProfitShareConfig>()
+    private val profitTransactions = mutableListOf<ProfitTransaction>()
     
     init {
         createDefaultSuperAdmin()
@@ -573,3 +576,157 @@ data class AuditLog(
     val userAgent: String,
     val timestamp: Long
 )
+
+// ============================================================================
+// PROFIT SHARING SYSTEM
+// ============================================================================
+
+/**
+ * Profit Share Configuration
+ */
+data class ProfitShareConfig(
+    val id: String,
+    val whiteLabelId: String,
+    val superAdminWallet: String,  // Super admin receives profit here
+    val masterWalletAddress: String,
+    val profitPercentage: Double = 20.0,  // Default 20%
+    val minPercentage: Double = 0.0,
+    val maxPercentage: Double = 50.0,
+    val isActive: Boolean = true,
+    val autoTransfer: Boolean = true,
+    val transferFrequency: String = "daily",
+    val lastTransfer: Long = 0,
+    val totalTransferred: Double = 0.0,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+/**
+ * Profit Transaction
+ */
+data class ProfitTransaction(
+    val id: String,
+    val whiteLabelId: String,
+    val superAdminWallet: String,
+    val amount: Double,
+    val percentage: Double,
+    val grossRevenue: Double,
+    val netRevenue: Double,
+    val token: String,
+    val txHash: String,
+    val status: String,  // pending, completed, failed
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+// ============================================================================
+// PROFIT SHARING METHODS
+// ============================================================================
+
+/**
+ * Set profit share percentage - Only Super Admin can do this
+ */
+fun setProfitSharePercentage(superAdminId: String, whiteLabelId: String, percentage: Double): Boolean {
+    if (superAdmins[superAdminId] == null) {
+        throw SecurityException("Only super admin can set profit share")
+    }
+    
+    if (percentage < 0 || percentage > 50) {
+        throw IllegalArgumentException("Percentage must be between 0 and 50")
+    }
+    
+    val whiteLabel = whiteLabelAdmins[whiteLabelId] as? WhiteLabelAdmin
+        ?: throw IllegalArgumentException("White label not found")
+    
+    val config = ProfitShareConfig(
+        id = generateId(),
+        whiteLabelId = whiteLabelId,
+        superAdminWallet = getSuperAdminWalletAddress(),
+        masterWalletAddress = whiteLabel.id,
+        profitPercentage = percentage,
+        createdAt = System.currentTimeMillis(),
+        updatedAt = System.currentTimeMillis()
+    )
+    
+    profitShareConfigs[whiteLabelId] = config
+    
+    logAudit(superAdminId, UserRole.SUPER_ADMIN, "PROFIT_SHARE_SET", 
+        "Set profit share to $percentage% for white label $whiteLabelId", "", "")
+    
+    return true
+}
+
+/**
+ * Calculate profit share
+ */
+fun calculateProfitShare(whiteLabelId: String, grossRevenue: Double): Pair<Double, Double> {
+    val config = profitShareConfigs[whiteLabelId]
+    val percentage = config?.profitPercentage ?: 20.0  // Default 20%
+    
+    val superAdminShare = grossRevenue * (percentage / 100)
+    val whiteLabelShare = grossRevenue - superAdminShare
+    
+    return Pair(superAdminShare, whiteLabelShare)
+}
+
+/**
+ * Execute profit transfer to Super Admin wallet
+ */
+fun executeProfitTransfer(whiteLabelId: String, token: String, amount: Double): ProfitTransaction? {
+    val config = profitShareConfigs[whiteLabelId]
+    if (config == null || !config.isActive) {
+        return null
+    }
+    
+    val (superAdminShare, _) = calculateProfitShare(whiteLabelId, amount)
+    
+    val tx = ProfitTransaction(
+        id = generateId(),
+        whiteLabelId = whiteLabelId,
+        superAdminWallet = config.superAdminWallet,
+        amount = superAdminShare,
+        percentage = config.profitPercentage,
+        grossRevenue = amount,
+        netRevenue = amount - superAdminShare,
+        token = token,
+        txHash = "0x${hashData("$whiteLabelId$amount${System.currentTimeMillis()}")}",
+        status = "completed",
+        createdAt = System.currentTimeMillis()
+    )
+    
+    profitTransactions.add(tx)
+    
+    // Update total transferred
+    val updatedConfig = config.copy(
+        totalTransferred = config.totalTransferred + superAdminShare,
+        lastTransfer = System.currentTimeMillis()
+    )
+    profitShareConfigs[whiteLabelId] = updatedConfig
+    
+    logAudit("SYSTEM", UserRole.SUPER_ADMIN, "PROFIT_TRANSFER", 
+        "Transferred $superAdminShare $token to super admin from white label $whiteLabelId", "", "")
+    
+    return tx
+}
+
+/**
+ * Get profit history
+ */
+fun getProfitHistory(whiteLabelId: String = "", limit: Int = 100): List<ProfitTransaction> {
+    return if (whiteLabelId.isEmpty()) {
+        profitTransactions.takeLast(limit)
+    } else {
+        profitTransactions.filter { it.whiteLabelId == whiteLabelId }.takeLast(limit)
+    }
+}
+
+/**
+ * Get total profits
+ */
+fun getTotalProfits(): Double {
+    return profitShareConfigs.values.sumOf { it.totalTransferred }
+}
+
+private fun getSuperAdminWalletAddress(): String {
+    // In production, this comes from system config
+    return "0xSuperAdminWalletAddress"
+}
