@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TigerWallet White Label System</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Login Section -->
+        <section id="login-section" class="container">
+            <div class="login-box">
+                <div class="logo">
+                    <h1>🐯 TigerWallet</h1>
+                    <p>White Label Management System</p>
+                </div>
+                
+                <form id="login-form">
+                    <div class="form-group">
+                        <label for="email">Email Address</label>
+                        <input type="email" id="email" name="email" required placeholder="Enter your email">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" required placeholder="Enter your password">
+                    </div>
+                    
+                    <div class="form-group" id="2fa-group" style="display: none;">
+                        <label for="2fa-code">2FA Code</label>
+                        <input type="text" id="2fa-code" name="2faCode" placeholder="Enter 2FA code" maxlength="6">
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary btn-block">Login</button>
+                    
+                    <div class="error-message" id="login-error"></div>
+                </form>
+                
+                <div class="theme-toggle">
+                    <button id="theme-toggle-btn" onclick="toggleTheme()">
+                        <span class="theme-icon">🌙</span>
+                        <span class="theme-text">Switch to Dark Mode</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dashboard Section (Hidden by default) -->
+        <section id="dashboard-section" class="container" style="display: none;">
+            <header class="dashboard-header">
+                <div class="logo">
+                    <h1>🐯 TigerWallet</h1>
+                    <span id="user-info"></span>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" onclick="toggleTheme()">
+                        <span class="theme-icon">🌙</span>
+                    </button>
+                    <button class="btn btn-danger" onclick="logout()">Logout</button>
+                </div>
+            </header>
+
+            <nav class="dashboard-nav">
+                <ul>
+                    <li><a href="#overview" class="active" onclick="showTab('overview')">Overview</a></li>
+                    <li><a href="#clients" onclick="showTab('clients')">Clients</a></li>
+                    <li><a href="#admins" onclick="showTab('admins')">Admins</a></li>
+                    <li><a href="#products" onclick="showTab('products')">Products</a></li>
+                    <li><a href="#fetchers" onclick="showTab('fetchers')">Full Fetchers</a></li>
+                    <li><a href="#revenue" onclick="showTab('revenue')">Revenue</a></li>
+                    <li><a href="#settings" onclick="showTab('settings')">Settings</a></li>
+                </ul>
+            </nav>
+
+            <main class="dashboard-content">
+                <!-- Overview Tab -->
+                <div id="overview" class="tab-content active">
+                    <h2>Dashboard Overview</h2>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value" id="total-clients">0</div>
+                            <div class="stat-label">Total Clients</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="authorized-clients">0</div>
+                            <div class="stat-label">Authorized</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="suspended-clients">0</div>
+                            <div class="stat-label">Suspended</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="total-revenue">$0</div>
+                            <div class="stat-label">Total Revenue</div>
+                        </div>
+                        <div class="stat-card highlight">
+                            <div class="stat-value" id="super-admin-share">$0</div>
+                            <div class="stat-label">Super Admin Share (20%)</div>
+                        </div>
+                    </div>
+                    
+                    <div class="recent-activity">
+                        <h3>Recent Activity</h3>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Action</th>
+                                    <th>Details</th>
+                                    <th>IP Address</th>
+                                </tr>
+                            </thead>
+                            <tbody id="activity-log">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Clients Tab -->
+                <div id="clients" class="tab-content" style="display: none;">
+                    <div class="tab-header">
+                        <h2>White Label Clients</h2>
+                        <button class="btn btn-primary" onclick="showCreateClientModal()">+ Create Client</button>
+                    </div>
+                    
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Domain</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="clients-list">
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Admins Tab -->
+                <div id="admins" class="tab-content" style="display: none;">
+                    <div class="tab-header">
+                        <h2>Admin Management</h2>
+                        <button class="btn btn-primary" onclick="showCreateAdminModal()">+ Create Admin</button>
+                    </div>
+                    
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Role</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admins-list">
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Products Tab -->
+                <div id="products" class="tab-content" style="display: none;">
+                    <div class="tab-header">
+                        <h2>Products</h2>
+                        <button class="btn btn-primary" onclick="showCreateProductModal()">+ Create Product</button>
+                    </div>
+                    
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Fee</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="products-list">
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Fetchers Tab -->
+                <div id="fetchers" class="tab-content" style="display: none;">
+                    <h2>Full Fetchers Access</h2>
+                    <p class="info-text">All 20 data fetchers available for your white label:</p>
+                    
+                    <div class="fetchers-grid">
+                        <div class="fetcher-category">
+                            <h3>Standard Fetchers</h3>
+                            <div class="fetcher-list">
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">ERC-20 Token Fetcher</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">Gas Estimator</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">Price Feed Fetcher</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">DApp Connection (WalletConnect)</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">Network Fetcher (RPC)</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">Swap Quote Fetcher</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="fetcher-category">
+                            <h3>Advanced Fetchers (TigerWallet Unique)</h3>
+                            <div class="fetcher-list">
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">AI Price Predictor</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">MEV Opportunity Fetcher</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">Liquidity Fetcher (Order Book)</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">Arbitrage Fetcher</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">Token Risk Fetcher</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">Smart Contract Fetcher</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">Gas Market Fetcher</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">DeFi Yield Fetcher</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">Staking Optimizer Fetcher</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">NFT Floor Price Fetcher</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">Whale Transaction Fetcher</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">On-Chain Analytics Fetcher</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">Transaction Simulator Fetcher</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                                <div class="fetcher-item">
+                                    <span class="fetcher-name">Cross-Chain Route Optimizer</span>
+                                    <span class="fetcher-status active">Active</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="fetcher-stats">
+                        <h3>Live Fetcher Statistics</h3>
+                        <div class="stats-grid" id="fetcher-stats-grid">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Revenue Tab -->
+                <div id="revenue" class="tab-content" style="display: none;">
+                    <h2>Revenue Management</h2>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value" id="gross-revenue">$0</div>
+                            <div class="stat-label">Gross Revenue</div>
+                        </div>
+                        <div class="stat-card highlight">
+                            <div class="stat-value" id="super-admin-revenue">$0</div>
+                            <div class="stat-label">Super Admin (20%)</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="pending-revenue">$0</div>
+                            <div class="stat-label">Pending Payment</div>
+                        </div>
+                    </div>
+                    
+                    <h3>Revenue Records</h3>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Period</th>
+                                <th>Gross Revenue</th>
+                                <th>Super Admin Share</th>
+                                <th>Net Revenue</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="revenue-list">
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Settings Tab -->
+                <div id="settings" class="tab-content" style="display: none;">
+                    <h2>Settings</h2>
+                    
+                    <div class="settings-section">
+                        <h3>Profile Settings</h3>
+                        <form id="settings-form">
+                            <div class="form-group">
+                                <label>Name</label>
+                                <input type="text" id="settings-name" class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label>Email</label>
+                                <input type="email" id="settings-email" class="form-control">
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                        </form>
+                    </div>
+                    
+                    <div class="settings-section">
+                        <h3>Change Password</h3>
+                        <form id="password-form">
+                            <div class="form-group">
+                                <label>Old Password</label>
+                                <input type="password" id="old-password" class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label>New Password</label>
+                                <input type="password" id="new-password" class="form-control">
+                            </div>
+                            <button type="submit" class="btn btn-primary">Change Password</button>
+                        </form>
+                    </div>
+                    
+                    <div class="settings-section">
+                        <h3>Two-Factor Authentication</h3>
+                        <div id="2fa-status">
+                            <p>Status: <span id="2fa-enabled">Disabled</span></p>
+                            <button class="btn btn-secondary" onclick="setup2FA()">Setup 2FA</button>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </section>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal-overlay" class="modal-overlay" style="display: none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modal-title">Modal Title</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-body">
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

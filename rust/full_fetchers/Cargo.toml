@@ -1,0 +1,23 @@
+[package]
+name = "tigerwallet-full-fetchers"
+version = "1.0.0"
+edition = "2021"
+description = "TigerWallet Full Fetchers - High Speed Rust Implementation"
+authors = ["TigerWallet Team"]
+license = "MIT"
+
+[dependencies]
+tokio = { version = "1.35", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+hex = "0.4"
+rand = "0.8"
+thiserror = "1.0"
+
+[features]
+default = ["full"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
