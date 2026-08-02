@@ -7,6 +7,7 @@ import '../services/chain_service.dart';
 import '../services/api_service.dart';
 import '../utils/theme.dart';
 import '../utils/constants.dart';
+import 'send_screen.dart';
 
 /// Wallet Screen - View and manage wallet addresses across chains
 class WalletScreen extends StatefulWidget {
@@ -324,7 +325,12 @@ class _WalletScreenState extends State<WalletScreen> {
                       color: AppColors.textPrimary)),
               Row(
                 children: [
-                  _buildActionButton('Send', Icons.arrow_upward, () {}),
+                  _buildActionButton('Send', Icons.arrow_upward, () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const SendScreen()),
+                    );
+                  }),
                   const SizedBox(width: 8),
                   _buildActionButton('Receive', Icons.arrow_downward, () {}),
                 ],

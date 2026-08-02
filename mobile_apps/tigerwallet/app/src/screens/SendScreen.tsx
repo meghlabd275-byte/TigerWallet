@@ -137,18 +137,37 @@ const SendScreen: React.FC = () => {
           <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
             Recipient Address
           </Text>
-          <TextInput
-            style={[styles.input, { 
-              backgroundColor: theme.colors.surfaceVariant,
-              color: theme.colors.text,
-              borderColor: theme.colors.border,
-            }]}
-            placeholder="0x..."
-            placeholderTextColor={theme.colors.textTertiary}
-            value={recipient}
-            onChangeText={setRecipient}
-            autoCapitalize="none"
-          />
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TextInput
+              style={[styles.input, { 
+                backgroundColor: theme.colors.surfaceVariant,
+                color: theme.colors.text,
+                borderColor: theme.colors.border,
+                flex: 1,
+              }]}
+              placeholder="0x... or tap QR to scan"
+              placeholderTextColor={theme.colors.textTertiary}
+              value={recipient}
+              onChangeText={setRecipient}
+              autoCapitalize="none"
+            />
+            <TouchableOpacity 
+              style={[styles.qrButton, { backgroundColor: theme.colors.primary }]}
+              onPress={() => {
+                // For demo - in production would open camera QR scanner
+                Alert.alert(
+                  'QR Scanner',
+                  'Camera QR scanning would open here.\n\nSupported chains:\n• Ethereum\n• Bitcoin\n• Solana\n• TRON\n• And more...',
+                  [
+                    { text: 'Demo: Paste Sample Address', onPress: () => setRecipient('0x742d35Cc6634C0532925a3b844Bc9e7595f1234') },
+                    { text: 'Cancel', style: 'cancel' }
+                  ]
+                );
+              }}
+            >
+              <Text style={styles.qrButtonText}>📷</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={[styles.card, { backgroundColor: theme.colors.surface }]}>
@@ -227,6 +246,8 @@ const styles = StyleSheet.create({
   infoValue: { fontSize: 14, fontWeight: '500' },
   sendButton: { padding: 18, borderRadius: 12, alignItems: 'center' },
   sendButtonText: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
+  qrButton: { marginLeft: 12, padding: 14, borderRadius: 12, width: 50, height: 50, justifyContent: 'center', alignItems: 'center' },
+  qrButtonText: { fontSize: 20 },
 });
 
 export default SendScreen;

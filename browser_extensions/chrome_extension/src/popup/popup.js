@@ -64,6 +64,117 @@ class TigerWalletPopup {
     document.getElementById('networkBtn')?.addEventListener('click', () => {
       this.showNetworkSelector();
     });
+
+    // Send button
+    document.querySelector('.action-btn.send')?.addEventListener('click', () => {
+      this.showModal('sendModal');
+    });
+
+    // QR Scanner button in send modal
+    document.getElementById('scanQRBtn')?.addEventListener('click', () => {
+      this.showModal('qrScannerModal');
+    });
+
+    // Use address from QR scanner
+    document.getElementById('useAddressBtn')?.addEventListener('click', () => {
+      const address = document.getElementById('manualAddressInput')?.value.trim();
+      if (address) {
+        document.getElementById('sendRecipient').value = address;
+        this.hideAllModals();
+      }
+    });
+
+    // Recent addresses click
+    document.querySelectorAll('.address-item')?.forEach(item => {
+      item.addEventListener('click', () => {
+        const address = item.dataset.address;
+        document.getElementById('sendRecipient').value = address;
+        this.hideAllModals();
+      });
+    });
+
+    // Send transaction button
+    document.getElementById('sendBtn')?.addEventListener('click', () => {
+      this.processSend();
+    });
+  }
+
+  // Validate address format
+  isValidAddress(address) {
+    // Ethereum
+    if (/^0x[a-fA-F0-9]{40}$/.test(address)) return true;
+    // Bitcoin
+    if (/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,62}$/.test(address)) return true;
+    // Solana
+    if (/^[1-9A-HJ-NP-Z]{32,44}$/.test(address)) return true;
+    // TRON
+    if (/^T[a-zA-HJ-NP-Z0-9]{33}$/.test(address)) return true;
+    return false;
+  }
+
+  // Process send transaction
+  async processSend() {
+    const recipient = document.getElementById('sendRecipient')?.value.trim();
+    const amount = document.getElementById('sendAmount')?.value.trim();
+    const network = document.getElementById('sendNetwork')?.value;
+    const errorEl = document.getElementById('sendError');
+
+    // Clear previous errors
+    if (errorEl) {
+      errorEl.textContent = '';
+      errorEl.classList.add('hidden');
+    }
+
+    // Validation
+    if (!recipient) {
+      this.showSendError('Please enter recipient address');
+      return;
+    }
+
+    if (!this.isValidAddress(recipient)) {
+      this.showSendError('Invalid address format');
+      return;
+    }
+
+    if (!amount || parseFloat(amount) <= 0) {
+      this.showSendError('Please enter valid amount');
+      return;
+    }
+
+    // Simulate transaction
+    try {
+      const sendBtn = document.getElementById('sendBtn');
+      sendBtn.textContent = 'Processing...';
+      sendBtn.disabled = true;
+
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Generate mock tx hash
+      const txHash = '0x' + Array(64).fill(0).map(() => 
+        '0123456789abcdef'[Math.floor(Math.random() * 16)]
+      ).join('');
+
+      alert(`Transaction submitted!\n\nHash: ${txHash}`);
+      
+      // Reset form
+      document.getElementById('sendRecipient').value = '';
+      document.getElementById('sendAmount').value = '';
+      this.hideAllModals();
+    } catch (error) {
+      this.showSendError(error.message);
+    } finally {
+      const sendBtn = document.getElementById('sendBtn');
+      sendBtn.textContent = 'Send';
+      sendBtn.disabled = false;
+    }
+  }
+
+  showSendError(message) {
+    const errorEl = document.getElementById('sendError');
+    if (errorEl) {
+      errorEl.textContent = message;
+      errorEl.classList.remove('hidden');
+    }
   }
 
   async checkWalletStatus() {

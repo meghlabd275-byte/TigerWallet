@@ -174,6 +174,90 @@
     </div>
   </div>
 
+  <!-- Send Modal with QR Scanner -->
+  <div id="sendModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Send</h2>
+        <button class="close-btn" data-modal="sendModal">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Network</label>
+          <select id="sendNetwork">
+            <option value="ethereum">Ethereum</option>
+            <option value="bsc">BNB Chain</option>
+            <option value="polygon">Polygon</option>
+            <option value="arbitrum">Arbitrum</option>
+            <option value="optimism">Optimism</option>
+            <option value="avalanche">Avalanche</option>
+            <option value="solana">Solana</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Recipient Address</label>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="sendRecipient" placeholder="0x..." style="flex: 1;">
+            <button id="scanQRBtn" class="btn btn-secondary" style="padding: 12px;" title="Scan QR Code">
+              📷
+            </button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Token</label>
+          <select id="sendToken">
+            <option value="ETH">ETH</option>
+            <option value="USDT">USDT</option>
+            <option value="USDC">USDC</option>
+            <option value="BNB">BNB</option>
+            <option value="MATIC">MATIC</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Amount</label>
+          <input type="number" id="sendAmount" placeholder="0.0" step="0.000001">
+        </div>
+        <div id="sendError" class="error-message hidden"></div>
+        <button id="sendBtn" class="btn btn-primary">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- QR Scanner Modal -->
+  <div id="qrScannerModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Scan QR Code</h2>
+        <button class="close-btn" data-modal="qrScannerModal">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="qr-scanner-container">
+          <div class="qr-camera-placeholder">
+            <div class="qr-icon">📷</div>
+            <p>Camera QR Scanner</p>
+            <p style="font-size: 12px; color: #888;">Point camera at QR code</p>
+          </div>
+        </div>
+        <div style="margin-top: 20px;">
+          <label style="display: block; margin-bottom: 8px;">Or enter address manually:</label>
+          <input type="text" id="manualAddressInput" placeholder="0x...">
+          <button id="useAddressBtn" class="btn btn-primary" style="margin-top: 10px; width: 100%;">Use Address</button>
+        </div>
+        <div style="margin-top: 20px;">
+          <label style="display: block; margin-bottom: 8px;">Recent Addresses:</label>
+          <div id="recentAddresses">
+            <div class="address-item" data-address="0x742d35Cc6634C0532925a3b844Bc9e7595f1234">
+              0x742d...f1234
+            </div>
+            <div class="address-item" data-address="0x1234567890abcdef1234567890abcdef12345678">
+              0x1234...5678
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="popup.js"></script>
 </body>
 </html>
