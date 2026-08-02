@@ -158,6 +158,9 @@ class TigerWalletApp {
             send: 'Send',
             receive: 'Receive',
             swap: 'Swap',
+            staking: 'Staking',
+            bridge: 'Bridge',
+            nft: 'NFT Gallery',
             transactions: 'Transactions',
             settings: 'Settings'
         };

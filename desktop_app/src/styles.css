@@ -706,3 +706,280 @@ body {
     background: var(--accent);
     color: white;
 }
+
+/* Swap Page */
+.swap-container {
+    padding: 20px;
+}
+
+.swap-card {
+    background: var(--bg-tertiary);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+}
+
+.swap-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.swap-input-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.swap-input {
+    flex: 1;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    color: var(--text-primary);
+    font-size: 18px;
+}
+
+.swap-balance {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+}
+
+.swap-icon {
+    text-align: center;
+    font-size: 24px;
+    margin: 8px 0;
+}
+
+.swap-rate {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin: 12px 0;
+}
+
+.swap-btn {
+    width: 100%;
+    padding: 14px;
+    font-size: 16px;
+}
+
+/* Staking Page */
+.staking-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.staking-tab {
+    padding: 10px 20px;
+    background: var(--bg-tertiary);
+    border: none;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.staking-tab.active {
+    background: var(--accent);
+    color: white;
+}
+
+.staking-pool-selector {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.pool-card {
+    background: var(--bg-tertiary);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.2s;
+}
+
+.pool-card.active {
+    border-color: var(--accent);
+}
+
+.pool-name {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.pool-apy {
+    color: #22c55e;
+    font-size: 14px;
+    margin-top: 4px;
+}
+
+.stake-input-section {
+    background: var(--bg-tertiary);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.stake-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.stake-input-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.stake-input {
+    flex: 1;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    color: var(--text-primary);
+    font-size: 18px;
+}
+
+.max-btn {
+    padding: 8px 16px;
+    background: var(--accent);
+    border: none;
+    border-radius: 6px;
+    color: white;
+    cursor: pointer;
+}
+
+.stake-btn {
+    width: 100%;
+    padding: 14px;
+    font-size: 16px;
+}
+
+/* Bridge Page */
+.bridge-container {
+    padding: 20px;
+}
+
+.bridge-card {
+    background: var(--bg-tertiary);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+}
+
+.bridge-card select {
+    width: 100%;
+    padding: 12px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+}
+
+.bridge-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.bridge-input {
+    width: 100%;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    color: var(--text-primary);
+    font-size: 18px;
+}
+
+.bridge-icon {
+    text-align: center;
+    font-size: 32px;
+    margin: 8px 0;
+}
+
+.bridge-info {
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+}
+
+.bridge-btn {
+    width: 100%;
+    padding: 14px;
+    font-size: 16px;
+}
+
+/* NFT Page */
+.nft-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.nft-tab {
+    padding: 10px 20px;
+    background: var(--bg-tertiary);
+    border: none;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.nft-tab.active {
+    background: var(--accent);
+    color: white;
+}
+
+.nft-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+}
+
+.nft-card {
+    background: var(--bg-tertiary);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.nft-image {
+    height: 150px;
+    background: var(--bg-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 60px;
+}
+
+.nft-name {
+    padding: 12px 12px 4px;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.nft-collection {
+    padding: 0 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.nft-price {
+    padding: 8px 12px 12px;
+    color: var(--accent);
+    font-weight: 600;
+}
