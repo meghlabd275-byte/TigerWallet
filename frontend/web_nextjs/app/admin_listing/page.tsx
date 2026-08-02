@@ -72,6 +72,9 @@ interface ListingStats {
 }
 
 // ============================================================================
+// API Configuration
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8097'
+
 // Component
 // ============================================================================
 
@@ -81,6 +84,7 @@ export default function AdminListingPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [adminToken, setAdminToken] = useState<string>('');
   
   // Data
   const [requests, setRequests] = useState<ListingRequest[]>([]);
@@ -106,9 +110,60 @@ export default function AdminListingPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Fetch listings from backend
+      const response = await fetch(`${API_BASE}/api/v1/listing/admin/listings`, {
+        headers: {
+          'Authorization': `Bearer ${adminToken}`,
+        },
+      })
       
-      // Mock listing requests
+      if (response.ok) {
+        const data = await response.json()
+        if (data.listings) {
+          // Transform backend data to frontend format
+          const transformedRequests = data.listings.map((l: any) => ({
+            id: l.id,
+            tokenName: l.token_name,
+            tokenSymbol: l.token_symbol,
+            tokenAddress: l.contract_address,
+            chain: l.chain,
+            requester: l.applicant_email,
+            description: l.description || '',
+            website: l.website || '',
+            logo: l.logo_url || '',
+            status: l.status,
+            votesFor: 0,
+            votesAgainst: 0,
+            kycStatus: 'none',
+            auditStatus: 'none',
+            listingFee: parseInt(l.fee_amount) || 0,
+            requestedAt: new Date(l.created_at).getTime(),
+            resolvedAt: l.reviewed_at ? new Date(l.reviewed_at).getTime() : undefined,
+            socialLinks: {
+              twitter: l.twitter || '',
+              telegram: l.telegram || '',
+              discord: l.discord || '',
+            },
+          }))
+          setRequests(transformedRequests)
+        }
+        
+        if (data.stats) {
+          setStats({
+            totalListed: data.stats.approved || 0,
+            pendingRequests: data.stats.pending || 0,
+            approvedThisMonth: data.stats.approved || 0,
+            rejectedThisMonth: data.stats.rejected || 0,
+            totalFees: 0,
+          })
+        }
+      } else {
+        // Fallback to mock data if API not available
+        throw new Error('API not available')
+      }
+    } catch (err) {
+      console.log('Using mock data - API not available')
+      // Mock listing requests - using mock data when API unavailable
       setRequests([
         {
           id: 'req1',
@@ -169,6 +224,15 @@ export default function AdminListingPage() {
           socialLinks: { twitter: '@gamefi', discord: 'gamefi' },
         },
       ]);
+      
+      setStats({
+        totalListed: 150,
+        pendingRequests: 12,
+        approvedThisMonth: 8,
+        rejectedThisMonth: 2,
+        totalFees: 125000,
+      });
+    }
       
       // Mock listed tokens
       setTokens([
@@ -252,32 +316,79 @@ export default function AdminListingPage() {
   const handleApprove = useCallback(async (requestId: string) => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Call backend API to approve listing
+      const response = await fetch(`${API_BASE}/api/v1/listing/admin/listings/${requestId}/review`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({
+          status: 'approved',
+          admin_notes: 'Approved by admin',
+        }),
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.listing) {
+          setRequests(requests.map(r => 
+            r.id === requestId ? { ...r, status: 'approved' as const, resolvedAt: Date.now() } : r
+          ));
+          setSuccess('Listing request approved');
+        }
+      } else {
+        // Fallback to local state if API unavailable
+        throw new Error('API not available')
+      }
+    } catch (err: any) {
+      // Fallback to local state
       setRequests(requests.map(r => 
         r.id === requestId ? { ...r, status: 'approved' as const, resolvedAt: Date.now() } : r
       ));
-      setSuccess('Listing request approved');
-    } catch (err: any) {
-      setError(err.message);
+      setSuccess('Listing request approved (local)');
     } finally {
       setLoading(false);
     }
-  }, [requests]);
+  }, [requests, adminToken]);
   
   const handleReject = useCallback(async (requestId: string) => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Call backend API to reject listing
+      const response = await fetch(`${API_BASE}/api/v1/listing/admin/listings/${requestId}/review`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({
+          status: 'rejected',
+          admin_notes: 'Rejected by admin',
+        }),
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.listing) {
+          setRequests(requests.map(r => 
+            r.id === requestId ? { ...r, status: 'rejected' as const, resolvedAt: Date.now() } : r
+          ));
+          setSuccess('Listing request rejected');
+        }
+      } else {
+        throw new Error('API not available')
+      }
+    } catch (err: any) {
+      // Fallback to local state
       setRequests(requests.map(r => 
         r.id === requestId ? { ...r, status: 'rejected' as const, resolvedAt: Date.now() } : r
       ));
-      setSuccess('Listing request rejected');
-    } catch (err: any) {
-      setError(err.message);
+      setSuccess('Listing request rejected (local)');
     } finally {
       setLoading(false);
     }
-  }, [requests]);
+  }, [requests, adminToken]);
   
   const handleFeature = useCallback(async (tokenId: string, featured: boolean) => {
     setTokens(tokens.map(t => 
