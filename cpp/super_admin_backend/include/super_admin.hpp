@@ -381,6 +381,61 @@ public:
                                         const std::string& action = "",
                                         int limit = 100,
                                         int offset = 0);
+    
+    // ==================== USER MANAGEMENT (Super Admin) ====================
+    
+    // Users - Super Admin can manage all users platform-wide
+    std::variant<json, std::error_code> getAllUsers(const std::string& admin_id, const std::string& status = "", int page = 1, int limit = 20);
+    std::variant<json, std::error_code> getUserById(const std::string& admin_id, const std::string& user_id);
+    std::variant<json, std::error_code> searchUsers(const std::string& admin_id, const std::string& query);
+    std::error_code suspendUser(const std::string& admin_id, const std::string& user_id);
+    std::error_code activateUser(const std::string& admin_id, const std::string& user_id);
+    std::error_code banUser(const std::string& admin_id, const std::string& user_id);
+    std::error_code unbanUser(const std::string& admin_id, const std::string& user_id);
+    std::variant<json, std::error_code> getUserBalance(const std::string& admin_id, const std::string& user_id);
+    std::error_code updateUser(const std::string& admin_id, const std::string& user_id, const json& updates);
+    
+    // ==================== KYC MANAGEMENT (Super Admin) ====================
+    
+    std::variant<json, std::error_code> getAllKYCRequests(const std::string& admin_id, const std::string& status = "", int page = 1, int limit = 20);
+    std::variant<json, std::error_code> getKYCById(const std::string& admin_id, const std::string& kyc_id);
+    std::error_code approveKYC(const std::string& admin_id, const std::string& kyc_id);
+    std::error_code rejectKYC(const std::string& admin_id, const std::string& kyc_id, const std::string& reason);
+    
+    // ==================== TRANSACTION MANAGEMENT (Super Admin) ====================
+    
+    std::variant<json, std::error_code> getAllTransactions(const std::string& admin_id, const std::string& type = "", const std::string& status = "", int page = 1, int limit = 20);
+    std::variant<json, std::error_code> getTransactionById(const std::string& admin_id, const std::string& tx_id);
+    std::variant<json, std::error_code> searchTransactions(const std::string& admin_id, const std::string& query);
+    
+    // ==================== TRADING PAIRS MANAGEMENT (Super Admin) ====================
+    
+    std::variant<json, std::error_code> getAllTradingPairs(const std::string& admin_id, const std::string& status = "", int page = 1, int limit = 20);
+    std::variant<json, std::error_code> getTradingPairById(const std::string& admin_id, const std::string& pair_id);
+    std::error_code createTradingPair(const std::string& admin_id, const json& pair_data);
+    std::error_code updateTradingPair(const std::string& admin_id, const std::string& pair_id, const json& updates);
+    std::error_code suspendTradingPair(const std::string& admin_id, const std::string& pair_id);
+    std::error_code resumeTradingPair(const std::string& admin_id, const std::string& pair_id);
+    std::error_code haltTradingPair(const std::string& admin_id, const std::string& pair_id);
+    
+    // ==================== BLOCKCHAIN MANAGEMENT (Super Admin) ====================
+    
+    std::variant<json, std::error_code> getAllBlockchains(const std::string& admin_id);
+    std::variant<json, std::error_code> getBlockchainById(const std::string& admin_id, const std::string& chain_id);
+    std::error_code addBlockchain(const std::string& admin_id, const json& chain_data);
+    std::error_code updateBlockchain(const std::string& admin_id, const std::string& chain_id, const json& updates);
+    std::error_code setBlockchainMaintenance(const std::string& admin_id, const std::string& chain_id, bool maintenance);
+    std::error_code setBlockchainActive(const std::string& admin_id, const std::string& chain_id, bool active);
+    
+    // ==================== FEE MANAGEMENT (Super Admin) ====================
+    
+    std::variant<json, std::error_code> getAllFeeStructures(const std::string& admin_id, const std::string& fee_type = "");
+    std::error_code createFeeStructure(const std::string& admin_id, const json& fee_data);
+    std::error_code updateFeeStructure(const std::string& admin_id, const std::string& fee_id, const json& updates);
+    
+    // ==================== PLATFORM STATS (Super Admin) ====================
+    
+    json getPlatformStats();
     std::string exportAuditData(const std::string& start_date,
                                  const std::string& end_date);
     

@@ -2480,3 +2480,810 @@ int main() {
     
     return 0;
 }
+
+// ============================================================================
+// USER MANAGEMENT (Super Admin can manage ALL users platform-wide)
+// ============================================================================
+
+std::variant<json, std::error_code> SuperAdminService::getAllUsers(const std::string& admin_id, const std::string& status, int page, int limit) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    std::string query = "SELECT id, email, username, wallet_address, kyc_status, kyc_level, status, risk_score, tags, created_at, updated_at, last_login FROM users WHERE 1=1";
+    if (!status.empty()) {
+        query += " AND status = '" + status + "'";
+    }
+    query += " ORDER BY created_at DESC LIMIT " + std::to_string(limit) + " OFFSET " + std::to_string((page - 1) * limit);
+    
+    pqxx::result r = conn->exec(query);
+    json users = json::array();
+    
+    for (const auto& row : r) {
+        json user;
+        user["id"] = row["id"].as<std::string>();
+        user["email"] = row["email"].as<std::string>();
+        user["username"] = row["username"].as<std::string>();
+        user["wallet_address"] = row["wallet_address"].as<std::string>();
+        user["kyc_status"] = row["kyc_status"].as<std::string>();
+        user["kyc_level"] = row["kyc_level"].as<int>();
+        user["status"] = row["status"].as<std::string>();
+        user["risk_score"] = row["risk_score"].as<int>();
+        user["tags"] = json::parse(row["tags"].as<std::string>("[]"));
+        user["created_at"] = row["created_at"].as<std::string>();
+        user["updated_at"] = row["updated_at"].as<std::string>();
+        if (!row["last_login"].is_null()) {
+            user["last_login"] = row["last_login"].as<std::string>();
+        }
+        users.push_back(user);
+    }
+    
+    db_pool_->releaseConnection(conn);
+    logAudit(admin_id, "GET_ALL_USERS", "user", "", json::object());
+    return users;
+}
+
+std::variant<json, std::error_code> SuperAdminService::getUserById(const std::string& admin_id, const std::string& user_id) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::result r = conn->exec_params("SELECT * FROM users WHERE id = $1", user_id);
+    if (r.empty()) {
+        db_pool_->releaseConnection(conn);
+        return std::make_error_code(std::errc::no_such_file_or_directory);
+    }
+    
+    json user = json::object();
+    for (size_t i = 0; i < r[0].size(); ++i) {
+        user[r[0].column_name(i)] = r[0][i].as<std::string>();
+    }
+    
+    db_pool_->releaseConnection(conn);
+    logAudit(admin_id, "GET_USER", "user", user_id);
+    return user;
+}
+
+std::variant<json, std::error_code> SuperAdminService::searchUsers(const std::string& admin_id, const std::string& query) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::result r = conn->exec_params(
+        "SELECT id, email, username, wallet_address, status, kyc_status FROM users WHERE email LIKE $1 OR username LIKE $1 OR wallet_address LIKE $1 LIMIT 50",
+        "%" + query + "%"
+    );
+    
+    json users = json::array();
+    for (const auto& row : r) {
+        json user;
+        user["id"] = row["id"].as<std::string>();
+        user["email"] = row["email"].as<std::string>();
+        user["username"] = row["username"].as<std::string>();
+        user["wallet_address"] = row["wallet_address"].as<std::string>();
+        user["status"] = row["status"].as<std::string>();
+        user["kyc_status"] = row["kyc_status"].as<std::string>();
+        users.push_back(user);
+    }
+    
+    db_pool_->releaseConnection(conn);
+    return users;
+}
+
+std::error_code SuperAdminService::suspendUser(const std::string& admin_id, const std::string& user_id) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::work w(*conn);
+    w.exec_params("UPDATE users SET status = 'suspended', updated_at = NOW() WHERE id = $1", user_id);
+    w.commit();
+    db_pool_->releaseConnection(conn);
+    
+    logAudit(admin_id, "USER_SUSPENDED", "user", user_id);
+    return std::error_code{};
+}
+
+std::error_code SuperAdminService::activateUser(const std::string& admin_id, const std::string& user_id) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::work w(*conn);
+    w.exec_params("UPDATE users SET status = 'active', updated_at = NOW() WHERE id = $1", user_id);
+    w.commit();
+    db_pool_->releaseConnection(conn);
+    
+    logAudit(admin_id, "USER_ACTIVATED", "user", user_id);
+    return std::error_code{};
+}
+
+std::error_code SuperAdminService::banUser(const std::string& admin_id, const std::string& user_id) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::work w(*conn);
+    w.exec_params("UPDATE users SET status = 'banned', updated_at = NOW() WHERE id = $1", user_id);
+    w.commit();
+    db_pool_->releaseConnection(conn);
+    
+    logAudit(admin_id, "USER_BANNED", "user", user_id);
+    return std::error_code{};
+}
+
+std::error_code SuperAdminService::unbanUser(const std::string& admin_id, const std::string& user_id) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::work w(*conn);
+    w.exec_params("UPDATE users SET status = 'active', updated_at = NOW() WHERE id = $1", user_id);
+    w.commit();
+    db_pool_->releaseConnection(conn);
+    
+    logAudit(admin_id, "USER_UNBANNED", "user", user_id);
+    return std::error_code{};
+}
+
+std::variant<json, std::error_code> SuperAdminService::getUserBalance(const std::string& admin_id, const std::string& user_id) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::result r = conn->exec_params(
+        "SELECT chain_id, token_address, balance FROM user_balances WHERE user_id = $1",
+        user_id
+    );
+    
+    json balances = json::array();
+    for (const auto& row : r) {
+        json balance;
+        balance["chain_id"] = row["chain_id"].as<std::string>();
+        balance["token_address"] = row["token_address"].as<std::string>();
+        balance["balance"] = row["balance"].as<std::string>();
+        balances.push_back(balance);
+    }
+    
+    db_pool_->releaseConnection(conn);
+    return balances;
+}
+
+std::error_code SuperAdminService::updateUser(const std::string& admin_id, const std::string& user_id, const json& updates) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::work w(*conn);
+    std::string query = "UPDATE users SET updated_at = NOW()";
+    
+    if (updates.contains("email")) {
+        query += ", email = '" + updates["email"].get<std::string>() + "'";
+    }
+    if (updates.contains("status")) {
+        query += ", status = '" + updates["status"].get<std::string>() + "'";
+    }
+    if (updates.contains("kyc_status")) {
+        query += ", kyc_status = '" + updates["kyc_status"].get<std::string>() + "'";
+    }
+    if (updates.contains("risk_score")) {
+        query += ", risk_score = " + std::to_string(updates["risk_score"].get<int>());
+    }
+    
+    query += " WHERE id = '" + user_id + "'";
+    w.exec(query);
+    w.commit();
+    db_pool_->releaseConnection(conn);
+    
+    logAudit(admin_id, "USER_UPDATED", "user", user_id, updates);
+    return std::error_code{};
+}
+
+// ============================================================================
+// KYC MANAGEMENT (Super Admin can approve/reject ALL KYC)
+// ============================================================================
+
+std::variant<json, std::error_code> SuperAdminService::getAllKYCRequests(const std::string& admin_id, const std::string& status, int page, int limit) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    std::string query = "SELECT * FROM user_kyc WHERE 1=1";
+    if (!status.empty()) {
+        query += " AND status = '" + status + "'";
+    }
+    query += " ORDER BY created_at DESC LIMIT " + std::to_string(limit) + " OFFSET " + std::to_string((page - 1) * limit);
+    
+    pqxx::result r = conn->exec(query);
+    json requests = json::array();
+    
+    for (const auto& row : r) {
+        json kyc;
+        for (size_t i = 0; i < row.size(); ++i) {
+            kyc[row.column_name(i)] = row[i].as<std::string>();
+        }
+        requests.push_back(kyc);
+    }
+    
+    db_pool_->releaseConnection(conn);
+    return requests;
+}
+
+std::variant<json, std::error_code> SuperAdminService::getKYCById(const std::string& admin_id, const std::string& kyc_id) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::result r = conn->exec_params("SELECT * FROM user_kyc WHERE id = $1", kyc_id);
+    if (r.empty()) {
+        db_pool_->releaseConnection(conn);
+        return std::make_error_code(std::errc::no_such_file_or_directory);
+    }
+    
+    json kyc = json::object();
+    for (size_t i = 0; i < r[0].size(); ++i) {
+        kyc[r[0].column_name(i)] = r[0][i].as<std::string>();
+    }
+    
+    db_pool_->releaseConnection(conn);
+    return kyc;
+}
+
+std::error_code SuperAdminService::approveKYC(const std::string& admin_id, const std::string& kyc_id) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    // Get user_id from KYC
+    pqxx::result r = conn->exec_params("SELECT user_id FROM user_kyc WHERE id = $1", kyc_id);
+    if (r.empty()) {
+        db_pool_->releaseConnection(conn);
+        return std::make_error_code(std::errc::no_such_file_or_directory);
+    }
+    
+    std::string user_id = r[0]["user_id"].as<std::string>();
+    
+    pqxx::work w(*conn);
+    w.exec_params("UPDATE user_kyc SET status = 'approved', reviewed_by = $1, reviewed_at = NOW() WHERE id = $2", admin_id, kyc_id);
+    w.exec_params("UPDATE users SET kyc_status = 'approved', kyc_level = 2, updated_at = NOW() WHERE id = $1", user_id);
+    w.commit();
+    db_pool_->releaseConnection(conn);
+    
+    logAudit(admin_id, "KYC_APPROVED", "kyc", kyc_id);
+    return std::error_code{};
+}
+
+std::error_code SuperAdminService::rejectKYC(const std::string& admin_id, const std::string& kyc_id, const std::string& reason) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::result r = conn->exec_params("SELECT user_id FROM user_kyc WHERE id = $1", kyc_id);
+    if (r.empty()) {
+        db_pool_->releaseConnection(conn);
+        return std::make_error_code(std::errc::no_such_file_or_directory);
+    }
+    
+    std::string user_id = r[0]["user_id"].as<std::string>();
+    
+    pqxx::work w(*conn);
+    w.exec_params("UPDATE user_kyc SET status = 'rejected', rejection_reason = $1, reviewed_by = $2, reviewed_at = NOW() WHERE id = $3", reason, admin_id, kyc_id);
+    w.exec_params("UPDATE users SET kyc_status = 'rejected', updated_at = NOW() WHERE id = $1", user_id);
+    w.commit();
+    db_pool_->releaseConnection(conn);
+    
+    logAudit(admin_id, "KYC_REJECTED", "kyc", kyc_id, json::object({{"reason", reason}}));
+    return std::error_code{};
+}
+
+// ============================================================================
+// TRANSACTION MANAGEMENT (Super Admin can view ALL transactions)
+// ============================================================================
+
+std::variant<json, std::error_code> SuperAdminService::getAllTransactions(const std::string& admin_id, const std::string& type, const std::string& status, int page, int limit) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    std::string query = "SELECT * FROM transactions WHERE 1=1";
+    if (!type.empty()) {
+        query += " AND type = '" + type + "'";
+    }
+    if (!status.empty()) {
+        query += " AND status = '" + status + "'";
+    }
+    query += " ORDER BY created_at DESC LIMIT " + std::to_string(limit) + " OFFSET " + std::to_string((page - 1) * limit);
+    
+    pqxx::result r = conn->exec(query);
+    json transactions = json::array();
+    
+    for (const auto& row : r) {
+        json tx;
+        for (size_t i = 0; i < row.size(); ++i) {
+            tx[row.column_name(i)] = row[i].as<std::string>();
+        }
+        transactions.push_back(tx);
+    }
+    
+    db_pool_->releaseConnection(conn);
+    return transactions;
+}
+
+std::variant<json, std::error_code> SuperAdminService::getTransactionById(const std::string& admin_id, const std::string& tx_id) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::result r = conn->exec_params("SELECT * FROM transactions WHERE id = $1", tx_id);
+    if (r.empty()) {
+        db_pool_->releaseConnection(conn);
+        return std::make_error_code(std::errc::no_such_file_or_directory);
+    }
+    
+    json tx = json::object();
+    for (size_t i = 0; i < r[0].size(); ++i) {
+        tx[r[0].column_name(i)] = r[0][i].as<std::string>();
+    }
+    
+    db_pool_->releaseConnection(conn);
+    return tx;
+}
+
+std::variant<json, std::error_code> SuperAdminService::searchTransactions(const std::string& admin_id, const std::string& query) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::result r = conn->exec_params(
+        "SELECT id, user_id, type, status, amount, tx_hash, created_at FROM transactions WHERE id LIKE $1 OR user_id LIKE $1 OR tx_hash LIKE $1 OR from_address LIKE $1 OR to_address LIKE $1 LIMIT 50",
+        "%" + query + "%"
+    );
+    
+    json transactions = json::array();
+    for (const auto& row : r) {
+        json tx;
+        tx["id"] = row["id"].as<std::string>();
+        tx["user_id"] = row["user_id"].as<std::string>();
+        tx["type"] = row["type"].as<std::string>();
+        tx["status"] = row["status"].as<std::string>();
+        tx["amount"] = row["amount"].as<std::string>();
+        tx["tx_hash"] = row["tx_hash"].as<std::string>();
+        tx["created_at"] = row["created_at"].as<std::string>();
+        transactions.push_back(tx);
+    }
+    
+    db_pool_->releaseConnection(conn);
+    return transactions;
+}
+
+// ============================================================================
+// TRADING PAIRS MANAGEMENT (Super Admin can manage ALL pairs)
+// ============================================================================
+
+std::variant<json, std::error_code> SuperAdminService::getAllTradingPairs(const std::string& admin_id, const std::string& status, int page, int limit) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    std::string query = "SELECT * FROM trading_pairs WHERE 1=1";
+    if (!status.empty()) {
+        query += " AND status = '" + status + "'";
+    }
+    query += " ORDER BY created_at DESC LIMIT " + std::to_string(limit) + " OFFSET " + std::to_string((page - 1) * limit);
+    
+    pqxx::result r = conn->exec(query);
+    json pairs = json::array();
+    
+    for (const auto& row : r) {
+        json pair;
+        for (size_t i = 0; i < row.size(); ++i) {
+            pair[row.column_name(i)] = row[i].as<std::string>();
+        }
+        pairs.push_back(pair);
+    }
+    
+    db_pool_->releaseConnection(conn);
+    return pairs;
+}
+
+std::variant<json, std::error_code> SuperAdminService::getTradingPairById(const std::string& admin_id, const std::string& pair_id) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::result r = conn->exec_params("SELECT * FROM trading_pairs WHERE id = $1", pair_id);
+    if (r.empty()) {
+        db_pool_->releaseConnection(conn);
+        return std::make_error_code(std::errc::no_such_file_or_directory);
+    }
+    
+    json pair = json::object();
+    for (size_t i = 0; i < r[0].size(); ++i) {
+        pair[r[0].column_name(i)] = r[0][i].as<std::string>();
+    }
+    
+    db_pool_->releaseConnection(conn);
+    return pair;
+}
+
+std::error_code SuperAdminService::createTradingPair(const std::string& admin_id, const json& pair_data) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    std::string id = SecurityUtils::generateUUID();
+    std::string name = pair_data.value("name", "");
+    std::string base_token = pair_data.value("base_token", "");
+    std::string quote_token = pair_data.value("quote_token", "");
+    std::string chain_id = pair_data.value("chain_id", "");
+    std::string maker_fee = pair_data.value("maker_fee", "0.001");
+    std::string taker_fee = pair_data.value("taker_fee", "0.003");
+    
+    pqxx::work w(*conn);
+    w.exec_params(
+        "INSERT INTO trading_pairs (id, name, base_token, quote_token, chain_id, maker_fee, taker_fee, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', NOW(), NOW())",
+        id, name, base_token, quote_token, chain_id, maker_fee, taker_fee
+    );
+    w.commit();
+    db_pool_->releaseConnection(conn);
+    
+    logAudit(admin_id, "PAIR_CREATED", "pair", id, pair_data);
+    return std::error_code{};
+}
+
+std::error_code SuperAdminService::updateTradingPair(const std::string& admin_id, const std::string& pair_id, const json& updates) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::work w(*conn);
+    std::string query = "UPDATE trading_pairs SET updated_at = NOW()";
+    
+    if (updates.contains("name")) {
+        query += ", name = '" + updates["name"].get<std::string>() + "'";
+    }
+    if (updates.contains("maker_fee")) {
+        query += ", maker_fee = '" + updates["maker_fee"].get<std::string>() + "'";
+    }
+    if (updates.contains("taker_fee")) {
+        query += ", taker_fee = '" + updates["taker_fee"].get<std::string>() + "'";
+    }
+    
+    query += " WHERE id = '" + pair_id + "'";
+    w.exec(query);
+    w.commit();
+    db_pool_->releaseConnection(conn);
+    
+    logAudit(admin_id, "PAIR_UPDATED", "pair", pair_id, updates);
+    return std::error_code{};
+}
+
+std::error_code SuperAdminService::suspendTradingPair(const std::string& admin_id, const std::string& pair_id) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::work w(*conn);
+    w.exec_params("UPDATE trading_pairs SET status = 'suspended', updated_at = NOW() WHERE id = $1", pair_id);
+    w.commit();
+    db_pool_->releaseConnection(conn);
+    
+    logAudit(admin_id, "PAIR_SUSPENDED", "pair", pair_id);
+    return std::error_code{};
+}
+
+std::error_code SuperAdminService::resumeTradingPair(const std::string& admin_id, const std::string& pair_id) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::work w(*conn);
+    w.exec_params("UPDATE trading_pairs SET status = 'active', updated_at = NOW() WHERE id = $1", pair_id);
+    w.commit();
+    db_pool_->releaseConnection(conn);
+    
+    logAudit(admin_id, "PAIR_RESUMED", "pair", pair_id);
+    return std::error_code{};
+}
+
+std::error_code SuperAdminService::haltTradingPair(const std::string& admin_id, const std::string& pair_id) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::work w(*conn);
+    w.exec_params("UPDATE trading_pairs SET status = 'halted', updated_at = NOW() WHERE id = $1", pair_id);
+    w.commit();
+    db_pool_->releaseConnection(conn);
+    
+    logAudit(admin_id, "PAIR_HALTED", "pair", pair_id);
+    return std::error_code{};
+}
+
+// ============================================================================
+// BLOCKCHAIN MANAGEMENT (Super Admin can manage ALL blockchains)
+// ============================================================================
+
+std::variant<json, std::error_code> SuperAdminService::getAllBlockchains(const std::string& admin_id) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::result r = conn->exec("SELECT * FROM blockchains ORDER BY name");
+    json chains = json::array();
+    
+    for (const auto& row : r) {
+        json chain;
+        for (size_t i = 0; i < row.size(); ++i) {
+            chain[row.column_name(i)] = row[i].as<std::string>();
+        }
+        chains.push_back(chain);
+    }
+    
+    db_pool_->releaseConnection(conn);
+    return chains;
+}
+
+std::variant<json, std::error_code> SuperAdminService::getBlockchainById(const std::string& admin_id, const std::string& chain_id) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::result r = conn->exec_params("SELECT * FROM blockchains WHERE id = $1", chain_id);
+    if (r.empty()) {
+        db_pool_->releaseConnection(conn);
+        return std::make_error_code(std::errc::no_such_file_or_directory);
+    }
+    
+    json chain = json::object();
+    for (size_t i = 0; i < r[0].size(); ++i) {
+        chain[r[0].column_name(i)] = r[0][i].as<std::string>();
+    }
+    
+    db_pool_->releaseConnection(conn);
+    return chain;
+}
+
+std::error_code SuperAdminService::addBlockchain(const std::string& admin_id, const json& chain_data) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    std::string id = SecurityUtils::generateUUID();
+    std::string name = chain_data.value("name", "");
+    std::string symbol = chain_data.value("symbol", "");
+    std::string chain_type = chain_data.value("chain_type", "EVM");
+    std::string rpc_url = chain_data.value("rpc_url", "");
+    
+    pqxx::work w(*conn);
+    w.exec_params(
+        "INSERT INTO blockchains (id, name, symbol, chain_type, rpc_url, is_active, is_maintenance, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, true, false, NOW(), NOW())",
+        id, name, symbol, chain_type, rpc_url
+    );
+    w.commit();
+    db_pool_->releaseConnection(conn);
+    
+    logAudit(admin_id, "CHAIN_ADDED", "blockchain", id, chain_data);
+    return std::error_code{};
+}
+
+std::error_code SuperAdminService::updateBlockchain(const std::string& admin_id, const std::string& chain_id, const json& updates) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::work w(*conn);
+    std::string query = "UPDATE blockchains SET updated_at = NOW()";
+    
+    if (updates.contains("name")) {
+        query += ", name = '" + updates["name"].get<std::string>() + "'";
+    }
+    if (updates.contains("rpc_url")) {
+        query += ", rpc_url = '" + updates["rpc_url"].get<std::string>() + "'";
+    }
+    if (updates.contains("explorer_url")) {
+        query += ", explorer_url = '" + updates["explorer_url"].get<std::string>() + "'";
+    }
+    
+    query += " WHERE id = '" + chain_id + "'";
+    w.exec(query);
+    w.commit();
+    db_pool_->releaseConnection(conn);
+    
+    logAudit(admin_id, "CHAIN_UPDATED", "blockchain", chain_id, updates);
+    return std::error_code{};
+}
+
+std::error_code SuperAdminService::setBlockchainMaintenance(const std::string& admin_id, const std::string& chain_id, bool maintenance) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::work w(*conn);
+    w.exec_params("UPDATE blockchains SET is_maintenance = $1, updated_at = NOW() WHERE id = $2", maintenance, chain_id);
+    w.commit();
+    db_pool_->releaseConnection(conn);
+    
+    logAudit(admin_id, maintenance ? "CHAIN_MAINTENANCE" : "CHAIN_RESUME", "blockchain", chain_id);
+    return std::error_code{};
+}
+
+std::error_code SuperAdminService::setBlockchainActive(const std::string& admin_id, const std::string& chain_id, bool active) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::work w(*conn);
+    w.exec_params("UPDATE blockchains SET is_active = $1, updated_at = NOW() WHERE id = $2", active, chain_id);
+    w.commit();
+    db_pool_->releaseConnection(conn);
+    
+    logAudit(admin_id, active ? "CHAIN_ACTIVATED" : "CHAIN_DEACTIVATED", "blockchain", chain_id);
+    return std::error_code{};
+}
+
+// ============================================================================
+// FEE MANAGEMENT (Super Admin can manage ALL fees)
+// ============================================================================
+
+std::variant<json, std::error_code> SuperAdminService::getAllFeeStructures(const std::string& admin_id, const std::string& fee_type) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    std::string query = "SELECT * FROM fee_structures WHERE 1=1";
+    if (!fee_type.empty()) {
+        query += " AND fee_type = '" + fee_type + "'";
+    }
+    query += " ORDER BY name";
+    
+    pqxx::result r = conn->exec(query);
+    json fees = json::array();
+    
+    for (const auto& row : r) {
+        json fee;
+        for (size_t i = 0; i < row.size(); ++i) {
+            fee[row.column_name(i)] = row[i].as<std::string>();
+        }
+        fees.push_back(fee);
+    }
+    
+    db_pool_->releaseConnection(conn);
+    return fees;
+}
+
+std::error_code SuperAdminService::createFeeStructure(const std::string& admin_id, const json& fee_data) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    std::string id = SecurityUtils::generateUUID();
+    std::string name = fee_data.value("name", "");
+    std::string fee_type = fee_data.value("fee_type", "trading");
+    std::string maker_fee = fee_data.value("maker_fee", "0.001");
+    std::string taker_fee = fee_data.value("taker_fee", "0.003");
+    
+    pqxx::work w(*conn);
+    w.exec_params(
+        "INSERT INTO fee_structures (id, name, fee_type, maker_fee, taker_fee, is_active, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, true, NOW(), NOW())",
+        id, name, fee_type, maker_fee, taker_fee
+    );
+    w.commit();
+    db_pool_->releaseConnection(conn);
+    
+    logAudit(admin_id, "FEE_CREATED", "fee", id, fee_data);
+    return std::error_code{};
+}
+
+std::error_code SuperAdminService::updateFeeStructure(const std::string& admin_id, const std::string& fee_id, const json& updates) {
+    auto conn = db_pool_->getConnection();
+    if (!conn) {
+        return std::make_error_code(std::errc::connection_aborted);
+    }
+    
+    pqxx::work w(*conn);
+    std::string query = "UPDATE fee_structures SET updated_at = NOW()";
+    
+    if (updates.contains("name")) {
+        query += ", name = '" + updates["name"].get<std::string>() + "'";
+    }
+    if (updates.contains("maker_fee")) {
+        query += ", maker_fee = '" + updates["maker_fee"].get<std::string>() + "'";
+    }
+    if (updates.contains("taker_fee")) {
+        query += ", taker_fee = '" + updates["taker_fee"].get<std::string>() + "'";
+    }
+    if (updates.contains("is_active")) {
+        query += ", is_active = " + std::string(updates["is_active"].get<bool>() ? "true" : "false");
+    }
+    
+    query += " WHERE id = '" + fee_id + "'";
+    w.exec(query);
+    w.commit();
+    db_pool_->releaseConnection(conn);
+    
+    logAudit(admin_id, "FEE_UPDATED", "fee", fee_id, updates);
+    return std::error_code{};
+}
+
+// ============================================================================
+// PLATFORM STATS (Super Admin dashboard)
+// ============================================================================
+
+json SuperAdminService::getPlatformStats() {
+    json stats = json::object();
+    auto conn = db_pool_->getConnection();
+    
+    if (conn) {
+        // Total users
+        pqxx::result r1 = conn->exec("SELECT COUNT(*) as total FROM users");
+        if (!r1.empty()) {
+            stats["total_users"] = r1[0]["total"].as<int64_t>();
+        }
+        
+        // Active users
+        pqxx::result r2 = conn->exec("SELECT COUNT(*) as active FROM users WHERE status = 'active'");
+        if (!r2.empty()) {
+            stats["active_users"] = r2[0]["active"].as<int64_t>();
+        }
+        
+        // KYC pending
+        pqxx::result r3 = conn->exec("SELECT COUNT(*) as pending FROM user_kyc WHERE status = 'pending'");
+        if (!r3.empty()) {
+            stats["kyc_pending"] = r3[0]["pending"].as<int64_t>();
+        }
+        
+        // Total transactions
+        pqxx::result r4 = conn->exec("SELECT COUNT(*) as total FROM transactions");
+        if (!r4.empty()) {
+            stats["total_transactions"] = r4[0]["total"].as<int64_t>();
+        }
+        
+        // Trading pairs
+        pqxx::result r5 = conn->exec("SELECT COUNT(*) as total FROM trading_pairs");
+        if (!r5.empty()) {
+            stats["total_pairs"] = r5[0]["total"].as<int64_t>();
+        }
+        
+        // Blockchains
+        pqxx::result r6 = conn->exec("SELECT COUNT(*) as total FROM blockchains WHERE is_active = true");
+        if (!r6.empty()) {
+            stats["active_chains"] = r6[0]["total"].as<int64_t>();
+        }
+        
+        db_pool_->releaseConnection(conn);
+    }
+    
+    return stats;
+}
