@@ -10,6 +10,12 @@ const Sidebar: React.FC = () => {
     { path: '/send', icon: '📤', label: 'Send' },
     { path: '/receive', icon: '📥', label: 'Receive' },
     { path: '/swap', icon: '🔄', label: 'Swap' },
+    { path: '/convert', icon: '💱', label: 'Convert' },
+    { path: '/futures', icon: '📈', label: 'Futures' },
+    { path: '/copy-trading', icon: '👥', label: 'Copy Trading' },
+    { path: '/options', icon: '🎯', label: 'Options' },
+    { path: '/red-packet', icon: '🧧', label: 'Red Packet' },
+    { path: '/claim', icon: '🎁', label: 'Claim' },
     { path: '/dapps', icon: '🌐', label: 'DApps' },
     { path: '/settings', icon: '⚙️', label: 'Settings' },
   ];

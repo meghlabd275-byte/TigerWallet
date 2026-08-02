@@ -12,6 +12,12 @@ import WalletPage from './pages/WalletPage';
 import SendPage from './pages/SendPage';
 import ReceivePage from './pages/ReceivePage';
 import SwapPage from './pages/SwapPage';
+import ConvertPage from './pages/ConvertPage';
+import FuturesTradingPage from './pages/FuturesTradingPage';
+import CopyTradingPage from './pages/CopyTradingPage';
+import OptionsTradingPage from './pages/OptionsTradingPage';
+import RedPacketPage from './pages/RedPacketPage';
+import ClaimPage from './pages/ClaimPage';
 import DAppsPage from './pages/DAppsPage';
 import SettingsPage from './pages/SettingsPage';
 import LoginPage from './pages/LoginPage';
@@ -54,6 +60,12 @@ const App: React.FC = () => {
                 <Route path="/send" element={<SendPage />} />
                 <Route path="/receive" element={<ReceivePage />} />
                 <Route path="/swap" element={<SwapPage />} />
+                <Route path="/convert" element={<ConvertPage />} />
+                <Route path="/futures" element={<FuturesTradingPage />} />
+                <Route path="/copy-trading" element={<CopyTradingPage />} />
+                <Route path="/options" element={<OptionsTradingPage />} />
+                <Route path="/red-packet" element={<RedPacketPage />} />
+                <Route path="/claim" element={<ClaimPage />} />
                 <Route path="/dapps" element={<DAppsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
