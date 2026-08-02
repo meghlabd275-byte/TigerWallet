@@ -63,6 +63,15 @@ pub enum BotType {
     FlashLoan,        // Flash loan strategies
     CrossChain,       // Bridge arbitrage
     PerpHedge,        // Perpetual hedging
+    // ========== NEW BOT TYPES ==========
+    GridTrading,      // Price grid strategy bot
+    DcaBot,          // Dollar-cost averaging bot
+    MomentumBot,      // Trend following bot
+    MeanReversion,   // Price reversion bot
+    ScalpingBot,     // Quick small profits
+    AiTradingBot,     // ML-based trading
+    SignalBot,        // Trading signals bot
+    CustomBot,        // User-defined strategy
 }
 
 impl BotType {
@@ -78,6 +87,14 @@ impl BotType {
             BotType::FlashLoan => "Flash Loan",
             BotType::CrossChain => "Cross-Chain",
             BotType::PerpHedge => "Perpetual Hedge",
+            BotType::GridTrading => "Grid Trading",
+            BotType::DcaBot => "DCA Bot",
+            BotType::MomentumBot => "Momentum Bot",
+            BotType::MeanReversion => "Mean Reversion",
+            BotType::ScalpingBot => "Scalping Bot",
+            BotType::AiTradingBot => "AI Trading Bot",
+            BotType::SignalBot => "Signal Bot",
+            BotType::CustomBot => "Custom Bot",
         }
     }
     
@@ -93,14 +110,69 @@ impl BotType {
             BotType::FlashLoan => "Use flash loans for risk-free trades",
             BotType::CrossChain => "Bridge assets for cross-chain arbitrage",
             BotType::PerpHedge => "Hedge positions with perps",
+            BotType::GridTrading => "Place buy/sell orders at grid levels for steady profits",
+            BotType::DcaBot => "Dollar-cost averaging - buy at regular intervals",
+            BotType::MomentumBot => "Follow market trends and momentum",
+            BotType::MeanReversion => "Trade based on price returning to mean",
+            BotType::ScalpingBot => "Quick small profits from small price movements",
+            BotType::AiTradingBot => "AI/ML-based trading decisions",
+            BotType::SignalBot => "Execute trades based on custom signals",
+            BotType::CustomBot => "User-defined custom trading strategy",
         }
     }
     
     pub fn is_enabled_by_default(&self) -> bool {
         match self {
-            BotType::MarketMaker | BotType::Arbitrage | BotType::Sniper => true,
+            BotType::MarketMaker | BotType::Arbitrage | BotType::Sniper | BotType::GridTrading | BotType::DcaBot => true,
             _ => false,
         }
+    }
+    
+    pub fn get_default_params(&self) -> HashMap<String, String> {
+        let mut params = HashMap::new();
+        match self {
+            BotType::GridTrading => {
+                params.insert("grid_levels".to_string(), "10".to_string());
+                params.insert("grid_spacing_pct".to_string(), "1.0".to_string());
+                params.insert("order_size_usd".to_string(), "100".to_string());
+            },
+            BotType::DcaBot => {
+                params.insert("buy_interval_hours".to_string(), "24".to_string());
+                params.insert("buy_amount_usd".to_string(), "100".to_string());
+                params.insert("max_positions".to_string(), "5".to_string());
+            },
+            BotType::MomentumBot => {
+                params.insert("trend_period".to_string(), "20".to_string());
+                params.insert("entry_threshold".to_string(), "0.02".to_string());
+                params.insert("exit_threshold".to_string(), "-0.01".to_string());
+            },
+            BotType::MeanReversion => {
+                params.insert("lookback_period".to_string(), "50".to_string());
+                params.insert("std_dev_threshold".to_string(), "2.0".to_string());
+                params.insert("mean_type".to_string(), "sma".to_string());
+            },
+            BotType::ScalpingBot => {
+                params.insert("profit_target_pct".to_string(), "0.1".to_string());
+                params.insert("stop_loss_pct".to_string(), "0.05".to_string());
+                params.insert("max_spread_pct".to_string(), "0.2".to_string());
+            },
+            BotType::AiTradingBot => {
+                params.insert("model_path".to_string(), "models/default.pt".to_string());
+                params.insert("prediction_threshold".to_string(), "0.6".to_string());
+                params.insert("training_data_days".to_string(), "90".to_string());
+            },
+            BotType::SignalBot => {
+                params.insert("signal_source".to_string(), "custom".to_string());
+                params.insert("signal_endpoint".to_string(), "".to_string());
+                params.insert("signal_interval_sec".to_string(), "60".to_string());
+            },
+            BotType::CustomBot => {
+                params.insert("strategy_code".to_string(), "".to_string());
+                params.insert("execution_mode".to_string(), "paper".to_string());
+            },
+            _ => {}
+        }
+        params
     }
 }
 

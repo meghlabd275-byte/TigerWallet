@@ -83,6 +83,9 @@ export default function TokenListingPage() {
   const [twitter, setTwitter] = useState('')
   const [telegram, setTelegram] = useState('')
   const [description, setDescription] = useState('')
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoPreview, setLogoPreview] = useState<string>('')
+  const [uploadingLogo, setUploadingLogo] = useState(false)
 
   const defaultTiers = [
     { id: 'tier1', name: 'Tier 1 - Major Pairs', fee: '5000', feeUsd: '2500', features: ['Top 10 by volume', 'Priority support', 'Marketing boost'] },
@@ -104,6 +107,53 @@ export default function TokenListingPage() {
     setTiers(defaultTiers)
     setChains(defaultChains)
   }, [])
+
+  // Handle logo upload
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setError('Please upload an image file')
+      return
+    }
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      setError('Logo must be less than 2MB')
+      return
+    }
+
+    // Create preview
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      setLogoPreview(e.target?.result as string)
+    }
+    reader.readAsDataURL(file)
+
+    // Upload to server
+    setUploadingLogo(true)
+    try {
+      // In production, upload to your storage service
+      // For demo, use local preview
+      setLogoFile(file)
+      
+      // Simulated upload - in production call your upload API
+      // const formData = new FormData()
+      // formData.append('logo', file)
+      // const response = await fetch(`${API_BASE}/api/v1/upload/logo`, {
+      //   method: 'POST',
+      //   body: formData,
+      // })
+      // const data = await response.json()
+      // setLogoURL(data.url)
+    } catch (err) {
+      setError('Failed to upload logo')
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
 
   // Submit application to backend
   const submitApplication = async () => {
@@ -222,6 +272,28 @@ export default function TokenListingPage() {
                 <label style={{ display: 'block', marginBottom: 8, color: '#94a3b8' }}>Name</label>
                 <input type="text" placeholder="e.g., Bitcoin" value={token.name} onChange={(e) => setToken({...token, name: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', fontSize: 16 }} />
               </div>
+            </div>
+
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ display: 'block', marginBottom: 8, color: '#94a3b8' }}>Token Logo</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <label style={{ cursor: 'pointer', padding: '12px 24px', background: 'rgba(249,115,22,0.2)', border: '1px solid #f97316', borderRadius: 8, color: '#f97316' }}>
+                  {uploadingLogo ? 'Uploading...' : '📁 Upload Logo'}
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={handleLogoUpload}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+                {logoPreview && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <img src={logoPreview} alt="Logo preview" style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover' }} />
+                    <span style={{ color: '#94a3b8', fontSize: 12 }}>Preview</span>
+                  </div>
+                )}
+              </div>
+              <p style={{ color: '#64748b', fontSize: 12, marginTop: 8 }}>PNG, JPG, or GIF. Max 2MB. Recommended: 512x512px</p>
             </div>
 
             <div style={{ marginBottom: 24 }}>
