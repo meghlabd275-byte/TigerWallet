@@ -19,6 +19,7 @@ import TransactionsPage from './pages/TransactionsPage';
 import AnalyticsPage from './pages/PageStubs';
 import SettingsPage from './pages/PageStubs';
 import LoginPage from './pages/PageStubs';
+import { SendPage } from './pages/PageStubs';
 import './styles/global.css';
 
 const App: React.FC = () => {
@@ -78,6 +79,7 @@ const App: React.FC = () => {
                 <Route path="/transactions" element={<TransactionsPage />} />
                 <Route path="/analytics" element={<AnalyticsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/send" element={<SendPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </main>

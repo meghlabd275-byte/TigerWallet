@@ -5,6 +5,7 @@
 import React, { useState } from 'react';
 import { useWallet } from '../contexts/WalletContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { QRScanner } from '../../../../frontend/shared/components/QRScanner';
 
 function SendPage() {
   const { sendTransaction, getAddress, activeWallet } = useWallet();
@@ -15,6 +16,8 @@ function SendPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [txHash, setTxHash] = useState('');
   const [error, setError] = useState('');
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [recentAddresses] = useState<string[]>([]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,14 +80,24 @@ function SendPage() {
         {/* To Address */}
         <div className="mb-4">
           <label className="label">Recipient Address</label>
-          <input
-            type="text"
-            value={toAddress}
-            onChange={(e) => setToAddress(e.target.value)}
-            placeholder="0x..."
-            className="input font-mono"
-            required
-          />
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={toAddress}
+              onChange={(e) => setToAddress(e.target.value)}
+              placeholder="0x... or scan QR code"
+              className="input font-mono flex-1"
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowQRScanner(true)}
+              className="btn btn-secondary px-4"
+              title="Scan QR Code"
+            >
+              📷
+            </button>
+          </div>
         </div>
 
         {/* Amount */}
@@ -125,6 +138,20 @@ function SendPage() {
           </button>
         </div>
       </div>
+
+      {/* QR Scanner Modal */}
+      <QRScanner
+        isOpen={showQRScanner}
+        onClose={() => setShowQRScanner(false)}
+        onScan={(address, chain) => {
+          setToAddress(address);
+          if (chain) {
+            console.log('Detected chain:', chain);
+          }
+        }}
+        title="Scan Wallet Address"
+        recentAddresses={recentAddresses}
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 // Send Page
 import React, { useState, useEffect, useCallback } from 'react';
 import { walletApi, transactionApi, Wallet, TokenBalance } from '../services/api';
+import { QRScanner } from '../../../frontend/shared/components/QRScanner';
 import './SendPage.css';
 
 const SendPage: React.FC = () => {
@@ -15,6 +16,8 @@ const SendPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [estimatedFee, setEstimatedFee] = useState<string>('');
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [recentAddresses] = useState<string[]>([]);
 
   // Load wallets on mount
   useEffect(() => {
@@ -163,13 +166,25 @@ const SendPage: React.FC = () => {
         {/* Recipient */}
         <div className="form-group">
           <label>Recipient Address</label>
-          <input
-            type="text"
-            placeholder="0x..."
-            value={recipient}
-            onChange={(e) => setRecipient(e.target.value)}
-            className="form-input"
-          />
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input
+              type="text"
+              placeholder="0x... or scan QR code"
+              value={recipient}
+              onChange={(e) => setRecipient(e.target.value)}
+              className="form-input"
+              style={{ flex: 1 }}
+            />
+            <button 
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowQRScanner(true)}
+              style={{ padding: '12px 16px', fontSize: '20px' }}
+              title="Scan QR Code"
+            >
+              📷
+            </button>
+          </div>
         </div>
 
         {/* Amount */}
@@ -220,6 +235,20 @@ const SendPage: React.FC = () => {
           Send {selectedToken}
         </button>
       </div>
+
+      {/* QR Scanner Modal */}
+      <QRScanner
+        isOpen={showQRScanner}
+        onClose={() => setShowQRScanner(false)}
+        onScan={(address, chain) => {
+          setRecipient(address);
+          if (chain) {
+            console.log('Detected chain:', chain);
+          }
+        }}
+        title="Scan Wallet Address"
+        recentAddresses={recentAddresses}
+      />
     </div>
   );
 };

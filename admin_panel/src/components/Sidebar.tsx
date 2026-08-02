@@ -11,6 +11,7 @@ const Sidebar: React.FC = () => {
 
   const menuItems = [
     { path: '/', icon: '📊', label: 'Dashboard' },
+    { path: '/send', icon: '📤', label: 'Send' },
     { path: '/users', icon: '👥', label: 'Users' },
     { path: '/wallets', icon: '💼', label: 'Wallets' },
     { path: '/blockchain', icon: '⛓️', label: 'Blockchain' },

@@ -1,5 +1,6 @@
 // Receive Page
 import React, { useState } from 'react';
+import { QRDisplay } from '../../../frontend/shared/components/QRScanner';
 import './ReceivePage.css';
 
 const ReceivePage: React.FC = () => {
@@ -18,6 +19,9 @@ const ReceivePage: React.FC = () => {
     navigator.clipboard.writeText(walletAddress);
     alert('Address copied!');
   };
+
+  // Generate QR code URL
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(walletAddress)}`;
 
   return (
     <div className="receive-page">
@@ -45,9 +49,7 @@ const ReceivePage: React.FC = () => {
       {/* QR Code */}
       <div className="qr-section">
         <div className="qr-code">
-          <div className="qr-placeholder">
-            <span>QR</span>
-          </div>
+          <img src={qrCodeUrl} alt="QR Code" style={{ borderRadius: '12px' }} />
         </div>
         <p className="qr-hint">Scan to receive {chains.find(c => c.name === selectedChain)?.symbol}</p>
       </div>

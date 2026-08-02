@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { QRScanner } from '../../../frontend/shared/components/QRScanner';
 
 // ============================================================================
 // Types
@@ -954,7 +955,159 @@ export const LoginPage: React.FC = ({ onLogin }: { onLogin: (token: string) => v
 };
 
 // ============================================================================
+// Send/Transfer Page with QR Scanner
+// ============================================================================
+
+export const SendPage: React.FC = () => {
+  const [fromWallet, setFromWallet] = useState('');
+  const [recipient, setRecipient] = useState('');
+  const [amount, setAmount] = useState('');
+  const [selectedToken, setSelectedToken] = useState('ETH');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [wallets] = useState<Wallet[]>([
+    { id: '1', name: 'Master Wallet', address: '0x742d35Cc6634C0532925a3b844Bc9e7595f1234', chain: 'Ethereum', balance: '1250.5', type: 'master', status: 'active', createdAt: '2024-01-15' },
+    { id: '2', name: 'User Wallet A', address: '0x1234567890abcdef1234567890abcdef12345678', chain: 'Ethereum', balance: '50.2', type: 'user', status: 'active', createdAt: '2024-02-20' },
+  ]);
+  const [recentAddresses] = useState<string[]>([]);
+
+  const handleSend = async () => {
+    if (!fromWallet || !recipient || !amount) {
+      setError('Please fill in all fields');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      const txHash = '0x' + Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2);
+      setSuccess(`Transaction submitted! Hash: ${txHash}`);
+      setRecipient('');
+      setAmount('');
+    } catch (err: any) {
+      setError(err.message || 'Transaction failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <h1>Send / Transfer</h1>
+        <div className="header-actions">
+          <button className="btn btn-secondary" onClick={() => setShowQRScanner(true)}>
+            📷 QR Scanner
+          </button>
+        </div>
+      </div>
+
+      {error && <div className="error-message">{error}</div>}
+      {success && <div className="success-message">{success}</div>}
+
+      <div className="send-form">
+        {/* From Wallet */}
+        <div className="form-group">
+          <label>From Wallet</label>
+          <select 
+            value={fromWallet} 
+            onChange={(e) => setFromWallet(e.target.value)}
+            className="form-select"
+          >
+            <option value="">Select wallet...</option>
+            {wallets.map(wallet => (
+              <option key={wallet.id} value={wallet.id}>
+                {wallet.name} ({wallet.balance} ETH)
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Recipient */}
+        <div className="form-group">
+          <label>Recipient Address</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="0x... or scan QR code"
+              value={recipient}
+              onChange={(e) => setRecipient(e.target.value)}
+              className="form-input"
+            />
+            <button 
+              className="btn btn-secondary"
+              onClick={() => setShowQRScanner(true)}
+              title="Scan QR Code"
+              style={{ padding: '12px 16px', fontSize: '18px' }}
+            >
+              📷
+            </button>
+          </div>
+        </div>
+
+        {/* Token */}
+        <div className="form-group">
+          <label>Token</label>
+          <select 
+            value={selectedToken} 
+            onChange={(e) => setSelectedToken(e.target.value)}
+            className="form-select"
+          >
+            <option value="ETH">ETH - Ethereum</option>
+            <option value="USDT">USDT - Tether</option>
+            <option value="USDC">USDC - USD Coin</option>
+            <option value="BNB">BNB - BNB</option>
+            <option value="MATIC">MATIC - Polygon</option>
+          </select>
+        </div>
+
+        {/* Amount */}
+        <div className="form-group">
+          <label>Amount</label>
+          <input
+            type="number"
+            placeholder="0.0"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="form-input"
+          />
+        </div>
+
+        {/* Send Button */}
+        <button 
+          className="btn btn-primary"
+          onClick={handleSend}
+          disabled={loading || !fromWallet || !recipient || !amount}
+        >
+          {loading ? 'Processing...' : 'Send'}
+        </button>
+      </div>
+
+      {/* QR Scanner Modal */}
+      <QRScanner
+        isOpen={showQRScanner}
+        onClose={() => setShowQRScanner(false)}
+        onScan={(address, chain) => {
+          setRecipient(address);
+          if (chain) {
+            console.log('Detected chain:', chain);
+          }
+        }}
+        title="Scan Recipient Address"
+        recentAddresses={recentAddresses}
+      />
+    </div>
+  );
+};
+
+// ============================================================================
 // Export
 // ============================================================================
 
-export { WalletsPage, BlockchainPage, PairsPage, LiquidityPage, FeesPage, KYCPage, TransactionsPage, AnalyticsPage, SettingsPage, LoginPage };
+export { WalletsPage, BlockchainPage, PairsPage, LiquidityPage, FeesPage, KYCPage, TransactionsPage, AnalyticsPage, SettingsPage, LoginPage, SendPage };
