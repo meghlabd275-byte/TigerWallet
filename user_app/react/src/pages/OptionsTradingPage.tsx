@@ -1,7 +1,7 @@
 // Options Trading Page - Call/Put Options Trading
 // Supports 50,000+ trading pairs
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './OptionsTradingPage.css';
 
 interface OptionPair {
@@ -68,6 +68,9 @@ const TOP_PAIRS: OptionPair[] = [
   { id: '20', symbol: 'INJ/USDT', base: 'INJ', quote: 'USDT', currentPrice: 35.50, isPreInstalled: true },
 ];
 
+// Backend API URL for options trading
+const API_BASE_URL = 'https://api.tigerwallet.com/v1/options';
+
 const EXPIRIES = [
   { value: '1h', label: '1 Hour' },
   { value: '4h', label: '4 Hours' },
@@ -79,8 +82,8 @@ const EXPIRIES = [
 ];
 
 const OptionsTradingPage: React.FC = () => {
-  const [pairs, setPairs] = useState<OptionPair[]>(TOP_PAIRS);
-  const [selectedPair, setSelectedPair] = useState<OptionPair>(TOP_PAIRS[0]);
+  const [pairs, setPairs] = useState<OptionPair[]>([]);
+  const [selectedPair, setSelectedPair] = useState<OptionPair | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [expiry, setExpiry] = useState('1d');
   const [optionChain, setOptionChain] = useState<OptionContract[]>([]);
@@ -90,25 +93,61 @@ const OptionsTradingPage: React.FC = () => {
   const [orderSize, setOrderSize] = useState('');
   const [selectedStrike, setSelectedStrike] = useState<number | null>(null);
   const [myOptions, setMyOptions] = useState<MyOption[]>([]);
-  const [walletBalance] = useState(50000);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Generate additional pairs to simulate 50,000+ pairs
+  // Load trading pairs from backend
   useEffect(() => {
-    const additionalPairs: OptionPair[] = [];
-    const bases = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'DOGE', 'ADA', 'AVAX', 'DOT', 'LINK', 'MATIC', 'LTC', 'UNI', 'ATOM', 'XLM', 'NEAR', 'APT', 'ARB', 'OP', 'INJ', 'PEPE', 'SHIB', 'TRX', 'FIL', 'ALGO', 'VET', 'ICP', 'HBAR', 'QNT', 'MKR', 'AAVE', 'GRT', 'SNX', 'CRV', 'LDO', 'RUNE', 'STX', 'KAVA', 'FLOW', 'AXS', 'SAND', 'MANA', 'ENJ', 'CHZ', 'BAT', 'ZEC', 'DASH', 'XMR', 'NEO', 'EOS', 'XTZ', 'ONE', 'ZIL', 'CELO', 'CAKE', 'GMT', 'GALA', 'ROSE', 'KLAY', 'MINA', 'COMP', 'BAL', 'YFI', 'SUSHI', '1INCH', 'CRV', 'SNX', 'RUNE', 'CEL', 'OKB', 'KCS', 'HT', 'FTT', 'BNB', 'TUSD', 'BUSD', 'USDP', 'USDC'];
+    const loadData = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const token = localStorage.getItem('user_token');
+        
+        // Load pairs
+        const pairsRes = await fetch(`${API_BASE_URL}/pairs`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        
+        if (pairsRes.ok) {
+          const data = await pairsRes.json();
+          if (data.pairs) {
+            setPairs(data.pairs);
+            if (data.pairs.length > 0 && !selectedPair) {
+              setSelectedPair(data.pairs[0]);
+            }
+          }
+        }
+        
+        // Load my options
+        const optionsRes = await fetch(`${API_BASE_URL}/positions`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (optionsRes.ok) {
+          const optionsData = await optionsRes.json();
+          setMyOptions(optionsData.positions || []);
+        }
+        
+        // Load balance
+        const balRes = await fetch('https://api.tigerwallet.com/v1/wallets/balance', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (balRes.ok) {
+          const balData = await balRes.json();
+          setWalletBalance(balData.balances?.USDT || 0);
+        }
+      } catch (err) {
+        console.error('Failed to load data:', err);
+        setError('Unable to connect to options service. Using offline mode.');
+        setPairs(TOP_PAIRS);
+        if (!selectedPair) setSelectedPair(TOP_PAIRS[0]);
+      } finally {
+        setLoading(false);
+      }
+    };
     
-    bases.forEach((base, baseIdx) => {
-      const basePrice = Math.random() * 1000 + 0.001;
-      additionalPairs.push({
-        id: `${baseIdx}-USDT`,
-        symbol: `${base}/USDT`,
-        base,
-        quote: 'USDT',
-        currentPrice: basePrice,
-        isPreInstalled: false
-      });
-    });
-    setPairs([...TOP_PAIRS, ...additionalPairs]);
+    loadData();
   }, []);
 
   // Generate option chain based on selected pair and expiry

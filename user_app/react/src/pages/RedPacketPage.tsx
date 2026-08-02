@@ -1,7 +1,7 @@
 // Red Packet Page - Send and Receive Red Packets
 // Traditional lucky money style crypto gifting
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './RedPacketPage.css';
 
 interface RedPacket {
@@ -26,6 +26,9 @@ interface ClaimRecord {
   timestamp: number;
 }
 
+// Backend API URL for red packets
+const API_BASE_URL = 'https://api.tigerwallet.com/v1/redpacket';
+
 const RedPacketPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'send' | 'receive' | 'history'>('send');
   const [packetType, setPacketType] = useState<'random' | 'fixed'>('random');
@@ -40,8 +43,44 @@ const RedPacketPage: React.FC = () => {
   const [claimLink, setClaimLink] = useState('');
   const [claimResult, setClaimResult] = useState<{success: boolean; amount?: number; message?: string} | null>(null);
   const [showClaimForm, setShowClaimForm] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const tokens = ['USDT', 'USDC', 'ETH', 'BTC', 'BNB', 'SOL', 'TRX', 'BTT'];
+
+  // Load red packet history from backend
+  useEffect(() => {
+    const loadPackets = async () => {
+      setLoading(true);
+      try {
+        const token = localStorage.getItem('user_token');
+        
+        // Load sent packets
+        const sentRes = await fetch(`${API_BASE_URL}/sent`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (sentRes.ok) {
+          const sentData = await sentRes.json();
+          setSentPackets(sentData.packets || []);
+        }
+        
+        // Load received packets
+        const receivedRes = await fetch(`${API_BASE_URL}/received`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (receivedRes.ok) {
+          const receivedData = await receivedRes.json();
+          setReceivedPackets(receivedData.packets || []);
+        }
+      } catch (err) {
+        console.error('Failed to load packets:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadPackets();
+  }, []);
 
   const handleCreatePacket = () => {
     const count = parseInt(totalCount);
