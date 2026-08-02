@@ -1,23 +1,110 @@
 /**
  * Token Management - Complete Token Management
+ * Connected to backend APIs
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
+
+interface Token {
+  id: string;
+  symbol: string;
+  name: string;
+  chain: string;
+  decimals: number;
+  address: string;
+  status: 'active' | 'paused' | 'disabled';
+  balance: number;
+  logoUrl?: string;
+}
 
 function TokenManagement() {
   const [activeTab, setActiveTab] = useState('tokens');
-  
-  const tokens = [
-    { symbol: 'ETH', name: 'Ethereum', chain: 'Ethereum', decimals: 18, status: 'Active', balance: '1,234.56' },
-    { symbol: 'BTC', name: 'Bitcoin', chain: 'Bitcoin', decimals: 8, status: 'Active', balance: '45.23' },
-    { symbol: 'USDT', name: 'Tether USD', chain: 'Multi', decimals: 6, status: 'Active', balance: '567,890' },
-    { symbol: 'USDC', name: 'USD Coin', chain: 'Multi', decimals: 6, status: 'Active', balance: '234,567' },
-    { symbol: 'BNB', name: 'BNB', chain: 'BNB Chain', decimals: 18, status: 'Active', balance: '8,901' },
-    { symbol: 'MATIC', name: 'Polygon', chain: 'Polygon', decimals: 18, status: 'Paused', balance: '123,456' },
-  ];
+  const [tokens, setTokens] = useState<Token[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch tokens from backend
+  const fetchTokens = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('superadmin_token');
+      const response = await fetch(`${API_BASE_URL}/super-admin/tokens`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch tokens');
+      }
+      
+      const data = await response.json();
+      setTokens(data.tokens || []);
+    } catch (err) {
+      console.error('Error fetching tokens:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load tokens');
+      setTokens([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTokens();
+  }, [fetchTokens]);
+
+  // Update token status
+  const handleStatusChange = async (tokenId: string, newStatus: 'active' | 'paused' | 'disabled') => {
+    try {
+      const token = localStorage.getItem('superadmin_token');
+      const response = await fetch(`${API_BASE_URL}/super-admin/tokens/${tokenId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update token status');
+      }
+      
+      await fetchTokens();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Status update failed');
+    }
+  };
+
+  // Delete token
+  const handleDeleteToken = async (tokenId: string) => {
+    if (!confirm('Are you sure you want to delete this token?')) return;
+    
+    try {
+      const token = localStorage.getItem('superadmin_token');
+      const response = await fetch(`${API_BASE_URL}/super-admin/tokens/${tokenId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete token');
+      }
+      
+      await fetchTokens();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+    }
+  };
 
   const addToken = () => {
-    // Real implementation would open modal
     console.log('Add token');
   };
 

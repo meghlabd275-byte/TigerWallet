@@ -1,74 +1,146 @@
 // White Label Management Page
-// Complete white label client and product management
+// Complete white label client and product management with API integration
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './WhiteLabel.css';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
 
 interface WhiteLabelClient {
   id: string;
   name: string;
   domain: string;
-  status: 'active' | 'paused' | 'suspended';
-  plan: 'basic' | 'pro' | 'enterprise';
+  status: 'active' | 'suspended' | 'pending' | 'halted';
+  authorized: boolean;
+  plan: 'starter' | 'professional' | 'enterprise' | 'custom';
   createdAt: string;
   revenue: number;
   users: number;
+  maxUsers: number;
+  profitSharePercent: number;
 }
 
 const WhiteLabelPage: React.FC = () => {
   const [clients, setClients] = useState<WhiteLabelClient[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [selectedClient, setSelectedClient] = useState<WhiteLabelClient | null>(null);
   const [activeTab, setActiveTab] = useState<'clients' | 'products' | 'wallets' | 'blockchains'>('clients');
 
-  useEffect(() => {
-    loadWhiteLabelData();
+  // Fetch clients from backend
+  const fetchClients = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('superadmin_token');
+      const response = await fetch(`${API_BASE_URL}/super-admin/clients`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch clients: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      // Transform backend data to frontend format
+      const transformedClients = (data.clients || []).map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        domain: c.domain,
+        status: c.status,
+        authorized: c.authorized || false,
+        plan: c.plan || 'starter',
+        createdAt: c.createdAt,
+        revenue: c.totalRevenue || c.revenue || 0,
+        users: c.currentUsers || 0,
+        maxUsers: c.maxUsers || 0,
+        profitSharePercent: c.profitSharePercent || 20,
+      }));
+      setClients(transformedClients);
+    } catch (err) {
+      console.error('Error fetching clients:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load clients');
+      setClients([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const loadWhiteLabelData = async () => {
-    // Mock data
-    setClients([
-      {
-        id: '1',
-        name: 'CryptoBank Pro',
-        domain: 'wallet.cryptobank.pro',
-        status: 'active',
-        plan: 'enterprise',
-        createdAt: '2026-01-15',
-        revenue: 125000,
-        users: 45000,
-      },
-      {
-        id: '2',
-        name: 'TechFin Wallet',
-        domain: 'pay.techfin.io',
-        status: 'active',
-        plan: 'pro',
-        createdAt: '2026-02-20',
-        revenue: 45000,
-        users: 12000,
-      },
-      {
-        id: '3',
-        name: 'DeFi Hub',
-        domain: 'app.defihub.fi',
-        status: 'paused',
-        plan: 'basic',
-        createdAt: '2026-03-10',
-        revenue: 8500,
-        users: 3200,
-      },
-    ]);
+  useEffect(() => {
+    fetchClients();
+  }, [fetchClients]);
+
+  const handleStatusChange = async (clientId: string, newStatus: 'active' | 'suspended' | 'halted') => {
+    try {
+      const token = localStorage.getItem('superadmin_token');
+      const endpoint = newStatus === 'suspended' 
+        ? `${API_BASE_URL}/super-admin/clients/${clientId}/suspend`
+        : `${API_BASE_URL}/super-admin/clients/${clientId}/resume`;
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update status');
+      }
+      
+      await fetchClients();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Status update failed');
+    }
   };
 
-  const handleStatusChange = async (clientId: string, newStatus: 'active' | 'paused' | 'suspended') => {
-    // API call to update status
-    setClients(prev => prev.map(c => c.id === clientId ? { ...c, status: newStatus } : c));
+  const handleAuthorizeClient = async (clientId: string, authorized: boolean) => {
+    try {
+      const token = localStorage.getItem('superadmin_token');
+      const response = await fetch(`${API_BASE_URL}/super-admin/clients/${clientId}/authorize`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ authorized }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Authorization failed');
+      }
+      
+      await fetchClients();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Authorization failed');
+    }
   };
 
   const handleDeleteClient = async (clientId: string) => {
     if (confirm('Are you sure you want to delete this white label client? This action cannot be undone.')) {
-      setClients(prev => prev.filter(c => c.id !== clientId));
+      try {
+        const token = localStorage.getItem('superadmin_token');
+        const response = await fetch(`${API_BASE_URL}/super-admin/clients/${clientId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (!response.ok) {
+          throw new Error('Delete failed');
+        }
+        
+        await fetchClients();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Delete failed');
+      }
     }
   };
 
