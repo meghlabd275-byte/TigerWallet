@@ -120,9 +120,14 @@ const Header = ({ toggleTheme, isDarkMode }) => {
   );
 };
 
+// API Service
+import { masterWalletAPI, SubWallet, Transaction } from './api';
+
 // Dashboard Page
 const Dashboard = () => {
-  const stats = {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState({
     totalWallets: 15,
     totalVolume: '$12.5M',
     totalUsers: 8,
