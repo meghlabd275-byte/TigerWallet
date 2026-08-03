@@ -1,321 +1,175 @@
-// P2P Trading Service - Flutter Implementation
-// Peer-to-peer trading between users with merchant system & anti-scam protection
+// P2P Trading Service - Flutter - Real API Connection
+// Production-ready with NO mock data
+
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
+class P2PApiClient {
+  static const String baseUrl = 'https://api.tigerwallet.com/api/v1';
+  String? _token;
+  
+  P2PApiClient({String? token}) : _token = token;
+  
+  Map<String, String> get _headers => {
+    'Content-Type': 'application/json',
+    if (_token != null) 'Authorization': 'Bearer $_token',
+  };
+  
+  Future<List<P2PAdvert>> getAdverts({
+    String? token, String? side, String? fiatCurrency,
+    String? paymentMethod, int page = 1, int limit = 20,
+  }) async {
+    final queryParams = {
+      if (token != null) 'token': token,
+      if (side != null) 'side': side,
+      if (fiatCurrency != null) 'fiatCurrency': fiatCurrency,
+      if (paymentMethod != null && paymentMethod != 'All') 'paymentMethod': paymentMethod,
+      'page': page.toString(), 'limit': limit.toString(),
+    };
+    
+    final uri = Uri.parse('$baseUrl/p2p/adverts').replace(queryParameters: queryParams);
+    final response = await http.get(uri, headers: _headers);
+    
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      return (data['data'] as List).map((a) => P2PAdvert.fromJson(a)).toList();
+    }
+    throw Exception('Failed to load adverts');
+  }
+  
+  Future<P2POrder> createOrder(String advertId, double amount) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/p2p/orders'), headers: _headers,
+      body: json.encode({'advertId': advertId, 'amount': amount}),
+    );
+    
+    if (response.statusCode == 200) {
+      return P2POrder.fromJson(json.decode(response.body)['data']);
+    }
+    throw Exception('Failed to create order');
+  }
+  
+  Future<List<P2POrder>> getOrders({String? status}) async {
+    final uri = Uri.parse('$baseUrl/p2p/orders').replace(
+      queryParameters: status != null ? {'status': status} : null,
+    );
+    final response = await http.get(uri, headers: _headers);
+    
+    if (response.statusCode == 200) {
+      return (json.decode(response.body)['data'] as List).map((o) => P2POrder.fromJson(o)).toList();
+    }
+    throw Exception('Failed to load orders');
+  }
+  
+  Future<void> markAsPaid(String orderId, String paymentProof) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/p2p/orders/$orderId/pay'), headers: _headers,
+      body: json.encode({'paymentProof': paymentProof}),
+    );
+    if (response.statusCode != 200) throw Exception('Failed to mark as paid');
+  }
+  
+  Future<void> confirmPayment(String orderId) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/p2p/orders/$orderId/confirm'), headers: _headers,
+    );
+    if (response.statusCode != 200) throw Exception('Failed to confirm');
+  }
+  
+  Future<void> cancelOrder(String orderId, String reason) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/p2p/orders/$orderId/cancel'), headers: _headers,
+      body: json.encode({'reason': reason}),
+    );
+    if (response.statusCode != 200) throw Exception('Failed to cancel');
+  }
+  
+  Future<void> openDispute(String orderId, String reason) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/p2p/orders/$orderId/dispute'), headers: _headers,
+      body: json.encode({'reason': reason}),
+    );
+    if (response.statusCode != 200) throw Exception('Failed to open dispute');
+  }
+  
+  Future<List<PaymentMethod>> getPaymentMethods() async {
+    final response = await http.get(Uri.parse('$baseUrl/p2p/payment-methods'), headers: _headers);
+    if (response.statusCode == 200) {
+      return (json.decode(response.body)['data'] as List).map((m) => PaymentMethod.fromJson(m)).toList();
+    }
+    throw Exception('Failed to load payment methods');
+  }
+  
+  Future<List<FiatCurrency>> getFiatCurrencies() async {
+    final response = await http.get(Uri.parse('$baseUrl/p2p/fiat-currencies'), headers: _headers);
+    if (response.statusCode == 200) {
+      return (json.decode(response.body)['data'] as List).map((c) => FiatCurrency.fromJson(c)).toList();
+    }
+    throw Exception('Failed to load currencies');
+  }
+}
 
 class P2PAdvert {
-  final String id;
-  final String userId;
-  final String username;
-  final String avatar;
-  final String side;
-  final String token;
-  final String fiatCurrency;
-  final String paymentMethod;
-  final double price;
-  final double minAmount;
-  final double maxAmount;
-  final double availableAmount;
+  final String id, merchantId, username, avatar, side, token, fiatCurrency, paymentMethod;
+  final double price, minAmount, maxAmount, availableAmount;
   final int ordersCompleted;
-  final double completionRate;
-  final double avgReleaseTime;
-  final bool isOnline;
-  final DateTime createTime;
-  // Merchant & Security fields
-  final bool isMerchant;
+  final double completionRate, avgReleaseTime;
+  final bool isOnline, isMerchant, isVerified;
   final String? merchantLevel;
   final double? collateralLocked;
-  final bool isVerified;
   final double securityScore;
 
-  P2PAdvert({
-    required this.id,
-    required this.userId,
-    required this.username,
-    required this.avatar,
-    required this.side,
-    required this.token,
-    required this.fiatCurrency,
-    required this.paymentMethod,
-    required this.price,
-    required this.minAmount,
-    required this.maxAmount,
-    required this.availableAmount,
-    required this.ordersCompleted,
-    required this.completionRate,
-    required this.avgReleaseTime,
-    required this.isOnline,
-    required this.createTime,
-    this.isMerchant = false,
-    this.merchantLevel,
-    this.collateralLocked,
-    this.isVerified = false,
-    this.securityScore = 100,
-  });
+  P2PAdvert({required this.id, required this.merchantId, required this.username, required this.avatar,
+    required this.side, required this.token, required this.fiatCurrency, required this.paymentMethod,
+    required this.price, required this.minAmount, required this.maxAmount, required this.availableAmount,
+    required this.ordersCompleted, required this.completionRate, required this.avgReleaseTime,
+    required this.isOnline, required this.isMerchant, required this.isVerified, this.merchantLevel,
+    this.collateralLocked, required this.securityScore});
+
+  factory P2PAdvert.fromJson(Map<String, dynamic> json) => P2PAdvert(
+    id: json['id'], merchantId: json['merchantId'], username: json['username'], avatar: json['avatar'],
+    side: json['side'], token: json['token'], fiatCurrency: json['fiatCurrency'],
+    paymentMethod: json['paymentMethod'], price: (json['price'] as num).toDouble(),
+    minAmount: (json['minAmount'] as num).toDouble(), maxAmount: (json['maxAmount'] as num).toDouble(),
+    availableAmount: (json['availableAmount'] as num).toDouble(), ordersCompleted: json['ordersCompleted'],
+    completionRate: (json['completionRate'] as num).toDouble(), avgReleaseTime: (json['avgReleaseTime'] as num).toDouble(),
+    isOnline: json['isOnline'] ?? false, isMerchant: json['isMerchant'] ?? false, isVerified: json['isVerified'] ?? false,
+    merchantLevel: json['merchantLevel'], collateralLocked: json['collateralLocked'] != null ? (json['collateralLocked'] as num).toDouble() : null,
+    securityScore: (json['securityScore'] as num?)?.toDouble() ?? 100,
+  );
 }
 
 class P2POrder {
-  final String id;
-  final String advertId;
-  final String makerId;
-  final String takerId;
-  final String side;
-  final String token;
-  final String fiatCurrency;
-  final String paymentMethod;
-  final double price;
-  final double amount;
-  final double fiatAmount;
-  final String status;
-  final String? chatRoomId;
-  final DateTime createTime;
-  final DateTime? payTime;
-  final DateTime? releaseTime;
-  final DateTime? cancelTime;
+  final String id, advertId, side, token, fiatCurrency, paymentMethod, status;
+  final double price, amount, fiatAmount;
+  final double? buyerDeposit, sellerDeposit;
+  final DateTime createdAt;
 
-  P2POrder({
-    required this.id,
-    required this.advertId,
-    required this.makerId,
-    required this.takerId,
-    required this.side,
-    required this.token,
-    required this.fiatCurrency,
-    required this.paymentMethod,
-    required this.price,
-    required this.amount,
-    required this.fiatAmount,
-    required this.status,
-    this.chatRoomId,
-    required this.createTime,
-    this.payTime,
-    this.releaseTime,
-    this.cancelTime,
-  });
+  P2POrder({required this.id, required this.advertId, required this.side, required this.token,
+    required this.fiatCurrency, required this.paymentMethod, required this.price, required this.amount,
+    required this.fiatAmount, required this.status, this.buyerDeposit, this.sellerDeposit, required this.createdAt});
+
+  factory P2POrder.fromJson(Map<String, dynamic> json) => P2POrder(
+    id: json['id'], advertId: json['advertId'], side: json['side'], token: json['token'],
+    fiatCurrency: json['fiatCurrency'], paymentMethod: json['paymentMethod'],
+    price: (json['price'] as num).toDouble(), amount: (json['amount'] as num).toDouble(),
+    fiatAmount: (json['fiatAmount'] as num).toDouble(), status: json['status'],
+    buyerDeposit: json['buyerDeposit'] != null ? (json['buyerDeposit'] as num).toDouble() : null,
+    sellerDeposit: json['sellerDeposit'] != null ? (json['sellerDeposit'] as num).toDouble() : null,
+    createdAt: DateTime.parse(json['createdAt']),
+  );
 }
 
-class P2PChatMessage {
-  final String id;
-  final String chatRoomId;
-  final String senderId;
-  final String content;
-  final DateTime timestamp;
-
-  P2PChatMessage({
-    required this.id,
-    required this.chatRoomId,
-    required this.senderId,
-    required this.content,
-    required this.timestamp,
-  });
+class PaymentMethod {
+  final String id, name, type;
+  PaymentMethod({required this.id, required this.name, required this.type});
+  factory PaymentMethod.fromJson(Map<String, dynamic> json) => PaymentMethod(id: json['id'], name: json['name'], type: json['type']);
 }
 
-class P2PTrade {
-  static final Map<String, List<P2PAdvert>> _adverts = {};
-  static final Map<String, List<P2POrder>> _orders = {};
-  static final Map<String, List<P2PChatMessage>> _messages = {};
-
-  static List<P2PAdvert> generateAdverts({String? token, String? side, String? fiatCurrency}) {
-    final List<P2PAdvert> adverts = [];
-    
-    final users = [
-      {'username': 'CryptoTrader1', 'avatar': '🧑‍💼', 'online': true},
-      {'username': 'BitSeller', 'avatar': '👨‍💻', 'online': true},
-      {'username': 'FastTrade', 'avatar': '⚡', 'online': false},
-      {'username': 'P2PPro', 'avatar': '🎯', 'online': true},
-      {'username': 'SecureDeal', 'avatar': '🔒', 'online': true},
-    ];
-    
-    final tokens = token != null ? [token] : ['BTC', 'ETH', 'USDT', 'USDC', 'BNB'];
-    final currencies = fiatCurrency != null ? [fiatCurrency] : ['USD', 'EUR', 'GBP', 'CNY', 'INR'];
-    final payments = ['Bank Transfer', 'PayPal', 'AliPay', 'WeChat Pay', 'UPI', 'Gift Card'];
-    
-    final basePrices = {'BTC': 43250.0, 'ETH': 2280.0, 'USDT': 1.0, 'USDC': 1.0, 'BNB': 312.5};
-    
-    int id = 0;
-    for (final user in users) {
-      for (final tok in tokens) {
-        for (final curr in currencies) {
-          final priceVariation = (DateTime.now().millisecond % 10 - 5) / 1000.0;
-          final basePrice = basePrices[tok] ?? 10.0;
-          final isBuy = (id % 2) == 0;
-          
-          adverts.add(P2PAdvert(
-            id: 'advert_${id++}',
-            userId: 'user_${users.indexOf(user)}',
-            username: user['username'] as String,
-            avatar: user['avatar'] as String,
-            side: side ?? (isBuy ? 'BUY' : 'SELL'),
-            token: tok,
-            fiatCurrency: curr,
-            paymentMethod: payments[id % payments.length],
-            price: basePrice * (1 + priceVariation),
-            minAmount: curr == 'USD' ? 10 : 100,
-            maxAmount: curr == 'USD' ? 5000 : 50000,
-            availableAmount: (id * 0.5 + 1) * basePrice,
-            ordersCompleted: 50 + (id * 10),
-            completionRate: 95.0 + (id % 5),
-            avgReleaseTime: 2.0 + (id % 10),
-            isOnline: user['online'] as bool,
-            createTime: DateTime.now().subtract(Duration(days: id)),
-          ));
-        }
-      }
-    }
-    return adverts;
-  }
-
-  static Future<List<P2PAdvert>> getAdverts({
-    String? token,
-    String? side,
-    String? fiatCurrency,
-    String? paymentMethod,
-  }) async {
-    var adverts = generateAdverts(token: token, side: side, fiatCurrency: fiatCurrency);
-    if (paymentMethod != null) {
-      adverts = adverts.where((a) => a.paymentMethod == paymentMethod).toList();
-    }
-    return adverts;
-  }
-
-  static Future<P2PAdvert> createAdvert({
-    required String userId,
-    required String side,
-    required String token,
-    required String fiatCurrency,
-    required String paymentMethod,
-    required double price,
-    required double minAmount,
-    required double maxAmount,
-    required double availableAmount,
-  }) async {
-    final advert = P2PAdvert(
-      id: 'advert_${DateTime.now().millisecondsSinceEpoch}',
-      userId: userId,
-      username: 'MyUser',
-      avatar: '👤',
-      side: side,
-      token: token,
-      fiatCurrency: fiatCurrency,
-      paymentMethod: paymentMethod,
-      price: price,
-      minAmount: minAmount,
-      maxAmount: maxAmount,
-      availableAmount: availableAmount,
-      ordersCompleted: 0,
-      completionRate: 100.0,
-      avgReleaseTime: 5.0,
-      isOnline: true,
-      createTime: DateTime.now(),
-    );
-    _adverts[userId] = [...(_adverts[userId] ?? []), advert];
-    return advert;
-  }
-
-  static Future<P2POrder> createOrder({
-    required String advertId,
-    required String takerId,
-    required double amount,
-  }) async {
-    final adverts = generateAdverts();
-    final advert = adverts.firstWhere((a) => a.id == advertId, orElse: () => adverts.first);
-    
-    final order = P2POrder(
-      id: 'order_${DateTime.now().millisecondsSinceEpoch}',
-      advertId: advertId,
-      makerId: advert.userId,
-      takerId: takerId,
-      side: advert.side == 'BUY' ? 'SELL' : 'BUY',
-      token: advert.token,
-      fiatCurrency: advert.fiatCurrency,
-      paymentMethod: advert.paymentMethod,
-      price: advert.price,
-      amount: amount,
-      fiatAmount: amount * advert.price,
-      status: 'PENDING',
-      chatRoomId: 'chat_${DateTime.now().millisecondsSinceEpoch}',
-      createTime: DateTime.now(),
-    );
-    _orders[takerId] = [...(_orders[takerId] ?? []), order];
-    return order;
-  }
-
-  static Future<P2POrder> markAsPaid(String orderId, String userId) async {
-    final orders = _orders[userId] ?? [];
-    final index = orders.indexWhere((o) => o.id == orderId);
-    if (index != -1) {
-      final order = orders[index];
-      orders[index] = P2POrder(
-        id: order.id, advertId: order.advertId, makerId: order.makerId, takerId: order.takerId,
-        side: order.side, token: order.token, fiatCurrency: order.fiatCurrency,
-        paymentMethod: order.paymentMethod, price: order.price, amount: order.amount,
-        fiatAmount: order.fiatAmount, status: 'PAID', chatRoomId: order.chatRoomId,
-        createTime: order.createTime, payTime: DateTime.now(), releaseTime: order.releaseTime,
-        cancelTime: order.cancelTime,
-      );
-      _orders[userId] = orders;
-      return orders[index];
-    }
-    throw Exception('Order not found');
-  }
-
-  static Future<P2POrder> releaseCrypto(String orderId, String userId) async {
-    final orders = _orders[userId] ?? [];
-    final index = orders.indexWhere((o) => o.id == orderId);
-    if (index != -1) {
-      final order = orders[index];
-      orders[index] = P2POrder(
-        id: order.id, advertId: order.advertId, makerId: order.makerId, takerId: order.takerId,
-        side: order.side, token: order.token, fiatCurrency: order.fiatCurrency,
-        paymentMethod: order.paymentMethod, price: order.price, amount: order.amount,
-        fiatAmount: order.fiatAmount, status: 'COMPLETED', chatRoomId: order.chatRoomId,
-        createTime: order.createTime, payTime: order.payTime, releaseTime: DateTime.now(),
-        cancelTime: order.cancelTime,
-      );
-      _orders[userId] = orders;
-      return orders[index];
-    }
-    throw Exception('Order not found');
-  }
-
-  static Future<P2POrder> cancelOrder(String orderId, String userId) async {
-    final orders = _orders[userId] ?? [];
-    final index = orders.indexWhere((o) => o.id == orderId);
-    if (index != -1) {
-      final order = orders[index];
-      orders[index] = P2POrder(
-        id: order.id, advertId: order.advertId, makerId: order.makerId, takerId: order.takerId,
-        side: order.side, token: order.token, fiatCurrency: order.fiatCurrency,
-        paymentMethod: order.paymentMethod, price: order.price, amount: order.amount,
-        fiatAmount: order.fiatAmount, status: 'CANCELLED', chatRoomId: order.chatRoomId,
-        createTime: order.createTime, payTime: order.payTime, releaseTime: order.releaseTime,
-        cancelTime: DateTime.now(),
-      );
-      _orders[userId] = orders;
-      return orders[index];
-    }
-    throw Exception('Order not found');
-  }
-
-  static Future<List<P2POrder>> getOrders(String userId) async {
-    return _orders[userId] ?? [];
-  }
-
-  static Future<List<P2PChatMessage>> getMessages(String chatRoomId) async {
-    return _messages[chatRoomId] ?? [];
-  }
-
-  static Future<P2PChatMessage> sendMessage({
-    required String chatRoomId,
-    required String senderId,
-    required String content,
-  }) async {
-    final message = P2PChatMessage(
-      id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
-      chatRoomId: chatRoomId,
-      senderId: senderId,
-      content: content,
-      timestamp: DateTime.now(),
-    );
-    _messages[chatRoomId] = [...(_messages[chatRoomId] ?? []), message];
-    return message;
-  }
+class FiatCurrency {
+  final String code, name, symbol;
+  FiatCurrency({required this.code, required this.name, required this.symbol});
+  factory FiatCurrency.fromJson(Map<String, dynamic> json) => FiatCurrency(code: json['code'], name: json['name'], symbol: json['symbol']);
 }
+
+final p2pApi = P2PApiClient();
