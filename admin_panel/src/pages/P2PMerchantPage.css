@@ -1,0 +1,744 @@
+/* P2P Merchant Page Styles */
+
+.p2p-merchant-page {
+  padding: 20px;
+}
+
+.p2p-merchant-page .page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.p2p-merchant-page .page-header h1 {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.p2p-merchant-page .header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.p2p-merchant-page .refresh-btn {
+  padding: 10px 20px;
+  background: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.p2p-merchant-page .export-btn {
+  padding: 10px 20px;
+  background: #4361ee;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.p2p-merchant-page .error-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #fee2e2;
+  color: #dc2626;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.p2p-merchant-page .error-banner button {
+  background: none;
+  border: none;
+  color: #dc2626;
+  cursor: pointer;
+  font-size: 20px;
+}
+
+.p2p-merchant-page .stats-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.p2p-merchant-page .stat-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.p2p-merchant-page .stat-icon {
+  font-size: 32px;
+}
+
+.p2p-merchant-page .stat-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.p2p-merchant-page .stat-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.p2p-merchant-page .stat-label {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.p2p-merchant-page .tabs {
+  display: flex;
+  gap: 4px;
+  background: #f3f4f6;
+  padding: 4px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+}
+
+.p2p-merchant-page .tabs button {
+  padding: 10px 20px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  color: #6b7280;
+  transition: all 0.2s;
+}
+
+.p2p-merchant-page .tabs button.active {
+  background: white;
+  color: #1a1a2e;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.p2p-merchant-page .filters {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.p2p-merchant-page .search-input {
+  flex: 1;
+  padding: 10px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.p2p-merchant-page .filter-select {
+  padding: 10px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  min-width: 150px;
+}
+
+.p2p-merchant-page .merchants-table,
+.p2p-merchant-page .ads-table {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.p2p-merchant-page table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.p2p-merchant-page th {
+  background: #f9fafb;
+  padding: 14px 16px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 13px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.p2p-merchant-page td {
+  padding: 14px 16px;
+  border-top: 1px solid #f3f4f6;
+  font-size: 14px;
+}
+
+.p2p-merchant-page .merchant-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.p2p-merchant-page .merchant-info .username {
+  font-weight: 500;
+}
+
+.p2p-merchant-page .merchant-info .user-id {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.p2p-merchant-page .email {
+  color: #4361ee;
+}
+
+.p2p-merchant-page .verification-badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+  text-transform: capitalize;
+}
+
+.p2p-merchant-page .tier-badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.p2p-merchant-page .collateral-info {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+}
+
+.p2p-merchant-page .collateral-status.none {
+  color: #dc3545;
+}
+
+.p2p-merchant-page .collateral-status.pending {
+  color: #ffc107;
+}
+
+.p2p-merchant-page .collateral-status.deposited {
+  color: #28a745;
+}
+
+.p2p-merchant-page .collateral-status.released {
+  color: #6c757d;
+}
+
+.p2p-merchant-page .rating {
+  color: #f59e0b;
+}
+
+.p2p-merchant-page .limits {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.p2p-merchant-page .status-badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  color: white;
+  text-transform: capitalize;
+}
+
+.p2p-merchant-page .type-badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.p2p-merchant-page .type-badge.buy {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.p2p-merchant-page .type-badge.sell {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.p2p-merchant-page .price {
+  font-weight: 600;
+}
+
+.p2p-merchant-page .positive {
+  color: #28a745;
+}
+
+.p2p-merchant-page .negative {
+  color: #dc3545;
+}
+
+.p2p-merchant-page .ad-id {
+  font-family: monospace;
+  color: #6b7280;
+}
+
+.p2p-merchant-page .actions {
+  display: flex;
+  gap: 6px;
+}
+
+.p2p-merchant-page .action-btn {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.p2p-merchant-page .action-btn.view {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.p2p-merchant-page .action-btn.suspend {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.p2p-merchant-page .action-btn.ban {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.p2p-merchant-page .action-btn.toggle {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.p2p-merchant-page .pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20px;
+}
+
+.p2p-merchant-page .page-info {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+/* Analytics Section */
+.p2p-merchant-page .analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 20px;
+}
+
+.p2p-merchant-page .analytics-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.p2p-merchant-page .analytics-card h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: #1a1a2e;
+}
+
+.p2p-merchant-page .top-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.p2p-merchant-page .top-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.p2p-merchant-page .top-item .rank {
+  font-weight: 600;
+  color: #4361ee;
+  width: 30px;
+}
+
+.p2p-merchant-page .top-item .name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.p2p-merchant-page .top-item .volume {
+  color: #6b7280;
+}
+
+.p2p-merchant-page .distribution {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.p2p-merchant-page .dist-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.p2p-merchant-page .dist-item .label {
+  width: 100px;
+  font-size: 13px;
+  text-transform: capitalize;
+}
+
+.p2p-merchant-page .bar-container {
+  flex: 1;
+  height: 12px;
+  background: #f3f4f6;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.p2p-merchant-page .bar {
+  height: 100%;
+  border-radius: 6px;
+}
+
+.p2p-merchant-page .dist-item .value {
+  width: 80px;
+  font-size: 12px;
+  color: #6b7280;
+  text-align: right;
+}
+
+/* Settings Section */
+.p2p-merchant-page .settings-section {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.p2p-merchant-page .settings-group {
+  margin-bottom: 24px;
+}
+
+.p2p-merchant-page .settings-group h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: #1a1a2e;
+}
+
+.p2p-merchant-page .setting-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.p2p-merchant-page .setting-item label {
+  font-size: 14px;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.p2p-merchant-page .setting-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+
+.p2p-merchant-page .setting-item input[type="number"] {
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+  width: 200px;
+}
+
+.p2p-merchant-page .payment-methods-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.p2p-merchant-page .payment-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #f3f4f6;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.p2p-merchant-page .settings-actions {
+  padding-top: 20px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.p2p-merchant-page .save-btn {
+  padding: 12px 24px;
+  background: #4361ee;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* Modal Styles */
+.p2p-merchant-page .modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.p2p-merchant-page .modal-content {
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.p2p-merchant-page .modal-content h2 {
+  font-size: 20px;
+  margin-bottom: 20px;
+}
+
+.p2p-merchant-page .merchant-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.p2p-merchant-page .detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.p2p-merchant-page .detail-row label {
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.p2p-merchant-page .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.p2p-merchant-page .cancel-btn {
+  padding: 10px 20px;
+  background: #f3f4f6;
+  color: #374151;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+/* Tier Section Styles */
+.p2p-merchant-page .tiers-section {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.p2p-merchant-page .tier-info-banner {
+  background: linear-gradient(135deg, #4361ee 0%, #7c3aed 100%);
+  border-radius: 12px;
+  padding: 24px;
+  color: white;
+}
+
+.p2p-merchant-page .tier-info-banner h2 {
+  margin-bottom: 8px;
+  font-size: 24px;
+}
+
+.p2p-merchant-page .tier-info-banner p {
+  margin-bottom: 16px;
+  opacity: 0.9;
+}
+
+.p2p-merchant-page .collateral-requirements {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.p2p-merchant-page .requirement {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.p2p-merchant-page .tiers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+}
+
+.p2p-merchant-page .tier-card {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  border-top: 4px solid;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.p2p-merchant-page .tier-header {
+  padding: 16px;
+  color: #333;
+}
+
+.p2p-merchant-page .tier-header h3 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.p2p-merchant-page .tier-price {
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.p2p-merchant-page .tier-body {
+  padding: 16px;
+}
+
+.p2p-merchant-page .tier-stat {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.p2p-merchant-page .tier-stat .label {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.p2p-merchant-page .tier-stat .value {
+  font-weight: 600;
+}
+
+.p2p-merchant-page .tier-features {
+  margin-top: 12px;
+}
+
+.p2p-merchant-page .tier-features .label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.p2p-merchant-page .tier-features ul {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0 0;
+}
+
+.p2p-merchant-page .tier-features li {
+  font-size: 13px;
+  padding: 4px 0;
+  color: #374151;
+}
+
+.p2p-merchant-page .pending-collateral-section {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.p2p-merchant-page .pending-collateral-section h3 {
+  margin-bottom: 16px;
+}
+
+.p2p-merchant-page .pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.p2p-merchant-page .pending-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.p2p-merchant-page .pending-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.p2p-merchant-page .pending-info .username {
+  font-weight: 600;
+}
+
+.p2p-merchant-page .pending-details {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.p2p-merchant-page .pending-details .amount {
+  font-size: 18px;
+  font-weight: 600;
+  color: #4361ee;
+}
+
+.p2p-merchant-page .pending-details .tier-level {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.p2p-merchant-page .pending-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.p2p-merchant-page .action-btn.approve {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.p2p-merchant-page .action-btn.reject {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.p2p-merchant-page .no-pending {
+  text-align: center;
+  color: #6b7280;
+  padding: 20px;
+}

@@ -1,0 +1,495 @@
+/* P2P Trading Page Styles */
+
+.p2p-trading-page {
+  padding: 20px;
+}
+
+.p2p-trading-page .page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.p2p-trading-page .page-header h1 {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.p2p-trading-page .header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.p2p-trading-page .export-btn {
+  padding: 10px 20px;
+  background: #4361ee;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.p2p-trading-page .stats-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.p2p-trading-page .stat-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.p2p-trading-page .stat-icon {
+  font-size: 32px;
+}
+
+.p2p-trading-page .stat-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.p2p-trading-page .stat-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.p2p-trading-page .stat-label {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.p2p-trading-page .tabs {
+  display: flex;
+  gap: 4px;
+  background: #f3f4f6;
+  padding: 4px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+}
+
+.p2p-trading-page .tabs button {
+  padding: 10px 20px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  color: #6b7280;
+  transition: all 0.2s;
+}
+
+.p2p-trading-page .tabs button.active {
+  background: white;
+  color: #1a1a2e;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.p2p-trading-page .filters {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.p2p-trading-page .search-input {
+  flex: 1;
+  padding: 10px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.p2p-trading-page .filter-select {
+  padding: 10px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  min-width: 150px;
+}
+
+.p2p-trading-page .orders-table,
+.p2p-trading-page .users-table {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.p2p-trading-page table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.p2p-trading-page th {
+  background: #f9fafb;
+  padding: 14px 16px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 13px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.p2p-trading-page td {
+  padding: 14px 16px;
+  border-top: 1px solid #f3f4f6;
+  font-size: 14px;
+}
+
+.p2p-trading-page .order-id {
+  font-family: monospace;
+  color: #4361ee;
+  font-weight: 500;
+}
+
+.p2p-trading-page .type-badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.p2p-trading-page .type-badge.buy {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.p2p-trading-page .type-badge.sell {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.p2p-trading-page .status-badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  color: white;
+}
+
+.p2p-trading-page .status-badge.active {
+  background: #28a745;
+}
+
+.p2p-trading-page .status-badge.banned {
+  background: #dc2626;
+}
+
+.p2p-trading-page .status-badge.suspended {
+  background: #f59e0b;
+}
+
+.p2p-trading-page .rating {
+  color: #f59e0b;
+}
+
+.p2p-trading-page .actions {
+  display: flex;
+  gap: 8px;
+}
+
+.p2p-trading-page .action-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.p2p-trading-page .action-btn.view {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.p2p-trading-page .action-btn.release {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.p2p-trading-page .action-btn.cancel {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.p2p-trading-page .action-btn.ban {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.p2p-trading-page .action-btn.unban {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.p2p-trading-page .pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20px;
+}
+
+.p2p-trading-page .page-info {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+/* Disputes Section */
+.p2p-trading-page .disputes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.p2p-trading-page .dispute-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.p2p-trading-page .dispute-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.p2p-trading-page .dispute-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.p2p-trading-page .dispute-body {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.p2p-trading-page .dispute-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.p2p-trading-page .dispute-detail label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+}
+
+.p2p-trading-page .dispute-detail p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.p2p-trading-page .evidence-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.p2p-trading-page .evidence-file {
+  padding: 4px 8px;
+  background: #f3f4f6;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.p2p-trading-page .dispute-actions {
+  display: flex;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.p2p-trading-page .action-btn.buyer-wins {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.p2p-trading-page .action-btn.seller-wins {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.p2p-trading-page .action-btn.cancel-order {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.p2p-trading-page .resolution-info {
+  margin-top: 16px;
+  padding: 12px;
+  background: #f0fdf4;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.p2p-trading-page .resolution-info p {
+  margin-top: 8px;
+  color: #6b7280;
+}
+
+/* Settings Section */
+.p2p-trading-page .settings-section {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.p2p-trading-page .settings-group {
+  margin-bottom: 24px;
+}
+
+.p2p-trading-page .settings-group h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: #1a1a2e;
+}
+
+.p2p-trading-page .setting-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.p2p-trading-page .setting-item label {
+  font-size: 14px;
+  color: #374151;
+}
+
+.p2p-trading-page .setting-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+
+.p2p-trading-page .setting-item input[type="number"] {
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+  width: 200px;
+}
+
+.p2p-trading-page .currencies-list,
+.p2p-trading-page .payment-methods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.p2p-trading-page .currency-item,
+.p2p-trading-page .payment-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #f3f4f6;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.p2p-trading-page .settings-actions {
+  padding-top: 20px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.p2p-trading-page .save-btn {
+  padding: 12px 24px;
+  background: #4361ee;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* Modal Styles */
+.p2p-trading-page .modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.p2p-trading-page .modal-content {
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.p2p-trading-page .modal-content h2 {
+  font-size: 20px;
+  margin-bottom: 20px;
+}
+
+.p2p-trading-page .order-details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.p2p-trading-page .detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.p2p-trading-page .detail-row label {
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.p2p-trading-page .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.p2p-trading-page .cancel-btn {
+  padding: 10px 20px;
+  background: #f3f4f6;
+  color: #374151;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.p2p-trading-page .submit-btn {
+  padding: 10px 20px;
+  background: #4361ee;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
