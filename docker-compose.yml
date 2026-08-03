@@ -1,0 +1,164 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: tigerwallet-postgres
+    environment:
+      POSTGRES_USER: tigerwallet
+      POSTGRES_PASSWORD: tigerwallet
+      POSTGRES_DB: tigerwallet_admin
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tigerwallet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: tigerwallet-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Admin Platform API
+  admin-api:
+    build:
+      context: ./admin_platform/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-admin-api
+    ports:
+      - "8081:8081"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: tigerwallet
+      DB_PASSWORD: tigerwallet
+      DB_NAME: tigerwallet_admin
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: tigerwallet-jwt-secret-key
+      ADMIN_PORT: 8081
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Super Admin API
+  super-admin-api:
+    build:
+      context: ./super_admin/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-super-admin-api
+    ports:
+      - "8082:8082"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: tigerwallet
+      DB_PASSWORD: tigerwallet
+      DB_NAME: tigerwallet_admin
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: tigerwallet-jwt-secret-key
+      SUPER_ADMIN_PORT: 8082
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # White Label API
+  white-label-api:
+    build:
+      context: ./white_label/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-white-label-api
+    ports:
+      - "8090:8090"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: tigerwallet
+      DB_PASSWORD: tigerwallet
+      DB_NAME: tigerwallet_admin
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: tigerwallet-jwt-secret-key
+      WHITE_LABEL_PORT: 8090
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Admin Frontend
+  admin-frontend:
+    build:
+      context: ./admin_platform/frontend
+      dockerfile: Dockerfile
+    container_name: tigerwallet-admin-frontend
+    ports:
+      - "3001:80"
+    environment:
+      VITE_API_URL: http://admin-api:8081
+    depends_on:
+      - admin-api
+    restart: unless-stopped
+
+  # White Label Frontend
+  white-label-frontend:
+    build:
+      context: ./white_label/frontend
+      dockerfile: Dockerfile
+    container_name: tigerwallet-white-label-frontend
+    ports:
+      - "3000:80"
+    environment:
+      VITE_API_URL: http://white-label-api:8090
+    depends_on:
+      - white-label-api
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: tigerwallet-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - admin-frontend
+      - white-label-frontend
+      - admin-api
+      - super-admin-api
+      - white-label-api
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  default:
+    name: tigerwallet-network
