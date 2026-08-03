@@ -1,3 +1,4 @@
+pub mod error;
 pub mod admin_service;
 pub mod user_service;
 pub mod auth_service;
@@ -11,6 +12,7 @@ pub mod whitelabel_service;
 pub mod analytics_service;
 pub mod withdrawal_service;
 
+pub use error::ServiceError;
 pub use admin_service::AdminService;
 pub use user_service::UserService;
 pub use auth_service::AuthService;
