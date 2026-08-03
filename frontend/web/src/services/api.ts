@@ -535,28 +535,9 @@ class TigerWalletAPI {
     }
   }
 
-  // ============ Admin APIs ============
-  
-  async getSystemStats(): Promise<ApiResponse<{
-    totalUsers: number;
-    totalTransactions: number;
-    totalVolume: string;
-    activeWallets: number;
-  }>> {
-    try {
-      return { success: true, data: { totalUsers: 0, totalTransactions: 0, totalVolume: '0', activeWallets: 0 } };
-    } catch (error) {
-      return { success: false, error: { code: 'UNKNOWN', message: String(error) } };
-    }
-  }
-
-  async updateFeeConfig(config: { swapFee: number; withdrawFee: number; depositFee: number }): Promise<ApiResponse<void>> {
-    try {
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: { code: 'UNKNOWN', message: String(error) } };
-    }
-  }
+  // ============ Admin APIs - REMOVED FOR USERWALLET SECURITY ============
+  // Admin APIs are only accessible from admin_panel and admin_dashboard apps
+  // UserWallet apps should NOT have access to administrative functions
 }
 
 export const api = new TigerWalletAPI();
