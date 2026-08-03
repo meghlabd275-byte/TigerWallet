@@ -20,6 +20,35 @@ import {
 // Types & Interfaces
 // ============================================================================
 
+// Theme Context
+const AdminThemeContext = React.createContext({
+  isDarkMode: true,
+  toggleTheme: () => {}
+});
+
+export function AdminWalletThemeProvider({ children }: { children: React.ReactNode }) {
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  
+  useEffect(() => {
+    const stored = localStorage.getItem('admin_wallet_theme');
+    if (stored) setIsDarkMode(stored === 'dark');
+  }, []);
+  
+  const toggleTheme = () => {
+    const newMode = !isDarkMode;
+    setIsDarkMode(newMode);
+    localStorage.setItem('admin_wallet_theme', newMode ? 'dark' : 'light');
+  };
+  
+  return (
+    <AdminThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
+      {children}
+    </AdminThemeContext.Provider>
+  );
+}
+
+export { AdminThemeContext };
+
 interface Wallet {
   id: string;
   name: string;

@@ -6,6 +6,35 @@ import React, { useState, useEffect, useCallback } from 'react';
 // Types
 // ============================================================================
 
+// Theme Context
+const MasterThemeContext = React.createContext({
+  isDarkMode: true,
+  toggleTheme: () => {}
+});
+
+export function MasterWalletThemeProvider({ children }: { children: React.ReactNode }) {
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  
+  useEffect(() => {
+    const stored = localStorage.getItem('master_wallet_theme');
+    if (stored) setIsDarkMode(stored === 'dark');
+  }, []);
+  
+  const toggleTheme = () => {
+    const newMode = !isDarkMode;
+    setIsDarkMode(newMode);
+    localStorage.setItem('master_wallet_theme', newMode ? 'dark' : 'light');
+  };
+  
+  return (
+    <MasterThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
+      {children}
+    </MasterThemeContext.Provider>
+  );
+}
+
+export { MasterThemeContext };
+
 interface MasterWallet {
   address: string;
   seedPhrase: string;
