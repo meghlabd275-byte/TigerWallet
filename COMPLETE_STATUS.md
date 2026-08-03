@@ -44,10 +44,11 @@
 | PrivacyService | privacy_service.dart |
 | AccountAbstractionService | account_abstraction_service.dart |
 | PaymasterService | paymaster_service.dart |
+| PasskeyService | passkey_service.dart |
 | TaxService | tax_service.dart |
 | AnalyticsService | analytics_service.dart |
 | SuperAdminService | super_admin_service.dart |
-| **Total** | **7** |
+| **Total** | **8** |
 
 ---
 
@@ -71,12 +72,14 @@
 
 | Service | File |
 |---------|-------|
-| MasterWalletService | master_wallet_service.hpp |
-| PrivacyService | privacy_service.hpp |
-| AccountAbstractionService | account_abstraction_service.hpp |
-| TaxAnalyticsService | tax_analytics_service.hpp |
-| SuperAdminService | super_admin_service.hpp |
-| **Total** | **5** |
+| MasterWalletService | master_wallet_service.cpp |
+| PrivacyService | privacy_service.cpp |
+| AccountAbstractionService | account_abstraction_service.cpp |
+| PaymasterService | paymaster_service.cpp |
+| PasskeyService | passkey_service.cpp |
+| TaxAnalyticsService | tax_analytics_service.cpp |
+| SuperAdminService | super_admin_service.cpp |
+| **Total** | **7** |
 
 ---
 
@@ -86,12 +89,14 @@
 
 | Service | Status |
 |---------|--------|
+| MasterWalletService | ✅ |
 | PrivacyService | ✅ |
 | AccountAbstractionService | ✅ |
 | PaymasterService | ✅ |
+| PasskeyService | ✅ |
 | TaxAnalyticsService | ✅ |
 | SuperAdminService | ✅ |
-| **Total** | **5** |
+| **Total** | **7** |
 
 ---
 
