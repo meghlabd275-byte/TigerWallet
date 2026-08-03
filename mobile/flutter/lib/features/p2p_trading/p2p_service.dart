@@ -1,5 +1,5 @@
 // P2P Trading Service - Flutter Implementation
-// Peer-to-peer trading between users
+// Peer-to-peer trading between users with merchant system & anti-scam protection
 
 class P2PAdvert {
   final String id;
@@ -19,6 +19,12 @@ class P2PAdvert {
   final double avgReleaseTime;
   final bool isOnline;
   final DateTime createTime;
+  // Merchant & Security fields
+  final bool isMerchant;
+  final String? merchantLevel;
+  final double? collateralLocked;
+  final bool isVerified;
+  final double securityScore;
 
   P2PAdvert({
     required this.id,
@@ -38,6 +44,11 @@ class P2PAdvert {
     required this.avgReleaseTime,
     required this.isOnline,
     required this.createTime,
+    this.isMerchant = false,
+    this.merchantLevel,
+    this.collateralLocked,
+    this.isVerified = false,
+    this.securityScore = 100,
   });
 }
 
