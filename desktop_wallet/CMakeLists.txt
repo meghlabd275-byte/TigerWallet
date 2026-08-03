@@ -31,6 +31,13 @@ set(SERVICE_SOURCES
     src/services/nft_service.cpp
     src/services/api_client.cpp
     src/services/keychain_manager.cpp
+    src/services/margin_trading_service.cpp
+    src/services/futures_service.cpp
+    src/services/copy_trading_service.cpp
+    src/services/convert_service.cpp
+    src/services/crypto_card_service.cpp
+    src/services/p2p_trading_service.cpp
+    src/services/fiat_ramp_service.cpp
 )
 
 set(ALL_SOURCES
