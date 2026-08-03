@@ -1,0 +1,546 @@
+/* Crypto Card Page Styles */
+
+.crypto-card-page {
+  padding: 20px;
+}
+
+.crypto-card-page .page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.crypto-card-page .page-header h1 {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.crypto-card-page .add-btn {
+  padding: 10px 20px;
+  background: #4361ee;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.crypto-card-page .stats-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.crypto-card-page .stat-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.crypto-card-page .stat-icon {
+  font-size: 32px;
+}
+
+.crypto-card-page .stat-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.crypto-card-page .stat-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.crypto-card-page .stat-label {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.crypto-card-page .tabs {
+  display: flex;
+  gap: 4px;
+  background: #f3f4f6;
+  padding: 4px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+}
+
+.crypto-card-page .tabs button {
+  padding: 10px 20px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  color: #6b7280;
+  transition: all 0.2s;
+}
+
+.crypto-card-page .tabs button.active {
+  background: white;
+  color: #1a1a2e;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.crypto-card-page .filters {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.crypto-card-page .search-input {
+  flex: 1;
+  padding: 10px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.crypto-card-page .filter-select {
+  padding: 10px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  min-width: 150px;
+}
+
+.crypto-card-page .cards-table,
+.crypto-card-page .transactions-table {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.crypto-card-page table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.crypto-card-page th {
+  background: #f9fafb;
+  padding: 14px 16px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 13px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.crypto-card-page td {
+  padding: 14px 16px;
+  border-top: 1px solid #f3f4f6;
+  font-size: 14px;
+}
+
+.crypto-card-page .card-number {
+  font-family: monospace;
+  font-weight: 500;
+}
+
+.crypto-card-page .card-holder {
+  display: flex;
+  flex-direction: column;
+}
+
+.crypto-card-page .card-holder .name {
+  font-weight: 500;
+}
+
+.crypto-card-page .card-holder .id {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.crypto-card-page .type-badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.crypto-card-page .type-badge.virtual {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.crypto-card-page .type-badge.physical {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.crypto-card-page .type-badge.purchase {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.crypto-card-page .type-badge.withdrawal {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.crypto-card-page .type-badge.refund {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.crypto-card-page .limit-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.crypto-card-page .progress-bar {
+  width: 80px;
+  height: 4px;
+  background: #e5e7eb;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.crypto-card-page .progress {
+  height: 100%;
+  background: #4361ee;
+  border-radius: 2px;
+}
+
+.crypto-card-page .warning {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.crypto-card-page .status-badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  color: white;
+  text-transform: capitalize;
+}
+
+.crypto-card-page .category-badge {
+  padding: 4px 10px;
+  background: #f3f4f6;
+  border-radius: 20px;
+  font-size: 12px;
+}
+
+.crypto-card-page .amount {
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.crypto-card-page .tx-id {
+  font-family: monospace;
+  color: #6b7280;
+}
+
+.crypto-card-page .actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.crypto-card-page .action-btn {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.crypto-card-page .action-btn.view {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.crypto-card-page .action-btn.limit {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.crypto-card-page .action-btn.freeze {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.crypto-card-page .action-btn.block {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.crypto-card-page .pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20px;
+}
+
+.crypto-card-page .page-info {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+/* Settings Section */
+.crypto-card-page .settings-section {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.crypto-card-page .settings-group {
+  margin-bottom: 24px;
+}
+
+.crypto-card-page .settings-group h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: #1a1a2e;
+}
+
+.crypto-card-page .setting-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.crypto-card-page .setting-item label {
+  font-size: 14px;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.crypto-card-page .setting-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+
+.crypto-card-page .setting-item input[type="number"] {
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+  width: 250px;
+}
+
+.crypto-card-page .blocked-merchants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.crypto-card-page .blocked-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #fee2e2;
+  color: #dc2626;
+  border-radius: 20px;
+  font-size: 13px;
+}
+
+.crypto-card-page .blocked-tag button {
+  background: none;
+  border: none;
+  color: #dc2626;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0;
+}
+
+.crypto-card-page .add-merchant-input {
+  padding: 6px 12px;
+  border: 1px dashed #e5e7eb;
+  border-radius: 20px;
+  font-size: 13px;
+  width: 150px;
+}
+
+.crypto-card-page .branding-options {
+  display: flex;
+  gap: 16px;
+}
+
+.crypto-card-page .branding-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #f3f4f6;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.crypto-card-page .settings-actions {
+  padding-top: 20px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.crypto-card-page .save-btn {
+  padding: 12px 24px;
+  background: #4361ee;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* Modal Styles */
+.crypto-card-page .modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.crypto-card-page .modal-content {
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.crypto-card-page .modal-content.small {
+  max-width: 400px;
+}
+
+.crypto-card-page .modal-content h2 {
+  font-size: 20px;
+  margin-bottom: 20px;
+}
+
+.crypto-card-page .card-preview {
+  background: linear-gradient(135deg, #1a1a2e 0%, #4361ee 100%);
+  border-radius: 16px;
+  padding: 24px;
+  color: white;
+  margin-bottom: 20px;
+}
+
+.crypto-card-page .card-brand {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 30px;
+}
+
+.crypto-card-page .card-brand-name {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.crypto-card-page .card-type {
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+.crypto-card-page .card-number-display {
+  font-size: 22px;
+  font-family: monospace;
+  letter-spacing: 2px;
+  margin-bottom: 20px;
+}
+
+.crypto-card-page .card-holder-display {
+  font-size: 16px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.crypto-card-page .card-expires {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.crypto-card-page .card-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.crypto-card-page .detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.crypto-card-page .detail-row label {
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.crypto-card-page .limit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.crypto-card-page .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.crypto-card-page .form-group label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.crypto-card-page .form-group input {
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.crypto-card-page .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.crypto-card-page .cancel-btn {
+  padding: 10px 20px;
+  background: #f3f4f6;
+  color: #374151;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.crypto-card-page .submit-btn {
+  padding: 10px 20px;
+  background: #4361ee;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}

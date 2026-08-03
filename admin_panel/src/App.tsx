@@ -3,23 +3,21 @@
 
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider, ThemeContext } from './stores/ThemeStore';
+import { ThemeProvider } from './stores/ThemeStore';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './pages/Dashboard';
 import UsersPage from './pages/UsersPage';
-import WalletsPage from './pages/PageStubs';
-import BlockchainPage from './pages/BlockchainPage';
-import PairsPage from './pages/PageStubs';
-import LiquidityPage from './pages/PageStubs';
+import { WalletsPage, BlockchainPage, PairsPage, LiquidityPage, KYCPage, AnalyticsPage, SettingsPage, LoginPage, SendPage } from './pages/PageStubs';
+import TradingManagementPage from './pages/TradingManagementPage';
+import MarginTradingPage from './pages/MarginTradingPage';
 import FeesPage from './pages/FeesPage';
+import P2PTradingPage from './pages/P2PTradingPage';
+import P2PMerchantPage from './pages/P2PMerchantPage';
+import FiatOnRampPage from './pages/FiatOnRampPage';
+import CryptoCardPage from './pages/CryptoCardPage';
 import WhiteLabelPage from './pages/WhiteLabelPage';
-import KYCPage from './pages/PageStubs';
 import TransactionsPage from './pages/TransactionsPage';
-import AnalyticsPage from './pages/PageStubs';
-import SettingsPage from './pages/PageStubs';
-import LoginPage from './pages/PageStubs';
-import { SendPage } from './pages/PageStubs';
 import './styles/global.css';
 
 const App: React.FC = () => {
@@ -72,8 +70,14 @@ const App: React.FC = () => {
                 <Route path="/wallets" element={<WalletsPage />} />
                 <Route path="/blockchain" element={<BlockchainPage />} />
                 <Route path="/pairs" element={<PairsPage />} />
+                <Route path="/trading" element={<TradingManagementPage />} />
+                <Route path="/margin" element={<MarginTradingPage />} />
                 <Route path="/liquidity" element={<LiquidityPage />} />
                 <Route path="/fees" element={<FeesPage />} />
+                <Route path="/p2p" element={<P2PTradingPage />} />
+                <Route path="/p2p-merchants" element={<P2PMerchantPage />} />
+                <Route path="/fiat" element={<FiatOnRampPage />} />
+                <Route path="/card" element={<CryptoCardPage />} />
                 <Route path="/whitelabel" element={<WhiteLabelPage />} />
                 <Route path="/kyc" element={<KYCPage />} />
                 <Route path="/transactions" element={<TransactionsPage />} />
