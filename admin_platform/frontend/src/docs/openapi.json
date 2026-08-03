@@ -1,0 +1,487 @@
+/**
+ * TigerWallet Admin Platform - OpenAPI/Swagger Documentation
+ * Complete API specification for all admin endpoints
+ */
+
+export const openapiSpec = {
+  openapi: "3.0.3",
+  info: {
+    title: "TigerWallet Admin Platform API",
+    description: `
+## Overview
+TigerWallet Admin Platform provides comprehensive administration capabilities for the TigerWallet ecosystem.
+
+## Authentication
+All endpoints require JWT authentication. Include the token in the Authorization header:
+\`Authorization: Bearer <token>\`
+
+## Admin Roles
+- **super_admin**: Full system access
+- **compliance_admin**: KYC, compliance, and audit access
+- **finance_admin**: Financial operations and analytics access
+- **security_admin**: Security and monitoring access
+
+## Rate Limiting
+- 100 requests per minute
+- 1,000 requests per hour
+    `,
+    version: "1.0.0",
+    contact: {
+      name: "TigerWallet Support",
+      email: "support@tigerwallet.com"
+    }
+  },
+  servers: [
+    { url: "http://localhost:9093", description: "Development server" },
+    { url: "https://api-admin.tigerwallet.com", description: "Production server" }
+  ],
+  tags: [
+    { name: "Authentication", description: "User authentication and authorization" },
+    { name: "Admins", description: "Admin user management" },
+    { name: "Sessions", description: "Session management" },
+    { name: "Notifications", description: "Admin notifications" },
+    { name: "Audit Logs", description: "System audit logging" },
+    { name: "Scheduled Tasks", description: "Background task management" },
+    { name: "Webhooks", description: "Webhook configuration" },
+    { name: "Theme", description: "Theme preferences" },
+    { name: "Approval Workflows", description: "Multi-level approval system" },
+    { name: "Tickets", description: "Support ticket system" },
+    { name: "SLA Metrics", description: "Service level agreement tracking" },
+    { name: "Fraud Detection", description: "Fraud alert management" }
+  ],
+  paths: {
+    "/api/v1/auth/register": {
+      post: {
+        tags: ["Authentication"],
+        summary: "Register new admin",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["username", "email", "password"],
+                properties: {
+                  username: { type: "string" },
+                  email: { type: "string", format: "email" },
+                  password: { type: "string" },
+                  role: { type: "string" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Admin created successfully" },
+          "400": { description: "Bad Request" }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      post: {
+        tags: ["Authentication"],
+        summary: "Admin login",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["email", "password"],
+                properties: {
+                  email: { type: "string" },
+                  password: { type: "string" },
+                  two_factor_code: { type: "string" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Login successful" },
+          "401": { description: "Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      post: {
+        tags: ["Authentication"],
+        summary: "Admin logout",
+        security: [{ BearerAuth: [] }],
+        responses: { "200": { description: "Logout successful" } }
+      }
+    },
+    "/api/v1/admins": {
+      get: {
+        tags: ["Admins"],
+        summary: "List admins",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", default: 1 } },
+          { name: "limit", in: "query", schema: { type: "integer", default: 20 } }
+        ],
+        responses: {
+          "200": { description: "List of admins" },
+          "401": { description: "Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/admins/{id}": {
+      get: {
+        tags: ["Admins"],
+        summary: "Get admin",
+        security: [{ BearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          "200": { description: "Admin details" },
+          "404": { description: "Not Found" }
+        }
+      },
+      put: {
+        tags: ["Admins"],
+        summary: "Update admin",
+        security: [{ BearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: { "200": { description: "Admin updated" } }
+      },
+      delete: {
+        tags: ["Admins"],
+        summary: "Delete admin",
+        security: [{ BearerAuth: [] }],
+        responses: { "200": { description: "Admin deleted" } }
+      }
+    },
+    "/api/v1/notifications": {
+      get: {
+        tags: ["Notifications"],
+        summary: "Get notifications",
+        security: [{ BearerAuth: [] }],
+        responses: {
+          "200": { description: "List of notifications" }
+        }
+      }
+    },
+    "/api/v1/audit-logs": {
+      get: {
+        tags: ["Audit Logs"],
+        summary: "Get audit logs",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer" } },
+          { name: "limit", in: "query", schema: { type: "integer" } }
+        ],
+        responses: {
+          "200": { description: "List of audit logs" }
+        }
+      }
+    },
+    "/api/v1/tasks": {
+      get: {
+        tags: ["Scheduled Tasks"],
+        summary: "List tasks",
+        security: [{ BearerAuth: [] }],
+        responses: {
+          "200": { description: "List of scheduled tasks" }
+        }
+      },
+      post: {
+        tags: ["Scheduled Tasks"],
+        summary: "Create task",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["name", "cron_expression", "task_type"],
+                properties: {
+                  name: { type: "string" },
+                  description: { type: "string" },
+                  cron_expression: { type: "string" },
+                  task_type: { type: "string" },
+                  config: { type: "object" }
+                }
+              }
+            }
+          }
+        },
+        responses: { "201": { description: "Task created" } }
+      }
+    },
+    "/api/v1/webhooks": {
+      get: {
+        tags: ["Webhooks"],
+        summary: "List webhooks",
+        security: [{ BearerAuth: [] }],
+        responses: { "200": { description: "List of webhooks" } }
+      },
+      post: {
+        tags: ["Webhooks"],
+        summary: "Create webhook",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["name", "url", "events"],
+                properties: {
+                  name: { type: "string" },
+                  url: { type: "string" },
+                  events: { type: "array", items: { type: "string" } },
+                  retry_count: { type: "integer" },
+                  timeout_seconds: { type: "integer" }
+                }
+              }
+            }
+          }
+        },
+        responses: { "201": { description: "Webhook created" } }
+      }
+    },
+    "/api/v1/theme": {
+      get: {
+        tags: ["Theme"],
+        summary: "Get theme preference",
+        security: [{ BearerAuth: [] }],
+        responses: { "200": { description: "Theme preference" } }
+      },
+      put: {
+        tags: ["Theme"],
+        summary: "Update theme preference",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  theme_mode: { type: "string", enum: ["light", "dark", "system"] },
+                  language: { type: "string", enum: ["en", "es", "fr", "de", "zh", "ja", "ko", "ar"] }
+                }
+              }
+            }
+          }
+        },
+        responses: { "200": { description: "Theme updated" } }
+      }
+    },
+    "/api/v1/tickets": {
+      get: {
+        tags: ["Tickets"],
+        summary: "List tickets",
+        security: [{ BearerAuth: [] }],
+        responses: { "200": { description: "List of tickets" } }
+      },
+      post: {
+        tags: ["Tickets"],
+        summary: "Create ticket",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["title", "description", "category", "priority"],
+                properties: {
+                  title: { type: "string" },
+                  description: { type: "string" },
+                  category: { type: "string" },
+                  priority: { type: "string" }
+                }
+              }
+            }
+          }
+        },
+        responses: { "201": { description: "Ticket created" } }
+      }
+    },
+    "/api/v1/sla": {
+      get: {
+        tags: ["SLA Metrics"],
+        summary: "Get SLA metrics",
+        security: [{ BearerAuth: [] }],
+        responses: { "200": { description: "List of SLA metrics" } }
+      }
+    },
+    "/api/v1/fraud": {
+      get: {
+        tags: ["Fraud Detection"],
+        summary: "Get fraud alerts",
+        security: [{ BearerAuth: [] }],
+        responses: { "200": { description: "List of fraud alerts" } }
+      },
+      post: {
+        tags: ["Fraud Detection"],
+        summary: "Create fraud alert",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["alert_type", "severity", "description"],
+                properties: {
+                  alert_type: { type: "string" },
+                  severity: { type: "string" },
+                  description: { type: "string" },
+                  details: { type: "object" }
+                }
+              }
+            }
+          }
+        },
+        responses: { "201": { description: "Alert created" } }
+      }
+    },
+    "/api/v1/rate-limit": {
+      get: {
+        tags: ["Rate Limiting"],
+        summary: "Get rate limit status",
+        security: [{ BearerAuth: [] }],
+        responses: {
+          "200": {
+            description: "Rate limit status",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    requests_per_minute: { type: "integer" },
+                    requests_per_hour: { type: "integer" },
+                    current_minute: { type: "integer" },
+                    current_hour: { type: "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  components: {
+    securitySchemes: {
+      BearerAuth: {
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT"
+      }
+    },
+    schemas: {
+      Admin: {
+        type: "object",
+        properties: {
+          id: { type: "integer" },
+          username: { type: "string" },
+          email: { type: "string" },
+          role: { type: "string" },
+          status: { type: "string" },
+          permissions: { type: "array", items: { type: "string" } },
+          two_factor_enabled: { type: "boolean" },
+          security_level: { type: "integer" },
+          session_count: { type: "integer" },
+          max_sessions: { type: "integer" }
+        }
+      },
+      LoginResponse: {
+        type: "object",
+        properties: {
+          token: { type: "string" },
+          refresh_token: { type: "string" },
+          admin: { $ref: "#/components/schemas/Admin" },
+          expires_in: { type: "integer" }
+        }
+      },
+      Notification: {
+        type: "object",
+        properties: {
+          id: { type: "integer" },
+          title: { type: "string" },
+          message: { type: "string" },
+          notification_type: { type: "string" },
+          is_read: { type: "boolean" },
+          created_at: { type: "string" }
+        }
+      },
+      AuditLog: {
+        type: "object",
+        properties: {
+          id: { type: "integer" },
+          admin_id: { type: "integer" },
+          action: { type: "string" },
+          resource_type: { type: "string" },
+          details: { type: "string" },
+          ip_address: { type: "string" },
+          created_at: { type: "string" }
+        }
+      },
+      ScheduledTask: {
+        type: "object",
+        properties: {
+          id: { type: "integer" },
+          name: { type: "string" },
+          description: { type: "string" },
+          cron_expression: { type: "string" },
+          task_type: { type: "string" },
+          status: { type: "string" }
+        }
+      },
+      WebhookConfig: {
+        type: "object",
+        properties: {
+          id: { type: "integer" },
+          name: { type: "string" },
+          url: { type: "string" },
+          events: { type: "array", items: { type: "string" } },
+          is_active: { type: "boolean" }
+        }
+      },
+      ThemePreference: {
+        type: "object",
+        properties: {
+          theme_mode: { type: "string" },
+          language: { type: "string" }
+        }
+      },
+      Ticket: {
+        type: "object",
+        properties: {
+          id: { type: "integer" },
+          title: { type: "string" },
+          description: { type: "string" },
+          category: { type: "string" },
+          priority: { type: "string" },
+          status: { type: "string" }
+        }
+      },
+      SLAMetric: {
+        type: "object",
+        properties: {
+          id: { type: "integer" },
+          metric_name: { type: "string" },
+          target_value: { type: "number" },
+          current_value: { type: "number" },
+          status: { type: "string" }
+        }
+      },
+      FraudAlert: {
+        type: "object",
+        properties: {
+          id: { type: "integer" },
+          alert_type: { type: "string" },
+          severity: { type: "string" },
+          description: { type: "string" },
+          status: { type: "string" },
+          created_at: { type: "string" }
+        }
+      }
+    }
+  }
+};
+
+export default openapiSpec;
