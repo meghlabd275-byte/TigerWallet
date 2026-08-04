@@ -209,4 +209,136 @@ interface ApiService {
         @Query("admin_id") adminId: String? = null,
         @Query("action") action: String? = null
     ): Response<AuditLogsResponse>
+
+    // Tickets
+    @GET("api/v1/tickets")
+    suspend fun getTickets(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 20,
+        @Query("status") status: String? = null,
+        @Query("priority") priority: String? = null,
+        @Query("category") category: String? = null
+    ): Response<TicketsResponse>
+
+    @GET("api/v1/tickets/{id}")
+    suspend fun getTicket(@Path("id") id: String): Response<TicketResponse>
+
+    @POST("api/v1/tickets")
+    suspend fun createTicket(@Body request: CreateTicketRequest): Response<TicketResponse>
+
+    @PUT("api/v1/tickets/{id}")
+    suspend fun updateTicket(@Path("id") id: String, @Body request: UpdateTicketRequest): Response<TicketResponse>
+
+    @POST("api/v1/tickets/{id}/messages")
+    suspend fun addTicketMessage(@Path("id") id: String, @Body request: AddMessageRequest): Response<MessageResponse>
+
+    // Knowledge Base
+    @GET("api/v1/knowledge-base")
+    suspend fun getKnowledgeBaseArticles(): Response<ArticlesResponse>
+
+    @GET("api/v1/knowledge-base/{id}")
+    suspend fun getKnowledgeBaseArticle(@Path("id") id: String): Response<ArticleResponse>
+
+    @POST("api/v1/knowledge-base")
+    suspend fun createKnowledgeBaseArticle(@Body request: CreateArticleRequest): Response<ArticleResponse>
+
+    @PUT("api/v1/knowledge-base/{id}")
+    suspend fun updateKnowledgeBaseArticle(@Path("id") id: String, @Body request: UpdateArticleRequest): Response<ArticleResponse>
+
+    // Approval Workflows
+    @GET("api/v1/workflows")
+    suspend fun getWorkflows(): Response<WorkflowsResponse>
+
+    @POST("api/v1/workflows")
+    suspend fun createWorkflow(@Body request: CreateWorkflowRequest): Response<WorkflowResponse>
+
+    @GET("api/v1/approval-requests")
+    suspend fun getApprovalRequests(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 20,
+        @Query("status") status: String? = null,
+        @Query("workflow_id") workflowId: String? = null
+    ): Response<ApprovalRequestsResponse>
+
+    @POST("api/v1/approval-requests/{id}/approve")
+    suspend fun approveRequest(@Path("id") id: String): Response<Unit>
+
+    @POST("api/v1/approval-requests/{id}/reject")
+    suspend fun rejectRequest(@Path("id") id: String, @Body request: RejectRequestRequest): Response<Unit>
+
+    // Dashboards
+    @GET("api/v1/dashboard/compliance")
+    suspend fun getComplianceDashboard(): Response<ComplianceDashboardResponse>
+
+    @GET("api/v1/dashboard/finance")
+    suspend fun getFinanceDashboard(): Response<FinanceDashboardResponse>
+
+    @GET("api/v1/dashboard/security")
+    suspend fun getSecurityDashboard(): Response<SecurityDashboardResponse>
+
+    // Notifications
+    @GET("api/v1/notifications")
+    suspend fun getNotifications(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 20,
+        @Query("status") status: String? = null
+    ): Response<NotificationsResponse>
+
+    @PUT("api/v1/notifications/{id}/read")
+    suspend fun markNotificationRead(@Path("id") id: String): Response<Unit>
+
+    @PUT("api/v1/notifications/read-all")
+    suspend fun markAllNotificationsRead(): Response<Unit>
+
+    @POST("api/v1/notifications")
+    suspend fun sendNotification(@Body request: SendNotificationRequest): Response<NotificationResponse>
+
+    @POST("api/v1/notifications/broadcast")
+    suspend fun broadcastNotification(@Body request: BroadcastNotificationRequest): Response<Unit>
+
+    // API Keys
+    @GET("api/v1/api-keys")
+    suspend fun getAPIKeys(): Response<APIKeysResponse>
+
+    @POST("api/v1/api-keys")
+    suspend fun createAPIKey(@Body request: CreateAPIKeyRequest): Response<APIKeyResponse>
+
+    @PUT("api/v1/api-keys/{id}")
+    suspend fun updateAPIKey(@Path("id") id: String, @Body request: UpdateAPIKeyRequest): Response<APIKeyResponse>
+
+    @POST("api/v1/api-keys/{id}/revoke")
+    suspend fun revokeAPIKey(@Path("id") id: String): Response<Unit>
+
+    // Webhooks
+    @GET("api/v1/webhooks")
+    suspend fun getWebhooks(): Response<WebhooksResponse>
+
+    @POST("api/v1/webhooks")
+    suspend fun createWebhook(@Body request: CreateWebhookRequest): Response<WebhookResponse>
+
+    @PUT("api/v1/webhooks/{id}")
+    suspend fun updateWebhook(@Path("id") id: String, @Body request: UpdateWebhookRequest): Response<WebhookResponse>
+
+    @DELETE("api/v1/webhooks/{id}")
+    suspend fun deleteWebhook(@Path("id") id: String): Response<Unit>
+
+    // Market Maker Bots
+    @GET("api/v1/market-maker")
+    suspend fun getMarketMakerBots(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 20,
+        @Query("status") status: String? = null
+    ): Response<BotsResponse>
+
+    @GET("api/v1/market-maker/{id}")
+    suspend fun getMarketMakerBot(@Path("id") id: String): Response<BotResponse>
+
+    @POST("api/v1/market-maker/{id}/start")
+    suspend fun startBot(@Path("id") id: String): Response<Unit>
+
+    @POST("api/v1/market-maker/{id}/stop")
+    suspend fun stopBot(@Path("id") id: String): Response<Unit>
+
+    @POST("api/v1/market-maker/{id}/pause")
+    suspend fun pauseBot(@Path("id") id: String): Response<Unit>
 }
