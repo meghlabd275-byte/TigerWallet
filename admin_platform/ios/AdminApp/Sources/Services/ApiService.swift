@@ -215,6 +215,163 @@ class ApiService {
         return try await get("/api/v1/dashboard")
     }
     
+    // MARK: - Tickets
+    
+    func getTickets(page: Int = 1, limit: Int = 20, status: String? = nil, priority: String? = nil, category: String? = nil) async throws -> TicketsResponse {
+        var params: [String: String] = ["page": String(page), "limit": String(limit)]
+        if let status = status { params["status"] = status }
+        if let priority = priority { params["priority"] = priority }
+        if let category = category { params["category"] = category }
+        return try await get("/api/v1/tickets", params: params)
+    }
+    
+    func getTicket(id: String) async throws -> Ticket {
+        return try await get("/api/v1/tickets/\(id)")
+    }
+    
+    func createTicket(data: [String: Any]) async throws -> Ticket {
+        return try await post("/api/v1/tickets", body: data)
+    }
+    
+    func updateTicket(id: String, data: [String: Any]) async throws -> Ticket {
+        return try await put("/api/v1/tickets/\(id)", body: data)
+    }
+    
+    func addTicketMessage(ticketId: String, message: String) async throws {
+        let body: [String: Any] = ["message": message]
+        let _: EmptyResponse = try await post("/api/v1/tickets/\(ticketId)/messages", body: body)
+    }
+    
+    // MARK: - Knowledge Base
+    
+    func getKnowledgeBaseArticles() async throws -> ArticlesResponse {
+        return try await get("/api/v1/knowledge-base")
+    }
+    
+    func createKnowledgeBaseArticle(data: [String: Any]) async throws -> Article {
+        return try await post("/api/v1/knowledge-base", body: data)
+    }
+    
+    func updateKnowledgeBaseArticle(id: String, data: [String: Any]) async throws -> Article {
+        return try await put("/api/v1/knowledge-base/\(id)", body: data)
+    }
+    
+    // MARK: - Approval Workflows
+    
+    func getWorkflows() async throws -> WorkflowsResponse {
+        return try await get("/api/v1/workflows")
+    }
+    
+    func createWorkflow(data: [String: Any]) async throws -> Workflow {
+        return try await post("/api/v1/workflows", body: data)
+    }
+    
+    func getApprovalRequests(page: Int = 1, limit: Int = 20, status: String? = nil, workflowId: String? = nil) async throws -> ApprovalRequestsResponse {
+        var params: [String: String] = ["page": String(page), "limit": String(limit)]
+        if let status = status { params["status"] = status }
+        if let workflowId = workflowId { params["workflow_id"] = workflowId }
+        return try await get("/api/v1/approval-requests", params: params)
+    }
+    
+    func approveRequest(id: String) async throws {
+        let _: EmptyResponse = try await post("/api/v1/approval-requests/\(id)/approve", body: [:])
+    }
+    
+    func rejectRequest(id: String, reason: String) async throws {
+        let body: [String: Any] = ["reason": reason]
+        let _: EmptyResponse = try await post("/api/v1/approval-requests/\(id)/reject", body: body)
+    }
+    
+    // MARK: - Dashboards
+    
+    func getComplianceDashboard() async throws -> ComplianceDashboard {
+        return try await get("/api/v1/dashboard/compliance")
+    }
+    
+    func getFinanceDashboard() async throws -> FinanceDashboard {
+        return try await get("/api/v1/dashboard/finance")
+    }
+    
+    func getSecurityDashboard() async throws -> SecurityDashboard {
+        return try await get("/api/v1/dashboard/security")
+    }
+    
+    // MARK: - Notifications
+    
+    func getNotifications(page: Int = 1, limit: Int = 20, status: String? = nil) async throws -> NotificationsResponse {
+        var params: [String: String] = ["page": String(page), "limit": String(limit)]
+        if let status = status { params["status"] = status }
+        return try await get("/api/v1/notifications", params: params)
+    }
+    
+    func markNotificationRead(id: String) async throws {
+        let _: EmptyResponse = try await put("/api/v1/notifications/\(id)/read", body: [:])
+    }
+    
+    func markAllNotificationsRead() async throws {
+        let _: EmptyResponse = try await put("/api/v1/notifications/read-all", body: [:])
+    }
+    
+    func sendNotification(data: [String: Any]) async throws -> Notification {
+        return try await post("/api/v1/notifications", body: data)
+    }
+    
+    func broadcastNotification(data: [String: Any]) async throws {
+        let _: EmptyResponse = try await post("/api/v1/notifications/broadcast", body: data)
+    }
+    
+    // MARK: - API Keys
+    
+    func getAPIKeys() async throws -> APIKeysResponse {
+        return try await get("/api/v1/api-keys")
+    }
+    
+    func createAPIKey(data: [String: Any]) async throws -> APIKey {
+        return try await post("/api/v1/api-keys", body: data)
+    }
+    
+    func revokeAPIKey(id: String) async throws {
+        let _: EmptyResponse = try await post("/api/v1/api-keys/\(id)/revoke", body: [:])
+    }
+    
+    // MARK: - Webhooks
+    
+    func getWebhooks() async throws -> WebhooksResponse {
+        return try await get("/api/v1/webhooks")
+    }
+    
+    func createWebhook(data: [String: Any]) async throws -> Webhook {
+        return try await post("/api/v1/webhooks", body: data)
+    }
+    
+    func updateWebhook(id: String, data: [String: Any]) async throws -> Webhook {
+        return try await put("/api/v1/webhooks/\(id)", body: data)
+    }
+    
+    func deleteWebhook(id: String) async throws {
+        let _: EmptyResponse = try await delete("/api/v1/webhooks/\(id)")
+    }
+    
+    // MARK: - Market Maker Bots
+    
+    func getMarketMakerBots(page: Int = 1, limit: Int = 20, status: String? = nil) async throws -> BotsResponse {
+        var params: [String: String] = ["page": String(page), "limit": String(limit)]
+        if let status = status { params["status"] = status }
+        return try await get("/api/v1/market-maker", params: params)
+    }
+    
+    func startBot(id: String) async throws {
+        let _: EmptyResponse = try await post("/api/v1/market-maker/\(id)/start", body: [:])
+    }
+    
+    func stopBot(id: String) async throws {
+        let _: EmptyResponse = try await post("/api/v1/market-maker/\(id)/stop", body: [:])
+    }
+    
+    func pauseBot(id: String) async throws {
+        let _: EmptyResponse = try await post("/api/v1/market-maker/\(id)/pause", body: [:])
+    }
+    
     // MARK: - HTTP Methods
     
     private func get<T: Decodable>(_ endpoint: String, params: [String: String] = [:]) async throws -> T {

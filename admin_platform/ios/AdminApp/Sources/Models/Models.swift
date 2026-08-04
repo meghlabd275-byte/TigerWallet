@@ -396,3 +396,237 @@ struct LoginResponse: Codable {
         case admin
     }
 }
+
+// MARK: - Ticket Models
+struct Ticket: Codable, Identifiable {
+    let id: String
+    let ticketId: String
+    let subject: String
+    let description: String
+    let category: String
+    let priority: String
+    var status: String
+    let userId: String
+    let adminId: String?
+    let createdAt: String
+    let updatedAt: String
+    
+    enum CodingKeys: String, CodingKey {
+        case id, subject, description, category, priority, status
+        case ticketId = "ticket_id"
+        case userId = "user_id"
+        case adminId = "admin_id"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct TicketsResponse: Codable {
+    let data: [Ticket]
+    let meta: PaginationMeta
+}
+
+// MARK: - Knowledge Base Models
+struct Article: Codable, Identifiable {
+    let id: String
+    let articleId: String
+    let title: String
+    let content: String
+    let category: String
+    let tags: [String]
+    let status: String
+    let viewCount: Int
+    let createdAt: String
+    
+    enum CodingKeys: String, CodingKey {
+        case id, title, content, category, tags, status
+        case articleId = "article_id"
+        case viewCount = "view_count"
+        case createdAt = "created_at"
+    }
+}
+
+struct ArticlesResponse: Codable {
+    let data: [Article]
+}
+
+// MARK: - Workflow Models
+struct Workflow: Codable, Identifiable {
+    let id: String
+    let workflowId: String
+    let name: String
+    let description: String
+    let resourceType: String
+    let approvers: [String]
+    let minApprovals: Int
+    let status: String
+    let createdAt: String
+    
+    enum CodingKeys: String, CodingKey {
+        case id, name, description, resourceType, approvers, minApprovals, status
+        case workflowId = "workflow_id"
+        case resourceType = "resource_type"
+        case createdAt = "created_at"
+    }
+}
+
+struct WorkflowsResponse: Codable {
+    let data: [Workflow]
+}
+
+struct ApprovalRequest: Codable, Identifiable {
+    let id: String
+    let workflowId: String
+    let requesterId: String
+    let resourceType: String
+    let resourceId: String
+    let status: String
+    let approvedBy: [String]
+    let createdAt: String
+    
+    enum CodingKeys: String, CodingKey {
+        case id, requesterId, resourceType, resourceId, status, approvedBy
+        case workflowId = "workflow_id"
+        case createdAt = "created_at"
+    }
+}
+
+struct ApprovalRequestsResponse: Codable {
+    let data: [ApprovalRequest]
+    let meta: PaginationMeta
+}
+
+// MARK: - Dashboard Models
+struct ComplianceDashboard: Codable {
+    let totalKYC: Int
+    let pendingKYC: Int
+    let approvedKYC: Int
+    let rejectedKYC: Int
+    let highRiskUsers: Int
+    let suspiciousActivity: Int
+    let transactionsFlagged: Int
+    let complianceScore: Double
+    
+    enum CodingKeys: String, CodingKey {
+        case totalKYC, pendingKYC, approvedKYC, rejectedKYC
+        case highRiskUsers, suspiciousActivity, transactionsFlagged, complianceScore
+    }
+}
+
+struct FinanceDashboard: Codable {
+    let totalRevenue: Double
+    let revenueToday: Double
+    let revenueThisMonth: Double
+    let tradingVolume: Double
+    let feesCollected: Double
+    let pendingWithdrawals: Double
+    
+    enum CodingKeys: String, CodingKey {
+        case totalRevenue, revenueToday, revenueThisMonth, tradingVolume, feesCollected, pendingWithdrawals
+    }
+}
+
+struct SecurityDashboard: Codable {
+    let failedLogins: Int
+    let activeSessions: Int
+    let suspiciousIPs: Int
+    let securityEvents: Int
+    let blockedIPs: Int
+    let twoFactorEnabled: Int
+    let securityScore: Double
+    
+    enum CodingKeys: String, CodingKey {
+        case failedLogins, activeSessions, suspiciousIPs, securityEvents, blockedIPs, twoFactorEnabled, securityScore
+    }
+}
+
+// MARK: - Notification Models
+struct Notification: Codable, Identifiable {
+    let id: String
+    let title: String
+    let message: String
+    let type: String
+    var isRead: Bool
+    let priority: String
+    let createdAt: String
+    
+    enum CodingKeys: String, CodingKey {
+        case id, title, message, type, priority
+        case isRead = "is_read"
+        case createdAt = "created_at"
+    }
+}
+
+struct NotificationsResponse: Codable {
+    let data: [Notification]
+    let meta: PaginationMeta
+}
+
+// MARK: - API Key Models
+struct APIKey: Codable, Identifiable {
+    let id: String
+    let keyId: String
+    let keyPrefix: String
+    let name: String
+    let permissions: [String]
+    let rateLimit: Int
+    var isActive: Bool
+    let expiresAt: String?
+    let createdAt: String
+    
+    enum CodingKeys: String, CodingKey {
+        case id, name, permissions, rateLimit, isActive, expiresAt, createdAt
+        case keyId = "key_id"
+        case keyPrefix = "key_prefix"
+    }
+}
+
+struct APIKeysResponse: Codable {
+    let data: [APIKey]
+}
+
+// MARK: - Webhook Models
+struct Webhook: Codable, Identifiable {
+    let id: String
+    let webhookId: String
+    let name: String
+    let url: String
+    let events: [String]
+    var isActive: Bool
+    let retryCount: Int
+    let lastStatus: Int?
+    let createdAt: String
+    
+    enum CodingKeys: String, CodingKey {
+        case id, name, url, events, isActive, retryCount, lastStatus, createdAt
+        case webhookId = "webhook_id"
+    }
+}
+
+struct WebhooksResponse: Codable {
+    let data: [Webhook]
+}
+
+// MARK: - Market Maker Bot Models
+struct MarketMakerBot: Codable, Identifiable {
+    let id: String
+    let botName: String
+    let botType: String
+    var status: String
+    let userId: String
+    let connectedDEXs: Int
+    let totalPnL: Double
+    let totalVolume: Double
+    let totalOrders: Int
+    let avgLatency: Double
+    let createdAt: String
+    
+    enum CodingKeys: String, CodingKey {
+        case id, botName, botType, status, userId, connectedDEXs, totalPnL, totalVolume, totalOrders, avgLatency, createdAt
+    }
+}
+
+struct BotsResponse: Codable {
+    let data: [MarketMakerBot]
+    let meta: PaginationMeta
+}
