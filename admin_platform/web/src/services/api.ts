@@ -190,4 +190,159 @@ export const dashboardService = {
   },
 };
 
+export const ticketService = {
+  getTickets: async (params?: any) => {
+    const response = await api.get('/api/v1/tickets', { params });
+    return response.data;
+  },
+  createTicket: async (data: any) => {
+    const response = await api.post('/api/v1/tickets', data);
+    return response.data;
+  },
+  updateTicket: async (id: number, data: any) => {
+    const response = await api.put(`/api/v1/tickets/${id}`, data);
+    return response.data;
+  },
+  addMessage: async (ticketId: number, message: string) => {
+    const response = await api.post(`/api/v1/tickets/${ticketId}/messages`, { message });
+    return response.data;
+  },
+  getTicketMessages: async (ticketId: number) => {
+    const response = await api.get(`/api/v1/tickets/${ticketId}/messages`);
+    return response.data;
+  },
+};
+
+export const knowledgeBaseService = {
+  getArticles: async () => {
+    const response = await api.get('/api/v1/knowledge-base');
+    return response.data;
+  },
+  createArticle: async (data: any) => {
+    const response = await api.post('/api/v1/knowledge-base', data);
+    return response.data;
+  },
+  updateArticle: async (id: string, data: any) => {
+    const response = await api.put(`/api/v1/knowledge-base/${id}`, data);
+    return response.data;
+  },
+};
+
+export const approvalService = {
+  getWorkflows: async () => {
+    const response = await api.get('/api/v1/workflows');
+    return response.data;
+  },
+  createWorkflow: async (data: any) => {
+    const response = await api.post('/api/v1/workflows', data);
+    return response.data;
+  },
+  getRequests: async (params?: any) => {
+    const response = await api.get('/api/v1/approval-requests', { params });
+    return response.data;
+  },
+  approveRequest: async (id: string) => {
+    const response = await api.post(`/api/v1/approval-requests/${id}/approve`);
+    return response.data;
+  },
+  rejectRequest: async (id: string, reason: string) => {
+    const response = await api.post(`/api/v1/approval-requests/${id}/reject`, { reason });
+    return response.data;
+  },
+};
+
+export const analyticsService = {
+  getComplianceDashboard: async () => {
+    const response = await api.get('/api/v1/dashboard/compliance');
+    return response.data;
+  },
+  getFinanceDashboard: async () => {
+    const response = await api.get('/api/v1/dashboard/finance');
+    return response.data;
+  },
+  getSecurityDashboard: async () => {
+    const response = await api.get('/api/v1/dashboard/security');
+    return response.data;
+  },
+};
+
+export const notificationService = {
+  getNotifications: async (params?: any) => {
+    const response = await api.get('/api/v1/notifications', { params });
+    return response.data;
+  },
+  markAsRead: async (id: string) => {
+    const response = await api.put(`/api/v1/notifications/${id}/read`);
+    return response.data;
+  },
+  send: async (data: any) => {
+    const response = await api.post('/api/v1/notifications', data);
+    return response.data;
+  },
+  broadcast: async (data: any) => {
+    const response = await api.post('/api/v1/notifications/broadcast', data);
+    return response.data;
+  },
+};
+
+export const apiKeyService = {
+  getKeys: async () => {
+    const response = await api.get('/api/v1/api-keys');
+    return response.data;
+  },
+  createKey: async (data: any) => {
+    const response = await api.post('/api/v1/api-keys', data);
+    return response.data;
+  },
+  revokeKey: async (id: string) => {
+    const response = await api.post(`/api/v1/api-keys/${id}/revoke`);
+    return response.data;
+  },
+};
+
+export const webhookService = {
+  getWebhooks: async () => {
+    const response = await api.get('/api/v1/webhooks');
+    return response.data;
+  },
+  createWebhook: async (data: any) => {
+    const response = await api.post('/api/v1/webhooks', data);
+    return response.data;
+  },
+  updateWebhook: async (id: string, data: any) => {
+    const response = await api.put(`/api/v1/webhooks/${id}`, data);
+    return response.data;
+  },
+  deleteWebhook: async (id: string) => {
+    const response = await api.delete(`/api/v1/webhooks/${id}`);
+    return response.data;
+  },
+};
+
+export const auditService = {
+  getLogs: async (params?: any) => {
+    const response = await api.get('/api/v1/audit-logs', { params });
+    return response.data;
+  },
+};
+
+export const adminService = {
+  getAdmins: async () => {
+    const response = await api.get('/api/v1/admins');
+    return response.data;
+  },
+  createAdmin: async (data: any) => {
+    const response = await api.post('/api/v1/admins', data);
+    return response.data;
+  },
+  updateAdmin: async (id: string, data: any) => {
+    const response = await api.put(`/api/v1/admins/${id}`, data);
+    return response.data;
+  },
+  deleteAdmin: async (id: string) => {
+    const response = await api.delete(`/api/v1/admins/${id}`);
+    return response.data;
+  },
+};
+
 export default api;
