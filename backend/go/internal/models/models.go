@@ -229,3 +229,196 @@ type SuccessResponse struct {
 	Success bool        `json:"success"`
 	Data    interface{} `json:"data,omitempty"`
 }
+
+// Lending Models
+type LendingPool struct {
+	Token        string    `json:"token"`
+	Name         string    `json:"name"`
+	Symbol       string    `json:"symbol"`
+	TotalSupplied float64 `json:"totalSupplied"`
+	TotalBorrowed float64 `json:"totalBorrowed"`
+	SupplyAPY   float64   `json:"supplyAPY"`
+	BorrowAPY   float64   `json:"borrowAPY"`
+	Liquidity    float64   `json:"liquidity"`
+	UpdatedAt    time.Time `json:"updatedAt"`
+}
+
+type LendingPosition struct {
+	ID          uuid.UUID `json:"id"`
+	UserID      uuid.UUID `json:"userId"`
+	Token       string    `json:"token"`
+	Supplied    float64   `json:"supplied"`
+	Borrowed    float64   `json:"borrowed"`
+	APY         float64   `json:"apy"`
+	Accumulated float64   `json:"accumulated"`
+	Status      string    `json:"status"`
+	SuppliedAt  time.Time `json:"suppliedAt"`
+}
+
+// Bridge Models
+type BridgeTransaction struct {
+	ID              uuid.UUID  `json:"id"`
+	UserID          uuid.UUID  `json:"userId"`
+	FromChain      string     `json:"fromChain"`
+	ToChain        string     `json:"toChain"`
+	Token          string     `json:"token"`
+	Amount         float64    `json:"amount"`
+	Fee            float64    `json:"fee"`
+	ReceivedAmount float64    `json:"receivedAmount"`
+	Status         string     `json:"status"`
+	SourceTxHash   string     `json:"sourceTxHash,omitempty"`
+	DestinationTxHash string   `json:"destTxHash,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      *time.Time `json:"updatedAt,omitempty"`
+}
+
+type BridgeToken struct {
+	Token     string  `json:"token"`
+	Chain     string  `json:"chain"`
+	MinAmount float64 `json:"minAmount"`
+	MaxAmount float64 `json:"maxAmount"`
+	IsActive  bool    `json:"isActive"`
+}
+
+// Gift Card Models
+type GiftCard struct {
+	ID          uuid.UUID  `json:"id"`
+	Code        string    `json:"code"`
+	Token       string    `json:"token"`
+	Amount      float64   `json:"amount"`
+	TemplateID  string    `json:"templateId,omitempty"`
+	Status      string    `json:"status"`
+	CreatedBy   uuid.UUID `json:"createdBy,omitempty"`
+	ExpiresAt   *time.Time `json:"expiresAt,omitempty"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	RedeemedBy  *uuid.UUID `json:"redeemedBy,omitempty"`
+	RedeemedAt  *time.Time `json:"redeemedAt,omitempty"`
+}
+
+type GiftCardTemplate struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	ImageURL  string `json:"imageUrl"`
+	IsActive  bool   `json:"isActive"`
+}
+
+// Hardware Wallet Models
+type HardwareWallet struct {
+	ID              uuid.UUID `json:"id"`
+	UserID          uuid.UUID `json:"userId"`
+	DeviceType      string    `json:"deviceType"`
+	SerialNumber    string    `json:"serialNumber"`
+	FirmwareVersion string    `json:"firmwareVersion"`
+	Status          string    `json:"status"`
+	RegisteredAt    time.Time `json:"registeredAt"`
+	LastUsedAt      time.Time `json:"lastUsedAt"`
+}
+
+// MPC Wallet Models
+type MPCWalletShare struct {
+	ID             uuid.UUID `json:"id"`
+	UserID         uuid.UUID `json:"userId"`
+	DeviceID       string    `json:"deviceId"`
+	PublicKey      string    `json:"publicKey"`
+	EncryptedShare string    `json:"-"`
+	Status         string    `json:"status"`
+	CreatedAt      time.Time `json:"createdAt"`
+	LastUsedAt     time.Time `json:"lastUsedAt"`
+}
+
+// Social Recovery Models
+type RecoverySetup struct {
+	ID            uuid.UUID `json:"id"`
+	UserID        uuid.UUID `json:"userId"`
+	RecoveryKey   string    `json:"-"`
+	Threshold     int       `json:"threshold"`
+	Status        string    `json:"status"`
+	GuardianCount int       `json:"guardianCount"`
+	CreatedAt     time.Time `json:"createdAt"`
+}
+
+type Guardian struct {
+	ID           uuid.UUID `json:"id,omitempty"`
+	Address      string    `json:"address"`
+	Name         string    `json:"name"`
+	Relationship string    `json:"relationship"`
+	Status       string    `json:"status"`
+	AddedAt      *time.Time `json:"addedAt,omitempty"`
+}
+
+type RecoveryRequest struct {
+	ID          uuid.UUID  `json:"id"`
+	UserID      uuid.UUID  `json:"userId"`
+	GuardianID  uuid.UUID  `json:"guardianId"`
+	Status      string     `json:"status"`
+	InitiatedAt time.Time  `json:"initiatedAt"`
+	CompletedAt *time.Time `json:"completedAt,omitempty"`
+}
+
+// Account Abstraction Models
+type SmartAccount struct {
+	ID             uuid.UUID `json:"id"`
+	UserID         uuid.UUID `json:"userId"`
+	AccountAddress string    `json:"accountAddress"`
+	OwnerAddress   string    `json:"ownerAddress"`
+	Nonce          int       `json:"nonce"`
+	Threshold      int       `json:"threshold"`
+	Status         string    `json:"status"`
+	Deployed       bool      `json:"deployed"`
+	CreatedAt      time.Time `json:"createdAt"`
+}
+
+type AccountSigner struct {
+	ID            uuid.UUID `json:"id"`
+	SignerAddress string    `json:"signerAddress"`
+	Weight        int       `json:"weight"`
+	Status        string    `json:"status"`
+}
+
+type UserOperation struct {
+	ID                    uuid.UUID `json:"id"`
+	UserOpHash            string    `json:"userOpHash"`
+	Sender               string    `json:"sender"`
+	Nonce                int       `json:"nonce"`
+	InitCode             string    `json:"initCode,omitempty"`
+	CallData             string    `json:"callData"`
+	CallGasLimit         int       `json:"callGasLimit"`
+	VerificationGasLimit int       `json:"verificationGasLimit"`
+	PreVerificationGas   int       `json:"preVerificationGas"`
+	MaxFeePerGas        string    `json:"maxFeePerGas"`
+	MaxPriorityFeePerGas string    `json:"maxPriorityFeePerGas"`
+	Signature            string    `json:"signature"`
+	Status               string    `json:"status"`
+	CreatedAt            time.Time `json:"createdAt"`
+	ConfirmedAt          *time.Time `json:"confirmedAt,omitempty"`
+}
+
+// DApp Models
+type DApp struct {
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	URL         string    `json:"url"`
+	Description string    `json:"description"`
+	LogoURL     string    `json:"logoUrl"`
+	Category    string    `json:"category"`
+	Rating      float64   `json:"rating"`
+	Users       int       `json:"users"`
+	Volume24h   float64   `json:"volume24h"`
+	IsVerified  bool      `json:"isVerified"`
+	Chains      []string  `json:"chains"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"createdAt"`
+}
+
+type DAppFavorite struct {
+	UserID   uuid.UUID `json:"userId"`
+	DAppID   uuid.UUID `json:"dappId"`
+	AddedAt  time.Time `json:"addedAt"`
+}
+
+type DAppHistory struct {
+	UserID   uuid.UUID `json:"userId"`
+	DAppID   uuid.UUID `json:"dappId"`
+	URL      string    `json:"url"`
+	VisitedAt time.Time `json:"visitedAt"`
+}

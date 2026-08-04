@@ -270,6 +270,234 @@ func Migrate(db *sql.DB) error {
 			created_at TIMESTAMP DEFAULT NOW()
 		)`,
 
+		// Lending Tables
+		`CREATE TABLE IF NOT EXISTS lending_pools (
+			token VARCHAR(20) PRIMARY KEY,
+			name VARCHAR(100) NOT NULL,
+			symbol VARCHAR(20) NOT NULL,
+			total_supplied DECIMAL(50, 18) DEFAULT 0,
+			total_borrowed DECIMAL(50, 18) DEFAULT 0,
+			supply_apy DECIMAL(10, 4) DEFAULT 0.05,
+			borrow_apy DECIMAL(10, 4) DEFAULT 0.08,
+			liquidity DECIMAL(50, 18) DEFAULT 0,
+			updated_at TIMESTAMP DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS lending_positions (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+			token VARCHAR(20) NOT NULL,
+			supplied DECIMAL(50, 18) DEFAULT 0,
+			borrowed DECIMAL(50, 18) DEFAULT 0,
+			apy DECIMAL(10, 4) DEFAULT 0,
+			accumulated DECIMAL(50, 18) DEFAULT 0,
+			status VARCHAR(20) DEFAULT 'ACTIVE',
+			supplied_at TIMESTAMP DEFAULT NOW()
+		)`,
+
+		// Bridge Tables
+		`CREATE TABLE IF NOT EXISTS bridge_transactions (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+			from_chain VARCHAR(20) NOT NULL,
+			to_chain VARCHAR(20) NOT NULL,
+			token VARCHAR(20) NOT NULL,
+			amount DECIMAL(50, 18) NOT NULL,
+			fee DECIMAL(50, 18) DEFAULT 0,
+			received_amount DECIMAL(50, 18) NOT NULL,
+			status VARCHAR(20) DEFAULT 'PENDING',
+			source_tx_hash VARCHAR(66),
+			destination_tx_hash VARCHAR(66),
+			created_at TIMESTAMP DEFAULT NOW(),
+			updated_at TIMESTAMP DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS bridge_tokens (
+			token VARCHAR(20) NOT NULL,
+			chain VARCHAR(20) NOT NULL,
+			min_amount DECIMAL(50, 18) DEFAULT 0,
+			max_amount DECIMAL(50, 18),
+			is_active BOOLEAN DEFAULT TRUE,
+			PRIMARY KEY(token, chain)
+		)`,
+
+		// Gift Card Tables
+		`CREATE TABLE IF NOT EXISTS gift_cards (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			code VARCHAR(50) UNIQUE NOT NULL,
+			token VARCHAR(20) NOT NULL,
+			amount DECIMAL(50, 18) NOT NULL,
+			template_id VARCHAR(50),
+			status VARCHAR(20) DEFAULT 'ACTIVE',
+			created_by UUID REFERENCES users(id),
+			expires_at TIMESTAMP,
+			created_at TIMESTAMP DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS gift_card_templates (
+			id VARCHAR(50) PRIMARY KEY,
+			name VARCHAR(100) NOT NULL,
+			image_url TEXT,
+			is_active BOOLEAN DEFAULT TRUE
+		)`,
+
+		// Hardware Wallet Tables
+		`CREATE TABLE IF NOT EXISTS hardware_wallets (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+			device_type VARCHAR(50) NOT NULL,
+			serial_number VARCHAR(100) NOT NULL,
+			firmware_version VARCHAR(50),
+			status VARCHAR(20) DEFAULT 'ACTIVE',
+			registered_at TIMESTAMP DEFAULT NOW(),
+			last_used_at TIMESTAMP DEFAULT NOW()
+		)`,
+
+		// MPC Wallet Tables
+		`CREATE TABLE IF NOT EXISTS mpc_wallets (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+			wallet_address VARCHAR(42) NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS mpc_wallet_shares (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+			device_id VARCHAR(100) NOT NULL,
+			public_key VARCHAR(130) NOT NULL,
+			encrypted_share TEXT NOT NULL,
+			status VARCHAR(20) DEFAULT 'ACTIVE',
+			created_at TIMESTAMP DEFAULT NOW(),
+			last_used_at TIMESTAMP DEFAULT NOW()
+		)`,
+
+		// Social Recovery Tables
+		`CREATE TABLE IF NOT EXISTS recovery_setups (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+			recovery_key VARCHAR(255) NOT NULL,
+			threshold INTEGER NOT NULL,
+			status VARCHAR(20) DEFAULT 'ACTIVE',
+			guardian_count INTEGER DEFAULT 0,
+			created_at TIMESTAMP DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS guardians (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+			address VARCHAR(42) NOT NULL,
+			name VARCHAR(100) NOT NULL,
+			relationship VARCHAR(50),
+			status VARCHAR(20) DEFAULT 'PENDING',
+			added_at TIMESTAMP DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS recovery_requests (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+			guardian_id UUID REFERENCES guardians(id),
+			status VARCHAR(20) DEFAULT 'PENDING',
+			initiated_at TIMESTAMP DEFAULT NOW(),
+			completed_at TIMESTAMP
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS recovery_confirmations (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			request_id UUID REFERENCES recovery_requests(id),
+			guardian_id UUID REFERENCES guardians(id),
+			confirmed_at TIMESTAMP DEFAULT NOW()
+		)`,
+
+		// Account Abstraction Tables
+		`CREATE TABLE IF NOT EXISTS smart_accounts (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+			account_address VARCHAR(42) UNIQUE NOT NULL,
+			owner_address VARCHAR(42) NOT NULL,
+			nonce INTEGER DEFAULT 0,
+			threshold INTEGER DEFAULT 1,
+			status VARCHAR(20) DEFAULT 'ACTIVE',
+			deployed BOOLEAN DEFAULT FALSE,
+			created_at TIMESTAMP DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS account_signers (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+			account_address VARCHAR(42) NOT NULL,
+			signer_address VARCHAR(42) NOT NULL,
+			weight INTEGER DEFAULT 1,
+			status VARCHAR(20) DEFAULT 'ACTIVE',
+			added_at TIMESTAMP DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS session_keys (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+			account_address VARCHAR(42) NOT NULL,
+			session_key VARCHAR(130) NOT NULL,
+			permissions JSONB,
+			expires_at TIMESTAMP NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS user_operations (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_op_hash VARCHAR(66) UNIQUE NOT NULL,
+			sender VARCHAR(42) NOT NULL,
+			nonce INTEGER NOT NULL,
+			init_code TEXT,
+			call_data TEXT,
+			call_gas_limit INTEGER,
+			verification_gas_limit INTEGER,
+			pre_verification_gas INTEGER,
+			max_fee_per_gas VARCHAR(50),
+			max_priority_fee_per_gas VARCHAR(50),
+			signature TEXT,
+			status VARCHAR(20) DEFAULT 'PENDING',
+			created_at TIMESTAMP DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS paymaster_sponsors (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+			account_address VARCHAR(42) NOT NULL,
+			paymaster_address VARCHAR(42) NOT NULL,
+			enabled_at TIMESTAMP DEFAULT NOW()
+		)`,
+
+		// DApp Browser Tables
+		`CREATE TABLE IF NOT EXISTS dapps (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name VARCHAR(100) NOT NULL,
+			url TEXT NOT NULL,
+			description TEXT,
+			logo_url TEXT,
+			category VARCHAR(50),
+			rating DECIMAL(3, 2) DEFAULT 0,
+			users INTEGER DEFAULT 0,
+			volume_24h DECIMAL(50, 2) DEFAULT 0,
+			is_verified BOOLEAN DEFAULT FALSE,
+			chains TEXT[],
+			status VARCHAR(20) DEFAULT 'PENDING',
+			created_at TIMESTAMP DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS dapp_favorites (
+			user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+			dapp_id UUID REFERENCES dapps(id) ON DELETE CASCADE,
+			added_at TIMESTAMP DEFAULT NOW(),
+			PRIMARY KEY(user_id, dapp_id)
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS dapp_history (
+			user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+			dapp_id UUID REFERENCES dapps(id) ON DELETE CASCADE,
+			url TEXT NOT NULL,
+			visited_at TIMESTAMP DEFAULT NOW()
+		)`,
+
 		// Indexes
 		`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
 		`CREATE INDEX IF NOT EXISTS idx_users_wallet ON users(wallet_address)`,
@@ -282,6 +510,14 @@ func Migrate(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_crypto_cards_user ON crypto_cards(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_lending_positions_user ON lending_positions(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_bridge_transactions_user ON bridge_transactions(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_gift_cards_code ON gift_cards(code)`,
+		`CREATE INDEX IF NOT EXISTS idx_hardware_wallets_user ON hardware_wallets(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_mpc_shares_user ON mpc_wallet_shares(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_recovery_guardians_user ON guardians(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_smart_accounts_user ON smart_accounts(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_user_ops_sender ON user_operations(sender)`,
 	}
 
 	for _, migration := range migrations {
