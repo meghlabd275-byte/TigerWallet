@@ -1,12 +1,12 @@
 /**
- * TigerWallet Admin Safari Extension - Background Service Worker
+ * TigerWallet Admin Firefox Extension - Background Script
  * Handles background tasks, notifications, and API communication
  */
 
 // Configuration
 const API_BASE_URL = localStorage.getItem('api_base_url') || 'http://localhost:9093/api/v1';
 const WS_URL = localStorage.getItem('ws_url') || 'ws://localhost:9093/ws';
-const CHECK_INTERVAL = 60000;
+const CHECK_INTERVAL = 60000; // 1 minute
 
 // State
 let websocket = null;
@@ -14,30 +14,21 @@ let reconnectTimer = null;
 let checkTimer = null;
 
 // Initialize
-self.addEventListener('install', (event) => {
+browser.runtime.onInstalled.addListener(() => {
     console.log('TigerWallet Admin Extension installed');
     initializeStorage();
     startPeriodicCheck();
     connectWebSocket();
-    self.skipWaiting();
-});
-
-self.addEventListener('activate', (event) => {
-    console.log('TigerWallet Admin Extension activated');
-    event.waitUntil(clients.claim());
 });
 
 // Message handling
-self.addEventListener('message', (event) => {
-    handleMessage(event.data).then(response => {
-        if (response !== undefined) {
-            event.source.postMessage(response);
-        }
-    });
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    handleMessage(message, sender).then(sendResponse);
+    return true;
 });
 
 // Handle messages from popup and content scripts
-async function handleMessage(message) {
+async function handleMessage(message, sender) {
     switch (message.type) {
         case 'GET_AUTH_TOKEN':
             return localStorage.getItem('admin_token');
@@ -105,6 +96,7 @@ async function apiRequest(endpoint, options = {}) {
 
 // Storage Initialization
 function initializeStorage() {
+    // Set defaults if not already set
     if (!localStorage.getItem('admin_theme')) {
         localStorage.setItem('admin_theme', 'dark');
     }
@@ -205,32 +197,31 @@ function handleWebSocketMessage(data) {
 }
 
 // Broadcast to popup
-async function broadcastToPopup(message) {
-    const clients = await self.clients.matchAll({ type: 'popup' });
-    clients.forEach(client => {
-        client.postMessage(message);
+function broadcastToPopup(message) {
+    browser.runtime.sendMessage(message).catch(() => {
+        // Popup might not be open, that's ok
     });
 }
 
 // Broadcast theme to all tabs
-async function broadcastThemeToAllTabs(theme) {
-    const allClients = await self.clients.matchAll({ type: 'all' });
-    allClients.forEach(client => {
-        client.postMessage({
-            type: 'THEME_CHANGED',
-            theme: theme
+function broadcastThemeToAllTabs(theme) {
+    browser.tabs.query({}).then(tabs => {
+        tabs.forEach(tab => {
+            browser.tabs.sendMessage(tab.id, {
+                type: 'THEME_CHANGED',
+                theme: theme
+            }).catch(() => {});
         });
     });
 }
 
 // Show notification
 function showNotification(title, message, type = 'info') {
-    self.registration.showNotification(title, {
-        body: message,
-        icon: 'icons/icon48.png',
-        badge: 'icons/icon48.png',
-        tag: 'tigerwallet-admin',
-        renotify: true,
+    browser.notifications.create({
+        type: 'basic',
+        iconUrl: browser.runtime.getURL('icons/icon48.png'),
+        title: title,
+        message: message,
         priority: type === 'warning' ? 2 : 1
     });
 }
@@ -238,22 +229,22 @@ function showNotification(title, message, type = 'info') {
 // Open pages
 function openUserDetailPage(userId) {
     const url = `${getBaseAdminURL()}/users/${userId}`;
-    self.clients.openWindow(url);
+    browser.tabs.create({ url });
 }
 
 function openUserEditPage(userId) {
     const url = `${getBaseAdminURL()}/users/${userId}/edit`;
-    self.clients.openWindow(url);
+    browser.tabs.create({ url });
 }
 
 function openKYCDetailPage(kycId) {
     const url = `${getBaseAdminURL()}/kyc/${kycId}`;
-    self.clients.openWindow(url);
+    browser.tabs.create({ url });
 }
 
 function openAddTokenPage() {
     const url = `${getBaseAdminURL()}/tokens/add`;
-    self.clients.openWindow(url);
+    browser.tabs.create({ url });
 }
 
 function getBaseAdminURL() {
@@ -270,6 +261,7 @@ function startPeriodicCheck() {
         await performHealthCheck();
     }, CHECK_INTERVAL);
     
+    // Initial check
     performHealthCheck();
 }
 
@@ -286,20 +278,19 @@ async function performHealthCheck() {
         
         if (!response.ok) {
             if (response.status === 401) {
+                // Token expired
                 handleTokenExpired();
             }
         }
         
         const data = await response.json();
         
-        // Update badge using the Safari-specific approach
+        // Update badge
         if (data.pendingKYC > 0) {
-            // For Safari, we'd use the badge API
-            try {
-                await self.registration.set(data.pendingKYC.toString());
-            } catch (e) {
-                console.log('Badge not supported');
-            }
+            browser.action.setBadgeText({ text: String(data.pendingKYC) });
+            browser.action.setBadgeBackgroundColor({ color: '#f59e0b' });
+        } else {
+            browser.action.setBadgeText({ text: '' });
         }
         
     } catch (error) {
@@ -314,34 +305,37 @@ function handleTokenExpired() {
     showNotification('Session Expired', 'Please log in again', 'warning');
 }
 
-// Push notifications (for future Safari push notification support)
-self.addEventListener('push', (event) => {
-    const data = event.data?.json() || {};
-    
-    const options = {
-        body: data.body || 'New notification',
-        icon: 'icons/icon48.png',
-        badge: 'icons/icon48.png',
-        tag: data.tag || 'tigerwallet-admin',
-        data: data.data || {}
-    };
-    
-    event.waitUntil(
-        self.registration.showNotification(data.title || 'TigerWallet Admin', options)
-    );
+// Context menu
+browser.contextMenus?.create({
+    id: 'admin-tools',
+    title: 'Admin Tools',
+    contexts: ['page', 'selection']
 });
 
-// Notification click handler
-self.addEventListener('notificationclick', (event) => {
-    event.notification.close();
-    
-    const data = event.notification.data || {};
-    
-    if (data.url) {
-        event.waitUntil(
-            self.clients.openWindow(data.url)
-        );
+browser.contextMenus?.create({
+    id: 'view-on-admin',
+    parentId: 'admin-tools',
+    title: 'View on Admin Panel',
+    contexts: ['page']
+});
+
+browser.contextMenus?.onClicked.addListener((info, tab) => {
+    if (info.menuItemId === 'view-on-admin') {
+        const url = new URL(tab.url);
+        const baseUrl = getBaseAdminURL();
+        
+        if (url.pathname.includes('/user/')) {
+            const userId = url.pathname.split('/user/')[1];
+            openUserDetailPage(userId);
+        }
     }
 });
 
-console.log('TigerWallet Admin Background Service Worker loaded');
+// Storage change listener
+browser.storage.onChanged.addListener((changes, areaName) => {
+    if (changes.admin_theme) {
+        broadcastThemeToAllTabs(changes.admin_theme.newValue);
+    }
+});
+
+console.log('TigerWallet Admin Background Script loaded');

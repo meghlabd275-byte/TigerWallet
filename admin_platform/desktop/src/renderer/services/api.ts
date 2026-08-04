@@ -1,267 +1,348 @@
-const API_BASE_URL = 'https://admin-api.tigerwallet.com';
+import axios from 'axios';
 
-class ApiService {
-  private token: string | null = localStorage.getItem('admin_token');
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://admin-api.tigerwallet.com';
 
-  private getHeaders(): HeadersInit {
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('admin_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('admin_token');
+      window.location.href = '/login';
     }
-    return headers;
+    return Promise.reject(error);
   }
+);
 
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit = {}
-  ): Promise<T> {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      ...options,
-      headers: {
-        ...this.getHeaders(),
-        ...options.headers,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`API Error: ${response.status}`);
-    }
-
-    return response.json();
-  }
-
-  // Auth
-  async login(email: string, password: string) {
-    const data = await this.request<any>('/api/v1/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
-    if (data.data?.token) {
-      this.token = data.data.token;
-      localStorage.setItem('admin_token', data.data.token);
-    }
-    return data;
-  }
-
-  async logout() {
-    await this.request('/api/v1/auth/logout', { method: 'POST' });
-    this.token = null;
-    localStorage.removeItem('admin_token');
-  }
-
-  // Users
-  async getUsers(params: any = {}) {
-    const query = new URLSearchParams(params).toString();
-    return this.request(`/api/v1/users?${query}`);
-  }
-
-  async getUser(id: string) {
-    return this.request(`/api/v1/users/${id}`);
-  }
-
-  async updateUser(id: string, data: any) {
-    return this.request(`/api/v1/users/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async suspendUser(id: string, reason: string) {
-    return this.request(`/api/v1/users/${id}/suspend`, {
-      method: 'POST',
-      body: JSON.stringify({ reason }),
-    });
-  }
-
-  async banUser(id: string, reason: string) {
-    return this.request(`/api/v1/users/${id}/ban`, {
-      method: 'POST',
-      body: JSON.stringify({ reason }),
-    });
-  }
-
-  // KYC
-  async getKYC(params: any = {}) {
-    const query = new URLSearchParams(params).toString();
-    return this.request(`/api/v1/kyc?${query}`);
-  }
-
-  async approveKYC(id: string, notes?: string) {
-    return this.request(`/api/v1/kyc/${id}/approve`, {
-      method: 'POST',
-      body: JSON.stringify({ notes }),
-    });
-  }
-
-  async rejectKYC(id: string, reason: string) {
-    return this.request(`/api/v1/kyc/${id}/reject`, {
-      method: 'POST',
-      body: JSON.stringify({ reason }),
-    });
-  }
-
-  // Tokens
-  async getTokens(params: any = {}) {
-    const query = new URLSearchParams(params).toString();
-    return this.request(`/api/v1/tokens?${query}`);
-  }
-
-  async createToken(data: any) {
-    return this.request('/api/v1/tokens', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async verifyToken(id: string) {
-    return this.request(`/api/v1/tokens/${id}/verify`, {
-      method: 'POST',
-    });
-  }
-
-  async deleteToken(id: string) {
-    return this.request(`/api/v1/tokens/${id}`, {
-      method: 'DELETE',
-    });
-  }
-
-  // Pairs
-  async getPairs(params: any = {}) {
-    const query = new URLSearchParams(params).toString();
-    return this.request(`/api/v1/pairs?${query}`);
-  }
-
-  async updatePair(id: string, data: any) {
-    return this.request(`/api/v1/pairs/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  // Transactions
-  async getTransactions(params: any = {}) {
-    const query = new URLSearchParams(params).toString();
-    return this.request(`/api/v1/transactions?${query}`);
-  }
-
-  // Withdrawals
-  async getWithdrawals(params: any = {}) {
-    const query = new URLSearchParams(params).toString();
-    return this.request(`/api/v1/withdrawals?${query}`);
-  }
-
-  async approveWithdrawal(id: string) {
-    return this.request(`/api/v1/withdrawals/${id}/approve`, {
-      method: 'POST',
-    });
-  }
-
-  async rejectWithdrawal(id: string, reason: string) {
-    return this.request(`/api/v1/withdrawals/${id}/reject`, {
-      method: 'POST',
-      body: JSON.stringify({ reason }),
-    });
-  }
-
-  // Chains
-  async getChains() {
-    return this.request('/api/v1/chains');
-  }
-
-  async updateChain(id: string, data: any) {
-    return this.request(`/api/v1/chains/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  // Fees
-  async getFees() {
-    return this.request('/api/v1/fees');
-  }
-
-  async updateFee(id: string, data: any) {
-    return this.request(`/api/v1/fees/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  // White Labels
-  async getWhiteLabels(params: any = {}) {
-    const query = new URLSearchParams(params).toString();
-    return this.request(`/api/v1/white-labels?${query}`);
-  }
-
-  async approveWhiteLabel(id: string) {
-    return this.request(`/api/v1/white-labels/${id}/approve`, {
-      method: 'POST',
-    });
-  }
-
-  async suspendWhiteLabel(id: string, reason: string) {
-    return this.request(`/api/v1/white-labels/${id}/suspend`, {
-      method: 'POST',
-      body: JSON.stringify({ reason }),
-    });
-  }
-
-  // Dashboard
-  async getDashboard() {
-    return this.request('/api/v1/dashboard');
-  }
-}
-
-export const apiService = new ApiService();
 export const authService = {
-  login: (email: string, password: string) => apiService.login(email, password),
-  logout: () => apiService.logout(),
+  login: async (email: string, password: string) => {
+    const response = await api.post('/api/v1/auth/login', { email, password });
+    localStorage.setItem('admin_token', response.data.token);
+    return response.data;
+  },
+  logout: async () => {
+    await api.post('/api/v1/auth/logout');
+    localStorage.removeItem('admin_token');
+  },
+  getCurrentAdmin: async () => {
+    const response = await api.get('/api/v1/auth/me');
+    return response.data;
+  },
 };
+
 export const userService = {
-  getUsers: (params: any) => apiService.getUsers(params),
-  getUser: (id: string) => apiService.getUser(id),
-  updateUser: (id: string, data: any) => apiService.updateUser(id, data),
-  suspendUser: (id: string, reason: string) => apiService.suspendUser(id, reason),
-  banUser: (id: string, reason: string) => apiService.banUser(id, reason),
+  getUsers: async (params?: { page?: number; limit?: number; status?: string; search?: string }) => {
+    const response = await api.get('/api/v1/users', { params });
+    return response.data;
+  },
+  getUser: async (id: string) => {
+    const response = await api.get(`/api/v1/users/${id}`);
+    return response.data;
+  },
+  updateUser: async (id: string, data: any) => {
+    const response = await api.put(`/api/v1/users/${id}`, data);
+    return response.data;
+  },
+  suspendUser: async (id: string, reason: string) => {
+    const response = await api.post(`/api/v1/users/${id}/suspend`, { reason });
+    return response.data;
+  },
+  banUser: async (id: string, reason: string) => {
+    const response = await api.post(`/api/v1/users/${id}/ban`, { reason });
+    return response.data;
+  },
 };
+
 export const kycService = {
-  getSubmissions: (params: any) => apiService.getKYC(params),
-  approveKYC: (id: string, notes?: string) => apiService.approveKYC(id, notes),
-  rejectKYC: (id: string, reason: string) => apiService.rejectKYC(id, reason),
+  getSubmissions: async (params?: { page?: number; limit?: number; status?: string }) => {
+    const response = await api.get('/api/v1/kyc', { params });
+    return response.data;
+  },
+  approveKYC: async (id: string, notes?: string) => {
+    const response = await api.post(`/api/v1/kyc/${id}/approve`, { notes });
+    return response.data;
+  },
+  rejectKYC: async (id: string, reason: string) => {
+    const response = await api.post(`/api/v1/kyc/${id}/reject`, { reason });
+    return response.data;
+  },
 };
+
 export const tokenService = {
-  getTokens: (params: any) => apiService.getTokens(params),
-  createToken: (data: any) => apiService.createToken(data),
-  verifyToken: (id: string) => apiService.verifyToken(id),
-  deleteToken: (id: string) => apiService.deleteToken(id),
+  getTokens: async (params?: { page?: number; limit?: number; status?: string }) => {
+    const response = await api.get('/api/v1/tokens', { params });
+    return response.data;
+  },
+  createToken: async (data: any) => {
+    const response = await api.post('/api/v1/tokens', data);
+    return response.data;
+  },
+  verifyToken: async (id: string) => {
+    const response = await api.post(`/api/v1/tokens/${id}/verify`);
+    return response.data;
+  },
+  deleteToken: async (id: string) => {
+    const response = await api.delete(`/api/v1/tokens/${id}`);
+    return response.data;
+  },
 };
+
 export const pairService = {
-  getPairs: (params: any) => apiService.getPairs(params),
-  updatePair: (id: string, data: any) => apiService.updatePair(id, data),
+  getPairs: async (params?: { page?: number; limit?: number; status?: string }) => {
+    const response = await api.get('/api/v1/pairs', { params });
+    return response.data;
+  },
+  createPair: async (data: any) => {
+    const response = await api.post('/api/v1/pairs', data);
+    return response.data;
+  },
+  updatePair: async (id: string, data: any) => {
+    const response = await api.put(`/api/v1/pairs/${id}`, data);
+    return response.data;
+  },
 };
+
 export const transactionService = {
-  getTransactions: (params: any) => apiService.getTransactions(params),
+  getTransactions: async (params?: { page?: number; limit?: number; status?: string }) => {
+    const response = await api.get('/api/v1/transactions', { params });
+    return response.data;
+  },
 };
+
 export const withdrawalService = {
-  getWithdrawals: (params: any) => apiService.getWithdrawals(params),
-  approveWithdrawal: (id: string) => apiService.approveWithdrawal(id),
-  rejectWithdrawal: (id: string, reason: string) => apiService.rejectWithdrawal(id, reason),
+  getWithdrawals: async (params?: { page?: number; limit?: number; status?: string }) => {
+    const response = await api.get('/api/v1/withdrawals', { params });
+    return response.data;
+  },
+  approveWithdrawal: async (id: string) => {
+    const response = await api.post(`/api/v1/withdrawals/${id}/approve`);
+    return response.data;
+  },
+  rejectWithdrawal: async (id: string, reason: string) => {
+    const response = await api.post(`/api/v1/withdrawals/${id}/reject`, { reason });
+    return response.data;
+  },
 };
+
 export const chainService = {
-  getChains: () => apiService.getChains(),
-  updateChain: (id: string, data: any) => apiService.updateChain(id, data),
+  getChains: async () => {
+    const response = await api.get('/api/v1/chains');
+    return response.data;
+  },
+  createChain: async (data: any) => {
+    const response = await api.post('/api/v1/chains', data);
+    return response.data;
+  },
 };
+
 export const feeService = {
-  getFees: () => apiService.getFees(),
-  updateFee: (id: string, data: any) => apiService.updateFee(id, data),
+  getFees: async () => {
+    const response = await api.get('/api/v1/fees');
+    return response.data;
+  },
+  createFee: async (data: any) => {
+    const response = await api.post('/api/v1/fees', data);
+    return response.data;
+  },
 };
+
 export const whiteLabelService = {
-  getWhiteLabels: (params: any) => apiService.getWhiteLabels(params),
-  approveWhiteLabel: (id: string) => apiService.approveWhiteLabel(id),
-  suspendWhiteLabel: (id: string, reason: string) => apiService.suspendWhiteLabel(id, reason),
+  getWhiteLabels: async (params?: { page?: number; limit?: number; status?: string }) => {
+    const response = await api.get('/api/v1/white-labels', { params });
+    return response.data;
+  },
+  createWhiteLabel: async (data: any) => {
+    const response = await api.post('/api/v1/white-labels', data);
+    return response.data;
+  },
+  approveWhiteLabel: async (id: string) => {
+    const response = await api.post(`/api/v1/white-labels/${id}/approve`);
+    return response.data;
+  },
+  suspendWhiteLabel: async (id: string, reason: string) => {
+    const response = await api.post(`/api/v1/white-labels/${id}/suspend`, { reason });
+    return response.data;
+  },
 };
+
 export const dashboardService = {
-  getDashboard: () => apiService.getDashboard(),
+  getStats: async () => {
+    const response = await api.get('/api/v1/dashboard');
+    return response.data;
+  },
+  getAnalytics: async (period: string = '24h') => {
+    const response = await api.get('/api/v1/dashboard/analytics', { params: { period } });
+    return response.data;
+  },
 };
+
+export const ticketService = {
+  getTickets: async (params?: any) => {
+    const response = await api.get('/api/v1/tickets', { params });
+    return response.data;
+  },
+  createTicket: async (data: any) => {
+    const response = await api.post('/api/v1/tickets', data);
+    return response.data;
+  },
+  updateTicket: async (id: number, data: any) => {
+    const response = await api.put(`/api/v1/tickets/${id}`, data);
+    return response.data;
+  },
+  addMessage: async (ticketId: number, message: string) => {
+    const response = await api.post(`/api/v1/tickets/${ticketId}/messages`, { message });
+    return response.data;
+  },
+  getTicketMessages: async (ticketId: number) => {
+    const response = await api.get(`/api/v1/tickets/${ticketId}/messages`);
+    return response.data;
+  },
+};
+
+export const knowledgeBaseService = {
+  getArticles: async () => {
+    const response = await api.get('/api/v1/knowledge-base');
+    return response.data;
+  },
+  createArticle: async (data: any) => {
+    const response = await api.post('/api/v1/knowledge-base', data);
+    return response.data;
+  },
+  updateArticle: async (id: string, data: any) => {
+    const response = await api.put(`/api/v1/knowledge-base/${id}`, data);
+    return response.data;
+  },
+};
+
+export const approvalService = {
+  getWorkflows: async () => {
+    const response = await api.get('/api/v1/workflows');
+    return response.data;
+  },
+  createWorkflow: async (data: any) => {
+    const response = await api.post('/api/v1/workflows', data);
+    return response.data;
+  },
+  getRequests: async (params?: any) => {
+    const response = await api.get('/api/v1/approval-requests', { params });
+    return response.data;
+  },
+  approveRequest: async (id: string) => {
+    const response = await api.post(`/api/v1/approval-requests/${id}/approve`);
+    return response.data;
+  },
+  rejectRequest: async (id: string, reason: string) => {
+    const response = await api.post(`/api/v1/approval-requests/${id}/reject`, { reason });
+    return response.data;
+  },
+};
+
+export const analyticsService = {
+  getComplianceDashboard: async () => {
+    const response = await api.get('/api/v1/dashboard/compliance');
+    return response.data;
+  },
+  getFinanceDashboard: async () => {
+    const response = await api.get('/api/v1/dashboard/finance');
+    return response.data;
+  },
+  getSecurityDashboard: async () => {
+    const response = await api.get('/api/v1/dashboard/security');
+    return response.data;
+  },
+};
+
+export const notificationService = {
+  getNotifications: async (params?: any) => {
+    const response = await api.get('/api/v1/notifications', { params });
+    return response.data;
+  },
+  markAsRead: async (id: string) => {
+    const response = await api.put(`/api/v1/notifications/${id}/read`);
+    return response.data;
+  },
+  send: async (data: any) => {
+    const response = await api.post('/api/v1/notifications', data);
+    return response.data;
+  },
+  broadcast: async (data: any) => {
+    const response = await api.post('/api/v1/notifications/broadcast', data);
+    return response.data;
+  },
+};
+
+export const apiKeyService = {
+  getKeys: async () => {
+    const response = await api.get('/api/v1/api-keys');
+    return response.data;
+  },
+  createKey: async (data: any) => {
+    const response = await api.post('/api/v1/api-keys', data);
+    return response.data;
+  },
+  revokeKey: async (id: string) => {
+    const response = await api.post(`/api/v1/api-keys/${id}/revoke`);
+    return response.data;
+  },
+};
+
+export const webhookService = {
+  getWebhooks: async () => {
+    const response = await api.get('/api/v1/webhooks');
+    return response.data;
+  },
+  createWebhook: async (data: any) => {
+    const response = await api.post('/api/v1/webhooks', data);
+    return response.data;
+  },
+  updateWebhook: async (id: string, data: any) => {
+    const response = await api.put(`/api/v1/webhooks/${id}`, data);
+    return response.data;
+  },
+  deleteWebhook: async (id: string) => {
+    const response = await api.delete(`/api/v1/webhooks/${id}`);
+    return response.data;
+  },
+};
+
+export const auditService = {
+  getLogs: async (params?: any) => {
+    const response = await api.get('/api/v1/audit-logs', { params });
+    return response.data;
+  },
+};
+
+export const adminService = {
+  getAdmins: async () => {
+    const response = await api.get('/api/v1/admins');
+    return response.data;
+  },
+  createAdmin: async (data: any) => {
+    const response = await api.post('/api/v1/admins', data);
+    return response.data;
+  },
+  updateAdmin: async (id: string, data: any) => {
+    const response = await api.put(`/api/v1/admins/${id}`, data);
+    return response.data;
+  },
+  deleteAdmin: async (id: string) => {
+    const response = await api.delete(`/api/v1/admins/${id}`);
+    return response.data;
+  },
+};
+
+export default api;

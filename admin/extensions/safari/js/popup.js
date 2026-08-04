@@ -1,9 +1,9 @@
 /**
- * TigerWallet Admin Safari Extension - Popup Script
+ * TigerWallet Admin Firefox Extension - Popup Script
  * Complete production-ready admin functionality
  */
 
-(async function() {
+(function() {
     'use strict';
 
     // Configuration
@@ -145,12 +145,17 @@
     function showLoginRequired() {
         elements.adminEmail.textContent = 'Login required';
         elements.adminRole.textContent = '-';
+        
+        // Show login modal or redirect
+        window.location.href = 'login.html';
     }
 
     // Event Listeners
     function setupEventListeners() {
+        // Theme toggle
         elements.themeToggle.addEventListener('click', toggleTheme);
 
+        // Navigation
         elements.navItems.forEach(item => {
             item.addEventListener('click', () => {
                 const section = item.dataset.section;
@@ -158,8 +163,10 @@
             });
         });
 
+        // Logout
         elements.logoutBtn.addEventListener('click', logout);
 
+        // Search inputs with debounce
         let searchTimeout;
         elements.userSearch.addEventListener('input', (e) => {
             clearTimeout(searchTimeout);
@@ -171,6 +178,7 @@
             searchTimeout = setTimeout(() => searchTransactions(e.target.value), 500);
         });
 
+        // Filters
         elements.userStatusFilter.addEventListener('change', loadUsers);
         elements.kycFilter.addEventListener('change', loadUsers);
         elements.txTypeFilter.addEventListener('change', loadTransactions);
@@ -178,33 +186,54 @@
         elements.withdrawalStatusFilter.addEventListener('change', loadWithdrawals);
         elements.withdrawalChainFilter.addEventListener('change', loadWithdrawals);
 
+        // Quick actions
         document.querySelectorAll('.action-btn').forEach(btn => {
             btn.addEventListener('click', handleAction);
         });
 
+        // Refresh buttons
         elements.refreshSystemBtn.addEventListener('click', loadSystemStatus);
         elements.refreshTokensBtn.addEventListener('click', loadTokens);
+
+        // Add token
         elements.addTokenBtn.addEventListener('click', showAddTokenModal);
     }
 
     // Navigation
     function navigateToSection(sectionId) {
+        // Update nav
         elements.navItems.forEach(item => {
             item.classList.toggle('active', item.dataset.section === sectionId);
         });
 
+        // Update content
         elements.contentSections.forEach(section => {
             section.classList.toggle('active', section.id === sectionId);
         });
 
+        // Load section data
         switch (sectionId) {
-            case 'dashboard': loadDashboard(); break;
-            case 'users': loadUsers(); break;
-            case 'transactions': loadTransactions(); break;
-            case 'kyc': loadKYC(); break;
-            case 'tokens': loadTokens(); break;
-            case 'withdrawals': loadWithdrawals(); break;
-            case 'system': loadSystemStatus(); break;
+            case 'dashboard':
+                loadDashboard();
+                break;
+            case 'users':
+                loadUsers();
+                break;
+            case 'transactions':
+                loadTransactions();
+                break;
+            case 'kyc':
+                loadKYC();
+                break;
+            case 'tokens':
+                loadTokens();
+                break;
+            case 'withdrawals':
+                loadWithdrawals();
+                break;
+            case 'system':
+                loadSystemStatus();
+                break;
         }
     }
 
@@ -220,7 +249,7 @@
         showLoginRequired();
     }
 
-    // WebSocket
+    // WebSocket Connection
     function connectWebSocket() {
         const token = localStorage.getItem('admin_token');
         if (!token) return;
@@ -261,12 +290,24 @@
 
     function handleWebSocketMessage(data) {
         switch (data.type) {
-            case 'DASHBOARD_UPDATE': updateDashboard(data.data); break;
-            case 'NEW_USER': addActivityItem('👤', `New user: ${data.data.email}`, data.data.time); break;
-            case 'NEW_TRANSACTION': addActivityItem('💰', `New transaction: ${data.data.type}`, data.data.time); break;
-            case 'KYC_SUBMITTED': addActivityItem('✅', `KYC submitted: ${data.data.email}`, data.data.time); break;
-            case 'SYSTEM_ALERT': addActivityItem('⚠️', data.data.message, data.data.time); break;
-            case 'SERVICE_STATUS': updateServiceStatus(data.data); break;
+            case 'DASHBOARD_UPDATE':
+                updateDashboard(data.data);
+                break;
+            case 'NEW_USER':
+                addActivityItem('👤', `New user registered: ${data.data.email}`, data.data.time);
+                break;
+            case 'NEW_TRANSACTION':
+                addActivityItem('💰', `New transaction: ${data.data.type}`, data.data.time);
+                break;
+            case 'KYC_SUBMITTED':
+                addActivityItem('✅', `KYC submitted: ${data.data.email}`, data.data.time);
+                break;
+            case 'SYSTEM_ALERT':
+                addActivityItem('⚠️', data.data.message, data.data.time);
+                break;
+            case 'SERVICE_STATUS':
+                updateServiceStatus(data.data);
+                break;
         }
     }
 
@@ -302,6 +343,7 @@
             updateDashboard(data);
         } catch (error) {
             console.error('Dashboard load error:', error);
+            // Use mock data for demo if API unavailable
             updateDashboard({
                 totalUsers: 12450,
                 totalVolume: '$45.2M',
@@ -322,6 +364,7 @@
         elements.pendingKYC.textContent = data.pendingKYC || '-';
         elements.systemHealth.textContent = data.systemHealth || '-';
 
+        // Update activity list
         if (data.recentActivity && data.recentActivity.length > 0) {
             elements.activityList.innerHTML = data.recentActivity.map(activity => `
                 <li class="activity-item">
@@ -334,7 +377,13 @@
     }
 
     function getActivityIcon(type) {
-        const icons = { 'user_verified': '👤', 'transaction': '💰', 'kyc': '✅', 'token': '🪙', 'suspicious': '⚠️' };
+        const icons = {
+            'user_verified': '👤',
+            'transaction': '💰',
+            'kyc': '✅',
+            'token': '🪙',
+            'suspicious': '⚠️'
+        };
         return icons[type] || '📌';
     }
 
@@ -349,6 +398,7 @@
         
         elements.activityList.insertBefore(activityItem, elements.activityList.firstChild);
         
+        // Keep only last 10 items
         while (elements.activityList.children.length > 10) {
             elements.activityList.removeChild(elements.activityList.lastChild);
         }
@@ -366,7 +416,10 @@
             if (kyc) url += `kyc=${kyc}&`;
 
             const response = await fetch(url, {
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
             });
 
             if (!response.ok) throw new Error('Failed to load users');
@@ -375,6 +428,7 @@
             renderUsers(data.users || []);
         } catch (error) {
             console.error('Load users error:', error);
+            // Demo data
             renderUsers(generateDemoUsers());
         }
     }
@@ -403,6 +457,7 @@
             </tr>
         `).join('');
 
+        // Add event listeners
         elements.usersTableBody.querySelectorAll('.table-btn').forEach(btn => {
             btn.addEventListener('click', handleUserAction);
         });
@@ -419,13 +474,19 @@
     }
 
     async function searchUsers(query) {
-        if (!query) { loadUsers(); return; }
-        
+        if (!query) {
+            loadUsers();
+            return;
+        }
+
         const token = localStorage.getItem('admin_token');
         
         try {
             const response = await fetch(`${API_BASE_URL}/admin/users/search?q=${encodeURIComponent(query)}`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
             });
 
             if (!response.ok) throw new Error('Search failed');
@@ -434,7 +495,10 @@
             renderUsers(data.users || []);
         } catch (error) {
             console.error('Search error:', error);
-            const demoUsers = generateDemoUsers().filter(u => u.email.toLowerCase().includes(query.toLowerCase()));
+            // Filter demo data
+            const demoUsers = generateDemoUsers().filter(u => 
+                u.email.toLowerCase().includes(query.toLowerCase())
+            );
             renderUsers(demoUsers);
         }
     }
@@ -443,11 +507,28 @@
         const action = event.target.dataset.action;
         const userId = event.target.dataset.userId;
         
-        if (action === 'view') {
-            browser.runtime.sendMessage({ type: 'OPEN_USER_DETAIL', userId });
-        } else if (action === 'edit') {
-            browser.runtime.sendMessage({ type: 'OPEN_USER_EDIT', userId });
+        switch (action) {
+            case 'view':
+                viewUser(userId);
+                break;
+            case 'edit':
+                editUser(userId);
+                break;
         }
+    }
+
+    function viewUser(userId) {
+        browser.runtime.sendMessage({
+            type: 'OPEN_USER_DETAIL',
+            userId: userId
+        });
+    }
+
+    function editUser(userId) {
+        browser.runtime.sendMessage({
+            type: 'OPEN_USER_EDIT',
+            userId: userId
+        });
     }
 
     // Transactions
@@ -462,7 +543,10 @@
             if (status) url += `status=${status}&`;
 
             const response = await fetch(url, {
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
             });
 
             if (!response.ok) throw new Error('Failed to load transactions');
@@ -512,13 +596,19 @@
     }
 
     async function searchTransactions(query) {
-        if (!query) { loadTransactions(); return; }
-        
+        if (!query) {
+            loadTransactions();
+            return;
+        }
+
         const token = localStorage.getItem('admin_token');
         
         try {
             const response = await fetch(`${API_BASE_URL}/admin/transactions/search?q=${encodeURIComponent(query)}`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
             });
 
             if (!response.ok) throw new Error('Search failed');
@@ -537,7 +627,10 @@
 
         try {
             const response = await fetch(`${API_BASE_URL}/admin/kyc`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
             });
 
             if (!response.ok) throw new Error('Failed to load KYC');
@@ -566,7 +659,11 @@
 
         elements.kycTableBody.innerHTML = applications.map(app => `
             <tr data-kyc-id="${app.id}">
-                <td><div class="user-cell"><span class="user-email">${app.email}</span></div></td>
+                <td>
+                    <div class="user-cell">
+                        <span class="user-email">${app.email}</span>
+                    </div>
+                </td>
                 <td><span class="kyc-level">Level ${app.level}</span></td>
                 <td>${formatDate(app.submittedAt)}</td>
                 <td><span class="status-badge status-${app.status}">${app.status}</span></td>
@@ -578,6 +675,7 @@
             </tr>
         `).join('');
 
+        // Add event listeners
         elements.kycTableBody.querySelectorAll('.table-btn').forEach(btn => {
             btn.addEventListener('click', handleKYCAction);
         });
@@ -600,7 +698,10 @@
         const kycId = event.target.dataset.kycId;
         
         if (action === 'view') {
-            browser.runtime.sendMessage({ type: 'OPEN_KYC_DETAIL', kycId });
+            browser.runtime.sendMessage({
+                type: 'OPEN_KYC_DETAIL',
+                kycId: kycId
+            });
             return;
         }
 
@@ -617,12 +718,16 @@
         try {
             const response = await fetch(`${API_BASE_URL}/admin/kyc/${kycId}/status`, {
                 method: 'PATCH',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify({ status })
             });
 
             if (!response.ok) throw new Error('Update failed');
 
+            // Refresh KYC list
             loadKYC();
         } catch (error) {
             console.error('Update KYC error:', error);
@@ -636,7 +741,10 @@
 
         try {
             const response = await fetch(`${API_BASE_URL}/admin/tokens`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
             });
 
             if (!response.ok) throw new Error('Failed to load tokens');
@@ -706,7 +814,9 @@
     }
 
     function showAddTokenModal() {
-        browser.runtime.sendMessage({ type: 'OPEN_ADD_TOKEN' });
+        browser.runtime.sendMessage({
+            type: 'OPEN_ADD_TOKEN'
+        });
     }
 
     // Withdrawals
@@ -721,7 +831,10 @@
             if (chain) url += `chain=${chain}&`;
 
             const response = await fetch(url, {
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
             });
 
             if (!response.ok) throw new Error('Failed to load withdrawals');
@@ -780,7 +893,10 @@
 
         try {
             const response = await fetch(`${API_BASE_URL}/admin/system/status`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
             });
 
             if (!response.ok) throw new Error('Failed to load system status');
@@ -789,6 +905,7 @@
             updateSystemStatus(data);
         } catch (error) {
             console.error('Load system status error:', error);
+            // Demo data
             updateSystemStatus({
                 services: [
                     { name: 'api_gateway', status: 'running', uptime: '99.99%' },
@@ -809,6 +926,7 @@
     }
 
     function updateSystemStatus(data) {
+        // Update services
         const serviceElements = elements.serviceList.querySelectorAll('.service-status');
         serviceElements.forEach(el => {
             const serviceName = el.dataset.service;
@@ -834,10 +952,18 @@
         const action = event.currentTarget.dataset.action;
         
         switch (action) {
-            case 'refresh': loadDashboard(); break;
-            case 'users': navigateToSection('users'); break;
-            case 'transactions': navigateToSection('transactions'); break;
-            case 'system': navigateToSection('system'); break;
+            case 'refresh':
+                loadDashboard();
+                break;
+            case 'users':
+                navigateToSection('users');
+                break;
+            case 'transactions':
+                navigateToSection('transactions');
+                break;
+            case 'system':
+                navigateToSection('system');
+                break;
         }
     }
 
@@ -862,12 +988,19 @@
         return num.toFixed(2);
     }
 
-    // Message listener
+    // Message listener for background script
     browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         switch (message.type) {
-            case 'DASHBOARD_UPDATE': updateDashboard(message.data); break;
-            case 'THEME_CHANGED': isDarkMode = message.theme === 'dark'; applyTheme(); break;
-            case 'TOKEN_EXPIRED': logout(); break;
+            case 'DASHBOARD_UPDATE':
+                updateDashboard(message.data);
+                break;
+            case 'THEME_CHANGED':
+                isDarkMode = message.theme === 'dark';
+                applyTheme();
+                break;
+            case 'TOKEN_EXPIRED':
+                logout();
+                break;
         }
     });
 
