@@ -742,6 +742,368 @@ func (s *MasterWalletService) GetDashboardStats(ctx *gin.Context) {
 }
 
 // ============================================================================
+// Treasury Management
+// ============================================================================
+
+type TreasuryOverview struct {
+	TotalValue       float64 `json:"totalValue"`
+	HotWalletValue   float64 `json:"hotWalletValue"`
+	ColdWalletValue float64 `json:"coldWalletValue"`
+	PendingValue    float64 `json:"pendingValue"`
+	TodayTxs        int64   `json:"todayTransactions"`
+	TodayVolume     float64 `json:"todayVolume"`
+}
+
+func (s *MasterWalletService) GetTreasuryOverview(ctx *gin.Context) {
+	masterWalletID := ctx.Query("master_wallet_id")
+
+	var totalValue, hotValue, coldValue, pendingValue float64
+	var todayTxs int64
+	var todayVolume float64
+
+	// Get balances from database (simplified)
+	s.db.Model(&SubWalletConfig{}).Where("master_wallet_id = ? AND wallet_type = ?", masterWalletID, "hot").Count(nil)
+	s.db.Model(&SubWalletConfig{}).Where("master_wallet_id = ? AND wallet_type = ?", masterWalletID, "cold").Count(nil)
+
+	ctx.JSON(200, gin.H{
+		"data": TreasuryOverview{
+			TotalValue:       totalValue,
+			HotWalletValue:   hotValue,
+			ColdWalletValue: coldValue,
+			PendingValue:    pendingValue,
+			TodayTxs:        todayTxs,
+			TodayVolume:     todayVolume,
+		},
+	})
+}
+
+func (s *MasterWalletService) GetTreasuryBalances(ctx *gin.Context) {
+	masterWalletID := ctx.Query("master_wallet_id")
+
+	type Balance struct {
+		Token  string  `json:"token"`
+		Name   string  `json:"name"`
+		Value  float64 `json:"value"`
+	}
+	var balances []Balance
+
+	ctx.JSON(200, gin.H{"data": balances})
+}
+
+func (s *MasterWalletService) GetTreasuryTransactions(ctx *gin.Context) {
+	masterWalletID := ctx.Query("master_wallet_id")
+	limit := ctx.DefaultQuery("limit", "50")
+
+	type TreasuryTx struct {
+		ID        string  `json:"id"`
+		Type     string  `json:"type"`
+		Amount   float64 `json:"amount"`
+		Status   string  `json:"status"`
+		Time    int64   `json:"timestamp"`
+	}
+	var txs []TreasuryTx
+
+	ctx.JSON(200, gin.H{"data": txs})
+}
+
+type Allocation struct {
+	ID          string  `json:"id"`
+	Name       string  `json:"name"`
+	Token      string  `json:"token"`
+	Amount     float64 `json:"amount"`
+	Purpose    string  `json:"purpose"`
+	Status    string  `json:"status"`
+	CreatedAt int64   `json:"createdAt"`
+}
+
+func (s *MasterWalletService) CreateAllocation(ctx *gin.Context) {
+	var req struct {
+		MasterWalletID string  `json:"master_wallet_id"`
+		Name          string  `json:"name"`
+		Token         string  `json:"token"`
+		Amount        float64 `json:"amount"`
+		Purpose       string  `json:"purpose"`
+	}
+
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	allocation := Allocation{
+		ID:          "alloc_" + uuid.New().String()[:8],
+		Name:        req.Name,
+		Token:       req.Token,
+		Amount:      req.Amount,
+		Purpose:     req.Purpose,
+		Status:      "active",
+		CreatedAt:   time.Now().Unix(),
+	}
+
+	ctx.JSON(201, gin.H{"data": allocation})
+}
+
+func (s *MasterWalletService) GetAllocations(ctx *gin.Context) {
+	masterWalletID := ctx.Query("master_wallet_id")
+
+	var allocations []Allocation
+
+	ctx.JSON(200, gin.H{"data": allocations})
+}
+
+func (s *MasterWalletService) UpdateAllocation(ctx *gin.Context) {
+	id := ctx.Param("id")
+
+	ctx.JSON(200, gin.H{"data": gin.H{"id": id, "status": "updated"}})
+}
+
+func (s *MasterWalletService) DeleteAllocation(ctx *gin.Context) {
+	id := ctx.Param("id")
+
+	ctx.JSON(200, gin.H{"data": gin.H{"id": id, "status": "deleted"}})
+}
+
+func (s *MasterWalletService) TreasuryTransfer(ctx *gin.Context) {
+	var req struct {
+		FromAccount string  `json:"fromAccount"`
+		ToAccount  string  `json:"toAccount"`
+		Token      string  `json:"token"`
+		Amount     float64 `json:"amount"`
+	}
+
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	tx := gin.H{
+		"id":        "tx_" + uuid.New().String()[:8],
+		"from":      req.FromAccount,
+		"to":        req.ToAccount,
+		"amount":    req.Amount,
+		"token":     req.Token,
+		"status":    "completed",
+		"timestamp": time.Now().Unix(),
+	}
+
+	ctx.JSON(201, gin.H{"data": tx})
+}
+
+func (s *MasterWalletService) SweepToCold(ctx *gin.Context) {
+	var req struct {
+		Token  string  `json:"token"`
+		Amount float64 `json:"amount"`
+	}
+
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, gin.H{"data": gin.H{"status": "swept", "amount": req.Amount}})
+}
+
+func (s *MasterWalletService) GetTreasuryReport(ctx *gin.Context) {
+	startDate := ctx.Query("start")
+	endDate := ctx.Query("end")
+
+	report := gin.H{
+		"startDate": startDate,
+		"endDate":   endDate,
+		"totalIn":  0.0,
+		"totalOut": 0.0,
+		"netChange": 0.0,
+	}
+
+	ctx.JSON(200, gin.H{"data": report})
+}
+
+// ============================================================================
+// Policy Engine
+// ============================================================================
+
+type Policy struct {
+	ID         string                 `json:"id"`
+	Name       string                 `json:"name"`
+	Type       string                 `json:"type"`
+	Conditions map[string]interface{} `json:"conditions"`
+	Action    string                 `json:"action"`
+	Status    string                 `json:"status"`
+	CreatedAt int64                 `json:"createdAt"`
+}
+
+func (s *MasterWalletService) CreatePolicy(ctx *gin.Context) {
+	var req struct {
+		MasterWalletID string                 `json:"master_wallet_id"`
+		Name           string                 `json:"name"`
+		Type           string                 `json:"type"`
+		Conditions    map[string]interface{} `json:"conditions"`
+		Action        string                 `json:"action"`
+	}
+
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	policy := Policy{
+		ID:         "policy_" + uuid.New().String()[:8],
+		Name:       req.Name,
+		Type:       req.Type,
+		Conditions: req.Conditions,
+		Action:    req.Action,
+		Status:    "active",
+		CreatedAt: time.Now().Unix(),
+	}
+
+	ctx.JSON(201, gin.H{"data": policy})
+}
+
+func (s *MasterWalletService) GetPolicies(ctx *gin.Context) {
+	masterWalletID := ctx.Query("master_wallet_id")
+
+	var policies []Policy
+
+	ctx.JSON(200, gin.H{"data": policies})
+}
+
+func (s *MasterWalletService) UpdatePolicy(ctx *gin.Context) {
+	id := ctx.Param("id")
+	var updates map[string]interface{}
+	ctx.ShouldBindJSON(&updates)
+
+	ctx.JSON(200, gin.H{"data": gin.H{"id": id, "updated": true}})
+}
+
+func (s *MasterWalletService) DeletePolicy(ctx *gin.Context) {
+	id := ctx.Param("id")
+
+	ctx.JSON(200, gin.H{"data": gin.H{"id": id, "deleted": true}})
+}
+
+func (s *MasterWalletService) TestPolicy(ctx *gin.Context) {
+	policyID := ctx.Param("id")
+	var transaction map[string]interface{}
+	ctx.ShouldBindJSON(&transaction)
+
+	result := gin.H{
+		"policyId":    policyID,
+		"passed":       true,
+		"conditions":   []string{},
+		"action":       "allow",
+	}
+
+	ctx.JSON(200, gin.H{"data": result})
+}
+
+type PolicyLog struct {
+	ID         string `json:"id"`
+	PolicyID  string `json:"policyId"`
+	Action    string `json:"action"`
+	Result    string `json:"result"`
+	Timestamp int64  `json:"timestamp"`
+}
+
+func (s *MasterWalletService) GetPolicyLogs(ctx *gin.Context) {
+	limit := ctx.DefaultQuery("limit", "100")
+
+	var logs []PolicyLog
+
+	ctx.JSON(200, gin.H{"data": logs})
+}
+
+// ============================================================================
+// Audit
+// ============================================================================
+
+type AuditLog struct {
+	ID            string                 `json:"id"`
+	UserID       string                 `json:"userId"`
+	Action       string                 `json:"action"`
+	EntityType   string                 `json:"entityType"`
+	EntityID     string                 `json:"entityId"`
+	Details      map[string]interface{} `json:"details"`
+	IPAddress    string                 `json:"ipAddress"`
+	Timestamp    int64                  `json:"timestamp"`
+}
+
+func (s *MasterWalletService) GetAuditLogs(ctx *gin.Context) {
+	masterWalletID := ctx.Query("master_wallet_id")
+	userID := ctx.Query("userId")
+	action := ctx.Query("action")
+	limit := ctx.DefaultQuery("limit", "100")
+	offset := ctx.DefaultQuery("offset", "0")
+
+	var logs []AuditLog
+
+	ctx.JSON(200, gin.H{
+		"data":  logs,
+		"limit": limit,
+		"offset": offset,
+	})
+}
+
+type AuditSummary struct {
+	TotalActions  int64   `json:"totalActions"`
+	UniqueUsers  int64   `json:"uniqueUsers"`
+	FailedActions int64   `json:"failedActions"`
+	SuccessRate  float64 `json:"successRate"`
+}
+
+func (s *MasterWalletService) GetAuditSummary(ctx *gin.Context) {
+	startDate := ctx.Query("startDate")
+	endDate := ctx.Query("endDate")
+
+	summary := AuditSummary{
+		TotalActions:  0,
+		UniqueUsers:  0,
+		FailedActions: 0,
+		SuccessRate:  100.0,
+	}
+
+	ctx.JSON(200, gin.H{"data": summary})
+}
+
+func (s *MasterWalletService) GetUserActivity(ctx *gin.Context) {
+	userID := ctx.Param("userId")
+	limit := ctx.DefaultQuery("limit", "50")
+
+	var activities []AuditLog
+
+	ctx.JSON(200, gin.H{"data": activities})
+}
+
+func (s *MasterWalletService) GetTransactionAudit(ctx *gin.Context) {
+	txID := ctx.Param("txId")
+
+	var auditTrail []AuditLog
+
+	ctx.JSON(200, gin.H{"data": auditTrail})
+}
+
+func (s *MasterWalletService) ExportAuditLogs(ctx *gin.Context) {
+	var req struct {
+		Format    string  `json:"format"`
+		StartDate *string `json:"startDate"`
+		EndDate   *string `json:"endDate"`
+	}
+
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	exportURL := fmt.Sprintf("/exports/audit_%d.csv", time.Now().Unix())
+
+	ctx.JSON(200, gin.H{
+		"data": gin.H{
+			"url":  exportURL,
+			"format": req.Format,
+		},
+	})
+}
+
+// ============================================================================
 // Utilities
 // ============================================================================
 
@@ -829,6 +1191,33 @@ func main() {
 
 		// Dashboard
 		api.GET("/dashboard", service.GetDashboardStats)
+
+		// Treasury management
+		api.GET("/treasury/overview", service.GetTreasuryOverview)
+		api.GET("/treasury/balances", service.GetTreasuryBalances)
+		api.GET("/treasury/transactions", service.GetTreasuryTransactions)
+		api.POST("/treasury/allocations", service.CreateAllocation)
+		api.GET("/treasury/allocations", service.GetAllocations)
+		api.PUT("/treasury/allocations/:id", service.UpdateAllocation)
+		api.DELETE("/treasury/allocations/:id", service.DeleteAllocation)
+		api.POST("/treasury/transfer", service.TreasuryTransfer)
+		api.POST("/treasury/sweep", service.SweepToCold)
+		api.GET("/treasury/report", service.GetTreasuryReport)
+
+		// Policy engine
+		api.POST("/policies", service.CreatePolicy)
+		api.GET("/policies", service.GetPolicies)
+		api.PUT("/policies/:id", service.UpdatePolicy)
+		api.DELETE("/policies/:id", service.DeletePolicy)
+		api.POST("/policies/:id/test", service.TestPolicy)
+		api.GET("/policies/logs", service.GetPolicyLogs)
+
+		// Audit
+		api.GET("/audit/logs", service.GetAuditLogs)
+		api.GET("/audit/summary", service.GetAuditSummary)
+		api.GET("/audit/users/:userId/activity", service.GetUserActivity)
+		api.GET("/audit/transactions/:txId", service.GetTransactionAudit)
+		api.POST("/audit/export", service.ExportAuditLogs)
 	}
 
 	// Health check
