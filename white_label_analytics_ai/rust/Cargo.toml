@@ -1,0 +1,32 @@
+[package]
+name = "white_label_analytics_ai"
+version = "1.0.0"
+edition = "2021"
+description = "TigerWallet White Label Advanced Analytics with AI"
+
+[dependencies]
+actix-web = "4.4"
+actix-rt = "2.9"
+tokio = { version = "1.33", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.6", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+sqlx = { version = "0.7", features = ["runtime-tokio-native-tls", "postgres", "runtime-actix-native-tls", "uuid", "chrono"] }
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "1.0"
+async-trait = "0.1"
+linreg = "0.2"
+rand = "0.8"
+ ndarray = "0.15"
+
+[features]
+default = ["postgres"]
+postgres = ["sqlx/postgres"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
