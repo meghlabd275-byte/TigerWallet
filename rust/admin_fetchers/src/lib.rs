@@ -5,43 +5,144 @@
 //! - User management
 //! - System configuration
 //! - Analytics
+//! - Real PostgreSQL and Redis integration
 //! - NO user wallet operations (those are in userwallet_fetchers)
 //! - NO master wallet operations (those are in masterwallet_fetchers)
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::Arc;
 
 pub mod types;
+pub mod database;
+pub mod cache;
 pub mod fetchers;
 
 pub use types::*;
+pub use database::{DatabasePool, DatabaseConfig};
+pub use cache::{CacheManager, RedisConfig};
 pub use fetchers::*;
 
 /// Admin fetcher manager - only includes admin operations
 pub struct AdminFetcherManager {
     fetchers: HashMap<String, Arc<dyn AdminFetcher>>,
+    db_pool: Option<Arc<DatabasePool>>,
+    cache: Option<Arc<CacheManager>>,
 }
 
 impl AdminFetcherManager {
-    pub fn new() -> Self {
+    /// Create a new AdminFetcherManager with database and cache connections
+    pub fn new(db_config: Option<&DatabaseConfig>, redis_config: Option<&RedisConfig>) -> Result<Self, String> {
         let mut fetchers = HashMap::new();
         
-        // Admin operations only
-        fetchers.insert("users".to_string(), Arc::new(AdminUserFetcher::new()) as Arc<dyn AdminFetcher>);
-        fetchers.insert("kyc".to_string(), Arc::new(KycFetcher::new()) as Arc<dyn AdminFetcher>);
-        fetchers.insert("system".to_string(), Arc::new(SystemFetcher::new()) as Arc<dyn AdminFetcher>);
-        fetchers.insert("fees".to_string(), Arc::new(FeesFetcher::new()) as Arc<dyn AdminFetcher>);
-        fetchers.insert("tokens".to_string(), Arc::new(TokenManagementFetcher::new()) as Arc<dyn AdminFetcher>);
-        fetchers.insert("analytics".to_string(), Arc::new(AdminAnalyticsFetcher::new()) as Arc<dyn AdminFetcher>);
-        fetchers.insert("transactions_admin".to_string(), Arc::new(TransactionAdminFetcher::new()) as Arc<dyn AdminFetcher>);
-        fetchers.insert("config".to_string(), Arc::new(ConfigFetcher::new()) as Arc<dyn AdminFetcher>);
+        // Initialize database pool if config provided
+        let db_pool = if let Some(config) = db_config {
+            Some(Arc::new(DatabasePool::new(config)?))
+        } else {
+            None
+        };
         
-        Self { fetchers }
+        // Initialize cache if config provided
+        let cache = if let Some(config) = redis_config {
+            Some(Arc::new(CacheManager::new(config)?))
+        } else {
+            None
+        };
+        
+        // Create fetchers with real implementations
+        let db = db_pool.clone();
+        let ch = cache.clone();
+        
+        // Admin operations only - using real implementations
+        fetchers.insert(
+            "users".to_string(), 
+            Arc::new(AdminUserFetcher::new(
+                db.clone().ok_or("Database pool required")?,
+                ch.clone().ok_or("Cache required")?
+            )) as Arc<dyn AdminFetcher>
+        );
+        
+        fetchers.insert(
+            "kyc".to_string(), 
+            Arc::new(KycFetcher::new(
+                db.clone().ok_or("Database pool required")?,
+                ch.clone().ok_or("Cache required")?
+            )) as Arc<dyn AdminFetcher>
+        );
+        
+        fetchers.insert(
+            "system".to_string(), 
+            Arc::new(SystemFetcher::new(
+                db.clone().ok_or("Database pool required")?,
+                ch.clone().ok_or("Cache required")?
+            )) as Arc<dyn AdminFetcher>
+        );
+        
+        fetchers.insert(
+            "fees".to_string(), 
+            Arc::new(FeesFetcher::new(
+                db.clone().ok_or("Database pool required")?,
+                ch.clone().ok_or("Cache required")?
+            )) as Arc<dyn AdminFetcher>
+        );
+        
+        fetchers.insert(
+            "tokens".to_string(), 
+            Arc::new(TokenManagementFetcher::new(
+                db.clone().ok_or("Database pool required")?,
+                ch.clone().ok_or("Cache required")?
+            )) as Arc<dyn AdminFetcher>
+        );
+        
+        fetchers.insert(
+            "analytics".to_string(), 
+            Arc::new(AdminAnalyticsFetcher::new(
+                db.clone().ok_or("Database pool required")?,
+                ch.clone().ok_or("Cache required")?
+            )) as Arc<dyn AdminFetcher>
+        );
+        
+        fetchers.insert(
+            "transactions_admin".to_string(), 
+            Arc::new(TransactionAdminFetcher::new(
+                db.clone().ok_or("Database pool required")?,
+                ch.clone().ok_or("Cache required")?
+            )) as Arc<dyn AdminFetcher>
+        );
+        
+        fetchers.insert(
+            "config".to_string(), 
+            Arc::new(ConfigFetcher::new(
+                db.clone().ok_or("Database pool required")?,
+                ch.clone().ok_or("Cache required")?
+            )) as Arc<dyn AdminFetcher>
+        );
+        
+        // Initialize all fetchers
+        for fetcher in fetchers.values() {
+            fetcher.initialize()?;
+        }
+        
+        Ok(Self { fetchers, db_pool, cache })
     }
     
+    /// Get a fetcher by name
     pub fn get_fetcher(&self, name: &str) -> Option<Arc<dyn AdminFetcher>> {
         self.fetchers.get(name).cloned()
+    }
+    
+    /// Get all fetcher names
+    pub fn get_all_fetchers(&self) -> Vec<String> {
+        self.fetchers.keys().cloned().collect()
+    }
+    
+    /// Get database pool
+    pub fn db_pool(&self) -> Option<&Arc<DatabasePool>> {
+        self.db_pool.as_ref()
+    }
+    
+    /// Get cache manager
+    pub fn cache(&self) -> Option<&Arc<CacheManager>> {
+        self.cache.as_ref()
     }
 }
 
@@ -50,123 +151,4 @@ pub trait AdminFetcher: Send + Sync {
     fn name(&self) -> &str;
     fn fetch(&self, params: HashMap<String, String>) -> Result<serde_json::Value, String>;
     fn initialize(&self) -> Result<(), String>;
-}
-
-// Admin User Fetcher
-pub struct AdminUserFetcher { cache: Arc<RwLock<HashMap<String, serde_json::Value>>> }
-impl AdminUserFetcher { pub fn new() -> Self { Self { cache: Arc::new(RwLock::new(HashMap::new())) } } }
-impl AdminFetcher for AdminUserFetcher {
-    fn name(&self) -> &str { "users" }
-    fn fetch(&self, params: HashMap<String, String>) -> Result<serde_json::Value, String> {
-        Ok(serde_json::json!({
-            "users": [],
-            "totalCount": 0,
-            "activeCount": 0
-        }))
-    }
-    fn initialize(&self) -> Result<(), String> { Ok(()) }
-}
-
-// KYC Fetcher
-pub struct KycFetcher { cache: Arc<RwLock<HashMap<String, serde_json::Value>>> }
-impl KycFetcher { pub fn new() -> Self { Self { cache: Arc::new(RwLock::new(HashMap::new())) } } }
-impl AdminFetcher for KycFetcher {
-    fn name(&self) -> &str { "kyc" }
-    fn fetch(&self, params: HashMap<String, String>) -> Result<serde_json::Value, String> {
-        Ok(serde_json::json!({
-            "pending": [],
-            "approved": [],
-            "rejected": [],
-            "counts": {}
-        }))
-    }
-    fn initialize(&self) -> Result<(), String> { Ok(()) }
-}
-
-// System Fetcher
-pub struct SystemFetcher { cache: Arc<RwLock<HashMap<String, serde_json::Value>>> }
-impl SystemFetcher { pub fn new() -> Self { Self { cache: Arc::new(RwLock::new(HashMap::new())) } } }
-impl AdminFetcher for SystemFetcher {
-    fn name(&self) -> &str { "system" }
-    fn fetch(&self, params: HashMap<String, String>) -> Result<serde_json::Value, String> {
-        Ok(serde_json::json!({
-            "services": [],
-            "database": {},
-            "cache": {},
-            "uptime": "99.9%"
-        }))
-    }
-    fn initialize(&self) -> Result<(), String> { Ok(()) }
-}
-
-// Fees Fetcher
-pub struct FeesFetcher { cache: Arc<RwLock<HashMap<String, serde_json::Value>>> }
-impl FeesFetcher { pub fn new() -> Self { Self { cache: Arc::new(RwLock::new(HashMap::new())) } } }
-impl AdminFetcher for FeesFetcher {
-    fn name(&self) -> &str { "fees" }
-    fn fetch(&self, params: HashMap<String, String>) -> Result<serde_json::Value, String> {
-        Ok(serde_json::json!({
-            "tradingFee": "0.3",
-            "withdrawalFee": "0.0001",
-            "depositFee": "0"
-        }))
-    }
-    fn initialize(&self) -> Result<(), String> { Ok(()) }
-}
-
-// Token Management Fetcher
-pub struct TokenManagementFetcher { cache: Arc<RwLock<HashMap<String, serde_json::Value>>> }
-impl TokenManagementFetcher { pub fn new() -> Self { Self { cache: Arc::new(RwLock::new(HashMap::new())) } } }
-impl AdminFetcher for TokenManagementFetcher {
-    fn name(&self) -> &str { "tokens" }
-    fn fetch(&self, params: HashMap<String, String>) -> Result<serde_json::Value, String> {
-        Ok(serde_json::json!({
-            "tokens": [],
-            "pending": []
-        }))
-    }
-    fn initialize(&self) -> Result<(), String> { Ok(()) }
-}
-
-// Admin Analytics Fetcher
-pub struct AdminAnalyticsFetcher { cache: Arc<RwLock<HashMap<String, serde_json::Value>>> }
-impl AdminAnalyticsFetcher { pub fn new() -> Self { Self { cache: Arc::new(RwLock::new(HashMap::new())) } } }
-impl AdminFetcher for AdminAnalyticsFetcher {
-    fn name(&self) -> &str { "analytics" }
-    fn fetch(&self, params: HashMap<String, String>) -> Result<serde_json::Value, String> {
-        Ok(serde_json::json!({
-            "totalUsers": 0,
-            "totalVolume": "0",
-            "revenue": "0",
-            "growth": "0%"
-        }))
-    }
-    fn initialize(&self) -> Result<(), String> { Ok(()) }
-}
-
-// Transaction Admin Fetcher
-pub struct TransactionAdminFetcher { cache: Arc<RwLock<HashMap<String, serde_json::Value>>> }
-impl TransactionAdminFetcher { pub fn new() -> Self { Self { cache: Arc::new(RwLock::new(HashMap::new())) } } }
-impl AdminFetcher for TransactionAdminFetcher {
-    fn name(&self) -> &str { "transactions_admin" }
-    fn fetch(&self, params: HashMap<String, String>) -> Result<serde_json::Value, String> {
-        Ok(serde_json::json!({
-            "transactions": [],
-            "flagged": []
-        }))
-    }
-    fn initialize(&self) -> Result<(), String> { Ok(()) }
-}
-
-// Config Fetcher
-pub struct ConfigFetcher { cache: Arc<RwLock<HashMap<String, serde_json::Value>>> }
-impl ConfigFetcher { pub fn new() -> Self { Self { cache: Arc::new(RwLock::new(HashMap::new())) } } }
-impl AdminFetcher for ConfigFetcher {
-    fn name(&self) -> &str { "config" }
-    fn fetch(&self, params: HashMap<String, String>) -> Result<serde_json::Value, String> {
-        Ok(serde_json::json!({
-            "config": {}
-        }))
-    }
-    fn initialize(&self) -> Result<(), String> { Ok(()) }
 }
