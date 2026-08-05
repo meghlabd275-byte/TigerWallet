@@ -1,4 +1,4 @@
-module github.com/tigerwallet/admin-service
+module github.com/tigerwallet/super-admin-service
 
 go 1.22
 

@@ -16,6 +16,7 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -25,6 +26,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/argon2"
+
+	"github.com/tigerwallet/admin-service/database"
 )
 
 // ============================================================================
@@ -32,18 +35,39 @@ import (
 // ============================================================================
 
 type Config struct {
-	Port        int    `json:"port"`
-	JWTSecret   string `json:"jwt_secret"`
-	RedisAddr   string `json:"redis_addr"`
-	MasterAdmin string `json:"master_admin"`
+	Port            int    `json:"port"`
+	JWTSecret       string `json:"jwt_secret"`
+	RedisAddr       string `json:"redis_addr"`
+	MasterAdmin     string `json:"master_admin"`
+	PostgresHost    string `json:"postgres_host"`
+	PostgresPort    int    `json:"postgres_port"`
+	PostgresDB      string `json:"postgres_db"`
+	PostgresUser    string `json:"postgres_user"`
+	PostgresPass    string `json:"postgres_pass"`
 }
 
 var cfg = Config{
-	Port:        8002,
-	JWTSecret:   "tiger-wallet-admin-jwt-secret-2024",
-	RedisAddr:   "localhost:6379",
-	MasterAdmin: "admin@tigerwallet.io",
+	Port:            8002,
+	JWTSecret:       "tiger-wallet-admin-jwt-secret-2024",
+	RedisAddr:       "localhost:6379",
+	MasterAdmin:     "admin@tigerwallet.io",
+	PostgresHost:    getEnv("POSTGRES_HOST", "localhost"),
+	PostgresPort:    5432,
+	PostgresDB:      getEnv("POSTGRES_DB", "tigerwallet"),
+	PostgresUser:    getEnv("POSTGRES_USER", "postgres"),
+	PostgresPass:    getEnv("POSTGRES_PASSWORD", "password"),
 }
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+// Global database connection
+var db *database.DB
+var redisClient *redis.Client
 
 // ============================================================================
 // Database Models
@@ -1603,6 +1627,53 @@ func main() {
 	log.Println("TigerWallet Admin Service")
 	log.Println("==========================")
 	log.Printf("Starting on port %d", cfg.Port)
+
+	// Initialize PostgreSQL
+	log.Println("Connecting to PostgreSQL...")
+	dbConfig := &database.DatabaseConfig{
+		Host:            cfg.PostgresHost,
+		Port:            cfg.PostgresPort,
+		Database:        cfg.PostgresDB,
+		Username:        cfg.PostgresUser,
+		Password:        cfg.PostgresPass,
+		MaxConns:        20,
+		MinConns:        5,
+		MaxConnLifetime: time.Hour,
+		MaxConnIdleTime: 30 * time.Minute,
+	}
+	
+	var err error
+	db, err = database.New(dbConfig)
+	if err != nil {
+		log.Printf("Warning: Could not connect to PostgreSQL: %v", err)
+		log.Println("Continuing without database connection...")
+	} else {
+		log.Println("PostgreSQL connected successfully")
+		
+		// Initialize database schema
+		ctx := context.Background()
+		if err := db.InitSchema(ctx); err != nil {
+			log.Printf("Warning: Could not initialize schema: %v", err)
+		} else {
+			log.Println("Database schema initialized")
+		}
+	}
+
+	// Initialize Redis
+	log.Println("Connecting to Redis...")
+	redisClient = redis.NewClient(&redis.Options{
+		Addr:     cfg.RedisAddr,
+		Password: "",
+		DB:       0,
+	})
+	
+	ctx := context.Background()
+	if _, err := redisClient.Ping(ctx).Result(); err != nil {
+		log.Printf("Warning: Could not connect to Redis: %v", err)
+		log.Println("Continuing without Redis...")
+	} else {
+		log.Println("Redis connected successfully")
+	}
 
 	as := NewAdminService()
 
