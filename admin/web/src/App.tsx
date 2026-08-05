@@ -14,6 +14,9 @@ import SystemPage from './pages/SystemPage';
 import SettingsPage from './pages/SettingsPage';
 import WithdrawalsPage from './pages/WithdrawalsPage';
 import WhiteLabelsPage from './pages/WhiteLabelsPage';
+import AnalyticsPage from './pages/AnalyticsPage';
+import PairsPage from './pages/PairsPage';
+import AuditLogsPage from './pages/AuditLogsPage';
 
 // Sidebar Component
 const Sidebar: React.FC<{ 
@@ -22,14 +25,17 @@ const Sidebar: React.FC<{
 }> = ({ currentPage, setCurrentPage }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+    { id: 'analytics', label: 'Analytics', icon: '📈' },
     { id: 'users', label: 'Users', icon: '👥' },
     { id: 'transactions', label: 'Transactions', icon: '📜' },
     { id: 'kyc', label: 'KYC Verification', icon: '✅' },
     { id: 'tokens', label: 'Tokens', icon: '🪙' },
+    { id: 'pairs', label: 'Trading Pairs', icon: '🔄' },
     { id: 'withdrawals', label: 'Withdrawals', icon: '💸' },
     { id: 'whitelabels', label: 'White Labels', icon: '🏢' },
     { id: 'fees', label: 'Fees', icon: '💰' },
     { id: 'system', label: 'System', icon: '🖥️' },
+    { id: 'auditlogs', label: 'Audit Logs', icon: '📝' },
     { id: 'settings', label: 'Settings', icon: '⚙️' },
   ];
 
@@ -130,6 +136,8 @@ const PageRouter: React.FC<{ currentPage: string }> = ({ currentPage }) => {
   switch (currentPage) {
     case 'dashboard':
       return <DashboardPage />;
+    case 'analytics':
+      return <AnalyticsPage />;
     case 'users':
       return <UsersPage />;
     case 'transactions':
@@ -138,6 +146,8 @@ const PageRouter: React.FC<{ currentPage: string }> = ({ currentPage }) => {
       return <KycPage />;
     case 'tokens':
       return <TokensPage />;
+    case 'pairs':
+      return <PairsPage />;
     case 'withdrawals':
       return <WithdrawalsPage />;
     case 'whitelabels':
@@ -146,6 +156,8 @@ const PageRouter: React.FC<{ currentPage: string }> = ({ currentPage }) => {
       return <FeesPage />;
     case 'system':
       return <SystemPage />;
+    case 'auditlogs':
+      return <AuditLogsPage />;
     case 'settings':
       return <SettingsPage />;
     default:
