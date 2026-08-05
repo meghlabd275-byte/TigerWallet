@@ -29,6 +29,8 @@ import stakingReducer from './slices/stakingSlice';
 import nftReducer from './slices/nftSlice';
 import dappReducer from './slices/dappSlice';
 import settingsReducer from './slices/settingsSlice';
+import marketReducer from './slices/marketSlice';
+import notificationReducer from './slices/notificationSlice';
 
 // Combine reducers
 const rootReducer = combineReducers({
@@ -43,6 +45,8 @@ const rootReducer = combineReducers({
   nfts: nftReducer,
   dapps: dappReducer,
   settings: settingsReducer,
+  market: marketReducer,
+  notifications: notificationReducer,
 });
 
 // Persist config
