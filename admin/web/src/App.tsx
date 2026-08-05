@@ -17,6 +17,9 @@ import WhiteLabelsPage from './pages/WhiteLabelsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import PairsPage from './pages/PairsPage';
 import AuditLogsPage from './pages/AuditLogsPage';
+import ChainsPage from './pages/ChainsPage';
+import ReportsPage from './pages/ReportsPage';
+import AdminsPage from './pages/AdminsPage';
 
 // Sidebar Component
 const Sidebar: React.FC<{ 
@@ -31,11 +34,14 @@ const Sidebar: React.FC<{
     { id: 'kyc', label: 'KYC Verification', icon: '✅' },
     { id: 'tokens', label: 'Tokens', icon: '🪙' },
     { id: 'pairs', label: 'Trading Pairs', icon: '🔄' },
+    { id: 'chains', label: 'Blockchains', icon: '⛓️' },
     { id: 'withdrawals', label: 'Withdrawals', icon: '💸' },
     { id: 'whitelabels', label: 'White Labels', icon: '🏢' },
     { id: 'fees', label: 'Fees', icon: '💰' },
     { id: 'system', label: 'System', icon: '🖥️' },
     { id: 'auditlogs', label: 'Audit Logs', icon: '📝' },
+    { id: 'reports', label: 'Reports', icon: '📋' },
+    { id: 'admins', label: 'Admins', icon: '👤' },
     { id: 'settings', label: 'Settings', icon: '⚙️' },
   ];
 
@@ -158,6 +164,12 @@ const PageRouter: React.FC<{ currentPage: string }> = ({ currentPage }) => {
       return <SystemPage />;
     case 'auditlogs':
       return <AuditLogsPage />;
+    case 'chains':
+      return <ChainsPage />;
+    case 'reports':
+      return <ReportsPage />;
+    case 'admins':
+      return <AdminsPage />;
     case 'settings':
       return <SettingsPage />;
     default:
