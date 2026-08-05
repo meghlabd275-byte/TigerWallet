@@ -1,66 +1,109 @@
 // TigerAdmin - Desktop Admin Application
+// Complete implementation with API connection and light/dark theme
+
 import React, { useState, useEffect } from 'react';
 
-// Types
-interface AdminUser {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-  status: string;
+const API_BASE_URL = process.env.REACT_APP_ADMIN_API || 'http://localhost:8080';
+
+// API Service
+class DesktopAdminAPI {
+  private baseURL: string;
+  private token: string | null = null;
+
+  constructor() {
+    this.baseURL = API_BASE_URL;
+    this.token = localStorage.getItem('admin_token');
+  }
+
+  setToken(token: string) {
+    this.token = token;
+    localStorage.setItem('admin_token', token);
+  }
+
+  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    const url = `${this.baseURL}${endpoint}`;
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      ...(this.token && { 'Authorization': `Bearer ${this.token}` }),
+      ...options.headers,
+    };
+
+    const response = await fetch(url, { ...options, headers });
+    if (!response.ok) throw new Error(`API Error: ${response.status}`);
+    return response.json();
+  }
+
+  async getAnalytics() { return this.request('/api/v1/analytics'); }
+  async getUsers(params?: any) { 
+    const query = params ? '?' + new URLSearchParams(params).toString() : '';
+    return this.request(`/api/v1/users${query}`);
+  }
+  async getTransactions(params?: any) { 
+    const query = params ? '?' + new URLSearchParams(params).toString() : '';
+    return this.request(`/api/v1/transactions${query}`);
+  }
+  async getSystemStatus() { return this.request('/api/v1/system/status'); }
+  async getKycRecords(params?: any) {
+    const query = params ? '?' + new URLSearchParams(params).toString() : '';
+    return this.request(`/api/v1/kyc${query}`);
+  }
+  async approveKyc(id: string) { 
+    return this.request(`/api/v1/kyc/${id}/approve`, { method: 'POST' });
+  }
+  async rejectKyc(id: string, reason: string) { 
+    return this.request(`/api/v1/kyc/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) });
+  }
+  async getTokens() { return this.request('/api/v1/tokens'); }
+  async getWithdrawals() { return this.request('/api/v1/withdrawals'); }
+  async approveWithdrawal(id: string) { 
+    return this.request(`/api/v1/withdrawals/${id}/approve`, { method: 'POST' });
+  }
+  async getFeeConfig() { return this.request('/api/v1/fees'); }
+  async updateFeeConfig(config: any) { 
+    return this.request('/api/v1/fees', { method: 'PUT', body: JSON.stringify(config) });
+  }
 }
 
-interface Transaction {
-  id: string;
-  hash: string;
-  type: string;
-  amount: string;
-  status: string;
-}
+const api = new DesktopAdminAPI();
 
-interface SystemService {
-  name: string;
-  status: string;
-  uptime: string;
-}
+// Theme System
+type Theme = 'light' | 'dark';
 
-// Theme Context
-const AdminThemeContext = React.createContext<any>(null);
-
-const AdminThemeProvider = ({ children }: { children: React.ReactNode }) => {
-  const [isDarkMode, setIsDarkMode] = useState(true);
-  
-  useEffect(() => {
-    const stored = localStorage.getItem('admin_theme');
-    if (stored) setIsDarkMode(stored === 'dark');
-  }, []);
-  
-  const toggleTheme = () => {
-    const newTheme = !isDarkMode;
-    setIsDarkMode(newTheme);
-    localStorage.setItem('admin_theme', newTheme ? 'dark' : 'light');
-  };
-  
-  return (
-    <AdminThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
-      {children}
-    </AdminThemeContext.Provider>
-  );
-};
+const getColors = (theme: Theme) => ({
+  bg: theme === 'dark' ? '#0f172a' : '#f9fafb',
+  bgCard: theme === 'dark' ? '#1e293b' : '#ffffff',
+  bgHover: theme === 'dark' ? '#334155' : '#f3f4f6',
+  text: theme === 'dark' ? '#f9fafb' : '#111827',
+  textSecondary: theme === 'dark' ? '#9ca3af' : '#6b7280',
+  border: theme === 'dark' ? '#374151' : '#e5e7eb',
+  primary: '#dc2626',
+  primaryHover: '#b91c1c',
+  success: '#22c55e',
+  warning: '#f59e0b',
+  error: '#ef4444',
+});
 
 // Sidebar Component
-const AdminSidebar = ({ currentPage, setCurrentPage }: { currentPage: string; setCurrentPage: (page: string) => void }) => {
+const AdminSidebar: React.FC<{ currentPage: string; setCurrentPage: (page: string) => void; theme: Theme }> = ({ 
+  currentPage, setCurrentPage, theme 
+}) => {
+  const colors = getColors(theme);
+  
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'users', label: 'Users', icon: '👥' },
     { id: 'transactions', label: 'Transactions', icon: '📜' },
+    { id: 'kyc', label: 'KYC', icon: '✅' },
+    { id: 'tokens', label: 'Tokens', icon: '🪙' },
+    { id: 'withdrawals', label: 'Withdrawals', icon: '💸' },
+    { id: 'fees', label: 'Fees', icon: '💰' },
     { id: 'system', label: 'System', icon: '🖥️' },
     { id: 'settings', label: 'Settings', icon: '⚙️' },
   ];
   
   return (
-    <div className="w-64 bg-red-900 border-r border-red-800 flex flex-col">
-      <div className="p-4 border-b border-red-800">
+    <aside className="w-64 flex flex-col" style={{ backgroundColor: colors.primary, color: 'white' }}>
+      <div className="p-6 border-b" style={{ borderColor: 'rgba(255,255,255,0.2)' }}>
         <div className="flex items-center space-x-3">
           <span className="text-2xl">🔧</span>
           <span className="text-xl font-bold">Admin Panel</span>
@@ -72,146 +115,133 @@ const AdminSidebar = ({ currentPage, setCurrentPage }: { currentPage: string; se
           <button
             key={item.id}
             onClick={() => setCurrentPage(item.id)}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg mb-2 transition-colors ${
-              currentPage === item.id
-                ? 'bg-red-600 text-white'
-                : 'text-red-200 hover:bg-red-800 hover:text-white'
-            }`}
+            className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg mb-2 transition-colors"
+            style={{
+              backgroundColor: currentPage === item.id ? colors.primaryHover : 'transparent',
+              color: currentPage === item.id ? 'white' : 'rgba(255,255,255,0.8)',
+            }}
           >
             <span>{item.icon}</span>
             <span>{item.label}</span>
           </button>
         ))}
       </nav>
-    </div>
+    </aside>
   );
 };
 
 // Header Component
-const AdminHeader = ({ onToggleTheme, isDarkMode }: { onToggleTheme: () => void; isDarkMode: boolean }) => {
+const AdminHeader: React.FC<{ theme: Theme; toggleTheme: () => void }> = ({ theme, toggleTheme }) => {
+  const colors = getColors(theme);
+  const [searchTerm, setSearchTerm] = useState('');
+  
   return (
-    <header className="h-16 bg-gray-800 border-b border-gray-700 flex items-center justify-between px-6">
-      <div className="flex items-center space-x-4">
-        <input
-          type="text"
-          placeholder="Search users, transactions..."
-          className="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-sm w-96"
-        />
-      </div>
+    <header className="h-16 flex items-center justify-between px-6" style={{ 
+      backgroundColor: colors.bgCard, borderBottom: `1px solid ${colors.border}`
+    }}>
+      <input
+        type="text"
+        placeholder="Search users, transactions..."
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        className="px-4 py-2 rounded-lg text-sm w-96"
+        style={{ backgroundColor: colors.bg, border: `1px solid ${colors.border}`, color: colors.text }}
+      />
       
       <div className="flex items-center space-x-4">
-        <button className="px-4 py-2 bg-red-600 rounded-lg hover:bg-red-700">
-          🔔 Notifications (3)
+        <button onClick={toggleTheme} className="p-2 rounded-lg" style={{ backgroundColor: colors.bgHover }}>
+          {theme === 'dark' ? '☀️' : '🌙'}
         </button>
-        <button 
-          onClick={onToggleTheme}
-          className="p-2 bg-gray-700 rounded-lg hover:bg-gray-600"
-        >
-          {isDarkMode ? '☀️' : '🌙'}
-        </button>
+        <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: colors.primary, color: 'white' }}>
+          <span className="text-sm font-bold">A</span>
+        </div>
       </div>
     </header>
   );
 };
 
 // Dashboard Component
-const AdminDashboard = () => {
+const AdminDashboard: React.FC<{ theme: Theme }> = ({ theme }) => {
+  const colors = getColors(theme);
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getAnalytics()
+      .then(setStats)
+      .catch(() => setStats({ totalUsers: 0, dailyTransactions: 0, totalVolume: '0', revenue: '0' }))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const statCards = [
+    { label: 'Total Users', value: stats?.totalUsers || 0, icon: '👥' },
+    { label: 'Volume (24h)', value: `$${parseFloat(stats?.totalVolume || '0').toLocaleString()}`, icon: '💰' },
+    { label: 'Transactions', value: stats?.dailyTransactions || 0, icon: '📜' },
+    { label: 'Revenue', value: `$${parseFloat(stats?.revenue || '0').toLocaleString()}`, icon: '💵' },
+  ];
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
+      <h1 className="text-2xl font-bold" style={{ color: colors.text }}>Dashboard</h1>
       
       <div className="grid grid-cols-4 gap-6">
-        <div className="bg-gray-800 rounded-xl p-6">
-          <div className="text-gray-400 mb-2">👥 Total Users</div>
-          <div className="text-3xl font-bold">12,450</div>
-        </div>
-        <div className="bg-gray-800 rounded-xl p-6">
-          <div className="text-gray-400 mb-2">💰 Total Volume</div>
-          <div className="text-3xl font-bold">$45.2M</div>
-        </div>
-        <div className="bg-gray-800 rounded-xl p-6">
-          <div className="text-gray-400 mb-2">⏳ Pending KYC</div>
-          <div className="text-3xl font-bold">89</div>
-        </div>
-        <div className="bg-gray-800 rounded-xl p-6">
-          <div className="text-gray-400 mb-2">❤️ System Health</div>
-          <div className="text-3xl font-bold text-green-500">99.9%</div>
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-2 gap-6">
-        <div className="bg-gray-800 rounded-xl p-6">
-          <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <button className="p-4 bg-blue-600 rounded-lg hover:bg-blue-700">👥 Manage Users</button>
-            <button className="p-4 bg-green-600 rounded-lg hover:bg-green-700">📜 View Transactions</button>
-            <button className="p-4 bg-purple-600 rounded-lg hover:bg-purple-700">⚙️ System Config</button>
-            <button className="p-4 bg-orange-600 rounded-lg hover:bg-orange-700">📊 Analytics</button>
-          </div>
-        </div>
-        
-        <div className="bg-gray-800 rounded-xl p-6">
-          <h2 className="text-lg font-semibold mb-4">Recent Admin Actions</h2>
-          {[1,2,3,4,5].map(i => (
-            <div key={i} className="flex items-center justify-between py-2 border-b border-gray-700">
-              <div className="flex items-center space-x-2">
-                <span>👤</span>
-                <span>New user verified</span>
-              </div>
-              <span className="text-gray-400 text-sm">2 min ago</span>
+        {statCards.map((stat, i) => (
+          <div key={i} className="rounded-xl p-6" style={{ backgroundColor: colors.bgCard }}>
+            <div className="mb-2" style={{ color: colors.textSecondary }}>{stat.icon} {stat.label}</div>
+            <div className="text-3xl font-bold" style={{ color: colors.text }}>
+              {loading ? '...' : stat.value}
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
     </div>
   );
 };
 
 // Users Component
-const AdminUsers = () => {
-  const users: AdminUser[] = [
-    { id: '1', email: 'user1@example.com', name: 'John Doe', role: 'User', status: 'Verified' },
-    { id: '2', email: 'user2@example.com', name: 'Jane Smith', role: 'User', status: 'Pending' },
-    { id: '3', email: 'user3@example.com', name: 'Bob Wilson', role: 'User', status: 'Verified' },
-    { id: '4', email: 'user4@example.com', name: 'Alice Brown', role: 'User', status: 'Verified' },
-    { id: '5', email: 'user5@example.com', name: 'Charlie Davis', role: 'User', status: 'Rejected' },
-  ];
-  
+const AdminUsers: React.FC<{ theme: Theme }> = ({ theme }) => {
+  const colors = getColors(theme);
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getUsers({ pageSize: 20 })
+      .then((res: any) => setUsers(res.data || []))
+      .catch(() => setUsers([]))
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Users</h1>
-        <button className="px-4 py-2 bg-blue-500 rounded-lg hover:bg-blue-600">➕ Add User</button>
-      </div>
+      <h1 className="text-2xl font-bold" style={{ color: colors.text }}>Users</h1>
       
-      <div className="bg-gray-800 rounded-xl overflow-hidden">
+      <div className="rounded-xl overflow-hidden" style={{ backgroundColor: colors.bgCard }}>
         <table className="w-full">
-          <thead className="bg-gray-700">
+          <thead style={{ backgroundColor: colors.bgHover }}>
             <tr>
-              <th className="px-6 py-3 text-left">Email</th>
-              <th className="px-6 py-3 text-left">Name</th>
-              <th className="px-6 py-3 text-left">Role</th>
-              <th className="px-6 py-3 text-left">Status</th>
-              <th className="px-6 py-3 text-left">Actions</th>
+              {['Email', 'Status', 'KYC', 'Volume', 'Joined'].map(h => (
+                <th key={h} className="px-6 py-3 text-left" style={{ color: colors.text }}>{h}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {users.map(user => (
-              <tr key={user.id} className="border-b border-gray-700">
-                <td className="px-6 py-4">{user.email}</td>
-                <td className="px-6 py-4">{user.name}</td>
-                <td className="px-6 py-4">{user.role}</td>
+            {loading ? (
+              <tr><td colSpan={5} className="p-6 text-center" style={{ color: colors.textSecondary }}>Loading...</td></tr>
+            ) : users.length === 0 ? (
+              <tr><td colSpan={5} className="p-6 text-center" style={{ color: colors.textSecondary }}>No users found</td></tr>
+            ) : users.map(user => (
+              <tr key={user.id} className="border-b" style={{ borderColor: colors.border }}>
+                <td className="px-6 py-4" style={{ color: colors.text }}>{user.email}</td>
                 <td className="px-6 py-4">
-                  <span className={`px-2 py-1 rounded text-xs ${
-                    user.status === 'Verified' ? 'bg-green-500' : 
-                    user.status === 'Pending' ? 'bg-orange-500' : 'bg-red-500'
-                  }`}>
-                    {user.status}
-                  </span>
+                  <span className="px-2 py-1 rounded text-xs" style={{ 
+                    backgroundColor: user.status === 'active' ? colors.success : colors.warning,
+                    color: 'white'
+                  }}>{user.status}</span>
                 </td>
-                <td className="px-6 py-4">
-                  <button className="text-blue-500 hover:underline mr-2">Edit</button>
-                  <button className="text-red-500 hover:underline">Delete</button>
+                <td className="px-6 py-4" style={{ color: colors.textSecondary }}>{user.kycStatus}</td>
+                <td className="px-6 py-4" style={{ color: colors.text }}>${parseFloat(user.totalVolume || '0').toLocaleString()}</td>
+                <td className="px-6 py-4" style={{ color: colors.textSecondary }}>
+                  {new Date(user.createdAt).toLocaleDateString()}
                 </td>
               </tr>
             ))}
@@ -223,46 +253,51 @@ const AdminUsers = () => {
 };
 
 // Transactions Component
-const AdminTransactions = () => {
-  const transactions: Transaction[] = [
-    { id: '1', hash: '0x742d35Cc6634C0532925a3b844Bc9e7595f', type: 'Transfer', amount: '$5,000', status: 'Confirmed' },
-    { id: '2', hash: '0x1111111111111111111111111111111111111111', type: 'Swap', amount: '$12,500', status: 'Pending' },
-    { id: '3', hash: '0x2222222222222222222222222222222222222222', type: 'Transfer', amount: '$3,200', status: 'Confirmed' },
-    { id: '4', hash: '0x3333333333333333333333333333333333333333', type: 'Stake', amount: '$8,000', status: 'Confirmed' },
-    { id: '5', hash: '0x4444444444444444444444444444444444444444', type: 'Transfer', amount: '$1,500', status: 'Failed' },
-  ];
-  
+const AdminTransactions: React.FC<{ theme: Theme }> = ({ theme }) => {
+  const colors = getColors(theme);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getTransactions({ pageSize: 20 })
+      .then((res: any) => setTransactions(res.data || []))
+      .catch(() => setTransactions([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const truncate = (s: string) => s ? s.slice(0, 6) + '...' + s.slice(-4) : '';
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Transactions</h1>
+      <h1 className="text-2xl font-bold" style={{ color: colors.text }}>Transactions</h1>
       
-      <div className="bg-gray-800 rounded-xl overflow-hidden">
+      <div className="rounded-xl overflow-hidden" style={{ backgroundColor: colors.bgCard }}>
         <table className="w-full">
-          <thead className="bg-gray-700">
+          <thead style={{ backgroundColor: colors.bgHover }}>
             <tr>
-              <th className="px-6 py-3 text-left">Hash</th>
-              <th className="px-6 py-3 text-left">Type</th>
-              <th className="px-6 py-3 text-left">Amount</th>
-              <th className="px-6 py-3 text-left">Status</th>
-              <th className="px-6 py-3 text-left">Actions</th>
+              {['Hash', 'Type', 'Amount', 'Status', 'Time'].map(h => (
+                <th key={h} className="px-6 py-3 text-left" style={{ color: colors.text }}>{h}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {transactions.map(tx => (
-              <tr key={tx.id} className="border-b border-gray-700">
-                <td className="px-6 py-4 font-mono text-sm">{tx.hash.substring(0, 20)}...</td>
-                <td className="px-6 py-4">{tx.type}</td>
-                <td className="px-6 py-4">{tx.amount}</td>
+            {loading ? (
+              <tr><td colSpan={5} className="p-6 text-center" style={{ color: colors.textSecondary }}>Loading...</td></tr>
+            ) : transactions.length === 0 ? (
+              <tr><td colSpan={5} className="p-6 text-center" style={{ color: colors.textSecondary }}>No transactions</td></tr>
+            ) : transactions.map(tx => (
+              <tr key={tx.id} className="border-b" style={{ borderColor: colors.border }}>
+                <td className="px-6 py-4 font-mono text-sm" style={{ color: colors.textSecondary }}>{truncate(tx.hash)}</td>
+                <td className="px-6 py-4" style={{ color: colors.text }}>{tx.type}</td>
+                <td className="px-6 py-4" style={{ color: colors.text }}>{tx.amount} {tx.tokenSymbol}</td>
                 <td className="px-6 py-4">
-                  <span className={`px-2 py-1 rounded text-xs ${
-                    tx.status === 'Confirmed' ? 'bg-green-500' : 
-                    tx.status === 'Pending' ? 'bg-orange-500' : 'bg-red-500'
-                  }`}>
-                    {tx.status}
-                  </span>
+                  <span className="px-2 py-1 rounded text-xs" style={{ 
+                    backgroundColor: tx.status === 'confirmed' ? colors.success : tx.status === 'pending' ? colors.warning : colors.error,
+                    color: 'white'
+                  }}>{tx.status}</span>
                 </td>
-                <td className="px-6 py-4">
-                  <button className="text-blue-500 hover:underline">View</button>
+                <td className="px-6 py-4" style={{ color: colors.textSecondary }}>
+                  {new Date(tx.timestamp).toLocaleString()}
                 </td>
               </tr>
             ))}
@@ -273,46 +308,286 @@ const AdminTransactions = () => {
   );
 };
 
-// System Component
-const AdminSystem = () => {
-  const services: SystemService[] = [
-    { name: 'API Gateway', status: 'Running', uptime: '99.99%' },
-    { name: 'Wallet Service', status: 'Running', uptime: '99.95%' },
-    { name: 'Transaction Engine', status: 'Running', uptime: '99.99%' },
-    { name: 'Price Feed', status: 'Running', uptime: '99.90%' },
-    { name: 'PostgreSQL', status: 'Running', uptime: '99.99%' },
-    { name: 'Redis Cache', status: 'Running', uptime: '99.95%' },
-  ];
-  
+// KYC Component
+const AdminKYC: React.FC<{ theme: Theme }> = ({ theme }) => {
+  const colors = getColors(theme);
+  const [records, setRecords] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getKycRecords({ pageSize: 20 })
+      .then((res: any) => setRecords(res.data || []))
+      .catch(() => setRecords([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleApprove = async (id: string) => {
+    try {
+      await api.approveKyc(id);
+      setRecords(records.map(r => r.id === id ? { ...r, status: 'approved' } : r));
+    } catch (e) { console.error(e); }
+  };
+
+  const handleReject = async (id: string) => {
+    const reason = prompt('Rejection reason:');
+    if (!reason) return;
+    try {
+      await api.rejectKyc(id, reason);
+      setRecords(records.map(r => r.id === id ? { ...r, status: 'rejected' } : r));
+    } catch (e) { console.error(e); }
+  };
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">System Status</h1>
+      <h1 className="text-2xl font-bold" style={{ color: colors.text }}>KYC Verification</h1>
+      
+      <div className="rounded-xl overflow-hidden" style={{ backgroundColor: colors.bgCard }}>
+        <table className="w-full">
+          <thead style={{ backgroundColor: colors.bgHover }}>
+            <tr>
+              {['User', 'Type', 'Status', 'Submitted', 'Actions'].map(h => (
+                <th key={h} className="px-6 py-3 text-left" style={{ color: colors.text }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={5} className="p-6 text-center" style={{ color: colors.textSecondary }}>Loading...</td></tr>
+            ) : records.length === 0 ? (
+              <tr><td colSpan={5} className="p-6 text-center" style={{ color: colors.textSecondary }}>No records</td></tr>
+            ) : records.map(r => (
+              <tr key={r.id} className="border-b" style={{ borderColor: colors.border }}>
+                <td className="px-6 py-4" style={{ color: colors.text }}>{r.userEmail}</td>
+                <td className="px-6 py-4" style={{ color: colors.textSecondary }}>{r.documentType}</td>
+                <td className="px-6 py-4">
+                  <span className="px-2 py-1 rounded text-xs" style={{ 
+                    backgroundColor: r.status === 'approved' ? colors.success : r.status === 'rejected' ? colors.error : colors.warning,
+                    color: 'white'
+                  }}>{r.status}</span>
+                </td>
+                <td className="px-6 py-4" style={{ color: colors.textSecondary }}>
+                  {new Date(r.submittedAt).toLocaleDateString()}
+                </td>
+                <td className="px-6 py-4">
+                  {r.status === 'pending' && (
+                    <div className="flex gap-2">
+                      <button onClick={() => handleApprove(r.id)} className="px-2 py-1 rounded text-xs" style={{ backgroundColor: colors.success, color: 'white' }}>Approve</button>
+                      <button onClick={() => handleReject(r.id)} className="px-2 py-1 rounded text-xs" style={{ backgroundColor: colors.error, color: 'white' }}>Reject</button>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+// Tokens Component
+const AdminTokens: React.FC<{ theme: Theme }> = ({ theme }) => {
+  const colors = getColors(theme);
+  const [tokens, setTokens] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getTokens()
+      .then((res: any) => setTokens(res.data || []))
+      .catch(() => setTokens([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold" style={{ color: colors.text }}>Tokens</h1>
+      
+      <div className="rounded-xl overflow-hidden" style={{ backgroundColor: colors.bgCard }}>
+        <table className="w-full">
+          <thead style={{ backgroundColor: colors.bgHover }}>
+            <tr>
+              {['Name', 'Symbol', 'Chain', 'Price', 'Listed'].map(h => (
+                <th key={h} className="px-6 py-3 text-left" style={{ color: colors.text }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={5} className="p-6 text-center" style={{ color: colors.textSecondary }}>Loading...</td></tr>
+            ) : tokens.length === 0 ? (
+              <tr><td colSpan={5} className="p-6 text-center" style={{ color: colors.textSecondary }}>No tokens</td></tr>
+            ) : tokens.map(t => (
+              <tr key={t.id} className="border-b" style={{ borderColor: colors.border }}>
+                <td className="px-6 py-4" style={{ color: colors.text }}>{t.name}</td>
+                <td className="px-6 py-4" style={{ color: colors.textSecondary }}>{t.symbol}</td>
+                <td className="px-6 py-4" style={{ color: colors.textSecondary }}>{t.chain}</td>
+                <td className="px-6 py-4" style={{ color: colors.text }}>${t.price || '0'}</td>
+                <td className="px-6 py-4">
+                  <span className="px-2 py-1 rounded text-xs" style={{ 
+                    backgroundColor: t.isListed ? colors.success : colors.textSecondary,
+                    color: 'white'
+                  }}>{t.isListed ? 'Yes' : 'No'}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+// Withdrawals Component
+const AdminWithdrawals: React.FC<{ theme: Theme }> = ({ theme }) => {
+  const colors = getColors(theme);
+  const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getWithdrawals()
+      .then((res: any) => setWithdrawals(res.data || []))
+      .catch(() => setWithdrawals([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleApprove = async (id: string) => {
+    try {
+      await api.approveWithdrawal(id);
+      setWithdrawals(withdrawals.map(w => w.id === id ? { ...w, status: 'approved' } : w));
+    } catch (e) { console.error(e); }
+  };
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold" style={{ color: colors.text }}>Withdrawals</h1>
+      
+      <div className="rounded-xl overflow-hidden" style={{ backgroundColor: colors.bgCard }}>
+        <table className="w-full">
+          <thead style={{ backgroundColor: colors.bgHover }}>
+            <tr>
+              {['User', 'Amount', 'Token', 'Status', 'Actions'].map(h => (
+                <th key={h} className="px-6 py-3 text-left" style={{ color: colors.text }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={5} className="p-6 text-center" style={{ color: colors.textSecondary }}>Loading...</td></tr>
+            ) : withdrawals.length === 0 ? (
+              <tr><td colSpan={5} className="p-6 text-center" style={{ color: colors.textSecondary }}>No withdrawals</td></tr>
+            ) : withdrawals.map(w => (
+              <tr key={w.id} className="border-b" style={{ borderColor: colors.border }}>
+                <td className="px-6 py-4" style={{ color: colors.text }}>{w.userEmail}</td>
+                <td className="px-6 py-4" style={{ color: colors.text }}>{w.amount}</td>
+                <td className="px-6 py-4" style={{ color: colors.textSecondary }}>{w.token}</td>
+                <td className="px-6 py-4">
+                  <span className="px-2 py-1 rounded text-xs" style={{ 
+                    backgroundColor: w.status === 'approved' || w.status === 'completed' ? colors.success : w.status === 'pending' ? colors.warning : colors.error,
+                    color: 'white'
+                  }}>{w.status}</span>
+                </td>
+                <td className="px-6 py-4">
+                  {w.status === 'pending' && (
+                    <button onClick={() => handleApprove(w.id)} className="px-2 py-1 rounded text-xs" style={{ backgroundColor: colors.success, color: 'white' }}>
+                      Approve
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+// Fees Component
+const AdminFees: React.FC<{ theme: Theme }> = ({ theme }) => {
+  const colors = getColors(theme);
+  const [fees, setFees] = useState<any>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getFeeConfig()
+      .then(setFees)
+      .catch(() => ({}))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    try {
+      await api.updateFeeConfig(fees);
+      alert('Fees updated!');
+    } catch (e) { console.error(e); }
+  };
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold" style={{ color: colors.text }}>Fee Configuration</h1>
+      
+      <div className="rounded-xl p-6" style={{ backgroundColor: colors.bgCard }}>
+        {loading ? (
+          <p style={{ color: colors.textSecondary }}>Loading...</p>
+        ) : (
+          <div className="space-y-4">
+            {['tradingFee', 'withdrawalFee', 'depositFee', 'makerFee', 'takerFee'].map(field => (
+              <div key={field} className="flex items-center justify-between">
+                <label style={{ color: colors.text }}>{field.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}</label>
+                <input
+                  type="text"
+                  value={fees[field] || ''}
+                  onChange={(e) => setFees({ ...fees, [field]: e.target.value })}
+                  className="px-3 py-2 rounded-lg w-32"
+                  style={{ backgroundColor: colors.bg, border: `1px solid ${colors.border}`, color: colors.text }}
+                />
+              </div>
+            ))}
+            <button onClick={handleSave} className="px-4 py-2 rounded-lg" style={{ backgroundColor: colors.primary, color: 'white' }}>
+              Save Changes
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// System Component
+const AdminSystem: React.FC<{ theme: Theme }> = ({ theme }) => {
+  const colors = getColors(theme);
+  const [services, setServices] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getSystemStatus()
+      .then(setServices)
+      .catch(() => setServices([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold" style={{ color: colors.text }}>System Status</h1>
       
       <div className="grid grid-cols-2 gap-6">
-        <div className="bg-gray-800 rounded-xl p-6">
-          <h2 className="text-lg font-semibold mb-4">Services</h2>
-          {services.slice(0, 4).map((service, i) => (
-            <div key={i} className="flex items-center justify-between py-2 border-b border-gray-700">
-              <div className="flex items-center space-x-2">
-                <span className="text-green-500">✅</span>
-                <span>{service.name}</span>
+        <div className="rounded-xl p-6" style={{ backgroundColor: colors.bgCard }}>
+          <h2 className="text-lg font-semibold mb-4" style={{ color: colors.text }}>Services</h2>
+          {loading ? (
+            <p style={{ color: colors.textSecondary }}>Loading...</p>
+          ) : services.length === 0 ? (
+            <p style={{ color: colors.textSecondary }}>No services</p>
+          ) : (
+            services.slice(0, 6).map((s, i) => (
+              <div key={i} className="flex items-center justify-between py-2 border-b" style={{ borderColor: colors.border }}>
+                <div className="flex items-center gap-2">
+                  <span style={{ color: s.status === 'running' ? colors.success : colors.error }}>●</span>
+                  <span style={{ color: colors.text }}>{s.name}</span>
+                </div>
+                <span style={{ color: colors.textSecondary }}>{s.uptime}</span>
               </div>
-              <span className="text-gray-400">{service.uptime}</span>
-            </div>
-          ))}
-        </div>
-        
-        <div className="bg-gray-800 rounded-xl p-6">
-          <h2 className="text-lg font-semibold mb-4">Database</h2>
-          {services.slice(4).map((service, i) => (
-            <div key={i} className="flex items-center justify-between py-2 border-b border-gray-700">
-              <div className="flex items-center space-x-2">
-                <span className="text-green-500">✅</span>
-                <span>{service.name}</span>
-              </div>
-              <span className="text-gray-400">{service.uptime}</span>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </div>
@@ -320,67 +595,71 @@ const AdminSystem = () => {
 };
 
 // Settings Component  
-const AdminSettings = ({ isDarkMode, toggleTheme }: { isDarkMode: boolean; toggleTheme: () => void }) => {
+const AdminSettings: React.FC<{ theme: Theme; setTheme: (t: Theme) => void }> = ({ theme, setTheme }) => {
+  const colors = getColors(theme);
+  
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Settings</h1>
+      <h1 className="text-2xl font-bold" style={{ color: colors.text }}>Settings</h1>
       
-      <div className="bg-gray-800 rounded-xl p-6 space-y-4">
-        <h2 className="text-lg font-semibold">Appearance</h2>
+      <div className="rounded-xl p-6 space-y-4" style={{ backgroundColor: colors.bgCard }}>
+        <h2 className="text-lg font-semibold" style={{ color: colors.text }}>Appearance</h2>
         <div className="flex items-center justify-between">
-          <span>Dark Mode</span>
+          <span style={{ color: colors.text }}>Dark Mode</span>
           <button 
-            onClick={toggleTheme}
-            className={`w-14 h-7 rounded-full transition-colors ${isDarkMode ? 'bg-red-500' : 'bg-gray-500'}`}
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="w-14 h-7 rounded-full transition-colors"
+            style={{ backgroundColor: theme === 'dark' ? colors.primary : colors.textSecondary }}
           >
-            <div className={`w-5 h-5 bg-white rounded-full transform transition-transform ${isDarkMode ? 'translate-x-7' : 'translate-x-1'}`} />
+            <div className={`w-5 h-5 bg-white rounded-full transform transition-transform ${theme === 'dark' ? 'translate-x-7' : 'translate-x-1'}`} />
           </button>
         </div>
-      </div>
-      
-      <div className="bg-gray-800 rounded-xl p-6 space-y-4">
-        <h2 className="text-lg font-semibold">Platform Settings</h2>
-        <button className="w-full text-left px-4 py-2 bg-gray-700 rounded hover:bg-gray-600">Fee Configuration</button>
-        <button className="w-full text-left px-4 py-2 bg-gray-700 rounded hover:bg-gray-600">Token Listing</button>
-        <button className="w-full text-left px-4 py-2 bg-gray-700 rounded hover:bg-gray-600">KYC Levels</button>
-      </div>
-      
-      <div className="bg-gray-800 rounded-xl p-6 space-y-4">
-        <h2 className="text-lg font-semibold">Security</h2>
-        <button className="w-full text-left px-4 py-2 bg-gray-700 rounded hover:bg-gray-600">Admin Users</button>
-        <button className="w-full text-left px-4 py-2 bg-gray-700 rounded hover:bg-gray-600">Permissions</button>
-        <button className="w-full text-left px-4 py-2 bg-gray-700 rounded hover:bg-gray-600">API Keys</button>
       </div>
     </div>
   );
 };
 
 // Main App
-const AdminDesktopApp = () => {
+const AdminDesktopApp: React.FC = () => {
   const [currentPage, setCurrentPage] = useState('dashboard');
-  const [isDarkMode, setIsDarkMode] = useState(true);
-  
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-    localStorage.setItem('admin_theme', !isDarkMode ? 'dark' : 'light');
-  };
-  
-  useEffect(() => {
+  const [theme, setTheme] = useState<Theme>(() => {
     const stored = localStorage.getItem('admin_theme');
-    if (stored) setIsDarkMode(stored === 'dark');
-  }, []);
-  
+    return (stored as Theme) || 'dark';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('admin_theme', theme);
+    document.documentElement.classList.remove('light', 'dark');
+    document.documentElement.classList.add(theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
+
+  const renderPage = () => {
+    const props = { theme };
+    switch (currentPage) {
+      case 'dashboard': return <AdminDashboard {...props} />;
+      case 'users': return <AdminUsers {...props} />;
+      case 'transactions': return <AdminTransactions {...props} />;
+      case 'kyc': return <AdminKYC {...props} />;
+      case 'tokens': return <AdminTokens {...props} />;
+      case 'withdrawals': return <AdminWithdrawals {...props} />;
+      case 'fees': return <AdminFees {...props} />;
+      case 'system': return <AdminSystem {...props} />;
+      case 'settings': return <AdminSettings {...props} theme={theme} setTheme={setTheme} />;
+      default: return <AdminDashboard {...props} />;
+    }
+  };
+
+  const colors = getColors(theme);
+
   return (
-    <div className={`flex h-screen ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900'}`}>
-      <AdminSidebar currentPage={currentPage} setCurrentPage={setCurrentPage} />
+    <div className="flex h-screen" style={{ backgroundColor: colors.bg }}>
+      <AdminSidebar currentPage={currentPage} setCurrentPage={setCurrentPage} theme={theme} />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <AdminHeader onToggleTheme={toggleTheme} isDarkMode={isDarkMode} />
+        <AdminHeader theme={theme} toggleTheme={toggleTheme} />
         <main className="flex-1 overflow-auto p-6">
-          {currentPage === 'dashboard' && <AdminDashboard />}
-          {currentPage === 'users' && <AdminUsers />}
-          {currentPage === 'transactions' && <AdminTransactions />}
-          {currentPage === 'system' && <AdminSystem />}
-          {currentPage === 'settings' && <AdminSettings isDarkMode={isDarkMode} toggleTheme={toggleTheme} />}
+          {renderPage()}
         </main>
       </div>
     </div>

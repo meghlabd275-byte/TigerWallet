@@ -1,44 +1,15 @@
 // TigerWallet Admin - Web Application
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App';
-import './index.css';
-
-// Theme Provider
-const ThemeProvider = ({ children }) => {
-  const [isDarkMode, setIsDarkMode] = React.useState(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('admin_theme');
-      return stored ? stored === 'dark' : true;
-    }
-    return true;
-  });
-
-  React.useEffect(() => {
-    document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
-    localStorage.setItem('admin_theme', isDarkMode ? 'dark' : 'light');
-  }, [isDarkMode]);
-
-  const toggleTheme = () => setIsDarkMode(!isDarkMode);
-
-  return (
-    <ThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
-      {children}
-    </ThemeContext.Provider>
-  );
-};
-
-const ThemeContext = React.createContext({
-  isDarkMode: true,
-  toggleTheme: () => {}
-});
-
-export { ThemeContext, ThemeProvider };
+import AppComplete from './AppComplete';
+import './styles/globals.css';
 
 const container = document.getElementById('root');
-const root = createRoot(container);
-root.render(
-  <ThemeProvider>
-    <App />
-  </ThemeProvider>
-);
+if (container) {
+  const root = createRoot(container);
+  root.render(
+    <React.StrictMode>
+      <AppComplete />
+    </React.StrictMode>
+  );
+}
