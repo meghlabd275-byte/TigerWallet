@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TigerWallet Admin System</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body.dark { background: #1a1a1a; color: #fff; }
+    body.light { background: #f5f5f5; color: #333; }
+    .app-container { display: flex; height: 100vh; }
+    .sidebar { width: 200px; padding: 20px; border-right: 1px solid #ddd; }
+    body.dark .sidebar { background: #2d2d2d; border-color: #444; }
+    body.light .sidebar { background: #fff; }
+    .sidebar h1 { font-size: 18px; margin-bottom: 20px; }
+    .nav-item { padding: 12px 16px; margin: 4px 0; cursor: pointer; border-radius: 8px; }
+    .nav-item:hover { background: rgba(0,0,0,0.05); }
+    body.dark .nav-item:hover { background: rgba(255,255,255,0.1); }
+    .nav-item.active { background: #007bff; color: #fff; }
+    .main-content { flex: 1; padding: 24px; overflow-y: auto; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .stat-card { padding: 20px; border-radius: 12px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    body.dark .stat-card { background: #2d2d2d; }
+    .stat-card h3 { font-size: 14px; color: #666; margin-bottom: 8px; }
+    body.dark .stat-card h3 { color: #999; }
+    .stat-card p { font-size: 28px; font-weight: bold; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    .header h2 { font-size: 24px; }
+    .theme-toggle { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; background: #007bff; color: #fff; }
+  </style>
+</head>
+<body class="light">
+  <div class="app-container">
+    <aside class="sidebar">
+      <h1>Admin System</h1>
+      <nav>
+        <div class="nav-item active" data-page="dashboard">Dashboard</div>
+        <div class="nav-item" data-page="users">Users</div>
+        <div class="nav-item" data-page="config">Configuration</div>
+        <div class="nav-item" data-page="audit">Audit Logs</div>
+        <div class="nav-item" data-page="settings">Settings</div>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <header class="header">
+        <h2 id="page-title">Dashboard</h2>
+        <button class="theme-toggle" id="theme-toggle">🌙 Dark Mode</button>
+      </header>
+      <div id="content"></div>
+    </main>
+  </div>
+  <script>
+    let currentPage = 'dashboard';
+    let isDarkMode = false;
+    
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+      isDarkMode = !isDarkMode;
+      document.body.className = isDarkMode ? 'dark' : 'light';
+      document.getElementById('theme-toggle').textContent = isDarkMode ? '☀️ Light Mode' : '🌙 Dark Mode';
+      localStorage.setItem('dark_mode', isDarkMode);
+    });
+
+    if (localStorage.getItem('dark_mode') === 'true') {
+      isDarkMode = true;
+      document.body.className = 'dark';
+      document.getElementById('theme-toggle').textContent = '☀️ Light Mode';
+    }
+
+    document.querySelectorAll('.nav-item').forEach(item => {
+      item.addEventListener('click', () => {
+        document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+        currentPage = item.dataset.page;
+        document.getElementById('page-title').textContent = item.textContent;
+        loadPage(currentPage);
+      });
+    });
+
+    function loadPage(page) {
+      const content = document.getElementById('content');
+      content.innerHTML = `<div class="stats-grid">
+        <div class="stat-card"><h3>Users</h3><p>0</p></div>
+        <div class="stat-card"><h3>Configurations</h3><p>0</p></div>
+        <div class="stat-card"><h3>Audit Logs</h3><p>0</p></div>
+        <div class="stat-card"><h3>System Status</h3><p>OK</p></div>
+      </div>`;
+    }
+
+    loadPage('dashboard');
+  </script>
+</body>
+</html>
