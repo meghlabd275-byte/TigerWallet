@@ -1,0 +1,147 @@
+/**
+ * TigerWallet Admin - Android App Module
+ * Complete implementation with all features
+ */
+
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'kotlin-kapt'
+    id 'dagger.hilt.android.plugin'
+}
+
+android {
+    namespace 'com.tigerwallet.admin'
+    compileSdk rootProject.ext.compileSdk
+
+    defaultConfig {
+        applicationId "com.tigerwallet.admin"
+        minSdk rootProject.ext.minSdk
+        targetSdk rootProject.ext.targetSdk
+        versionCode rootProject.ext.versionCode
+        versionName rootProject.ext.versionName
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        vectorDrawables {
+            useSupportLibrary true
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    buildFeatures {
+        compose true
+        viewBinding true
+    }
+
+    composeOptions {
+        kotlinCompilerExtensionVersion '1.5.4'
+    }
+
+    packaging {
+        resources {
+            excludes += '/META-INF/{AL2.0,LGPL2.1}'
+        }
+    }
+}
+
+dependencies {
+    // AndroidX Core
+    implementation "androidx.core:core-ktx:$rootProject.ext.coreKtx"
+    implementation "androidx.appcompat:appcompat:$rootProject.ext.appCompat"
+    implementation "com.google.android.material:material:$rootProject.ext.material"
+    implementation "androidx.constraintlayout:constraintlayout:$rootProject.ext.constraintLayout"
+    implementation "androidx.activity:activity-ktx:1.8.2"
+    implementation "androidx.fragment:fragment-ktx:1.6.2"
+
+    // Lifecycle
+    implementation "androidx.lifecycle:lifecycle-runtime-ktx:$rootProject.ext.lifecycleRuntimeKtx"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:$rootProject.ext.lifecycleViewModelKtx"
+    implementation "androidx.lifecycle:lifecycle-livedata-ktx:$rootProject.ext.lifecycleLiveDataKtx"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-compose:$rootProject.ext.lifecycleViewModelKtx"
+
+    // Navigation
+    implementation "androidx.navigation:navigation-fragment-ktx:$rootProject.ext.navigationFragmentKtx"
+    implementation "androidx.navigation:navigation-ui-ktx:$rootProject.ext.navigationFragmentKtx"
+    implementation "androidx.navigation:navigation-compose:2.7.6"
+
+    // Compose
+    implementation platform('androidx.compose:compose-bom:2023.10.01')
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-graphics'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.material:material-icons-extended'
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+    debugImplementation 'androidx.compose.ui:ui-test-manifest'
+
+    // Room Database
+    implementation "androidx.room:room-runtime:$rootProject.ext.roomRuntime"
+    implementation "androidx.room:room-ktx:$rootProject.ext.roomKtx"
+    kapt "androidx.room:room-compiler:$rootProject.ext.roomRuntime"
+
+    // Retrofit
+    implementation "com.squareup.retrofit2:retrofit:$rootProject.ext.retrofit"
+    implementation "com.squareup.retrofit2:converter-gson:$rootProject.ext.retrofitConverterGson"
+    implementation "com.squareup.okhttp3:okhttp:$rootProject.ext.okhttp"
+    implementation "com.squareup.okhttp3:logging-interceptor:$rootProject.ext.okhttp"
+
+    // Coroutines
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:$rootProject.ext.coroutinesCore"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:$rootProject.ext.coroutinesAndroid"
+
+    // Hilt DI
+    implementation "com.google.dagger:hilt-android:$rootProject.ext.hilt"
+    kapt "com.google.dagger:hilt-android-compiler:$rootProject.ext.hilt"
+    implementation 'androidx.hilt:hilt-navigation-compose:1.1.0'
+
+    // Image Loading
+    implementation "io.coil-kt:coil-compose:$rootProject.ext.coil"
+
+    // DataStore
+    implementation "androidx.datastore:datastore-preferences:$rootProject.ext.datastore"
+
+    // Splash Screen
+    implementation "androidx.core:core-splashscreen:$rootProject.ext.splashscreen"
+
+    // Biometric
+    implementation "androidx.biometric:biometric:$rootProject.ext.biometric"
+
+    // Charts
+    implementation "com.patrykandpatrick.vico:compose-m3:1.13.1"
+
+    // WebSocket
+    implementation "org.java-websocket:Java-WebSocket:1.5.4"
+
+    // Gson
+    implementation 'com.google.code.gson:gson:2.10.1'
+
+    // Testing
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+    androidTestImplementation platform('androidx.compose:compose-bom:2023.10.01')
+    androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
+}
+
+kapt {
+    correctErrorTypes true
+}

@@ -1,0 +1,91 @@
+/**
+ * TigerWallet Admin - Android App
+ * Complete Native Android Implementation with Dark/Light Theme Support
+ */
+
+buildscript {
+    ext.kotlin_version = '1.9.0'
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.1.0'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.buildDir = '../build'
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.evaluationDependsOn(':app')
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}
+
+// Project Configuration
+ext {
+    compileSdk = 34
+    minSdk = 24
+    targetSdk = 34
+    versionCode = 1
+    versionName = "1.0.0"
+    
+    // Dependencies
+    kotlinVersion = '1.9.0'
+    gradleVersion = '8.1.0'
+    
+    // AndroidX
+    coreKtx = '1.12.0'
+    appCompat = '1.6.1'
+    material = '1.11.0'
+    constraintLayout = '2.1.4'
+    
+    // Lifecycle
+    lifecycleRuntimeKtx = '2.6.2'
+    lifecycleViewModelKtx = '2.6.2'
+    lifecycleLiveDataKtx = '2.6.2'
+    
+    // Navigation
+    navigationFragmentKtx = '2.7.6'
+    navigationUiKtx = '2.7.6'
+    
+    // Room
+    roomRuntime = '2.6.1'
+    roomKtx = '2.6.1'
+    
+    // Retrofit
+    retrofit = '2.9.0'
+    retrofitConverterGson = '2.9.0'
+    okhttp = '4.12.0'
+    
+    // Coroutines
+    coroutinesCore = '1.7.3'
+    coroutinesAndroid = '1.7.3'
+    
+    // DI
+    hilt = '2.48'
+    
+    // Image
+    coil = '2.5.0'
+    
+    // DataStore
+    datastore = '1.0.0'
+    
+    // Splash
+    splashscreen = '1.0.1'
+    
+    // Biometric
+    biometric = '1.1.0'
+}
