@@ -280,6 +280,99 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Permission Service (Go - High loaded distributed)
+  permission-service:
+    build:
+      context: ./permission_service/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-permission-service
+    ports:
+      - "8091:8091"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: tigerwallet
+      DB_PASSWORD: tigerwallet
+      DB_NAME: tigerwallet_admin
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: tigerwallet-jwt-secret-key
+      PERMISSION_PORT: 8091
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Connection API Service (Go - High loaded distributed)
+  connection-api:
+    build:
+      context: ./connection_api/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-connection-api
+    ports:
+      - "8092:8092"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: tigerwallet
+      DB_PASSWORD: tigerwallet
+      DB_NAME: tigerwallet_admin
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: tigerwallet-connection-secret
+      CONNECTION_PORT: 8092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Fetcher Gateway (Rust - Ultra low latency)
+  fetcher-gateway:
+    build:
+      context: ./fetcher_gateway/rust
+      dockerfile: Dockerfile
+    container_name: tigerwallet-fetcher-gateway
+    ports:
+      - "8093:8093"
+    environment:
+      DATABASE_URL: postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet_admin
+      REDIS_URL: redis://redis:6379
+      FETCHER_PORT: 8093
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Monitoring Dashboard (Go - High loaded distributed)
+  monitoring-dashboard:
+    build:
+      context: ./monitoring_dashboard/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-monitoring-dashboard
+    ports:
+      - "8094:8094"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: tigerwallet
+      DB_PASSWORD: tigerwallet
+      DB_NAME: tigerwallet_admin
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MONITOR_PORT: 8094
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
