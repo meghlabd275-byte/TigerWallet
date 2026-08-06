@@ -134,6 +134,101 @@ func main() {
 
 			admin.GET("/stats", handleGetStats)
 
+			// Bot Management
+			admin.GET("/bots", handleGetBots)
+			admin.GET("/bots/:id", handleGetBot)
+			admin.POST("/bots", handleCreateBot)
+			admin.PUT("/bots/:id", handleUpdateBot)
+			admin.DELETE("/bots/:id", handleDeleteBot)
+			admin.PUT("/bots/:id/status", handleUpdateBotStatus)
+			admin.GET("/bots/:id/stats", handleGetBotStats)
+			admin.GET("/bots/tiers", handleGetBotTiers)
+			admin.POST("/bots/tiers", handleCreateBotTier)
+			admin.PUT("/bots/tiers/:id", handleUpdateBotTier)
+			admin.DELETE("/bots/tiers/:id", handleDeleteBotTier)
+
+			// BotsClient Management
+			admin.GET("/bots-clients", handleGetBotsClients)
+			admin.GET("/bots-clients/:id", handleGetBotsClient)
+			admin.POST("/bots-clients", handleCreateBotsClient)
+			admin.PUT("/bots-clients/:id", handleUpdateBotsClient)
+			admin.DELETE("/bots-clients/:id", handleDeleteBotsClient)
+			admin.PUT("/bots-clients/:id/status", handleUpdateBotsClientStatus)
+
+			// Project Team Management
+			admin.GET("/project-teams", handleGetProjectTeams)
+			admin.GET("/project-teams/:id", handleGetProjectTeam)
+			admin.POST("/project-teams", handleCreateProjectTeam)
+			admin.PUT("/project-teams/:id", handleUpdateProjectTeam)
+			admin.DELETE("/project-teams/:id", handleDeleteProjectTeam)
+			admin.GET("/project-teams/:id/members", handleGetProjectTeamMembers)
+			admin.POST("/project-teams/:id/members", handleAddProjectTeamMember)
+			admin.DELETE("/project-teams/:id/members/:memberId", handleRemoveProjectTeamMember)
+
+			// White Level Client Management
+			admin.GET("/wl-clients", handleGetWLClients)
+			admin.GET("/wl-clients/:id", handleGetWLClient)
+			admin.POST("/wl-clients", handleCreateWLClient)
+			admin.PUT("/wl-clients/:id", handleUpdateWLClient)
+			admin.DELETE("/wl-clients/:id", handleDeleteWLClient)
+			admin.PUT("/wl-clients/:id/status", handleUpdateWLClientStatus)
+
+			// WL MasterWallet Management
+			admin.GET("/wl-master-wallets", handleGetWLMasterWallets)
+			admin.GET("/wl-master-wallets/:id", handleGetWLMasterWallet)
+			admin.POST("/wl-master-wallets", handleCreateWLMasterWallet)
+			admin.PUT("/wl-master-wallets/:id", handleUpdateWLMasterWallet)
+			admin.DELETE("/wl-master-wallets/:id", handleDeleteWLMasterWallet)
+			admin.PUT("/wl-master-wallets/:id/status", handleUpdateWLMasterWalletStatus)
+
+			// WL UserWallet Management
+			admin.GET("/wl-user-wallets", handleGetWLUserWallets)
+			admin.GET("/wl-user-wallets/:id", handleGetWLUserWallet)
+			admin.POST("/wl-user-wallets", handleCreateWLUserWallet)
+			admin.PUT("/wl-user-wallets/:id", handleUpdateWLUserWallet)
+			admin.DELETE("/wl-user-wallets/:id", handleDeleteWLUserWallet)
+			admin.PUT("/wl-user-wallets/:id/status", handleUpdateWLUserWalletStatus)
+
+			// WL Bots Management
+			admin.GET("/wl-bots", handleGetWLBots)
+			admin.GET("/wl-bots/:id", handleGetWLBot)
+			admin.POST("/wl-bots", handleCreateWLBot)
+			admin.PUT("/wl-bots/:id", handleUpdateWLBot)
+			admin.DELETE("/wl-bots/:id", handleDeleteWLBot)
+			admin.PUT("/wl-bots/:id/status", handleUpdateWLBotStatus)
+
+			// WL BotsClient Management
+			admin.GET("/wl-bots-clients", handleGetWLBotsClients)
+			admin.GET("/wl-bots-clients/:id", handleGetWLBotsClient)
+			admin.POST("/wl-bots-clients", handleCreateWLBotsClient)
+			admin.PUT("/wl-bots-clients/:id", handleUpdateWLBotClient)
+			admin.DELETE("/wl-bots-clients/:id", handleDeleteWLBotsClient)
+			admin.PUT("/wl-bots-clients/:id/status", handleUpdateWLBotsClientStatus)
+
+			// WL Project Team Management
+			admin.GET("/wl-project-teams", handleGetWLProjectTeams)
+			admin.GET("/wl-project-teams/:id", handleGetWLProjectTeam)
+			admin.POST("/wl-project-teams", handleCreateWLProjectTeam)
+			admin.PUT("/wl-project-teams/:id", handleUpdateWLProjectTeam)
+			admin.DELETE("/wl-project-teams/:id", handleDeleteWLProjectTeam)
+
+			// MasterWallet Management
+			admin.GET("/master-wallets", handleGetMasterWallets)
+			admin.GET("/master-wallets/:id", handleGetMasterWallet)
+			admin.POST("/master-wallets", handleCreateMasterWallet)
+			admin.PUT("/master-wallets/:id", handleUpdateMasterWallet)
+			admin.DELETE("/master-wallets/:id", handleDeleteMasterWallet)
+			admin.GET("/master-wallets/:id/balance", handleGetMasterWalletBalance)
+			admin.POST("/master-wallets/:id/transfer", handleMasterWalletTransfer)
+
+			// UserWallet Management
+			admin.GET("/user-wallets", handleGetUserWallets)
+			admin.GET("/user-wallets/:id", handleGetUserWallet)
+			admin.POST("/user-wallets", handleCreateUserWallet)
+			admin.PUT("/user-wallets/:id", handleUpdateUserWallet)
+			admin.DELETE("/user-wallets/:id", handleDeleteUserWallet)
+			admin.GET("/user-wallets/:id/balance", handleGetUserWalletBalance)
+
 			admin.POST("/logout", handleLogout)
 			admin.POST("/change-password", handleChangePassword)
 			admin.POST("/2fa/enable", handleEnable2FA)
@@ -351,3 +446,98 @@ func handleCreateIntegration(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{
 func handleUpdateIntegration(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "integration updated"}) }
 func handleDeleteIntegration(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "integration deleted"}) }
 func handleTestIntegration(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"success": true, "message": "integration test successful"}) }
+
+// Bot Management handlers
+func handleGetBots(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"bots": []}) }
+func handleGetBot(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"bot": map[string]interface{}{}}) }
+func handleCreateBot(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "bot created"}) }
+func handleUpdateBot(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "bot updated"}) }
+func handleDeleteBot(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "bot deleted"}) }
+func handleUpdateBotStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "bot status updated"}) }
+func handleGetBotStats(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"stats": map[string]interface{}{}}) }
+func handleGetBotTiers(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"tiers": []}) }
+func handleCreateBotTier(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "bot tier created"}) }
+func handleUpdateBotTier(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "bot tier updated"}) }
+func handleDeleteBotTier(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "bot tier deleted"}) }
+
+// BotsClient Management handlers
+func handleGetBotsClients(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"clients": []}) }
+func handleGetBotsClient(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"client": map[string]interface{}{}}) }
+func handleCreateBotsClient(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "bots client created"}) }
+func handleUpdateBotsClient(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "bots client updated"}) }
+func handleDeleteBotsClient(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "bots client deleted"}) }
+func handleUpdateBotsClientStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "bots client status updated"}) }
+
+// Project Team Management handlers
+func handleGetProjectTeams(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"teams": []}) }
+func handleGetProjectTeam(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"team": map[string]interface{}{}}) }
+func handleCreateProjectTeam(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "project team created"}) }
+func handleUpdateProjectTeam(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "project team updated"}) }
+func handleDeleteProjectTeam(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "project team deleted"}) }
+func handleGetProjectTeamMembers(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"members": []}) }
+func handleAddProjectTeamMember(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "member added"}) }
+func handleRemoveProjectTeamMember(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "member removed"}) }
+
+// White Level Client Management handlers
+func handleGetWLClients(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"clients": []}) }
+func handleGetWLClient(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"client": map[string]interface{}{}}) }
+func handleCreateWLClient(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "WL client created"}) }
+func handleUpdateWLClient(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "WL client updated"}) }
+func handleDeleteWLClient(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "WL client deleted"}) }
+func handleUpdateWLClientStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "WL client status updated"}) }
+
+// WL MasterWallet Management handlers
+func handleGetWLMasterWallets(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"wallets": []}) }
+func handleGetWLMasterWallet(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"wallet": map[string]interface{}{}}) }
+func handleCreateWLMasterWallet(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "WL master wallet created"}) }
+func handleUpdateWLMasterWallet(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "WL master wallet updated"}) }
+func handleDeleteWLMasterWallet(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "WL master wallet deleted"}) }
+func handleUpdateWLMasterWalletStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "WL master wallet status updated"}) }
+
+// WL UserWallet Management handlers
+func handleGetWLUserWallets(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"wallets": []}) }
+func handleGetWLUserWallet(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"wallet": map[string]interface{}{}}) }
+func handleCreateWLUserWallet(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "WL user wallet created"}) }
+func handleUpdateWLUserWallet(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "WL user wallet updated"}) }
+func handleDeleteWLUserWallet(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "WL user wallet deleted"}) }
+func handleUpdateWLUserWalletStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "WL user wallet status updated"}) }
+
+// WL Bots Management handlers
+func handleGetWLBots(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"bots": []}) }
+func handleGetWLBot(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"bot": map[string]interface{}{}}) }
+func handleCreateWLBot(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "WL bot created"}) }
+func handleUpdateWLBot(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "WL bot updated"}) }
+func handleDeleteWLBot(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "WL bot deleted"}) }
+func handleUpdateWLBotStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "WL bot status updated"}) }
+
+// WL BotsClient Management handlers
+func handleGetWLBotsClients(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"clients": []}) }
+func handleGetWLBotsClient(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"client": map[string]interface{}{}}) }
+func handleCreateWLBotsClient(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "WL bots client created"}) }
+func handleUpdateWLBotClient(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "WL bots client updated"}) }
+func handleDeleteWLBotsClient(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "WL bots client deleted"}) }
+func handleUpdateWLBotsClientStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "WL bots client status updated"}) }
+
+// WL Project Team Management handlers
+func handleGetWLProjectTeams(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"teams": []}) }
+func handleGetWLProjectTeam(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"team": map[string]interface{}{}}) }
+func handleCreateWLProjectTeam(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "WL project team created"}) }
+func handleUpdateWLProjectTeam(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "WL project team updated"}) }
+func handleDeleteWLProjectTeam(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "WL project team deleted"}) }
+
+// MasterWallet Management handlers
+func handleGetMasterWallets(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"wallets": []}) }
+func handleGetMasterWallet(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"wallet": map[string]interface{}{}}) }
+func handleCreateMasterWallet(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "master wallet created"}) }
+func handleUpdateMasterWallet(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "master wallet updated"}) }
+func handleDeleteMasterWallet(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "master wallet deleted"}) }
+func handleGetMasterWalletBalance(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"balance": "0"}) }
+func handleMasterWalletTransfer(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "transfer completed"}) }
+
+// UserWallet Management handlers
+func handleGetUserWallets(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"wallets": []}) }
+func handleGetUserWallet(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"wallet": map[string]interface{}{}}) }
+func handleCreateUserWallet(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "user wallet created"}) }
+func handleUpdateUserWallet(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "user wallet updated"}) }
+func handleDeleteUserWallet(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "user wallet deleted"}) }
+func handleGetUserWalletBalance(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"balance": "0"}) }
