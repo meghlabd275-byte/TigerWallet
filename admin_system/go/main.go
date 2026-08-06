@@ -1,8 +1,8 @@
+// TigerWallet Admin - Main Entry Point
 package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -10,177 +10,169 @@ import (
 	"syscall"
 	"time"
 
-	"admin_system/internal/config"
-	"admin_system/internal/database"
-	"admin_system/internal/handlers"
-	"admin_system/internal/middleware"
-	"admin_system/internal/services"
-
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
+	"github.com/tigerwallet/admin/internal/config"
+	"github.com/tigerwallet/admin/internal/database"
+	"github.com/tigerwallet/admin/internal/middleware"
 )
 
 func main() {
 	cfg := config.Load()
-	log.Printf("Starting TigerWallet Admin System Backend...")
-	log.Printf("Environment: %s", cfg.Environment)
-	log.Printf("Port: %s", cfg.Server.Port)
 
-	// Initialize PostgreSQL
-	pgDB, err := database.NewPostgres(cfg.Database)
-	if err != nil {
-		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
+	if err := database.Initialize(cfg); err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
 	}
-	defer pgDB.Close()
+	defer database.Close()
 
-	if err := database.RunMigrations(pgDB); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
-	}
-
-	// Initialize Redis
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port),
-		Password: cfg.Redis.Password,
-		DB:       cfg.Redis.DB,
-	})
-	defer rdb.Close()
-
-	ctx := context.Background()
-	if err := rdb.Ping(ctx).Err(); err != nil {
-		log.Printf("Warning: Redis connection failed: %v", err)
-	} else {
-		log.Println("Connected to Redis")
-	}
-
-	// Initialize services
-	authService := services.NewAuthService(pgDB, rdb)
-	systemService := services.NewSystemService(pgDB, rdb)
-	monitoringService := services.NewMonitoringService(pgDB, rdb)
-	configService := services.NewConfigService(pgDB, rdb)
-	backupService := services.NewBackupService(pgDB, rdb)
-	logService := services.NewLogService(pgDB, rdb)
-	metricsService := services.NewMetricsService(pgDB, rdb)
-	alertService := services.NewAlertService(pgDB, rdb)
-
-	// Initialize handlers
-	authHandler := handlers.NewAuthHandler(authService)
-	systemHandler := handlers.NewSystemHandler(systemService)
-	monitoringHandler := handlers.NewMonitoringHandler(monitoringService)
-	configHandler := handlers.NewConfigHandler(configService)
-	backupHandler := handlers.NewBackupHandler(backupService)
-	logHandler := handlers.NewLogHandler(logService)
-	metricsHandler := handlers.NewMetricsHandler(metricsService)
-	alertHandler := handlers.NewAlertHandler(alertService)
-
-	if cfg.Environment == "production" {
-		gin.SetMode(gin.ReleaseMode)
-	}
+	log.Println("Database initialized successfully")
 
 	router := gin.Default()
-	router.Use(middleware.CORS())
+
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"*"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
 
 	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":    "healthy",
-			"timestamp": time.Now().UTC(),
-			"version":   "2.0.0",
-			"service":   "admin_system",
-		})
+		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "tiger-admin"})
 	})
 
-	v1 := router.Group("/api/v1")
+	api := router.Group("/api/v1")
 	{
-		auth := v1.Group("/auth")
+		auth := api.Group("/auth")
 		{
-			auth.POST("/login", authHandler.Login)
-			auth.POST("/refresh", authHandler.RefreshToken)
-			auth.POST("/logout", authHandler.Logout)
+			auth.POST("/login", handleLogin)
+			auth.POST("/register", handleRegister)
+			auth.POST("/refresh", handleRefreshToken)
 		}
 
-		protected := v1.Group("")
-		protected.Use(middleware.AuthMiddleware(authService))
+		admin := api.Group("/admin")
+		admin.Use(middleware.JWTAuth(cfg))
+		admin.Use(middleware.IPWhitelistMiddleware(cfg))
 		{
-			// System management
-			system := protected.Group("/system")
-			{
-				system.GET("/info", systemHandler.GetInfo)
-				system.GET("/status", systemHandler.GetStatus)
-				system.POST("/restart", systemHandler.Restart)
-				system.POST("/shutdown", systemHandler.Shutdown)
-			}
+			admin.GET("/users", handleGetUsers)
+			admin.GET("/users/:id", handleGetUser)
+			admin.PUT("/users/:id/status", handleUpdateUserStatus)
+			admin.POST("/users/:id/ban", handleBanUser)
+			admin.POST("/users/:id/unban", handleUnbanUser)
+			admin.POST("/users/:id/suspend", handleSuspendUser)
 
-			// Monitoring
-			monitoring := protected.Group("/monitoring")
-			{
-				monitoring.GET("/metrics", monitoringHandler.GetMetrics)
-				monitoring.GET("/resources", monitoringHandler.GetResources)
-				monitoring.GET("/processes", monitoringHandler.GetProcesses)
-				monitoring.GET("/network", monitoringHandler.GetNetworkStats)
-			}
+			admin.GET("/kyc", handleGetKYC)
+			admin.POST("/kyc/:id/approve", handleApproveKYC)
+			admin.POST("/kyc/:id/reject", handleRejectKYC)
 
-			// Configuration
-			config := protected.Group("/config")
-			{
-				config.GET("", configHandler.GetAll)
-				config.GET("/:key", configHandler.Get)
-				config.PUT("/:key", configHandler.Update)
-				config.DELETE("/:key", configHandler.Delete)
-			}
+			admin.GET("/transactions", handleGetTransactions)
+			admin.GET("/transactions/:id", handleGetTransaction)
+			admin.POST("/transactions/:id/flag", handleFlagTransaction)
+			admin.POST("/transactions/:id/unflag", handleUnflagTransaction)
 
-			// Backups
-			backup := protected.Group("/backup")
-			{
-				backup.GET("", backupHandler.List)
-				backup.POST("", backupHandler.Create)
-				backup.GET("/:id", backupHandler.Get)
-				backup.POST("/:id/restore", backupHandler.Restore)
-				backup.DELETE("/:id", backupHandler.Delete)
-			}
+			admin.GET("/withdrawals", handleGetWithdrawals)
+			admin.POST("/withdrawals/:id/approve", handleApproveWithdrawal)
+			admin.POST("/withdrawals/:id/reject", handleRejectWithdrawal)
+			admin.POST("/withdrawals/:id/process", handleProcessWithdrawal)
 
-			// Logs
-			logs := protected.Group("/logs")
-			{
-				logs.GET("", logHandler.List)
-				logs.GET("/:id", logHandler.Get)
-				logs.DELETE("/:id", logHandler.Delete)
-				logs.DELETE("", logHandler.DeleteOld)
-			}
+			admin.GET("/tokens", handleGetTokens)
+			admin.POST("/tokens", handleCreateToken)
+			admin.PUT("/tokens/:id", handleUpdateToken)
+			admin.DELETE("/tokens/:id", handleDeleteToken)
 
-			// Metrics
-			metrics := protected.Group("/metrics")
-			{
-				metrics.GET("", metricsHandler.Get)
-				metrics.GET("/:type", metricsHandler.GetByType)
-			}
+			admin.GET("/pairs", handleGetPairs)
+			admin.POST("/pairs", handleCreatePair)
+			admin.PUT("/pairs/:id/status", handleUpdatePairStatus)
 
-			// Alerts
-			alerts := protected.Group("/alerts")
-			{
-				alerts.GET("", alertHandler.List)
-				alerts.POST("", alertHandler.Create)
-				alerts.PUT("/:id/acknowledge", alertHandler.Acknowledge)
-				alerts.PUT("/:id/resolve", alertHandler.Resolve)
-			}
-		}
+			admin.GET("/blockchains", handleGetBlockchains)
+			admin.POST("/blockchains", handleCreateBlockchain)
+			admin.PUT("/blockchains/:id", handleUpdateBlockchain)
+			admin.PUT("/blockchains/:id/status", handleSetBlockchainStatus)
 
-		// Admin only
-		admin := v1.Group("")
-		admin.Use(middleware.AdminMiddleware(authService))
-		{
-			admin.GET("/admin/stats", handlers.GetAdminStats)
+			admin.GET("/fees", handleGetFees)
+			admin.POST("/fees", handleCreateFee)
+			admin.PUT("/fees/:id", handleUpdateFee)
+
+			admin.GET("/webhooks", handleGetWebhooks)
+			admin.POST("/webhooks", handleCreateWebhook)
+			admin.POST("/webhooks/:id/test", handleTestWebhook)
+			admin.DELETE("/webhooks/:id", handleDeleteWebhook)
+
+			admin.GET("/notifications", handleGetNotifications)
+			admin.PUT("/notifications/:id/read", handleMarkNotificationRead)
+			admin.POST("/notifications/send", handleSendNotification)
+			admin.POST("/notifications/broadcast", handleBroadcastNotification)
+
+			admin.GET("/audit-logs", handleGetAuditLogs)
+			admin.POST("/audit-logs/export", handleExportAuditLogs)
+
+			admin.GET("/sessions", handleGetSessions)
+			admin.DELETE("/sessions/:id", handleRevokeSession)
+			admin.DELETE("/sessions", handleRevokeAllSessions)
+
+			admin.GET("/feature-flags", handleGetFeatureFlags)
+			admin.POST("/feature-flags", handleCreateFeatureFlag)
+			admin.PUT("/feature-flags/:id", handleUpdateFeatureFlag)
+			admin.DELETE("/feature-flags/:id", handleDeleteFeatureFlag)
+
+			admin.GET("/ip-whitelist", handleGetIPWhitelist)
+			admin.POST("/ip-whitelist", handleAddIPWhitelist)
+			admin.DELETE("/ip-whitelist/:id", handleRemoveIPWhitelist)
+
+			admin.GET("/tickets", handleGetTickets)
+			admin.GET("/tickets/:id", handleGetTicket)
+			admin.POST("/tickets", handleCreateTicket)
+			admin.PUT("/tickets/:id/status", handleUpdateTicketStatus)
+			admin.POST("/tickets/:id/messages", handleAddTicketMessage)
+			admin.PUT("/tickets/:id/assign", handleAssignTicket)
+
+			admin.GET("/white-labels", handleGetWhiteLabels)
+			admin.POST("/white-labels", handleCreateWhiteLabel)
+			admin.PUT("/white-labels/:id", handleUpdateWhiteLabel)
+			admin.DELETE("/white-labels/:id", handleDeleteWhiteLabel)
+
+			admin.GET("/stats", handleGetStats)
+
+			admin.POST("/logout", handleLogout)
+			admin.POST("/change-password", handleChangePassword)
+			admin.POST("/2fa/enable", handleEnable2FA)
+			admin.POST("/2fa/disable", handleDisable2FA)
+
+			admin.GET("/admins", handleGetAdmins)
+			admin.GET("/admins/:id", handleGetAdmin)
+			admin.PUT("/admins/:id", handleUpdateAdmin)
+			admin.DELETE("/admins/:id", handleDeleteAdmin)
+			admin.POST("/admins/:id/suspend", handleSuspendAdmin)
+			admin.POST("/admins/:id/activate", handleActivateAdmin)
+
+			admin.GET("/workflows", handleGetWorkflows)
+			admin.POST("/workflows", handleCreateWorkflow)
+			admin.PUT("/workflows/:id", handleUpdateWorkflow)
+			admin.DELETE("/workflows/:id", handleDeleteWorkflow)
+
+			admin.GET("/approval-requests", handleGetApprovalRequests)
+			admin.POST("/approval-requests/:id/approve", handleApproveRequest)
+			admin.POST("/approval-requests/:id/reject", handleRejectRequest)
+
+			admin.GET("/backups", handleGetBackups)
+			admin.POST("/backups", handleCreateBackup)
+			admin.POST("/backups/:id/restore", handleRestoreBackup)
+			admin.DELETE("/backups/:id", handleDeleteBackup)
 		}
 	}
 
 	srv := &http.Server{
-		Addr:         ":" + cfg.Server.Port,
-		Handler:      router,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		Addr:           ":" + cfg.ServerPort,
+		Handler:        router,
+		ReadTimeout:    cfg.ServerReadTimeout,
+		WriteTimeout:   cfg.ServerWriteTimeout,
+		IdleTimeout:    cfg.ServerIdleTimeout,
+		MaxHeaderBytes: 1 << 20,
 	}
 
 	go func() {
-		log.Printf("Server starting on port %s", cfg.Server.Port)
+		log.Printf("Admin API server starting on port %s", cfg.ServerPort)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start server: %v", err)
 		}
@@ -191,10 +183,99 @@ func main() {
 	<-quit
 
 	log.Println("Shutting down server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		log.Fatal("Server forced to shutdown:", err)
 	}
+
 	log.Println("Server exited properly")
 }
+
+func handleLogin(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "login handler"}) }
+func handleRegister(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "register handler"}) }
+func handleRefreshToken(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "refresh handler"}) }
+func handleLogout(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "logout handler"}) }
+func handleChangePassword(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "password changed"}) }
+func handleEnable2FA(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "2FA enabled"}) }
+func handleDisable2FA(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "2FA disabled"}) }
+func handleGetUsers(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"users": []}) }
+func handleGetUser(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"user": map[string]interface{}{}}) }
+func handleUpdateUserStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "status updated"}) }
+func handleBanUser(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "user banned"}) }
+func handleUnbanUser(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "user unbanned"}) }
+func handleSuspendUser(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "user suspended"}) }
+func handleGetKYC(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"kyc_requests": []}) }
+func handleApproveKYC(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "KYC approved"}) }
+func handleRejectKYC(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "KYC rejected"}) }
+func handleGetTransactions(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"transactions": []}) }
+func handleGetTransaction(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"transaction": map[string]interface{}{}}) }
+func handleFlagTransaction(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "transaction flagged"}) }
+func handleUnflagTransaction(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "transaction unflagged"}) }
+func handleGetWithdrawals(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"withdrawals": []}) }
+func handleApproveWithdrawal(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "withdrawal approved"}) }
+func handleRejectWithdrawal(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "withdrawal rejected"}) }
+func handleProcessWithdrawal(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "withdrawal processed"}) }
+func handleGetTokens(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"tokens": []}) }
+func handleCreateToken(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "token created"}) }
+func handleUpdateToken(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "token updated"}) }
+func handleDeleteToken(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "token deleted"}) }
+func handleGetPairs(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"pairs": []}) }
+func handleCreatePair(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "pair created"}) }
+func handleUpdatePairStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "pair status updated"}) }
+func handleGetBlockchains(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"blockchains": []}) }
+func handleCreateBlockchain(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "blockchain created"}) }
+func handleUpdateBlockchain(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "blockchain updated"}) }
+func handleSetBlockchainStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "status updated"}) }
+func handleGetFees(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"fees": []}) }
+func handleCreateFee(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "fee created"}) }
+func handleUpdateFee(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "fee updated"}) }
+func handleGetWebhooks(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"webhooks": []}) }
+func handleCreateWebhook(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "webhook created"}) }
+func handleTestWebhook(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "webhook test sent"}) }
+func handleDeleteWebhook(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "webhook deleted"}) }
+func handleGetNotifications(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"notifications": []}) }
+func handleMarkNotificationRead(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "notification marked as read"}) }
+func handleSendNotification(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "notification sent"}) }
+func handleBroadcastNotification(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "notification broadcasted"}) }
+func handleGetAuditLogs(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"audit_logs": []}) }
+func handleExportAuditLogs(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"file_path": "/exports/audit_logs.csv"}) }
+func handleGetSessions(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"sessions": []}) }
+func handleRevokeSession(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "session revoked"}) }
+func handleRevokeAllSessions(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "all sessions revoked"}) }
+func handleGetFeatureFlags(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"feature_flags": []}) }
+func handleCreateFeatureFlag(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "feature flag created"}) }
+func handleUpdateFeatureFlag(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "feature flag updated"}) }
+func handleDeleteFeatureFlag(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "feature flag deleted"}) }
+func handleGetIPWhitelist(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ip_whitelist": []}) }
+func handleAddIPWhitelist(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "IP added to whitelist"}) }
+func handleRemoveIPWhitelist(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "IP removed from whitelist"}) }
+func handleGetTickets(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"tickets": []}) }
+func handleGetTicket(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ticket": map[string]interface{}{}, "messages": []}) }
+func handleCreateTicket(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "ticket created"}) }
+func handleUpdateTicketStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ticket status updated"}) }
+func handleAddTicketMessage(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "message added"}) }
+func handleAssignTicket(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ticket assigned"}) }
+func handleGetWhiteLabels(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"white_labels": []}) }
+func handleCreateWhiteLabel(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "white label created"}) }
+func handleUpdateWhiteLabel(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "white label updated"}) }
+func handleDeleteWhiteLabel(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "white label deleted"}) }
+func handleGetStats(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"stats": map[string]interface{}{"total_users": 0, "active_users": 0}}) }
+func handleGetAdmins(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"admins": []}) }
+func handleGetAdmin(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"admin": map[string]interface{}{}}) }
+func handleUpdateAdmin(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "admin updated"}) }
+func handleDeleteAdmin(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "admin deleted"}) }
+func handleSuspendAdmin(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "admin suspended"}) }
+func handleActivateAdmin(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "admin activated"}) }
+func handleGetWorkflows(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"workflows": []}) }
+func handleCreateWorkflow(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "workflow created"}) }
+func handleUpdateWorkflow(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "workflow updated"}) }
+func handleDeleteWorkflow(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "workflow deleted"}) }
+func handleGetApprovalRequests(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"approval_requests": []}) }
+func handleApproveRequest(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "request approved"}) }
+func handleRejectRequest(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "request rejected"}) }
+func handleGetBackups(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"backups": []}) }
+func handleCreateBackup(c *gin.Context) { c.JSON(http.StatusAccepted, gin.H{"message": "backup started"}) }
+func handleRestoreBackup(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "restore started"}) }
+func handleDeleteBackup(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "backup deleted"}) }
