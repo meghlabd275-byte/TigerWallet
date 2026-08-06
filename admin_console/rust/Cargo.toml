@@ -1,0 +1,41 @@
+[package]
+name = "tigerwallet-high-speed"
+version = "2.0.0"
+edition = "2021"
+description = "TigerWallet High-Speed Transaction Processing in Rust"
+
+[dependencies]
+tokio = { version = "1.35", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+async-trait = "0.1"
+bytes = "1.5"
+uuid = { version = "1.6", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+ethabi = "18"
+ethereum-types = "0.14"
+rlp = "0.5"
+keccak-hash = "0.10"
+secp256k1 = { version = "0.28", features = ["recovery"] }
+log = "0.4"
+env_logger = "0.10"
+parking_lot = "0.12"
+rayon = "1.8"
+lto = true
+codegen-units = 1
+opt-level = 3
+
+[[bin]]
+name = "txn-processor"
+path = "src/main.rs"
+
+[lib]
+name = "tigerwallet_high_speed"
+path = "src/lib.rs"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+panic = "abort"
