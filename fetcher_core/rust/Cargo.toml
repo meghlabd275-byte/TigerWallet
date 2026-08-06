@@ -1,0 +1,68 @@
+[package]
+name = "tiger-fetcher"
+version = "1.0.0"
+edition = "2021"
+description = "High-performance data fetcher for TigerWallet"
+authors = ["TigerWallet Team"]
+license = "MIT"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# HTTP client
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Database
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "redis", "migrations"] }
+
+# Redis
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+
+# Caching
+cached = "0.44"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# Async utilities
+futures = "0.3"
+async-trait = "0.1"
+
+# Rate limiting
+governor = "0.6"
+
+# Metrics
+prometheus = "0.13"
+metrics = "0.21"
+
+# Configuration
+config = "0.14"
+toml = "0.8"
+
+# Cryptography
+sha2 = "0.10"
+hex = "0.4"
+
+[features]
+default = ["runtime-tokio"]
+runtime-tokio = ["tokio/rt-multi-thread"]
+
+[dev-dependencies]
+tempfile = "3.8"
