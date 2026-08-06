@@ -319,3 +319,208 @@ type Notification struct {
 	ExpiresAt   *time.Time    `json:"expires_at"`
 	Metadata    json.RawMessage `gorm:"type:jsonb" json:"metadata"`
 }
+
+// TwoFactorAuth represents two-factor authentication settings
+type TwoFactorAuth struct {
+	ID                uint           `gorm:"primarykey" json:"id"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
+	UserID            uint           `gorm:"not null;index" json:"user_id"`
+	UserType          string         `gorm:"not null;index" json:"user_type"` // admin, user, super_admin
+	Secret            string         `gorm:"not null" json:"-"`
+	Enabled           bool           `gorm:"default:false" json:"enabled"`
+	Methods           string         `gorm:"type:jsonb" json:"methods"` // ["totp", "sms", "email", "backup"]
+	BackupCodesHashed string         `gorm:"type:text" json:"-"`
+	UsedBackupCodes   string         `gorm:"type:jsonb" json:"-"`
+	EnabledAt         *time.Time    `json:"enabled_at"`
+	DisabledAt        *time.Time    `json:"disabled_at"`
+	LastVerifiedAt    *int64        `json:"last_verified_at"`
+	TrustedDevices    int           `gorm:"default:0" json:"trusted_devices"`
+}
+
+// TwoFactorAttempt represents 2FA verification attempts
+type TwoFactorAttempt struct {
+	ID          uint      `gorm:"primarykey" json:"id"`
+	CreatedAt   time.Time `json:"created_at"`
+	UserID      uint      `gorm:"not null;index" json:"user_id"`
+	UserType    string    `gorm:"not null;index" json:"user_type"`
+	IPAddress   string    `json:"ip_address"`
+	AttemptType string   `json:"attempt_type"` // verification_failed, backup_code_used, etc.
+	Success     bool      `gorm:"default:false" json:"success"`
+	Timestamp   time.Time `json:"timestamp"`
+}
+
+// IPWhitelist represents IP whitelist entries
+type IPWhitelist struct {
+	ID          uint           `gorm:"primarykey" json:"id"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	UserID      uint           `gorm:"not null;index" json:"user_id"`
+	UserType    string         `gorm:"not null;index" json:"user_type"` // admin, user, api_key
+	IPAddress   string         `gorm:"not null" json:"ip_address"` // CIDR notation supported
+	Description string         `json:"description"`
+	IsActive    bool           `gorm:"default:true" json:"is_active"`
+	ExpiresAt   *time.Time    `json:"expires_at"`
+	CreatedBy   uint          `json:"created_by"`
+}
+
+// RateLimitRule represents rate limiting rules
+type RateLimitRule struct {
+	ID          uint           `gorm:"primarykey" json:"id"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	Name        string         `gorm:"uniqueIndex;not null" json:"name"`
+	Endpoint    string         `gorm:"not null" json:"endpoint"` // /api/v1/users, /api/v1/login, etc.
+	Method      string         `gorm:"not null" json:"method"` // GET, POST, PUT, DELETE, ALL
+	Limit       int            `gorm:"not null" json:"limit"` // requests per window
+	Window      int            `gorm:"not null" json:"window"` // window in seconds
+	Scope       string         `gorm:"default:'global'" json:"scope"` // global, per_user, per_ip
+	IsActive    bool           `gorm:"default:true" json:"is_active"`
+	Description string         `json:"description"`
+}
+
+// FraudDetection represents fraud detection rules
+type FraudDetection struct {
+	ID            uint           `gorm:"primarykey" json:"id"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	Name          string         `gorm:"uniqueIndex;not null" json:"name"`
+	Type          string         `gorm:"not null" json:"type"` // velocity, amount, geographic, pattern
+	Condition     string         `gorm:"type:jsonb" json:"condition"` // JSON condition
+	Action        string         `gorm:"not null" json:"action"` // block, alert, review, limit
+	Threshold     float64        `json:"threshold"`
+	Severity      string         `gorm:"default:'medium'" json:"severity"` // low, medium, high, critical
+	IsActive      bool           `gorm:"default:true" json:"is_active"`
+	Notification  bool           `gorm:"default:false" json:"notification"`
+	Description   string         `json:"description"`
+}
+
+// FraudAlert represents fraud alerts
+type FraudAlert struct {
+	ID            uint           `gorm:"primarykey" json:"id"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UserID        uint           `gorm:"not null;index" json:"user_id"`
+	User          *User          `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	RuleID        uint           `gorm:"index" json:"rule_id"`
+	Rule          *FraudDetection `gorm:"foreignKey:RuleID" json:"rule,omitempty"`
+	Type          string         `gorm:"not null" json:"type"`
+	Description   string         `json:"description"`
+	Status        string         `gorm:"default:'pending'" json:"status"` // pending, reviewed, resolved, false_positive
+	ReviewedBy    *uint          `json:"reviewed_by"`
+	ReviewedAt    *time.Time    `json:"reviewed_at"`
+	Resolution    string         `json:"resolution"`
+	Metadata      json.RawMessage `gorm:"type:jsonb" json:"metadata"`
+}
+
+// ComplianceReport represents compliance reports
+type ComplianceReport struct {
+	ID            uint           `gorm:"primarykey" json:"id"`
+	CreatedAt     time.Time      `json:"created_at"`
+	GeneratedAt   time.Time      `json:"generated_at"`
+	Type          string         `gorm:"not null" json:"type"` // aml, gdpr, tax, sar
+	PeriodStart   time.Time      `json:"period_start"`
+	PeriodEnd     time.Time      `json:"period_end"`
+	Status        string         `gorm:"default:'pending'" json:"status"` // pending, generating, completed, failed
+	FilePath      string         `json:"file_path"`
+	FileSize      int64          `json:"file_size"`
+	GeneratedBy   uint           `json:"generated_by"`
+	ErrorMessage  string         `json:"error_message"`
+	Metadata      json.RawMessage `gorm:"type:jsonb" json:"metadata"`
+}
+
+// SupportTicket represents support tickets
+type SupportTicket struct {
+	ID            uint           `gorm:"primarykey" json:"id"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	TicketID      string         `gorm:"uniqueIndex" json:"ticket_id"`
+	UserID        uint           `gorm:"not null;index" json:"user_id"`
+	User          *User          `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Category       string         `gorm:"not null" json:"category"` // technical, billing, kyc, account, etc.
+	Priority      string         `gorm:"default:'medium'" json:"priority"` // low, medium, high, urgent
+	Status        string         `gorm:"default:'open'" json:"status"` // open, in_progress, waiting, resolved, closed
+	Subject       string         `gorm:"not null" json:"subject"`
+	Description   string         `gorm:"type:text" json:"description"`
+	AssignedTo    *uint          `gorm:"index" json:"assigned_to"`
+	AssignedAdmin *Admin         `gorm:"foreignKey:AssignedTo" json:"assigned_admin,omitempty"`
+	ResolvedAt    *time.Time    `json:"resolved_at"`
+	ClosedAt      *time.Time    `json:"closed_at"`
+	Rating        *int           `json:"rating"`
+	Feedback      string         `json:"feedback"`
+}
+
+// SupportTicketMessage represents messages in support tickets
+type SupportTicketMessage struct {
+	ID            uint           `gorm:"primarykey" json:"id"`
+	CreatedAt     time.Time      `json:"created_at"`
+	TicketID      uint           `gorm:"not null;index" json:"ticket_id"`
+	Ticket        *SupportTicket `gorm:"foreignKey:TicketID" json:"ticket,omitempty"`
+	SenderID      uint           `gorm:"not null" json:"sender_id"`
+	SenderType    string         `gorm:"not null" json:"sender_type"` // user, admin, system
+	Sender        interface{}    `json:"sender,omitempty"` // User or Admin
+	Message       string         `gorm:"type:text" json:"message"`
+	IsInternal    bool           `gorm:"default:false" json:"is_internal"`
+	Attachments   json.RawMessage `gorm:"type:jsonb" json:"attachments"`
+}
+
+// KnowledgeBaseCategory represents knowledge base categories
+type KnowledgeBaseCategory struct {
+	ID          uint           `gorm:"primarykey" json:"id"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	Name        string         `gorm:"not null" json:"name"`
+	Slug        string         `gorm:"uniqueIndex" json:"slug"`
+	Description string         `json:"description"`
+	ParentID    *uint          `gorm:"index" json:"parent_id"`
+	Order       int            `gorm:"default:0" json:"order"`
+	IsActive    bool           `gorm:"default:true" json:"is_active"`
+}
+
+// KnowledgeBaseArticle represents knowledge base articles
+type KnowledgeBaseArticle struct {
+	ID            uint           `gorm:"primarykey" json:"id"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	CategoryID    uint           `gorm:"not null;index" json:"category_id"`
+	Category      *KnowledgeBaseCategory `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
+	Title         string         `gorm:"not null" json:"title"`
+	Slug          string         `gorm:"uniqueIndex" json:"slug"`
+	Content       string         `gorm:"type:text" json:"content"`
+	Summary       string         `json:"summary"`
+	Tags          json.RawMessage `gorm:"type:jsonb" json:"tags"`
+	ViewCount     int            `gorm:"default:0" json:"view_count"`
+	IsPublished   bool           `gorm:"default:false" json:"is_published"`
+	IsFeatured   bool           `gorm:"default:false" json:"is_featured"`
+	Order         int            `gorm:"default:0" json:"order"`
+	AuthorID      uint           `json:"author_id"`
+}
+
+// IntegrationConfig represents external integrations
+type IntegrationConfig struct {
+	ID            uint           `gorm:"primarykey" json:"id"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	Type          string         `gorm:"not null" json:"type"` // slack, pagerduty, datadog, cloudflare
+	Name          string         `gorm:"not null" json:"name"`
+	Config        json.RawMessage `gorm:"type:jsonb" json:"config"`
+	IsActive      bool           `gorm:"default:true" json:"is_active"`
+	LastSyncAt    *time.Time    `json:"last_sync_at"`
+	SyncStatus    string         `json:"sync_status"`
+	ErrorMessage  string         `json:"error_message"`
+}
+
+// ScheduledReport represents scheduled report configurations
+type ScheduledReport struct {
+	ID            uint           `gorm:"primarykey" json:"id"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	Name          string         `gorm:"not null" json:"name"`
+	Type          string         `gorm:"not null" json:"type"` // pdf, excel
+	Schedule      string         `gorm:"not null" json:"schedule"` // cron expression
+	ReportConfig  json.RawMessage `gorm:"type:jsonb" json:"report_config"`
+	Recipients    json.RawMessage `gorm:"type:jsonb" json:"recipients"`
+	IsActive      bool           `gorm:"default:true" json:"is_active"`
+	LastRunAt     *time.Time    `json:"last_run_at"`
+	NextRunAt     *time.Time    `json:"next_run_at"`
+	CreatedBy     uint           `json:"created_by"`
+}
