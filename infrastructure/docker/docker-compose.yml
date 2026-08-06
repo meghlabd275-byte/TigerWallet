@@ -1,0 +1,259 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: tiger-postgres
+    environment:
+      POSTGRES_USER: tigerwallet
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-tigerwallet_secret_pass}
+      POSTGRES_DB: tigerwallet
+      POSTGRES_MAX_CONNECTIONS: 200
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tigerwallet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tiger-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: tiger-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tiger-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+  # Redis Cluster for high availability
+  redis-cluster:
+    image: redis:7-alpine
+    container_name: tiger-redis-cluster
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    volumes:
+      - redis_cluster_data:/data
+    ports:
+      - "7000-7005:7000-7005"
+    networks:
+      - tiger-network
+
+  # Billing Service (Go)
+  billing-service:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/billing/Dockerfile
+    container_name: tiger-billing
+    environment:
+      BILLING_DB_HOST: postgres
+      BILLING_DB_PORT: 5432
+      BILLING_DB_USER: tigerwallet
+      BILLING_DB_PASSWORD: ${DB_PASSWORD:-tigerwallet_secret_pass}
+      BILLING_DB_NAME: tigerwallet
+      BILLING_REDIS_HOST: redis
+      BILLING_REDIS_PORT: 6379
+      BILLING_JWT_SECRET: ${JWT_SECRET:-tigerwallet_jwt_secret_key_2024}
+      BILLING_PORT: 9001
+    ports:
+      - "9001:9001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tiger-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+
+  # Multi-Tenancy Service (Go)
+  multi-tenancy-service:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/multi-tenancy/Dockerfile
+    container_name: tiger-multi-tenancy
+    environment:
+      TENANT_DB_HOST: postgres
+      TENANT_DB_PORT: 5432
+      TENANT_DB_USER: tigerwallet
+      TENANT_DB_PASSWORD: ${DB_PASSWORD:-tigerwallet_secret_pass}
+      TENANT_DB_NAME: tigerwallet
+      TENANT_REDIS_HOST: redis
+      TENANT_REDIS_PORT: 6379
+      TENANT_PORT: 9002
+    ports:
+      - "9002:9002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tiger-network
+
+  # Fetcher Service (Rust)
+  fetcher-service:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/fetcher/Dockerfile
+    container_name: tiger-fetcher
+    environment:
+      REDIS_URL: redis://redis:6379
+      FETCHER_PORT: 9003
+      FETCHER_LOG_LEVEL: info
+    ports:
+      - "9003:9003"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - tiger-network
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 2G
+
+  # Notification Service (Go)
+  notification-service:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/notifications/Dockerfile
+    container_name: tiger-notifications
+    environment:
+      NOTIFICATION_DB_HOST: postgres
+      NOTIFICATION_DB_PORT: 5432
+      NOTIFICATION_DB_USER: tigerwallet
+      NOTIFICATION_DB_PASSWORD: ${DB_PASSWORD:-tigerwallet_secret_pass}
+      NOTIFICATION_DB_NAME: tigerwallet_notifications
+      NOTIFICATION_REDIS_HOST: redis
+      NOTIFICATION_REDIS_PORT: 6379
+      NOTIFICATION_PORT: 9004
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER:-}
+    ports:
+      - "9004:9004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tiger-network
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: tiger-nginx
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - billing-service
+      - multi-tenancy-service
+      - fetcher-service
+      - notification-service
+    networks:
+      - tiger-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+  # Prometheus Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: tiger-prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    ports:
+      - "9090:9090"
+    networks:
+      - tiger-network
+
+  # Grafana Dashboard
+  grafana:
+    image: grafana/grafana:latest
+    container_name: tiger-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin123}
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/dashboards:/etc/grafana/provisioning/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - tiger-network
+
+  # Jaeger Distributed Tracing
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: tiger-jaeger
+    environment:
+      COLLECTOR_ZIPKIN_HOST_PORT: 9411
+    ports:
+      - "6831:6831/udp"
+      - "16686:16686"
+    networks:
+      - tiger-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  redis_cluster_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  tiger-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

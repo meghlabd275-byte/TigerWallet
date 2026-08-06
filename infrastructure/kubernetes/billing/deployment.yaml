@@ -1,0 +1,97 @@
+# Billing Service Kubernetes Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing-service
+  namespace: tigerwallet
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: billing-service
+      tier: backend
+  template:
+    metadata:
+      labels:
+        app: billing-service
+        tier: backend
+    spec:
+      containers:
+        - name: billing
+          image: tigerwallet/billing-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 9001
+              name: http
+          env:
+            - name: BILLING_PORT
+              value: "9001"
+            - name: BILLING_DB_HOST
+              value: postgres.tigerwallet.svc.cluster.local
+            - name: BILLING_DB_PORT
+              value: "5432"
+            - name: BILLING_DB_USER
+              value: tigerwallet
+            - name: BILLING_REDIS_HOST
+              value: redis.tigerwallet.svc.cluster.local
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9001
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing-service
+  namespace: tigerwallet
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9001
+      targetPort: 9001
+      protocol: TCP
+      name: http
+  selector:
+    app: billing-service
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: billing-service-hpa
+  namespace: tigerwallet
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: billing-service
+  minReplicas: 3
+  maxReplicas: 50
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
