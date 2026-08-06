@@ -1,0 +1,11 @@
+# Ansible Inventory
+
+[tigerwallet_servers]
+# Production servers
+prod-master-wallet ansible_host=10.0.1.10 ansible_user=ubuntu
+prod-user-wallet ansible_host=10.0.1.11 ansible_user=ubuntu
+prod-bots ansible_host=10.0.1.12 ansible_user=ubuntu
+prod-project-party ansible_host=10.0.1.13 ansible_user=ubuntu
+
+[tigerwallet_servers:vars]
+ansible_python_interpreter=/usr/bin/python3

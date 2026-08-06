@@ -1,0 +1,109 @@
+# TigerWallet On-Premise Deployment using Ansible
+# For bare-metal or VM-based deployments
+
+- name: Deploy TigerWallet White Label Product
+  hosts: tigerwallet_servers
+  become: yes
+  vars:
+    product: master_wallet  # master_wallet, user_wallet, bots, project_party
+    install_dir: /opt/tigerwallet
+    db_password: changeme
+    redis_password: changeme
+    api_key: ""
+    jwt_secret: ""
+    super_admin_url: "https://super-admin.tigerwallet.com"
+    
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+    - name: Install required packages
+      package:
+        name:
+          - docker.io
+          - docker-compose
+          - git
+          - curl
+          - wget
+          - htop
+          - net-tools
+          - ufw
+        state: present
+
+    - name: Enable and start Docker
+      systemd:
+        name: docker
+        enabled: yes
+        state: started
+
+    - name: Create installation directory
+      file:
+        path: "{{ install_dir }}/{{ product }}"
+        state: directory
+        mode: '0755'
+
+    - name: Create .env file
+      template:
+        src: env.j2
+        dest: "{{ install_dir }}/{{ product }}/.env"
+        mode: '0600'
+      vars:
+        product_name: "{{ product }}"
+        
+    - name: Create docker-compose.yml
+      template:
+        src: docker-compose.yml.j2
+        dest: "{{ install_dir }}/{{ product }}/docker-compose.yml"
+        
+    - name: Pull Docker images
+      docker_compose:
+        project_src: "{{ install_dir }}/{{ product }}"
+        pull: yes
+
+    - name: Start containers
+      docker_compose:
+        project_src: "{{ install_dir }}/{{ product }}"
+        state: present
+
+    - name: Setup UFW firewall
+      ufw:
+        state: enabled
+        policy: deny
+        
+    - name: Allow SSH
+      ufw:
+        rule: allow
+        port: '22'
+        
+    - name: Allow HTTP/HTTPS
+      ufw:
+        rule: allow
+        port: '{{ item }}'
+      loop:
+        - '80'
+        - '443'
+
+    - name: Enable Docker autostart
+      systemd:
+        name: docker
+        enabled: yes
+
+    - name: Create systemd service for Docker Compose
+      template:
+        src: docker-compose.service.j2
+        dest: "/etc/systemd/system/tigerwallet-{{ product }}.service"
+        mode: '0644'
+      notify: reload systemd
+
+    - name: Start TigerWallet service
+      systemd:
+        name: "tigerwallet-{{ product }}"
+        state: started
+        enabled: yes
+      handlers:
+        - name: reload systemd
+          systemd:
+            daemon_reload: yes
