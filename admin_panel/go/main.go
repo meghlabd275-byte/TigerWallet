@@ -18,6 +18,7 @@ import (
 	"github.com/tigerwallet/admin_panel/internal/handlers"
 	"github.com/tigerwallet/admin_panel/internal/middleware"
 	"github.com/tigerwallet/admin_panel/internal/services"
+	"github.com/tigerwallet/admin_panel/internal/websocket"
 )
 
 func main() {

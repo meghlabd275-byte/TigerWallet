@@ -159,6 +159,27 @@ func main() {
 			admin.POST("/backups", handleCreateBackup)
 			admin.POST("/backups/:id/restore", handleRestoreBackup)
 			admin.DELETE("/backups/:id", handleDeleteBackup)
+
+			// Knowledge base
+			admin.GET("/knowledge-base", handleGetKnowledgeArticles)
+			admin.GET("/knowledge-base/:id", handleGetKnowledgeArticle)
+			admin.POST("/knowledge-base", handleCreateKnowledgeArticle)
+			admin.PUT("/knowledge-base/:id", handleUpdateKnowledgeArticle)
+			admin.DELETE("/knowledge-base/:id", handleDeleteKnowledgeArticle)
+
+			// Data archival
+			admin.GET("/archival/policies", handleGetArchivePolicies)
+			admin.POST("/archival/policies", handleCreateArchivePolicy)
+			admin.PUT("/archival/policies/:id", handleUpdateArchivePolicy)
+			admin.DELETE("/archival/policies/:id", handleDeleteArchivePolicy)
+			admin.POST("/archival/policies/:id/run", handleRunArchive)
+			admin.GET("/archival/records", handleGetArchiveRecords)
+
+			// Reports
+			admin.GET("/reports/configs", handleGetReportConfigs)
+			admin.POST("/reports/configs", handleCreateReportConfig)
+			admin.GET("/reports", handleGetReports)
+			admin.POST("/reports/generate", handleGenerateReport)
 		}
 	}
 
@@ -279,3 +300,24 @@ func handleGetBackups(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"backups": [
 func handleCreateBackup(c *gin.Context) { c.JSON(http.StatusAccepted, gin.H{"message": "backup started"}) }
 func handleRestoreBackup(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "restore started"}) }
 func handleDeleteBackup(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "backup deleted"}) }
+
+// Knowledge base handlers
+func handleGetKnowledgeArticles(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"articles": []}) }
+func handleGetKnowledgeArticle(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"article": map[string]interface{}{}}) }
+func handleCreateKnowledgeArticle(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "article created"}) }
+func handleUpdateKnowledgeArticle(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "article updated"}) }
+func handleDeleteKnowledgeArticle(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "article deleted"}) }
+
+// Archival handlers
+func handleGetArchivePolicies(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"policies": []}) }
+func handleCreateArchivePolicy(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "policy created"}) }
+func handleUpdateArchivePolicy(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "policy updated"}) }
+func handleDeleteArchivePolicy(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "policy deleted"}) }
+func handleRunArchive(c *gin.Context) { c.JSON(http.StatusAccepted, gin.H{"message": "archive started"}) }
+func handleGetArchiveRecords(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"records": []}) }
+
+// Report handlers
+func handleGetReportConfigs(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"configs": []}) }
+func handleCreateReportConfig(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "report config created"}) }
+func handleGetReports(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"reports": []}) }
+func handleGenerateReport(c *gin.Context) { c.JSON(http.StatusAccepted, gin.H{"message": "report generation started"}) }
