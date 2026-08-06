@@ -1347,6 +1347,445 @@ class SuperAdminApiService {
   async readinessCheck(): Promise<{ ready: boolean; services: Record<string, boolean> }> {
     return this.request('/api/v1/health/ready');
   }
+
+  // ==================== Email Notifications ====================
+
+  async sendEmail(data: {
+    to_email: string;
+    to_name?: string;
+    subject: string;
+    body_html?: string;
+    body_text?: string;
+    reply_to?: string;
+    cc?: string;
+    bcc?: string;
+  }): Promise<{ status: string }> {
+    return this.request('/emails', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async sendTemplateEmail(data: {
+    to_email: string;
+    to_name?: string;
+    template_id: string;
+    variables: Record<string, any>;
+  }): Promise<{ status: string; template_id: string }> {
+    return this.request('/emails/template', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async queueEmail(data: {
+    to_email: string;
+    to_name?: string;
+    subject: string;
+    body_html?: string;
+    body_text?: string;
+    priority?: number;
+    scheduled_at?: string;
+  }): Promise<{ status: string; message_id: string }> {
+    return this.request('/emails/queue', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async unsubscribeEmail(email: string, reason?: string, categories?: string): Promise<{ status: string }> {
+    return this.request('/unsubscribe', {
+      method: 'POST',
+      body: JSON.stringify({ email, reason, categories }),
+    });
+  }
+
+  async addEmailRecipient(email: string, name?: string): Promise<{ status: string }> {
+    return this.request('/recipients', {
+      method: 'POST',
+      body: JSON.stringify({ email, name }),
+    });
+  }
+
+  async getEmailStats(): Promise<{ total: number; sent: number; failed: number; queued: number; rate: number }> {
+    return this.request('/stats');
+  }
+
+  // ==================== SMS Notifications ====================
+
+  async sendSMS(data: {
+    to: string;
+    message: string;
+  }): Promise<{ status: string; message_id: string }> {
+    return this.request('/sms', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async sendTemplateSMS(data: {
+    to: string;
+    template_id: string;
+    variables: Record<string, any>;
+  }): Promise<{ status: string; message_id: string }> {
+    return this.request('/sms/template', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async verifyPhone(phone: string): Promise<{ status: string; verification_code: string }> {
+    return this.request('/verify/send', {
+      method: 'POST',
+      body: JSON.stringify({ phone }),
+    });
+  }
+
+  async confirmPhoneVerification(phone: string, code: string): Promise<{ status: string }> {
+    return this.request('/verify/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ phone, code }),
+    });
+  }
+
+  async getSMSStats(): Promise<{ total: number; sent: number; failed: number; queued: number; balance: number }> {
+    return this.request('/stats');
+  }
+
+  // ==================== Push Notifications ====================
+
+  async sendPush(data: {
+    user_id: string;
+    token: string;
+    platform: string;
+    title: string;
+    body?: string;
+    data?: string;
+    sound?: string;
+    badge?: number;
+  }): Promise<{ status: string; message_id: string }> {
+    return this.request('/push', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async sendTemplatePush(data: {
+    user_id: string;
+    token: string;
+    platform: string;
+    template_id: string;
+    variables: Record<string, any>;
+  }): Promise<{ status: string; message_id: string }> {
+    return this.request('/push/template', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async registerDevice(data: {
+    user_id: string;
+    token: string;
+    platform: string;
+    app_version?: string;
+    language?: string;
+    timezone?: string;
+  }): Promise<{ status: string }> {
+    return this.request('/devices', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async unregisterDevice(token: string): Promise<{ status: string }> {
+    return this.request(`/devices/${token}`, { method: 'DELETE' });
+  }
+
+  async getPushStats(): Promise<{ total: number; sent: number; failed: number; queued: number }> {
+    return this.request('/stats');
+  }
+
+  // ==================== Two-Factor Authentication ====================
+
+  async setup2FA(user_id: string, method?: string, phone?: string, email?: string): Promise<{
+    secret: string;
+    qr_code_url: string;
+  }> {
+    return this.request('/2fa/setup', {
+      method: 'POST',
+      body: JSON.stringify({ user_id, method, phone, email }),
+    });
+  }
+
+  async verify2FASetup(user_id: string, secret: string, code: string): Promise<{
+    status: string;
+    backup_codes: string[];
+  }> {
+    return this.request('/2fa/verify-setup', {
+      method: 'POST',
+      body: JSON.stringify({ user_id, secret, code }),
+    });
+  }
+
+  async verify2FA(user_id: string, code?: string, backup_code?: string): Promise<{ status: string; method: string }> {
+    return this.request('/2fa/verify', {
+      method: 'POST',
+      body: JSON.stringify({ user_id, code, backup_code }),
+    });
+  }
+
+  async disable2FA(user_id: string, code: string): Promise<{ status: string }> {
+    return this.request('/2fa/disable', {
+      method: 'POST',
+      body: JSON.stringify({ user_id, code }),
+    });
+  }
+
+  async get2FAStatus(user_id: string): Promise<{ enabled: boolean }> {
+    return this.request(`/2fa/status/${user_id}`);
+  }
+
+  async get2FAConfig(user_id: string): Promise<any> {
+    return this.request(`/2fa/config/${user_id}`);
+  }
+
+  async regenerateBackupCodes(user_id: string, code: string): Promise<{ backup_codes: string[] }> {
+    return this.request('/2fa/regenerate-codes', {
+      method: 'POST',
+      body: JSON.stringify({ user_id, code }),
+    });
+  }
+
+  // ==================== Support Tickets ====================
+
+  async createTicket(data: {
+    user_id: string;
+    user_email: string;
+    user_name?: string;
+    subject: string;
+    description: string;
+    category?: string;
+    priority?: string;
+    channel?: string;
+  }): Promise<any> {
+    return this.request('/tickets', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getTicket(ticket_id: string): Promise<{ ticket: any; messages: any[] }> {
+    return this.request(`/tickets/${ticket_id}`);
+  }
+
+  async getUserTickets(user_id: string): Promise<{ tickets: any[] }> {
+    return this.request(`/tickets/user/${user_id}`);
+  }
+
+  async getOpenTickets(assigned_to?: string, status?: string): Promise<{ tickets: any[] }> {
+    const params = new URLSearchParams();
+    if (assigned_to) params.append('assigned_to', assigned_to);
+    if (status) params.append('status', status);
+    return this.request(`/tickets/open?${params}`);
+  }
+
+  async addTicketMessage(data: {
+    ticket_id: string;
+    sender_id: string;
+    sender_name?: string;
+    sender_email: string;
+    content: string;
+    sender_type?: string;
+    is_internal?: boolean;
+  }): Promise<any> {
+    return this.request(`/tickets/${data.ticket_id}/messages`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateTicketStatus(ticket_id: string, status: string, assigned_to?: string): Promise<{ status: string }> {
+    return this.request(`/tickets/${ticket_id}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ ticket_id, status, assigned_to }),
+    });
+  }
+
+  async getTicketSLA(ticket_id: string): Promise<any> {
+    return this.request(`/tickets/${ticket_id}/sla`);
+  }
+
+  async getCannedResponses(category?: string): Promise<{ responses: any[] }> {
+    const params = category ? `?category=${category}` : '';
+    return this.request(`/canned-responses${params}`);
+  }
+
+  // ==================== Knowledge Base ====================
+
+  async getKnowledgeBaseCategories(): Promise<{ categories: any[] }> {
+    return this.request('/knowledgebase');
+  }
+
+  async searchKnowledgeBase(category_id?: number, search?: string): Promise<{ articles: any[] }> {
+    const params = new URLSearchParams();
+    if (category_id) params.append('category_id', String(category_id));
+    if (search) params.append('search', search);
+    return this.request(`/knowledgebase/search?${params}`);
+  }
+
+  async getKnowledgeBaseArticle(slug: string): Promise<any> {
+    return this.request(`/knowledgebase/articles/${slug}`);
+  }
+
+  // ==================== Reports ====================
+
+  async createReport(data: {
+    report_type: string;
+    title: string;
+    user_id: string;
+    format?: string;
+    parameters?: Record<string, any>;
+  }): Promise<any> {
+    return this.request('/reports', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getReport(report_id: string): Promise<any> {
+    return this.request(`/reports/${report_id}`);
+  }
+
+  async getUserReports(user_id: string): Promise<{ reports: any[] }> {
+    return this.request(`/reports/user/${user_id}`);
+  }
+
+  async downloadReport(report_id: string): Promise<Blob> {
+    const response = await fetch(`${this.baseURL}/reports/${report_id}/download`, {
+      headers: this.getHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to download report');
+    }
+    return response.blob();
+  }
+
+  async getReportTemplates(): Promise<{ templates: any[] }> {
+    return this.request('/templates');
+  }
+
+  // ==================== Integrations ====================
+
+  // Slack
+  async sendSlackMessage(data: {
+    channel: string;
+    text: string;
+    blocks?: any[];
+  }): Promise<{ status: string; message_ts: string }> {
+    return this.request('/slack/message', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async sendSlackAlert(data: {
+    channel: string;
+    alert_type: string;
+    title: string;
+    message: string;
+    severity?: string;
+  }): Promise<{ status: string }> {
+    return this.request('/slack/alert', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Datadog
+  async sendDatadogMetric(data: {
+    name: string;
+    value: number;
+    tags?: Record<string, string>;
+  }): Promise<{ status: string }> {
+    return this.request('/datadog/metric', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async sendDatadogEvent(data: {
+    title: string;
+    text: string;
+    alert_type?: string;
+    priority?: string;
+    tags?: Record<string, string>;
+  }): Promise<{ status: string; event_id: string }> {
+    return this.request('/datadog/event', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async sendTransactionMetric(data: {
+    type: string;
+    status: string;
+    chain: string;
+    value: number;
+  }): Promise<{ status: string }> {
+    return this.request('/datadog/transaction', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async queryDatadogMetrics(query: string, from?: number, to?: number): Promise<{ results: any[] }> {
+    return this.request('/datadog/query', {
+      method: 'POST',
+      body: JSON.stringify({ query, from, to }),
+    });
+  }
+
+  // ==================== IP Whitelist ====================
+
+  async getIPWhitelist(): Promise<{ ips: any[] }> {
+    return this.request('/security/whitelist');
+  }
+
+  async addToIPWhitelist(ip: string, description?: string): Promise<{ status: string }> {
+    return this.request('/security/whitelist', {
+      method: 'POST',
+      body: JSON.stringify({ ip, description }),
+    });
+  }
+
+  async removeFromIPWhitelist(ip: string): Promise<{ status: string }> {
+    return this.request(`/security/whitelist/${ip}`, { method: 'DELETE' });
+  }
+
+  async checkIPWhitelist(ip: string): Promise<{ allowed: boolean }> {
+    return this.request(`/security/whitelist/check?ip=${ip}`);
+  }
+
+  // ==================== Rate Limiting ====================
+
+  async getRateLimits(): Promise<{ limits: any[] }> {
+    return this.request('/security/rate-limits');
+  }
+
+  async setRateLimit(data: {
+    endpoint: string;
+    requests_per_minute: number;
+    burst?: number;
+  }): Promise<{ status: string }> {
+    return this.request('/security/rate-limits', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getRateLimitStats(): Promise<{ stats: any }> {
+    return this.request('/security/rate-limits/stats');
+  }
 }
 
 export const superAdminApi = new SuperAdminApiService();
