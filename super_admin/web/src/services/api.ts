@@ -1786,6 +1786,222 @@ class SuperAdminApiService {
   async getRateLimitStats(): Promise<{ stats: any }> {
     return this.request('/security/rate-limits/stats');
   }
+
+  // ==================== Cloudflare Integration ====================
+
+  async createWAFRule(data: {
+    name: string;
+    action: string;
+    expression: string;
+    priority?: number;
+  }): Promise<any> {
+    return this.request('/waf/rules', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getWAFRules(): Promise<{ rules: any[] }> {
+    return this.request('/waf/rules');
+  }
+
+  async deleteWAFRule(rule_id: string): Promise<{ status: string }> {
+    return this.request(`/waf/rules/${rule_id}`, { method: 'DELETE' });
+  }
+
+  async addIPRule(data: {
+    ip: string;
+    rule_type: string;
+    reason?: string;
+    expires_at?: string;
+  }): Promise<any> {
+    return this.request('/ip-rules', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getIPRules(type?: string): Promise<{ rules: any[] }> {
+    const params = type ? `?type=${type}` : '';
+    return this.request(`/ip-rules${params}`);
+  }
+
+  async removeIPRule(ip: string): Promise<{ status: string }> {
+    return this.request(`/ip-rules/${ip}`, { method: 'DELETE' });
+  }
+
+  async createRateLimit(data: {
+    name: string;
+    path: string;
+    requests_per_minute: number;
+    burst?: number;
+    action?: string;
+  }): Promise<any> {
+    return this.request('/rate-limits', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getRateLimitRules(): Promise<{ rules: any[] }> {
+    return this.request('/rate-limits');
+  }
+
+  async createDNSRecord(data: {
+    name: string;
+    type: string;
+    content: string;
+    proxied?: boolean;
+    ttl?: number;
+  }): Promise<any> {
+    return this.request('/dns-records', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getDNSRecords(type?: string): Promise<{ records: any[] }> {
+    const params = type ? `?type=${type}` : '';
+    return this.request(`/dns-records${params}`);
+  }
+
+  async getFirewallEvents(ip?: string, limit?: number): Promise<{ events: any[] }> {
+    const params = new URLSearchParams();
+    if (ip) params.append('ip', ip);
+    if (limit) params.append('limit', String(limit));
+    return this.request(`/firewall/events?${params}`);
+  }
+
+  async getSecurityStats(): Promise<any> {
+    return this.request('/security/stats');
+  }
+
+  // ==================== PagerDuty Integration ====================
+
+  async triggerPagerDutyEvent(data: {
+    title: string;
+    body?: string;
+    severity?: string;
+    source?: string;
+    custom_details?: Record<string, any>;
+  }): Promise<{ status: string; dedup_key: string }> {
+    return this.request('/events/trigger', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async resolvePagerDutyEvent(data: {
+    dedup_key: string;
+    title?: string;
+  }): Promise<{ status: string }> {
+    return this.request('/events/resolve', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async sendPagerDutyAlert(data: {
+    alert_type: string;
+    data: Record<string, any>;
+  }): Promise<{ status: string }> {
+    return this.request('/alerts', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getPagerDutyIncidents(status?: string): Promise<{ incidents: any[] }> {
+    const params = status ? `?status=${status}` : '';
+    return this.request(`/incidents${params}`);
+  }
+
+  async getPagerDutyServices(): Promise<{ services: any[] }> {
+    return this.request('/services');
+  }
+
+  async getPagerDutyOnCall(): Promise<{ oncalls: any[] }> {
+    return this.request('/oncall');
+  }
+
+  // ==================== Excel Reports ====================
+
+  async createExcelReport(data: {
+    report_type: string;
+    title?: string;
+    user_id: string;
+    parameters?: Record<string, any>;
+  }): Promise<any> {
+    return this.request('/reports', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getExcelReport(report_id: string): Promise<any> {
+    return this.request(`/reports/${report_id}`);
+  }
+
+  async downloadExcelReport(report_id: string): Promise<Blob> {
+    const response = await fetch(`${this.baseURL}/reports/${report_id}/download`, {
+      headers: this.getHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to download report');
+    }
+    return response.blob();
+  }
+
+  // ==================== Fraud Detection ====================
+
+  async analyzeTransaction(data: {
+    user_id: string;
+    tx_type: string;
+    ip_address?: string;
+    country?: string;
+    device?: string;
+    amount: number;
+    currency?: string;
+  }): Promise<any> {
+    return this.request('/analyze', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getFraudAlerts(user_id?: string, status?: string): Promise<{ alerts: any[] }> {
+    const params = new URLSearchParams();
+    if (user_id) params.append('user_id', user_id);
+    if (status) params.append('status', status);
+    return this.request(`/alerts?${params}`);
+  }
+
+  async resolveFraudAlert(data: {
+    alert_id: string;
+    resolution: string;
+    resolved_by?: string;
+  }): Promise<{ status: string }> {
+    return this.request('/alerts/resolve', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async blockUser(data: {
+    user_id: string;
+    reason: string;
+    severity?: string;
+    expires_at?: string;
+  }): Promise<{ status: string }> {
+    return this.request('/block', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async unblockUser(user_id: string): Promise<{ status: string }> {
+    return this.request(`/block/${user_id}`, { method: 'DELETE' });
+  }
 }
 
 export const superAdminApi = new SuperAdminApiService();
