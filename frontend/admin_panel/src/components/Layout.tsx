@@ -9,7 +9,7 @@ import {
   Dashboard, People, Pool, Hub, Receipt, ShowChart, SmartToy,
   AccountTree, HubOutlined, AttachMoney, Security, Analytics, Settings,
   Menu as MenuIcon, Notifications, Brightness7, Brightness4, DarkMode, LightMode,
-  Support
+  Support, IntegrationInstructions, Compliance, Notifications as NotifIcon
 } from '@mui/icons-material'
 
 // Theme Context
@@ -41,6 +41,9 @@ const menuItems = [
   { text: 'Fees', icon: <AttachMoney />, path: '/fees' },
   { text: 'Treasury', icon: <AttachMoney />, path: '/treasury' },
   { text: 'Support', icon: <Support />, path: '/support' },
+  { text: 'Integrations', icon: <IntegrationInstructions />, path: '/integrations' },
+  { text: 'Compliance', icon: <Compliance />, path: '/compliance' },
+  { text: 'Notifications', icon: <NotifIcon />, path: '/notifications' },
   { text: 'Security', icon: <Security />, path: '/security' },
   { text: 'Analytics', icon: <Analytics />, path: '/analytics' },
   { text: 'Settings', icon: <Settings />, path: '/settings' },

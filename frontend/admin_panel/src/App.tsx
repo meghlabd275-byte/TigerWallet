@@ -17,6 +17,9 @@ import Security from './pages/Security'
 import Analytics from './pages/Analytics'
 import Settings from './pages/Settings'
 import Support from './pages/Support'
+import Integrations from './pages/Integrations'
+import Compliance from './pages/Compliance'
+import Notifications from './pages/Notifications'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -46,6 +49,9 @@ function App() {
             <Route path="fees" element={<Fees />} />
             <Route path="treasury" element={<Treasury />} />
             <Route path="support" element={<SupportPageWrapper />} />
+            <Route path="integrations" element={<IntegrationsPageWrapper />} />
+            <Route path="compliance" element={<CompliancePageWrapper />} />
+            <Route path="notifications" element={<NotificationsPageWrapper />} />
             <Route path="security" element={<Security />} />
             <Route path="analytics" element={<Analytics />} />
             <Route path="settings" element={<SettingsPageWrapper />} />
@@ -65,6 +71,21 @@ function SettingsPageWrapper() {
 function SupportPageWrapper() {
   const { darkMode } = useThemeContext();
   return <Support darkMode={darkMode} />;
+}
+
+function IntegrationsPageWrapper() {
+  const { darkMode } = useThemeContext();
+  return <Integrations darkMode={darkMode} />;
+}
+
+function CompliancePageWrapper() {
+  const { darkMode } = useThemeContext();
+  return <Compliance darkMode={darkMode} />;
+}
+
+function NotificationsPageWrapper() {
+  const { darkMode } = useThemeContext();
+  return <Notifications darkMode={darkMode} />;
 }
 
 export default App
