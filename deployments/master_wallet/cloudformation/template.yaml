@@ -1,0 +1,417 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "MasterWallet White Label Deployment on AWS",
+  "Parameters": {
+    "EnvironmentName": {
+      "Type": "String",
+      "Default": "master-wallet",
+      "Description": "Environment name"
+    },
+    "VPCStackName": {
+      "Type": "String",
+      "Default": "tigerwallet-vpc",
+      "Description": "Name of existing VPC stack"
+    },
+    "DBPassword": {
+      "Type": "String",
+      "NoEcho": true,
+      "Description": "Database password"
+    },
+    "ApiKey": {
+      "Type": "String",
+      "NoEcho": true,
+      "Description": "API key for Super Admin connection"
+    },
+    "ApiSecret": {
+      "Type": "String",
+      "NoEcho": true,
+      "Description": "API secret for Super Admin connection"
+    },
+    "JwtSecret": {
+      "Type": "String",
+      "NoEcho": true,
+      "Description": "JWT secret for authentication"
+    },
+    "SuperAdminUrl": {
+      "Type": "String",
+      "Default": "https://super-admin.tigerwallet.com",
+      "Description": "Super Admin URL"
+    },
+    "InstanceType": {
+      "Type": "String",
+      "Default": "t3.medium",
+      "Description": "EC2 instance type"
+    },
+    "KeyName": {
+      "Type": "AWS::EC2::KeyPair::KeyName",
+      "Description": "SSH key pair"
+    }
+  },
+  "Mappings": {
+    "RegionAMI": {
+      "us-east-1": {"AMI": "ami-0c55b159cbfafe1f0"},
+      "us-west-2": {"AMI": "ami-0892d3c7ee96c6087"},
+      "eu-west-1": {"AMI": "ami-0d71ea30463e0ff961"}
+    }
+  },
+  "Resources": {
+    "VPC": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.0.0.0/16",
+        "EnableDnsHostnames": true,
+        "EnableDnsSupport": true,
+        "Tags": [{"Key": "Name", "Value": {"Ref": "EnvironmentName"}}]
+      }
+    },
+    "PublicSubnet1": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {"Ref": "VPC"},
+        "CidrBlock": "10.0.1.0/24",
+        "AvailabilityZone": {"Fn::Select": ["0", {"Fn::GetAZs": ""}]},
+        "MapPublicIpOnLaunch": true,
+        "Tags": [{"Key": "Name", "Value": {"Ref": "EnvironmentName"}}]
+      }
+    },
+    "PublicSubnet2": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {"Ref": "VPC"},
+        "CidrBlock": "10.0.2.0/24",
+        "AvailabilityZone": {"Fn::Select": ["1", {"Fn::GetAZs": ""}]},
+        "MapPublicIpOnLaunch": true,
+        "Tags": [{"Key": "Name", "Value": {"Ref": "EnvironmentName"}}]
+      }
+    },
+    "InternetGateway": {
+      "Type": "AWS::EC2::InternetGateway",
+      "Properties": {"Tags": [{"Key": "Name", "Value": {"Ref": "EnvironmentName"}}]
+    },
+    "InternetGatewayAttachment": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "Properties": {
+        "VpcId": {"Ref": "VPC"},
+        "InternetGatewayId": {"Ref": "InternetGateway"}
+      }
+    },
+    "PublicRouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {"Ref": "VPC"},
+        "Tags": [{"Key": "Name", "Value": {"Ref": "EnvironmentName"}}]
+      }
+    },
+    "PublicRoute": {
+      "Type": "AWS::EC2::Route",
+      "DependsOn": "InternetGatewayAttachment",
+      "Properties": {
+        "RouteTableId": {"Ref": "PublicRouteTable"},
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": {"Ref": "InternetGateway"}
+      }
+    },
+    "SubnetRouteTableAssociation1": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {"Ref": "PublicSubnet1"},
+        "RouteTableId": {"Ref": "PublicRouteTable"}
+      }
+    },
+    "SubnetRouteTableAssociation2": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {"Ref": "PublicSubnet2"},
+        "RouteTableId": {"Ref": "PublicRouteTable"}
+      }
+    },
+    "DBSubnetGroup": {
+      "Type": "AWS::RDS::DBSubnetGroup",
+      "Properties": {
+        "DBSubnetGroupDescription": "Master Wallet DB subnet group",
+        "SubnetIds": [{"Ref": "PublicSubnet1"}, {"Ref": "PublicSubnet2"}]
+      }
+    },
+    "Database": {
+      "Type": "AWS::RDS::DBInstance",
+      "Properties": {
+        "DBInstanceIdentifier": {"Fn::Sub": "${EnvironmentName}-db"},
+        "Engine": "postgres",
+        "EngineVersion": "15.3",
+        "DBInstanceClass": "db.t3.medium",
+        "AllocatedStorage": 50,
+        "StorageType": "gp3",
+        "MasterUsername": "masterwallet",
+        "MasterUserPassword": {"Ref": "DBPassword"},
+        "DBSubnetGroupName": {"Ref": "DBSubnetGroup"},
+        "VPCSecurityGroups": [{"Fn::GetAtt": "DatabaseSecurityGroup.GroupId"}],
+        "BackupRetentionPeriod": 7,
+        "DeletionProtection": true,
+        "MultiAZ": true
+      }
+    },
+    "DatabaseSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Database security group",
+        "VpcId": {"Ref": "VPC"},
+        "SecurityGroupIngress": [
+          {"IpProtocol": "tcp", "FromPort": 5432, "ToPort": 5432, "CidrIp": "10.0.0.0/16"}
+        ]
+      }
+    },
+    "RedisCluster": {
+      "Type": "AWS::ElastiCache::ReplicationGroup",
+      "Properties": {
+        "ReplicationGroupDescription": "Master Wallet Redis",
+        "ReplicationGroupId": {"Fn::Sub": "${EnvironmentName}-redis"},
+        "AutomaticFailoverEnabled": true,
+        "CacheNodeType": "cache.t3.medium",
+        "CacheEngine": "redis",
+        "CacheEngineVersion": "7.0",
+        "NumNodeGroups": 1,
+        "ReplicasPerNodeGroup": 1,
+        "Port": 6379,
+        "AutoMinorVersionUpgrade": true,
+        "SubnetGroupName": {"Ref": "RedisSubnetGroup"},
+        "SecurityGroupIds": [{"Fn::GetAtt": "RedisSecurityGroup.GroupId"}]
+      }
+    },
+    "RedisSubnetGroup": {
+      "Type": "AWS::ElastiCache::SubnetGroup",
+      "Properties": {
+        "Description": "Redis subnet group",
+        "SubnetIds": [{"Ref": "PublicSubnet1"}, {"Ref": "PublicSubnet2"}]
+      }
+    },
+    "RedisSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Redis security group",
+        "VpcId": {"Ref": "VPC"},
+        "SecurityGroupIngress": [
+          {"IpProtocol": "tcp", "FromPort": 6379, "ToPort": 6379, "CidrIp": "10.0.0.0/16"}
+        ]
+      }
+    },
+    "ECSCluster": {
+      "Type": "AWS::ECS::Cluster",
+      "Properties": {
+        "ClusterName": {"Ref": "EnvironmentName"}
+      }
+    },
+    "BackendTaskDefinition": {
+      "Type": "AWS::ECS::TaskDefinition",
+      "Properties": {
+        "Family": "master-wallet-backend",
+        "NetworkMode": "awsvpc",
+        "RequiresCompatibilities": ["FARGATE"],
+        "Cpu": "512",
+        "Memory": "1024",
+        "ExecutionRoleArn": {"Ref": "ECSTaskExecutionRole"},
+        "ContainerDefinitions": [
+          {
+            "Name": "backend",
+            "Image": "tigerwallet/master-wallet-backend:latest",
+            "Essential": true,
+            "PortMappings": [{"ContainerPort": 8001}],
+            "Environment": [
+              {"Name": "DATABASE_URL", "Value": {"Fn::Sub": "postgres://masterwallet:${DBPassword}@${Database.Endpoint.Address}:5432/masterwallet"}},
+              {"Name": "REDIS_URL", "Value": {"Fn::Sub": "redis://${RedisCluster.PrimaryEndPoint.Address}:6379"}},
+              {"Name": "SUPER_ADMIN_URL", "Value": {"Ref": "SuperAdminUrl"}},
+              {"Name": "API_KEY", "Value": {"Ref": "ApiKey"}},
+              {"Name": "JWT_SECRET", "Value": {"Ref": "JwtSecret"}}
+            ],
+            "LogConfiguration": {
+              "LogDriver": "awslogs",
+              "Options": {
+                "awslogs-group": {"Ref": "LogGroup"},
+                "awslogs-region": {"Ref": "AWS::Region"},
+                "awslogs-stream-prefix": "backend"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "FrontendTaskDefinition": {
+      "Type": "AWS::ECS::TaskDefinition",
+      "Properties": {
+        "Family": "master-wallet-frontend",
+        "NetworkMode": "awsvpc",
+        "RequiresCompatibilities": ["FARGATE"],
+        "Cpu": "256",
+        "Memory": "512",
+        "ExecutionRoleArn": {"Ref": "ECSTaskExecutionRole"},
+        "ContainerDefinitions": [
+          {
+            "Name": "frontend",
+            "Image": "tigerwallet/master-wallet-frontend:latest",
+            "Essential": true,
+            "PortMappings": [{"ContainerPort": 80}],
+            "LogConfiguration": {
+              "LogDriver": "awslogs",
+              "Options": {
+                "awslogs-group": {"Ref": "LogGroup"},
+                "awslogs-region": {"Ref": "AWS::Region"},
+                "awslogs-stream-prefix": "frontend"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "BackendService": {
+      "Type": "AWS::ECS::Service",
+      "DependsOn": "BackendListener",
+      "Properties": {
+        "Cluster": {"Ref": "ECSCluster"},
+        "ServiceName": "master-wallet-backend",
+        "TaskDefinition": {"Ref": "BackendTaskDefinition"},
+        "DesiredCount": 2,
+        "LaunchType": "FARGATE",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "AssignPublicIp": "ENABLED",
+            "Subnets": [{"Ref": "PublicSubnet1"}, {"Ref": "PublicSubnet2"}],
+            "SecurityGroups": [{"Ref": "ServiceSecurityGroup"}]
+          }
+        },
+        "LoadBalancers": [
+          {
+            "ContainerName": "backend",
+            "ContainerPort": 8001,
+            "TargetGroupArn": {"Ref": "BackendTargetGroup"}
+          }
+        ]
+      }
+    },
+    "FrontendService": {
+      "Type": "AWS::ECS::Service",
+      "DependsOn": "FrontendListener",
+      "Properties": {
+        "Cluster": {"Ref": "ECSCluster"},
+        "ServiceName": "master-wallet-frontend",
+        "TaskDefinition": {"Ref": "FrontendTaskDefinition"},
+        "DesiredCount": 2,
+        "LaunchType": "FARGATE",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "AssignPublicIp": "ENABLED",
+            "Subnets": [{"Ref": "PublicSubnet1"}, {"Ref": "PublicSubnet2"}],
+            "SecurityGroups": [{"Ref": "ServiceSecurityGroup"}]
+          }
+        },
+        "LoadBalancers": [
+          {
+            "ContainerName": "frontend",
+            "ContainerPort": 80,
+            "TargetGroupArn": {"Ref": "FrontendTargetGroup"}
+          }
+        ]
+      }
+    },
+    "ApplicationLoadBalancer": {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties": {
+        "Name": {"Ref": "EnvironmentName"},
+        "Scheme": "internet-facing",
+        "Subnets": [{"Ref": "PublicSubnet1"}, {"Ref": "PublicSubnet2"}],
+        "SecurityGroups": [{"Ref": "ALBSecurityGroup"}]
+      }
+    },
+    "BackendTargetGroup": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties": {
+        "Name": "backend-tg",
+        "Port": 8001,
+        "Protocol": "HTTP",
+        "TargetType": "ip",
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+    "FrontendTargetGroup": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties": {
+        "Name": "frontend-tg",
+        "Port": 80,
+        "Protocol": "HTTP",
+        "TargetType": "ip",
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+    "BackendListener": {
+      "Type": "AWS::ElasticLoadBalancingV2::Listener",
+      "Properties": {
+        "LoadBalancerArn": {"Ref": "ApplicationLoadBalancer"},
+        "Port": 8001,
+        "Protocol": "HTTP",
+        "DefaultActions": [{"Type": "forward", "TargetGroupArn": {"Ref": "BackendTargetGroup"}}]
+      }
+    },
+    "FrontendListener": {
+      "Type": "AWS::ElasticLoadBalancingV2::Listener",
+      "Properties": {
+        "LoadBalancerArn": {"Ref": "ApplicationLoadBalancer"},
+        "Port": 80,
+        "Protocol": "HTTP",
+        "DefaultActions": [{"Type": "forward", "TargetGroupArn": {"Ref": "FrontendTargetGroup"}}]
+      }
+    },
+    "ALBSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "ALB security group",
+        "VpcId": {"Ref": "VPC"},
+        "SecurityGroupIngress": [
+          {"IpProtocol": "tcp", "FromPort": 80, "ToPort": 80, "CidrIp": "0.0.0.0/0"},
+          {"IpProtocol": "tcp", "FromPort": 443, "ToPort": 443, "CidrIp": "0.0.0.0/0"}
+        ]
+      }
+    },
+    "ServiceSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Service security group",
+        "VpcId": {"Ref": "VPC"},
+        "SecurityGroupIngress": [
+          {"IpProtocol": "tcp", "FromPort": 8001, "ToPort": 8001, "SourceSecurityGroupId": {"Ref": "ALBSecurityGroup"}},
+          {"IpProtocol": "tcp", "FromPort": 80, "ToPort": 80, "SourceSecurityGroupId": {"Ref": "ALBSecurityGroup"}}
+        ]
+      }
+    },
+    "ECSTaskExecutionRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Effect": "Allow",
+            "Principal": {"Service": "ecs-tasks.amazonaws.com"},
+            "Action": "sts:AssumeRole"
+          }]
+        }
+      }
+    },
+    "LogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": {"Fn::Sub": "/ecs/${EnvironmentName}"}
+      }
+    }
+  },
+  "Outputs": {
+    "LoadBalancerDNS": {
+      "Description": "Load Balancer DNS",
+      "Value": {"Fn::GetAtt": "ApplicationLoadBalancer.DNSName"}
+    },
+    "DatabaseEndpoint": {
+      "Description": "Database Endpoint",
+      "Value": {"Fn::GetAtt": "Database.Endpoint.Address"}
+    },
+    "RedisEndpoint": {
+      "Description": "Redis Endpoint",
+      "Value": {"Fn::GetAtt": "RedisCluster.PrimaryEndPoint.Address"}
+    }
+  }
+}

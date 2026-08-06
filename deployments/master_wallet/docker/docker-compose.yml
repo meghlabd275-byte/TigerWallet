@@ -1,0 +1,115 @@
+# MasterWallet Standalone Deployment
+# This package can be deployed on any cloud (AWS, GCP, Azure, DigitalOcean, etc.)
+
+version: '3.8'
+
+services:
+  # MasterWallet Backend (Go)
+  master-wallet-backend:
+    build:
+      context: ../../master_wallet/go
+      dockerfile: Dockerfile
+    container_name: ${TENANT_SLUG}-master-wallet-backend
+    environment:
+      - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
+      - REDIS_URL=redis://redis:6379
+      - SUPER_ADMIN_URL=${SUPER_ADMIN_URL}
+      - TENANT_ID=${TENANT_ID}
+      - TENANT_SLUG=${TENANT_SLUG}
+      - API_KEY=${API_KEY}
+      - API_SECRET=${API_SECRET}
+      - LOG_LEVEL=info
+      - JWT_SECRET=${JWT_SECRET}
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - master-wallet-network
+    restart: unless-stopped
+
+  # MasterWallet Frontend (React)
+  master-wallet-frontend:
+    build:
+      context: ../../master_wallet/web
+      dockerfile: Dockerfile
+    container_name: ${TENANT_SLUG}-master-wallet-frontend
+    environment:
+      - REACT_APP_API_URL=http://master-wallet-backend:8001
+      - REACT_APP_WS_URL=ws://master-wallet-backend:8001
+      - REACT_APP_TENANT_SLUG=${TENANT_SLUG}
+    ports:
+      - "3001:80"
+    depends_on:
+      - master-wallet-backend
+    networks:
+      - master-wallet-network
+    restart: unless-stopped
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: ${TENANT_SLUG}-postgres
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - master-wallet-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: ${TENANT_SLUG}-redis
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - master-wallet-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: ${TENANT_SLUG}-nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - master-wallet-backend
+      - master-wallet-frontend
+    networks:
+      - master-wallet-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  master-wallet-network:
+    driver: bridge
