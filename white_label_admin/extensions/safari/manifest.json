@@ -1,0 +1,14 @@
+{
+  "manifest_version": 2,
+  "name": "TigerWallet White Label Admin",
+  "version": "2.0.0",
+  "description": "TigerWallet White Label Admin Safari Extension",
+  "permissions": ["storage", "tabs"],
+  "browser_action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "background": {
+    "scripts": ["background.js"]
+  }
+}
