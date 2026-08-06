@@ -1,0 +1,238 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "type": "string",
+      "defaultValue": "tigerwallet",
+      "metadata": {
+        "description": "Environment name"
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "eastus",
+      "metadata": {
+        "description": "Azure region"
+      }
+    },
+    "adminUsername": {
+      "type": "string",
+      "defaultValue": "tigerwallet",
+      "metadata": {
+        "description": "Admin username"
+      }
+    },
+    "adminPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Admin password"
+      }
+    },
+    "dbPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Database password"
+      }
+    },
+    "sku": {
+      "type": "string",
+      "defaultValue": "Standard",
+      "allowedValues": [
+        "Basic",
+        "Standard",
+        "Premium"
+      ]
+    }
+  },
+  "variables": {
+    "vnetName": "[concat(parameters('environmentName'), '-vnet')]",
+    "subnetName": "[concat(parameters('environmentName'), '-subnet')]",
+    "nsgName": "[concat(parameters('environmentName'), '-nsg')]",
+    "postgresName": "[concat(parameters('environmentName'), '-postgres')]",
+    "redisName": "[concat(parameters('environmentName'), '-redis')]",
+    "containerAppsEnv": "[concat(parameters('environmentName'), '-env')]",
+    "containerAppName": "[concat(parameters('environmentName'), '-app')]",
+    "appServicePlanName": "[concat(parameters('environmentName'), '-plan')]",
+    "storageAccountName": "[tolower(concat(parameters('environmentName'), 'storage'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2021-08-01",
+      "name": "[variables('vnetName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": ["10.0.0.0/16"]
+        },
+        "subnets": [
+          {
+            "name": variables('subnetName'),
+            "properties": {
+              "addressPrefix": "10.0.1.0/24"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2021-08-01",
+      "name": "[variables('nsgName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "allow-http",
+            "properties": {
+              "protocol": "Tcp",
+              "sourcePortRange": "*",
+              "destinationPortRange": "80",
+              "access": "Allow",
+              "direction": "Inbound"
+            }
+          },
+          {
+            "name": "allow-https",
+            "properties": {
+              "protocol": "Tcp",
+              "sourcePortRange": "*",
+              "destinationPortRange": "443",
+              "access": "Allow",
+              "direction": "Inbound"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.DBforPostgreSQL/flexibleServers",
+      "apiVersion": "2022-01-20",
+      "name": "[variables('postgresName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard_B1ms",
+        "tier": "Burstable"
+      },
+      "properties": {
+        "version": "15",
+        "storage": {
+          "storageSizeGB": 50
+        },
+        "administratorLogin": "tigerwallet",
+        "administratorLoginPassword": "[parameters('dbPassword')]",
+        "network": {
+          "delegatedSubnetResourceId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName'))]",
+          "publicNetworkAccess": "Disabled"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Cache/Redis",
+      "apiVersion": "2023-08-01",
+      "name": "[variables('redisName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Basic",
+        "family": "C",
+        "capacity": 1
+      },
+      "properties": {
+        "sku": {
+          "name": "Basic",
+          "family": "C",
+          "capacity": 1
+        },
+        "redisVersion": "6",
+        "vmSize": "c0"
+      }
+    },
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2021-02-01",
+      "name": "[variables('appServicePlanName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "P1v3",
+        "tier": "PremiumV3",
+        "capacity": 2
+      }
+    },
+    {
+      "type": "Microsoft.Web/containerApps",
+      "apiVersion": "2023-05-01",
+      "name": "[variables('containerAppName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', variables('containerAppsEnv'))]",
+        "configuration": {
+          "ingress": {
+            "external": true,
+            "targetPort": 8000,
+            "transport": "auto"
+          },
+          "secrets": [
+            {
+              "name": "db-password",
+              "value": "[parameters('dbPassword')]"
+            }
+          ]
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "tigerwallet-backend",
+              "image": "tigerwallet/backend:latest",
+              "resources": {
+                "cpu": 1.0,
+                "memory": "2Gi"
+              },
+              "env": [
+                {
+                  "name": "DATABASE_URL",
+                  "value": "[concat('postgres://tigerwallet:', parameters('dbPassword'), '@', variables('postgresName'), '.postgresql.database.azure.com:5432/tigerwallet')]"
+                },
+                {
+                  "name": "REDIS_HOST",
+                  "value": "[variables('redisName')]"
+                }
+              ]
+            }
+          ],
+          "scale": {
+            "minReplicas": 1,
+            "maxReplicas": 10
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', variables('postgresName'))]",
+        "[resourceId('Microsoft.Cache/Redis', variables('redisName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.App/managedEnvironments",
+      "apiVersion": "2023-05-01",
+      "name": "[variables('containerAppsEnv')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "location": "[parameters('location')]"
+      }
+    }
+  ],
+  "outputs": {
+    "postgresConnectionString": {
+      "type": "string",
+      "value": "[concat('postgres://tigerwallet:', parameters('dbPassword'), '@', variables('postgresName'), '.postgresql.database.azure.com:5432/tigerwallet')]"
+    },
+    "redisHost": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Cache/Redis', variables('redisName'))).hostName]"
+    },
+    "appUrl": {
+      "type": "string",
+      "value": "[concat('https://', reference(resourceId('Microsoft.Web/containerApps', variables('containerAppName'))).configuration.ingress.fqdn)]"
+    }
+  }
+}

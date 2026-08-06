@@ -1,0 +1,62 @@
+# TigerWallet GCP Deployment Configuration
+# Google Cloud Deployment Manager
+
+imports:
+  - path: compute-network.jinja
+  - path: cloudsql.jinja
+  - path: redis.jinja
+  - path: container-cluster.jinja
+  - path: load-balancer.jinja
+
+resources:
+  - name: network
+    type: compute-network.jinja
+    properties:
+      name: $(ref.project.projectId)-network
+      autoCreateSubnetworks: false
+
+  - name: database
+    type: cloudsql.jinja
+    properties:
+      name: tigerwallet-db
+      databaseVersion: POSTGRES_15
+      tier: db-custom-2-4096
+      region: us-central1
+      storageGB: 50
+      network: $(ref.network.name)
+
+  - name: redis
+    type: redis.jinja
+    properties:
+      name: tigerwallet-redis
+      tier: BASIC
+      memorySizeGB: 2
+      region: us-central1
+      network: $(ref.network.name)
+
+  - name: cluster
+    type: container-cluster.jinja
+    properties:
+      name: tigerwallet-cluster
+      network: $(ref.network.name)
+      subnetwork: $(ref.network.name)
+      initialNodeCount: 3
+      nodeMachineType: e2-medium
+      nodeDiskSizeGb: 30
+
+  - name: load-balancer
+    type: load-balancer.jinja
+    properties:
+      name: tigerwallet-lb
+      network: $(ref.network.name)
+      region: us-central1
+
+outputs:
+  - name: database-connection
+    value: $(ref.database.connectionName)
+  - name: redis-host
+    value: $(ref.redis.host)
+  - name: cluster-name
+    value: $(ref.cluster.name)
+  - name: lb-ip
+    value: $(ref.load-balancer.ipAddress)

@@ -1,0 +1,15 @@
+{# Cloud Memorystore Redis Jinja Template #}
+resources:
+  - name: {{ properties['name'] }}
+    type: gcp-types/redis-v1:projects.locations.instances
+    properties:
+      name: {{ properties['name'] }}
+      tier: {{ properties.get('tier', 'BASIC') }}
+      memorySizeGb: {{ properties.get('memorySizeGB', 2) }}
+      locationId: {{ properties.get('region', 'us-central1') }}-a
+      redisVersion: redis_7_0
+      displayName: {{ properties['name'] }}
+      reservedIpRange: 10.0.0.0/29
+      labels:
+        environment: production
+        application: tigerwallet

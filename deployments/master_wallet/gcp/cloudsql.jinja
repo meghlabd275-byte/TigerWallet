@@ -1,0 +1,37 @@
+{# CloudSQL Jinja Template #}
+resources:
+  - name: {{ properties['name'] }}
+    type: gcp-types/sqladmin-v1beta4:instances
+    properties:
+      name: {{ properties['name'] }}
+      databaseVersion: {{ properties.get('databaseVersion', 'POSTGRES_15') }}
+      region: {{ properties.get('region', 'us-central1') }}
+      settings:
+        tier: {{ properties.get('tier', 'db-custom-2-4096') }}
+        storage:
+          allocatedStorage: {{ properties.get('storageGB', 50) }}
+          storageType: SSD
+          enableAutoincrement: true
+        backupConfiguration:
+          enabled: true
+          startTime: "03:00"
+        ipConfiguration:
+          ipv4Enabled: true
+          privateNetwork: {{ properties.get('network', '') }}
+        locationPreference:
+          zone: {{ properties.get('region', 'us-central1') }}-a
+      deletionProtection: true
+
+  - name: {{ properties['name'] }}-user
+    type: gcp-types/sqladmin-v1beta4:users
+    properties:
+      instance: {{ properties['name'] }}
+      name: {{ properties.get('user', 'tigerwallet') }}
+      password: {{ properties.get('password', 'changeme') }}
+
+  - name: {{ properties['name'] }}-database
+    type: gcp-types/sqladmin-v1beta4:databases
+    properties:
+      instance: {{ properties['name'] }}
+      name: {{ properties.get('dbname', 'tigerwallet') }}
+      charset: utf8

@@ -1,0 +1,39 @@
+{# GKE Cluster Jinja Template #}
+resources:
+  - name: {{ properties['name'] }}
+    type: gcp-types/container-v1beta1:projects.locations.clusters
+    properties:
+      project: {{ env['project'] }}
+      location: {{ properties.get('region', 'us-central1') }}
+      cluster:
+        name: {{ properties['name'] }}
+        network: {{ properties['network'] }}
+        subnetwork: {{ properties.get('subnetwork', properties['network']) }}
+        initialNodeCount: {{ properties.get('initialNodeCount', 3) }}
+        nodePools:
+          - name: default-pool
+            initialNodeCount: {{ properties.get('initialNodeCount', 3) }}
+            config:
+              machineType: {{ properties.get('nodeMachineType', 'e2-medium') }}
+              diskSizeGb: {{ properties.get('nodeDiskSizeGb', 30) }}
+              oauthScopes:
+                - https://www.googleapis.com/auth/cloud-platform
+                - https://www.googleapis.com/auth/devstorage.read_only
+                - https://www.googleapis.com/auth/logging.write
+                - https://www.googleapis.com/auth/monitoring
+            autoscaling:
+              enabled: true
+              minNodeCount: {{ properties.get('minNodeCount', 1) }}
+              maxNodeCount: {{ properties.get('maxNodeCount', 10) }}
+            management:
+              autoRepair: true
+              autoUpgrade: true
+        releaseChannel:
+          channel: REGULAR
+        ipAllocationPolicy:
+          clusterIpv4Cidr: /14
+          servicesIpv4Cidr: /20
+        networkPolicy:
+          enabled: true
+        loggingService: logging.googleapis.com
+        monitoringService: monitoring.googleapis.com

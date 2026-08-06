@@ -1,0 +1,57 @@
+{# Load Balancer Jinja Template #}
+resources:
+  - name: {{ properties['name'] }}-ip
+    type: gcp-types/compute-v1:addresses
+    properties:
+      name: {{ properties['name'] }}-ip
+      region: {{ properties.get('region', 'us-central1') }}
+      addressType: EXTERNAL
+
+  - name: {{ properties['name'] }}-health-check
+    type: gcp-types/compute-v1:healthChecks
+    properties:
+      name: {{ properties['name'] }}-health-check
+      type: HTTP
+      httpHealthCheck:
+        port: 80
+        requestPath: /health
+
+  - name: {{ properties['name'] }}-backend-service
+    type: gcp-types/compute-v1:backendServices
+    properties:
+      name: {{ properties['name'] }}-backend-service
+      region: {{ properties.get('region', 'us-central1') }}
+      healthChecks:
+        - $(ref.{{ properties['name'] }}-health-check.selfLink)
+      backends:
+        - balancingMode: UTILIZATION
+          maxUtilization: 0.8
+          capacityScaler: 1.0
+      protocol: HTTP
+      portName: http
+      timeoutSec: 30
+
+  - name: {{ properties['name'] }}-url-map
+    type: gcp-types/compute-v1:urlMaps
+    properties:
+      name: {{ properties['name'] }}-url-map
+      defaultService: $(ref.{{ properties['name'] }}-backend-service.selfLink)
+
+  - name: {{ properties['name'] }}-target-http-proxy
+    type: gcp-types/compute-v1:targetHttpProxies
+    properties:
+      name: {{ properties['name'] }}-target-http-proxy
+      urlMap: $(ref.{{ properties['name'] }}-url-map.selfLink)
+
+  - name: {{ properties['name'] }}-forwarding-rule
+    type: gcp-types/compute-v1:globalForwardingRules
+    properties:
+      name: {{ properties['name'] }}-forwarding-rule
+      IPAddress: $(ref.{{ properties['name'] }}-ip.address)
+      IPProtocol: HTTP
+      portRange: 80
+      target: $(ref.{{ properties['name'] }}-target-http-proxy.selfLink)
+
+outputs:
+  - name: ipAddress
+    value: $(ref.{{ properties['name'] }}-ip.address)
