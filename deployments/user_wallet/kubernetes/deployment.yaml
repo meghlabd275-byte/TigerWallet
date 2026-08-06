@@ -1,0 +1,273 @@
+# UserWallet Kubernetes Deployment
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: user-wallet
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-wallet-config
+  namespace: user-wallet
+data:
+  DATABASE_HOST: "postgres.user-wallet.svc.cluster.local"
+  REDIS_HOST: "redis.user-wallet.svc.cluster.local"
+  SUPER_ADMIN_URL: "https://super-admin.tigerwallet.com"
+  KYC_ENABLED: "true"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: user-wallet-secrets
+  namespace: user-wallet
+type: Opaque
+stringData:
+  DB_PASSWORD: "CHANGE_ME"
+  API_KEY: "CHANGE_ME"
+  API_SECRET: "CHANGE_ME"
+  JWT_SECRET: "CHANGE_ME"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: user-wallet
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: user-wallet
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: "userwallet"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: user-wallet-secrets
+                  key: DB_PASSWORD
+            - name: POSTGRES_DB
+              value: "userwallet"
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: user-wallet
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: 6379
+  selector:
+    app: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: user-wallet
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-wallet-backend
+  namespace: user-wallet
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8002
+      targetPort: 8002
+  selector:
+    app: user-wallet-backend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-wallet-backend
+  namespace: user-wallet
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: user-wallet-backend
+  template:
+    metadata:
+      labels:
+        app: user-wallet-backend
+    spec:
+      containers:
+        - name: backend
+          image: tigerwallet/user-wallet-backend:latest
+          ports:
+            - containerPort: 8002
+          env:
+            - name: DATABASE_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: user-wallet-config
+                  key: DATABASE_HOST
+            - name: KYC_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: user-wallet-config
+                  key: KYC_ENABLED
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: user-wallet-secrets
+                  key: API_KEY
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: user-wallet-secrets
+                  key: JWT_SECRET
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "2"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8002
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-wallet-frontend
+  namespace: user-wallet
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    app: user-wallet-frontend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-wallet-frontend
+  namespace: user-wallet
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: user-wallet-frontend
+  template:
+    metadata:
+      labels:
+        app: user-wallet-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: tigerwallet/user-wallet-frontend:latest
+          ports:
+            - containerPort: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: user-wallet-backend-hpa
+  namespace: user-wallet
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: user-wallet-backend
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: user-wallet-ingress
+  namespace: user-wallet
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - userwallet.yourdomain.com
+      secretName: user-wallet-tls
+  rules:
+    - host: userwallet.yourdomain.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: user-wallet-backend
+                port:
+                  number: 8002
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: user-wallet-frontend
+                port:
+                  number: 80
