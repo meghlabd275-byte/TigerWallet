@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #333333;
+      --accent: #4CAF50;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1a1a1a;
+        --text: #ffffff;
+      }
+    }
+    body {
+      width: 350px;
+      padding: 20px;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    h1 { margin-bottom: 15px; font-size: 18px; }
+    .section { margin-bottom: 15px; }
+    button {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      background-color: var(--accent);
+      color: white;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+    button:hover { opacity: 0.9; }
+    .balance { font-size: 24px; font-weight: bold; }
+    .theme-toggle { background-color: #666; }
+  </style>
+</head>
+<body>
+  <h1>UserWallet</h1>
+  
+  <div class="section">
+    <p>Total Balance</p>
+    <p class="balance">$0.00</p>
+  </div>
+  
+  <div class="section">
+    <button id="viewDashboard">View Dashboard</button>
+    <button id="viewWallets">My Wallets</button>
+    <button id="viewTransactions">Transactions</button>
+    <button class="theme-toggle" id="toggleTheme">Toggle Theme</button>
+  </div>
+  
+  <script src="src/popup.js"></script>
+</body>
+</html>
