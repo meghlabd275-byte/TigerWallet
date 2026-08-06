@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -9,16 +11,49 @@ import (
 	"admin_backend/pkg/database"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
+
+// NotificationService handles sending notifications to users
+type NotificationService struct {
+	redis *redis.Client
+}
+
+// NewNotificationService creates a new notification service
+func NewNotificationService(redisClient *redis.Client) *NotificationService {
+	return &NotificationService{redis: redisClient}
+}
+
+// SendKYCNotification sends a KYC status notification to a user via Redis queue
+func (s *NotificationService) SendKYCNotification(userID uint, status, message string) error {
+	// Store notification in Redis queue for processing by notification service
+	key := fmt.Sprintf("notifications:user:%d", userID)
+	notification := map[string]interface{}{
+		"type":    "kyc",
+		"status":  status,
+		"message": message,
+		"time":    time.Now().Unix(),
+	}
+	
+	notificationJSON, _ := json.Marshal(notification)
+	s.redis.LPush(s.redis.Context(), key, notificationJSON)
+	s.redis.Expire(s.redis.Context(), key, 7*24*time.Hour)
+	
+	return nil
+}
 
 // KYCHandler handles KYC-related requests
 type KYCHandler struct {
-	db *database.PostgresDB
+	db               *database.PostgresDB
+	notificationSvc *NotificationService
 }
 
 // NewKYCHandler creates a new KYC handler
-func NewKYCHandler(db *database.PostgresDB) *KYCHandler {
-	return &KYCHandler{db: db}
+func NewKYCHandler(db *database.PostgresDB, redisClient *redis.Client) *KYCHandler {
+	return &KYCHandler{
+		db:               db,
+		notificationSvc: NewNotificationService(redisClient),
+	}
 }
 
 // ListKYC lists all KYC applications
@@ -126,7 +161,9 @@ func (h *KYCHandler) ApproveKYC(c *gin.Context) {
 	// Log activity
 	logAdminActivity(h.db, adminID, "approve_kyc", "kyc", kycID, "KYC approved at level "+strconv.Itoa(kyc.Level), c.ClientIP(), c.Request.UserAgent())
 
-	// TODO: Send notification to user
+	// Send notification to user
+	notificationMsg := fmt.Sprintf("Your KYC application has been approved at Level %d. You now have access to higher withdrawal limits and additional features.", kyc.Level)
+	_ = h.notificationSvc.SendKYCNotification(kyc.UserID, "approved", notificationMsg)
 
 	c.JSON(http.StatusOK, gin.H{"message": "KYC approved successfully"})
 }
@@ -181,7 +218,9 @@ func (h *KYCHandler) RejectKYC(c *gin.Context) {
 	// Log activity
 	logAdminActivity(h.db, adminID, "reject_kyc", "kyc", kycID, "KYC rejected: "+req.Reason, c.ClientIP(), c.Request.UserAgent())
 
-	// TODO: Send notification to user
+	// Send notification to user
+	notificationMsg := fmt.Sprintf("Your KYC application has been rejected. Reason: %s. Please submit a new application with the required documents.", req.Reason)
+	_ = h.notificationSvc.SendKYCNotification(kyc.UserID, "rejected", notificationMsg)
 
 	c.JSON(http.StatusOK, gin.H{"message": "KYC rejected"})
 }

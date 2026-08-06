@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"admin_backend/pkg/database"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // AnalyticsHandler handles analytics-related requests
@@ -177,13 +179,38 @@ func (h *AnalyticsHandler) GetTransactionAnalytics(c *gin.Context) {
 	h.db.Model(&models.Transaction{}).Where("status = ?", "confirmed").Count(&analytics.StatusBreakdown.Confirmed)
 	h.db.Model(&models.Transaction{}).Where("status = ?", "failed").Count(&analytics.StatusBreakdown.Failed)
 
-	// Get volume (in real implementation, would sum the amount column)
-	// For now, returning placeholder values
-	analytics.TotalVolume = 0
-	analytics.TodayVolume = 0
-	analytics.WeekVolume = 0
-	analytics.MonthVolume = 0
-	analytics.AvgTransactionSize = 0
+	// Get volume from actual transaction data
+	now := time.Now()
+	todayStart := now.Truncate(24 * time.Hour)
+	weekStart := todayStart.AddDate(0, 0, -7)
+	monthStart := todayStart.AddDate(0, -1, 0)
+
+	// Total volume
+	var totalVol string
+	h.db.Model(&models.Transaction{}).Where("status = ?", "confirmed").Pluck("COALESCE(SUM(amount), 0)", &totalVol)
+	analytics.TotalVolume, _ = strconv.ParseFloat(totalVol, 64)
+
+	// Today's volume
+	var todayVol string
+	h.db.Model(&models.Transaction{}).Where("status = ? AND created_at >= ?", "confirmed", todayStart).Pluck("COALESCE(SUM(amount), 0)", &todayVol)
+	analytics.TodayVolume, _ = strconv.ParseFloat(todayVol, 64)
+
+	// Week volume
+	var weekVol string
+	h.db.Model(&models.Transaction{}).Where("status = ? AND created_at >= ?", "confirmed", weekStart).Pluck("COALESCE(SUM(amount), 0)", &weekVol)
+	analytics.WeekVolume, _ = strconv.ParseFloat(weekVol, 64)
+
+	// Month volume
+	var monthVol string
+	h.db.Model(&models.Transaction{}).Where("status = ? AND created_at >= ?", "confirmed", monthStart).Pluck("COALESCE(SUM(amount), 0)", &monthVol)
+	analytics.MonthVolume, _ = strconv.ParseFloat(monthVol, 64)
+
+	// Calculate average transaction size
+	var count int64
+	h.db.Model(&models.Transaction{}).Where("status = ?", "confirmed").Count(&count)
+	if count > 0 {
+		analytics.AvgTransactionSize = analytics.TotalVolume / float64(count)
+	}
 
 	c.JSON(http.StatusOK, analytics)
 }
@@ -209,16 +236,44 @@ type FeeBreakdown struct {
 func (h *AnalyticsHandler) GetRevenueAnalytics(c *gin.Context) {
 	var analytics RevenueAnalytics
 
-	// In real implementation, would calculate from transaction fees
-	// For now, returning placeholder values
-	analytics.TotalRevenue = 0
-	analytics.TodayRevenue = 0
-	analytics.WeekRevenue = 0
-	analytics.MonthRevenue = 0
-	analytics.FeeBreakdown.TradingFees = 0
-	analytics.FeeBreakdown.WithdrawalFees = 0
-	analytics.FeeBreakdown.DepositFees = 0
-	analytics.FeeBreakdown.OtherFees = 0
+	// Calculate revenue from actual transaction fee data
+	now := time.Now()
+	todayStart := now.Truncate(24 * time.Hour)
+	weekStart := todayStart.AddDate(0, 0, -7)
+	monthStart := todayStart.AddDate(0, -1, 0)
+
+	// Total revenue (sum of fees from confirmed transactions)
+	var totalRev string
+	h.db.Model(&models.Transaction{}).Where("status = ?", "confirmed").Pluck("COALESCE(SUM(fee), 0)", &totalRev)
+	analytics.TotalRevenue, _ = strconv.ParseFloat(totalRev, 64)
+
+	// Today's revenue
+	var todayRev string
+	h.db.Model(&models.Transaction{}).Where("status = ? AND created_at >= ?", "confirmed", todayStart).Pluck("COALESCE(SUM(fee), 0)", &todayRev)
+	analytics.TodayRevenue, _ = strconv.ParseFloat(todayRev, 64)
+
+	// Week revenue
+	var weekRev string
+	h.db.Model(&models.Transaction{}).Where("status = ? AND created_at >= ?", "confirmed", weekStart).Pluck("COALESCE(SUM(fee), 0)", &weekRev)
+	analytics.WeekRevenue, _ = strconv.ParseFloat(weekRev, 64)
+
+	// Month revenue
+	var monthRev string
+	h.db.Model(&models.Transaction{}).Where("status = ? AND created_at >= ?", "confirmed", monthStart).Pluck("COALESCE(SUM(fee), 0)", &monthRev)
+	analytics.MonthRevenue, _ = strconv.ParseFloat(monthRev, 64)
+
+	// Fee breakdown by transaction type
+	var tradingFee, withdrawFee, depositFee string
+	h.db.Model(&models.Transaction{}).Where("status = ? AND type = ?", "confirmed", "trade").Pluck("COALESCE(SUM(fee), 0)", &tradingFee)
+	h.db.Model(&models.Transaction{}).Where("status = ? AND type = ?", "confirmed", "withdrawal").Pluck("COALESCE(SUM(fee), 0)", &withdrawFee)
+	h.db.Model(&models.Transaction{}).Where("status = ? AND type = ?", "confirmed", "deposit").Pluck("COALESCE(SUM(fee), 0)", &depositFee)
+
+	analytics.FeeBreakdown.TradingFees, _ = strconv.ParseFloat(tradingFee, 64)
+	analytics.FeeBreakdown.WithdrawalFees, _ = strconv.ParseFloat(withdrawFee, 64)
+	analytics.FeeBreakdown.DepositFees, _ = strconv.ParseFloat(depositFee, 64)
+
+	// Other fees (from other transaction types)
+	analytics.FeeBreakdown.OtherFees = analytics.TotalRevenue - analytics.FeeBreakdown.TradingFees - analytics.FeeBreakdown.WithdrawalFees - analytics.FeeBreakdown.DepositFees
 
 	c.JSON(http.StatusOK, analytics)
 }

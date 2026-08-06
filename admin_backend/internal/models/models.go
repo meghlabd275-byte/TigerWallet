@@ -99,13 +99,14 @@ type Transaction struct {
 	UserID        uint           `gorm:"not null;index" json:"user_id"`
 	User          *User          `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	Hash          string         `gorm:"uniqueIndex;not null" json:"hash"`
-	Type          string         `gorm:"not null" json:"type"` // transfer, swap, stake, unstake, bridge, withdraw, deposit
+	Type          string         `gorm:"not null" json:"type"` // transfer, swap, stake, unstake, bridge, withdraw, deposit, trade
 	Chain         string         `gorm:"not null" json:"chain"` // ethereum, bsc, polygon, etc.
 	FromAddress   string         `json:"from_address"`
 	ToAddress     string         `json:"to_address"`
 	Amount        string         `gorm:"type:decimal(36,18)" json:"amount"`
 	Token         string         `json:"token"` // ETH, USDT, etc.
 	TokenAmount   string         `gorm:"type:decimal(36,18)" json:"token_amount"`
+	Fee           string         `gorm:"type:decimal(36,18);default:'0'" json:"fee"` // Transaction fee revenue
 	Status        string         `gorm:"not null;default:'pending'" json:"status"` // pending, confirmed, failed
 	BlockNumber   int64          `json:"block_number"`
 	BlockHash     string         `json:"block_hash"`
@@ -189,6 +190,40 @@ type Withdrawal struct {
 	Fee           string         `gorm:"type:decimal(36,18)" json:"fee"`
 	IPAddress     string         `json:"ip_address"`
 	Notes         string         `json:"notes"`
+}
+
+// WalletBalance represents a user's wallet balance
+type WalletBalance struct {
+	ID         uint           `gorm:"primarykey" json:"id"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+	DeletedAt  sql.NullTime   `gorm:"index" json:"-"`
+	UserID     uint           `gorm:"not null;index" json:"user_id"`
+	User       *User          `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Token      string          `gorm:"not null;index" json:"token"`
+	Chain      string          `gorm:"not null" json:"chain"`
+	Balance    string          `gorm:"type:decimal(36,18);not null" json:"balance"`
+	Available  string          `gorm:"type:decimal(36,18);not null" json:"available"`
+	Locked     string          `gorm:"type:decimal(36,18);default:'0'" json:"locked"`
+	Reserved   string          `gorm:"type:decimal(36,18);default:'0'" json:"reserved"`
+}
+
+// TransactionLog represents a blockchain transaction log
+type TransactionLog struct {
+	ID        uint           `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time      `json:"created_at"`
+	UserID    uint           `gorm:"not null;index" json:"user_id"`
+	User      *User          `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Type      string         `gorm:"not null;index" json:"type"` // deposit, withdrawal, transfer, swap, refund
+	Token     string         `gorm:"not null" json:"token"`
+	Chain     string         `gorm:"not null" json:"chain"`
+	Amount    string         `gorm:"type:decimal(36,18);not null" json:"amount"`
+	Fee       string         `gorm:"type:decimal(36,18)" json:"fee"`
+	TxHash    string         `gorm:"index" json:"tx_hash"`
+	Status    string         `gorm:"not null" json:"status"` // pending, broadcast, confirmed, failed
+	FromAddr  string         `json:"from_addr"`
+	ToAddr    string         `json:"to_addr"`
+	Metadata  json.RawMessage `gorm:"type:jsonb" json:"metadata"`
 }
 
 // WhiteLabel represents a white label client
