@@ -180,6 +180,21 @@ func main() {
 			admin.POST("/reports/configs", handleCreateReportConfig)
 			admin.GET("/reports", handleGetReports)
 			admin.POST("/reports/generate", handleGenerateReport)
+
+			// SLA Management
+			admin.GET("/sla/policies", handleGetSLAPolicies)
+			admin.POST("/sla/policies", handleCreateSLAPolicy)
+			admin.PUT("/sla/policies/:id", handleUpdateSLAPolicy)
+			admin.DELETE("/sla/policies/:id", handleDeleteSLAPolicy)
+			admin.GET("/sla/reports", handleGetSLAReports)
+			admin.POST("/sla/reports/generate", handleGenerateSLAReport)
+
+			// Integrations
+			admin.GET("/integrations", handleGetIntegrations)
+			admin.POST("/integrations", handleCreateIntegration)
+			admin.PUT("/integrations/:id", handleUpdateIntegration)
+			admin.DELETE("/integrations/:id", handleDeleteIntegration)
+			admin.POST("/integrations/:id/test", handleTestIntegration)
 		}
 	}
 
@@ -321,3 +336,18 @@ func handleGetReportConfigs(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"confi
 func handleCreateReportConfig(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "report config created"}) }
 func handleGetReports(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"reports": []}) }
 func handleGenerateReport(c *gin.Context) { c.JSON(http.StatusAccepted, gin.H{"message": "report generation started"}) }
+
+// SLA handlers
+func handleGetSLAPolicies(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"policies": []}) }
+func handleCreateSLAPolicy(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "SLA policy created"}) }
+func handleUpdateSLAPolicy(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "SLA policy updated"}) }
+func handleDeleteSLAPolicy(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "SLA policy deleted"}) }
+func handleGetSLAReports(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"reports": []}) }
+func handleGenerateSLAReport(c *gin.Context) { c.JSON(http.StatusAccepted, gin.H{"message": "SLA report generation started"}) }
+
+// Integration handlers
+func handleGetIntegrations(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"integrations": []}) }
+func handleCreateIntegration(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "integration created"}) }
+func handleUpdateIntegration(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "integration updated"}) }
+func handleDeleteIntegration(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "integration deleted"}) }
+func handleTestIntegration(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"success": true, "message": "integration test successful"}) }

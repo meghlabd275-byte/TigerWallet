@@ -263,6 +263,27 @@ func main() {
 			whiteLabels.DELETE("/:id", h.DeleteWhiteLabel)
 		}
 
+		// SLA Management
+		sla := admin.Group("/sla")
+		{
+			sla.GET("/policies", h.GetSLAPolicies)
+			sla.POST("/policies", h.CreateSLAPolicy)
+			sla.PUT("/policies/:id", h.UpdateSLAPolicy)
+			sla.DELETE("/policies/:id", h.DeleteSLAPolicy)
+			sla.GET("/reports", h.GetSLAReports)
+			sla.POST("/reports/generate", h.GenerateSLAReport)
+		}
+
+		// Integrations
+		integrations := admin.Group("/integrations")
+		{
+			integrations.GET("", h.GetIntegrations)
+			integrations.POST("", h.CreateIntegration)
+			integrations.PUT("/:id", h.UpdateIntegration)
+			integrations.DELETE("/:id", h.DeleteIntegration)
+			integrations.POST("/:id/test", h.TestIntegration)
+		}
+
 		// Platform stats
 		admin.GET("/stats", h.GetPlatformStats)
 	}

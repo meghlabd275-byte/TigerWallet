@@ -30,6 +30,8 @@ type Handler struct {
 	reportService   *services.ReportService
 	ticketService   *services.TicketService
 	whiteLabelService *services.WhiteLabelService
+	slaService      *services.SLAService
+	integrationService *services.IntegrationService
 }
 
 func NewHandler(
@@ -50,6 +52,8 @@ func NewHandler(
 	reportService *services.ReportService,
 	ticketService *services.TicketService,
 	whiteLabelService *services.WhiteLabelService,
+	slaService *services.SLAService,
+	integrationService *services.IntegrationService,
 ) *Handler {
 	return &Handler{
 		authService:          authService,
@@ -68,10 +72,11 @@ func NewHandler(
 		ipWhitelistService:   ipWhitelistService,
 		reportService:        reportService,
 		ticketService:        ticketService,
-		whiteLabelService:    whiteLabelService,
-	}
-}
+		whiteLabelService:   whiteLabelService,
+		slaService:         slaService,
+		integrationService: integrationService,
 
+	}
 // HealthCheck returns health status
 func (h *Handler) HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
