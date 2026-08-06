@@ -1,0 +1,13 @@
+{
+  "name": "tiger-master-admin-desktop",
+  "version": "1.0.0",
+  "description": "TigerWallet Master Admin Desktop Application",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "dependencies": {
+    "electron": "^28.0.0"
+  }
+}
