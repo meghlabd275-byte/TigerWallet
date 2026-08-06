@@ -16,6 +16,7 @@ import Treasury from './pages/Treasury'
 import Security from './pages/Security'
 import Analytics from './pages/Analytics'
 import Settings from './pages/Settings'
+import Support from './pages/Support'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,6 +45,7 @@ function App() {
             <Route path="dexs" element={<DEXs />} />
             <Route path="fees" element={<Fees />} />
             <Route path="treasury" element={<Treasury />} />
+            <Route path="support" element={<SupportPageWrapper />} />
             <Route path="security" element={<Security />} />
             <Route path="analytics" element={<Analytics />} />
             <Route path="settings" element={<SettingsPageWrapper />} />
@@ -58,6 +60,11 @@ function App() {
 function SettingsPageWrapper() {
   const { darkMode, toggleTheme } = useThemeContext();
   return <Settings darkMode={darkMode} onThemeToggle={toggleTheme} />;
+}
+
+function SupportPageWrapper() {
+  const { darkMode } = useThemeContext();
+  return <Support darkMode={darkMode} />;
 }
 
 export default App

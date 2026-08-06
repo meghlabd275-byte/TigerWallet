@@ -8,7 +8,8 @@ import {
 import {
   Dashboard, People, Pool, Hub, Receipt, ShowChart, SmartToy,
   AccountTree, HubOutlined, AttachMoney, Security, Analytics, Settings,
-  Menu as MenuIcon, Notifications, Brightness7, Brightness4, DarkMode, LightMode
+  Menu as MenuIcon, Notifications, Brightness7, Brightness4, DarkMode, LightMode,
+  Support
 } from '@mui/icons-material'
 
 // Theme Context
@@ -39,6 +40,7 @@ const menuItems = [
   { text: 'DEXs', icon: <HubOutlined />, path: '/dexs' },
   { text: 'Fees', icon: <AttachMoney />, path: '/fees' },
   { text: 'Treasury', icon: <AttachMoney />, path: '/treasury' },
+  { text: 'Support', icon: <Support />, path: '/support' },
   { text: 'Security', icon: <Security />, path: '/security' },
   { text: 'Analytics', icon: <Analytics />, path: '/analytics' },
   { text: 'Settings', icon: <Settings />, path: '/settings' },
