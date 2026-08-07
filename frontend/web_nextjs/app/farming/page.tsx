@@ -128,182 +128,6 @@ function timeUntil(unlockTime: number): string {
 }
 
 // ============================================================================
-// Mock Data Generator
-// ============================================================================
-
-function generateFarmingPools(): FarmPool[] {
-  const pools: FarmPool[] = [
-    {
-      id: 'eth-usdc-1',
-      pair: 'ETH/USDC',
-      pairIcon: '💎',
-      protocol: 'TigerSwap',
-      chainId: 1,
-      chainName: 'Ethereum',
-      totalStaked: 125000,
-      tvl: 45000000,
-      apr: 24.5,
-      apy: 27.8,
-      rewardToken: 'TIGER',
-      rewardPerDay: 0.025,
-      minStake: 100,
-      lockPeriod: 0,
-      isActive: true,
-      allocPoint: 100,
-    },
-    {
-      id: 'btc-eth-2',
-      pair: 'WBTC/ETH',
-      pairIcon: '₿',
-      protocol: 'TigerSwap',
-      chainId: 1,
-      chainName: 'Ethereum',
-      totalStaked: 85000,
-      tvl: 32000000,
-      apr: 18.2,
-      apy: 20.1,
-      rewardToken: 'TIGER',
-      rewardPerDay: 0.018,
-      minStake: 50,
-      lockPeriod: 0,
-      isActive: true,
-      allocPoint: 80,
-    },
-    {
-      id: 'usdt-usdc-3',
-      pair: 'USDT/USDC',
-      pairIcon: '💵',
-      protocol: 'Curve',
-      chainId: 1,
-      chainName: 'Ethereum',
-      totalStaked: 500000,
-      tvl: 125000000,
-      apr: 8.5,
-      apy: 8.8,
-      rewardToken: 'TIGER',
-      rewardPerDay: 0.008,
-      minStake: 1000,
-      lockPeriod: 0,
-      isActive: true,
-      allocPoint: 60,
-    },
-    {
-      id: 'eth-usdc-bsc-4',
-      pair: 'ETH/USDC',
-      pairIcon: '💎',
-      protocol: 'PancakeSwap',
-      chainId: 56,
-      chainName: 'BNB Chain',
-      totalStaked: 200000,
-      tvl: 85000000,
-      apr: 32.1,
-      apy: 37.5,
-      rewardToken: 'CAKE',
-      rewardPerDay: 0.035,
-      minStake: 50,
-      lockPeriod: 0,
-      isActive: true,
-      allocPoint: 120,
-    },
-    {
-      id: 'link-eth-5',
-      pair: 'LINK/ETH',
-      pairIcon: '🔗',
-      protocol: 'Uniswap V3',
-      chainId: 1,
-      chainName: 'Ethereum',
-      totalStaked: 45000,
-      tvl: 18000000,
-      apr: 45.2,
-      apy: 55.8,
-      rewardToken: 'TIGER',
-      rewardPerDay: 0.048,
-      minStake: 200,
-      lockPeriod: 30,
-      isActive: true,
-      allocPoint: 150,
-    },
-    {
-      id: 'eth-usdc-arb-6',
-      pair: 'ETH/USDC',
-      pairIcon: '💎',
-      protocol: 'Uniswap V3',
-      chainId: 42161,
-      chainName: 'Arbitrum',
-      totalStaked: 95000,
-      tvl: 38000000,
-      apr: 28.7,
-      apy: 32.5,
-      rewardToken: 'TIGER',
-      rewardPerDay: 0.030,
-      minStake: 100,
-      lockPeriod: 0,
-      isActive: true,
-      allocPoint: 110,
-    },
-    {
-      id: 'matic-usdc-7',
-      pair: 'MATIC/USDC',
-      pairIcon: '🌟',
-      protocol: 'QuickSwap',
-      chainId: 137,
-      chainName: 'Polygon',
-      totalStaked: 350000,
-      tvl: 65000000,
-      apr: 38.4,
-      apy: 45.2,
-      rewardToken: 'QUICK',
-      rewardPerDay: 0.042,
-      minStake: 500,
-      lockPeriod: 0,
-      isActive: true,
-      allocPoint: 130,
-    },
-    {
-      id: 'eth-arb-8',
-      pair: 'ETH/ARB',
-      pairIcon: '⚡',
-      protocol: 'Aerodrome',
-      chainId: 8453,
-      chainName: 'Base',
-      totalStaked: 75000,
-      tvl: 28000000,
-      apr: 52.3,
-      apy: 67.8,
-      rewardToken: 'AERO',
-      rewardPerDay: 0.055,
-      minStake: 100,
-      lockPeriod: 7,
-      isActive: true,
-      allocPoint: 160,
-    },
-  ];
-
-  return pools.sort((a, b) => b.apr - a.apr);
-}
-
-function generateUserStakes(pools: FarmPool[]): UserStake[] {
-  const stakes: UserStake[] = [];
-  
-  // Generate 3 random stakes
-  for (let i = 0; i < 3; i++) {
-    const pool = pools[i];
-    const amount = (Math.random() * 10 + 1).toFixed(4);
-    const pendingRewards = (Math.random() * 0.5).toFixed(4);
-    
-    stakes.push({
-      poolId: pool.id,
-      amount,
-      pendingRewards,
-      lastClaimTime: Date.now() - Math.random() * 86400000,
-      unlockTime: pool.lockPeriod > 0 ? Date.now() + pool.lockPeriod * 86400000 : undefined,
-      isLocked: pool.lockPeriod > 0 && Math.random() > 0.5,
-    });
-  }
-  
-  return stakes;
-}
-
 // ============================================================================
 // Main Farming Page Component
 // ============================================================================
@@ -340,10 +164,7 @@ export default function FarmingPage() {
   const loadPools = useCallback(async () => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      const mockPools = generateFarmingPools();
-      setPools(mockPools);
-      setUserStakes(generateUserStakes(mockPools));
+      throw new Error('Farming data is unavailable until an authenticated farming API is configured.')
     } catch (error) {
       console.error('Failed to load pools:', error);
     } finally {
@@ -362,30 +183,7 @@ export default function FarmingPage() {
   const handleStake = async () => {
     if (!selectedPool || !stakeAmount) return;
 
-    setStaking(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const newStake: UserStake = {
-        poolId: selectedPool.id,
-        amount: stakeAmount,
-        pendingRewards: '0',
-        lastClaimTime: Date.now(),
-        unlockTime: selectedLockPeriod > 0 ? Date.now() + selectedLockPeriod * 86400000 : undefined,
-        isLocked: selectedLockPeriod > 0,
-      };
-
-      setUserStakes(prev => [...prev, newStake]);
-      setShowStakeDialog(false);
-      setStakeAmount('');
-      setSelectedLockPeriod(0);
-      
-      setSnackbar({ open: true, message: `Staked ${stakeAmount} ${selectedPool.pair} successfully!`, severity: 'success' });
-    } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to stake', severity: 'error' });
-    } finally {
-      setStaking(false);
-    }
+    setSnackbar({ open: true, message: 'Staking is unavailable until an authenticated farming contract provider is configured.', severity: 'error' });
   };
 
   const handleUnstake = async () => {
@@ -397,37 +195,14 @@ export default function FarmingPage() {
       return;
     }
 
-    setStaking(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      setUserStakes(prev => prev.filter(s => !(s.poolId === selectedPool.id && s.amount === unstakeAmount)));
-      setShowUnstakeDialog(false);
-      setUnstakeAmount('');
-      
-      setSnackbar({ open: true, message: `Unstaked ${unstakeAmount} ${selectedPool.pair} successfully!`, severity: 'success' });
-    } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to unstake', severity: 'error' });
-    } finally {
-      setStaking(false);
-    }
+    setSnackbar({ open: true, message: 'Unstaking is unavailable until an authenticated farming contract provider is configured.', severity: 'error' });
   };
 
   const handleClaim = async (poolId: string) => {
     const stake = userStakes.find(s => s.poolId === poolId);
     if (!stake || parseFloat(stake.pendingRewards) <= 0) return;
 
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setUserStakes(prev => prev.map(s => 
-        s.poolId === poolId ? { ...s, pendingRewards: '0', lastClaimTime: Date.now() } : s
-      ));
-      
-      setSnackbar({ open: true, message: `Claimed ${stake.pendingRewards} TIGER!`, severity: 'success' });
-    } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to claim rewards', severity: 'error' });
-    }
+    setSnackbar({ open: true, message: 'Reward claims are unavailable until an authenticated farming contract provider is configured.', severity: 'error' });
   };
 
   // ============================================================================
