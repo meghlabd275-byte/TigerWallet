@@ -69,15 +69,6 @@ interface BuyRequest {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8086';
 
-const MOCK_NFTS: NFT[] = [
-  { id: 1, token_id: '7854', contract_address: '0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D', owner_address: '0x742d35Cc6634C0532925a3b844Bc9e7595f5eA1E', name: 'Bored Ape #7854', symbol: 'BAYC', description: 'The Bored Ape Yacht Club is a collection of 10,000 unique Bored Ape NFTs.', image_url: '', animation_url: '', attributes: [{ trait_type: 'Background', value: 'Orange' }, { trait_type: 'Fur', value: 'Dark Brown' }], uri: '', chain_id: 1 },
-  { id: 2, token_id: '3456', contract_address: '0xb47e3cd837dDF8e4c57F05d70Ab865de6e193BBB', owner_address: '0xabcd...1234', name: 'CryptoPunk #3456', symbol: 'PUNK', description: 'One of 10,000 unique collectible characters with proof of ownership stored on the Ethereum blockchain.', image_url: '', animation_url: '', attributes: [{ trait_type: 'Type', value: 'Alien' }, { trait_type: 'Accessory', value: 'Cap' }], uri: '', chain_id: 1 },
-  { id: 3, token_id: '7821', contract_address: '0xED5AF388653567Af2F388E6224dC7C4b3241C544', owner_address: '0xdef1...5678', name: 'Azuki #7821', symbol: 'AZUKI', description: 'Azuki starts with a collection of 10,000 avatars that give you membership access to The Garden.', image_url: '', animation_url: '', attributes: [{ trait_type: 'Type', value: 'Human' }, { trait_type: 'Hair', value: 'Pink' }], uri: '', chain_id: 1 },
-  { id: 4, token_id: '999', contract_address: '0x8821aDD4d618C616d97eFBB33E8fA60f9fA1E73f', owner_address: 'G3d...xyz', name: 'DeGod #999', symbol: 'DEGOD', description: 'DeGods is a digital character collection and community.', image_url: '', animation_url: '', attributes: [{ trait_type: 'Type', value: 'Alien' }, { trait_type: 'Background', value: 'Red' }], uri: '', chain_id: 1 },
-  { id: 5, token_id: '123', contract_address: '0x763bE8c3E1A4D0D0A6d4e1E9f7A2C8e3F9D2E1B', owner_address: 'A7x...123', name: 'MadLads #123', symbol: 'MAD', description: 'Mad Lads is a collection of 10,000 NFTs on Solana.', image_url: '', animation_url: '', attributes: [{ trait_type: 'Type', value: 'Skeleton' }], uri: '', chain_id: 1 },
-  { id: 6, token_id: '4567', contract_address: '0xA7945d92d6b7AE6534fDFA76a96fE50dA8fEBb8d', owner_address: '0x9876...abcd', name: 'Milady #4567', symbol: 'MILADY', description: 'Milady is a collection of 10,000 NFTs.', image_url: '', animation_url: '', attributes: [{ trait_type: 'Type', value: 'Human' }], uri: '', chain_id: 1 },
-];
-
 const CHAIN_NAMES: Record<number, string> = {
   1: 'Ethereum',
   56: 'BNB Chain',
@@ -103,7 +94,7 @@ function formatAddress(address: string, chars: number = 4): string {
 export default function NFTMarketplace() {
   const { isDarkMode } = useTheme();
   const [activeTab, setActiveTab] = useState(0);
-  const [nfts, setNfts] = useState<NFT[]>(MOCK_NFTS);
+  const [nfts, setNfts] = useState<NFT[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
@@ -119,14 +110,16 @@ export default function NFTMarketplace() {
     setIsLoading(true);
     try {
       const response = await fetch(`${API_BASE}/api/v1/nft/collections`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.nfts && data.nfts.length > 0) {
-          setNfts(data.nfts);
-        }
+      if (!response.ok) {
+        throw new Error(`NFT catalog request failed with HTTP ${response.status}`)
       }
+      const data = await response.json();
+      if (!Array.isArray(data.nfts)) {
+        throw new Error('NFT catalog response did not contain a valid nfts array')
+      }
+      setNfts(data.nfts)
     } catch (err) {
-      console.log('Using mock NFT data');
+      setError('NFT catalog is unavailable because the marketplace API could not be reached.')
     } finally {
       setIsLoading(false);
     }
@@ -178,21 +171,17 @@ export default function NFTMarketplace() {
     setError(null);
 
     try {
-      // Simulate API call
-      setSuccess(`Successfully purchased ${nft.name}! Transaction hash will be available shortly.`);
-      setBuyDialogOpen(false);
+      throw new Error(`NFT purchase is unavailable until a connected wallet, signed transaction provider, and marketplace execution endpoint are configured for ${nft.name}.`)
     } catch (err) {
-      setError('Purchase failed. Please try again.');
+      setError(err instanceof Error ? err.message : 'Purchase failed because the marketplace execution service is unavailable.')
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Connect wallet
+  // Connect wallet through the real wallet-core/provider bridge.
   const handleConnectWallet = () => {
-    const address = '0x742d35Cc6634C0532925a3b844Bc9e7595f5eA1E';
-    localStorage.setItem('tigerwallet_address', address);
-    setWalletAddress(address);
+    setError('Wallet connection is unavailable until the canonical wallet-core provider bridge is configured. No wallet address was created.')
   };
 
   return (
@@ -411,8 +400,8 @@ export default function NFTMarketplace() {
               <Typography variant="body1" className="mb-4">
                 Are you sure you want to purchase {selectedNFT.name}?
               </Typography>
-              <Alert severity="info" className="mb-4">
-                This is a simulated transaction for demonstration purposes.
+              <Alert severity="warning" className="mb-4">
+                Purchase execution is unavailable until a real wallet connection, signed transaction provider, and marketplace endpoint are configured.
               </Alert>
               <Box className="flex gap-2">
                 <Button 
