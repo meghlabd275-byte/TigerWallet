@@ -24,10 +24,6 @@ class TigerAdminApplication : Application(), ImageLoaderFactory {
         const val BASE_URL = "https://api.tigerwallet.io/admin/v1/"
         const val WS_URL = "wss://ws.tigerwallet.io/admin"
         
-        // Database configuration
-        const val DATABASE_NAME = "tigeradmin_db"
-        const val DATABASE_VERSION = 1
-        
         // Redis configuration
         const val REDIS_HOST = "redis.tigerwallet.io"
         const val REDIS_PORT = 6379
@@ -59,10 +55,6 @@ class TigerAdminApplication : Application(), ImageLoaderFactory {
     lateinit var webSocketService: AdminWebSocketService
         private set
     
-    // Database
-    lateinit var adminDatabase: AdminDatabase
-        private set
-    
     // Session management
     lateinit var sessionManager: SessionManager
         private set
@@ -83,7 +75,6 @@ class TigerAdminApplication : Application(), ImageLoaderFactory {
         super.onCreate()
         instance = this
         initializeNetwork()
-        initializeDatabase()
         initializeSessionManager()
         initializeNotificationService()
         initializeCacheManager()
@@ -133,10 +124,6 @@ class TigerAdminApplication : Application(), ImageLoaderFactory {
         
         // Initialize WebSocket service
         webSocketService = AdminWebSocketService(WS_URL, okHttpClient)
-    }
-
-    private fun initializeDatabase() {
-        adminDatabase = AdminDatabase.getInstance(this)
     }
 
     private fun initializeSessionManager() {
