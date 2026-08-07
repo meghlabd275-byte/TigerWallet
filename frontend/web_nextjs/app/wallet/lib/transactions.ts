@@ -72,76 +72,26 @@ export interface MultiSigTransaction {
 }
 
 // ============================================================================
-// Wallet Key Derivation (Simulated - in production use proper crypto)
+// Canonical wallet-core boundary
 // ============================================================================
 
 const deriveKeyFromSeed = async (
-  seed: string,
-  path: string,
-  chainId: number | string
+  _seed: string,
+  _path: string,
+  _chainId: number | string
 ): Promise<{ privateKey: string; publicKey: string; address: string }> => {
-  // In production, use proper HD key derivation (BIP-32/44)
-  // This is a simplified simulation
-  
-  const chain = getChainById(chainId);
-  const pathData = `${seed}:${path}:${chainId}`;
-  
-  // Simple hash simulation (in production, use proper crypto)
-  let hash = 0;
-  const encoder = new TextEncoder();
-  const data = encoder.encode(pathData);
-  
-  for (let i = 0; i < data.length; i++) {
-    hash = ((hash << 5) - hash) + data[i];
-    hash = hash & hash;
-  }
-  
-  const privateKey = Math.abs(hash).toString(16).padStart(64, '0');
-  const publicKey = privateKey.substring(0, 64); // Simplified
-  
-  // Derive address based on chain type
-  let address: string;
-  if (typeof chainId === 'number') {
-    // EVM address (simplified)
-    address = '0x' + publicKey.substring(0, 40);
-  } else {
-    // Non-EVM address
-    address = publicKey.substring(0, 44);
-  }
-  
-  return { privateKey, publicKey, address };
+  throw new Error('Wallet key derivation is unavailable until the canonical Rust wallet-core bridge is configured');
 };
 
 // ============================================================================
-// Transaction Signing
+// Canonical transaction-signing boundary
 // ============================================================================
 
 const signTransaction = async (
-  tx: TransactionRequest,
-  privateKey: string
+  _tx: TransactionRequest,
+  _privateKey: string
 ): Promise<SignedTransaction> => {
-  // In production, use proper EVM signing (EIP-155)
-  // This is a simplified simulation
-  
-  const encoder = new TextEncoder();
-  const txData = JSON.stringify(tx);
-  const data = encoder.encode(txData + privateKey);
-  
-  // Simple signature simulation
-  let hash = 0;
-  for (let i = 0; i < data.length; i++) {
-    hash = ((hash << 5) - hash) + data[i];
-    hash = hash & hash;
-  }
-  
-  const signature = Math.abs(hash).toString(16).padStart(130, '0');
-  const txHash = Math.abs(hash + tx.amount.length).toString(16).padStart(64, '0');
-  
-  return {
-    rawTx: JSON.stringify(tx),
-    signature,
-    txHash,
-  };
+  throw new Error('Transaction signing is unavailable until the canonical Rust wallet-core bridge is configured');
 };
 
 // ============================================================================
@@ -177,7 +127,7 @@ export const evm = {
    * Broadcast a signed transaction to the network
    */
   async broadcastTransaction(
-    signedTx: SignedTransaction,
+    _signedTx: SignedTransaction,
     chainId: number
   ): Promise<TransactionResult> {
     const chain = EVM_CHAINS.find(c => c.id === chainId);
@@ -185,36 +135,7 @@ export const evm = {
       throw new Error('Chain not found');
     }
     
-    try {
-      // In production, use proper RPC call
-      // Simulated broadcast
-      const response = await fetch(chain.rpc, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          method: 'eth_sendRawTransaction',
-          params: [signedTx.rawTx],
-          id: 1,
-        }),
-      });
-      
-      if (response.ok) {
-        return {
-          success: true,
-          txHash: signedTx.txHash,
-          confirmations: 0,
-          timestamp: Date.now(),
-        };
-      }
-      
-      throw new Error('Broadcast failed');
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || 'Transaction failed',
-      };
-    }
+    throw new Error(`EVM broadcast is unavailable until a real signed-transaction RPC provider is configured for ${chain.name}`);
   },
   
   /**
@@ -229,16 +150,14 @@ export const evm = {
       throw new Error('Chain not found');
     }
     
-    // Simulated gas estimate
-    // In production, use eth_estimateGas
-    return 21000; // Basic transfer
+    throw new Error(`Gas estimation is unavailable until a real RPC provider is configured for ${chain.name}`);
   },
   
   /**
    * Get transaction receipt
    */
   async getTransactionReceipt(
-    txHash: string,
+    _txHash: string,
     chainId: number
   ): Promise<TransactionResult | null> {
     const chain = EVM_CHAINS.find(c => c.id === chainId);
@@ -246,14 +165,7 @@ export const evm = {
       return null;
     }
     
-    // Simulated receipt
-    return {
-      success: true,
-      txHash,
-      confirmations: 12,
-      blockNumber: 1000000,
-      timestamp: Date.now(),
-    };
+    throw new Error(`Transaction receipt lookup is unavailable until a real RPC provider is configured for ${chain.name}`);
   },
   
   /**
@@ -311,22 +223,9 @@ export const nonevm = {
    * Broadcast a Solana transaction
    */
   async broadcastTransaction(
-    signedTx: SignedTransaction
+    _signedTx: SignedTransaction
   ): Promise<TransactionResult> {
-    try {
-      // Simulated broadcast
-      return {
-        success: true,
-        txHash: signedTx.txHash,
-        confirmations: 0,
-        timestamp: Date.now(),
-      };
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || 'Transaction failed',
-      };
-    }
+    throw new Error('Solana broadcast is unavailable until a real Solana RPC and canonical signer are configured');
   },
   
   /**
@@ -349,21 +248,9 @@ export const nonevm = {
    * Broadcast a Bitcoin transaction
    */
   async broadcastTransactionBTC(
-    signedTx: SignedTransaction
+    _signedTx: SignedTransaction
   ): Promise<TransactionResult> {
-    try {
-      return {
-        success: true,
-        txHash: signedTx.txHash,
-        confirmations: 0,
-        timestamp: Date.now(),
-      };
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || 'Transaction failed',
-      };
-    }
+    throw new Error('Bitcoin broadcast is unavailable until a real Bitcoin node/provider and canonical signer are configured');
   },
 };
 
@@ -375,82 +262,19 @@ export const swap = {
   /**
    * Find the best swap route
    */
-  async findBestRoute(request: SwapRequest): Promise<SwapRoute[]> {
-    const routes: SwapRoute[] = [];
-    
-    // In production, query multiple DEXs
-    // Simulated routes
-    
-    // Route 1: Uniswap/Sushiswap
-    routes.push({
-      dex: 'Uniswap V3',
-      path: [request.fromToken, 'USDC', request.toToken],
-      amountIn: request.amount,
-      amountOut: (parseFloat(request.amount) * 0.999).toString(),
-      priceImpact: 0.1,
-      gasEstimate: 150000,
-    });
-    
-    // Route 2: 1Inch
-    routes.push({
-      dex: '1inch',
-      path: [request.fromToken, request.toToken],
-      amountIn: request.amount,
-      amountOut: (parseFloat(request.amount) * 0.998).toString(),
-      priceImpact: 0.05,
-      gasEstimate: 120000,
-    });
-    
-    // Sort by best output
-    routes.sort((a, b) => 
-      parseFloat(b.amountOut) - parseFloat(a.amountOut)
-    );
-    
-    return routes;
+  async findBestRoute(_request: SwapRequest): Promise<SwapRoute[]> {
+    throw new Error('Swap routing is unavailable until a signed live DEX quote provider is configured');
   },
   
   /**
    * Execute a swap
    */
   async executeSwap(
-    route: SwapRoute,
-    seed: string,
-    fromChainId: number | string
+    _route: SwapRoute,
+    _seed: string,
+    _fromChainId: number | string
   ): Promise<TransactionResult> {
-    // Create transaction
-    const tx: TransactionRequest = {
-      id: `swap_${Date.now()}`,
-      type: 'swap',
-      chainId: fromChainId,
-      from: '', // Will be filled by key derivation
-      to: route.dex,
-      token: route.path[0],
-      amount: route.amountIn,
-    };
-    
-    try {
-      // Sign and broadcast
-      const { privateKey } = await deriveKeyFromSeed(
-        seed,
-        "m/44'/60'/0'/0/0",
-        fromChainId
-      );
-      
-      const signed = await signTransaction(tx, privateKey);
-      
-      // Simulated execution
-      return {
-        success: true,
-        txHash: signed.txHash,
-        confirmations: 1,
-        timestamp: Date.now(),
-      };
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || 'Swap failed',
-      };
-    }
+    throw new Error('Swap execution is unavailable until a live signed DEX provider and canonical wallet-core signer are configured');
   },
 };
 
