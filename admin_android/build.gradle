@@ -61,10 +61,6 @@ ext {
     navigationFragmentKtx = '2.7.6'
     navigationUiKtx = '2.7.6'
     
-    // Room
-    roomRuntime = '2.6.1'
-    roomKtx = '2.6.1'
-    
     // Retrofit
     retrofit = '2.9.0'
     retrofitConverterGson = '2.9.0'

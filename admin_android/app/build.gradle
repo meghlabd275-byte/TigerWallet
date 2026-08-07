@@ -93,10 +93,6 @@ dependencies {
     debugImplementation 'androidx.compose.ui:ui-tooling'
     debugImplementation 'androidx.compose.ui:ui-test-manifest'
 
-    // Room Database
-    implementation "androidx.room:room-runtime:$rootProject.ext.roomRuntime"
-    implementation "androidx.room:room-ktx:$rootProject.ext.roomKtx"
-    kapt "androidx.room:room-compiler:$rootProject.ext.roomRuntime"
 
     // Retrofit
     implementation "com.squareup.retrofit2:retrofit:$rootProject.ext.retrofit"
