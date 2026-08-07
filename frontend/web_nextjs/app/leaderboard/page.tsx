@@ -97,59 +97,6 @@ function timeAgo(timestamp: number): string {
 }
 
 // ============================================================================
-// Mock Data Generators
-// ============================================================================
-
-function generateTraders(): Trader[] {
-  const names = [
-    { address: '0x742d35Cc6634C0532925F6e1', ens: 'WhaleKing.eth', verified: true },
-    { address: '0x8Ba1f109551bD432803012645Ac136ddd64DBA72', ens: 'AlphaTrader', verified: true },
-    { address: '0x3d44D6C896D2346484d5E05b6e3cEb5c5c5d5F9e', ens: 'DeFiMaster', verified: false },
-    { address: '0x5B2b5C9A8B4E3D5f6E8c1A2B3D4E5F6A7B8C9D0e', ens: 'YieldFarmer', verified: true },
-    { address: '0x9C8B2E4c6D8F0A2B3C4D5E6F7A8B9C0D1E2F3A4b', ens: 'CryptoKing', verified: false },
-    { address: '0xA1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7F8A9b', ens: 'ArbitrageBot', verified: true },
-    { address: '0xB2C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7F8A9b0C', ens: 'SwingTrader', verified: false },
-    { address: '0xC3D4E5F6A7B8C9D0E1F2A3B4C5D6E7F8A9b0C1D', ens: 'TrendFollower', verified: true },
-    { address: '0xD4E5F6A7B8C9D0E1F2A3B4C5D6E7F8A9b0C1D2E', ens: 'PnLPro', verified: false },
-    { address: '0xE5F6A7B8C9D0E1F2A3B4C5D6E7F8A9b0C1D2E3F', ens: 'MaxProfit', verified: true },
-  ];
-
-  return names.map((n, i) => ({
-    id: `trader_${i}`,
-    address: n.address,
-    ensName: n.ens,
-    isVerified: n.verified,
-    isCopiable: i < 8,
-    totalPnL: (Math.random() - 0.2) * 500000,
-    totalTrades: Math.floor(Math.random() * 5000) + 500,
-    winRate: Math.random() * 30 + 50,
-    avgHoldingTime: ['2h', '4h', '8h', '1d', '3d'][Math.floor(Math.random() * 5)],
-    followers: Math.floor(Math.random() * 5000) + 100,
-    following: Math.floor(Math.random() * 500) + 10,
-    totalVolume: Math.random() * 10000000 + 100000,
-    profitFactor: Math.random() * 2 + 1,
-    sharpeRatio: Math.random() * 3 + 0.5,
-    maxDrawdown: -(Math.random() * 30 + 5),
-    tradingPair: ['ETH/USDC', 'BTC/USDT', 'ETH/BTC', 'LINK/ETH'][Math.floor(Math.random() * 4)],
-    monthlyReturn: (Math.random() - 0.2) * 100,
-    lastTradeTime: Date.now() - Math.random() * 3600000,
-    isFollowing: Math.random() > 0.7,
-  }));
-}
-
-function generateLeaderboard(traders: Trader[]): LeaderboardEntry[] {
-  return traders
-    .map(trader => ({
-      rank: 0,
-      trader,
-      monthlyReturn: trader.monthlyReturn,
-      totalPnL: trader.totalPnL,
-    }))
-    .sort((a, b) => b.monthlyReturn - a.monthlyReturn)
-    .map((entry, i) => ({ ...entry, rank: i + 1 }));
-}
-
-// ============================================================================
 // Main Leaderboard Page Component
 // ============================================================================
 
@@ -179,12 +126,9 @@ export default function LeaderboardPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      const mockTraders = generateTraders();
-      setTraders(mockTraders);
-      setLeaderboard(generateLeaderboard(mockTraders));
-    } catch (error) {
-      console.error('Failed to load leaderboard:', error);
+      setTraders([]);
+      setLeaderboard([]);
+      setSnackbar({ open: true, message: 'Live leaderboard data is unavailable until an authenticated copy-trading API is configured.', severity: 'info' });
     } finally {
       setLoading(false);
     }
@@ -204,45 +148,12 @@ export default function LeaderboardPage() {
       return;
     }
 
-    setContentCopying(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      setTraders(prev => prev.map(t => 
-        t.id === trader.id ? { ...t, followers: t.followers + 1 } : t
-      ));
-      
-      setShowTraderDetail(false);
-      setContentCopyAmount('');
-      setSnackbar({ 
-        open: true, 
-        message: `Now copying ${trader.ensName || formatAddress(trader.address)} with ${copyAmount} USDC`, 
-        severity: 'success' 
-      });
-    } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to start copying', severity: 'error' });
-    } finally {
-      setContentCopying(false);
-    }
+    setContentCopying(false);
+    setSnackbar({ open: true, message: 'Copy execution is unavailable until an authenticated execution provider is configured.', severity: 'error' });
   };
 
   const handleFollowTrader = async (trader: Trader) => {
-    try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      setTraders(prev => prev.map(t => 
-        t.id === trader.id ? { ...t, isFollowing: !t.isFollowing, followers: t.isFollowing ? t.followers - 1 : t.followers + 1 } : t
-      ));
-      
-      const updatedTrader = traders.find(t => t.id === trader.id);
-      setSnackbar({ 
-        open: true, 
-        message: updatedTrader?.isFollowing ? `Unfollowed ${trader.ensName || formatAddress(trader.address)}` : `Following ${trader.ensName || formatAddress(trader.address)}`, 
-        severity: 'success' 
-      });
-    } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to update follow status', severity: 'error' });
-    }
+    setSnackbar({ open: true, message: 'Follow management is unavailable until an authenticated copy-trading API is configured.', severity: 'error' });
   };
 
   // ============================================================================
