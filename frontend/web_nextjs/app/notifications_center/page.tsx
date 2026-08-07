@@ -12,62 +12,6 @@ interface Notification {
   data?: Record<string, string>;
 }
 
-const MOCK_NOTIFICATIONS: Notification[] = [
-  {
-    id: 'notif_1',
-    type: 'transaction',
-    title: 'Transaction Confirmed',
-    message: 'Your transaction of 1.5 ETH has been confirmed on Ethereum',
-    timestamp: Date.now() - 300000,
-    read: false,
-    data: { hash: '0x1234...5678', amount: '1.5 ETH' },
-  },
-  {
-    id: 'notif_2',
-    type: 'price',
-    title: 'Price Alert: ETH',
-    message: 'Ethereum has increased by 5% in the last hour',
-    timestamp: Date.now() - 1800000,
-    read: false,
-    data: { price: '$3,675.00', change: '+5%' },
-  },
-  {
-    id: 'notif_3',
-    type: 'trade',
-    title: 'Copy Trade Executed',
-    message: 'Successfully copied trade from trader 0x742d...B1E',
-    timestamp: Date.now() - 3600000,
-    read: true,
-    data: { token: 'ETH/USDT', action: 'BUY', amount: '0.5 ETH' },
-  },
-  {
-    id: 'notif_4',
-    type: 'security',
-    title: 'New Device Login',
-    message: 'A new device has been logged into your wallet',
-    timestamp: Date.now() - 86400000,
-    read: true,
-    data: { device: 'iPhone 15 Pro', location: 'New York, US' },
-  },
-  {
-    id: 'notif_5',
-    type: 'system',
-    title: 'Maintenance Complete',
-    message: 'System maintenance has been completed successfully',
-    timestamp: Date.now() - 172800000,
-    read: true,
-  },
-  {
-    id: 'notif_6',
-    type: 'transaction',
-    title: 'Incoming Transfer',
-    message: 'Received 500 USDT from 0xabcd...1234',
-    timestamp: Date.now() - 7200000,
-    read: true,
-    data: { amount: '500 USDT', from: '0xabcd...1234' },
-  },
-];
-
 const NOTIFICATION_TYPES = [
   { id: 'all', name: 'All', icon: '📬' },
   { id: 'transaction', name: 'Transactions', icon: '💸' },
@@ -78,7 +22,7 @@ const NOTIFICATION_TYPES = [
 ];
 
 export default function NotificationsCenter() {
-  const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
+  const [notifications] = useState<Notification[]>([]);
   const [filter, setFilter] = useState('all');
   const [settings, setSettings] = useState({
     transaction: true,
@@ -96,22 +40,20 @@ export default function NotificationsCenter() {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  const handleMarkAsRead = (id: string) => {
-    setNotifications(prev => prev.map(n => 
-      n.id === id ? { ...n, read: true } : n
-    ));
+  const handleMarkAsRead = (_id: string) => {
+    console.error('Notification updates are unavailable until an authenticated notification API is configured.');
   };
 
   const handleMarkAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    console.error('Notification updates are unavailable until an authenticated notification API is configured.');
   };
 
-  const handleDelete = (id: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
+  const handleDelete = (_id: string) => {
+    console.error('Notification deletion is unavailable until an authenticated notification API is configured.');
   };
 
   const handleClearAll = () => {
-    setNotifications([]);
+    console.error('Notification clearing is unavailable until an authenticated notification API is configured.');
   };
 
   const getTypeColor = (type: string) => {
@@ -170,6 +112,7 @@ export default function NotificationsCenter() {
       </header>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-6 rounded-lg border border-amber-400 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">Live notifications are unavailable until an authenticated notification service is configured.</div>
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Sidebar */}
           <div className="lg:col-span-1">
