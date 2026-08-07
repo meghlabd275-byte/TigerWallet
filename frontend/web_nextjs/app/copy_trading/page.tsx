@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 // Types
 interface Trader {
@@ -40,95 +40,10 @@ interface Position {
   closedAt?: number;
 }
 
-const MOCK_TRADERS: Trader[] = [
-  {
-    address: '0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E',
-    totalTrades: 1250,
-    successRate: 0.78,
-    totalPnL: 45.5,
-    monthlyPnL: 12.3,
-    followers: 5420,
-    isFollowing: false,
-  },
-  {
-    address: '0x1234567890abcdef1234567890abcdef12345678',
-    totalTrades: 890,
-    successRate: 0.72,
-    totalPnL: 32.8,
-    monthlyPnL: 8.5,
-    followers: 3210,
-    isFollowing: true,
-  },
-  {
-    address: '0xabcdef1234567890abcdef1234567890abcdef12',
-    totalTrades: 2100,
-    successRate: 0.85,
-    totalPnL: 68.2,
-    monthlyPnL: 15.7,
-    followers: 8930,
-    isFollowing: false,
-  },
-  {
-    address: '0x9876543210fedcba9876543210fedcba98765432',
-    totalTrades: 560,
-    successRate: 0.65,
-    totalPnL: 18.3,
-    monthlyPnL: 4.2,
-    followers: 1890,
-    isFollowing: true,
-  },
-  {
-    address: '0xfedcba9876543210fedcba9876543210fedcba98',
-    totalTrades: 1800,
-    successRate: 0.81,
-    totalPnL: 55.6,
-    monthlyPnL: 18.9,
-    followers: 6540,
-    isFollowing: false,
-  },
-];
-
-const MOCK_SIGNALS: Signal[] = [
-  {
-    id: 'sig_1',
-    trader: '0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E',
-    tokenA: 'ETH',
-    tokenB: 'USDT',
-    action: 'BUY',
-    amount: '1.5',
-    price: '3500.00',
-    timestamp: Date.now() - 3600000,
-    status: 'active',
-  },
-  {
-    id: 'sig_2',
-    trader: '0x1234567890abcdef1234567890abcdef12345678',
-    tokenA: 'BTC',
-    tokenB: 'USDC',
-    action: 'SELL',
-    amount: '0.5',
-    price: '65000.00',
-    timestamp: Date.now() - 7200000,
-    status: 'closed',
-    pnl: 2.5,
-  },
-  {
-    id: 'sig_3',
-    trader: '0xabcdef1234567890abcdef1234567890abcdef12',
-    tokenA: 'SOL',
-    tokenB: 'USDT',
-    action: 'BUY',
-    amount: '25',
-    price: '150.00',
-    timestamp: Date.now() - 10800000,
-    status: 'active',
-  },
-];
-
 export default function CopyTrading() {
   const [activeTab, setActiveTab] = useState<'traders' | 'signals' | 'portfolio'>('traders');
-  const [traders, setTraders] = useState<Trader[]>(MOCK_TRADERS);
-  const [signals, setSignals] = useState<Signal[]>(MOCK_SIGNALS);
+  const [traders] = useState<Trader[]>([]);
+  const [signals] = useState<Signal[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [selectedTrader, setSelectedTrader] = useState<Trader | null>(null);
   const [copyAmount, setCopyAmount] = useState('');
@@ -136,29 +51,7 @@ export default function CopyTrading() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const handleFollow = async (trader: Trader) => {
-    setLoading(true);
-    setMessage(null);
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    setTraders(prev => prev.map(t => {
-      if (t.address === trader.address) {
-        return {
-          ...t,
-          isFollowing: !t.isFollowing,
-          followers: t.isFollowing ? t.followers - 1 : t.followers + 1
-        };
-      }
-      return t;
-    }));
-    
-    setMessage({
-      type: 'success',
-      text: trader.isFollowing ? `Unfollowed ${trader.address.slice(0, 6)}...` : `Following ${trader.address.slice(0, 6)}...`
-    });
-    
-    setLoading(false);
+    setMessage({ type: 'error', text: 'Following traders is unavailable until an authenticated copy-trading API is configured.' });
   };
 
   const handleCopyTrade = async (signal: Signal) => {
@@ -167,25 +60,7 @@ export default function CopyTrading() {
       return;
     }
     
-    setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    const newPosition: Position = {
-      id: `pos_${Date.now()}`,
-      signal,
-      amount: copyAmount,
-      entryPrice: signal.price,
-      currentPrice: signal.price,
-      pnl: 0,
-      pnlPercent: 0,
-      status: 'open',
-      openedAt: Date.now(),
-    };
-    
-    setPositions(prev => [...prev, newPosition]);
-    setMessage({ type: 'success', text: 'Trade copied successfully!' });
-    setCopyAmount('');
-    setLoading(false);
+    setMessage({ type: 'error', text: 'Copy execution is unavailable until an authenticated execution provider is configured.' });
   };
 
   const formatAddress = (addr: string) => {
