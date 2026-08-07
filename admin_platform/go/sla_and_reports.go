@@ -23,47 +23,47 @@ import (
 // ============================================================================
 
 type SLAPolicy struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	PolicyID        string    `gorm:"uniqueIndex" json:"policy_id"`
-	Name            string    `json:"name"`
-	Description     string    `json:"description"`
-	Priority        string    `json:"priority"` // critical, high, medium, low
-	ResponseTime    int       `json:"response_time_minutes"` // minutes
-	ResolutionTime   int       `json:"resolution_time_minutes"` // minutes
-	RefundPercent   float64   `json:"refund_percent"` // 0-100
-	IsActive        bool      `gorm:"default:true" json:"is_active"`
+	ID             uint      `gorm:"primarykey" json:"id"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	PolicyID       string    `gorm:"uniqueIndex" json:"policy_id"`
+	Name           string    `json:"name"`
+	Description    string    `json:"description"`
+	Priority       string    `json:"priority"`                // critical, high, medium, low
+	ResponseTime   int       `json:"response_time_minutes"`   // minutes
+	ResolutionTime int       `json:"resolution_time_minutes"` // minutes
+	RefundPercent  float64   `json:"refund_percent"`          // 0-100
+	IsActive       bool      `gorm:"default:true" json:"is_active"`
 	AppliesTo      string    `json:"applies_to"` // all, white_label, tier
-	TierLevel       *int      `json:"tier_level"` // nil for all
-	WhiteLabelID    *uint     `json:"white_label_id"`
+	TierLevel      *int      `json:"tier_level"` // nil for all
+	WhiteLabelID   *uint     `json:"white_label_id"`
 }
 
 type SLACompliance struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt       time.Time `json:"created_at"`
-	TicketID        uint      `gorm:"index" json:"ticket_id"`
-	PolicyID        string    `json:"policy_id"`
-	ResponseDeadline time.Time `json:"response_deadline"`
-	ResolutionDeadline time.Time `json:"resolution_deadline"`
-	FirstResponseAt *time.Time `json:"first_response_at"`
-	ResolvedAt      *time.Time `json:"resolved_at"`
-	MetResponse     bool       `json:"met_response"`
-	MetResolution   bool       `json:"met_resolution"`
-	BreachReason    *string   `json:"breach_reason"`
+	ID                 uint       `gorm:"primarykey" json:"id"`
+	CreatedAt          time.Time  `json:"created_at"`
+	TicketID           uint       `gorm:"index" json:"ticket_id"`
+	PolicyID           string     `json:"policy_id"`
+	ResponseDeadline   time.Time  `json:"response_deadline"`
+	ResolutionDeadline time.Time  `json:"resolution_deadline"`
+	FirstResponseAt    *time.Time `json:"first_response_at"`
+	ResolvedAt         *time.Time `json:"resolved_at"`
+	MetResponse        bool       `json:"met_response"`
+	MetResolution      bool       `json:"met_resolution"`
+	BreachReason       *string    `json:"breach_reason"`
 }
 
 type SLAMetric struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt       time.Time `json:"created_at"`
-	PeriodStart     time.Time `json:"period_start"`
-	PeriodEnd       time.Time `json:"period_end"`
-	TotalTickets    int64     `json:"total_tickets"`
-	MetSLA          int64     `json:"met_sla"`
-	Breached        int64     `json:"breached"`
-	AvgResponseTime float64   `json:"avg_response_time_minutes"`
-	AvgResolutionTime float64 `json:"avg_resolution_time_minutes"`
-	ComplianceRate  float64   `json:"compliance_rate_percent"`
+	ID                uint      `gorm:"primarykey" json:"id"`
+	CreatedAt         time.Time `json:"created_at"`
+	PeriodStart       time.Time `json:"period_start"`
+	PeriodEnd         time.Time `json:"period_end"`
+	TotalTickets      int64     `json:"total_tickets"`
+	MetSLA            int64     `json:"met_sla"`
+	Breached          int64     `json:"breached"`
+	AvgResponseTime   float64   `json:"avg_response_time_minutes"`
+	AvgResolutionTime float64   `json:"avg_resolution_time_minutes"`
+	ComplianceRate    float64   `json:"compliance_rate_percent"`
 }
 
 // ============================================================================
@@ -157,10 +157,10 @@ func (s *AdminPlatformService) GetSLACompliance(c *gin.Context) {
 
 func (s *AdminPlatformService) GetSLAMetrics(c *gin.Context) {
 	period := c.DefaultQuery("period", "30d")
-	
+
 	var startTime time.Time
 	now := time.Now()
-	
+
 	switch period {
 	case "7d":
 		startTime = now.AddDate(0, 0, -7)
@@ -198,36 +198,36 @@ func (s *AdminPlatformService) GetSLAMetrics(c *gin.Context) {
 // ============================================================================
 
 type Report struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	ReportID      string    `gorm:"uniqueIndex" json:"report_id"`
-	ReportType    string    `json:"report_type"` // users, transactions, kyc, revenue, compliance
-	Format        string    `json:"format"` // csv, xlsx, pdf
-	PeriodStart   time.Time `json:"period_start"`
-	PeriodEnd     time.Time `json:"period_end"`
-	Status        string    `json:"status"` // generating, ready, failed
-	FileURL       *string   `json:"file_url"`
-	FileSize      *int64    `json:"file_size_bytes"`
-	GeneratedBy   uint      `json:"generated_by"`
-	Filters       JSON      `gorm:"type:jsonb" json:"filters"`
-	ErrorMessage  *string   `json:"error_message"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	ReportID     string    `gorm:"uniqueIndex" json:"report_id"`
+	ReportType   string    `json:"report_type"` // users, transactions, kyc, revenue, compliance
+	Format       string    `json:"format"`      // csv, xlsx, pdf
+	PeriodStart  time.Time `json:"period_start"`
+	PeriodEnd    time.Time `json:"period_end"`
+	Status       string    `json:"status"` // generating, ready, failed
+	FileURL      *string   `json:"file_url"`
+	FileSize     *int64    `json:"file_size_bytes"`
+	GeneratedBy  uint      `json:"generated_by"`
+	Filters      JSON      `gorm:"type:jsonb" json:"filters"`
+	ErrorMessage *string   `json:"error_message"`
 }
 
 type ReportSchedule struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	ScheduleID    string    `gorm:"uniqueIndex" json:"schedule_id"`
-	Name          string    `json:"name"`
-	ReportType    string    `json:"report_type"`
-	Format        string    `json:"format"`
-	Frequency     string    `json:"frequency"` // daily, weekly, monthly
-	TimeOfDay     string    `json:"time_of_day"` // HH:MM
-	DayOfWeek     *int      `json:"day_of_week"` // 0-6 for weekly
-	DayOfMonth    *int      `json:"day_of_month"` // 1-28 for monthly
-	IsActive      bool      `gorm:"default:true" json:"is_active"`
-	Recipients    JSON      `gorm:"type:jsonb" json:"recipients"` // email addresses
+	ID            uint       `gorm:"primarykey" json:"id"`
+	CreatedAt     time.Time  `json:"created_at"`
+	ScheduleID    string     `gorm:"uniqueIndex" json:"schedule_id"`
+	Name          string     `json:"name"`
+	ReportType    string     `json:"report_type"`
+	Format        string     `json:"format"`
+	Frequency     string     `json:"frequency"`    // daily, weekly, monthly
+	TimeOfDay     string     `json:"time_of_day"`  // HH:MM
+	DayOfWeek     *int       `json:"day_of_week"`  // 0-6 for weekly
+	DayOfMonth    *int       `json:"day_of_month"` // 1-28 for monthly
+	IsActive      bool       `gorm:"default:true" json:"is_active"`
+	Recipients    JSON       `gorm:"type:jsonb" json:"recipients"` // email addresses
 	LastGenerated *time.Time `json:"last_generated"`
-	NextRun       time.Time `json:"next_run"`
+	NextRun       time.Time  `json:"next_run"`
 }
 
 // ============================================================================
@@ -276,10 +276,10 @@ func (s *AdminPlatformService) ListReports(c *gin.Context) {
 func (s *AdminPlatformService) CreateReport(c *gin.Context) {
 	adminID := c.GetUint("admin_id")
 	var req struct {
-		ReportType  string    `json:"report_type" binding:"required"`
-		Format      string    `json:"format" binding:"required"`
-		PeriodStart time.Time `json:"period_start" binding:"required"`
-		PeriodEnd   time.Time `json:"period_end" binding:"required"`
+		ReportType  string                 `json:"report_type" binding:"required"`
+		Format      string                 `json:"format" binding:"required"`
+		PeriodStart time.Time              `json:"period_start" binding:"required"`
+		PeriodEnd   time.Time              `json:"period_end" binding:"required"`
 		Filters     map[string]interface{} `json:"filters"`
 	}
 
@@ -291,14 +291,14 @@ func (s *AdminPlatformService) CreateReport(c *gin.Context) {
 	filtersJSON, _ := json.Marshal(req.Filters)
 
 	report := Report{
-		ReportID:     "report_" + uuid.New().String()[:8],
-		ReportType:   req.ReportType,
-		Format:       req.Format,
-		PeriodStart:  req.PeriodStart,
-		PeriodEnd:    req.PeriodEnd,
-		Status:       "generating",
+		ReportID:    "report_" + uuid.New().String()[:8],
+		ReportType:  req.ReportType,
+		Format:      req.Format,
+		PeriodStart: req.PeriodStart,
+		PeriodEnd:   req.PeriodEnd,
+		Status:      "generating",
 		GeneratedBy: adminID,
-		Filters:      filtersJSON,
+		Filters:     filtersJSON,
 	}
 
 	if err := s.db.Create(&report).Error; err != nil {
@@ -325,7 +325,7 @@ func (s *AdminPlatformService) generateReport(reportID string) {
 
 	// Generate report based on type
 	fileURL := fmt.Sprintf("https://reports.tigerwallet.com/%s.%s", reportID, report.Format)
-	
+
 	report.Status = "ready"
 	report.FileURL = &fileURL
 	defaultSize := int64(1024000) // 1MB default
@@ -411,16 +411,16 @@ func (s *AdminPlatformService) CreateReportSchedule(c *gin.Context) {
 func (s *AdminPlatformService) calculateNextRun(schedule *ReportSchedule) time.Time {
 	now := time.Now()
 	var next time.Time
-	
+
 	location, _ := time.LoadLocation("UTC")
-	
+
 	switch schedule.Frequency {
 	case "daily":
 		// Parse time of day
 		parsedTime, _ := time.Parse("15:04", schedule.TimeOfDay)
 		hour := parsedTime.Hour()
 		minute := parsedTime.Minute()
-		
+
 		next = time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, location)
 		if next.Before(now) {
 			next = next.AddDate(0, 0, 1)
@@ -429,7 +429,7 @@ func (s *AdminPlatformService) calculateNextRun(schedule *ReportSchedule) time.T
 		parsedTime, _ := time.Parse("15:04", schedule.TimeOfDay)
 		hour := parsedTime.Hour()
 		minute := parsedTime.Minute()
-		
+
 		daysUntil := int(schedule.DayOfWeek) - int(now.Weekday())
 		if daysUntil < 0 || (daysUntil == 0 && next.Before(now)) {
 			daysUntil += 7
@@ -440,14 +440,14 @@ func (s *AdminPlatformService) calculateNextRun(schedule *ReportSchedule) time.T
 		parsedTime, _ := time.Parse("15:04", schedule.TimeOfDay)
 		hour := parsedTime.Hour()
 		minute := parsedTime.Minute()
-		
+
 		day := *schedule.DayOfMonth
 		next = time.Date(now.Year(), now.Month(), day, hour, minute, 0, 0, location)
 		if next.Before(now) {
 			next = time.Date(now.Year(), now.Month()+1, day, hour, minute, 0, 0, location)
 		}
 	}
-	
+
 	return next
 }
 
@@ -490,34 +490,34 @@ func (s *AdminPlatformService) DeleteReportSchedule(c *gin.Context) {
 // ============================================================================
 
 type FraudAlert struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt       time.Time `json:"created_at"`
-	AlertID         string    `gorm:"uniqueIndex" json:"alert_id"`
-	UserID          uint      `gorm:"index" json:"user_id"`
-	AlertType       string    `json:"alert_type"` // suspicious_transaction, unusual_activity, high_risk, money_laundering
-	Severity        string    `json:"severity"` // low, medium, high, critical
-	Status          string    `json:"status"` // open, investigating, resolved, false_positive
-	Score           float64   `json:"score"` // 0-100 fraud probability
-	Description     string    `json:"description"`
-	Evidence        JSON      `gorm:"type:jsonb" json:"evidence"`
-	ResolvedBy      *uint     `json:"resolved_by"`
-	ResolvedAt      *time.Time `json:"resolved_at"`
-	ResolutionNote  *string   `json:"resolution_note"`
+	ID             uint       `gorm:"primarykey" json:"id"`
+	CreatedAt      time.Time  `json:"created_at"`
+	AlertID        string     `gorm:"uniqueIndex" json:"alert_id"`
+	UserID         uint       `gorm:"index" json:"user_id"`
+	AlertType      string     `json:"alert_type"` // suspicious_transaction, unusual_activity, high_risk, money_laundering
+	Severity       string     `json:"severity"`   // low, medium, high, critical
+	Status         string     `json:"status"`     // open, investigating, resolved, false_positive
+	Score          float64    `json:"score"`      // 0-100 fraud probability
+	Description    string     `json:"description"`
+	Evidence       JSON       `gorm:"type:jsonb" json:"evidence"`
+	ResolvedBy     *uint      `json:"resolved_by"`
+	ResolvedAt     *time.Time `json:"resolved_at"`
+	ResolutionNote *string    `json:"resolution_note"`
 }
 
 type FraudRule struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt       time.Time `json:"created_at"`
-	RuleID          string    `gorm:"uniqueIndex" json:"rule_id"`
-	Name            string    `json:"name"`
-	Description     string    `json:"description"`
-	RuleType        string    `json:"rule_type"` // pattern, threshold, velocity, machine_learning
-	Conditions      JSON      `gorm:"type:jsonb" json:"conditions"`
-	Action          string    `json:"action"` // alert, block, review
-	Severity        string    `json:"severity"`
-	IsActive        bool      `gorm:"default:true" json:"is_active"`
-	FalsePositiveCount int   `gorm:"default:0" json:"false_positive_count"`
-	MatchCount      int64     `gorm:"default:0" json:"match_count"`
+	ID                 uint      `gorm:"primarykey" json:"id"`
+	CreatedAt          time.Time `json:"created_at"`
+	RuleID             string    `gorm:"uniqueIndex" json:"rule_id"`
+	Name               string    `json:"name"`
+	Description        string    `json:"description"`
+	RuleType           string    `json:"rule_type"` // pattern, threshold, velocity, machine_learning
+	Conditions         JSON      `gorm:"type:jsonb" json:"conditions"`
+	Action             string    `json:"action"` // alert, block, review
+	Severity           string    `json:"severity"`
+	IsActive           bool      `gorm:"default:true" json:"is_active"`
+	FalsePositiveCount int       `gorm:"default:0" json:"false_positive_count"`
+	MatchCount         int64     `gorm:"default:0" json:"match_count"`
 }
 
 // ============================================================================
@@ -586,7 +586,7 @@ func (s *AdminPlatformService) ResolveFraudAlert(c *gin.Context) {
 	now := time.Now()
 	result := s.db.Model(&FraudAlert{}).Where("alert_id = ?", alertID).Updates(map[string]interface{}{
 		"status":          req.Status,
-		"resolved_by":    adminID,
+		"resolved_by":     adminID,
 		"resolved_at":     now,
 		"resolution_note": req.ResolutionNote,
 	})
@@ -651,12 +651,12 @@ func (s *AdminPlatformService) UpdateFraudRule(c *gin.Context) {
 
 func (s *AdminPlatformService) GetFraudStats(c *gin.Context) {
 	var stats struct {
-		TotalAlerts     int64 `json:"total_alerts"`
-		OpenAlerts      int64 `json:"open_alerts"`
-		CriticalAlerts  int64 `json:"critical_alerts"`
-		ResolvedToday   int64 `json:"resolved_today"`
-		FalsePositives  int64 `json:"false_positives"`
-		RulesActive     int64 `json:"rules_active"`
+		TotalAlerts    int64 `json:"total_alerts"`
+		OpenAlerts     int64 `json:"open_alerts"`
+		CriticalAlerts int64 `json:"critical_alerts"`
+		ResolvedToday  int64 `json:"resolved_today"`
+		FalsePositives int64 `json:"false_positives"`
+		RulesActive    int64 `json:"rules_active"`
 	}
 
 	today := time.Now().Truncate(24 * time.Hour)

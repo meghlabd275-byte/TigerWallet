@@ -26,14 +26,14 @@ type Webhook struct {
 	ClientID    string    `json:"clientId"`
 	URL         string    `json:"url"`
 	Secret      string    `json:"secret"`
-	Events      []string `json:"events"`
+	Events      []string  `json:"events"`
 	IsActive    bool      `json:"isActive"`
 	CreatedAt   time.Time `json:"createdAt"`
-	FailedCount int      `json:"failedCount"`
+	FailedCount int       `json:"failedCount"`
 }
 
 type WebhookEvent struct {
-	ID        string      `json:"id"`
+	ID       string      `json:"id"`
 	Type     string      `json:"type"`
 	ClientID string      `json:"clientId"`
 	Payload  interface{} `json:"payload"`
@@ -42,14 +42,14 @@ type WebhookEvent struct {
 }
 
 type WebhookDelivery struct {
-	ID            string    `json:"id"`
-	WebhookID    string    `json:"webhookId"`
-	EventID      string    `json:"eventId"`
-	URL          string    `json:"url"`
-	StatusCode   int       `json:"statusCode"`
-	Response     string    `json:"response"`
-	DeliveredAt  time.Time `json:"deliveredAt"`
-	DurationMs   int64     `json:"durationMs"`
+	ID          string    `json:"id"`
+	WebhookID   string    `json:"webhookId"`
+	EventID     string    `json:"eventId"`
+	URL         string    `json:"url"`
+	StatusCode  int       `json:"statusCode"`
+	Response    string    `json:"response"`
+	DeliveredAt time.Time `json:"deliveredAt"`
+	DurationMs  int64     `json:"durationMs"`
 }
 
 // ============================================================================
@@ -57,12 +57,12 @@ type WebhookDelivery struct {
 // ============================================================================
 
 type WebhookService struct {
-	mu          sync.RWMutex
-	webhooks    map[string]*Webhook
-	redis       *redis.Client
-	httpClient  *http.Client
-	queue       chan *WebhookEvent
-	workers     int
+	mu         sync.RWMutex
+	webhooks   map[string]*Webhook
+	redis      *redis.Client
+	httpClient *http.Client
+	queue      chan *WebhookEvent
+	workers    int
 }
 
 func NewWebhookService(redisClient *redis.Client, workers int) *WebhookService {
@@ -155,11 +155,11 @@ func (s *WebhookService) signPayload(payload []byte, secret string) string {
 func (s *WebhookService) recordDelivery(webhookID, eventID, url string, statusCode int, response string, duration time.Duration) {
 	delivery := &WebhookDelivery{
 		ID:          uuid.New().String(),
-		WebhookID:  webhookID,
-		EventID:    eventID,
-		URL:        url,
-		StatusCode: statusCode,
-		Response:   response,
+		WebhookID:   webhookID,
+		EventID:     eventID,
+		URL:         url,
+		StatusCode:  statusCode,
+		Response:    response,
 		DeliveredAt: time.Now(),
 		DurationMs:  duration.Milliseconds(),
 	}
@@ -320,11 +320,11 @@ func (s *WebhookService) testWebhook(c *gin.Context) {
 
 	// Send test event
 	event := &WebhookEvent{
-		ID:        uuid.New().String(),
+		ID:       uuid.New().String(),
 		Type:     "test",
 		ClientID: wh.ClientID,
 		Payload: map[string]interface{}{
-			"message": "This is a test webhook",
+			"message":   "This is a test webhook",
 			"timestamp": time.Now().Unix(),
 		},
 	}
@@ -358,7 +358,7 @@ func (s *WebhookService) listDeliveries(c *gin.Context) {
 
 func (s *WebhookService) TriggerEvent(eventType, clientID string, payload interface{}) {
 	event := &WebhookEvent{
-		ID:        uuid.New().String(),
+		ID:       uuid.New().String(),
 		Type:     eventType,
 		ClientID: clientID,
 		Payload:  payload,
@@ -400,17 +400,17 @@ func contains(slice []string, item string) bool {
 
 // Event types
 const (
-	EventUserCreated     = "user.created"
-	EventUserUpdated     = "user.updated"
-	EventUserKycApproved = "user.kyc.approved"
-	EventUserKycRejected = "user.kyc.rejected"
-	EventDeposit         = "transaction.deposit"
-	EventWithdrawal      = "transaction.withdrawal"
-	EventTrade           = "trade.executed"
-	EventWhiteLabelCreated  = "whitelabel.created"
-	EventWhiteLabelApproved = "whitelabel.approved"
+	EventUserCreated         = "user.created"
+	EventUserUpdated         = "user.updated"
+	EventUserKycApproved     = "user.kyc.approved"
+	EventUserKycRejected     = "user.kyc.rejected"
+	EventDeposit             = "transaction.deposit"
+	EventWithdrawal          = "transaction.withdrawal"
+	EventTrade               = "trade.executed"
+	EventWhiteLabelCreated   = "whitelabel.created"
+	EventWhiteLabelApproved  = "whitelabel.approved"
 	EventWhiteLabelSuspended = "whitelabel.suspended"
-	EventAdminLogin     = "admin.login"
-	EventAdminAction    = "admin.action"
-	EventPlatformAlert  = "platform.alert"
+	EventAdminLogin          = "admin.login"
+	EventAdminAction         = "admin.action"
+	EventPlatformAlert       = "platform.alert"
 )

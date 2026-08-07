@@ -9,9 +9,11 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 export type Theme = 'light' | 'dark' | 'system';
 export type ThemeColors = {
   primary: string;
+  primaryHover: string;
   secondary: string;
   background: string;
   surface: string;
+  surfaceHover: string;
   text: string;
   textSecondary: string;
   border: string;

@@ -31,18 +31,18 @@ import (
 // ============================ CONSTANTS ============================
 
 const (
-	ServiceName        = "tiger-admin-system"
-	ServiceVersion     = "2.0.0"
-	DefaultPort        = "8090"
-	MaxRequestSize     = 10 * 1024 * 1024
-	ReadTimeout        = 30 * time.Second
-	WriteTimeout       = 30 * time.Second
-	IdleTimeout        = 120 * time.Second
-	SessionDuration    = 24 * time.Hour
-	PasswordMinLength  = 8
-	MaxLoginAttempts   = 5
-	RateLimitRequests  = 100
-	RateLimitDuration  = time.Minute
+	ServiceName       = "tiger-admin-system"
+	ServiceVersion    = "2.0.0"
+	DefaultPort       = "8090"
+	MaxRequestSize    = 10 * 1024 * 1024
+	ReadTimeout       = 30 * time.Second
+	WriteTimeout      = 30 * time.Second
+	IdleTimeout       = 120 * time.Second
+	SessionDuration   = 24 * time.Hour
+	PasswordMinLength = 8
+	MaxLoginAttempts  = 5
+	RateLimitRequests = 100
+	RateLimitDuration = time.Minute
 )
 
 // ============================ TYPES ============================
@@ -59,46 +59,46 @@ type Config struct {
 }
 
 type AdminSystemUser struct {
-	ID              string    `json:"id"`
-	Email           string    `json:"email"`
-	Username        string    `json:"username"`
-	PasswordHash    string    `json:"-"`
-	Role            string    `json:"role"`
-	Permissions     []string  `json:"permissions"`
-	IsActive        bool      `json:"is_active"`
-	IsSuperAdmin    bool      `json:"is_super_admin"`
-	WhiteLabelID    string    `json:"white_label_id,omitempty"`
-	TwoFactorEnabled bool     `json:"two_factor_enabled"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	LastLogin       time.Time `json:"last_login"`
-	FailedAttempts  int       `json:"failed_attempts"`
-	LockedUntil     time.Time `json:"locked_until"`
+	ID               string    `json:"id"`
+	Email            string    `json:"email"`
+	Username         string    `json:"username"`
+	PasswordHash     string    `json:"-"`
+	Role             string    `json:"role"`
+	Permissions      []string  `json:"permissions"`
+	IsActive         bool      `json:"is_active"`
+	IsSuperAdmin     bool      `json:"is_super_admin"`
+	WhiteLabelID     string    `json:"white_label_id,omitempty"`
+	TwoFactorEnabled bool      `json:"two_factor_enabled"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	LastLogin        time.Time `json:"last_login"`
+	FailedAttempts   int       `json:"failed_attempts"`
+	LockedUntil      time.Time `json:"locked_until"`
 }
 
 type AuditLog struct {
-	ID          string    `json:"id"`
-	UserID      string    `json:"user_id"`
-	UserEmail   string    `json:"user_email"`
-	Action      string    `json:"action"`
-	Resource    string    `json:"resource"`
-	ResourceID  string    `json:"resource_id"`
-	Details     string    `json:"details"`
-	IPAddress   string    `json:"ip_address"`
-	UserAgent   string    `json:"user_agent"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID         string    `json:"id"`
+	UserID     string    `json:"user_id"`
+	UserEmail  string    `json:"user_email"`
+	Action     string    `json:"action"`
+	Resource   string    `json:"resource"`
+	ResourceID string    `json:"resource_id"`
+	Details    string    `json:"details"`
+	IPAddress  string    `json:"ip_address"`
+	UserAgent  string    `json:"user_agent"`
+	Status     string    `json:"status"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type SystemConfig struct {
-	ID            string    `json:"id"`
-	Key           string    `json:"key"`
-	Value         string    `json:"value"`
-	Description   string    `json:"description"`
-	IsEncrypted   bool      `json:"is_encrypted"`
-	Category      string    `json:"category"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	UpdatedBy     string    `json:"updated_by"`
+	ID          string    `json:"id"`
+	Key         string    `json:"key"`
+	Value       string    `json:"value"`
+	Description string    `json:"description"`
+	IsEncrypted bool      `json:"is_encrypted"`
+	Category    string    `json:"category"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	UpdatedBy   string    `json:"updated_by"`
 }
 
 type Notification struct {
@@ -164,7 +164,7 @@ func init() {
 	zerolog.TimeFieldFormat = time.RFC3339
 	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
 	logger = zerolog.New(output).With().Str("service", ServiceName).Str("version", ServiceVersion).Timestamp().Logger()
-	
+
 	if config.Environment == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -195,7 +195,7 @@ func main() {
 	}
 
 	router := initializeRouter()
-	
+
 	startMetricsCollection()
 
 	srv := &http.Server{
@@ -220,11 +220,11 @@ func main() {
 	logger.Info().Msg("Shutting down server...")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
+
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Fatal().Err(err).Msg("Server forced to shutdown")
 	}
-	
+
 	logger.Info().Msg("Server exited gracefully")
 }
 
@@ -250,7 +250,7 @@ func initializeRedis() error {
 	if err != nil {
 		return fmt.Errorf("failed to parse Redis URL: %w", err)
 	}
-	
+
 	redisClient = redis.NewClient(opt)
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		return fmt.Errorf("failed to connect to Redis: %w", err)
@@ -604,11 +604,11 @@ func handleLogin(c *gin.Context) {
 	}
 
 	sessionData, _ := json.Marshal(map[string]interface{}{
-		"user_id":    user.ID,
-		"email":      user.Email,
-		"role":       user.Role,
+		"user_id":     user.ID,
+		"email":       user.Email,
+		"role":        user.Role,
 		"permissions": user.Permissions,
-		"expires":    time.Now().Add(config.SessionDuration).Unix(),
+		"expires":     time.Now().Add(config.SessionDuration).Unix(),
 	})
 	redisClient.Set(ctx, "session:"+token, sessionData, config.SessionDuration)
 
@@ -617,12 +617,12 @@ func handleLogin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"token": token,
 		"user": gin.H{
-			"id":              user.ID,
-			"email":           user.Email,
-			"username":        user.Username,
-			"role":            user.Role,
-			"permissions":     user.Permissions,
-			"is_super_admin":  user.IsSuperAdmin,
+			"id":             user.ID,
+			"email":          user.Email,
+			"username":       user.Username,
+			"role":           user.Role,
+			"permissions":    user.Permissions,
+			"is_super_admin": user.IsSuperAdmin,
 		},
 	})
 }
@@ -777,12 +777,12 @@ func handleGetUser(c *gin.Context) {
 
 func handleCreateUser(c *gin.Context) {
 	var req struct {
-		Email       string   `json:"email" binding:"required,email"`
-		Username    string   `json:"username" binding:"required,min=3,max=50"`
-		Password    string   `json:"password" binding:"required,min=8"`
-		Role        string   `json:"role" binding:"required"`
-		Permissions []string `json:"permissions"`
-		WhiteLabelID string  `json:"white_label_id"`
+		Email        string   `json:"email" binding:"required,email"`
+		Username     string   `json:"username" binding:"required,min=3,max=50"`
+		Password     string   `json:"password" binding:"required,min=8"`
+		Role         string   `json:"role" binding:"required"`
+		Permissions  []string `json:"permissions"`
+		WhiteLabelID string   `json:"white_label_id"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -829,9 +829,9 @@ func handleUpdateUser(c *gin.Context) {
 	id := c.Param("id")
 
 	var req struct {
-		Email      string `json:"email"`
-		Username   string `json:"username"`
-		Role       string `json:"role"`
+		Email        string `json:"email"`
+		Username     string `json:"username"`
+		Role         string `json:"role"`
 		WhiteLabelID string `json:"white_label_id"`
 	}
 
@@ -1422,10 +1422,10 @@ func handleRotateAPIKey(c *gin.Context) {
 func handleDashboard(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"dashboard": gin.H{
-			"total_users":       0,
-			"active_admins":     0,
+			"total_users":        0,
+			"active_admins":      0,
 			"total_transactions": 0,
-			"system_health":     "healthy",
+			"system_health":      "healthy",
 		},
 	})
 }
@@ -1458,9 +1458,9 @@ func handleSystemStatus(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"status": gin.H{
-			"database": dbStatus,
-			"redis":    redisStatus,
-			"version":  ServiceVersion,
+			"database":  dbStatus,
+			"redis":     redisStatus,
+			"version":   ServiceVersion,
 			"timestamp": time.Now(),
 		},
 	})
@@ -1472,7 +1472,7 @@ func handleSystemMetrics(c *gin.Context) {
 
 func handleDetailedHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"healthy":  true,
+		"healthy": true,
 		"service": ServiceName,
 		"version": ServiceVersion,
 	})

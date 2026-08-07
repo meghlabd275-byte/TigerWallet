@@ -24,9 +24,9 @@ import (
 
 var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrUserNotFound      = errors.New("user not found")
-	ErrTokenExpired      = errors.New("token expired")
-	ErrInvalidToken      = errors.New("invalid token")
+	ErrUserNotFound       = errors.New("user not found")
+	ErrTokenExpired       = errors.New("token expired")
+	ErrInvalidToken       = errors.New("invalid token")
 )
 
 type AuthService struct {
@@ -44,7 +44,7 @@ type JWTConfig struct {
 
 func NewAuthService(db *pgxpool.Pool, redis *redis.Client) *AuthService {
 	return &AuthService{
-		db: db,
+		db:    db,
 		redis: redis,
 		cfg: JWTConfig{
 			Secret:         "tigerwallet-admin-system-secret",
@@ -167,12 +167,12 @@ func (s *AuthService) ValidateToken(ctx context.Context, tokenString string) (*m
 
 func (s *AuthService) generateAccessToken(user models.SystemUser) (string, error) {
 	claims := jwt.MapClaims{
-		"sub":  user.ID.String(),
+		"sub":   user.ID.String(),
 		"email": user.Email,
-		"role": user.Role,
-		"exp":  time.Now().Add(s.cfg.ExpirationTime).Unix(),
-		"iat":  time.Now().Unix(),
-		"iss":  s.cfg.Issuer,
+		"role":  user.Role,
+		"exp":   time.Now().Add(s.cfg.ExpirationTime).Unix(),
+		"iat":   time.Now().Unix(),
+		"iss":   s.cfg.Issuer,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -204,7 +204,7 @@ func (s *SystemService) GetInfo() (*models.SystemInfo, error) {
 	runtime.ReadMemStats(&m)
 
 	hostname, _ := os.Hostname()
-	
+
 	info := &models.SystemInfo{
 		Hostname:    hostname,
 		OS:          runtime.GOOS,
@@ -260,12 +260,12 @@ func (s *MonitoringService) GetMetrics() (map[string]interface{}, error) {
 	runtime.ReadMemStats(&m)
 
 	metrics := map[string]interface{}{
-		"goroutines":    runtime.NumGoroutine(),
-		"memory_alloc":  m.Alloc,
-		"memory_total":  m.TotalAlloc,
-		"memory_sys":    m.Sys,
-		"gc_runs":       m.NumGC,
-		"cpu_count":     runtime.NumCPU(),
+		"goroutines":   runtime.NumGoroutine(),
+		"memory_alloc": m.Alloc,
+		"memory_total": m.TotalAlloc,
+		"memory_sys":   m.Sys,
+		"gc_runs":      m.NumGC,
+		"cpu_count":    runtime.NumCPU(),
 	}
 
 	return metrics, nil

@@ -13,25 +13,25 @@ import (
 )
 
 type Handler struct {
-	authService     *services.AuthService
-	userService     *services.UserService
-	kycService      *services.KYCService
-	transactionService *services.TransactionService
-	withdrawalService *services.WithdrawalService
-	tokenService    *services.TokenService
-	blockchainService *services.BlockchainService
-	feeService      *services.FeeService
-	webhookService  *services.WebhookService
+	authService         *services.AuthService
+	userService         *services.UserService
+	kycService          *services.KYCService
+	transactionService  *services.TransactionService
+	withdrawalService   *services.WithdrawalService
+	tokenService        *services.TokenService
+	blockchainService   *services.BlockchainService
+	feeService          *services.FeeService
+	webhookService      *services.WebhookService
 	notificationService *services.NotificationService
-	auditService    *services.AuditService
-	sessionService  *services.SessionService
-	featureFlagService *services.FeatureFlagService
-	ipWhitelistService *services.IPWhitelistService
-	reportService   *services.ReportService
-	ticketService   *services.TicketService
-	whiteLabelService *services.WhiteLabelService
-	slaService      *services.SLAService
-	integrationService *services.IntegrationService
+	auditService        *services.AuditService
+	sessionService      *services.SessionService
+	featureFlagService  *services.FeatureFlagService
+	ipWhitelistService  *services.IPWhitelistService
+	reportService       *services.ReportService
+	ticketService       *services.TicketService
+	whiteLabelService   *services.WhiteLabelService
+	slaService          *services.SLAService
+	integrationService  *services.IntegrationService
 }
 
 func NewHandler(
@@ -56,31 +56,32 @@ func NewHandler(
 	integrationService *services.IntegrationService,
 ) *Handler {
 	return &Handler{
-		authService:          authService,
-		userService:          userService,
-		kycService:           kycService,
-		transactionService:   transactionService,
-		withdrawalService:    withdrawalService,
-		tokenService:         tokenService,
-		blockchainService:    blockchainService,
-		feeService:           feeService,
-		webhookService:       webhookService,
-		notificationService:  notificationService,
-		auditService:         auditService,
-		sessionService:       sessionService,
-		featureFlagService:   featureFlagService,
-		ipWhitelistService:   ipWhitelistService,
-		reportService:        reportService,
-		ticketService:        ticketService,
+		authService:         authService,
+		userService:         userService,
+		kycService:          kycService,
+		transactionService:  transactionService,
+		withdrawalService:   withdrawalService,
+		tokenService:        tokenService,
+		blockchainService:   blockchainService,
+		feeService:          feeService,
+		webhookService:      webhookService,
+		notificationService: notificationService,
+		auditService:        auditService,
+		sessionService:      sessionService,
+		featureFlagService:  featureFlagService,
+		ipWhitelistService:  ipWhitelistService,
+		reportService:       reportService,
+		ticketService:       ticketService,
 		whiteLabelService:   whiteLabelService,
-		slaService:         slaService,
-		integrationService: integrationService,
-
+		slaService:          slaService,
+		integrationService:  integrationService,
 	}
+}
+
 // HealthCheck returns health status
 func (h *Handler) HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"status": "healthy",
+		"status":  "healthy",
 		"service": "admin_panel",
 	})
 }
@@ -711,9 +712,9 @@ func (h *Handler) UpdateToken(c *gin.Context) {
 	}
 
 	var req struct {
-		Name      string `json:"name"`
-		IsActive  *bool  `json:"is_active"`
-		IsVerified *bool `json:"is_verified"`
+		Name       string `json:"name"`
+		IsActive   *bool  `json:"is_active"`
+		IsVerified *bool  `json:"is_verified"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1107,7 +1108,7 @@ func (h *Handler) GetAuditLogs(c *gin.Context) {
 // ExportAuditLogs exports audit logs
 func (h *Handler) ExportAuditLogs(c *gin.Context) {
 	var req struct {
-		Format   string `json:"format" binding:"required,oneof=csv json"`
+		Format    string `json:"format" binding:"required,oneof=csv json"`
 		StartDate string `json:"start_date"`
 		EndDate   string `json:"end_date"`
 	}

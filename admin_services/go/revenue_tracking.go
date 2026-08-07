@@ -16,66 +16,66 @@ import (
 type RevenueType string
 
 const (
-	RevenueTypeSwap         RevenueType = "swap"
-	RevenueTypeTransfer    RevenueType = "transfer"
-	RevenueTypeWithdraw    RevenueType = "withdraw"
-	RevenueTypeDeposit     RevenueType = "deposit"
-	RevenueTypeBridge      RevenueType = "bridge"
-	RevenueTypeStaking     RevenueType = "staking"
-	RevenueTypeNFT         RevenueType = "nft"
-	RevenueTypeWhiteLabel  RevenueType = "white_label"
-	RevenueTypeNetworkFee  RevenueType = "network_fee"
+	RevenueTypeSwap       RevenueType = "swap"
+	RevenueTypeTransfer   RevenueType = "transfer"
+	RevenueTypeWithdraw   RevenueType = "withdraw"
+	RevenueTypeDeposit    RevenueType = "deposit"
+	RevenueTypeBridge     RevenueType = "bridge"
+	RevenueTypeStaking    RevenueType = "staking"
+	RevenueTypeNFT        RevenueType = "nft"
+	RevenueTypeWhiteLabel RevenueType = "white_label"
+	RevenueTypeNetworkFee RevenueType = "network_fee"
 )
 
 // Currency represents the currency of revenue
 type Currency string
 
 const (
-	CurrencyUSD  Currency = "USD"
-	CurrencyETH  Currency = "ETH"
-	CurrencyBNB  Currency = "BNB"
+	CurrencyUSD   Currency = "USD"
+	CurrencyETH   Currency = "ETH"
+	CurrencyBNB   Currency = "BNB"
 	CurrencyMATIC Currency = "MATIC"
-	CurrencyAVAX Currency = "AVAX"
-	CurrencyFTM  Currency = "FTM"
-	CurrencyCRO  Currency = "CRO"
+	CurrencyAVAX  Currency = "AVAX"
+	CurrencyFTM   Currency = "FTM"
+	CurrencyCRO   Currency = "CRO"
 )
 
 // RevenueRecord represents a single revenue record
 type RevenueRecord struct {
-	ID            string      `json:"id"`
-	WhiteLabelID  string      `json:"whiteLabelId"`
-	UserID       string      `json:"userId"`
-	Type         RevenueType `json:"type"`
-	Amount       float64     `json:"amount"`
-	Currency     Currency    `json:"currency"`
-	USDValue     float64     `json:"usdValue"`
-	FeePercentage float64    `json:"feePercentage"`
-	FeeAmount    float64     `json:"feeAmount"`
-	NetworkFee   float64     `json:"networkFee"`
-	ChainID      int64       `json:"chainId"`
-	TokenSymbol  string      `json:"tokenSymbol"`
-	TxHash       string      `json:"txHash"`
-	Timestamp    int64       `json:"timestamp"`
-	Status       string      `json:"status"` // completed, pending, failed
-	Metadata     map[string]interface{} `json:"metadata"`
+	ID            string                 `json:"id"`
+	WhiteLabelID  string                 `json:"whiteLabelId"`
+	UserID        string                 `json:"userId"`
+	Type          RevenueType            `json:"type"`
+	Amount        float64                `json:"amount"`
+	Currency      Currency               `json:"currency"`
+	USDValue      float64                `json:"usdValue"`
+	FeePercentage float64                `json:"feePercentage"`
+	FeeAmount     float64                `json:"feeAmount"`
+	NetworkFee    float64                `json:"networkFee"`
+	ChainID       int64                  `json:"chainId"`
+	TokenSymbol   string                 `json:"tokenSymbol"`
+	TxHash        string                 `json:"txHash"`
+	Timestamp     int64                  `json:"timestamp"`
+	Status        string                 `json:"status"` // completed, pending, failed
+	Metadata      map[string]interface{} `json:"metadata"`
 }
 
 // DailyRevenue represents daily revenue summary
 type DailyRevenue struct {
-	Date         string            `json:"date"`
-	TotalRevenue float64           `json:"totalRevenue"`
-	ByType      map[string]float64 `json:"byType"`
-	ByCurrency  map[string]float64 `json:"byCurrency"`
-	ByChain     map[int64]float64  `json:"byChain"`
+	Date         string             `json:"date"`
+	TotalRevenue float64            `json:"totalRevenue"`
+	ByType       map[string]float64 `json:"byType"`
+	ByCurrency   map[string]float64 `json:"byCurrency"`
+	ByChain      map[int64]float64  `json:"byChain"`
 	ByWhiteLabel map[string]float64 `json:"byWhiteLabel"`
-	TxCount     int                `json:"txCount"`
+	TxCount      int                `json:"txCount"`
 }
 
 // RevenueStats represents revenue statistics
 type RevenueStats struct {
-	TotalRevenue     float64           `json:"totalRevenue"`
-	TotalFees       float64           `json:"totalFees"`
-	TotalNetworkFee float64           `json:"totalNetworkFee"`
+	TotalRevenue    float64            `json:"totalRevenue"`
+	TotalFees       float64            `json:"totalFees"`
+	TotalNetworkFee float64            `json:"totalNetworkFee"`
 	ByType          map[string]float64 `json:"byType"`
 	ByCurrency      map[string]float64 `json:"byCurrency"`
 	ByChain         map[int64]float64  `json:"byChain"`
@@ -86,9 +86,9 @@ type RevenueStats struct {
 
 // RevenueTrackingService manages revenue tracking
 type RevenueTrackingService struct {
-	mu           sync.RWMutex
-	records      map[string]*RevenueRecord
-	dailyCache  map[string]*DailyRevenue
+	mu                sync.RWMutex
+	records           map[string]*RevenueRecord
+	dailyCache        map[string]*DailyRevenue
 	whiteLabelRevenue map[string]float64
 }
 
@@ -102,8 +102,8 @@ var (
 func GetRevenueService() *RevenueTrackingService {
 	revenueServiceOnce.Do(func() {
 		revenueService = &RevenueTrackingService{
-			records:          make(map[string]*RevenueRecord),
-			dailyCache:       make(map[string]*DailyRevenue),
+			records:           make(map[string]*RevenueRecord),
+			dailyCache:        make(map[string]*DailyRevenue),
 			whiteLabelRevenue: make(map[string]float64),
 		}
 	})
@@ -155,7 +155,7 @@ func (r *RevenueTrackingService) RecordRevenue(record *RevenueRecord) error {
 // updateDailyCache updates the daily revenue cache
 func (r *RevenueTrackingService) updateDailyCache(record *RevenueRecord) {
 	date := time.Unix(record.Timestamp, 0).Format("2006-01-02")
-	
+
 	daily, ok := r.dailyCache[date]
 	if !ok {
 		daily = &DailyRevenue{
@@ -183,7 +183,7 @@ func (r *RevenueTrackingService) updateDailyCache(record *RevenueRecord) {
 func (r *RevenueTrackingService) GetRevenueRecord(id string) (*RevenueRecord, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	record, ok := r.records[id]
 	return record, ok
 }
@@ -508,14 +508,14 @@ func CalculateWithdrawFee(amount float64, whiteLabelFee float64, networkFee floa
 
 // DefaultFeeConfig represents the default fee configuration
 type DefaultFeeConfig struct {
-	SwapFee         float64 `json:"swapFee"`         // 0.3%
-	TransferFee     float64 `json:"transferFee"`     // 0.1%
+	SwapFee        float64 `json:"swapFee"`        // 0.3%
+	TransferFee    float64 `json:"transferFee"`    // 0.1%
 	WithdrawFee    float64 `json:"withdrawFee"`    // 0.1%
-	DepositFee      float64 `json:"depositFee"`     // 0%
-	BridgeFee       float64 `json:"bridgeFee"`      // 0.5%
-	StakingFee      float64 `json:"stakingFee"`     // 0%
-	NFTFee          float64 `json:"nftFee"`         // 2.5%
-	NetworkFeeBump  float64 `json:"networkFeeBump"` // 10%
+	DepositFee     float64 `json:"depositFee"`     // 0%
+	BridgeFee      float64 `json:"bridgeFee"`      // 0.5%
+	StakingFee     float64 `json:"stakingFee"`     // 0%
+	NFTFee         float64 `json:"nftFee"`         // 2.5%
+	NetworkFeeBump float64 `json:"networkFeeBump"` // 10%
 }
 
 // GetDefaultFeeConfig returns the default fee configuration
@@ -523,11 +523,11 @@ func GetDefaultFeeConfig() *DefaultFeeConfig {
 	return &DefaultFeeConfig{
 		SwapFee:        0.3,
 		TransferFee:    0.1,
-		WithdrawFee:   0.1,
-		DepositFee:    0.0,
-		BridgeFee:     0.5,
-		StakingFee:    0.0,
-		NFTFee:        2.5,
+		WithdrawFee:    0.1,
+		DepositFee:     0.0,
+		BridgeFee:      0.5,
+		StakingFee:     0.0,
+		NFTFee:         2.5,
 		NetworkFeeBump: 10.0,
 	}
 }
@@ -553,7 +553,7 @@ func main() {
 			FeePercentage: 0.3,
 			FeeAmount:     3.0,
 			ChainID:       1,
-			TokenSymbol:  "ETH",
+			TokenSymbol:   "ETH",
 			TxHash:        "0x1234567890abcdef",
 			Timestamp:     time.Now().Unix(),
 			Status:        "completed",
@@ -569,7 +569,7 @@ func main() {
 			FeePercentage: 0.1,
 			FeeAmount:     0.5,
 			ChainID:       56,
-			TokenSymbol:  "USDT",
+			TokenSymbol:   "USDT",
 			TxHash:        "0xabcdef1234567890",
 			Timestamp:     time.Now().Unix(),
 			Status:        "completed",
@@ -585,7 +585,7 @@ func main() {
 			FeePercentage: 0.1,
 			FeeAmount:     2.0,
 			ChainID:       56,
-			TokenSymbol:  "BNB",
+			TokenSymbol:   "BNB",
 			TxHash:        "0x9876543210fedcba",
 			Timestamp:     time.Now().Unix(),
 			Status:        "completed",

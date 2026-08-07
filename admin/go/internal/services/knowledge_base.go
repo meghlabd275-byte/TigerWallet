@@ -18,16 +18,16 @@ func NewKnowledgeBaseService() *KnowledgeBaseService {
 }
 
 type KnowledgeArticle struct {
-	ID          uuid.UUID  `json:"id"`
-	Title       string     `json:"title"`
-	Content     string     `json:"content"`
-	Category    string     `json:"category"`
-	Tags        []string   `json:"tags"`
-	IsPublished bool       `json:"is_published"`
-	ViewCount   int        `json:"view_count"`
-	CreatedBy   uuid.UUID  `json:"created_by"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID          uuid.UUID `json:"id"`
+	Title       string    `json:"title"`
+	Content     string    `json:"content"`
+	Category    string    `json:"category"`
+	Tags        []string  `json:"tags"`
+	IsPublished bool      `json:"is_published"`
+	ViewCount   int       `json:"view_count"`
+	CreatedBy   uuid.UUID `json:"created_by"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 func (s *KnowledgeBaseService) ListArticles(ctx context.Context, category string, published *bool, limit, offset int) ([]KnowledgeArticle, int, error) {

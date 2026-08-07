@@ -3,7 +3,6 @@ package backup
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -25,23 +24,23 @@ type BackupService struct {
 
 type Backup struct {
 	ID          uuid.UUID
-	BackupType  string    // full, incremental, config
+	BackupType  string // full, incremental, config
 	FilePath    string
 	FileSize    int64
-	Status      string    // pending, running, completed, failed
+	Status      string // pending, running, completed, failed
 	CreatedBy   uuid.UUID
 	CreatedAt   time.Time
 	CompletedAt *time.Time
 }
 
 type BackupConfig struct {
-	FullBackupSchedule    string // cron expression
-	IncrementalSchedule   string
-	BackupPath           string
-	RetentionDays        int
-	CompressionEnabled   bool
-	EncryptionEnabled    bool
-	ExcludeTables        []string
+	FullBackupSchedule  string // cron expression
+	IncrementalSchedule string
+	BackupPath          string
+	RetentionDays       int
+	CompressionEnabled  bool
+	EncryptionEnabled   bool
+	ExcludeTables       []string
 }
 
 func NewBackupService(dbURL, backupDir string, retentionDays int) *BackupService {
@@ -110,7 +109,7 @@ func (s *BackupService) performBackup(ctx context.Context, backup *Backup) error
 	if err != nil {
 		return fmt.Errorf("failed to get tables: %w", err)
 	}
-	defer rows.Close(ctx)
+	defer rows.Close()
 
 	var tables []string
 	for rows.Next() {
@@ -152,7 +151,7 @@ func (s *BackupService) performBackup(ctx context.Context, backup *Backup) error
 		if err != nil {
 			return fmt.Errorf("failed to dump table %s: %w", table, err)
 		}
-		if _, err := sqlFile.Write(data); err != nil {
+		if _, err := sqlFile.Write([]byte(data)); err != nil {
 			return fmt.Errorf("failed to write table data: %w", err)
 		}
 	}
@@ -171,7 +170,7 @@ func (s *BackupService) dumpSchema(ctx context.Context, conn *pgx.Conn, tables [
 	if err != nil {
 		return "", err
 	}
-	defer rows.Close(ctx)
+	defer rows.Close()
 
 	for rows.Next() {
 		var seq string
@@ -208,7 +207,7 @@ func (s *BackupService) dumpTableData(ctx context.Context, conn *pgx.Conn, table
 	if err != nil {
 		return "", err
 	}
-	defer rows.Close(ctx)
+	defer rows.Close()
 
 	fieldDescriptions := rows.FieldDescriptions()
 	columns := make([]string, len(fieldDescriptions))
@@ -363,8 +362,8 @@ func (s *BackupService) DeleteOldBackups() error {
 // ExportConfig exports system configuration
 func (s *BackupService) ExportConfig() ([]byte, error) {
 	config := map[string]interface{}{
-		"exported_at":    time.Now().Format(time.RFC3339),
-		"version":        "1.0",
+		"exported_at":           time.Now().Format(time.RFC3339),
+		"version":               "1.0",
 		"backup_retention_days": s.retention,
 	}
 

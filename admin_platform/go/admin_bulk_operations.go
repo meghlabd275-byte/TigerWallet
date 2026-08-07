@@ -593,7 +593,7 @@ func (s *ExportService) generatePDF(jobID string, data []map[string]interface{},
 	m := maroto.New()
 	
 	// Header
-	m.AddRow(20, func(row *.Row) {
+	m.AddRow(20, func(row *maroto.Row) {
 		row.AddCell(10, title, props.Cell{Align: "center", Bold: true, Size: 16})
 	})
 	
@@ -604,7 +604,7 @@ func (s *ExportService) generatePDF(jobID string, data []map[string]interface{},
 	}
 	
 	// Header row
-	m.AddRow(10, func(row *Row) {
+	m.AddRow(10, func(row *maroto.Row) {
 		for _, col := range columns {
 			row.AddCell(len(col), col, props.Cell{Bold: true, Size: 8})
 		}
@@ -634,7 +634,7 @@ func (s *ExportService) generatePDF(jobID string, data []map[string]interface{},
 	}
 	
 	// Add footer
-	m.AddRow(10, func(row *Row) {
+	m.AddRow(10, func(row *maroto.Row) {
 		row.AddCell(10, fmt.Sprintf("Total Records: %d | Generated: %s", len(data), time.Now().Format("2006-01-02 15:04:05")),
 			props.Cell{Align: "center", Size: 8})
 	})

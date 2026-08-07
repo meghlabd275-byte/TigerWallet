@@ -24,26 +24,26 @@ import (
 
 const (
 	// Subscription tiers
-	TIER_BASIC_MONTHLY    = 2500
-	TIER_PRO_MONTHLY      = 5000
+	TIER_BASIC_MONTHLY      = 2500
+	TIER_PRO_MONTHLY        = 5000
 	TIER_ENTERPRISE_MONTHLY = 10000
 
 	// Payment intervals
-	PAYMENT_MONTHLY = "monthly"
+	PAYMENT_MONTHLY   = "monthly"
 	PAYMENT_QUARTERLY = "quarterly"
-	PAYMENT_YEARLY   = "yearly"
+	PAYMENT_YEARLY    = "yearly"
 
 	// Payment methods
-	PAYMENT_CRYPTO   = "crypto"
-	PAYMENT_CARD    = "card"
-	PAYMENT_BANK    = "bank"
+	PAYMENT_CRYPTO = "crypto"
+	PAYMENT_CARD   = "card"
+	PAYMENT_BANK   = "bank"
 
 	// Invoice status
 	INVOICE_PENDING   = "pending"
-	INVOICE_PAID     = "paid"
-	INVOICE_OVERDUE  = "overdue"
+	INVOICE_PAID      = "paid"
+	INVOICE_OVERDUE   = "overdue"
 	INVOICE_CANCELLED = "cancelled"
-	INVOICE_REFUNDED = "refunded"
+	INVOICE_REFUNDED  = "refunded"
 )
 
 // ============================================================================
@@ -52,40 +52,40 @@ const (
 
 // BotSubscriptionTier represents subscription tier
 type BotSubscriptionTier struct {
-	ID               string `json:"id"`
-	Name             string `json:"name"`
-	DisplayName      string `json:"display_name"`
-	MonthlyFeeUSD   float64 `json:"monthly_fee_usd"`
-	YearlyFeeUSD    float64 `json:"yearly_fee_usd"`
-	PerDEXFeeUSD    float64 `json:"per_dex_fee_usd"`
-	PerCEXFeeUSD   float64 `json:"per_cex_fee_usd"`
-	MaxBots        int    `json:"max_bots"`
-	MaxDEXs        int    `json:"max_dexs"`
-	MaxCEXs        int    `json:"max_cexs"`
-	MaxPositionUSD float64 `json:"max_position_usd"`
-	MaxDailyVolume float64 `json:"max_daily_volume"`
-	LatencyTargetMs int    `json:"latency_target_ms"`
-	Features       []string `json:"features"`
-	IsActive       bool   `json:"is_active"`
+	ID              string   `json:"id"`
+	Name            string   `json:"name"`
+	DisplayName     string   `json:"display_name"`
+	MonthlyFeeUSD   float64  `json:"monthly_fee_usd"`
+	YearlyFeeUSD    float64  `json:"yearly_fee_usd"`
+	PerDEXFeeUSD    float64  `json:"per_dex_fee_usd"`
+	PerCEXFeeUSD    float64  `json:"per_cex_fee_usd"`
+	MaxBots         int      `json:"max_bots"`
+	MaxDEXs         int      `json:"max_dexs"`
+	MaxCEXs         int      `json:"max_cexs"`
+	MaxPositionUSD  float64  `json:"max_position_usd"`
+	MaxDailyVolume  float64  `json:"max_daily_volume"`
+	LatencyTargetMs int      `json:"latency_target_ms"`
+	Features        []string `json:"features"`
+	IsActive        bool     `json:"is_active"`
 }
 
 // BotSubscription represents bot subscription
 type BotSubscription struct {
-	ID             string           `json:"id"`
-	UserID         string           `json:"user_id"`
-	TierID        string           `json:"tier_id"`
-	Tier          *BotSubscriptionTier `json:"tier,omitempty"`
-	Status        SubscriptionStatus `json:"status"`
-	StartDate     time.Time       `json:"start_date"`
-	EndDate       time.Time       `json:"end_date"`
-	NextBillingAt *time.Time     `json:"next_billing_at,omitempty"`
-	AutoRenew    bool           `json:"auto_renew"`
-	PaymentMethod string         `json:"payment_method"`
-	PaymentAddress string       `json:"payment_address,omitempty"`
-	TotalPaid    float64        `json:"total_paid"`
-	TotalUsage   float64        `json:"total_usage"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
+	ID             string               `json:"id"`
+	UserID         string               `json:"user_id"`
+	TierID         string               `json:"tier_id"`
+	Tier           *BotSubscriptionTier `json:"tier,omitempty"`
+	Status         SubscriptionStatus   `json:"status"`
+	StartDate      time.Time            `json:"start_date"`
+	EndDate        time.Time            `json:"end_date"`
+	NextBillingAt  *time.Time           `json:"next_billing_at,omitempty"`
+	AutoRenew      bool                 `json:"auto_renew"`
+	PaymentMethod  string               `json:"payment_method"`
+	PaymentAddress string               `json:"payment_address,omitempty"`
+	TotalPaid      float64              `json:"total_paid"`
+	TotalUsage     float64              `json:"total_usage"`
+	CreatedAt      time.Time            `json:"created_at"`
+	UpdatedAt      time.Time            `json:"updated_at"`
 }
 
 // SubscriptionStatus represents subscription status
@@ -93,77 +93,77 @@ type SubscriptionStatus string
 
 const (
 	SubStatusActive    SubscriptionStatus = "active"
-	SubStatusExpired  SubscriptionStatus = "expired"
+	SubStatusExpired   SubscriptionStatus = "expired"
 	SubStatusSuspended SubscriptionStatus = "suspended"
 	SubStatusCancelled SubscriptionStatus = "cancelled"
-	SubStatusTrial    SubscriptionStatus = "trial"
+	SubStatusTrial     SubscriptionStatus = "trial"
 )
 
 // Payment represents payment
 type Payment struct {
-	ID              string    `json:"id"`
-	SubscriptionID string    `json:"subscription_id"`
-	UserID         string    `json:"user_id"`
-	Amount        float64   `json:"amount"`
-	Currency      string    `json:"currency"`
-	AmountUSD     float64   `json:"amount_usd"`
-	Method        string    `json:"method"`
-	TxHash        string    `json:"tx_hash,omitempty"`
-	Status        PaymentStatus `json:"status"`
-	FailedReason  string    `json:"failed_reason,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
-	ProcessedAt  *time.Time `json:"processed_at,omitempty"`
+	ID             string        `json:"id"`
+	SubscriptionID string        `json:"subscription_id"`
+	UserID         string        `json:"user_id"`
+	Amount         float64       `json:"amount"`
+	Currency       string        `json:"currency"`
+	AmountUSD      float64       `json:"amount_usd"`
+	Method         string        `json:"method"`
+	TxHash         string        `json:"tx_hash,omitempty"`
+	Status         PaymentStatus `json:"status"`
+	FailedReason   string        `json:"failed_reason,omitempty"`
+	CreatedAt      time.Time     `json:"created_at"`
+	ProcessedAt    *time.Time    `json:"processed_at,omitempty"`
 }
 
 // PaymentStatus represents payment status
 type PaymentStatus string
 
 const (
-	PaymentPending   PaymentStatus = "pending"
+	PaymentPending    PaymentStatus = "pending"
 	PaymentProcessing PaymentStatus = "processing"
-	PaymentCompleted PaymentStatus = "completed"
-	PaymentFailed  PaymentStatus = "failed"
-	PaymentRefunded PaymentStatus = "refunded"
+	PaymentCompleted  PaymentStatus = "completed"
+	PaymentFailed     PaymentStatus = "failed"
+	PaymentRefunded   PaymentStatus = "refunded"
 )
 
 // Invoice represents invoice
 type Invoice struct {
-	ID              string    `json:"id"`
-	InvoiceNumber  string    `json:"invoice_number"`
-	UserID        string    `json:"user_id"`
-	SubscriptionID string  `json:"subscription_id"`
-	Amount        float64   `json:"amount"`
-	Currency      string    `json:"currency"`
-	AmountUSD     float64   `json:"amount_usd"`
-	Status       string    `json:"status"`
-	DueDate       time.Time `json:"due_date"`
-	PaidAt        *time.Time `json:"paid_at,omitempty"`
-	PaymentID     string    `json:"payment_id,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID             string     `json:"id"`
+	InvoiceNumber  string     `json:"invoice_number"`
+	UserID         string     `json:"user_id"`
+	SubscriptionID string     `json:"subscription_id"`
+	Amount         float64    `json:"amount"`
+	Currency       string     `json:"currency"`
+	AmountUSD      float64    `json:"amount_usd"`
+	Status         string     `json:"status"`
+	DueDate        time.Time  `json:"due_date"`
+	PaidAt         *time.Time `json:"paid_at,omitempty"`
+	PaymentID      string     `json:"payment_id,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 // BotUsage represents bot usage
 type BotUsage struct {
-	ID            string    `json:"id"`
-	SubscriptionID string  `json:"subscription_id"`
-	BotType       string   `json:"bot_type"`
-	DEXUsed       int      `json:"dex_used"`
-	CEXUsed       int      `json:"cex_used"`
-	VolumeUSD     float64  `json:"volume_usd"`
-	FeeUSD        float64  `json:"fee_usd"`
-	Timestamp    time.Time `json:"timestamp"`
+	ID             string    `json:"id"`
+	SubscriptionID string    `json:"subscription_id"`
+	BotType        string    `json:"bot_type"`
+	DEXUsed        int       `json:"dex_used"`
+	CEXUsed        int       `json:"cex_used"`
+	VolumeUSD      float64   `json:"volume_usd"`
+	FeeUSD         float64   `json:"fee_usd"`
+	Timestamp      time.Time `json:"timestamp"`
 }
 
 // SubscriptionPlan represents subscription plan
 type SubscriptionPlan struct {
-	ID            string `json:"id"`
-	TierID       string `json:"tier_id"`
-	UserID       string `json:"user_id"`
-	Interval     string `json:"interval"` // monthly, quarterly, yearly
-	Amount      float64 `json:"amount"`
-	Currency    string `json:"currency"`
-	IsActive    bool   `json:"is_active"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID        string    `json:"id"`
+	TierID    string    `json:"tier_id"`
+	UserID    string    `json:"user_id"`
+	Interval  string    `json:"interval"` // monthly, quarterly, yearly
+	Amount    float64   `json:"amount"`
+	Currency  string    `json:"currency"`
+	IsActive  bool      `json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // ============================================================================
@@ -177,14 +177,14 @@ type BotSubscriptionStore struct {
 	tiers map[string]*BotSubscriptionTier
 
 	// Subscriptions
-	subscriptions map[string]*BotSubscription // ID -> subscription
-	subscriptionsByUser map[string][]string   // userID -> subscription IDs
+	subscriptions       map[string]*BotSubscription // ID -> subscription
+	subscriptionsByUser map[string][]string         // userID -> subscription IDs
 
 	// Payments
 	payments map[string]*Payment // ID -> payment
 
 	// Invoices
-	invoices map[string]*Invoice // ID -> invoice
+	invoices       map[string]*Invoice // ID -> invoice
 	invoicesByUser map[string][]string // userID -> invoice IDs
 
 	// Usage
@@ -200,14 +200,14 @@ type BotSubscriptionStore struct {
 // NewBotSubscriptionStore creates new store
 func NewBotSubscriptionStore() *BotSubscriptionStore {
 	store := &BotSubscriptionStore{
-		tiers:              make(map[string]*BotSubscriptionTier),
-		subscriptions:      make(map[string]*BotSubscription),
+		tiers:               make(map[string]*BotSubscriptionTier),
+		subscriptions:       make(map[string]*BotSubscription),
 		subscriptionsByUser: make(map[string][]string),
-		payments:           make(map[string]*Payment),
-		invoices:          make(map[string]*Invoice),
-		invoicesByUser:    make(map[string][]string),
-		usage:             make(map[string][]*BotUsage),
-		plans:             make(map[string]*SubscriptionPlan),
+		payments:            make(map[string]*Payment),
+		invoices:            make(map[string]*Invoice),
+		invoicesByUser:      make(map[string][]string),
+		usage:               make(map[string][]*BotUsage),
+		plans:               make(map[string]*SubscriptionPlan),
 	}
 
 	// Initialize default tiers
@@ -220,18 +220,18 @@ func NewBotSubscriptionStore() *BotSubscriptionStore {
 func (s *BotSubscriptionStore) initDefaultTiers() {
 	tiers := []*BotSubscriptionTier{
 		{
-			ID: "tier_basic",
-			Name: "basic",
-			DisplayName: "Basic",
-			MonthlyFeeUSD: TIER_BASIC_MONTHLY,
-			YearlyFeeUSD: TIER_BASIC_MONTHLY * 12 * 0.9, // 10% discount
-			PerDEXFeeUSD: 500,
-			PerCEXFeeUSD: 50,
-			MaxBots: 5,
-			MaxDEXs: 10,
-			MaxCEXs: 20,
-			MaxPositionUSD: 100000,
-			MaxDailyVolume: 1000000,
+			ID:              "tier_basic",
+			Name:            "basic",
+			DisplayName:     "Basic",
+			MonthlyFeeUSD:   TIER_BASIC_MONTHLY,
+			YearlyFeeUSD:    TIER_BASIC_MONTHLY * 12 * 0.9, // 10% discount
+			PerDEXFeeUSD:    500,
+			PerCEXFeeUSD:    50,
+			MaxBots:         5,
+			MaxDEXs:         10,
+			MaxCEXs:         20,
+			MaxPositionUSD:  100000,
+			MaxDailyVolume:  1000000,
 			LatencyTargetMs: 100,
 			Features: []string{
 				"arbitrage",
@@ -241,18 +241,18 @@ func (s *BotSubscriptionStore) initDefaultTiers() {
 			IsActive: true,
 		},
 		{
-			ID: "tier_pro",
-			Name: "pro",
-			DisplayName: "Pro",
-			MonthlyFeeUSD: TIER_PRO_MONTHLY,
-			YearlyFeeUSD: TIER_PRO_MONTHLY * 12 * 0.85, // 15% discount
-			PerDEXFeeUSD: 750,
-			PerCEXFeeUSD: 75,
-			MaxBots: 20,
-			MaxDEXs: 20,
-			MaxCEXs: 50,
-			MaxPositionUSD: 500000,
-			MaxDailyVolume: 5000000,
+			ID:              "tier_pro",
+			Name:            "pro",
+			DisplayName:     "Pro",
+			MonthlyFeeUSD:   TIER_PRO_MONTHLY,
+			YearlyFeeUSD:    TIER_PRO_MONTHLY * 12 * 0.85, // 15% discount
+			PerDEXFeeUSD:    750,
+			PerCEXFeeUSD:    75,
+			MaxBots:         20,
+			MaxDEXs:         20,
+			MaxCEXs:         50,
+			MaxPositionUSD:  500000,
+			MaxDailyVolume:  5000000,
 			LatencyTargetMs: 50,
 			Features: []string{
 				"arbitrage",
@@ -265,18 +265,18 @@ func (s *BotSubscriptionStore) initDefaultTiers() {
 			IsActive: true,
 		},
 		{
-			ID: "tier_enterprise",
-			Name: "enterprise",
-			DisplayName: "Enterprise",
-			MonthlyFeeUSD: TIER_ENTERPRISE_MONTHLY,
-			YearlyFeeUSD: TIER_ENTERPRISE_MONTHLY * 12 * 0.8, // 20% discount
-			PerDEXFeeUSD: 1000,
-			PerCEXFeeUSD: 100,
-			MaxBots: 100,
-			MaxDEXs: 50,
-			MaxCEXs: 100,
-			MaxPositionUSD: 5000000,
-			MaxDailyVolume: 50000000,
+			ID:              "tier_enterprise",
+			Name:            "enterprise",
+			DisplayName:     "Enterprise",
+			MonthlyFeeUSD:   TIER_ENTERPRISE_MONTHLY,
+			YearlyFeeUSD:    TIER_ENTERPRISE_MONTHLY * 12 * 0.8, // 20% discount
+			PerDEXFeeUSD:    1000,
+			PerCEXFeeUSD:    100,
+			MaxBots:         100,
+			MaxDEXs:         50,
+			MaxCEXs:         100,
+			MaxPositionUSD:  5000000,
+			MaxDailyVolume:  50000000,
 			LatencyTargetMs: 10,
 			Features: []string{
 				"arbitrage",
@@ -317,18 +317,18 @@ func (s *BotSubscriptionStore) CreateSubscription(userID, tierID, paymentMethod,
 	}
 
 	subscription := &BotSubscription{
-		ID: generateUUID(),
-		UserID: userID,
-		TierID: tierID,
-		Tier: tier,
-		Status: SubStatusActive,
-		StartDate: time.Now(),
-		EndDate: time.Now().Add(30 * 24 * time.Hour),
-		AutoRenew: true,
-		PaymentMethod: paymentMethod,
+		ID:             generateUUID(),
+		UserID:         userID,
+		TierID:         tierID,
+		Tier:           tier,
+		Status:         SubStatusActive,
+		StartDate:      time.Now(),
+		EndDate:        time.Now().Add(30 * 24 * time.Hour),
+		AutoRenew:      true,
+		PaymentMethod:  paymentMethod,
 		PaymentAddress: paymentAddress,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 
 	s.subscriptions[subscription.ID] = subscription
@@ -343,16 +343,16 @@ func (s *BotSubscriptionStore) CreateSubscription(userID, tierID, paymentMethod,
 // createInvoice creates invoice for subscription
 func (s *BotSubscriptionStore) createInvoice(sub *BotSubscription) {
 	invoice := &Invoice{
-		ID: generateUUID(),
-		InvoiceNumber: generateInvoiceNumber(),
-		UserID: sub.UserID,
+		ID:             generateUUID(),
+		InvoiceNumber:  generateInvoiceNumber(),
+		UserID:         sub.UserID,
 		SubscriptionID: sub.ID,
-		Amount: sub.Tier.MonthlyFeeUSD,
-		Currency: "USD",
-		AmountUSD: sub.Tier.MonthlyFeeUSD,
-		Status: INVOICE_PENDING,
-		DueDate: time.Now().Add(7 * 24 * time.Hour), // 7 days to pay
-		CreatedAt: time.Now(),
+		Amount:         sub.Tier.MonthlyFeeUSD,
+		Currency:       "USD",
+		AmountUSD:      sub.Tier.MonthlyFeeUSD,
+		Status:         INVOICE_PENDING,
+		DueDate:        time.Now().Add(7 * 24 * time.Hour), // 7 days to pay
+		CreatedAt:      time.Now(),
 	}
 
 	s.invoices[invoice.ID] = invoice
@@ -488,16 +488,16 @@ func (s *BotSubscriptionStore) CreatePayment(subID, userID, method, txHash strin
 	defer s.mu.Unlock()
 
 	payment := &Payment{
-		ID: generateUUID(),
+		ID:             generateUUID(),
 		SubscriptionID: subID,
-		UserID: userID,
-		Amount: amount,
-		Currency: "USD",
-		AmountUSD: amount,
-		Method: method,
-		TxHash: txHash,
-		Status: PaymentPending,
-		CreatedAt: time.Now(),
+		UserID:         userID,
+		Amount:         amount,
+		Currency:       "USD",
+		AmountUSD:      amount,
+		Method:         method,
+		TxHash:         txHash,
+		Status:         PaymentPending,
+		CreatedAt:      time.Now(),
 	}
 
 	s.payments[payment.ID] = payment
@@ -728,9 +728,9 @@ func (h *BotSubscriptionHandler) HandleGetTiers(w http.ResponseWriter, r *http.R
 // HandleCreateSubscription handles create subscription request
 func (h *BotSubscriptionHandler) HandleCreateSubscription(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		UserID        string `json:"user_id"`
-		TierID       string `json:"tier_id"`
-		PaymentMethod string `json:"payment_method"`
+		UserID         string `json:"user_id"`
+		TierID         string `json:"tier_id"`
+		PaymentMethod  string `json:"payment_method"`
 		PaymentAddress string `json:"payment_address"`
 	}
 
@@ -752,10 +752,10 @@ func (h *BotSubscriptionHandler) HandleCreateSubscription(w http.ResponseWriter,
 // HandleCreatePayment handles create payment request
 func (h *BotSubscriptionHandler) HandleCreatePayment(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		UserID      string `json:"user_id"`
-		Method     string `json:"method"`
-		TxHash    string `json:"tx_hash"`
-		Amount    float64 `json:"amount"`
+		UserID string  `json:"user_id"`
+		Method string  `json:"method"`
+		TxHash string  `json:"tx_hash"`
+		Amount float64 `json:"amount"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

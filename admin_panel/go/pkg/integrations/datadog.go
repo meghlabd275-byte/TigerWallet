@@ -121,8 +121,8 @@ func (d *DatadogClient) QueryMetrics(ctx context.Context, query string, from, to
 // CreateDashboard creates a Datadog dashboard
 func (d *DatadogClient) CreateDashboard(ctx context.Context, title, description string, widgets []map[string]interface{}) error {
 	dashboard := map[string]interface{}{
-		"title": title,
-		"widgets": widgets,
+		"title":       title,
+		"widgets":     widgets,
 		"layout_type": "ordered",
 		"description": description,
 	}
@@ -183,7 +183,7 @@ func (d *DatadogClient) post(ctx context.Context, endpoint string, payload inter
 
 func (d *DatadogClient) get(ctx context.Context, endpoint string, params map[string]interface{}, result interface{}) error {
 	url := fmt.Sprintf("https://api.%s%s", d.site, endpoint)
-	
+
 	// Add query parameters
 	q := ""
 	for k, v := range params {

@@ -44,23 +44,23 @@ type RedisConfig struct {
 }
 
 type JWTConfig struct {
-	Secret          string
-	ExpirationTime  time.Duration
+	Secret         string
+	ExpirationTime time.Duration
 	RefreshExpires time.Duration
-	Issuer          string
+	Issuer         string
 }
 
 type SecurityConfig struct {
-	BCryptCost         int
-	MaxLoginAttempts   int
-	LockoutDuration    time.Duration
-	PasswordMinLength  int
-	RequireUppercase   bool
-	RequireLowercase   bool
-	RequireNumbers     bool
-	RequireSpecial     bool
-	SessionTimeout     time.Duration
-	RateLimitRequests  int
+	BCryptCost        int
+	MaxLoginAttempts  int
+	LockoutDuration   time.Duration
+	PasswordMinLength int
+	RequireUppercase  bool
+	RequireLowercase  bool
+	RequireNumbers    bool
+	RequireSpecial    bool
+	SessionTimeout    time.Duration
+	RateLimitRequests int
 	RateLimitDuration time.Duration
 }
 
@@ -91,10 +91,10 @@ func Load() *Config {
 			DB:       getIntEnv("REDIS_DB", 0),
 		},
 		JWT: JWTConfig{
-			Secret:          getEnv("JWT_SECRET", "tigerwallet-secret-key-change-in-production"),
-			ExpirationTime:  getDurationEnv("JWT_EXPIRATION", 24*time.Hour),
-			RefreshExpires:  getDurationEnv("JWT_REFRESH_EXPIRATION", 7*24*time.Hour),
-			Issuer:          getEnv("JWT_ISSUER", "tigerwallet"),
+			Secret:         getEnv("JWT_SECRET", "tigerwallet-secret-key-change-in-production"),
+			ExpirationTime: getDurationEnv("JWT_EXPIRATION", 24*time.Hour),
+			RefreshExpires: getDurationEnv("JWT_REFRESH_EXPIRATION", 7*24*time.Hour),
+			Issuer:         getEnv("JWT_ISSUER", "tigerwallet"),
 		},
 		Security: SecurityConfig{
 			BCryptCost:        getIntEnv("BCRYPT_COST", 14),

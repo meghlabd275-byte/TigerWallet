@@ -1,0 +1,162 @@
+===== cargo test wallet_core =====
+bash: cargo: command not found
+exit=127
+===== cargo test wallet_core/production =====
+bash: cargo: command not found
+exit=127
+===== cargo test wallet_core/rust =====
+bash: cargo: command not found
+exit=127
+===== cargo test blockchain_layer/starknet_sdk =====
+bash: cargo: command not found
+exit=127
+===== cargo test blockchain_layer/substrate_sdk =====
+bash: cargo: command not found
+exit=127
+===== cargo test blockchain_layer/zksync_sdk =====
+bash: cargo: command not found
+exit=127
+===== go test ./admin/go =====
+bash: go: command not found
+exit=127
+===== go test ./admin_console/go =====
+bash: go: command not found
+exit=127
+===== go test ./admin_go =====
+bash: go: command not found
+exit=127
+===== go test ./admin_panel/go =====
+bash: go: command not found
+exit=127
+===== go test ./admin_platform/go =====
+bash: go: command not found
+exit=127
+===== go test ./admin_services/go =====
+bash: go: command not found
+exit=127
+===== go test ./admin_system/go =====
+bash: go: command not found
+exit=127
+===== go test ./api_gateway =====
+bash: go: command not found
+exit=127
+===== go test ./asset_management =====
+bash: go: command not found
+exit=127
+===== go test ./auto_approval_workflow/go =====
+bash: go: command not found
+exit=127
+===== go test ./backend/go =====
+bash: go: command not found
+exit=127
+===== go test ./backend_services =====
+bash: go: command not found
+exit=127
+===== go test ./backend_services/go/listing_service =====
+bash: go: command not found
+exit=127
+===== go test ./billing_subscription =====
+bash: go: command not found
+exit=127
+===== go test ./billing_subscription/go =====
+bash: go: command not found
+exit=127
+===== go test ./bots =====
+bash: go: command not found
+exit=127
+===== go test ./client_onboarding =====
+bash: go: command not found
+exit=127
+===== go test ./connection_api =====
+bash: go: command not found
+exit=127
+===== go test ./data_platform =====
+bash: go: command not found
+exit=127
+===== go test ./enterprise_features =====
+bash: go: command not found
+exit=127
+===== go test ./go/admin_service =====
+bash: go: command not found
+exit=127
+===== go test ./go/blockchain_rpc =====
+bash: go: command not found
+exit=127
+===== go test ./go/listing_service =====
+bash: go: command not found
+exit=127
+===== go test ./go/nft_service =====
+bash: go: command not found
+exit=127
+===== go test ./go/payment =====
+bash: go: command not found
+exit=127
+===== go test ./go/staking_service =====
+bash: go: command not found
+exit=127
+===== go test ./go/super_admin_service =====
+bash: go: command not found
+exit=127
+===== go test ./go/swap_service =====
+bash: go: command not found
+exit=127
+===== go test ./go/wallet_service =====
+bash: go: command not found
+exit=127
+===== go test ./go/wallet_services =====
+bash: go: command not found
+exit=127
+===== go test ./governance/go =====
+bash: go: command not found
+exit=127
+===== go test ./kill_switch =====
+bash: go: command not found
+exit=127
+===== go test ./master_admin_management/go =====
+bash: go: command not found
+exit=127
+===== go test ./master_wallet =====
+bash: go: command not found
+exit=127
+===== go test ./monitoring_dashboard =====
+bash: go: command not found
+exit=127
+===== go test ./multi_tenancy/go =====
+bash: go: command not found
+exit=127
+===== go test ./observability =====
+bash: go: command not found
+exit=127
+===== go test ./permission_service =====
+bash: go: command not found
+exit=127
+===== go test ./project_party =====
+bash: go: command not found
+exit=127
+===== go test ./security_platform/go/cmd/transaction-shield =====
+bash: go: command not found
+exit=127
+===== go test ./social/go/cmd/social-auth-service =====
+bash: go: command not found
+exit=127
+===== go test ./super_admin/go =====
+bash: go: command not found
+exit=127
+===== go test ./support_ticket =====
+bash: go: command not found
+exit=127
+===== go test ./user_wallet =====
+bash: go: command not found
+exit=127
+===== go test ./wallet_cloud =====
+bash: go: command not found
+exit=127
+===== go test ./white_label/go =====
+bash: go: command not found
+exit=127
+===== go test ./white_label_admin/go =====
+bash: go: command not found
+exit=127
+===== go test ./white_label_marketplace/go =====
+bash: go: command not found
+exit=127

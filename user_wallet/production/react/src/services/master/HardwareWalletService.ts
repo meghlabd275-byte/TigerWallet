@@ -164,7 +164,12 @@ export class HardwareWalletService {
       };
       this.connectedDevices.set(hwDevice.id, hwDevice);
       this.currentDevice = hwDevice;
-      await this.initializeDevice(hwDevice.id);
+      const initialized = await this.initializeDevice(hwDevice.id);
+      if (!initialized) {
+        this.connectedDevices.delete(hwDevice.id);
+        try { await device.close(); } catch { /* best effort cleanup */ }
+        throw new Error('Hardware-wallet transport initialization failed');
+      }
       this.emit('connected', hwDevice);
       return hwDevice;
     } catch (error) {
@@ -231,9 +236,9 @@ export class HardwareWalletService {
     const device = this.connectedDevices.get(deviceId);
     if (!device) throw new Error('Device not found');
     try {
-      const pathData = this.parsePath(path);
-      const mockPublicKey = this.deriveMockPublicKey(pathData, device.type);
-      return mockPublicKey;
+      void path;
+      void device;
+      throw new Error('Hardware-wallet public-key transport is unavailable');
     } catch (error) {
       console.error('[HardwareWallet] Get public key failed:', error);
       return null;
@@ -271,9 +276,9 @@ export class HardwareWalletService {
     const device = this.connectedDevices.get(deviceId);
     if (!device) throw new Error('Device not found');
     try {
-      const txData = this.buildTransactionData(tx);
-      const signature = this.createMockSignature(txData, device.type);
-      return signature;
+      void tx;
+      void device;
+      throw new Error('Hardware-wallet transaction-signing transport is unavailable');
     } catch (error) {
       console.error('[HardwareWallet] Sign transaction failed:', error);
       return null;
@@ -284,9 +289,9 @@ export class HardwareWalletService {
     const device = this.connectedDevices.get(deviceId);
     if (!device) throw new Error('Device not found');
     try {
-      const messageHash = this.hashMessage(message);
-      const signature = this.createMockSignature(messageHash, device.type);
-      return '0x' + signature.r + signature.s + signature.v.toString(16);
+      void message;
+      void device;
+      throw new Error('Hardware-wallet message-signing transport is unavailable');
     } catch (error) {
       console.error('[HardwareWallet] Sign message failed:', error);
       return null;
@@ -297,9 +302,10 @@ export class HardwareWalletService {
     const device = this.connectedDevices.get(deviceId);
     if (!device) throw new Error('Device not found');
     try {
-      const data = domainSeparator + hashStruct.replace('0x', '');
-      const signature = this.createMockSignature(data, device.type);
-      return '0x' + signature.r + signature.s + signature.v.toString(16);
+      void domainSeparator;
+      void hashStruct;
+      void device;
+      throw new Error('Hardware-wallet typed-data signing transport is unavailable');
     } catch (error) {
       console.error('[HardwareWallet] Sign typed data failed:', error);
       return null;

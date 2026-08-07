@@ -28,21 +28,21 @@ import (
 
 const (
 	// Rate limiting
-	DEFAULT_RATE_LIMIT        = 100
-	DEFAULT_RATE_WINDOW      = 60 // seconds
-	ADMIN_RATE_LIMIT        = 1000
-	ADMIN_RATE_WINDOW      = 60
+	DEFAULT_RATE_LIMIT  = 100
+	DEFAULT_RATE_WINDOW = 60 // seconds
+	ADMIN_RATE_LIMIT    = 1000
+	ADMIN_RATE_WINDOW   = 60
 
 	// IP blocking
-	MAX_BLOCKED_IPS      = 10000
-	BLOCK_DURATION       = 24 * time.Hour
+	MAX_BLOCKED_IPS = 10000
+	BLOCK_DURATION  = 24 * time.Hour
 
 	// DDOS detection
-	DDOS_THRESHOLD       = 1000 // requests per minute
-	DDOS_BLOCK_DURATION  = 1 * time.Hour
+	DDOS_THRESHOLD      = 1000 // requests per minute
+	DDOS_BLOCK_DURATION = 1 * time.Hour
 
 	// Audit log
-	MAX_AUDIT_LOG_SIZE  = 100000
+	MAX_AUDIT_LOG_SIZE = 100000
 
 	// Headers
 	SECURITY_HEADERS_MAX_AGE = 31536000 // 1 year
@@ -54,48 +54,48 @@ const (
 
 // SecurityConfig represents security configuration
 type SecurityConfig struct {
-	EnableDDOSProtection   bool `json:"enable_ddos_protection"`
-	EnableXSSProtection    bool `json:"enable_xss_protection"`
+	EnableDDOSProtection         bool `json:"enable_ddos_protection"`
+	EnableXSSProtection          bool `json:"enable_xss_protection"`
 	EnableSQLInjectionPrevention bool `json:"enable_sql_injection_prevention"`
-	EnableCSRFProtection   bool `json:"enable_csrf_protection"`
-	EnableRateLimiting    bool `json:"enable_rate_limiting"`
-	EnableAuditLogging   bool `json:"enable_audit_logging"`
-	EnableIPBlocking  bool `json:"enable_ip_blocking"`
-	EnableHSTS       bool `json:"enable_hsts"`
-	EnableCSP        bool `json:"enable_csp"`
-	RateLimit        int  `json:"rate_limit"`
-	RateWindow       int  `json:"rate_window"`
+	EnableCSRFProtection         bool `json:"enable_csrf_protection"`
+	EnableRateLimiting           bool `json:"enable_rate_limiting"`
+	EnableAuditLogging           bool `json:"enable_audit_logging"`
+	EnableIPBlocking             bool `json:"enable_ip_blocking"`
+	EnableHSTS                   bool `json:"enable_hsts"`
+	EnableCSP                    bool `json:"enable_csp"`
+	RateLimit                    int  `json:"rate_limit"`
+	RateWindow                   int  `json:"rate_window"`
 }
 
 // BlockedIP represents blocked IP
 type BlockedIP struct {
-	IP         string    `json:"ip"`
-	Reason     string    `json:"reason"`
-	BlockedAt  time.Time `json:"blocked_at"`
+	IP        string     `json:"ip"`
+	Reason    string     `json:"reason"`
+	BlockedAt time.Time  `json:"blocked_at"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
 // RateLimitRule represents rate limit rule
 type RateLimitRule struct {
-	Path       string `json:"path"`
-	Method     string `json:"method"`
-	Limit      int    `json:"limit"`
-	WindowSec  int    `json:"window_sec"`
-	Burst      int    `json:"burst"`
+	Path      string `json:"path"`
+	Method    string `json:"method"`
+	Limit     int    `json:"limit"`
+	WindowSec int    `json:"window_sec"`
+	Burst     int    `json:"burst"`
 }
 
 // AuditLog represents audit log entry
 type AuditLog struct {
-	ID          string    `json:"id"`
-	Timestamp   time.Time `json:"timestamp"`
-	IPAddress   string    `json:"ip_address"`
+	ID         string    `json:"id"`
+	Timestamp  time.Time `json:"timestamp"`
+	IPAddress  string    `json:"ip_address"`
 	UserAgent  string    `json:"user_agent"`
 	UserID     string    `json:"user_id,omitempty"`
 	Action     string    `json:"action"`
 	Resource   string    `json:"resource"`
 	Method     string    `json:"method"`
-	StatusCode int      `json:"status_code"`
-	LatencyMs  int      `json:"latency_ms"`
+	StatusCode int       `json:"status_code"`
+	LatencyMs  int       `json:"latency_ms"`
 	RequestID  string    `json:"request_id"`
 }
 
@@ -109,12 +109,12 @@ type CSRFToken struct {
 
 // ThreatInfo represents detected threat
 type ThreatInfo struct {
-	ID          string    `json:"id"`
-	Type        string    `json:"type"`
-	SourceIP    string    `json:"source_ip"`
-	Timestamp  time.Time `json:"timestamp"`
-	Details    string    `json:"details"`
-	Severity   string    `json:"severity"`
+	ID        string    `json:"id"`
+	Type      string    `json:"type"`
+	SourceIP  string    `json:"source_ip"`
+	Timestamp time.Time `json:"timestamp"`
+	Details   string    `json:"details"`
+	Severity  string    `json:"severity"`
 	Action    string    `json:"action"` // blocked, logged, warned
 }
 
@@ -160,41 +160,41 @@ type RateLimitInfo struct {
 	ResetAt   time.Time
 	Blocked   bool
 	BlockTill *time.Time
-	Requests []time.Time // for sliding window
+	Requests  []time.Time // for sliding window
 }
 
 // DDOSInfo represents DDOS detection info
 type DDOSInfo struct {
 	RequestCount int
-	StartTime   time.Time
-	LastTime   time.Time
-	IsDetected bool
+	StartTime    time.Time
+	LastTime     time.Time
+	IsDetected   bool
 }
 
 // NewSecurityStore creates new security store
 func NewSecurityStore() *SecurityStore {
 	return &SecurityStore{
 		config: &SecurityConfig{
-			EnableDDOSProtection:          true,
-			EnableXSSProtection:        true,
+			EnableDDOSProtection:         true,
+			EnableXSSProtection:          true,
 			EnableSQLInjectionPrevention: true,
-			EnableCSRFProtection:       true,
-			EnableRateLimiting:         true,
-			EnableAuditLogging:         true,
-			EnableIPBlocking:          true,
-			EnableHSTS:              true,
-			EnableCSP:               true,
-			RateLimit:               DEFAULT_RATE_LIMIT,
-			RateWindow:              DEFAULT_RATE_WINDOW,
+			EnableCSRFProtection:         true,
+			EnableRateLimiting:           true,
+			EnableAuditLogging:           true,
+			EnableIPBlocking:             true,
+			EnableHSTS:                   true,
+			EnableCSP:                    true,
+			RateLimit:                    DEFAULT_RATE_LIMIT,
+			RateWindow:                   DEFAULT_RATE_WINDOW,
 		},
-		rateLimits:  make(map[string]*RateLimitInfo),
-		rateRules:  make([]RateLimitRule, 0),
-		blockedIPs: make(map[string]*BlockedIP),
-		ddosDetect: make(map[string]*DDOSInfo),
-		auditLogs: make([]*AuditLog, 0),
-		csrfTokens: make(map[string]*CSRFToken),
-		threats:  make([]*ThreatInfo, 0),
-		allowedHosts: make(map[string]bool),
+		rateLimits:     make(map[string]*RateLimitInfo),
+		rateRules:      make([]RateLimitRule, 0),
+		blockedIPs:     make(map[string]*BlockedIP),
+		ddosDetect:     make(map[string]*DDOSInfo),
+		auditLogs:      make([]*AuditLog, 0),
+		csrfTokens:     make(map[string]*CSRFToken),
+		threats:        make([]*ThreatInfo, 0),
+		allowedHosts:   make(map[string]bool),
 		allowedOrigins: make(map[string]bool),
 	}
 }
@@ -213,8 +213,8 @@ func (s *SecurityStore) CheckRateLimit(key string, limit int, windowSec int) boo
 
 	if !ok || now.After(info.ResetAt) {
 		s.rateLimits[key] = &RateLimitInfo{
-			Count:   1,
-			ResetAt: now.Add(time.Duration(windowSec) * time.Second),
+			Count:    1,
+			ResetAt:  now.Add(time.Duration(windowSec) * time.Second),
 			Requests: []time.Time{now},
 		}
 		return true
@@ -350,8 +350,8 @@ func (s *SecurityStore) CheckDDOS(ip string) (bool, string) {
 	if !ok {
 		s.ddosDetect[ip] = &DDOSInfo{
 			RequestCount: 1,
-			StartTime:   now,
-			LastTime:   now,
+			StartTime:    now,
+			LastTime:     now,
 		}
 		return false, ""
 	}
@@ -822,10 +822,10 @@ func SecurityMiddleware(store *SecurityStore) func(http.Handler) http.Handler {
 				detected, reason := store.CheckDDOS(ip)
 				if detected {
 					store.DetectThreat(&ThreatInfo{
-						Type:      "DDOS",
-						SourceIP:  ip,
-						Details:   reason,
-						Severity:  "high",
+						Type:     "DDOS",
+						SourceIP: ip,
+						Details:  reason,
+						Severity: "high",
 						Action:   "blocked",
 					})
 					http.Error(w, "too many requests", http.StatusTooManyRequests)

@@ -3,27 +3,18 @@
   "name": "TigerWallet - Web3 Wallet",
   "version": "1.0.0",
   "description": "Secure multi-chain cryptocurrency wallet with DeFi integration",
-  "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
-  },
   "action": {
-    "default_popup": "popup/index.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png"
-    },
+    "default_popup": "src/popup/popup.html",
     "default_title": "TigerWallet"
   },
   "background": {
-    "service_worker": "background/service-worker.js",
+    "service_worker": "dist/service-worker.js",
     "type": "module"
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content/inject.js"],
+      "js": ["dist/inject.js"],
       "run_at": "document_start"
     }
   ],
@@ -40,16 +31,6 @@
   "host_permissions": [
     "<all_urls>"
   ],
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "injected/*.js",
-        "icons/*"
-      ],
-      "matches": ["<all_urls>"]
-    }
-  ],
-  "options_page": "options/index.html",
   "commands": {
     "toggle-wallet": {
       "suggested_key": {
@@ -65,11 +46,5 @@
       },
       "description": "Quick swap from anywhere"
     }
-  },
-  "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png",
-    "256": "icons/icon256.png"
   }
 }

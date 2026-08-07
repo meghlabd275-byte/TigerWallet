@@ -36,14 +36,14 @@ import (
 // ============================================================================
 
 type Config struct {
-	Port            string
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
-	MaxHeaderBytes  int
-	RateLimitRPM    int
-	RateLimitBurst  int
-	JWTSecret       string
-	AllowedOrigins  []string
+	Port           string
+	ReadTimeout    time.Duration
+	WriteTimeout   time.Duration
+	MaxHeaderBytes int
+	RateLimitRPM   int
+	RateLimitBurst int
+	JWTSecret      string
+	AllowedOrigins []string
 }
 
 func DefaultConfig() *Config {
@@ -272,7 +272,7 @@ func NewJWTManager(secret string) *JWTManager {
 
 func (jm *JWTManager) GenerateToken(claims *Claims) (string, error) {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
-	
+
 	payload, err := json.Marshal(claims)
 	if err != nil {
 		return "", err
@@ -330,14 +330,14 @@ type APIKeyStore struct {
 }
 
 type APIKey struct {
-	Key       string
-	Secret    string
-	UserID    string
-	Address   string
+	Key         string
+	Secret      string
+	UserID      string
+	Address     string
 	Permissions []string
-	RateLimit int
-	CreatedAt time.Time
-	ExpiresAt time.Time
+	RateLimit   int
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
 }
 
 func NewAPIKeyStore() *APIKeyStore {
@@ -382,13 +382,13 @@ func (aks *APIKeyStore) ValidateKey(key, secret string) (*APIKey, bool) {
 // ============================================================================
 
 type WSClient struct {
-	hub       *WSHub
-	conn      *websocket.Conn
-	send      chan []byte
-	id        string
-	address   string
+	hub           *WSHub
+	conn          *websocket.Conn
+	send          chan []byte
+	id            string
+	address       string
 	subscriptions map[string]bool
-	mu        sync.Mutex
+	mu            sync.Mutex
 }
 
 type WSHub struct {
@@ -400,9 +400,9 @@ type WSHub struct {
 }
 
 type WSMessage struct {
-	Type   string          `json:"type"`
-	Topic  string          `json:"topic,omitempty"`
-	Data   json.RawMessage `json:"data"`
+	Type  string          `json:"type"`
+	Topic string          `json:"topic,omitempty"`
+	Data  json.RawMessage `json:"data"`
 }
 
 func NewWSHub() *WSHub {
@@ -569,7 +569,7 @@ func (ag *APIGateway) AuthMiddleware(next http.Handler) http.Handler {
 			// Check for API key
 			apiKey := r.Header.Get("X-API-Key")
 			apiSecret := r.Header.Get("X-API-Secret")
-			
+
 			if apiKey != "" && apiSecret != "" {
 				key, ok := ag.apiKeys.ValidateKey(apiKey, apiSecret)
 				if ok {
@@ -580,7 +580,7 @@ func (ag *APIGateway) AuthMiddleware(next http.Handler) http.Handler {
 					return
 				}
 			}
-			
+
 			http.Error(w, `{"error": "unauthorized", "message": "Missing authentication"}`, http.StatusUnauthorized)
 			return
 		}
@@ -603,7 +603,7 @@ func (ag *APIGateway) AuthMiddleware(next http.Handler) http.Handler {
 func (ag *APIGateway) RateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := GetClientIP(r)
-		
+
 		// Check token bucket (per user if authenticated)
 		key := ip
 		if userID := r.Context().Value("user_id"); userID != nil {
@@ -630,12 +630,12 @@ func (ag *APIGateway) CORSMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-API-Secret")
-		
+
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -657,16 +657,16 @@ func GetClientIP(r *http.Request) string {
 // ============================================================================
 
 type APIGateway struct {
-	config       *Config
-	router       *mux.Router
-	wsHub        *WSHub
-	jwtManager   *JWTManager
-	apiKeys      *APIKeyStore
-	tokenBucket  *TokenBucket
-	ipLimiter    *SlidingWindowLimiter
+	config         *Config
+	router         *mux.Router
+	wsHub          *WSHub
+	jwtManager     *JWTManager
+	apiKeys        *APIKeyStore
+	tokenBucket    *TokenBucket
+	ipLimiter      *SlidingWindowLimiter
 	circuitBreaker *CircuitBreaker
-	validator    *Validator
-	upgrader     websocket.Upgrader
+	validator      *Validator
+	upgrader       websocket.Upgrader
 }
 
 func NewAPIGateway(cfg *Config) *APIGateway {
@@ -675,15 +675,15 @@ func NewAPIGateway(cfg *Config) *APIGateway {
 	}
 
 	return &APIGateway{
-		config:       cfg,
-		router:       mux.NewRouter(),
-		wsHub:        NewWSHub(),
-		jwtManager:   NewJWTManager(cfg.JWTSecret),
-		apiKeys:      NewAPIKeyStore(),
-		tokenBucket:  NewTokenBucket(float64(cfg.RateLimitBurst), float64(cfg.RateLimitRPM)/60.0),
-		ipLimiter:    NewSlidingWindowLimiter(cfg.RateLimitRPM, time.Minute),
+		config:         cfg,
+		router:         mux.NewRouter(),
+		wsHub:          NewWSHub(),
+		jwtManager:     NewJWTManager(cfg.JWTSecret),
+		apiKeys:        NewAPIKeyStore(),
+		tokenBucket:    NewTokenBucket(float64(cfg.RateLimitBurst), float64(cfg.RateLimitRPM)/60.0),
+		ipLimiter:      NewSlidingWindowLimiter(cfg.RateLimitRPM, time.Minute),
 		circuitBreaker: NewCircuitBreaker(5, time.Minute),
-		validator:    NewValidator(),
+		validator:      NewValidator(),
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -712,21 +712,21 @@ func (ag *APIGateway) registerRoutes() {
 
 	// Public endpoints
 	api := ag.router.PathPrefix("/api/v1").Subrouter()
-	
+
 	// Swap/Quote endpoints (public with rate limiting)
 	api.HandleFunc("/quote", ag.HandleQuote).Methods("GET")
 	api.HandleFunc("/quote/{token_in}/{token_out}", ag.HandleTokenQuote).Methods("GET")
 	api.HandleFunc("/swap", ag.HandleSwap).Methods("POST")
 	api.HandleFunc("/swap/estimate", ag.HandleSwapEstimate).Methods("POST")
-	
+
 	// Token info (public)
 	api.HandleFunc("/tokens", ag.HandleListTokens).Methods("GET")
 	api.HandleFunc("/tokens/{address}", ag.HandleGetToken).Methods("GET")
-	
+
 	// Pool info (public)
 	api.HandleFunc("/pools", ag.HandleListPools).Methods("GET")
 	api.HandleFunc("/pools/{address}", ag.HandleGetPool).Methods("GET")
-	
+
 	// Chain info (public)
 	api.HandleFunc("/chains", ag.HandleListChains).Methods("GET")
 	api.HandleFunc("/chains/{id}", ag.HandleGetChain).Methods("GET")
@@ -735,17 +735,17 @@ func (ag *APIGateway) registerRoutes() {
 	auth := api.PathPrefix("/").Subrouter()
 	auth.Use(ag.AuthMiddleware)
 	auth.Use(ag.RateLimitMiddleware)
-	
+
 	// User endpoints
 	auth.HandleFunc("/user/balance", ag.HandleGetBalance).Methods("GET")
 	auth.HandleFunc("/user/portfolio", ag.HandleGetPortfolio).Methods("GET")
 	auth.HandleFunc("/user/orders", ag.HandleGetOrders).Methods("GET")
 	auth.HandleFunc("/user/history", ag.HandleGetHistory).Methods("GET")
-	
+
 	// Wallet endpoints
 	auth.HandleFunc("/wallet/address", ag.HandleGetAddress).Methods("GET")
 	auth.HandleFunc("/wallet/transactions", ag.HandleGetTransactions).Methods("GET")
-	
+
 	// Protected swap (requires auth for execution)
 	auth.HandleFunc("/swap/execute", ag.HandleExecuteSwap).Methods("POST")
 
@@ -913,8 +913,8 @@ func (ag *APIGateway) HandleHealth(w http.ResponseWriter, r *http.Request) {
 func (ag *APIGateway) HandleReady(w http.ResponseWriter, r *http.Request) {
 	// In production, check database and other dependencies
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"ready":    true,
-		"checks":   map[string]bool{"database": true, "redis": true},
+		"ready":  true,
+		"checks": map[string]bool{"database": true, "redis": true},
 	})
 }
 
@@ -936,14 +936,14 @@ func (ag *APIGateway) HandleQuote(w http.ResponseWriter, r *http.Request) {
 
 	// In production, call the Rust quote engine
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"input_token":  tokenIn,
-		"output_token": tokenOut,
+		"input_token":   tokenIn,
+		"output_token":  tokenOut,
 		"input_amount":  amount,
 		"output_amount": "1000000", // Placeholder
-		"price_impact": 0.5,
-		"route":        []string{tokenIn, tokenOut},
-		"provider":     "TigerSwap",
-		"expires_at":   time.Now().Add(30 * time.Second).Unix(),
+		"price_impact":  0.5,
+		"route":         []string{tokenIn, tokenOut},
+		"provider":      "TigerSwap",
+		"expires_at":    time.Now().Add(30 * time.Second).Unix(),
 	})
 }
 
@@ -955,8 +955,8 @@ func (ag *APIGateway) HandleTokenQuote(w http.ResponseWriter, r *http.Request) {
 
 	// Placeholder - call Rust quote engine
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"input_token":  tokenIn,
-		"output_token": tokenOut,
+		"input_token":   tokenIn,
+		"output_token":  tokenOut,
 		"input_amount":  amount,
 		"output_amount": "2000000",
 		"providers": []map[string]interface{}{
@@ -979,7 +979,7 @@ func (ag *APIGateway) HandleSwap(w http.ResponseWriter, r *http.Request) {
 
 	// Placeholder - call Rust DEX router
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"success":      true,
+		"success":       true,
 		"tx_hash":       generateTXHash(),
 		"status":        "pending",
 		"input_amount":  req.AmountIn,
@@ -988,13 +988,13 @@ func (ag *APIGateway) HandleSwap(w http.ResponseWriter, r *http.Request) {
 }
 
 type SwapRequest struct {
-	TokenIn       string `json:"token_in"`
-	TokenOut      string `json:"token_out"`
-	AmountIn      string `json:"amount_in"`
-	AmountOutMin  string `json:"amount_out_min"`
-	Recipient     string `json:"recipient"`
-	SlippageBps   int    `json:"slippage_bps"`
-	Deadline      int64  `json:"deadline"`
+	TokenIn      string `json:"token_in"`
+	TokenOut     string `json:"token_out"`
+	AmountIn     string `json:"amount_in"`
+	AmountOutMin string `json:"amount_out_min"`
+	Recipient    string `json:"recipient"`
+	SlippageBps  int    `json:"slippage_bps"`
+	Deadline     int64  `json:"deadline"`
 }
 
 func (ag *APIGateway) HandleSwapEstimate(w http.ResponseWriter, r *http.Request) {
@@ -1005,15 +1005,15 @@ func (ag *APIGateway) HandleSwapEstimate(w http.ResponseWriter, r *http.Request)
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"input_token":     req.TokenIn,
-		"output_token":    req.TokenOut,
-		"input_amount":    req.AmountIn,
+		"input_token":      req.TokenIn,
+		"output_token":     req.TokenOut,
+		"input_amount":     req.AmountIn,
 		"estimated_output": "1000000",
-		"minimum_output":  "995000",
+		"minimum_output":   "995000",
 		"price_impact":     0.5,
-		"route":           []string{req.TokenIn, req.TokenOut},
-		"gas_estimate":    150000,
-		"gas_fee_usd":     12.50,
+		"route":            []string{req.TokenIn, req.TokenOut},
+		"gas_estimate":     150000,
+		"gas_fee_usd":      12.50,
 	})
 }
 
@@ -1032,7 +1032,7 @@ func (ag *APIGateway) HandleSwapExecute(w http.ResponseWriter, r *http.Request) 
 
 	// Sign and submit transaction via Rust wallet core
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"success":      true,
+		"success":       true,
 		"tx_hash":       generateTXHash(),
 		"status":        "pending",
 		"input_token":   req.TokenIn,
@@ -1058,12 +1058,12 @@ func (ag *APIGateway) HandleGetToken(w http.ResponseWriter, r *http.Request) {
 	address := vars["address"]
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"address":  address,
-		"symbol":  "TOKEN",
-		"name":    "Token",
-		"decimals": 18,
+		"address":      address,
+		"symbol":       "TOKEN",
+		"name":         "Token",
+		"decimals":     18,
 		"total_supply": "1000000000000000000",
-		"price_usd": 1.0,
+		"price_usd":    1.0,
 	})
 }
 
@@ -1080,7 +1080,7 @@ func (ag *APIGateway) HandleGetPool(w http.ResponseWriter, r *http.Request) {
 	address := vars["address"]
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"address":     address,
+		"address":    address,
 		"token0":     "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
 		"token1":     "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
 		"reserve0":   "50000000000000000000000",
@@ -1106,13 +1106,13 @@ func (ag *APIGateway) HandleGetChain(w http.ResponseWriter, r *http.Request) {
 	id := vars["id"]
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"id":          id,
-		"name":        "Ethereum",
-		"chain_id":    1,
+		"id":           id,
+		"name":         "Ethereum",
+		"chain_id":     1,
 		"native_token": "ETH",
-		"rpc_url":     "https://eth.llamarpc.com",
-		"explorer":    "https://etherscan.io",
-		"status":      "healthy",
+		"rpc_url":      "https://eth.llamarpc.com",
+		"explorer":     "https://etherscan.io",
+		"status":       "healthy",
 	})
 }
 
@@ -1139,9 +1139,9 @@ func (ag *APIGateway) HandleGetPortfolio(w http.ResponseWriter, r *http.Request)
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"address": address,
+		"address":         address,
 		"total_value_usd": 10000.0,
-		"positions": []map[string]interface{}{},
+		"positions":       []map[string]interface{}{},
 	})
 }
 
@@ -1783,9 +1783,9 @@ func (ag *APIGateway) HandleSDKRates(w http.ResponseWriter, r *http.Request) {
 
 func (ag *APIGateway) HandleSyncStatus(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"last_sync": time.Now().Unix() - 300,
+		"last_sync":       time.Now().Unix() - 300,
 		"pending_changes": 3,
-		"devices_online": 2,
+		"devices_online":  2,
 	})
 }
 

@@ -1,7 +1,7 @@
 /**
  * TigerWallet Admin Platform - Complete Production-Ready Backend
  * High-Performance, Worldwide Distributed Admin Service
- * 
+ *
  * Features:
  * - Complete CRUD operations for all entities
  * - Real-time notifications (Email, SMS, Push)
@@ -77,63 +77,63 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort            string
-	DatabaseURL           string
-	RedisURL              string
-	JWTSecret             string
-	JWTExpiration         int
-	SMTPHost              string
-	SMTPPort              int
-	SMTPUsername          string
-	SMTPPassword         string
-	SMSAPIKey             string
-	SlackWebhookURL       string
-	PagerDutyAPIKey       string
-	DatadogAPIKey         string
-	DatadogSite           string
-	CloudflareAPIKey      string
-	CloudflareEmail       string
-	RateLimitPerMinute    int
-	RateLimitPerHour      int
-	RateLimitPerDay       int
-	PasswordMinLength    int
-	PasswordRequireUpper bool
-	PasswordRequireLower bool
-	PasswordRequireNumber bool
+	ServerPort             string
+	DatabaseURL            string
+	RedisURL               string
+	JWTSecret              string
+	JWTExpiration          int
+	SMTPHost               string
+	SMTPPort               int
+	SMTPUsername           string
+	SMTPPassword           string
+	SMSAPIKey              string
+	SlackWebhookURL        string
+	PagerDutyAPIKey        string
+	DatadogAPIKey          string
+	DatadogSite            string
+	CloudflareAPIKey       string
+	CloudflareEmail        string
+	RateLimitPerMinute     int
+	RateLimitPerHour       int
+	RateLimitPerDay        int
+	PasswordMinLength      int
+	PasswordRequireUpper   bool
+	PasswordRequireLower   bool
+	PasswordRequireNumber  bool
 	PasswordRequireSpecial bool
-	PasswordMaxAgeDays   int
-	LockoutAttempts      int
-	LockoutDurationMins  int
+	PasswordMaxAgeDays     int
+	LockoutAttempts        int
+	LockoutDurationMins    int
 }
 
 func LoadConfig() *Config {
 	return &Config{
-		ServerPort:            getEnv("ADMIN_PORT", "9093"),
-		DatabaseURL:           getEnv("DATABASE_URL", "postgres://tigerwallet:password@localhost:5432/tigerwallet?sslmode=require"),
-		RedisURL:              getEnv("REDIS_URL", "redis://localhost:6379"),
-		JWTSecret:             getEnv("JWT_SECRET", "tigerwallet-admin-jwt-secret-change-in-production"),
-		JWTExpiration:         3600,
-		SMTPHost:              getEnv("SMTP_HOST", "smtp.gmail.com"),
-		SMTPPort:              587,
-		SMTPUsername:          getEnv("SMTP_USERNAME", ""),
-		SMTPPassword:          getEnv("SMTP_PASSWORD", ""),
-		SMSAPIKey:             getEnv("SMS_API_KEY", ""),
-		SlackWebhookURL:       getEnv("SLACK_WEBHOOK_URL", ""),
-		PagerDutyAPIKey:       getEnv("PAGERDUTY_API_KEY", ""),
-		DatadogAPIKey:         getEnv("DATADOG_API_KEY", ""),
-		DatadogSite:           getEnv("DATADOG_SITE", "datadoghq.com"),
-		CloudflareAPIKey:      getEnv("CLOUDFLARE_API_KEY", ""),
-		CloudflareEmail:       getEnv("CLOUDFLARE_EMAIL", ""),
-		RateLimitPerMinute:    100,
-		RateLimitPerHour:     1000,
-		RateLimitPerDay:       10000,
-		PasswordMinLength:     12,
-		PasswordRequireUpper:  true,
-		PasswordRequireLower:  true,
-		PasswordRequireNumber: true,
+		ServerPort:             getEnv("ADMIN_PORT", "9093"),
+		DatabaseURL:            getEnv("DATABASE_URL", "postgres://tigerwallet:password@localhost:5432/tigerwallet?sslmode=require"),
+		RedisURL:               getEnv("REDIS_URL", "redis://localhost:6379"),
+		JWTSecret:              getEnv("JWT_SECRET", "tigerwallet-admin-jwt-secret-change-in-production"),
+		JWTExpiration:          3600,
+		SMTPHost:               getEnv("SMTP_HOST", "smtp.gmail.com"),
+		SMTPPort:               587,
+		SMTPUsername:           getEnv("SMTP_USERNAME", ""),
+		SMTPPassword:           getEnv("SMTP_PASSWORD", ""),
+		SMSAPIKey:              getEnv("SMS_API_KEY", ""),
+		SlackWebhookURL:        getEnv("SLACK_WEBHOOK_URL", ""),
+		PagerDutyAPIKey:        getEnv("PAGERDUTY_API_KEY", ""),
+		DatadogAPIKey:          getEnv("DATADOG_API_KEY", ""),
+		DatadogSite:            getEnv("DATADOG_SITE", "datadoghq.com"),
+		CloudflareAPIKey:       getEnv("CLOUDFLARE_API_KEY", ""),
+		CloudflareEmail:        getEnv("CLOUDFLARE_EMAIL", ""),
+		RateLimitPerMinute:     100,
+		RateLimitPerHour:       1000,
+		RateLimitPerDay:        10000,
+		PasswordMinLength:      12,
+		PasswordRequireUpper:   true,
+		PasswordRequireLower:   true,
+		PasswordRequireNumber:  true,
 		PasswordRequireSpecial: true,
-		PasswordMaxAgeDays:    90,
-		LockoutAttempts:       5,
+		PasswordMaxAgeDays:     90,
+		LockoutAttempts:        5,
 		LockoutDurationMins:    30,
 	}
 }
@@ -150,148 +150,148 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type Admin struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
-	Username         string    `gorm:"uniqueIndex;not null" json:"username"`
-	Email            string    `gorm:"uniqueIndex;not null" json:"email"`
-	PasswordHash     string    `gorm:"not null" json:"-"`
-	Role             string    `gorm:"default:'admin'" json:"role"`
-	Permissions      JSON      `gorm:"type:jsonb" json:"permissions"`
-	Status           string    `gorm:"default:'active'" json:"status"`
-	TwoFactorEnabled bool      `gorm:"default:false" json:"two_factor_enabled"`
-	TwoFactorSecret  *string   `json:"two_factor_secret"`
-	SecurityLevel    int       `gorm:"default:1" json:"security_level"`
-	IPWhitelist      JSON      `gorm:"type:jsonb" json:"ip_whitelist"`
-	SessionCount     int       `gorm:"default:0" json:"session_count"`
-	MaxSessions      int       `gorm:"default:5" json:"max_sessions"`
+	ID               uint       `gorm:"primarykey" json:"id"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	Username         string     `gorm:"uniqueIndex;not null" json:"username"`
+	Email            string     `gorm:"uniqueIndex;not null" json:"email"`
+	PasswordHash     string     `gorm:"not null" json:"-"`
+	Role             string     `gorm:"default:'admin'" json:"role"`
+	Permissions      JSON       `gorm:"type:jsonb" json:"permissions"`
+	Status           string     `gorm:"default:'active'" json:"status"`
+	TwoFactorEnabled bool       `gorm:"default:false" json:"two_factor_enabled"`
+	TwoFactorSecret  *string    `json:"two_factor_secret"`
+	SecurityLevel    int        `gorm:"default:1" json:"security_level"`
+	IPWhitelist      JSON       `gorm:"type:jsonb" json:"ip_whitelist"`
+	SessionCount     int        `gorm:"default:0" json:"session_count"`
+	MaxSessions      int        `gorm:"default:5" json:"max_sessions"`
 	LastLogin        *time.Time `json:"last_login"`
 	LastIP           *string    `json:"last_ip"`
-	FailedAttempts   int       `gorm:"default:0" json:"failed_attempts"`
+	FailedAttempts   int        `gorm:"default:0" json:"failed_attempts"`
 	LockedUntil      *time.Time `json:"locked_until"`
 }
 
 type Session struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	AdminID       uint      `gorm:"index;not null" json:"admin_id"`
-	Token         string    `gorm:"uniqueIndex;not null" json:"token"`
-	IPAddress     string    `json:"ip_address"`
-	UserAgent     string    `json:"user_agent"`
-	ExpiresAt     time.Time `json:"expires_at"`
-	LastActivity  time.Time `json:"last_activity"`
-	IsActive      bool      `gorm:"default:true" json:"is_active"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	AdminID      uint      `gorm:"index;not null" json:"admin_id"`
+	Token        string    `gorm:"uniqueIndex;not null" json:"token"`
+	IPAddress    string    `json:"ip_address"`
+	UserAgent    string    `json:"user_agent"`
+	ExpiresAt    time.Time `json:"expires_at"`
+	LastActivity time.Time `json:"last_activity"`
+	IsActive     bool      `gorm:"default:true" json:"is_active"`
 }
 
 type AuditLog struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	AdminID       uint      `gorm:"index" json:"admin_id"`
-	AdminEmail    string    `json:"admin_email"`
-	Action        string    `gorm:"index" json:"action"`
-	ResourceType  string    `json:"resource_type"`
-	ResourceID    *string   `json:"resource_id"`
-	Details       *string   `json:"details"`
-	IPAddress     string    `json:"ip_address"`
-	UserAgent     string    `json:"user_agent"`
-	Status        string    `json:"status"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	AdminID      uint      `gorm:"index" json:"admin_id"`
+	AdminEmail   string    `json:"admin_email"`
+	Action       string    `gorm:"index" json:"action"`
+	ResourceType string    `json:"resource_type"`
+	ResourceID   *string   `json:"resource_id"`
+	Details      *string   `json:"details"`
+	IPAddress    string    `json:"ip_address"`
+	UserAgent    string    `json:"user_agent"`
+	Status       string    `json:"status"`
 }
 
 type Notification struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	AdminID       uint      `gorm:"index" json:"admin_id"`
-	Title         string    `json:"title"`
-	Message       string    `json:"message"`
-	Type          string    `json:"type"` // info, warning, error, success
-	IsRead        bool      `gorm:"default:false" json:"is_read"`
-	ReadAt        *time.Time `json:"read_at"`
-	ActionURL     *string   `json:"action_url"`
-	Priority      string    `json:"priority"` // low, medium, high, critical
+	ID        uint       `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time  `json:"created_at"`
+	AdminID   uint       `gorm:"index" json:"admin_id"`
+	Title     string     `json:"title"`
+	Message   string     `json:"message"`
+	Type      string     `json:"type"` // info, warning, error, success
+	IsRead    bool       `gorm:"default:false" json:"is_read"`
+	ReadAt    *time.Time `json:"read_at"`
+	ActionURL *string    `json:"action_url"`
+	Priority  string     `json:"priority"` // low, medium, high, critical
 }
 
 type User struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	UserID            string    `gorm:"uniqueIndex" json:"user_id"`
-	Username          string    `gorm:"index" json:"username"`
-	Email             string    `gorm:"index" json:"email"`
-	Phone             string    `json:"phone"`
-	PasswordHash      string    `json:"-"`
-	MasterWalletAddr  string    `json:"master_wallet_address"`
-	Status            string    `json:"status"` // active, suspended, banned
-	Tier              int       `json:"tier"` // 0: basic, 1: verified, 2: premium
-	IsEmailVerified   bool      `json:"is_email_verified"`
-	IsPhoneVerified   bool      `json:"is_phone_verified"`
-	KYCStatus         string    `json:"kyc_status"` // none, pending, approved, rejected
-	KYCLevel         int       `json:"kyc_level"`
-	WhiteLabelID     *uint     `gorm:"index" json:"white_label_id"`
-	ReferrerID       *string   `json:"referrer_id"`
-	ReferralCode     string    `gorm:"uniqueIndex" json:"referral_code"`
+	ID               uint       `gorm:"primarykey" json:"id"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	UserID           string     `gorm:"uniqueIndex" json:"user_id"`
+	Username         string     `gorm:"index" json:"username"`
+	Email            string     `gorm:"index" json:"email"`
+	Phone            string     `json:"phone"`
+	PasswordHash     string     `json:"-"`
+	MasterWalletAddr string     `json:"master_wallet_address"`
+	Status           string     `json:"status"` // active, suspended, banned
+	Tier             int        `json:"tier"`   // 0: basic, 1: verified, 2: premium
+	IsEmailVerified  bool       `json:"is_email_verified"`
+	IsPhoneVerified  bool       `json:"is_phone_verified"`
+	KYCStatus        string     `json:"kyc_status"` // none, pending, approved, rejected
+	KYCLevel         int        `json:"kyc_level"`
+	WhiteLabelID     *uint      `gorm:"index" json:"white_label_id"`
+	ReferrerID       *string    `json:"referrer_id"`
+	ReferralCode     string     `gorm:"uniqueIndex" json:"referral_code"`
 	LastLoginAt      *time.Time `json:"last_login_at"`
-	FailedLoginCount int       `json:"failed_login_count"`
+	FailedLoginCount int        `json:"failed_login_count"`
 }
 
 type KYCRecord struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt       time.Time `json:"created_at"`
-	UserID          uint      `gorm:"index" json:"user_id"`
-	Level           int       `json:"level"`
-	DocumentType    string    `json:"document_type"` // passport, id_card, drivers_license
-	DocumentNumber  string    `json:"document_number"`
-	DocumentFront   string    `json:"document_front"` // encrypted URL
-	DocumentBack    string    `json:"document_back"`
-	SelfieImage     string    `json:"selfie_image"`
-	FirstName       string    `json:"first_name"`
-	LastName        string    `json:"last_name"`
-	DateOfBirth     string    `json:"date_of_birth"`
-	Country         string    `json:"country"`
-	Address         string    `json:"address"`
-	Status          string    `json:"status"` // pending, approved, rejected
-	RejectReason    string    `json:"reject_reason"`
-	ReviewedBy      uint      `json:"reviewed_by"`
-	ReviewedAt      *time.Time `json:"reviewed_at"`
+	ID             uint       `gorm:"primarykey" json:"id"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UserID         uint       `gorm:"index" json:"user_id"`
+	Level          int        `json:"level"`
+	DocumentType   string     `json:"document_type"` // passport, id_card, drivers_license
+	DocumentNumber string     `json:"document_number"`
+	DocumentFront  string     `json:"document_front"` // encrypted URL
+	DocumentBack   string     `json:"document_back"`
+	SelfieImage    string     `json:"selfie_image"`
+	FirstName      string     `json:"first_name"`
+	LastName       string     `json:"last_name"`
+	DateOfBirth    string     `json:"date_of_birth"`
+	Country        string     `json:"country"`
+	Address        string     `json:"address"`
+	Status         string     `json:"status"` // pending, approved, rejected
+	RejectReason   string     `json:"reject_reason"`
+	ReviewedBy     uint       `json:"reviewed_by"`
+	ReviewedAt     *time.Time `json:"reviewed_at"`
 }
 
 type Token struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	TokenID       string    `gorm:"uniqueIndex" json:"token_id"`
-	Name          string    `json:"name"`
-	Symbol        string    `gorm:"index" json:"symbol"`
-	ContractAddr  string    `gorm:"index" json:"contract_addr"`
-	Decimals      int       `json:"decimals"`
-	TotalSupply   string    `json:"total_supply"`
-	LogoURL       string    `json:"logo_url"`
-	IsActive      bool      `gorm:"default:true" json:"is_active"`
-	IsVerified    bool      `gorm:"default:false" json:"is_verified"`
-	ChainID       int64     `json:"chain_id"`
-	PriceUSD      string    `json:"price_usd"`
-	MarketCap     string    `json:"market_cap"`
-	Volume24h     string    `json:"volume_24h"`
-	ListingFee    float64   `json:"listing_fee"`
-	ListedAt      *time.Time `json:"listed_at"`
+	ID           uint       `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	TokenID      string     `gorm:"uniqueIndex" json:"token_id"`
+	Name         string     `json:"name"`
+	Symbol       string     `gorm:"index" json:"symbol"`
+	ContractAddr string     `gorm:"index" json:"contract_addr"`
+	Decimals     int        `json:"decimals"`
+	TotalSupply  string     `json:"total_supply"`
+	LogoURL      string     `json:"logo_url"`
+	IsActive     bool       `gorm:"default:true" json:"is_active"`
+	IsVerified   bool       `gorm:"default:false" json:"is_verified"`
+	ChainID      int64      `json:"chain_id"`
+	PriceUSD     string     `json:"price_usd"`
+	MarketCap    string     `json:"market_cap"`
+	Volume24h    string     `json:"volume_24h"`
+	ListingFee   float64    `json:"listing_fee"`
+	ListedAt     *time.Time `json:"listed_at"`
 }
 
 type TradingPair struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	PairID        string    `gorm:"uniqueIndex" json:"pair_id"`
-	BaseToken     string    `json:"base_token"`
-	QuoteToken    string    `json:"quote_token"`
-	ChainID       int64     `json:"chain_id"`
-	PoolAddress   string    `json:"pool_address"`
-	Status        string    `json:"status"` // active, suspended, halted
-	MakerFee      float64   `json:"maker_fee"`
-	TakerFee      float64   `json:"taker_fee"`
-	MinTradeAmt   string    `json:"min_trade_amount"`
-	MaxTradeAmt   string    `json:"max_trade_amount"`
-	PriceUSD      string    `json:"price_usd"`
-	Volume24h     string    `json:"volume_24h"`
-	LiquidityUSD  string    `json:"liquidity_usd"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	PairID       string    `gorm:"uniqueIndex" json:"pair_id"`
+	BaseToken    string    `json:"base_token"`
+	QuoteToken   string    `json:"quote_token"`
+	ChainID      int64     `json:"chain_id"`
+	PoolAddress  string    `json:"pool_address"`
+	Status       string    `json:"status"` // active, suspended, halted
+	MakerFee     float64   `json:"maker_fee"`
+	TakerFee     float64   `json:"taker_fee"`
+	MinTradeAmt  string    `json:"min_trade_amount"`
+	MaxTradeAmt  string    `json:"max_trade_amount"`
+	PriceUSD     string    `json:"price_usd"`
+	Volume24h    string    `json:"volume_24h"`
+	LiquidityUSD string    `json:"liquidity_usd"`
 }
 
 type Blockchain struct {
@@ -310,77 +310,77 @@ type Blockchain struct {
 }
 
 type WhiteLabelClient struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	ClientID       string    `gorm:"uniqueIndex" json:"client_id"`
-	CompanyName    string    `json:"company_name"`
-	Domain         string    `json:"domain"`
-	DomainVerified bool      `json:"domain_verified"`
-	AdminUserID    uint      `json:"admin_user_id"`
-	Status         string    `json:"status"` // active, suspended, pending
-	LogoURL        string    `json:"logo_url"`
-	PrimaryColor   string    `json:"primary_color"`
-	SecondaryColor string    `json:"secondary_color"`
-	ThemeMode     string    `json:"theme_mode"` // light, dark, both
-	Features       JSON      `gorm:"type:jsonb" json:"features"`
-	MaxUsers       int       `json:"max_users"`
-	MaxDailyVolume float64   `json:"max_daily_volume"`
-	PlatformFeePercent float64 `json:"platform_fee_percent"`
-	CustomFeePercent  float64  `json:"custom_fee_percent"`
-	LiquiditySource  string    `json:"liquidity_source"`
-	TradingPairsImport string  `json:"trading_pairs_import"`
-	ContactEmail   string    `json:"contact_email"`
-	ContactPhone   string    `json:"contact_phone"`
-	ActivatedAt    *time.Time `json:"activated_at"`
-	ExpiresAt      *time.Time `json:"expires_at"`
+	ID                 uint       `gorm:"primarykey" json:"id"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+	ClientID           string     `gorm:"uniqueIndex" json:"client_id"`
+	CompanyName        string     `json:"company_name"`
+	Domain             string     `json:"domain"`
+	DomainVerified     bool       `json:"domain_verified"`
+	AdminUserID        uint       `json:"admin_user_id"`
+	Status             string     `json:"status"` // active, suspended, pending
+	LogoURL            string     `json:"logo_url"`
+	PrimaryColor       string     `json:"primary_color"`
+	SecondaryColor     string     `json:"secondary_color"`
+	ThemeMode          string     `json:"theme_mode"` // light, dark, both
+	Features           JSON       `gorm:"type:jsonb" json:"features"`
+	MaxUsers           int        `json:"max_users"`
+	MaxDailyVolume     float64    `json:"max_daily_volume"`
+	PlatformFeePercent float64    `json:"platform_fee_percent"`
+	CustomFeePercent   float64    `json:"custom_fee_percent"`
+	LiquiditySource    string     `json:"liquidity_source"`
+	TradingPairsImport string     `json:"trading_pairs_import"`
+	ContactEmail       string     `json:"contact_email"`
+	ContactPhone       string     `json:"contact_phone"`
+	ActivatedAt        *time.Time `json:"activated_at"`
+	ExpiresAt          *time.Time `json:"expires_at"`
 }
 
 type Transaction struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	TxHash        string    `gorm:"uniqueIndex" json:"tx_hash"`
-	UserID        uint      `gorm:"index" json:"user_id"`
-	Type          string    `json:"type"` // transfer, swap, bridge, etc
-	Status        string    `json:"status"` // pending, confirmed, failed
-	FromAddr      string    `json:"from_addr"`
-	ToAddr        string    `json:"to_addr"`
-	Amount        string    `json:"amount"`
-	Token         string    `json:"token"`
-	ChainID       int64     `json:"chain_id"`
-	Fee           string    `json:"fee"`
-	BlockNumber   *int64    `json:"block_number"`
-	GasUsed       *int64    `json:"gas_used"`
+	ID          uint      `gorm:"primarykey" json:"id"`
+	CreatedAt   time.Time `json:"created_at"`
+	TxHash      string    `gorm:"uniqueIndex" json:"tx_hash"`
+	UserID      uint      `gorm:"index" json:"user_id"`
+	Type        string    `json:"type"`   // transfer, swap, bridge, etc
+	Status      string    `json:"status"` // pending, confirmed, failed
+	FromAddr    string    `json:"from_addr"`
+	ToAddr      string    `json:"to_addr"`
+	Amount      string    `json:"amount"`
+	Token       string    `json:"token"`
+	ChainID     int64     `json:"chain_id"`
+	Fee         string    `json:"fee"`
+	BlockNumber *int64    `json:"block_number"`
+	GasUsed     *int64    `json:"gas_used"`
 }
 
 type Withdrawal struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	UserID        uint      `gorm:"index" json:"user_id"`
-	Amount        string    `json:"amount"`
-	Token         string    `json:"token"`
-	ChainID       int64     `json:"chain_id"`
-	ToAddr        string    `json:"to_addr"`
-	Status        string    `json:"status"` // pending, approved, rejected, processed
-	Fee           string    `json:"fee"`
-	TxHash        *string   `json:"tx_hash"`
-	ApprovedBy    *uint     `json:"approved_by"`
-	ApprovedAt    *time.Time `json:"approved_at"`
-	ProcessedAt   *time.Time `json:"processed_at"`
-	RejectReason  *string   `json:"reject_reason"`
+	ID           uint       `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UserID       uint       `gorm:"index" json:"user_id"`
+	Amount       string     `json:"amount"`
+	Token        string     `json:"token"`
+	ChainID      int64      `json:"chain_id"`
+	ToAddr       string     `json:"to_addr"`
+	Status       string     `json:"status"` // pending, approved, rejected, processed
+	Fee          string     `json:"fee"`
+	TxHash       *string    `json:"tx_hash"`
+	ApprovedBy   *uint      `json:"approved_by"`
+	ApprovedAt   *time.Time `json:"approved_at"`
+	ProcessedAt  *time.Time `json:"processed_at"`
+	RejectReason *string    `json:"reject_reason"`
 }
 
 type FeeStructure struct {
-	ID          uint      `gorm:"primarykey" json:"id"`
-	CreatedAt   time.Time `json:"created_at"`
-	FeeType     string    `json:"fee_type"` // trading, withdrawal, deposit, listing
-	Token       string    `json:"token"`
-	ChainID     *int64    `json:"chain_id"`
-	FeeAmount   float64   `json:"fee_amount"`
-	FeePercent  float64   `json:"fee_percent"`
-	MinFee      float64   `json:"min_fee"`
-	MaxFee      float64   `json:"max_fee"`
-	IsActive    bool      `gorm:"default:true" json:"is_active"`
+	ID         uint      `gorm:"primarykey" json:"id"`
+	CreatedAt  time.Time `json:"created_at"`
+	FeeType    string    `json:"fee_type"` // trading, withdrawal, deposit, listing
+	Token      string    `json:"token"`
+	ChainID    *int64    `json:"chain_id"`
+	FeeAmount  float64   `json:"fee_amount"`
+	FeePercent float64   `json:"fee_percent"`
+	MinFee     float64   `json:"min_fee"`
+	MaxFee     float64   `json:"max_fee"`
+	IsActive   bool      `gorm:"default:true" json:"is_active"`
 }
 
 type MarketMakerBot struct {
@@ -389,7 +389,7 @@ type MarketMakerBot struct {
 	UserID        uint      `gorm:"index" json:"user_id"`
 	BotName       string    `json:"bot_name"`
 	BotType       string    `json:"bot_type"` // arbitrage, liquidity, etc
-	Status        string    `json:"status"` // running, stopped, error, paused
+	Status        string    `json:"status"`   // running, stopped, error, paused
 	ConnectedDEXs int       `json:"connected_dexs"`
 	TotalPnL      float64   `json:"total_pnl"`
 	TotalVolume   float64   `json:"total_volume"`
@@ -398,111 +398,111 @@ type MarketMakerBot struct {
 }
 
 type Ticket struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	TicketID      string    `gorm:"uniqueIndex" json:"ticket_id"`
-	UserID        uint      `gorm:"index" json:"user_id"`
-	AdminID       *uint     `gorm:"index" json:"admin_id"`
-	Subject       string    `json:"subject"`
-	Description   string    `json:"description"`
-	Category      string    `json:"category"` // technical, billing, kyc, general
-	Priority      string    `json:"priority"` // low, medium, high, urgent
-	Status        string    `json:"status"` // open, in_progress, resolved, closed
-	AssignedTo    *uint     `json:"assigned_to"`
-	ResolvedAt    *time.Time `json:"resolved_at"`
-	ClosedAt      *time.Time `json:"closed_at"`
+	ID          uint       `gorm:"primarykey" json:"id"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	TicketID    string     `gorm:"uniqueIndex" json:"ticket_id"`
+	UserID      uint       `gorm:"index" json:"user_id"`
+	AdminID     *uint      `gorm:"index" json:"admin_id"`
+	Subject     string     `json:"subject"`
+	Description string     `json:"description"`
+	Category    string     `json:"category"` // technical, billing, kyc, general
+	Priority    string     `json:"priority"` // low, medium, high, urgent
+	Status      string     `json:"status"`   // open, in_progress, resolved, closed
+	AssignedTo  *uint      `json:"assigned_to"`
+	ResolvedAt  *time.Time `json:"resolved_at"`
+	ClosedAt    *time.Time `json:"closed_at"`
 }
 
 type TicketMessage struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	TicketID      uint      `gorm:"index" json:"ticket_id"`
-	SenderID      uint      `gorm:"index" json:"sender_id"`
-	SenderType    string    `json:"sender_type"` // user, admin
-	Message       string    `json:"message"`
-	IsInternal    bool      `gorm:"default:false" json:"is_internal"`
+	ID         uint      `gorm:"primarykey" json:"id"`
+	CreatedAt  time.Time `json:"created_at"`
+	TicketID   uint      `gorm:"index" json:"ticket_id"`
+	SenderID   uint      `gorm:"index" json:"sender_id"`
+	SenderType string    `json:"sender_type"` // user, admin
+	Message    string    `json:"message"`
+	IsInternal bool      `gorm:"default:false" json:"is_internal"`
 }
 
 type KnowledgeBaseArticle struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	ArticleID     string    `gorm:"uniqueIndex" json:"article_id"`
-	Title         string    `json:"title"`
-	Content       string    `json:"content"` // markdown
-	Category      string    `json:"category"`
-	Tags          JSON      `gorm:"type:jsonb" json:"tags"`
-	AuthorID      uint      `json:"author_id"`
-	Status        string    `json:"status"` // draft, published, archived
-	ViewCount     int       `gorm:"default:0" json:"view_count"`
-	HelpfulCount  int       `gorm:"default:0" json:"helpful_count"`
-	NotHelpfulCount int     `gorm:"default:0" json:"not_helpful_count"`
+	ID              uint      `gorm:"primarykey" json:"id"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+	ArticleID       string    `gorm:"uniqueIndex" json:"article_id"`
+	Title           string    `json:"title"`
+	Content         string    `json:"content"` // markdown
+	Category        string    `json:"category"`
+	Tags            JSON      `gorm:"type:jsonb" json:"tags"`
+	AuthorID        uint      `json:"author_id"`
+	Status          string    `json:"status"` // draft, published, archived
+	ViewCount       int       `gorm:"default:0" json:"view_count"`
+	HelpfulCount    int       `gorm:"default:0" json:"helpful_count"`
+	NotHelpfulCount int       `gorm:"default:0" json:"not_helpful_count"`
 }
 
 type ApprovalWorkflow struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	WorkflowID    string    `gorm:"uniqueIndex" json:"workflow_id"`
-	Name          string    `json:"name"`
-	Description   string    `json:"description"`
-	ResourceType  string    `json:"resource_type"` // withdrawal, token_listing, etc
-	Approvers     JSON      `gorm:"type:jsonb" json:"approvers"` // list of admin IDs
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	WorkflowID   string    `gorm:"uniqueIndex" json:"workflow_id"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	ResourceType string    `json:"resource_type"`               // withdrawal, token_listing, etc
+	Approvers    JSON      `gorm:"type:jsonb" json:"approvers"` // list of admin IDs
 	MinApprovals int       `json:"min_approvals"`
-	Status        string    `json:"status"` // active, suspended
+	Status       string    `json:"status"` // active, suspended
 }
 
 type ApprovalRequest struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	WorkflowID    uint      `gorm:"index" json:"workflow_id"`
-	RequesterID   uint      `json:"requester_id"`
-	ResourceType  string    `json:"resource_type"`
-	ResourceID    string    `json:"resource_id"`
-	Data          JSON      `gorm:"type:jsonb" json:"data"`
-	Status        string    `json:"status"` // pending, approved, rejected
-	ApprovedBy    JSON      `gorm:"type:jsonb" json:"approved_by"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	WorkflowID   uint      `gorm:"index" json:"workflow_id"`
+	RequesterID  uint      `json:"requester_id"`
+	ResourceType string    `json:"resource_type"`
+	ResourceID   string    `json:"resource_id"`
+	Data         JSON      `gorm:"type:jsonb" json:"data"`
+	Status       string    `json:"status"` // pending, approved, rejected
+	ApprovedBy   JSON      `gorm:"type:jsonb" json:"approved_by"`
 }
 
 type ComplianceReport struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	ReportID      string    `gorm:"uniqueIndex" json:"report_id"`
-	ReportType    string    `json:"report_type"` // aml, kyc, transaction, suspicious_activity
-	PeriodStart   time.Time `json:"period_start"`
-	PeriodEnd     time.Time `json:"period_end"`
-	Status        string    `json:"status"` // generating, ready, failed
-	FileURL       *string   `json:"file_url"`
-	GeneratedBy   uint      `json:"generated_by"`
+	ID          uint      `gorm:"primarykey" json:"id"`
+	CreatedAt   time.Time `json:"created_at"`
+	ReportID    string    `gorm:"uniqueIndex" json:"report_id"`
+	ReportType  string    `json:"report_type"` // aml, kyc, transaction, suspicious_activity
+	PeriodStart time.Time `json:"period_start"`
+	PeriodEnd   time.Time `json:"period_end"`
+	Status      string    `json:"status"` // generating, ready, failed
+	FileURL     *string   `json:"file_url"`
+	GeneratedBy uint      `json:"generated_by"`
 }
 
 type APIKey struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	KeyID         string    `gorm:"uniqueIndex" json:"key_id"`
-	UserID        uint      `gorm:"index" json:"user_id"`
-	KeyHash       string    `json:"-"`
-	KeyPrefix     string    `json:"key_prefix"`
-	Name          string    `json:"name"`
-	Permissions   JSON      `gorm:"type:jsonb" json:"permissions"`
-	IPWhitelist   JSON      `gorm:"type:jsonb" json:"ip_whitelist"`
-	RateLimit     int       `json:"rate_limit"` // requests per minute
-	IsActive      bool      `gorm:"default:true" json:"is_active"`
-	ExpiresAt     *time.Time `json:"expires_at"`
-	LastUsedAt    *time.Time `json:"last_used_at"`
+	ID          uint       `gorm:"primarykey" json:"id"`
+	CreatedAt   time.Time  `json:"created_at"`
+	KeyID       string     `gorm:"uniqueIndex" json:"key_id"`
+	UserID      uint       `gorm:"index" json:"user_id"`
+	KeyHash     string     `json:"-"`
+	KeyPrefix   string     `json:"key_prefix"`
+	Name        string     `json:"name"`
+	Permissions JSON       `gorm:"type:jsonb" json:"permissions"`
+	IPWhitelist JSON       `gorm:"type:jsonb" json:"ip_whitelist"`
+	RateLimit   int        `json:"rate_limit"` // requests per minute
+	IsActive    bool       `gorm:"default:true" json:"is_active"`
+	ExpiresAt   *time.Time `json:"expires_at"`
+	LastUsedAt  *time.Time `json:"last_used_at"`
 }
 
 type Webhook struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	WebhookID     string    `gorm:"uniqueIndex" json:"webhook_id"`
-	Name          string    `json:"name"`
-	URL           string    `json:"url"`
-	Events        JSON      `gorm:"type:jsonb" json:"events"`
-	Secret        string    `json:"secret"`
-	IsActive      bool      `gorm:"default:true" json:"is_active"`
-	RetryCount    int       `gorm:"default:3" json:"retry_count"`
-	LastStatus    *int      `json:"last_status"`
+	ID            uint       `gorm:"primarykey" json:"id"`
+	CreatedAt     time.Time  `json:"created_at"`
+	WebhookID     string     `gorm:"uniqueIndex" json:"webhook_id"`
+	Name          string     `json:"name"`
+	URL           string     `json:"url"`
+	Events        JSON       `gorm:"type:jsonb" json:"events"`
+	Secret        string     `json:"secret"`
+	IsActive      bool       `gorm:"default:true" json:"is_active"`
+	RetryCount    int        `gorm:"default:3" json:"retry_count"`
+	LastStatus    *int       `json:"last_status"`
 	LastTriggered *time.Time `json:"last_triggered"`
 }
 
@@ -634,13 +634,13 @@ func (s *AdminPlatformService) Login(c *gin.Context) {
 
 	// Create session
 	session := Session{
-		AdminID:     admin.ID,
-		Token:       token,
-		IPAddress:   c.ClientIP(),
-		UserAgent:   c.Request.UserAgent(),
+		AdminID:      admin.ID,
+		Token:        token,
+		IPAddress:    c.ClientIP(),
+		UserAgent:    c.Request.UserAgent(),
 		ExpiresAt:    expiresAt,
 		LastActivity: time.Now(),
-		IsActive:    true,
+		IsActive:     true,
 	}
 	s.db.Create(&session)
 
@@ -656,9 +656,9 @@ func (s *AdminPlatformService) Login(c *gin.Context) {
 	s.logAudit(admin.ID, "LOGIN", "admin", fmt.Sprintf("%d", admin.ID), c.ClientIP(), true, "")
 
 	c.JSON(http.StatusOK, gin.H{
-		"token":        token,
-		"expires_at":   expiresAt,
-		"admin":        admin,
+		"token":      token,
+		"expires_at": expiresAt,
+		"admin":      admin,
 	})
 }
 
@@ -747,7 +747,7 @@ func (s *AdminPlatformService) ListUsers(c *gin.Context) {
 	query := s.db.Model(&User{})
 
 	if search != "" {
-		query = query.Where("email ILIKE ? OR username ILIKE ? OR user_id ILIKE ?", 
+		query = query.Where("email ILIKE ? OR username ILIKE ? OR user_id ILIKE ?",
 			"%"+search+"%", "%"+search+"%", "%"+search+"%")
 	}
 	if status != "" {
@@ -996,7 +996,7 @@ func (s *AdminPlatformService) ListTokens(c *gin.Context) {
 		query = query.Where("chain_id = ?", chainID)
 	}
 	if search != "" {
-		query = query.Where("name ILIKE ? OR symbol ILIKE ? OR token_id ILIKE ?", 
+		query = query.Where("name ILIKE ? OR symbol ILIKE ? OR token_id ILIKE ?",
 			"%"+search+"%", "%"+search+"%", "%"+search+"%")
 	}
 
@@ -1292,7 +1292,7 @@ func (s *AdminPlatformService) ActivateWhiteLabel(c *gin.Context) {
 
 	now := time.Now()
 	result := s.db.Model(&WhiteLabelClient{}).Where("client_id = ?", wlID).Updates(map[string]interface{}{
-		"status":      "active",
+		"status":       "active",
 		"activated_at": now,
 	})
 	if result.RowsAffected == 0 {
@@ -1441,9 +1441,9 @@ func (s *AdminPlatformService) ApproveWithdrawal(c *gin.Context) {
 
 	now := time.Now()
 	result := s.db.Model(&Withdrawal{}).Where("id = ?", withdrawalID).Updates(map[string]interface{}{
-		"status":       "approved",
-		"approved_by":  adminID,
-		"approved_at":  now,
+		"status":      "approved",
+		"approved_by": adminID,
+		"approved_at": now,
 	})
 	if result.RowsAffected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Withdrawal not found"})
@@ -1491,8 +1491,8 @@ func (s *AdminPlatformService) ProcessWithdrawal(c *gin.Context) {
 
 	now := time.Now()
 	result := s.db.Model(&Withdrawal{}).Where("id = ?", withdrawalID).Updates(map[string]interface{}{
-		"status":      "processed",
-		"tx_hash":     req.TxHash,
+		"status":       "processed",
+		"tx_hash":      req.TxHash,
 		"processed_at": now,
 	})
 	if result.RowsAffected == 0 {
@@ -1515,7 +1515,7 @@ func (s *AdminPlatformService) BatchApproveWithdrawals(c *gin.Context) {
 	now := time.Now()
 	s.db.Model(&Withdrawal{}).Where("id IN ? AND status = ?", req.IDs, "pending").Updates(map[string]interface{}{
 		"status":      "approved",
-		"approved_by":  adminID,
+		"approved_by": adminID,
 		"approved_at": now,
 	})
 
@@ -1954,39 +1954,39 @@ func (s *AdminPlatformService) RejectRequest(c *gin.Context) {
 func (s *AdminPlatformService) GetDashboardStats(c *gin.Context) {
 	var stats struct {
 		Users struct {
-			Total       int64 `json:"total"`
-			Active      int64 `json:"active"`
-			Suspended   int64 `json:"suspended"`
-			Banned      int64 `json:"banned"`
-			NewToday    int64 `json:"new_today"`
+			Total     int64 `json:"total"`
+			Active    int64 `json:"active"`
+			Suspended int64 `json:"suspended"`
+			Banned    int64 `json:"banned"`
+			NewToday  int64 `json:"new_today"`
 		} `json:"users"`
 		KYC struct {
-			Pending   int64 `json:"pending"`
-			Approved  int64 `json:"approved"`
-			Rejected  int64 `json:"rejected"`
+			Pending  int64 `json:"pending"`
+			Approved int64 `json:"approved"`
+			Rejected int64 `json:"rejected"`
 		} `json:"kyc"`
 		Tokens struct {
-			Total   int64 `json:"total"`
-			Active  int64 `json:"active"`
+			Total  int64 `json:"total"`
+			Active int64 `json:"active"`
 		} `json:"tokens"`
 		Pairs struct {
-			Total   int64 `json:"total"`
-			Active  int64 `json:"active"`
+			Total  int64 `json:"total"`
+			Active int64 `json:"active"`
 		} `json:"pairs"`
 		Transactions struct {
-			Today    int64   `json:"today"`
-			Volume   float64 `json:"volume"`
+			Today  int64   `json:"today"`
+			Volume float64 `json:"volume"`
 		} `json:"transactions"`
 		Withdrawals struct {
 			Pending int64 `json:"pending"`
 		} `json:"withdrawals"`
 		WhiteLabels struct {
-			Total   int64 `json:"total"`
-			Active  int64 `json:"active"`
+			Total  int64 `json:"total"`
+			Active int64 `json:"active"`
 		} `json:"white_labels"`
 		System struct {
-			Health    string  `json:"health"`
-			Uptime    float64 `json:"uptime"`
+			Health string  `json:"health"`
+			Uptime float64 `json:"uptime"`
 		} `json:"system"`
 	}
 
@@ -1995,7 +1995,7 @@ func (s *AdminPlatformService) GetDashboardStats(c *gin.Context) {
 	s.db.Model(&User{}).Where("status = ?", "active").Count(&stats.Users.Active)
 	s.db.Model(&User{}).Where("status = ?", "suspended").Count(&stats.Users.Suspended)
 	s.db.Model(&User{}).Where("status = ?", "banned").Count(&stats.Users.Banned)
-	
+
 	today := time.Now().Truncate(24 * time.Hour)
 	s.db.Model(&User{}).Where("created_at >= ?", today).Count(&stats.Users.NewToday)
 
@@ -2031,11 +2031,11 @@ func (s *AdminPlatformService) GetDashboardStats(c *gin.Context) {
 
 func (s *AdminPlatformService) GetAnalytics(c *gin.Context) {
 	period := c.DefaultQuery("period", "24h")
-	
+
 	var analytics struct {
-		Users      []interface{} `json:"users"`
-		Revenue    float64      `json:"revenue"`
-		Volume     float64      `json:"volume"`
+		Users        []interface{} `json:"users"`
+		Revenue      float64       `json:"revenue"`
+		Volume       float64       `json:"volume"`
 		Transactions []interface{} `json:"transactions"`
 	}
 
@@ -2054,9 +2054,9 @@ func (s *AdminPlatformService) ExportReport(c *gin.Context) {
 	// Generate report based on type and format
 	// In production, this would generate actual CSV/PDF/Excel files
 	c.JSON(http.StatusOK, gin.H{
-		"message":    "Report generation started",
+		"message":     "Report generation started",
 		"report_type": reportType,
-		"format":     format,
+		"format":      format,
 	})
 }
 
@@ -2177,7 +2177,7 @@ func (s *AdminPlatformService) CreateAPIKey(c *gin.Context) {
 	keyID := uuid.New().String()
 	keyPrefix := keyID[:8]
 	keySecret := uuid.New().String() + uuid.New().String()
-	
+
 	// Hash the key for storage
 	keyHash := sha256.Sum256([]byte(keySecret))
 	key.KeyHash = hex.EncodeToString(keyHash[:])
@@ -2193,13 +2193,13 @@ func (s *AdminPlatformService) CreateAPIKey(c *gin.Context) {
 	// Return the full key only once
 	c.JSON(http.StatusCreated, gin.H{
 		"api_key": gin.H{
-			"id":           key.ID,
-			"key_id":       key.KeyID,
-			"key":          keyPrefix + "." + keySecret,
-			"name":         key.Name,
-			"permissions":  key.Permissions,
-			"rate_limit":   key.RateLimit,
-			"expires_at":   key.ExpiresAt,
+			"id":          key.ID,
+			"key_id":      key.KeyID,
+			"key":         keyPrefix + "." + keySecret,
+			"name":        key.Name,
+			"permissions": key.Permissions,
+			"rate_limit":  key.RateLimit,
+			"expires_at":  key.ExpiresAt,
 		},
 	})
 }
@@ -2325,14 +2325,14 @@ func (s *AdminPlatformService) GetAuditLogs(c *gin.Context) {
 
 func (s *AdminPlatformService) GetComplianceDashboard(c *gin.Context) {
 	var dashboard struct {
-		TotalKYC          int64   `json:"total_kyc"`
-		PendingKYC        int64   `json:"pending_kyc"`
-		ApprovedKYC       int64   `json:"approved_kyc"`
-		RejectedKYC       int64   `json:"rejected_kyc"`
-		HighRiskUsers     int64   `json:"high_risk_users"`
-		SuspiciousActivity int64  `json:"suspicious_activity"`
-		TransactionsFlagged int64  `json:"transactions_flagged"`
-		ComplianceScore   float64 `json:"compliance_score"`
+		TotalKYC            int64   `json:"total_kyc"`
+		PendingKYC          int64   `json:"pending_kyc"`
+		ApprovedKYC         int64   `json:"approved_kyc"`
+		RejectedKYC         int64   `json:"rejected_kyc"`
+		HighRiskUsers       int64   `json:"high_risk_users"`
+		SuspiciousActivity  int64   `json:"suspicious_activity"`
+		TransactionsFlagged int64   `json:"transactions_flagged"`
+		ComplianceScore     float64 `json:"compliance_score"`
 	}
 
 	s.db.Model(&KYCRecord{}).Count(&dashboard.TotalKYC)
@@ -2348,11 +2348,11 @@ func (s *AdminPlatformService) GetComplianceDashboard(c *gin.Context) {
 
 func (s *AdminPlatformService) GetFinanceDashboard(c *gin.Context) {
 	var dashboard struct {
-		TotalRevenue      float64 `json:"total_revenue"`
-		RevenueToday      float64 `json:"revenue_today"`
-		RevenueThisMonth  float64 `json:"revenue_this_month"`
-		TradingVolume     float64 `json:"trading_volume"`
-		FeesCollected     float64 `json:"fees_collected"`
+		TotalRevenue       float64 `json:"total_revenue"`
+		RevenueToday       float64 `json:"revenue_today"`
+		RevenueThisMonth   float64 `json:"revenue_this_month"`
+		TradingVolume      float64 `json:"trading_volume"`
+		FeesCollected      float64 `json:"fees_collected"`
 		PendingWithdrawals float64 `json:"pending_withdrawals"`
 	}
 
@@ -2391,11 +2391,11 @@ func (s *AdminPlatformService) generateJWT(admin *Admin) (string, time.Time, err
 	expiresAt := time.Now().Add(time.Duration(s.config.JWTExpiration) * time.Second)
 
 	claims := jwt.MapClaims{
-		"admin_id":  admin.ID,
-		"email":     admin.Email,
-		"role":      admin.Role,
-		"exp":       expiresAt.Unix(),
-		"iat":       time.Now().Unix(),
+		"admin_id": admin.ID,
+		"email":    admin.Email,
+		"role":     admin.Role,
+		"exp":      expiresAt.Unix(),
+		"iat":      time.Now().Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -2541,7 +2541,7 @@ func (w *WebhookManager) Trigger(event string, data interface{}) error {
 		// Check if event matches
 		var events []string
 		json.Unmarshal(webhook.Events, &events)
-		
+
 		matched := false
 		for _, e := range events {
 			if e == event || e == "*" {

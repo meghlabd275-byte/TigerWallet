@@ -1,1 +1,50 @@
-{\n  "name": "tiger-wallet-admin",\n  "version": "2.0.0",\n  "private": true,\n  "engines": {\n    "node": ">=20.0.0",\n    "npm": ">=10.0.0"\n  },\n  "scripts": {\n    "dev": "next dev",\n    "build": "next build",\n    "start": "next start",\n    "lint": "next lint",\n    "type-check": "tsc --noEmit",\n    "format": "prettier --write \"src/**/*.{ts,tsx}\""\n  },\n  "dependencies": {\n    "next": "^15.0.0",\n    "react": "^19.0.0",\n    "react-dom": "^19.0.0",\n    "@tanstack/react-query": "^5.28.0",\n    "@trpc/client": "^10.45.0",\n    "@trpc/server": "^10.45.0",\n    "@trpc/react-query": "^10.45.0",\n    "@trpc/next": "^10.45.0",\n    "zod": "^3.22.4",\n    "superjson": "^2.2.1",\n    "lucide-react": "^0.450.0",\n    "clsx": "^2.1.0",\n    "tailwind-merge": "^2.2.0",\n    "class-variance-authority": "^0.7.0",\n    "recharts": "^2.12.0",\n    "date-fns": "^3.3.0",\n    "framer-motion": "^10.17.4",\n    "wagmi": "^2.0.0",\n    "viem": "^2.0.0",\n    "axios": "^1.6.0"\n  },\n  "devDependencies": {\n    "@types/node": "^20.15.0",\n    "@types/react": "^18.3.0",\n    "@types/react-dom": "^18.3.0",\n    "typescript": "^5.5.0",\n    "tailwindcss": "^3.4.0",\n    "postcss": "^8.4.32",\n    "autoprefixer": "^10.4.16",\n    "eslint": "^9.0.0",\n    "eslint-config-next": "^15.0.0",\n    "prettier": "^3.3.0",\n    "@typescript-eslint/parser": "^7.0.0",\n    "@typescript-eslint/eslint-plugin": "^7.0.0"\n  }\n}
+{
+  "name": "tiger-wallet-admin",
+  "version": "2.0.0",
+  "private": true,
+  "engines": {"node": ">=20.0.0", "npm": ">=10.0.0"},
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\""
+  },
+  "dependencies": {
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@tanstack/react-query": "^5.28.0",
+    "@trpc/client": "^10.45.0",
+    "@trpc/server": "^10.45.0",
+    "@trpc/react-query": "^10.45.0",
+    "@trpc/next": "^10.45.0",
+    "zod": "^3.22.4",
+    "superjson": "^2.2.1",
+    "lucide-react": "^0.450.0",
+    "clsx": "^2.1.0",
+    "tailwind-merge": "^2.2.0",
+    "class-variance-authority": "^0.7.0",
+    "recharts": "^2.12.0",
+    "date-fns": "^3.3.0",
+    "framer-motion": "^10.17.4",
+    "wagmi": "^2.0.0",
+    "viem": "^2.0.0",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.15.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.5.0",
+    "tailwindcss": "^3.4.0",
+    "postcss": "^8.4.32",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.0.0",
+    "prettier": "^3.3.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0"
+  }
+}

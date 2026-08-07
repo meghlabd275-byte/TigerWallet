@@ -1,0 +1,457 @@
+== CLIENT DIRECTORIES ==
+./account_abstraction/frontend/package.json
+./admin_console/desktop/package.json
+./admin_console/package.json
+./admin_desktop/package.json
+./admin_extension/manifest.json
+./admin_frontend_complete/package.json
+./admin_panel/package.json
+./admin_panel/vite.config.ts
+./admin_platform/desktop/package.json
+./admin_platform/frontend/package.json
+./admin_platform/frontend/vite.config.ts
+./admin_platform/web/package.json
+./admin_services/desktop/package.json
+./admin_services/web/package.json
+./admin_system/desktop/package.json
+./admin_system/web/package.json
+./bitcoin_ordinals/frontend/package.json
+./blockchain_registry/frontend/package.json
+./bots/desktop/package.json
+./bots/desktop/vite.config.js
+./bots/extension/manifest.json
+./browser_extension/chrome/manifest.json
+./browser_extensions/chrome/manifest.json
+./copy_trading/frontend/package.json
+./crypto_card/frontend/package.json
+./dapp_store/frontend/package.json
+./desktop_app/tauri/tauri.conf.json
+./frontend/admin_panel/package.json
+./frontend/desktop/package.json
+./frontend/sdk/package.json
+./frontend/web/package.json
+./frontend/web_nextjs/package.json
+./master_admin_management/desktop/package.json
+./master_admin_management/web/package.json
+./mobile/tigerswap-wallet/package.json
+./mpc/frontend/package.json
+./package.json
+./perpetual_trading/frontend/package.json
+./project_party/desktop/package.json
+./project_party/desktop/vite.config.js
+./project_party/extension/manifest.json
+./rainbow_kit/package.json
+./smart_contracts/evm_contracts/package.json
+./solana/frontend/package.json
+./super_admin/web/package.json
+./user_app/react/package.json
+./user_wallet/desktop/package.json
+./user_wallet/desktop/vite.config.js
+./user_wallet/extension/manifest.json
+./white_label/frontend/package.json
+./white_label/frontend/vite.config.ts
+./white_label_admin/desktop/package.json
+./white_label_admin/web/package.json
+== THEME REFERENCES ==
+./account_abstraction/frontend/src/app/account-abstraction/page.tsx
+./account_abstraction/frontend/src/app/globals.css
+./account_abstraction/frontend/src/app/layout.tsx
+./account_abstraction/frontend/tailwind.config.ts
+./admin/desktop/src/App.tsx
+./admin/extensions/chrome/styles/popup.css
+./admin/extensions/firefox/styles/popup.css
+./admin/extensions/safari/styles/popup.css
+./admin/web/src/App.tsx
+./admin/web/src/contexts/ThemeContext.tsx
+./admin/web/src/pages/AdminsPage.tsx
+./admin/web/src/pages/AnalyticsPage.tsx
+./admin/web/src/pages/AuditLogsPage.tsx
+./admin/web/src/pages/ChainsPage.tsx
+./admin/web/src/pages/PairsPage.tsx
+./admin/web/src/pages/ReportsPage.tsx
+./admin/web/src/pages/SettingsPage.tsx
+./admin/web/src/styles/globals.css
+./admin/web/src/types/index.ts
+./admin_console/src/App.tsx
+./admin_console/src/context/ThemeContext.tsx
+./admin_console/src/pages/Dashboard.tsx
+./admin_console/src/pages/KYC.tsx
+./admin_console/src/pages/Settings.tsx
+./admin_console/src/pages/Tokens.tsx
+./admin_console/src/pages/Transactions.tsx
+./admin_console/src/pages/Users.tsx
+./admin_desktop/public/styles.css
+./admin_frontend/src/App.tsx
+./admin_frontend/src/contexts/ThemeContext.tsx
+./admin_frontend/src/index.css
+./admin_frontend/src/pages/Dashboard.tsx
+./admin_frontend/src/pages/WhiteLabels.tsx
+./admin_frontend_complete/src/App.tsx
+./admin_frontend_complete/src/hooks/useTheme.ts
+./admin_frontend_complete/src/pages/CryptoCards.tsx
+./admin_frontend_complete/src/pages/Features.tsx
+./admin_frontend_complete/src/pages/Liquidity.tsx
+./admin_frontend_complete/src/pages/MarginTrading.tsx
+./admin_frontend_complete/src/pages/P2PMerchant.tsx
+./admin_panel/production/react/src/App.tsx
+./admin_panel/production/react/src/main.tsx
+./admin_panel/production/react/src/styles/index.css
+./admin_panel/src/components/Header.css
+./admin_panel/src/components/Header.tsx
+./admin_panel/src/components/Sidebar.tsx
+./admin_panel/src/stores/ThemeStore.tsx
+./admin_panel/src/styles/global.css
+./admin_platform/desktop/src/main/index.ts
+./admin_platform/desktop/src/preload/index.ts
+./admin_platform/desktop/src/renderer/App.tsx
+./admin_platform/desktop/src/renderer/context/ThemeContext.tsx
+./admin_platform/desktop/src/renderer/pages/Tickets.tsx
+./admin_platform/frontend/src/App.tsx
+./admin_platform/frontend/src/components/Layout.tsx
+./admin_platform/frontend/src/contexts/ThemeComplete.tsx
+./admin_platform/frontend/src/contexts/ThemeContext.tsx
+./admin_platform/frontend/src/i18n/index.ts
+./admin_platform/frontend/src/index.css
+./admin_platform/frontend/src/pages/admin_settings/AdminSettingsScreen.tsx
+./admin_platform/frontend/src/pages/analytics/AnalyticsScreen.tsx
+./admin_platform/frontend/src/pages/api_management/APIManagementScreen.tsx
+./admin_platform/frontend/src/pages/audit_logs/AuditLogsPage.tsx
+./admin_platform/frontend/src/pages/batch_operations/BatchOperationsPage.tsx
+./admin_platform/frontend/src/pages/chains/ChainsScreen.tsx
+./admin_platform/frontend/src/pages/coupons/CouponsScreen.tsx
+./admin_platform/frontend/src/pages/dashboard/AdminDashboard.tsx
+./admin_platform/frontend/src/pages/dashboard/DashboardPageComplete.tsx
+./admin_platform/frontend/src/pages/fees/FeesScreen.tsx
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx
+./admin_platform/frontend/src/pages/iou/IOUScreen.tsx
+./admin_platform/frontend/src/pages/kyc/KYCScreen.tsx
+./admin_platform/frontend/src/pages/liquidity/LiquidityScreen.tsx
+./admin_platform/frontend/src/pages/marketmaker/MarketMakerScreen.tsx
+./admin_platform/frontend/src/pages/multisend/MultisendScreen.tsx
+./admin_platform/frontend/src/pages/nft/NFTScreen.tsx
+./admin_platform/frontend/src/pages/pairs/PairsScreen.tsx
+./admin_platform/frontend/src/pages/reports/ReportsPage.tsx
+./admin_platform/frontend/src/pages/support/SupportScreen.tsx
+./admin_platform/frontend/src/pages/tokens/TokensScreen.tsx
+./admin_platform/frontend/src/pages/transactions/TransactionsScreen.tsx
+./admin_platform/frontend/src/pages/users/UsersScreen.tsx
+./admin_platform/frontend/src/pages/virtual_tokens/VirtualTokensScreen.tsx
+./admin_platform/frontend/src/pages/wallets/WalletsScreen.tsx
+./admin_platform/frontend/src/pages/white-label/WhiteLabelScreen.tsx
+./admin_platform/frontend/src/pages/withdrawals/WithdrawalsScreen.tsx
+./admin_platform/frontend/src/services/api_complete.ts
+./admin_platform/web/src/context/ThemeContext.tsx
+./admin_platform/web/src/pages/FraudDetection.tsx
+./admin_platform/web/src/pages/Reports.tsx
+./admin_platform/web/src/pages/SLA.tsx
+./admin_platform/web/src/pages/Tickets.tsx
+./admin_services/web/src/App.tsx
+./admin_services/web/src/context/ThemeContext.tsx
+./admin_services/web/src/pages/Dashboard.tsx
+./admin_services/web/src/pages/Jobs.tsx
+./admin_services/web/src/pages/Services.tsx
+./admin_services/web/src/pages/Settings.tsx
+./admin_services/web/src/pages/Webhooks.tsx
+./admin_system/web/src/App.tsx
+./admin_system/web/src/context/ThemeContext.tsx
+./admin_system/web/src/pages/APIKeys.tsx
+./admin_system/web/src/pages/AuditLogs.tsx
+./admin_system/web/src/pages/Config.tsx
+./admin_system/web/src/pages/Dashboard.tsx
+./admin_system/web/src/pages/FeatureFlags.tsx
+./admin_system/web/src/pages/Notifications.tsx
+./admin_system/web/src/pages/Settings.tsx
+./admin_system/web/src/pages/Users.tsx
+./approval_manager/frontend/src/page.tsx
+./bots/desktop/src/styles.css
+./bots/web/src/components/Layout.tsx
+./bots/web/src/contexts/ThemeContext.tsx
+./bots/web/src/pages/Settings.tsx
+./browser_extension/chrome/src/popup/popup.css
+./browser_extensions/chrome/src/popup/popup.css
+./copy_trading/frontend/src/app/copy-trading/page.tsx
+./crypto_card/frontend/src/components/CardComponent.tsx
+./crypto_card/frontend/src/hooks/useTheme.tsx
+./crypto_card/frontend/src/pages/CardDashboard.tsx
+./desktop_app/src/styles.css
+./frontend/admin_dashboard/AdminDashboard.tsx
+./frontend/admin_dashboard/CompleteAdminDashboard.tsx
+./frontend/admin_dashboard/Theme.tsx
+./frontend/admin_panel/src/App.tsx
+./frontend/admin_panel/src/components/Layout.tsx
+./frontend/admin_panel/src/pages/Analytics.tsx
+./frontend/admin_panel/src/pages/Bridges.tsx
+./frontend/admin_panel/src/pages/Chains.tsx
+./frontend/admin_panel/src/pages/Compliance.tsx
+./frontend/admin_panel/src/pages/DEXs.tsx
+./frontend/admin_panel/src/pages/Dashboard.tsx
+./frontend/admin_panel/src/pages/Fees.tsx
+./frontend/admin_panel/src/pages/Integrations.tsx
+./frontend/admin_panel/src/pages/MarketMaker.tsx
+./frontend/admin_panel/src/pages/Notifications.tsx
+./frontend/admin_panel/src/pages/Pools.tsx
+./frontend/admin_panel/src/pages/Security.tsx
+./frontend/admin_panel/src/pages/Settings.tsx
+./frontend/admin_panel/src/pages/Support.tsx
+./frontend/admin_panel/src/pages/Transactions.tsx
+./frontend/admin_panel/src/pages/Treasury.tsx
+./frontend/desktop/src/theme.tsx
+./frontend/react/admin-panel/src/components/common/Header.css
+./frontend/react/admin-panel/src/components/common/Header.tsx
+./frontend/react/admin-panel/src/components/common/Layout.css
+./frontend/react/admin-panel/src/components/common/Layout.tsx
+./frontend/react/admin-panel/src/components/common/Sidebar.tsx
+./frontend/react/admin-panel/src/components/common/ThemeProvider.tsx
+./frontend/react/admin-panel/src/components/common/globals.css
+./frontend/shared/components/QRScanner.tsx
+./frontend/shared/src/theme/ThemeProvider.tsx
+./frontend/shared/theme/ThemeProvider.tsx
+./frontend/web/src/app/globals.css
+./frontend/web/src/app/page.tsx
+./frontend/web/src/app/wallet/dashboard.tsx
+./frontend/web/src/components/ThemeToggle.tsx
+./frontend/web/src/components/WalletDashboard.tsx
+./frontend/web/src/context/ThemeContext.tsx
+./frontend/web/src/context/ThemeProvider.tsx
+== PLACEHOLDERS ==
+./account_abstraction/frontend/src/app/account-abstraction/page.tsx:28:    rpcUrl: "https://eth-mainnet.g.alchemy.com/v2/demo",
+./account_abstraction/frontend/src/app/account-abstraction/page.tsx:36:    rpcUrl: "https://eth-goerli.g.alchemy.com/v2/demo",
+./account_abstraction/frontend/src/app/account-abstraction/page.tsx:65:// Entry Point ABI (simplified for demo)
+./account_abstraction/frontend/src/app/account-abstraction/page.tsx:213:        paymasterAndData: config.entryPoint, // Using entry point as paymaster for demo
+./account_abstraction/frontend/src/app/account-abstraction/page.tsx:518:                    placeholder="0x..."
+./account_abstraction/frontend/src/app/account-abstraction/page.tsx:605:          placeholder="0x..."
+./account_abstraction/frontend/src/app/account-abstraction/page.tsx:618:          placeholder="0.0"
+./account_abstraction/rust/src/bundler.rs:292:    // Simplified for demonstration
+./account_abstraction/rust/src/recovery.rs:39:    /// Enable transaction simulation
+./account_abstraction/rust/src/recovery.rs:40:    pub enable_transaction_simulation: bool,
+./account_abstraction/rust/src/recovery.rs:52:            enable_transaction_simulation: true,
+./account_abstraction/rust/src/recovery.rs:265:        // - Transaction simulation
+./admin/desktop/src/App.tsx:144:        placeholder="Search users, transactions..."
+./admin/extensions/chrome/content.js:51:            const searchInput = document.querySelector('input[type="search"], input[placeholder*="search"]');
+./admin/extensions/chrome/js/popup.js:346:            // Use mock data for demo if API unavailable
+./admin/extensions/chrome/js/popup.js:498:            // Filter demo data
+./admin/extensions/chrome/js/popup.js:499:            const demoUsers = generateDemoUsers().filter(u => 
+./admin/extensions/chrome/js/popup.js:502:            renderUsers(demoUsers);
+./admin/extensions/firefox/content.js:51:            const searchInput = document.querySelector('input[type="search"], input[placeholder*="search"]');
+./admin/extensions/firefox/js/popup.js:346:            // Use mock data for demo if API unavailable
+./admin/extensions/firefox/js/popup.js:498:            // Filter demo data
+./admin/extensions/firefox/js/popup.js:499:            const demoUsers = generateDemoUsers().filter(u => 
+./admin/extensions/firefox/js/popup.js:502:            renderUsers(demoUsers);
+./admin/extensions/safari/content.js:51:            const searchInput = document.querySelector('input[type="search"], input[placeholder*="search"]');
+./admin/extensions/safari/js/popup.js:346:            // Use mock data for demo if API unavailable
+./admin/extensions/safari/js/popup.js:498:            // Filter demo data
+./admin/extensions/safari/js/popup.js:499:            const demoUsers = generateDemoUsers().filter(u => 
+./admin/extensions/safari/js/popup.js:502:            renderUsers(demoUsers);
+./admin/web/src/App.tsx:108:          placeholder="Search users, transactions, tokens..."
+./admin/web/src/pages/AuditLogsPage.tsx:102:                placeholder="Search admin..."
+./admin/web/src/pages/FeesPage.tsx:115:                  placeholder="0.3"
+./admin/web/src/pages/FeesPage.tsx:129:                  placeholder="0.1"
+./admin/web/src/pages/FeesPage.tsx:143:                  placeholder="0.2"
+./admin/web/src/pages/FeesPage.tsx:167:                  placeholder="0.0001"
+./admin/web/src/pages/FeesPage.tsx:181:                  placeholder="0.00001"
+./admin/web/src/pages/FeesPage.tsx:195:                  placeholder="0.00001"
+./admin/web/src/pages/FeesPage.tsx:219:                  placeholder="0"
+./admin/web/src/pages/KycPage.tsx:174:                placeholder="Search by email or name..."
+./admin/web/src/pages/KycPage.tsx:349:                  placeholder="Add approval notes..."
+./admin/web/src/pages/KycPage.tsx:386:                  placeholder="Enter rejection reason..."
+./admin/web/src/pages/TokensPage.tsx:161:                placeholder="Search by name or symbol..."
+./admin/web/src/pages/TokensPage.tsx:367:                  placeholder="0x..."
+./admin/web/src/pages/TokensPage.tsx:377:                  placeholder="Token Name"
+./admin/web/src/pages/TokensPage.tsx:387:                  placeholder="SYMBOL"
+./admin/web/src/pages/TransactionsPage.tsx:144:                placeholder="Search by hash, from, to..."
+./admin/web/src/pages/TransactionsPage.tsx:357:                  placeholder="Enter reason for flagging..."
+./admin/web/src/pages/UsersPage.tsx:142:                placeholder="Search by email or username..."
+./admin/web/src/pages/UsersPage.tsx:355:                  placeholder="Enter reason for suspension..."
+./admin/web/src/pages/WhiteLabelsPage.tsx:274:                  placeholder="White Label Name"
+./admin/web/src/pages/WhiteLabelsPage.tsx:284:                  placeholder="example.tigerwallet.io"
+./admin/web/src/pages/WhiteLabelsPage.tsx:294:                  placeholder="John Doe"
+./admin/web/src/pages/WhiteLabelsPage.tsx:304:                  placeholder="john@example.com"
+./admin/web/src/pages/WithdrawalsPage.tsx:355:                  placeholder="Enter rejection reason..."
+./admin_backend/internal/handlers/notification_handler.go:68:		// TODO: Send email notification
+./admin_backend/internal/handlers/notification_handler.go:71:		// TODO: Send SMS notification
+./admin_backend/internal/handlers/notification_handler.go:74:		// TODO: Send push notification
+./admin_backend/internal/handlers/notification_handler.go:326:	// For now, use placeholder
+./admin_backend/internal/services/notification_service.go:128:		placeholder := fmt.Sprintf("{{.%s}}", key)
+./admin_backend/internal/services/notification_service.go:129:		result = strings.ReplaceAll(result, placeholder, fmt.Sprintf("%v", value))
+./admin_backend/services/super_admin_service.go:165:    // For demo, mark as completed
+./admin_console/go/internal/services/auth_service.go:323:	// For now, return a placeholder
+./admin_frontend/src/pages/WhiteLabels.tsx:224:            placeholder="Search white labels..."
+./admin_frontend/src/pages/WhiteLabels.tsx:227:            className="px-4 py-2 bg-[var(--input-bg)] border border-[var(--border-color)] rounded-lg text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]"
+./admin_frontend/src/pages/WhiteLabels.tsx:383:                  placeholder="My White Label"
+./admin_frontend/src/pages/WhiteLabels.tsx:396:                  placeholder="mydomain.com"
+./admin_frontend_complete/src/App.tsx:685:        fullWidth placeholder="Search tenants..." value={search} onChange={(e) => setSearch(e.target.value)}
+./admin_frontend_complete/src/pages/CryptoCards.tsx:102:          placeholder="Search..."
+./admin_frontend_complete/src/pages/Features.tsx:168:                <input type="text" name="name" required placeholder="Feature name" />
+./admin_frontend_complete/src/pages/Features.tsx:172:                <textarea name="description" required placeholder="Feature description"></textarea>
+./admin_frontend_complete/src/pages/Features.tsx:176:                <input type="text" name="category" required placeholder="e.g., Trading, Payments" />
+./admin_frontend_complete/src/pages/Liquidity.tsx:179:                <input type="number" name="amountA" required placeholder="0.00" />
+./admin_frontend_complete/src/pages/Liquidity.tsx:183:                <input type="number" name="amountB" required placeholder="0.00" />
+./admin_frontend_complete/src/pages/P2PMerchant.tsx:134:          placeholder="Search merchants..."
+./admin_panel/go/internal/services/auth_service.go:144:	// This is a placeholder for actual TOTP verification
+./admin_panel/production/react/src/App.tsx:147:              placeholder="superadmin@tigerwallet.com"
+./admin_panel/production/react/src/App.tsx:157:              placeholder="••••••••"
+./admin_panel/production/react/src/pages/APIManagement.tsx:116:              <input type="text" placeholder="https://..." className="input" />
+./admin_panel/production/react/src/pages/APIManagement.tsx:120:              <input type="text" placeholder="https://..." className="input" />
+./admin_panel/production/react/src/pages/BlockchainManagement.tsx:209:          <p className="text-sm opacity-60">Node management and monitoring coming soon...</p>
+./admin_panel/production/react/src/pages/MasterWallet.tsx:161:              <input type="text" placeholder="e.g., Arbitrum One" className="input" />
+./admin_panel/production/react/src/pages/MasterWallet.tsx:165:              <input type="number" placeholder="e.g., 42161" className="input" />
+./admin_panel/production/react/src/pages/MasterWallet.tsx:169:              <input type="text" placeholder="https://..." className="input" />
+./admin_panel/production/react/src/pages/MasterWallet.tsx:173:              <input type="text" placeholder="https://..." className="input" />
+./admin_panel/production/react/src/pages/MasterWallet.tsx:177:              <input type="text" placeholder="e.g., ETH" className="input" />
+./admin_panel/production/react/src/pages/TokenManagement.tsx:183:              <input type="text" className="input" placeholder="My Token" />
+./admin_panel/production/react/src/pages/TokenManagement.tsx:187:              <input type="text" className="input" placeholder="MTK" />
+./admin_panel/production/react/src/pages/TokenManagement.tsx:204:              <input type="number" className="input" placeholder="1000000" />
+./admin_panel/production/react/src/pages/TokenManagement.tsx:208:              <input type="number" className="input" placeholder="10000000" />
+./admin_panel/production/react/src/pages/WhiteLabelManagement.tsx:96:      // Fallback: empty array - no mock data
+./admin_panel/production/react/src/pages/WhiteLabelManagement.tsx:399:                  placeholder="Company Name"
+./admin_panel/production/react/src/pages/WhiteLabelManagement.tsx:409:                  placeholder="yourdomain.com"
+./admin_panel/production/react/src/pages/WhiteLabelManagement.tsx:419:                  placeholder="client"
+./admin_panel/production/react/src/pages/WhiteLabelManagement.tsx:442:                  placeholder="admin@company.com"
+./admin_panel/production/react/src/pages/WhiteLabelManagement.tsx:452:                  placeholder="John Doe"
+./admin_panel/src/components/Header.tsx:34:            placeholder="Search users, transactions, wallets..." 
+./admin_panel/src/pages/BlockchainPage.tsx:183:            placeholder="Search blockchains..."
+./admin_panel/src/pages/BlockchainPage.tsx:269:                    placeholder="Ethereum"
+./admin_panel/src/pages/BlockchainPage.tsx:278:                    placeholder="ETH"
+./admin_panel/src/pages/BlockchainPage.tsx:287:                    placeholder="1"
+./admin_panel/src/pages/BlockchainPage.tsx:306:                    placeholder="https://rpc.example.com"
+./admin_panel/src/pages/BlockchainPage.tsx:315:                    placeholder="https://explorer.example.com"
+./admin_panel/src/pages/BlockchainPage.tsx:324:                    placeholder="ETH"
+./admin_panel/src/pages/BlockchainPage.tsx:333:                    placeholder="12"
+./admin_panel/src/pages/CryptoCardPage.tsx:249:              placeholder="Search cards..."
+./admin_panel/src/pages/CryptoCardPage.tsx:397:              placeholder="Search transactions..."
+./admin_panel/src/pages/CryptoCardPage.tsx:509:                  placeholder="Add category..."
+./admin_panel/src/pages/FeesPage.tsx:304:                    placeholder="ALL or ETH"
+./admin_panel/src/pages/FeesPage.tsx:314:                    placeholder="0.5"
+./admin_panel/src/pages/FeesPage.tsx:324:                    placeholder="0.001"
+./admin_panel/src/pages/FeesPage.tsx:334:                    placeholder="0.01"
+./admin_panel/src/pages/FeesPage.tsx:344:                    placeholder="50"
+./admin_panel/src/pages/FiatOnRampPage.tsx:258:              placeholder="Search orders..."
+./admin_panel/src/pages/MarginTradingPage.tsx:282:              placeholder="Search pairs..."
+./admin_panel/src/pages/MarginTradingPage.tsx:367:              placeholder="Search positions..."
+./admin_panel/src/pages/P2PMerchantPage.tsx:305:              placeholder="Search merchants..."
+./admin_panel/src/pages/P2PMerchantPage.tsx:465:              placeholder="Search advertisements..."
+./admin_panel/src/pages/P2PTradingPage.tsx:278:              placeholder="Search orders..."
+./admin_panel/src/pages/P2PTradingPage.tsx:400:              placeholder="Search users..."
+./admin_panel/src/pages/PageStubs.tsx:161:          placeholder="Search wallets..." 
+./admin_panel/src/pages/PageStubs.tsx:921:            placeholder="Username" 
+./admin_panel/src/pages/PageStubs.tsx:928:            placeholder="Password" 
+./admin_panel/src/pages/PageStubs.tsx:1044:              placeholder="0x... or scan QR code"
+./admin_panel/src/pages/PageStubs.tsx:1081:            placeholder="0.0"
+./admin_panel/src/pages/PairsPage.tsx:164:            placeholder="Search pairs..."
+./admin_panel/src/pages/TradingManagementPage.tsx:237:          placeholder="Search pairs..."
+./admin_panel/src/pages/TradingManagementPage.tsx:366:                  <input type="text" placeholder="e.g., BTC" />
+./admin_panel/src/pages/TradingManagementPage.tsx:370:                  <input type="text" placeholder="e.g., USDT" />
+./admin_panel/src/pages/TradingManagementPage.tsx:384:                  <input type="number" placeholder="0.00" />
+./admin_panel/src/pages/TradingManagementPage.tsx:390:                  <input type="number" placeholder="0.001" />
+./admin_panel/src/pages/TradingManagementPage.tsx:394:                  <input type="number" placeholder="1000000" />
+./admin_panel/src/pages/TradingManagementPage.tsx:400:                  <input type="number" placeholder="0.02" step="0.01" />
+./admin_panel/src/pages/TradingManagementPage.tsx:404:                  <input type="number" placeholder="0.04" step="0.01" />
+./admin_panel/src/pages/TransactionsPage.tsx:174:            placeholder="Search by hash or address..."
+./admin_panel/src/pages/UsersPage.tsx:80:            placeholder="Search by email or wallet..." 
+./admin_panel/src/pages/WhiteLabelPage.tsx:372:                <input type="text" className="form-input" placeholder="Enter client name" />
+./admin_panel/src/pages/WhiteLabelPage.tsx:376:                <input type="text" className="form-input" placeholder="wallet.example.com" />
+./admin_panel/src/pages/WhiteLabelPage.tsx:388:                <input type="number" className="form-input" placeholder="20" />
+./admin_panel/src/services/api.ts:4: * No stubs - Real API calls only
+./admin_platform/desktop/src/renderer/pages/Login.tsx:61:              placeholder="admin@tigerwallet.com"
+./admin_platform/desktop/src/renderer/pages/Login.tsx:79:              placeholder="••••••••"
+./admin_platform/desktop/src/renderer/pages/Tickets.tsx:303:                    placeholder="Type your reply..."
+./admin_platform/desktop/src/renderer/pages/Users.tsx:82:            placeholder="Search..."
+./admin_platform/frontend/src/App.tsx:115:          placeholder="Search by email or wallet..."
+./admin_platform/frontend/src/App.tsx:606:            <p>Page "{currentPage}" coming soon...</p>
+./admin_platform/frontend/src/pages/api_management/APIManagementScreen.tsx:110:      const demoKeys: APIKey[] = [
+./admin_platform/frontend/src/pages/api_management/APIManagementScreen.tsx:172:      setApiKeys(demoKeys);
+./admin_platform/frontend/src/pages/api_management/APIManagementScreen.tsx:173:      setFilteredKeys(demoKeys);
+./admin_platform/frontend/src/pages/api_management/APIManagementScreen.tsx:175:        totalKeys: demoKeys.length,
+./admin_platform/frontend/src/pages/api_management/APIManagementScreen.tsx:176:        activeKeys: demoKeys.filter(k => k.status === 'active').length,
+./admin_platform/frontend/src/pages/api_management/APIManagementScreen.tsx:177:        pausedKeys: demoKeys.filter(k => k.status === 'paused').length,
+./admin_platform/frontend/src/pages/api_management/APIManagementScreen.tsx:178:        revokedKeys: demoKeys.filter(k => k.status === 'revoked').length,
+./admin_platform/frontend/src/pages/api_management/APIManagementScreen.tsx:493:          placeholder="Search API keys..."
+./admin_platform/frontend/src/pages/api_management/APIManagementScreen.tsx:494:          placeholderTextColor={colors.textTertiary}
+./admin_platform/frontend/src/pages/api_management/APIManagementScreen.tsx:621:              placeholder="e.g., Trading Bot"
+./admin_platform/frontend/src/pages/api_management/APIManagementScreen.tsx:622:              placeholderTextColor={colors.textTertiary}
+./admin_platform/frontend/src/pages/api_management/APIManagementScreen.tsx:651:              placeholder="1000"
+./admin_platform/frontend/src/pages/api_management/APIManagementScreen.tsx:652:              placeholderTextColor={colors.textTertiary}
+./admin_platform/frontend/src/pages/api_management/APIManagementScreen.tsx:661:              placeholder="192.168.1.1, 10.0.0.1 (leave empty for any)"
+./admin_platform/frontend/src/pages/api_management/APIManagementScreen.tsx:662:              placeholderTextColor={colors.textTertiary}
+./admin_platform/frontend/src/pages/audit_logs/AuditLogsPage.tsx:63:const mockAuditLogs: AuditLog[] = [
+./admin_platform/frontend/src/pages/audit_logs/AuditLogsPage.tsx:79:  let filtered = [...mockAuditLogs];
+./admin_platform/frontend/src/pages/audit_logs/AuditLogsPage.tsx:102:    total: mockAuditLogs.length,
+./admin_platform/frontend/src/pages/audit_logs/AuditLogsPage.tsx:103:    success: mockAuditLogs.filter(l => l.status === 'success').length,
+./admin_platform/frontend/src/pages/audit_logs/AuditLogsPage.tsx:104:    failed: mockAuditLogs.filter(l => l.status === 'failed').length,
+./admin_platform/frontend/src/pages/audit_logs/AuditLogsPage.tsx:105:    pending: mockAuditLogs.filter(l => l.status === 'pending').length,
+./admin_platform/frontend/src/pages/batch_operations/BatchOperationsPage.tsx:53:const mockBatchOperations: BatchOperation[] = [
+./admin_platform/frontend/src/pages/batch_operations/BatchOperationsPage.tsx:84:    setOperations(mockBatchOperations);
+./admin_platform/frontend/src/pages/chains/ChainsScreen.tsx:28:const mockBlockchains: Blockchain[] = [
+./admin_platform/frontend/src/pages/chains/ChainsScreen.tsx:54:  const [blockchains, setBlockchains] = useState<Blockchain[]>(mockBlockchains);
+./admin_platform/frontend/src/pages/chains/ChainsScreen.tsx:175:          placeholder="Search by name or symbol..."
+./admin_platform/frontend/src/pages/chains/ChainsScreen.tsx:176:          placeholderTextColor={isDark ? COLORS.gray : COLORS.lightGray}
+./admin_platform/frontend/src/pages/coupons/CouponsScreen.tsx:107:      const demoCoupons: Coupon[] = [
+./admin_platform/frontend/src/pages/coupons/CouponsScreen.tsx:113:      const demoRedPackets: RedPacket[] = [
+./admin_platform/frontend/src/pages/coupons/CouponsScreen.tsx:118:      setCoupons(demoCoupons);
+./admin_platform/frontend/src/pages/coupons/CouponsScreen.tsx:119:      setRedPackets(demoRedPackets);
+./admin_platform/frontend/src/pages/coupons/CouponsScreen.tsx:121:        totalCoupons: demoCoupons.length,
+./admin_platform/frontend/src/pages/coupons/CouponsScreen.tsx:122:        activeCoupons: demoCoupons.filter(c => c.status === 'active').length,
+./admin_platform/frontend/src/pages/coupons/CouponsScreen.tsx:123:        totalRedPackets: demoRedPackets.length,
+./admin_platform/frontend/src/pages/coupons/CouponsScreen.tsx:124:        activeRedPackets: demoRedPackets.filter(r => r.status === 'active').length
+./admin_platform/frontend/src/pages/coupons/CouponsScreen.tsx:308:                <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]} value={couponForm.code} onChangeText={t => setCouponForm({ ...couponForm, code: t })} placeholder="CODE2024" placeholderTextColor={colors.textTertiary} />
+./admin_platform/frontend/src/pages/coupons/CouponsScreen.tsx:318:                <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]} value={couponForm.discount} onChangeText={t => setCouponForm({ ...couponForm, discount: t })} keyboardType="numeric" placeholder="10" placeholderTextColor={colors.textTertiary} />
+./admin_platform/frontend/src/pages/coupons/CouponsScreen.tsx:320:                <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]} value={couponForm.maxUses} onChangeText={t => setCouponForm({ ...couponForm, maxUses: t })} keyboardType="numeric" placeholder="100" placeholderTextColor={colors.textTertiary} />
+./admin_platform/frontend/src/pages/coupons/CouponsScreen.tsx:328:                <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]} value={redPacketForm.name} onChangeText={t => setRedPacketForm({ ...redPacketForm, name: t })} placeholder="Lucky Airdrop" placeholderTextColor={colors.textTertiary} />
+./admin_platform/frontend/src/pages/coupons/CouponsScreen.tsx:330:                <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]} value={redPacketForm.tokenSymbol} onChangeText={t => setRedPacketForm({ ...redPacketForm, tokenSymbol: t })} placeholder="USDT" placeholderTextColor={colors.textTertiary} />
+./admin_platform/frontend/src/pages/coupons/CouponsScreen.tsx:332:                <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]} value={redPacketForm.amount} onChangeText={t => setRedPacketForm({ ...redPacketForm, amount: t })} keyboardType="numeric" placeholder="1000" placeholderTextColor={colors.textTertiary} />
+./admin_platform/frontend/src/pages/coupons/CouponsScreen.tsx:334:                <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]} value={redPacketForm.totalPackets} onChangeText={t => setRedPacketForm({ ...redPacketForm, totalPackets: t })} keyboardType="numeric" placeholder="100" placeholderTextColor={colors.textTertiary} />
+./admin_platform/frontend/src/pages/fees/FeesScreen.tsx:23:const mockFees: FeeConfig[] = [
+./admin_platform/frontend/src/pages/fees/FeesScreen.tsx:37:  const [fees] = useState<FeeConfig[]>(mockFees);
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:126:      const demoClients: InstitutionalClient[] = [
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:233:      setClients(demoClients);
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:234:      setFilteredClients(demoClients);
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:237:        total: demoClients.length,
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:238:        active: demoClients.filter(c => c.status === 'active').length,
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:239:        pending: demoClients.filter(c => c.status === 'pending').length,
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:240:        suspended: demoClients.filter(c => c.status === 'suspended').length,
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:241:        totalVolume: demoClients.reduce((sum, c) => sum + c.monthlyVolume, 0),
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:242:        totalClients: demoClients.length,
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:512:          placeholder="Search clients..."
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:513:          placeholderTextColor={colors.textTertiary}
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:637:              placeholder="e.g., Alpha Hedge Fund"
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:638:              placeholderTextColor={colors.textTertiary}
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:667:              placeholder="contact@company.com"
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:668:              placeholderTextColor={colors.textTertiary}
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:677:              placeholder="+1-555-0000"
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:678:              placeholderTextColor={colors.textTertiary}
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:686:              placeholder="United States"
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:687:              placeholderTextColor={colors.textTertiary}
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:695:              placeholder="1000000"
+./admin_platform/frontend/src/pages/institutional/InstitutionalScreen.tsx:696:              placeholderTextColor={colors.textTertiary}
+./admin_platform/frontend/src/pages/iou/IOUScreen.tsx:97:      const demo: IOU[] = [
+./admin_platform/frontend/src/pages/iou/IOUScreen.tsx:104:      setIous(demo);
+./admin_platform/frontend/src/pages/iou/IOUScreen.tsx:105:      setFiltered(demo);
+./admin_platform/frontend/src/pages/iou/IOUScreen.tsx:106:      const outstanding = demo.filter(i => i.status === 'active' || i.status === 'pending').reduce((s, i) => s + (i.amount - i.settledAmount), 0);
+./admin_platform/frontend/src/pages/iou/IOUScreen.tsx:107:      setStats({ total: demo.length, active: demo.filter(i => i.status === 'active').length, pending: demo.filter(i => i.status === 'pending').length, settled: demo.filter(i => i.status === 'settled').length, defaulted: demo.filter(i => i.status === 'defaulted').length, totalOutstanding: outstanding });
+./admin_platform/frontend/src/pages/iou/IOUScreen.tsx:248:        <TextInput style={[styles.search, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]} placeholder="Search IOU..." placeholderTextColor={colors.textTertiary} value={searchQuery} onChangeText={setSearchQuery} />
+./admin_platform/frontend/src/pages/iou/IOUScreen.tsx:289:            <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]} value={iouForm.userEmail} onChangeText={t => setIouForm({ ...iouForm, userEmail: t })} placeholder="user@example.com" placeholderTextColor={colors.textTertiary} />
+./admin_platform/frontend/src/pages/iou/IOUScreen.tsx:299:            <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]} value={iouForm.amount} onChangeText={t => setIouForm({ ...iouForm, amount: t })} keyboardType="numeric" placeholder="1000" placeholderTextColor={colors.textTertiary} />
+./admin_platform/frontend/src/pages/iou/IOUScreen.tsx:301:            <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]} value={iouForm.tokenSymbol} onChangeText={t => setIouForm({ ...iouForm, tokenSymbol: t })} placeholder="USDT" placeholderTextColor={colors.textTertiary} />
+./admin_platform/frontend/src/pages/iou/IOUScreen.tsx:303:            <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]} value={iouForm.interest} onChangeText={t => setIouForm({ ...iouForm, interest: t })} keyboardType="numeric" placeholder="5" placeholderTextColor={colors.textTertiary} />
+./admin_platform/frontend/src/pages/iou/IOUScreen.tsx:305:            <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]} value={iouForm.durationDays} onChangeText={t => setIouForm({ ...iouForm, durationDays: t })} keyboardType="numeric" placeholder="30" placeholderTextColor={colors.textTertiary} />
+./admin_platform/frontend/src/pages/kyc/KYCScreen.tsx:125:      // Use demo data for demonstration
+./admin_platform/frontend/src/pages/kyc/KYCScreen.tsx:126:      const demoRecords: KYCRecord[] = [
+./admin_platform/frontend/src/pages/kyc/KYCScreen.tsx:197:      setKycRecords(demoRecords);
+./admin_platform/frontend/src/pages/kyc/KYCScreen.tsx:198:      setFilteredRecords(demoRecords);
+./admin_platform/frontend/src/pages/kyc/KYCScreen.tsx:200:        total: demoRecords.length,
+./admin_platform/frontend/src/pages/kyc/KYCScreen.tsx:201:        pending: demoRecords.filter(r => r.status === 'pending').length,
+./admin_platform/frontend/src/pages/kyc/KYCScreen.tsx:202:        reviewing: demoRecords.filter(r => r.status === 'reviewing').length,
+./admin_platform/frontend/src/pages/kyc/KYCScreen.tsx:203:        approved: demoRecords.filter(r => r.status === 'approved').length,
+./admin_platform/frontend/src/pages/kyc/KYCScreen.tsx:204:        rejected: demoRecords.filter(r => r.status === 'rejected').length,
+./admin_platform/frontend/src/pages/kyc/KYCScreen.tsx:205:        suspended: demoRecords.filter(r => r.status === 'suspended').length,
+./admin_platform/frontend/src/pages/kyc/KYCScreen.tsx:454:          placeholder="Search by name, email, or ID..."
+./admin_platform/frontend/src/pages/kyc/KYCScreen.tsx:455:          placeholderTextColor={colors.textTertiary}
+./admin_platform/frontend/src/pages/kyc/KYCScreen.tsx:594:              placeholder={reviewAction === 'reject' ? 'Enter rejection reason...' : 'Add notes...'}
+./admin_platform/frontend/src/pages/kyc/KYCScreen.tsx:595:              placeholderTextColor={colors.textTertiary}
+./admin_platform/frontend/src/pages/liquidity/LiquidityScreen.tsx:124:      const demoPools: LiquidityPool[] = [
+./admin_platform/frontend/src/pages/liquidity/LiquidityScreen.tsx:227:      setPools(demoPools);
+./admin_platform/frontend/src/pages/liquidity/LiquidityScreen.tsx:228:      setFilteredPools(demoPools);
+./admin_platform/frontend/src/pages/liquidity/LiquidityScreen.tsx:230:      const totalLiquidity = demoPools.reduce((sum, p) => sum + p.liquidityUSD, 0);
+./admin_platform/frontend/src/pages/liquidity/LiquidityScreen.tsx:231:      const avgAPY = demoPools.length ? demoPools.reduce((sum, p) => sum + p.apy, 0) / demoPools.length : 0;
+./admin_platform/frontend/src/pages/liquidity/LiquidityScreen.tsx:234:        totalPools: demoPools.length,
+== SQLITE CLIENT REFS ==

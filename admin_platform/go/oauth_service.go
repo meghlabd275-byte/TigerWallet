@@ -31,20 +31,20 @@ import (
 
 type OAuthConfig struct {
 	// OAuth Providers
-	GoogleClientID     string
-	GoogleClientSecret string
-	GitHubClientID     string
-	GitHubClientSecret string
-	FacebookClientID   string
+	GoogleClientID       string
+	GoogleClientSecret   string
+	GitHubClientID       string
+	GitHubClientSecret   string
+	FacebookClientID     string
 	FacebookClientSecret string
-	
+
 	// JWT
 	JWT_SECRET string
-	
+
 	// URLs
-	BaseURL         string
-	RedirectURL     string
-	
+	BaseURL     string
+	RedirectURL string
+
 	// Session
 	SessionExpiry time.Duration
 }
@@ -58,7 +58,7 @@ var oauthStateStore = NewOAuthStateStore()
 // ============================================================================
 
 type OAuthState struct {
-	State     string
+	State    string
 	Provider string
 	UserID   string
 	Nonce    string
@@ -79,41 +79,41 @@ func NewOAuthStateStore() *OAuthStateStore {
 func (s *OAuthStateStore) Generate(provider, userID string) string {
 	state := generateRandomString(32)
 	nonce := generateRandomString(16)
-	
+
 	s.states[state] = &OAuthState{
-		State:   state,
+		State:    state,
 		Provider: provider,
-		UserID:  userID,
-		Nonce:   nonce,
-		Expiry:  time.Now().Add(10 * time.Minute),
+		UserID:   userID,
+		Nonce:    nonce,
+		Expiry:   time.Now().Add(10 * time.Minute),
 	}
-	
+
 	// Clean up expired states periodically
 	go func() {
 		time.Sleep(5 * time.Minute)
 		s.cleanup()
 	}()
-	
+
 	return state
 }
 
 func (s *OAuthStateStore) Validate(state, nonce string) (*OAuthState, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	sstate, ok := s.states[state]
 	if !ok {
 		return nil, fmt.Errorf("invalid state")
 	}
-	
+
 	if time.Now().After(sstate.Expiry) {
 		return nil, fmt.Errorf("state expired")
 	}
-	
+
 	if nonce != "" && sstate.Nonce != nonce {
 		return nil, fmt.Errorf("invalid nonce")
 	}
-	
+
 	return sstate, nil
 }
 
@@ -126,7 +126,7 @@ func (s *OAuthStateStore) Delete(state string) {
 func (s *OAuthStateStore) cleanup() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	now := time.Now()
 	for state, sstate := range s.states {
 		if now.After(sstate.Expiry) {
@@ -146,13 +146,13 @@ func initOAuth() {
 		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
 		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
 		JWT_SECRET:         os.Getenv("JWT_SECRET"),
-		BaseURL:           os.Getenv("BASE_URL"),
-		RedirectURL:       os.Getenv("REDIRECT_URL"),
-		SessionExpiry:     24 * time.Hour,
+		BaseURL:            os.Getenv("BASE_URL"),
+		RedirectURL:        os.Getenv("REDIRECT_URL"),
+		SessionExpiry:      24 * time.Hour,
 	}
-	
+
 	oauth2ConfigMap = make(map[string]*oauth2.Config)
-	
+
 	// Google OAuth2 Config
 	if oauthCfg.GoogleClientID != "" {
 		oauth2ConfigMap["google"] = &oauth2.Config{
@@ -163,7 +163,7 @@ func initOAuth() {
 			RedirectURL:  oauthCfg.RedirectURL + "/oauth/google/callback",
 		}
 	}
-	
+
 	// GitHub OAuth2 Config
 	if oauthCfg.GitHubClientID != "" {
 		oauth2ConfigMap["github"] = &oauth2.Config{
@@ -197,9 +197,9 @@ func (h *OAuthHandler) GetLoginURL(provider string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("provider %s not configured", provider)
 	}
-	
+
 	state := oauthStateStore.Generate(provider, "")
-	
+
 	url := cfg.AuthCodeURL(state, oauth2.AccessTypeOnline, oauth2.ApprovalForce)
 	return url, nil
 }
@@ -208,50 +208,50 @@ func (h *OAuthHandler) GetLoginURL(provider string) (string, error) {
 func (h *OAuthHandler) HandleOAuthCallback(c *gin.Context, provider string) error {
 	state := c.Query("state")
 	code := c.Query("code")
-	
+
 	// Validate state
 	oauthState, err := oauthStateStore.Validate(state, "")
 	if err != nil {
 		return fmt.Errorf("invalid state: %w", err)
 	}
-	
+
 	if oauthState.Provider != provider {
 		return fmt.Errorf("provider mismatch")
 	}
-	
+
 	// Get OAuth config
 	cfg, ok := oauth2ConfigMap[provider]
 	if !ok {
 		return fmt.Errorf("provider %s not configured", provider)
 	}
-	
+
 	// Exchange code for token
 	token, err := cfg.Exchange(context.Background(), code)
 	if err != nil {
 		return fmt.Errorf("code exchange failed: %w", err)
 	}
-	
+
 	// Get user info
 	userInfo, err := h.getUserInfo(provider, token)
 	if err != nil {
 		return fmt.Errorf("failed to get user info: %w", err)
 	}
-	
+
 	// Generate JWT token
 	jwtToken, err := h.generateJWT(userInfo)
 	if err != nil {
 		return fmt.Errorf("failed to generate token: %w", err)
 	}
-	
+
 	// Clean up state
 	oauthStateStore.Delete(state)
-	
+
 	// Return token
 	c.JSON(http.StatusOK, gin.H{
 		"token": jwtToken,
 		"user":  userInfo,
 	})
-	
+
 	return nil
 }
 
@@ -273,9 +273,9 @@ func (h *OAuthHandler) getGoogleUserInfo(token *oauth2.Token) (*OAuthUserInfo, e
 		return nil, err
 	}
 	defer resp.Body.Close()
-	
+
 	data, _ := io.ReadAll(resp.Body)
-	
+
 	var userInfo struct {
 		ID            string `json:"id"`
 		Email         string `json:"email"`
@@ -283,9 +283,9 @@ func (h *OAuthHandler) getGoogleUserInfo(token *oauth2.Token) (*OAuthUserInfo, e
 		Picture       string `json:"picture"`
 		VerifiedEmail bool   `json:"verified_email"`
 	}
-	
+
 	json.Unmarshal(data, &userInfo)
-	
+
 	return &OAuthUserInfo{
 		Provider:     "google",
 		ProviderID:   userInfo.ID,
@@ -300,16 +300,16 @@ func (h *OAuthHandler) getGoogleUserInfo(token *oauth2.Token) (*OAuthUserInfo, e
 
 func (h *OAuthHandler) getGitHubUserInfo(token *oauth2.Token) (*OAuthUserInfo, error) {
 	client := oauthCfg.Client(context.Background(), token)
-	
+
 	// Get user info
 	resp, err := client.Get("https://api.github.com/user")
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	
+
 	data, _ := io.ReadAll(resp.Body)
-	
+
 	var userInfo struct {
 		ID        int    `json:"id"`
 		Login     string `json:"login"`
@@ -317,9 +317,9 @@ func (h *OAuthHandler) getGitHubUserInfo(token *oauth2.Token) (*OAuthUserInfo, e
 		Email     string `json:"email"`
 		AvatarURL string `json:"avatar_url"`
 	}
-	
+
 	json.Unmarshal(data, &userInfo)
-	
+
 	// Get primary email if not public
 	email := userInfo.Email
 	if email == "" {
@@ -328,8 +328,8 @@ func (h *OAuthHandler) getGitHubUserInfo(token *oauth2.Token) (*OAuthUserInfo, e
 			defer emailResp.Body.Close()
 			emailData, _ := io.ReadAll(emailResp.Body)
 			var emails []struct {
-				Email    string `json:"email"`
-				Primary  bool   `json:"primary"`
+				Email   string `json:"email"`
+				Primary bool   `json:"primary"`
 			}
 			json.Unmarshal(emailData, &emails)
 			for _, e := range emails {
@@ -340,7 +340,7 @@ func (h *OAuthHandler) getGitHubUserInfo(token *oauth2.Token) (*OAuthUserInfo, e
 			}
 		}
 	}
-	
+
 	return &OAuthUserInfo{
 		Provider:     "github",
 		ProviderID:   fmt.Sprintf("%d", userInfo.ID),
@@ -366,16 +366,16 @@ type OAuthUserInfo struct {
 
 func (h *OAuthHandler) generateJWT(userInfo *OAuthUserInfo) (string, error) {
 	claims := jwt.MapClaims{
-		"sub":       userInfo.ProviderID,
-		"email":     userInfo.Email,
-		"name":       userInfo.Name,
-		"avatar":     userInfo.Avatar,
-		"provider":   userInfo.Provider,
-		"verified":   userInfo.Verified,
-		"exp":        time.Now().Add(oauthCfg.SessionExpiry).Unix(),
-		"iat":        time.Now().Unix(),
+		"sub":      userInfo.ProviderID,
+		"email":    userInfo.Email,
+		"name":     userInfo.Name,
+		"avatar":   userInfo.Avatar,
+		"provider": userInfo.Provider,
+		"verified": userInfo.Verified,
+		"exp":      time.Now().Add(oauthCfg.SessionExpiry).Unix(),
+		"iat":      time.Now().Unix(),
 	}
-	
+
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(oauthCfg.JWT_SECRET))
 }
@@ -391,15 +391,15 @@ func (h *OAuthHandler) RegisterRoutes(router *gin.RouterGroup) {
 		oauth.GET("/login/:provider", h.handleLogin)
 		oauth.GET("/google/login", h.handleGoogleLogin)
 		oauth.GET("/github/login", h.handleGitHubLogin)
-		
+
 		// Callback endpoints
 		oauth.GET("/google/callback", h.handleGoogleCallback)
 		oauth.GET("/github/callback", h.handleGitHubCallback)
-		
+
 		// Link account
 		oauth.POST("/link/:provider", h.handleLinkAccount)
 		oauth.DELETE("/unlink/:provider", h.handleUnlinkAccount)
-		
+
 		// Token refresh
 		oauth.POST("/refresh", h.handleRefreshToken)
 	}
@@ -407,13 +407,13 @@ func (h *OAuthHandler) RegisterRoutes(router *gin.RouterGroup) {
 
 func (h *OAuthHandler) handleLogin(c *gin.Context) {
 	provider := c.Param("provider")
-	
+
 	url, err := h.GetLoginURL(provider)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"url": url})
 }
 
@@ -423,7 +423,7 @@ func (h *OAuthHandler) handleGoogleLogin(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.Redirect(http.StatusFound, url)
 }
 
@@ -433,7 +433,7 @@ func (h *OAuthHandler) handleGitHubLogin(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.Redirect(http.StatusFound, url)
 }
 
@@ -453,26 +453,26 @@ func (h *OAuthHandler) handleGitHubCallback(c *gin.Context) {
 
 func (h *OAuthHandler) handleLinkAccount(c *gin.Context) {
 	provider := c.Param("provider")
-	
+
 	url, err := h.GetLoginURL(provider)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"url": url, "message": "Link your account"})
 }
 
 func (h *OAuthHandler) handleUnlinkAccount(c *gin.Context) {
 	provider := c.Param("provider")
-	
+
 	// Get current user from context
 	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
 		return
 	}
-	
+
 	// Unlink account logic here
 	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Unlinked %s account", provider)})
 }
@@ -481,12 +481,12 @@ func (h *OAuthHandler) handleRefreshToken(c *gin.Context) {
 	var req struct {
 		RefreshToken string `json:"refresh_token" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Verify and generate new token
 	// In production, validate refresh token and issue new access token
 	c.JSON(http.StatusOK, gin.H{"message": "Token refreshed"})
@@ -514,9 +514,9 @@ func hashToken(token string) string {
 type SAMLConfig struct {
 	IDPEntityID         string
 	IDPSSOURL           string
-	IDPCert            string
-	SPEntityID         string
-	SPACSURL           string
+	IDPCert             string
+	SPEntityID          string
+	SPACSURL            string
 	AttributeNameFormat string
 }
 
@@ -544,9 +544,9 @@ func (s *SAMLService) ProcessResponse(response, relayState string) (*SAMLAsserti
 }
 
 type SAMLAssertion struct {
-	NameID    string
-	Email     string
-	FirstName string
-	LastName  string
+	NameID     string
+	Email      string
+	FirstName  string
+	LastName   string
 	Attributes map[string]string
 }

@@ -7,40 +7,40 @@ import (
 )
 
 type User struct {
-	ID                uuid.UUID  `json:"id"`
-	Email             string     `json:"email"`
-	Username          string     `json:"username"`
-	PasswordHash      string     `json:"-"`
-	FirstName         *string    `json:"first_name,omitempty"`
-	LastName          *string    `json:"last_name,omitempty"`
-	Phone             *string    `json:"phone,omitempty"`
-	Role              string     `json:"role"`
-	Status            string     `json:"status"`
-	EmailVerified     bool       `json:"email_verified"`
-	TwoFactorEnabled  bool       `json:"two_factor_enabled"`
-	TwoFactorSecret   *string    `json:"-"`
-	LastLoginAt       *time.Time `json:"last_login_at"`
-	LoginAttempts     int        `json:"login_attempts"`
-	LockedUntil       *time.Time `json:"locked_until"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
+	ID               uuid.UUID  `json:"id"`
+	Email            string     `json:"email"`
+	Username         string     `json:"username"`
+	PasswordHash     string     `json:"-"`
+	FirstName        *string    `json:"first_name,omitempty"`
+	LastName         *string    `json:"last_name,omitempty"`
+	Phone            *string    `json:"phone,omitempty"`
+	Role             string     `json:"role"`
+	Status           string     `json:"status"`
+	EmailVerified    bool       `json:"email_verified"`
+	TwoFactorEnabled bool       `json:"two_factor_enabled"`
+	TwoFactorSecret  *string    `json:"-"`
+	LastLoginAt      *time.Time `json:"last_login_at"`
+	LoginAttempts    int        `json:"login_attempts"`
+	LockedUntil      *time.Time `json:"locked_until"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 type UserProfile struct {
-	ID            uuid.UUID  `json:"id"`
-	UserID        uuid.UUID  `json:"user_id"`
-	AvatarURL     *string   `json:"avatar_url,omitempty"`
-	Bio           *string   `json:"bio,omitempty"`
-	DateOfBirth   *Date     `json:"date_of_birth,omitempty"`
-	Address       *string   `json:"address,omitempty"`
-	City          *string   `json:"city,omitempty"`
-	Country       *string   `json:"country,omitempty"`
-	PostalCode    *string   `json:"postal_code,omitempty"`
-	Timezone      string    `json:"timezone"`
-	Language      string    `json:"language"`
-	Preferences   map[string]interface{} `json:"preferences"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID          uuid.UUID              `json:"id"`
+	UserID      uuid.UUID              `json:"user_id"`
+	AvatarURL   *string                `json:"avatar_url,omitempty"`
+	Bio         *string                `json:"bio,omitempty"`
+	DateOfBirth *Date                  `json:"date_of_birth,omitempty"`
+	Address     *string                `json:"address,omitempty"`
+	City        *string                `json:"city,omitempty"`
+	Country     *string                `json:"country,omitempty"`
+	PostalCode  *string                `json:"postal_code,omitempty"`
+	Timezone    string                 `json:"timezone"`
+	Language    string                 `json:"language"`
+	Preferences map[string]interface{} `json:"preferences"`
+	CreatedAt   time.Time              `json:"created_at"`
+	UpdatedAt   time.Time              `json:"updated_at"`
 }
 
 type Date time.Time
@@ -102,42 +102,42 @@ type Token struct {
 }
 
 type Transaction struct {
-	ID            uuid.UUID              `json:"id"`
-	TxHash        string                 `json:"tx_hash"`
-	UserID        uuid.UUID              `json:"user_id"`
-	TokenID       *uuid.UUID             `json:"token_id,omitempty"`
-	Type          string                 `json:"type"`
-	Amount        string                 `json:"amount"`
-	Fee           *string                `json:"fee,omitempty"`
-	Status        string                 `json:"status"`
-	FlagReason    *string                `json:"flag_reason,omitempty"`
-	FlaggedBy     *uuid.UUID             `json:"flagged_by,omitempty"`
-	FlaggedAt     *time.Time             `json:"flagged_at,omitempty"`
-	ApprovedBy    *uuid.UUID             `json:"approved_by,omitempty"`
-	ApprovedAt    *time.Time             `json:"approved_at,omitempty"`
-	RejectedBy    *uuid.UUID             `json:"rejected_by,omitempty"`
-	RejectedAt    *time.Time             `json:"rejected_at,omitempty"`
-	FromAddress   *string                `json:"from_address,omitempty"`
-	ToAddress     *string                `json:"to_address,omitempty"`
-	BlockNumber   *int64                 `json:"block_number,omitempty"`
-	Chain         *string                `json:"chain,omitempty"`
-	Metadata      map[string]interface{} `json:"metadata"`
-	CreatedAt     time.Time              `json:"created_at"`
-	UpdatedAt     time.Time              `json:"updated_at"`
+	ID          uuid.UUID              `json:"id"`
+	TxHash      string                 `json:"tx_hash"`
+	UserID      uuid.UUID              `json:"user_id"`
+	TokenID     *uuid.UUID             `json:"token_id,omitempty"`
+	Type        string                 `json:"type"`
+	Amount      string                 `json:"amount"`
+	Fee         *string                `json:"fee,omitempty"`
+	Status      string                 `json:"status"`
+	FlagReason  *string                `json:"flag_reason,omitempty"`
+	FlaggedBy   *uuid.UUID             `json:"flagged_by,omitempty"`
+	FlaggedAt   *time.Time             `json:"flagged_at,omitempty"`
+	ApprovedBy  *uuid.UUID             `json:"approved_by,omitempty"`
+	ApprovedAt  *time.Time             `json:"approved_at,omitempty"`
+	RejectedBy  *uuid.UUID             `json:"rejected_by,omitempty"`
+	RejectedAt  *time.Time             `json:"rejected_at,omitempty"`
+	FromAddress *string                `json:"from_address,omitempty"`
+	ToAddress   *string                `json:"to_address,omitempty"`
+	BlockNumber *int64                 `json:"block_number,omitempty"`
+	Chain       *string                `json:"chain,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata"`
+	CreatedAt   time.Time              `json:"created_at"`
+	UpdatedAt   time.Time              `json:"updated_at"`
 }
 
 type AuditLog struct {
-	ID            uuid.UUID              `json:"id"`
-	UserID        *uuid.UUID            `json:"user_id,omitempty"`
-	Action        string                 `json:"action"`
-	ResourceType  string                 `json:"resource_type"`
-	ResourceID    *uuid.UUID            `json:"resource_id,omitempty"`
-	OldValues     map[string]interface{} `json:"old_values,omitempty"`
-	NewValues     map[string]interface{} `json:"new_values,omitempty"`
-	IPAddress     *string               `json:"ip_address,omitempty"`
-	UserAgent     *string               `json:"user_agent,omitempty"`
-	Location      *string               `json:"location,omitempty"`
-	CreatedAt     time.Time              `json:"created_at"`
+	ID           uuid.UUID              `json:"id"`
+	UserID       *uuid.UUID             `json:"user_id,omitempty"`
+	Action       string                 `json:"action"`
+	ResourceType string                 `json:"resource_type"`
+	ResourceID   *uuid.UUID             `json:"resource_id,omitempty"`
+	OldValues    map[string]interface{} `json:"old_values,omitempty"`
+	NewValues    map[string]interface{} `json:"new_values,omitempty"`
+	IPAddress    *string                `json:"ip_address,omitempty"`
+	UserAgent    *string                `json:"user_agent,omitempty"`
+	Location     *string                `json:"location,omitempty"`
+	CreatedAt    time.Time              `json:"created_at"`
 }
 
 type Notification struct {
@@ -161,16 +161,16 @@ type Session struct {
 }
 
 type APIKey struct {
-	ID          uuid.UUID              `json:"id"`
-	UserID      uuid.UUID              `json:"user_id"`
-	Name        string                 `json:"name"`
-	KeyHash     string                 `json:"-"`
-	Permissions []string               `json:"permissions"`
-	RateLimit   int                    `json:"rate_limit"`
-	LastUsedAt  *time.Time             `json:"last_used_at,omitempty"`
-	ExpiresAt   *time.Time             `json:"expires_at,omitempty"`
-	RevokedAt   *time.Time             `json:"revoked_at,omitempty"`
-	CreatedAt   time.Time              `json:"created_at"`
+	ID          uuid.UUID  `json:"id"`
+	UserID      uuid.UUID  `json:"user_id"`
+	Name        string     `json:"name"`
+	KeyHash     string     `json:"-"`
+	Permissions []string   `json:"permissions"`
+	RateLimit   int        `json:"rate_limit"`
+	LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
+	RevokedAt   *time.Time `json:"revoked_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 type ComplianceReport struct {
@@ -208,7 +208,7 @@ type UserActivity struct {
 	UserID    uuid.UUID              `json:"user_id"`
 	Action    string                 `json:"action"`
 	Details   map[string]interface{} `json:"details"`
-	IPAddress *string               `json:"ip_address,omitempty"`
+	IPAddress *string                `json:"ip_address,omitempty"`
 	CreatedAt time.Time              `json:"created_at"`
 }
 
@@ -219,9 +219,9 @@ type LoginRequest struct {
 }
 
 type RegisterRequest struct {
-	Email    string  `json:"email" binding:"required,email"`
-	Username string  `json:"username" binding:"required,min=3,max=50"`
-	Password string  `json:"password" binding:"required,min=8"`
+	Email     string  `json:"email" binding:"required,email"`
+	Username  string  `json:"username" binding:"required,min=3,max=50"`
+	Password  string  `json:"password" binding:"required,min=8"`
 	FirstName *string `json:"first_name"`
 	LastName  *string `json:"last_name"`
 }
@@ -237,20 +237,20 @@ type DashboardStats struct {
 	TotalUsers        int64   `json:"total_users"`
 	ActiveUsers       int64   `json:"active_users"`
 	TotalTransactions int64   `json:"total_transactions"`
-	PendingKYC       int64   `json:"pending_kyc"`
-	PendingTokens    int64   `json:"pending_tokens"`
-	Revenue          float64 `json:"revenue"`
-	Change24h        float64 `json:"change_24h"`
+	PendingKYC        int64   `json:"pending_kyc"`
+	PendingTokens     int64   `json:"pending_tokens"`
+	Revenue           float64 `json:"revenue"`
+	Change24h         float64 `json:"change_24h"`
 }
 
 type TransactionStats struct {
-	TotalVolume    float64 `json:"total_volume"`
-	TodayVolume    float64 `json:"today_volume"`
-	WeekVolume     float64 `json:"week_volume"`
-	MonthVolume    float64 `json:"month_volume"`
-	TotalCount     int64   `json:"total_count"`
-	PendingCount   int64   `json:"pending_count"`
-	FlaggedCount   int64   `json:"flagged_count"`
+	TotalVolume  float64 `json:"total_volume"`
+	TodayVolume  float64 `json:"today_volume"`
+	WeekVolume   float64 `json:"week_volume"`
+	MonthVolume  float64 `json:"month_volume"`
+	TotalCount   int64   `json:"total_count"`
+	PendingCount int64   `json:"pending_count"`
+	FlaggedCount int64   `json:"flagged_count"`
 }
 
 type PaginationParams struct {
@@ -259,11 +259,11 @@ type PaginationParams struct {
 }
 
 type PaginatedResponse struct {
-	Total       int         `json:"total"`
-	Page        int         `json:"page"`
-	PageSize    int         `json:"page_size"`
-	TotalPages  int         `json:"total_pages"`
-	Data        interface{} `json:"data"`
+	Total      int         `json:"total"`
+	Page       int         `json:"page"`
+	PageSize   int         `json:"page_size"`
+	TotalPages int         `json:"total_pages"`
+	Data       interface{} `json:"data"`
 }
 
 type ErrorResponse struct {

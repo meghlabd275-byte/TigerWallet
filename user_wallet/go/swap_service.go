@@ -1,5 +1,5 @@
 // TigerWallet Swap Service - Automatic DEX/CEX Integration
-// 
+//
 // Features:
 // - Connect to TigerSwap API
 // - Connect to other DEXs (Uniswap, PancakeSwap, etc.)
@@ -11,15 +11,12 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
 	"os"
-	"sort"
 	"sync"
 	"time"
 )
@@ -27,10 +24,10 @@ import (
 // ==================== DEX/CEX Types ====================
 
 type Dex struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	APIURL      string  `json:"api_url"`
-	FeePercent  float64 `json:"fee_percent"`
+	ID         string  `json:"id"`
+	Name       string  `json:"name"`
+	APIURL     string  `json:"api_url"`
+	FeePercent float64 `json:"fee_percent"`
 	Chain      string  `json:"chain"`
 	Type       string  `json:"type"` // "dex" or "cex"
 	Priority   int     `json:"priority"`
@@ -40,74 +37,74 @@ type Dex struct {
 type SwapRoute struct {
 	DexID       string  `json:"dex_id"`
 	FromToken   string  `json:"from_token"`
-	ToToken    string  `json:"to_token"`
-	FromAmount uint64  `json:"from_amount"`
-	ToAmount   uint64  `json:"to_amount"`
+	ToToken     string  `json:"to_token"`
+	FromAmount  uint64  `json:"from_amount"`
+	ToAmount    uint64  `json:"to_amount"`
 	PriceImpact float64 `json:"price_impact"`
-	GasUsed    uint64  `json:"gas_used"`
-	Slippage   float64 `json:"slippage"`
+	GasUsed     uint64  `json:"gas_used"`
+	Slippage    float64 `json:"slippage"`
 }
 
 type SwapRequest struct {
-	FromChain  string `json:"from_chain"`
-	ToChain   string `json:"to_chain"`
-	FromToken string `json:"from_token"`
-	ToToken  string `json:"to_token"`
-	Amount   uint64 `json:"amount"`
-	Slippage float64 `json:"slippage"`
-	UserID   string `json:"user_id"`
+	FromChain string  `json:"from_chain"`
+	ToChain   string  `json:"to_chain"`
+	FromToken string  `json:"from_token"`
+	ToToken   string  `json:"to_token"`
+	Amount    uint64  `json:"amount"`
+	Slippage  float64 `json:"slippage"`
+	UserID    string  `json:"user_id"`
 }
 
 type SwapResult struct {
-	Request      SwapRequest `json:"request"`
-	Routes       []SwapRoute `json:"routes"`
-	BestRoute    *SwapRoute `json:"best_route"`
-	TotalFee    uint64    `json:"total_fee"`
-	AdminFee    uint64    `json:"admin_fee"`
-	TxHash      string    `json:"tx_hash"`
-	Timestamp   int64     `json:"timestamp"`
-	Status      string    `json:"status"`
+	Request   SwapRequest `json:"request"`
+	Routes    []SwapRoute `json:"routes"`
+	BestRoute *SwapRoute  `json:"best_route"`
+	TotalFee  uint64      `json:"total_fee"`
+	AdminFee  uint64      `json:"admin_fee"`
+	TxHash    string      `json:"tx_hash"`
+	Timestamp int64       `json:"timestamp"`
+	Status    string      `json:"status"`
 }
 
 type TokenPrice struct {
 	Token   string  `json:"token"`
 	Price   float64 `json:"price"`
 	Chain   string  `json:"chain"`
-	Updated int64  `json:"updated"`
+	Updated int64   `json:"updated"`
 }
 
 // ==================== Swap Service ====================
 
 type SwapService struct {
 	mu sync.RWMutex
-	
+
 	// DEXs/CEXs
 	dexes map[string]*Dex
-	
+
 	// API keys for external services
 	tigerSwapAPIKey string
-	uniswapAPIKey string
-	pancakeAPIKey string
-	binanceAPIKey string
-	coinbaseAPIKey string
-	
+	uniswapAPIKey   string
+	pancakeAPIKey   string
+	binanceAPIKey   string
+	coinbaseAPIKey  string
+
 	// Cached prices
 	prices map[string]TokenPrice
-	
+
 	// Swap history
 	history []SwapResult
-	
+
 	// Fee collection
 	totalFees uint64
 }
 
 func NewSwapService() *SwapService {
 	svc := &SwapService{
-		dexes: make(map[string]*Dex),
-		prices: make(map[string]TokenPrice),
+		dexes:   make(map[string]*Dex),
+		prices:  make(map[string]TokenPrice),
 		history: []SwapResult{},
 	}
-	
+
 	// Register DEXs
 	dexList := []*Dex{
 		{ID: "tigerswap", Name: "TigerSwap", APIURL: "https://api.tigerswap.io", FeePercent: 0.3, Chain: "ethereum", Type: "dex", Priority: 1, Active: true},
@@ -127,11 +124,11 @@ func NewSwapService() *SwapService {
 		{ID: "kucoin", Name: "KuCoin", APIURL: "https://api.kucoin.com", FeePercent: 0.1, Chain: "multi", Type: "cex", Priority: 4, Active: true},
 		{ID: "bybit", Name: "Bybit", APIURL: "https://api.bybit.com", FeePercent: 0.1, Chain: "multi", Type: "cex", Priority: 5, Active: true},
 	}
-	
+
 	for _, dex := range dexList {
 		svc.dexes[dex.ID] = dex
 	}
-	
+
 	return svc
 }
 
@@ -140,63 +137,9 @@ func NewSwapService() *SwapService {
 func (s *SwapService) GetSwapRoutes(req SwapRequest) ([]SwapRoute, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
-	var routes []SwapRoute
-	
-	// Get routes from all active DEXs
-	for _, dex := range s.dexes {
-		if !dex.Active {
-			continue
-		}
-		
-		// Skip if chain doesn't match
-		if dex.Chain != req.FromChain && dex.Chain != "multi" {
-			continue
-		}
-		
-		// Simulate quote (in production, would call DEX API)
-		route := s.simulateQuote(dex, &req)
-		if route != nil {
-			routes = append(routes, *route)
-		}
-	}
-	
-	// Sort by best price
-	sort.Slice(routes, func(i, j int) bool {
-		return routes[i].ToAmount > routes[j].ToAmount
-	})
-	
-	if len(routes) == 0 {
-		return nil, fmt.Errorf("no routes available")
-	}
-	
-	return routes, nil
-}
 
-func (s *SwapService) simulateQuote(dex *Dex, req *SwapRequest) *SwapRoute {
-	// Simplified quote simulation
-	// In production, would call actual DEX APIs
-	
-	priceMultiplier := 1.0
-	if dex.Type == "cex" {
-		priceMultiplier = 0.995 // CEXs typically have better prices
-	}
-	
-	// Add some variation based on DEX priority
-	priceMultiplier -= float64(dex.Priority) * 0.001
-	
-	toAmount := uint64(float64(req.Amount) * priceMultiplier)
-	
-	return &SwapRoute{
-		DexID:       dex.ID,
-		FromToken:   req.FromToken,
-		ToToken:    req.ToToken,
-		FromAmount: req.Amount,
-		ToAmount:   toAmount,
-		PriceImpact: 0.1,
-		GasUsed:    150000,
-		Slippage:   0.5,
-	}
+	_ = req
+	return nil, fmt.Errorf("live swap quote provider is not configured")
 }
 
 func (s *SwapService) ExecuteSwap(req SwapRequest, whiteLabelFeePercent float64) (*SwapResult, error) {
@@ -205,69 +148,50 @@ func (s *SwapService) ExecuteSwap(req SwapRequest, whiteLabelFeePercent float64)
 	if err != nil {
 		return nil, err
 	}
-	
+
+	if len(routes) == 0 {
+		return nil, fmt.Errorf("no executable swap route")
+	}
 	// Use best route
 	bestRoute := routes[0]
-	
-	// Calculate fees
-	dexFee := uint64(float64(bestRoute.ToAmount) * s.dexes[bestRoute.DexID].FeePercent / 100.0)
-	adminFee := uint64(float64(bestRoute.ToAmount) * whiteLabelFeePercent / 100.0)
-	totalFee := dexFee + adminFee
-	netAmount := bestRoute.ToAmount - totalFee
-	
-	// Execute swap (simplified)
-	result := &SwapResult{
-		Request:    req,
-		Routes:    routes,
-		BestRoute: &bestRoute,
-		TotalFee:  totalFee,
-		AdminFee: adminFee,
-		TxHash:   generateTxHash(),
-		Timestamp: time.Now().Unix(),
-		Status:   "completed",
-	}
-	
-	// Update history and fees
-	s.mu.Lock()
-	s.history = append(s.history, *result)
-	s.totalFees += adminFee
-	s.mu.Unlock()
-	
-	return result, nil
+
+	_ = bestRoute
+	_ = whiteLabelFeePercent
+
+	return nil, fmt.Errorf("live swap execution provider is not configured")
 }
 
 func (s *SwapService) GetSwapHistory(userID string, limit int) []SwapResult {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	var userSwaps []SwapResult
 	for _, swap := range s.history {
 		if swap.Request.UserID == userID {
 			userSwaps = append(userSwaps, swap)
 		}
 	}
-	
+
 	if limit > 0 && len(userSwaps) > limit {
 		return userSwaps[len(userSwaps)-limit:]
 	}
-	
+
 	return userSwaps
 }
 
 func (s *SwapService) GetTokenPrice(token, chain string) (float64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	key := fmt.Sprintf("%s_%s", token, chain)
 	if price, ok := s.prices[key]; ok {
 		// Check if price is recent (5 minutes)
-		if time.Now().Unix() - price.Updated < 300 {
+		if time.Now().Unix()-price.Updated < 300 {
 			return price.Price, nil
 		}
 	}
-	
-	// Return default price (in production, would fetch from API)
-	return 1.0, nil
+
+	return 0, fmt.Errorf("live token price provider is not configured")
 }
 
 func (s *SwapService) SetAPIKey(service, key string) error {
@@ -285,58 +209,53 @@ func (s *SwapService) SetAPIKey(service, key string) error {
 	default:
 		return fmt.Errorf("unknown service: %s", service)
 	}
-	
+
 	return nil
 }
 
 func (s *SwapService) GetTotalFees() uint64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	return s.totalFees
 }
 
 func (s *SwapService) GetActiveDEXes() []*Dex {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	var active []*Dex
 	for _, dex := range s.dexes {
 		if dex.Active {
 			active = append(active, dex)
 		}
 	}
-	
+
 	return active
 }
 
 func (s *SwapService) ToggleDEX(dexID string, active bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	if dex, ok := s.dexes[dexID]; ok {
 		dex.Active = active
 		return nil
 	}
-	
+
 	return fmt.Errorf("DEX not found")
 }
 
 // ==================== Helpers ====================
 
-func generateTxHash() string {
-	hash := sha256.Sum256([]byte(fmt.Sprintf("%d", time.Now().UnixNano())))
-	return "0x" + hex.EncodeToString(hash[:])
-}
-
 func main() {
 	svc := NewSwapService()
-	
+
 	// Set API keys from environment variables (secure)
 	tigerSwapKey := os.Getenv("TIGERSWAP_API_KEY")
 	binanceKey := os.Getenv("BINANCE_API_KEY")
 	coinbaseKey := os.Getenv("COINBASE_API_KEY")
-	
+
 	if tigerSwapKey != "" {
 		svc.SetAPIKey("tigerswap", tigerSwapKey)
 	}
@@ -346,7 +265,7 @@ func main() {
 	if coinbaseKey != "" {
 		svc.SetAPIKey("coinbase", coinbaseKey)
 	}
-	
+
 	fmt.Println("Swap Service initialized")
 	fmt.Println("Supported DEXs:", len(svc.GetActiveDEXes()))
 	fmt.Println("Ready for swaps")

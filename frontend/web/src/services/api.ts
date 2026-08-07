@@ -130,7 +130,7 @@ class TigerWalletAPI {
         decimals: blockchain.decimals || 18,
         gasToken: blockchain.gasToken || '',
         avgBlockTime: blockchain.avgBlockTime || 12,
-        maxGasPrice: blockchain.maxGasPrice || 100000000000n,
+        maxGasPrice: blockchain.maxGasPrice || BigInt("100000000000"),
         supportsEIP1559: blockchain.supportsEIP1559 || false,
         contracts: []
       };
@@ -338,9 +338,11 @@ class TigerWalletAPI {
   // Broadcast transaction directly via RPC
   private async broadcastViaRPC(signedTx: string): Promise<string> {
     const { ethers } = await import('ethers');
-    const provider = new ethers.JsonRpcProvider('https://eth.llamarpc.com');
-    const tx = await provider.broadcastTransaction(signedTx);
-    return tx;
+      const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL;
+      if (!rpcUrl) throw new Error('NEXT_PUBLIC_RPC_URL is not configured');
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const tx = await provider.broadcastTransaction(signedTx);
+      return tx.hash;
   }
 
   async getTransactions(walletId: string, params?: { page?: number; limit?: number; type?: string }): Promise<ApiResponse<Transaction[]>> {

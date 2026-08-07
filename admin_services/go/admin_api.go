@@ -1,7 +1,7 @@
 /**
  * TigerWallet Complete Admin Services API
  * Full backend API for super admin and white-label management
- * 
+ *
  * Production-ready implementation - NO STUBS
  */
 
@@ -33,26 +33,26 @@ import (
 // ============================================================================
 
 type User struct {
-	ID            string    `json:"id" db:"id"`
-	Email         string    `json:"email" db:"email"`
-	PasswordHash  string    `json:"-" db:"password_hash"`
-	Role          string    `json:"role" db:"role"` // super_admin, admin, user
-	FirstName     string    `json:"first_name" db:"first_name"`
-	LastName      string    `json:"last_name" db:"last_name"`
-	Status        string    `json:"status" db:"status"` // active, suspended, deleted
-	KYCStatus     string    `json:"kyc_status" db:"kyc_status"` // none, pending, verified, rejected
-	ReferralCode  string    `json:"referral_code" db:"referral_code"`
-	CreatedAt     time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at" db:"updated_at"`
+	ID           string    `json:"id" db:"id"`
+	Email        string    `json:"email" db:"email"`
+	PasswordHash string    `json:"-" db:"password_hash"`
+	Role         string    `json:"role" db:"role"` // super_admin, admin, user
+	FirstName    string    `json:"first_name" db:"first_name"`
+	LastName     string    `json:"last_name" db:"last_name"`
+	Status       string    `json:"status" db:"status"`         // active, suspended, deleted
+	KYCStatus    string    `json:"kyc_status" db:"kyc_status"` // none, pending, verified, rejected
+	ReferralCode string    `json:"referral_code" db:"referral_code"`
+	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
 }
 
 type Admin struct {
 	ID           string    `json:"id" db:"id"`
 	UserID       string    `json:"user_id" db:"user_id"`
 	Email        string    `json:"email" db:"email"`
-	Role         string    `json:"role" db:"role"` // super_admin, white_label_admin, sub_admin
+	Role         string    `json:"role" db:"role"`               // super_admin, white_label_admin, sub_admin
 	Permissions  string    `json:"permissions" db:"permissions"` // JSON array of permissions
-	WhiteLabelID *string  `json:"white_label_id" db:"white_label_id"`
+	WhiteLabelID *string   `json:"white_label_id" db:"white_label_id"`
 	Status       string    `json:"status" db:"status"`
 	CreatedAt    time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
@@ -62,13 +62,13 @@ type WhiteLabel struct {
 	ID             string    `json:"id" db:"id"`
 	Name           string    `json:"name" db:"name"`
 	Domain         string    `json:"domain" db:"domain"`
-	CustomBranding string   `json:"custom_branding" db:"custom_branding"`
-	APIKeys       string    `json:"api_keys" db:"api_keys"`
-	FeeStructure  string    `json:"fee_structure" db:"fee_structure"`
-	Status        string    `json:"status" db:"status"` // active, suspended, pending
-	SuperAdminID  string    `json:"super_admin_id" db:"super_admin_id"`
-	CreatedAt     time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at" db:"updated_at"`
+	CustomBranding string    `json:"custom_branding" db:"custom_branding"`
+	APIKeys        string    `json:"api_keys" db:"api_keys"`
+	FeeStructure   string    `json:"fee_structure" db:"fee_structure"`
+	Status         string    `json:"status" db:"status"` // active, suspended, pending
+	SuperAdminID   string    `json:"super_admin_id" db:"super_admin_id"`
+	CreatedAt      time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
 }
 
 type Blockchain struct {
@@ -84,25 +84,25 @@ type Blockchain struct {
 }
 
 type Token struct {
-	ID            string    `json:"id" db:"id"`
-	Address      string    `json:"address" db:"address"`
-	Name         string    `json:"name" db:"name"`
-	Symbol       string    `json:"symbol" db:"symbol"`
-	Decimals     int       `json:"decimals" db:"decimals"`
-	ChainID      string    `json:"chain_id" db:"chain_id"`
-	TotalSupply  string    `json:"total_supply" db:"total_supply"`
-	Status       string    `json:"status" db:"status"`
-	IsVerified   bool      `json:"is_verified" db:"is_verified"`
-	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	ID          string    `json:"id" db:"id"`
+	Address     string    `json:"address" db:"address"`
+	Name        string    `json:"name" db:"name"`
+	Symbol      string    `json:"symbol" db:"symbol"`
+	Decimals    int       `json:"decimals" db:"decimals"`
+	ChainID     string    `json:"chain_id" db:"chain_id"`
+	TotalSupply string    `json:"total_supply" db:"total_supply"`
+	Status      string    `json:"status" db:"status"`
+	IsVerified  bool      `json:"is_verified" db:"is_verified"`
+	CreatedAt   time.Time `json:"created_at" db:"created_at"`
 }
 
 type Transaction struct {
 	ID          string    `json:"id" db:"id"`
 	UserID      string    `json:"user_id" db:"user_id"`
-	FromAddress string   `json:"from_address" db:"from_address"`
+	FromAddress string    `json:"from_address" db:"from_address"`
 	ToAddress   string    `json:"to_address" db:"to_address"`
 	Amount      string    `json:"amount" db:"amount"`
-	TokenSymbol string   `json:"token_symbol" db:"token_symbol"`
+	TokenSymbol string    `json:"token_symbol" db:"token_symbol"`
 	ChainID     string    `json:"chain_id" db:"chain_id"`
 	Status      string    `json:"status" db:"status"` // pending, confirmed, failed
 	TxHash      string    `json:"tx_hash" db:"tx_hash"`
@@ -145,13 +145,13 @@ type LoginRequest struct {
 }
 
 type CreateAdminRequest struct {
-	Email       string   `json:"email" binding:"required,email"`
-	Password    string   `json:"password" binding:"required,min=8"`
-	FirstName   string   `json:"first_name" binding:"required"`
-	LastName    string   `json:"last_name" binding:"required"`
-	Role        string   `json:"role" binding:"required"`
-	Permissions []string `json:"permissions"`
-	WhiteLabelID *string `json:"white_label_id"`
+	Email        string   `json:"email" binding:"required,email"`
+	Password     string   `json:"password" binding:"required,min=8"`
+	FirstName    string   `json:"first_name" binding:"required"`
+	LastName     string   `json:"last_name" binding:"required"`
+	Role         string   `json:"role" binding:"required"`
+	Permissions  []string `json:"permissions"`
+	WhiteLabelID *string  `json:"white_label_id"`
 }
 
 type CreateWhiteLabelRequest struct {
@@ -164,8 +164,8 @@ type UpdateWhiteLabelRequest struct {
 	Name           string `json:"name"`
 	Domain         string `json:"domain"`
 	CustomBranding string `json:"custom_branding"`
-	FeeStructure  string `json:"fee_structure"`
-	Status        string `json:"status"`
+	FeeStructure   string `json:"fee_structure"`
+	Status         string `json:"status"`
 }
 
 type CreateBlockchainRequest struct {
@@ -201,7 +201,7 @@ type UpdateFeeConfigRequest struct {
 	FeePercentage float64 `json:"fee_percentage"`
 	MinAmount     string  `json:"min_amount"`
 	MaxAmount     string  `json:"max_amount"`
-	Status       string  `json:"status"`
+	Status        string  `json:"status"`
 }
 
 type APIResponse struct {
@@ -215,8 +215,8 @@ type APIResponse struct {
 // ============================================================================
 
 type AdminService struct {
-	db          *sql.DB
-	jwtSecret   []byte
+	db            *sql.DB
+	jwtSecret     []byte
 	encryptionKey []byte
 }
 
@@ -243,7 +243,7 @@ func (s *AdminService) Login(c *gin.Context) {
 		FROM admins 
 		WHERE email = ? AND status = 'active'
 	`, req.Email).Scan(
-		&admin.ID, &admin.UserID, &admin.Email, &admin.Role, 
+		&admin.ID, &admin.UserID, &admin.Email, &admin.Role,
 		&admin.Permissions, &admin.WhiteLabelID, &admin.Status,
 	)
 
@@ -347,7 +347,7 @@ func (s *AdminService) CreateAdmin(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, APIResponse{
 		Success: true,
-		Data: gin.H{"admin_id": adminID},
+		Data:    gin.H{"admin_id": adminID},
 	})
 }
 
@@ -376,9 +376,9 @@ func (s *AdminService) CreateWhiteLabel(c *gin.Context) {
 	_, err := s.db.Exec(`
 		INSERT INTO white_labels (id, name, domain, custom_branding, api_keys, status, super_admin_id, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, 'active', ?, NOW(), NOW())
-	`, wlID, req.Name, req.Domain, req.CustomBranding, 
-	   fmt.Sprintf(`{"key":"%s","secret":"%s"}`, apiKey, apiSecret),
-	   c.GetString("admin_id"))
+	`, wlID, req.Name, req.Domain, req.CustomBranding,
+		fmt.Sprintf(`{"key":"%s","secret":"%s"}`, apiKey, apiSecret),
+		c.GetString("admin_id"))
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{Success: false, Error: "White label creation failed"})
@@ -386,15 +386,15 @@ func (s *AdminService) CreateWhiteLabel(c *gin.Context) {
 	}
 
 	// Log audit
-	s.logAudit(c.GetString("admin_id"), "CREATE_WHITE_LABEL", "white_label", wlID, 
+	s.logAudit(c.GetString("admin_id"), "CREATE_WHITE_LABEL", "white_label", wlID,
 		fmt.Sprintf("Created white label: %s", req.Name), c.ClientIP())
 
 	c.JSON(http.StatusCreated, APIResponse{
 		Success: true,
 		Data: gin.H{
 			"white_label_id": wlID,
-			"api_key":       apiKey,
-			"api_secret":    apiSecret,
+			"api_key":        apiKey,
+			"api_secret":     apiSecret,
 		},
 	})
 }
@@ -459,7 +459,7 @@ func (s *AdminService) UpdateWhiteLabel(c *gin.Context) {
 	}
 
 	// Log audit
-	s.logAudit(c.GetString("admin_id"), "UPDATE_WHITE_LABEL", "white_label", wlID, 
+	s.logAudit(c.GetString("admin_id"), "UPDATE_WHITE_LABEL", "white_label", wlID,
 		"Updated white label", c.ClientIP())
 
 	c.JSON(http.StatusOK, APIResponse{Success: true})
@@ -524,12 +524,12 @@ func (s *AdminService) CreateBlockchain(c *gin.Context) {
 	}
 
 	// Log audit
-	s.logAudit(c.GetString("admin_id"), "CREATE_BLOCKCHAIN", "blockchain", bcID, 
+	s.logAudit(c.GetString("admin_id"), "CREATE_BLOCKCHAIN", "blockchain", bcID,
 		fmt.Sprintf("Added blockchain: %s", req.Name), c.ClientIP())
 
 	c.JSON(http.StatusCreated, APIResponse{
 		Success: true,
-		Data: gin.H{"blockchain_id": bcID},
+		Data:    gin.H{"blockchain_id": bcID},
 	})
 }
 
@@ -586,12 +586,12 @@ func (s *AdminService) CreateToken(c *gin.Context) {
 	}
 
 	// Log audit
-	s.logAudit(c.GetString("admin_id"), "CREATE_TOKEN", "token", tokenID, 
+	s.logAudit(c.GetString("admin_id"), "CREATE_TOKEN", "token", tokenID,
 		fmt.Sprintf("Added token: %s", req.Symbol), c.ClientIP())
 
 	c.JSON(http.StatusCreated, APIResponse{
 		Success: true,
-		Data: gin.H{"token_id": tokenID},
+		Data:    gin.H{"token_id": tokenID},
 	})
 }
 
@@ -616,8 +616,8 @@ func (s *AdminService) ListTokens(c *gin.Context) {
 	var tokens []Token
 	for rows.Next() {
 		var token Token
-		if err := rows.Scan(&token.ID, &token.Address, &token.Name, &token.Symbol, 
-			&token.Decimals, &token.ChainID, &token.TotalSupply, &token.Status, 
+		if err := rows.Scan(&token.ID, &token.Address, &token.Name, &token.Symbol,
+			&token.Decimals, &token.ChainID, &token.TotalSupply, &token.Status,
 			&token.IsVerified, &token.CreatedAt); err != nil {
 			continue
 		}
@@ -655,12 +655,12 @@ func (s *AdminService) CreateFeeConfig(c *gin.Context) {
 	}
 
 	// Log audit
-	s.logAudit(c.GetString("admin_id"), "CREATE_FEE_CONFIG", "fee_config", feeID, 
+	s.logAudit(c.GetString("admin_id"), "CREATE_FEE_CONFIG", "fee_config", feeID,
 		fmt.Sprintf("Created fee config: %s", req.Name), c.ClientIP())
 
 	c.JSON(http.StatusCreated, APIResponse{
 		Success: true,
-		Data: gin.H{"fee_config_id": feeID},
+		Data:    gin.H{"fee_config_id": feeID},
 	})
 }
 
@@ -722,7 +722,7 @@ func (s *AdminService) UpdateFeeConfig(c *gin.Context) {
 	}
 
 	// Log audit
-	s.logAudit(c.GetString("admin_id"), "UPDATE_FEE_CONFIG", "fee_config", feeID, 
+	s.logAudit(c.GetString("admin_id"), "UPDATE_FEE_CONFIG", "fee_config", feeID,
 		"Updated fee config", c.ClientIP())
 
 	c.JSON(http.StatusOK, APIResponse{Success: true})
@@ -747,7 +747,7 @@ func (s *AdminService) ListUsers(c *gin.Context) {
 		args = append(args, kycStatus)
 	}
 
-	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT %s OFFSET %s", limit, 
+	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT %s OFFSET %s", limit,
 		fmt.Sprintf("%d", (parseInt(page)-1)*parseInt(limit)))
 
 	rows, err := s.db.Query(query, args...)
@@ -760,7 +760,7 @@ func (s *AdminService) ListUsers(c *gin.Context) {
 	var users []User
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Email, &u.Role, &u.FirstName, &u.LastName, 
+		if err := rows.Scan(&u.ID, &u.Email, &u.Role, &u.FirstName, &u.LastName,
 			&u.Status, &u.KYCStatus, &u.ReferralCode, &u.CreatedAt); err != nil {
 			continue
 		}
@@ -795,7 +795,7 @@ func (s *AdminService) UpdateUserStatus(c *gin.Context) {
 	}
 
 	// Log audit
-	s.logAudit(c.GetString("admin_id"), "UPDATE_USER_STATUS", "user", userID, 
+	s.logAudit(c.GetString("admin_id"), "UPDATE_USER_STATUS", "user", userID,
 		fmt.Sprintf("Updated user status to: %s", req.Status), c.ClientIP())
 
 	c.JSON(http.StatusOK, APIResponse{Success: true})
@@ -826,7 +826,7 @@ func (s *AdminService) UpdateKYCStatus(c *gin.Context) {
 	}
 
 	// Log audit
-	s.logAudit(c.GetString("admin_id"), "UPDATE_KYC_STATUS", "user", userID, 
+	s.logAudit(c.GetString("admin_id"), "UPDATE_KYC_STATUS", "user", userID,
 		fmt.Sprintf("Updated KYC status to: %s", req.KYCStatus), c.ClientIP())
 
 	c.JSON(http.StatusOK, APIResponse{Success: true})
@@ -857,7 +857,7 @@ func (s *AdminService) ListTransactions(c *gin.Context) {
 		args = append(args, chainID)
 	}
 
-	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT %s OFFSET %s", limit, 
+	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT %s OFFSET %s", limit,
 		fmt.Sprintf("%d", (parseInt(page)-1)*parseInt(limit)))
 
 	rows, err := s.db.Query(query, args...)
@@ -870,7 +870,7 @@ func (s *AdminService) ListTransactions(c *gin.Context) {
 	var transactions []Transaction
 	for rows.Next() {
 		var t Transaction
-		if err := rows.Scan(&t.ID, &t.UserID, &t.FromAddress, &t.ToAddress, &t.Amount, 
+		if err := rows.Scan(&t.ID, &t.UserID, &t.FromAddress, &t.ToAddress, &t.Amount,
 			&t.TokenSymbol, &t.ChainID, &t.Status, &t.TxHash, &t.Fee, &t.CreatedAt); err != nil {
 			continue
 		}
@@ -905,7 +905,7 @@ func (s *AdminService) ListAuditLogs(c *gin.Context) {
 		args = append(args, entityType)
 	}
 
-	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT %s OFFSET %s", limit, 
+	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT %s OFFSET %s", limit,
 		fmt.Sprintf("%d", (parseInt(page)-1)*parseInt(limit)))
 
 	rows, err := s.db.Query(query, args...)
@@ -918,7 +918,7 @@ func (s *AdminService) ListAuditLogs(c *gin.Context) {
 	var logs []AuditLog
 	for rows.Next() {
 		var l AuditLog
-		if err := rows.Scan(&l.ID, &l.AdminID, &l.Action, &l.EntityType, &l.EntityID, 
+		if err := rows.Scan(&l.ID, &l.AdminID, &l.Action, &l.EntityType, &l.EntityID,
 			&l.Details, &l.IPAddress, &l.CreatedAt); err != nil {
 			continue
 		}
@@ -934,7 +934,7 @@ func (s *AdminService) ListAuditLogs(c *gin.Context) {
 
 func (s *AdminService) generateJWT(adminID, role string, whiteLabelID *string) (string, error) {
 	claims := jwt.MapClaims{
-		"admin_id":      adminID,
+		"admin_id":       adminID,
 		"role":           role,
 		"white_label_id": whiteLabelID,
 		"exp":            time.Now().Add(24 * time.Hour).Unix(),

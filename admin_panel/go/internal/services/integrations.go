@@ -11,7 +11,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tigerwallet/admin/internal/config"
+	"github.com/tigerwallet/admin_panel/internal/config"
+	"github.com/tigerwallet/admin_panel/internal/database"
 )
 
 type IntegrationService struct {
@@ -28,11 +29,11 @@ type DatadogMetrics struct {
 }
 
 type DatadogSeries struct {
-	Metric   string      `json:"metric"`
-	Points   [][]float64 `json:"points"`
-	Type     string      `json:"type"`
-	Host     string      `json:"host"`
-	Tags     []string    `json:"tags"`
+	Metric string      `json:"metric"`
+	Points [][]float64 `json:"points"`
+	Type   string      `json:"type"`
+	Host   string      `json:"host"`
+	Tags   []string    `json:"tags"`
 }
 
 func (s *IntegrationService) SendDatadogMetric(ctx context.Context, metric string, value float64, tags []string) error {
@@ -108,13 +109,13 @@ func (s *IntegrationService) CreateDatadogMonitor(ctx context.Context, name, que
 		"message": message,
 		"tags":    []string{"tigerwallet", "admin"},
 		"options": map[string]interface{}{
-			"notify_no_data":         true,
-			"no_data_timeframe":      60,
-			"alert_placement":        "workflow",
-			"include_tags":           true,
-			"new_host_delay":         300,
-			"notify_by":              []string{"priority"},
-			"thresholds":             map[string]interface{}{"critical": 100, "warning": 80},
+			"notify_no_data":    true,
+			"no_data_timeframe": 60,
+			"alert_placement":   "workflow",
+			"include_tags":      true,
+			"new_host_delay":    300,
+			"notify_by":         []string{"priority"},
+			"thresholds":        map[string]interface{}{"critical": 100, "warning": 80},
 		},
 	}
 
@@ -143,10 +144,10 @@ func (s *IntegrationService) CreateDatadogMonitor(ctx context.Context, name, que
 
 // PagerDuty Integration
 type PagerDutyIncident struct {
-	Title       string   `json:"title"`
-	Urgency     string   `json:"urgency"`
-	ServiceID   string   `json:"service_id"`
-	Body        string   `json:"body"`
+	Title     string `json:"title"`
+	Urgency   string `json:"urgency"`
+	ServiceID string `json:"service_id"`
+	Body      string `json:"body"`
 }
 
 func (s *IntegrationService) CreatePagerDutyIncident(ctx context.Context, incident *PagerDutyIncident) (string, error) {
@@ -156,12 +157,11 @@ func (s *IntegrationService) CreatePagerDutyIncident(ctx context.Context, incide
 
 	payload := map[string]interface{}{
 		"incident": map[string]interface{}{
-			"type":        "incident",
-			"title":       incident.Title,
-			"urgency":     incident.Urgency,
-			"service":     map[string]string{"id": incident.ServiceID},
-			"body":        map[string]string{"type": "incident_body", "details": incident.Body},
-			"urgency":     incident.Urgency,
+			"type":    "incident",
+			"title":   incident.Title,
+			"urgency": incident.Urgency,
+			"service": map[string]string{"id": incident.ServiceID},
+			"body":    map[string]string{"type": "incident_body", "details": incident.Body},
 		},
 	}
 
@@ -198,8 +198,8 @@ func (s *IntegrationService) AcknowledgePagerDutyIncident(ctx context.Context, i
 
 	payload := map[string]interface{}{
 		"incident": map[string]interface{}{
-			"type":       "incident_reference",
-			"status":     "acknowledged",
+			"type":   "incident_reference",
+			"status": "acknowledged",
 		},
 	}
 
@@ -229,8 +229,8 @@ func (s *IntegrationService) ResolvePagerDutyIncident(ctx context.Context, incid
 
 	payload := map[string]interface{}{
 		"incident": map[string]interface{}{
-			"type":       "incident_reference",
-			"status":     "resolved",
+			"type":   "incident_reference",
+			"status": "resolved",
 		},
 	}
 
@@ -334,17 +334,17 @@ func (s *IntegrationService) GetCloudflareAnalytics(ctx context.Context, zoneID 
 
 // Integration configuration
 type IntegrationConfig struct {
-	ID           uuid.UUID `json:"id"`
-	Integration  string    `json:"integration"` // datadog, pagerduty, cloudflare
-	Name         string    `json:"name"`
-	APIKey       string    `json:"api_key"`
-	APISecret    string    `json:"api_secret"`
-	WebhookURL   string    `json:"webhook_url"`
-	IsActive     bool      `json:"is_active"`
-	Settings     map[string]interface{} `json:"settings"`
-	CreatedBy    uuid.UUID `json:"created_by"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID          uuid.UUID              `json:"id"`
+	Integration string                 `json:"integration"` // datadog, pagerduty, cloudflare
+	Name        string                 `json:"name"`
+	APIKey      string                 `json:"api_key"`
+	APISecret   string                 `json:"api_secret"`
+	WebhookURL  string                 `json:"webhook_url"`
+	IsActive    bool                   `json:"is_active"`
+	Settings    map[string]interface{} `json:"settings"`
+	CreatedBy   uuid.UUID              `json:"created_by"`
+	CreatedAt   time.Time              `json:"created_at"`
+	UpdatedAt   time.Time              `json:"updated_at"`
 }
 
 func (s *IntegrationService) SaveIntegrationConfig(ctx context.Context, config *IntegrationConfig, adminID uuid.UUID) (*IntegrationConfig, error) {

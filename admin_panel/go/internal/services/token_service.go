@@ -5,7 +5,6 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/tigerwallet/admin_panel/internal/database"
 	"github.com/tigerwallet/admin_panel/internal/models"
 )

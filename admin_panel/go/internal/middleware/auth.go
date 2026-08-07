@@ -13,10 +13,10 @@ import (
 )
 
 type Claims struct {
-	AdminID   uuid.UUID `json:"admin_id"`
-	Username  string    `json:"username"`
-	Email     string    `json:"email"`
-	Role      string    `json:"role"`
+	AdminID  uuid.UUID `json:"admin_id"`
+	Username string    `json:"username"`
+	Email    string    `json:"email"`
+	Role     string    `json:"role"`
 	jwt.RegisteredClaims
 }
 

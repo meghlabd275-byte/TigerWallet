@@ -36,38 +36,38 @@ const (
 type UserRole string
 
 const (
-	RoleSuperAdmin       UserRole = "super_admin"
-	RoleAdmin           UserRole = "admin"
-	RoleFinanceAdmin     UserRole = "finance_admin"
-	RoleBotOperator     UserRole = "bot_operator"
-	RoleTradingAdmin    UserRole = "trading_admin"
-	RoleClient          UserRole = "client"
+	RoleSuperAdmin   UserRole = "super_admin"
+	RoleAdmin        UserRole = "admin"
+	RoleFinanceAdmin UserRole = "finance_admin"
+	RoleBotOperator  UserRole = "bot_operator"
+	RoleTradingAdmin UserRole = "trading_admin"
+	RoleClient       UserRole = "client"
 )
 
 type FeeType string
 
 const (
-	FeeSwap          FeeType = "swap"
-	FeeLiquidity    FeeType = "liquidity"
-	FeeWithdrawal  FeeType = "withdrawal"
-	FeeDeposit     FeeType = "deposit"
-	FeeBot         FeeType = "bot_subscription"
-	FeeAPI         FeeType = "api_key"
-	FeeListing     FeeType = "listing"
-	FeeTrading     FeeType = "trading"
-	FeeTransfer    FeeType = "transfer"
+	FeeSwap       FeeType = "swap"
+	FeeLiquidity  FeeType = "liquidity"
+	FeeWithdrawal FeeType = "withdrawal"
+	FeeDeposit    FeeType = "deposit"
+	FeeBot        FeeType = "bot_subscription"
+	FeeAPI        FeeType = "api_key"
+	FeeListing    FeeType = "listing"
+	FeeTrading    FeeType = "trading"
+	FeeTransfer   FeeType = "transfer"
 )
 
 type BlockchainType string
 
 const (
-	BlockchainEVM     BlockchainType = "evm"
-	BlockchainSolana  BlockchainType = "solana"
-	BlockchainAptos   BlockchainType = "aptos"
-	BlockchainSui     BlockchainType = "sui"
-	BlockchainTon     BlockchainType = "ton"
-	BlockchainCosmos  BlockchainType = "cosmos"
-	BlockchainPi      BlockchainType = "pinetwork"
+	BlockchainEVM    BlockchainType = "evm"
+	BlockchainSolana BlockchainType = "solana"
+	BlockchainAptos  BlockchainType = "aptos"
+	BlockchainSui    BlockchainType = "sui"
+	BlockchainTon    BlockchainType = "ton"
+	BlockchainCosmos BlockchainType = "cosmos"
+	BlockchainPi     BlockchainType = "pinetwork"
 )
 
 // ============================================================================
@@ -76,178 +76,178 @@ const (
 
 // Admin User
 type AdminUser struct {
-	ID                string    `json:"id"`
-	WalletAddress    string    `json:"wallet_address"`
-	Email            string    `json:"email"`
-	Username         string    `json:"username"`
-	Role             UserRole  `json:"role"`
-	IsActive         bool      `json:"is_active"`
-	Permissions      []string  `json:"permissions"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
-	LastLoginAt       time.Time `json:"last_login_at"`
+	ID            string    `json:"id"`
+	WalletAddress string    `json:"wallet_address"`
+	Email         string    `json:"email"`
+	Username      string    `json:"username"`
+	Role          UserRole  `json:"role"`
+	IsActive      bool      `json:"is_active"`
+	Permissions   []string  `json:"permissions"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	LastLoginAt   time.Time `json:"last_login_at"`
 }
 
 // Blockchain Configuration
 type Blockchain struct {
-	ID              string          `json:"id"`
-	Name            string          `json:"name"`
-	Symbol          string          `json:"symbol"`
-	ChainId         int             `json:"chain_id"`
-	ChainIdHex      string          `json:"chain_id_hex"`
-	Type            BlockchainType  `json:"type"`
-	RPCUrl          string          `json:"rpc_url"`
-	ExplorerUrl     string          `json:"explorer_url"`
-	ExplorerApiUrl string          `json:"explorer_api_url"`
-	ExplorerApiKey string          `json:"explorer_api_key"`
-	NativeToken    string          `json:"native_token"`
-	Decimals       int             `json:"decimals"`
-	Slip44         int             `json:"slip44"`
-	IsActive       bool            `json:"is_active"`
+	ID              string         `json:"id"`
+	Name            string         `json:"name"`
+	Symbol          string         `json:"symbol"`
+	ChainId         int            `json:"chain_id"`
+	ChainIdHex      string         `json:"chain_id_hex"`
+	Type            BlockchainType `json:"type"`
+	RPCUrl          string         `json:"rpc_url"`
+	ExplorerUrl     string         `json:"explorer_url"`
+	ExplorerApiUrl  string         `json:"explorer_api_url"`
+	ExplorerApiKey  string         `json:"explorer_api_key"`
+	NativeToken     string         `json:"native_token"`
+	Decimals        int            `json:"decimals"`
+	Slip44          int            `json:"slip44"`
+	IsActive        bool           `json:"is_active"`
 	AvgGasPriceGwei float64        `json:"avg_gas_price_gwei"`
-	IsTestnet      bool            `json:"is_testnet"`
-	LogoUrl        string          `json:"logo_url"`
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt     time.Time       `json:"updated_at"`
+	IsTestnet       bool           `json:"is_testnet"`
+	LogoUrl         string         `json:"logo_url"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
 }
 
 // Token Configuration
 type Token struct {
-	ID                string    `json:"id"`
-	ChainId          int       `json:"chain_id"`
-	Symbol           string    `json:"symbol"`
-	Name             string    `json:"name"`
+	ID              string    `json:"id"`
+	ChainId         int       `json:"chain_id"`
+	Symbol          string    `json:"symbol"`
+	Name            string    `json:"name"`
 	ContractAddress string    `json:"contract_address"`
-	Decimals         int       `json:"decimals"`
-	IsActive         bool      `json:"is_active"`
-	IsVerified       bool      `json:"is_verified"`
-	IsStablecoin     bool      `json:"is_stablecoin"`
+	Decimals        int       `json:"decimals"`
+	IsActive        bool      `json:"is_active"`
+	IsVerified      bool      `json:"is_verified"`
+	IsStablecoin    bool      `json:"is_stablecoin"`
 	IsWrappedNative bool      `json:"is_wrapped_native"`
-	LogoUrl          string    `json:"logo_url"`
+	LogoUrl         string    `json:"logo_url"`
 	CoingeckoId     string    `json:"coingecko_id"`
-	PriceUsd         float64   `json:"price_usd"`
+	PriceUsd        float64   `json:"price_usd"`
 	MarketCap       float64   `json:"market_cap"`
 	Volume24h       float64   `json:"volume_24h"`
-	CreatedAt      time.Time `json:"created_at"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 // Fee Configuration
 type FeeConfig struct {
-	ID                string    `json:"id"`
-	FeeType          FeeType   `json:"fee_type"`
-	ChainId          int      `json:"chain_id"`
-	TokenSymbol      string   `json:"token_symbol"`
-	FeeAmountUsd    float64  `json:"fee_amount_usd"`
-	FeePercentage   float64  `json:"fee_percentage"`
-	MinFeeUsd        float64  `json:"min_fee_usd"`
-	MaxFeeUsd        float64  `json:"max_fee_usd"`
-	IsActive         bool     `json:"is_active"`
-	UpdatedBy       string    `json:"updated_by"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID            string    `json:"id"`
+	FeeType       FeeType   `json:"fee_type"`
+	ChainId       int       `json:"chain_id"`
+	TokenSymbol   string    `json:"token_symbol"`
+	FeeAmountUsd  float64   `json:"fee_amount_usd"`
+	FeePercentage float64   `json:"fee_percentage"`
+	MinFeeUsd     float64   `json:"min_fee_usd"`
+	MaxFeeUsd     float64   `json:"max_fee_usd"`
+	IsActive      bool      `json:"is_active"`
+	UpdatedBy     string    `json:"updated_by"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // Admin Fee Address (where all fees go)
 type AdminFeeAddress struct {
-	ID              string    `json:"id"`
-	FeeType         FeeType   `json:"fee_type"`
-	ChainId         int      `json:"chain_id"`
-	TokenSymbol     string   `json:"token_symbol"`
-	WalletAddress  string   `json:"wallet_address"`
-	IsActive       bool     `json:"is_active"`
-	Priority       int      `json:"priority"`
-	IsPrimary      bool     `json:"is_primary"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID            string    `json:"id"`
+	FeeType       FeeType   `json:"fee_type"`
+	ChainId       int       `json:"chain_id"`
+	TokenSymbol   string    `json:"token_symbol"`
+	WalletAddress string    `json:"wallet_address"`
+	IsActive      bool      `json:"is_active"`
+	Priority      int       `json:"priority"`
+	IsPrimary     bool      `json:"is_primary"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // Bot Subscription Tier
 type BotTier struct {
-	ID               string             `json:"id"`
-	Name             string             `json:"name"`
-	DisplayName      string             `json:"display_name"`
-	MonthlyFeeUsd   float64           `json:"monthly_fee_usd"`
-	PerDexFeeUsd    float64           `json:"per_dex_fee_usd"`
-	PerCexFeeUsd    float64           `json:"per_cex_fee_usd"`
-	MaxBots         int               `json:"max_bots"`
-	MaxDexs         int               `json:"max_dexs"`
-	MaxCexs        int               `json:"max_cexs"`
-	MaxPositionUsd   float64           `json:"max_position_usd"`
-	MaxDailyVolume  float64           `json:"max_daily_volume"`
-	LatencyTargetMs int               `json:"latency_target_ms"`
-	Features       map[string]bool    `json:"features"`
-	IsActive       bool              `json:"is_active"`
+	ID              string          `json:"id"`
+	Name            string          `json:"name"`
+	DisplayName     string          `json:"display_name"`
+	MonthlyFeeUsd   float64         `json:"monthly_fee_usd"`
+	PerDexFeeUsd    float64         `json:"per_dex_fee_usd"`
+	PerCexFeeUsd    float64         `json:"per_cex_fee_usd"`
+	MaxBots         int             `json:"max_bots"`
+	MaxDexs         int             `json:"max_dexs"`
+	MaxCexs         int             `json:"max_cexs"`
+	MaxPositionUsd  float64         `json:"max_position_usd"`
+	MaxDailyVolume  float64         `json:"max_daily_volume"`
+	LatencyTargetMs int             `json:"latency_target_ms"`
+	Features        map[string]bool `json:"features"`
+	IsActive        bool            `json:"is_active"`
 }
 
 // Bot Instance
 type BotInstance struct {
-	ID               string    `json:"id"`
-	UserId           string    `json:"user_id"`
-	BotType          string    `json:"bot_type"`
-	Name            string    `json:"name"`
-	Status          string    `json:"status"` // running, stopped, paused, error
-	ConnectedDexs   []string `json:"connected_dexs"`
-	ConnectedCexs  []string `json:"connected_cexs"`
-	TradingPairs    []string `json:"trading_pairs"`
-	TotalPnl        float64  `json:"total_pnl"`
-	TotalVolume    float64  `json:"total_volume"`
-	TotalOrders    int      `json:"total_orders"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	LastTradeAt    time.Time `json:"last_trade_at"`
+	ID            string    `json:"id"`
+	UserId        string    `json:"user_id"`
+	BotType       string    `json:"bot_type"`
+	Name          string    `json:"name"`
+	Status        string    `json:"status"` // running, stopped, paused, error
+	ConnectedDexs []string  `json:"connected_dexs"`
+	ConnectedCexs []string  `json:"connected_cexs"`
+	TradingPairs  []string  `json:"trading_pairs"`
+	TotalPnl      float64   `json:"total_pnl"`
+	TotalVolume   float64   `json:"total_volume"`
+	TotalOrders   int       `json:"total_orders"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	LastTradeAt   time.Time `json:"last_trade_at"`
 }
 
 // External API Connection (for external users)
 type ExternalConnection struct {
-	ID             string    `json:"id"`
-	UserId         string    `json:"user_id"`
+	ID            string    `json:"id"`
+	UserId        string    `json:"user_id"`
 	PlatformName  string    `json:"platform_name"`
 	PlatformType  string    `json:"platform_type"` // cex, dex, wallet
 	ApiKey        string    `json:"api_key"`
 	ApiSecret     string    `json:"api_secret"`
 	IsActive      bool      `json:"is_active"`
-	CanTrade     bool      `json:"can_trade"`
-	CanSwap      bool      `json:"can_swap"`
-	CanAddLiq   bool      `json:"can_add_liquidity"`
-	CanBridge    bool      `json:"can_bridge"`
-	Tier         string    `json:"tier"`
+	CanTrade      bool      `json:"can_trade"`
+	CanSwap       bool      `json:"can_swap"`
+	CanAddLiq     bool      `json:"can_add_liquidity"`
+	CanBridge     bool      `json:"can_bridge"`
+	Tier          string    `json:"tier"`
 	RateLimitMin  int       `json:"rate_limit_per_minute"`
-	MonthlyFeeUsd float64  `json:"monthly_fee_usd"`
-	TotalFeesPaid float64  `json:"total_fees_paid"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	MonthlyFeeUsd float64   `json:"monthly_fee_usd"`
+	TotalFeesPaid float64   `json:"total_fees_paid"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // Listing Request
 type ListingRequest struct {
 	ID              string    `json:"id"`
-	TokenId        string    `json:"token_id"`
-	ChainId        int       `json:"chain_id"`
-	Symbol         string    `json:"symbol"`
-	Name           string    `json:"name"`
-	ContractAddress string   `json:"contract_address"`
-	Tier           string    `json:"tier"` // basic, standard, premium, premium_plus
-	Status        string    `json:"status"` // pending, approved, rejected
-	OneTimeFeeUsd  float64  `json:"one_time_fee_usd"`
-	MonthlyFeeUsd   float64  `json:"monthly_fee_usd"`
-	RequestedBy   string    `json:"requested_by"`
-	ApprovedBy    string    `json:"approved_by"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	TokenId         string    `json:"token_id"`
+	ChainId         int       `json:"chain_id"`
+	Symbol          string    `json:"symbol"`
+	Name            string    `json:"name"`
+	ContractAddress string    `json:"contract_address"`
+	Tier            string    `json:"tier"`   // basic, standard, premium, premium_plus
+	Status          string    `json:"status"` // pending, approved, rejected
+	OneTimeFeeUsd   float64   `json:"one_time_fee_usd"`
+	MonthlyFeeUsd   float64   `json:"monthly_fee_usd"`
+	RequestedBy     string    `json:"requested_by"`
+	ApprovedBy      string    `json:"approved_by"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // Fee Collection Record
 type FeeCollection struct {
-	ID              string    `json:"id"`
-	UserId         string    `json:"user_id"`
-	FeeType        FeeType   `json:"fee_type"`
-	ChainId        int      `json:"chain_id"`
-	AmountUsd     float64  `json:"amount_usd"`
-	AmountToken   string   `json:"amount_token"`
-	TokenSymbol   string   `json:"token_symbol"`
-	TxHash        string   `json:"tx_hash"`
-	Status        string   `json:"status"` // pending, collected, distributed
-	CollectedAt   time.Time `json:"collected_at"`
+	ID          string    `json:"id"`
+	UserId      string    `json:"user_id"`
+	FeeType     FeeType   `json:"fee_type"`
+	ChainId     int       `json:"chain_id"`
+	AmountUsd   float64   `json:"amount_usd"`
+	AmountToken string    `json:"amount_token"`
+	TokenSymbol string    `json:"token_symbol"`
+	TxHash      string    `json:"tx_hash"`
+	Status      string    `json:"status"` // pending, collected, distributed
+	CollectedAt time.Time `json:"collected_at"`
 }
 
 // ============================================================================
@@ -264,9 +264,9 @@ var (
 	tokens      = make(map[string]*Token)
 
 	// Fee management
-	feeConfigs       = make(map[string]*FeeConfig)
+	feeConfigs        = make(map[string]*FeeConfig)
 	adminFeeAddresses = make(map[string]*AdminFeeAddress)
-	feeCollections   = make(map[string]*FeeCollection)
+	feeCollections    = make(map[string]*FeeCollection)
 
 	// Bot management
 	botTiers     = make(map[string]*BotTier)
@@ -280,7 +280,7 @@ var (
 
 	// Security
 	encryptionKey []byte
-	mu           sync.RWMutex
+	mu            sync.RWMutex
 )
 
 type Session struct {
@@ -621,7 +621,7 @@ func getBlockchains(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"blockchains": list,
-		"count":     len(list),
+		"count":       len(list),
 	})
 }
 
@@ -765,7 +765,7 @@ func getAdminFeeAddresses(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"addresses": list,
-		"count":    len(list),
+		"count":     len(list),
 	})
 }
 
@@ -838,7 +838,7 @@ func createBotTier(w http.ResponseWriter, r *http.Request) {
 	mu.Unlock()
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"message":   "Bot tier created",
+		"message":  "Bot tier created",
 		"bot_tier": &req,
 	})
 }
@@ -959,8 +959,8 @@ func createExternalConnection(w http.ResponseWriter, r *http.Request) {
 	collectFee(req.UserId, FeeAPI, 0, req.MonthlyFeeUsd)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"message":   "External connection created",
-		"api_key":  req.ApiKey,
+		"message":     "External connection created",
+		"api_key":     req.ApiKey,
 		"monthly_fee": req.MonthlyFeeUsd,
 	})
 }
@@ -1020,7 +1020,7 @@ func getListingRequests(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"requests": list,
-		"count":   len(list),
+		"count":    len(list),
 	})
 }
 
@@ -1059,10 +1059,10 @@ func collectFee(userId string, feeType FeeType, chainId int, amountUsd float64) 
 	fee := &FeeCollection{
 		ID:          generateID(),
 		UserId:      userId,
-		FeeType:    feeType,
-		ChainId:    chainId,
-		AmountUsd: amountUsd,
-		Status:    "collected",
+		FeeType:     feeType,
+		ChainId:     chainId,
+		AmountUsd:   amountUsd,
+		Status:      "collected",
 		CollectedAt: time.Now(),
 	}
 
@@ -1094,7 +1094,7 @@ func getFeeCollections(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"fees":      list,
 		"total_usd": total,
-		"count":    len(list),
+		"count":     len(list),
 	})
 }
 
@@ -1107,15 +1107,15 @@ func healthCheck(w http.ResponseWriter, r *http.Request) {
 	defer mu.RUnlock()
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"status":              "healthy",
-		"version":             API_VERSION,
-		"blockchains":         len(blockchains),
-		"fee_configs":         len(feeConfigs),
-		"admin_fee_addresses":   len(adminFeeAddresses),
-		"bot_tiers":           len(botTiers),
-		"bot_instances":      len(botInstances),
+		"status":               "healthy",
+		"version":              API_VERSION,
+		"blockchains":          len(blockchains),
+		"fee_configs":          len(feeConfigs),
+		"admin_fee_addresses":  len(adminFeeAddresses),
+		"bot_tiers":            len(botTiers),
+		"bot_instances":        len(botInstances),
 		"external_connections": len(externalConnections),
-		"fee_collections":    len(feeCollections),
+		"fee_collections":      len(feeCollections),
 	})
 }
 

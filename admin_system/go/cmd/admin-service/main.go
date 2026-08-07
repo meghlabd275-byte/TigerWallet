@@ -24,12 +24,12 @@ import (
 // ============================================================================
 
 type Config struct {
-	Port            string
-	RedisURL        string
-	JWTSecret       string
-	AdminEmail      string
-	AdminPassword   string
-	MongoDBURL      string
+	Port          string
+	RedisURL      string
+	JWTSecret     string
+	AdminEmail    string
+	AdminPassword string
+	MongoDBURL    string
 }
 
 func LoadConfig() *Config {
@@ -55,82 +55,82 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type Admin struct {
-	ID            string    `json:"id" bson:"_id"`
-	Username      string    `json:"username" bson:"username"`
-	Email         string    `json:"email" bson:"email"`
-	PasswordHash  string    `json:"-" bson:"password_hash"`
-	Role          string    `json:"role" bson:"role"`
-	Permissions   []string  `json:"permissions" bson:"permissions"`
-	CreatedAt     int64     `json:"created_at" bson:"created_at"`
-	UpdatedAt     int64     `json:"updated_at" bson:"updated_at"`
-	LastLoginAt   int64     `json:"last_login_at" bson:"last_login_at"`
-	Status        string    `json:"status" bson:"status"`
-	TwoFactorEnabled bool   `json:"two_factor_enabled" bson:"two_factor_enabled"`
-	IPWhitelist   []string  `json:"ip_whitelist" bson:"ip_whitelist"`
+	ID               string   `json:"id" bson:"_id"`
+	Username         string   `json:"username" bson:"username"`
+	Email            string   `json:"email" bson:"email"`
+	PasswordHash     string   `json:"-" bson:"password_hash"`
+	Role             string   `json:"role" bson:"role"`
+	Permissions      []string `json:"permissions" bson:"permissions"`
+	CreatedAt        int64    `json:"created_at" bson:"created_at"`
+	UpdatedAt        int64    `json:"updated_at" bson:"updated_at"`
+	LastLoginAt      int64    `json:"last_login_at" bson:"last_login_at"`
+	Status           string   `json:"status" bson:"status"`
+	TwoFactorEnabled bool     `json:"two_factor_enabled" bson:"two_factor_enabled"`
+	IPWhitelist      []string `json:"ip_whitelist" bson:"ip_whitelist"`
 }
 
 type WhiteLabelClient struct {
-	ID          string              `json:"id" bson:"_id"`
-	Name        string              `json:"name" bson:"name"`
-	Domain      string              `json:"domain" bson:"domain"`
-	Branding    WhiteLabelBranding `json:"branding" bson:"branding"`
-	Config      WhiteLabelConfig   `json:"config" bson:"config"`
-	Permissions []string           `json:"permissions" bson:"permissions"`
-	Status      string              `json:"status" bson:"status"`
-	CreatedAt   int64              `json:"created_at" bson:"created_at"`
-	UpdatedAt   int64              `json:"updated_at" bson:"updated_at"`
-	MasterWallet string            `json:"master_wallet" bson:"master_wallet"`
+	ID           string             `json:"id" bson:"_id"`
+	Name         string             `json:"name" bson:"name"`
+	Domain       string             `json:"domain" bson:"domain"`
+	Branding     WhiteLabelBranding `json:"branding" bson:"branding"`
+	Config       WhiteLabelConfig   `json:"config" bson:"config"`
+	Permissions  []string           `json:"permissions" bson:"permissions"`
+	Status       string             `json:"status" bson:"status"`
+	CreatedAt    int64              `json:"created_at" bson:"created_at"`
+	UpdatedAt    int64              `json:"updated_at" bson:"updated_at"`
+	MasterWallet string             `json:"master_wallet" bson:"master_wallet"`
 }
 
 type WhiteLabelBranding struct {
-	Name           string `json:"name" bson:"name"`
-	Logo           string `json:"logo" bson:"logo"`
-	Favicon        string `json:"favicon" bson:"favicon"`
-	PrimaryColor   string `json:"primary_color" bson:"primary_color"`
-	SecondaryColor string `json:"secondary_color" bson:"secondary_color"`
+	Name            string `json:"name" bson:"name"`
+	Logo            string `json:"logo" bson:"logo"`
+	Favicon         string `json:"favicon" bson:"favicon"`
+	PrimaryColor    string `json:"primary_color" bson:"primary_color"`
+	SecondaryColor  string `json:"secondary_color" bson:"secondary_color"`
 	BackgroundColor string `json:"background_color" bson:"background_color"`
-	TextColor      string `json:"text_color" bson:"text_color"`
+	TextColor       string `json:"text_color" bson:"text_color"`
 }
 
 type WhiteLabelConfig struct {
-	Blockchains []int    `json:"blockchains" bson:"blockchains"`
-	Tokens      []string `json:"tokens" bson:"tokens"`
-	Features    []string `json:"features" bson:"features"`
+	Blockchains []int     `json:"blockchains" bson:"blockchains"`
+	Tokens      []string  `json:"tokens" bson:"tokens"`
+	Features    []string  `json:"features" bson:"features"`
 	Fees        FeeConfig `json:"fees" bson:"fees"`
 }
 
 type FeeConfig struct {
-	WithdrawFee       string  `json:"withdraw_fee" bson:"withdraw_fee"`
+	WithdrawFee        string  `json:"withdraw_fee" bson:"withdraw_fee"`
 	WithdrawFeePercent float64 `json:"withdraw_fee_percent" bson:"withdraw_fee_percent"`
-	SwapFeePercent    float64 `json:"swap_fee_percent" bson:"swap_fee_percent"`
+	SwapFeePercent     float64 `json:"swap_fee_percent" bson:"swap_fee_percent"`
 	TransferFeePercent float64 `json:"transfer_fee_percent" bson:"transfer_fee_percent"`
 }
 
 type User struct {
-	ID             string    `json:"id" bson:"_id"`
-	Email          string    `json:"email" bson:"email"`
-	Username       string    `json:"username" bson:"username"`
+	ID              string   `json:"id" bson:"_id"`
+	Email           string   `json:"email" bson:"email"`
+	Username        string   `json:"username" bson:"username"`
 	WalletAddresses []string `json:"wallet_addresses" bson:"wallet_addresses"`
-	KYCStatus      string    `json:"kyc_status" bson:"kyc_status"`
-	KYCLevel       int       `json:"kyc_level" bson:"kyc_level"`
-	CreatedAt      int64     `json:"created_at" bson:"created_at"`
-	UpdatedAt      int64     `json:"updated_at" bson:"updated_at"`
-	Status         string    `json:"status" bson:"status"`
+	KYCStatus       string   `json:"kyc_status" bson:"kyc_status"`
+	KYCLevel        int      `json:"kyc_level" bson:"kyc_level"`
+	CreatedAt       int64    `json:"created_at" bson:"created_at"`
+	UpdatedAt       int64    `json:"updated_at" bson:"updated_at"`
+	Status          string   `json:"status" bson:"status"`
 }
 
 type Transaction struct {
-	ID            string    `json:"id" bson:"_id"`
-	Hash          string    `json:"hash" bson:"hash"`
-	From          string    `json:"from" bson:"from"`
-	To            string    `json:"to" bson:"to"`
-	Value         string    `json:"value" bson:"value"`
-	ChainID       int       `json:"chain_id" bson:"chain_id"`
-	Status        string    `json:"status" bson:"status"`
-	Type          string    `json:"type" bson:"type"`
-	Fee           string    `json:"fee" bson:"fee"`
-	CreatedAt     int64     `json:"created_at" bson:"created_at"`
-	ProcessedAt   int64     `json:"processed_at" bson:"processed_at"`
-	AdminID       string    `json:"admin_id" bson:"admin_id"`
+	ID          string `json:"id" bson:"_id"`
+	Hash        string `json:"hash" bson:"hash"`
+	From        string `json:"from" bson:"from"`
+	To          string `json:"to" bson:"to"`
+	Value       string `json:"value" bson:"value"`
+	ChainID     int    `json:"chain_id" bson:"chain_id"`
+	Status      string `json:"status" bson:"status"`
+	Type        string `json:"type" bson:"type"`
+	Fee         string `json:"fee" bson:"fee"`
+	CreatedAt   int64  `json:"created_at" bson:"created_at"`
+	ProcessedAt int64  `json:"processed_at" bson:"processed_at"`
+	AdminID     string `json:"admin_id" bson:"admin_id"`
 }
 
 type Token struct {
@@ -210,15 +210,15 @@ func (s *AdminService) initializeDefaultAdmin() {
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(s.config.AdminPassword), bcrypt.DefaultCost)
 
 	admin := &Admin{
-		ID:            "admin-1",
-		Username:      "superadmin",
-		Email:         s.config.AdminEmail,
-		PasswordHash:  string(hashedPassword),
-		Role:          "super_admin",
-		Permissions:   s.getAllPermissions(),
-		CreatedAt:     time.Now().Unix(),
-		UpdatedAt:     time.Now().Unix(),
-		Status:        "active",
+		ID:               "admin-1",
+		Username:         "superadmin",
+		Email:            s.config.AdminEmail,
+		PasswordHash:     string(hashedPassword),
+		Role:             "super_admin",
+		Permissions:      s.getAllPermissions(),
+		CreatedAt:        time.Now().Unix(),
+		UpdatedAt:        time.Now().Unix(),
+		Status:           "active",
 		TwoFactorEnabled: false,
 	}
 
@@ -274,11 +274,11 @@ func (s *AdminService) login(email, password string) (*Admin, string, error) {
 
 func (s *AdminService) generateToken(admin *Admin) (string, error) {
 	claims := jwt.MapClaims{
-		"admin_id":  admin.ID,
-		"email":     admin.Email,
-		"role":      admin.Role,
-		"exp":       time.Now().Add(24 * time.Hour).Unix(),
-		"iat":       time.Now().Unix(),
+		"admin_id": admin.ID,
+		"email":    admin.Email,
+		"role":     admin.Role,
+		"exp":      time.Now().Add(24 * time.Hour).Unix(),
+		"iat":      time.Now().Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -333,15 +333,15 @@ func (s *AdminService) createAdmin(email, username, password, role string, permi
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 
 	admin := &Admin{
-		ID:            fmt.Sprintf("admin-%d", len(s.admins)+1),
-		Email:         email,
-		Username:      username,
-		PasswordHash:  string(hashedPassword),
-		Role:          role,
-		Permissions:   permissions,
-		CreatedAt:     time.Now().Unix(),
-		UpdatedAt:     time.Now().Unix(),
-		Status:        "active",
+		ID:           fmt.Sprintf("admin-%d", len(s.admins)+1),
+		Email:        email,
+		Username:     username,
+		PasswordHash: string(hashedPassword),
+		Role:         role,
+		Permissions:  permissions,
+		CreatedAt:    time.Now().Unix(),
+		UpdatedAt:    time.Now().Unix(),
+		Status:       "active",
 	}
 
 	s.admins[admin.ID] = admin
@@ -410,15 +410,15 @@ func (s *AdminService) createWhiteLabel(name, domain string, branding WhiteLabel
 	}
 
 	client := &WhiteLabelClient{
-		ID:          fmt.Sprintf("wl-%d", len(s.clients)+1),
-		Name:        name,
-		Domain:      domain,
-		Branding:    branding,
-		Config:      config,
-		Permissions: []string{},
-		Status:      "pending",
-		CreatedAt:   time.Now().Unix(),
-		UpdatedAt:   time.Now().Unix(),
+		ID:           fmt.Sprintf("wl-%d", len(s.clients)+1),
+		Name:         name,
+		Domain:       domain,
+		Branding:     branding,
+		Config:       config,
+		Permissions:  []string{},
+		Status:       "pending",
+		CreatedAt:    time.Now().Unix(),
+		UpdatedAt:    time.Now().Unix(),
 		MasterWallet: "",
 	}
 
@@ -567,22 +567,22 @@ func (s *AdminService) removeLiquidity(id string) error {
 
 func (s *AdminService) getDashboardStats() map[string]interface{} {
 	return map[string]interface{}{
-		"total_users":         0,
-		"active_users":        0,
-		"total_transactions":  0,
-		"volume_24h":         "0",
-		"volume_7d":          "0",
-		"revenue_24h":        "0",
-		"pending_kyc":        0,
+		"total_users":          0,
+		"active_users":         0,
+		"total_transactions":   0,
+		"volume_24h":           "0",
+		"volume_7d":            "0",
+		"revenue_24h":          "0",
+		"pending_kyc":          0,
 		"pending_transactions": 0,
 	}
 }
 
 func (s *AdminService) getUserAnalytics(startDate, endDate int64) map[string]interface{} {
 	return map[string]interface{}{
-		"new_users":      0,
-		"active_users":   0,
-		"kyc_completed":  0,
+		"new_users":     0,
+		"active_users":  0,
+		"kyc_completed": 0,
 	}
 }
 
@@ -590,8 +590,8 @@ func (s *AdminService) getTransactionAnalytics(startDate, endDate int64) map[str
 	return map[string]interface{}{
 		"total_transactions": 0,
 		"total_volume":       "0",
-		"by_status":         map[string]int{},
-		"by_type":           map[string]int{},
+		"by_status":          map[string]int{},
+		"by_type":            map[string]int{},
 	}
 }
 
@@ -600,14 +600,14 @@ func (s *AdminService) getTransactionAnalytics(startDate, endDate int64) map[str
 // ============================================================================
 
 type AuditLog struct {
-	ID         string    `json:"id"`
-	AdminID    string    `json:"admin_id"`
-	Action     string    `json:"action"`
-	Resource   string    `json:"resource"`
-	ResourceID string    `json:"resource_id"`
-	Details    string    `json:"details"`
-	IPAddress  string    `json:"ip_address"`
-	CreatedAt  int64     `json:"created_at"`
+	ID         string `json:"id"`
+	AdminID    string `json:"admin_id"`
+	Action     string `json:"action"`
+	Resource   string `json:"resource"`
+	ResourceID string `json:"resource_id"`
+	Details    string `json:"details"`
+	IPAddress  string `json:"ip_address"`
+	CreatedAt  int64  `json:"created_at"`
 }
 
 func (s *AdminService) logAudit(adminID, action, resource, resourceID, details, ipAddress string) {
@@ -814,10 +814,10 @@ func (s *AdminService) handleListWhiteLabels(c *gin.Context) {
 
 func (s *AdminService) handleCreateWhiteLabel(c *gin.Context) {
 	var req struct {
-		Name     string            `json:"name" binding:"required"`
-		Domain   string            `json:"domain" binding:"required"`
+		Name     string             `json:"name" binding:"required"`
+		Domain   string             `json:"domain" binding:"required"`
 		Branding WhiteLabelBranding `json:"branding"`
-		Config   WhiteLabelConfig  `json:"config"`
+		Config   WhiteLabelConfig   `json:"config"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -869,10 +869,10 @@ func (s *AdminService) handleListUsers(c *gin.Context) {
 
 	users, total := s.listUsers(page, pageSize)
 	c.JSON(http.StatusOK, gin.H{
-		"users":      users,
-		"page":       page,
-		"page_size":  pageSize,
-		"total":      total,
+		"users":     users,
+		"page":      page,
+		"page_size": pageSize,
+		"total":     total,
 	})
 }
 
@@ -913,7 +913,7 @@ func (s *AdminService) handleUpdateKYC(c *gin.Context) {
 
 	var req struct {
 		Status string `json:"status" binding:"required"`
-		Level  int   `json:"level"`
+		Level  int    `json:"level"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {

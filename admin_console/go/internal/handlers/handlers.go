@@ -992,21 +992,21 @@ func (h *ComplianceHandler) AMLCheck(c *gin.Context) {
 // System handlers
 func GetSystemStats(c *gin.Context) {
 	stats := map[string]interface{}{
-		"total_users":      0,
-		"active_users":     0,
+		"total_users":        0,
+		"active_users":       0,
 		"total_transactions": 0,
-		"system_health":    "healthy",
-		"uptime":           "24h",
+		"system_health":      "healthy",
+		"uptime":             "24h",
 	}
 	c.JSON(http.StatusOK, stats)
 }
 
 func GetConfig(c *gin.Context) {
 	config := map[string]interface{}{
-		"maintenance_mode": false,
+		"maintenance_mode":     false,
 		"registration_enabled": true,
-		"kyc_required":     true,
-		"withdrawal_limit": "10000",
+		"kyc_required":         true,
+		"withdrawal_limit":     "10000",
 	}
 	c.JSON(http.StatusOK, config)
 }

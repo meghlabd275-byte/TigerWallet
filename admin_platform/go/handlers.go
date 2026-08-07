@@ -42,7 +42,7 @@ func handleLogin(c *gin.Context) {
 
 	// Generate JWT token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":  user["id"].(string),
+		"sub":   user["id"].(string),
 		"email": req.Email,
 		"role":  user["role"].(string),
 		"exp":   time.Now().Add(24 * time.Hour).Unix(),
@@ -104,13 +104,13 @@ func authMiddleware(secret string) gin.HandlerFunc {
 
 func handleGetDashboard(c *gin.Context) {
 	dashboard := map[string]interface{}{
-		"total_users":       125000,
-		"active_users":      45000,
-		"kyc_pending":       1250,
+		"total_users":        125000,
+		"active_users":       45000,
+		"kyc_pending":        1250,
 		"total_transactions": 875000,
-		"volume_24h":        125000000.0,
-		"revenue_24h":       125000.0,
-		"timestamp":        time.Now().Unix(),
+		"volume_24h":         125000000.0,
+		"revenue_24h":        125000.0,
+		"timestamp":          time.Now().Unix(),
 	}
 	c.JSON(http.StatusOK, dashboard)
 }
@@ -118,10 +118,10 @@ func handleGetDashboard(c *gin.Context) {
 func handleGetStats(c *gin.Context) {
 	stats := map[string]interface{}{
 		"users": map[string]interface{}{
-			"total":    125000,
-			"active":   45000,
-			"new_24h":  1250,
-			"banned":   150,
+			"total":   125000,
+			"active":  45000,
+			"new_24h": 1250,
+			"banned":  150,
 		},
 		"transactions": map[string]interface{}{
 			"total":     875000,
@@ -130,9 +130,9 @@ func handleGetStats(c *gin.Context) {
 			"failed":    3750,
 		},
 		"volume": map[string]interface{}{
-			"24h":  125000000.0,
-			"7d":   875000000.0,
-			"30d":  3750000000.0,
+			"24h": 125000000.0,
+			"7d":  875000000.0,
+			"30d": 3750000000.0,
 		},
 	}
 	c.JSON(http.StatusOK, stats)
@@ -143,14 +143,14 @@ func handleGetStats(c *gin.Context) {
 // ============================================================================
 
 type User struct {
-	ID           string `json:"id"`
-	Email        string `json:"email"`
-	Username     string `json:"username"`
-	WalletAddr   string `json:"wallet_address"`
-	KYCStatus    string `json:"kyc_status"`
-	Status       string `json:"status"`
-	RiskScore    int    `json:"risk_score"`
-	CreatedAt    int64  `json:"created_at"`
+	ID         string `json:"id"`
+	Email      string `json:"email"`
+	Username   string `json:"username"`
+	WalletAddr string `json:"wallet_address"`
+	KYCStatus  string `json:"kyc_status"`
+	Status     string `json:"status"`
+	RiskScore  int    `json:"risk_score"`
+	CreatedAt  int64  `json:"created_at"`
 }
 
 func handleListUsers(c *gin.Context) {
@@ -178,14 +178,14 @@ func handleListUsers(c *gin.Context) {
 func handleGetUser(c *gin.Context) {
 	id := c.Param("id")
 	user := User{
-		ID:           id,
-		Email:        "user@example.com",
-		Username:     "sampleuser",
-		WalletAddr:   "0x742d35Cc6634C0532925a3b844Bc9e7595f12eB3",
-		KYCStatus:    "approved",
-		Status:       "active",
-		RiskScore:    5,
-		CreatedAt:    time.Now().Unix(),
+		ID:         id,
+		Email:      "user@example.com",
+		Username:   "sampleuser",
+		WalletAddr: "0x742d35Cc6634C0532925a3b844Bc9e7595f12eB3",
+		KYCStatus:  "approved",
+		Status:     "active",
+		RiskScore:  5,
+		CreatedAt:  time.Now().Unix(),
 	}
 	c.JSON(http.StatusOK, user)
 }
@@ -230,9 +230,9 @@ func handleGetKYC(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"id":          id,
 		"type":        "identity",
-		"status":       "pending",
-		"documents":    []string{},
-		"reviewed_by":  nil,
+		"status":      "pending",
+		"documents":   []string{},
+		"reviewed_by": nil,
 	})
 }
 
@@ -335,22 +335,22 @@ func handleHaltPair(c *gin.Context) {
 func handleListBlockchains(c *gin.Context) {
 	blockchains := []map[string]interface{}{
 		{
-			"id":          1,
-			"name":        "Ethereum",
-			"symbol":      "ETH",
-			"chain_type":  "evm",
-			"chain_id":     1,
-			"is_active":   true,
-			"rpc_urls":    []string{"https://eth.llamarpc.com"},
+			"id":         1,
+			"name":       "Ethereum",
+			"symbol":     "ETH",
+			"chain_type": "evm",
+			"chain_id":   1,
+			"is_active":  true,
+			"rpc_urls":   []string{"https://eth.llamarpc.com"},
 		},
 		{
-			"id":          56,
-			"name":        "BNB Smart Chain",
-			"symbol":      "BNB",
-			"chain_type":  "evm",
-			"chain_id":    56,
-			"is_active":   true,
-			"rpc_urls":    []string{"https://bsc-dataseed.binance.org"},
+			"id":         56,
+			"name":       "BNB Smart Chain",
+			"symbol":     "BNB",
+			"chain_type": "evm",
+			"chain_id":   56,
+			"is_active":  true,
+			"rpc_urls":   []string{"https://bsc-dataseed.binance.org"},
 		},
 	}
 	c.JSON(http.StatusOK, gin.H{"data": blockchains})
@@ -382,12 +382,12 @@ func handleDisableBlockchain(c *gin.Context) {
 func handleListFees(c *gin.Context) {
 	fees := []map[string]interface{}{
 		{
-			"id":         uuid.New().String(),
-			"name":        "Trading Fee",
-			"fee_type":   "trading",
-			"maker_fee":  "0.001",
-			"taker_fee":  "0.001",
-			"is_active":  true,
+			"id":        uuid.New().String(),
+			"name":      "Trading Fee",
+			"fee_type":  "trading",
+			"maker_fee": "0.001",
+			"taker_fee": "0.001",
+			"is_active": true,
 		},
 	}
 	c.JSON(http.StatusOK, gin.H{"data": fees})
@@ -424,12 +424,12 @@ func handleListAdmins(c *gin.Context) {
 func handleCreateAdmin(c *gin.Context) {
 	var admin map[string]interface{}
 	c.ShouldBindJSON(&admin)
-	
+
 	// Hash password
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(admin["password"].(string)), bcrypt.DefaultCost)
 	admin["password_hash"] = string(hashedPassword)
 	admin["id"] = uuid.New().String()
-	
+
 	c.JSON(http.StatusCreated, admin)
 }
 
@@ -454,8 +454,8 @@ func handleListWhiteLabels(c *gin.Context) {
 			"status":        "active",
 			"plan":          "professional",
 			"fee_percent":   20.0,
-			"current_users":  5000,
-			"max_users":      10000,
+			"current_users": 5000,
+			"max_users":     10000,
 		},
 	}
 	c.JSON(http.StatusOK, gin.H{"data": clients})
@@ -492,12 +492,12 @@ func handleSuspendWhiteLabel(c *gin.Context) {
 func handleListAuditLogs(c *gin.Context) {
 	logs := []map[string]interface{}{
 		{
-			"id":          uuid.New().String(),
-			"admin_id":    uuid.New().String(),
-			"action":      "user_ban",
-			"details":     "Banned user xyz",
-			"ip_address":  "192.168.1.1",
-			"created_at":  time.Now().Unix(),
+			"id":         uuid.New().String(),
+			"admin_id":   uuid.New().String(),
+			"action":     "user_ban",
+			"details":    "Banned user xyz",
+			"ip_address": "192.168.1.1",
+			"created_at": time.Now().Unix(),
 		},
 	}
 	c.JSON(http.StatusOK, gin.H{"data": logs, "total": len(logs)})
@@ -512,7 +512,7 @@ func handleGetSettings(c *gin.Context) {
 		"platform_name":     "TigerWallet",
 		"maintenance_mode":  false,
 		"registration_open": true,
-		"kyc_required":     true,
+		"kyc_required":      true,
 	}
 	c.JSON(http.StatusOK, settings)
 }

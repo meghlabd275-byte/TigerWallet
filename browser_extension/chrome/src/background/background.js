@@ -120,7 +120,7 @@ let walletState = {
 
 class CryptoUtils {
   // Keccak-256 hash
-  static async function keccak256(message) {
+  static async keccak256(message) {
     const msgBuffer = new TextEncoder().encode(message);
     const hashBuffer = await crypto.subtle.digest('SHA-3-256', msgBuffer);
     return Array.from(new Uint8Array(hashBuffer))
@@ -129,14 +129,14 @@ class CryptoUtils {
   }
   
   // Generate random bytes
-  static async function randomBytes(length) {
+  static async randomBytes(length) {
     const bytes = new Uint8Array(length);
     crypto.getRandomValues(bytes);
     return Array.from(bytes);
   }
   
   // Derive address from public key (uncompressed)
-  static function publicKeyToAddress(publicKey) {
+  static publicKeyToAddress(publicKey) {
     // Remove '04' prefix if present
     const pub = publicKey.startsWith('0x04') ? publicKey.slice(4) : publicKey;
     // Keccak-256 of the public key
@@ -157,7 +157,7 @@ class CryptoUtils {
 
 class KeyDerivation {
   // Simplified BIP-39 seed generation (in production, use proper PBKDF2)
-  static async function mnemonicToSeed(mnemonic, password = '') {
+  static async mnemonicToSeed(mnemonic, password = '') {
     const encoder = new TextEncoder();
     const data = encoder.encode(mnemonic + 'mnemonic' + password);
     const hash = await crypto.subtle.digest('SHA-512', data);
@@ -165,7 +165,7 @@ class KeyDerivation {
   }
   
   // Derive key from seed with path
-  static async function deriveKey(seed, path) {
+  static async deriveKey(seed, path) {
     // Simplified - in production use proper BIP-32
     const encoder = new TextEncoder();
     const data = encoder.encode(path + JSON.stringify(Array.from(seed)));
@@ -174,7 +174,7 @@ class KeyDerivation {
   }
   
   // Generate 24-word mnemonic
-  static async function generateMnemonic() {
+  static async generateMnemonic() {
     const WORDLIST = [
       'abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract',
       // ... (full BIP-39 wordlist would be here)
@@ -196,7 +196,7 @@ class KeyDerivation {
 
 class WalletManager {
   // Create new wallet
-  static async function createWallet(password) {
+  static async createWallet(password) {
     const mnemonic = await KeyDerivation.generateMnemonic();
     const seed = await KeyDerivation.mnemonicToSeed(mnemonic, password);
     
@@ -226,7 +226,7 @@ class WalletManager {
   }
   
   // Import wallet from mnemonic
-  static async function importWallet(mnemonic, password) {
+  static async importWallet(mnemonic, password) {
     // Validate mnemonic
     const words = mnemonic.trim().split(/\s+/);
     if (words.length !== 12 && words.length !== 24) {
@@ -259,7 +259,7 @@ class WalletManager {
   }
   
   // Import wallet from private key
-  static async function importPrivateKey(privateKey, password) {
+  static async importPrivateKey(privateKey, password) {
     // Remove 0x prefix
     const key = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
     
@@ -286,7 +286,7 @@ class WalletManager {
   }
   
   // Unlock wallet with password
-  static async function unlockWallet(password) {
+  static async unlockWallet(password) {
     await loadState();
     
     if (!walletState.encryptedMnemonic && !walletState.privateKey) {
@@ -320,20 +320,20 @@ class WalletManager {
   }
   
   // Lock wallet
-  static function lockWallet() {
+  static lockWallet() {
     walletState.isUnlocked = false;
     saveState();
     return true;
   }
   
   // Get current address
-  static function getAddress(chain = null) {
+  static getAddress(chain = null) {
     const targetChain = chain || walletState.currentChain;
     return walletState.addresses[targetChain] || '';
   }
   
   // Switch chain
-  static function switchChain(chainId) {
+  static switchChain(chainId) {
     if (!CHAIN_CONFIG[chainId]) {
       throw new Error('Unsupported chain');
     }
@@ -343,7 +343,7 @@ class WalletManager {
   }
   
   // Sign transaction (simplified)
-  static async function signTransaction(tx) {
+  static async signTransaction(tx) {
     if (!walletState.isUnlocked) {
       throw new Error('Wallet is locked');
     }
@@ -358,7 +358,7 @@ class WalletManager {
   }
   
   // Sign message
-  static async function signMessage(message) {
+  static async signMessage(message) {
     if (!walletState.isUnlocked) {
       throw new Error('Wallet is locked');
     }
@@ -368,7 +368,7 @@ class WalletManager {
   }
   
   // Encrypt data
-  static async function encrypt(data, password) {
+  static async encrypt(data, password) {
     const encoder = new TextEncoder();
     const dataBuffer = encoder.encode(JSON.stringify(data));
     const keyBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(password));
@@ -395,7 +395,7 @@ class WalletManager {
   }
   
   // Decrypt data
-  static async function decrypt(encryptedData, password) {
+  static async decrypt(encryptedData, password) {
     const { iv, data } = JSON.parse(encryptedData);
     const encoder = new TextEncoder();
     const keyBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(password));
@@ -419,7 +419,7 @@ class WalletManager {
   }
   
   // Get private key from public key (simplified - NOT real crypto)
-  static async function privateKeyToPublicKey(privateKey) {
+  static async privateKeyToPublicKey(privateKey) {
     const hash = await CryptoUtils.keccak256(privateKey);
     return '0x04' + hash.repeat(4).slice(0, 128);
   }
@@ -430,7 +430,7 @@ class WalletManager {
 // ============================================================================
 
 class RpcClient {
-  static async function request(chainId, method, params = []) {
+  static async request(chainId, method, params = []) {
     const rpcUrl = DEFAULT_RPC[chainId] || DEFAULT_RPC.ethereum;
     
     const response = await fetch(rpcUrl, {
@@ -452,7 +452,7 @@ class RpcClient {
   }
   
   // Get balance
-  static async function getBalance(chainId, address) {
+  static async getBalance(chainId, address) {
     if (!CryptoUtils.isValidAddress(address)) {
       throw new Error('Invalid address');
     }
@@ -460,37 +460,37 @@ class RpcClient {
   }
   
   // Get transaction count
-  static async function getTransactionCount(chainId, address) {
+  static async getTransactionCount(chainId, address) {
     return await this.request(chainId, 'eth_getTransactionCount', [address, 'latest']);
   }
   
   // Estimate gas
-  static async function estimateGas(chainId, tx) {
+  static async estimateGas(chainId, tx) {
     return await this.request(chainId, 'eth_estimateGas', [tx]);
   }
   
   // Get gas price
-  static async function getGasPrice(chainId) {
+  static async getGasPrice(chainId) {
     return await this.request(chainId, 'eth_gasPrice');
   }
   
   // Send raw transaction
-  static async function sendRawTransaction(chainId, signedTx) {
+  static async sendRawTransaction(chainId, signedTx) {
     return await this.request(chainId, 'eth_sendRawTransaction', [signedTx]);
   }
   
   // Get transaction receipt
-  static async function getTransactionReceipt(chainId, txHash) {
+  static async getTransactionReceipt(chainId, txHash) {
     return await this.request(chainId, 'eth_getTransactionReceipt', [txHash]);
   }
   
   // Call contract
-  static async function call(chainId, to, data) {
+  static async call(chainId, to, data) {
     return await this.request(chainId, 'eth_call', [{ to, data }, 'latest']);
   }
   
   // Get chain ID
-  static async function getChainId(chainId) {
+  static async getChainId(chainId) {
     return await this.request(chainId, 'eth_chainId');
   }
 }
@@ -504,7 +504,7 @@ class WalletConnectManager {
   static bridges = new Map();
   
   // Create session
-  static async function createSession(peerId, peerMeta) {
+  static async createSession(peerId, peerMeta) {
     const session = {
       topic: generateTopic(),
       peerId,
@@ -519,7 +519,7 @@ class WalletConnectManager {
   }
   
   // Approve session
-  static async function approveSession(topic, accounts, chainId) {
+  static async approveSession(topic, accounts, chainId) {
     const session = this.sessions.get(topic);
     if (!session) throw new Error('Session not found');
     
@@ -531,22 +531,22 @@ class WalletConnectManager {
   }
   
   // Reject session
-  static function rejectSession(topic) {
+  static rejectSession(topic) {
     this.sessions.delete(topic);
   }
   
   // Get session
-  static function getSession(topic) {
+  static getSession(topic) {
     return this.sessions.get(topic);
   }
   
   // Disconnect
-  static function disconnect(topic) {
+  static disconnect(topic) {
     this.sessions.delete(topic);
   }
   
   // Generate topic
-  static function generateTopic() {
+  static generateTopic() {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
       const r = Math.random() * 16 | 0;
       const v = c === 'x' ? r : (r & 0x3 | 0x8);
@@ -563,7 +563,7 @@ class DAppPermissionManager {
   static permissions = new Map();
   
   // Request permissions
-  static async function requestPermissions(origin, requestedPermissions) {
+  static async requestPermissions(origin, requestedPermissions) {
     const existing = this.permissions.get(origin) || { allowed: false, permissions: [] };
     
     // Always allow wallet address
@@ -584,18 +584,18 @@ class DAppPermissionManager {
   }
   
   // Check permission
-  static function hasPermission(origin, permission) {
+  static hasPermission(origin, permission) {
     const perms = this.permissions.get(origin);
     return perms && perms.allowed && permission in perms.permissions;
   }
   
   // Revoke permission
-  static function revokePermission(origin) {
+  static revokePermission(origin) {
     this.permissions.delete(origin);
   }
   
   // Get allowed origins
-  static function getAllowedOrigins() {
+  static getAllowedOrigins() {
     return Array.from(this.permissions.entries())
       .filter(([_, p]) => p.allowed)
       .map(([origin, _]) => origin);

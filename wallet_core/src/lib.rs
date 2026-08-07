@@ -175,7 +175,7 @@ impl Wallet {
         let mut addresses = HashMap::new();
         
         for chain in chains {
-            let derived = derive_address(seed, chain)?;
+            let derived = key_derivation::derive_address(seed, chain)?;
             addresses.insert(chain.chain_id, derived);
         }
         

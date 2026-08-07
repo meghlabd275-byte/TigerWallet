@@ -1,7 +1,7 @@
 /**
  * TigerWallet Admin Platform Service
  * Complete Admin & White Label Management System
- * 
+ *
  * Features:
  * - Super Admin & Sub Admin management
  * - White Label client management
@@ -49,15 +49,15 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort  string `json:"server_port"`
-	DBHost      string `json:"db_host"`
-	DBPort      string `json:"db_port"`
-	DBUser      string `json:"db_user"`
-	DBPassword  string `json:"db_password"`
-	DBName      string `json:"db_name"`
-	RedisHost   string `json:"redis_host"`
-	RedisPort   string `json:"redis_port"`
-	JWTSecret   string `json:"jwt_secret"`
+	ServerPort    string `json:"server_port"`
+	DBHost        string `json:"db_host"`
+	DBPort        string `json:"db_port"`
+	DBUser        string `json:"db_user"`
+	DBPassword    string `json:"db_password"`
+	DBName        string `json:"db_name"`
+	RedisHost     string `json:"redis_host"`
+	RedisPort     string `json:"redis_port"`
+	JWTSecret     string `json:"jwt_secret"`
 	EncryptionKey string `json:"encryption_key"`
 }
 
@@ -89,18 +89,18 @@ func getEnv(key, defaultValue string) string {
 
 // Admin User
 type Admin struct {
-	ID           uint      `gorm:"primarykey" json:"id"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	Username    string    `gorm:"uniqueIndex" json:"username"`
-	Email       string    `gorm:"index" json:"email"`
-	PasswordHash string   `json:"-"`
-	Role        string    `json:"role"` // super_admin, admin, support, finance, compliance
-	Permissions JSON      `json:"permissions" gorm:"type:jsonb"`
-	Status      string    `json:"status"` // active, suspended, inactive
-	LastLoginAt *time.Time `json:"last_login_at"`
-	IPWhitelist string    `json:"ip_whitelist"`
-	CreatedBy   uint      `json:"created_by"`
+	ID           uint       `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	Username     string     `gorm:"uniqueIndex" json:"username"`
+	Email        string     `gorm:"index" json:"email"`
+	PasswordHash string     `json:"-"`
+	Role         string     `json:"role"` // super_admin, admin, support, finance, compliance
+	Permissions  JSON       `json:"permissions" gorm:"type:jsonb"`
+	Status       string     `json:"status"` // active, suspended, inactive
+	LastLoginAt  *time.Time `json:"last_login_at"`
+	IPWhitelist  string     `json:"ip_whitelist"`
+	CreatedBy    uint       `json:"created_by"`
 }
 
 type JSON json.RawMessage
@@ -120,306 +120,306 @@ func (j JSON) Value() (interface{}, error) {
 
 // White Label Client
 type WhiteLabelClient struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	
-	ClientID       string    `gorm:"uniqueIndex" json:"client_id"`
-	CompanyName    string    `json:"company_name"`
-	Domain         string    `json:"domain"`
-	DomainVerified bool      `json:"domain_verified"`
-	
-	AdminUserID    uint      `json:"admin_user_id"`
-	Status         string    `json:"status"` // active, suspended, pending
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	ClientID       string `gorm:"uniqueIndex" json:"client_id"`
+	CompanyName    string `json:"company_name"`
+	Domain         string `json:"domain"`
+	DomainVerified bool   `json:"domain_verified"`
+
+	AdminUserID uint   `json:"admin_user_id"`
+	Status      string `json:"status"` // active, suspended, pending
+
 	// Branding
-	LogoURL        string    `json:"logo_url"`
-	PrimaryColor   string    `json:"primary_color"`
-	SecondaryColor string    `json:"secondary_color"`
-	ThemeMode     string    `json:"theme_mode"` // light, dark, both
-	
+	LogoURL        string `json:"logo_url"`
+	PrimaryColor   string `json:"primary_color"`
+	SecondaryColor string `json:"secondary_color"`
+	ThemeMode      string `json:"theme_mode"` // light, dark, both
+
 	// Features
-	Features       JSON      `json:"features" gorm:"type:jsonb"`
-	
+	Features JSON `json:"features" gorm:"type:jsonb"`
+
 	// Limits
-	MaxUsers       int       `json:"max_users"`
-	MaxDailyVolume float64   `json:"max_daily_volume"`
-	
+	MaxUsers       int     `json:"max_users"`
+	MaxDailyVolume float64 `json:"max_daily_volume"`
+
 	// Fees
 	PlatformFeePercent float64 `json:"platform_fee_percent"`
-	CustomFeePercent  float64  `json:"custom_fee_percent"`
-	
+	CustomFeePercent   float64 `json:"custom_fee_percent"`
+
 	// Liquidity
-	LiquiditySource  string    `json:"liquidity_source"`
-	TradingPairsImport string  `json:"trading_pairs_import"`
-	
+	LiquiditySource    string `json:"liquidity_source"`
+	TradingPairsImport string `json:"trading_pairs_import"`
+
 	// Contacts
-	ContactEmail   string    `json:"contact_email"`
-	ContactPhone   string    `json:"contact_phone"`
-	
-	ActivatedAt    *time.Time `json:"activated_at"`
-	ExpiresAt      *time.Time `json:"expires_at"`
+	ContactEmail string `json:"contact_email"`
+	ContactPhone string `json:"contact_phone"`
+
+	ActivatedAt *time.Time `json:"activated_at"`
+	ExpiresAt   *time.Time `json:"expires_at"`
 }
 
 // White Label Sub-admin
 type WhiteLabelAdmin struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt      time.Time `json:"created_at"`
-	WhiteLabelID   uint      `gorm:"index" json:"white_label_id"`
-	UserID         uint      `gorm:"index" json:"user_id"`
-	Username       string    `json:"username"`
-	Email          string    `json:"email"`
-	PasswordHash   string    `json:"-"`
-	Role           string    `json:"role"` // owner, admin, manager, support
-	Permissions    JSON      `json:"permissions" gorm:"type:jsonb"`
-	Status         string    `json:"status"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	WhiteLabelID uint      `gorm:"index" json:"white_label_id"`
+	UserID       uint      `gorm:"index" json:"user_id"`
+	Username     string    `json:"username"`
+	Email        string    `json:"email"`
+	PasswordHash string    `json:"-"`
+	Role         string    `json:"role"` // owner, admin, manager, support
+	Permissions  JSON      `json:"permissions" gorm:"type:jsonb"`
+	Status       string    `json:"status"`
 }
 
 // User Management
 type User struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	
-	UserID            string    `gorm:"uniqueIndex" json:"user_id"`
-	Username          string    `gorm:"index" json:"username"`
-	Email             string    `gorm:"index" json:"email"`
-	Phone             string    `json:"phone"`
-	PasswordHash      string    `json:"-"`
-	
-	MasterWalletAddr  string    `json:"master_wallet_address"`
-	Status            string    `json:"status"` // active, suspended, banned
-	Tier              int       `json:"tier"` // 0: basic, 1: verified, 2: premium
-	
-	IsEmailVerified   bool      `json:"is_email_verified"`
-	IsPhoneVerified   bool      `json:"is_phone_verified"`
-	KYCStatus         string    `json:"kyc_status"` // none, pending, approved, rejected
-	KYCLevel         int       `json:"kyc_level"`
-	
-	WhiteLabelID     *uint     `gorm:"index" json:"white_label_id"`
-	
-	ReferrerID        *string   `json:"referrer_id"`
-	ReferralCode     string    `gorm:"uniqueIndex" json:"referral_code"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	UserID       string `gorm:"uniqueIndex" json:"user_id"`
+	Username     string `gorm:"index" json:"username"`
+	Email        string `gorm:"index" json:"email"`
+	Phone        string `json:"phone"`
+	PasswordHash string `json:"-"`
+
+	MasterWalletAddr string `json:"master_wallet_address"`
+	Status           string `json:"status"` // active, suspended, banned
+	Tier             int    `json:"tier"`   // 0: basic, 1: verified, 2: premium
+
+	IsEmailVerified bool   `json:"is_email_verified"`
+	IsPhoneVerified bool   `json:"is_phone_verified"`
+	KYCStatus       string `json:"kyc_status"` // none, pending, approved, rejected
+	KYCLevel        int    `json:"kyc_level"`
+
+	WhiteLabelID *uint `gorm:"index" json:"white_label_id"`
+
+	ReferrerID   *string `json:"referrer_id"`
+	ReferralCode string  `gorm:"uniqueIndex" json:"referral_code"`
+
 	LastLoginAt      *time.Time `json:"last_login_at"`
-	FailedLoginCount int       `json:"failed_login_count"`
+	FailedLoginCount int        `json:"failed_login_count"`
 }
 
 // KYC Records
 type KYCRecord struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt       time.Time `json:"created_at"`
-	UserID          uint      `gorm:"index" json:"user_id"`
-	Level           int       `json:"level"`
-	
-	DocumentType    string    `json:"document_type"` // passport, id_card, drivers_license
-	DocumentNumber  string    `json:"document_number"`
-	DocumentFront   string    `json:"document_front"` // encrypted URL
-	DocumentBack    string    `json:"document_back"`
-	SelfieImage     string    `json:"selfie_image"`
-	
-	FirstName       string    `json:"first_name"`
-	LastName        string    `json:"last_name"`
-	DateOfBirth     string    `json:"date_of_birth"`
-	Country         string    `json:"country"`
-	Address         string    `json:"address"`
-	
-	Status          string    `json:"status"` // pending, approved, rejected
-	RejectReason    string    `json:"reject_reason"`
-	ReviewedBy      uint      `json:"reviewed_by"`
-	ReviewedAt      *time.Time `json:"reviewed_at"`
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UserID    uint      `gorm:"index" json:"user_id"`
+	Level     int       `json:"level"`
+
+	DocumentType   string `json:"document_type"` // passport, id_card, drivers_license
+	DocumentNumber string `json:"document_number"`
+	DocumentFront  string `json:"document_front"` // encrypted URL
+	DocumentBack   string `json:"document_back"`
+	SelfieImage    string `json:"selfie_image"`
+
+	FirstName   string `json:"first_name"`
+	LastName    string `json:"last_name"`
+	DateOfBirth string `json:"date_of_birth"`
+	Country     string `json:"country"`
+	Address     string `json:"address"`
+
+	Status       string     `json:"status"` // pending, approved, rejected
+	RejectReason string     `json:"reject_reason"`
+	ReviewedBy   uint       `json:"reviewed_by"`
+	ReviewedAt   *time.Time `json:"reviewed_at"`
 }
 
 // Token Management
 type Token struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	
-	TokenID       string    `gorm:"uniqueIndex" json:"token_id"`
-	Name          string    `json:"name"`
-	Symbol        string    `gorm:"index" json:"symbol"`
-	ContractAddr  string    `gorm:"index" json:"contract_addr"`
-	Decimals      int       `json:"decimals"`
-	TotalSupply   string    `json:"total_supply"`
-	
-	ChainID       uint      `gorm:"index" json:"chain_id"`
-	ChainName     string    `json:"chain_name"`
-	
-	IsActive       bool      `json:"is_active"`
-	IsVerified     bool      `json:"is_verified"`
-	IsNativeToken  bool      `json:"is_native_token"`
-	
-	LogoURL        string    `json:"logo_url"`
-	Website        string    `json:"website"`
-	Whitepaper     string    `json:"whitepaper"`
-	Description    string    `json:"description"`
-	
-	MarketCap      float64   `json:"market_cap"`
-	Price          float64   `json:"price"`
-	
-	CreatedBy      uint      `json:"created_by"`
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	TokenID      string `gorm:"uniqueIndex" json:"token_id"`
+	Name         string `json:"name"`
+	Symbol       string `gorm:"index" json:"symbol"`
+	ContractAddr string `gorm:"index" json:"contract_addr"`
+	Decimals     int    `json:"decimals"`
+	TotalSupply  string `json:"total_supply"`
+
+	ChainID   uint   `gorm:"index" json:"chain_id"`
+	ChainName string `json:"chain_name"`
+
+	IsActive      bool `json:"is_active"`
+	IsVerified    bool `json:"is_verified"`
+	IsNativeToken bool `json:"is_native_token"`
+
+	LogoURL     string `json:"logo_url"`
+	Website     string `json:"website"`
+	Whitepaper  string `json:"whitepaper"`
+	Description string `json:"description"`
+
+	MarketCap float64 `json:"market_cap"`
+	Price     float64 `json:"price"`
+
+	CreatedBy uint `json:"created_by"`
 }
 
 // Trading Pair
 type TradingPair struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	
-	PairID        string    `gorm:"uniqueIndex" json:"pair_id"`
-	BaseTokenID   uint      `gorm:"index" json:"base_token_id"`
-	QuoteTokenID  uint      `gorm:"index" json:"quote_token_id"`
-	
-	BaseSymbol    string    `json:"base_symbol"`
-	QuoteSymbol   string    `json:"quote_symbol"`
-	PairName      string    `json:"pair_name"`
-	
-	ChainID       uint      `json:"chain_id"`
-	ChainName     string    `json:"chain_name"`
-	
-	Status        string    `json:"status"` // active, halted, suspended, removed
-	TradingEnabled bool    `json:"trading_enabled"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	PairID       string `gorm:"uniqueIndex" json:"pair_id"`
+	BaseTokenID  uint   `gorm:"index" json:"base_token_id"`
+	QuoteTokenID uint   `gorm:"index" json:"quote_token_id"`
+
+	BaseSymbol  string `json:"base_symbol"`
+	QuoteSymbol string `json:"quote_symbol"`
+	PairName    string `json:"pair_name"`
+
+	ChainID   uint   `json:"chain_id"`
+	ChainName string `json:"chain_name"`
+
+	Status         string `json:"status"` // active, halted, suspended, removed
+	TradingEnabled bool   `json:"trading_enabled"`
+
 	// Trading parameters
-	MinTradeAmount float64   `json:"min_trade_amount"`
-	MaxTradeAmount float64   `json:"max_trade_amount"`
-	MinTradeValue  float64   `json:"min_trade_value"`
-	
+	MinTradeAmount float64 `json:"min_trade_amount"`
+	MaxTradeAmount float64 `json:"max_trade_amount"`
+	MinTradeValue  float64 `json:"min_trade_value"`
+
 	// Fees
-	MakerFee      float64   `json:"maker_fee"`
-	TakerFee      float64   `json:"taker_fee"`
-	
+	MakerFee float64 `json:"maker_fee"`
+	TakerFee float64 `json:"taker_fee"`
+
 	// Liquidity
-	PoolAddress   string    `json:"pool_address"`
-	Liquidity     float64   `json:"liquidity"`
-	
+	PoolAddress string  `json:"pool_address"`
+	Liquidity   float64 `json:"liquidity"`
+
 	// Price
-	CurrentPrice  float64   `json:"current_price"`
-	PriceChange24h float64  `json:"price_change_24h"`
-	Volume24h     float64   `json:"volume_24h"`
-	
+	CurrentPrice   float64 `json:"current_price"`
+	PriceChange24h float64 `json:"price_change_24h"`
+	Volume24h      float64 `json:"volume_24h"`
+
 	// Source
-	Source        string    `json:"source"` // internal, imported
-	SourceExchange string   `json:"source_exchange"` // binance, coinbase, etc.
-	
-	WhiteLabelID  *uint     `gorm:"index" json:"white_label_id"`
+	Source         string `json:"source"`          // internal, imported
+	SourceExchange string `json:"source_exchange"` // binance, coinbase, etc.
+
+	WhiteLabelID *uint `gorm:"index" json:"white_label_id"`
 }
 
 // Fee Management
 type FeeConfig struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	
-	FeeType       string    `json:"fee_type"` // trading, withdrawal, deposit, transfer
-	ChainID       *uint     `json:"chain_id"`
-	TokenID       *uint     `json:"token_id"`
-	
-	FeePercent    float64   `json:"fee_percent"`
-	FeeFixed      float64   `json:"fee_fixed"`
-	MinFee        float64   `json:"min_fee"`
-	MaxFee        float64   `json:"max_fee"`
-	
-	WhiteLabelID  *uint     `gorm:"index" json:"white_label_id"`
-	
-	IsActive       bool      `json:"is_active"`
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	FeeType string `json:"fee_type"` // trading, withdrawal, deposit, transfer
+	ChainID *uint  `json:"chain_id"`
+	TokenID *uint  `json:"token_id"`
+
+	FeePercent float64 `json:"fee_percent"`
+	FeeFixed   float64 `json:"fee_fixed"`
+	MinFee     float64 `json:"min_fee"`
+	MaxFee     float64 `json:"max_fee"`
+
+	WhiteLabelID *uint `gorm:"index" json:"white_label_id"`
+
+	IsActive bool `json:"is_active"`
 }
 
 // Blockchain Management
 type Blockchain struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	
-	ChainID       uint      `gorm:"uniqueIndex" json:"chain_id"`
-	Name          string    `json:"name"`
-	Symbol        string    `gorm:"index" json:"symbol"`
-	Type          string    `json:"type"` // evm, bitcoin, solana, etc.
-	
-	RPCURLs       JSON      `json:"rpc_urls" gorm:"type:jsonb"`
-	ExplorerURLs  JSON      `json:"explorer_urls" gorm:"type:jsonb"`
-	
-	IsActive      bool      `json:"is_active"`
-	IsTestnet     bool      `json:"is_testnet"`
-	
-	CoinGeckoID   string    `json:"coin_gecko_id"`
-	CoingeckoSymbol string  `json:"coin_gecko_symbol"`
-	
-	Confirmations  int       `json:"confirmations"`
-	BlockTime      int       `json:"block_time"` // seconds
-	
-	NativeTokenID  uint      `json:"native_token_id"`
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	ChainID uint   `gorm:"uniqueIndex" json:"chain_id"`
+	Name    string `json:"name"`
+	Symbol  string `gorm:"index" json:"symbol"`
+	Type    string `json:"type"` // evm, bitcoin, solana, etc.
+
+	RPCURLs      JSON `json:"rpc_urls" gorm:"type:jsonb"`
+	ExplorerURLs JSON `json:"explorer_urls" gorm:"type:jsonb"`
+
+	IsActive  bool `json:"is_active"`
+	IsTestnet bool `json:"is_testnet"`
+
+	CoinGeckoID     string `json:"coin_gecko_id"`
+	CoingeckoSymbol string `json:"coin_gecko_symbol"`
+
+	Confirmations int `json:"confirmations"`
+	BlockTime     int `json:"block_time"` // seconds
+
+	NativeTokenID uint `json:"native_token_id"`
 }
 
 // Market Maker Bot
 type MarketMakerBot struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	
-	BotID         string    `gorm:"uniqueIndex" json:"bot_id"`
-	Name          string    `json:"name"`
-	Description   string    `json:"description"`
-	
-	OwnerID       uint      `gorm:"index" json:"owner_id"`
-	WhiteLabelID  *uint     `gorm:"index" json:"white_label_id"`
-	
-	Status        string    `json:"status"` // active, paused, stopped
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	BotID       string `gorm:"uniqueIndex" json:"bot_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+
+	OwnerID      uint  `gorm:"index" json:"owner_id"`
+	WhiteLabelID *uint `gorm:"index" json:"white_label_id"`
+
+	Status string `json:"status"` // active, paused, stopped
+
 	// Strategy
-	StrategyType  string    `json:"strategy_type"` // arbitrage, market_making, grid
-	BaseSpread    float64   `json:"base_spread"` // percentage
-	MaxSpread     float64   `json:"max_spread"`
-	OrderSize     float64   `json:"order_size"`
-	
+	StrategyType string  `json:"strategy_type"` // arbitrage, market_making, grid
+	BaseSpread   float64 `json:"base_spread"`   // percentage
+	MaxSpread    float64 `json:"max_spread"`
+	OrderSize    float64 `json:"order_size"`
+
 	// Pairs
-	TradingPairs   JSON      `json:"trading_pairs" gorm:"type:jsonb"`
-	
+	TradingPairs JSON `json:"trading_pairs" gorm:"type:jsonb"`
+
 	// Capital
 	AllocatedCapital float64 `json:"allocated_capital"`
-	UsedCapital     float64 `json:"used_capital"`
-	
+	UsedCapital      float64 `json:"used_capital"`
+
 	// Performance
-	TotalVolume24h float64  `json:"total_volume_24h"`
-	ProfitLoss24h  float64  `json:"profit_loss_24h"`
-	
+	TotalVolume24h float64 `json:"total_volume_24h"`
+	ProfitLoss24h  float64 `json:"profit_loss_24h"`
+
 	// Limits
-	MaxSlippage   float64   `json:"max_slippage"`
-	MaxOpenOrders int       `json:"max_open_orders"`
+	MaxSlippage   float64 `json:"max_slippage"`
+	MaxOpenOrders int     `json:"max_open_orders"`
 }
 
 // Analytics
 type AnalyticsEvent struct {
-	ID          uint      `gorm:"primarykey" json:"id"`
-	CreatedAt   time.Time `json:"created_at"`
-	EventType   string    `json:"event_type"` // trade, deposit, withdraw, transfer
-	UserID      uint      `gorm:"index" json:"user_id"`
-	WhiteLabelID *uint    `gorm:"index" json:"white_label_id"`
-	
-	Amount      float64   `json:"amount"`
-	Currency    string    `json:"currency"`
-	Token       string    `json:"token"`
-	
-	Fee         float64   `json:"fee"`
-	IPAddress   string    `json:"ip_address"`
-	UserAgent  string    `json:"user_agent"`
-	
-	Metadata    JSON      `json:"metadata" gorm:"type:jsonb"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	EventType    string    `json:"event_type"` // trade, deposit, withdraw, transfer
+	UserID       uint      `gorm:"index" json:"user_id"`
+	WhiteLabelID *uint     `gorm:"index" json:"white_label_id"`
+
+	Amount   float64 `json:"amount"`
+	Currency string  `json:"currency"`
+	Token    string  `json:"token"`
+
+	Fee       float64 `json:"fee"`
+	IPAddress string  `json:"ip_address"`
+	UserAgent string  `json:"user_agent"`
+
+	Metadata JSON `json:"metadata" gorm:"type:jsonb"`
 }
 
 // Audit Log
 type AdminAuditLog struct {
-	ID          uint      `gorm:"primarykey" json:"id"`
-	CreatedAt   time.Time `json:"created_at"`
-	AdminID     uint      `gorm:"index" json:"admin_id"`
-	Action      string    `json:"action"` // user.create, token.update, etc.
-	Resource    string    `json:"resource"` // user:123, token:456
-	ResourceType string   `json:"resource_type"`
-	Details     JSON      `json:"details" gorm:"type:jsonb"`
-	IPAddress   string    `json:"ip_address"`
-	Success     bool      `json:"success"`
-	Error       string    `json:"error"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	AdminID      uint      `gorm:"index" json:"admin_id"`
+	Action       string    `json:"action"`   // user.create, token.update, etc.
+	Resource     string    `json:"resource"` // user:123, token:456
+	ResourceType string    `json:"resource_type"`
+	Details      JSON      `json:"details" gorm:"type:jsonb"`
+	IPAddress    string    `json:"ip_address"`
+	Success      bool      `json:"success"`
+	Error        string    `json:"error"`
 }
 
 // ============================================================================
@@ -427,11 +427,11 @@ type AdminAuditLog struct {
 // ============================================================================
 
 type AdminService struct {
-	db          *gorm.DB
-	redis       *redis.Client
-	config      *Config
-	jwtSecret   []byte
-	encKey      []byte
+	db        *gorm.DB
+	redis     *redis.Client
+	config    *Config
+	jwtSecret []byte
+	encKey    []byte
 }
 
 func NewAdminService(cfg *Config) (*AdminService, error) {
@@ -495,12 +495,12 @@ func (s *AdminService) createDefaultSuperAdmin() {
 	result := s.db.Where("role = ?", "super_admin").First(&admin)
 	if result.Error != nil {
 		admin := Admin{
-			Username:    "superadmin",
-			Email:       "admin@tigerwallet.com",
+			Username:     "superadmin",
+			Email:        "admin@tigerwallet.com",
 			PasswordHash: s.hashPassword("TigerWallet2024!"),
-			Role:        "super_admin",
-			Permissions: JSON(`{"all":true}`),
-			Status:      "active",
+			Role:         "super_admin",
+			Permissions:  JSON(`{"all":true}`),
+			Status:       "active",
 		}
 		s.db.Create(&admin)
 		log.Println("Created default super admin")
@@ -672,13 +672,13 @@ func (s *AdminService) CreateAdmin(c *gin.Context) {
 	}
 
 	admin := Admin{
-		Username:    req.Username,
-		Email:      req.Email,
+		Username:     req.Username,
+		Email:        req.Email,
 		PasswordHash: s.hashPassword(req.Password),
-		Role:        req.Role,
-		Permissions: JSON(`{}`),
-		Status:      "active",
-		CreatedBy:  adminID,
+		Role:         req.Role,
+		Permissions:  JSON(`{}`),
+		Status:       "active",
+		CreatedBy:    adminID,
 	}
 
 	s.db.Create(&admin)
@@ -777,16 +777,16 @@ func (s *AdminService) CreateWhiteLabel(c *gin.Context) {
 	}
 
 	client := WhiteLabelClient{
-		ClientID:      "WL-" + uuid.New().String()[:8],
-		CompanyName:  req.CompanyName,
-		Domain:       req.Domain,
-		AdminUserID:  req.AdminUserID,
-		Status:       "pending",
-		ThemeMode:    "both",
-		Features:     JSON(`{"trading":true,"staking":true,"nft":true,"defi":true}`),
-		MaxUsers:     10000,
+		ClientID:           "WL-" + uuid.New().String()[:8],
+		CompanyName:        req.CompanyName,
+		Domain:             req.Domain,
+		AdminUserID:        req.AdminUserID,
+		Status:             "pending",
+		ThemeMode:          "both",
+		Features:           JSON(`{"trading":true,"staking":true,"nft":true,"defi":true}`),
+		MaxUsers:           10000,
 		PlatformFeePercent: 0.1,
-		ContactEmail: req.Email,
+		ContactEmail:       req.Email,
 	}
 
 	s.db.Create(&client)
@@ -913,11 +913,11 @@ func (s *AdminService) ListUsers(c *gin.Context) {
 	query.Offset(offset).Limit(limitNum).Find(&users)
 
 	c.JSON(http.StatusOK, gin.H{
-		"users":  users,
-		"total":  total,
-		"page":   pageNum,
-		"limit":  limitNum,
-		"pages":  (total + int64(limitNum) - 1) / int64(limitNum),
+		"users": users,
+		"total": total,
+		"page":  pageNum,
+		"limit": limitNum,
+		"pages": (total + int64(limitNum) - 1) / int64(limitNum),
 	})
 }
 
@@ -1433,8 +1433,8 @@ func (s *AdminService) GetDashboardStats(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"users": gin.H{
-			"total":    totalUsers,
-			"active":   activeUsers,
+			"total":     totalUsers,
+			"active":    activeUsers,
 			"suspended": suspendedUsers,
 		},
 		"white_labels": gin.H{
@@ -1508,7 +1508,7 @@ func (s *AdminService) logAudit(adminID uint, action, resourceType string, resou
 		Action:       action,
 		Resource:     fmt.Sprintf("%s:%d", resourceType, resourceID),
 		ResourceType: resourceType,
-		Details:     JSON(`{}`),
+		Details:      JSON(`{}`),
 		IPAddress:    ip,
 		Success:      success,
 		Error:        details,

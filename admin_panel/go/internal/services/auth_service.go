@@ -38,8 +38,8 @@ func NewAuthService(cfg *config.Config) *AuthService {
 func (s *AuthService) Register(ctx context.Context, username, email, password, role string) (*models.AdminUser, error) {
 	// Check if user exists
 	var existingID uuid.UUID
-	err := database.QueryRow(ctx, 
-		"SELECT id FROM admin_users WHERE email = $1 OR username = $2", 
+	err := database.QueryRow(ctx,
+		"SELECT id FROM admin_users WHERE email = $1 OR username = $2",
 		email, username,
 	).Scan(&existingID)
 

@@ -34,35 +34,35 @@ import (
 
 const (
 	// Session settings
-	SESSION_NAME                    = "tigerswap_session"
-	SESSION_MAX_AGE                 = 86400 * 7 // 7 days
-	SESSION_SECURE_COOKIE            = true
-	SESSION_HTTP_ONLY                = true
-	SESSION_SAME_SITE               = http.SameSiteStrictMode
+	SESSION_NAME          = "tigerswap_session"
+	SESSION_MAX_AGE       = 86400 * 7 // 7 days
+	SESSION_SECURE_COOKIE = true
+	SESSION_HTTP_ONLY     = true
+	SESSION_SAME_SITE     = http.SameSiteStrictMode
 
 	// Rate limiting
-	MAX_LOGIN_ATTEMPTS             = 5
-	LOGIN_LOCKOUT_DURATION         = 15 * 60 // 15 minutes
-	MAX_REGISTRATION_PER_IP         = 10
-	MAX_API_REQUESTS_PER_MINUTE     = 60
+	MAX_LOGIN_ATTEMPTS          = 5
+	LOGIN_LOCKOUT_DURATION      = 15 * 60 // 15 minutes
+	MAX_REGISTRATION_PER_IP     = 10
+	MAX_API_REQUESTS_PER_MINUTE = 60
 
 	// Password requirements
-	MIN_PASSWORD_LENGTH            = 12
-	MAX_PASSWORD_LENGTH          = 128
-	PASSWORD_UPPERCASE_REQUIRED   = true
+	MIN_PASSWORD_LENGTH         = 12
+	MAX_PASSWORD_LENGTH         = 128
+	PASSWORD_UPPERCASE_REQUIRED = true
 	PASSWORD_LOWERCASE_REQUIRED = true
 	PASSWORD_NUMBER_REQUIRED    = true
-	PASSWORD_SPECIAL_REQUIRED  = true
+	PASSWORD_SPECIAL_REQUIRED   = true
 
 	// JWT settings
-	JWT_EXPIRY_HOURS             = 24
-	JWT_REFRESH_EXPIRY_DAYS      = 30
-	JWT_SIGNING_KEY_LENGTH       = 32
+	JWT_EXPIRY_HOURS        = 24
+	JWT_REFRESH_EXPIRY_DAYS = 30
+	JWT_SIGNING_KEY_LENGTH  = 32
 
 	// 2FA settings
-	TFOTP_ISSUER                = "TigerSwap"
-	TOTP_PERIOD                 = 30
-	TOTP_WINDOW                 = 1
+	TFOTP_ISSUER = "TigerSwap"
+	TOTP_PERIOD  = 30
+	TOTP_WINDOW  = 1
 )
 
 // ============================================================================
@@ -72,29 +72,29 @@ const (
 type UserRole string
 
 const (
-	RoleSuperAdmin      UserRole = "super_admin"
-	RoleAdmin          UserRole = "admin"
-	RoleFinanceAdmin   UserRole = "finance_admin"
-	RoleBotOperator    UserRole = "bot_operator"
-	RoleTradingAdmin   UserRole = "trading_admin"
-	RoleClient        UserRole = "client"
-	RoleUser          UserRole = "user"
+	RoleSuperAdmin   UserRole = "super_admin"
+	RoleAdmin        UserRole = "admin"
+	RoleFinanceAdmin UserRole = "finance_admin"
+	RoleBotOperator  UserRole = "bot_operator"
+	RoleTradingAdmin UserRole = "trading_admin"
+	RoleClient       UserRole = "client"
+	RoleUser         UserRole = "user"
 )
 
 type AuthMethod string
 
 const (
 	AuthMethodPassword AuthMethod = "password"
-	AuthMethod2FA    AuthMethod = "2fa"
-	AuthMethodMFA    AuthMethod = "mfa"
-	AuthMethodOAuth  AuthMethod = "oauth"
-	AuthMethodWallet AuthMethod = "wallet"
+	AuthMethod2FA      AuthMethod = "2fa"
+	AuthMethodMFA      AuthMethod = "mfa"
+	AuthMethodOAuth    AuthMethod = "oauth"
+	AuthMethodWallet   AuthMethod = "wallet"
 )
 
 type SessionStatus string
 
 const (
-	SessionActive    SessionStatus = "active"
+	SessionActive  SessionStatus = "active"
 	SessionExpired SessionStatus = "expired"
 	SessionRevoked SessionStatus = "revoked"
 )
@@ -105,52 +105,52 @@ const (
 
 // User with complete authentication
 type AuthUser struct {
-	ID                string            `json:"id"`
-	WalletAddress    string            `json:"wallet_address,omitempty"`
-	Email           string            `json:"email"`
-	Username        string            `json:"username"`
-	PasswordHash    string            `json:"password_hash"`
-	Role            UserRole         `json:"role"`
-	IsActive        bool             `json:"is_active"`
-	IsVerified      bool             `json:"is_verified"`
-	TwoFactorEnabled bool            `json:"two_factor_enabled"`
-	TwoFactorSecret string           `json:"two_factor_secret,omitempty"`
-	BackupCodes     []string         `json:"backup_codes,omitempty"`
-	Permissions     []string         `json:"permissions"`
-	FailedAttempts  int              `json:"failed_attempts"`
-	LockedUntil    *time.Time       `json:"locked_until,omitempty"`
-	LastLoginAt     *time.Time       `json:"last_login_at,omitempty"`
-	LastLoginIP    string           `json:"last_login_ip,omitempty"`
-	CreatedAt       time.Time         `json:"created_at"`
-	UpdatedAt       time.Time         `json:"updated_at"`
+	ID               string     `json:"id"`
+	WalletAddress    string     `json:"wallet_address,omitempty"`
+	Email            string     `json:"email"`
+	Username         string     `json:"username"`
+	PasswordHash     string     `json:"password_hash"`
+	Role             UserRole   `json:"role"`
+	IsActive         bool       `json:"is_active"`
+	IsVerified       bool       `json:"is_verified"`
+	TwoFactorEnabled bool       `json:"two_factor_enabled"`
+	TwoFactorSecret  string     `json:"two_factor_secret,omitempty"`
+	BackupCodes      []string   `json:"backup_codes,omitempty"`
+	Permissions      []string   `json:"permissions"`
+	FailedAttempts   int        `json:"failed_attempts"`
+	LockedUntil      *time.Time `json:"locked_until,omitempty"`
+	LastLoginAt      *time.Time `json:"last_login_at,omitempty"`
+	LastLoginIP      string     `json:"last_login_ip,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 // Admin session
 type AdminSession struct {
-	ID            string         `json:"id"`
-	UserID        string         `json:"user_id"`
-	SessionToken  string        `json:"session_token"`
+	ID           string        `json:"id"`
+	UserID       string        `json:"user_id"`
+	SessionToken string        `json:"session_token"`
 	RefreshToken string        `json:"refresh_token,omitempty"`
-	IPAddress     string        `json:"ip_address"`
-	UserAgent     string        `json:"user_agent"`
-	Status        SessionStatus `json:"status"`
-	ExpiresAt     time.Time     `json:"expires_at"`
-	CreatedAt     time.Time     `json:"created_at"`
+	IPAddress    string        `json:"ip_address"`
+	UserAgent    string        `json:"user_agent"`
+	Status       SessionStatus `json:"status"`
+	ExpiresAt    time.Time     `json:"expires_at"`
+	CreatedAt    time.Time     `json:"created_at"`
 	LastActivity time.Time     `json:"last_activity"`
 }
 
 // Admin permission
 type AdminPermission struct {
-	ID          string   `json:"id"`
-	Name       string   `json:"name"`
-	Description string  `json:"description"`
-	Category   string   `json:"category"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Category    string `json:"category"`
 }
 
 // Role permissions mapping
 type RolePermissions struct {
-	Role       UserRole    `json:"role"`
-	Permissions []string   `json:"permissions"`
+	Role        UserRole `json:"role"`
+	Permissions []string `json:"permissions"`
 }
 
 // Login attempt tracking
@@ -159,7 +159,7 @@ type LoginAttempt struct {
 	Email       string    `json:"email"`
 	IPAddress   string    `json:"ip_address"`
 	AttemptedAt time.Time `json:"attempted_at"`
-	Success    bool      `json:"success"`
+	Success     bool      `json:"success"`
 }
 
 // ============================================================================
@@ -167,23 +167,23 @@ type LoginAttempt struct {
 // ============================================================================
 
 type AuthenticationStore struct {
-	mu           sync.RWMutex
-	users        map[string]*AuthUser          // email -> user
-	usersByID     map[string]*AuthUser          // id -> user
-	usersByWallet map[string]*AuthUser          // wallet -> user
-	sessions     map[string]*AdminSession    // sessionToken -> session
-	sessionsByID map[string][]string         // userID -> sessionTokens
-	attempts     map[string][]LoginAttempt  // email -> attempts
-	permissions map[string]*AdminPermission // name -> permission
-	rolePerms    map[UserRole]*RolePermissions
+	mu            sync.RWMutex
+	users         map[string]*AuthUser        // email -> user
+	usersByID     map[string]*AuthUser        // id -> user
+	usersByWallet map[string]*AuthUser        // wallet -> user
+	sessions      map[string]*AdminSession    // sessionToken -> session
+	sessionsByID  map[string][]string         // userID -> sessionTokens
+	attempts      map[string][]LoginAttempt   // email -> attempts
+	permissions   map[string]*AdminPermission // name -> permission
+	rolePerms     map[UserRole]*RolePermissions
 
 	// Rate limiting
 	rateLimits      map[string]*RateLimitInfo
 	ipRegistrations map[string]int
 
 	// JWT keys
-	jwtSigningKey   []byte
-	jwtRefreshKey   []byte
+	jwtSigningKey []byte
+	jwtRefreshKey []byte
 }
 
 // Rate limit info
@@ -197,14 +197,14 @@ type RateLimitInfo struct {
 // NewAuthenticationStore creates new auth store
 func NewAuthenticationStore() *AuthenticationStore {
 	store := &AuthenticationStore{
-		users:            make(map[string]*AuthUser),
-		usersByID:        make(map[string]*AuthUser),
-		usersByWallet:    make(map[string]*AuthUser),
+		users:           make(map[string]*AuthUser),
+		usersByID:       make(map[string]*AuthUser),
+		usersByWallet:   make(map[string]*AuthUser),
 		sessions:        make(map[string]*AdminSession),
 		sessionsByID:    make(map[string][]string),
 		attempts:        make(map[string][]LoginAttempt),
 		permissions:     make(map[string]*AdminPermission),
-		rolePerms:      make(map[UserRole]*RolePermissions),
+		rolePerms:       make(map[UserRole]*RolePermissions),
 		rateLimits:      make(map[string]*RateLimitInfo),
 		ipRegistrations: make(map[string]int),
 	}
@@ -406,16 +406,16 @@ func (s *AuthenticationStore) CreateSession(userID, ipAddress, userAgent string)
 	defer s.mu.Unlock()
 
 	session := &AdminSession{
-		ID:            generateUUID(),
-		UserID:        userID,
-		SessionToken:  generateRandomToken(32),
+		ID:           generateUUID(),
+		UserID:       userID,
+		SessionToken: generateRandomToken(32),
 		RefreshToken: generateRandomToken(32),
-		IPAddress:     ipAddress,
-		UserAgent:     userAgent,
-		Status:        SessionActive,
-		ExpiresAt:     time.Now().Add(SESSION_MAX_AGE * time.Second),
-		CreatedAt:     time.Now(),
-		LastActivity:  time.Now(),
+		IPAddress:    ipAddress,
+		UserAgent:    userAgent,
+		Status:       SessionActive,
+		ExpiresAt:    time.Now().Add(SESSION_MAX_AGE * time.Second),
+		CreatedAt:    time.Now(),
+		LastActivity: time.Now(),
 	}
 
 	s.sessions[session.SessionToken] = session
@@ -524,17 +524,17 @@ func (s *AuthenticationStore) CreateUser(email, username, password, walletAddres
 	}
 
 	user := &AuthUser{
-		ID:            generateUUID(),
-		Email:         email,
-		Username:     username,
-		PasswordHash: hash,
-		Role:         role,
-		IsActive:     true,
-		IsVerified:  role == RoleSuperAdmin, // Auto-verify super admins
-		Permissions: s.getPermissionsForRole(role),
+		ID:             generateUUID(),
+		Email:          email,
+		Username:       username,
+		PasswordHash:   hash,
+		Role:           role,
+		IsActive:       true,
+		IsVerified:     role == RoleSuperAdmin, // Auto-verify super admins
+		Permissions:    s.getPermissionsForRole(role),
 		FailedAttempts: 0,
-		CreatedAt:    time.Now(),
-		UpdatedAt:   time.Now(),
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 
 	if walletAddress != "" {
@@ -744,7 +744,7 @@ func (s *AuthenticationStore) RecordLoginAttempt(email, ipAddress string, succes
 		Email:       strings.ToLower(email),
 		IPAddress:   ipAddress,
 		AttemptedAt: time.Now(),
-		Success:    success,
+		Success:     success,
 	}
 
 	s.attempts[email] = append(s.attempts[email], attempt)
@@ -843,18 +843,18 @@ func NewAuthHandler(store *AuthenticationStore) *AuthHandler {
 
 // LoginRequest represents login request
 type LoginRequest struct {
-	Email       string `json:"email"`
-	Password   string `json:"password"`
+	Email         string `json:"email"`
+	Password      string `json:"password"`
 	TwoFactorCode string `json:"two_factor_code,omitempty"`
 }
 
 // LoginResponse represents login response
 type LoginResponse struct {
-	Success      bool   `json:"success"`
-	SessionToken string `json:"session_token,omitempty"`
-	RefreshToken string `json:"refresh_token,omitempty"`
-	User        *AuthUser `json:"user,omitempty"`
-	Message     string   `json:"message"`
+	Success      bool      `json:"success"`
+	SessionToken string    `json:"session_token,omitempty"`
+	RefreshToken string    `json:"refresh_token,omitempty"`
+	User         *AuthUser `json:"user,omitempty"`
+	Message      string    `json:"message"`
 }
 
 // HandleLogin handles login request
@@ -963,11 +963,11 @@ func (h *AuthHandler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 
 // RegisterRequest represents registration request
 type RegisterRequest struct {
-	Email       string `json:"email"`
-	Username   string `json:"username"`
-	Password   string `json:"password"`
+	Email         string `json:"email"`
+	Username      string `json:"username"`
+	Password      string `json:"password"`
 	WalletAddress string `json:"wallet_address,omitempty"`
-	InviteCode  string `json:"invite_code,omitempty"`
+	InviteCode    string `json:"invite_code,omitempty"`
 }
 
 // HandleRegister handles registration request

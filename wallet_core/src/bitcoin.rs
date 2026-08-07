@@ -6,8 +6,9 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 use sha2::{Sha256, Digest};
-use ripemd160::Ripemd160;
-use base58::{encode, encode_check, decode_check};
+use ripemd::Ripemd160;
+use bech32::{self, ToBase32, Variant};
+use serde::de::DeserializeOwned;
 
 /// Bitcoin network types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,8 +53,7 @@ impl BitcoinAddress {
         };
         
         let payload = [version.as_slice(), pubkey_hash].concat();
-        let checksum = double_sha256(&payload)[..4].to_vec();
-        let address = encode_check(&[payload, checksum].concat());
+        let address = bs58::encode(payload).with_check().into_string();
         
         Self {
             address,
@@ -70,8 +70,7 @@ impl BitcoinAddress {
         };
         
         let payload = [version.as_slice(), script_hash].concat();
-        let checksum = double_sha256(&payload)[..4].to_vec();
-        let address = encode_check(&[payload, checksum].concat());
+        let address = bs58::encode(payload).with_check().into_string();
         
         Self {
             address,
@@ -121,21 +120,23 @@ impl BitcoinAddress {
     /// Validate address
     pub fn validate(address: &str) -> bool {
         // Try legacy
-        if let Ok(decoded) = decode_check(address) {
-            if decoded.len() >= 25 {
+        if let Ok(decoded) = bs58::decode(address).with_check(None).into_vec() {
+            if decoded.len() == 21 {
                 let version = decoded[0];
-                if version == 0x00 || version == 0x6F {
-                    return true; // P2PKH
-                }
-                if version == 0x05 || version == 0xC4 {
-                    return true; // P2SH
+                if matches!(version, 0x00 | 0x6F | 0x05 | 0xC4) {
+                    return true;
                 }
             }
         }
         
-        // Try Bech32
-        if address.starts_with("bc1") || address.starts_with("tb1") {
-            return true;
+        // Try Bech32/Bech32m and validate the human-readable part and witness length.
+        if let Ok((hrp, data, _variant)) = bech32::decode(address) {
+            if (hrp == "bc" || hrp == "tb")
+                && matches!(data.len(), 33 | 53)
+                && data.first().map(|version| version.to_u8() <= 16).unwrap_or(false)
+            {
+                return true;
+            }
         }
         
         false
@@ -145,7 +146,7 @@ impl BitcoinAddress {
 /// Derive Bitcoin address from seed
 pub fn derive_address(seed: &[u8], network: BitcoinNetwork) -> BitcoinAddress {
     // Use BIP-32 derivation path m/84'/0'/0'/0/0
-    let private_key = derive_bip32_child(seed, 0x80000054, 0, 0, 0); // 84' = 0x80000054
+    let private_key = derive_bip32_child(seed, 0x80000054, 0, 0); // 84' = 0x80000054
     
     // Create public key (simplified - use proper EC)
     let pubkey_hash = sha256_hash(&private_key);
@@ -192,24 +193,14 @@ fn ripemd160_hash(data: &[u8]) -> Vec<u8> {
 
 /// Encode to Bech32
 fn encode_bech32(hrp: &str, data: &[u8]) -> String {
-    let mut result = hrp.to_string();
-    result.push('1');
-    
-    for byte in data {
-        let mut bits = *byte;
-        result.push(char::from_u32(33 + (bits & 0x1F) as u32).unwrap_or('q'));
-        bits >>= 5;
-        result.push(char::from_u32(33 + (bits & 0x1F) as u32).unwrap_or('q'));
-        bits >>= 5;
-        result.push(char::from_u32(33 + (bits & 0x1F) as u32).unwrap_or('q'));
-    }
-    
-    result
+    bech32::encode(hrp, data.to_base32(), Variant::Bech32)
+        .expect("validated Bitcoin Bech32 payload")
 }
 
-/// Encode to Bech32m
+/// Encode to Bech32m for witness version one and above.
 fn encode_bech32m(hrp: &str, data: &[u8]) -> String {
-    encode_bech32(hrp, data) // Simplified
+    bech32::encode(hrp, data.to_base32(), Variant::Bech32m)
+        .expect("validated Bitcoin Bech32m payload")
 }
 
 /// Bitcoin transaction input
@@ -457,42 +448,42 @@ impl BitcoinRpcClient {
 
     /// Get block chain info
     pub async fn get_blockchain_info(&self) -> Result<BlockchainInfo, BitcoinError> {
-        self.call("getblockchaininfo", vec![]).await
+        self.call("getblockchaininfo", serde_json::json!([])).await
     }
 
     /// Get block count
     pub async fn get_block_count(&self) -> Result<u64, BitcoinError> {
-        self.call("getblockcount", vec![]).await
+        self.call("getblockcount", serde_json::json!([])).await
     }
 
     /// Get block hash
     pub async fn get_block_hash(&self, height: u64) -> Result<String, BitcoinError> {
-        self.call("getblockhash", vec![height]).await
+        self.call("getblockhash", serde_json::json!([height])).await
     }
 
     /// Get block
     pub async fn get_block(&self, hash: &str) -> Result<Block, BitcoinError> {
-        self.call("getblock", vec![hash, 2]).await // Verbose = 2
+        self.call("getblock", serde_json::json!([hash, 2])).await // Verbose = 2
     }
 
     /// Get transaction
     pub async fn get_transaction(&self, txid: &str) -> Result<Transaction, BitcoinError> {
-        self.call("getrawtransaction", vec![txid, true]).await
+        self.call("getrawtransaction", serde_json::json!([txid, true])).await
     }
 
     /// Get UTXO (unspent output)
     pub async fn get_utxo(&self, txid: &str, vout: u32) -> Result<UtxoInfo, BitcoinError> {
-        self.call("gettxout", vec![txid, vout]).await
+        self.call("gettxout", serde_json::json!([txid, vout])).await
     }
 
     /// List unspent outputs
     pub async fn list_unspent(&self, address: &str) -> Result<Vec<UtxoInfo>, BitcoinError> {
-        self.call("listunspent", vec![0, 9999999, vec![address]]).await
+        self.call("listunspent", serde_json::json!([0, 9999999, [address]])).await
     }
 
     /// Decode raw transaction
     pub async fn decode_raw_transaction(&self, hex: &str) -> Result<DecodedTx, BitcoinError> {
-        self.call("decoderawtransaction", vec![hex]).await
+        self.call("decoderawtransaction", serde_json::json!([hex])).await
     }
 
     /// Create raw transaction
@@ -515,41 +506,41 @@ impl BitcoinRpcClient {
             .into_iter()
             .collect();
         
-        self.call("createrawtransaction", vec![inputs, outputs]).await
+        self.call("createrawtransaction", serde_json::json!([inputs, outputs])).await
     }
 
     /// Sign transaction
     pub async fn sign_transaction(&self, hex: &str, keys: Vec<String>) -> Result<SignResult, BitcoinError> {
-        self.call("signrawtransactionwithkey", vec![hex, keys]).await
+        self.call("signrawtransactionwithkey", serde_json::json!([hex, keys])).await
     }
 
     /// Broadcast transaction
     pub async fn send_raw_transaction(&self, hex: &str) -> Result<String, BitcoinError> {
-        self.call("sendrawtransaction", vec![hex]).await
+        self.call("sendrawtransaction", serde_json::json!([hex])).await
     }
 
     /// Get address info
     pub async fn get_address_info(&self, address: &str) -> Result<AddressInfo, BitcoinError> {
-        self.call("getaddressinfo", vec![address]).await
+        self.call("getaddressinfo", serde_json::json!([address])).await
     }
 
     /// Validate address
     pub async fn validate_address(&self, address: &str) -> Result<AddressValidation, BitcoinError> {
-        self.call("validateaddress", vec![address]).await
+        self.call("validateaddress", serde_json::json!([address])).await
     }
 
     /// Estimate fee
     pub async fn estimate_smart_fee(&self, conf_target: u32) -> Result<FeeEstimate, BitcoinError> {
-        self.call("estimatesmartfee", vec![conf_target]).await
+        self.call("estimatesmartfee", serde_json::json!([conf_target])).await
     }
 
     /// Get mempool info
     pub async fn get_mempool_info(&self) -> Result<MempoolInfo, BitcoinError> {
-        self.call("getmempoolinfo", vec![]).await
+        self.call("getmempoolinfo", serde_json::json!([])).await
     }
 
     /// Internal RPC call
-    async fn call<T: Deserialize<'de>>(&self, method: &str, params: Vec<serde_json::Value>) -> Result<T, BitcoinError> {
+    async fn call<T: DeserializeOwned>(&self, method: &str, params: serde_json::Value) -> Result<T, BitcoinError> {
         let request = serde_json::json!({
             "jsonrpc": "2.0",
             "method": method,

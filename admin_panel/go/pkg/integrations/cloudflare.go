@@ -227,14 +227,14 @@ func (c *CloudflareClient) DeleteFirewallRule(ctx context.Context, ruleID string
 
 // Analytics represents analytics data
 type Analytics struct {
-	Requests          int64   `json:"requests"`
-	RequestsCached    int64   `json:"requests_cached"`
-	RequestsUncached  int64   `json:"requests_uncached"`
-	Bandwidth         int64   `json:"bandwidth_all"`
-	BandwidthCached   int64   `json:"bandwidth_cached"`
-	BandwidthUncached int64   `json:"bandwidth_uncached"`
-	PageViews         int64   `json:"pageviews"`
-	UniqueVisitors    int64   `json:"uniques"`
+	Requests          int64 `json:"requests"`
+	RequestsCached    int64 `json:"requests_cached"`
+	RequestsUncached  int64 `json:"requests_uncached"`
+	Bandwidth         int64 `json:"bandwidth_all"`
+	BandwidthCached   int64 `json:"bandwidth_cached"`
+	BandwidthUncached int64 `json:"bandwidth_uncached"`
+	PageViews         int64 `json:"pageviews"`
+	UniqueVisitors    int64 `json:"uniques"`
 }
 
 // GetAnalytics gets analytics data
@@ -255,10 +255,10 @@ func (c *CloudflareClient) GetAnalytics(ctx context.Context, from, to time.Time)
 	}
 
 	return &Analytics{
-		Requests:         int64(data["requests"].(float64)),
+		Requests:          int64(data["requests"].(float64)),
 		RequestsCached:    int64(data["requests_cached"].(float64)),
 		RequestsUncached:  int64(data["requests_uncached"].(float64)),
-		Bandwidth:        int64(data["bandwidth"].(float64)),
+		Bandwidth:         int64(data["bandwidth"].(float64)),
 		BandwidthCached:   int64(data["bandwidth_cached"].(float64)),
 		BandwidthUncached: int64(data["bandwidth_uncached"].(float64)),
 		PageViews:         int64(data["pageviews"].(float64)),

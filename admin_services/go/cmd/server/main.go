@@ -331,9 +331,9 @@ func handleListServices(c *gin.Context) {
 
 func handleCreateService(c *gin.Context) {
 	var req struct {
-		Name     string `json:"name" binding:"required"`
-		Type     string `json:"type" binding:"required"`
-		Endpoint string `json:"endpoint"`
+		Name     string                 `json:"name" binding:"required"`
+		Type     string                 `json:"type" binding:"required"`
+		Endpoint string                 `json:"endpoint"`
 		Config   map[string]interface{} `json:"config"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -371,8 +371,8 @@ func handleGetService(c *gin.Context) {
 func handleUpdateService(c *gin.Context) {
 	id := c.Param("id")
 	var req struct {
-		Name     string `json:"name"`
-		Endpoint string `json:"endpoint"`
+		Name     string                 `json:"name"`
+		Endpoint string                 `json:"endpoint"`
 		Config   map[string]interface{} `json:"config"`
 	}
 	c.ShouldBindJSON(&req)
@@ -560,9 +560,9 @@ func handleListJobs(c *gin.Context) {
 
 func handleCreateJob(c *gin.Context) {
 	var req struct {
-		Name     string `json:"name" binding:"required"`
-		Type     string `json:"type" binding:"required"`
-		Schedule string `json:"schedule"`
+		Name     string                 `json:"name" binding:"required"`
+		Type     string                 `json:"type" binding:"required"`
+		Schedule string                 `json:"schedule"`
 		Payload  map[string]interface{} `json:"payload"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -634,10 +634,10 @@ func handleJobLogs(c *gin.Context) {
 func handleDashboard(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"dashboard": gin.H{
-			"total_services":  0,
+			"total_services":   0,
 			"running_services": 0,
-			"active_webhooks": 0,
-			"scheduled_jobs":  0,
+			"active_webhooks":  0,
+			"scheduled_jobs":   0,
 		},
 	})
 }
@@ -645,10 +645,10 @@ func handleDashboard(c *gin.Context) {
 func handleDashboardStats(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"stats": gin.H{
-			"services_today":  0,
-			"webhooks_fired":  0,
-			"jobs_completed":  0,
-			"errors":          0,
+			"services_today": 0,
+			"webhooks_fired": 0,
+			"jobs_completed": 0,
+			"errors":         0,
 		},
 	})
 }

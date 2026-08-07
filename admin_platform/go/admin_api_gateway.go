@@ -2,7 +2,7 @@
  * TigerWallet Admin API Gateway
  * Unified API Gateway for All Admin Services
  * High-Performance, Distributed, Ultra-Low Latency
- * 
+ *
  * Features:
  * - Unified routing to all admin services
  * - Rate limiting
@@ -42,44 +42,44 @@ import (
 // ============================================================================
 
 type GatewayConfig struct {
-	Port                string
-	AdminServiceURL     string
-	SuperAdminServiceURL string
-	MasterAdminServiceURL string
-	RedisURL            string
-	JWTSecret           string
-	RateLimitPerSecond  int
-	RateLimitBurst      int
-	EnableTLS           bool
-	CertFile           string
-	KeyFile            string
-	EnableCORS          bool
-	AllowedOrigins     []string
-	RequestTimeout      time.Duration
-	MaxRetries         int
+	Port                    string
+	AdminServiceURL         string
+	SuperAdminServiceURL    string
+	MasterAdminServiceURL   string
+	RedisURL                string
+	JWTSecret               string
+	RateLimitPerSecond      int
+	RateLimitBurst          int
+	EnableTLS               bool
+	CertFile                string
+	KeyFile                 string
+	EnableCORS              bool
+	AllowedOrigins          []string
+	RequestTimeout          time.Duration
+	MaxRetries              int
 	CircuitBreakerThreshold int
-	CircuitBreakerTimeout time.Duration
+	CircuitBreakerTimeout   time.Duration
 }
 
 func LoadGatewayConfig() *GatewayConfig {
 	return &GatewayConfig{
-		Port:                   getEnv("GATEWAY_PORT", "8888"),
-		AdminServiceURL:        getEnv("ADMIN_SERVICE_URL", "http://localhost:9093"),
-		SuperAdminServiceURL:   getEnv("SUPER_ADMIN_SERVICE_URL", "http://localhost:9094"),
-		MasterAdminServiceURL:  getEnv("MASTER_ADMIN_SERVICE_URL", "http://localhost:9095"),
-		RedisURL:               getEnv("REDIS_GATEWAY_URL", "redis://localhost:6379"),
-		JWTSecret:              getEnv("GATEWAY_JWT_SECRET", "gateway-secret-key-change"),
-		RateLimitPerSecond:     getEnvInt("RATE_LIMIT_PER_SECOND", 1000),
-		RateLimitBurst:         getEnvInt("RATE_LIMIT_BURST", 2000),
-		EnableTLS:              getEnvBool("ENABLE_TLS", false),
-		CertFile:              getEnv("TLS_CERT_FILE", ""),
-		KeyFile:               getEnv("TLS_KEY_FILE", ""),
-		EnableCORS:            getEnvBool("ENABLE_CORS", true),
-		AllowedOrigins:        strings.Split(getEnv("ALLOWED_ORIGINS", "*"), ","),
-		RequestTimeout:        getEnvDuration("REQUEST_TIMEOUT", 30*time.Second),
-		MaxRetries:           getEnvInt("MAX_RETRIES", 3),
+		Port:                    getEnv("GATEWAY_PORT", "8888"),
+		AdminServiceURL:         getEnv("ADMIN_SERVICE_URL", "http://localhost:9093"),
+		SuperAdminServiceURL:    getEnv("SUPER_ADMIN_SERVICE_URL", "http://localhost:9094"),
+		MasterAdminServiceURL:   getEnv("MASTER_ADMIN_SERVICE_URL", "http://localhost:9095"),
+		RedisURL:                getEnv("REDIS_GATEWAY_URL", "redis://localhost:6379"),
+		JWTSecret:               getEnv("GATEWAY_JWT_SECRET", "gateway-secret-key-change"),
+		RateLimitPerSecond:      getEnvInt("RATE_LIMIT_PER_SECOND", 1000),
+		RateLimitBurst:          getEnvInt("RATE_LIMIT_BURST", 2000),
+		EnableTLS:               getEnvBool("ENABLE_TLS", false),
+		CertFile:                getEnv("TLS_CERT_FILE", ""),
+		KeyFile:                 getEnv("TLS_KEY_FILE", ""),
+		EnableCORS:              getEnvBool("ENABLE_CORS", true),
+		AllowedOrigins:          strings.Split(getEnv("ALLOWED_ORIGINS", "*"), ","),
+		RequestTimeout:          getEnvDuration("REQUEST_TIMEOUT", 30*time.Second),
+		MaxRetries:              getEnvInt("MAX_RETRIES", 3),
 		CircuitBreakerThreshold: getEnvInt("CIRCUIT_BREAKER_THRESHOLD", 5),
-		CircuitBreakerTimeout:  getEnvDuration("CIRCUIT_BREAKER_TIMEOUT", 60*time.Second),
+		CircuitBreakerTimeout:   getEnvDuration("CIRCUIT_BREAKER_TIMEOUT", 60*time.Second),
 	}
 }
 
@@ -166,11 +166,11 @@ func (cb *CircuitBreaker) RecordFailure() {
 func (cb *CircuitBreaker) IsAvailable() bool {
 	cb.mu.RLock()
 	defer cb.mu.RUnlock()
-	
+
 	if cb.state == "closed" {
 		return true
 	}
-	
+
 	if cb.state == "open" {
 		if time.Since(cb.lastFailureTime) > cb.timeout {
 			cb.state = "half-open"
@@ -178,17 +178,17 @@ func (cb *CircuitBreaker) IsAvailable() bool {
 		}
 		return false
 	}
-	
+
 	// half-open - allow one request
 	return true
 }
 
 type RateLimiter struct {
-	mu           sync.RWMutex
-	tokens       float64
-	maxTokens    float64
-	refillRate   float64
-	lastRefill   time.Time
+	mu         sync.RWMutex
+	tokens     float64
+	maxTokens  float64
+	refillRate float64
+	lastRefill time.Time
 }
 
 func NewRateLimiter(maxTokens, refillRate float64) *RateLimiter {
@@ -203,12 +203,12 @@ func NewRateLimiter(maxTokens, refillRate float64) *RateLimiter {
 func (rl *RateLimiter) Allow() bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
-	
+
 	now := time.Now()
 	elapsed := now.Sub(rl.lastRefill).Seconds()
 	rl.tokens = min(rl.maxTokens, rl.tokens+elapsed*rl.refillRate)
 	rl.lastRefill = now
-	
+
 	if rl.tokens >= 1 {
 		rl.tokens--
 		return true
@@ -234,19 +234,19 @@ type APIKey struct {
 // ============================================================================
 
 type APIGateway struct {
-	config           *GatewayConfig
-	services         map[string]*ServiceEndpoint
-	circuitBreakers  map[string]*CircuitBreaker
-	rateLimiter      *RateLimiter
-	redisClient      *redis.Client
-	apiKeys          map[string]*APIKey
-	webSocketHub     *WebSocketHub
-	jwtSecret        []byte
-	proxy            *httputil.ReverseProxy
-	mu               sync.RWMutex
-	requestCount     map[string]int64
-	totalRequests    int64
-	startTime        time.Time
+	config          *GatewayConfig
+	services        map[string]*ServiceEndpoint
+	circuitBreakers map[string]*CircuitBreaker
+	rateLimiter     *RateLimiter
+	redisClient     *redis.Client
+	apiKeys         map[string]*APIKey
+	webSocketHub    *WebSocketHub
+	jwtSecret       []byte
+	proxy           *httputil.ReverseProxy
+	mu              sync.RWMutex
+	requestCount    map[string]int64
+	totalRequests   int64
+	startTime       time.Time
 }
 
 type WebSocketMessage struct {
@@ -256,11 +256,11 @@ type WebSocketMessage struct {
 }
 
 type WebSocketClient struct {
-	ID        string
-	AdminID   string
-	Conn      *websocket.Conn
-	Send      chan []byte
-	Hub       *WebSocketHub
+	ID      string
+	AdminID string
+	Conn    *websocket.Conn
+	Send    chan []byte
+	Hub     *WebSocketHub
 }
 
 type WebSocketHub struct {
@@ -288,7 +288,7 @@ func (hub *WebSocketHub) Run() {
 			hub.clients[client.ID] = client
 			hub.mu.Unlock()
 			log.Printf("WebSocket client registered: %s", client.ID)
-			
+
 		case client := <-hub.unregister:
 			hub.mu.Lock()
 			if _, ok := hub.clients[client.ID]; ok {
@@ -297,7 +297,7 @@ func (hub *WebSocketHub) Run() {
 			}
 			hub.mu.Unlock()
 			log.Printf("WebSocket client unregistered: %s", client.ID)
-			
+
 		case message := <-hub.broadcast:
 			hub.mu.RLock()
 			for _, client := range hub.clients {
@@ -320,7 +320,7 @@ func (hub *WebSocketHub) Broadcast(message *WebSocketMessage) {
 func (hub *WebSocketHub) SendToAdmin(adminID string, message *WebSocketMessage) {
 	hub.mu.RLock()
 	defer hub.mu.RUnlock()
-	
+
 	for _, client := range hub.clients {
 		if client.AdminID == adminID {
 			select {
@@ -345,9 +345,9 @@ func NewAPIGateway(config *GatewayConfig) *APIGateway {
 			Addr: "localhost:6379",
 		}
 	}
-	
+
 	redisClient := redis.NewClient(redisOpts)
-	
+
 	gateway := &APIGateway{
 		config:          config,
 		services:        make(map[string]*ServiceEndpoint),
@@ -360,32 +360,32 @@ func NewAPIGateway(config *GatewayConfig) *APIGateway {
 		requestCount:    make(map[string]int64),
 		startTime:       time.Now(),
 	}
-	
+
 	// Initialize service endpoints
 	gateway.services["admin"] = &ServiceEndpoint{
-		URL:       config.AdminServiceURL,
-		Timeout:   30 * time.Second,
+		URL:        config.AdminServiceURL,
+		Timeout:    30 * time.Second,
 		RetryCount: 3,
-		Weight:    10,
-		IsHealthy: true,
+		Weight:     10,
+		IsHealthy:  true,
 	}
-	
+
 	gateway.services["super_admin"] = &ServiceEndpoint{
-		URL:       config.SuperAdminServiceURL,
-		Timeout:   30 * time.Second,
+		URL:        config.SuperAdminServiceURL,
+		Timeout:    30 * time.Second,
 		RetryCount: 3,
-		Weight:    10,
-		IsHealthy: true,
+		Weight:     10,
+		IsHealthy:  true,
 	}
-	
+
 	gateway.services["master_admin"] = &ServiceEndpoint{
-		URL:       config.MasterAdminServiceURL,
-		Timeout:   30 * time.Second,
+		URL:        config.MasterAdminServiceURL,
+		Timeout:    30 * time.Second,
 		RetryCount: 3,
-		Weight:    10,
-		IsHealthy: true,
+		Weight:     10,
+		IsHealthy:  true,
 	}
-	
+
 	// Initialize circuit breakers
 	for service := range gateway.services {
 		gateway.circuitBreakers[service] = NewCircuitBreaker(
@@ -393,7 +393,7 @@ func NewAPIGateway(config *GatewayConfig) *APIGateway {
 			config.CircuitBreakerTimeout,
 		)
 	}
-	
+
 	return gateway
 }
 
@@ -408,11 +408,11 @@ func (g *APIGateway) RateLimitMiddleware() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		
+
 		// Get API key or JWT token
 		apiKey := c.GetHeader("X-API-Key")
 		authHeader := c.GetHeader("Authorization")
-		
+
 		var limiterKey string
 		if apiKey != "" {
 			limiterKey = "api:" + apiKey
@@ -423,26 +423,26 @@ func (g *APIGateway) RateLimitMiddleware() gin.HandlerFunc {
 				limiterKey = "jwt:" + token[:min(len(token), 32)]
 			}
 		}
-		
+
 		if limiterKey == "" {
 			limiterKey = "ip:" + c.ClientIP()
 		}
-		
+
 		// Check rate limit
 		if !g.rateLimiter.Allow() {
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-				"error": "Rate limit exceeded",
+				"error":       "Rate limit exceeded",
 				"retry_after": 1,
 			})
 			return
 		}
-		
+
 		// Track requests per client
 		g.mu.Lock()
 		g.requestCount[limiterKey]++
 		g.totalRequests++
 		g.mu.Unlock()
-		
+
 		c.Next()
 	}
 }
@@ -457,7 +457,7 @@ func (g *APIGateway) AuthMiddleware() gin.HandlerFunc {
 				return
 			}
 		}
-		
+
 		// Check API key
 		apiKey := c.GetHeader("X-API-Key")
 		if apiKey != "" {
@@ -469,19 +469,19 @@ func (g *APIGateway) AuthMiddleware() gin.HandlerFunc {
 				return
 			}
 		}
-		
+
 		// Check JWT token
 		authHeader := c.GetHeader("Authorization")
 		if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
 			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-			
+
 			token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 					return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 				}
 				return g.jwtSecret, nil
 			})
-			
+
 			if err == nil && token.Valid {
 				if claims, ok := token.Claims.(jwt.MapClaims); ok {
 					c.Set("admin_id", claims["admin_id"])
@@ -491,7 +491,7 @@ func (g *APIGateway) AuthMiddleware() gin.HandlerFunc {
 				}
 			}
 		}
-		
+
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 			"error": "Unauthorized - Invalid or missing authentication",
 		})
@@ -504,9 +504,9 @@ func (g *APIGateway) CORSMiddleware() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		
+
 		origin := c.Request.Header.Get("Origin")
-		
+
 		// Check if origin is allowed
 		allowed := false
 		for _, allowedOrigin := range g.config.AllowedOrigins {
@@ -515,7 +515,7 @@ func (g *APIGateway) CORSMiddleware() gin.HandlerFunc {
 				break
 			}
 		}
-		
+
 		if allowed {
 			c.Header("Access-Control-Allow-Origin", origin)
 			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
@@ -523,12 +523,12 @@ func (g *APIGateway) CORSMiddleware() gin.HandlerFunc {
 			c.Header("Access-Control-Allow-Credentials", "true")
 			c.Header("Access-Control-Max-Age", "3600")
 		}
-		
+
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
-		
+
 		c.Next()
 	}
 }
@@ -538,12 +538,12 @@ func (g *APIGateway) LoggingMiddleware() gin.HandlerFunc {
 		start := time.Now()
 		path := c.Request.URL.Path
 		method := c.Request.Method
-		
+
 		c.Next()
-		
+
 		latency := time.Since(start)
 		status := c.Writer.Status()
-		
+
 		// Log request
 		log.Printf("[%s] %s %s %d %v",
 			time.Now().Format("2006-01-02 15:04:05"),
@@ -552,7 +552,7 @@ func (g *APIGateway) LoggingMiddleware() gin.HandlerFunc {
 			status,
 			latency,
 		)
-		
+
 		// Store metrics in Redis
 		ctx := context.Background()
 		g.redisClient.HIncrBy(ctx, "gateway:metrics:requests", fmt.Sprintf("%d", status), 1)
@@ -569,10 +569,10 @@ func (g *APIGateway) SetupRoutes(r *gin.Engine) {
 	// Health check endpoints
 	r.GET("/health", g.HealthHandler)
 	r.GET("/ready", g.ReadyHandler)
-	
+
 	// WebSocket endpoint
 	r.GET("/ws", g.WebSocketHandler)
-	
+
 	// API v1 routes
 	v1 := r.Group("/api/v1")
 	{
@@ -583,7 +583,7 @@ func (g *APIGateway) SetupRoutes(r *gin.Engine) {
 			auth.POST("/register", g.ProxyToService("admin", "/api/v1/auth/register"))
 			auth.POST("/refresh", g.ProxyToService("admin", "/api/v1/auth/refresh"))
 		}
-		
+
 		// Protected routes
 		protected := v1.Group("")
 		protected.Use(g.AuthMiddleware())
@@ -602,7 +602,7 @@ func (g *APIGateway) SetupRoutes(r *gin.Engine) {
 				admins.POST("/:id/two-factor/disable", g.ProxyToService("admin", "/api/v1/admins/:id/two-factor/disable"))
 				admins.POST("/:id/password", g.ProxyToService("admin", "/api/v1/admins/:id/password"))
 			}
-			
+
 			// User management
 			users := protected.Group("/users")
 			{
@@ -615,7 +615,7 @@ func (g *APIGateway) SetupRoutes(r *gin.Engine) {
 				users.POST("/:id/verify", g.ProxyToService("admin", "/api/v1/users/:id/verify"))
 				users.POST("/:id/kyc", g.ProxyToService("admin", "/api/v1/users/:id/kyc"))
 			}
-			
+
 			// KYC management
 			kyc := protected.Group("/kyc")
 			{
@@ -625,7 +625,7 @@ func (g *APIGateway) SetupRoutes(r *gin.Engine) {
 				kyc.POST("/:id/reject", g.ProxyToService("admin", "/api/v1/kyc/:id/reject"))
 				kyc.POST("/:id/resubmit", g.ProxyToService("admin", "/api/v1/kyc/:id/resubmit"))
 			}
-			
+
 			// Transaction management
 			transactions := protected.Group("/transactions")
 			{
@@ -634,7 +634,7 @@ func (g *APIGateway) SetupRoutes(r *gin.Engine) {
 				transactions.POST("/:id/flag", g.ProxyToService("admin", "/api/v1/transactions/:id/flag"))
 				transactions.POST("/:id/unflag", g.ProxyToService("admin", "/api/v1/transactions/:id/unflag"))
 			}
-			
+
 			// Token management
 			tokens := protected.Group("/tokens")
 			{
@@ -647,7 +647,7 @@ func (g *APIGateway) SetupRoutes(r *gin.Engine) {
 				tokens.POST("/:id/deactivate", g.ProxyToService("admin", "/api/v1/tokens/:id/deactivate"))
 				tokens.POST("/:id/verify", g.ProxyToService("admin", "/api/v1/tokens/:id/verify"))
 			}
-			
+
 			// Blockchain management
 			blockchains := protected.Group("/blockchains")
 			{
@@ -658,7 +658,7 @@ func (g *APIGateway) SetupRoutes(r *gin.Engine) {
 				blockchains.DELETE("/:id", g.ProxyToService("admin", "/api/v1/blockchains/:id"))
 				blockchains.POST("/:id/test-rpc", g.ProxyToService("admin", "/api/v1/blockchains/:id/test-rpc"))
 			}
-			
+
 			// Trading pairs
 			pairs := protected.Group("/pairs")
 			{
@@ -668,7 +668,7 @@ func (g *APIGateway) SetupRoutes(r *gin.Engine) {
 				pairs.PUT("/:id", g.ProxyToService("admin", "/api/v1/pairs/:id"))
 				pairs.DELETE("/:id", g.ProxyToService("admin", "/api/v1/pairs/:id"))
 			}
-			
+
 			// White label management
 			whitelabels := protected.Group("/whitelabels")
 			{
@@ -680,7 +680,7 @@ func (g *APIGateway) SetupRoutes(r *gin.Engine) {
 				whitelabels.POST("/:id/approve", g.ProxyToService("super_admin", "/api/v1/whitelabels/:id/approve"))
 				whitelabels.POST("/:id/reject", g.ProxyToService("super_admin", "/api/v1/whitelabels/:id/reject"))
 			}
-			
+
 			// Withdrawal management
 			withdrawals := protected.Group("/withdrawals")
 			{
@@ -690,7 +690,7 @@ func (g *APIGateway) SetupRoutes(r *gin.Engine) {
 				withdrawals.POST("/:id/reject", g.ProxyToService("admin", "/api/v1/withdrawals/:id/reject"))
 				withdrawals.POST("/batch-approve", g.ProxyToService("admin", "/api/v1/withdrawals/batch-approve"))
 			}
-			
+
 			// Fee management
 			fees := protected.Group("/fees")
 			{
@@ -698,7 +698,7 @@ func (g *APIGateway) SetupRoutes(r *gin.Engine) {
 				fees.PUT("", g.ProxyToService("super_admin", "/api/v1/fees"))
 				fees.GET("/history", g.ProxyToService("admin", "/api/v1/fees/history"))
 			}
-			
+
 			// Analytics
 			analytics := protected.Group("/analytics")
 			{
@@ -708,7 +708,7 @@ func (g *APIGateway) SetupRoutes(r *gin.Engine) {
 				analytics.GET("/revenue", g.ProxyToService("admin", "/api/v1/analytics/revenue"))
 				analytics.GET("/transactions", g.ProxyToService("admin", "/api/v1/analytics/transactions"))
 			}
-			
+
 			// System
 			system := protected.Group("/system")
 			{
@@ -717,13 +717,13 @@ func (g *APIGateway) SetupRoutes(r *gin.Engine) {
 				system.GET("/services/:name", g.ProxyToService("admin", "/api/v1/system/services/:name"))
 				system.POST("/services/:name/restart", g.ProxyToService("super_admin", "/api/v1/system/services/:name/restart"))
 			}
-			
+
 			// Audit logs
 			auditLogs := protected.Group("/audit-logs")
 			{
 				auditLogs.GET("", g.ProxyToService("admin", "/api/v1/audit-logs"))
 			}
-			
+
 			// Notifications
 			notifications := protected.Group("/notifications")
 			{
@@ -731,7 +731,7 @@ func (g *APIGateway) SetupRoutes(r *gin.Engine) {
 				notifications.PUT("/:id/read", g.ProxyToService("admin", "/api/v1/notifications/:id/read"))
 				notifications.PUT("/read-all", g.ProxyToService("admin", "/api/v1/notifications/read-all"))
 			}
-			
+
 			// Sessions
 			sessions := protected.Group("/sessions")
 			{
@@ -739,21 +739,21 @@ func (g *APIGateway) SetupRoutes(r *gin.Engine) {
 				sessions.DELETE("/:id", g.ProxyToService("admin", "/api/v1/sessions/:id"))
 				sessions.DELETE("", g.ProxyToService("admin", "/api/v1/sessions"))
 			}
-			
+
 			// Feature flags
 			features := protected.Group("/features")
 			{
 				features.GET("", g.ProxyToService("admin", "/api/v1/features"))
 				features.PUT("/:name", g.ProxyToService("super_admin", "/api/v1/features/:name"))
 			}
-			
+
 			// Config
 			config := protected.Group("/config")
 			{
 				config.GET("", g.ProxyToService("admin", "/api/v1/config"))
 				config.PUT("", g.ProxyToService("super_admin", "/api/v1/config"))
 			}
-			
+
 			// Master Admin (specific routes)
 			masterAdmin := protected.Group("/master-admin")
 			{
@@ -763,12 +763,12 @@ func (g *APIGateway) SetupRoutes(r *gin.Engine) {
 				masterAdmin.PUT("/:id", g.ProxyToService("master_admin", "/api/v1/master-admin/:id"))
 				masterAdmin.DELETE("/:id", g.ProxyToService("master_admin", "/api/v1/master-admin/:id"))
 			}
-			
+
 			// WebSocket notification subscription
 			protected.POST("/ws/subscribe", g.WSSubscribeHandler)
 		}
 	}
-	
+
 	// Gateway-specific routes
 	gateway := v1.Group("/gateway")
 	gateway.Use(g.AuthMiddleware())
@@ -786,7 +786,7 @@ func (g *APIGateway) SetupRoutes(r *gin.Engine) {
 
 func (g *APIGateway) HealthHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"status": "healthy",
+		"status":    "healthy",
 		"timestamp": time.Now().Unix(),
 	})
 }
@@ -801,7 +801,7 @@ func (g *APIGateway) ReadyHandler(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	// Check service health
 	allHealthy := true
 	for name, service := range g.services {
@@ -810,7 +810,7 @@ func (g *APIGateway) ReadyHandler(c *gin.Context) {
 			log.Printf("Service %s is not healthy", name)
 		}
 	}
-	
+
 	if !allHealthy {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"status": "not_ready",
@@ -818,9 +818,9 @@ func (g *APIGateway) ReadyHandler(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{
-		"status": "ready",
+		"status":    "ready",
 		"timestamp": time.Now().Unix(),
 	})
 }
@@ -828,15 +828,15 @@ func (g *APIGateway) ReadyHandler(c *gin.Context) {
 func (g *APIGateway) StatsHandler(c *gin.Context) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	
+
 	uptime := time.Since(g.startTime)
-	
+
 	c.JSON(http.StatusOK, gin.H{
-		"uptime_seconds":   uptime.Seconds(),
-		"total_requests":   g.totalRequests,
-		"request_count":    g.requestCount,
-		"services":         g.services,
-		"timestamp":        time.Now().Unix(),
+		"uptime_seconds": uptime.Seconds(),
+		"total_requests": g.totalRequests,
+		"request_count":  g.requestCount,
+		"services":       g.services,
+		"timestamp":      time.Now().Unix(),
 	})
 }
 
@@ -851,7 +851,7 @@ func (g *APIGateway) ServicesHandler(c *gin.Context) {
 			"failure_count": service.FailureCount,
 		})
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"services": services,
 	})
@@ -864,12 +864,12 @@ func (g *APIGateway) CreateAPIKeyHandler(c *gin.Context) {
 		ExpiresAt   string   `json:"expires_at"`
 		RateLimit   int      `json:"rate_limit"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Generate API key
 	apiKey := &APIKey{
 		ID:          uuid.New().String(),
@@ -881,31 +881,31 @@ func (g *APIGateway) CreateAPIKeyHandler(c *gin.Context) {
 		RateLimit:   req.RateLimit,
 		CreatedAt:   time.Now(),
 	}
-	
+
 	if req.ExpiresAt != "" {
 		if t, err := time.Parse(time.RFC3339, req.ExpiresAt); err == nil {
 			apiKey.ExpiresAt = t
 		}
 	}
-	
+
 	g.apiKeys[apiKey.Key] = apiKey
-	
+
 	c.JSON(http.StatusCreated, gin.H{
-		"api_key": apiKey.Key,
-		"name":    apiKey.Name,
+		"api_key":    apiKey.Key,
+		"name":       apiKey.Name,
 		"expires_at": apiKey.ExpiresAt,
 	})
 }
 
 func (g *APIGateway) DeleteAPIKeyHandler(c *gin.Context) {
 	key := c.Param("key")
-	
+
 	if _, ok := g.apiKeys[key]; ok {
 		delete(g.apiKeys, key)
 		c.JSON(http.StatusOK, gin.H{"message": "API key deleted"})
 		return
 	}
-	
+
 	c.JSON(http.StatusNotFound, gin.H{"error": "API key not found"})
 }
 
@@ -916,18 +916,18 @@ func (g *APIGateway) WebSocketHandler(c *gin.Context) {
 			return true // Allow all origins in development
 		},
 	}
-	
+
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("WebSocket upgrade error: %v", err)
 		return
 	}
-	
+
 	adminID := c.Query("admin_id")
 	if adminID == "" {
 		adminID = "anonymous"
 	}
-	
+
 	client := &WebSocketClient{
 		ID:      uuid.New().String(),
 		AdminID: adminID,
@@ -935,22 +935,22 @@ func (g *APIGateway) WebSocketHandler(c *gin.Context) {
 		Send:    make(chan []byte, 256),
 		Hub:     g.webSocketHub,
 	}
-	
+
 	g.webSocketHub.register <- client
-	
+
 	// Start write pump
 	go func() {
 		defer func() {
 			g.webSocketHub.unregister <- client
 			conn.Close()
 		}()
-		
+
 		for {
 			messageType, message, err := conn.ReadMessage()
 			if err != nil {
 				break
 			}
-			
+
 			if messageType == websocket.TextMessage {
 				// Handle incoming message
 				var msg WebSocketMessage
@@ -962,20 +962,20 @@ func (g *APIGateway) WebSocketHandler(c *gin.Context) {
 			}
 		}
 	}()
-	
+
 	// Start read pump
 	go func() {
 		defer func() {
 			g.webSocketHub.unregister <- client
 			conn.Close()
 		}()
-		
+
 		for {
 			_, message, err := conn.ReadMessage()
 			if err != nil {
 				break
 			}
-			
+
 			// Echo back for now
 			client.Send <- message
 		}
@@ -984,18 +984,18 @@ func (g *APIGateway) WebSocketHandler(c *gin.Context) {
 
 func (g *APIGateway) WSSubscribeHandler(c *gin.Context) {
 	var req struct {
-		AdminID string `json:"admin_id" binding:"required"`
+		AdminID string   `json:"admin_id" binding:"required"`
 		Events  []string `json:"events"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Subscription is handled via WebSocket
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Please connect to /ws endpoint for real-time updates",
+		"message":  "Please connect to /ws endpoint for real-time updates",
 		"admin_id": req.AdminID,
 	})
 }
@@ -1011,36 +1011,36 @@ func (g *APIGateway) ProxyToService(serviceName, path string) gin.HandlerFunc {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Service not found"})
 			return
 		}
-		
+
 		// Check circuit breaker
 		cb, ok := g.circuitBreakers[serviceName]
 		if ok && !cb.IsAvailable() {
 			c.JSON(http.StatusServiceUnavailable, gin.H{
-				"error": "Service temporarily unavailable",
+				"error":       "Service temporarily unavailable",
 				"retry_after": cb.timeout.Seconds(),
 			})
 			return
 		}
-		
+
 		// Build target URL
 		targetURL := service.URL + path
-		
+
 		// Forward request
 		client := &http.Client{
 			Timeout: service.Timeout,
 		}
-		
+
 		req, err := http.NewRequest(c.Request.Method, targetURL, c.Request.Body)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
 			return
 		}
-		
+
 		// Copy headers
 		for k, v := range c.Request.Header {
 			req.Header[k] = v
 		}
-		
+
 		// Add admin context headers
 		if adminID := c.GetString("admin_id"); adminID != "" {
 			req.Header.Set("X-Admin-ID", adminID)
@@ -1048,7 +1048,7 @@ func (g *APIGateway) ProxyToService(serviceName, path string) gin.HandlerFunc {
 		if role := c.GetString("role"); role != "" {
 			req.Header.Set("X-Admin-Role", role)
 		}
-		
+
 		resp, err := client.Do(req)
 		if err != nil {
 			if ok {
@@ -1057,14 +1057,14 @@ func (g *APIGateway) ProxyToService(serviceName, path string) gin.HandlerFunc {
 			service.IsHealthy = false
 			service.FailureCount++
 			c.JSON(http.StatusBadGateway, gin.H{
-				"error": "Failed to reach service",
+				"error":   "Failed to reach service",
 				"service": serviceName,
 			})
 			return
 		}
-		
+
 		defer resp.Body.Close()
-		
+
 		// Record success
 		if ok {
 			cb.RecordSuccess()
@@ -1072,12 +1072,12 @@ func (g *APIGateway) ProxyToService(serviceName, path string) gin.HandlerFunc {
 		service.IsHealthy = true
 		service.FailureCount = 0
 		service.LastCheck = time.Now()
-		
+
 		// Copy response
 		for k, v := range resp.Header {
 			c.Header(k, v[0])
 		}
-		
+
 		body, _ := io.ReadAll(resp.Body)
 		c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), body)
 	}
@@ -1089,26 +1089,26 @@ func (g *APIGateway) ProxyToService(serviceName, path string) gin.HandlerFunc {
 
 func main() {
 	log.Println("Starting TigerWallet Admin API Gateway...")
-	
+
 	config := LoadGatewayConfig()
 	gateway := NewAPIGateway(config)
-	
+
 	// Start WebSocket hub
 	go gateway.webSocketHub.Run()
-	
+
 	// Setup Gin
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(gateway.LoggingMiddleware())
 	r.Use(gateway.CORSMiddleware())
-	
+
 	gateway.SetupRoutes(r)
-	
+
 	// Start server
 	addr := ":" + config.Port
 	log.Printf("API Gateway listening on %s", addr)
-	
+
 	if config.EnableTLS && config.CertFile != "" && config.KeyFile != "" {
 		server := &http.Server{
 			Addr:      addr,

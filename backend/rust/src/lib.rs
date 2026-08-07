@@ -15,7 +15,7 @@ use argon2::{
     password_hash::{rand_core::RngCore, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, Signer as Ed25519Signer, SigningKey, Verifier, VerifyingKey};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
@@ -159,7 +159,8 @@ impl KeyDerivation {
 }
 
 /// Digital signature service
-pub struct Signer as Sig;
+pub struct Sig;
+pub type Signer = Sig;
 
 impl Sig {
     /// Generate a new Ed25519 key pair
@@ -186,7 +187,7 @@ pub struct HmacService;
 impl HmacService {
     /// Compute HMAC-SHA256
     pub fn compute(key: &[u8], message: &[u8]) -> Vec<u8> {
-        let mut mac = HmacSha256::new_from_slice(key).expect("HMAC can take key of any size");
+        let mut mac = <HmacSha256 as Mac>::new_from_slice(key).expect("HMAC can take key of any size");
         mac.update(message);
         mac.finalize().into_bytes().to_vec()
     }
@@ -200,6 +201,7 @@ impl HmacService {
 
 /// Utility functions
 pub mod util {
+    use super::SecurityError;
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 
     /// Encode bytes to Base64

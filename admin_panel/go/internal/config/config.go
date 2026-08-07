@@ -4,6 +4,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -15,38 +16,38 @@ type Config struct {
 	ServerIdleTimeout  time.Duration
 
 	// Database
-	DatabaseURL        string
-	DatabaseMaxConns   int32
-	DatabaseMinConns   int32
+	DatabaseURL             string
+	DatabaseMaxConns        int32
+	DatabaseMinConns        int32
 	DatabaseMaxConnLifetime time.Duration
 
 	// Redis
-	RedisAddr         string
-	RedisPassword     string
-	RedisDB          int
-	RedisPoolSize    int
+	RedisAddr     string
+	RedisPassword string
+	RedisDB       int
+	RedisPoolSize int
 
 	// JWT
-	JWTSecret          string
-	JWTExpiry          time.Duration
-	JWTRefreshExpiry   time.Duration
+	JWTSecret        string
+	JWTExpiry        time.Duration
+	JWTRefreshExpiry time.Duration
 
 	// Security
-	BCryptCost         int
-	EnableIPWhitelist  bool
+	BCryptCost        int
+	EnableIPWhitelist bool
 	AllowedIPs        []string
-	RateLimitRequests  int
+	RateLimitRequests int
 	RateLimitWindow   time.Duration
 
 	// 2FA
-	TwoFactorIssuer    string
-	TwoFactorDigits    int
-	TwoFactorPeriod    time.Duration
+	TwoFactorIssuer string
+	TwoFactorDigits int
+	TwoFactorPeriod time.Duration
 
 	// Backup
-	BackupEnabled      bool
-	BackupPath         string
-	BackupInterval     time.Duration
+	BackupEnabled       bool
+	BackupPath          string
+	BackupInterval      time.Duration
 	BackupRetentionDays int
 
 	// Integrations
@@ -55,11 +56,12 @@ type Config struct {
 	DatadogAppKey      string
 	DatadogSite        string
 	CloudflareAPIKey   string
+	CloudflareAPIToken string
 	CloudflareEmail    string
 	CloudflareZoneID   string
 
 	// Logging
-	LogLevel           string
+	LogLevel string
 }
 
 func Load() *Config {
@@ -71,9 +73,9 @@ func Load() *Config {
 		ServerIdleTimeout:  getDurationEnv("SERVER_IDLE_TIMEOUT", 120*time.Second),
 
 		// Database
-		DatabaseURL:        getEnv("DATABASE_URL", "postgres://tigerwallet:password@localhost:5432/admin_panel?sslmode=disable"),
-		DatabaseMaxConns:   int32(getIntEnv("DATABASE_MAX_CONNS", 25)),
-		DatabaseMinConns:   int32(getIntEnv("DATABASE_MIN_CONNS", 5)),
+		DatabaseURL:             getEnv("DATABASE_URL", "postgres://tigerwallet:password@localhost:5432/admin_panel?sslmode=disable"),
+		DatabaseMaxConns:        int32(getIntEnv("DATABASE_MAX_CONNS", 25)),
+		DatabaseMinConns:        int32(getIntEnv("DATABASE_MIN_CONNS", 5)),
 		DatabaseMaxConnLifetime: getDurationEnv("DATABASE_MAX_CONN_LIFETIME", time.Hour),
 
 		// Redis
@@ -83,9 +85,9 @@ func Load() *Config {
 		RedisPoolSize: getIntEnv("REDIS_POOL_SIZE", 100),
 
 		// JWT
-		JWTSecret:        getEnv("JWT_SECRET", "tigerwallet-admin-secret-key-change-in-production"),
-		JWTExpiry:         getDurationEnv("JWT_EXPIRY", 24*time.Hour),
-		JWTRefreshExpiry:  getDurationEnv("JWT_REFRESH_EXPIRY", 7*24*time.Hour),
+		JWTSecret:        getEnv("JWT_SECRET", ""),
+		JWTExpiry:        getDurationEnv("JWT_EXPIRY", 24*time.Hour),
+		JWTRefreshExpiry: getDurationEnv("JWT_REFRESH_EXPIRY", 7*24*time.Hour),
 
 		// Security
 		BCryptCost:        getIntEnv("BCRYPT_COST", 14),
@@ -95,24 +97,25 @@ func Load() *Config {
 		RateLimitWindow:   getDurationEnv("RATE_LIMIT_WINDOW", time.Minute),
 
 		// 2FA
-		TwoFactorIssuer:  getEnv("TWO_FACTOR_ISSUER", "TigerWallet"),
-		TwoFactorDigits:  6,
-		TwoFactorPeriod:  30 * time.Second,
+		TwoFactorIssuer: getEnv("TWO_FACTOR_ISSUER", "TigerWallet"),
+		TwoFactorDigits: 6,
+		TwoFactorPeriod: 30 * time.Second,
 
 		// Backup
-		BackupEnabled:      getBoolEnv("BACKUP_ENABLED", true),
-		BackupPath:         getEnv("BACKUP_PATH", "/var/backups/tigerwallet"),
-		BackupInterval:     getDurationEnv("BACKUP_INTERVAL", 24*time.Hour),
+		BackupEnabled:       getBoolEnv("BACKUP_ENABLED", true),
+		BackupPath:          getEnv("BACKUP_PATH", "/var/backups/tigerwallet"),
+		BackupInterval:      getDurationEnv("BACKUP_INTERVAL", 24*time.Hour),
 		BackupRetentionDays: getIntEnv("BACKUP_RETENTION_DAYS", 30),
 
 		// Integrations
-		PagerDutyAPIKey:  getEnv("PAGERDUTY_API_KEY", ""),
-		DatadogAPIKey:    getEnv("DATADOG_API_KEY", ""),
-		DatadogAppKey:    getEnv("DATADOG_APP_KEY", ""),
-		DatadogSite:      getEnv("DATADOG_SITE", "datadoghq.com"),
-		CloudflareAPIKey: getEnv("CLOUDFLARE_API_KEY", ""),
-		CloudflareEmail:  getEnv("CLOUDFLARE_EMAIL", ""),
-		CloudflareZoneID: getEnv("CLOUDFLARE_ZONE_ID", ""),
+		PagerDutyAPIKey:    getEnv("PAGERDUTY_API_KEY", ""),
+		DatadogAPIKey:      getEnv("DATADOG_API_KEY", ""),
+		DatadogAppKey:      getEnv("DATADOG_APP_KEY", ""),
+		DatadogSite:        getEnv("DATADOG_SITE", "datadoghq.com"),
+		CloudflareAPIKey:   getEnv("CLOUDFLARE_API_KEY", ""),
+		CloudflareAPIToken: getEnv("CLOUDFLARE_API_TOKEN", ""),
+		CloudflareEmail:    getEnv("CLOUDFLARE_EMAIL", ""),
+		CloudflareZoneID:   getEnv("CLOUDFLARE_ZONE_ID", ""),
 
 		// Logging
 		LogLevel: getEnv("LOG_LEVEL", "info"),
@@ -155,7 +158,14 @@ func getEnvSlice(key string, defaultValue []string) []string {
 	if value, exists := os.LookupEnv(key); exists {
 		// Simple comma-separated list
 		if value != "" {
-			return []string{value} // Will be split elsewhere if needed
+			parts := strings.Split(value, ",")
+			result := make([]string, 0, len(parts))
+			for _, part := range parts {
+				if trimmed := strings.TrimSpace(part); trimmed != "" {
+					result = append(result, trimmed)
+				}
+			}
+			return result
 		}
 	}
 	return defaultValue

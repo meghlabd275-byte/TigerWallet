@@ -29,15 +29,15 @@ var upgrader = websocket.Upgrader{
 // ============================================================================
 
 type Client struct {
-	ID        string
-	Hub       *WebSocketHub
-	Conn      *websocket.Conn
-	Send      chan []byte
-	Rooms     map[string]bool
-	UserID    string
-	AdminID   string
-	IsAdmin   bool
-	Metadata  map[string]interface{}
+	ID       string
+	Hub      *WebSocketHub
+	Conn     *websocket.Conn
+	Send     chan []byte
+	Rooms    map[string]bool
+	UserID   string
+	AdminID  string
+	IsAdmin  bool
+	Metadata map[string]interface{}
 	mu       sync.RWMutex
 }
 
@@ -93,7 +93,7 @@ func (h *WebSocketHub) Run() {
 			if _, ok := h.Clients[client.ID]; ok {
 				close(client.Send)
 				delete(h.Clients, client.ID)
-				
+
 				// Remove from all rooms
 				for room := range client.Rooms {
 					h.LeaveRoom(client, room)
@@ -125,7 +125,7 @@ func (h *WebSocketHub) GetClient(id string) *Client {
 func (h *WebSocketHub) GetRoomClients(room string) []*Client {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	
+
 	clients := make([]*Client, 0)
 	if roomClients, ok := h.Rooms[room]; ok {
 		for _, client := range roomClients {
@@ -166,7 +166,7 @@ func (h *WebSocketHub) LeaveRoom(client *Client, room string) {
 	if h.Rooms[room] != nil {
 		delete(h.Rooms[room], client.ID)
 		delete(client.Rooms, room)
-		
+
 		if len(h.Rooms[room]) == 0 {
 			delete(h.Rooms, room)
 		}
@@ -180,7 +180,7 @@ func (h *WebSocketHub) BroadcastToRoom(room string, message *Message) {
 	defer h.mu.RUnlock()
 
 	messageBytes := message.toBytes()
-	
+
 	if roomClients, ok := h.Rooms[room]; ok {
 		for _, client := range roomClients {
 			select {
@@ -196,7 +196,7 @@ func (h *WebSocketHub) SendToUser(userID string, message *Message) {
 	defer h.mu.RUnlock()
 
 	messageBytes := message.toBytes()
-	
+
 	for _, client := range h.Clients {
 		if client.UserID == userID {
 			select {
@@ -296,15 +296,15 @@ func (c *Client) handleMessage(msg *Message) {
 	case "broadcast":
 		var payload struct {
 			Message string `json:"message"`
-			Room   string `json:"room,omitempty"`
+			Room    string `json:"room,omitempty"`
 		}
 		json.Unmarshal(msg.Payload, &payload)
 		if payload.Room != "" {
 			broadcastMsg := &Message{
 				Type:      "broadcast",
-				Event:    msg.Event,
-				Payload:  msg.Payload,
-				Room:     payload.Room,
+				Event:     msg.Event,
+				Payload:   msg.Payload,
+				Room:      payload.Room,
 				Timestamp: time.Now().Unix(),
 			}
 			c.Hub.BroadcastToRoom(payload.Room, broadcastMsg)
@@ -338,7 +338,7 @@ type WebSocketServer struct {
 func NewWebSocketServer() *WebSocketServer {
 	hub := NewWebSocketHub()
 	go hub.Run()
-	
+
 	return &WebSocketServer{Hub: hub}
 }
 
@@ -355,11 +355,11 @@ func (s *WebSocketServer) HandleWebSocket(c *gin.Context) {
 	}
 
 	client := &Client{
-		ID:      clientID,
-		Hub:     s.Hub,
-		Conn:    conn,
-		Send:    make(chan []byte, 256),
-		Rooms:   make(map[string]bool),
+		ID:       clientID,
+		Hub:      s.Hub,
+		Conn:     conn,
+		Send:     make(chan []byte, 256),
+		Rooms:    make(map[string]bool),
 		Metadata: make(map[string]interface{}),
 	}
 
@@ -371,10 +371,10 @@ func (s *WebSocketServer) HandleWebSocket(c *gin.Context) {
 
 func (s *WebSocketServer) HandleHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"status":       "healthy",
-		"clients":      s.Hub.GetClientCount(),
-		"rooms":        len(s.Hub.Rooms),
-		"timestamp":    time.Now().Unix(),
+		"status":    "healthy",
+		"clients":   s.Hub.GetClientCount(),
+		"rooms":     len(s.Hub.Rooms),
+		"timestamp": time.Now().Unix(),
 	})
 }
 
@@ -387,9 +387,9 @@ func (h *WebSocketHub) BroadcastUserUpdate(userID string, event string, data int
 	payload, _ := json.Marshal(data)
 	msg := &Message{
 		Type:      "user_update",
-		Event:    event,
+		Event:     event,
 		Payload:   payload,
-		TargetID: userID,
+		TargetID:  userID,
 		Timestamp: time.Now().Unix(),
 	}
 	h.Broadcast <- msg
@@ -400,9 +400,9 @@ func (h *WebSocketHub) BroadcastTradeUpdate(room string, event string, data inte
 	payload, _ := json.Marshal(data)
 	msg := &Message{
 		Type:      "trade_update",
-		Event:    event,
-		Payload:  payload,
-		Room:     room,
+		Event:     event,
+		Payload:   payload,
+		Room:      room,
 		Timestamp: time.Now().Unix(),
 	}
 	h.BroadcastToRoom(room, msg)
@@ -413,8 +413,8 @@ func (h *WebSocketHub) BroadcastAdminBroadcast(event string, data interface{}) {
 	payload, _ := json.Marshal(data)
 	msg := &Message{
 		Type:      "admin_broadcast",
-		Event:    event,
-		Payload:  payload,
+		Event:     event,
+		Payload:   payload,
 		Timestamp: time.Now().Unix(),
 	}
 	h.Broadcast <- msg
@@ -489,7 +489,7 @@ func NewSSEManager() *SSEManager {
 func (m *SSEManager) Subscribe(id string) chan []byte {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	ch := make(chan []byte, 10)
 	m.clients[id] = ch
 	return ch
@@ -498,7 +498,7 @@ func (m *SSEManager) Subscribe(id string) chan []byte {
 func (m *SSEManager) Unsubscribe(id string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	if ch, ok := m.clients[id]; ok {
 		close(ch)
 		delete(m.clients, id)
@@ -508,12 +508,12 @@ func (m *SSEManager) Unsubscribe(id string) {
 func (m *SSEManager) Publish(event string, data interface{}) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	payload, _ := json.Marshal(map[string]interface{}{
 		"event": event,
 		"data":  data,
 	})
-	
+
 	for _, ch := range m.clients {
 		select {
 		case ch <- payload:

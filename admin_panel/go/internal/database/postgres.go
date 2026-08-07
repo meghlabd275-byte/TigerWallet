@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/tigerwallet/admin/internal/config"
+	"github.com/tigerwallet/admin_panel/internal/config"
 )
 
 var Pool *pgxpool.Pool
@@ -45,6 +47,31 @@ func Close() {
 		Pool.Close()
 	}
 }
+
+func Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+	if Pool == nil {
+		return nil, fmt.Errorf("database pool is not initialized")
+	}
+	return Pool.Query(ctx, sql, args...)
+}
+
+func QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+	if Pool == nil {
+		return &uninitializedRow{err: fmt.Errorf("database pool is not initialized")}
+	}
+	return Pool.QueryRow(ctx, sql, args...)
+}
+
+func Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
+	if Pool == nil {
+		return pgconn.CommandTag{}, fmt.Errorf("database pool is not initialized")
+	}
+	return Pool.Exec(ctx, sql, args...)
+}
+
+type uninitializedRow struct{ err error }
+
+func (r *uninitializedRow) Scan(...interface{}) error { return r.err }
 
 func runMigrations(ctx context.Context) error {
 	migrations := []string{

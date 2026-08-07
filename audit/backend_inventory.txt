@@ -1,0 +1,1092 @@
+== GO MODULES ==
+./admin/go/go.mod
+./admin_console/go/go.mod
+./admin_go/go.mod
+./admin_panel/go/go.mod
+./admin_platform/go/go.mod
+./admin_services/go/go.mod
+./admin_system/go/go.mod
+./api_gateway/go.mod
+./asset_management/go.mod
+./auto_approval_workflow/go/go.mod
+./backend/go/go.mod
+./backend_services/go.mod
+./backend_services/go/listing_service/go.mod
+./billing_subscription/go.mod
+./billing_subscription/go/go.mod
+./bots/go.mod
+./client_onboarding/go.mod
+./connection_api/go.mod
+./data_platform/go.mod
+./enterprise_features/go.mod
+./go/admin_service/go.mod
+./go/blockchain_rpc/go.mod
+./go/listing_service/go.mod
+./go/nft_service/go.mod
+./go/payment/go.mod
+./go/staking_service/go.mod
+./go/super_admin_service/go.mod
+./go/swap_service/go.mod
+./go/wallet_service/go.mod
+./go/wallet_services/go.mod
+./governance/go/go.mod
+./kill_switch/go.mod
+./master_admin_management/go/go.mod
+./master_wallet/go.mod
+./monitoring_dashboard/go.mod
+./multi_tenancy/go/go.mod
+./observability/go.mod
+./permission_service/go.mod
+./project_party/go.mod
+./security_platform/go/cmd/transaction-shield/go.mod
+./social/go/cmd/social-auth-service/go.mod
+./super_admin/go/go.mod
+./support_ticket/go.mod
+./user_wallet/go.mod
+./wallet_cloud/go.mod
+./white_label/go/go.mod
+./white_label_admin/go/go.mod
+./white_label_marketplace/go/go.mod
+== SQLITE REFERENCES ==
+== REDIS/POSTGRES ==
+./admin/go/internal/config/config.go:50:		DatabaseURL:        getEnv("DATABASE_URL", "postgres://tigerwallet:password@localhost:5432/admin?sslmode=disable"),
+./admin/go/internal/database/postgres.go:9:	"github.com/jackc/pgx/v5/pgxpool"
+./admin/go/internal/database/postgres.go:13:var Pool *pgxpool.Pool
+./admin/go/internal/database/postgres.go:19:	poolConfig, err := pgxpool.ParseConfig(cfg.DatabaseURL)
+./admin/go/internal/database/postgres.go:27:	Pool, err = pgxpool.NewWithConfig(ctx, poolConfig)
+./admin/go/internal/services/knowledge_base.go:9:	"github.com/jackc/pgx/v5"
+./admin/go/internal/services/knowledge_base.go:82:	if err == pgx.ErrNoRows {
+./admin/go/internal/services/sla.go:9:	"github.com/jackc/pgx/v5"
+./admin/go/internal/services/sla.go:71:	if err == pgx.ErrNoRows {
+./admin_backend/cmd/main.go:17:	"admin_backend/pkg/redis"
+./admin_backend/cmd/main.go:36:	redisClient, err := redis.NewRedisClient(cfg)
+./admin_backend/cmd/main.go:40:	defer redisClient.Close()
+./admin_backend/cmd/main.go:50:	adminHandler := handlers.NewAdminHandler(db, redisClient, cfg, authSvc)
+./admin_backend/internal/handlers/admin_handler.go:13:	"admin_backend/pkg/redis"
+./admin_backend/internal/handlers/admin_handler.go:23:	redis    *redis.RedisClient
+./admin_backend/internal/handlers/admin_handler.go:29:func NewAdminHandler(db *database.PostgresDB, redisClient *redis.RedisClient, cfg *config.Config, authSvc *auth.AuthService) *AdminHandler {
+./admin_backend/internal/handlers/admin_handler.go:32:		redis:   redisClient,
+./admin_backend/internal/handlers/admin_handler.go:137:	h.redis.CacheUserSession(token, sessionData, time.Duration(h.cfg.JWTExpirationHours)*time.Hour)
+./admin_backend/internal/handlers/admin_handler.go:156:		h.redis.DeleteUserSession(token)
+./admin_backend/internal/handlers/admin_handler.go:313:	h.redis.CacheUserSession(token, sessionData, time.Duration(h.cfg.JWTExpirationHours)*time.Hour)
+./admin_backend/internal/handlers/integration_handler.go:19:	"github.com/redis/go-redis/v9"
+./admin_backend/internal/handlers/integration_handler.go:25:	redis *redis.Client
+./admin_backend/internal/handlers/integration_handler.go:29:func NewIntegrationHandler(db *database.PostgresDB, redis *redis.Client) *IntegrationHandler {
+./admin_backend/internal/handlers/integration_handler.go:32:		redis: redis,
+./admin_backend/internal/handlers/integration_handler.go:504:	h.redis.Set(context.Background(), webhookKey, body, 24*time.Hour)
+./admin_backend/internal/handlers/kyc_handler.go:14:	"github.com/redis/go-redis/v9"
+./admin_backend/internal/handlers/kyc_handler.go:19:	redis *redis.Client
+./admin_backend/internal/handlers/kyc_handler.go:23:func NewNotificationService(redisClient *redis.Client) *NotificationService {
+./admin_backend/internal/handlers/kyc_handler.go:24:	return &NotificationService{redis: redisClient}
+./admin_backend/internal/handlers/kyc_handler.go:39:	s.redis.LPush(s.redis.Context(), key, notificationJSON)
+./admin_backend/internal/handlers/kyc_handler.go:40:	s.redis.Expire(s.redis.Context(), key, 7*24*time.Hour)
+./admin_backend/internal/handlers/kyc_handler.go:52:func NewKYCHandler(db *database.PostgresDB, redisClient *redis.Client) *KYCHandler {
+./admin_backend/internal/handlers/kyc_handler.go:55:		notificationSvc: NewNotificationService(redisClient),
+./admin_backend/internal/handlers/superadmin_handler.go:12:	"admin_backend/pkg/redis"
+./admin_backend/internal/handlers/superadmin_handler.go:23:	redis    *redis.RedisClient
+./admin_backend/internal/handlers/superadmin_handler.go:29:func NewSuperAdminHandler(db *database.PostgresDB, redisClient *redis.RedisClient, cfg *config.Config, authSvc *auth.AuthService) *SuperAdminHandler {
+./admin_backend/internal/handlers/superadmin_handler.go:32:		redis:   redisClient,
+./admin_backend/internal/handlers/superadmin_handler.go:325:	h.redis.DeleteUserSession("admin:" + strconv.FormatUint(id))
+./admin_backend/internal/handlers/two_factor_handler.go:12:	"github.com/redis/go-redis/v9"
+./admin_backend/internal/handlers/two_factor_handler.go:21:func NewTwoFactorHandler(db *database.PostgresDB, redis *redis.Client) *TwoFactorHandler {
+./admin_backend/internal/handlers/two_factor_handler.go:23:		twoFactorService: services.NewTwoFactorService(db, redis),
+./admin_backend/internal/handlers/withdrawal_handler.go:16:	"github.com/redis/go-redis/v9"
+./admin_backend/internal/handlers/withdrawal_handler.go:22:	redis *redis.Client
+./admin_backend/internal/handlers/withdrawal_handler.go:26:func NewBlockchainService(redisClient *redis.Client) *BlockchainService {
+./admin_backend/internal/handlers/withdrawal_handler.go:27:	return &BlockchainService{redis: redisClient}
+./admin_backend/internal/handlers/withdrawal_handler.go:51:	s.redis.HSet(ctx, key, map[string]interface{}{
+./admin_backend/internal/handlers/withdrawal_handler.go:60:	s.redis.Expire(ctx, key, 24*time.Hour)
+./admin_backend/internal/handlers/withdrawal_handler.go:68:	status, err := s.redis.HGet(ctx, key, "status").Result()
+./admin_backend/internal/handlers/withdrawal_handler.go:69:	if err == redis.Nil {
+./admin_backend/internal/handlers/withdrawal_handler.go:170:func NewWithdrawHandler(db *database.PostgresDB, redisClient *redis.Client) *WithdrawHandler {
+./admin_backend/internal/handlers/withdrawal_handler.go:173:		blockchainSvc:    NewBlockchainService(redisClient),
+./admin_backend/internal/handlers/withdrawal_handler.go:186:func NewWithdrawalHandler(db *database.PostgresDB, redisClient *redis.Client) *WithdrawalHandler {
+./admin_backend/internal/handlers/withdrawal_handler.go:189:		blockchainSvc:    NewBlockchainService(redisClient),
+./admin_backend/internal/services/fraud_detection_service.go:14:	"github.com/redis/go-redis/v9"
+./admin_backend/internal/services/fraud_detection_service.go:20:	redis *redis.Client
+./admin_backend/internal/services/fraud_detection_service.go:24:func NewFraudDetectionService(db *database.PostgresDB, redis *redis.Client) *FraudDetectionService {
+./admin_backend/internal/services/fraud_detection_service.go:27:		redis: redis,
+./admin_backend/internal/services/fraud_detection_service.go:144:	count, _ := s.redis.Get(ctx, key).Int()
+./admin_backend/internal/services/fraud_detection_service.go:147:	s.redis.Incr(ctx, key)
+./admin_backend/internal/services/fraud_detection_service.go:148:	s.redis.Expire(ctx, key, time.Duration(windowMinutes)*time.Minute)
+./admin_backend/internal/services/fraud_detection_service.go:292:	s.redis.Publish(ctx, "fraud_alerts", alertJSON)
+./admin_backend/internal/services/two_factor_service.go:20:	"github.com/redis/go-redis/v9"
+./admin_backend/internal/services/two_factor_service.go:27:	redis *redis.Client
+./admin_backend/internal/services/two_factor_service.go:31:func NewTwoFactorService(db *database.PostgresDB, redis *redis.Client) *TwoFactorService {
+./admin_backend/internal/services/two_factor_service.go:34:		redis: redis,
+./admin_backend/internal/services/two_factor_service.go:113:	redisKey := fmt.Sprintf("2fa_setup:%s:%d", req.UserType, req.UserID)
+./admin_backend/internal/services/two_factor_service.go:114:	s.redis.Set(c.Request.Context(), redisKey, secretJSON, 10*time.Minute)
+./admin_backend/internal/services/two_factor_service.go:180:	redisKey := fmt.Sprintf("2fa_setup:%s:%d", req.UserType, req.UserID)
+./admin_backend/internal/services/two_factor_service.go:181:	secretJSON, err := s.redis.Get(c.Request.Context(), redisKey).Result()
+./admin_backend/internal/services/two_factor_service.go:257:	s.redis.Del(c.Request.Context(), redisKey)
+./admin_backend/internal/services/two_factor_service.go:448:	count, err := s.redis.Get(c.Request.Context(), rateLimitKey).Int()
+./admin_backend/internal/services/two_factor_service.go:449:	if err == redis.Nil {
+./admin_backend/internal/services/two_factor_service.go:450:		s.redis.Set(c.Request.Context(), rateLimitKey, 1, 5*time.Minute)
+./admin_backend/internal/services/two_factor_service.go:462:	s.redis.Incr(c.Request.Context(), rateLimitKey)
+./admin_backend/internal/services/two_factor_service.go:530:	s.redis.Incr(c.Request.Context(), attemptKey)
+./admin_backend/internal/services/two_factor_service.go:531:	s.redis.Expire(c.Request.Context(), attemptKey, 24*time.Hour)
+./admin_backend/internal/services/two_factor_service.go:546:	s.redis.Del(c.Request.Context(), attemptKey)
+./admin_backend/pkg/database/postgres.go:11:	"gorm.io/driver/postgres"
+./admin_backend/pkg/database/postgres.go:43:	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+./admin_backend/pkg/redis/redis.go:1:package redis
+./admin_backend/pkg/redis/redis.go:11:	"github.com/redis/go-redis/v9"
+./admin_backend/pkg/redis/redis.go:16:	Client *redis.Client
+./admin_backend/pkg/redis/redis.go:24:	client := redis.NewClient(&redis.Options{
+./admin_backend/pkg/redis/redis.go:76:		if err == redis.Nil {
+./admin_backend/pkg/redis/redis.go:88:		if err == redis.Nil {
+./admin_backend/pkg/redis/redis.go:146:func (r *RedisClient) ZAdd(key string, members ...redis.Z) error {
+./admin_backend/pkg/redis/redis.go:151:func (r *RedisClient) ZRangeByScore(key string, opt redis.ZRangeBy) ([]string, error) {
+./admin_backend/pkg/redis/redis.go:225:func (r *RedisClient) Subscribe(channel string) *redis.PubSub {
+./admin_backend/pkg/redis/redis.go:230:func (r *RedisClient) Pipeline(commands ...func(redis.Pipeline)) error {
+./admin_backend/pkg/redis/redis.go:248:	script := redis.NewScript(`
+./admin_backend/pkg/redis/redis.go:249:		if redis.call("get", KEYS[1]) == ARGV[1] then
+./admin_backend/pkg/redis/redis.go:250:			return redis.call("del", KEYS[1])
+./admin_backend/pkg/redis/redis.go:297:	if err == redis.Nil {
+./admin_console/go/internal/database/postgres.go:10:	"github.com/jackc/pgx/v5"
+./admin_console/go/internal/database/postgres.go:11:	"github.com/jackc/pgx/v5/pgxpool"
+./admin_console/go/internal/database/postgres.go:15:	pool *pgxpool.Pool
+./admin_console/go/internal/database/postgres.go:20:		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
+./admin_console/go/internal/database/postgres.go:29:	poolConfig, err := pgxpool.ParseConfig(dsn)
+./admin_console/go/internal/database/postgres.go:39:	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
+./admin_console/go/internal/database/postgres.go:59:func (db *PostgresDB) Pool() *pgxpool.Pool {
+./admin_console/go/internal/database/postgres.go:63:func (db *PostgresDB) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+./admin_console/go/internal/database/postgres.go:67:func (db *PostgresDB) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+./admin_console/go/internal/database/postgres.go:75:func (db *PostgresDB) Begin(ctx context.Context) (pgx.Tx, error) {
+./admin_console/go/internal/database/postgres.go:79:func (db *PostgresDB) SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults {
+./admin_console/go/internal/services/auth_service.go:16:	"github.com/jackc/pgx/v5"
+./admin_console/go/internal/services/auth_service.go:17:	"github.com/redis/go-redis/v9"
+./admin_console/go/internal/services/auth_service.go:31:	db    *pgxpool.Pool
+./admin_console/go/internal/services/auth_service.go:32:	redis *redis.Client
+./admin_console/go/internal/services/auth_service.go:43:func NewAuthService(db *pgxpool.Pool, redis *redis.Client) *AuthService {
+./admin_console/go/internal/services/auth_service.go:46:		redis: redis,
+./admin_console/go/internal/services/auth_service.go:70:	if err == pgx.ErrNoRows {
+./admin_console/go/internal/services/auth_service.go:118:	s.redis.Set(ctx, sessionKey, accessToken, 24*time.Hour)
+./admin_console/go/internal/services/auth_service.go:201:	if err == pgx.ErrNoRows {
+./admin_console/go/internal/services/auth_service.go:248:	s.redis.Del(ctx, sessionKey)
+./admin_console/go/internal/services/auth_service.go:285:	if err == pgx.ErrNoRows {
+./admin_console/go/internal/services/auth_service.go:299:	if err == pgx.ErrNoRows {
+./admin_console/go/internal/services/auth_service.go:313:	s.redis.Set(ctx, resetKey, tokenHash, time.Hour)
+./admin_console/go/internal/services/services.go:11:	"github.com/jackc/pgx/v5"
+./admin_console/go/internal/services/services.go:12:	"github.com/jackc/pgx/v5/pgxpool"
+./admin_console/go/internal/services/services.go:13:	"github.com/redis/go-redis/v9"
+./admin_console/go/internal/services/services.go:17:	db    *pgxpool.Pool
+./admin_console/go/internal/services/services.go:18:	redis *redis.Client
+./admin_console/go/internal/services/services.go:21:func NewUserService(db *pgxpool.Pool, redis *redis.Client) *UserService {
+./admin_console/go/internal/services/services.go:22:	return &UserService{db: db, redis: redis}
+./admin_console/go/internal/services/services.go:110:	if err == pgx.ErrNoRows {
+./admin_console/go/internal/services/services.go:228:	db    *pgxpool.Pool
+./admin_console/go/internal/services/services.go:229:	redis *redis.Client
+./admin_console/go/internal/services/services.go:232:func NewKYCService(db *pgxpool.Pool, redis *redis.Client) *KYCService {
+./admin_console/go/internal/services/services.go:233:	return &KYCService{db: db, redis: redis}
+./admin_console/go/internal/services/services.go:298:	if err == pgx.ErrNoRows {
+./admin_console/go/internal/services/services.go:350:	db    *pgxpool.Pool
+./admin_console/go/internal/services/services.go:351:	redis *redis.Client
+./admin_console/go/internal/services/services.go:354:func NewTokenService(db *pgxpool.Pool, redis *redis.Client) *TokenService {
+./admin_console/go/internal/services/services.go:355:	return &TokenService{db: db, redis: redis}
+./admin_console/go/internal/services/services.go:420:	if err == pgx.ErrNoRows {
+./admin_console/go/internal/services/services.go:491:	db    *pgxpool.Pool
+./admin_console/go/internal/services/services.go:492:	redis *redis.Client
+./admin_console/go/internal/services/services.go:495:func NewTransactionService(db *pgxpool.Pool, redis *redis.Client) *TransactionService {
+./admin_console/go/internal/services/services.go:496:	return &TransactionService{db: db, redis: redis}
+./admin_console/go/internal/services/services.go:567:	if err == pgx.ErrNoRows {
+./admin_console/go/internal/services/services.go:623:	db    *pgxpool.Pool
+./admin_console/go/internal/services/services.go:624:	redis *redis.Client
+./admin_console/go/internal/services/services.go:627:func NewAnalyticsService(db *pgxpool.Pool, redis *redis.Client) *AnalyticsService {
+./admin_console/go/internal/services/services.go:628:	return &AnalyticsService{db: db, redis: redis}
+./admin_console/go/internal/services/services.go:727:	db    *pgxpool.Pool
+./admin_console/go/internal/services/services.go:728:	redis *redis.Client
+./admin_console/go/internal/services/services.go:731:func NewAuditService(db *pgxpool.Pool, redis *redis.Client) *AuditService {
+./admin_console/go/internal/services/services.go:732:	return &AuditService{db: db, redis: redis}
+./admin_console/go/internal/services/services.go:803:	if err == pgx.ErrNoRows {
+./admin_console/go/internal/services/services.go:840:	redis *redis.Client
+./admin_console/go/internal/services/services.go:843:func NewNotificationService(redis *redis.Client) *NotificationService {
+./admin_console/go/internal/services/services.go:844:	return &NotificationService{redis: redis}
+./admin_console/go/internal/services/services.go:855:	rows, err := s.redis.Redis.FindKeys(ctx, fmt.Sprintf("notifications:%s:*", userID.String())).Result()
+./admin_console/go/internal/services/services.go:872:	s.redis.Del(ctx, key)
+./admin_console/go/internal/services/services.go:873:	_, err := s.redis.Exec(ctx, `UPDATE notifications SET read_at = NOW() WHERE id = $1 AND user_id = $2`, notificationID, userID)
+./admin_console/go/internal/services/services.go:878:	_, err := s.redis.Exec(ctx, `UPDATE notifications SET read_at = NOW() WHERE user_id = $1 AND read_at IS NULL`, userID)
+./admin_console/go/internal/services/services.go:886:	s.redis.Set(ctx, key, data, 24*time.Hour*7)
+./admin_console/go/internal/services/services.go:889:	_, err := s.redis.Exec(ctx, `
+./admin_console/go/internal/services/services.go:899:	db    *pgxpool.Pool
+./admin_console/go/internal/services/services.go:900:	redis *redis.Client
+== ROUTES ==
+./account_abstraction/go/main.go:962:	http.HandleFunc("/", service.ServeHTTP)
+./account_abstraction/go/main.go:964:	if err := http.ListenAndServe(":8081", nil); err != nil {
+./account_abstraction/go_api/cmd/main.go:90:func (api *BundlerAPI) eth_sendUserOperation(c *gin.Context) {
+./account_abstraction/go_api/cmd/main.go:97:		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+./account_abstraction/go_api/cmd/main.go:103:		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid sender"})
+./account_abstraction/go_api/cmd/main.go:110:		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+./account_abstraction/go_api/cmd/main.go:116:	c.JSON(http.StatusOK, gin.H{"userOpHash": hash})
+./account_abstraction/go_api/cmd/main.go:120:func (api *BundlerAPI) eth_estimateUserOperationGas(c *gin.Context) {
+./account_abstraction/go_api/cmd/main.go:127:		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+./account_abstraction/go_api/cmd/main.go:140:	c.JSON(http.StatusOK, gin.H{
+./account_abstraction/go_api/cmd/main.go:148:func (api *BundlerAPI) eth_getUserOperationReceipt(c *gin.Context) {
+./account_abstraction/go_api/cmd/main.go:154:		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+./account_abstraction/go_api/cmd/main.go:161:		c.JSON(http.StatusNotFound, gin.H{"error": "receipt not found"})
+./account_abstraction/go_api/cmd/main.go:169:func (api *BundlerAPI) eth_getUserOperationByHash(c *gin.Context) {
+./account_abstraction/go_api/cmd/main.go:175:		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+./account_abstraction/go_api/cmd/main.go:181:		c.JSON(http.StatusNotFound, gin.H{"error": "user operation not found"})
+./account_abstraction/go_api/cmd/main.go:185:	c.JSON(http.StatusOK, gin.H{
+./account_abstraction/go_api/cmd/main.go:192:func (api *BundlerAPI) SupportedEntryPoints(c *gin.Context) {
+./account_abstraction/go_api/cmd/main.go:193:	c.JSON(http.StatusOK, gin.H{
+./account_abstraction/go_api/cmd/main.go:199:func (api *BundlerAPI) ChainID(c *gin.Context) {
+./account_abstraction/go_api/cmd/main.go:202:		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+./account_abstraction/go_api/cmd/main.go:206:	c.JSON(http.StatusOK, gin.H{
+./account_abstraction/go_api/cmd/main.go:312:	gin.SetMode(gin.ReleaseMode)
+./account_abstraction/go_api/cmd/main.go:313:	router := gin.New()
+./account_abstraction/go_api/cmd/main.go:314:	router.Use(gin.Recovery())
+./account_abstraction/go_api/cmd/main.go:315:	router.Use(gin.Logger())
+./account_abstraction/go_api/cmd/main.go:318:	router.GET("/health", func(c *gin.Context) {
+./account_abstraction/go_api/cmd/main.go:319:		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+./account_abstraction/go_api/cmd/main.go:325:		rpc.POST("/", func(c *gin.Context) {
+./account_abstraction/go_api/cmd/main.go:328:				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+./account_abstraction/go_api/cmd/main.go:334:				c.JSON(http.StatusBadRequest, gin.H{"error": "missing method"})
+./account_abstraction/go_api/cmd/main.go:352:				c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported method"})
+./account_abstraction/go_api/cmd/main.go:360:		debug.GET("/mempool", func(c *gin.Context) {
+./account_abstraction/go_api/cmd/main.go:362:			c.JSON(http.StatusOK, gin.H{"operations": ops, "count": len(ops)})
+./admin/go/internal/middleware/auth.go:23:func JWTAuth(cfg *config.Config) gin.HandlerFunc {
+./admin/go/internal/middleware/auth.go:24:	return func(c *gin.Context) {
+./admin/go/internal/middleware/auth.go:27:			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+./admin/go/internal/middleware/auth.go:34:			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization header format"})
+./admin/go/internal/middleware/auth.go:47:			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
+./admin/go/internal/middleware/auth.go:61:func RoleAuth(allowedRoles ...string) gin.HandlerFunc {
+./admin/go/internal/middleware/auth.go:62:	return func(c *gin.Context) {
+./admin/go/internal/middleware/auth.go:65:			c.JSON(http.StatusUnauthorized, gin.H{"error": "Role not found in token"})
+./admin/go/internal/middleware/auth.go:78:		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
+./admin/go/internal/middleware/auth.go:83:func RateLimiter(cfg *config.Config) gin.HandlerFunc {
+./admin/go/internal/middleware/auth.go:90:	return func(c *gin.Context) {
+./admin/go/internal/middleware/auth.go:109:			c.JSON(http.StatusTooManyRequests, gin.H{"error": "Rate limit exceeded"})
+./admin/go/internal/middleware/auth.go:119:func IPWhitelistMiddleware(cfg *config.Config) gin.HandlerFunc {
+./admin/go/internal/middleware/auth.go:125:	return func(c *gin.Context) {
+./admin/go/internal/middleware/auth.go:137:		c.JSON(http.StatusForbidden, gin.H{"error": "IP address not allowed"})
+./admin/go/internal/middleware/auth.go:142:func GetAdminID(c *gin.Context) (uuid.UUID, bool) {
+./admin/go/internal/middleware/auth.go:150:func GetAdminRole(c *gin.Context) (string, bool) {
+./admin/go/internal/websocket/hub.go:328:func HandleWebSocket(hub *Hub) gin.HandlerFunc {
+./admin/go/internal/websocket/hub.go:329:	return func(c *gin.Context) {
+./admin/go/main.go:30:	router := gin.Default()
+./admin/go/main.go:41:	router.GET("/health", func(c *gin.Context) {
+./admin/go/main.go:42:		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "tiger-admin"})
+./admin/go/main.go:232:func handleLogin(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "login handler"}) }
+./admin/go/main.go:233:func handleRegister(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "register handler"}) }
+./admin/go/main.go:234:func handleRefreshToken(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "refresh handler"}) }
+./admin/go/main.go:235:func handleLogout(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "logout handler"}) }
+./admin/go/main.go:236:func handleChangePassword(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "password changed"}) }
+./admin/go/main.go:237:func handleEnable2FA(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "2FA enabled"}) }
+./admin/go/main.go:238:func handleDisable2FA(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "2FA disabled"}) }
+./admin/go/main.go:239:func handleGetUsers(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"users": []}) }
+./admin/go/main.go:240:func handleGetUser(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"user": map[string]interface{}{}}) }
+./admin/go/main.go:241:func handleUpdateUserStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "status updated"}) }
+./admin/go/main.go:242:func handleBanUser(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "user banned"}) }
+./admin/go/main.go:243:func handleUnbanUser(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "user unbanned"}) }
+./admin/go/main.go:244:func handleSuspendUser(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "user suspended"}) }
+./admin/go/main.go:245:func handleGetKYC(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"kyc_requests": []}) }
+./admin/go/main.go:246:func handleApproveKYC(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "KYC approved"}) }
+./admin/go/main.go:247:func handleRejectKYC(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "KYC rejected"}) }
+./admin/go/main.go:248:func handleGetTransactions(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"transactions": []}) }
+./admin/go/main.go:249:func handleGetTransaction(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"transaction": map[string]interface{}{}}) }
+./admin/go/main.go:250:func handleFlagTransaction(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "transaction flagged"}) }
+./admin/go/main.go:251:func handleUnflagTransaction(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "transaction unflagged"}) }
+./admin/go/main.go:252:func handleGetWithdrawals(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"withdrawals": []}) }
+./admin/go/main.go:253:func handleApproveWithdrawal(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "withdrawal approved"}) }
+./admin/go/main.go:254:func handleRejectWithdrawal(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "withdrawal rejected"}) }
+./admin/go/main.go:255:func handleProcessWithdrawal(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "withdrawal processed"}) }
+./admin/go/main.go:256:func handleGetTokens(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"tokens": []}) }
+./admin/go/main.go:257:func handleCreateToken(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "token created"}) }
+./admin/go/main.go:258:func handleUpdateToken(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "token updated"}) }
+./admin/go/main.go:259:func handleDeleteToken(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "token deleted"}) }
+./admin/go/main.go:260:func handleGetPairs(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"pairs": []}) }
+./admin/go/main.go:261:func handleCreatePair(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "pair created"}) }
+./admin/go/main.go:262:func handleUpdatePairStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "pair status updated"}) }
+./admin/go/main.go:263:func handleGetBlockchains(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"blockchains": []}) }
+./admin/go/main.go:264:func handleCreateBlockchain(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "blockchain created"}) }
+./admin/go/main.go:265:func handleUpdateBlockchain(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "blockchain updated"}) }
+./admin/go/main.go:266:func handleSetBlockchainStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "status updated"}) }
+./admin/go/main.go:267:func handleGetFees(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"fees": []}) }
+./admin/go/main.go:268:func handleCreateFee(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "fee created"}) }
+./admin/go/main.go:269:func handleUpdateFee(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "fee updated"}) }
+./admin/go/main.go:270:func handleGetWebhooks(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"webhooks": []}) }
+./admin/go/main.go:271:func handleCreateWebhook(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "webhook created"}) }
+./admin/go/main.go:272:func handleTestWebhook(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "webhook test sent"}) }
+./admin/go/main.go:273:func handleDeleteWebhook(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "webhook deleted"}) }
+./admin/go/main.go:274:func handleGetNotifications(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"notifications": []}) }
+./admin/go/main.go:275:func handleMarkNotificationRead(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "notification marked as read"}) }
+./admin/go/main.go:276:func handleSendNotification(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "notification sent"}) }
+./admin/go/main.go:277:func handleBroadcastNotification(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "notification broadcasted"}) }
+./admin/go/main.go:278:func handleGetAuditLogs(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"audit_logs": []}) }
+./admin/go/main.go:279:func handleExportAuditLogs(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"file_path": "/exports/audit_logs.csv"}) }
+./admin/go/main.go:280:func handleGetSessions(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"sessions": []}) }
+./admin/go/main.go:281:func handleRevokeSession(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "session revoked"}) }
+./admin/go/main.go:282:func handleRevokeAllSessions(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "all sessions revoked"}) }
+./admin/go/main.go:283:func handleGetFeatureFlags(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"feature_flags": []}) }
+./admin/go/main.go:284:func handleCreateFeatureFlag(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "feature flag created"}) }
+./admin/go/main.go:285:func handleUpdateFeatureFlag(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "feature flag updated"}) }
+./admin/go/main.go:286:func handleDeleteFeatureFlag(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "feature flag deleted"}) }
+./admin/go/main.go:287:func handleGetIPWhitelist(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ip_whitelist": []}) }
+./admin/go/main.go:288:func handleAddIPWhitelist(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "IP added to whitelist"}) }
+./admin/go/main.go:289:func handleRemoveIPWhitelist(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "IP removed from whitelist"}) }
+./admin/go/main.go:290:func handleGetTickets(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"tickets": []}) }
+./admin/go/main.go:291:func handleGetTicket(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ticket": map[string]interface{}{}, "messages": []}) }
+./admin/go/main.go:292:func handleCreateTicket(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "ticket created"}) }
+./admin/go/main.go:293:func handleUpdateTicketStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ticket status updated"}) }
+./admin/go/main.go:294:func handleAddTicketMessage(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "message added"}) }
+./admin/go/main.go:295:func handleAssignTicket(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ticket assigned"}) }
+./admin/go/main.go:296:func handleGetWhiteLabels(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"white_labels": []}) }
+./admin/go/main.go:297:func handleCreateWhiteLabel(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "white label created"}) }
+./admin/go/main.go:298:func handleUpdateWhiteLabel(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "white label updated"}) }
+./admin/go/main.go:299:func handleDeleteWhiteLabel(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "white label deleted"}) }
+./admin/go/main.go:300:func handleGetStats(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"stats": map[string]interface{}{"total_users": 0, "active_users": 0}}) }
+./admin/go/main.go:301:func handleGetAdmins(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"admins": []}) }
+./admin/go/main.go:302:func handleGetAdmin(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"admin": map[string]interface{}{}}) }
+./admin/go/main.go:303:func handleUpdateAdmin(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "admin updated"}) }
+./admin/go/main.go:304:func handleDeleteAdmin(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "admin deleted"}) }
+./admin/go/main.go:305:func handleSuspendAdmin(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "admin suspended"}) }
+./admin/go/main.go:306:func handleActivateAdmin(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "admin activated"}) }
+./admin/go/main.go:307:func handleGetWorkflows(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"workflows": []}) }
+./admin/go/main.go:308:func handleCreateWorkflow(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "workflow created"}) }
+./admin/go/main.go:309:func handleUpdateWorkflow(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "workflow updated"}) }
+./admin/go/main.go:310:func handleDeleteWorkflow(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "workflow deleted"}) }
+./admin/go/main.go:311:func handleGetApprovalRequests(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"approval_requests": []}) }
+./admin/go/main.go:312:func handleApproveRequest(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "request approved"}) }
+./admin/go/main.go:313:func handleRejectRequest(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "request rejected"}) }
+./admin/go/main.go:314:func handleGetBackups(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"backups": []}) }
+./admin/go/main.go:315:func handleCreateBackup(c *gin.Context) { c.JSON(http.StatusAccepted, gin.H{"message": "backup started"}) }
+./admin/go/main.go:316:func handleRestoreBackup(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "restore started"}) }
+./admin/go/main.go:317:func handleDeleteBackup(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "backup deleted"}) }
+./admin/go/main.go:320:func handleGetKnowledgeArticles(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"articles": []}) }
+./admin/go/main.go:321:func handleGetKnowledgeArticle(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"article": map[string]interface{}{}}) }
+./admin/go/main.go:322:func handleCreateKnowledgeArticle(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "article created"}) }
+./admin/go/main.go:323:func handleUpdateKnowledgeArticle(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "article updated"}) }
+./admin/go/main.go:324:func handleDeleteKnowledgeArticle(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "article deleted"}) }
+./admin/go/main.go:327:func handleGetArchivePolicies(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"policies": []}) }
+./admin/go/main.go:328:func handleCreateArchivePolicy(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "policy created"}) }
+./admin/go/main.go:329:func handleUpdateArchivePolicy(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "policy updated"}) }
+./admin/go/main.go:330:func handleDeleteArchivePolicy(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "policy deleted"}) }
+./admin/go/main.go:331:func handleRunArchive(c *gin.Context) { c.JSON(http.StatusAccepted, gin.H{"message": "archive started"}) }
+./admin/go/main.go:332:func handleGetArchiveRecords(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"records": []}) }
+./admin/go/main.go:335:func handleGetReportConfigs(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"configs": []}) }
+./admin/go/main.go:336:func handleCreateReportConfig(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "report config created"}) }
+./admin/go/main.go:337:func handleGetReports(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"reports": []}) }
+./admin/go/main.go:338:func handleGenerateReport(c *gin.Context) { c.JSON(http.StatusAccepted, gin.H{"message": "report generation started"}) }
+./admin/go/main.go:341:func handleGetSLAPolicies(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"policies": []}) }
+./admin/go/main.go:342:func handleCreateSLAPolicy(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "SLA policy created"}) }
+./admin/go/main.go:343:func handleUpdateSLAPolicy(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "SLA policy updated"}) }
+./admin/go/main.go:344:func handleDeleteSLAPolicy(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "SLA policy deleted"}) }
+./admin/go/main.go:345:func handleGetSLAReports(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"reports": []}) }
+./admin/go/main.go:346:func handleGenerateSLAReport(c *gin.Context) { c.JSON(http.StatusAccepted, gin.H{"message": "SLA report generation started"}) }
+./admin/go/main.go:349:func handleGetIntegrations(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"integrations": []}) }
+./admin/go/main.go:350:func handleCreateIntegration(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "integration created"}) }
+./admin/go/main.go:351:func handleUpdateIntegration(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "integration updated"}) }
+./admin/go/main.go:352:func handleDeleteIntegration(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "integration deleted"}) }
+./admin/go/main.go:353:func handleTestIntegration(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"success": true, "message": "integration test successful"}) }
+./admin_backend/cmd/main.go:53:	gin.SetMode(gin.ReleaseMode)
+./admin_backend/cmd/main.go:54:	r := gin.New()
+./admin_backend/cmd/main.go:55:	r.Use(gin.Recovery())
+./admin_backend/cmd/main.go:61:	r.GET("/health", func(c *gin.Context) {
+./admin_backend/cmd/main.go:62:		c.JSON(http.StatusOK, gin.H{
+./admin_backend/internal/handlers/admin_handler.go:53:func (h *AdminHandler) Login(c *gin.Context) {
+./admin_backend/internal/handlers/admin_handler.go:56:		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+./admin_backend/internal/handlers/admin_handler.go:64:		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+./admin_backend/internal/handlers/admin_handler.go:70:		c.JSON(http.StatusLocked, gin.H{"error": "Account is locked. Please try again later."})
+./admin_backend/internal/handlers/admin_handler.go:91:		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+./admin_backend/internal/handlers/admin_handler.go:119:		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+./admin_backend/internal/handlers/admin_handler.go:125:		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate refresh token"})
+./admin_backend/internal/handlers/admin_handler.go:151:func (h *AdminHandler) Logout(c *gin.Context) {
+./admin_backend/internal/handlers/admin_handler.go:164:	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
+./admin_backend/internal/handlers/admin_handler.go:168:func (h *AdminHandler) GetProfile(c *gin.Context) {
+./admin_backend/internal/handlers/admin_handler.go:175:		c.JSON(http.StatusNotFound, gin.H{"error": "Admin not found"})
+./admin_backend/internal/handlers/admin_handler.go:183:func (h *AdminHandler) UpdateProfile(c *gin.Context) {
+./admin_backend/internal/handlers/admin_handler.go:193:		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+./admin_backend/internal/handlers/admin_handler.go:203:		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update profile"})
+./admin_backend/internal/handlers/admin_handler.go:210:	c.JSON(http.StatusOK, gin.H{"message": "Profile updated successfully"})
+./admin_backend/internal/handlers/admin_handler.go:214:func (h *AdminHandler) ChangePassword(c *gin.Context) {
+./admin_backend/internal/handlers/admin_handler.go:223:		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+./admin_backend/internal/handlers/admin_handler.go:230:		c.JSON(http.StatusNotFound, gin.H{"error": "Admin not found"})
+./admin_backend/internal/handlers/admin_handler.go:237:		c.JSON(http.StatusBadRequest, gin.H{"error": "Current password is incorrect"})
+./admin_backend/internal/handlers/admin_handler.go:245:		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+./admin_backend/internal/handlers/admin_handler.go:254:		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update password"})
+./admin_backend/internal/handlers/admin_handler.go:261:	c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
+./admin_backend/internal/handlers/admin_handler.go:265:func (h *AdminHandler) RefreshToken(c *gin.Context) {
+./admin_backend/internal/handlers/admin_handler.go:271:		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+./admin_backend/internal/handlers/admin_handler.go:278:		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token"})
+./admin_backend/internal/handlers/admin_handler.go:287:		c.JSON(http.StatusNotFound, gin.H{"error": "Admin not found"})
+./admin_backend/internal/handlers/admin_handler.go:295:		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+== GO TEST STATUS ==
+-- ./admin/go
+main.go:13:2: missing go.sum entry for module providing package github.com/gin-contrib/cors (imported by github.com/tigerwallet/admin); to add:
+	go get github.com/tigerwallet/admin
+main.go:14:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/admin); to add:
+	go get github.com/tigerwallet/admin
+internal/database/postgres.go:9:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/admin/internal/database); to add:
+	go get github.com/tigerwallet/admin/internal/database
+internal/middleware/auth.go:10:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/admin/internal/middleware); to add:
+	go get github.com/tigerwallet/admin/internal/middleware
+internal/middleware/auth.go:11:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/admin/internal/middleware); to add:
+	go get github.com/tigerwallet/admin/internal/middleware
+internal/services/knowledge_base.go:9:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5 (imported by github.com/tigerwallet/admin/internal/services); to add:
+	go get github.com/tigerwallet/admin/internal/services
+internal/websocket/hub.go:12:2: missing go.sum entry for module providing package github.com/gorilla/websocket (imported by github.com/tigerwallet/admin/internal/websocket); to add:
+	go get github.com/tigerwallet/admin/internal/websocket
+-- ./admin_console/go
+internal/database/postgres.go:10:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5 (imported by admin_console/internal/database); to add:
+	go get admin_console/internal/database
+internal/database/postgres.go:11:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by admin_console/internal/database); to add:
+	go get admin_console/internal/database
+internal/models/models.go:6:2: missing go.sum entry for module providing package github.com/google/uuid (imported by admin_console/internal/handlers); to add:
+	go get admin_console/internal/handlers
+internal/services/auth_service.go:14:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by admin_console/internal/services); to add:
+	go get admin_console/internal/services
+internal/services/auth_service.go:17:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by admin_console); to add:
+	go get admin_console
+internal/services/auth_service.go:18:2: missing go.sum entry for module providing package golang.org/x/crypto/bcrypt (imported by admin_console/internal/services); to add:
+	go get admin_console/internal/services
+internal/handlers/handlers.go:9:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by admin_console); to add:
+	go get admin_console
+-- ./admin_go
+main.go:31:2: missing go.sum entry for module providing package github.com/gin-contrib/cors (imported by github.com/tigerwallet/admin-go); to add:
+	go get github.com/tigerwallet/admin-go
+main.go:32:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/admin-go); to add:
+	go get github.com/tigerwallet/admin-go
+main.go:33:2: missing go.sum entry for module providing package github.com/go-redis/redis/v8 (imported by github.com/tigerwallet/admin-go); to add:
+	go get github.com/tigerwallet/admin-go
+main.go:34:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/admin-go); to add:
+	go get github.com/tigerwallet/admin-go
+main.go:35:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/admin-go); to add:
+	go get github.com/tigerwallet/admin-go
+main.go:36:2: missing go.sum entry for module providing package golang.org/x/crypto/bcrypt (imported by github.com/tigerwallet/admin-go); to add:
+	go get github.com/tigerwallet/admin-go
+main.go:37:2: missing go.sum entry for module providing package gorm.io/driver/postgres (imported by github.com/tigerwallet/admin-go); to add:
+	go get github.com/tigerwallet/admin-go
+main.go:38:2: missing go.sum entry for module providing package gorm.io/gorm (imported by github.com/tigerwallet/admin-go); to add:
+	go get github.com/tigerwallet/admin-go
+main.go:39:2: missing go.sum entry for module providing package gorm.io/gorm/logger (imported by github.com/tigerwallet/admin-go); to add:
+	go get github.com/tigerwallet/admin-go
+-- ./admin_panel/go
+main.go:14:2: missing go.sum entry for module providing package github.com/gin-contrib/cors (imported by github.com/tigerwallet/admin_panel); to add:
+	go get github.com/tigerwallet/admin_panel
+main.go:15:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/admin_panel); to add:
+	go get github.com/tigerwallet/admin_panel
+internal/database/postgres.go:9:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/admin_panel/internal/database); to add:
+	go get github.com/tigerwallet/admin_panel/internal/database
+internal/database/postgres.go:10:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+internal/handlers/handlers.go:9:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/admin_panel/internal/handlers); to add:
+	go get github.com/tigerwallet/admin_panel/internal/handlers
+internal/middleware/auth.go:10:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/admin_panel/internal/middleware); to add:
+	go get github.com/tigerwallet/admin_panel/internal/middleware
+internal/services/approval_service.go:9:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5 (imported by github.com/tigerwallet/admin_panel/internal/services); to add:
+	go get github.com/tigerwallet/admin_panel/internal/services
+internal/services/sla.go:10:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+internal/services/auth_service.go:18:2: missing go.sum entry for module providing package golang.org/x/crypto/bcrypt (imported by github.com/tigerwallet/admin_panel/internal/services); to add:
+	go get github.com/tigerwallet/admin_panel/internal/services
+internal/websocket/hub.go:12:2: missing go.sum entry for module providing package github.com/gorilla/websocket (imported by github.com/tigerwallet/admin_panel/internal/websocket); to add:
+	go get github.com/tigerwallet/admin_panel/internal/websocket
+-- ./admin_platform/go
+	go mod download github.com/bytedance/sonic
+twofa_service.go:18:2: missing go.sum entry for module providing package github.com/pquerna/otp (imported by github.com/tigerwallet/admin_platform); to add:
+	go get github.com/tigerwallet/admin_platform
+twofa_service.go:19:2: missing go.sum entry for module providing package github.com/pquerna/otp/totp (imported by github.com/tigerwallet/admin_platform); to add:
+	go get github.com/tigerwallet/admin_platform
+payment_gateway.go:25:2: missing go.sum entry for module providing package github.com/redis/go-redis/v8 (imported by github.com/tigerwallet/admin_platform); to add:
+	go get github.com/tigerwallet/admin_platform
+admin_2fa_service.go:35:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+admin_2fa_service.go:36:2: missing go.sum entry for module providing package golang.org/x/crypto/bcrypt (imported by github.com/tigerwallet/admin_platform); to add:
+	go get github.com/tigerwallet/admin_platform
+oauth_service.go:23:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+oauth_service.go:24:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+oauth_service.go:25:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+admin_platform_complete.go:70:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+admin_bulk_operations.go:36:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+admin_platform_complete.go:72:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+admin_websocket_notifications.go:29:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+-- ./admin_services/go
+	go get github.com/tigerwallet/admin
+admin_service_complete.go:68:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/admin); to add:
+	go get github.com/tigerwallet/admin
+internal/database/postgres.go:9:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/admin/internal/database); to add:
+	go get github.com/tigerwallet/admin/internal/database
+admin_api.go:28:2: missing go.sum entry for module providing package golang.org/x/crypto/bcrypt (imported by github.com/tigerwallet/admin); to add:
+	go get github.com/tigerwallet/admin
+admin_service_complete.go:70:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+admin_service_complete.go:71:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+admin_service_complete.go:72:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+cmd/server/main.go:24:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+cmd/server/main.go:25:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+cmd/server/main.go:26:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+cmd/server/main.go:27:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+internal/services/knowledge_base.go:9:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5 (imported by github.com/tigerwallet/admin/internal/services); to add:
+	go get github.com/tigerwallet/admin/internal/services
+internal/websocket/hub.go:12:2: missing go.sum entry for module providing package github.com/gorilla/websocket (imported by github.com/tigerwallet/admin/internal/websocket); to add:
+	go get github.com/tigerwallet/admin/internal/websocket
+-- ./admin_system/go
+	go get github.com/tigerwallet/admin/internal/database
+internal/middleware/middleware.go:7:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+internal/middleware/auth.go:10:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/admin/cmd/admin-service); to add:
+	go get github.com/tigerwallet/admin/cmd/admin-service
+internal/middleware/auth.go:11:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/admin/cmd/admin_service); to add:
+	go get github.com/tigerwallet/admin/cmd/admin_service
+cmd/admin-service/main.go:17:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+cmd/admin-service/main.go:19:2: missing go.sum entry for module providing package golang.org/x/crypto/bcrypt (imported by github.com/tigerwallet/admin/cmd/admin-service); to add:
+	go get github.com/tigerwallet/admin/cmd/admin-service
+cmd/server/main.go:25:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+cmd/server/main.go:26:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+cmd/server/main.go:27:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+internal/handlers/handlers.go:6:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+internal/services/knowledge_base.go:9:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5 (imported by github.com/tigerwallet/admin/internal/services); to add:
+	go get github.com/tigerwallet/admin/internal/services
+internal/services/services.go:21:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/admin/internal/services); to add:
+	go get github.com/tigerwallet/admin/internal/services
+internal/websocket/hub.go:12:2: missing go.sum entry for module providing package github.com/gorilla/websocket (imported by github.com/tigerwallet/admin/internal/websocket); to add:
+	go get github.com/tigerwallet/admin/internal/websocket
+-- ./api_gateway
+go/main.go:30:2: missing go.sum entry for module providing package github.com/gorilla/mux (imported by github.com/tigerswap/api-gateway/go); to add:
+	go get github.com/tigerswap/api-gateway/go
+go/main.go:31:2: missing go.sum entry for module providing package github.com/gorilla/websocket (imported by github.com/tigerswap/api-gateway/go); to add:
+	go get github.com/tigerswap/api-gateway/go
+rest_api/master_wallet.go:24:2: github.com/gabriel-vasile/mimetype@v1.4.3: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gabriel-vasile/mimetype
+rest_api/master_wallet.go:25:2: github.com/gabriel-vasile/mimetype@v1.4.3: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gabriel-vasile/mimetype
+rest_api/master_wallet.go:26:2: github.com/gabriel-vasile/mimetype@v1.4.3: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gabriel-vasile/mimetype
+rest_api/master_wallet.go:27:2: github.com/gabriel-vasile/mimetype@v1.4.3: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gabriel-vasile/mimetype
+rest_api/master_wallet.go:28:2: github.com/gabriel-vasile/mimetype@v1.4.3: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gabriel-vasile/mimetype
+rest_api/tiger_admin_api.go:21:2: github.com/gabriel-vasile/mimetype@v1.4.3: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gabriel-vasile/mimetype
+rest_api/complete_authentication.go:26:2: github.com/gabriel-vasile/mimetype@v1.4.3: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gabriel-vasile/mimetype
+rest_api/complete_authentication.go:28:2: github.com/gabriel-vasile/mimetype@v1.4.3: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gabriel-vasile/mimetype
+rest_api/license_api.go:6:1: expected 'package', found 'import'
+-- ./asset_management
+go/cmd/main.go:17:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/asset-management/go/cmd); to add:
+	go get github.com/tigerwallet/asset-management/go/cmd
+go/cmd/main.go:18:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/asset-management/go/cmd); to add:
+	go get github.com/tigerwallet/asset-management/go/cmd
+go/cmd/main.go:19:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/asset-management/go/cmd); to add:
+	go get github.com/tigerwallet/asset-management/go/cmd
+go/cmd/main.go:20:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/asset-management/go/cmd); to add:
+	go get github.com/tigerwallet/asset-management/go/cmd
+-- ./auto_approval_workflow/go
+main.go:19:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/auto_approval_workflow); to add:
+	go get github.com/tigerwallet/auto_approval_workflow
+main.go:20:2: missing go.sum entry for module providing package github.com/go-redis/redis/v8 (imported by github.com/tigerwallet/auto_approval_workflow); to add:
+	go get github.com/tigerwallet/auto_approval_workflow
+main.go:21:2: missing go.sum entry for module providing package github.com/jackc/pgx/v4 (imported by github.com/tigerwallet/auto_approval_workflow); to add:
+	go get github.com/tigerwallet/auto_approval_workflow
+main.go:22:2: missing go.sum entry for module providing package github.com/jackc/pgx/v4/pgxpool (imported by github.com/tigerwallet/auto_approval_workflow); to add:
+	go get github.com/tigerwallet/auto_approval_workflow
+main.go:23:2: missing go.sum entry for module providing package github.com/rs/zerolog (imported by github.com/tigerwallet/auto_approval_workflow); to add:
+	go get github.com/tigerwallet/auto_approval_workflow
+main.go:24:2: missing go.sum entry for module providing package golang.org/x/crypto/bcrypt (imported by github.com/tigerwallet/auto_approval_workflow); to add:
+	go get github.com/tigerwallet/auto_approval_workflow
+-- ./backend/go
+cmd/api/main.go:16:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/backend/cmd/api); to add:
+	go get github.com/tigerwallet/backend/cmd/api
+internal/database/database.go:7:2: missing go.sum entry for module providing package github.com/lib/pq (imported by github.com/tigerwallet/backend/internal/database); to add:
+	go get github.com/tigerwallet/backend/internal/database
+internal/handlers/auth_handler.go:10:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/backend/internal/handlers); to add:
+	go get github.com/tigerwallet/backend/internal/handlers
+internal/handlers/auth_handler.go:11:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/backend/internal/handlers); to add:
+	go get github.com/tigerwallet/backend/internal/handlers
+internal/websocket/websocket.go:13:2: missing go.sum entry for module providing package github.com/gorilla/websocket (imported by github.com/tigerwallet/backend/internal/websocket); to add:
+	go get github.com/tigerwallet/backend/internal/websocket
+internal/handlers/auth_handler.go:12:2: missing go.sum entry for module providing package golang.org/x/crypto/bcrypt (imported by github.com/tigerwallet/backend/internal/handlers); to add:
+	go get github.com/tigerwallet/backend/internal/handlers
+-- ./backend_services
+	go mod download github.com/gin-gonic/gin
+api_gateway/internal/middleware/middleware.go:11:2: github.com/gin-gonic/gin@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gin-gonic/gin
+api_gateway/internal/middleware/middleware.go:12:2: github.com/gin-gonic/gin@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gin-gonic/gin
+api_gateway/internal/services/wallet_service.go:13:2: github.com/gin-gonic/gin@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gin-gonic/gin
+api_gateway/internal/services/wallet_service.go:14:2: github.com/gin-gonic/gin@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gin-gonic/gin
+api_gateway/internal/services/wallet_service.go:15:2: github.com/gin-gonic/gin@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gin-gonic/gin
+api_gateway/internal/services/wallet_service.go:16:2: github.com/gin-gonic/gin@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gin-gonic/gin
+go/main.go:24:2: github.com/gin-gonic/gin@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gin-gonic/gin
+go/complete_services/blockchain_service.go:13:2: github.com/gin-gonic/gin@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gin-gonic/gin
+go/complete_services/blockchain_service.go:14:2: github.com/gin-gonic/gin@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gin-gonic/gin
+go/complete_services/blockchain_service.go:16:2: github.com/gin-gonic/gin@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gin-gonic/gin
+go/complete_services/blockchain_service.go:17:2: github.com/gin-gonic/gin@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gin-gonic/gin
+go/complete_services/blockchain_service.go:18:2: github.com/gin-gonic/gin@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/gin-gonic/gin
+-- ./backend_services/go/listing_service
+main.go:19:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/listing_service); to add:
+	go get github.com/tigerwallet/listing_service
+main.go:20:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/listing_service); to add:
+	go get github.com/tigerwallet/listing_service
+main.go:21:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/listing_service); to add:
+	go get github.com/tigerwallet/listing_service
+main.go:22:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/listing_service); to add:
+	go get github.com/tigerwallet/listing_service
+main.go:23:2: missing go.sum entry for module providing package golang.org/x/crypto/bcrypt (imported by github.com/tigerwallet/listing_service); to add:
+	go get github.com/tigerwallet/listing_service
+-- ./billing_subscription
+go: warning: "./..." matched no packages
+no packages to test
+-- ./billing_subscription/go
+main.go:12:2: github.com/bytedance/sonic@v1.10.2: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+main.go:13:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/billing); to add:
+	go get github.com/tigerwallet/billing
+internal/database/database.go:8:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/billing/cmd); to add:
+	go get github.com/tigerwallet/billing/cmd
+internal/database/database.go:9:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/billing/cmd); to add:
+	go get github.com/tigerwallet/billing/cmd
+internal/models/models.go:6:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/billing/cmd); to add:
+	go get github.com/tigerwallet/billing/cmd
+internal/middleware/auth.go:10:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/billing/cmd); to add:
+	go get github.com/tigerwallet/billing/cmd
+-- ./bots
+go/cmd/main.go:15:1: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/bots/go/cmd); to add:
+	go get github.com/tigerwallet/bots/go/cmd
+go/cmd/main.go:16:1: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/bots/go/cmd); to add:
+	go get github.com/tigerwallet/bots/go/cmd
+go/cmd/main.go:17:1: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/bots/go/cmd); to add:
+	go get github.com/tigerwallet/bots/go/cmd
+go/cmd/main.go:18:1: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/bots/go/cmd); to add:
+	go get github.com/tigerwallet/bots/go/cmd
+go/cmd/main.go:19:1: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/bots/go/cmd); to add:
+	go get github.com/tigerwallet/bots/go/cmd
+-- ./client_onboarding
+go/cmd/main.go:17:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/client-onboarding/go/cmd); to add:
+	go get github.com/tigerwallet/client-onboarding/go/cmd
+go/cmd/main.go:18:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/client-onboarding/go/cmd); to add:
+	go get github.com/tigerwallet/client-onboarding/go/cmd
+go/cmd/main.go:19:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/client-onboarding/go/cmd); to add:
+	go get github.com/tigerwallet/client-onboarding/go/cmd
+go/cmd/main.go:20:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/client-onboarding/go/cmd); to add:
+	go get github.com/tigerwallet/client-onboarding/go/cmd
+-- ./connection_api
+go/cmd/main.go:24:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/connection-api/go/cmd); to add:
+	go get github.com/tigerwallet/connection-api/go/cmd
+go/cmd/main.go:25:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/connection-api/go/cmd); to add:
+	go get github.com/tigerwallet/connection-api/go/cmd
+go/cmd/main.go:26:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/connection-api/go/cmd); to add:
+	go get github.com/tigerwallet/connection-api/go/cmd
+go/cmd/main.go:27:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/connection-api/go/cmd); to add:
+	go get github.com/tigerwallet/connection-api/go/cmd
+go/cmd/main.go:28:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/connection-api/go/cmd); to add:
+	go get github.com/tigerwallet/connection-api/go/cmd
+-- ./data_platform
+go/cmd/main.go:17:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/data-platform/go/cmd); to add:
+	go get github.com/tigerwallet/data-platform/go/cmd
+go/cmd/main.go:18:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/data-platform/go/cmd); to add:
+	go get github.com/tigerwallet/data-platform/go/cmd
+go/cmd/main.go:19:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/data-platform/go/cmd); to add:
+	go get github.com/tigerwallet/data-platform/go/cmd
+go/cmd/main.go:20:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/data-platform/go/cmd); to add:
+	go get github.com/tigerwallet/data-platform/go/cmd
+-- ./enterprise_features
+go/cmd/main.go:17:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/enterprise-features/go/cmd); to add:
+	go get github.com/tigerwallet/enterprise-features/go/cmd
+go/cmd/main.go:18:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/enterprise-features/go/cmd); to add:
+	go get github.com/tigerwallet/enterprise-features/go/cmd
+go/cmd/main.go:19:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/enterprise-features/go/cmd); to add:
+	go get github.com/tigerwallet/enterprise-features/go/cmd
+go/cmd/main.go:20:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/enterprise-features/go/cmd); to add:
+	go get github.com/tigerwallet/enterprise-features/go/cmd
+-- ./go/admin_service
+main.go:24:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/admin-service); to add:
+	go get github.com/tigerwallet/admin-service
+main.go:25:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/admin-service); to add:
+	go get github.com/tigerwallet/admin-service
+main.go:26:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/admin-service); to add:
+	go get github.com/tigerwallet/admin-service
+main.go:27:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/admin-service); to add:
+	go get github.com/tigerwallet/admin-service
+database/db.go:12:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5 (imported by github.com/tigerwallet/admin-service/database); to add:
+	go get github.com/tigerwallet/admin-service/database
+database/db.go:13:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/admin-service/database); to add:
+	go get github.com/tigerwallet/admin-service/database
+main.go:28:2: missing go.sum entry for module providing package golang.org/x/crypto/argon2 (imported by github.com/tigerwallet/admin-service); to add:
+	go get github.com/tigerwallet/admin-service
+-- ./go/blockchain_rpc
+main.go:19:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum (imported by github.com/tigerwallet/blockchain-rpc); to add:
+	go get github.com/tigerwallet/blockchain-rpc
+main.go:20:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/common (imported by github.com/tigerwallet/blockchain-rpc); to add:
+	go get github.com/tigerwallet/blockchain-rpc
+main.go:21:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/ethclient (imported by github.com/tigerwallet/blockchain-rpc); to add:
+	go get github.com/tigerwallet/blockchain-rpc
+main.go:22:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/blockchain-rpc); to add:
+	go get github.com/tigerwallet/blockchain-rpc
+main.go:23:2: missing go.sum entry for module providing package github.com/gorilla/websocket (imported by github.com/tigerwallet/blockchain-rpc); to add:
+	go get github.com/tigerwallet/blockchain-rpc
+main.go:24:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/blockchain-rpc); to add:
+	go get github.com/tigerwallet/blockchain-rpc
+main.go:25:2: missing go.sum entry for module providing package golang.org/x/time/rate (imported by github.com/tigerwallet/blockchain-rpc); to add:
+	go get github.com/tigerwallet/blockchain-rpc
+-- ./go/listing_service
+main.go:21:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/accounts/abi (imported by github.com/tigerwallet/go/listing_service); to add:
+	go get github.com/tigerwallet/go/listing_service
+main.go:22:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/common (imported by github.com/tigerwallet/go/listing_service); to add:
+	go get github.com/tigerwallet/go/listing_service
+main.go:23:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/ethclient (imported by github.com/tigerwallet/go/listing_service); to add:
+	go get github.com/tigerwallet/go/listing_service
+kyc_service.go:24:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/go/listing_service); to add:
+	go get github.com/tigerwallet/go/listing_service
+kyc_service.go:25:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/go/listing_service); to add:
+	go get github.com/tigerwallet/go/listing_service
+auto_approval.go:19:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/go/listing_service); to add:
+	go get github.com/tigerwallet/go/listing_service
+-- ./go/nft_service
+main.go:19:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/nft-service); to add:
+	go get github.com/tigerwallet/nft-service
+main.go:20:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/nft-service); to add:
+	go get github.com/tigerwallet/nft-service
+main.go:21:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/nft-service); to add:
+	go get github.com/tigerwallet/nft-service
+found packages main (main.go) and nft (nft_marketplace_service.go) in /home/ubuntu/TigerWallet/go/nft_service
+-- ./go/payment
+main.go:27:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum (imported by github.com/tigerwallet/go/payment); to add:
+	go get github.com/tigerwallet/go/payment
+main.go:28:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/accounts/abi (imported by github.com/tigerwallet/go/payment); to add:
+	go get github.com/tigerwallet/go/payment
+main.go:29:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/common (imported by github.com/tigerwallet/go/payment); to add:
+	go get github.com/tigerwallet/go/payment
+main.go:30:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/core/types (imported by github.com/tigerwallet/go/payment); to add:
+	go get github.com/tigerwallet/go/payment
+main.go:31:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/crypto (imported by github.com/tigerwallet/go/payment); to add:
+	go get github.com/tigerwallet/go/payment
+main.go:32:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/ethclient (imported by github.com/tigerwallet/go/payment); to add:
+	go get github.com/tigerwallet/go/payment
+main.go:33:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/go/payment); to add:
+	go get github.com/tigerwallet/go/payment
+main.go:34:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/go/payment); to add:
+	go get github.com/tigerwallet/go/payment
+main.go:35:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/go/payment); to add:
+	go get github.com/tigerwallet/go/payment
+-- ./go/staking_service
+main.go:19:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/staking-service); to add:
+	go get github.com/tigerwallet/staking-service
+main.go:20:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/staking-service); to add:
+	go get github.com/tigerwallet/staking-service
+main.go:21:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/staking-service); to add:
+	go get github.com/tigerwallet/staking-service
+found packages main (main.go) and staking (staking_service.go) in /home/ubuntu/TigerWallet/go/staking_service
+-- ./go/super_admin_service
+main.go:33:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/super-admin-service); to add:
+	go get github.com/tigerwallet/super-admin-service
+main.go:34:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/super-admin-service); to add:
+	go get github.com/tigerwallet/super-admin-service
+main.go:35:2: missing go.sum entry for module providing package golang.org/x/crypto/bcrypt (imported by github.com/tigerwallet/super-admin-service); to add:
+	go get github.com/tigerwallet/super-admin-service
+database/db.go:11:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5 (imported by github.com/tigerwallet/super-admin-service/database); to add:
+	go get github.com/tigerwallet/super-admin-service/database
+database/db.go:12:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/super-admin-service/database); to add:
+	go get github.com/tigerwallet/super-admin-service/database
+-- ./go/swap_service
+main.go:19:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/swap-service); to add:
+	go get github.com/tigerwallet/swap-service
+main.go:20:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/swap-service); to add:
+	go get github.com/tigerwallet/swap-service
+main.go:21:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/swap-service); to add:
+	go get github.com/tigerwallet/swap-service
+-- ./go/wallet_service
+main.go:26:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/accounts (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+main.go:27:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/common (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+main.go:28:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/core/types (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+main.go:29:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/crypto (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+main.go:30:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+main.go:31:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+main.go:32:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+main.go:33:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+main.go:34:2: missing go.sum entry for module providing package golang.org/x/crypto/argon2 (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+main.go:35:2: missing go.sum entry for module providing package golang.org/x/crypto/pbkdf2 (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+-- ./go/wallet_services
+cmd/server/main.go:30:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/wallet-services/cmd/server); to add:
+	go get github.com/tigerwallet/wallet-services/cmd/server
+cmd/server/main.go:31:2: missing go.sum entry for module providing package github.com/sirupsen/logrus (imported by github.com/tigerwallet/wallet-services/cmd/server); to add:
+	go get github.com/tigerwallet/wallet-services/cmd/server
+internal/cache/redis.go:15:2: missing go.sum entry for module providing package github.com/go-redis/redis/v8 (imported by github.com/tigerwallet/wallet-services/internal/cache); to add:
+	go get github.com/tigerwallet/wallet-services/internal/cache
+internal/config/config.go:13:2: missing go.sum entry for module providing package github.com/spf13/viper (imported by github.com/tigerwallet/wallet-services/internal/config); to add:
+	go get github.com/tigerwallet/wallet-services/internal/config
+internal/database/postgres.go:16:2: missing go.sum entry for module providing package github.com/lib/pq (imported by github.com/tigerwallet/wallet-services/internal/database); to add:
+	go get github.com/tigerwallet/wallet-services/internal/database
+cmd/server/main.go:26:2: github.com/bytedance/sonic@v1.10.2: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+internal/middleware/middleware.go:13:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/wallet-services/internal/middleware); to add:
+	go get github.com/tigerwallet/wallet-services/internal/middleware
+internal/middleware/middleware.go:14:2: github.com/bytedance/sonic@v1.10.2: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+-- ./governance/go
+main.go:25:2: missing go.sum entry for module providing package github.com/gorilla/mux (imported by github.com/tigerswap/governance); to add:
+	go get github.com/tigerswap/governance
+cmd/main.go:18:2: github.com/felixge/httpsnoop@v1.0.4: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/felixge/httpsnoop
+cmd/main.go:19:2: github.com/felixge/httpsnoop@v1.0.4: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/felixge/httpsnoop
+-- ./kill_switch
+go/cmd/main.go:17:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/kill-switch/go/cmd); to add:
+	go get github.com/tigerwallet/kill-switch/go/cmd
+go/cmd/main.go:18:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/kill-switch/go/cmd); to add:
+	go get github.com/tigerwallet/kill-switch/go/cmd
+go/cmd/main.go:19:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/kill-switch/go/cmd); to add:
+	go get github.com/tigerwallet/kill-switch/go/cmd
+go/cmd/main.go:20:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/kill-switch/go/cmd); to add:
+	go get github.com/tigerwallet/kill-switch/go/cmd
+-- ./master_admin_management/go
+main.go:13:2: missing go.sum entry for module providing package github.com/gin-contrib/cors (imported by github.com/tigerwallet/admin); to add:
+	go get github.com/tigerwallet/admin
+main.go:14:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/admin); to add:
+	go get github.com/tigerwallet/admin
+internal/database/postgres.go:9:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/admin/internal/database); to add:
+	go get github.com/tigerwallet/admin/internal/database
+internal/middleware/auth.go:10:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/admin/internal/middleware); to add:
+	go get github.com/tigerwallet/admin/internal/middleware
+internal/middleware/auth.go:11:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/admin/internal/middleware); to add:
+	go get github.com/tigerwallet/admin/internal/middleware
+internal/services/knowledge_base.go:9:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5 (imported by github.com/tigerwallet/admin/internal/services); to add:
+	go get github.com/tigerwallet/admin/internal/services
+internal/websocket/hub.go:12:2: missing go.sum entry for module providing package github.com/gorilla/websocket (imported by github.com/tigerwallet/admin/internal/websocket); to add:
+	go get github.com/tigerwallet/admin/internal/websocket
+-- ./master_wallet
+	go mod download github.com/bytedance/sonic
+go/cmd/main.go:26:2: github.com/bytedance/sonic@v1.10.2: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+go/cmd/main.go:27:2: github.com/bytedance/sonic@v1.10.2: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+go/cmd/master_wallet_service/main.go:29:2: github.com/bytedance/sonic@v1.10.2: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+go/cmd/master_wallet_service/main.go:32:2: github.com/bytedance/sonic@v1.10.2: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+go/services/main.go:27:2: github.com/bytedance/sonic@v1.10.2: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+go/services/main.go:29:2: github.com/bytedance/sonic@v1.10.2: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+go/services/main.go:30:2: github.com/bytedance/sonic@v1.10.2: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+go/services/main.go:31:2: github.com/bytedance/sonic@v1.10.2: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+go/services/main.go:33:2: missing go.sum entry for module providing package golang.org/x/crypto/argon2 (imported by master_wallet/go/services); to add:
+	go get master_wallet/go/services
+go/services/main.go:34:2: missing go.sum entry for module providing package golang.org/x/crypto/bcrypt (imported by master_wallet/go/services); to add:
+	go get master_wallet/go/services
+go/services/main.go:35:2: missing go.sum entry for module providing package golang.org/x/net/http2 (imported by master_wallet/go/services); to add:
+	go get master_wallet/go/services
+go/services/main.go:36:2: github.com/bytedance/sonic@v1.10.2: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+-- ./monitoring_dashboard
+go/cmd/main.go:18:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/monitoring-dashboard/go/cmd); to add:
+	go get github.com/tigerwallet/monitoring-dashboard/go/cmd
+go/cmd/main.go:19:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/monitoring-dashboard/go/cmd); to add:
+	go get github.com/tigerwallet/monitoring-dashboard/go/cmd
+go/cmd/main.go:20:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/monitoring-dashboard/go/cmd); to add:
+	go get github.com/tigerwallet/monitoring-dashboard/go/cmd
+go/cmd/main.go:21:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/monitoring-dashboard/go/cmd); to add:
+	go get github.com/tigerwallet/monitoring-dashboard/go/cmd
+-- ./multi_tenancy/go
+internal/models/models.go:6:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/multi-tenancy/internal/models); to add:
+	go get github.com/tigerwallet/multi-tenancy/internal/models
+internal/services/tenant_service.go:9:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/multi-tenancy/internal/services); to add:
+	go get github.com/tigerwallet/multi-tenancy/internal/services
+internal/services/tenant_service.go:10:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/multi-tenancy/internal/services); to add:
+	go get github.com/tigerwallet/multi-tenancy/internal/services
+-- ./observability
+go/cmd/main.go:17:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/observability/go/cmd); to add:
+	go get github.com/tigerwallet/observability/go/cmd
+go/cmd/main.go:18:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/observability/go/cmd); to add:
+	go get github.com/tigerwallet/observability/go/cmd
+go/cmd/main.go:19:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/observability/go/cmd); to add:
+	go get github.com/tigerwallet/observability/go/cmd
+go/cmd/main.go:20:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/observability/go/cmd); to add:
+	go get github.com/tigerwallet/observability/go/cmd
+-- ./permission_service
+go/cmd/main.go:21:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/permission-service/go/cmd); to add:
+	go get github.com/tigerwallet/permission-service/go/cmd
+go/cmd/main.go:22:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/permission-service/go/cmd); to add:
+	go get github.com/tigerwallet/permission-service/go/cmd
+go/cmd/main.go:23:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/permission-service/go/cmd); to add:
+	go get github.com/tigerwallet/permission-service/go/cmd
+go/cmd/main.go:24:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/permission-service/go/cmd); to add:
+	go get github.com/tigerwallet/permission-service/go/cmd
+go/cmd/main.go:25:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/permission-service/go/cmd); to add:
+	go get github.com/tigerwallet/permission-service/go/cmd
+-- ./project_party
+go/cmd/main.go:13:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/project-party/go/cmd); to add:
+	go get github.com/tigerwallet/project-party/go/cmd
+go/cmd/main.go:14:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/project-party/go/cmd); to add:
+	go get github.com/tigerwallet/project-party/go/cmd
+go/cmd/main.go:15:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/project-party/go/cmd); to add:
+	go get github.com/tigerwallet/project-party/go/cmd
+-- ./security_platform/go/cmd/transaction-shield
+main.go:40:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/transaction-shield); to add:
+	go get github.com/tigerwallet/transaction-shield
+main.go:41:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/transaction-shield); to add:
+	go get github.com/tigerwallet/transaction-shield
+main.go:42:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/transaction-shield); to add:
+	go get github.com/tigerwallet/transaction-shield
+main.go:43:2: missing go.sum entry for module providing package gorm.io/driver/postgres (imported by github.com/tigerwallet/transaction-shield); to add:
+	go get github.com/tigerwallet/transaction-shield
+main.go:44:2: missing go.sum entry for module providing package gorm.io/gorm (imported by github.com/tigerwallet/transaction-shield); to add:
+	go get github.com/tigerwallet/transaction-shield
+-- ./social/go/cmd/social-auth-service
+main.go:40:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/social-auth-service); to add:
+	go get github.com/tigerwallet/social-auth-service
+main.go:41:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/social-auth-service); to add:
+	go get github.com/tigerwallet/social-auth-service
+main.go:42:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/social-auth-service); to add:
+	go get github.com/tigerwallet/social-auth-service
+main.go:43:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/social-auth-service); to add:
+	go get github.com/tigerwallet/social-auth-service
+main.go:44:2: missing go.sum entry for module providing package golang.org/x/oauth2 (imported by github.com/tigerwallet/social-auth-service); to add:
+	go get github.com/tigerwallet/social-auth-service
+main.go:45:2: missing go.sum entry for module providing package golang.org/x/oauth2/google (imported by github.com/tigerwallet/social-auth-service); to add:
+	go get github.com/tigerwallet/social-auth-service
+main.go:46:2: missing go.sum entry for module providing package golang.org/x/oauth2/twitter (imported by github.com/tigerwallet/social-auth-service); to add:
+	go get github.com/tigerwallet/social-auth-service
+main.go:47:2: missing go.sum entry for module providing package gorm.io/driver/postgres (imported by github.com/tigerwallet/social-auth-service); to add:
+	go get github.com/tigerwallet/social-auth-service
+main.go:48:2: missing go.sum entry for module providing package gorm.io/gorm (imported by github.com/tigerwallet/social-auth-service); to add:
+	go get github.com/tigerwallet/social-auth-service
+main.go:49:2: missing go.sum entry for module providing package gorm.io/gorm/logger (imported by github.com/tigerwallet/social-auth-service); to add:
+	go get github.com/tigerwallet/social-auth-service
+-- ./super_admin/go
+main.go:13:2: missing go.sum entry for module providing package github.com/gin-contrib/cors (imported by github.com/tigerwallet/admin); to add:
+	go get github.com/tigerwallet/admin
+main.go:14:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/admin); to add:
+	go get github.com/tigerwallet/admin
+main_postgres.go:19:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/admin); to add:
+	go get github.com/tigerwallet/admin
+main_postgres.go:20:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/admin); to add:
+	go get github.com/tigerwallet/admin
+main_postgres.go:21:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/admin); to add:
+	go get github.com/tigerwallet/admin
+main_postgres.go:22:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+main_postgres.go:23:2: missing go.sum entry for module providing package golang.org/x/crypto/bcrypt (imported by github.com/tigerwallet/admin); to add:
+	go get github.com/tigerwallet/admin
+internal/services/knowledge_base.go:9:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5 (imported by github.com/tigerwallet/admin/internal/services); to add:
+	go get github.com/tigerwallet/admin/internal/services
+internal/websocket/hub.go:12:2: missing go.sum entry for module providing package github.com/gorilla/websocket (imported by github.com/tigerwallet/admin/internal/websocket); to add:
+	go get github.com/tigerwallet/admin/internal/websocket
+-- ./support_ticket
+go/cmd/main.go:17:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/support-ticket/go/cmd); to add:
+	go get github.com/tigerwallet/support-ticket/go/cmd
+go/cmd/main.go:18:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/support-ticket/go/cmd); to add:
+	go get github.com/tigerwallet/support-ticket/go/cmd
+go/cmd/main.go:19:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/support-ticket/go/cmd); to add:
+	go get github.com/tigerwallet/support-ticket/go/cmd
+go/cmd/main.go:20:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/support-ticket/go/cmd); to add:
+	go get github.com/tigerwallet/support-ticket/go/cmd
+-- ./user_wallet
+found packages main (swap_service.go) and wallet (wallet_service.go) in /home/ubuntu/TigerWallet/user_wallet/go
+go/cmd/main.go:19:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/user-wallet/go/cmd); to add:
+	go get github.com/tigerwallet/user-wallet/go/cmd
+go/cmd/main.go:20:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/user-wallet/go/cmd); to add:
+	go get github.com/tigerwallet/user-wallet/go/cmd
+go/cmd/main.go:21:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/user-wallet/go/cmd); to add:
+	go get github.com/tigerwallet/user-wallet/go/cmd
+go/cmd/main.go:22:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/user-wallet/go/cmd); to add:
+	go get github.com/tigerwallet/user-wallet/go/cmd
+go/cmd/main.go:23:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/user-wallet/go/cmd); to add:
+	go get github.com/tigerwallet/user-wallet/go/cmd
+go/handlers/user_wallet_handler.go:14:2: github.com/bytedance/sonic@v1.10.2: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+-- ./wallet_cloud
+go/cmd/main.go:17:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/wallet-cloud/go/cmd); to add:
+	go get github.com/tigerwallet/wallet-cloud/go/cmd
+go/cmd/main.go:18:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/wallet-cloud/go/cmd); to add:
+	go get github.com/tigerwallet/wallet-cloud/go/cmd
+go/cmd/main.go:19:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/wallet-cloud/go/cmd); to add:
+	go get github.com/tigerwallet/wallet-cloud/go/cmd
+go/cmd/main.go:20:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/wallet-cloud/go/cmd); to add:
+	go get github.com/tigerwallet/wallet-cloud/go/cmd
+-- ./white_label/go
+main.go:18:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/white_label_service); to add:
+	go get github.com/tigerwallet/white_label_service
+main.go:19:2: missing go.sum entry for module providing package github.com/go-redis/redis/v8 (imported by github.com/tigerwallet/white_label_service); to add:
+	go get github.com/tigerwallet/white_label_service
+main_postgres.go:18:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+main_postgres.go:19:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/white_label_service); to add:
+	go get github.com/tigerwallet/white_label_service
+main_postgres.go:20:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/white_label_service); to add:
+	go get github.com/tigerwallet/white_label_service
+main_postgres.go:21:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+main.go:20:2: missing go.sum entry for module providing package github.com/rs/zerolog (imported by github.com/tigerwallet/white_label_service); to add:
+	go get github.com/tigerwallet/white_label_service
+main_postgres.go:22:2: missing go.sum entry for module providing package golang.org/x/crypto/bcrypt (imported by github.com/tigerwallet/white_label_service); to add:
+	go get github.com/tigerwallet/white_label_service
+cmd/white_label_service/internal/config/config.go:10:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+cmd/white_label_service/internal/repository/repository.go:13:2: missing go.sum entry for module providing package github.com/jmoiron/sqlx (imported by github.com/tigerwallet/white_label_service/cmd/white_label_service/internal/repository); to add:
+	go get github.com/tigerwallet/white_label_service/cmd/white_label_service/internal/repository
+cmd/white_label_service/internal/repository/repository.go:14:2: missing go.sum entry for module providing package github.com/lib/pq (imported by github.com/tigerwallet/white_label_service/cmd/white_label_service/internal/repository); to add:
+	go get github.com/tigerwallet/white_label_service/cmd/white_label_service/internal/repository
+cmd/white_label_service/internal/repository/repository.go:16:2: github.com/bytedance/sonic@v1.9.1: missing go.sum entry for go.mod file; to add it:
+	go mod download github.com/bytedance/sonic
+-- ./white_label_admin/go
+main.go:13:2: missing go.sum entry for module providing package github.com/gin-contrib/cors (imported by github.com/tigerwallet/admin); to add:
+	go get github.com/tigerwallet/admin
+main.go:14:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/admin); to add:
+	go get github.com/tigerwallet/admin
+internal/database/postgres.go:9:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5/pgxpool (imported by github.com/tigerwallet/admin/internal/database); to add:
+	go get github.com/tigerwallet/admin/internal/database
+internal/middleware/auth.go:10:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/admin/internal/middleware); to add:
+	go get github.com/tigerwallet/admin/internal/middleware
+internal/middleware/auth.go:11:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/admin/internal/middleware); to add:
+	go get github.com/tigerwallet/admin/internal/middleware
+internal/services/knowledge_base.go:9:2: missing go.sum entry for module providing package github.com/jackc/pgx/v5 (imported by github.com/tigerwallet/admin/internal/services); to add:
+	go get github.com/tigerwallet/admin/internal/services
+internal/websocket/hub.go:12:2: missing go.sum entry for module providing package github.com/gorilla/websocket (imported by github.com/tigerwallet/admin/internal/websocket); to add:
+	go get github.com/tigerwallet/admin/internal/websocket
+-- ./white_label_marketplace/go
+main.go:19:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/white_label_marketplace); to add:
+	go get github.com/tigerwallet/white_label_marketplace
+main.go:20:2: missing go.sum entry for module providing package github.com/go-redis/redis/v8 (imported by github.com/tigerwallet/white_label_marketplace); to add:
+	go get github.com/tigerwallet/white_label_marketplace
+main.go:21:2: missing go.sum entry for module providing package github.com/gorilla/websocket (imported by github.com/tigerwallet/white_label_marketplace); to add:
+	go get github.com/tigerwallet/white_label_marketplace
+main.go:22:2: missing go.sum entry for module providing package github.com/jackc/pgx/v4 (imported by github.com/tigerwallet/white_label_marketplace); to add:
+	go get github.com/tigerwallet/white_label_marketplace
+main.go:23:2: missing go.sum entry for module providing package github.com/jackc/pgx/v4/pgxpool (imported by github.com/tigerwallet/white_label_marketplace); to add:
+	go get github.com/tigerwallet/white_label_marketplace
+main.go:24:2: missing go.sum entry for module providing package github.com/rs/zerolog (imported by github.com/tigerwallet/white_label_marketplace); to add:
+	go get github.com/tigerwallet/white_label_marketplace
+main.go:25:2: missing go.sum entry for module providing package golang.org/x/crypto/bcrypt (imported by github.com/tigerwallet/white_label_marketplace); to add:
+	go get github.com/tigerwallet/white_label_marketplace

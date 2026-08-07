@@ -15,7 +15,7 @@
     "ethers": "6.12.1",
     "viem": "2.13.1",
     "@account-abstraction/contracts": "0.7.0",
-    "@account-abstraction/sdk": "0.7.0",
+    "@account-abstraction/sdk": "0.6.0",
     "zustand": "4.5.2",
     "lucide-react": "0.378.0",
     "clsx": "2.1.1",

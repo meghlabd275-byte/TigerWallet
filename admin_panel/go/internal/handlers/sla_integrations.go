@@ -23,13 +23,13 @@ func (h *Handler) GetSLAPolicies(c *gin.Context) {
 // CreateSLAPolicy creates a new SLA policy
 func (h *Handler) CreateSLAPolicy(c *gin.Context) {
 	var req struct {
-		Name              string `json:"name" binding:"required"`
-		Description       string `json:"description"`
-		Priority          string `json:"priority" binding:"required"`
-		ResponseTimeSLA  int    `json:"response_time_sla" binding:"required"`
-		ResolutionTimeSLA int    `json:"resolution_time_sla" binding:"required"`
-		UptimeSLA        float64 `json:"uptime_sla"`
-		IsActive         bool   `json:"is_active"`
+		Name              string  `json:"name" binding:"required"`
+		Description       string  `json:"description"`
+		Priority          string  `json:"priority" binding:"required"`
+		ResponseTimeSLA   int     `json:"response_time_sla" binding:"required"`
+		ResolutionTimeSLA int     `json:"resolution_time_sla" binding:"required"`
+		UptimeSLA         float64 `json:"uptime_sla"`
+		IsActive          bool    `json:"is_active"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -41,7 +41,7 @@ func (h *Handler) CreateSLAPolicy(c *gin.Context) {
 		Name:              req.Name,
 		Description:       req.Description,
 		Priority:          req.Priority,
-		ResponseTimeSLA:  req.ResponseTimeSLA,
+		ResponseTimeSLA:   req.ResponseTimeSLA,
 		ResolutionTimeSLA: req.ResolutionTimeSLA,
 		UptimeSLA:         req.UptimeSLA,
 		IsActive:          req.IsActive,
@@ -69,10 +69,10 @@ func (h *Handler) UpdateSLAPolicy(c *gin.Context) {
 		Name              string  `json:"name"`
 		Description       string  `json:"description"`
 		Priority          string  `json:"priority"`
-		ResponseTimeSLA  int     `json:"response_time_sla"`
+		ResponseTimeSLA   int     `json:"response_time_sla"`
 		ResolutionTimeSLA int     `json:"resolution_time_sla"`
-		UptimeSLA        float64 `json:"uptime_sla"`
-		IsActive         bool    `json:"is_active"`
+		UptimeSLA         float64 `json:"uptime_sla"`
+		IsActive          bool    `json:"is_active"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -84,7 +84,7 @@ func (h *Handler) UpdateSLAPolicy(c *gin.Context) {
 		Name:              req.Name,
 		Description:       req.Description,
 		Priority:          req.Priority,
-		ResponseTimeSLA:  req.ResponseTimeSLA,
+		ResponseTimeSLA:   req.ResponseTimeSLA,
 		ResolutionTimeSLA: req.ResolutionTimeSLA,
 		UptimeSLA:         req.UptimeSLA,
 		IsActive:          req.IsActive,
@@ -222,12 +222,12 @@ func (h *Handler) UpdateIntegration(c *gin.Context) {
 	}
 
 	var req struct {
-		Name        string                 `json:"name"`
-		APIKey      string                 `json:"api_key"`
-		APISecret   string                 `json:"api_secret"`
-		WebhookURL  string                 `json:"webhook_url"`
-		IsActive    bool                   `json:"is_active"`
-		Settings    map[string]interface{} `json:"settings"`
+		Name       string                 `json:"name"`
+		APIKey     string                 `json:"api_key"`
+		APISecret  string                 `json:"api_secret"`
+		WebhookURL string                 `json:"webhook_url"`
+		IsActive   bool                   `json:"is_active"`
+		Settings   map[string]interface{} `json:"settings"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -236,6 +236,7 @@ func (h *Handler) UpdateIntegration(c *gin.Context) {
 	}
 
 	config := &services.IntegrationConfig{
+		ID:         id,
 		Name:       req.Name,
 		APIKey:     req.APIKey,
 		APISecret:  req.APISecret,

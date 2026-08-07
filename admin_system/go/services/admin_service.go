@@ -1,6 +1,6 @@
 /**
  * TigerWallet Admin System Service
- * 
+ *
  * Comprehensive admin management system with RBAC, audit logging,
  * and full operational control for Super Admin and White Label admins.
  * Built with Go for high-load distributed operations.
@@ -27,29 +27,29 @@ import (
 
 const (
 	// Admin roles
-	RoleSuperAdmin    = "super_admin"
-	RoleAdmin         = "admin"
-	RoleWhiteLabel    = "white_label"
-	RoleTrader        = "trader"
-	RoleSupport       = "support"
-	RoleAuditor       = "auditor"
+	RoleSuperAdmin = "super_admin"
+	RoleAdmin      = "admin"
+	RoleWhiteLabel = "white_label"
+	RoleTrader     = "trader"
+	RoleSupport    = "support"
+	RoleAuditor    = "auditor"
 
 	// Admin status
-	StatusActive   = "active"
-	StatusInactive = "inactive"
+	StatusActive    = "active"
+	StatusInactive  = "inactive"
 	StatusSuspended = "suspended"
-	StatusPending  = "pending"
+	StatusPending   = "pending"
 
 	// Audit actions
-	ActionCreate   = "create"
-	ActionUpdate   = "update"
-	ActionDelete   = "delete"
-	ActionAccess   = "access"
-	ActionExecute  = "execute"
-	ActionLogin    = "login"
-	ActionLogout   = "logout"
-	ActionExport   = "export"
-	ActionImport   = "import"
+	ActionCreate  = "create"
+	ActionUpdate  = "update"
+	ActionDelete  = "delete"
+	ActionAccess  = "access"
+	ActionExecute = "execute"
+	ActionLogin   = "login"
+	ActionLogout  = "logout"
+	ActionExport  = "export"
+	ActionImport  = "import"
 )
 
 // ============================================================================
@@ -58,95 +58,95 @@ const (
 
 // Admin represents an administrator
 type Admin struct {
-	ID                string            `json:"id"`
-	Username         string            `json:"username"`
-	Email            string            `json:"email"`
-	PasswordHash     string            `json:"-"`
-	Role             string            `json:"role"`
-	Status           string            `json:"status"`
-	Permissions      []string          `json:"permissions"`
-	WhiteLabelID     string            `json:"white_label_id,omitempty"`
-	CreatedAt        int64             `json:"created_at"`
-	UpdatedAt        int64             `json:"updated_at"`
-	LastLoginAt      int64             `json:"last_login_at"`
-	LoginIP          string            `json:"login_ip,omitempty"`
-	FailedAttempts   int               `json:"failed_attempts"`
-	LockedUntil     int64             `json:"locked_until,omitempty"`
-	MFAEnabled       bool              `json:"mfa_enabled"`
-	MFASecret       string            `json:"-"`
-	TwoFactorCode   string            `json:"-"`
+	ID             string   `json:"id"`
+	Username       string   `json:"username"`
+	Email          string   `json:"email"`
+	PasswordHash   string   `json:"-"`
+	Role           string   `json:"role"`
+	Status         string   `json:"status"`
+	Permissions    []string `json:"permissions"`
+	WhiteLabelID   string   `json:"white_label_id,omitempty"`
+	CreatedAt      int64    `json:"created_at"`
+	UpdatedAt      int64    `json:"updated_at"`
+	LastLoginAt    int64    `json:"last_login_at"`
+	LoginIP        string   `json:"login_ip,omitempty"`
+	FailedAttempts int      `json:"failed_attempts"`
+	LockedUntil    int64    `json:"locked_until,omitempty"`
+	MFAEnabled     bool     `json:"mfa_enabled"`
+	MFASecret      string   `json:"-"`
+	TwoFactorCode  string   `json:"-"`
 }
 
 // Permission represents a granular permission
 type Permission struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Resource    string   `json:"resource"`
-	Action      string   `json:"action"`
-	Description string   `json:"description"`
-	CreatedAt  int64    `json:"created_at"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Resource    string `json:"resource"`
+	Action      string `json:"action"`
+	Description string `json:"description"`
+	CreatedAt   int64  `json:"created_at"`
 }
 
 // AuditLog represents an audit log entry
 type AuditLog struct {
-	ID          string                 `json:"id"`
-	AdminID     string                 `json:"admin_id"`
-	AdminName   string                 `json:"admin_name"`
-	Action      string                 `json:"action"`
-	Resource    string                 `json:"resource"`
-	ResourceID  string                 `json:"resource_id"`
-	Details     map[string]interface{} `json:"details"`
-	IPAddress   string                 `json:"ip_address"`
-	UserAgent   string                 `json:"user_agent"`
-	Timestamp   int64                  `json:"timestamp"`
-	Status      string                 `json:"status"`
+	ID         string                 `json:"id"`
+	AdminID    string                 `json:"admin_id"`
+	AdminName  string                 `json:"admin_name"`
+	Action     string                 `json:"action"`
+	Resource   string                 `json:"resource"`
+	ResourceID string                 `json:"resource_id"`
+	Details    map[string]interface{} `json:"details"`
+	IPAddress  string                 `json:"ip_address"`
+	UserAgent  string                 `json:"user_agent"`
+	Timestamp  int64                  `json:"timestamp"`
+	Status     string                 `json:"status"`
 }
 
 // WhiteLabelClient represents a white label client
 type WhiteLabelClient struct {
-	ID                string                 `json:"id"`
-	Name              string                 `json:"name"`
-	Domain            string                 `json:"domain"`
-	DomainVerified    bool                   `json:"domain_verified"`
-	Status            string                 `json:"status"`
-	Plan              string                 `json:"plan"`
-	Features          []string               `json:"features"`
-	CustomBranding    map[string]string      `json:"custom_branding"`
-	Config            map[string]interface{} `json:"config"`
-	CreatedAt        int64                  `json:"created_at"`
-	UpdatedAt        int64                  `json:"updated_at"`
-	ExpiresAt        int64                  `json:"expires_at"`
+	ID             string                 `json:"id"`
+	Name           string                 `json:"name"`
+	Domain         string                 `json:"domain"`
+	DomainVerified bool                   `json:"domain_verified"`
+	Status         string                 `json:"status"`
+	Plan           string                 `json:"plan"`
+	Features       []string               `json:"features"`
+	CustomBranding map[string]string      `json:"custom_branding"`
+	Config         map[string]interface{} `json:"config"`
+	CreatedAt      int64                  `json:"created_at"`
+	UpdatedAt      int64                  `json:"updated_at"`
+	ExpiresAt      int64                  `json:"expires_at"`
 }
 
 // UserManagement represents user management service
 type UserManagement struct {
-	ID             string            `json:"id"`
-	UserID         string            `json:"user_id"`
-	Username       string            `json:"username"`
-	Email          string            `json:"email"`
-	Status         string            `json:"status"`
-	KYCStatus      string            `json:"kyc_status"`
-	KYCLevel       int               `json:"kyc_level"`
-	VerifiedAt     int64             `json:"verified_at"`
-	CreatedAt      int64             `json:"created_at"`
-	UpdatedAt      int64             `json:"updated_at"`
-	Wallets        []string          `json:"wallets"`
-	TotalVolume    float64           `json:"total_volume"`
-	RiskScore      int               `json:"risk_score"`
+	ID          string   `json:"id"`
+	UserID      string   `json:"user_id"`
+	Username    string   `json:"username"`
+	Email       string   `json:"email"`
+	Status      string   `json:"status"`
+	KYCStatus   string   `json:"kyc_status"`
+	KYCLevel    int      `json:"kyc_level"`
+	VerifiedAt  int64    `json:"verified_at"`
+	CreatedAt   int64    `json:"created_at"`
+	UpdatedAt   int64    `json:"updated_at"`
+	Wallets     []string `json:"wallets"`
+	TotalVolume float64  `json:"total_volume"`
+	RiskScore   int      `json:"risk_score"`
 }
 
 // KYCMangement represents KYC management
 type KYCManagement struct {
-	ID            string                 `json:"id"`
-	UserID        string                 `json:"user_id"`
-	Status        string                 `json:"status"`
-	Level         int                    `json:"level"`
-	Documents     []KYCDocument          `json:"documents"`
-	VerifiedBy    string                 `json:"verified_by"`
-	VerifiedAt    int64                  `json:"verified_at"`
-	RejectionReason string               `json:"rejection_reason"`
-	CreatedAt     int64                  `json:"created_at"`
-	UpdatedAt     int64                  `json:"updated_at"`
+	ID              string        `json:"id"`
+	UserID          string        `json:"user_id"`
+	Status          string        `json:"status"`
+	Level           int           `json:"level"`
+	Documents       []KYCDocument `json:"documents"`
+	VerifiedBy      string        `json:"verified_by"`
+	VerifiedAt      int64         `json:"verified_at"`
+	RejectionReason string        `json:"rejection_reason"`
+	CreatedAt       int64         `json:"created_at"`
+	UpdatedAt       int64         `json:"updated_at"`
 }
 
 // KYCDocument represents a KYC document
@@ -162,52 +162,52 @@ type KYCDocument struct {
 
 // FeeManagement represents fee configuration
 type FeeManagement struct {
-	ID             string  `json:"id"`
-	FeeType        string  `json:"fee_type"` // withdraw, deposit, swap, trade, transfer
-	Asset          string  `json:"asset"`
-	Network        string  `json:"network"`
-	FeeAmount      float64 `json:"fee_amount"`
-	FeePercent     float64 `json:"fee_percent"`
-	MinFee         float64 `json:"min_fee"`
-	MaxFee         float64 `json:"max_fee"`
-	IsEnabled      bool    `json:"is_enabled"`
-	WhiteLabelID   string  `json:"white_label_id,omitempty"`
-	CreatedAt      int64   `json:"created_at"`
-	UpdatedAt      int64   `json:"updated_at"`
-}
-
-// PairManagement represents trading pair management
-type PairManagement struct {
-	ID            string  `json:"id"`
-	BaseAsset     string  `json:"base_asset"`
-	QuoteAsset    string  `json:"quote_asset"`
-	Symbol        string  `json:"symbol"`
-	Status        string  `json:"status"` // active, halted, suspended
-	MinPrice      float64 `json:"min_price"`
-	MaxPrice      float64 `json:"max_price"`
-	MinQuantity   float64 `json:"min_quantity"`
-	MaxQuantity   float64 `json:"max_quantity"`
-	PricePrecision int     `json:"price_precision"`
-	QuantityPrecision int  `json:"quantity_precision"`
-	MakerFee     float64 `json:"maker_fee"`
-	TakerFee     float64 `json:"taker_fee"`
+	ID           string  `json:"id"`
+	FeeType      string  `json:"fee_type"` // withdraw, deposit, swap, trade, transfer
+	Asset        string  `json:"asset"`
+	Network      string  `json:"network"`
+	FeeAmount    float64 `json:"fee_amount"`
+	FeePercent   float64 `json:"fee_percent"`
+	MinFee       float64 `json:"min_fee"`
+	MaxFee       float64 `json:"max_fee"`
+	IsEnabled    bool    `json:"is_enabled"`
 	WhiteLabelID string  `json:"white_label_id,omitempty"`
 	CreatedAt    int64   `json:"created_at"`
 	UpdatedAt    int64   `json:"updated_at"`
 }
 
+// PairManagement represents trading pair management
+type PairManagement struct {
+	ID                string  `json:"id"`
+	BaseAsset         string  `json:"base_asset"`
+	QuoteAsset        string  `json:"quote_asset"`
+	Symbol            string  `json:"symbol"`
+	Status            string  `json:"status"` // active, halted, suspended
+	MinPrice          float64 `json:"min_price"`
+	MaxPrice          float64 `json:"max_price"`
+	MinQuantity       float64 `json:"min_quantity"`
+	MaxQuantity       float64 `json:"max_quantity"`
+	PricePrecision    int     `json:"price_precision"`
+	QuantityPrecision int     `json:"quantity_precision"`
+	MakerFee          float64 `json:"maker_fee"`
+	TakerFee          float64 `json:"taker_fee"`
+	WhiteLabelID      string  `json:"white_label_id,omitempty"`
+	CreatedAt         int64   `json:"created_at"`
+	UpdatedAt         int64   `json:"updated_at"`
+}
+
 // LiquidityManagement represents liquidity pool management
 type LiquidityManagement struct {
-	ID            string            `json:"id"`
-	PoolID        string            `json:"pool_id"`
-	Assets        []LiquidityAsset `json:"assets"`
-	TotalValue    float64          `json:"total_value"`
+	ID           string           `json:"id"`
+	PoolID       string           `json:"pool_id"`
+	Assets       []LiquidityAsset `json:"assets"`
+	TotalValue   float64          `json:"total_value"`
 	Volume24h    float64          `json:"volume_24h"`
-	APY          float64           `json:"apy"`
-	Status       string            `json:"status"`
-	WhiteLabelID string            `json:"white_label_id,omitempty"`
-	CreatedAt    int64             `json:"created_at"`
-	UpdatedAt    int64             `json:"updated_at"`
+	APY          float64          `json:"apy"`
+	Status       string           `json:"status"`
+	WhiteLabelID string           `json:"white_label_id,omitempty"`
+	CreatedAt    int64            `json:"created_at"`
+	UpdatedAt    int64            `json:"updated_at"`
 }
 
 // LiquidityAsset represents an asset in a liquidity pool
@@ -235,27 +235,27 @@ type AdminService struct {
 
 // AdminConfig represents admin service configuration
 type AdminConfig struct {
-	MaxFailedAttempts int   `json:"max_failed_attempts"`
-	LockoutDuration   int64 `json:"lockout_duration"` // seconds
-	SessionTimeout    int64 `json:"session_timeout"`  // seconds
-	PasswordMinLength int   `json:"password_min_length"`
-	PasswordRequireUpper bool `json:"password_require_upper"`
-	PasswordRequireLower bool `json:"password_require_lower"`
-	PasswordRequireDigit bool `json:"password_require_digit"`
-	PasswordRequireSpecial bool `json:"password_require_special"`
-	MFARequired         bool   `json:"mfa_required"`
+	MaxFailedAttempts      int   `json:"max_failed_attempts"`
+	LockoutDuration        int64 `json:"lockout_duration"` // seconds
+	SessionTimeout         int64 `json:"session_timeout"`  // seconds
+	PasswordMinLength      int   `json:"password_min_length"`
+	PasswordRequireUpper   bool  `json:"password_require_upper"`
+	PasswordRequireLower   bool  `json:"password_require_lower"`
+	PasswordRequireDigit   bool  `json:"password_require_digit"`
+	PasswordRequireSpecial bool  `json:"password_require_special"`
+	MFARequired            bool  `json:"mfa_required"`
 }
 
 // AdminSession represents an admin session
 type AdminSession struct {
-	AdminID     string    `json:"admin_id"`
-	SessionID   string    `json:"session_id"`
-	Token       string    `json:"token"`
-	IPAddress   string    `json:"ip_address"`
-	UserAgent   string    `json:"user_agent"`
-	CreatedAt   int64     `json:"created_at"`
-	ExpiresAt   int64     `json:"expires_at"`
-	LastActive  int64     `json:"last_active"`
+	AdminID    string `json:"admin_id"`
+	SessionID  string `json:"session_id"`
+	Token      string `json:"token"`
+	IPAddress  string `json:"ip_address"`
+	UserAgent  string `json:"user_agent"`
+	CreatedAt  int64  `json:"created_at"`
+	ExpiresAt  int64  `json:"expires_at"`
+	LastActive int64  `json:"last_active"`
 }
 
 // NewAdminService creates a new admin service
@@ -265,27 +265,27 @@ func NewAdminService(config *AdminConfig) *AdminService {
 	}
 
 	return &AdminService{
-		admins:       make(map[string]*Admin),
-		permissions:  make(map[string]*Permission),
-		auditLogs:    make([]*AuditLog, 0),
+		admins:      make(map[string]*Admin),
+		permissions: make(map[string]*Permission),
+		auditLogs:   make([]*AuditLog, 0),
 		whiteLabels: make(map[string]*WhiteLabelClient),
 		sessions:    make(map[string]*AdminSession),
-		config:       config,
+		config:      config,
 	}
 }
 
 // DefaultAdminConfig returns default configuration
 func DefaultAdminConfig() *AdminConfig {
 	return &AdminConfig{
-		MaxFailedAttempts:     5,
-		LockoutDuration:       900,  // 15 minutes
-		SessionTimeout:        86400, // 24 hours
-		PasswordMinLength:     12,
+		MaxFailedAttempts:      5,
+		LockoutDuration:        900,   // 15 minutes
+		SessionTimeout:         86400, // 24 hours
+		PasswordMinLength:      12,
 		PasswordRequireUpper:   true,
 		PasswordRequireLower:   true,
 		PasswordRequireDigit:   true,
 		PasswordRequireSpecial: true,
-		MFARequired:           false,
+		MFARequired:            false,
 	}
 }
 
@@ -361,19 +361,19 @@ func (s *AdminService) GetAdmin(ctx context.Context, adminID string) (*Admin, er
 
 	// Return without sensitive data
 	return &Admin{
-		ID:            admin.ID,
-		Username:      admin.Username,
-		Email:         admin.Email,
-		Role:          admin.Role,
-		Status:        admin.Status,
-		Permissions:   admin.Permissions,
-		WhiteLabelID: admin.WhiteLabelID,
-		CreatedAt:    admin.CreatedAt,
-		UpdatedAt:    admin.UpdatedAt,
-		LastLoginAt:  admin.LastLoginAt,
+		ID:             admin.ID,
+		Username:       admin.Username,
+		Email:          admin.Email,
+		Role:           admin.Role,
+		Status:         admin.Status,
+		Permissions:    admin.Permissions,
+		WhiteLabelID:   admin.WhiteLabelID,
+		CreatedAt:      admin.CreatedAt,
+		UpdatedAt:      admin.UpdatedAt,
+		LastLoginAt:    admin.LastLoginAt,
 		FailedAttempts: admin.FailedAttempts,
-		LockedUntil:  admin.LockedUntil,
-		MFAEnabled:   admin.MFAEnabled,
+		LockedUntil:    admin.LockedUntil,
+		MFAEnabled:     admin.MFAEnabled,
 	}, nil
 }
 
@@ -497,12 +497,12 @@ func (s *AdminService) ListAdmins(ctx context.Context, filters map[string]interf
 
 		// Return without sensitive data
 		result = append(result, &Admin{
-			ID:            admin.ID,
-			Username:      admin.Username,
-			Email:         admin.Email,
-			Role:          admin.Role,
-			Status:        admin.Status,
-			Permissions:   admin.Permissions,
+			ID:           admin.ID,
+			Username:     admin.Username,
+			Email:        admin.Email,
+			Role:         admin.Role,
+			Status:       admin.Status,
+			Permissions:  admin.Permissions,
 			WhiteLabelID: admin.WhiteLabelID,
 			CreatedAt:    admin.CreatedAt,
 			UpdatedAt:    admin.UpdatedAt,
@@ -550,22 +550,22 @@ func (s *AdminService) Login(ctx context.Context, username, password, ipAddress,
 	// Verify password
 	if !verifyPassword(password, admin.PasswordHash) {
 		admin.FailedAttempts++
-		
+
 		if admin.FailedAttempts >= s.config.MaxFailedAttempts {
 			admin.LockedUntil = time.Now().Add(time.Duration(s.config.LockoutDuration) * time.Millisecond).UnixMilli()
 		}
 
 		// Audit log failed attempt
 		s.auditLogs = append(s.auditLogs, &AuditLog{
-			ID:         generateID(),
-			AdminID:    admin.ID,
-			AdminName:  admin.Username,
-			Action:     ActionLogin,
-			Details:    map[string]interface{}{"reason": "invalid_password"},
-			IPAddress:  ipAddress,
+			ID:        generateID(),
+			AdminID:   admin.ID,
+			AdminName: admin.Username,
+			Action:    ActionLogin,
+			Details:   map[string]interface{}{"reason": "invalid_password"},
+			IPAddress: ipAddress,
 			UserAgent: userAgent,
-			Timestamp:  time.Now().UnixMilli(),
-			Status:     "failed",
+			Timestamp: time.Now().UnixMilli(),
+			Status:    "failed",
 		})
 
 		return nil, fmt.Errorf("invalid credentials")
@@ -581,13 +581,13 @@ func (s *AdminService) Login(ctx context.Context, username, password, ipAddress,
 
 	// Create session
 	session := &AdminSession{
-		AdminID:   admin.ID,
-		SessionID: generateID(),
-		Token:     generateToken(),
-		IPAddress: ipAddress,
-		UserAgent: userAgent,
-		CreatedAt: time.Now().UnixMilli(),
-		ExpiresAt: time.Now().Add(time.Duration(s.config.SessionTimeout) * time.Millisecond).UnixMilli(),
+		AdminID:    admin.ID,
+		SessionID:  generateID(),
+		Token:      generateToken(),
+		IPAddress:  ipAddress,
+		UserAgent:  userAgent,
+		CreatedAt:  time.Now().UnixMilli(),
+		ExpiresAt:  time.Now().Add(time.Duration(s.config.SessionTimeout) * time.Millisecond).UnixMilli(),
 		LastActive: time.Now().UnixMilli(),
 	}
 
@@ -595,14 +595,14 @@ func (s *AdminService) Login(ctx context.Context, username, password, ipAddress,
 
 	// Audit log successful login
 	s.auditLogs = append(s.auditLogs, &AuditLog{
-		ID:         generateID(),
-		AdminID:    admin.ID,
-		AdminName:  admin.Username,
-		Action:     ActionLogin,
-		IPAddress:  ipAddress,
-		UserAgent:  userAgent,
-		Timestamp:  time.Now().UnixMilli(),
-		Status:     "success",
+		ID:        generateID(),
+		AdminID:   admin.ID,
+		AdminName: admin.Username,
+		Action:    ActionLogin,
+		IPAddress: ipAddress,
+		UserAgent: userAgent,
+		Timestamp: time.Now().UnixMilli(),
+		Status:    "success",
 	})
 
 	return session, nil

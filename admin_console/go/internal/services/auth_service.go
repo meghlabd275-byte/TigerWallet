@@ -20,11 +20,11 @@ import (
 
 var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrUserExists        = errors.New("user already exists")
-	ErrUserNotFound      = errors.New("user not found")
-	ErrTokenExpired      = errors.New("token expired")
-	ErrInvalidToken      = errors.New("invalid token")
-	ErrAccountLocked     = errors.New("account locked")
+	ErrUserExists         = errors.New("user already exists")
+	ErrUserNotFound       = errors.New("user not found")
+	ErrTokenExpired       = errors.New("token expired")
+	ErrInvalidToken       = errors.New("invalid token")
+	ErrAccountLocked      = errors.New("account locked")
 )
 
 type AuthService struct {
@@ -34,15 +34,15 @@ type AuthService struct {
 }
 
 type JWTConfig struct {
-	Secret          string
-	ExpirationTime  time.Duration
-	RefreshExpires  time.Duration
-	Issuer          string
+	Secret         string
+	ExpirationTime time.Duration
+	RefreshExpires time.Duration
+	Issuer         string
 }
 
 func NewAuthService(db *pgxpool.Pool, redis *redis.Client) *AuthService {
 	return &AuthService{
-		db: db,
+		db:    db,
 		redis: redis,
 		cfg: JWTConfig{
 			Secret:         "tigerwallet-secret-key-change-in-production",
@@ -62,7 +62,7 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (*model
 		       two_factor_enabled, login_attempts, locked_until
 		FROM users WHERE email = $1
 	`, email).Scan(
-		&user.ID, &user.Email, &user.Username, &user.PasswordHash, 
+		&user.ID, &user.Email, &user.Username, &user.PasswordHash,
 		&user.Role, &user.Status, &user.EmailVerified, &user.TwoFactorEnabled,
 		&user.LoginAttempts, &user.LockedUntil,
 	)
@@ -99,7 +99,7 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (*model
 	}
 
 	// Get user profile
-	s.db.QueryRow(ctx, `SELECT id, user_id, avatar_url, timezone, language FROM user_profiles WHERE user_id = $1`, 
+	s.db.QueryRow(ctx, `SELECT id, user_id, avatar_url, timezone, language FROM user_profiles WHERE user_id = $1`,
 		user.ID).Scan(&profile.ID, &profile.UserID, &profile.AvatarURL, &profile.Timezone, &profile.Language)
 
 	// Generate tokens
@@ -128,7 +128,7 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (*model
 func (s *AuthService) Register(ctx context.Context, req *models.RegisterRequest) (*models.AuthResponse, error) {
 	// Check if user exists
 	var exists bool
-	err := s.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE email = $1 OR username = $2)`, 
+	err := s.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE email = $1 OR username = $2)`,
 		req.Email, req.Username).Scan(&exists)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check user existence: %w", err)
@@ -330,12 +330,12 @@ func (s *AuthService) VerifyEmail(ctx context.Context, token string) error {
 
 func (s *AuthService) generateAccessToken(user models.User) (string, error) {
 	claims := jwt.MapClaims{
-		"sub":  user.ID.String(),
+		"sub":   user.ID.String(),
 		"email": user.Email,
-		"role": user.Role,
-		"exp":  time.Now().Add(s.cfg.ExpirationTime).Unix(),
-		"iat":  time.Now().Unix(),
-		"iss":  s.cfg.Issuer,
+		"role":  user.Role,
+		"exp":   time.Now().Add(s.cfg.ExpirationTime).Unix(),
+		"iat":   time.Now().Unix(),
+		"iss":   s.cfg.Issuer,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

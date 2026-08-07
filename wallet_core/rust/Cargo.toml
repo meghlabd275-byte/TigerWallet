@@ -23,7 +23,7 @@ secp256k1 = { version = "0.28", features = ["global-domains", "bitcoin_hashes"] 
 k256 = "0.13"
 bip32 = "0.5"
 bip39 = "0.11"
-base58 = "0.21"
+base58 = "0.2.0"
 hex = "0.4"
 rand = "0.8"
 zeroize = { version = "1.7", features = ["derive"] }

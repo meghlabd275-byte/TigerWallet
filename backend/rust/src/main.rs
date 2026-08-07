@@ -3,7 +3,7 @@
 //! Command-line utility for security operations
 
 use clap::{Parser, Subcommand};
-use tigerwallet_security::{
+use security::{
     Encryption, KeyDerivation, Signer, HmacService, util, SecurityError,
 };
 
@@ -149,7 +149,9 @@ fn main() -> Result<(), SecurityError> {
             
             let signature = ed25519_dalek::Signature::from_slice(&sig_bytes)
                 .map_err(|e| SecurityError::InvalidKeyError(e.to_string()))?;
-            let verifying_key = ed25519_dalek::VerifyingKey::from_slice(&pub_bytes)
+            let public_key_bytes: [u8; 32] = pub_bytes.try_into()
+                .map_err(|_| SecurityError::InvalidKeyError("Public key must be 32 bytes".into()))?;
+            let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&public_key_bytes)
                 .map_err(|e| SecurityError::InvalidKeyError(e.to_string()))?;
             
             let valid = Signer::verify(&msg_bytes, &signature, &verifying_key);

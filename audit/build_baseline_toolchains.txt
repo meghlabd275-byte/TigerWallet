@@ -1,0 +1,106 @@
+===== cargo test wallet_core =====
+[1m[31merror[0m[1m:[0m failed to parse manifest at `/home/ubuntu/TigerWallet/wallet_core/Cargo.toml`
+
+Caused by:
+  can't find `wallet_benches` bench at `benches/wallet_benches.rs` or `benches/wallet_benches/main.rs`. Please specify bench.path if you want to use a non-default path.
+exit=101
+===== cargo test wallet_core/production =====
+[1m[31merror[0m[1m:[0m failed to parse manifest at `/home/ubuntu/TigerWallet/wallet_core/Cargo.toml`
+
+Caused by:
+  can't find `wallet_benches` bench at `benches/wallet_benches.rs` or `benches/wallet_benches/main.rs`. Please specify bench.path if you want to use a non-default path.
+exit=101
+===== cargo test wallet_core/rust =====
+[1m[31merror[0m[1m:[0m failed to parse manifest at `/home/ubuntu/TigerWallet/wallet_core/rust/Cargo.toml`
+
+Caused by:
+  can't find `wallet_benches` bench at `benches/wallet_benches.rs` or `benches/wallet_benches/main.rs`. Please specify bench.path if you want to use a non-default path.
+exit=101
+===== cargo test backend/rust =====
+[1m[32m    Updating[0m crates.io index
+[1m[32m Downloading[0m crates ...
+[1m[32m  Downloaded[0m block-buffer v0.10.4
+[1m[32m  Downloaded[0m aead v0.5.2
+[1m[32m  Downloaded[0m ghash v0.5.1
+[1m[32m  Downloaded[0m cfg-if v1.0.4
+[1m[32m  Downloaded[0m cpufeatures v0.2.17
+[1m[32m  Downloaded[0m constant_time_eq v0.3.1
+[1m[32m  Downloaded[0m inout v0.1.4
+[1m[32m  Downloaded[0m crypto-common v0.1.7
+[1m[32m  Downloaded[0m opaque-debug v0.3.1
+[1m[32m  Downloaded[0m signature v2.2.0
+[1m[32m  Downloaded[0m universal-hash v0.5.1
+[1m[32m  Downloaded[0m subtle v2.6.1
+[1m[32m  Downloaded[0m rustc_version v0.4.1
+[1m[32m  Downloaded[0m curve25519-dalek-derive v0.1.1
+[1m[32m  Downloaded[0m pkcs8 v0.10.2
+[1m[32m  Downloaded[0m generic-array v0.14.7
+[1m[32m  Downloaded[0m ctr v0.9.2
+[1m[32m  Downloaded[0m ed25519 v2.2.3
+[1m[32m  Downloaded[0m rand_chacha v0.3.1
+[1m[32m  Downloaded[0m spki v0.7.3
+[1m[32m  Downloaded[0m base64ct v1.8.3
+[1m[31merror[0m[1m:[0m failed to download replaced source registry `crates-io`
+
+Caused by:
+  failed to parse manifest at `/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/base64ct-1.8.3/Cargo.toml`
+
+Caused by:
+  feature `edition2024` is required
+
+  The package requires the Cargo feature called `edition2024`, but that feature is not stabilized in this version of Cargo (1.75.0).
+  Consider trying a more recent nightly release.
+  See https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#edition-2024 for more information about the status of this feature.
+exit=101
+===== go test backend/go =====
+cmd/api/main.go:16:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/backend/cmd/api); to add:
+	go get github.com/tigerwallet/backend/cmd/api
+internal/database/database.go:7:2: missing go.sum entry for module providing package github.com/lib/pq (imported by github.com/tigerwallet/backend/internal/database); to add:
+	go get github.com/tigerwallet/backend/internal/database
+internal/handlers/auth_handler.go:10:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/backend/internal/handlers); to add:
+	go get github.com/tigerwallet/backend/internal/handlers
+internal/handlers/auth_handler.go:11:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/backend/internal/handlers); to add:
+	go get github.com/tigerwallet/backend/internal/handlers
+internal/websocket/websocket.go:13:2: missing go.sum entry for module providing package github.com/gorilla/websocket (imported by github.com/tigerwallet/backend/internal/websocket); to add:
+	go get github.com/tigerwallet/backend/internal/websocket
+internal/handlers/auth_handler.go:12:2: missing go.sum entry for module providing package golang.org/x/crypto/bcrypt (imported by github.com/tigerwallet/backend/internal/handlers); to add:
+	go get github.com/tigerwallet/backend/internal/handlers
+exit=1
+===== go test go/wallet_service =====
+main.go:26:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/accounts (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+main.go:27:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/common (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+main.go:28:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/core/types (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+main.go:29:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/crypto (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+main.go:30:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+main.go:31:2: missing go.sum entry for module providing package github.com/golang-jwt/jwt/v5 (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+main.go:32:2: missing go.sum entry for module providing package github.com/google/uuid (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+main.go:33:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+main.go:34:2: missing go.sum entry for module providing package golang.org/x/crypto/argon2 (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+main.go:35:2: missing go.sum entry for module providing package golang.org/x/crypto/pbkdf2 (imported by github.com/tigerwallet/wallet-service); to add:
+	go get github.com/tigerwallet/wallet-service
+exit=1
+===== go test go/blockchain_rpc =====
+main.go:19:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum (imported by github.com/tigerwallet/blockchain-rpc); to add:
+	go get github.com/tigerwallet/blockchain-rpc
+main.go:20:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/common (imported by github.com/tigerwallet/blockchain-rpc); to add:
+	go get github.com/tigerwallet/blockchain-rpc
+main.go:21:2: missing go.sum entry for module providing package github.com/ethereum/go-ethereum/ethclient (imported by github.com/tigerwallet/blockchain-rpc); to add:
+	go get github.com/tigerwallet/blockchain-rpc
+main.go:22:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/blockchain-rpc); to add:
+	go get github.com/tigerwallet/blockchain-rpc
+main.go:23:2: missing go.sum entry for module providing package github.com/gorilla/websocket (imported by github.com/tigerwallet/blockchain-rpc); to add:
+	go get github.com/tigerwallet/blockchain-rpc
+main.go:24:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/blockchain-rpc); to add:
+	go get github.com/tigerwallet/blockchain-rpc
+main.go:25:2: missing go.sum entry for module providing package golang.org/x/time/rate (imported by github.com/tigerwallet/blockchain-rpc); to add:
+	go get github.com/tigerwallet/blockchain-rpc
+exit=1

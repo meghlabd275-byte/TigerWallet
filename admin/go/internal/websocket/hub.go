@@ -35,18 +35,18 @@ const (
 
 // Event types
 const (
-	EventUserCreated     = "user.created"
-	EventUserUpdated     = "user.updated"
-	EventUserDeleted     = "user.deleted"
-	EventTransactionNew = "transaction.new"
+	EventUserCreated       = "user.created"
+	EventUserUpdated       = "user.updated"
+	EventUserDeleted       = "user.deleted"
+	EventTransactionNew    = "transaction.new"
 	EventTransactionUpdate = "transaction.update"
-	EventWithdrawalNew  = "withdrawal.new"
-	EventWithdrawalUpdate = "withdrawal.update"
-	EventKycSubmitted   = "kyc.submitted"
-	EventKycApproved    = "kyc.approved"
-	EventKycRejected    = "kyc.rejected"
-	EventAlert          = "alert"
-	EventNotification   = "notification"
+	EventWithdrawalNew     = "withdrawal.new"
+	EventWithdrawalUpdate  = "withdrawal.update"
+	EventKycSubmitted      = "kyc.submitted"
+	EventKycApproved       = "kyc.approved"
+	EventKycRejected       = "kyc.rejected"
+	EventAlert             = "alert"
+	EventNotification      = "notification"
 )
 
 // WebSocket message

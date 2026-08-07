@@ -8,8 +8,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use serde::{Deserialize, Serialize};
+use serde::de::DeserializeOwned;
 use reqwest::Client;
-use ethereum::{Block, Transaction, TransactionReceipt};
+use std::collections::BTreeMap;
 use ethereum_types::{U64, U256, H256, H160, Address};
 
 /// EVM chain configuration
@@ -237,42 +238,42 @@ impl EvmRpcClient {
     /// Get chain ID
     pub async fn get_chain_id(&self) -> Result<u64, RpcError> {
         let params = serde_json::json!([]);
-        let result: String = self.call("eth_chainId", params).await?;
+        let result: String = self.rpc_call("eth_chainId", params).await?;
         Ok(u64::from_str_radix(&result[2..], 16).unwrap_or(self.chain.chain_id))
     }
 
     /// Get block number
     pub async fn get_block_number(&self) -> Result<u64, RpcError> {
         let params = serde_json::json!([]);
-        let result: String = self.call("eth_blockNumber", params).await?;
+        let result: String = self.rpc_call("eth_blockNumber", params).await?;
         Ok(u64::from_str_radix(&result[2..], 16).unwrap_or(0))
     }
 
     /// Get balance
     pub async fn get_balance(&self, address: &str) -> Result<U256, RpcError> {
         let params = serde_json::json!([address, "latest"]);
-        let result: String = self.call("eth_getBalance", params).await?;
+        let result: String = self.rpc_call("eth_getBalance", params).await?;
         Ok(parse_u256(&result))
     }
 
     /// Get transaction count (nonce)
     pub async fn get_transaction_count(&self, address: &str) -> Result<u64, RpcError> {
         let params = serde_json::json!([address, "latest"]);
-        let result: String = self.call("eth_getTransactionCount", params).await?;
+        let result: String = self.rpc_call("eth_getTransactionCount", params).await?;
         Ok(parse_u256(&result).as_u64())
     }
 
     /// Get transaction by hash
     pub async fn get_transaction(&self, tx_hash: &str) -> Result<Option<Transaction>, RpcError> {
         let params = serde_json::json!([tx_hash]);
-        let result: Option<Transaction> = self.call("eth_getTransactionByHash", params).await?;
+        let result: Option<Transaction> = self.rpc_call("eth_getTransactionByHash", params).await?;
         Ok(result)
     }
 
     /// Get transaction receipt
     pub async fn get_transaction_receipt(&self, tx_hash: &str) -> Result<Option<TransactionReceipt>, RpcError> {
         let params = serde_json::json!([tx_hash]);
-        let result: Option<TransactionReceipt> = self.call("eth_getTransactionReceipt", params).await?;
+        let result: Option<TransactionReceipt> = self.rpc_call("eth_getTransactionReceipt", params).await?;
         Ok(result)
     }
 
@@ -280,21 +281,21 @@ impl EvmRpcClient {
     pub async fn get_block_by_number(&self, block_number: u64) -> Result<Option<Block>, RpcError> {
         let block_hex = format!("0x{:x}", block_number);
         let params = serde_json::json!([block_hex, false]);
-        let result: Option<Block> = self.call("eth_getBlockByNumber", params).await?;
+        let result: Option<Block> = self.rpc_call("eth_getBlockByNumber", params).await?;
         Ok(result)
     }
 
     /// Get code at address
     pub async fn get_code(&self, address: &str) -> Result<String, RpcError> {
         let params = serde_json::json!([address, "latest"]);
-        let result: String = self.call("eth_getCode", params).await?;
+        let result: String = self.rpc_call("eth_getCode", params).await?;
         Ok(result)
     }
 
     /// Get storage at address
     pub async fn get_storage_at(&self, address: &str, slot: &str) -> Result<String, RpcError> {
         let params = serde_json::json!([address, slot, "latest"]);
-        let result: String = self.call("eth_getStorageAt", params).await?;
+        let result: String = self.rpc_call("eth_getStorageAt", params).await?;
         Ok(result)
     }
 
@@ -304,7 +305,7 @@ impl EvmRpcClient {
             "to": to,
             "data": data
         }, "latest"]);
-        let result: String = self.call("eth_call", params).await?;
+        let result: String = self.rpc_call("eth_call", params).await?;
         Ok(result)
     }
 
@@ -323,28 +324,28 @@ impl EvmRpcClient {
         }
         
         let params = serde_json::json!([tx, "latest"]);
-        let result: String = self.call("eth_estimateGas", params).await?;
+        let result: String = self.rpc_call("eth_estimateGas", params).await?;
         Ok(parse_u256(&result).as_u64())
     }
 
     /// Get gas price
     pub async fn get_gas_price(&self) -> Result<U256, RpcError> {
         let params = serde_json::json!([]);
-        let result: String = self.call("eth_gasPrice", params).await?;
+        let result: String = self.rpc_call("eth_gasPrice", params).await?;
         Ok(parse_u256(&result))
     }
 
     /// Get max priority fee
     pub async fn get_max_priority_fee(&self) -> Result<U256, RpcError> {
         let params = serde_json::json!([]);
-        let result: String = self.call("eth_maxPriorityFeePerGas", params).await?;
+        let result: String = self.rpc_call("eth_maxPriorityFeePerGas", params).await?;
         Ok(parse_u256(&result))
     }
 
     /// Send raw transaction
     pub async fn send_raw_transaction(&self, signed_tx: &[u8]) -> Result<String, RpcError> {
         let params = serde_json::json!([format!("0x{}", hex::encode(signed_tx))]);
-        let result: String = self.call("eth_sendRawTransaction", params).await?;
+        let result: String = self.rpc_call("eth_sendRawTransaction", params).await?;
         Ok(result)
     }
 
@@ -356,7 +357,7 @@ impl EvmRpcClient {
             "address": address,
             "topics": topics
         }]);
-        let result: Vec<Log> = self.call("eth_getLogs", params).await?;
+        let result: Vec<Log> = self.rpc_call("eth_getLogs", params).await?;
         Ok(result)
     }
 
@@ -429,7 +430,7 @@ impl EvmRpcClient {
     }
 
     /// Internal JSON-RPC call
-    async fn call<T: Deserialize<'de>>(&self, method: &str, params: serde_json::Value) -> Result<T, RpcError> {
+    async fn rpc_call<T: DeserializeOwned>(&self, method: &str, params: serde_json::Value) -> Result<T, RpcError> {
         let request = serde_json::json!({
             "jsonrpc": "2.0",
             "method": method,
@@ -464,6 +465,24 @@ impl EvmRpcClient {
 }
 
 /// Log structure
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Transaction {
+    #[serde(flatten)]
+    pub fields: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransactionReceipt {
+    #[serde(flatten)]
+    pub fields: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Block {
+    #[serde(flatten)]
+    pub fields: BTreeMap<String, serde_json::Value>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Log {
     pub address: String,

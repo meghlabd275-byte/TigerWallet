@@ -18,7 +18,6 @@ import (
 	"github.com/tigerwallet/admin_panel/internal/handlers"
 	"github.com/tigerwallet/admin_panel/internal/middleware"
 	"github.com/tigerwallet/admin_panel/internal/services"
-	"github.com/tigerwallet/admin_panel/internal/websocket"
 )
 
 func main() {
@@ -51,6 +50,8 @@ func main() {
 	reportService := services.NewReportService()
 	ticketService := services.NewTicketService()
 	whiteLabelService := services.NewWhiteLabelService()
+	slaService := services.NewSLAService()
+	integrationService := services.NewIntegrationService(cfg)
 
 	// Initialize handler
 	h := handlers.NewHandler(
@@ -71,6 +72,8 @@ func main() {
 		reportService,
 		ticketService,
 		whiteLabelService,
+		slaService,
+		integrationService,
 	)
 
 	// Setup Gin router

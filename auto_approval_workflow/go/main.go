@@ -30,109 +30,109 @@ import (
 // ============================================================================
 
 var (
-	logger        zerolog.Logger
-	redisClient   *redis.Client
-	dbPool        *pgxpool.Pool
+	logger         zerolog.Logger
+	redisClient    *redis.Client
+	dbPool         *pgxpool.Pool
 	workflowEngine *WorkflowEngine
 )
 
 // Configuration
 type Config struct {
-	Port                string
-	DatabaseURL         string
-	RedisURL            string
-	ApprovalQueue       string
-	MaxRetries          int
-	ProcessingInterval  time.Duration
-	WebhookURL          string
+	Port               string
+	DatabaseURL        string
+	RedisURL           string
+	ApprovalQueue      string
+	MaxRetries         int
+	ProcessingInterval time.Duration
+	WebhookURL         string
 }
 
 // KYC Application
 type KYCApplication struct {
-	ID              string    `json:"id"`
-	UserID          string    `json:"userId"`
-	WhiteLabelID    string    `json:"whiteLabelId"`
-	Type            string    `json:"type"` // identity, address, selfie, document
-	Status          string    `json:"status"` // pending, processing, approved, rejected, needs_review
-	RiskScore       float64   `json:"riskScore"`
-	RiskLevel       string    `json:"riskLevel"` // low, medium, high, critical
-	Confidence      float64   `json:"confidence"`
-	Documents       []Document `json:"documents"`
-	VerifiedAt      *time.Time `json:"verifiedAt,omitempty"`
-	RejectedAt      *time.Time `json:"rejectedAt,omitempty"`
-	RejectedReason  string     `json:"rejectedReason,omitempty"`
-	AutoApproved    bool       `json:"autoApproved"`
-	ManualReview    bool       `json:"manualReview"`
-	ReviewedBy      string     `json:"reviewedBy,omitempty"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	ID             string     `json:"id"`
+	UserID         string     `json:"userId"`
+	WhiteLabelID   string     `json:"whiteLabelId"`
+	Type           string     `json:"type"`   // identity, address, selfie, document
+	Status         string     `json:"status"` // pending, processing, approved, rejected, needs_review
+	RiskScore      float64    `json:"riskScore"`
+	RiskLevel      string     `json:"riskLevel"` // low, medium, high, critical
+	Confidence     float64    `json:"confidence"`
+	Documents      []Document `json:"documents"`
+	VerifiedAt     *time.Time `json:"verifiedAt,omitempty"`
+	RejectedAt     *time.Time `json:"rejectedAt,omitempty"`
+	RejectedReason string     `json:"rejectedReason,omitempty"`
+	AutoApproved   bool       `json:"autoApproved"`
+	ManualReview   bool       `json:"manualReview"`
+	ReviewedBy     string     `json:"reviewedBy,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
 }
 
 // Document
 type Document struct {
-	ID          string `json:"id"`
-	Type        string `json:"type"` // passport, driver_license, national_id, utility_bill
-	URL         string `json:"url"`
-	Hash        string `json:"hash"`
-	Verified    bool   `json:"verified"`
-	VerifiedAt  *time.Time `json:"verifiedAt,omitempty"`
+	ID         string     `json:"id"`
+	Type       string     `json:"type"` // passport, driver_license, national_id, utility_bill
+	URL        string     `json:"url"`
+	Hash       string     `json:"hash"`
+	Verified   bool       `json:"verified"`
+	VerifiedAt *time.Time `json:"verifiedAt,omitempty"`
 }
 
 // White Label Application
 type WhiteLabelApplication struct {
-	ID              string    `json:"id"`
-	UserID          string    `json:"userId"`
-	CompanyName     string    `json:"companyName"`
-	Domain          string    `json:"domain"`
-	BusinessType    string    `json:"businessType"`
-	Status          string    `json:"status"` // pending, processing, approved, rejected, needs_review
-	RiskScore       float64   `json:"riskScore"`
-	RiskLevel       string    `json:"riskLevel"`
-	Documents       []Document `json:"documents"`
-	ContactInfo     ContactInfo `json:"contactInfo"`
-	KYCStatus       string    `json:"kycStatus"`
-	AutoApproved    bool       `json:"autoApproved"`
-	ApprovedAt      *time.Time `json:"approvedAt,omitempty"`
-	RejectedAt      *time.Time `json:"rejectedAt,omitempty"`
-	RejectedReason  string     `json:"rejectedReason,omitempty"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	ID             string      `json:"id"`
+	UserID         string      `json:"userId"`
+	CompanyName    string      `json:"companyName"`
+	Domain         string      `json:"domain"`
+	BusinessType   string      `json:"businessType"`
+	Status         string      `json:"status"` // pending, processing, approved, rejected, needs_review
+	RiskScore      float64     `json:"riskScore"`
+	RiskLevel      string      `json:"riskLevel"`
+	Documents      []Document  `json:"documents"`
+	ContactInfo    ContactInfo `json:"contactInfo"`
+	KYCStatus      string      `json:"kycStatus"`
+	AutoApproved   bool        `json:"autoApproved"`
+	ApprovedAt     *time.Time  `json:"approvedAt,omitempty"`
+	RejectedAt     *time.Time  `json:"rejectedAt,omitempty"`
+	RejectedReason string      `json:"rejectedReason,omitempty"`
+	CreatedAt      time.Time   `json:"createdAt"`
+	UpdatedAt      time.Time   `json:"updatedAt"`
 }
 
 // Contact Information
 type ContactInfo struct {
-	Email       string `json:"email"`
-	Phone       string `json:"phone"`
-	Address     string `json:"address"`
-	City        string `json:"city"`
-	Country     string `json:"country"`
-	Website     string `json:"website"`
+	Email   string `json:"email"`
+	Phone   string `json:"phone"`
+	Address string `json:"address"`
+	City    string `json:"city"`
+	Country string `json:"country"`
+	Website string `json:"website"`
 }
 
 // Workflow
 type Workflow struct {
-	ID            string         `json:"id"`
-	Name          string         `json:"name"`
-	Type          string         `json:"type"` // kyc, white_label, user_approval
-	Status        string         `json:"status"` // active, paused, archived
-	Steps         []WorkflowStep `json:"steps"`
-	Conditions    []Condition    `json:"conditions"`
-	AutoApprove   bool           `json:"autoApprove"`
-	AutoApproveThreshold float64 `json:"autoApproveThreshold"` // Risk score threshold
-	CreatedAt     time.Time      `json:"createdAt"`
-	UpdatedAt     time.Time      `json:"updatedAt"`
+	ID                   string         `json:"id"`
+	Name                 string         `json:"name"`
+	Type                 string         `json:"type"`   // kyc, white_label, user_approval
+	Status               string         `json:"status"` // active, paused, archived
+	Steps                []WorkflowStep `json:"steps"`
+	Conditions           []Condition    `json:"conditions"`
+	AutoApprove          bool           `json:"autoApprove"`
+	AutoApproveThreshold float64        `json:"autoApproveThreshold"` // Risk score threshold
+	CreatedAt            time.Time      `json:"createdAt"`
+	UpdatedAt            time.Time      `json:"updatedAt"`
 }
 
 // Workflow Step
 type WorkflowStep struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Type        string   `json:"type"` // verification, review, approval, notification, webhook
-	Config      map[string]interface{} `json:"config"`
-	Timeout     int      `json:"timeout"` // seconds
-	RetryCount  int      `json:"retryCount"`
-	OnFailure   string   `json:"onFailure"` // skip, retry, reject
-	Order       int      `json:"order"`
+	ID         string                 `json:"id"`
+	Name       string                 `json:"name"`
+	Type       string                 `json:"type"` // verification, review, approval, notification, webhook
+	Config     map[string]interface{} `json:"config"`
+	Timeout    int                    `json:"timeout"` // seconds
+	RetryCount int                    `json:"retryCount"`
+	OnFailure  string                 `json:"onFailure"` // skip, retry, reject
+	Order      int                    `json:"order"`
 }
 
 // Condition
@@ -159,16 +159,16 @@ type WorkflowExecution struct {
 
 // Approval Rule
 type ApprovalRule struct {
-	ID              string  `json:"id"`
-	Name            string  `json:"name"`
-	Type            string  `json:"type"` // kyc, white_label
-	Priority        int     `json:"priority"`
-	Conditions      []Condition `json:"conditions"`
-	Action          string  `json:"action"` // auto_approve, auto_reject, manual_review
-	RiskThreshold   float64 `json:"riskThreshold"`
-	IsActive        bool    `json:"isActive"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	ID            string      `json:"id"`
+	Name          string      `json:"name"`
+	Type          string      `json:"type"` // kyc, white_label
+	Priority      int         `json:"priority"`
+	Conditions    []Condition `json:"conditions"`
+	Action        string      `json:"action"` // auto_approve, auto_reject, manual_review
+	RiskThreshold float64     `json:"riskThreshold"`
+	IsActive      bool        `json:"isActive"`
+	CreatedAt     time.Time   `json:"createdAt"`
+	UpdatedAt     time.Time   `json:"updatedAt"`
 }
 
 // Webhook Event
@@ -231,7 +231,7 @@ func (e *WorkflowEngine) processQueue() {
 
 func (e *WorkflowEngine) processNextItem() {
 	ctx := context.Background()
-	
+
 	// Get next item from queue
 	result, err := e.redis.LPop(ctx, "approval_queue").Result()
 	if err != nil {
@@ -256,7 +256,7 @@ func (e *WorkflowEngine) processNextItem() {
 
 	// Execute workflow
 	execution := e.executeWorkflow(workflow, entityType, entityID)
-	
+
 	// Update entity status based on execution result
 	if execution.Status == "completed" {
 		e.updateEntityStatus(entityType, entityID, "approved")
@@ -268,7 +268,7 @@ func (e *WorkflowEngine) processNextItem() {
 func (e *WorkflowEngine) getWorkflow(entityType string) *Workflow {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	
+
 	workflow, ok := e.workflows[entityType]
 	if !ok {
 		// Try to load from database
@@ -387,7 +387,7 @@ func (e *WorkflowEngine) executeWorkflow(workflow *Workflow, entityType, entityI
 
 	for i, step := range workflow.Steps {
 		execution.CurrentStep = i
-		
+
 		// Execute step
 		result := e.executeStep(step, entityType, entityID)
 		execution.Results[step.ID] = result
@@ -459,7 +459,7 @@ func (e *WorkflowEngine) runVerification(entityType, entityID string, step Workf
 		"step":   step.Name,
 		"status": "success",
 		"data": map[string]interface{}{
-			"verified": true,
+			"verified":   true,
 			"confidence": 0.95,
 		},
 	}
@@ -818,7 +818,7 @@ func ManualReviewOverride(c *gin.Context) {
 		if request.Action == "reject" {
 			status = "rejected"
 		}
-		
+
 		_, err := dbPool.Exec(context.Background(), `
 			UPDATE kyc_applications SET status = $1, reviewed_by = $2, rejected_reason = $3, updated_at = NOW() 
 			WHERE id = $4
@@ -851,7 +851,7 @@ func ManualReviewOverride(c *gin.Context) {
 // Get queue status
 func GetQueueStatus(c *gin.Context) {
 	ctx := context.Background()
-	
+
 	queueLength, _ := redisClient.LLen(ctx, "approval_queue").Result()
 	processingCount, _ := redisClient.Get(ctx, "approval_processing").Int()
 

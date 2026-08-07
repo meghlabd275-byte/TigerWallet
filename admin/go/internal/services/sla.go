@@ -17,31 +17,31 @@ func NewSLAService() *SLAService {
 }
 
 type SLAPolicy struct {
-	ID              uuid.UUID `json:"id"`
-	Name            string    `json:"name"`
-	Description     string    `json:"description"`
-	Priority        string    `json:"priority"` // critical, high, medium, low
-	ResponseTimeSLA int       `json:"response_time_sla"` // in seconds
-	ResolutionTimeSLA int     `json:"resolution_time_sla"` // in seconds
-	UptimeSLA       float64   `json:"uptime_sla"` // percentage
-	IsActive        bool      `json:"is_active"`
-	CreatedBy       uuid.UUID `json:"created_by"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID                uuid.UUID `json:"id"`
+	Name              string    `json:"name"`
+	Description       string    `json:"description"`
+	Priority          string    `json:"priority"`            // critical, high, medium, low
+	ResponseTimeSLA   int       `json:"response_time_sla"`   // in seconds
+	ResolutionTimeSLA int       `json:"resolution_time_sla"` // in seconds
+	UptimeSLA         float64   `json:"uptime_sla"`          // percentage
+	IsActive          bool      `json:"is_active"`
+	CreatedBy         uuid.UUID `json:"created_by"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 type SLAReport struct {
-	ID           uuid.UUID  `json:"id"`
-	PolicyID     uuid.UUID  `json:"policy_id"`
-	PeriodStart  time.Time `json:"period_start"`
-	PeriodEnd    time.Time `json:"period_end"`
-	TotalTickets  int       `json:"total_tickets"`
-	MetSLA        int       `json:"met_sla"`
-	BreachedSLA   int       `json:"breached_sla"`
-	AvgResponseTime float64  `json:"avg_response_time"`
-	AvgResolutionTime float64 `json:"avg_resolution_time"`
-	Uptime        float64   `json:"uptime"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID                uuid.UUID `json:"id"`
+	PolicyID          uuid.UUID `json:"policy_id"`
+	PeriodStart       time.Time `json:"period_start"`
+	PeriodEnd         time.Time `json:"period_end"`
+	TotalTickets      int       `json:"total_tickets"`
+	MetSLA            int       `json:"met_sla"`
+	BreachedSLA       int       `json:"breached_sla"`
+	AvgResponseTime   float64   `json:"avg_response_time"`
+	AvgResolutionTime float64   `json:"avg_resolution_time"`
+	Uptime            float64   `json:"uptime"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 func (s *SLAService) ListPolicies(ctx context.Context) ([]SLAPolicy, error) {
@@ -165,11 +165,11 @@ func (s *SLAService) GenerateReport(ctx context.Context, policyID uuid.UUID, per
 
 func (s *SLAService) CheckSLACompliance(ctx context.Context, ticketID uuid.UUID) (bool, string, error) {
 	var ticket struct {
-		Priority       string
-		SLAPolicyID    *uuid.UUID
-		CreatedAt      time.Time
+		Priority        string
+		SLAPolicyID     *uuid.UUID
+		CreatedAt       time.Time
 		FirstResponseAt *time.Time
-		ResolvedAt     *time.Time
+		ResolvedAt      *time.Time
 	}
 
 	err := database.Pool.QueryRow(ctx, `

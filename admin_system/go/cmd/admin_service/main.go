@@ -31,9 +31,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-/// Configuration
+// / Configuration
 type Config struct {
-	ServerPort     string
+	ServerPort    string
 	RedisAddr     string
 	JWTSecret     string
 	EncryptionKey string
@@ -46,14 +46,14 @@ type Permission string
 type AuditAction string
 
 const (
-	RoleSuperAdmin   AdminRole = "SUPER_ADMIN"
-	RoleAdmin       AdminRole = "ADMIN"
-	RoleSupport     AdminRole = "SUPPORT"
+	RoleSuperAdmin AdminRole = "SUPER_ADMIN"
+	RoleAdmin      AdminRole = "ADMIN"
+	RoleSupport    AdminRole = "SUPPORT"
 	RoleAnalyst    AdminRole = "ANALYST"
 	RoleViewer     AdminRole = "VIEWER"
 
-	StatusActive   AdminStatus = "ACTIVE"
-	StatusInactive AdminStatus = "INACTIVE"
+	StatusActive    AdminStatus = "ACTIVE"
+	StatusInactive  AdminStatus = "INACTIVE"
 	StatusSuspended AdminStatus = "SUSPENDED"
 
 	AuditCreate AuditAction = "CREATE"
@@ -66,75 +66,75 @@ const (
 
 // Permission constants
 const (
-	PermUserMgmt      Permission = "USER_MANAGEMENT"
-	PermAdminMgmt     Permission = "ADMIN_MANAGEMENT"
-	PermKYCMgmt       Permission = "KYC_MANAGEMENT"
-	PermPairsMgmt     Permission = "PAIRS_MANAGEMENT"
-	PermLiquidityMgmt Permission = "LIQUIDITY_MANAGEMENT"
-	PermFeesMgmt      Permission = "FEES_MANAGEMENT"
-	PermWithdrawMgmt  Permission = "WITHDRAWAL_MANAGEMENT"
-	PermAPIMgmt       Permission = "API_MANAGEMENT"
+	PermUserMgmt       Permission = "USER_MANAGEMENT"
+	PermAdminMgmt      Permission = "ADMIN_MANAGEMENT"
+	PermKYCMgmt        Permission = "KYC_MANAGEMENT"
+	PermPairsMgmt      Permission = "PAIRS_MANAGEMENT"
+	PermLiquidityMgmt  Permission = "LIQUIDITY_MANAGEMENT"
+	PermFeesMgmt       Permission = "FEES_MANAGEMENT"
+	PermWithdrawMgmt   Permission = "WITHDRAWAL_MANAGEMENT"
+	PermAPIMgmt        Permission = "API_MANAGEMENT"
 	PermBlockchainMgmt Permission = "BLOCKCHAIN_MANAGEMENT"
-	PermWalletMgmt    Permission = "WALLET_MANAGEMENT"
+	PermWalletMgmt     Permission = "WALLET_MANAGEMENT"
 	PermWhiteLabelMgmt Permission = "WHITE_LABEL_MANAGEMENT"
-	PermBrokerageMgmt Permission = "BROKERAGE_MANAGEMENT"
-	PermSupportMgmt   Permission = "SUPPORT_MANAGEMENT"
-	PermAnalytics     Permission = "ANALYTICS"
-	PermAudit        Permission = "AUDIT_LOG"
-	PermSettings     Permission = "SETTINGS"
-	PermTokenMgmt    Permission = "TOKEN_MANAGEMENT"
-	PermNFTMgmt      Permission = "NFT_MANAGEMENT"
-	PermExchangeMgmt Permission = "EXCHANGE_MANAGEMENT"
+	PermBrokerageMgmt  Permission = "BROKERAGE_MANAGEMENT"
+	PermSupportMgmt    Permission = "SUPPORT_MANAGEMENT"
+	PermAnalytics      Permission = "ANALYTICS"
+	PermAudit          Permission = "AUDIT_LOG"
+	PermSettings       Permission = "SETTINGS"
+	PermTokenMgmt      Permission = "TOKEN_MANAGEMENT"
+	PermNFTMgmt        Permission = "NFT_MANAGEMENT"
+	PermExchangeMgmt   Permission = "EXCHANGE_MANAGEMENT"
 )
 
 // Admin Model
 type Admin struct {
-	AdminID        string            `json:"admin_id"`
-	Email          string            `json:"email"`
-	Username       string            `json:"username"`
-	PasswordHash   string            `json:"password_hash"`
-	Role           AdminRole         `json:"role"`
-	Status         AdminStatus       `json:"status"`
-	Permissions    []Permission      `json:"permissions"`
-	FirstName      string            `json:"first_name"`
-	LastName       string            `json:"last_name"`
-	Phone          string            `json:"phone"`
-	Avatar         string            `json:"avatar"`
-	LastLogin      *time.Time       `json:"last_login,omitempty"`
-	FailedAttempts int              `json:"failed_attempts"`
-	LockedUntil    *time.Time       `json:"locked_until,omitempty"`
-	TwoFactorEnabled bool           `json:"two_factor_enabled"`
-	TwoFactorSecret string          `json:"two_factor_secret,omitempty"`
-	CreatedAt      time.Time        `json:"created_at"`
-	UpdatedAt      time.Time        `json:"updated_at"`
-	CreatedBy      string            `json:"created_by"`
-	IPWhitelist    []string         `json:"ip_whitelist"`
-	MFAEnabled     bool             `json:"mfa_enabled"`
+	AdminID          string       `json:"admin_id"`
+	Email            string       `json:"email"`
+	Username         string       `json:"username"`
+	PasswordHash     string       `json:"password_hash"`
+	Role             AdminRole    `json:"role"`
+	Status           AdminStatus  `json:"status"`
+	Permissions      []Permission `json:"permissions"`
+	FirstName        string       `json:"first_name"`
+	LastName         string       `json:"last_name"`
+	Phone            string       `json:"phone"`
+	Avatar           string       `json:"avatar"`
+	LastLogin        *time.Time   `json:"last_login,omitempty"`
+	FailedAttempts   int          `json:"failed_attempts"`
+	LockedUntil      *time.Time   `json:"locked_until,omitempty"`
+	TwoFactorEnabled bool         `json:"two_factor_enabled"`
+	TwoFactorSecret  string       `json:"two_factor_secret,omitempty"`
+	CreatedAt        time.Time    `json:"created_at"`
+	UpdatedAt        time.Time    `json:"updated_at"`
+	CreatedBy        string       `json:"created_by"`
+	IPWhitelist      []string     `json:"ip_whitelist"`
+	MFAEnabled       bool         `json:"mfa_enabled"`
 }
 
 // KYC Model
 type KYCRecord struct {
-	KYCID         string        `json:"kyc_id"`
-	UserID        string        `json:"user_id"`
-	Level         int           `json:"level"`
-	Status        string        `json:"status"`
-	DocumentType  string        `json:"document_type"`
-	DocumentID    string        `json:"document_id"`
-	FirstName     string        `json:"first_name"`
-	LastName      string        `json:"last_name"`
-	DateOfBirth   string        `json:"date_of_birth"`
-	Nationality   string        `json:"nationality"`
-	Address       string        `json:"address"`
-	City          string        `json:"city"`
-	Country       string        `json:"country"`
-	PostalCode    string        `json:"postal_code"`
-	Documents     []KYCDocument `json:"documents"`
-	VerifiedAt    *time.Time   `json:"verified_at,omitempty"`
-	RejectedAt    *time.Time   `json:"rejected_at,omitempty"`
-	RejectedReason string      `json:"rejected_reason"`
-	CreatedAt     time.Time    `json:"created_at"`
-	UpdatedAt     time.Time    `json:"updated_at"`
-	ReviewedBy    string        `json:"reviewed_by"`
+	KYCID          string        `json:"kyc_id"`
+	UserID         string        `json:"user_id"`
+	Level          int           `json:"level"`
+	Status         string        `json:"status"`
+	DocumentType   string        `json:"document_type"`
+	DocumentID     string        `json:"document_id"`
+	FirstName      string        `json:"first_name"`
+	LastName       string        `json:"last_name"`
+	DateOfBirth    string        `json:"date_of_birth"`
+	Nationality    string        `json:"nationality"`
+	Address        string        `json:"address"`
+	City           string        `json:"city"`
+	Country        string        `json:"country"`
+	PostalCode     string        `json:"postal_code"`
+	Documents      []KYCDocument `json:"documents"`
+	VerifiedAt     *time.Time    `json:"verified_at,omitempty"`
+	RejectedAt     *time.Time    `json:"rejected_at,omitempty"`
+	RejectedReason string        `json:"rejected_reason"`
+	CreatedAt      time.Time     `json:"created_at"`
+	UpdatedAt      time.Time     `json:"updated_at"`
+	ReviewedBy     string        `json:"reviewed_by"`
 }
 
 type KYCDocument struct {
@@ -146,18 +146,18 @@ type KYCDocument struct {
 
 // User Model
 type User struct {
-	UserID          string            `json:"user_id"`
-	Email           string            `json:"email"`
-	Username        string            `json:"username"`
-	Phone           string            `json:"phone"`
-	Status          string            `json:"status"`
-	KYCLevel        int              `json:"kyc_level"`
-	Wallets         []UserWallet     `json:"wallets"`
-	ReferralCode    string            `json:"referral_code"`
-	ReferredBy      string            `json:"referred_by"`
-	CreatedAt       time.Time        `json:"created_at"`
-	UpdatedAt       time.Time        `json:"updated_at"`
-	LastLogin       *time.Time       `json:"last_login,omitempty"`
+	UserID       string       `json:"user_id"`
+	Email        string       `json:"email"`
+	Username     string       `json:"username"`
+	Phone        string       `json:"phone"`
+	Status       string       `json:"status"`
+	KYCLevel     int          `json:"kyc_level"`
+	Wallets      []UserWallet `json:"wallets"`
+	ReferralCode string       `json:"referral_code"`
+	ReferredBy   string       `json:"referred_by"`
+	CreatedAt    time.Time    `json:"created_at"`
+	UpdatedAt    time.Time    `json:"updated_at"`
+	LastLogin    *time.Time   `json:"last_login,omitempty"`
 }
 
 type UserWallet struct {
@@ -168,113 +168,113 @@ type UserWallet struct {
 
 // Audit Log
 type AuditLog struct {
-	LogID        string       `json:"log_id"`
-	AdminID      string       `json:"admin_id"`
-	AdminEmail   string       `json:"admin_email"`
-	Action       AuditAction  `json:"action"`
-	Resource     string       `json:"resource"`
-	ResourceID   string       `json:"resource_id"`
-	Details      string       `json:"details"`
-	IPAddress    string       `json:"ip_address"`
-	UserAgent    string       `json:"user_agent"`
-	Timestamp    time.Time    `json:"timestamp"`
+	LogID      string      `json:"log_id"`
+	AdminID    string      `json:"admin_id"`
+	AdminEmail string      `json:"admin_email"`
+	Action     AuditAction `json:"action"`
+	Resource   string      `json:"resource"`
+	ResourceID string      `json:"resource_id"`
+	Details    string      `json:"details"`
+	IPAddress  string      `json:"ip_address"`
+	UserAgent  string      `json:"user_agent"`
+	Timestamp  time.Time   `json:"timestamp"`
 }
 
 // Token Model
 type Token struct {
-	TokenID        string    `json:"token_id"`
-	Name           string    `json:"name"`
-	Symbol         string    `json:"symbol"`
-	Decimals       int       `json:"decimals"`
-	ContractAddress string   `json:"contract_address"`
-	Chain          string    `json:"chain"`
-	Type           string    `json:"type"`
-	Status         string    `json:"status"`
-	TotalSupply    string    `json:"total_supply"`
-	CreatedAt      time.Time `json:"created_at"`
+	TokenID         string    `json:"token_id"`
+	Name            string    `json:"name"`
+	Symbol          string    `json:"symbol"`
+	Decimals        int       `json:"decimals"`
+	ContractAddress string    `json:"contract_address"`
+	Chain           string    `json:"chain"`
+	Type            string    `json:"type"`
+	Status          string    `json:"status"`
+	TotalSupply     string    `json:"total_supply"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 // Pair Model
 type TradingPair struct {
-	PairID        string    `json:"pair_id"`
-	BaseToken     string    `json:"base_token"`
-	QuoteToken    string    `json:"quote_token"`
-	Chain         string    `json:"chain"`
-	Status        string    `json:"status"`
-	FeeMaker      float64   `json:"fee_maker"`
-	FeeTaker      float64   `json:"fee_taker"`
-	MinTradeAmount float64  `json:"min_trade_amount"`
-	MaxTradeAmount float64  `json:"max_trade_amount"`
-	CreatedAt     time.Time `json:"created_at"`
+	PairID         string    `json:"pair_id"`
+	BaseToken      string    `json:"base_token"`
+	QuoteToken     string    `json:"quote_token"`
+	Chain          string    `json:"chain"`
+	Status         string    `json:"status"`
+	FeeMaker       float64   `json:"fee_maker"`
+	FeeTaker       float64   `json:"fee_taker"`
+	MinTradeAmount float64   `json:"min_trade_amount"`
+	MaxTradeAmount float64   `json:"max_trade_amount"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // Liquidity Pool
 type LiquidityPool struct {
-	PoolID       string    `json:"pool_id"`
-	TokenA       string    `json:"token_a"`
-	TokenB       string    `json:"token_b"`
-	Chain        string    `json:"chain"`
-	ReserveA     string    `json:"reserve_a"`
-	ReserveB     string    `json:"reserve_b"`
-	Liquidity    string    `json:"liquidity"`
-	Status       string    `json:"status"`
-	CreatedAt    time.Time `json:"created_at"`
+	PoolID    string    `json:"pool_id"`
+	TokenA    string    `json:"token_a"`
+	TokenB    string    `json:"token_b"`
+	Chain     string    `json:"chain"`
+	ReserveA  string    `json:"reserve_a"`
+	ReserveB  string    `json:"reserve_b"`
+	Liquidity string    `json:"liquidity"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Withdrawal
 type Withdrawal struct {
-	WithdrawalID  string    `json:"withdrawal_id"`
-	UserID        string    `json:"user_id"`
-	Token         string    `json:"token"`
-	Amount        string    `json:"amount"`
-	Fee           string    `json:"fee"`
-	ToAddress     string    `json:"to_address"`
-	Status        string    `json:"status"`
-	TxHash        string    `json:"tx_hash"`
-	ProcessedAt   *time.Time `json:"processed_at,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
+	WithdrawalID string     `json:"withdrawal_id"`
+	UserID       string     `json:"user_id"`
+	Token        string     `json:"token"`
+	Amount       string     `json:"amount"`
+	Fee          string     `json:"fee"`
+	ToAddress    string     `json:"to_address"`
+	Status       string     `json:"status"`
+	TxHash       string     `json:"tx_hash"`
+	ProcessedAt  *time.Time `json:"processed_at,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 // API Key
 type APIKey struct {
-	KeyID        string    `json:"key_id"`
-	UserID       string    `json:"user_id"`
-	Key          string    `json:"key"`
-	Secret       string    `json:"secret"`
-	Name         string    `json:"name"`
-	Permissions  []string  `json:"permissions"`
-	IPWhitelist  []string  `json:"ip_whitelist"`
-	RateLimit    int      `json:"rate_limit"`
-	Status       string    `json:"status"`
-	LastUsed     *time.Time `json:"last_used,omitempty"`
-	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
+	KeyID       string     `json:"key_id"`
+	UserID      string     `json:"user_id"`
+	Key         string     `json:"key"`
+	Secret      string     `json:"secret"`
+	Name        string     `json:"name"`
+	Permissions []string   `json:"permissions"`
+	IPWhitelist []string   `json:"ip_whitelist"`
+	RateLimit   int        `json:"rate_limit"`
+	Status      string     `json:"status"`
+	LastUsed    *time.Time `json:"last_used,omitempty"`
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 // White Label Client
 type WhiteLabelClient struct {
-	ClientID     string    `json:"client_id"`
-	Name         string    `json:"name"`
-	Domain       string    `json:"domain"`
-	Status       string    `json:"status"`
-	Branding     Branding  `json:"branding"`
-	Config       WLConfig  `json:"config"`
-	Permissions  []string  `json:"permissions"`
-	CreatedAt    time.Time `json:"created_at"`
+	ClientID    string    `json:"client_id"`
+	Name        string    `json:"name"`
+	Domain      string    `json:"domain"`
+	Status      string    `json:"status"`
+	Branding    Branding  `json:"branding"`
+	Config      WLConfig  `json:"config"`
+	Permissions []string  `json:"permissions"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type Branding struct {
-	Logo       string `json:"logo"`
-	Favicon    string `json:"favicon"`
-	PrimaryColor string `json:"primary_color"`
+	Logo           string `json:"logo"`
+	Favicon        string `json:"favicon"`
+	PrimaryColor   string `json:"primary_color"`
 	SecondaryColor string `json:"secondary_color"`
-	Name       string `json:"name"`
+	Name           string `json:"name"`
 }
 
 type WLConfig struct {
-	EnabledFeatures []string `json:"enabled_features"`
-	FeeStructure   FeeConfig `json:"fee_structure"`
-	CustomDomain   string    `json:"custom_domain"`
+	EnabledFeatures []string  `json:"enabled_features"`
+	FeeStructure    FeeConfig `json:"fee_structure"`
+	CustomDomain    string    `json:"custom_domain"`
 }
 
 type FeeConfig struct {
@@ -304,8 +304,8 @@ func NewAdminService(cfg Config) *AdminService {
 	return &AdminService{
 		config:     cfg,
 		redis:      redisClient,
-		admins:    make(map[string]*Admin),
-		users:     make(map[string]*User),
+		admins:     make(map[string]*Admin),
+		users:      make(map[string]*User),
 		kycRecords: make(map[string]*KYCRecord),
 		auditLogs:  make([]*AuditLog, 0),
 	}
@@ -433,7 +433,7 @@ func (s *AdminService) CreateAdmin(creator *Admin, newAdmin *Admin) error {
 	s.admins[newAdmin.AdminID] = newAdmin
 
 	// Create audit log
-	s.createAuditLog(creator.AdminID, creator.Email, AuditCreate, "ADMIN", newAdmin.AdminID, 
+	s.createAuditLog(creator.AdminID, creator.Email, AuditCreate, "ADMIN", newAdmin.AdminID,
 		fmt.Sprintf("Created admin: %s", newAdmin.Email))
 
 	return nil
@@ -512,7 +512,7 @@ func (s *AdminService) DeleteAdmin(deleter *Admin, targetID string) error {
 
 	delete(s.admins, targetID)
 
-	s.createAuditLog(deleter.AdminID, deleter.Email, AuditDelete, "ADMIN", targetID, 
+	s.createAuditLog(deleter.AdminID, deleter.Email, AuditDelete, "ADMIN", targetID,
 		fmt.Sprintf("Deleted admin: %s", target.Email))
 
 	return nil
@@ -548,7 +548,7 @@ func (s *AdminService) CreateKYC(creator *Admin, kyc *KYCRecord) error {
 
 	s.kycRecords[kyc.KYCID] = kyc
 
-	s.createAuditLog(creator.AdminID, creator.Email, AuditCreate, "KYC", kyc.KYCID, 
+	s.createAuditLog(creator.AdminID, creator.Email, AuditCreate, "KYC", kyc.KYCID,
 		fmt.Sprintf("Created KYC for user: %s", kyc.UserID))
 
 	return nil
@@ -577,7 +577,7 @@ func (s *AdminService) ReviewKYC(reviewer *Admin, kycID, decision, reason string
 		kyc.RejectedReason = reason
 	}
 
-	s.createAuditLog(reviewer.AdminID, reviewer.Email, AuditUpdate, "KYC", kycID, 
+	s.createAuditLog(reviewer.AdminID, reviewer.Email, AuditUpdate, "KYC", kycID,
 		fmt.Sprintf("Reviewed KYC: %s - %s", decision, reason))
 
 	return nil
@@ -682,7 +682,7 @@ func (s *AdminService) CreateToken(creator *Admin, token *Token) error {
 	token.Status = "ACTIVE"
 	token.CreatedAt = time.Now()
 
-	s.createAuditLog(creator.AdminID, creator.Email, AuditCreate, "TOKEN", token.TokenID, 
+	s.createAuditLog(creator.AdminID, creator.Email, AuditCreate, "TOKEN", token.TokenID,
 		fmt.Sprintf("Created token: %s (%s)", token.Name, token.Symbol))
 
 	return nil
@@ -698,7 +698,7 @@ func (s *AdminService) CreatePair(creator *Admin, pair *TradingPair) error {
 	pair.Status = "ACTIVE"
 	pair.CreatedAt = time.Now()
 
-	s.createAuditLog(creator.AdminID, creator.Email, AuditCreate, "PAIR", pair.PairID, 
+	s.createAuditLog(creator.AdminID, creator.Email, AuditCreate, "PAIR", pair.PairID,
 		fmt.Sprintf("Created pair: %s/%s", pair.BaseToken, pair.QuoteToken))
 
 	return nil
@@ -719,7 +719,7 @@ func (s *AdminService) TogglePair(updater *Admin, pairID, action string) error {
 		return fmt.Errorf("permission denied")
 	}
 
-	s.createAuditLog(updater.AdminID, updater.Email, AuditUpdate, "PAIR", pairID, 
+	s.createAuditLog(updater.AdminID, updater.Email, AuditUpdate, "PAIR", pairID,
 		fmt.Sprintf("Toggled pair: %s", action))
 
 	return nil
@@ -735,7 +735,7 @@ func (s *AdminService) CreateLiquidityPool(creator *Admin, pool *LiquidityPool) 
 	pool.Status = "ACTIVE"
 	pool.CreatedAt = time.Now()
 
-	s.createAuditLog(creator.AdminID, creator.Email, AuditCreate, "LIQUIDITY", pool.PoolID, 
+	s.createAuditLog(creator.AdminID, creator.Email, AuditCreate, "LIQUIDITY", pool.PoolID,
 		fmt.Sprintf("Created liquidity pool: %s/%s", pool.TokenA, pool.TokenB))
 
 	return nil
@@ -747,7 +747,7 @@ func (s *AdminService) ProcessWithdrawal(processor *Admin, withdrawalID, decisio
 		return fmt.Errorf("permission denied")
 	}
 
-	s.createAuditLog(processor.AdminID, processor.Email, AuditUpdate, "WITHDRAWAL", withdrawalID, 
+	s.createAuditLog(processor.AdminID, processor.Email, AuditUpdate, "WITHDRAWAL", withdrawalID,
 		fmt.Sprintf("Processed withdrawal: %s - %s", decision, txHash))
 
 	return nil
@@ -765,7 +765,7 @@ func (s *AdminService) CreateAPIKey(creator *Admin, apiKey *APIKey) error {
 	apiKey.Status = "ACTIVE"
 	apiKey.CreatedAt = time.Now()
 
-	s.createAuditLog(creator.AdminID, creator.Email, AuditCreate, "API_KEY", apiKey.KeyID, 
+	s.createAuditLog(creator.AdminID, creator.Email, AuditCreate, "API_KEY", apiKey.KeyID,
 		fmt.Sprintf("Created API key: %s", apiKey.Name))
 
 	return nil
@@ -781,7 +781,7 @@ func (s *AdminService) CreateWhiteLabel(creator *Admin, wl *WhiteLabelClient) er
 	wl.Status = "PENDING"
 	wl.CreatedAt = time.Now()
 
-	s.createAuditLog(creator.AdminID, creator.Email, AuditCreate, "WHITE_LABEL", wl.ClientID, 
+	s.createAuditLog(creator.AdminID, creator.Email, AuditCreate, "WHITE_LABEL", wl.ClientID,
 		fmt.Sprintf("Created white label: %s", wl.Name))
 
 	return nil
@@ -863,7 +863,7 @@ func (s *AdminService) GetAnalytics() map[string]interface{} {
 	defer s.mu.RUnlock()
 
 	return map[string]interface{}{
-		"total_users":        len(s.users),
+		"total_users":       len(s.users),
 		"total_admins":      len(s.admins),
 		"total_kyc_records": len(s.kycRecords),
 		"total_audit_logs":  len(s.auditLogs),
@@ -1006,7 +1006,7 @@ func generateSecureToken(adminID, secret string) string {
 
 func main() {
 	cfg := Config{
-		ServerPort:     getEnv("ADMIN_SERVICE_PORT", "8087"),
+		ServerPort:    getEnv("ADMIN_SERVICE_PORT", "8087"),
 		RedisAddr:     getEnv("REDIS_ADDR", "localhost:6379"),
 		JWTSecret:     getEnv("JWT_SECRET", "tiger-admin-secret-2026"),
 		EncryptionKey: getEnv("ENCRYPTION_KEY", "tiger-admin-encryption"),

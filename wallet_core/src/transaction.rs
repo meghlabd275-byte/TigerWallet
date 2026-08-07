@@ -130,7 +130,10 @@ impl EvmTransaction {
             .map_err(|_| TxError::InvalidPrivateKey)?;
         let signing_key = SigningKey::from(&key);
         let verifying_key = VerifyingKey::from(&signing_key);
-        let sender = EthAddress::from(verifying_key.to_encoded_point(false).as_bytes().get(1).unwrap_or(&[0u8; 0]).clone());
+        let encoded_point = verifying_key.to_encoded_point(false);
+        let public_key = encoded_point.as_bytes();
+        let digest = Keccak256::digest(&public_key[1..]);
+        let sender = EthAddress::from_slice(&digest[12..]);
 
         // Update nonce to sender's nonce if not set
         let mut tx = self.clone();
@@ -150,7 +153,7 @@ impl EvmTransaction {
         hasher.update(&encoded);
         let hash = hasher.finalize();
         
-        let signature = signing_key.sign(&hash);
+        let signature: k256::ecdsa::Signature = signing_key.sign(&hash);
         let sig_bytes = signature.to_bytes();
         
         // Create signed transaction RLP
@@ -255,31 +258,48 @@ fn parse_address(s: &str) -> Result<EthAddress, TxError> {
     Ok(EthAddress::from(addr))
 }
 
-fn parse_wei(s: &str) -> Result<U256, TxError> {
-    // Handle various formats: "1", "1.0", "1e18", "1000000000000000000"
-    if s.contains('e') || s.contains('E') {
-        let parts: Vec<&str> = s.split('e').collect();
-        let base: f64 = parts[0].parse().map_err(|_| TxError::InvalidValue)?;
-        let exp: u32 = parts[1].parse().map_err(|_| TxError::InvalidValue)?;
-        let value = (base * (10f64.powi(exp as i32)) as u64;
-        Ok(U256::from(value))
-    } else if s.contains('.') {
-        let parts: Vec<&str> = s.split('.').collect();
-        let whole: u64 = parts[0].parse().unwrap_or(0);
-        let frac = parts.get(1).unwrap_or(&"0");
-        let frac_len = frac.len();
-        let frac_val: u64 = frac.parse().unwrap_or(0);
-        let decimal_places = 18 - frac_len as u64;
-        let multiplier = 10u64.pow(decimal_positions(decimal_positions(18) as u32));
-        Ok(U256::from(whole * 1_000_000_000_000_000_000u64 + frac_val * multiplier))
-    } else {
-        let value: u64 = s.parse().map_err(|_| TxError::InvalidValue)?;
-        Ok(U256::from(value))
+fn parse_wei(input: &str) -> Result<U256, TxError> {
+    let input = input.trim();
+    if input.is_empty() || input.starts_with('-') {
+        return Err(TxError::InvalidValue);
     }
-}
 
-fn decimal_positions(n: u64) -> u64 {
-    if n == 0 { 0 } else { 18 }
+    let (mantissa, exponent) = input
+        .split_once(['e', 'E'])
+        .map(|(m, e)| {
+            e.parse::<i32>()
+                .map(|value| (m, value))
+                .map_err(|_| TxError::InvalidValue)
+        })
+        .transpose()?
+        .map_or((input, 0), |value| value);
+
+    let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    if whole.is_empty() && fraction.is_empty()
+        || !whole.chars().all(|c| c.is_ascii_digit())
+        || !fraction.chars().all(|c| c.is_ascii_digit())
+    {
+        return Err(TxError::InvalidValue);
+    }
+
+    let digits = format!("{}{}", if whole.is_empty() { "0" } else { whole }, fraction);
+    let scale = 18i32 - fraction.len() as i32 + exponent;
+    let normalized = if scale >= 0 {
+        format!("{}{}", digits.trim_start_matches('0'), "0".repeat(scale as usize))
+    } else {
+        let remove = (-scale) as usize;
+        if remove > digits.len() || digits[digits.len() - remove..].chars().any(|c| c != '0') {
+            return Err(TxError::InvalidValue);
+        }
+        digits[..digits.len() - remove].to_string()
+    };
+
+    let normalized = normalized.trim_start_matches('0');
+    if normalized.is_empty() {
+        Ok(U256::zero())
+    } else {
+        U256::from_dec_str(normalized).map_err(|_| TxError::InvalidValue)
+    }
 }
 
 // ============================================================================

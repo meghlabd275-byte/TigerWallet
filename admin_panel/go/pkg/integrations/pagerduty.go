@@ -43,15 +43,15 @@ type PagerDutyIncident struct {
 func (p *PagerDutyClient) CreateIncident(ctx context.Context, title, description, urgency, serviceID string) (*PagerDutyIncident, error) {
 	incident := map[string]interface{}{
 		"incident": map[string]interface{}{
-			"type":        "incident",
-			"title":       title,
+			"type":  "incident",
+			"title": title,
 			"body": map[string]interface{}{
-				"type": "incident_body",
+				"type":    "incident_body",
 				"details": description,
 			},
 			"urgency": urgency,
 			"service": map[string]interface{}{
-				"id": serviceID,
+				"id":   serviceID,
 				"type": "service_reference",
 			},
 		},
@@ -68,10 +68,10 @@ func (p *PagerDutyClient) CreateIncident(ctx context.Context, title, description
 	}
 
 	return &PagerDutyIncident{
-		ID:             inc["id"].(string),
-		Title:          inc["title"].(string),
-		Status:         inc["status"].(string),
-		CreatedAt:      time.Now(),
+		ID:        inc["id"].(string),
+		Title:     inc["title"].(string),
+		Status:    inc["status"].(string),
+		CreatedAt: time.Now(),
 	}, nil
 }
 
@@ -91,8 +91,8 @@ func (p *PagerDutyClient) AcknowledgeIncident(ctx context.Context, incidentID, u
 func (p *PagerDutyClient) ResolveIncident(ctx context.Context, incidentID, userID, resolution string) error {
 	update := map[string]interface{}{
 		"incident": map[string]interface{}{
-			"type":   "incident_reference",
-			"status": "resolved",
+			"type":       "incident_reference",
+			"status":     "resolved",
 			"resolution": resolution,
 		},
 	}
@@ -113,18 +113,18 @@ func (p *PagerDutyClient) GetIncident(ctx context.Context, incidentID string) (*
 	}
 
 	return &PagerDutyIncident{
-		ID:             inc["id"].(string),
-		Title:          inc["title"].(string),
-		Status:         inc["status"].(string),
-		Service:        inc["service"].(map[string]interface{}),
-		CreatedAt:      time.Now(),
+		ID:        inc["id"].(string),
+		Title:     inc["title"].(string),
+		Status:    inc["status"].(string),
+		Service:   inc["service"].(map[string]interface{}),
+		CreatedAt: time.Now(),
 	}, nil
 }
 
 // ListIncidents lists incidents
 func (p *PagerDutyClient) ListIncidents(ctx context.Context, status string) ([]PagerDutyIncident, error) {
 	var result map[string]interface{}
-	
+
 	endpoint := "/incidents"
 	if status != "" {
 		endpoint += "?statuses[]=" + status
@@ -143,11 +143,11 @@ func (p *PagerDutyClient) ListIncidents(ctx context.Context, status string) ([]P
 	for _, inc := range incidents {
 		i := inc.(map[string]interface{})
 		resultIncidents = append(resultIncidents, PagerDutyIncident{
-			ID:             i["id"].(string),
-			Title:          i["title"].(string),
-			Status:         i["status"].(string),
-			Service:        i["service"].(map[string]interface{}),
-			CreatedAt:      time.Now(),
+			ID:        i["id"].(string),
+			Title:     i["title"].(string),
+			Status:    i["status"].(string),
+			Service:   i["service"].(map[string]interface{}),
+			CreatedAt: time.Now(),
 		})
 	}
 
@@ -169,11 +169,11 @@ func (p *PagerDutyClient) AddNote(ctx context.Context, incidentID, userID, conte
 func (p *PagerDutyClient) CreateService(ctx context.Context, name, description string) (string, error) {
 	service := map[string]interface{}{
 		"service": map[string]interface{}{
-			"name":                name,
-			"description":        description,
-			"status":             "active",
+			"name":        name,
+			"description": description,
+			"status":      "active",
 			"escalation_policy": map[string]interface{}{
-				"id": "PXXXXXX", // Would be actual policy ID
+				"id":   "PXXXXXX", // Would be actual policy ID
 				"type": "escalation_policy_reference",
 			},
 		},

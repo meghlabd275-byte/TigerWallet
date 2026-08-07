@@ -16,18 +16,18 @@ import (
 // ============================================================================
 
 type RateLimiter struct {
-	mu           sync.RWMutex
-	redis        *redis.Client
-	limits      map[string]*RateLimitConfig
-	ipCounts     map[string]*WindowCounter
-	windowSize   time.Duration
+	mu              sync.RWMutex
+	redis           *redis.Client
+	limits          map[string]*RateLimitConfig
+	ipCounts        map[string]*WindowCounter
+	windowSize      time.Duration
 	cleanupInterval time.Duration
 }
 
 type RateLimitConfig struct {
 	Requests int           `json:"requests"`
 	Window   time.Duration `json:"window"`
-	Burst   int           `json:"burst"`
+	Burst    int           `json:"burst"`
 }
 
 type WindowCounter struct {
@@ -36,10 +36,10 @@ type WindowCounter struct {
 }
 
 type RateLimitResponse struct {
-	Allowed    bool   `json:"allowed"`
-	Remaining int    `json:"remaining"`
-	ResetAt   int64  `json:"resetAt"`
-	Limit     int    `json:"limit"`
+	Allowed   bool  `json:"allowed"`
+	Remaining int   `json:"remaining"`
+	ResetAt   int64 `json:"resetAt"`
+	Limit     int   `json:"limit"`
 }
 
 // ============================================================================

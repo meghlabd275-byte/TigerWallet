@@ -535,12 +535,12 @@ function SwapScreen({ navigation }: any) {
       <View style={styles.form}>
         <Text style={styles.label}>From</Text>
         <View style={styles.tokenSelector}>
-          <Text style={styles.tokenValue}>{fromToken}</Text>
+          <Text style={styles.tokenSelectorValue}>{fromToken}</Text>
         </View>
 
         <Text style={styles.label}>To</Text>
         <View style={styles.tokenSelector}>
-          <Text style={styles.tokenValue}>{toToken}</Text>
+          <Text style={styles.tokenSelectorValue}>{toToken}</Text>
         </View>
 
         <Text style={styles.label}>Amount</Text>
@@ -852,7 +852,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  tokenValue: {
+  tokenSelectorValue: {
     fontSize: 16,
     fontWeight: 'bold',
   },

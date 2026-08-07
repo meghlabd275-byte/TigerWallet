@@ -15,7 +15,7 @@ import (
 // ============================================================================
 
 type IPWhitelistService struct {
-	mu          sync.RWMutex
+	mu         sync.RWMutex
 	whitelists map[string]map[string]*IPRange // adminID -> IP rules
 }
 
@@ -231,9 +231,9 @@ func (s *IPWhitelistService) Middleware() gin.HandlerFunc {
 		// Check if IP is whitelisted
 		if !s.IsAllowed(adminID.(string), clientIP) {
 			c.JSON(http.StatusForbidden, gin.H{
-				"error":       "Access denied",
-				"message":     "Your IP address is not whitelisted",
-				"whitelist":   true,
+				"error":     "Access denied",
+				"message":   "Your IP address is not whitelisted",
+				"whitelist": true,
 			})
 			c.Abort()
 			return

@@ -30,7 +30,7 @@ const (
 	FEE_SHARING_PERCENTAGE = 20 // 20% to TigerSwap admin
 
 	// API key settings
-	API_KEY_LENGTH     = 32
+	API_KEY_LENGTH    = 32
 	API_SECRET_LENGTH = 64
 
 	// Product settings
@@ -47,98 +47,98 @@ type WhiteLabelProduct struct {
 	Name              string           `json:"name"`
 	Domain            string           `json:"domain"`
 	CloudProvider     string           `json:"cloud_provider"`
-	StorageProvider  string           `json:"storage_provider"`
-	APIKey          string           `json:"api_key"` // TigerSwap API key for this product
-	APISecret       string           `json:"api_secret,omitempty"`
-	Status          WhiteLabelStatus `json:"status"`
-	ApprovedBy      string          `json:"approved_by,omitempty"`
-	ApprovedAt      *time.Time      `json:"approved_at,omitempty"`
-	FeeSharingPercent int           `json:"fee_sharing_percent"`
-	TotalEarnings   float64        `json:"total_earnings"`
-	TotalFeesShared float64        `json:"total_fees_shared"`
-	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at"`
-	DestroyedAt     *time.Time    `json:"destroyed_at,omitempty"`
+	StorageProvider   string           `json:"storage_provider"`
+	APIKey            string           `json:"api_key"` // TigerSwap API key for this product
+	APISecret         string           `json:"api_secret,omitempty"`
+	Status            WhiteLabelStatus `json:"status"`
+	ApprovedBy        string           `json:"approved_by,omitempty"`
+	ApprovedAt        *time.Time       `json:"approved_at,omitempty"`
+	FeeSharingPercent int              `json:"fee_sharing_percent"`
+	TotalEarnings     float64          `json:"total_earnings"`
+	TotalFeesShared   float64          `json:"total_fees_shared"`
+	CreatedAt         time.Time        `json:"created_at"`
+	UpdatedAt         time.Time        `json:"updated_at"`
+	DestroyedAt       *time.Time       `json:"destroyed_at,omitempty"`
 }
 
 // WhiteLabelStatus represents product status
 type WhiteLabelStatus string
 
 const (
-	WLStatusPending    WhiteLabelStatus = "pending"
+	WLStatusPending   WhiteLabelStatus = "pending"
 	WLStatusApproved  WhiteLabelStatus = "approved"
-	WLStatusActive   WhiteLabelStatus = "active"
+	WLStatusActive    WhiteLabelStatus = "active"
 	WLStatusSuspended WhiteLabelStatus = "suspended"
 	WLStatusDestroyed WhiteLabelStatus = "destroyed"
 )
 
 // WhiteLabelConfig represents white label configuration
 type WhiteLabelConfig struct {
-	ID                string            `json:"id"`
-	ProductID        string            `json:"product_id"`
-	BrandName        string            `json:"brand_name"`
-	BrandColor      string            `json:"brand_color"`
-	LogoURL         string            `json:"logo_url"`
-	FaviconURL      string            `json:"favicon_url"`
-	PrimaryDomain  string           `json:"primary_domain"`
-	CustomDomains []string        `json:"custom_domains"`
-	SupportEmail   string           `json:"support_email"`
-	SocialLinks  map[string]string `json:"social_links"`
-	CustomCSS   string          `json:"custom_css"`
-	CustomJS    string          `json:"custom_js"`
+	ID            string            `json:"id"`
+	ProductID     string            `json:"product_id"`
+	BrandName     string            `json:"brand_name"`
+	BrandColor    string            `json:"brand_color"`
+	LogoURL       string            `json:"logo_url"`
+	FaviconURL    string            `json:"favicon_url"`
+	PrimaryDomain string            `json:"primary_domain"`
+	CustomDomains []string          `json:"custom_domains"`
+	SupportEmail  string            `json:"support_email"`
+	SocialLinks   map[string]string `json:"social_links"`
+	CustomCSS     string            `json:"custom_css"`
+	CustomJS      string            `json:"custom_js"`
 }
 
 // WhiteLabelAdmin represents white label admin
 type WhiteLabelAdmin struct {
-	ID          string    `json:"id"`
-	ProductID  string    `json:"product_id"`
-	UserID     string    `json:"user_id"`
-	Email      string    `json:"email"`
-	Username   string    `json:"username"`
-	Role       string    `json:"role"` // super_admin, admin, operator
-	IsActive   bool      `json:"is_active"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID        string    `json:"id"`
+	ProductID string    `json:"product_id"`
+	UserID    string    `json:"user_id"`
+	Email     string    `json:"email"`
+	Username  string    `json:"username"`
+	Role      string    `json:"role"` // super_admin, admin, operator
+	IsActive  bool      `json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // WhiteLabelLicense represents license for white label
 type WhiteLabelLicense struct {
-	ID              string    `json:"id"`
-	ProductID       string    `json:"product_id"`
-	LicenseKey     string    `json:"license_key"`
-	ExpiryDate     time.Time `json:"expiry_date"`
-	IsRevoked      bool      `json:"is_revoked"`
-	RevokedAt     *time.Time `json:"revoked_at,omitempty"`
-	RevokedBy     string    `json:"revoked_by,omitempty"`
-	RevokeReason  string    `json:"revoke_reason,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID           string     `json:"id"`
+	ProductID    string     `json:"product_id"`
+	LicenseKey   string     `json:"license_key"`
+	ExpiryDate   time.Time  `json:"expiry_date"`
+	IsRevoked    bool       `json:"is_revoked"`
+	RevokedAt    *time.Time `json:"revoked_at,omitempty"`
+	RevokedBy    string     `json:"revoked_by,omitempty"`
+	RevokeReason string     `json:"revoke_reason,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 // WhiteLabelAPIKey represents API key for white label
 type WhiteLabelAPIKey struct {
-	ID          string    `json:"id"`
-	ProductID  string    `json:"product_id"`
-	Key        string    `json:"key"`
-	SecretHash string    `json:"secret_hash"`
-	Permissions []string `json:"permissions"`
-	RateLimit  int      `json:"rate_limit"`
-	IsActive   bool     `json:"is_active"`
-	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
-	ExpiresAt time.Time `json:"expires_at"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          string     `json:"id"`
+	ProductID   string     `json:"product_id"`
+	Key         string     `json:"key"`
+	SecretHash  string     `json:"secret_hash"`
+	Permissions []string   `json:"permissions"`
+	RateLimit   int        `json:"rate_limit"`
+	IsActive    bool       `json:"is_active"`
+	LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
+	ExpiresAt   time.Time  `json:"expires_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 // WhiteLabelEarning represents earnings tracking
 type WhiteLabelEarning struct {
 	ID          string    `json:"id"`
-	ProductID  string    `json:"product_id"`
-	EarningType string   `json:"earning_type"` // swap, trading, bot, listing
-	Amount     float64  `json:"amount"`
-	FeeAmount  float64  `json:"fee_amount"` // 20% to TigerSwap
-	NetAmount  float64  `json:"net_amount"`
-	Token      string   `json:"token"`
-	ChainId    int      `json:"chain_id"`
-	TxHash    string   `json:"tx_hash"`
-	CreatedAt  time.Time `json:"created_at"`
+	ProductID   string    `json:"product_id"`
+	EarningType string    `json:"earning_type"` // swap, trading, bot, listing
+	Amount      float64   `json:"amount"`
+	FeeAmount   float64   `json:"fee_amount"` // 20% to TigerSwap
+	NetAmount   float64   `json:"net_amount"`
+	Token       string    `json:"token"`
+	ChainId     int       `json:"chain_id"`
+	TxHash      string    `json:"tx_hash"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // ============================================================================
@@ -176,12 +176,12 @@ type WhiteLabelStore struct {
 // NewWhiteLabelStore creates new white label store
 func NewWhiteLabelStore() *WhiteLabelStore {
 	return &WhiteLabelStore{
-		products:        make(map[string]*WhiteLabelProduct),
-		configs:        make(map[string]*WhiteLabelConfig),
-		admins:        make(map[string]*WhiteLabelAdmin),
-		licenses:      make(map[string]*WhiteLabelLicense),
-		apiKeys:       make(map[string]*WhiteLabelAPIKey),
-		earnings:      make(map[string][]*WhiteLabelEarning),
+		products:         make(map[string]*WhiteLabelProduct),
+		configs:          make(map[string]*WhiteLabelConfig),
+		admins:           make(map[string]*WhiteLabelAdmin),
+		licenses:         make(map[string]*WhiteLabelLicense),
+		apiKeys:          make(map[string]*WhiteLabelAPIKey),
+		earnings:         make(map[string][]*WhiteLabelEarning),
 		productsByDomain: make(map[string]string),
 	}
 }
@@ -215,17 +215,17 @@ func (s *WhiteLabelStore) CreateProduct(name, domain, cloudProvider, storageProv
 	apiSecret := generateRandomToken(API_SECRET_LENGTH)
 
 	product := &WhiteLabelProduct{
-		ID:                 generateUUID(),
+		ID:                generateUUID(),
 		Name:              name,
 		Domain:            domain,
 		CloudProvider:     cloudProvider,
 		StorageProvider:   storageProvider,
-		APIKey:           apiKey,
+		APIKey:            apiKey,
 		APISecret:         apiSecret,
-		Status:           WLStatusPending,
+		Status:            WLStatusPending,
 		FeeSharingPercent: FEE_SHARING_PERCENTAGE,
 		CreatedAt:         time.Now(),
-		UpdatedAt:        time.Now(),
+		UpdatedAt:         time.Now(),
 	}
 
 	s.products[product.ID] = product
@@ -411,11 +411,11 @@ func (s *WhiteLabelStore) ValidateProductAPIKey(productID, apiKey, apiSecret str
 func (s *WhiteLabelStore) generateLicense(productID string) {
 	license := &WhiteLabelLicense{
 		ID:         generateUUID(),
-		ProductID: productID,
+		ProductID:  productID,
 		LicenseKey: generateRandomToken(32),
 		ExpiryDate: time.Now().Add(365 * 24 * time.Hour), // 1 year
 		IsRevoked:  false,
-		CreatedAt: time.Now(),
+		CreatedAt:  time.Now(),
 	}
 
 	s.licenses[productID] = license
@@ -550,9 +550,9 @@ func (s *WhiteLabelStore) CreateAdmin(productID, email, username, role string) (
 		ID:        generateUUID(),
 		ProductID: productID,
 		Email:     email,
-		Username: username,
-		Role:     role,
-		IsActive: true,
+		Username:  username,
+		Role:      role,
+		IsActive:  true,
 		CreatedAt: time.Now(),
 	}
 
@@ -642,15 +642,15 @@ func (s *WhiteLabelStore) CreateAPIKey(productID string, permissions []string, r
 	secretHash := hashString(generateRandomToken(API_SECRET_LENGTH))
 
 	apiKey := &WhiteLabelAPIKey{
-		ID:           generateUUID(),
-		ProductID:    productID,
-		Key:          key,
-		SecretHash:    secretHash,
+		ID:          generateUUID(),
+		ProductID:   productID,
+		Key:         key,
+		SecretHash:  secretHash,
 		Permissions: permissions,
 		RateLimit:   rateLimit,
 		IsActive:    true,
 		ExpiresAt:   time.Now().Add(365 * 24 * time.Hour),
-		CreatedAt:    time.Now(),
+		CreatedAt:   time.Now(),
 	}
 
 	s.apiKeys[key] = apiKey
@@ -779,9 +779,9 @@ func NewWhiteLabelHandler(store *WhiteLabelStore) *WhiteLabelHandler {
 
 // CreateProductRequest represents create product request
 type CreateProductRequest struct {
-	Name           string `json:"name"`
-	Domain        string `json:"domain"`
-	CloudProvider string `json:"cloud_provider"`
+	Name            string `json:"name"`
+	Domain          string `json:"domain"`
+	CloudProvider   string `json:"cloud_provider"`
 	StorageProvider string `json:"storage_provider"`
 }
 
@@ -810,7 +810,7 @@ func (h *WhiteLabelHandler) HandleCreateProduct(w http.ResponseWriter, r *http.R
 // HandleApproveProduct handles approve product request
 func (h *WhiteLabelHandler) HandleApproveProduct(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ProductID string `json:"product_id"`
+		ProductID  string `json:"product_id"`
 		ApprovedBy string `json:"approved_by"`
 	}
 
@@ -835,7 +835,7 @@ func (h *WhiteLabelHandler) HandleApproveProduct(w http.ResponseWriter, r *http.
 func (h *WhiteLabelHandler) HandleDestroyProduct(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ProductID string `json:"product_id"`
-		Reason  string `json:"reason"`
+		Reason    string `json:"reason"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -866,7 +866,7 @@ func (h *WhiteLabelHandler) HandleGetProducts(w http.ResponseWriter, r *http.Req
 func (h *WhiteLabelHandler) HandleValidateAPIKey(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ProductID string `json:"product_id"`
-		APIKey   string `json:"api_key"`
+		APIKey    string `json:"api_key"`
 		APISecret string `json:"api_secret"`
 	}
 

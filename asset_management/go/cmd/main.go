@@ -30,54 +30,54 @@ type Config struct {
 
 // Asset types
 type Asset struct {
-	ID                uuid.UUID `json:"id"`
-	Name              string    `json:"name"`
-	Symbol            string    `json:"symbol"`
-	AssetType         string    `json:"asset_type"` // crypto, nft, token, fiat
-	ChainID           *int      `json:"chain_id"`
-	ContractAddress   *string   `json:"contract_address"`
-	Decimals          int       `json:"decimals"`
-	TotalSupply       string    `json:"total_supply"`
-	IsActive          bool      `json:"is_active"`
-	IsVerified        bool      `json:"is_verified"`
-	LogoURL           string    `json:"logo_url"`
-	Description       string    `json:"description"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID              uuid.UUID `json:"id"`
+	Name            string    `json:"name"`
+	Symbol          string    `json:"symbol"`
+	AssetType       string    `json:"asset_type"` // crypto, nft, token, fiat
+	ChainID         *int      `json:"chain_id"`
+	ContractAddress *string   `json:"contract_address"`
+	Decimals        int       `json:"decimals"`
+	TotalSupply     string    `json:"total_supply"`
+	IsActive        bool      `json:"is_active"`
+	IsVerified      bool      `json:"is_verified"`
+	LogoURL         string    `json:"logo_url"`
+	Description     string    `json:"description"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type AssetBalance struct {
-	ID             uuid.UUID `json:"id"`
-	WalletAddress  string    `json:"wallet_address"`
-	AssetID        uuid.UUID `json:"asset_id"`
-	Balance        string    `json:"balance"`
-	Available      string    `json:"available"`
-	Locked         string    `json:"locked"`
-	LastUpdated    time.Time `json:"last_updated"`
+	ID            uuid.UUID `json:"id"`
+	WalletAddress string    `json:"wallet_address"`
+	AssetID       uuid.UUID `json:"asset_id"`
+	Balance       string    `json:"balance"`
+	Available     string    `json:"available"`
+	Locked        string    `json:"locked"`
+	LastUpdated   time.Time `json:"last_updated"`
 }
 
 type AssetPrice struct {
-	ID            uuid.UUID `json:"id"`
-	AssetID       uuid.UUID `json:"asset_id"`
-	Price         string    `json:"price"`
-	Change24h     string    `json:"change_24h"`
-	Volume24h     string    `json:"volume_24h"`
-	MarketCap     string    `json:"market_cap"`
-	Timestamp     time.Time `json:"timestamp"`
+	ID        uuid.UUID `json:"id"`
+	AssetID   uuid.UUID `json:"asset_id"`
+	Price     string    `json:"price"`
+	Change24h string    `json:"change_24h"`
+	Volume24h string    `json:"volume_24h"`
+	MarketCap string    `json:"market_cap"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
 type Transaction struct {
-	ID              uuid.UUID `json:"id"`
-	FromAddress     string    `json:"from_address"`
-	ToAddress       string    `json:"to_address"`
-	AssetID         uuid.UUID `json:"asset_id"`
-	Amount          string    `json:"amount"`
-	Fee             string    `json:"fee"`
-	Status          string    `json:"status"` // pending, confirmed, failed
-	Hash            string    `json:"hash"`
-	ChainID         int       `json:"chain_id"`
-	BlockNumber     *int64    `json:"block_number"`
-	Timestamp       time.Time `json:"timestamp"`
+	ID          uuid.UUID `json:"id"`
+	FromAddress string    `json:"from_address"`
+	ToAddress   string    `json:"to_address"`
+	AssetID     uuid.UUID `json:"asset_id"`
+	Amount      string    `json:"amount"`
+	Fee         string    `json:"fee"`
+	Status      string    `json:"status"` // pending, confirmed, failed
+	Hash        string    `json:"hash"`
+	ChainID     int       `json:"chain_id"`
+	BlockNumber *int64    `json:"block_number"`
+	Timestamp   time.Time `json:"timestamp"`
 }
 
 // Global variables
@@ -553,22 +553,22 @@ func GetWalletAssets(c *gin.Context) {
 // Health check
 func HealthCheck(c *gin.Context) {
 	ctx := context.Background()
-	
+
 	dbStatus := "healthy"
 	if err := db.Ping(ctx); err != nil {
 		dbStatus = "unhealthy"
 	}
-	
+
 	redisStatus := "healthy"
 	if err := redis.Ping(ctx).Err(); err != nil {
 		redisStatus = "unhealthy"
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":     "ok",
-		"database":   dbStatus,
-		"redis":      redisStatus,
-		"timestamp":  time.Now(),
+		"status":    "ok",
+		"database":  dbStatus,
+		"redis":     redisStatus,
+		"timestamp": time.Now(),
 	})
 }
 

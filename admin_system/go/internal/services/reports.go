@@ -19,26 +19,26 @@ func NewReportService() *ReportService {
 }
 
 type ReportConfig struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string    `json:"name"`
-	ReportType  string    `json:"report_type"` // compliance, finance, security, transaction, user
+	ID          uuid.UUID              `json:"id"`
+	Name        string                 `json:"name"`
+	ReportType  string                 `json:"report_type"` // compliance, finance, security, transaction, user
 	Parameters  map[string]interface{} `json:"parameters"`
-	FileFormat  string    `json:"file_format"` // csv, json, pdf
-	IsScheduled bool      `json:"is_scheduled"`
-	Schedule    string    `json:"schedule"` // cron expression
-	CreatedBy   uuid.UUID `json:"created_by"`
-	CreatedAt   time.Time `json:"created_at"`
+	FileFormat  string                 `json:"file_format"` // csv, json, pdf
+	IsScheduled bool                   `json:"is_scheduled"`
+	Schedule    string                 `json:"schedule"` // cron expression
+	CreatedBy   uuid.UUID              `json:"created_by"`
+	CreatedAt   time.Time              `json:"created_at"`
 }
 
 type Report struct {
 	ID          uuid.UUID  `json:"id"`
 	ConfigID    uuid.UUID  `json:"config_id"`
-	Name        string    `json:"name"`
-	FilePath    string    `json:"file_path"`
-	FileSize    int64     `json:"file_size"`
-	Status      string    `json:"status"` // pending, generating, completed, failed
-	CreatedBy   uuid.UUID `json:"created_by"`
-	CreatedAt   time.Time `json:"created_at"`
+	Name        string     `json:"name"`
+	FilePath    string     `json:"file_path"`
+	FileSize    int64      `json:"file_size"`
+	Status      string     `json:"status"` // pending, generating, completed, failed
+	CreatedBy   uuid.UUID  `json:"created_by"`
+	CreatedAt   time.Time  `json:"created_at"`
 	CompletedAt *time.Time `json:"completed_at"`
 }
 
@@ -146,13 +146,13 @@ func (s *ReportService) generateComplianceReport(ctx context.Context, params map
 			"user_id":      userID,
 			"email":        email,
 			"username":     username,
-			"kyc_status":  kycStatus,
-			"user_status": userStatus,
-			"doc_type":    docType,
-			"kyc_status":  kycStatus2,
+			"kyc_status":   kycStatus,
+			"user_status":  userStatus,
+			"doc_type":     docType,
+			"kyc_status":   kycStatus2,
 			"submitted_at": submittedAt,
-			"reviewed_at": reviewedAt,
-			"created_at":  createdAt,
+			"reviewed_at":  reviewedAt,
+			"created_at":   createdAt,
 		})
 	}
 	return reports, nil
@@ -184,10 +184,10 @@ func (s *ReportService) generateFinanceReport(ctx context.Context, params map[st
 		}
 
 		reports = append(reports, map[string]interface{}{
-			"date":            date.Format("2006-01-02"),
+			"date":              date.Format("2006-01-02"),
 			"transaction_count": count,
-			"total_volume":    volume,
-			"total_fees":      fees,
+			"total_volume":      volume,
+			"total_fees":        fees,
 		})
 	}
 	return reports, nil
@@ -221,12 +221,12 @@ func (s *ReportService) generateSecurityReport(ctx context.Context, params map[s
 
 		reports = append(reports, map[string]interface{}{
 			"log_id":        logID,
-			"admin_id":     adminID,
-			"admin_name":   username,
-			"action":       action,
+			"admin_id":      adminID,
+			"admin_name":    username,
+			"action":        action,
 			"resource_type": resourceType,
-			"ip_address":   ipAddress,
-			"created_at":   createdAt,
+			"ip_address":    ipAddress,
+			"created_at":    createdAt,
 		})
 	}
 	return reports, nil
@@ -258,16 +258,16 @@ func (s *ReportService) generateTransactionReport(ctx context.Context, params ma
 		}
 
 		reports = append(reports, map[string]interface{}{
-			"id":          id,
-			"user_id":     userID,
-			"type":        txType,
-			"amount":      amount,
-			"currency":    currency,
-			"status":      status,
+			"id":           id,
+			"user_id":      userID,
+			"type":         txType,
+			"amount":       amount,
+			"currency":     currency,
+			"status":       status,
 			"from_address": fromAddr,
-			"to_address":  toAddr,
-			"tx_hash":     txHash,
-			"created_at":  createdAt,
+			"to_address":   toAddr,
+			"tx_hash":      txHash,
+			"created_at":   createdAt,
 		})
 	}
 	return reports, nil
@@ -298,14 +298,14 @@ func (s *ReportService) generateUserReport(ctx context.Context, params map[strin
 		}
 
 		reports = append(reports, map[string]interface{}{
-			"id":          id,
-			"email":       email,
-			"username":    username,
-			"kyc_status":  kycStatus,
-			"status":      status,
-			"country":     country,
-			"created_at":  createdAt,
-			"last_login":  lastLogin,
+			"id":         id,
+			"email":      email,
+			"username":   username,
+			"kyc_status": kycStatus,
+			"status":     status,
+			"country":    country,
+			"created_at": createdAt,
+			"last_login": lastLogin,
 		})
 	}
 	return reports, nil

@@ -8,8 +8,9 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
 };
 use pbkdf2::pbkdf2_hmac;
-use sha2::{Sha256, Sha512};
+use sha2::{Sha256, Sha512, Digest};
 use zeroize::Zeroize;
+use rand::RngCore;
 
 /// Number of PBKDF2 iterations
 const PBKDF2_ITERATIONS: u32 = 100_000;
@@ -114,11 +115,7 @@ fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; KEY_LENGTH], Encryptio
 
 /// Generate random bytes
 fn getrandom(dest: &mut [u8]) -> Result<(), EncryptionError> {
-    use std::mem::MaybeUninit;
-    // Simple random - in production use proper CSPRNG
-    for byte in dest.iter_mut() {
-        *byte = OsRng.next_u32() as u8;
-    }
+    OsRng.fill_bytes(dest);
     Ok(())
 }
 
@@ -281,24 +278,6 @@ impl std::fmt::Display for EncryptionError {
 }
 
 impl std::error::Error for EncryptionError {}
-
-/// Get random bytes using OsRng
-fn getrandom(dest: &mut [u8]) -> Result<(), EncryptionError> {
-    for byte in dest.iter_mut() {
-        *byte = rand_byte();
-    }
-    Ok(())
-}
-
-/// Get random byte
-fn rand_byte() -> u8 {
-    use std::time::SystemTime;
-    let nanos = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .subsec_nanos();
-    (nanos % 256) as u8
-}
 
 #[cfg(test)]
 mod tests {

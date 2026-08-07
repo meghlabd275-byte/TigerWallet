@@ -1,7 +1,7 @@
 /**
  * TigerWallet Admin Go Backend
  * High-load, distributed admin operations
- * 
+ *
  * Complete implementation with:
  * - PostgreSQL database
  * - Redis caching
@@ -44,16 +44,16 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort  string
-	DBHost      string
-	DBPort      string
-	DBUser      string
-	DBPassword  string
-	DBName      string
-	RedisHost   string
-	RedisPort   string
+	ServerPort    string
+	DBHost        string
+	DBPort        string
+	DBUser        string
+	DBPassword    string
+	DBName        string
+	RedisHost     string
+	RedisPort     string
 	RedisPassword string
-	JWTSecret   string
+	JWTSecret     string
 	EncryptionKey string
 }
 
@@ -85,8 +85,8 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type Admin struct {
-	ID                uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
-	Username          string     `gorm:"uniqueIndex;not null" json:"username"`
+	ID               uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	Username         string     `gorm:"uniqueIndex;not null" json:"username"`
 	Email            string     `gorm:"uniqueIndex;not null" json:"email"`
 	PasswordHash     string     `gorm:"not null" json:"-"`
 	Role             string     `gorm:"default:admin" json:"role"`
@@ -103,48 +103,48 @@ type Admin struct {
 }
 
 type User struct {
-	ID               uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
-	UserID           string    `gorm:"uniqueIndex" json:"user_id"`
-	Username         string    `json:"username"`
-	Email            string    `gorm:"index" json:"email"`
-	Phone            string    `json:"phone"`
-	PasswordHash     string    `json:"-"`
-	WalletAddress    string    `json:"wallet_address"`
-	Status           string    `gorm:"default:active" json:"status"`
-	Tier             int       `gorm:"default:0" json:"tier"`
-	EmailVerified    bool      `gorm:"default:false" json:"email_verified"`
-	PhoneVerified    bool      `gorm:"default:false" json:"phone_verified"`
-	KYCStatus        string    `gorm:"default:none" json:"kyc_status"`
-	KYCLevel         int       `gorm:"default:0" json:"kyc_level"`
-	WhiteLabelID     *uuid.UUID `gorm:"index" json:"white_label_id"`
-	ReferrerID       *string   `json:"referrer_id"`
-	ReferralCode     string    `gorm:"uniqueIndex" json:"referral_code"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
-	LastLoginAt       *time.Time `json:"last_login_at"`
-	Country          string    `json:"country"`
-	IPAddress        string    `json:"ip_address"`
+	ID            uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID        string     `gorm:"uniqueIndex" json:"user_id"`
+	Username      string     `json:"username"`
+	Email         string     `gorm:"index" json:"email"`
+	Phone         string     `json:"phone"`
+	PasswordHash  string     `json:"-"`
+	WalletAddress string     `json:"wallet_address"`
+	Status        string     `gorm:"default:active" json:"status"`
+	Tier          int        `gorm:"default:0" json:"tier"`
+	EmailVerified bool       `gorm:"default:false" json:"email_verified"`
+	PhoneVerified bool       `gorm:"default:false" json:"phone_verified"`
+	KYCStatus     string     `gorm:"default:none" json:"kyc_status"`
+	KYCLevel      int        `gorm:"default:0" json:"kyc_level"`
+	WhiteLabelID  *uuid.UUID `gorm:"index" json:"white_label_id"`
+	ReferrerID    *string    `json:"referrer_id"`
+	ReferralCode  string     `gorm:"uniqueIndex" json:"referral_code"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	LastLoginAt   *time.Time `json:"last_login_at"`
+	Country       string     `json:"country"`
+	IPAddress     string     `json:"ip_address"`
 }
 
 type KycRequest struct {
-	ID              uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
-	UserID          uuid.UUID  `gorm:"index" json:"user_id"`
-	Level           int       `gorm:"default:1" json:"level"`
-	DocumentType    string    `json:"document_type"`
-	DocumentNumber  string    `json:"document_number"`
-	DocumentFront   string    `json:"document_front"`
-	DocumentBack    string    `json:"document_back"`
-	SelfieImage     string    `json:"selfie_image"`
-	FirstName       string    `json:"first_name"`
-	LastName        string    `json:"last_name"`
-	DateOfBirth     string    `json:"date_of_birth"`
-	Country         string    `json:"country"`
-	Address         string    `json:"address"`
-	Status          string    `gorm:"default:pending" json:"status"`
-	RejectReason    string    `json:"reject_reason"`
-	ReviewedBy      *uuid.UUID `json:"reviewed_by"`
-	ReviewedAt      *time.Time `json:"reviewed_at"`
-	CreatedAt       time.Time `json:"created_at"`
+	ID             uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID         uuid.UUID  `gorm:"index" json:"user_id"`
+	Level          int        `gorm:"default:1" json:"level"`
+	DocumentType   string     `json:"document_type"`
+	DocumentNumber string     `json:"document_number"`
+	DocumentFront  string     `json:"document_front"`
+	DocumentBack   string     `json:"document_back"`
+	SelfieImage    string     `json:"selfie_image"`
+	FirstName      string     `json:"first_name"`
+	LastName       string     `json:"last_name"`
+	DateOfBirth    string     `json:"date_of_birth"`
+	Country        string     `json:"country"`
+	Address        string     `json:"address"`
+	Status         string     `gorm:"default:pending" json:"status"`
+	RejectReason   string     `json:"reject_reason"`
+	ReviewedBy     *uuid.UUID `json:"reviewed_by"`
+	ReviewedAt     *time.Time `json:"reviewed_at"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 type Transaction struct {
@@ -174,7 +174,7 @@ type Withdrawal struct {
 	TxHash      string     `json:"tx_hash"`
 	ApprovedBy  *uuid.UUID `json:"approved_by"`
 	ProcessedAt *time.Time `json:"processed_at"`
-	CreatedAt   time.Time `json:"created_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 type Token struct {
@@ -197,17 +197,17 @@ type Token struct {
 }
 
 type TradingPair struct {
-	ID          uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
-	BaseTokenID uuid.UUID `json:"base_token_id"`
+	ID           uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	BaseTokenID  uuid.UUID `json:"base_token_id"`
 	QuoteTokenID uuid.UUID `json:"quote_token_id"`
-	PairName    string    `json:"pair_name"`
-	Price       string    `json:"price"`
-	Volume24h   string    `json:"volume_24h"`
-	Liquidity   string    `json:"liquidity"`
-	Status      string    `gorm:"default:active" json:"status"`
-	ChainID     int       `json:"chain_id"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	PairName     string    `json:"pair_name"`
+	Price        string    `json:"price"`
+	Volume24h    string    `json:"volume_24h"`
+	Liquidity    string    `json:"liquidity"`
+	Status       string    `gorm:"default:active" json:"status"`
+	ChainID      int       `json:"chain_id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type Blockchain struct {
@@ -226,22 +226,22 @@ type Blockchain struct {
 }
 
 type FeeStructure struct {
-	ID          uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
-	FeeType     string    `json:"fee_type"`
-	Asset       string    `json:"asset"`
-	FeePercent  string    `json:"fee_percent"`
-	FeeFixed    string    `json:"fee_fixed"`
-	MinFee      string    `json:"min_fee"`
-	MaxFee      string    `json:"max_fee"`
-	Tier        string    `json:"tier"`
-	IsActive    bool      `gorm:"default:true" json:"is_active"`
-	ChainID     int       `json:"chain_id"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID         uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	FeeType    string    `json:"fee_type"`
+	Asset      string    `json:"asset"`
+	FeePercent string    `json:"fee_percent"`
+	FeeFixed   string    `json:"fee_fixed"`
+	MinFee     string    `json:"min_fee"`
+	MaxFee     string    `json:"max_fee"`
+	Tier       string    `json:"tier"`
+	IsActive   bool      `gorm:"default:true" json:"is_active"`
+	ChainID    int       `json:"chain_id"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type WhiteLabel struct {
-	ID                  uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	ID                 uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
 	ClientID           string     `gorm:"uniqueIndex" json:"client_id"`
 	CompanyName        string     `json:"company_name"`
 	Domain             string     `gorm:"uniqueIndex" json:"domain"`
@@ -252,15 +252,15 @@ type WhiteLabel struct {
 	PrimaryColor       string     `json:"primary_color"`
 	SecondaryColor     string     `json:"secondary_color"`
 	ThemeMode          string     `json:"theme_mode"`
-	Features           JSON        `gorm:"type:jsonb" json:"features"`
-	MaxUsers           int         `gorm:"default:1000" json:"max_users"`
-	MaxDailyVolume     float64     `gorm:"default:1000000" json:"max_daily_volume"`
-	PlatformFeePercent float64     `gorm:"default:20" json:"platform_fee_percent"`
-	CustomFeePercent   float64     `gorm:"default:0" json:"custom_fee_percent"`
-	ContactEmail       string      `json:"contact_email"`
-	ContactPhone       string      `json:"contact_phone"`
-	ActivatedAt        *time.Time  `json:"activated_at"`
-	ExpiresAt          *time.Time  `json:"expires_at"`
+	Features           JSON       `gorm:"type:jsonb" json:"features"`
+	MaxUsers           int        `gorm:"default:1000" json:"max_users"`
+	MaxDailyVolume     float64    `gorm:"default:1000000" json:"max_daily_volume"`
+	PlatformFeePercent float64    `gorm:"default:20" json:"platform_fee_percent"`
+	CustomFeePercent   float64    `gorm:"default:0" json:"custom_fee_percent"`
+	ContactEmail       string     `json:"contact_email"`
+	ContactPhone       string     `json:"contact_phone"`
+	ActivatedAt        *time.Time `json:"activated_at"`
+	ExpiresAt          *time.Time `json:"expires_at"`
 	CreatedAt          time.Time  `json:"created_at"`
 }
 
@@ -279,49 +279,49 @@ type Ticket struct {
 }
 
 type AuditLog struct {
-	ID            uuid.UUID     `gorm:"type:uuid;primaryKey" json:"id"`
-	AdminID       *uuid.UUID   `gorm:"index" json:"admin_id"`
-	Action        string       `json:"action"`
-	ResourceType  string       `json:"resource_type"`
-	ResourceID    string       `json:"resource_id"`
-	Details       JSON         `gorm:"type:jsonb" json:"details"`
-	IPAddress     string       `json:"ip_address"`
-	UserAgent     string       `json:"user_agent"`
-	Success       bool         `gorm:"default:true" json:"success"`
-	ErrorMessage  string       `json:"error_message"`
-	CreatedAt     time.Time    `json:"created_at"`
+	ID           uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	AdminID      *uuid.UUID `gorm:"index" json:"admin_id"`
+	Action       string     `json:"action"`
+	ResourceType string     `json:"resource_type"`
+	ResourceID   string     `json:"resource_id"`
+	Details      JSON       `gorm:"type:jsonb" json:"details"`
+	IPAddress    string     `json:"ip_address"`
+	UserAgent    string     `json:"user_agent"`
+	Success      bool       `gorm:"default:true" json:"success"`
+	ErrorMessage string     `json:"error_message"`
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 type FeatureFlag struct {
-	ID                uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
-	Name             string    `gorm:"uniqueIndex" json:"name"`
-	Description      string    `json:"description"`
-	IsEnabled        bool      `gorm:"default:false" json:"is_enabled"`
-	RolloutPercentage int      `gorm:"default:0" json:"rollout_percentage"`
-	UpdatedBy        *uuid.UUID `json:"updated_by"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID                uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	Name              string     `gorm:"uniqueIndex" json:"name"`
+	Description       string     `json:"description"`
+	IsEnabled         bool       `gorm:"default:false" json:"is_enabled"`
+	RolloutPercentage int        `gorm:"default:0" json:"rollout_percentage"`
+	UpdatedBy         *uuid.UUID `json:"updated_by"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
 type Notification struct {
 	ID               uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
-	AdminID         uuid.UUID `gorm:"index" json:"admin_id"`
-	Title           string    `json:"title"`
-	Message         string    `json:"message"`
-	NotificationType string   `json:"notification_type"`
-	IsRead          bool      `gorm:"default:false" json:"is_read"`
-	CreatedAt       time.Time `json:"created_at"`
+	AdminID          uuid.UUID `gorm:"index" json:"admin_id"`
+	Title            string    `json:"title"`
+	Message          string    `json:"message"`
+	NotificationType string    `json:"notification_type"`
+	IsRead           bool      `gorm:"default:false" json:"is_read"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 type Webhook struct {
-	ID          uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
-	Name        string    `json:"name"`
-	URL         string    `json:"url"`
-	Secret      string    `json:"-"`
-	Events      JSON      `gorm:"type:jsonb" json:"events"`
-	IsActive    bool      `gorm:"default:true" json:"is_active"`
-	CreatedAt   time.Time `json:"created_at"`
-	CreatedBy   uuid.UUID `json:"created_by"`
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	Name      string    `json:"name"`
+	URL       string    `json:"url"`
+	Secret    string    `json:"-"`
+	Events    JSON      `gorm:"type:jsonb" json:"events"`
+	IsActive  bool      `gorm:"default:true" json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
+	CreatedBy uuid.UUID `json:"created_by"`
 }
 
 type Backup struct {
@@ -819,10 +819,10 @@ func handleRejectKyc(c *gin.Context) {
 	adminID := c.MustGet("admin_id").(uuid.UUID)
 
 	db.Model(&KycRequest{}).Where("id = ?", kycID).Updates(map[string]interface{}{
-		"status":       "rejected",
+		"status":        "rejected",
 		"reject_reason": req.Reason,
-		"reviewed_by":  adminID,
-		"reviewed_at":  time.Now(),
+		"reviewed_by":   adminID,
+		"reviewed_at":   time.Now(),
 	})
 
 	logAudit(adminID, "KYC_REJECTED", "kyc", kycID.String(), "", c.ClientIP(), c.Request.UserAgent(), true, "")
@@ -878,7 +878,7 @@ func handleApproveWithdrawal(c *gin.Context) {
 	adminID := c.MustGet("admin_id").(uuid.UUID)
 
 	db.Model(&Withdrawal{}).Where("id = ?", withdrawalID).Updates(map[string]interface{}{
-		"status":     "approved",
+		"status":      "approved",
 		"approved_by": adminID,
 	})
 
@@ -1098,9 +1098,9 @@ func handleDashboardStats(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"total_users":        totalUsers,
-		"active_users":      activeUsers,
+		"active_users":       activeUsers,
 		"suspended_users":    suspendedUsers,
-		"pending_kyc":       pendingKyc,
+		"pending_kyc":        pendingKyc,
 		"total_tokens":       totalTokens,
 		"total_transactions": totalTransactions,
 	})
@@ -1173,11 +1173,11 @@ func handleBroadcastNotification(c *gin.Context) {
 	for _, admin := range admins {
 		notification := Notification{
 			ID:               uuid.New(),
-			AdminID:         admin.ID,
-			Title:           req.Title,
-			Message:         req.Message,
+			AdminID:          admin.ID,
+			Title:            req.Title,
+			Message:          req.Message,
 			NotificationType: req.Type,
-			CreatedAt:       time.Now(),
+			CreatedAt:        time.Now(),
 		}
 		db.Create(&notification)
 	}

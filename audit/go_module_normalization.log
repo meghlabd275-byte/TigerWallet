@@ -1,0 +1,158 @@
+
+== ./admin/go ==
+./main.go:239:78: expected type, found '}'
+./main.go:245:83: expected type, found '}'
+./main.go:248:92: expected type, found '}'
+./main.go:252:90: expected type, found '}'
+./main.go:256:80: expected type, found '}'
+./main.go:260:78: expected type, found '}'
+./main.go:263:90: expected type, found '}'
+./main.go:267:76: expected type, found '}'
+./main.go:270:84: expected type, found '}'
+./main.go:274:94: expected type, found '}'
+./main.go:278:87: expected type, found '}'
+STATUS=2
+
+== ./admin_console/go ==
+go: downloading github.com/google/uuid v1.5.0
+go: downloading github.com/golang-jwt/jwt/v5 v5.2.0
+go: downloading github.com/redis/go-redis/v9 v9.3.1
+go: downloading github.com/jackc/pgx/v5 v5.5.1
+go: downloading golang.org/x/crypto v0.17.0
+go: downloading golang.org/x/net v0.17.0
+go: downloading golang.org/x/sys v0.15.0
+go: downloading github.com/cespare/xxhash/v2 v2.2.0
+go: downloading github.com/jackc/puddle/v2 v2.2.1
+go: downloading github.com/bsm/ginkgo/v2 v2.12.0
+go: downloading github.com/bsm/gomega v1.27.10
+go: downloading golang.org/x/text v0.14.0
+go: downloading github.com/go-playground/locales v0.14.1
+go: downloading github.com/go-playground/assert/v2 v2.2.0
+go: downloading gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
+go: downloading github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
+go: downloading github.com/modern-go/reflect2 v1.0.2
+go: downloading github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311
+go: downloading golang.org/x/arch v0.3.0
+go: downloading golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543
+go: downloading github.com/twitchyliquid64/golang-asm v0.15.1
+go: downloading github.com/klauspost/cpuid/v2 v2.2.4
+go: downloading github.com/kr/pretty v0.3.0
+go: finding module for package github.com/rogpeppe/go-internal/fmtsort
+go: finding module for package github.com/kr/text
+go: downloading github.com/rogpeppe/go-internal v1.16.0
+go: downloading github.com/kr/text v0.2.0
+go: toolchain upgrade needed to resolve github.com/rogpeppe/go-internal/fmtsort
+go: github.com/rogpeppe/go-internal@v1.16.0 requires go >= 1.25 (running go 1.22.2; GOTOOLCHAIN=local)
+STATUS=1
+
+== ./admin_go ==
+go: downloading github.com/gin-contrib/cors v1.4.0
+go: downloading github.com/golang-jwt/jwt/v5 v5.0.0
+go: downloading github.com/google/uuid v1.3.1
+go: downloading golang.org/x/crypto v0.14.0
+go: downloading gorm.io/driver/postgres v1.5.2
+go: downloading gorm.io/gorm v1.25.4
+go: downloading github.com/stretchr/testify v1.8.4
+go: downloading github.com/jackc/pgx/v5 v5.3.1
+go: downloading github.com/ugorji/go v1.2.7
+go: downloading github.com/jinzhu/now v1.1.5
+go: downloading golang.org/x/sys v0.13.0
+go: downloading github.com/jinzhu/inflection v1.0.0
+go: downloading golang.org/x/text v0.13.0
+go: downloading github.com/go-playground/assert/v2 v2.0.1
+go: downloading github.com/nxadm/tail v1.4.8
+go: downloading gopkg.in/yaml.v2 v2.4.0
+go: downloading github.com/rogpeppe/go-internal v1.8.0
+go: downloading gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
+go: downloading github.com/fsnotify/fsnotify v1.4.9
+?   	github.com/tigerwallet/admin-go	[no test files]
+STATUS=0
+
+== ./admin_panel/go ==
+./internal/handlers/handlers.go:81:47: expected ';', found '{'
+STATUS=2
+
+== ./admin_platform/go ==
+./admin_bulk_operations.go:596:25: expected type, found '.'
+STATUS=2
+
+== ./admin_services/go ==
+./admin_service_complete.go:1980:9: expected '(', found '.'
+./admin_service_complete.go:1985:9: expected '(', found '.'
+./main.go:239:78: expected type, found '}'
+./main.go:245:83: expected type, found '}'
+./main.go:248:92: expected type, found '}'
+./main.go:252:90: expected type, found '}'
+./main.go:256:80: expected type, found '}'
+./main.go:260:78: expected type, found '}'
+./main.go:263:90: expected type, found '}'
+./main.go:267:76: expected type, found '}'
+./main.go:270:84: expected type, found '}'
+./main.go:274:94: expected type, found '}'
+./main.go:278:87: expected type, found '}'
+STATUS=2
+
+== ./admin_system/go ==
+./main.go:239:78: expected type, found '}'
+./main.go:245:83: expected type, found '}'
+./main.go:248:92: expected type, found '}'
+./main.go:252:90: expected type, found '}'
+./main.go:256:80: expected type, found '}'
+./main.go:260:78: expected type, found '}'
+./main.go:263:90: expected type, found '}'
+./main.go:267:76: expected type, found '}'
+./main.go:270:84: expected type, found '}'
+./main.go:274:94: expected type, found '}'
+./main.go:278:87: expected type, found '}'
+STATUS=2
+
+== ./api_gateway ==
+./rest_api/license_api.go:6:1: expected 'package', found 'import'
+./rest_api/license_api.go:7:2: expected ';', found "crypto/aes"
+./rest_api/security.go:402:1: expected declaration, found EOF
+./rest_api/sync_api.go:6:1: expected 'package', found 'import'
+./rest_api/sync_api.go:7:2: expected ';', found "encoding/json"
+./rest_api/white_label_api.go:6:1: expected 'package', found 'type'
+STATUS=2
+
+== ./asset_management ==
+go: downloading github.com/mattn/go-isatty v0.0.20
+go: downloading golang.org/x/net v0.19.0
+go: downloading google.golang.org/protobuf v1.32.0
+go: downloading github.com/jackc/pgservicefile v0.0.0-20231201235250-de7065d80cb9
+go: downloading github.com/go-playground/validator/v10 v10.16.0
+go: downloading github.com/pelletier/go-toml/v2 v2.1.1
+go: downloading github.com/ugorji/go/codec v1.2.12
+go: downloading golang.org/x/sync v0.6.0
+go: downloading github.com/bytedance/sonic v1.10.2
+go: downloading github.com/gabriel-vasile/mimetype v1.4.3
+go: downloading golang.org/x/arch v0.7.0
+go: downloading github.com/chenzhuoyu/base64x v0.0.0-20230717121745-296ad89f973d
+go: downloading github.com/klauspost/cpuid/v2 v2.2.6
+go: downloading github.com/chenzhuoyu/iasm v0.9.1
+go: finding module for package github.com/rogpeppe/go-internal/fmtsort
+go: finding module for package github.com/kr/text
+go: toolchain upgrade needed to resolve github.com/rogpeppe/go-internal/fmtsort
+go: github.com/rogpeppe/go-internal@v1.16.0 requires go >= 1.25 (running go 1.22.2; GOTOOLCHAIN=local)
+STATUS=1
+
+== ./auto_approval_workflow/go ==
+go: downloading github.com/jackc/pgx/v4 v4.18.1
+go: downloading github.com/jackc/pgconn v1.14.0
+go: downloading github.com/jackc/pgio v1.0.0
+go: downloading github.com/jackc/pgproto3/v2 v2.3.2
+go: downloading github.com/jackc/pgtype v1.14.0
+go: downloading github.com/cockroachdb/apd v1.1.0
+go: downloading github.com/gofrs/uuid v4.0.0+incompatible
+go: downloading github.com/shopspring/decimal v1.2.0
+go: downloading github.com/jackc/puddle v1.3.0
+go: downloading github.com/jackc/pgproto3 v1.1.0
+go: downloading github.com/jackc/chunkreader/v2 v2.0.1
+go: downloading github.com/jackc/pgmock v0.0.0-20210724152146-4ad1a8207f65
+go: downloading gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127
+go: downloading github.com/pkg/errors v0.9.1
+go: downloading github.com/lib/pq v1.10.2
+go: downloading github.com/jackc/chunkreader v1.0.0
+go: downloading github.com/kr/pretty v0.1.0
+go: downloading github.com/kr/text v0.1.0
+go: downloading golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1

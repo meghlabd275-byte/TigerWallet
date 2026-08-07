@@ -28,8 +28,8 @@ import (
 // ============================================================================
 
 const (
-	API_VERSION        = "1.0.0"
-	MAX_REQUEST_SIZE  = 10 * 1024 * 1024
+	API_VERSION      = "1.0.0"
+	MAX_REQUEST_SIZE = 10 * 1024 * 1024
 	DEFAULT_TIMEOUT  = 30 * time.Second
 )
 
@@ -40,17 +40,17 @@ const (
 type UserRole string
 
 const (
-	RoleSuperAdmin         UserRole = "super_admin"
+	RoleSuperAdmin       UserRole = "super_admin"
 	RoleExchangeOperator UserRole = "exchange_operator"
-	RoleFinanceAdmin      UserRole = "finance_admin"
+	RoleFinanceAdmin     UserRole = "finance_admin"
 	RoleClient           UserRole = "client"
 )
 
 type ConnectionStatus string
 
 const (
-	StatusActive   ConnectionStatus = "active"
-	StatusPaused  ConnectionStatus = "paused"
+	StatusActive ConnectionStatus = "active"
+	StatusPaused ConnectionStatus = "paused"
 	StatusError  ConnectionStatus = "error"
 	StatusClosed ConnectionStatus = "closed"
 )
@@ -61,87 +61,87 @@ const (
 
 // Connected CEX (Centralized Exchange)
 type ConnectedCEX struct {
-	ID              string    `json:"id"`
-	UserID          string    `json:"user_id"` // Admin user ID
-	ExchangeName    string    `json:"exchange_name"` // binance, coinbase, kraken, okx, etc.
-	AccountID       string    `json:"account_id"` // Account ID on the exchange
-	APIKey         string    `json:"api_key"` // Encrypted API key
-	APISecret      string    `json:"api_secret"` // Encrypted API secret
-	Passphrase     string    `json:"passphrase,omitempty"` // For exchanges that require it
-	IsActive       bool      `json:"is_active"`
-	CanTrade       bool      `json:"can_trade"`
-	CanWithdraw    bool      `json:"can_withdraw"`
-	CanDeposit     bool      `json:"can_deposit"`
-	RateLimitRPM   int       `json:"rate_limit_per_minute"`
-	MonthlyFeeUSD  float64   `json:"monthly_fee_usd"`
+	ID            string    `json:"id"`
+	UserID        string    `json:"user_id"`              // Admin user ID
+	ExchangeName  string    `json:"exchange_name"`        // binance, coinbase, kraken, okx, etc.
+	AccountID     string    `json:"account_id"`           // Account ID on the exchange
+	APIKey        string    `json:"api_key"`              // Encrypted API key
+	APISecret     string    `json:"api_secret"`           // Encrypted API secret
+	Passphrase    string    `json:"passphrase,omitempty"` // For exchanges that require it
+	IsActive      bool      `json:"is_active"`
+	CanTrade      bool      `json:"can_trade"`
+	CanWithdraw   bool      `json:"can_withdraw"`
+	CanDeposit    bool      `json:"can_deposit"`
+	RateLimitRPM  int       `json:"rate_limit_per_minute"`
+	MonthlyFeeUSD float64   `json:"monthly_fee_usd"`
 	TotalFeesPaid float64   `json:"total_fees_paid"`
-	CreatedAt      time.Time `json:"created_at"`
+	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 	LastSyncAt    time.Time `json:"last_sync_at"`
 }
 
 // Connected DEX (Decentralized Exchange)
 type ConnectedDEX struct {
-	ID              string    `json:"id"`
-	UserID          string    `json:"user_id"`
-	DEXName         string    `json:"dex_name"` // uniswap, pancakeswap, sushiswap, etc.
+	ID             string    `json:"id"`
+	UserID         string    `json:"user_id"`
+	DEXName        string    `json:"dex_name"` // uniswap, pancakeswap, sushiswap, etc.
 	ChainID        int       `json:"chain_id"`
-	WalletAddress  string    `json:"wallet_address"` // Wallet connected to DEX
-	RouterAddress string    `json:"router_address"` // DEX router address
-	FactoryAddress string   `json:"factory_address"` // DEX factory address
+	WalletAddress  string    `json:"wallet_address"`  // Wallet connected to DEX
+	RouterAddress  string    `json:"router_address"`  // DEX router address
+	FactoryAddress string    `json:"factory_address"` // DEX factory address
 	IsActive       bool      `json:"is_active"`
-	MaxSlippageBps int      `json:"max_slippage_bps"` // Maximum slippage in basis points
-	GasLimit       int       `json:"gas_limit"` // Default gas limit
+	MaxSlippageBps int       `json:"max_slippage_bps"` // Maximum slippage in basis points
+	GasLimit       int       `json:"gas_limit"`        // Default gas limit
 	NativeGasToken bool      `json:"native_gas_token"` // Pay gas with native token
 	MonthlyFeeUSD  float64   `json:"monthly_fee_usd"`
-	TotalFeesPaid float64   `json:"total_fees_paid"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	LastTxAt     time.Time `json:"last_tx_at"`
+	TotalFeesPaid  float64   `json:"total_fees_paid"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	LastTxAt       time.Time `json:"last_tx_at"`
 }
 
 // External Platform (for external users connecting their TigerSwap to other platforms)
 type ExternalPlatformConnection struct {
-	ID              string    `json:"id"`
-	UserID          string    `json:"user_id"` // External user ID
-	PlatformName   string    `json:"platform_name"` // Name of external platform
+	ID            string    `json:"id"`
+	UserID        string    `json:"user_id"`       // External user ID
+	PlatformName  string    `json:"platform_name"` // Name of external platform
 	PlatformType  string    `json:"platform_type"` // cex, dex, wallet, protocol
-	APIKey        string    `json:"api_key"` // TigerSwap API key for this connection
+	APIKey        string    `json:"api_key"`       // TigerSwap API key for this connection
 	WebhookURL    string    `json:"webhook_url"`
 	IsActive      bool      `json:"is_active"`
-	CanTrade     bool      `json:"can_trade"`
-	CanSwap      bool      `json:"can_swap"`
-	CanAddLiq    bool      `json:"can_add_liquidity"`
-	CanBridge    bool      `json:"can_bridge"`
-	RateLimitRPM int       `json:"rate_limit_per_minute"`
-	Tier         string    `json:"tier"` // free, basic, pro, enterprise
-	MonthlyFeeUSD float64  `json:"monthly_fee_usd"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	CanTrade      bool      `json:"can_trade"`
+	CanSwap       bool      `json:"can_swap"`
+	CanAddLiq     bool      `json:"can_add_liquidity"`
+	CanBridge     bool      `json:"can_bridge"`
+	RateLimitRPM  int       `json:"rate_limit_per_minute"`
+	Tier          string    `json:"tier"` // free, basic, pro, enterprise
+	MonthlyFeeUSD float64   `json:"monthly_fee_usd"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // Tier Configuration for External Access
 type TierConfig struct {
-	ID                string    `json:"id"`
-	Name              string    `json:"name"` // free, basic, pro, enterprise
-	DisplayName      string    `json:"display_name"`
-	MonthlyFeeUSD     float64   `json:"monthly_fee_usd"`
-	MaxAPICallsPerMin int       `json:"max_api_calls_per_minute"`
-	MaxDailyVolume   float64   `json:"max_daily_volume"`
-	MaxPositions    int       `json:"max_positions"`
-	Features         map[string]bool `json:"features"` // trading, swap, liquidity, bridge, api_access
-	IsActive         bool      `json:"is_active"`
+	ID                string          `json:"id"`
+	Name              string          `json:"name"` // free, basic, pro, enterprise
+	DisplayName       string          `json:"display_name"`
+	MonthlyFeeUSD     float64         `json:"monthly_fee_usd"`
+	MaxAPICallsPerMin int             `json:"max_api_calls_per_minute"`
+	MaxDailyVolume    float64         `json:"max_daily_volume"`
+	MaxPositions      int             `json:"max_positions"`
+	Features          map[string]bool `json:"features"` // trading, swap, liquidity, bridge, api_access
+	IsActive          bool            `json:"is_active"`
 }
 
 // Trading Order
 type Order struct {
-	ID            string    `json:"id"`
-	UserID        string    `json:"user_id"`
-	Platform     string    `json:"platform"` // cex name or dex name
+	ID           string    `json:"id"`
+	UserID       string    `json:"user_id"`
+	Platform     string    `json:"platform"`      // cex name or dex name
 	PlatformType string    `json:"platform_type"` // cex, dex
-	Symbol       string    `json:"symbol"` // e.g., BTC/USDT
-	Side         string    `json:"side"` // buy, sell
-	Type         string    `json:"type"` // market, limit, stop_loss
+	Symbol       string    `json:"symbol"`        // e.g., BTC/USDT
+	Side         string    `json:"side"`          // buy, sell
+	Type         string    `json:"type"`          // market, limit, stop_loss
 	Price        string    `json:"price,omitempty"`
 	Amount       string    `json:"amount"`
 	FilledAmount string    `json:"filled_amount"`
@@ -150,41 +150,41 @@ type Order struct {
 	FeeToken     string    `json:"fee_token"`
 	TxHash       string    `json:"tx_hash,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	ExecutedAt  time.Time `json:"executed_at,omitempty"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	ExecutedAt   time.Time `json:"executed_at,omitempty"`
 }
 
 // Swap Order (for DEX swaps)
 type SwapOrder struct {
-	ID              string    `json:"id"`
-	UserID          string    `json:"user_id"`
-	Platform       string    `json:"platform"` // DEX name
-	ChainID        int       `json:"chain_id"`
-	TokenIn        string    `json:"token_in"`
-	TokenOut       string    `json:"token_out"`
-	AmountIn       string    `json:"amount_in"`
-	AmountOutMin   string    `json:"amount_out_min"`
-	Recipient     string    `json:"recipient"`
-	Deadline       int       `json:"deadline"`
-	Route          []string  `json:"route"` // Token path
-	Status        string    `json:"status"` // pending, completed, failed
-	TxHash         string    `json:"tx_hash"`
-	GasUsed        string    `json:"gas_used"`
-	FeeUSD         float64   `json:"fee_usd"`
-	PriceImpact   float64   `json:"price_impact"`
-	CreatedAt     time.Time `json:"created_at"`
-	ExecutedAt    time.Time `json:"executed_at"`
+	ID           string    `json:"id"`
+	UserID       string    `json:"user_id"`
+	Platform     string    `json:"platform"` // DEX name
+	ChainID      int       `json:"chain_id"`
+	TokenIn      string    `json:"token_in"`
+	TokenOut     string    `json:"token_out"`
+	AmountIn     string    `json:"amount_in"`
+	AmountOutMin string    `json:"amount_out_min"`
+	Recipient    string    `json:"recipient"`
+	Deadline     int       `json:"deadline"`
+	Route        []string  `json:"route"`  // Token path
+	Status       string    `json:"status"` // pending, completed, failed
+	TxHash       string    `json:"tx_hash"`
+	GasUsed      string    `json:"gas_used"`
+	FeeUSD       float64   `json:"fee_usd"`
+	PriceImpact  float64   `json:"price_impact"`
+	CreatedAt    time.Time `json:"created_at"`
+	ExecutedAt   time.Time `json:"executed_at"`
 }
 
 // Fee Collection
 type FeeCollection struct {
-	ID              string    `json:"id"`
-	UserID          string    `json:"user_id"`
-	FeeType        string    `json:"fee_type"` // swap, trading, api_key, subscription, listing
-	Platform      string    `json:"platform,omitempty"` // For platform-specific fees
-	AmountUSD    float64   `json:"amount_usd"`
-	AmountToken  string    `json:"amount_token"`
-	TokenSymbol  string    `json:"token_symbol"`
+	ID          string    `json:"id"`
+	UserID      string    `json:"user_id"`
+	FeeType     string    `json:"fee_type"`           // swap, trading, api_key, subscription, listing
+	Platform    string    `json:"platform,omitempty"` // For platform-specific fees
+	AmountUSD   float64   `json:"amount_usd"`
+	AmountToken string    `json:"amount_token"`
+	TokenSymbol string    `json:"token_symbol"`
 	ChainID     int       `json:"chain_id"`
 	TxHash      string    `json:"tx_hash"`
 	Status      string    `json:"status"` // pending, collected, failed
@@ -193,15 +193,15 @@ type FeeCollection struct {
 
 // Admin Fee Address Configuration
 type AdminFeeAddress struct {
-	ID              string    `json:"id"`
-	FeeType        string    `json:"fee_type"` // swap, trading, bot, api, listing
-	ChainID        int       `json:"chain_id"`
-	TokenSymbol    string    `json:"token_symbol"`
+	ID            string    `json:"id"`
+	FeeType       string    `json:"fee_type"` // swap, trading, bot, api, listing
+	ChainID       int       `json:"chain_id"`
+	TokenSymbol   string    `json:"token_symbol"`
 	WalletAddress string    `json:"wallet_address"` // Where fees are sent
 	IsActive      bool      `json:"is_active"`
-	Priority     int       `json:"priority"` // Higher = preferred
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	Priority      int       `json:"priority"` // Higher = preferred
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // ============================================================================
@@ -209,23 +209,23 @@ type AdminFeeAddress struct {
 // ============================================================================
 
 var (
-	connectedCEXs    = make(map[string]*ConnectedCEX)
-	connectedDEXs   = make(map[string]*ConnectedDEX)
+	connectedCEXs  = make(map[string]*ConnectedCEX)
+	connectedDEXs  = make(map[string]*ConnectedDEX)
 	externalConns  = make(map[string]*ExternalPlatformConnection)
 	tierConfigs    = make(map[string]*TierConfig)
-	orders        = make(map[string]*Order)
-	swapOrders    = make(map[string]*SwapOrder)
+	orders         = make(map[string]*Order)
+	swapOrders     = make(map[string]*SwapOrder)
 	feeCollections = make(map[string]*FeeCollection)
-	adminFeeAddrs = make(map[string]*AdminFeeAddress)
-	sessions     = make(map[string]*Session)
-	encryptionKey []byte
-	mu           sync.RWMutex
+	adminFeeAddrs  = make(map[string]*AdminFeeAddress)
+	sessions       = make(map[string]*Session)
+	encryptionKey  []byte
+	mu             sync.RWMutex
 )
 
 type Session struct {
 	Token     string    `json:"token"`
-	UserID   string    `json:"user_id"`
-	Role     UserRole  `json:"role"`
+	UserID    string    `json:"user_id"`
+	Role      UserRole  `json:"role"`
 	ExpiresAt time.Time `json:"expires_at"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -314,9 +314,9 @@ func initDefaultData() {
 		Name:              "free",
 		DisplayName:       "Free",
 		MonthlyFeeUSD:     0,
-		MaxAPICallsPerMin:  60,
-		MaxDailyVolume:     10000,
-		MaxPositions:       3,
+		MaxAPICallsPerMin: 60,
+		MaxDailyVolume:    10000,
+		MaxPositions:      3,
 		Features:          map[string]bool{"trading": true, "swap": false, "liquidity": false, "bridge": false, "api_access": false},
 		IsActive:          true,
 	}
@@ -329,20 +329,20 @@ func initDefaultData() {
 		MaxAPICallsPerMin: 300,
 		MaxDailyVolume:    100000,
 		MaxPositions:      10,
-		Features:         map[string]bool{"trading": true, "swap": true, "liquidity": false, "bridge": false, "api_access": true},
-		IsActive:         true,
+		Features:          map[string]bool{"trading": true, "swap": true, "liquidity": false, "bridge": false, "api_access": true},
+		IsActive:          true,
 	}
 
 	tierConfigs["pro"] = &TierConfig{
 		ID:                "pro",
 		Name:              "pro",
 		DisplayName:       "Pro",
-		MonthlyFeeUSD:    299,
+		MonthlyFeeUSD:     299,
 		MaxAPICallsPerMin: 1000,
-		MaxDailyVolume:   1000000,
+		MaxDailyVolume:    1000000,
 		MaxPositions:      50,
-		Features:         map[string]bool{"trading": true, "swap": true, "liquidity": true, "bridge": true, "api_access": true},
-		IsActive:         true,
+		Features:          map[string]bool{"trading": true, "swap": true, "liquidity": true, "bridge": true, "api_access": true},
+		IsActive:          true,
 	}
 
 	tierConfigs["enterprise"] = &TierConfig{
@@ -353,53 +353,53 @@ func initDefaultData() {
 		MaxAPICallsPerMin: 10000,
 		MaxDailyVolume:    10000000,
 		MaxPositions:      200,
-		Features:         map[string]bool{"trading": true, "swap": true, "liquidity": true, "bridge": true, "api_access": true},
-		IsActive:         true,
+		Features:          map[string]bool{"trading": true, "swap": true, "liquidity": true, "bridge": true, "api_access": true},
+		IsActive:          true,
 	}
 
 	// Default admin fee addresses (ALL fees go to these)
 	adminFeeAddrs["swap_eth"] = &AdminFeeAddress{
-		ID:              "swap_eth",
-		FeeType:        "swap",
-		ChainID:        1,
-		TokenSymbol:    "ETH",
+		ID:            "swap_eth",
+		FeeType:       "swap",
+		ChainID:       1,
+		TokenSymbol:   "ETH",
 		WalletAddress: "0x0000000000000000000000000000000000000000", // Admin configured
 		IsActive:      true,
-		Priority:     1,
-		CreatedAt:    time.Now(),
+		Priority:      1,
+		CreatedAt:     time.Now(),
 	}
 
 	adminFeeAddrs["swap_bsc"] = &AdminFeeAddress{
-		ID:              "swap_bsc",
-		FeeType:        "swap",
-		ChainID:        56,
-		TokenSymbol:    "BNB",
+		ID:            "swap_bsc",
+		FeeType:       "swap",
+		ChainID:       56,
+		TokenSymbol:   "BNB",
 		WalletAddress: "0x0000000000000000000000000000000000000000",
 		IsActive:      true,
-		Priority:     1,
-		CreatedAt:    time.Now(),
+		Priority:      1,
+		CreatedAt:     time.Now(),
 	}
 
 	adminFeeAddrs["trading"] = &AdminFeeAddress{
-		ID:              "trading",
-		FeeType:        "trading",
-		ChainID:        0,
-		TokenSymbol:    "USD",
+		ID:            "trading",
+		FeeType:       "trading",
+		ChainID:       0,
+		TokenSymbol:   "USD",
 		WalletAddress: "0x0000000000000000000000000000000000000000000",
 		IsActive:      true,
-		Priority:     1,
-		CreatedAt:    time.Now(),
+		Priority:      1,
+		CreatedAt:     time.Now(),
 	}
 
 	adminFeeAddrs["api"] = &AdminFeeAddress{
-		ID:              "api",
-		FeeType:        "api",
-		ChainID:        0,
-		TokenSymbol:    "USD",
+		ID:            "api",
+		FeeType:       "api",
+		ChainID:       0,
+		TokenSymbol:   "USD",
 		WalletAddress: "0x0000000000000000000000000000000000000000",
 		IsActive:      true,
-		Priority:     1,
-		CreatedAt:    time.Now(),
+		Priority:      1,
+		CreatedAt:     time.Now(),
 	}
 
 	fmt.Println("[*] External Trading API initialized")
@@ -518,7 +518,7 @@ func getAdminFeeAddresses(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"addresses": addresses,
-		"count":   len(addresses),
+		"count":     len(addresses),
 	})
 }
 
@@ -530,9 +530,9 @@ func updateAdminFeeAddress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		FeeType        string `json:"fee_type"`
-		ChainID       int    `json:"chain_id"`
-		TokenSymbol   string `json:"token_symbol"`
+		FeeType      string `json:"fee_type"`
+		ChainID      int    `json:"chain_id"`
+		TokenSymbol  string `json:"token_symbol"`
 		WalletAddres string `json:"wallet_address"`
 	}
 
@@ -552,19 +552,19 @@ func updateAdminFeeAddress(w http.ResponseWriter, r *http.Request) {
 	defer mu.Unlock()
 
 	adminFeeAddrs[key] = &AdminFeeAddress{
-		ID:              key,
-		FeeType:        req.FeeType,
-		ChainID:        req.ChainID,
-		TokenSymbol:    req.TokenSymbol,
+		ID:            key,
+		FeeType:       req.FeeType,
+		ChainID:       req.ChainID,
+		TokenSymbol:   req.TokenSymbol,
 		WalletAddress: req.WalletAddres,
 		IsActive:      true,
-		Priority:     1,
-		UpdatedAt:    time.Now(),
+		Priority:      1,
+		UpdatedAt:     time.Now(),
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{
 		"message": "Fee address updated",
-		"id":     key,
+		"id":      key,
 	})
 }
 
@@ -605,12 +605,12 @@ func connectNewCEX(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		ExchangeName string `json:"exchange_name"`
-		APIKey     string `json:"api_key"`
-		APISecret string `json:"api_secret"`
-		Passphrase string `json:"passphrase,omitempty"`
-		CanTrade  bool   `json:"can_trade"`
-		CanWithdraw bool  `json:"can_withdraw"`
-		CanDeposit bool  `json:"can_deposit"`
+		APIKey       string `json:"api_key"`
+		APISecret    string `json:"api_secret"`
+		Passphrase   string `json:"passphrase,omitempty"`
+		CanTrade     bool   `json:"can_trade"`
+		CanWithdraw  bool   `json:"can_withdraw"`
+		CanDeposit   bool   `json:"can_deposit"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -641,15 +641,15 @@ func connectNewCEX(w http.ResponseWriter, r *http.Request) {
 		ID:           generateID(),
 		UserID:       getUserID(r),
 		ExchangeName: req.ExchangeName,
-		APIKey:      encryptedKey,
-		APISecret:   encryptedSecret,
-		Passphrase:  encryptedPassphrase,
-		IsActive:    true,
-		CanTrade:   req.CanTrade,
-		CanWithdraw: req.CanWithdraw,
-		CanDeposit: req.CanDeposit,
-		CreatedAt:  time.Now(),
-		UpdatedAt: time.Now(),
+		APIKey:       encryptedKey,
+		APISecret:    encryptedSecret,
+		Passphrase:   encryptedPassphrase,
+		IsActive:     true,
+		CanTrade:     req.CanTrade,
+		CanWithdraw:  req.CanWithdraw,
+		CanDeposit:   req.CanDeposit,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 
 	mu.Lock()
@@ -660,9 +660,9 @@ func connectNewCEX(w http.ResponseWriter, r *http.Request) {
 	collectFee(getUserID(r), "trading", req.ExchangeName, 0)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"message":    "CEX connected",
-		"id":        cex.ID,
-		"exchange":  cex.ExchangeName,
+		"message":     "CEX connected",
+		"id":          cex.ID,
+		"exchange":    cex.ExchangeName,
 		"monthly_fee": 99.0,
 	})
 }
@@ -696,7 +696,7 @@ func disconnectCEX(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]string{
 		"message": "CEX disconnected",
-		"id":     id,
+		"id":      id,
 	})
 }
 
@@ -734,10 +734,10 @@ func connectNewDEX(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		DEXName        string `json:"dex_name"`
-		ChainID       int    `json:"chain_id"`
-		WalletAddress string `json:"wallet_address"`
-		MaxSlippageBps int   `json:"max_slippage_bps"`
-		GasLimit      int    `json:"gas_limit"`
+		ChainID        int    `json:"chain_id"`
+		WalletAddress  string `json:"wallet_address"`
+		MaxSlippageBps int    `json:"max_slippage_bps"`
+		GasLimit       int    `json:"gas_limit"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -764,13 +764,13 @@ func connectNewDEX(w http.ResponseWriter, r *http.Request) {
 		UserID:         getUserID(r),
 		DEXName:        req.DEXName,
 		ChainID:        req.ChainID,
-		WalletAddress: req.WalletAddress,
-		IsActive:      true,
+		WalletAddress:  req.WalletAddress,
+		IsActive:       true,
 		MaxSlippageBps: req.MaxSlippageBps,
-		GasLimit:      req.GasLimit,
-		MonthlyFeeUSD: 499,
-		CreatedAt:    time.Now(),
-		UpdatedAt:   time.Now(),
+		GasLimit:       req.GasLimit,
+		MonthlyFeeUSD:  499,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 
 	mu.Lock()
@@ -781,10 +781,10 @@ func connectNewDEX(w http.ResponseWriter, r *http.Request) {
 	collectFee(getUserID(r), "trading", req.DEXName, 499)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"message":   "DEX connected",
-		"id":       dex.ID,
-		"dex":      dex.DEXName,
-		"chain":    dex.ChainID,
+		"message":     "DEX connected",
+		"id":          dex.ID,
+		"dex":         dex.DEXName,
+		"chain":       dex.ChainID,
 		"monthly_fee": 499.0,
 	})
 }
@@ -818,7 +818,7 @@ func disconnectDEX(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]string{
 		"message": "DEX disconnected",
-		"id":     id,
+		"id":      id,
 	})
 }
 
@@ -841,7 +841,7 @@ func getExternalConnections(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"connections": conns,
-		"count":      len(conns),
+		"count":       len(conns),
 	})
 }
 
@@ -849,12 +849,12 @@ func connectExternalPlatform(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		PlatformName string `json:"platform_name"`
 		PlatformType string `json:"platform_type"`
-		WebhookURL  string `json:"webhook_url"`
-		Tier       string `json:"tier"`
-		CanTrade   bool   `json:"can_trade"`
-		CanSwap   bool   `json:"can_swap"`
-		CanAddLiq bool   `json:"can_add_liquidity"`
-		CanBridge bool   `json:"can_bridge"`
+		WebhookURL   string `json:"webhook_url"`
+		Tier         string `json:"tier"`
+		CanTrade     bool   `json:"can_trade"`
+		CanSwap      bool   `json:"can_swap"`
+		CanAddLiq    bool   `json:"can_add_liquidity"`
+		CanBridge    bool   `json:"can_bridge"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -880,18 +880,18 @@ func connectExternalPlatform(w http.ResponseWriter, r *http.Request) {
 		ID:            generateID(),
 		UserID:        getUserID(r),
 		PlatformName:  req.PlatformName,
-		PlatformType: req.PlatformType,
-		APIKey:       apiKey,
-		WebhookURL:   req.WebhookURL,
-		IsActive:     true,
-		CanTrade:    req.CanTrade,
-		CanSwap:     req.CanSwap,
-		CanAddLiq:   req.CanAddLiq,
-		CanBridge:   req.CanBridge,
-		Tier:        tier,
+		PlatformType:  req.PlatformType,
+		APIKey:        apiKey,
+		WebhookURL:    req.WebhookURL,
+		IsActive:      true,
+		CanTrade:      req.CanTrade,
+		CanSwap:       req.CanSwap,
+		CanAddLiq:     req.CanAddLiq,
+		CanBridge:     req.CanBridge,
+		Tier:          tier,
 		MonthlyFeeUSD: tierConfig.MonthlyFeeUSD,
-		CreatedAt:   time.Now(),
-		UpdatedAt:  time.Now(),
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	mu.Lock()
@@ -904,10 +904,10 @@ func connectExternalPlatform(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"message":   "Platform connected",
-		"id":       conn.ID,
-		"api_key":  apiKey,
-		"tier":     tier,
+		"message":     "Platform connected",
+		"id":          conn.ID,
+		"api_key":     apiKey,
+		"tier":        tier,
 		"monthly_fee": tierConfig.MonthlyFeeUSD,
 	})
 }
@@ -936,7 +936,7 @@ func disconnectExternalPlatform(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]string{
 		"message": "Platform disconnected",
-		"id":     id,
+		"id":      id,
 	})
 }
 
@@ -946,12 +946,12 @@ func disconnectExternalPlatform(w http.ResponseWriter, r *http.Request) {
 
 func executeCEXTrade(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Platform     string `json:"platform"`
-		Symbol      string `json:"symbol"`
-		Side        string `json:"side"`
-		Type        string `json:"type"`
-		Price       string `json:"price,omitempty"`
-		Amount      string `json:"amount"`
+		Platform string `json:"platform"`
+		Symbol   string `json:"symbol"`
+		Side     string `json:"side"`
+		Type     string `json:"type"`
+		Price    string `json:"price,omitempty"`
+		Amount   string `json:"amount"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -980,18 +980,18 @@ func executeCEXTrade(w http.ResponseWriter, r *http.Request) {
 	collectFee(getUserID(r), "trading", req.Platform, fee)
 
 	order := &Order{
-		ID:        generateID(),
-		UserID:    getUserID(r),
-		Platform: req.Platform,
+		ID:           generateID(),
+		UserID:       getUserID(r),
+		Platform:     req.Platform,
 		PlatformType: "cex",
-		Symbol:   req.Symbol,
-		Side:    req.Side,
-		Type:    req.Type,
-		Amount:  req.Amount,
-		Status:  "pending",
-		Fee:    fee,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Symbol:       req.Symbol,
+		Side:         req.Side,
+		Type:         req.Type,
+		Amount:       req.Amount,
+		Status:       "pending",
+		Fee:          fee,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 
 	mu.Lock()
@@ -1000,20 +1000,20 @@ func executeCEXTrade(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"message": "Order placed",
-		"id":     order.ID,
-		"status": "pending",
-		"fee":    fee,
+		"id":      order.ID,
+		"status":  "pending",
+		"fee":     fee,
 	})
 }
 
 func executeDEXSwap(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Platform   string   `json:"platform"`
-		ChainID   int      `json:"chain_id"`
-		TokenIn  string   `json:"token_in"`
-		TokenOut string   `json:"token_out"`
-		AmountIn string   `json:"amount_in"`
-		Slippage float64  `json:"slippage"`
+		Platform  string  `json:"platform"`
+		ChainID   int     `json:"chain_id"`
+		TokenIn   string  `json:"token_in"`
+		TokenOut  string  `json:"token_out"`
+		AmountIn  string  `json:"amount_in"`
+		Slippage  float64 `json:"slippage"`
 		Recipient string  `json:"recipient"`
 	}
 
@@ -1044,16 +1044,16 @@ func executeDEXSwap(w http.ResponseWriter, r *http.Request) {
 	collectFee(getUserID(r), "swap", req.Platform, fee)
 
 	swap := &SwapOrder{
-		ID:            generateID(),
-		UserID:        getUserID(r),
-		Platform:      req.Platform,
-		ChainID:       req.ChainID,
-		TokenIn:       req.TokenIn,
-		TokenOut:      req.TokenOut,
-		AmountIn:      req.AmountIn,
-		AmountOutMin:  amountOutMin,
+		ID:           generateID(),
+		UserID:       getUserID(r),
+		Platform:     req.Platform,
+		ChainID:      req.ChainID,
+		TokenIn:      req.TokenIn,
+		TokenOut:     req.TokenOut,
+		AmountIn:     req.AmountIn,
+		AmountOutMin: amountOutMin,
 		Recipient:    req.Recipient,
-		Deadline:      int(time.Now().Unix()) + 600,
+		Deadline:     int(time.Now().Unix()) + 600,
 		Status:       "pending",
 		FeeUSD:       fee,
 		PriceImpact:  req.Slippage,
@@ -1065,11 +1065,11 @@ func executeDEXSwap(w http.ResponseWriter, r *http.Request) {
 	mu.Unlock()
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"message":      "Swap initiated",
-		"id":          swap.ID,
-		"status":      "pending",
+		"message":        "Swap initiated",
+		"id":             swap.ID,
+		"status":         "pending",
 		"amount_out_min": amountOutMin,
-		"fee_usd":      fee,
+		"fee_usd":        fee,
 	})
 }
 
@@ -1079,9 +1079,9 @@ func executeDEXSwap(w http.ResponseWriter, r *http.Request) {
 
 func collectFee(userID, feeType, platform string, amountUSD float64) {
 	fee := &FeeCollection{
-		ID:          generateID(),
-		UserID:      userID,
-		FeeType:    feeType,
+		ID:        generateID(),
+		UserID:    userID,
+		FeeType:   feeType,
 		Platform:  platform,
 		AmountUSD: amountUSD,
 		Status:    "collected",
@@ -1097,7 +1097,7 @@ func calculateFee(amount string, feeType string) float64 {
 	// Simplified fee calculation
 	rates := map[string]float64{
 		"trading": 0.001, // 0.1%
-		"swap":   0.003, // 0.3%
+		"swap":    0.003, // 0.3%
 	}
 	return rates[feeType]
 }
@@ -1125,7 +1125,7 @@ func getFeeCollections(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"fees":      fees,
 		"total_usd": total,
-		"count":    len(fees),
+		"count":     len(fees),
 	})
 }
 
@@ -1156,7 +1156,7 @@ func updateUserTier(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		UserID string `json:"user_id"`
-		Tier  string `json:"tier"`
+		Tier   string `json:"tier"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1173,9 +1173,9 @@ func updateUserTier(w http.ResponseWriter, r *http.Request) {
 	// In production, update user's tier in database
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"message":    "User tier updated",
-		"user_id":   req.UserID,
-		"tier":      req.Tier,
+		"message":     "User tier updated",
+		"user_id":     req.UserID,
+		"tier":        req.Tier,
 		"monthly_fee": tierConfig.MonthlyFeeUSD,
 	})
 }
@@ -1189,13 +1189,13 @@ func healthCheck(w http.ResponseWriter, r *http.Request) {
 	defer mu.RUnlock()
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"status":           "healthy",
+		"status":          "healthy",
 		"version":         API_VERSION,
-		"connected_cexs": len(connectedCEXs),
-		"connected_dexs": len(connectedDEXs),
+		"connected_cexs":  len(connectedCEXs),
+		"connected_dexs":  len(connectedDEXs),
 		"external_conns":  len(externalConns),
-		"orders":         len(orders),
-		"swap_orders":    len(swapOrders),
+		"orders":          len(orders),
+		"swap_orders":     len(swapOrders),
 		"fee_collections": len(feeCollections),
 	})
 }

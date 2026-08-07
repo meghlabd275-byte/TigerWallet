@@ -50,7 +50,7 @@ Banking APIs, SWIFT integrations, and enterprise compliance systems are Java-fir
 |------------|----------|
 | Flutter/Dart | Primary UI |
 | Rust (FFI) | Crypto operations |
-| SQLite | Local storage |
+| PostgreSQL API + Hive cache | Synced data and bounded offline cache |
 | Hive | Cache |
 | flutter_secure_storage | Key storage |
 
@@ -59,7 +59,7 @@ Banking APIs, SWIFT integrations, and enterprise compliance systems are Java-fir
 |------------|----------|
 | Flutter | UI |
 | Rust | Crypto backend |
-| SQLite | Local storage |
+| PostgreSQL API + Hive cache | Synced data and bounded offline cache |
 | OS Keychain | Key storage |
 | Tauri (alternative) | Lightweight option |
 
@@ -275,9 +275,9 @@ Wallet Core must NEVER be written in JavaScript, Python, or Go. Rust's memory sa
 | Component | Language | Database | Key Libraries |
 |-----------|----------|----------|---------------|
 | Wallet Core | Rust | N/A | alloy, bitcoin, bip32 |
-| Mobile | Flutter | SQLite | web3dart, solana |
+| Mobile | Flutter | PostgreSQL API + Hive cache | web3dart, solana |
 | Extension | TypeScript | localStorage | ethers, web3-react |
-| Desktop | Flutter/Rust | SQLite | Tauri |
+| Desktop | Flutter/Rust | PostgreSQL API + encrypted bounded cache | Tauri |
 | Backend | Go | PostgreSQL + Redis | gin, pgx, nats |
 | Analytics | Python | TimescaleDB | torch, transformers |
 | AI | Python | Qdrant | langchain |

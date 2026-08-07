@@ -51,7 +51,7 @@ func (s *TwoFactorService) GenerateSecret(userID string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to generate secret: %w", err)
 	}
-	
+
 	return key.Secret(), nil
 }
 
@@ -68,7 +68,7 @@ func (s *TwoFactorService) GenerateQRCode(secret, userID string) string {
 	if err != nil {
 		return ""
 	}
-	
+
 	return key.URL()
 }
 
@@ -83,26 +83,26 @@ func (s *TwoFactorService) ValidateCodeWithWindow(secret, code string, window in
 	if valid {
 		return true
 	}
-	
+
 	// Check adjacent time windows
 	now := time.Now().Unix()
 	for i := 1; i <= window; i++ {
 		if totp.ValidateTime(code, secret, totp.ValidateOpts{
-			Period:    30,
-			Skew:      1,
-			UnixTime:  now + int64(30*i),
+			Period:   30,
+			Skew:     1,
+			UnixTime: now + int64(30*i),
 		}) {
 			return true
 		}
 		if totp.ValidateTime(code, secret, totp.ValidateOpts{
-			Period:    30,
-			Skew:      1,
-			UnixTime:  now - int64(30*i),
+			Period:   30,
+			Skew:     1,
+			UnixTime: now - int64(30*i),
 		}) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -116,17 +116,17 @@ func (s *TwoFactorService) EncryptSecret(secret string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return "", err
 	}
-	
+
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
 		return "", err
 	}
-	
+
 	ciphertext := gcm.Seal(nonce, nonce, []byte(secret), nil)
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
@@ -137,28 +137,28 @@ func (s *TwoFactorService) DecryptSecret(encrypted string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	block, err := aes.NewCipher(s.encryptionKey)
 	if err != nil {
 		return "", err
 	}
-	
+
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return "", err
 	}
-	
+
 	nonceSize := gcm.NonceSize()
 	if len(data) < nonceSize {
 		return "", fmt.Errorf("ciphertext too short")
 	}
-	
+
 	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
 		return "", err
 	}
-	
+
 	return string(plaintext), nil
 }
 
@@ -222,17 +222,17 @@ func (h *HOTPService) GenerateHOTP(counter uint64) string {
 	// Convert counter to bytes
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, counter)
-	
+
 	// Calculate HMAC-SHA1
 	mac := hmac.New(sha1.New, h.secret)
 	mac.Write(buf)
 	hash := mac.Sum(nil)
-	
+
 	// Dynamic truncation
 	offset := hash[len(hash)-1] & 0x0F
 	binary.BigEndian.PutUint32(buf[:4], readUint32BE(hash[offset:offset+4]))
 	otp := (binary.BigEndian.Uint32(buf[:4]) & 0x7FFFFFFF) % 1000000
-	
+
 	return fmt.Sprintf("%06d", otp)
 }
 
@@ -267,14 +267,14 @@ func NewVerificationCodeService() *VerificationCodeService {
 // GenerateCode generates a verification code
 func (v *VerificationCodeService) GenerateCode(identifier string, codeType string, expiry time.Duration) string {
 	code := generateNumericCode(6)
-	
+
 	v.codes[identifier+":"+codeType] = &CodeData{
 		Code:      code,
 		ExpiresAt: time.Now().Add(expiry),
 		Attempts:  0,
 		Used:      false,
 	}
-	
+
 	return code
 }
 
@@ -282,29 +282,29 @@ func (v *VerificationCodeService) GenerateCode(identifier string, codeType strin
 func (v *VerificationCodeService) ValidateCode(identifier string, codeType string, code string) error {
 	key := identifier + ":" + codeType
 	data, exists := v.codes[key]
-	
+
 	if !exists {
 		return fmt.Errorf("code not found")
 	}
-	
+
 	if data.Used {
 		return fmt.Errorf("code already used")
 	}
-	
+
 	if time.Now().After(data.ExpiresAt) {
 		return fmt.Errorf("code expired")
 	}
-	
+
 	if data.Attempts >= 3 {
 		return fmt.Errorf("too many attempts")
 	}
-	
+
 	data.Attempts++
-	
+
 	if data.Code != code {
 		return fmt.Errorf("invalid code")
 	}
-	
+
 	data.Used = true
 	return nil
 }
@@ -338,12 +338,12 @@ type PasswordResetService struct {
 }
 
 type PasswordResetToken struct {
-	UserID     string
-	Token      string
-	ExpiresAt  time.Time
-	Used       bool
-	IPAddress  string
-	UserAgent  string
+	UserID    string
+	Token     string
+	ExpiresAt time.Time
+	Used      bool
+	IPAddress string
+	UserAgent string
 }
 
 func NewPasswordResetService() *PasswordResetService {
@@ -356,7 +356,7 @@ func NewPasswordResetService() *PasswordResetService {
 // GenerateToken generates a password reset token
 func (p *PasswordResetService) GenerateToken(userID, ipAddress, userAgent string) string {
 	token := generateSecureToken(32)
-	
+
 	p.tokens[token] = &PasswordResetToken{
 		UserID:    userID,
 		Token:     token,
@@ -365,26 +365,26 @@ func (p *PasswordResetService) GenerateToken(userID, ipAddress, userAgent string
 		IPAddress: ipAddress,
 		UserAgent: userAgent,
 	}
-	
+
 	return token
 }
 
 // ValidateToken validates a password reset token
 func (p *PasswordResetService) ValidateToken(token string) (*PasswordResetToken, error) {
 	data, exists := p.tokens[token]
-	
+
 	if !exists {
 		return nil, fmt.Errorf("token not found")
 	}
-	
+
 	if data.Used {
 		return nil, fmt.Errorf("token already used")
 	}
-	
+
 	if time.Now().After(data.ExpiresAt) {
 		return nil, fmt.Errorf("token expired")
 	}
-	
+
 	return data, nil
 }
 
@@ -443,7 +443,7 @@ func (e *EmailService) SendTOTPSetupEmail(toEmail, username, qrCodeURL string) e
 		</body>
 		</html>
 	`, username, qrCodeURL)
-	
+
 	return e.sendEmail(toEmail, subject, body)
 }
 
@@ -463,7 +463,7 @@ func (e *EmailService) SendVerificationCodeEmail(toEmail, username, code string)
 		</body>
 		</html>
 	`, username, code)
-	
+
 	return e.sendEmail(toEmail, subject, body)
 }
 
@@ -484,7 +484,7 @@ func (e *EmailService) SendPasswordResetEmail(toEmail, username, resetURL string
 		</body>
 		</html>
 	`, username, resetURL)
-	
+
 	return e.sendEmail(toEmail, subject, body)
 }
 
@@ -500,10 +500,10 @@ func (e *EmailService) sendEmail(toEmail, subject, body string) error {
 // ============================================================================
 
 type SMSService struct {
-	provider    string
-	accountSid  string
-	authToken   string
-	fromNumber  string
+	provider   string
+	accountSid string
+	authToken  string
+	fromNumber string
 }
 
 func NewSMSService(provider, accountSid, authToken, fromNumber string) *SMSService {
@@ -533,12 +533,12 @@ func (s *SMSService) SendAlertSMS(toPhone, message string) error {
 // ============================================================================
 
 type Session struct {
-	ID        string
-	UserID    string
-	IPAddress string
-	UserAgent string
-	CreatedAt time.Time
-	ExpiresAt time.Time
+	ID           string
+	UserID       string
+	IPAddress    string
+	UserAgent    string
+	CreatedAt    time.Time
+	ExpiresAt    time.Time
 	LastActivity time.Time
 }
 
@@ -558,17 +558,17 @@ func NewSessionManager(maxAge time.Duration) *SessionManager {
 func (sm *SessionManager) CreateSession(userID, ipAddress, userAgent string) *Session {
 	sessionID := generateSecureToken(32)
 	now := time.Now()
-	
+
 	session := &Session{
-		ID:        sessionID,
-		UserID:    userID,
-		IPAddress: ipAddress,
-		UserAgent: userAgent,
-		CreatedAt: now,
-		ExpiresAt: now.Add(sm.maxAge),
+		ID:           sessionID,
+		UserID:       userID,
+		IPAddress:    ipAddress,
+		UserAgent:    userAgent,
+		CreatedAt:    now,
+		ExpiresAt:    now.Add(sm.maxAge),
 		LastActivity: now,
 	}
-	
+
 	sm.sessions[sessionID] = session
 	return session
 }
@@ -576,16 +576,16 @@ func (sm *SessionManager) CreateSession(userID, ipAddress, userAgent string) *Se
 // ValidateSession validates a session
 func (sm *SessionManager) ValidateSession(sessionID string) (*Session, error) {
 	session, exists := sm.sessions[sessionID]
-	
+
 	if !exists {
 		return nil, fmt.Errorf("session not found")
 	}
-	
+
 	if time.Now().After(session.ExpiresAt) {
 		delete(sm.sessions, sessionID)
 		return nil, fmt.Errorf("session expired")
 	}
-	
+
 	session.LastActivity = time.Now()
 	return session, nil
 }
@@ -633,12 +633,12 @@ func ValidatePasswordStrength(password string) (bool, string) {
 	if len(password) < 8 {
 		return false, "Password must be at least 8 characters"
 	}
-	
+
 	hasUpper := false
 	hasLower := false
 	hasDigit := false
 	hasSpecial := false
-	
+
 	for _, char := range password {
 		switch {
 		case char >= 'A' && char <= 'Z':
@@ -647,22 +647,30 @@ func ValidatePasswordStrength(password string) (bool, string) {
 			hasLower = true
 		case char >= '0' && char <= '9':
 			hasDigit = true
-		case char == '!' || char == '@' || char == '#' || char == '$' || 
-			 char == '%' || char == '^' || char == '&' || char == '*':
+		case char == '!' || char == '@' || char == '#' || char == '$' ||
+			char == '%' || char == '^' || char == '&' || char == '*':
 			hasSpecial = true
 		}
 	}
-	
+
 	score := 0
-	if hasUpper { score++ }
-	if hasLower { score++ }
-	if hasDigit { score++ }
-	if hasSpecial { score++ }
-	
+	if hasUpper {
+		score++
+	}
+	if hasLower {
+		score++
+	}
+	if hasDigit {
+		score++
+	}
+	if hasSpecial {
+		score++
+	}
+
 	if score < 3 {
 		return false, "Password must contain at least 3 of: uppercase, lowercase, digits, special characters"
 	}
-	
+
 	return true, "Password is strong"
 }
 
@@ -675,12 +683,12 @@ func GenerateSecurePassword(length int, includeSpecial bool) string {
 	if includeSpecial {
 		charset += "!@#$%^&*"
 	}
-	
+
 	b := make([]byte, length)
 	_, _ = rand.Read(b)
 	for i := range b {
 		b[i] = charset[int(b[i])%len(charset)]
 	}
-	
+
 	return string(b)
 }

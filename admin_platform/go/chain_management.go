@@ -14,107 +14,107 @@ import (
 type ChainType string
 
 const (
-	ChainTypeEVM     ChainType = "evm"
-	ChainTypeSolana  ChainType = "solana"
-	ChainTypeTron    ChainType = "tron"
-	ChainTypeSui     ChainType = "sui"
-	ChainTypeAptos   ChainType = "aptos"
-	ChainTypeNear    ChainType = "near"
-	ChainTypeCosmos  ChainType = "cosmos"
+	ChainTypeEVM    ChainType = "evm"
+	ChainTypeSolana ChainType = "solana"
+	ChainTypeTron   ChainType = "tron"
+	ChainTypeSui    ChainType = "sui"
+	ChainTypeAptos  ChainType = "aptos"
+	ChainTypeNear   ChainType = "near"
+	ChainTypeCosmos ChainType = "cosmos"
 )
 
 // Blockchain represents a supported blockchain
 type Blockchain struct {
-	ID          string            `json:"id"`
-	ChainID     int64             `json:"chainId"`
-	Name        string            `json:"name"`
-	Type        ChainType         `json:"type"`
-	Symbol      string            `json:"symbol"`
-	Decimals    int               `json:"decimals"`
-	RPC         string            `json:"rpc"`
-	WSRPC       string            `json:"wsRpc,omitempty"`
-	Explorer    string            `json:"explorer"`
-	ExplorerAPI string            `json:"explorerApi,omitempty"`
-	Logo        string            `json:"logo"`
-	IsNative    bool              `json:"isNative"`
-	WrappedToken string          `json:"wrappedToken,omitempty"`
-	IsEnabled   bool              `json:"isEnabled"`
-	IsTestnet   bool              `json:"isTestnet"`
-	AddedAt     int64             `json:"addedAt"`
-	AddedBy     string            `json:"addedBy"`
+	ID           string            `json:"id"`
+	ChainID      int64             `json:"chainId"`
+	Name         string            `json:"name"`
+	Type         ChainType         `json:"type"`
+	Symbol       string            `json:"symbol"`
+	Decimals     int               `json:"decimals"`
+	RPC          string            `json:"rpc"`
+	WSRPC        string            `json:"wsRpc,omitempty"`
+	Explorer     string            `json:"explorer"`
+	ExplorerAPI  string            `json:"explorerApi,omitempty"`
+	Logo         string            `json:"logo"`
+	IsNative     bool              `json:"isNative"`
+	WrappedToken string            `json:"wrappedToken,omitempty"`
+	IsEnabled    bool              `json:"isEnabled"`
+	IsTestnet    bool              `json:"isTestnet"`
+	AddedAt      int64             `json:"addedAt"`
+	AddedBy      string            `json:"addedBy"`
 	Capabilities ChainCapabilities `json:"capabilities"`
-	GasSettings GasSettings       `json:"gasSettings"`
-	Tokens      []string          `json:"tokens"`
-	Metadata    ChainMetadata     `json:"metadata"`
+	GasSettings  GasSettings       `json:"gasSettings"`
+	Tokens       []string          `json:"tokens"`
+	Metadata     ChainMetadata     `json:"metadata"`
 }
 
 // ChainCapabilities supported features
 type ChainCapabilities struct {
-	Swap          bool `json:"swap"`
-	Bridge        bool `json:"bridge"`
-	Staking       bool `json:"staking"`
-	Farming       bool `json:"farming"`
-	NFT           bool `json:"nft"`
-	DappBrowser   bool `json:"dappBrowser"`
-	MultiSig      bool `json:"multiSig"`
+	Swap           bool `json:"swap"`
+	Bridge         bool `json:"bridge"`
+	Staking        bool `json:"staking"`
+	Farming        bool `json:"farming"`
+	NFT            bool `json:"nft"`
+	DappBrowser    bool `json:"dappBrowser"`
+	MultiSig       bool `json:"multiSig"`
 	HardwareWallet bool `json:"hardwareWallet"`
-	Delegation    bool `json:"delegation"`
-	Governance    bool `json:"governance"`
+	Delegation     bool `json:"delegation"`
+	Governance     bool `json:"governance"`
 }
 
 // GasSettings gas configuration
 type GasSettings struct {
-	GasToken          string  `json:"gasToken"`
-	MinGasPrice       string  `json:"minGasPrice"`
-	MaxGasPrice       string  `json:"maxGasPrice"`
-	AvgGasPrice       string  `json:"avgGasPrice"`
+	GasToken           string  `json:"gasToken"`
+	MinGasPrice        string  `json:"minGasPrice"`
+	MaxGasPrice        string  `json:"maxGasPrice"`
+	AvgGasPrice        string  `json:"avgGasPrice"`
 	GasLimitMultiplier float64 `json:"gasLimitMultiplier"`
-	EIP1559           bool    `json:"eip1559"`
-	GasStationURL     string  `json:"gasStationUrl,omitempty"`
+	EIP1559            bool    `json:"eip1559"`
+	GasStationURL      string  `json:"gasStationUrl,omitempty"`
 }
 
 // ChainMetadata additional chain info
 type ChainMetadata struct {
-	Color     string            `json:"color"`
-	BgColor   string            `json:"bgColor"`
-	Website   string            `json:"website,omitempty"`
-	Social    SocialLinks       `json:"socialLinks,omitempty"`
+	Color   string      `json:"color"`
+	BgColor string      `json:"bgColor"`
+	Website string      `json:"website,omitempty"`
+	Social  SocialLinks `json:"socialLinks,omitempty"`
 }
 
 // SocialLinks social media links
 type SocialLinks struct {
-	Twitter   string `json:"twitter,omitempty"`
-	Discord   string `json:"discord,omitempty"`
-	Telegram  string `json:"telegram,omitempty"`
-	Github    string `json:"github,omitempty"`
+	Twitter  string `json:"twitter,omitempty"`
+	Discord  string `json:"discord,omitempty"`
+	Telegram string `json:"telegram,omitempty"`
+	Github   string `json:"github,omitempty"`
 }
 
 // Token represents a blockchain token
 type Token struct {
-	Address    string  `json:"address"`
-	ChainID    int64   `json:"chainId"`
-	Symbol     string  `json:"symbol"`
-	Name       string  `json:"name"`
-	Decimals   int     `json:"decimals"`
-	Logo       string  `json:"logo"`
-	IsNative   bool    `json:"isNative"`
-	IsStable   bool    `json:"isStable"`
-	IsWhitelisted bool `json:"isWhitelisted"`
-	CoingeckoID string `json:"coingeckoId,omitempty"`
-	Price      string  `json:"price,omitempty"`
-	Change24h  float64 `json:"change24h,omitempty"`
-	Volume24h  string  `json:"volume24h,omitempty"`
-	Liquidity   string  `json:"liquidity,omitempty"`
-	AddedAt    int64    `json:"addedAt"`
-	AddedBy    string  `json:"addedBy"`
+	Address       string  `json:"address"`
+	ChainID       int64   `json:"chainId"`
+	Symbol        string  `json:"symbol"`
+	Name          string  `json:"name"`
+	Decimals      int     `json:"decimals"`
+	Logo          string  `json:"logo"`
+	IsNative      bool    `json:"isNative"`
+	IsStable      bool    `json:"isStable"`
+	IsWhitelisted bool    `json:"isWhitelisted"`
+	CoingeckoID   string  `json:"coingeckoId,omitempty"`
+	Price         string  `json:"price,omitempty"`
+	Change24h     float64 `json:"change24h,omitempty"`
+	Volume24h     string  `json:"volume24h,omitempty"`
+	Liquidity     string  `json:"liquidity,omitempty"`
+	AddedAt       int64   `json:"addedAt"`
+	AddedBy       string  `json:"addedBy"`
 }
 
 // BlockchainManager manages all chains
 type BlockchainManager struct {
-	mu      sync.RWMutex
-	chains  map[string]*Blockchain
-	tokens  map[string][]*Token
-	nextID  int64
+	mu     sync.RWMutex
+	chains map[string]*Blockchain
+	tokens map[string][]*Token
+	nextID int64
 }
 
 func NewBlockchainManager() *BlockchainManager {
@@ -134,8 +134,8 @@ func (m *BlockchainManager) initializeDefaultChains() {
 			Explorer: "https://etherscan.io", Logo: "eth.png", IsNative: true,
 			IsEnabled: true, AddedAt: time.Now().Unix(), AddedBy: "system",
 			Capabilities: ChainCapabilities{Swap: true, Bridge: true, Staking: true, Farming: true, NFT: true, DappBrowser: true, MultiSig: true, HardwareWallet: true, Delegation: true, Governance: true},
-			GasSettings: GasSettings{GasToken: "ETH", MinGasPrice: "20", MaxGasPrice: "500", AvgGasPrice: "30", GasLimitMultiplier: 1.2, EIP1559: true},
-			Metadata: ChainMetadata{Color: "#627EEA", BgColor: "#627EEA20"},
+			GasSettings:  GasSettings{GasToken: "ETH", MinGasPrice: "20", MaxGasPrice: "500", AvgGasPrice: "30", GasLimitMultiplier: 1.2, EIP1559: true},
+			Metadata:     ChainMetadata{Color: "#627EEA", BgColor: "#627EEA20"},
 		},
 		{
 			ID: "bnb-chain", ChainID: 56, Name: "BNB Chain", Type: ChainTypeEVM,
@@ -143,8 +143,8 @@ func (m *BlockchainManager) initializeDefaultChains() {
 			Explorer: "https://bscscan.com", Logo: "bnb.png", IsNative: true,
 			IsEnabled: true, AddedAt: time.Now().Unix(), AddedBy: "system",
 			Capabilities: ChainCapabilities{Swap: true, Bridge: true, Staking: true, Farming: true, NFT: true, DappBrowser: true, MultiSig: true, HardwareWallet: true, Delegation: true, Governance: true},
-			GasSettings: GasSettings{GasToken: "BNB", MinGasPrice: "3", MaxGasPrice: "100", AvgGasPrice: "5", GasLimitMultiplier: 1.1, EIP1559: false},
-			Metadata: ChainMetadata{Color: "#F3BA2F", BgColor: "#F3BA2F20"},
+			GasSettings:  GasSettings{GasToken: "BNB", MinGasPrice: "3", MaxGasPrice: "100", AvgGasPrice: "5", GasLimitMultiplier: 1.1, EIP1559: false},
+			Metadata:     ChainMetadata{Color: "#F3BA2F", BgColor: "#F3BA2F20"},
 		},
 		{
 			ID: "polygon", ChainID: 137, Name: "Polygon", Type: ChainTypeEVM,
@@ -152,8 +152,8 @@ func (m *BlockchainManager) initializeDefaultChains() {
 			Explorer: "https://polygonscan.com", Logo: "matic.png", IsNative: true,
 			IsEnabled: true, AddedAt: time.Now().Unix(), AddedBy: "system",
 			Capabilities: ChainCapabilities{Swap: true, Bridge: true, Staking: true, Farming: true, NFT: true, DappBrowser: true, MultiSig: true, HardwareWallet: true, Delegation: true, Governance: true},
-			GasSettings: GasSettings{GasToken: "MATIC", MinGasPrice: "0.1", MaxGasPrice: "100", AvgGasPrice: "1", GasLimitMultiplier: 1.2, EIP1559: false},
-			Metadata: ChainMetadata{Color: "#8247E5", BgColor: "#8247E520"},
+			GasSettings:  GasSettings{GasToken: "MATIC", MinGasPrice: "0.1", MaxGasPrice: "100", AvgGasPrice: "1", GasLimitMultiplier: 1.2, EIP1559: false},
+			Metadata:     ChainMetadata{Color: "#8247E5", BgColor: "#8247E520"},
 		},
 		{
 			ID: "arbitrum", ChainID: 42161, Name: "Arbitrum One", Type: ChainTypeEVM,
@@ -161,8 +161,8 @@ func (m *BlockchainManager) initializeDefaultChains() {
 			Explorer: "https://arbiscan.io", Logo: "arb.png", IsNative: true,
 			IsEnabled: true, AddedAt: time.Now().Unix(), AddedBy: "system",
 			Capabilities: ChainCapabilities{Swap: true, Bridge: true, Staking: true, Farming: true, NFT: true, DappBrowser: true, MultiSig: true, HardwareWallet: true, Delegation: true, Governance: false},
-			GasSettings: GasSettings{GasToken: "ETH", MinGasPrice: "0.1", MaxGasPrice: "50", AvgGasPrice: "0.2", GasLimitMultiplier: 1.3, EIP1559: true},
-			Metadata: ChainMetadata{Color: "#28A0F0", BgColor: "#28A0F020"},
+			GasSettings:  GasSettings{GasToken: "ETH", MinGasPrice: "0.1", MaxGasPrice: "50", AvgGasPrice: "0.2", GasLimitMultiplier: 1.3, EIP1559: true},
+			Metadata:     ChainMetadata{Color: "#28A0F0", BgColor: "#28A0F020"},
 		},
 		{
 			ID: "optimism", ChainID: 10, Name: "Optimism", Type: ChainTypeEVM,
@@ -170,8 +170,8 @@ func (m *BlockchainManager) initializeDefaultChains() {
 			Explorer: "https://optimistic.etherscan.io", Logo: "op.png", IsNative: true,
 			IsEnabled: true, AddedAt: time.Now().Unix(), AddedBy: "system",
 			Capabilities: ChainCapabilities{Swap: true, Bridge: true, Staking: true, Farming: true, NFT: true, DappBrowser: true, MultiSig: true, HardwareWallet: true, Delegation: true, Governance: false},
-			GasSettings: GasSettings{GasToken: "ETH", MinGasPrice: "0.001", MaxGasPrice: "10", AvgGasPrice: "0.005", GasLimitMultiplier: 1.2, EIP1559: true},
-			Metadata: ChainMetadata{Color: "#FF0420", BgColor: "#FF042020"},
+			GasSettings:  GasSettings{GasToken: "ETH", MinGasPrice: "0.001", MaxGasPrice: "10", AvgGasPrice: "0.005", GasLimitMultiplier: 1.2, EIP1559: true},
+			Metadata:     ChainMetadata{Color: "#FF0420", BgColor: "#FF042020"},
 		},
 		{
 			ID: "avalanche", ChainID: 43114, Name: "Avalanche C-Chain", Type: ChainTypeEVM,
@@ -179,8 +179,8 @@ func (m *BlockchainManager) initializeDefaultChains() {
 			Explorer: "https://snowtrace.io", Logo: "avax.png", IsNative: true,
 			IsEnabled: true, AddedAt: time.Now().Unix(), AddedBy: "system",
 			Capabilities: ChainCapabilities{Swap: true, Bridge: true, Staking: true, Farming: true, NFT: true, DappBrowser: true, MultiSig: true, HardwareWallet: true, Delegation: true, Governance: true},
-			GasSettings: GasSettings{GasToken: "AVAX", MinGasPrice: "25", MaxGasPrice: "500", AvgGasPrice: "30", GasLimitMultiplier: 1.1, EIP1559: false},
-			Metadata: ChainMetadata{Color: "#E84142", BgColor: "#E8414220"},
+			GasSettings:  GasSettings{GasToken: "AVAX", MinGasPrice: "25", MaxGasPrice: "500", AvgGasPrice: "30", GasLimitMultiplier: 1.1, EIP1559: false},
+			Metadata:     ChainMetadata{Color: "#E84142", BgColor: "#E8414220"},
 		},
 		{
 			ID: "base", ChainID: 8453, Name: "Base", Type: ChainTypeEVM,
@@ -188,8 +188,8 @@ func (m *BlockchainManager) initializeDefaultChains() {
 			Explorer: "https://basescan.org", Logo: "base.png", IsNative: true,
 			IsEnabled: true, AddedAt: time.Now().Unix(), AddedBy: "system",
 			Capabilities: ChainCapabilities{Swap: true, Bridge: true, Staking: true, Farming: true, NFT: true, DappBrowser: true, MultiSig: true, HardwareWallet: true, Delegation: true, Governance: false},
-			GasSettings: GasSettings{GasToken: "ETH", MinGasPrice: "0.01", MaxGasPrice: "100", AvgGasPrice: "0.1", GasLimitMultiplier: 1.2, EIP1559: true},
-			Metadata: ChainMetadata{Color: "#0052FF", BgColor: "#0052FF20"},
+			GasSettings:  GasSettings{GasToken: "ETH", MinGasPrice: "0.01", MaxGasPrice: "100", AvgGasPrice: "0.1", GasLimitMultiplier: 1.2, EIP1559: true},
+			Metadata:     ChainMetadata{Color: "#0052FF", BgColor: "#0052FF20"},
 		},
 	}
 
@@ -214,18 +214,18 @@ func (m *BlockchainManager) AddEVMChain(data map[string]interface{}, addedBy str
 	explorer, _ := data["explorer"].(string)
 
 	chain := &Blockchain{
-		ID:          fmt.Sprintf("chain-%d", int64(chainID)),
-		ChainID:     int64(chainID),
-		Name:        name,
-		Type:        ChainTypeEVM,
-		Symbol:      symbol,
-		Decimals:    18,
-		RPC:         rpc,
-		Explorer:    explorer,
-		IsNative:    true,
-		IsEnabled:   true,
-		AddedAt:     time.Now().Unix(),
-		AddedBy:     addedBy,
+		ID:        fmt.Sprintf("chain-%d", int64(chainID)),
+		ChainID:   int64(chainID),
+		Name:      name,
+		Type:      ChainTypeEVM,
+		Symbol:    symbol,
+		Decimals:  18,
+		RPC:       rpc,
+		Explorer:  explorer,
+		IsNative:  true,
+		IsEnabled: true,
+		AddedAt:   time.Now().Unix(),
+		AddedBy:   addedBy,
 		Capabilities: ChainCapabilities{
 			Swap: true, Bridge: true, Staking: true, Farming: true, NFT: true,
 			DappBrowser: true, MultiSig: true, HardwareWallet: true, Delegation: true, Governance: true,
@@ -393,12 +393,12 @@ func main() {
 	fmt.Println("TigerSwap Chain Management Service - Go")
 	fmt.Println("========================================")
 	fmt.Println()
-	
+
 	mgr := NewBlockchainManager()
-	
+
 	fmt.Printf("Initialized with %d chains\n", len(mgr.GetAllChains()))
 	fmt.Println()
-	
+
 	// List enabled chains
 	chains := mgr.GetEnabledChains()
 	fmt.Println("Enabled Chains:")

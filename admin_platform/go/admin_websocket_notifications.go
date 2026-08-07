@@ -2,7 +2,7 @@
  * TigerWallet Admin WebSocket Notification Service
  * Real-time Notifications for Admin Panel
  * High-Performance, Distributed, Ultra-Low Latency
- * 
+ *
  * Features:
  * - Real-time WebSocket connections
  * - Push notifications to admins
@@ -64,7 +64,7 @@ func LoadNotificationConfig() *NotificationConfig {
 type NotificationType string
 
 const (
-	NotificationTypeKYC          NotificationType = "kyc"
+	NotificationTypeKYC         NotificationType = "kyc"
 	NotificationTypeWithdrawal  NotificationType = "withdrawal"
 	NotificationTypeTransaction NotificationType = "transaction"
 	NotificationTypeUser        NotificationType = "user"
@@ -72,7 +72,7 @@ const (
 	NotificationTypeSecurity    NotificationType = "security"
 	NotificationTypeAlert       NotificationType = "alert"
 	NotificationTypeAudit       NotificationType = "audit"
-	NotificationTypeGeneral    NotificationType = "general"
+	NotificationTypeGeneral     NotificationType = "general"
 )
 
 type NotificationPriority string
@@ -85,17 +85,17 @@ const (
 )
 
 type Notification struct {
-	ID          string               `json:"id"`
-	Type        NotificationType     `json:"type"`
-	Priority    NotificationPriority `json:"priority"`
-	Title       string               `json:"title"`
-	Message     string               `json:"message"`
-	Data        map[string]interface{} `json:"data,omitempty"`
-	AdminID     string               `json:"admin_id,omitempty"`
-	Role        string               `json:"role,omitempty"`
-	Read        bool                 `json:"read"`
-	CreatedAt   time.Time            `json:"created_at"`
-	ExpiresAt   *time.Time          `json:"expires_at,omitempty"`
+	ID        string                 `json:"id"`
+	Type      NotificationType       `json:"type"`
+	Priority  NotificationPriority   `json:"priority"`
+	Title     string                 `json:"title"`
+	Message   string                 `json:"message"`
+	Data      map[string]interface{} `json:"data,omitempty"`
+	AdminID   string                 `json:"admin_id,omitempty"`
+	Role      string                 `json:"role,omitempty"`
+	Read      bool                   `json:"read"`
+	CreatedAt time.Time              `json:"created_at"`
+	ExpiresAt *time.Time             `json:"expires_at,omitempty"`
 }
 
 type WSMessage struct {
@@ -139,12 +139,12 @@ type NotificationHub struct {
 }
 
 type HubStats struct {
-	TotalConnections  int64       `json:"total_connections"`
-	ActiveConnections int64       `json:"active_connections"`
-	MessagesSent      int64       `json:"messages_sent"`
-	MessagesReceived  int64       `json:"messages_received"`
-	Errors            int64       `json:"errors"`
-	mu               sync.RWMutex
+	TotalConnections  int64 `json:"total_connections"`
+	ActiveConnections int64 `json:"active_connections"`
+	MessagesSent      int64 `json:"messages_sent"`
+	MessagesReceived  int64 `json:"messages_received"`
+	Errors            int64 `json:"errors"`
+	mu                sync.RWMutex
 }
 
 func NewNotificationHub(config *NotificationConfig, redisClient *redis.Client) *NotificationHub {
@@ -156,22 +156,22 @@ func NewNotificationHub(config *NotificationConfig, redisClient *redis.Client) *
 		unregister:    make(chan *WSClient),
 		redisPub:      redisClient,
 		config:        config,
-		stats:        HubStats{},
+		stats:         HubStats{},
 	}
-	
+
 	return hub
 }
 
 func (h *NotificationHub) Run() {
 	// Start message processor
 	go h.processMessages()
-	
+
 	// Start Redis subscriber for distributed notifications
 	go h.runRedisSubscriber()
-	
+
 	// Start statistics reporter
 	go h.reportStats()
-	
+
 	for {
 		select {
 		case client := <-h.register:
@@ -181,7 +181,7 @@ func (h *NotificationHub) Run() {
 			h.stats.TotalConnections++
 			h.mu.Unlock()
 			log.Printf("Client connected: %s (admin: %s, role: %s)", client.ID, client.AdminID, client.Role)
-			
+
 		case client := <-h.unregister:
 			h.mu.Lock()
 			if _, ok := h.clients[client.ID]; ok {
@@ -190,7 +190,7 @@ func (h *NotificationHub) Run() {
 			}
 			h.mu.Unlock()
 			log.Printf("Client disconnected: %s", client.ID)
-			
+
 		case notification := <-h.broadcast:
 			h.mu.RLock()
 			for _, client := range h.clients {
@@ -218,21 +218,21 @@ func (h *NotificationHub) shouldReceive(client *WSClient, notification *Notifica
 	if notification.Role != "" && notification.Role == client.Role {
 		return true
 	}
-	
+
 	// Admin receives notifications targeted specifically to them
 	if notification.AdminID != "" && notification.AdminID == client.AdminID {
 		return true
 	}
-	
+
 	// System notifications go to everyone
 	if notification.Type == NotificationTypeSystem {
 		return true
 	}
-	
+
 	// Check subscriptions
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	
+
 	if subs, ok := h.subscriptions[client.AdminID]; ok {
 		for _, sub := range subs {
 			for _, eventType := range sub.Events {
@@ -242,27 +242,27 @@ func (h *NotificationHub) shouldReceive(client *WSClient, notification *Notifica
 			}
 		}
 	}
-	
+
 	return false
 }
 
 func (h *NotificationHub) processMessages() {
 	for {
 		notification := <-h.broadcast
-		
+
 		// Store in Redis for persistence
 		ctx := context.Background()
 		notificationJSON, _ := json.Marshal(notification)
-		
+
 		// Store notification
 		h.redisPub.Set(ctx, "notification:"+notification.ID, notificationJSON, 24*time.Hour)
-		
+
 		// Add to admin's notification list
 		if notification.AdminID != "" {
 			h.redisPub.LPush(ctx, "notifications:"+notification.AdminID, notification.ID)
 			h.redisPub.LTrim(ctx, "notifications:"+notification.AdminID, 0, 99) // Keep last 100
 		}
-		
+
 		// Broadcast to all connected clients
 		h.mu.RLock()
 		for _, client := range h.clients {
@@ -279,11 +279,11 @@ func (h *NotificationHub) processMessages() {
 
 func (h *NotificationHub) runRedisSubscriber() {
 	ctx := context.Background()
-	
+
 	// Subscribe to notification channels
 	pubsub := h.redisPub.Subscribe(ctx, "admin:notifications")
 	defer pubsub.Close()
-	
+
 	for {
 		select {
 		case msg := <-pubsub.Channel():
@@ -301,7 +301,7 @@ func (h *NotificationHub) runRedisSubscriber() {
 func (h *NotificationHub) reportStats() {
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
-	
+
 	for range ticker.C {
 		h.stats.mu.RLock()
 		log.Printf("Notification Hub Stats - Active: %d, Total: %d, Sent: %d, Received: %d, Errors: %d",
@@ -318,7 +318,7 @@ func (h *NotificationHub) reportStats() {
 func (h *NotificationHub) Subscribe(adminID string, events []NotificationType) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	
+
 	h.subscriptions[adminID] = append(h.subscriptions[adminID], Subscription{
 		AdminID:   adminID,
 		Events:    events,
@@ -329,13 +329,13 @@ func (h *NotificationHub) Subscribe(adminID string, events []NotificationType) {
 func (h *NotificationHub) Unsubscribe(adminID string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	
+
 	delete(h.subscriptions, adminID)
 }
 
 func (h *NotificationHub) SendToAdmin(adminID string, notification *Notification) {
 	h.broadcast <- notification
-	
+
 	// Also publish to Redis for persistence
 	ctx := context.Background()
 	notificationJSON, _ := json.Marshal(notification)
@@ -377,12 +377,12 @@ func NewNotificationHandler(hub *NotificationHub, config *NotificationConfig, re
 func (h *NotificationHandler) HandleWebSocket(c *gin.Context) {
 	adminID := c.Query("admin_id")
 	role := c.Query("role")
-	
+
 	if adminID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "admin_id required"})
 		return
 	}
-	
+
 	// Upgrade to WebSocket
 	conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{
 		CompressionMode: websocket.CompressionContextTakeover,
@@ -391,7 +391,7 @@ func (h *NotificationHandler) HandleWebSocket(c *gin.Context) {
 		log.Printf("WebSocket upgrade error: %v", err)
 		return
 	}
-	
+
 	client := &WSClient{
 		ID:        uuid.New().String(),
 		AdminID:   adminID,
@@ -402,9 +402,9 @@ func (h *NotificationHandler) HandleWebSocket(c *gin.Context) {
 		CreatedAt: time.Now(),
 		LastPing:  time.Now(),
 	}
-	
+
 	h.hub.register <- client
-	
+
 	// Handle connection
 	go h.handleConnection(client)
 }
@@ -414,15 +414,15 @@ func (h *NotificationHandler) handleConnection(client *WSClient) {
 		h.hub.unregister <- client
 		client.Conn.Close(websocket.StatusNormalClosure, "")
 	}()
-	
+
 	ctx := context.Background()
-	
+
 	// Start ping/pong loop
 	pingChan := make(chan struct{})
 	go func() {
 		ticker := time.NewTicker(h.config.PingInterval)
 		defer ticker.Stop()
-		
+
 		for {
 			select {
 			case <-ticker.C:
@@ -436,17 +436,17 @@ func (h *NotificationHandler) handleConnection(client *WSClient) {
 			}
 		}
 	}()
-	
+
 	// Read loop
 	for {
 		_, message, err := client.Conn.Read(ctx)
 		if err != nil {
 			break
 		}
-		
+
 		h.handleMessage(client, message)
 	}
-	
+
 	close(pingChan)
 }
 
@@ -454,12 +454,12 @@ func (h *NotificationHandler) handleMessage(client *WSClient, message []byte) {
 	h.hub.stats.mu.Lock()
 	h.hub.stats.MessagesReceived++
 	h.hub.stats.mu.Unlock()
-	
+
 	var wsMsg WSMessage
 	if err := json.Unmarshal(message, &wsMsg); err != nil {
 		return
 	}
-	
+
 	switch wsMsg.Type {
 	case "subscribe":
 		var payload struct {
@@ -468,10 +468,10 @@ func (h *NotificationHandler) handleMessage(client *WSClient, message []byte) {
 		if json.Unmarshal(wsMsg.Payload, &payload) == nil {
 			h.hub.Subscribe(client.AdminID, payload.Events)
 		}
-		
+
 	case "unsubscribe":
 		h.hub.Unsubscribe(client.AdminID)
-		
+
 	case "ping":
 		pong := map[string]interface{}{
 			"type":      "pong",
@@ -479,7 +479,7 @@ func (h *NotificationHandler) handleMessage(client *WSClient, message []byte) {
 		}
 		pongData, _ := json.Marshal(pong)
 		client.Send <- pongData
-		
+
 	case "mark_read":
 		var payload struct {
 			NotificationID string `json:"notification_id"`
@@ -487,7 +487,7 @@ func (h *NotificationHandler) handleMessage(client *WSClient, message []byte) {
 		if json.Unmarshal(wsMsg.Payload, &payload) == nil {
 			h.markNotificationRead(client.AdminID, payload.NotificationID)
 		}
-		
+
 	case "mark_all_read":
 		h.markAllNotificationsRead(client.AdminID)
 	}
@@ -495,14 +495,14 @@ func (h *NotificationHandler) handleMessage(client *WSClient, message []byte) {
 
 func (h *NotificationHandler) markNotificationRead(adminID, notificationID string) {
 	ctx := context.Background()
-	
+
 	// Update in Redis
 	notificationKey := "notification:" + notificationID
 	notificationJSON, err := h.redis.Get(ctx, notificationKey).Result()
 	if err != nil {
 		return
 	}
-	
+
 	var notification Notification
 	if json.Unmarshal([]byte(notificationJSON), &notification) == nil {
 		notification.Read = true
@@ -513,13 +513,13 @@ func (h *NotificationHandler) markNotificationRead(adminID, notificationID strin
 
 func (h *NotificationHandler) markAllNotificationsRead(adminID string) {
 	ctx := context.Background()
-	
+
 	// Get all notification IDs
 	notificationIDs, err := h.redis.LRange(ctx, "notifications:"+adminID, 0, -1).Result()
 	if err != nil {
 		return
 	}
-	
+
 	for _, id := range notificationIDs {
 		h.markNotificationRead(adminID, id)
 	}
@@ -531,16 +531,16 @@ func (h *NotificationHandler) GetNotifications(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "admin_id required"})
 		return
 	}
-	
+
 	ctx := context.Background()
-	
+
 	// Get notification IDs
 	notificationIDs, err := h.redis.LRange(ctx, "notifications:"+adminID, 0, 99).Result()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch notifications"})
 		return
 	}
-	
+
 	// Get notifications
 	notifications := make([]Notification, 0, len(notificationIDs))
 	for _, id := range notificationIDs {
@@ -548,16 +548,16 @@ func (h *NotificationHandler) GetNotifications(c *gin.Context) {
 		if err != nil {
 			continue
 		}
-		
+
 		var notification Notification
 		if json.Unmarshal([]byte(notificationJSON), &notification) == nil {
 			notifications = append(notifications, notification)
 		}
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"notifications": notifications,
-		"total":          len(notifications),
+		"total":         len(notifications),
 	})
 }
 
@@ -567,29 +567,29 @@ func (h *NotificationHandler) CreateNotification(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	notification.ID = uuid.New().String()
 	notification.CreatedAt = time.Now()
-	
+
 	// Send notification
 	h.hub.Broadcast(&notification)
-	
+
 	c.JSON(http.StatusCreated, gin.H{
-		"id":         notification.ID,
-		"message":    "Notification sent",
+		"id":      notification.ID,
+		"message": "Notification sent",
 	})
 }
 
 func (h *NotificationHandler) GetStats(c *gin.Context) {
 	h.hub.stats.mu.RLock()
 	defer h.hub.stats.mu.RUnlock()
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"total_connections":  h.hub.stats.TotalConnections,
 		"active_connections": h.hub.stats.ActiveConnections,
 		"messages_sent":      h.hub.stats.MessagesSent,
 		"messages_received":  h.hub.stats.MessagesReceived,
-		"errors":            h.hub.stats.Errors,
+		"errors":             h.hub.stats.Errors,
 	})
 }
 
@@ -598,8 +598,8 @@ func (h *NotificationHandler) GetStats(c *gin.Context) {
 // ============================================================================
 
 type NotificationService struct {
-	hub    *NotificationHub
-	redis  *redis.Client
+	hub   *NotificationHub
+	redis *redis.Client
 }
 
 func NewNotificationService(hub *NotificationHub, redisClient *redis.Client) *NotificationService {
@@ -623,7 +623,7 @@ func (s *NotificationService) NotifyKYC(userID, status, adminID string) {
 		AdminID:   adminID,
 		CreatedAt: time.Now(),
 	}
-	
+
 	s.hub.Broadcast(notification)
 }
 
@@ -641,7 +641,7 @@ func (s *NotificationService) NotifyWithdrawal(withdrawalID, status, adminID str
 		AdminID:   adminID,
 		CreatedAt: time.Now(),
 	}
-	
+
 	s.hub.Broadcast(notification)
 }
 
@@ -654,11 +654,11 @@ func (s *NotificationService) NotifyTransaction(transactionID, status string) {
 		Message:  fmt.Sprintf("Transaction %s: %s", transactionID, status),
 		Data: map[string]interface{}{
 			"transaction_id": transactionID,
-			"status":          status,
+			"status":         status,
 		},
 		CreatedAt: time.Now(),
 	}
-	
+
 	s.hub.Broadcast(notification)
 }
 
@@ -674,7 +674,7 @@ func (s *NotificationService) NotifySecurity(event, details string) {
 		},
 		CreatedAt: time.Now(),
 	}
-	
+
 	s.hub.Broadcast(notification)
 }
 
@@ -687,7 +687,7 @@ func (s *NotificationService) NotifySystem(message string) {
 		Message:   message,
 		CreatedAt: time.Now(),
 	}
-	
+
 	s.hub.Broadcast(notification)
 }
 
@@ -697,9 +697,9 @@ func (s *NotificationService) NotifySystem(message string) {
 
 func main() {
 	log.Println("Starting TigerWallet Admin Notification Service...")
-	
+
 	config := LoadNotificationConfig()
-	
+
 	// Initialize Redis
 	redisOpts, err := redis.ParseURL(config.RedisURL)
 	if err != nil {
@@ -708,43 +708,43 @@ func main() {
 			Addr: "localhost:6379",
 		}
 	}
-	
+
 	redisClient := redis.NewClient(redisOpts)
-	
+
 	// Test Redis connection
 	ctx := context.Background()
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
-	
+
 	// Create hub and handler
 	hub := NewNotificationHub(config, redisClient)
 	handler := NewNotificationHandler(hub, config, redisClient)
-	
+
 	// Start hub
 	go hub.Run()
-	
+
 	// Setup HTTP server
 	r := gin.Default()
-	
+
 	// WebSocket endpoint
 	r.GET("/ws", handler.HandleWebSocket)
-	
+
 	// API endpoints
 	api := r.Group("/api/v1/notifications")
 	{
 		api.GET("", handler.GetNotifications)
 		api.POST("", handler.CreateNotification)
 	}
-	
+
 	// Stats
 	r.GET("/stats", handler.GetStats)
-	
+
 	// Health
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy"})
 	})
-	
+
 	addr := ":" + config.Port
 	log.Printf("Notification service listening on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, r))

@@ -13,37 +13,37 @@ import (
 
 // ChainConfig chain configuration
 type ChainConfig struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	Symbol       string   `json:"symbol"`
-	Category     string   `json:"category"`
-	Status       string   `json:"status"`
-	ChainID      int64    `json:"chainId"`
-	NetworkID    int64    `json:"networkId,omitempty"`
-	RPCURLs      []string `json:"rpcUrls"`
-	ExplorerURLs []string `json:"explorerUrls"`
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	Symbol         string   `json:"symbol"`
+	Category       string   `json:"category"`
+	Status         string   `json:"status"`
+	ChainID        int64    `json:"chainId"`
+	NetworkID      int64    `json:"networkId,omitempty"`
+	RPCURLs        []string `json:"rpcUrls"`
+	ExplorerURLs   []string `json:"explorerUrls"`
 	NativeCurrency struct {
 		Name     string `json:"name"`
 		Symbol   string `json:"symbol"`
 		Decimals int    `json:"decimals"`
 		LogoURL  string `json:"logoUrl,omitempty"`
 	} `json:"nativeCurrency"`
-	BlockTime        int64   `json:"blockTime,omitempty"`
-	GasLimit         int64   `json:"gasLimit,omitempty"`
-	SupportsEIP1559  bool    `json:"supportsEIP1559"`
+	BlockTime         int64  `json:"blockTime,omitempty"`
+	GasLimit          int64  `json:"gasLimit,omitempty"`
+	SupportsEIP1559   bool   `json:"supportsEIP1559"`
 	SupportsFlashbots bool   `json:"supportsFlashbots"`
-	SupportsMEV      bool    `json:"supportsMEV"`
+	SupportsMEV       bool   `json:"supportsMEV"`
 	SupportsMulticall bool   `json:"supportsMulticall"`
-	Notes            string  `json:"notes,omitempty"`
+	Notes             string `json:"notes,omitempty"`
 }
 
 // ChainStats chain statistics
 type ChainStats struct {
-	TotalChains    int `json:"totalChains"`
-	EVMChains      int `json:"evmChains"`
-	NonEVMChains   int `json:"nonEVMChains"`
-	ActiveChains   int `json:"activeChains"`
-	TestnetChains   int `json:"testnetChains"`
+	TotalChains   int `json:"totalChains"`
+	EVMChains     int `json:"evmChains"`
+	NonEVMChains  int `json:"nonEVMChains"`
+	ActiveChains  int `json:"activeChains"`
+	TestnetChains int `json:"testnetChains"`
 }
 
 // ChainRegistry chain registry
@@ -211,8 +211,8 @@ func (r *ChainRegistry) SearchChains(query string) []*ChainConfig {
 
 	for _, chain := range r.chains {
 		if strings.Contains(strings.ToLower(chain.Name), queryLower) ||
-		   strings.Contains(strings.ToLower(chain.ID), queryLower) ||
-		   strings.Contains(strings.ToLower(chain.Symbol), queryLower) {
+			strings.Contains(strings.ToLower(chain.ID), queryLower) ||
+			strings.Contains(strings.ToLower(chain.Symbol), queryLower) {
 			result = append(result, chain)
 		}
 	}
@@ -283,7 +283,7 @@ func chainHandler(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, &APIResponse{
 				Success: true,
 				Data:    registry.GetChainsByCategory(category),
-				Count:  len(registry.GetChainsByCategory(category)),
+				Count:   len(registry.GetChainsByCategory(category)),
 			})
 			return
 		}
@@ -292,7 +292,7 @@ func chainHandler(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, &APIResponse{
 				Success: true,
 				Data:    registry.GetChainsByStatus(status),
-				Count:  len(registry.GetChainsByStatus(status)),
+				Count:   len(registry.GetChainsByStatus(status)),
 			})
 			return
 		}
@@ -301,7 +301,7 @@ func chainHandler(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, &APIResponse{
 				Success: true,
 				Data:    registry.SearchChains(search),
-				Count:  len(registry.SearchChains(search)),
+				Count:   len(registry.SearchChains(search)),
 			})
 			return
 		}

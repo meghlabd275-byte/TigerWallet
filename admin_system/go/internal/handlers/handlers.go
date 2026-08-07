@@ -438,9 +438,9 @@ func (h *AlertHandler) Resolve(c *gin.Context) {
 
 func GetAdminStats(c *gin.Context) {
 	stats := map[string]interface{}{
-		"total_admins":  0,
+		"total_admins":    0,
 		"active_sessions": 0,
-		"system_health": "healthy",
+		"system_health":   "healthy",
 	}
 	c.JSON(http.StatusOK, stats)
 }

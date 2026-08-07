@@ -120,7 +120,7 @@ export class SmartAccountService {
     const initCodeHash = keccak256(
       ethers.solidityPacked(
         ["bytes", "uint256"],
-        [ethers.AbiCoder.defaultAbiCoder.encode(["address"], [owner]), salt]
+        [ethers.AbiCoder.defaultAbiCoder().encode(["address"], [owner]), salt]
       )
     );
     

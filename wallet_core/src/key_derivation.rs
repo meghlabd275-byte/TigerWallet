@@ -1,13 +1,14 @@
 //! Key derivation module - BIP-32 HD key derivation (PRODUCTION-READY)
 //! This implementation uses proper BIP-32 HD key derivation with HMAC-SHA512
 
+use std::str::FromStr;
 use bip32::{ChildNumber, DerivationPath, XPrv, XPub};
 use k256::ecdsa::{SigningKey, VerifyingKey, signature::Signer};
 use k256::ecdsa:: signature::Verifier;
 use sha2::{Sha256, Digest, Sha512};
 use hmac::{Hmac, Mac};
-use base58::{ToBase58, FromBase58};
-use ripemd160::{Ripemd160, Digest as RipemdDigest};
+use ripemd::Ripemd160;
+use ethereum_types::U256;
 
 use super::{ChainConfig, ChainType, DerivedAddress, WalletError};
 
@@ -135,19 +136,14 @@ fn derive_child_key(parent_key: &[u8], parent_chain_code: &[u8], child_num: Chil
     let il = &result[..32];
     let ir = &result[32..64];
     
-    // Add to parent key (modulo curve order)
-    let parent_key_int = k256::FieldBytes::from_slice(parent_key);
-    let il_int = k256::FieldBytes::from_slice(il);
+    // Add to parent key modulo the secp256k1 curve order.
+    let parent_num = U256::from_big_endian(parent_key);
+    let il_num = U256::from_big_endian(il);
+    let order = U256::from_dec_str("115792089237316195423570985008687907852837564279074904382605163141518161494337")
+        .map_err(|_| WalletError::DerivationFailed("Invalid curve order".to_string()))?;
+    let child = (parent_num + il_num) % order;
     
-    // Curve order n = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
-    let n = k256::Secp256k1::CURVE_ORDER;
-    
-    // Parse as integer and add
-    let parent_num = uint_from_be(il);
-    let parent_be = uint_from_be(parent_key_int);
-    let child = (parent_num + parent_be) % n;
-    
-    if child == 0 {
+    if child == U256::zero() {
         return Err(WalletError::DerivationFailed("Invalid child key (zero)".to_string()));
     }
     
@@ -155,19 +151,10 @@ fn derive_child_key(parent_key: &[u8], parent_chain_code: &[u8], child_num: Chil
     Ok((child_bytes.to_vec(), ir.to_vec()))
 }
 
-/// Convert big-endian bytes to unsigned integer
-fn uint_from_be(bytes: &[u8]) -> k256::elliptic_curve::uint::Uint<4, 1> {
-    k256::elliptic_curve::uint::Uint::<4, 1>::from_be_bytes(
-        bytes.try_into().unwrap_or([0u8; 32])
-    ).unwrap_or(k256::elliptic_curve::uint::Uint::ZERO)
-}
-
-/// Convert unsigned integer to big-endian bytes
-fn uint_to_be(val: k256::elliptic_curve::uint::Uint<4, 1>) -> [u8; 32] {
+/// Convert an unsigned integer to a fixed-width big-endian private-key scalar.
+fn uint_to_be(val: U256) -> [u8; 32] {
     let mut bytes = [0u8; 32];
-    let be = val.to_be_bytes();
-    let len = be.len().min(32);
-    bytes[32-len..].copy_from_slice(&be[..len]);
+    val.to_big_endian(&mut bytes);
     bytes
 }
 
@@ -177,7 +164,8 @@ fn derive_evm_address_from_key(private_key: &[u8]) -> (String, String) {
         .expect("Invalid private key");
     
     let verifying_key = VerifyingKey::from(&signing_key);
-    let address_bytes = verifying_key.to_encoded_point(false).as_bytes();
+    let encoded_point = verifying_key.to_encoded_point(false);
+    let address_bytes = encoded_point.as_bytes();
     
     // Take keccak256 hash of the last 20 bytes (skip first byte which is 0x04 for uncompressed)
     let mut hasher = sha3::Keccak256::new();
@@ -196,7 +184,8 @@ fn derive_bitcoin_address_from_key(private_key: &[u8]) -> (String, String) {
     let signing_key = SigningKey::from_bytes(private_key.into())
         .expect("Invalid private key");
     let verifying_key = VerifyingKey::from(&signing_key);
-    let public_key_bytes = verifying_key.to_encoded_point(false).as_bytes();
+    let encoded_point = verifying_key.to_encoded_point(false);
+    let public_key_bytes = encoded_point.as_bytes();
     
     // SHA256 -> RIPEMD160 = Public Key Hash
     let mut sha = Sha256::new();
@@ -222,7 +211,7 @@ fn derive_bitcoin_address_from_key(private_key: &[u8]) -> (String, String) {
     // Append first 4 bytes of checksum
     address_bytes.extend_from_slice(&checksum[..4]);
     
-    let address = address_bytes.to_base58();
+    let address = bs58::encode(&address_bytes).into_string();
     let public_key = hex::encode(public_key_bytes);
     
     (address, public_key)
@@ -234,7 +223,8 @@ fn derive_bitcoin_segwit_address_from_key(private_key: &[u8], witness_version: u
     let signing_key = SigningKey::from_bytes(private_key.into())
         .expect("Invalid private key");
     let verifying_key = VerifyingKey::from(&signing_key);
-    let public_key_bytes = verifying_key.to_encoded_point(false).as_bytes();
+    let encoded_point = verifying_key.to_encoded_point(false);
+    let public_key_bytes = encoded_point.as_bytes();
     
     // SHA256
     let mut sha = Sha256::new();
@@ -261,7 +251,7 @@ fn derive_bitcoin_segwit_address_from_key(private_key: &[u8], witness_version: u
     // Add checksum (first 4 bytes)
     program.extend_from_slice(&hash3[..4]);
     
-    let address = base58::encode(&program);
+    let address = bs58::encode(&program).into_string();
     let public_key = hex::encode(public_key_bytes);
     
     (address, public_key)
@@ -283,7 +273,7 @@ fn derive_solana_address_from_key(private_key: &[u8]) -> (String, String) {
     public_key_bytes.copy_from_slice(&hash[32..64]);
     
     // Encode as base58
-    let address = base58::encode(&public_key_bytes);
+    let address = bs58::encode(&public_key_bytes).into_string();
     let public_key_hex = hex::encode(public_key_bytes);
     
     (address, public_key_hex)
@@ -295,7 +285,8 @@ fn derive_tron_address_from_key(private_key: &[u8]) -> (String, String) {
     let signing_key = SigningKey::from_bytes(private_key.into())
         .expect("Invalid private key");
     let verifying_key = VerifyingKey::from(&signing_key);
-    let public_key_bytes = verifying_key.to_encoded_point(false).as_bytes();
+    let encoded_point = verifying_key.to_encoded_point(false);
+    let public_key_bytes = encoded_point.as_bytes();
     
     // SHA256 -> RIPEMD160
     let mut hasher = Sha256::new();
@@ -322,7 +313,7 @@ fn derive_tron_address_from_key(private_key: &[u8]) -> (String, String) {
     address_bytes.extend_from_slice(&checksum[..4]);
     
     // Base58Check encode
-    let address = address_bytes.to_base58();
+    let address = bs58::encode(&address_bytes).into_string();
     let public_key = hex::encode(public_key_bytes);
     
     (address, public_key)
@@ -334,7 +325,8 @@ fn derive_cosmos_address_from_key(private_key: &[u8]) -> (String, String) {
     let signing_key = SigningKey::from_bytes(private_key.into())
         .expect("Invalid private key");
     let verifying_key = VerifyingKey::from(&signing_key);
-    let public_key_bytes = verifying_key.to_encoded_point(false).as_bytes();
+    let encoded_point = verifying_key.to_encoded_point(false);
+    let public_key_bytes = encoded_point.as_bytes();
     
     // SHA256 for address
     let mut hasher = Sha256::new();
@@ -419,7 +411,7 @@ fn derive_near_address_from_key(private_key: &[u8]) -> (String, String) {
     public_key_bytes.copy_from_slice(&hash[32..64]);
     
     // NEAR uses base58 encoding
-    let address = base58::encode(&public_key_bytes);
+    let address = bs58::encode(&public_key_bytes).into_string();
     let public_key = hex::encode(public_key_bytes);
     
     (address, public_key)

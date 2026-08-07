@@ -17,26 +17,26 @@ func NewArchivalService() *ArchivalService {
 }
 
 type ArchivePolicy struct {
-	ID             uuid.UUID `json:"id"`
-	Name           string    `json:"name"`
-	TableName      string    `json:"table_name"`
-	RetentionDays  int       `json:"retention_days"`
-	ArchiveAfterDays int     `json:"archive_after_days"`
-	IsActive       bool      `json:"is_active"`
-	CreatedBy      uuid.UUID `json:"created_by"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID               uuid.UUID `json:"id"`
+	Name             string    `json:"name"`
+	TableName        string    `json:"table_name"`
+	RetentionDays    int       `json:"retention_days"`
+	ArchiveAfterDays int       `json:"archive_after_days"`
+	IsActive         bool      `json:"is_active"`
+	CreatedBy        uuid.UUID `json:"created_by"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 type ArchiveRecord struct {
-	ID          uuid.UUID `json:"id"`
-	PolicyID    uuid.UUID `json:"policy_id"`
-	TableName   string    `json:"table_name"`
-	RecordCount int64     `json:"record_count"`
-	ArchivePath string    `json:"archive_path"`
-	Status      string    `json:"status"`
-	StartedAt   time.Time `json:"started_at"`
+	ID          uuid.UUID  `json:"id"`
+	PolicyID    uuid.UUID  `json:"policy_id"`
+	TableName   string     `json:"table_name"`
+	RecordCount int64      `json:"record_count"`
+	ArchivePath string     `json:"archive_path"`
+	Status      string     `json:"status"`
+	StartedAt   time.Time  `json:"started_at"`
 	CompletedAt *time.Time `json:"completed_at"`
-	CreatedBy   uuid.UUID `json:"created_by"`
+	CreatedBy   uuid.UUID  `json:"created_by"`
 }
 
 func (s *ArchivalService) ListPolicies(ctx context.Context) ([]ArchivePolicy, error) {
@@ -86,12 +86,12 @@ func (s *ArchivalService) RunArchive(ctx context.Context, policyID uuid.UUID, ad
 	}
 
 	record := &ArchiveRecord{
-		ID:          uuid.New(),
-		PolicyID:    policyID,
-		TableName:   policy.TableName,
-		Status:      "running",
-		StartedAt:   time.Now(),
-		CreatedBy:   adminID,
+		ID:        uuid.New(),
+		PolicyID:  policyID,
+		TableName: policy.TableName,
+		Status:    "running",
+		StartedAt: time.Now(),
+		CreatedBy: adminID,
 	}
 
 	_, err = database.Pool.Exec(ctx, `

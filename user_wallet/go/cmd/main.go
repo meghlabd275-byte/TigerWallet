@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Configuration
@@ -34,92 +35,92 @@ type Config struct {
 // ============ DATA MODELS ============
 
 type Wallet struct {
-	ID             uuid.UUID              `json:"id"`
-	UserID         uuid.UUID              `json:"user_id"`
-	WalletType     string                `json:"wallet_type"` // tiger, eth, bsc, etc
-	Name           string                `json:"name"`
-	Address        string                `json:"address"`
-	PublicKey     string                `json:"public_key"`
-	PrivateKeyEncrypted string           `json:"private_key_encrypted"`
-	Networks       []string              `json:"networks"`
-	IsActive       bool                  `json:"is_active"`
-	CreatedAt      time.Time             `json:"created_at"`
-	UpdatedAt      time.Time             `json:"updated_at"`
+	ID                  uuid.UUID `json:"id"`
+	UserID              uuid.UUID `json:"user_id"`
+	WalletType          string    `json:"wallet_type"` // tiger, eth, bsc, etc
+	Name                string    `json:"name"`
+	Address             string    `json:"address"`
+	PublicKey           string    `json:"public_key"`
+	PrivateKeyEncrypted string    `json:"private_key_encrypted"`
+	Networks            []string  `json:"networks"`
+	IsActive            bool      `json:"is_active"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 type User struct {
-	ID                uuid.UUID `json:"id"`
-	Email            string   `json:"email"`
-	Username         string   `json:"username"`
-	PasswordHash     string   `json:"-"`
-	Phone            string   `json:"phone"`
-	KYCStatus        string   `json:"kyc_status"` // none, pending, verified, rejected
-	TwoFactorEnabled bool     `json:"two_factor_enabled"`
-	TwoFactorSecret  string   `json:"-"`
-	Status           string   `json:"status"` // active, suspended, deleted
+	ID               uuid.UUID `json:"id"`
+	Email            string    `json:"email"`
+	Username         string    `json:"username"`
+	PasswordHash     string    `json:"-"`
+	Phone            string    `json:"phone"`
+	KYCStatus        string    `json:"kyc_status"` // none, pending, verified, rejected
+	TwoFactorEnabled bool      `json:"two_factor_enabled"`
+	TwoFactorSecret  string    `json:"-"`
+	Status           string    `json:"status"` // active, suspended, deleted
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 type Transaction struct {
-	ID            uuid.UUID   `json:"id"`
-	WalletID     uuid.UUID   `json:"wallet_id"`
-	UserID       uuid.UUID   `json:"user_id"`
-	Type         string      `json:"type"` // send, receive, swap, stake
-	FromAddress  string      `json:"from_address"`
-	ToAddress    string      `json:"to_address"`
-	Amount       string      `json:"amount"`
-	Token        string      `json:"token"`
-	Network      string      `json:"network"`
-	TxHash       string      `json:"tx_hash"`
-	Status       string      `json:"status"` // pending, confirmed, failed
-	Confirmations int        `json:"confirmations"`
-	Fee           string      `json:"fee"`
-	BlockNumber  int64       `json:"block_number"`
-	CreatedAt    time.Time   `json:"created_at"`
-	UpdatedAt    time.Time   `json:"updated_at"`
+	ID            uuid.UUID `json:"id"`
+	WalletID      uuid.UUID `json:"wallet_id"`
+	UserID        uuid.UUID `json:"user_id"`
+	Type          string    `json:"type"` // send, receive, swap, stake
+	FromAddress   string    `json:"from_address"`
+	ToAddress     string    `json:"to_address"`
+	Amount        string    `json:"amount"`
+	Token         string    `json:"token"`
+	Network       string    `json:"network"`
+	TxHash        string    `json:"tx_hash"`
+	Status        string    `json:"status"` // pending, confirmed, failed
+	Confirmations int       `json:"confirmations"`
+	Fee           string    `json:"fee"`
+	BlockNumber   int64     `json:"block_number"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 type Balance struct {
 	ID        uuid.UUID `json:"id"`
-	WalletID uuid.UUID `json:"wallet_id"`
-	UserID   uuid.UUID `json:"user_id"`
-	Token    string    `json:"token"`
-	Network  string    `json:"network"`
-	Balance  string    `json:"balance"`
+	WalletID  uuid.UUID `json:"wallet_id"`
+	UserID    uuid.UUID `json:"user_id"`
+	Token     string    `json:"token"`
+	Network   string    `json:"network"`
+	Balance   string    `json:"balance"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type Token struct {
-	ID          uuid.UUID `json:"id"`
-	Address     string   `json:"address"`
-	Name        string   `json:"name"`
-	Symbol      string   `json:"symbol"`
-	Decimals    int      `json:"decimals"`
-	Network     string   `json:"network"`
-	LogoURL     string   `json:"logo_url"`
-	IsActive    bool     `json:"is_active"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID        uuid.UUID `json:"id"`
+	Address   string    `json:"address"`
+	Name      string    `json:"name"`
+	Symbol    string    `json:"symbol"`
+	Decimals  int       `json:"decimals"`
+	Network   string    `json:"network"`
+	LogoURL   string    `json:"logo_url"`
+	IsActive  bool      `json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type Network struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string   `json:"name"`
-	Symbol      string   `json:"symbol"`
-	ChainID     int64    `json:"chain_id"`
-	RPCURL      string   `json:"rpc_url"`
-	Explorer    string   `json:"explorer"`
-	IsTestnet   bool     `json:"is_testnet"`
-	IsActive    bool     `json:"is_active"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID        uuid.UUID `json:"id"`
+	Name      string    `json:"name"`
+	Symbol    string    `json:"symbol"`
+	ChainID   int64     `json:"chain_id"`
+	RPCURL    string    `json:"rpc_url"`
+	Explorer  string    `json:"explorer"`
+	IsTestnet bool      `json:"is_testnet"`
+	IsActive  bool      `json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Global variables
 var (
-	db     *pgxpool.Pool
-	redis  *redis.Client
-	config Config
-	logger *log.Logger
+	db        *pgxpool.Pool
+	redis     *redis.Client
+	config    Config
+	logger    *log.Logger
 	jwtSecret []byte
 )
 
@@ -367,27 +368,7 @@ func fetchTokenPrice(token, network string) (map[string]interface{}, error) {
 		return result, nil
 	}
 
-	// Mock price data - in production, fetch from price oracle
-	prices := map[string]map[string]float64{
-		"ETH": {"usd": 3250.50, "usd_24h_change": 2.5},
-		"BNB": {"usd": 285.30, "usd_24h_change": 1.2},
-		"MATIC": {"usd": 0.85, "usd_24h_change": -0.5},
-		"BTC": {"usd": 67500.00, "usd_24h_change": 3.2},
-		"USDC": {"usd": 1.00, "usd_24h_change": 0.01},
-		"USDT": {"usd": 1.00, "usd_24h_change": -0.01},
-	}
-
-	result := map[string]interface{}{
-		"token":   token,
-		"network": network,
-		"price":   prices[token],
-		"timestamp": time.Now().Unix(),
-	}
-
-	resultJSON, _ := json.Marshal(result)
-	redis.Set(context.Background(), cacheKey, resultJSON, 60*time.Second)
-
-	return result, nil
+	return nil, fmt.Errorf("live token price provider is not configured")
 }
 
 // Fetcher: Get Network Status
@@ -399,21 +380,7 @@ func fetchNetworkStatus(network string) (map[string]interface{}, error) {
 		return result, nil
 	}
 
-	// Mock network status - in production, check actual nodes
-	status := map[string]interface{}{
-		"network":    network,
-		"status":     "healthy",
-		"latency_ms": 45,
-		"block_time": 12,
-		"gas_price":  "0.001",
-		"last_block": 18500000,
-		"timestamp":  time.Now().Unix(),
-	}
-
-	statusJSON, _ := json.Marshal(status)
-	redis.Set(context.Background(), cacheKey, statusJSON, 30*time.Second)
-
-	return status, nil
+	return nil, fmt.Errorf("live network status provider is not configured")
 }
 
 // Fetcher: Get Gas Price
@@ -423,24 +390,7 @@ func fetchGasPrice(network string) (string, error) {
 		return cached, nil
 	}
 
-	// Mock gas prices
-	gasPrices := map[string]string{
-		"ethereum": "0.001",
-		"bsc":      "0.0005",
-		"polygon":  "0.01",
-		"arbitrum": "0.0001",
-		"optimism": "0.0001",
-		"avalanche": "0.025",
-	}
-
-	gasPrice := gasPrices[network]
-	if gasPrice == "" {
-		gasPrice = "0.001"
-	}
-
-	redis.Set(context.Background(), cacheKey, gasPrice, 30*time.Second)
-
-	return gasPrice, nil
+	return "", fmt.Errorf("live gas-price provider is not configured")
 }
 
 // Fetcher: Get User KYC Status
@@ -484,7 +434,7 @@ func fetchNetworks() ([]Network, error) {
 func fetchTokens(network string) ([]Token, error) {
 	query := `SELECT id, address, name, symbol, decimals, network, logo_url, is_active, created_at
 		FROM tokens WHERE is_active = true`
-	
+
 	var rows *pgxpool.Rows
 	var err error
 
@@ -542,17 +492,22 @@ func register(c *gin.Context) {
 		return
 	}
 
-	// Create user (in production, hash password properly)
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to secure credentials"})
+		return
+	}
+
 	user := User{
-		ID:        uuid.New(),
-		Email:     req.Email,
-		Username:  req.Username,
-		PasswordHash: req.Password, // TODO: hash this!
-		Phone:     req.Phone,
-		KYCStatus: "none",
-		Status:    "active",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:           uuid.New(),
+		Email:        req.Email,
+		Username:     req.Username,
+		PasswordHash: string(passwordHash),
+		Phone:        req.Phone,
+		KYCStatus:    "none",
+		Status:       "active",
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 
 	_, err = db.Exec(context.Background(), `
@@ -591,7 +546,7 @@ func login(c *gin.Context) {
 		SELECT id, email, username, password_hash, status FROM users WHERE email = $1
 	`, req.Email).Scan(&user.ID, &user.Email, &user.Username, &user.PasswordHash, &user.Status)
 
-	if err != nil || user.PasswordHash != req.Password { // TODO: proper password comparison!
+	if err != nil || bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
@@ -758,12 +713,12 @@ func createTransaction(c *gin.Context) {
 	}
 
 	var req struct {
-		WalletID   uuid.UUID `json:"wallet_id" binding:"required"`
-		Type       string    `json:"type" binding:"required"`
-		ToAddress  string    `json:"to_address" binding:"required"`
-		Amount     string    `json:"amount" binding:"required"`
-		Token      string    `json:"token" binding:"required"`
-		Network    string    `json:"network" binding:"required"`
+		WalletID  uuid.UUID `json:"wallet_id" binding:"required"`
+		Type      string    `json:"type" binding:"required"`
+		ToAddress string    `json:"to_address" binding:"required"`
+		Amount    string    `json:"amount" binding:"required"`
+		Token     string    `json:"token" binding:"required"`
+		Network   string    `json:"network" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -773,18 +728,18 @@ func createTransaction(c *gin.Context) {
 	uid, _ := uuid.Parse(userID)
 
 	tx := Transaction{
-		ID:           uuid.New(),
-		WalletID:    req.WalletID,
-		UserID:       uid,
-		Type:         req.Type,
-		ToAddress:    req.ToAddress,
-		Amount:       req.Amount,
-		Token:        req.Token,
-		Network:     req.Network,
-		Status:       "pending",
+		ID:            uuid.New(),
+		WalletID:      req.WalletID,
+		UserID:        uid,
+		Type:          req.Type,
+		ToAddress:     req.ToAddress,
+		Amount:        req.Amount,
+		Token:         req.Token,
+		Network:       req.Network,
+		Status:        "pending",
 		Confirmations: 0,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	_, err := db.Exec(context.Background(), `
@@ -809,9 +764,9 @@ func createWallet(c *gin.Context) {
 	}
 
 	var req struct {
-		Name      string   `json:"name" binding:"required"`
-		WalletType string `json:"wallet_type" binding:"required"`
-		Networks  []string `json:"networks"`
+		Name       string   `json:"name" binding:"required"`
+		WalletType string   `json:"wallet_type" binding:"required"`
+		Networks   []string `json:"networks"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -831,8 +786,8 @@ func createWallet(c *gin.Context) {
 		Address:    address,
 		Networks:   req.Networks,
 		IsActive:   true,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
 	}
 
 	_, err := db.Exec(context.Background(), `

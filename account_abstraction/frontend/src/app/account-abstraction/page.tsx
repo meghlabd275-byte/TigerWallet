@@ -18,49 +18,40 @@ import { BrowserProvider, Contract, formatEther, parseEther } from "ethers";
 import { SmartAccountService } from "@/lib/smartAccount";
 import { EntryPoint__factory, SmartAccountFactory__factory } from "@/lib/contracts";
 
-// Chain configurations
-const CHAIN_CONFIG = {
-  1: {
-    name: "Ethereum Mainnet",
-    entryPoint: "0x5FF137D4b0FD96D8c5E7C8C5e7B8C5E7C8C5E7C",
-    factory: "0xFactoryAddress",
-    bundlerUrl: "https://api.bundler.tigerwallet.io",
-    rpcUrl: "https://eth-mainnet.g.alchemy.com/v2/demo",
-    explorer: "https://etherscan.io",
-  },
-  5: {
-    name: "Goerli Testnet",
-    entryPoint: "0x5FF137D4b0FD96D8c5E7C8C5e7B8C5E7C8C5E7C",
-    factory: "0xFactoryAddress",
-    bundlerUrl: "https://api.bundler.goerli.tigerwallet.io",
-    rpcUrl: "https://eth-goerli.g.alchemy.com/v2/demo",
-    explorer: "https://goerli.etherscan.io",
-  },
-  137: {
-    name: "Polygon Mainnet",
-    entryPoint: "0x5FF137D4b0FD96D8c5E7C8C5e7B8C5E7C8C5E7C",
-    factory: "0xFactoryAddress",
-    bundlerUrl: "https://api.bundler.polygon.tigerwallet.io",
-    rpcUrl: "https://polygon-rpc.com",
-    explorer: "https://polygonscan.com",
-  },
-  8453: {
-    name: "Base Mainnet",
-    entryPoint: "0x5FF137D4b0FD96D8c5E7C8C5e7B8C5E7C8C5E7C",
-    factory: "0xFactoryAddress",
-    bundlerUrl: "https://api.bundler.base.tigerwallet.io",
-    rpcUrl: "https://mainnet.base.org",
-    explorer: "https://basescan.org",
-  },
-  42161: {
-    name: "Arbitrum One",
-    entryPoint: "0x5FF137D4b0FD96D8c5E7C8C5e7B8C5E7C8C5E7C",
-    factory: "0xFactoryAddress",
-    bundlerUrl: "https://api.bundler.arbitrum.tigerwallet.io",
-    rpcUrl: "https://arb1.arbitrum.io/rpc",
-    explorer: "https://arbiscan.io",
-  },
+type ChainConfig = {
+  name: string;
+  entryPoint: string;
+  factory: string;
+  bundlerUrl: string;
+  rpcUrl: string;
+  explorer: string;
 };
+
+const env = (key: string): string => process.env[key] ?? "";
+
+// Deployments are intentionally environment-driven. The UI refuses to submit transactions
+// until every address and endpoint for the selected chain has been configured by deployment.
+const CHAIN_CONFIG: Record<number, ChainConfig> = {
+  1: { name: "Ethereum Mainnet", entryPoint: env("NEXT_PUBLIC_ENTRYPOINT_1"), factory: env("NEXT_PUBLIC_FACTORY_1"), bundlerUrl: env("NEXT_PUBLIC_BUNDLER_1"), rpcUrl: env("NEXT_PUBLIC_RPC_1"), explorer: "https://etherscan.io" },
+  137: { name: "Polygon Mainnet", entryPoint: env("NEXT_PUBLIC_ENTRYPOINT_137"), factory: env("NEXT_PUBLIC_FACTORY_137"), bundlerUrl: env("NEXT_PUBLIC_BUNDLER_137"), rpcUrl: env("NEXT_PUBLIC_RPC_137"), explorer: "https://polygonscan.com" },
+  8453: { name: "Base Mainnet", entryPoint: env("NEXT_PUBLIC_ENTRYPOINT_8453"), factory: env("NEXT_PUBLIC_FACTORY_8453"), bundlerUrl: env("NEXT_PUBLIC_BUNDLER_8453"), rpcUrl: env("NEXT_PUBLIC_RPC_8453"), explorer: "https://basescan.org" },
+  42161: { name: "Arbitrum One", entryPoint: env("NEXT_PUBLIC_ENTRYPOINT_42161"), factory: env("NEXT_PUBLIC_FACTORY_42161"), bundlerUrl: env("NEXT_PUBLIC_BUNDLER_42161"), rpcUrl: env("NEXT_PUBLIC_RPC_42161"), explorer: "https://arbiscan.io" },
+};
+
+function requireChainConfig(chainId: number): ChainConfig {
+  const config = CHAIN_CONFIG[chainId];
+  if (!config || !config.entryPoint || !config.factory || !config.bundlerUrl || !config.rpcUrl) {
+    throw new Error(`Account-abstraction deployment is not configured for chain ${chainId}`);
+  }
+  return config;
+}
+
+function requireEthereumProvider(): NonNullable<Window["ethereum"]> {
+  if (typeof window === "undefined" || !window.ethereum) {
+    throw new Error("An injected EIP-1193 wallet provider is required");
+  }
+  return window.ethereum;
+}
 
 // Entry Point ABI (simplified for demo)
 const ENTRY_POINT_ABI = [
@@ -99,7 +90,7 @@ export default function AccountAbstractionPage() {
       setIsLoading(true);
       setError(null);
       
-      const provider = new BrowserProvider(window.ethereum);
+      const provider = new BrowserProvider(requireEthereumProvider());
       const accounts = await provider.send("eth_requestAccounts", []);
       
       if (accounts.length > 0) {
@@ -121,20 +112,20 @@ export default function AccountAbstractionPage() {
 
   // Check if smart account exists
   const checkSmartAccount = async (eoaAddress: string, chainId: number) => {
-    const config = CHAIN_CONFIG[chainId as keyof typeof CHAIN_CONFIG];
+    const config = requireChainConfig(chainId);
     if (!config) return;
 
     try {
       // Calculate smart account address
       const factoryAddress = config.factory;
-      const factory = SmartAccountFactory__factory.connect(factoryAddress, new BrowserProvider(window.ethereum));
+      const factory = SmartAccountFactory__factory.connect(factoryAddress, new BrowserProvider(requireEthereumProvider()));
       
       const salt = 0;
       const initCode = await factory.getInitCode(eoaAddress);
       const smartAccountAddress = await factory.getAccountAddress(eoaAddress, salt);
       
       // Check if deployed
-      const provider = new BrowserProvider(window.ethereum);
+      const provider = new BrowserProvider(requireEthereumProvider());
       const code = await provider.getCode(smartAccountAddress);
       
       setSmartAccount({
@@ -156,8 +147,8 @@ export default function AccountAbstractionPage() {
     setSuccess(null);
 
     try {
-      const config = CHAIN_CONFIG[chainId as keyof typeof CHAIN_CONFIG];
-      const provider = new BrowserProvider(window.ethereum);
+      const config = requireChainConfig(chainId);
+      const provider = new BrowserProvider(requireEthereumProvider());
       const signer = await provider.getSigner();
       
       const factory = SmartAccountFactory__factory.connect(config.factory, signer);
@@ -189,8 +180,8 @@ export default function AccountAbstractionPage() {
     setSuccess(null);
 
     try {
-      const config = CHAIN_CONFIG[chainId as keyof typeof CHAIN_CONFIG];
-      const provider = new BrowserProvider(window.ethereum);
+      const config = requireChainConfig(chainId);
+      const provider = new BrowserProvider(requireEthereumProvider());
       const signer = await provider.getSigner();
       
       // Get fee data
@@ -201,7 +192,7 @@ export default function AccountAbstractionPage() {
       // Build user operation
       const userOp = {
         sender: smartAccount.address,
-        nonce: smartAccount.nonce,
+        nonce: BigInt(smartAccount.nonce),
         initCode: "0x",
         callData: SmartAccountService.encodeExecute(to, parseEther(amount)),
         callGasLimit: 100000,
@@ -258,21 +249,12 @@ export default function AccountAbstractionPage() {
     }
   }, [accountAddress, smartAccount, chainId]);
 
-  // Add guardian
+  // Guardian recovery requires a deployed smart-account ABI that exposes guardian
+  // storage and recovery methods. The current contract bindings do not expose those
+  // methods, so this path fails closed instead of mutating local state or claiming success.
   const addGuardian = useCallback(async () => {
-    if (!newGuardian || !smartAccount?.address || !window.ethereum) return;
-
-    setIsLoading(true);
-    try {
-      // In production, this would call a smart contract
-      setGuardians(prev => [...prev, newGuardian]);
-      setNewGuardian("");
-      setSuccess("Guardian added successfully!");
-    } catch (err: any) {
-      setError(err.message || "Failed to add guardian");
-    } finally {
-      setIsLoading(false);
-    }
+    if (!newGuardian || !smartAccount?.address) return;
+    setError("Guardian recovery is unavailable because the deployed smart-account contract does not expose guardian methods");
   }, [newGuardian, smartAccount]);
 
   // Switch network
@@ -472,7 +454,7 @@ export default function AccountAbstractionPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <a
-                            href={`${CHAIN_CONFIG[chainId as keyof typeof CHAIN_CONFIG]?.explorer}/tx/${tx.hash}`}
+                            href={`${CHAIN_CONFIG[chainId]?.explorer ?? "#"}/tx/${tx.hash}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-tiger-accent hover:underline text-sm flex items-center gap-1"
