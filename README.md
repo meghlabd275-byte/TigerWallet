@@ -1,11 +1,11 @@
 # TigerWallet - Enterprise-grade Multichain Web3 Wallet
 
-## 🚀 Complete Native Implementation - No Dependencies
+## 🚀 Complete Native Implementation — No Dependencies
 
-TigerWallet is a **100% built-from-scratch** decentralized Web3 wallet ecosystem that does NOT depend on any third-party wallet services.
+TigerWallet is a **100% built-from-scratch** decentralized Web3 wallet ecosystem that doesn't depend on any third-party wallet services.
 
 ### 🌐 Unlimited Blockchain Support
-TigerWallet supports **unlimited EVM and Non-EVM blockchain networks** with full admin management (add, edit, update, remove chains dynamically).
+TigerWallet supports **unlimited EVM and Non-EVM blockchain networks** with full [admin management](./ADMIN_ARCHITECTURE.md) (add, edit, update, remove chains dynamically).
 
 #### EVM Chains (20+ supported)
 - Ethereum, Sepolia, BNB Chain, Polygon, Mumbai, Arbitrum, Optimism, Base, Avalanche, Fantom, Cronos, Celo, Gnosis, Moonbeam, Kava, Linea, zkEVM, Scroll, Mantle, opBNB, and more...
@@ -48,6 +48,8 @@ TigerWallet supports **unlimited EVM and Non-EVM blockchain networks** with full
 
 ## Technology Stack
 
+For more details, see [Tech Stack Details](./TECH_STACK.md).
+
 | Layer | Technology |
 |-------|------------|
 | High Performance Routing | C++ |
@@ -79,7 +81,7 @@ TigerWallet supports **unlimited EVM and Non-EVM blockchain networks** with full
 
 ## Project Structure
 
-```
+```text
 TigerWallet/
 ├── blockchain_layer/           # Native blockchain SDKs
 │   ├── solana_sdk/            # Solana RPC, SPL, AMM
@@ -115,7 +117,14 @@ npm run build
 npm run dev
 ```
 
+## Additional Documentation
+
+For more details, see:
+- [Architecture Overview](./ADMIN_ARCHITECTURE.md)
+- [Tech Stack Details](./TECH_STACK.md)
+- [Installation Guide](./INSTALLATION.md)
+- [Build & Deployment](./BUILD_DEPLOY.md)
+
 ## License
 
-MIT
-Multichain Cryptocurrency Decentralised exchanges 
+MIT License - Multichain Cryptocurrency Decentralized Exchanges
