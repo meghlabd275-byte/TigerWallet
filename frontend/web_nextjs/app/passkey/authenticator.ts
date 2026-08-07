@@ -69,8 +69,8 @@ export class PasskeyAuthenticator {
   private rpName: string;
   private browserAdapter: BrowserAdapter;
 
-  constructor(rpId: string = window.location.hostname, rpName: string = 'TigerWallet') {
-    this.rpId = rpId;
+  constructor(rpId?: string, rpName: string = 'TigerWallet') {
+    this.rpId = rpId ?? (typeof window !== 'undefined' ? window.location.hostname : 'localhost');
     this.rpName = rpName;
     this.browserAdapter = new BrowserAdapter();
   }
@@ -89,7 +89,7 @@ export class PasskeyAuthenticator {
     if (!this.isSupported()) return false;
     
     try {
-      const available = await navigator.credentials?.?.({
+      const available = await navigator.credentials?.create({
         publicKey: {
           challenge: new Uint8Array(32),
           rp: { id: this.rpId, name: this.rpName },

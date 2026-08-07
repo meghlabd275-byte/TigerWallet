@@ -158,152 +158,13 @@ export default function AdminListingPage() {
           })
         }
       } else {
-        // Fallback to mock data if API not available
-        throw new Error('API not available')
+        throw new Error(`Listing API request failed with status ${response.status}`)
       }
-    } catch (err) {
-      console.log('Using mock data - API not available')
-      // Mock listing requests - using mock data when API unavailable
-      setRequests([
-        {
-          id: 'req1',
-          tokenName: 'Tiger Token',
-          tokenSymbol: 'TIGER',
-          tokenAddress: '0x1234...abcd',
-          chain: 'Ethereum',
-          requester: '0xreq...1234',
-          description: 'The native token of TigerSwap DEX',
-          website: 'https://tigerswap.io',
-          logo: 'https://tigerswap.io/logo.png',
-          status: 'pending',
-          votesFor: 150,
-          votesAgainst: 20,
-          kycStatus: 'full',
-          auditStatus: 'approved',
-          listingFee: 10000,
-          requestedAt: Date.now() - 86400000,
-          socialLinks: { twitter: '@tigerswap', telegram: '@tigerswap' },
-        },
-        {
-          id: 'req2',
-          tokenName: 'DeFi Protocol Token',
-          tokenSymbol: 'DEF',
-          tokenAddress: '0x5678...efgh',
-          chain: 'BNB Chain',
-          requester: '0xreq...5678',
-          description: 'DeFi yield farming protocol',
-          website: 'https://defiprotocol.io',
-          logo: 'https://defiprotocol.io/logo.png',
-          status: 'pending',
-          votesFor: 80,
-          votesAgainst: 45,
-          kycStatus: 'basic',
-          auditStatus: 'pending',
-          listingFee: 5000,
-          requestedAt: Date.now() - 172800000,
-          socialLinks: { twitter: '@defiprotocol' },
-        },
-        {
-          id: 'req3',
-          tokenName: 'GameFi Token',
-          tokenSymbol: 'GAME',
-          tokenAddress: '0xabcd...1234',
-          chain: 'Polygon',
-          requester: '0xreq...abcd',
-          description: 'Play-to-earn gaming platform',
-          website: 'https://gamefi.io',
-          logo: 'https://gamefi.io/logo.png',
-          status: 'approved',
-          votesFor: 200,
-          votesAgainst: 10,
-          kycStatus: 'full',
-          auditStatus: 'approved',
-          listingFee: 8000,
-          requestedAt: Date.now() - 604800000,
-          resolvedAt: Date.now() - 259200000,
-          socialLinks: { twitter: '@gamefi', discord: 'gamefi' },
-        },
-      ]);
-      
-      setStats({
-        totalListed: 150,
-        pendingRequests: 12,
-        approvedThisMonth: 8,
-        rejectedThisMonth: 2,
-        totalFees: 125000,
-      });
-    }
-      
-      // Mock listed tokens
-      setTokens([
-        {
-          id: 'tok1',
-          name: 'Wrapped Ethereum',
-          symbol: 'WETH',
-          address: '0xc02a...',
-          chain: 'Ethereum',
-          logo: '',
-          price: 3500.00,
-          priceChange24h: 2.5,
-          volume24h: 1500000000,
-          marketCap: 45000000000,
-          liquidity: 250000000,
-          holders: 150000,
-          verified: true,
-          featured: true,
-          listedAt: Date.now() - 31536000000,
-          category: 'Wrapper',
-        },
-        {
-          id: 'tok2',
-          name: 'USD Coin',
-          symbol: 'USDC',
-          address: '0xa0b8...',
-          chain: 'Ethereum',
-          logo: '',
-          price: 1.00,
-          priceChange24h: 0.01,
-          volume24h: 8000000000,
-          marketCap: 45000000000,
-          liquidity: 500000000,
-          holders: 500000,
-          verified: true,
-          featured: true,
-          listedAt: Date.now() - 63072000000,
-          category: 'Stablecoin',
-        },
-        {
-          id: 'tok3',
-          name: 'Tiger Swap',
-          symbol: 'TIGER',
-          address: '0xtiger...',
-          chain: 'Ethereum',
-          logo: '',
-          price: 2.50,
-          priceChange24h: 5.2,
-          volume24h: 50000000,
-          marketCap: 250000000,
-          liquidity: 10000000,
-          holders: 25000,
-          verified: true,
-          featured: true,
-          listedAt: Date.now() - 2592000000,
-          category: 'DEX',
-        },
-      ]);
-      
-      // Mock stats
-      setStats({
-        totalListed: 156,
-        pendingRequests: 12,
-        approvedThisMonth: 8,
-        rejectedThisMonth: 3,
-        totalFees: 250000,
-      });
-      
-      setSuccess('Listing data loaded successfully');
     } catch (err: any) {
-      setError(err.message || 'Failed to load data');
+      setRequests([])
+      setTokens([])
+      setStats({ totalListed: 0, pendingRequests: 0, approvedThisMonth: 0, rejectedThisMonth: 0, totalFees: 0 })
+      setError(err.message || 'Listing service unavailable')
     } finally {
       setLoading(false);
     }
@@ -338,15 +199,10 @@ export default function AdminListingPage() {
           setSuccess('Listing request approved');
         }
       } else {
-        // Fallback to local state if API unavailable
-        throw new Error('API not available')
+        throw new Error(`Listing approval API request failed with status ${response.status}`)
       }
     } catch (err: any) {
-      // Fallback to local state
-      setRequests(requests.map(r => 
-        r.id === requestId ? { ...r, status: 'approved' as const, resolvedAt: Date.now() } : r
-      ));
-      setSuccess('Listing request approved (local)');
+      setError(err.message || 'Listing approval failed')
     } finally {
       setLoading(false);
     }
@@ -377,30 +233,22 @@ export default function AdminListingPage() {
           setSuccess('Listing request rejected');
         }
       } else {
-        throw new Error('API not available')
+        throw new Error(`Listing rejection API request failed with status ${response.status}`)
       }
     } catch (err: any) {
-      // Fallback to local state
-      setRequests(requests.map(r => 
-        r.id === requestId ? { ...r, status: 'rejected' as const, resolvedAt: Date.now() } : r
-      ));
-      setSuccess('Listing request rejected (local)');
+      setError(err.message || 'Listing rejection failed')
     } finally {
       setLoading(false);
     }
   }, [requests, adminToken]);
   
-  const handleFeature = useCallback(async (tokenId: string, featured: boolean) => {
-    setTokens(tokens.map(t => 
-      t.id === tokenId ? { ...t, featured } : t
-    ));
-  }, [tokens]);
+  const handleFeature = useCallback(async (_tokenId: string, _featured: boolean) => {
+    setError('Feature updates are unavailable until the authenticated listing administration API is configured')
+  }, []);
   
-  const handleVerify = useCallback(async (tokenId: string, verified: boolean) => {
-    setTokens(tokens.map(t => 
-      t.id === tokenId ? { ...t, verified } : t
-    ));
-  }, [tokens]);
+  const handleVerify = useCallback(async (_tokenId: string, _verified: boolean) => {
+    setError('Verification updates are unavailable until the authenticated listing administration API is configured')
+  }, []);
   
   const handleViewDetail = useCallback((request: ListingRequest) => {
     setSelectedRequest(request);

@@ -106,18 +106,8 @@ async function submitReport(report: Partial<BugReport>): Promise<BugReport | nul
 }
 
 // ============================================================================
-// Demo/Production Data
-// ============================================================================
-
-const DEMO_REPORTS: BugReport[] = [
-  { id: '1', title: 'Privilege escalation in admin panel', description: 'Found a way to escalate privileges in the admin panel through improper role validation', severity: 'critical', status: 'rewarded', reward: '$50,000', reporter: 'security_researcher_01', date: Date.now() - 86400000 * 30, program_id: 'tigerwallet', cvss_score: 9.5, impact: 'Full admin access', poc_url: 'https://example.com/poc1' },
-  { id: '2', title: 'Smart contract reentrancy vulnerability', description: 'Reentrancy bug in the swap contract allows draining of funds', severity: 'critical', status: 'accepted', reward: '$45,000', reporter: 'defi_auditor', date: Date.now() - 86400000 * 15, program_id: 'tigerwallet', cvss_score: 9.2, impact: 'Fund drainage', poc_url: 'https://example.com/poc2' },
-  { id: '3', title: 'Cross-site scripting in dApp browser', description: 'XSS vulnerability in the dApp browser allows stealing session tokens', severity: 'high', status: 'fixed', reward: '$5,000', reporter: 'web3_bug_hunter', date: Date.now() - 86400000 * 45, program_id: 'tigerwallet', cvss_score: 7.5, impact: 'Session hijacking', poc_url: 'https://example.com/poc3' },
-  { id: '4', title: 'Weak random number generation', description: 'PRNG in lottery contract uses blockhash which can be manipulated', severity: 'high', status: 'rewarded', reward: '$8,000', reporter: 'crypto_expert', date: Date.now() - 86400000 * 60, program_id: 'tigerwallet', cvss_score: 7.8, impact: 'Predictable lottery outcomes', poc_url: 'https://example.com/poc4' },
-  { id: '5', title: 'Gas limit manipulation', description: 'Transaction pool manipulation allows setting custom gas limits causing DoS', severity: 'medium', status: 'triaged', reward: '$2,500', reporter: 'solidity_dev', date: Date.now() - 86400000 * 7, program_id: 'tigerwallet', cvss_score: 5.5, impact: 'Network congestion', poc_url: 'https://example.com/poc5' },
-  { id: '6', title: 'Integer overflow in token contract', description: 'Integer overflow in transfer function allows unlimited minting', severity: 'critical', status: 'submitted', reward: 'TBD', reporter: 'whitehat_eth', date: Date.now() - 86400000 * 2, program_id: 'tigerwallet', cvss_score: 0, impact: 'Unlimited token minting', poc_url: 'https://example.com/poc6' },
-  { id: '7', title: 'Unverified external call', description: 'Contract makes unverified external calls leading to potential reentrancy', severity: 'high', status: 'verified', reward: 'TBD', reporter: 'bug_bounty_pro', date: Date.now() - 86400000 * 1, program_id: 'tigerwallet', cvss_score: 8.1, impact: 'Fund theft', poc_url: 'https://example.com/poc7' },
-];
+// All reports must come from the authenticated bug-bounty service.
+const REPORTS: BugReport[] = [];
 
 const SEVERITY_COLORS = {
   critical: 'bg-red-100 text-red-800 border-red-200',
@@ -222,7 +212,7 @@ export default function BugBountyPage() {
           <div className="p-6">
             {activeTab === 'programs' && (
               <div className="space-y-4">
-                {MOCK_REPORTS.map(report => (
+                {REPORTS.map(report => (
                   <div key={report.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center text-white font-bold">

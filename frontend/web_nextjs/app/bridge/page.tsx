@@ -132,73 +132,8 @@ function timeAgo(timestamp: number): string {
 }
 
 // ============================================================================
-// Mock Data Generator
-// ============================================================================
-
-function generateBridgeQuote(fromChain: number, toChain: number, token: string, amount: string): BridgeQuote {
-  const amountNum = parseFloat(amount) || 0;
-  const bridgeFee = amountNum * 0.001; // 0.1% bridge fee
-  const networkFee = fromChain === 1 ? 0.005 * amountNum : 0.001 * amountNum;
-  const totalFees = bridgeFee + networkFee;
-  const receivedAmount = amountNum - totalFees;
-
-  return {
-    fromChain,
-    toChain,
-    token,
-    amount,
-    bridgeFee,
-    networkFee,
-    estimatedTime: '5-10 min',
-    receivedAmount: receivedAmount.toString(),
-    rate: 0.999,
-    availableRoutes: BRIDGE_ROUTES.map(route => ({
-      ...route,
-      fee: route.fee + 0.001, // Add our fee
-    })),
-  };
-}
-
-function generateTransferHistory(): BridgeTransfer[] {
-  return [
-    {
-      id: 'tx_1',
-      fromChain: 1,
-      toChain: 137,
-      token: 'ETH',
-      amount: '0.5',
-      status: 'completed',
-      sourceTxHash: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
-      destTxHash: '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-      confirmations: 12,
-      requiredConfirmations: 12,
-      timestamp: Date.now() - 3600000,
-    },
-    {
-      id: 'tx_2',
-      fromChain: 56,
-      toChain: 42161,
-      token: 'USDC',
-      amount: '1000',
-      status: 'confirming',
-      sourceTxHash: '0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba',
-      confirmations: 10,
-      requiredConfirmations: 12,
-      timestamp: Date.now() - 600000,
-    },
-    {
-      id: 'tx_3',
-      fromChain: 137,
-      toChain: 1,
-      token: 'MATIC',
-      amount: '500',
-      status: 'pending',
-      confirmations: 0,
-      requiredConfirmations: 12,
-      timestamp: Date.now() - 120000,
-    },
-  ];
-}
+// Bridge quotes, balances, and transfer history must come from authenticated backend providers.
+// This page intentionally remains fail-closed until those contracts are configured.
 
 // ============================================================================
 // Main Bridge Page Component
@@ -230,16 +165,8 @@ export default function BridgePage() {
   // ============================================================================
 
   useEffect(() => {
-    setTransferHistory(generateTransferHistory());
-  }, []);
-
-  useEffect(() => {
-    if (amount && parseFloat(amount) > 0) {
-      const mockQuote = generateBridgeQuote(fromChain, toChain, token, amount);
-      setQuote(mockQuote);
-    } else {
-      setQuote(null);
-    }
+    setTransferHistory([]);
+    setQuote(null);
   }, [fromChain, toChain, token, amount]);
 
   // ============================================================================
@@ -253,60 +180,12 @@ export default function BridgePage() {
   };
 
   const handleMaxAmount = () => {
-    // In production, this would query actual wallet balance
-    setAmount('1.0');
+    setSnackbar({ open: true, message: 'Wallet balance is unavailable until an authenticated balance provider is configured.', severity: 'error' });
   };
 
   const handleBridge = async () => {
-    if (!quote) return;
-
-    setLoading(true);
-    setActiveStep(1);
-
-    try {
-      // Simulate bridge transaction
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      const newTransfer: BridgeTransfer = {
-        id: `tx_${Date.now()}`,
-        fromChain,
-        toChain,
-        token,
-        amount,
-        status: 'submitted',
-        confirmations: 0,
-        requiredConfirmations: 12,
-        timestamp: Date.now(),
-      };
-
-      setTransferHistory(prev => [newTransfer, ...prev]);
-      setActiveStep(2);
-
-      // Simulate confirmation progress
-      for (let i = 1; i <= 12; i++) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        setTransferHistory(prev => prev.map(tx =>
-          tx.id === newTransfer.id
-            ? { ...tx, confirmations: i, status: i >= 12 ? 'completed' : 'confirming' }
-            : tx
-        ));
-      }
-
-      setActiveStep(3);
-      setSnackbar({ open: true, message: `Successfully bridged ${amount} ${token} to ${CHAINS.find(c => c.id === toChain)?.name}`, severity: 'success' });
-
-      // Reset form after success
-      setTimeout(() => {
-        setActiveStep(0);
-        setAmount('');
-        setQuote(null);
-      }, 2000);
-
-    } catch (error) {
-      setSnackbar({ open: true, message: 'Bridge transaction failed', severity: 'error' });
-    } finally {
-      setLoading(false);
-    }
+    setLoading(false);
+    setSnackbar({ open: true, message: 'Bridge execution is unavailable until an authenticated quote and transaction provider is configured.', severity: 'error' });
   };
 
   const getStatusChip = (status: BridgeTransfer['status']) => {
