@@ -33,7 +33,7 @@ export const EVM_CHAINS: EVMChain[] = [
     symbol: 'ETH',
     decimals: 18,
     explorer: 'https://etherscan.io',
-    rpc: 'https://eth-mainnet.alchemyapi.io/v2/demo',
+    rpc: process.env.NEXT_PUBLIC_ETHEREUM_RPC || '',
     chainId: 1,
     networkId: 1,
     color: '#627EEA',
