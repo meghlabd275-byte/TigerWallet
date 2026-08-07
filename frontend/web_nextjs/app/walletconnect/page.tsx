@@ -42,38 +42,20 @@ export default function WalletConnect() {
   const [selectedDapp, setSelectedDapp] = useState<DApp | null>(null);
   const [customUri, setCustomUri] = useState('');
 
-  const generateWcUri = useCallback((dappName?: string): string => {
-    const topic = Math.random().toString(36).substring(2, 10);
-    const symmetricKey = Math.random().toString(36).substring(2, 34);
-    return `wc:${topic}@2?symKey=${symmetricKey}&metadata[name]=${encodeURIComponent(dappName || 'TigerWallet')}`;
+  const handleConnect = useCallback(async (_dapp?: DApp) => {
+    setConnecting(false);
+    setShowQR(false);
+    setMessage({ type: 'error', text: 'WalletConnect transport is not configured. No session or QR URI was created.' });
   }, []);
 
-  const handleConnect = useCallback(async (dapp?: DApp) => {
-    setConnecting(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    const uri = generateWcUri(dapp?.name);
-    setQrUri(uri);
-    setShowQR(true);
-    setSelectedDapp(dapp || null);
-    setTimeout(async () => {
-      const newSession: WalletConnectSession = { id: `session_${Date.now()}`, name: dapp?.name || 'Custom App', icon: dapp?.icon || '🔗', url: dapp?.url || 'custom', chains: dapp?.chains || [1], methods: WC_METHODS, peerId: Math.random().toString(36).substring(2, 18), connectedAt: Date.now() };
-      setSessions(prev => [...prev, newSession]);
-      setMessage({ type: 'success', text: `Connected to ${dapp?.name || 'app'} successfully!` });
-      setShowQR(false);
-      setConnecting(false);
-    }, 3000);
-  }, [generateWcUri]);
-
   const handleCustomConnect = useCallback(async () => {
-    if (!customUri.startsWith('wc:')) { setMessage({ type: 'error', text: 'Invalid WalletConnect URI' }); return; }
-    setConnecting(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setShowQR(false);
-    const newSession: WalletConnectSession = { id: `session_${Date.now()}`, name: 'Custom DApp', icon: '🔗', url: 'custom', chains: [1], methods: WC_METHODS, peerId: Math.random().toString(36).substring(2, 18), connectedAt: Date.now() };
-    setSessions(prev => [...prev, newSession]);
-    setMessage({ type: 'success', text: 'Connected successfully!' });
-    setCustomUri('');
+    if (!customUri.startsWith('wc:')) {
+      setMessage({ type: 'error', text: 'Invalid WalletConnect URI' });
+      return;
+    }
     setConnecting(false);
+    setShowQR(false);
+    setMessage({ type: 'error', text: 'WalletConnect transport is not configured. The supplied URI was not connected.' });
   }, [customUri]);
 
   const handleDisconnect = useCallback(async (sessionId: string) => {
