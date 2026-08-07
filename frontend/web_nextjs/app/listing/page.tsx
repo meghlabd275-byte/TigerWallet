@@ -132,24 +132,10 @@ export default function TokenListingPage() {
     }
     reader.readAsDataURL(file)
 
-    // Upload to server
     setUploadingLogo(true)
     try {
-      // In production, upload to your storage service
-      // For demo, use local preview
       setLogoFile(file)
-      
-      // Simulated upload - in production call your upload API
-      // const formData = new FormData()
-      // formData.append('logo', file)
-      // const response = await fetch(`${API_BASE}/api/v1/upload/logo`, {
-      //   method: 'POST',
-      //   body: formData,
-      // })
-      // const data = await response.json()
-      // setLogoURL(data.url)
-    } catch (err) {
-      setError('Failed to upload logo')
+      setError('Logo upload is unavailable because the authenticated storage endpoint is not configured. The image is previewed locally only and was not uploaded.')
     } finally {
       setUploadingLogo(false)
     }
@@ -206,15 +192,7 @@ export default function TokenListingPage() {
       }
     } catch (err) {
       console.error('Submission error:', err)
-      // For demo purposes, simulate success if API is not available
-      setListingId('listing_' + Math.random().toString(36).substr(2, 9))
-      setPaymentInfo({
-        payment_id: 'pay_' + Math.random().toString(36).substr(2, 9),
-        payment_status: 'pending',
-        payment_address: '0x' + Math.random().toString(16).substr(2, 40),
-        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      })
-      setSuccess(true)
+      setError('The listing service is unavailable. Your application was not submitted; please try again when the service is reachable.')
     } finally {
       setLoading(false)
     }
