@@ -23,20 +23,13 @@ export default function TxSimulation() {
     if (!from || !to || !amount) return;
     setSimulating(true);
     setResult(null);
-    await new Promise(r => setTimeout(r, 2000));
-    
-    const isSuccess = Math.random() > 0.1;
-    const gasUsed = Math.floor(Math.random() * 50000 + 21000).toString();
-    const gasPrice = (Math.random() * 30 + 10).toFixed(2);
-    const totalCost = (parseFloat(gasUsed) * parseFloat(gasPrice) / 1e9).toFixed(6);
-    
     setResult({
-      success: isSuccess,
-      gasUsed,
-      gasPrice,
-      totalCost,
-      balanceChange: `-${amount} ${token}`,
-      error: isSuccess ? undefined : 'Insufficient gas or contract revert',
+      success: false,
+      gasUsed: '',
+      gasPrice: '',
+      totalCost: '',
+      balanceChange: '',
+      error: 'Transaction simulation is unavailable until an authenticated chain simulation provider is configured.',
     });
     setSimulating(false);
   };
@@ -71,7 +64,7 @@ export default function TxSimulation() {
           <div className={`bg-white dark:bg-slate-800 rounded-lg p-6 ${result.success ? 'border-2 border-green-500' : 'border-2 border-red-500'}`}>
             <div className="flex items-center gap-3 mb-4">
               <div className={`text-3xl ${result.success ? '✅' : '❌'}`}></div>
-              <div><div className="text-xl font-semibold">{result.success ? 'Transaction Would Succeed' : 'Transaction Would Fail'}</div><div className="text-sm text-slate-500">{result.error}</div></div>
+              <div><div className="text-xl font-semibold">{result.success ? 'Transaction Would Succeed' : 'Simulation Unavailable'}</div><div className="text-sm text-slate-500">{result.error}</div></div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-slate-100 dark:bg-slate-700 rounded-lg p-3"><div className="text-sm text-slate-500">Gas Used</div><div className="font-semibold">{result.gasUsed}</div></div>
