@@ -175,8 +175,7 @@ async function handleMessage(message: Message, sender: chrome.runtime.MessageSen
         return { success: true, data: state.getWallet() };
         
       case 'UNLOCK_WALLET':
-        state.setUnlocked(true);
-        return { success: true };
+        return { success: false, error: 'Wallet unlock is unavailable until the canonical wallet-core bridge is connected.' };
         
       case 'LOCK_WALLET':
         state.setUnlocked(false);
@@ -188,11 +187,15 @@ async function handleMessage(message: Message, sender: chrome.runtime.MessageSen
         
       // Connection management
       case 'CONNECT_DAPP':
+        const account = state.getWallet().addresses['ethereum'];
+        if (!account) {
+          return { success: false, error: 'No verified wallet account is available.' };
+        }
         const connection: DAppConnection = {
           origin: message.payload.origin,
           chainId: message.payload.chainId || 'ethereum',
           connected: true,
-          accounts: [state.getWallet().addresses['ethereum'] || '']
+          accounts: [account]
         };
         state.addConnection(message.payload.origin, connection);
         
@@ -217,35 +220,10 @@ async function handleMessage(message: Message, sender: chrome.runtime.MessageSen
         
       // Transaction signing
       case 'SIGN_TRANSACTION':
-        const txId = generateId();
-        const txRequest: TransactionRequest = {
-          id: txId,
-          method: message.payload.method,
-          params: message.payload.params,
-          origin: message.payload.origin,
-          chainId: message.payload.chainId,
-          timestamp: Date.now()
-        };
-        
-        state.addTransaction(txId, txRequest);
-        
-        // Show approval popup
-        await showTransactionApproval(txRequest);
-        
-        return { success: true, data: { id: txId } };
+        return { success: false, error: 'Transaction signing is unavailable until the canonical wallet-core bridge and approval UI are connected.' };
         
       case 'APPROVE_TRANSACTION':
-        const approvedTx = state.getTransaction(message.payload.id);
-        if (approvedTx) {
-          // In real implementation, this would sign and broadcast
-          state.removeTransaction(message.payload.id);
-          
-          notifyContentScript(approvedTx.origin, {
-            type: 'TRANSACTION_RESULT',
-            payload: { id: approvedTx.id, status: 'approved', hash: '0x...' }
-          });
-        }
-        return { success: true };
+        return { success: false, error: 'Transaction signing is unavailable until the canonical wallet-core bridge and approval UI are connected.' };
         
       case 'REJECT_TRANSACTION':
         const rejectedTx = state.getTransaction(message.payload.id);
@@ -274,7 +252,7 @@ async function handleMessage(message: Message, sender: chrome.runtime.MessageSen
         
       // Personal signing
       case 'SIGN_MESSAGE':
-        return { success: true, data: { id: generateId() } };
+        return { success: false, error: 'Message signing is unavailable until the canonical wallet-core bridge is connected.' };
         
       // Token/balance queries
       case 'GET_BALANCE':
@@ -310,18 +288,12 @@ function notifyContentScript(origin: string, message: Message) {
   });
 }
 
-async function showTransactionApproval(tx: TransactionRequest) {
-  // Create a popup or notification for transaction approval
-  // For now, just log
-  console.log('Transaction approval requested:', tx);
-}
-
 // ============================================================================
 // Utility Functions
 // ============================================================================
 
 function generateId(): string {
-  return `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return `tx_${crypto.randomUUID()}`;
 }
 
 // ============================================================================

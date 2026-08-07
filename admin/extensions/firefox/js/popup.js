@@ -425,9 +425,12 @@
             renderUsers(data.users || []);
         } catch (error) {
             console.error('Load users error:', error);
-            // Demo data
-            renderUsers(generateDemoUsers());
+            renderUsersUnavailable('User data is unavailable. Reconnect to the TigerWallet admin API and retry.');
         }
+    }
+
+    function renderUsersUnavailable(message) {
+        elements.usersTableBody.innerHTML = `<tr><td colspan="5" class="empty">${message}</td></tr>`;
     }
 
     function renderUsers(users) {
@@ -460,16 +463,6 @@
         });
     }
 
-    function generateDemoUsers() {
-        return Array.from({ length: 10 }, (_, i) => ({
-            id: `user_${i + 1}`,
-            email: `user${i + 1}@example.com`,
-            status: i % 3 === 0 ? 'pending' : 'active',
-            kycStatus: i % 2 === 0 ? 'level2' : 'level1',
-            createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString()
-        }));
-    }
-
     async function searchUsers(query) {
         if (!query) {
             loadUsers();
@@ -492,11 +485,7 @@
             renderUsers(data.users || []);
         } catch (error) {
             console.error('Search error:', error);
-            // Filter demo data
-            const demoUsers = generateDemoUsers().filter(u => 
-                u.email.toLowerCase().includes(query.toLowerCase())
-            );
-            renderUsers(demoUsers);
+            renderUsersUnavailable('User search is unavailable. Reconnect to the TigerWallet admin API and retry.');
         }
     }
 
@@ -552,8 +541,12 @@
             renderTransactions(data.transactions || []);
         } catch (error) {
             console.error('Load transactions error:', error);
-            renderTransactions(generateDemoTransactions());
+            renderTransactionsUnavailable('Transaction data is unavailable. Reconnect to the TigerWallet admin API and retry.');
         }
+    }
+
+    function renderTransactionsUnavailable(message) {
+        elements.transactionsTableBody.innerHTML = `<tr><td colspan="6" class="empty">${message}</td></tr>`;
     }
 
     function renderTransactions(transactions) {
@@ -575,21 +568,6 @@
                 </td>
             </tr>
         `).join('');
-    }
-
-    function generateDemoTransactions() {
-        const types = ['transfer', 'swap', 'stake', 'unstake', 'bridge'];
-        const statuses = ['pending', 'confirmed', 'failed'];
-        
-        return Array.from({ length: 15 }, (_, i) => ({
-            id: `tx_${i + 1}`,
-            hash: `0x${Math.random().toString(16).substring(2, 66)}`,
-            type: types[i % types.length],
-            amount: (Math.random() * 10000).toFixed(2),
-            token: 'USDT',
-            status: statuses[i % statuses.length],
-            createdAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()
-        }));
     }
 
     async function searchTransactions(query) {
@@ -614,7 +592,7 @@
             renderTransactions(data.transactions || []);
         } catch (error) {
             console.error('Search error:', error);
-            renderTransactions(generateDemoTransactions());
+            renderTransactionsUnavailable('Transaction search is unavailable. Reconnect to the TigerWallet admin API and retry.');
         }
     }
 
@@ -637,8 +615,8 @@
             renderKYC(data.applications || []);
         } catch (error) {
             console.error('Load KYC error:', error);
-            updateKYCCounts({ pending: 15, approved: 120, rejected: 5 });
-            renderKYC(generateDemoKYC());
+            updateKYCCounts({});
+            elements.kycTableBody.innerHTML = '<tr><td colspan="5" class="empty">KYC data is unavailable. Reconnect to the TigerWallet admin API and retry.</td></tr>';
         }
     }
 
@@ -676,18 +654,6 @@
         elements.kycTableBody.querySelectorAll('.table-btn').forEach(btn => {
             btn.addEventListener('click', handleKYCAction);
         });
-    }
-
-    function generateDemoKYC() {
-        const statuses = ['pending', 'approved', 'rejected'];
-        
-        return Array.from({ length: 10 }, (_, i) => ({
-            id: `kyc_${i + 1}`,
-            email: `user${i + 1}@example.com`,
-            level: i % 3 + 1,
-            status: statuses[i % statuses.length],
-            submittedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()
-        }));
     }
 
     async function handleKYCAction(event) {
@@ -750,7 +716,7 @@
             renderTokens(data.tokens || []);
         } catch (error) {
             console.error('Load tokens error:', error);
-            renderTokens(generateDemoTokens());
+            elements.tokensGrid.innerHTML = '<div class="empty">Token data is unavailable. Reconnect to the TigerWallet admin API and retry.</div>';
         }
     }
 
@@ -799,17 +765,6 @@
         `).join('');
     }
 
-    function generateDemoTokens() {
-        return [
-            { id: '1', symbol: 'ETH', name: 'Ethereum', logo: '', price: 3250.00, marketCap: 390000000000, volume24h: 15000000000, isActive: true },
-            { id: '2', symbol: 'USDT', name: 'Tether', logo: '', price: 1.00, marketCap: 95000000000, volume24h: 50000000000, isActive: true },
-            { id: '3', symbol: 'BTC', name: 'Bitcoin', logo: '', price: 67500.00, marketCap: 1320000000000, volume24h: 35000000000, isActive: true },
-            { id: '4', symbol: 'BNB', name: 'BNB', logo: '', price: 580.00, marketCap: 87000000000, volume24h: 1800000000, isActive: true },
-            { id: '5', symbol: 'SOL', name: 'Solana', logo: '', price: 145.00, marketCap: 64000000000, volume24h: 2500000000, isActive: true },
-            { id: '6', symbol: 'XRP', name: 'Ripple', logo: '', price: 0.52, marketCap: 28000000000, volume24h: 1500000000, isActive: true }
-        ];
-    }
-
     function showAddTokenModal() {
         browser.runtime.sendMessage({
             type: 'OPEN_ADD_TOKEN'
@@ -840,7 +795,7 @@
             renderWithdrawals(data.withdrawals || []);
         } catch (error) {
             console.error('Load withdrawals error:', error);
-            renderWithdrawals(generateDemoWithdrawals());
+            elements.withdrawalsTableBody.innerHTML = '<tr><td colspan="6" class="empty">Withdrawal data is unavailable. Reconnect to the TigerWallet admin API and retry.</td></tr>';
         }
     }
 
@@ -866,22 +821,6 @@
                 </td>
             </tr>
         `).join('');
-    }
-
-    function generateDemoWithdrawals() {
-        const statuses = ['pending', 'approved', 'rejected', 'processing', 'completed'];
-        const chains = ['ethereum', 'bsc', 'polygon', 'arbitrum', 'solana'];
-        
-        return Array.from({ length: 10 }, (_, i) => ({
-            id: `wd_${i + 1}`,
-            userEmail: `user${i + 1}@example.com`,
-            amount: (Math.random() * 10000).toFixed(2),
-            token: 'USDT',
-            chain: chains[i % chains.length],
-            address: `0x${Math.random().toString(16).substring(2, 42)}`,
-            status: statuses[i % statuses.length],
-            createdAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()
-        }));
     }
 
     // System Status

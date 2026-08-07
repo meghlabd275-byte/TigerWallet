@@ -1,6 +1,6 @@
 const fs = require('fs');
 const { execFileSync } = require('child_process');
-const root = '/home/ubuntu/TigerWallet/browser_extension/chrome';
+const root = require('path').resolve(__dirname, '..', 'browser_extension', 'chrome');
 const manifest = JSON.parse(fs.readFileSync(`${root}/manifest.json`, 'utf8'));
 const paths = [manifest.action.default_popup, manifest.background.service_worker, ...manifest.content_scripts.flatMap((entry) => entry.js)];
 for (const relativePath of paths) {

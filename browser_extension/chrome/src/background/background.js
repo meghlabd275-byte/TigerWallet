@@ -135,14 +135,9 @@ class CryptoUtils {
     return Array.from(bytes);
   }
   
-  // Derive address from public key (uncompressed)
-  static publicKeyToAddress(publicKey) {
-    // Remove '04' prefix if present
-    const pub = publicKey.startsWith('0x04') ? publicKey.slice(4) : publicKey;
-    // Keccak-256 of the public key
-    const hash = keccak256(pub);
-    // Take last 20 bytes
-    return '0x' + hash.slice(-40);
+  // Address derivation must be provided by the audited wallet-core bridge.
+  static publicKeyToAddress(_publicKey) {
+    throw new Error('Address derivation is unavailable until the canonical wallet-core bridge is connected.');
   }
   
   // Validate Ethereum address
@@ -156,37 +151,16 @@ class CryptoUtils {
 // ============================================================================
 
 class KeyDerivation {
-  // Simplified BIP-39 seed generation (in production, use proper PBKDF2)
-  static async mnemonicToSeed(mnemonic, password = '') {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(mnemonic + 'mnemonic' + password);
-    const hash = await crypto.subtle.digest('SHA-512', data);
-    return Array.from(new Uint8Array(hash));
+  static async mnemonicToSeed(_mnemonic, _password = '') {
+    throw new Error('Mnemonic derivation is unavailable until the canonical wallet-core bridge is connected.');
   }
   
-  // Derive key from seed with path
-  static async deriveKey(seed, path) {
-    // Simplified - in production use proper BIP-32
-    const encoder = new TextEncoder();
-    const data = encoder.encode(path + JSON.stringify(Array.from(seed)));
-    const hash = await crypto.subtle.digest('SHA-256', data);
-    return new Uint8Array(hash);
+  static async deriveKey(_seed, _path) {
+    throw new Error('HD key derivation is unavailable until the canonical wallet-core bridge is connected.');
   }
   
-  // Generate 24-word mnemonic
   static async generateMnemonic() {
-    const WORDLIST = [
-      'abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract',
-      // ... (full BIP-39 wordlist would be here)
-    ];
-    
-    const random = await CryptoUtils.randomBytes(32);
-    const words = [];
-    for (let i = 0; i < 24; i++) {
-      const index = (random[i >> 3] >> (8 - (i & 7))) & 0x1FF;
-      words.push(WORDLIST[index % WORDLIST.length] || 'abandon');
-    }
-    return words.join(' ');
+    throw new Error('Mnemonic generation is unavailable until the canonical wallet-core bridge is connected.');
   }
 }
 
