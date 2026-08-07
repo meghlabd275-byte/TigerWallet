@@ -9,6 +9,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use zeroize::Zeroizing;
 
 pub mod mnemonic;
 pub mod key_derivation;
@@ -151,7 +152,7 @@ pub fn default_chains() -> Vec<ChainConfig> {
 #[derive(Debug, Clone)]
 pub struct Wallet {
     /// Seed phrase (encrypted)
-    pub seed: Vec<u8>,
+    pub seed: Zeroizing<Vec<u8>>,
     /// Derived addresses by chain ID
     pub addresses: HashMap<u64, DerivedAddress>,
 }
@@ -180,7 +181,7 @@ impl Wallet {
         }
         
         Ok(Self {
-            seed: seed.to_vec(),
+            seed: Zeroizing::new(seed.to_vec()),
             addresses,
         })
     }

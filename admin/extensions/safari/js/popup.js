@@ -343,19 +343,16 @@
             updateDashboard(data);
         } catch (error) {
             console.error('Dashboard load error:', error);
-            // Use mock data for demo if API unavailable
-            updateDashboard({
-                totalUsers: 12450,
-                totalVolume: '$45.2M',
-                pendingKYC: 89,
-                systemHealth: '99.9%',
-                recentActivity: [
-                    { type: 'user_verified', message: 'New user verified', email: 'user@example.com', time: '2 min ago' },
-                    { type: 'transaction', message: 'Large transaction detected', amount: '$50,000', time: '5 min ago' },
-                    { type: 'kyc', message: 'KYC submitted', email: 'new@example.com', time: '10 min ago' }
-                ]
-            });
+            updateDashboardUnavailable('Dashboard data is unavailable. Reconnect to the TigerWallet admin API and retry.');
         }
+    }
+
+    function updateDashboardUnavailable(message) {
+        elements.totalUsers.textContent = '-';
+        elements.totalVolume.textContent = '-';
+        elements.pendingKYC.textContent = '-';
+        elements.systemHealth.textContent = 'Unavailable';
+        elements.activityList.textContent = message;
     }
 
     function updateDashboard(data) {
