@@ -34,24 +34,7 @@ const MARKETS: Market[] = [
   { symbol: 'SOL/USDT', base: 'SOL', quote: 'USDT', price: 145, change24h: 3.5, volume24h: 8500000, high24h: 150, low24h: 140, bids: [], asks: [] },
 ];
 
-// Generate realistic order book
-const generateOrderBook = (midPrice: number): { bids: { price: number; amount: number }[]; asks: { price: number; amount: number }[] } => {
-  const bids = [];
-  const asks = [];
-  
-  for (let i = 0; i < 15; i++) {
-    bids.push({
-      price: midPrice * (1 - 0.0001 * (i + 1) - Math.random() * 0.0002),
-      amount: Math.random() * 10 + 1,
-    });
-    asks.push({
-      price: midPrice * (1 + 0.0001 * (i + 1) + Math.random() * 0.0002),
-      amount: Math.random() * 10 + 1,
-    });
-  }
-  
-  return { bids, asks };
-};
+const generateOrderBook = (): { bids: { price: number; amount: number }[]; asks: { price: number; amount: number }[] } => ({ bids: [], asks: [] });
 
 export default function OrderbookPage() {
   const [selectedMarket, setSelectedMarket] = useState<Market>(MARKETS[0]);
@@ -65,41 +48,16 @@ export default function OrderbookPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const ob = generateOrderBook(selectedMarket.price);
-    setOrderbook(ob);
-    
-    const interval = setInterval(() => {
-      setOrderbook(generateOrderBook(selectedMarket.price * (1 + (Math.random() - 0.5) * 0.001)));
-    }, 2000);
-    
-    return () => clearInterval(interval);
+    setOrderbook(generateOrderBook());
   }, [selectedMarket]);
 
   const handleSubmitOrder = useCallback(async () => {
-    if (!price || !amount) return;
-    setLoading(true);
-    
-    await new Promise(r => setTimeout(r, 500));
-    
-    const newOrder: Order = {
-      id: Date.now().toString(),
-      type: side,
-      price: parseFloat(price),
-      amount: parseFloat(amount),
-      total: parseFloat(price) * parseFloat(amount),
-      filled: 0,
-      status: 'open',
-      timestamp: Date.now(),
-    };
-    
-    setOrders(prev => [newOrder, ...prev]);
-    setPrice('');
-    setAmount('');
     setLoading(false);
-  }, [side, price, amount]);
+    console.error('Order submission is unavailable until an authenticated order-book and execution provider is configured.');
+  }, []);
 
-  const handleCancelOrder = useCallback((orderId: string) => {
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'cancelled' } : o));
+  const handleCancelOrder = useCallback((_orderId: string) => {
+    console.error('Order cancellation is unavailable until an authenticated order-book API is configured.');
   }, []);
 
   const totalBidVolume = orderbook.bids.reduce((sum, b) => sum + b.price * b.amount, 0);
