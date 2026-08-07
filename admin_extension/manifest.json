@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "TigerWallet Admin",
+  "version": "1.0.0",
+  "description": "TigerWallet Admin Browser Extension - Complete Dark/Light Theme Support",
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab"
+  ],
+  "action": {
+    "default_popup": "public/popup.html",
+    "default_icon": {
+      "16": "public/icon16.png",
+      "48": "public/icon48.png",
+      "128": "public/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "icons": {
+    "16": "public/icon16.png",
+    "48": "public/icon48.png",
+    "128": "public/icon128.png"
+  }
+}

@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+    <title>TigerWallet Admin</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Sidebar -->
+        <aside id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <span class="logo-icon">🅰️</span>
+                    <span class="logo-text">TigerAdmin</span>
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-screen="dashboard">
+                    <span class="icon">📊</span>
+                    <span class="label">Dashboard</span>
+                </a>
+                <a href="#" class="nav-item" data-screen="users">
+                    <span class="icon">👥</span>
+                    <span class="label">Users</span>
+                </a>
+                <a href="#" class="nav-item" data-screen="kyc">
+                    <span class="icon">✓</span>
+                    <span class="label">KYC</span>
+                </a>
+                <a href="#" class="nav-item" data-screen="transactions">
+                    <span class="icon">↔️</span>
+                    <span class="label">Transactions</span>
+                </a>
+                <a href="#" class="nav-item" data-screen="tokens">
+                    <span class="icon">🪙</span>
+                    <span class="label">Tokens</span>
+                </a>
+                <a href="#" class="nav-item" data-screen="pairs">
+                    <span class="icon">⚡</span>
+                    <span class="label">Pairs</span>
+                </a>
+                <a href="#" class="nav-item" data-screen="blockchains">
+                    <span class="icon">⛓️</span>
+                    <span class="label">Blockchains</span>
+                </a>
+                <a href="#" class="nav-item" data-screen="whitelabels">
+                    <span class="icon">🏢</span>
+                    <span class="label">White Labels</span>
+                </a>
+                <a href="#" class="nav-item" data-screen="tickets">
+                    <span class="icon">🎫</span>
+                    <span class="label">Tickets</span>
+                </a>
+                <a href="#" class="nav-item" data-screen="analytics">
+                    <span class="icon">📈</span>
+                    <span class="label">Analytics</span>
+                </a>
+                <a href="#" class="nav-item" data-screen="settings">
+                    <span class="icon">⚙️</span>
+                    <span class="label">Settings</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <button id="theme-toggle" class="theme-btn">
+                    <span class="icon">🌙</span>
+                    <span class="label">Dark Mode</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main id="main-content">
+            <!-- Header -->
+            <header id="header">
+                <div class="header-left">
+                    <h1 id="page-title">Dashboard</h1>
+                </div>
+                <div class="header-right">
+                    <div class="search-box">
+                        <input type="text" placeholder="Search...">
+                    </div>
+                    <button class="notification-btn">🔔</button>
+                    <div class="user-menu">
+                        <div class="avatar">A</div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Content Area -->
+            <div id="content">
+                <!-- Dashboard Screen -->
+                <div id="screen-dashboard" class="screen active">
+                    <div class="welcome-card">
+                        <h2>Welcome, Admin!</h2>
+                        <p>Here is what is happening today</p>
+                    </div>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">👥</div>
+                            <div class="stat-value">12,543</div>
+                            <div class="stat-label">Total Users</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">✅</div>
+                            <div class="stat-value">8,921</div>
+                            <div class="stat-label">Active Users</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">↔️</div>
+                            <div class="stat-value">456,789</div>
+                            <div class="stat-label">Transactions</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">💰</div>
+                            <div class="stat-value">$12.5M</div>
+                            <div class="stat-label">Volume</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">🛡️</div>
+                            <div class="stat-value">145</div>
+                            <div class="stat-label">Pending KYC</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">💳</div>
+                            <div class="stat-value">$234K</div>
+                            <div class="stat-label">Fees</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Users Screen -->
+                <div id="screen-users" class="screen">
+                    <div class="screen-header">
+                        <h2>Users Management</h2>
+                        <button class="btn-primary">+ Add User</button>
+                    </div>
+                    <div class="filters">
+                        <select id="status-filter">
+                            <option value="all">All Status</option>
+                            <option value="active">Active</option>
+                            <option value="suspended">Suspended</option>
+                            <option value="banned">Banned</option>
+                        </select>
+                        <input type="text" placeholder="Search users..." class="search-input">
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Status</th>
+                                    <th>KYC</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="users-table-body">
+                                <!-- Dynamic content -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- KYC Screen -->
+                <div id="screen-kyc" class="screen">
+                    <div class="screen-header">
+                        <h2>KYC Verification</h2>
+                    </div>
+                    <div class="tabs">
+                        <button class="tab active" data-tab="pending">Pending</button>
+                        <button class="tab" data-tab="approved">Approved</button>
+                        <button class="tab" data-tab="rejected">Rejected</button>
+                    </div>
+                    <div class="kyc-list" id="kyc-list">
+                        <!-- Dynamic content -->
+                    </div>
+                </div>
+
+                <!-- Transactions Screen -->
+                <div id="screen-transactions" class="screen">
+                    <div class="screen-header">
+                        <h2>Transactions</h2>
+                    </div>
+                    <div class="filters">
+                        <select>
+                            <option>All Types</option>
+                            <option>Deposit</option>
+                            <option>Withdraw</option>
+                            <option>Transfer</option>
+                            <option>Swap</option>
+                        </select>
+                        <input type="text" placeholder="Search by hash..." class="search-input">
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Hash</th>
+                                    <th>Type</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+                            <tbody id="transactions-table-body">
+                                <!-- Dynamic content -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Other screens -->
+                <div id="screen-tokens" class="screen">
+                    <h2>Tokens</h2>
+                    <p>Token management coming soon...</p>
+                </div>
+                <div id="screen-pairs" class="screen">
+                    <h2>Trading Pairs</h2>
+                    <p>Trading pairs management coming soon...</p>
+                </div>
+                <div id="screen-blockchains" class="screen">
+                    <h2>Blockchains</h2>
+                    <p>Blockchain management coming soon...</p>
+                </div>
+                <div id="screen-whitelabels" class="screen">
+                    <h2>White Labels</h2>
+                    <p>White label management coming soon...</p>
+                </div>
+                <div id="screen-tickets" class="screen">
+                    <h2>Support Tickets</h2>
+                    <p>Support tickets management coming soon...</p>
+                </div>
+                <div id="screen-analytics" class="screen">
+                    <h2>Analytics</h2>
+                    <p>Analytics dashboard coming soon...</p>
+                </div>
+                <div id="screen-settings" class="screen">
+                    <h2>Settings</h2>
+                    <div class="settings-section">
+                        <h3>Appearance</h3>
+                        <label class="switch">
+                            <input type="checkbox" id="dark-mode-toggle">
+                            <span class="slider"></span>
+                        </label>
+                        <span>Dark Mode</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="renderer.js"></script>
+</body>
+</html>
