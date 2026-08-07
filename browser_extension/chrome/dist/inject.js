@@ -23,7 +23,10 @@
     };
     let eventListeners = /* @__PURE__ */ new Map();
     function generateId() {
-      return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      if (!globalThis.crypto || typeof globalThis.crypto.randomUUID !== "function") {
+        throw new Error("Secure request ID generation is unavailable");
+      }
+      return `req_${globalThis.crypto.randomUUID()}`;
     }
     function notifyBackground(message) {
       return new Promise((resolve, reject) => {
