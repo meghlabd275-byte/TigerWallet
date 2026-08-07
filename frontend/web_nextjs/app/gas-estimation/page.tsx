@@ -21,36 +21,15 @@ interface ChainGas {
 export default function GasEstimation() {
   const [chainsGas, setChainsGas] = useState<ChainGas[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedChain, setSelectedChain] = useState<number>(1);
   const [txType, setTxType] = useState<string>('transfer');
   const [gasLimit, setGasLimit] = useState<string>('21000');
 
   useEffect(() => {
-    const mockGas: ChainGas[] = [
-      { chainId: 1, chainName: 'Ethereum', symbol: 'ETH', gasPrice: { slow: '15', standard: '18', fast: '25', slowWait: '>10 min', standardWait: '3 min', fastWait: '<30 sec' } },
-      { chainId: 56, chainName: 'BNB Chain', symbol: 'BNB', gasPrice: { slow: '3', standard: '5', fast: '8', slowWait: '>1 min', standardWait: '15 sec', fastWait: '<5 sec' } },
-      { chainId: 137, chainName: 'Polygon', symbol: 'MATIC', gasPrice: { slow: '50', standard: '80', fast: '150', slowWait: '>2 min', standardWait: '30 sec', fastWait: '<10 sec' } },
-      { chainId: 42161, chainName: 'Arbitrum', symbol: 'ETH', gasPrice: { slow: '0.1', standard: '0.15', fast: '0.2', slowWait: '>5 min', standardWait: '1 min', fastWait: '<15 sec' } },
-      { chainId: 10, chainName: 'Optimism', symbol: 'ETH', gasPrice: { slow: '0.001', standard: '0.002', fast: '0.005', slowWait: '>5 min', standardWait: '1 min', fastWait: '<10 sec' } },
-      { chainId: 43114, chainName: 'Avalanche', symbol: 'AVAX', gasPrice: { slow: '25', standard: '30', fast: '40', slowWait: '>1 min', standardWait: '15 sec', fastWait: '<5 sec' } },
-      { chainId: 101, chainName: 'Solana', symbol: 'SOL', gasPrice: { slow: '0.00025', standard: '0.0005', fast: '0.001', slowWait: '>1 min', standardWait: '15 sec', fastWait: '<5 sec' } },
-      { chainId: 728126428, chainName: 'Tron', symbol: 'TRX', gasPrice: { slow: '5', standard: '10', fast: '20', slowWait: '>1 min', standardWait: '30 sec', fastWait: '<10 sec' } },
-    ];
-    setChainsGas(mockGas);
+    setChainsGas([]);
+    setError('Live gas estimates are unavailable until an authenticated multi-chain gas provider is configured.');
     setLoading(false);
-
-    const interval = setInterval(() => {
-      setChainsGas(prev => prev.map(chain => ({
-        ...chain,
-        gasPrice: {
-          ...chain.gasPrice,
-          slow: (parseFloat(chain.gasPrice.slow) * (1 + (Math.random() - 0.5) * 0.1)).toFixed(4),
-          standard: (parseFloat(chain.gasPrice.standard) * (1 + (Math.random() - 0.5) * 0.1)).toFixed(4),
-          fast: (parseFloat(chain.gasPrice.fast) * (1 + (Math.random() - 0.5) * 0.1)).toFixed(4),
-        }
-      })));
-    }, 10000);
-    return () => clearInterval(interval);
   }, []);
 
   const calculateCost = (gasPrice: string, limit: string): string => {
@@ -73,6 +52,7 @@ export default function GasEstimation() {
         <div className="max-w-7xl mx-auto px-4"><div className="flex items-center justify-between h-16"><div className="flex items-center gap-4"><a href="/" className="text-2xl">🐯</a><h1 className="text-xl font-bold">Gas Estimator</h1></div></div></div>
       </header>
       <div className="max-w-7xl mx-auto px-4 py-8">
+        {error && <div className="mb-6 rounded-lg border border-amber-400 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">{error}</div>}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="bg-white dark:bg-slate-800 rounded-lg p-6">
             <h2 className="text-xl font-semibold mb-4">Select Network & Transaction</h2>
