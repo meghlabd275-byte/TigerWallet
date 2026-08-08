@@ -3,6 +3,8 @@
 // Complete license enforcement for white label products
 // ============================================================================
 
+package main
+
 import (
 	"crypto/aes"
 	"crypto/cipher"
@@ -537,5 +539,3 @@ func (api *TigerSwapAPI) CheckLicenseMiddleware(next http.Handler) http.Handler 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
-EOF
-echo "License API created"

@@ -10,22 +10,22 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"regexp"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/params"
 )
 
 // ============================================================================
@@ -659,23 +659,253 @@ func (s *MasterWalletStore) signAndSubmitTransaction(tx *AutoTransaction) {
 	go s.waitForConfirmation(tx)
 }
 
-// signTransaction signs transaction. It fails closed unless a real signer is wired in;
-// production must never manufacture unsigned or synthetic transactions.
+// signerEnvKey is the env var holding the hex-encoded ECDSA private key (no 0x prefix)
+// used to sign master-wallet outbound transactions. Production must configure a real key;
+// absence is a hard, fail-closed error rather than a stubbed signature.
+const signerEnvKey = "SIGNER_PRIVATE_KEY"
+
+// defaultSignerGasLimit is a sane fallback gas limit when a transaction does not specify one.
+const defaultSignerGasLimit = 210000
+
+// confirmationTimeout is the maximum time waitForConfirmation will poll for a receipt.
+const confirmationTimeout = 5 * time.Minute
+
+// confirmationPollInterval is the delay between receipt polls.
+const confirmationPollInterval = 3 * time.Second
+
+// dialChain connects to the chain's JSON-RPC endpoint. The RPC URL is read from the
+// registered chain config, or overridable via the per-chain env var RPC_URL_<CHAINID>.
+func (s *MasterWalletStore) dialChain(chainId int) (*ethclient.Client, string, error) {
+	rpcURL := os.Getenv(fmt.Sprintf("RPC_URL_%d", chainId))
+	if rpcURL == "" {
+		chain, err := s.GetChain(chainId)
+		if err != nil {
+			return nil, "", fmt.Errorf("cannot resolve RPC endpoint for chain %d: %w", chainId, err)
+		}
+		rpcURL = chain.RPCUrl
+	}
+	if rpcURL == "" {
+		return nil, "", fmt.Errorf("no JSON-RPC endpoint configured for chain %d (set RPC_URL_%d or register the chain)", chainId, chainId)
+	}
+
+	client, err := ethclient.Dial(rpcURL)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to connect to RPC endpoint for chain %d (%s): %w", chainId, rpcURL, err)
+	}
+	return client, rpcURL, nil
+}
+
+// loadSignerKey loads the master-wallet signing key from SIGNER_PRIVATE_KEY and derives
+// the signer address. A missing/invalid key is a hard error: the wallet must never emit
+// an unsigned or synthetic transaction.
+func loadSignerKey() (*ecdsa.PrivateKey, common.Address, error) {
+	hexKey := os.Getenv(signerEnvKey)
+	if hexKey == "" {
+		return nil, common.Address{}, fmt.Errorf("master-wallet signer key not configured: environment variable %s is unset", signerEnvKey)
+	}
+	hexKey = strings.TrimPrefix(hexKey, "0x")
+
+	priv, err := crypto.HexToECDSA(hexKey)
+	if err != nil {
+		return nil, common.Address{}, fmt.Errorf("invalid %s: %w", signerEnvKey, err)
+	}
+	pubKey := priv.Public().(*ecdsa.PublicKey)
+	addr := crypto.PubkeyToAddress(*pubKey)
+	return priv, addr, nil
+}
+
+// signTransaction signs an EVM transaction using the configured master-wallet signer key.
+// It fetches the account nonce from the chain, builds an EIP-1559 (dynamic-fee) or
+// legacy transaction depending on gas-price fields, and signs it with the chain's signer.
 func (s *MasterWalletStore) signTransaction(tx *AutoTransaction) (*types.Transaction, error) {
-	return nil, fmt.Errorf("real master-wallet signer is not configured for chain %d", tx.ChainId)
+	priv, fromAddr, err := loadSignerKey()
+	if err != nil {
+		return nil, err
+	}
+
+	client, _, err := s.dialChain(tx.ChainId)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	chainID := big.NewInt(int64(tx.ChainId))
+
+	// Resolve the destination. An empty "to" denotes contract creation.
+	var toAddr *common.Address
+	if tx.To != "" {
+		if !common.IsHexAddress(tx.To) {
+			return nil, fmt.Errorf("invalid destination address %q", tx.To)
+		}
+		a := common.HexToAddress(tx.To)
+		toAddr = &a
+	}
+
+	// Parse optional calldata.
+	var data []byte
+	if tx.Data != "" {
+		h, err := hex.DecodeString(strings.TrimPrefix(tx.Data, "0x"))
+		if err != nil {
+			return nil, fmt.Errorf("invalid transaction calldata: %w", err)
+		}
+		data = h
+	}
+
+	value := tx.Amount
+	if value == nil {
+		value = big.NewInt(0)
+	}
+
+	nonce, err := client.PendingNonceAt(ctx, fromAddr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch nonce for signer %s: %w", fromAddr.Hex(), err)
+	}
+
+	gasLimit := tx.GasLimit
+	if gasLimit == 0 {
+		gasLimit = defaultSignerGasLimit
+	}
+
+	// Prefer EIP-1559 dynamic fees when the chain supports it. If the caller supplied an
+	// explicit gas price we treat it as a legacy transaction; otherwise we estimate
+	// max-priority-fee and a fee cap from the network.
+	if tx.GasPrice != nil {
+		unsigned := &types.LegacyTx{
+			Nonce:    nonce,
+			GasPrice: tx.GasPrice,
+			Gas:      gasLimit,
+			To:       toAddr,
+			Value:    value,
+			Data:     data,
+		}
+		signed, err := types.SignNewTx(priv, types.NewEIP155Signer(chainID), unsigned)
+		if err != nil {
+			return nil, fmt.Errorf("failed to sign legacy transaction: %w", err)
+		}
+		return signed, nil
+	}
+
+	tipCap, err := client.SuggestGasTipCap(ctx)
+	if err != nil {
+		// Fall back to suggested gas price for chains that don't support max-priority-fee.
+		gasPrice, gpErr := client.SuggestGasPrice(ctx)
+		if gpErr != nil {
+			return nil, fmt.Errorf("failed to estimate gas fees: tip=%v price=%v", err, gpErr)
+		}
+		unsigned := &types.LegacyTx{
+			Nonce:    nonce,
+			GasPrice: gasPrice,
+			Gas:      gasLimit,
+			To:       toAddr,
+			Value:    value,
+			Data:     data,
+		}
+		signed, err := types.SignNewTx(priv, types.NewEIP155Signer(chainID), unsigned)
+		if err != nil {
+			return nil, fmt.Errorf("failed to sign legacy transaction: %w", err)
+		}
+		return signed, nil
+	}
+
+	// maxFeePerGas = 2 * tip + baseFee is a common safe heuristic; use 2x tip as the cap.
+	feeCap := new(big.Int).Mul(tipCap, big.NewInt(2))
+
+	unsigned := &types.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     nonce,
+		GasTipCap: tipCap,
+		GasFeeCap: feeCap,
+		Gas:       gasLimit,
+		To:        toAddr,
+		Value:     value,
+		Data:      data,
+	}
+	signed, err := types.SignNewTx(priv, types.NewLondonSigner(chainID), unsigned)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign EIP-1559 transaction: %w", err)
+	}
+	return signed, nil
 }
 
-// submitTransaction submits transaction to network. It fails closed unless a real RPC
-// broadcaster is configured; production must never return synthetic hashes.
+// submitTransaction broadcasts a signed transaction to the chain via eth_sendRawTransaction
+// and returns the real transaction hash reported by the network. No synthetic hashes are
+// ever produced: on failure the error propagates and the caller must handle it.
 func (s *MasterWalletStore) submitTransaction(tx *types.Transaction, chainId int) (string, error) {
-	return "", fmt.Errorf("real transaction broadcaster is not configured for chain %d", chainId)
+	client, _, err := s.dialChain(chainId)
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := client.SendTransaction(ctx, tx); err != nil {
+		return "", fmt.Errorf("eth_sendRawTransaction failed for chain %d: %w", chainId, err)
+	}
+
+	return tx.Hash().Hex(), nil
 }
 
-// waitForConfirmation waits for transaction confirmation. Synthetic confirmations are
-// forbidden; callers must wire receipt polling before enabling auto-signing.
+// waitForConfirmation polls eth_getTransactionReceipt until the transaction is mined or
+// the confirmation timeout (5 minutes) elapses. The confirmation status is derived from
+// the receipt's status field: 1 = success, 0 = reverted. A timeout is surfaced as a
+// failure rather than a synthetic success.
 func (s *MasterWalletStore) waitForConfirmation(tx *AutoTransaction) {
-	tx.Status = TX_STATUS_FAILED
-	tx.Error = "real receipt polling is not configured"
+	client, _, err := s.dialChain(tx.ChainId)
+	if err != nil {
+		tx.Status = TX_STATUS_FAILED
+		tx.Error = fmt.Sprintf("confirmation polling failed: %v", err)
+		return
+	}
+	defer client.Close()
+
+	if tx.Hash == "" {
+		tx.Status = TX_STATUS_FAILED
+		tx.Error = "cannot poll receipt: transaction hash is empty"
+		return
+	}
+
+	if !strings.HasPrefix(tx.Hash, "0x") {
+		tx.Hash = "0x" + tx.Hash
+	}
+	txHash := common.HexToHash(tx.Hash)
+
+	ctx, cancel := context.WithTimeout(context.Background(), confirmationTimeout)
+	defer cancel()
+
+	ticker := time.NewTicker(confirmationPollInterval)
+	defer ticker.Stop()
+
+	for {
+		receipt, err := client.TransactionReceipt(ctx, txHash)
+		if err == nil && receipt != nil {
+			confirmedAt := time.Now()
+			tx.ConfirmedAt = &confirmedAt
+			if receipt.Status == types.ReceiptStatusSuccessful {
+				tx.Status = TX_STATUS_CONFIRMED
+				tx.Error = ""
+			} else {
+				tx.Status = TX_STATUS_FAILED
+				tx.Error = fmt.Sprintf("transaction reverted on chain (receipt status %d, block %d)", receipt.Status, receipt.BlockNumber.Uint64())
+			}
+			return
+		}
+		// ethclient returns ethereum.NotFound once a receipt isn't available yet; any other
+		// error (e.g. RPC failure) is retried until the context expires.
+
+		select {
+		case <-ctx.Done():
+			tx.Status = TX_STATUS_FAILED
+			tx.Error = fmt.Sprintf("transaction not mined within %s (last receipt error: %v)", confirmationTimeout, err)
+			return
+		case <-ticker.C:
+			// continue polling
+		}
+	}
 }
 
 // ============================================================================

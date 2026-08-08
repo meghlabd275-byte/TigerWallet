@@ -1,33 +1,31 @@
 'use client';
 
 import React, { useState } from 'react';
-
-interface ScanResult {
-  id: string;
-  address: string;
-  risk: 'safe' | 'warning' | 'danger';
-  issues: string[];
-  scannedAt: number;
-}
+import api, { ScanResult } from '../../src/lib/api/client';
 
 export default function SecurityScannerPage() {
   const [address, setAddress] = useState('');
   const [scanning, setScanning] = useState(false);
   const [results, setResults] = useState<ScanResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const scan = async () => {
     if (!address) return;
     setScanning(true);
-    // Simulate scan
-    await new Promise(r => setTimeout(r, 2000));
-    setResults({
-      id: '1',
-      address,
-      risk: 'warning',
-      issues: ['Unlimited token allowance detected', 'Contract has not been verified'],
-      scannedAt: Date.now(),
-    });
-    setScanning(false);
+    setError(null);
+    setResults(null);
+    try {
+      const res = await api.scanAddress(address);
+      if (res.success && res.data) {
+        setResults(res.data);
+      } else {
+        setError(res.error || 'Scan failed');
+      }
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || 'Scan failed');
+    } finally {
+      setScanning(false);
+    }
   };
 
   return (
@@ -55,6 +53,12 @@ export default function SecurityScannerPage() {
           </div>
         </div>
 
+        {error && (
+          <div className="mb-6 p-4 rounded-lg bg-red-900/50 border border-red-700 text-red-200">
+            {error}
+          </div>
+        )}
+
         {results && (
           <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
             <div className="flex items-center gap-4 mb-6">
@@ -72,7 +76,7 @@ export default function SecurityScannerPage() {
               </div>
             </div>
 
-            {results.issues.length > 0 && (
+            {results.issues.length > 0 ? (
               <div className="space-y-3">
                 <h3 className="text-white font-medium">Issues Found</h3>
                 {results.issues.map((issue, i) => (
@@ -82,6 +86,8 @@ export default function SecurityScannerPage() {
                   </div>
                 ))}
               </div>
+            ) : (
+              <p className="text-green-400">No issues detected.</p>
             )}
           </div>
         )}

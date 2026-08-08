@@ -1,78 +1,18 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, Typography, Card, CardContent, Button, Chip,
   CircularProgress, Snackbar, Alert, Divider, LinearProgress,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Tabs, Tab
+  Tabs, Tab, IconButton
 } from '@mui/material';
 import {
   AccountBalance, Wallet, ShowChart, TrendingUp, TrendingDown,
   SwapHoriz, Pool, History, Refresh
 } from '@mui/icons-material';
 import { useTheme } from '../components/ThemeProvider';
-
-// ============================================================================
-// Types
-// ============================================================================
-
-interface Asset {
-  symbol: string;
-  name: string;
-  balance: number;
-  value: number;
-  change24h: number;
-  icon: string;
-  address?: string;
-}
-
-interface Position {
-  type: 'liquidity' | 'farming' | 'staking';
-  protocol: string;
-  pair: string;
-  value: number;
-  apr: number;
-  pnl: number;
-  icon: string;
-}
-
-interface Transaction {
-  hash: string;
-  type: string;
-  tokenIn: string;
-  tokenOut: string;
-  amountIn: string;
-  amountOut: string;
-  value: number;
-  status: 'success' | 'pending' | 'failed';
-  timestamp: number;
-}
-
-// ============================================================================
-// Mock Data
-// ============================================================================
-
-const ASSETS: Asset[] = [
-  { symbol: 'ETH', name: 'Ethereum', balance: 2.5, value: 6125, change24h: 2.34, icon: '🔷' },
-  { symbol: 'USDC', name: 'USD Coin', balance: 5000, value: 5000, change24h: 0.01, icon: '💵' },
-  { symbol: 'USDT', name: 'Tether', balance: 2500, value: 2500, change24h: 0.02, icon: '💰' },
-  { symbol: 'WBTC', name: 'Wrapped Bitcoin', balance: 0.1, value: 6250, change24h: 1.15, icon: '₿' },
-  { symbol: 'LINK', name: 'Chainlink', balance: 150, value: 2775, change24h: -1.5, icon: '🔗' },
-  { symbol: 'UNI', name: 'Uniswap', balance: 200, value: 2500, change24h: 3.2, icon: '🦄' },
-];
-
-const POSITIONS: Position[] = [
-  { type: 'liquidity', protocol: 'TigerSwap', pair: 'ETH/USDC', value: 12500, apr: 24.5, pnl: 850, icon: '💎' },
-  { type: 'farming', protocol: 'PancakeSwap', pair: 'CAKE/BNB', value: 8000, apr: 45.2, pnl: 1200, icon: '🥞' },
-  { type: 'staking', protocol: 'Lido', pair: 'stETH', value: 5000, apr: 4.2, pnl: 150, icon: '🏦' },
-];
-
-const TRANSACTIONS: Transaction[] = [
-  { hash: '0x1234567890abcdef', type: 'Swap', tokenIn: 'ETH', tokenOut: 'USDC', amountIn: '1.0', amountOut: '2450', value: 2450, status: 'success', timestamp: Date.now() - 3600000 },
-  { hash: '0xabcdef1234567890', type: 'Add Liquidity', tokenIn: 'ETH', tokenOut: 'USDC', amountIn: '2.0', amountOut: '4900', value: 4900, status: 'success', timestamp: Date.now() - 86400000 },
-  { hash: '0x567890abcdef1234', type: 'Swap', tokenIn: 'USDT', tokenOut: 'ETH', amountIn: '1000', amountOut: '0.4', value: 1000, status: 'success', timestamp: Date.now() - 172800000 },
-];
+import { api, Portfolio, Transaction } from '@/lib/api/client';
 
 // ============================================================================
 // Utility Functions
@@ -104,27 +44,83 @@ function formatAddress(hash: string): string {
 // ============================================================================
 
 export default function PortfolioPage() {
-  const [assets] = useState<Asset[]>(ASSETS);
-  const [positions] = useState<Position[]>(POSITIONS);
-  const [transactions] = useState<Transaction[]>(TRANSACTIONS);
+  const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(0);
-  const [loading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const totalValue = assets.reduce((sum, a) => sum + a.value, 0);
-  const totalPnL = positions.reduce((sum, p) => sum + p.pnl, 0);
+  const fetchPortfolio = useCallback(async () => {
+    try {
+      setError(null);
+      setRefreshing(true);
+      const res = await api.getPortfolio();
+      if (res.success && res.data) {
+        setPortfolio(res.data);
+      } else {
+        setPortfolio({ assets: [], positions: [], transactions: [] });
+        if (res.error) setError(res.error);
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load portfolio');
+      setPortfolio({ assets: [], positions: [], transactions: [] });
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPortfolio();
+  }, [fetchPortfolio]);
+
+  const assets = portfolio?.assets ?? [];
+  const positions = portfolio?.positions ?? [];
+  const transactions = portfolio?.transactions ?? [];
+
+  const totalValue = assets.reduce((sum, a) => sum + (a.value || 0), 0);
+  const totalPnL = positions.reduce((sum, p) => sum + (p.pnl || 0), 0);
+  const change24h = assets.reduce((sum, a) => sum + (a.value || 0) * ((a.change24h || 0) / 100), 0);
+
+  const EmptyRow = ({ colSpan, label }: { colSpan: number; label: string }) => (
+    <TableRow>
+      <TableCell colSpan={colSpan} align="center" sx={{ color: '#9ca3af', py: 4 }}>{label}</TableCell>
+    </TableRow>
+  );
+
+  if (loading) {
+    return (
+      <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a14', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <CircularProgress sx={{ color: '#00d4aa' }} />
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a14', p: 3 }}>
       <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
         {/* Header */}
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
-            💼 Portfolio
-          </Typography>
-          <Typography variant="body2" sx={{ color: '#9ca3af', mt: 1 }}>
-            Track your assets, positions, and transaction history
-          </Typography>
+        <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <Box>
+            <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
+              💼 Portfolio
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#9ca3af', mt: 1 }}>
+              Track your assets, positions, and transaction history
+            </Typography>
+          </Box>
+          <IconButton onClick={fetchPortfolio} disabled={refreshing} sx={{ color: '#00d4aa' }}>
+            <Refresh />
+          </IconButton>
         </Box>
+
+        {error && (
+          <Alert severity="error" sx={{ mb: 3, bgcolor: '#ff572220', color: '#ff5722' }} onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        )}
+
+        {refreshing && <LinearProgress sx={{ mb: 2, color: '#00d4aa' }} />}
 
         {/* Overview Cards */}
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, mb: 4 }}>
@@ -145,8 +141,8 @@ export default function PortfolioPage() {
                 <ShowChart sx={{ color: '#00d4aa' }} />
                 <Typography variant="caption" sx={{ color: '#9ca3af' }}>24h Change</Typography>
               </Box>
-              <Typography variant="h5" sx={{ color: '#00d4aa', fontWeight: 'bold' }}>
-                +{formatUSD(totalValue * 0.023)}
+              <Typography variant="h5" sx={{ color: change24h >= 0 ? '#00d4aa' : '#ff5722', fontWeight: 'bold' }}>
+                {change24h >= 0 ? '+' : ''}{formatUSD(change24h)}
               </Typography>
             </CardContent>
           </Card>
@@ -157,7 +153,7 @@ export default function PortfolioPage() {
                 <Typography variant="caption" sx={{ color: '#9ca3af' }}>Positions Value</Typography>
               </Box>
               <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
-                {formatUSD(positions.reduce((s, p) => s + p.value, 0))}
+                {formatUSD(positions.reduce((s, p) => s + (p.value || 0), 0))}
               </Typography>
             </CardContent>
           </Card>
@@ -199,30 +195,34 @@ export default function PortfolioPage() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {assets.map(asset => (
-                      <TableRow key={asset.symbol} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
-                        <TableCell>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                            <Typography sx={{ fontSize: 24 }}>{asset.icon}</Typography>
-                            <Box>
-                              <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{asset.symbol}</Typography>
-                              <Typography variant="caption" sx={{ color: '#9ca3af' }}>{asset.name}</Typography>
+                    {assets.length === 0 ? (
+                      <EmptyRow colSpan={4} label="No assets found" />
+                    ) : (
+                      assets.map(asset => (
+                        <TableRow key={asset.symbol} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                              <Typography sx={{ fontSize: 24 }}>{asset.icon || '🪙'}</Typography>
+                              <Box>
+                                <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{asset.symbol}</Typography>
+                                <Typography variant="caption" sx={{ color: '#9ca3af' }}>{asset.name}</Typography>
+                              </Box>
                             </Box>
-                          </Box>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography sx={{ color: 'white' }}>{asset.balance.toLocaleString()}</Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography sx={{ color: '#00d4aa' }}>{formatUSD(asset.value)}</Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography sx={{ color: asset.change24h >= 0 ? '#00d4aa' : '#ff5722' }}>
-                            {asset.change24h >= 0 ? '+' : ''}{asset.change24h.toFixed(2)}%
-                          </Typography>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          </TableCell>
+                          <TableCell align="right">
+                            <Typography sx={{ color: 'white' }}>{(asset.balance || 0).toLocaleString()}</Typography>
+                          </TableCell>
+                          <TableCell align="right">
+                            <Typography sx={{ color: '#00d4aa' }}>{formatUSD(asset.value || 0)}</Typography>
+                          </TableCell>
+                          <TableCell align="right">
+                            <Typography sx={{ color: (asset.change24h || 0) >= 0 ? '#00d4aa' : '#ff5722' }}>
+                              {(asset.change24h || 0) >= 0 ? '+' : ''}{(asset.change24h || 0).toFixed(2)}%
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -240,30 +240,34 @@ export default function PortfolioPage() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {positions.map((pos, i) => (
-                      <TableRow key={i} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
-                        <TableCell>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                            <Typography sx={{ fontSize: 24 }}>{pos.icon}</Typography>
-                            <Box>
-                              <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{pos.pair}</Typography>
-                              <Typography variant="caption" sx={{ color: '#9ca3af' }}>{pos.protocol}</Typography>
+                    {positions.length === 0 ? (
+                      <EmptyRow colSpan={4} label="No positions found" />
+                    ) : (
+                      positions.map((pos, i) => (
+                        <TableRow key={i} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                              <Typography sx={{ fontSize: 24 }}>{pos.icon || '🧩'}</Typography>
+                              <Box>
+                                <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{pos.pair}</Typography>
+                                <Typography variant="caption" sx={{ color: '#9ca3af' }}>{pos.protocol}</Typography>
+                              </Box>
                             </Box>
-                          </Box>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography sx={{ color: '#00d4aa' }}>{formatUSD(pos.value)}</Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Chip label={`${pos.apr}%`} size="small" sx={{ bgcolor: '#00d4aa20', color: '#00d4aa' }} />
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography sx={{ color: pos.pnl >= 0 ? '#00d4aa' : '#ff5722' }}>
-                            {pos.pnl >= 0 ? '+' : ''}{formatUSD(pos.pnl)}
-                          </Typography>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          </TableCell>
+                          <TableCell align="right">
+                            <Typography sx={{ color: '#00d4aa' }}>{formatUSD(pos.value || 0)}</Typography>
+                          </TableCell>
+                          <TableCell align="right">
+                            <Chip label={`${(pos.apr || 0).toFixed(1)}%`} size="small" sx={{ bgcolor: '#00d4aa20', color: '#00d4aa' }} />
+                          </TableCell>
+                          <TableCell align="right">
+                            <Typography sx={{ color: (pos.pnl || 0) >= 0 ? '#00d4aa' : '#ff5722' }}>
+                              {(pos.pnl || 0) >= 0 ? '+' : ''}{formatUSD(pos.pnl || 0)}
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -282,32 +286,36 @@ export default function PortfolioPage() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {transactions.map(tx => (
-                      <TableRow key={tx.hash} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
-                        <TableCell>
-                          <Chip label={tx.type} size="small" sx={{ bgcolor: '#2a2a3e' }} />
-                        </TableCell>
-                        <TableCell>
-                          <Typography sx={{ color: 'white' }}>{tx.amountIn} {tx.tokenIn} → {tx.amountOut} {tx.tokenOut}</Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography sx={{ color: '#00d4aa' }}>{formatUSD(tx.value)}</Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Chip 
-                            label={tx.status} 
-                            size="small" 
-                            sx={{ 
-                              bgcolor: tx.status === 'success' ? '#00d4aa20' : tx.status === 'pending' ? '#ff980020' : '#ff572220',
-                              color: tx.status === 'success' ? '#00d4aa' : tx.status === 'pending' ? '#ff9800' : '#ff5722'
-                            }} 
-                          />
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography sx={{ color: '#9ca3af' }}>{timeAgo(tx.timestamp)}</Typography>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {transactions.length === 0 ? (
+                      <EmptyRow colSpan={5} label="No transactions found" />
+                    ) : (
+                      transactions.map(tx => (
+                        <TableRow key={tx.hash || tx.id} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
+                          <TableCell>
+                            <Chip label="Transaction" size="small" sx={{ bgcolor: '#2a2a3e' }} />
+                          </TableCell>
+                          <TableCell>
+                            <Typography sx={{ color: 'white' }}>{tx.value} {tx.from ? `from ${formatAddress(tx.from)}` : ''} → {tx.to ? formatAddress(tx.to) : ''}</Typography>
+                          </TableCell>
+                          <TableCell align="right">
+                            <Typography sx={{ color: '#00d4aa' }}>{formatUSD(Number(tx.value) || 0)}</Typography>
+                          </TableCell>
+                          <TableCell align="right">
+                            <Chip
+                              label={tx.status}
+                              size="small"
+                              sx={{
+                                bgcolor: tx.status === 'confirmed' ? '#00d4aa20' : tx.status === 'pending' ? '#ff980020' : '#ff572220',
+                                color: tx.status === 'confirmed' ? '#00d4aa' : tx.status === 'pending' ? '#ff9800' : '#ff5722'
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell align="right">
+                            <Typography sx={{ color: '#9ca3af' }}>{timeAgo(tx.timestamp)}</Typography>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </TableContainer>

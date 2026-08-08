@@ -675,33 +675,8 @@ func (s *BotSubscriptionStore) GetAdminFeeAddress() string {
 // HELPER FUNCTIONS
 // ============================================================================
 
-func generateRandomToken(length int) string {
-	return generateRandomHex(length)
-}
-
-func generateRandomHex(length int) string {
-	b := make([]byte, length)
-	rand.Read(b)
-	return hex.EncodeToString(b)
-}
-
-func generateUUID() string {
-	return fmt.Sprintf("%s-%s-%s-%s-%s",
-		generateRandomHex(8),
-		generateRandomHex(4),
-		generateRandomHex(4),
-		generateRandomHex(4),
-		generateRandomHex(12),
-	)
-}
-
 func generateInvoiceNumber() string {
 	return fmt.Sprintf("INV-%s-%d", strings.ToUpper(generateRandomHex(6)), time.Now().Unix())
-}
-
-func hashString(s string) string {
-	h := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(h[:])
 }
 
 // ============================================================================

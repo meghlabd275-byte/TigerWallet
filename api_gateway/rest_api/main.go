@@ -122,6 +122,7 @@ type RateLimitInfo struct {
 	ResetAt   time.Time
 	Blocked   bool
 	BlockTill *time.Time
+	Requests  []time.Time // for sliding window
 }
 
 type RateLimiter struct {
@@ -177,13 +178,14 @@ func (r *RateLimiter) Allow(key string) bool {
 type UserRole string
 
 const (
-	RoleSuperAdmin   UserRole = "super_admin"
-	RoleAdmin        UserRole = "admin"
-	RoleFinanceAdmin UserRole = "finance_admin"
-	RoleBotOperator  UserRole = "bot_operator"
-	RoleTradingAdmin UserRole = "trading_admin"
-	RoleClient       UserRole = "client"
-	RoleUser         UserRole = "user"
+	RoleSuperAdmin        UserRole = "super_admin"
+	RoleAdmin             UserRole = "admin"
+	RoleFinanceAdmin      UserRole = "finance_admin"
+	RoleBotOperator       UserRole = "bot_operator"
+	RoleTradingAdmin      UserRole = "trading_admin"
+	RoleExchangeOperator  UserRole = "exchange_operator"
+	RoleClient            UserRole = "client"
+	RoleUser              UserRole = "user"
 )
 
 // Authentication user
@@ -880,6 +882,10 @@ func generateUUID() string {
 
 func generateRandomToken(n int) string {
 	return hex.EncodeToString(generateRandomBytes(n))
+}
+
+func generateRandomHex(length int) string {
+	return hex.EncodeToString(generateRandomBytes(length / 2))
 }
 
 func isValidEmail(email string) bool {

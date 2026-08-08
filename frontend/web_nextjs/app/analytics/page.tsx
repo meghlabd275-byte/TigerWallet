@@ -16,6 +16,7 @@ import {
   SwapHoriz, AccountBalanceWallet
 } from '@mui/icons-material';
 import { useTheme } from '../components/ThemeProvider';
+import { api } from '@/lib/api/client';
 
 // ============================================================================
 // Types & Interfaces
@@ -87,17 +88,6 @@ const CHAIN_CONFIG: Record<number, { name: string; color: string }> = {
   43114: { name: 'Avalanche', color: '#E84142' },
 };
 
-const TOP_TOKENS = [
-  { symbol: 'ETH', name: 'Ethereum', price: 2450, change24h: 2.5, volume24h: 1250000000, marketCap: 294000000000 },
-  { symbol: 'WBTC', name: 'Wrapped Bitcoin', price: 62500, change24h: 1.2, volume24h: 890000000, marketCap: 1210000000000 },
-  { symbol: 'USDC', name: 'USD Coin', price: 1.00, change24h: 0.01, volume24h: 520000000, marketCap: 32000000000 },
-  { symbol: 'USDT', name: 'Tether', price: 1.00, change24h: 0.02, volume24h: 480000000, marketCap: 95000000000 },
-  { symbol: 'LINK', name: 'Chainlink', price: 18.5, change24h: -1.5, volume24h: 125000000, marketCap: 10500000000 },
-  { symbol: 'UNI', name: 'Uniswap', price: 12.5, change24h: 3.2, volume24h: 89000000, marketCap: 7500000000 },
-  { symbol: 'AAVE', name: 'Aave', price: 285, change24h: 4.5, volume24h: 67000000, marketCap: 4200000000 },
-  { symbol: 'MATIC', name: 'Polygon', price: 0.85, change24h: -2.1, volume24h: 45000000, marketCap: 8500000000 },
-];
-
 // ============================================================================
 // Utility Functions
 // ============================================================================
@@ -126,87 +116,6 @@ function formatDate(timestamp: number): string {
 }
 
 // ============================================================================
-// Mock Data Generators
-// ============================================================================
-
-function generateProtocolStats(): ProtocolStats {
-  return {
-    totalVolume24h: Math.random() * 500000000 + 100000000,
-    totalVolume7d: Math.random() * 3000000000 + 500000000,
-    totalVolume30d: Math.random() * 10000000000 + 2000000000,
-    totalFees24h: Math.random() * 1500000 + 500000,
-    totalFees7d: Math.random() * 10000000 + 3000000,
-    totalFees30d: Math.random() * 40000000 + 10000000,
-    totalTVL: Math.random() * 500000000 + 200000000,
-    totalUsers: Math.floor(Math.random() * 500000 + 100000),
-    totalTransactions: Math.floor(Math.random() * 1000000 + 200000),
-    avgSwapSize: Math.random() * 5000 + 500,
-    priceChange24h: (Math.random() - 0.5) * 10,
-  };
-}
-
-function generateVolumeData(days: number = 30): VolumeData[] {
-  const data: VolumeData[] = [];
-  let baseVolume = 200000000;
-  
-  for (let i = days; i >= 0; i--) {
-    const timestamp = Date.now() - i * 24 * 60 * 60 * 1000;
-    const variation = 0.8 + Math.random() * 0.4;
-    const volume = baseVolume * variation;
-    const trades = Math.floor(volume / 2000);
-    const fees = volume * 0.003;
-    
-    data.push({ timestamp, volume, trades, fees });
-    baseVolume = volume * (0.95 + Math.random() * 0.1);
-  }
-  
-  return data;
-}
-
-function generatePoolAnalytics(): PoolAnalytics[] {
-  const pools: PoolAnalytics[] = [];
-  const poolNames = [
-    'ETH/USDC', 'ETH/USDT', 'WBTC/ETH', 'ETH/DAI', 'LINK/ETH',
-    'UNI/ETH', 'AAVE/ETH', 'MATIC/ETH', 'CRV/ETH', 'SNX/ETH'
-  ];
-  
-  for (let i = 0; i < poolNames.length; i++) {
-    const tvl = Math.random() * 50000000 + 1000000;
-    const volume24h = Math.random() * 5000000 + 100000;
-    
-    pools.push({
-      id: `pool-${i}`,
-      name: poolNames[i],
-      tvl,
-      volume24h,
-      volume7d: volume24h * 7 * (0.8 + Math.random() * 0.4),
-      fees24h: volume24h * 0.003,
-      apr: Math.random() * 150 + 10,
-      utilization: Math.random() * 80 + 10,
-    });
-  }
-  
-  return pools.sort((a, b) => b.volume24h - a.volume24h);
-}
-
-function generateChainAnalytics(): ChainAnalytics[] {
-  return Object.entries(CHAIN_CONFIG).map(([id, config], index) => {
-    const share = [45, 25, 12, 8, 5, 3, 2][index] || 2;
-    const volume24h = Math.random() * 200000000 + 50000000;
-    
-    return {
-      chainId: parseInt(id),
-      chainName: config.name,
-      volume24h,
-      tvl: Math.random() * 100000000 + 10000000,
-      transactions: Math.floor(Math.random() * 200000 + 10000),
-      avgGasPrice: Math.random() * 100 + 10,
-      sharePercent: share,
-    };
-  }).sort((a, b) => b.volume24h - a.volume24h);
-}
-
-// ============================================================================
 // Main Analytics Page Component
 // ============================================================================
 
@@ -215,11 +124,12 @@ export default function AnalyticsPage() {
   const [timeRange, setTimeRange] = useState<'24h' | '7d' | '30d' | 'all'>('7d');
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [protocolStats, setProtocolStats] = useState<ProtocolStats | null>(null);
   const [volumeData, setVolumeData] = useState<VolumeData[]>([]);
   const [poolAnalytics, setPoolAnalytics] = useState<PoolAnalytics[]>([]);
   const [chainAnalytics, setChainAnalytics] = useState<ChainAnalytics[]>([]);
-  const [tokenAnalytics] = useState(TOP_TOKENS);
+  const [tokenAnalytics, setTokenAnalytics] = useState<TokenAnalytics[]>([]);
 
   // ============================================================================
   // Data Loading
@@ -227,19 +137,79 @@ export default function AnalyticsPage() {
 
   const loadAnalytics = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      setProtocolStats(generateProtocolStats());
-      setVolumeData(generateVolumeData(30));
-      setPoolAnalytics(generatePoolAnalytics());
-      setChainAnalytics(generateChainAnalytics());
-    } catch (error) {
-      console.error('Failed to load analytics:', error);
+      const [analyticsRes, revenueRes, txStatsRes] = await Promise.all([
+        api.getAnalytics({ range: timeRange }),
+        api.getAnalyticsRevenue({ range: timeRange }),
+        api.getTransactionStats({ range: timeRange }),
+      ]);
+
+      const a = analyticsRes.data || {};
+      setProtocolStats({
+        totalVolume24h: Number(a.totalVolume24h ?? a.volume24h ?? 0),
+        totalVolume7d: Number(a.totalVolume7d ?? a.volume7d ?? 0),
+        totalVolume30d: Number(a.totalVolume30d ?? a.volume30d ?? 0),
+        totalFees24h: Number(a.totalFees24h ?? a.fees24h ?? 0),
+        totalFees7d: Number(a.totalFees7d ?? a.fees7d ?? 0),
+        totalFees30d: Number(a.totalFees30d ?? a.fees30d ?? 0),
+        totalTVL: Number(a.totalTVL ?? a.tvl ?? 0),
+        totalUsers: Number(a.totalUsers ?? a.activeUsers ?? 0),
+        totalTransactions: Number(a.totalTransactions ?? 0),
+        avgSwapSize: Number(a.avgSwapSize ?? 0),
+        priceChange24h: Number(a.priceChange24h ?? 0),
+      });
+
+      const rev = revenueRes.data || {};
+      const history: any[] = rev.volumeHistory || rev.history || [];
+      setVolumeData(history.map((d) => ({
+        timestamp: Number(d.timestamp ?? d.time ?? 0),
+        volume: Number(d.volume ?? 0),
+        trades: Number(d.trades ?? 0),
+        fees: Number(d.fees ?? 0),
+      })));
+
+      const pools: any[] = a.pools || [];
+      setPoolAnalytics(pools.map((p) => ({
+        id: String(p.id ?? p.address ?? ''),
+        name: String(p.name ?? p.pair ?? ''),
+        tvl: Number(p.tvl ?? 0),
+        volume24h: Number(p.volume24h ?? 0),
+        volume7d: Number(p.volume7d ?? 0),
+        fees24h: Number(p.fees24h ?? 0),
+        apr: Number(p.apr ?? 0),
+        utilization: Number(p.utilization ?? 0),
+      })).sort((x, y) => y.volume24h - x.volume24h));
+
+      const chains: any[] = a.chains || [];
+      setChainAnalytics(chains.map((c) => ({
+        chainId: Number(c.chainId ?? 0),
+        chainName: String(c.chainName ?? c.name ?? CHAIN_CONFIG[c.chainId]?.name ?? 'Unknown'),
+        volume24h: Number(c.volume24h ?? 0),
+        tvl: Number(c.tvl ?? 0),
+        transactions: Number(c.transactions ?? 0),
+        avgGasPrice: Number(c.avgGasPrice ?? 0),
+        sharePercent: Number(c.sharePercent ?? 0),
+      })).sort((x, y) => y.volume24h - x.volume24h));
+
+      const txStats = txStatsRes.data || {};
+      const tokens: any[] = txStats.tokens || a.tokens || [];
+      setTokenAnalytics(tokens.map((t) => ({
+        symbol: String(t.symbol ?? ''),
+        name: String(t.name ?? ''),
+        price: Number(t.price ?? 0),
+        change24h: Number(t.change24h ?? 0),
+        volume24h: Number(t.volume24h ?? 0),
+        marketCap: Number(t.marketCap ?? 0),
+        topPools: (t.topPools || []) as string[],
+      })));
+    } catch (err: any) {
+      console.error('Failed to load analytics:', err);
+      setError(err?.response?.data?.error || err?.message || 'Failed to load analytics data');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [timeRange]);
 
   useEffect(() => {
     loadAnalytics();
@@ -403,6 +373,12 @@ export default function AnalyticsPage() {
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}>
                 <CircularProgress sx={{ color: '#00d4aa' }} />
               </Box>
+            ) : error ? (
+              <Alert severity="error" sx={{ bgcolor: '#2a2a3e', color: '#ff4757' }} action={
+                <Button color="inherit" size="small" onClick={loadAnalytics}>Retry</Button>
+              }>
+                {error}
+              </Alert>
             ) : activeTab === 0 ? (
               /* Overview Tab */
               <Box>
@@ -508,6 +484,12 @@ export default function AnalyticsPage() {
               </Box>
             ) : activeTab === 1 ? (
               /* Pools Tab */
+              poolAnalytics.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 5 }}>
+                  <BarChart sx={{ fontSize: 48, color: '#9ca3af', mb: 1 }} />
+                  <Typography sx={{ color: '#9ca3af' }}>No pool analytics data available</Typography>
+                </Box>
+              ) : (
               <TableContainer>
                 <Table>
                   <TableHead>
@@ -553,8 +535,15 @@ export default function AnalyticsPage() {
                   </TableBody>
                 </Table>
               </TableContainer>
+              )
             ) : activeTab === 2 ? (
               /* Tokens Tab */
+              tokenAnalytics.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 5 }}>
+                  <PieChart sx={{ fontSize: 48, color: '#9ca3af', mb: 1 }} />
+                  <Typography sx={{ color: '#9ca3af' }}>No token analytics data available</Typography>
+                </Box>
+              ) : (
               <TableContainer>
                 <Table>
                   <TableHead>
@@ -594,8 +583,15 @@ export default function AnalyticsPage() {
                   </TableBody>
                 </Table>
               </TableContainer>
+              )
             ) : (
               /* Chains Tab */
+              chainAnalytics.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 5 }}>
+                  <ShowChart sx={{ fontSize: 48, color: '#9ca3af', mb: 1 }} />
+                  <Typography sx={{ color: '#9ca3af' }}>No chain analytics data available</Typography>
+                </Box>
+              ) : (
               <Box>
                 <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, mb: 4 }}>
                   {chainAnalytics.slice(0, 4).map((chain) => (
@@ -664,6 +660,7 @@ export default function AnalyticsPage() {
                   </Table>
                 </TableContainer>
               </Box>
+              )
             )}
           </CardContent>
         </Card>

@@ -1,56 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useWallet } from '../wallet';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8451';
-
-const fetchAPI = async <T,>(endpoint: string, options?: RequestInit): Promise<T> => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options?.headers,
-    },
-  });
-  if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
-  const data = await response.json();
-  return data.data || data;
-};
+import api, { FiatProvider, FiatOrder } from '../../src/lib/api/client';
 
 // ================================================================================
 // Types
 // ================================================================================
 
-interface FiatProvider {
-  id: string;
-  name: string;
-  logo: string;
-  supportedMethods: string[];
-  supportedFiat: string[];
-  supportedCrypto: string[];
-  minAmount: number;
-  maxAmount: number;
-  fees: number;
-  processingTime: string;
-  available: boolean;
-}
-
-interface Transaction {
-  id: string;
-  provider: string;
-  type: 'buy' | 'sell';
-  fiatAmount: number;
-  cryptoAmount: number;
-  cryptoCurrency: string;
-  fiatCurrency: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  createdAt: number;
-  expiresAt: number;
-  paymentMethod: string;
-}
+type Transaction = FiatOrder;
 
 interface KYCStatus {
   level: number;
@@ -61,75 +19,6 @@ interface KYCStatus {
     yearly: number;
   };
 }
-
-// Fiat providers
-const FIAT_PROVIDERS: FiatProvider[] = [
-  {
-    id: 'moonpay',
-    name: 'MoonPay',
-    logo: '🌙',
-    supportedMethods: ['card', 'bank', 'applepay', 'googlepay'],
-    supportedFiat: ['USD', 'EUR', 'GBP', 'AUD', 'CAD'],
-    supportedCrypto: ['ETH', 'BTC', 'SOL', 'MATIC', 'USDT', 'USDC'],
-    minAmount: 30,
-    maxAmount: 5000,
-    fees: 4.5,
-    processingTime: '5-30 min',
-    available: true,
-  },
-  {
-    id: 'ramp',
-    name: 'Ramp Network',
-    logo: '💳',
-    supportedMethods: ['card', 'bank', 'swish', 'blik'],
-    supportedFiat: ['USD', 'EUR', 'GBP'],
-    supportedCrypto: ['ETH', 'BTC', 'MATIC', 'USDC'],
-    minAmount: 50,
-    maxAmount: 10000,
-    fees: 3.5,
-    processingTime: '10-30 min',
-    available: true,
-  },
-  {
-    id: 'transak',
-    name: 'Transak',
-    logo: '🔄',
-    supportedMethods: ['card', 'bank', 'upi', 'pix'],
-    supportedFiat: ['USD', 'EUR', 'GBP', 'INR', 'BRL'],
-    supportedCrypto: ['ETH', 'BTC', 'SOL', 'AVAX', 'USDT'],
-    minAmount: 20,
-    maxAmount: 5000,
-    fees: 4.0,
-    processingTime: '15-45 min',
-    available: true,
-  },
-  {
-    id: 'stripe',
-    name: 'Stripe',
-    logo: '💵',
-    supportedMethods: ['card', 'applepay', 'googlepay'],
-    supportedFiat: ['USD', 'EUR', 'GBP'],
-    supportedCrypto: ['USDC', 'USDT'],
-    minAmount: 100,
-    maxAmount: 25000,
-    fees: 2.9,
-    processingTime: '1-2 min',
-    available: true,
-  },
-  {
-    id: 'safepay',
-    name: 'SafePay',
-    logo: '🔒',
-    supportedMethods: ['sepa', 'fps', 'pix'],
-    supportedFiat: ['EUR', 'GBP', 'BRL'],
-    supportedCrypto: ['ETH', 'BTC', 'USDT'],
-    minAmount: 100,
-    maxAmount: 50000,
-    fees: 1.5,
-    processingTime: '1-3 days',
-    available: true,
-  },
-];
 
 // Payment methods with icons
 const PAYMENT_METHODS = [
@@ -155,7 +44,8 @@ export default function FiatRampPage() {
   const [activeTab, setActiveTab] = useState<'buy' | 'sell'>('buy');
   
   // Providers from API
-  const [providers, setProviders] = useState<FiatProvider[]>(FIAT_PROVIDERS);
+  const [providers, setProviders] = useState<FiatProvider[]>([]);
+  const [providersLoading, setProvidersLoading] = useState(true);
   
   // Form state
   const [selectedProvider, setSelectedProvider] = useState<FiatProvider | null>(null);
@@ -165,6 +55,10 @@ export default function FiatRampPage() {
   const [cryptoAmount, setCryptoAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
   const [email, setEmail] = useState('');
+  
+  // Live crypto price (in fiat currency) fetched from price API
+  const [cryptoPrice, setCryptoPrice] = useState<number | null>(null);
+  const [priceLoading, setPriceLoading] = useState(false);
   
   // UI state
   const [isLoading, setIsLoading] = useState(false);
@@ -182,46 +76,73 @@ export default function FiatRampPage() {
   // Load providers and KYC status from backend
   useEffect(() => {
     const loadData = async () => {
+      setProvidersLoading(true);
+      setError(null);
       try {
-        // Fetch providers from API
-        const providersData = await fetchAPI<FiatProvider[]>('/api/v1/fiat-ramp/providers');
-        if (providersData && providersData.length > 0) {
-          setProviders(providersData);
+        const res = await api.getFiatProviders({ fiat: fiatCurrency, crypto: cryptoCurrency });
+        if (res.success && res.data) {
+          setProviders(res.data);
+        } else {
+          setError(res.error || 'Failed to load fiat providers');
         }
-        
-        // Fetch KYC status
-        if (address) {
-          const kyc = await fetchAPI<KYCStatus>('/api/v1/kyc/status');
-          if (kyc) {
-            setKycStatus(kyc);
+      } catch (err: any) {
+        setError(err.message || 'Failed to load fiat providers');
+      } finally {
+        setProvidersLoading(false);
+      }
+
+      // Fetch KYC status
+      if (address) {
+        try {
+          const kycRes = await api.getKycStatus();
+          if (kycRes.success && kycRes.data) {
+            setKycStatus(kycRes.data as unknown as KYCStatus);
           }
+        } catch {
+          // KYC status is optional; leave defaults on failure
         }
-      } catch (err) {
-        console.log('Using default providers - API not available');
       }
     };
     loadData();
-  }, [address]);
+  }, [address, fiatCurrency, cryptoCurrency]);
 
-  // Calculate crypto amount based on fiat (mock price)
+  // Fetch live crypto price whenever the selected crypto/fiat pair changes
+  const fetchPrice = useCallback(async () => {
+    setPriceLoading(true);
+    try {
+      const res = await api.getTokenPrice(cryptoCurrency, fiatCurrency);
+      if (res.success && res.data) {
+        setCryptoPrice(res.data.price);
+      } else {
+        setCryptoPrice(null);
+      }
+    } catch {
+      setCryptoPrice(null);
+    } finally {
+      setPriceLoading(false);
+    }
+  }, [cryptoCurrency, fiatCurrency]);
+
+  useEffect(() => {
+    fetchPrice();
+  }, [fetchPrice]);
+
+  // Calculate crypto amount based on fiat using live price
   const calculateCryptoAmount = (fiat: string) => {
-    if (!fiat) {
+    if (!fiat || cryptoPrice === null) {
       setCryptoAmount('');
       return;
     }
-    // Mock price: 1 ETH = 3000 USD
-    const cryptoPrice = 3000;
     const crypto = parseFloat(fiat) / cryptoPrice;
     setCryptoAmount(crypto.toFixed(6));
   };
 
-  // Calculate fiat amount based on crypto
+  // Calculate fiat amount based on crypto using live price
   const calculateFiatAmount = (crypto: string) => {
-    if (!crypto) {
+    if (!crypto || cryptoPrice === null) {
       setFiatAmount('');
       return;
     }
-    const cryptoPrice = 3000;
     const fiat = parseFloat(crypto) * cryptoPrice;
     setFiatAmount(fiat.toFixed(2));
   };
@@ -266,49 +187,47 @@ export default function FiatRampPage() {
     setError(null);
 
     try {
-      // Call backend API to create order
-      const orderData = await fetchAPI<Transaction>('/api/v1/fiat-ramp/orders', {
-        method: 'POST',
-        body: JSON.stringify({
-          providerId: selectedProvider.id,
-          type: activeTab,
-          fiatAmount: parseFloat(fiatAmount),
-          cryptoCurrency,
-          fiatCurrency,
-          paymentMethod,
-          email,
-          walletAddress: address,
-        }),
+      const res = await api.createFiatOrder({
+        providerId: selectedProvider.id,
+        type: activeTab,
+        fiatAmount: parseFloat(fiatAmount),
+        cryptoCurrency,
+        fiatCurrency,
+        paymentMethod,
+        email,
+        walletAddress: address,
       });
 
-      setCurrentTransaction(orderData);
-      setSuccess(`Order created! Redirecting to ${selectedProvider.name}...`);
-      
-      // Simulate redirect after 2 seconds
-      setTimeout(() => {
-        setCurrentTransaction(prev => prev ? { ...prev, status: 'processing' } : null);
-      }, 2000);
-      
+      if (res.success && res.data) {
+        setCurrentTransaction(res.data);
+        setSuccess(`Order created!${res.data.redirectUrl ? ` Redirecting to ${selectedProvider.name}...` : ''}`);
+      } else {
+        setError(res.error || 'Failed to create order');
+      }
+
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Failed to create order');
     } finally {
       setIsLoading(false);
     }
   };
 
   // Check KYC
-  const checkKYC = () => {
+  const checkKYC = async () => {
     setIsLoading(true);
-    // Simulate KYC check
-    setTimeout(() => {
-      setKycStatus({
-        level: 1,
-        status: 'verified',
-        limits: { daily: 5000, monthly: 20000, yearly: 100000 },
-      });
+    try {
+      const res = await api.getKycStatus();
+      if (res.success && res.data) {
+        setKycStatus(res.data);
+        setSuccess('KYC verified! You can now buy up to $5,000 daily.');
+      } else {
+        setError(res.error || 'Failed to verify KYC status');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to verify KYC status');
+    } finally {
       setIsLoading(false);
-      setSuccess('KYC verified! You can now buy up to $5,000 daily.');
-    }, 1500);
+    }
   };
 
   const formatCurrency = (amount: number, currency: string) => {
@@ -402,7 +321,16 @@ export default function FiatRampPage() {
           <h2 className="text-xl font-semibold text-white mb-4">Select Provider</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {getAvailableProviders().map(provider => (
+            {providersLoading ? (
+              <div className="col-span-full text-center py-8 text-slate-400">
+                Loading providers...
+              </div>
+            ) : getAvailableProviders().length === 0 ? (
+              <div className="col-span-full text-center py-8 text-slate-400">
+                No providers available for {fiatCurrency} {'->'} {cryptoCurrency}
+              </div>
+            ) : (
+            getAvailableProviders().map(provider => (
               <button
                 key={provider.id}
                 onClick={() => setSelectedProvider(provider)}
@@ -415,13 +343,14 @@ export default function FiatRampPage() {
                 <span className="text-3xl">{provider.logo}</span>
                 <div className="flex-1">
                   <p className="text-white font-medium">{provider.name}</p>
-                  <p className="text-slate-400 text-sm">Fee: {provider.fees}% • {provider.processingTime}</p>
+                  <p className="text-slate-400 text-sm">Fee: {provider.fees}% - {provider.processingTime}</p>
                 </div>
                 {provider.fees < 2 && (
                   <span className="bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded">Best Rate</span>
                 )}
               </button>
-            ))}
+            ))
+            )}
           </div>
         </div>
 
@@ -471,6 +400,13 @@ export default function FiatRampPage() {
                 Min: {selectedProvider.minAmount} {fiatCurrency} • Max: {selectedProvider.maxAmount} {fiatCurrency}
               </p>
             )}
+            <p className="text-slate-500 text-xs mt-2">
+              {priceLoading
+                ? 'Fetching live price...'
+                : cryptoPrice !== null
+                ? `1 ${cryptoCurrency} = ${cryptoPrice.toLocaleString()} ${fiatCurrency}`
+                : 'Live price unavailable'}
+            </p>
           </div>
           <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
             <label className="block text-slate-400 text-sm mb-2">

@@ -11,43 +11,11 @@ import {
   AccessTime, Verified, Warning, CheckCircle, Cancel
 } from '@mui/icons-material';
 import { useTheme } from '../components/ThemeProvider';
+import { api, LaunchpadProject as IDOProject } from '@/lib/api/client';
 
 // ============================================================================
 // Types
 // ============================================================================
-
-interface IDOProject {
-  id: string;
-  name: string;
-  symbol: string;
-  description: string;
-  logo: string;
-  status: 'upcoming' | 'live' | 'completed' | 'cancelled';
-  chain: string;
-  chainIcon: string;
-  tokenPrice: number;
-  totalRaise: number;
-  hardCap: number;
-  softCap: number;
-  startTime: number;
-  endTime: number;
-  minAllocation: number;
-  maxAllocation: number;
-  participants: number;
-  totalRaised: number;
-  tokenSymbol: string;
-  saleTokenAddress: string;
-  acceptedTokens: string[];
-  vestingPercent: number;
-  vestingCliff: number;
-  vestingPeriod: number;
-  website: string;
-  twitter: string;
-  telegram: string;
-  whitepaper: string;
-  kycRequired: boolean;
-  auditStatus: 'completed' | 'in-progress' | 'pending';
-}
 
 interface UserAllocation {
   projectId: string;
@@ -55,143 +23,6 @@ interface UserAllocation {
   claimedAmount: number;
   claimableAmount: number;
   status: 'pending' | 'approved' | 'rejected';
-}
-
-// ============================================================================
-// Mock Data
-// ============================================================================
-
-function generateProjects(): IDOProject[] {
-  return [
-    {
-      id: 'proj_1',
-      name: 'MetaFi Arena',
-      symbol: 'MFA',
-      description: 'Next-gen Web3 gaming platform with NFT integration and play-to-earn mechanics. Build your virtual arena and compete with players worldwide.',
-      logo: '🎮',
-      status: 'live',
-      chain: 'Ethereum',
-      chainIcon: '🔷',
-      tokenPrice: 0.05,
-      totalRaise: 500000,
-      hardCap: 500000,
-      softCap: 100000,
-      startTime: Date.now() - 3600000 * 24,
-      endTime: Date.now() + 3600000 * 48,
-      minAllocation: 100,
-      maxAllocation: 5000,
-      participants: 3420,
-      totalRaised: 325000,
-      tokenSymbol: 'MFA',
-      saleTokenAddress: '0x1234...5678',
-      acceptedTokens: ['USDC', 'USDT', 'ETH'],
-      vestingPercent: 10,
-      vestingCliff: 0,
-      vestingPeriod: 6,
-      website: 'https://metafi.game',
-      twitter: '@MetaFiArena',
-      telegram: '@MetaFiArena',
-      whitepaper: 'https://docs.metafi.game',
-      kycRequired: true,
-      auditStatus: 'completed',
-    },
-    {
-      id: 'proj_2',
-      name: 'Quantum DeFi',
-      symbol: 'QDF',
-      description: 'Advanced algorithmic stablecoin protocol with AI-powered risk management and cross-chain liquidity.',
-      logo: '⚛️',
-      status: 'upcoming',
-      chain: 'BNB Chain',
-      chainIcon: '🟡',
-      tokenPrice: 0.12,
-      totalRaise: 750000,
-      hardCap: 750000,
-      softCap: 200000,
-      startTime: Date.now() + 3600000 * 72,
-      endTime: Date.now() + 3600000 * 168,
-      minAllocation: 50,
-      maxAllocation: 10000,
-      participants: 0,
-      totalRaised: 0,
-      tokenSymbol: 'QDF',
-      saleTokenAddress: '0xabcd...efgh',
-      acceptedTokens: ['USDC', 'USDT', 'BNB'],
-      vestingPercent: 20,
-      vestingCliff: 3,
-      vestingPeriod: 9,
-      website: 'https://quantumdefi.io',
-      twitter: '@QuantumDeFi',
-      telegram: '@QuantumDeFi',
-      whitepaper: 'https://docs.quantumdefi.io',
-      kycRequired: true,
-      auditStatus: 'completed',
-    },
-    {
-      id: 'proj_3',
-      name: 'SolarFi Energy',
-      symbol: 'SFE',
-      description: 'Renewable energy staking protocol tokenizing solar and wind energy production for passive income.',
-      logo: '☀️',
-      status: 'live',
-      chain: 'Polygon',
-      chainIcon: '🟣',
-      tokenPrice: 0.08,
-      totalRaise: 300000,
-      hardCap: 300000,
-      softCap: 50000,
-      startTime: Date.now() - 3600000 * 12,
-      endTime: Date.now() + 3600000 * 36,
-      minAllocation: 25,
-      maxAllocation: 2500,
-      participants: 1856,
-      totalRaised: 245000,
-      tokenSymbol: 'SFE',
-      saleTokenAddress: '0x9876...5432',
-      acceptedTokens: ['USDC', 'MATIC'],
-      vestingPercent: 30,
-      vestingCliff: 0,
-      vestingPeriod: 6,
-      website: 'https://solarfi.io',
-      twitter: '@SolarFiEnergy',
-      telegram: '@SolarFiEnergy',
-      whitepaper: 'https://docs.solarfi.io',
-      kycRequired: false,
-      auditStatus: 'in-progress',
-    },
-    {
-      id: 'proj_4',
-      name: 'Nexus Finance',
-      symbol: 'NXF',
-      description: 'Multi-chain yield aggregator with auto-compounding vaults and institutional-grade strategies.',
-      logo: '🔱',
-      status: 'completed',
-      chain: 'Arbitrum',
-      chainIcon: '🔵',
-      tokenPrice: 0.15,
-      totalRaise: 1000000,
-      hardCap: 1000000,
-      softCap: 250000,
-      startTime: Date.now() - 3600000 * 24 * 14,
-      endTime: Date.now() - 3600000 * 24 * 7,
-      minAllocation: 100,
-      maxAllocation: 25000,
-      participants: 5620,
-      totalRaised: 1000000,
-      tokenSymbol: 'NXF',
-      saleTokenAddress: '0xfedc...ba98',
-      acceptedTokens: ['USDC', 'USDT', 'ETH', 'ARB'],
-      vestingPercent: 0,
-      vestingCliff: 0,
-      vestingPeriod: 0,
-      website: 'https://nexusfinance.xyz',
-      twitter: '@NexusFinance',
-      telegram: '@NexusFinance',
-      whitepaper: 'https://docs.nexusfinance.xyz',
-      kycRequired: true,
-      auditStatus: 'completed',
-    },
-  ];
 }
 
 // ============================================================================
@@ -234,6 +65,7 @@ function timeUntil(timestamp: number): string {
 export default function LaunchpadPage() {
   const [projects, setProjects] = useState<IDOProject[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(0);
   const [selectedProject, setSelectedProject] = useState<IDOProject | null>(null);
   const [allocationAmount, setAllocationAmount] = useState('');
@@ -249,9 +81,19 @@ export default function LaunchpadPage() {
   useEffect(() => {
     const loadProjects = async () => {
       setLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setProjects(generateProjects());
-      setLoading(false);
+      setError(null);
+      try {
+        const res = await api.getLaunchpadProjects();
+        if (res.success && res.data) {
+          setProjects(res.data);
+        } else {
+          setError(res.error || 'Failed to load launchpad projects');
+        }
+      } catch (err: any) {
+        setError(err?.message || 'Failed to load launchpad projects');
+      } finally {
+        setLoading(false);
+      }
     };
     loadProjects();
   }, []);
@@ -261,16 +103,24 @@ export default function LaunchpadPage() {
 
     setPurchasing(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      setSnackbar({
-        open: true,
-        message: `Successfully allocated ${allocationAmount} USDC to ${selectedProject.name}!`,
-        severity: 'success'
-      });
-      setSelectedProject(null);
-      setAllocationAmount('');
-    } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to complete allocation', severity: 'error' });
+      const token = selectedProject.acceptedTokens?.[0] || 'USDC';
+      const res = await api.participateInSale(selectedProject.id, allocationAmount, token);
+      if (res.success) {
+        setSnackbar({
+          open: true,
+          message: `Successfully allocated ${allocationAmount} ${token} to ${selectedProject.name}!`,
+          severity: 'success'
+        });
+        setSelectedProject(null);
+        setAllocationAmount('');
+        // Refresh project list to reflect updated raise
+        const fresh = await api.getLaunchpadProjects();
+        if (fresh.success && fresh.data) setProjects(fresh.data);
+      } else {
+        setSnackbar({ open: true, message: res.error || 'Failed to complete allocation', severity: 'error' });
+      }
+    } catch (err: any) {
+      setSnackbar({ open: true, message: err?.message || 'Failed to complete allocation', severity: 'error' });
     } finally {
       setPurchasing(false);
     }
@@ -279,10 +129,14 @@ export default function LaunchpadPage() {
   const handleClaim = async (projectId: string) => {
     setClaiming(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setSnackbar({ open: true, message: 'Tokens claimed successfully!', severity: 'success' });
-    } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to claim tokens', severity: 'error' });
+      const res = await api.claimLaunchpadTokens(projectId);
+      if (res.success) {
+        setSnackbar({ open: true, message: 'Tokens claimed successfully!', severity: 'success' });
+      } else {
+        setSnackbar({ open: true, message: res.error || 'Failed to claim tokens', severity: 'error' });
+      }
+    } catch (err: any) {
+      setSnackbar({ open: true, message: err?.message || 'Failed to claim tokens', severity: 'error' });
     } finally {
       setClaiming(false);
     }
@@ -526,6 +380,13 @@ export default function LaunchpadPage() {
             {loading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
                 <CircularProgress sx={{ color: '#00d4aa' }} />
+              </Box>
+            ) : error ? (
+              <Box sx={{ textAlign: 'center', py: 8 }}>
+                <Typography sx={{ color: '#ff5722', mb: 2 }}>{error}</Typography>
+                <Button variant="contained" onClick={() => window.location.reload()} sx={{ bgcolor: '#00d4aa', color: 'black' }}>
+                  Retry
+                </Button>
               </Box>
             ) : (
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: 3 }}>

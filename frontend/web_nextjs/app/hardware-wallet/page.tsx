@@ -113,6 +113,14 @@ class HardwareWalletService {
     });
   }
 
+  async getPendingTransactions(deviceId: string): Promise<TransactionRequest[]> {
+    return this.request(`/devices/${deviceId}/transactions`);
+  }
+
+  async broadcastTransaction(deviceId: string, txId: string): Promise<{ hash: string }> {
+    return this.request(`/devices/${deviceId}/transactions/${txId}/broadcast`, { method: 'POST' });
+  }
+
   async signMessage(deviceId: string, message: string, derivationPath: string): Promise<{ signature: string }> {
     return this.request(`/devices/${deviceId}/sign-message`, {
       method: 'POST',
@@ -168,6 +176,16 @@ export default function HardwareWalletPage() {
     }
   };
 
+  const loadPendingTransactions = async (deviceId: string) => {
+    try {
+      const txs = await hardwareService.getPendingTransactions(deviceId);
+      setPendingTransactions(txs);
+    } catch (err) {
+      console.error('Failed to load pending transactions:', err);
+      setPendingTransactions([]);
+    }
+  };
+
   const connectDevice = async (deviceType: string) => {
     setIsConnecting(true);
     setError(null);
@@ -181,6 +199,9 @@ export default function HardwareWalletPage() {
       // Load device status
       const status = await hardwareService.getDeviceStatus(device.id);
       setDeviceStatus(status);
+
+      // Load pending transactions awaiting signature
+      loadPendingTransactions(device.id);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -231,29 +252,33 @@ export default function HardwareWalletPage() {
   const signTransaction = async (txId: string) => {
     if (!selectedDevice) return;
     
+    const tx = pendingTransactions.find(t => t.id === txId);
+    if (!tx) {
+      setError('Transaction not found');
+      return;
+    }
+    
     setSigningInProgress(txId);
     setError(null);
     
     try {
-      // In production, this would be the actual transaction
-      const mockTx = {
-        to: '0x742d35Cc6634C0532925a3b844Bc9e7595f0fEb1',
-        value: '0.1',
-        data: '0x',
-        chainId: chainId || 1,
-      };
+      // Sign the actual pending transaction using its real fields.
+      const result = await hardwareService.signTransaction(selectedDevice.id, {
+        to: tx.to,
+        value: tx.value,
+        data: tx.data,
+        chainId: tx.chainId,
+      });
       
-      const result = await hardwareService.signTransaction(selectedDevice.id, mockTx);
-      
-      setPendingTransactions(prev => prev.map(tx => 
-        tx.id === txId ? { ...tx, status: 'signed' as const } : tx
+      setPendingTransactions(prev => prev.map(t => 
+        t.id === txId ? { ...t, status: 'signed' as const } : t
       ));
       
       setSuccess(`Transaction signed! Signature: ${result.signature.slice(0, 20)}...`);
     } catch (err: any) {
       setError(err.message);
-      setPendingTransactions(prev => prev.map(tx => 
-        tx.id === txId ? { ...tx, status: 'rejected' as const } : tx
+      setPendingTransactions(prev => prev.map(t => 
+        t.id === txId ? { ...t, status: 'rejected' as const } : t
       ));
     } finally {
       setSigningInProgress(null);
@@ -508,18 +533,10 @@ export default function HardwareWalletPage() {
               <div className="text-center py-8">
                 <p className="text-slate-400 mb-4">No pending transactions</p>
                 <button
-                  onClick={() => setPendingTransactions([{
-                    id: '1',
-                    to: '0x742d35Cc6634C0532925a3b844Bc9e7595f0fEb1',
-                    value: '0.1',
-                    data: '0x',
-                    chainId: chainId || 1,
-                    status: 'pending',
-                    timestamp: Date.now(),
-                  }])}
+                  onClick={() => selectedDevice && loadPendingTransactions(selectedDevice.id)}
                   className="bg-slate-600 hover:bg-slate-500 text-white px-6 py-3 rounded-xl font-medium"
                 >
-                  Simulate Transaction
+                  Refresh Transactions
                 </button>
               </div>
             )}

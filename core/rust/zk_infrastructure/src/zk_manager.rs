@@ -49,9 +49,9 @@ impl Default for ZKManager {
 mod tests {
     use super::*;
     
-    #[test]
-    fn test_manager() {
+    #[tokio::test]
+    async fn test_manager() {
         let manager = ZKManager::new();
-        assert!(!manager.prover().list_circuits().is_empty() || true);
+        assert!(!manager.prover().list_circuits().await.is_empty() || true);
     }
 }

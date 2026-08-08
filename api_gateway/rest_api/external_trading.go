@@ -39,15 +39,6 @@ const (
 // ENUMS
 // ============================================================================
 
-type UserRole string
-
-const (
-	RoleSuperAdmin       UserRole = "super_admin"
-	RoleExchangeOperator UserRole = "exchange_operator"
-	RoleFinanceAdmin     UserRole = "finance_admin"
-	RoleClient           UserRole = "client"
-)
-
 type ConnectionStatus string
 
 const (

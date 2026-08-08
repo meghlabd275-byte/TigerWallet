@@ -1,116 +1,163 @@
 'use client';
 
-import React, { useState } from 'react';
-
-interface Guardian {
-  address: string;
-  name: string;
-  confirmed: boolean;
-  addedAt: number;
-}
-
-interface RecoveryRequest {
-  id: string;
-  newOwner: string;
-  guardians: Guardian[];
-  confirmations: number;
-  threshold: number;
-  status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
-  createdAt: number;
-}
+import React, { useState, useEffect, useCallback } from 'react';
+import api, { Guardian, RecoveryRequest } from '../../src/lib/api/client';
 
 export default function SocialRecovery() {
-  const [guardians, setGuardians] = useState<Guardian[]>([
-    {
-      address: '0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E',
-      name: 'Family Member 1',
-      confirmed: true,
-      addedAt: Date.now() - 86400000 * 30,
-    },
-    {
-      address: '0x1234567890abcdef1234567890abcdef12345678',
-      name: 'Close Friend',
-      confirmed: true,
-      addedAt: Date.now() - 86400000 * 20,
-    },
-    {
-      address: '0xabcdef1234567890abcdef1234567890abcdef12',
-      name: 'Business Partner',
-      confirmed: false,
-      addedAt: Date.now() - 86400000 * 10,
-    },
-  ]);
-  
+  const [guardians, setGuardians] = useState<Guardian[]>([]);
+  const [loadingGuardians, setLoadingGuardians] = useState(true);
   const [newGuardianAddress, setNewGuardianAddress] = useState('');
   const [newGuardianName, setNewGuardianName] = useState('');
   const [recoveryRequest, setRecoveryRequest] = useState<RecoveryRequest | null>(null);
   const [showAddGuardian, setShowAddGuardian] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const threshold = 2;
-  const confirmations = guardians.filter(g => g.confirmed).length;
+  const fetchGuardians = useCallback(async () => {
+    setLoadingGuardians(true);
+    try {
+      const res = await api.getGuardians();
+      if (res.success && res.data) {
+        setGuardians(res.data);
+      } else {
+        setGuardians([]);
+        if (res.error) {
+          setMessage({ type: 'error', text: res.error });
+        }
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err?.response?.data?.error || err?.message || 'Failed to load guardians' });
+      setGuardians([]);
+    } finally {
+      setLoadingGuardians(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchGuardians();
+  }, [fetchGuardians]);
+
+  // Threshold derived from an active recovery request, if any; otherwise falls back
+  // to a simple majority of the current guardian set (min 1).
+  const threshold = recoveryRequest?.threshold ?? Math.max(1, Math.ceil(guardians.length / 2));
+  const confirmations = recoveryRequest?.confirmations ?? guardians.filter(g => g.confirmed).length;
 
   const handleAddGuardian = async () => {
     if (!newGuardianAddress || !newGuardianName) {
       setMessage({ type: 'error', text: 'Please fill in all fields' });
       return;
     }
-    
+
     if (!newGuardianAddress.startsWith('0x') || newGuardianAddress.length !== 42) {
       setMessage({ type: 'error', text: 'Invalid Ethereum address' });
       return;
     }
 
-    const newGuardian: Guardian = {
-      address: newGuardianAddress,
-      name: newGuardianName,
-      confirmed: false,
-      addedAt: Date.now(),
-    };
-
-    setGuardians(prev => [...prev, newGuardian]);
-    setNewGuardianAddress('');
-    setNewGuardianName('');
-    setShowAddGuardian(false);
-    setMessage({ type: 'success', text: 'Guardian added successfully!' });
-  };
-
-  const handleRemoveGuardian = (address: string) => {
-    setGuardians(prev => prev.filter(g => g.address !== address));
-    setMessage({ type: 'success', text: 'Guardian removed' });
-  };
-
-  const handleInitiateRecovery = async () => {
-    if (!recoveryRequest) {
-      setRecoveryRequest({
-        id: `recovery_${Date.now()}`,
-        newOwner: '0xnewowner123456789',
-        guardians: guardians,
-        confirmations: 0,
-        threshold: threshold,
-        status: 'pending',
-        createdAt: Date.now(),
-      });
-      setMessage({ type: 'success', text: 'Recovery request initiated!' });
+    setSubmitting(true);
+    setMessage(null);
+    try {
+      const res = await api.addGuardian({ address: newGuardianAddress, name: newGuardianName });
+      if (res.success && res.data) {
+        setGuardians(prev => [...prev, res.data!]);
+        setNewGuardianAddress('');
+        setNewGuardianName('');
+        setShowAddGuardian(false);
+        setMessage({ type: 'success', text: 'Guardian added successfully!' });
+      } else {
+        setMessage({ type: 'error', text: res.error || 'Failed to add guardian' });
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err?.response?.data?.error || err?.message || 'Failed to add guardian' });
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleCancelRecovery = () => {
-    setRecoveryRequest(null);
-    setMessage({ type: 'success', text: 'Recovery request cancelled' });
+  const handleRemoveGuardian = async (address: string) => {
+    setSubmitting(true);
+    setMessage(null);
+    try {
+      const res = await api.removeGuardian(address);
+      if (res.success) {
+        setGuardians(prev => prev.filter(g => g.address !== address));
+        setMessage({ type: 'success', text: 'Guardian removed' });
+      } else {
+        setMessage({ type: 'error', text: res.error || 'Failed to remove guardian' });
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err?.response?.data?.error || err?.message || 'Failed to remove guardian' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleInitiateRecovery = async () => {
+    if (recoveryRequest) return;
+    const newOwner = window.prompt('Enter the new owner address for recovery:');
+    if (!newOwner) return;
+    if (!newOwner.startsWith('0x') || newOwner.length !== 42) {
+      setMessage({ type: 'error', text: 'Invalid new owner address' });
+      return;
+    }
+
+    setSubmitting(true);
+    setMessage(null);
+    try {
+      const res = await api.initiateRecovery(newOwner);
+      if (res.success && res.data) {
+        setRecoveryRequest(res.data);
+        setMessage({ type: 'success', text: 'Recovery request initiated!' });
+      } else {
+        setMessage({ type: 'error', text: res.error || 'Failed to initiate recovery' });
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err?.response?.data?.error || err?.message || 'Failed to initiate recovery' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCancelRecovery = async () => {
+    if (!recoveryRequest) return;
+    setSubmitting(true);
+    setMessage(null);
+    try {
+      const res = await api.cancelRecovery(recoveryRequest.id);
+      if (res.success) {
+        setRecoveryRequest(null);
+        setMessage({ type: 'success', text: 'Recovery request cancelled' });
+      } else {
+        setMessage({ type: 'error', text: res.error || 'Failed to cancel recovery' });
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err?.response?.data?.error || err?.message || 'Failed to cancel recovery' });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleConfirmRecovery = async (guardian: Guardian) => {
-    setGuardians(prev => prev.map(g => {
-      if (g.address === guardian.address) {
-        return { ...g, confirmed: true };
+    if (!recoveryRequest) return;
+    setSubmitting(true);
+    setMessage(null);
+    try {
+      const res = await api.confirmRecovery(recoveryRequest.id, guardian.address);
+      if (res.success && res.data) {
+        setRecoveryRequest(res.data);
+        setGuardians(res.data.guardians);
+        setMessage({ type: 'success', text: 'Recovery confirmed!' });
+      } else {
+        setMessage({ type: 'error', text: res.error || 'Failed to confirm recovery' });
       }
-      return g;
-    }));
-    setMessage({ type: 'success', text: 'Recovery confirmed!' });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err?.response?.data?.error || err?.message || 'Failed to confirm recovery' });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const formatAddress = (addr: string) => {
+    if (!addr) return '';
     return addr.slice(0, 6) + '...' + addr.slice(-4);
   };
 
@@ -196,9 +243,10 @@ export default function SocialRecovery() {
                 <div className="flex gap-2">
                   <button
                     onClick={handleAddGuardian}
-                    className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg transition-colors"
+                    disabled={submitting}
+                    className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg transition-colors disabled:opacity-50"
                   >
-                    Add Guardian
+                    {submitting ? 'Adding...' : 'Add Guardian'}
                   </button>
                   <button
                     onClick={() => setShowAddGuardian(false)}
@@ -227,38 +275,48 @@ export default function SocialRecovery() {
 
           {/* Guardian List */}
           <div className="space-y-3">
-            {guardians.map((guardian) => (
-              <div key={guardian.address} className="flex items-center justify-between p-4 bg-slate-100 dark:bg-slate-700 rounded-lg">
-                <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                    guardian.confirmed ? 'bg-green-500' : 'bg-slate-400'
-                  } text-white`}>
-                    {guardian.confirmed ? '✓' : '?'}
-                  </div>
-                  <div>
-                    <div className="font-semibold">{guardian.name}</div>
-                    <div className="text-sm text-slate-500 dark:text-slate-400 font-mono">
-                      {formatAddress(guardian.address)}
+            {loadingGuardians ? (
+              <div className="text-center py-8 text-slate-500 dark:text-slate-400">Loading guardians...</div>
+            ) : guardians.length === 0 ? (
+              <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                No guardians yet. Add trusted contacts to enable wallet recovery.
+              </div>
+            ) : (
+              guardians.map((guardian) => (
+                <div key={guardian.address} className="flex items-center justify-between p-4 bg-slate-100 dark:bg-slate-700 rounded-lg">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                      guardian.confirmed ? 'bg-green-500' : 'bg-slate-400'
+                    } text-white`}>
+                      {guardian.confirmed ? '✓' : '?'}
+                    </div>
+                    <div>
+                      <div className="font-semibold">{guardian.name}</div>
+                      <div className="text-sm text-slate-500 dark:text-slate-400 font-mono">
+                        {formatAddress(guardian.address)}
+                      </div>
+                      <div className="text-xs text-slate-400">Added {formatTime(guardian.addedAt)}</div>
                     </div>
                   </div>
+                  <div className="flex items-center gap-4">
+                    <span className={`px-2 py-1 rounded text-xs ${
+                      guardian.confirmed 
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                        : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                    }`}>
+                      {guardian.confirmed ? 'Confirmed' : 'Pending'}
+                    </span>
+                    <button
+                      onClick={() => handleRemoveGuardian(guardian.address)}
+                      disabled={submitting}
+                      className="text-red-500 hover:text-red-400 disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <span className={`px-2 py-1 rounded text-xs ${
-                    guardian.confirmed 
-                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                      : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                  }`}>
-                    {guardian.confirmed ? 'Confirmed' : 'Pending'}
-                  </span>
-                  <button
-                    onClick={() => handleRemoveGuardian(guardian.address)}
-                    className="text-red-500 hover:text-red-400"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
@@ -274,9 +332,10 @@ export default function SocialRecovery() {
               </p>
               <button
                 onClick={handleInitiateRecovery}
-                className="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-lg font-semibold transition-colors"
+                disabled={submitting || guardians.length === 0}
+                className="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-lg font-semibold transition-colors disabled:opacity-50"
               >
-                🚨 Initiate Wallet Recovery
+                {submitting ? 'Initiating...' : '🚨 Initiate Wallet Recovery'}
               </button>
             </div>
           ) : (
@@ -300,9 +359,10 @@ export default function SocialRecovery() {
                     ) : (
                       <button
                         onClick={() => handleConfirmRecovery(guardian)}
-                        className="text-orange-500 hover:text-orange-400"
+                        disabled={submitting}
+                        className="text-orange-500 hover:text-orange-400 disabled:opacity-50"
                       >
-                        Confirm
+                        {submitting ? 'Confirming...' : 'Confirm'}
                       </button>
                     )}
                   </div>
@@ -311,9 +371,10 @@ export default function SocialRecovery() {
 
               <button
                 onClick={handleCancelRecovery}
-                className="w-full bg-slate-300 dark:bg-slate-600 hover:bg-slate-400 dark:hover:bg-slate-500 py-2 rounded-lg transition-colors"
+                disabled={submitting}
+                className="w-full bg-slate-300 dark:bg-slate-600 hover:bg-slate-400 dark:hover:bg-slate-500 py-2 rounded-lg transition-colors disabled:opacity-50"
               >
-                Cancel Recovery
+                {submitting ? 'Cancelling...' : 'Cancel Recovery'}
               </button>
             </div>
           )}

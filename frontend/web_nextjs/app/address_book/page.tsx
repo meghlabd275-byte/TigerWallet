@@ -1,32 +1,16 @@
 'use client';
 
-import React, { useState } from 'react';
-
-interface Contact {
-  id: string;
-  name: string;
-  address: string;
-  chain: string;
-  symbol: string;
-  notes: string;
-  isFavorite: boolean;
-  lastUsed: number;
-}
-
-const MOCK_CONTACTS: Contact[] = [
-  { id: '1', name: 'My Main Wallet', address: '0x742d35Cc6634C0532925a3b844Bc9e7595f', chain: 'Ethereum', symbol: 'ETH', notes: 'Primary wallet', isFavorite: true, lastUsed: Date.now() - 3600000 },
-  { id: '2', name: 'Cold Storage', address: '0x8Ba1f109551bD432803012645Ac136ddd64DBA72', chain: 'Ethereum', symbol: 'ETH', notes: 'Long-term holding', isFavorite: true, lastUsed: Date.now() - 86400000 * 7 },
-  { id: '3', name: 'DeFi Pool', address: '0x1234567890AbCdEf1234567890AbCdEf12345678', chain: 'BNB Chain', symbol: 'BNB', notes: 'Staking pool', isFavorite: false, lastUsed: Date.now() - 86400000 * 2 },
-  { id: '4', name: 'NFT Collector', address: '0xAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaA', chain: 'Polygon', symbol: 'MATIC', notes: 'NFT purchases', isFavorite: false, lastUsed: Date.now() - 86400000 * 14 },
-  { id: '5', name: 'Business Account', address: '0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB', chain: 'Solana', symbol: 'SOL', notes: 'Business transactions', isFavorite: true, lastUsed: Date.now() - 3600000 * 3 },
-];
+import React, { useState, useEffect, useCallback } from 'react';
+import { api, AddressBookEntry } from '@/lib/api/client';
 
 export default function AddressBookPage() {
-  const [contacts, setContacts] = useState<Contact[]>(MOCK_CONTACTS);
+  const [contacts, setContacts] = useState<AddressBookEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
-  const [editingContact, setEditingContact] = useState<Contact | null>(null);
-  const [newContact, setNewContact] = useState<Partial<Contact>>({
+  const [editingContact, setEditingContact] = useState<AddressBookEntry | null>(null);
+  const [newContact, setNewContact] = useState<Partial<AddressBookEntry>>({
     name: '',
     address: '',
     chain: 'Ethereum',
@@ -35,42 +19,88 @@ export default function AddressBookPage() {
     isFavorite: false,
   });
 
-  const filteredContacts = contacts.filter(c => 
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.chain.toLowerCase().includes(searchQuery.toLowerCase())
+  const fetchContacts = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await api.getAddressBook();
+      if (res.success && res.data) {
+        setContacts(res.data);
+      } else {
+        setContacts([]);
+        if (res.error) setError(res.error);
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load contacts');
+      setContacts([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchContacts();
+  }, [fetchContacts]);
+
+  const filteredContacts = contacts.filter(c =>
+    (c.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (c.address || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (c.chain || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const favorites = filteredContacts.filter(c => c.isFavorite);
   const regular = filteredContacts.filter(c => !c.isFavorite);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!newContact.name || !newContact.address) return;
-    
-    const contact: Contact = {
-      id: Date.now().toString(),
-      name: newContact.name,
-      address: newContact.address,
-      chain: newContact.chain || 'Ethereum',
-      symbol: newContact.symbol || 'ETH',
-      notes: newContact.notes || '',
-      isFavorite: newContact.isFavorite || false,
-      lastUsed: Date.now(),
-    };
-    
-    setContacts(prev => [...prev, contact]);
-    setNewContact({ name: '', address: '', chain: 'Ethereum', symbol: 'ETH', notes: '', isFavorite: false });
-    setShowAddModal(false);
+    try {
+      setError(null);
+      const entry = {
+        name: newContact.name,
+        address: newContact.address,
+        chain: newContact.chain || 'Ethereum',
+        symbol: newContact.symbol || 'ETH',
+        notes: newContact.notes || '',
+        isFavorite: newContact.isFavorite || false,
+      };
+      const res = await api.addAddress(entry);
+      if (res.success && res.data) {
+        setContacts(prev => [...prev, res.data!]);
+      } else {
+        setError(res.error || 'Failed to add contact');
+        return;
+      }
+      setNewContact({ name: '', address: '', chain: 'Ethereum', symbol: 'ETH', notes: '', isFavorite: false });
+      setShowAddModal(false);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to add contact');
+    }
   };
 
-  const handleDelete = (id: string) => {
-    setContacts(prev => prev.filter(c => c.id !== id));
+  const handleDelete = async (id: string) => {
+    try {
+      const res = await api.deleteAddress(id);
+      if (res.success) {
+        setContacts(prev => prev.filter(c => c.id !== id));
+      } else {
+        setError(res.error || 'Failed to delete contact');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Failed to delete contact');
+    }
   };
 
-  const toggleFavorite = (id: string) => {
-    setContacts(prev => prev.map(c => 
-      c.id === id ? { ...c, isFavorite: !c.isFavorite } : c
-    ));
+  const toggleFavorite = async (contact: AddressBookEntry) => {
+    try {
+      const res = await api.updateAddress(contact.id, { ...contact, isFavorite: !contact.isFavorite });
+      if (res.success && res.data) {
+        setContacts(prev => prev.map(c => c.id === contact.id ? res.data! : c));
+      } else {
+        setError(res.error || 'Failed to update contact');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Failed to update contact');
+    }
   };
 
   const copyAddress = (address: string) => {
@@ -90,6 +120,9 @@ export default function AddressBookPage() {
     };
     return colors[chain] || 'bg-gray-500';
   };
+
+  const formatAddr = (address: string) =>
+    address && address.length > 18 ? `${address.slice(0, 10)}...${address.slice(-8)}` : address;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
@@ -141,6 +174,18 @@ export default function AddressBookPage() {
           </div>
         </div>
 
+        {loading && (
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-12 text-center mb-6">
+            <p className="text-xl font-semibold">Loading contacts…</p>
+          </div>
+        )}
+        {error && !loading && (
+          <div className="bg-red-100 dark:bg-red-900 rounded-lg p-6 text-center mb-6 text-red-700 dark:text-red-200">
+            <p className="font-semibold">{error}</p>
+            <button onClick={fetchContacts} className="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg">Retry</button>
+          </div>
+        )}
+
         {/* Favorites */}
         {favorites.length > 0 && (
           <div className="mb-8">
@@ -154,9 +199,9 @@ export default function AddressBookPage() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <h4 className="font-semibold">{contact.name}</h4>
-                        <button onClick={() => toggleFavorite(contact.id)} className="text-yellow-500">⭐</button>
+                        <button onClick={() => toggleFavorite(contact)} className="text-yellow-500">⭐</button>
                       </div>
-                      <p className="font-mono text-sm text-slate-500 mb-2">{contact.address.slice(0, 10)}...{contact.address.slice(-8)}</p>
+                      <p className="font-mono text-sm text-slate-500 mb-2">{formatAddr(contact.address)}</p>
                       <div className="flex items-center gap-3">
                         <span className={`px-2 py-1 rounded text-xs text-white ${getChainColor(contact.chain)}`}>
                           {contact.chain}
@@ -203,9 +248,9 @@ export default function AddressBookPage() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <h4 className="font-semibold">{contact.name}</h4>
-                        <button onClick={() => toggleFavorite(contact.id)} className="text-slate-400 hover:text-yellow-500">☆</button>
+                        <button onClick={() => toggleFavorite(contact)} className="text-slate-400 hover:text-yellow-500">☆</button>
                       </div>
-                      <p className="font-mono text-sm text-slate-500 mb-2">{contact.address.slice(0, 10)}...{contact.address.slice(-8)}</p>
+                      <p className="font-mono text-sm text-slate-500 mb-2">{formatAddr(contact.address)}</p>
                       <div className="flex items-center gap-3">
                         <span className={`px-2 py-1 rounded text-xs text-white ${getChainColor(contact.chain)}`}>
                           {contact.chain}
@@ -235,7 +280,7 @@ export default function AddressBookPage() {
           </div>
         )}
 
-        {filteredContacts.length === 0 && (
+        {!loading && !error && filteredContacts.length === 0 && (
           <div className="text-center py-12 text-slate-500">
             <p className="text-lg">No contacts found</p>
             <button onClick={() => setShowAddModal(true)} className="mt-4 text-blue-600 hover:underline">

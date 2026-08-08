@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ZKProver, ZKProof, MessageStatus};
+use crate::{ZKProver, ZKProof};
 
 /// ZK Bridge
 pub struct ZKBridge {
@@ -17,13 +17,29 @@ pub struct ZKBridge {
 
 impl ZKBridge {
     pub fn new() -> Self {
+        let prover = Arc::new(ZKProver::new());
         Self {
-            prover: Arc::new(ZKProver::new()),
+            prover,
             messages: RwLock::new(HashMap::new()),
             proofs: RwLock::new(HashMap::new()),
         }
     }
-    
+
+    /// Lazily register + set up the bridge circuit on first use.
+    async fn ensure_circuit(&self) -> Result<(), crate::ZKError> {
+        if self.prover.get_circuit("bridge").await.is_none() {
+            self.prover
+                .register_circuit(crate::ZKCircuit::new(
+                    "bridge".to_string(),
+                    "Bridge Circuit".to_string(),
+                    1,
+                ))
+                .await;
+            self.prover.setup("bridge").await?;
+        }
+        Ok(())
+    }
+
     /// Send message to another chain
     pub async fn send_message(
         &self,
@@ -31,6 +47,8 @@ impl ZKBridge {
         message: Vec<u8>,
         sender: &str,
     ) -> Result<String, crate::ZKError> {
+        self.ensure_circuit().await?;
+
         let bridge_message = ZKBridgeMessage {
             message_id: uuid::Uuid::new_v4().to_string(),
             source_chain: 1, // Ethereum
@@ -40,22 +58,22 @@ impl ZKBridge {
             status: MessageStatus::Pending,
             created_at: chrono::Utc::now().timestamp(),
         };
-        
+
         let message_id = bridge_message.message_id.clone();
-        
+
         // Generate proof of message
         let inputs = crate::ZKProofInputs::new()
             .with_public(vec![message])
             .with_private(vec![]);
-        
+
         let proof = self.prover.prove("bridge", inputs).await?;
-        
+
         let mut messages = self.messages.write().await;
         messages.insert(message_id.clone(), bridge_message);
-        
+
         let mut proofs = self.proofs.write().await;
         proofs.insert(message_id.clone(), proof);
-        
+
         Ok(message_id)
     }
     
@@ -101,6 +119,16 @@ pub struct ZKBridgeMessage {
     pub message: Vec<u8>,
     pub status: MessageStatus,
     pub created_at: i64,
+}
+
+/// Bridge message lifecycle status
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MessageStatus {
+    Pending,
+    Proving,
+    Verified,
+    Completed,
+    Failed,
 }
 
 #[cfg(test)]

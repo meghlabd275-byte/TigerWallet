@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import api, { FiatRate, FiatProvider } from '../../src/lib/api/client';
 
 // Types
 interface FiatCurrency {
@@ -70,31 +71,69 @@ export default function FiatOnRamp() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('apple_pay');
   const [walletAddress, setWalletAddress] = useState('');
   const [orders, setOrders] = useState<Order[]>([]);
+  const [rates, setRates] = useState<FiatRate[]>([]);
+  const [ratesLoading, setRatesLoading] = useState(true);
+  const [providers, setProviders] = useState<FiatProvider[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Mock exchange rates
-  const exchangeRates: Record<string, number> = {
-    'ETH': 3500.00,
-    'BTC': 65000.00,
-    'USDT': 1.00,
-    'USDC': 1.00,
-    'BNB': 600.00,
-    'SOL': 150.00,
-    'TRX': 0.12,
-    'PI': 50.00,
-    'TON': 5.50,
-    'DOGE': 0.15,
-  };
+  // Current crypto exchange rate (fiat per 1 crypto) derived from API rates.
+  // FiatRate.price is denominated in the rate's currency; we match the selected fiat currency.
+  const currentRate = rates.find(
+    r => r.symbol === cryptoCurrency.symbol && r.currency === fiatCurrency.code
+  );
+  const exchangeRate = currentRate?.price ?? 0;
+
+  // Fetch live exchange rates from the fiat onramp service
+  const fetchRates = useCallback(async () => {
+    setRatesLoading(true);
+    try {
+      const res = await api.getFiatRates({ currency: fiatCurrency.code });
+      if (res.success && res.data) {
+        setRates(res.data);
+      } else {
+        setRates([]);
+      }
+    } catch (err) {
+      console.error('Failed to load fiat rates:', err);
+      setRates([]);
+    } finally {
+      setRatesLoading(false);
+    }
+  }, [fiatCurrency.code]);
+
+  // Fetch available fiat providers for the selected currency pair
+  const fetchProviders = useCallback(async () => {
+    try {
+      const res = await api.getFiatProviders({ fiat: fiatCurrency.code, crypto: cryptoCurrency.symbol });
+      if (res.success && res.data) {
+        setProviders(res.data);
+      } else {
+        setProviders([]);
+      }
+    } catch (err) {
+      console.error('Failed to load fiat providers:', err);
+      setProviders([]);
+    }
+  }, [fiatCurrency.code, cryptoCurrency.symbol]);
 
   useEffect(() => {
-    if (fiatAmount && parseFloat(fiatAmount) > 0) {
-      const cryptoValue = parseFloat(fiatAmount) / exchangeRates[cryptoCurrency.symbol];
+    fetchRates();
+  }, [fetchRates]);
+
+  useEffect(() => {
+    fetchProviders();
+  }, [fetchProviders]);
+
+  // Recalculate crypto amount when fiat amount or rate changes
+  useEffect(() => {
+    if (fiatAmount && parseFloat(fiatAmount) > 0 && exchangeRate > 0) {
+      const cryptoValue = parseFloat(fiatAmount) / exchangeRate;
       setCryptoAmount(cryptoValue.toFixed(6));
-    } else {
+    } else if (!fiatAmount) {
       setCryptoAmount('');
     }
-  }, [fiatAmount, cryptoCurrency.symbol]);
+  }, [fiatAmount, exchangeRate]);
 
   const handleFiatAmountChange = (value: string) => {
     setFiatAmount(value);
@@ -102,8 +141,8 @@ export default function FiatOnRamp() {
 
   const handleCryptoAmountChange = (value: string) => {
     setCryptoAmount(value);
-    if (value && parseFloat(value) > 0) {
-      const fiatValue = parseFloat(value) * exchangeRates[cryptoCurrency.symbol];
+    if (value && parseFloat(value) > 0 && exchangeRate > 0) {
+      const fiatValue = parseFloat(value) * exchangeRate;
       setFiatAmount(fiatValue.toFixed(2));
     } else {
       setFiatAmount('');
@@ -121,37 +160,52 @@ export default function FiatOnRamp() {
       return;
     }
 
+    if (exchangeRate <= 0) {
+      setMessage({ type: 'error', text: 'Exchange rate unavailable. Please try again.' });
+      return;
+    }
+
+    const provider = providers.find(p => p.available);
+    if (!provider) {
+      setMessage({ type: 'error', text: 'No provider available for this currency pair.' });
+      return;
+    }
+
     setLoading(true);
     setMessage(null);
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      const res = await api.createFiatOrder({
+        providerId: provider.id,
+        type: 'buy',
+        fiatAmount: parseFloat(fiatAmount),
+        cryptoCurrency: cryptoCurrency.symbol,
+        fiatCurrency: fiatCurrency.code,
+        paymentMethod: selectedPaymentMethod,
+        walletAddress,
+      });
 
-    const newOrder: Order = {
-      id: `order_${Date.now()}`,
-      fiatAmount: parseFloat(fiatAmount),
-      cryptoAmount: parseFloat(cryptoAmount),
-      cryptoSymbol: cryptoCurrency.symbol,
-      status: 'pending',
-      createdAt: Date.now(),
-    };
-
-    setOrders(prev => [newOrder, ...prev]);
-    setMessage({ type: 'success', text: 'Purchase initiated! You will receive your crypto shortly.' });
-    
-    // Simulate order completion
-    setTimeout(() => {
-      setOrders(prev => prev.map(o => {
-        if (o.id === newOrder.id) {
-          return { ...o, status: 'completed' as const };
-        }
-        return o;
-      }));
-    }, 5000);
-
-    setFiatAmount('');
-    setCryptoAmount('');
-    setLoading(false);
+      if (res.success && res.data) {
+        const newOrder: Order = {
+          id: res.data.id,
+          fiatAmount: parseFloat(fiatAmount),
+          cryptoAmount: parseFloat(cryptoAmount),
+          cryptoSymbol: cryptoCurrency.symbol,
+          status: res.data.status,
+          createdAt: res.data.createdAt,
+        };
+        setOrders(prev => [newOrder, ...prev]);
+        setMessage({ type: 'success', text: 'Purchase initiated! You will receive your crypto shortly.' });
+        setFiatAmount('');
+        setCryptoAmount('');
+      } else {
+        setMessage({ type: 'error', text: res.error || 'Failed to create order. Please try again.' });
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err?.response?.data?.error || err?.message || 'Failed to create order. Please try again.' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSell = async () => {
@@ -160,23 +214,51 @@ export default function FiatOnRamp() {
       return;
     }
 
+    if (exchangeRate <= 0) {
+      setMessage({ type: 'error', text: 'Exchange rate unavailable. Please try again.' });
+      return;
+    }
+
+    const provider = providers.find(p => p.available);
+    if (!provider) {
+      setMessage({ type: 'error', text: 'No provider available for this currency pair.' });
+      return;
+    }
+
     setLoading(true);
     setMessage(null);
 
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      const res = await api.createFiatOrder({
+        providerId: provider.id,
+        type: 'sell',
+        fiatAmount: parseFloat(fiatAmount),
+        cryptoCurrency: cryptoCurrency.symbol,
+        fiatCurrency: fiatCurrency.code,
+        paymentMethod: selectedPaymentMethod,
+      });
 
-    const newOrder: Order = {
-      id: `order_${Date.now()}`,
-      fiatAmount: parseFloat(fiatAmount),
-      cryptoAmount: parseFloat(cryptoAmount),
-      cryptoSymbol: cryptoCurrency.symbol,
-      status: 'pending',
-      createdAt: Date.now(),
-    };
-
-    setOrders(prev => [newOrder, ...prev]);
-    setMessage({ type: 'success', text: 'Sell order initiated!' });
-    setLoading(false);
+      if (res.success && res.data) {
+        const newOrder: Order = {
+          id: res.data.id,
+          fiatAmount: parseFloat(fiatAmount),
+          cryptoAmount: parseFloat(cryptoAmount),
+          cryptoSymbol: cryptoCurrency.symbol,
+          status: res.data.status,
+          createdAt: res.data.createdAt,
+        };
+        setOrders(prev => [newOrder, ...prev]);
+        setMessage({ type: 'success', text: 'Sell order initiated!' });
+        setFiatAmount('');
+        setCryptoAmount('');
+      } else {
+        setMessage({ type: 'error', text: res.error || 'Failed to create sell order. Please try again.' });
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err?.response?.data?.error || err?.message || 'Failed to create sell order. Please try again.' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -346,7 +428,13 @@ export default function FiatOnRamp() {
               <div className="bg-slate-100 dark:bg-slate-700 rounded-lg p-4 mb-6">
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500 dark:text-slate-400">Exchange Rate</span>
-                  <span className="font-semibold">1 {cryptoCurrency.symbol} = {fiatCurrency.symbol}{exchangeRates[cryptoCurrency.symbol].toFixed(2)} {fiatCurrency.code}</span>
+                  <span className="font-semibold">
+                    {ratesLoading
+                      ? 'Loading...'
+                      : exchangeRate > 0
+                      ? `1 ${cryptoCurrency.symbol} = ${fiatCurrency.symbol}${exchangeRate.toFixed(2)} ${fiatCurrency.code}`
+                      : 'Unavailable'}
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm mt-2">
                   <span className="text-slate-500 dark:text-slate-400">Network Fee</span>

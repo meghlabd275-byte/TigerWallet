@@ -14,6 +14,7 @@ import {
   Pause, Delete, Refresh, ShowChart, AccessTime, CheckCircle
 } from '@mui/icons-material';
 import { useTheme } from '../components/ThemeProvider';
+import { api } from '@/lib/api/client';
 
 // ============================================================================
 // Types & Interfaces
@@ -148,134 +149,68 @@ function timeUntil(timestamp: number): string {
 }
 
 // ============================================================================
-// Mock Data Generators
+// Normalizers (map backend payloads to local types)
 // ============================================================================
 
-function generateTWAPOrders(): TWAPOrder[] {
-  return [
-    {
-      id: 'twap_1',
-      userAddress: '0x742d35Cc6634C0532',
-      tokenIn: 'ETH',
-      tokenOut: 'USDC',
-      totalAmount: '10000',
-      filledAmount: '3500',
-      numOrders: 10,
-      completedOrders: 3,
-      intervalMinutes: 60,
-      startTime: Date.now() - 3600000 * 5,
-      endTime: Date.now() + 3600000 * 19,
-      nextExecutionTime: Date.now() + 1800000,
-      priceType: 'market',
-      slippageBps: 50,
-      status: 'active',
-      createdAt: Date.now() - 3600000 * 5,
-      lastExecutionTime: Date.now() - 1800000,
-      lastExecutionPrice: 2448,
-    },
-    {
-      id: 'twap_2',
-      userAddress: '0x742d35Cc6634C0532',
-      tokenIn: 'BTC',
-      tokenOut: 'USDC',
-      totalAmount: '50000',
-      filledAmount: '0',
-      numOrders: 20,
-      completedOrders: 0,
-      intervalMinutes: 240,
-      startTime: Date.now() + 3600000,
-      endTime: Date.now() + 3600000 * 24 * 5,
-      nextExecutionTime: Date.now() + 3600000,
-      priceType: 'limit',
-      limitPrice: 60000,
-      slippageBps: 100,
-      status: 'paused',
-      createdAt: Date.now() - 3600000,
-    },
-  ];
+function normalizeTwap(o: any): TWAPOrder {
+  return {
+    id: String(o.id ?? ''),
+    userAddress: String(o.userAddress ?? o.user_address ?? ''),
+    tokenIn: String(o.tokenIn ?? o.token_in ?? ''),
+    tokenOut: String(o.tokenOut ?? o.token_out ?? ''),
+    totalAmount: String(o.totalAmount ?? o.total_amount ?? '0'),
+    filledAmount: String(o.filledAmount ?? o.filled_amount ?? '0'),
+    numOrders: Number(o.numOrders ?? o.num_orders ?? 0),
+    completedOrders: Number(o.completedOrders ?? o.completed_orders ?? 0),
+    intervalMinutes: Number(o.intervalMinutes ?? o.interval_minutes ?? 0),
+    startTime: Number(o.startTime ?? o.start_time ?? 0),
+    endTime: Number(o.endTime ?? o.end_time ?? 0),
+    nextExecutionTime: Number(o.nextExecutionTime ?? o.next_execution_time ?? 0),
+    priceType: (o.priceType ?? o.price_type ?? 'market') as TWAPOrder['priceType'],
+    limitPrice: o.limitPrice != null ? Number(o.limitPrice) : o.limit_price != null ? Number(o.limit_price) : undefined,
+    slippageBps: Number(o.slippageBps ?? o.slippage_bps ?? 0),
+    status: (o.status ?? 'active') as TWAPOrder['status'],
+    createdAt: Number(o.createdAt ?? o.created_at ?? 0),
+    lastExecutionTime: o.lastExecutionTime != null ? Number(o.lastExecutionTime) : o.last_execution_time != null ? Number(o.last_execution_time) : undefined,
+    lastExecutionPrice: o.lastExecutionPrice != null ? Number(o.lastExecutionPrice) : o.last_execution_price != null ? Number(o.last_execution_price) : undefined,
+  };
 }
 
-function generateDCAOrders(): DCAOrder[] {
-  return [
-    {
-      id: 'dca_1',
-      userAddress: '0x742d35Cc6634C0532',
-      tokenIn: 'USDC',
-      tokenOut: 'ETH',
-      amountPerOrder: '500',
-      totalAmount: '10000',
-      filledAmount: '3000',
-      frequency: 'weekly',
-      dayOfWeek: 1,
-      hourOfDay: 9,
-      nextExecutionTime: Date.now() + 3600000 * 24 * 2,
-      status: 'active',
-      createdAt: Date.now() - 3600000 * 24 * 14,
-      totalOrders: 14,
-      completedOrders: 3,
-    },
-    {
-      id: 'dca_2',
-      userAddress: '0x742d35Cc6634C0532',
-      tokenIn: 'USDC',
-      tokenOut: 'BTC',
-      amountPerOrder: '1000',
-      totalAmount: '50000',
-      filledAmount: '14000',
-      frequency: 'monthly',
-      dayOfMonth: 1,
-      hourOfDay: 12,
-      nextExecutionTime: Date.now() + 3600000 * 24 * 20,
-      status: 'active',
-      createdAt: Date.now() - 3600000 * 24 * 60,
-      totalOrders: 50,
-      completedOrders: 14,
-    },
-  ];
+function normalizeDca(o: any): DCAOrder {
+  return {
+    id: String(o.id ?? ''),
+    userAddress: String(o.userAddress ?? o.user_address ?? ''),
+    tokenIn: String(o.tokenIn ?? o.token_in ?? ''),
+    tokenOut: String(o.tokenOut ?? o.token_out ?? ''),
+    amountPerOrder: String(o.amountPerOrder ?? o.amount_per_order ?? '0'),
+    totalAmount: String(o.totalAmount ?? o.total_amount ?? '0'),
+    filledAmount: String(o.filledAmount ?? o.filled_amount ?? '0'),
+    frequency: (o.frequency ?? 'weekly') as DCAOrder['frequency'],
+    dayOfWeek: o.dayOfWeek != null ? Number(o.dayOfWeek) : o.day_of_week != null ? Number(o.day_of_week) : undefined,
+    dayOfMonth: o.dayOfMonth != null ? Number(o.dayOfMonth) : o.day_of_month != null ? Number(o.day_of_month) : undefined,
+    hourOfDay: Number(o.hourOfDay ?? o.hour_of_day ?? 0),
+    nextExecutionTime: Number(o.nextExecutionTime ?? o.next_execution_time ?? 0),
+    status: (o.status ?? 'active') as DCAOrder['status'],
+    createdAt: Number(o.createdAt ?? o.created_at ?? 0),
+    totalOrders: Number(o.totalOrders ?? o.total_orders ?? 0),
+    completedOrders: Number(o.completedOrders ?? o.completed_orders ?? 0),
+  };
 }
 
-function generateExecutionHistory(): OrderExecution[] {
-  return [
-    {
-      id: 'exec_1',
-      orderId: 'twap_1',
-      orderType: 'twap',
-      tokenIn: 'ETH',
-      tokenOut: 'USDC',
-      amountIn: '1',
-      amountOut: '2448',
-      price: 2448,
-      timestamp: Date.now() - 1800000,
-      txHash: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
-      status: 'success',
-    },
-    {
-      id: 'exec_2',
-      orderId: 'twap_1',
-      orderType: 'twap',
-      tokenIn: 'ETH',
-      tokenOut: 'USDC',
-      amountIn: '1',
-      amountOut: '2452',
-      price: 2452,
-      timestamp: Date.now() - 3600000 * 2,
-      txHash: '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-      status: 'success',
-    },
-    {
-      id: 'exec_3',
-      orderId: 'dca_1',
-      orderType: 'dca',
-      tokenIn: 'USDC',
-      tokenOut: 'ETH',
-      amountIn: '500',
-      amountOut: '0.204',
-      price: 2450,
-      timestamp: Date.now() - 3600000 * 24 * 7,
-      txHash: '0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba',
-      status: 'success',
-    },
-  ];
+function normalizeExec(e: any): OrderExecution {
+  return {
+    id: String(e.id ?? ''),
+    orderId: String(e.orderId ?? e.order_id ?? ''),
+    orderType: (e.orderType ?? e.order_type ?? 'twap') as OrderExecution['orderType'],
+    tokenIn: String(e.tokenIn ?? e.token_in ?? ''),
+    tokenOut: String(e.tokenOut ?? e.token_out ?? ''),
+    amountIn: String(e.amountIn ?? e.amount_in ?? '0'),
+    amountOut: String(e.amountOut ?? e.amount_out ?? '0'),
+    price: Number(e.price ?? 0),
+    timestamp: Number(e.timestamp ?? 0),
+    txHash: String(e.txHash ?? e.tx_hash ?? ''),
+    status: (e.status ?? 'pending') as OrderExecution['status'],
+  };
 }
 
 // ============================================================================
@@ -321,12 +256,27 @@ export default function TWAPPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setTwapOrders(generateTWAPOrders());
-      setDcaOrders(generateDCAOrders());
-      setExecutionHistory(generateExecutionHistory());
-    } catch (error) {
-      console.error('Failed to load data:', error);
+      const res = await api.getTwapOrders();
+      const data = (res.data || {}) as any;
+      const twapList: TWAPOrder[] = Array.isArray(data.twapOrders)
+        ? data.twapOrders.map((o: any) => normalizeTwap(o))
+        : Array.isArray(data) ? data.map((o: any) => normalizeTwap(o)) : [];
+      const dcaList: DCAOrder[] = Array.isArray(data.dcaOrders)
+        ? data.dcaOrders.map((o: any) => normalizeDca(o))
+        : [];
+      const execList: OrderExecution[] = Array.isArray(data.executions)
+        ? data.executions.map((e: any) => normalizeExec(e))
+        : [];
+
+      setTwapOrders(twapList);
+      setDcaOrders(dcaList);
+      setExecutionHistory(execList);
+    } catch (error: any) {
+      setSnackbar({
+        open: true,
+        message: error?.response?.data?.error || error?.message || 'Failed to load orders',
+        severity: 'error',
+      });
     } finally {
       setLoading(false);
     }
@@ -348,56 +298,48 @@ export default function TWAPPage() {
 
     setCreating(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const payload: any = {
+        tokenIn,
+        tokenOut,
+        totalAmount,
+        numOrders,
+        priceType,
+        limitPrice: priceType === 'limit' ? limitPrice : undefined,
+        slippageBps,
+      };
 
       if (orderType === 'twap') {
-        const newOrder: TWAPOrder = {
-          id: `twap_${Date.now()}`,
-          userAddress: '0x742d35Cc6634C0532',
-          tokenIn,
-          tokenOut,
-          totalAmount,
-          filledAmount: '0',
-          numOrders,
-          completedOrders: 0,
-          intervalMinutes,
-          startTime: Date.now(),
-          endTime: Date.now() + intervalMinutes * numOrders * 60000,
-          nextExecutionTime: Date.now() + intervalMinutes * 60000,
-          priceType,
-          limitPrice: priceType === 'limit' ? parseFloat(limitPrice) : undefined,
-          slippageBps,
-          status: 'active',
-          createdAt: Date.now(),
-        };
-        setTwapOrders(prev => [...prev, newOrder]);
+        payload.intervalMinutes = intervalMinutes;
+        payload.type = 'twap';
+        const res = await api.createTwapOrder(payload);
+        const created = res.data;
+        if (created) {
+          setTwapOrders(prev => [...prev, normalizeTwap(created)]);
+        }
       } else {
-        const newOrder: DCAOrder = {
-          id: `dca_${Date.now()}`,
-          userAddress: '0x742d35Cc6634C0532',
-          tokenIn,
-          tokenOut,
-          amountPerOrder: (parseFloat(totalAmount) / numOrders).toString(),
-          totalAmount,
-          filledAmount: '0',
-          frequency,
-          dayOfWeek: frequency === 'weekly' ? dayOfWeek : undefined,
-          dayOfMonth: frequency === 'monthly' ? dayOfMonth : undefined,
-          hourOfDay,
-          nextExecutionTime: Date.now() + 3600000 * 24 * 7,
-          status: 'active',
-          createdAt: Date.now(),
-          totalOrders: numOrders,
-          completedOrders: 0,
-        };
-        setDcaOrders(prev => [...prev, newOrder]);
+        payload.frequency = frequency;
+        payload.dayOfWeek = frequency === 'weekly' ? dayOfWeek : undefined;
+        payload.dayOfMonth = frequency === 'monthly' ? dayOfMonth : undefined;
+        payload.hourOfDay = hourOfDay;
+        payload.amountPerOrder = (parseFloat(totalAmount) / numOrders).toString();
+        payload.totalOrders = numOrders;
+        payload.type = 'dca';
+        const res = await api.createTwapOrder(payload);
+        const created = res.data;
+        if (created) {
+          setDcaOrders(prev => [...prev, normalizeDca(created)]);
+        }
       }
 
       setShowCreateDialog(false);
       setTotalAmount('');
       setSnackbar({ open: true, message: `${orderType.toUpperCase()} order created successfully!`, severity: 'success' });
-    } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to create order', severity: 'error' });
+    } catch (error: any) {
+      setSnackbar({
+        open: true,
+        message: error?.response?.data?.error || error?.message || 'Failed to create order',
+        severity: 'error',
+      });
     } finally {
       setCreating(false);
     }
@@ -407,6 +349,7 @@ export default function TWAPPage() {
     const newStatus = currentStatus === 'active' ? 'paused' : 'active';
     
     try {
+      await api.updateTwapOrder(orderId, { status: newStatus });
       if (type === 'twap') {
         setTwapOrders(prev => prev.map(o =>
           o.id === orderId ? { ...o, status: newStatus as TWAPOrder['status'] } : o
@@ -418,13 +361,18 @@ export default function TWAPPage() {
       }
       
       setSnackbar({ open: true, message: `Order ${newStatus}`, severity: 'success' });
-    } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to update order', severity: 'error' });
+    } catch (error: any) {
+      setSnackbar({
+        open: true,
+        message: error?.response?.data?.error || error?.message || 'Failed to update order',
+        severity: 'error',
+      });
     }
   };
 
   const handleCancel = async (orderId: string, type: 'twap' | 'dca') => {
     try {
+      await api.cancelTwapOrder(orderId);
       if (type === 'twap') {
         setTwapOrders(prev => prev.map(o =>
           o.id === orderId ? { ...o, status: 'cancelled' as TWAPOrder['status'] } : o
@@ -436,8 +384,12 @@ export default function TWAPPage() {
       }
       
       setSnackbar({ open: true, message: 'Order cancelled', severity: 'success' });
-    } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to cancel order', severity: 'error' });
+    } catch (error: any) {
+      setSnackbar({
+        open: true,
+        message: error?.response?.data?.error || error?.message || 'Failed to cancel order',
+        severity: 'error',
+      });
     }
   };
 

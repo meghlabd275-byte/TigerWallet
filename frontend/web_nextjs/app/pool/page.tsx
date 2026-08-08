@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, Typography, Card, CardContent, Button, TextField,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
@@ -14,57 +14,16 @@ import {
   ContentCopy, TrendingUp, TrendingDown
 } from '@mui/icons-material';
 import { useTheme } from '../components/ThemeProvider';
+import {
+  api,
+  PoolToken as Token,
+  LiquidityPool as Pool,
+  LiquidityPosition,
+} from '@/lib/api/client';
 
 // ============================================================================
 // Types & Interfaces
 // ============================================================================
-
-interface Token {
-  address: string;
-  symbol: string;
-  name: string;
-  decimals: number;
-  logoURI?: string;
-  priceUSD?: number;
-  chainId: number;
-  isPopular?: boolean;
-  isNative?: boolean;
-  isStable?: boolean;
-}
-
-interface Pool {
-  id: string;
-  address: string;
-  token0: Token;
-  token1: Token;
-  dex: string;
-  dexName: string;
-  feeTier: number;
-  tvlUSD: number;
-  volume24h: number;
-  volume7d: number;
-  apr: number;
-  token0Reserve: string;
-  token1Reserve: string;
-  liquidity: number;
-  price0: number;
-  price1: number;
-}
-
-interface LiquidityPosition {
-  id: string;
-  pool: Pool;
-  token0Amount: string;
-  token1Amount: string;
-  liquidityTokenBalance: string;
-  totalLiquidity: number;
-  poolShare: number;
-  feesEarned0: string;
-  feesEarned1: string;
-  rangeLow?: number;
-  rangeHigh?: number;
-  isActive: boolean;
-}
 
 interface PoolStats {
   totalTVL: number;
@@ -140,106 +99,6 @@ function formatPercent(value: number): string {
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
 }
 
-// ============================================================================
-// Mock Data Generators
-// ============================================================================
-
-const COMMON_TOKENS: Record<number, Record<string, Token>> = {
-  1: {
-    'ETH': { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', symbol: 'ETH', name: 'Ethereum', decimals: 18, priceUSD: 2450, chainId: 1 },
-    'WETH': { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', symbol: 'WETH', name: 'Wrapped Ether', decimals: 18, priceUSD: 2450, chainId: 1 },
-    'USDC': { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC', name: 'USD Coin', decimals: 6, priceUSD: 1, chainId: 1 },
-    'USDT': { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', symbol: 'USDT', name: 'Tether', decimals: 6, priceUSD: 1, chainId: 1 },
-    'DAI': { address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', symbol: 'DAI', name: 'Dai', decimals: 18, priceUSD: 1, chainId: 1 },
-    'WBTC': { address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', symbol: 'WBTC', name: 'Wrapped Bitcoin', decimals: 8, priceUSD: 62500, chainId: 1 },
-    'LINK': { address: '0x514910771AF9Ca656af840dff83E8264EcF986CA', symbol: 'LINK', name: 'Chainlink', decimals: 18, priceUSD: 18.5, chainId: 1 },
-    'UNI': { address: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984', symbol: 'UNI', name: 'Uniswap', decimals: 18, priceUSD: 12.5, chainId: 1 },
-  },
-  56: {
-    'BNB': { address: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', symbol: 'BNB', name: 'BNB', decimals: 18, priceUSD: 350, chainId: 56 },
-    'USDT': { address: '0x55d398326f99059fF775485246999027B3197955', symbol: 'USDT', name: 'Tether', decimals: 18, priceUSD: 1, chainId: 56 },
-    'USDC': { address: '0x8AC76a51cc950d9822D68Db83eEAdE4d2B2FC23b', symbol: 'USDC', name: 'USD Coin', decimals: 18, priceUSD: 1, chainId: 56 },
-    'CAKE': { address: '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82', symbol: 'CAKE', name: 'PancakeSwap', decimals: 18, priceUSD: 2.5, chainId: 56 },
-  },
-  137: {
-    'MATIC': { address: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', symbol: 'MATIC', name: 'Polygon', decimals: 18, priceUSD: 0.85, chainId: 137 },
-    'USDC': { address: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', symbol: 'USDC', name: 'USD Coin', decimals: 6, priceUSD: 1, chainId: 137 },
-    'USDT': { address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', symbol: 'USDT', name: 'Tether', decimals: 18, priceUSD: 1, chainId: 137 },
-    'QUICK': { address: '0x831753DD7087CaC61aB5644b308642cc1c33Dc13', symbol: 'QUICK', name: 'QuickSwap', decimals: 18, priceUSD: 0.5, chainId: 137 },
-  },
-};
-
-function generateMockPools(chainId: number, count: number = 20): Pool[] {
-  const pools: Pool[] = [];
-  const dexes = Object.entries(DEX_INFO);
-  const chainTokens = COMMON_TOKENS[chainId] || COMMON_TOKENS[1];
-  const tokenList = Object.values(chainTokens);
-
-  for (let i = 0; i < count; i++) {
-    const dexEntry = dexes[Math.floor(Math.random() * dexes.length)];
-    const token0Idx = Math.floor(Math.random() * tokenList.length);
-    let token1Idx = Math.floor(Math.random() * tokenList.length);
-    while (token1Idx === token0Idx) {
-      token1Idx = Math.floor(Math.random() * tokenList.length);
-    }
-
-    const token0 = tokenList[token0Idx];
-    const token1 = tokenList[token1Idx];
-    const tvl = Math.random() * 50000000 + 100000;
-    const volume24h = Math.random() * 5000000 + 10000;
-
-    pools.push({
-      id: `pool-${i}-${chainId}`,
-      address: '0x' + Array.from({ length: 40 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join(''),
-      token0,
-      token1,
-      dex: dexEntry[0],
-      dexName: dexEntry[1].name,
-      feeTier: FEE_TIERS[Math.floor(Math.random() * FEE_TIERS.length)].value,
-      tvlUSD: tvl,
-      volume24h,
-      volume7d: volume24h * 7 * (0.8 + Math.random() * 0.4),
-      apr: Math.random() * 100 + 5,
-      token0Reserve: (Math.random() * 10000).toFixed(2),
-      token1Reserve: (Math.random() * 10000).toFixed(2),
-      liquidity: tvl / (token0.priceUSD! + token1.priceUSD!),
-      price0: token0.priceUSD! / token1.priceUSD!,
-      price1: token1.priceUSD! / token0.priceUSD!,
-    });
-  }
-
-  return pools.sort((a, b) => b.tvlUSD - a.tvlUSD);
-}
-
-function generateMockPositions(account: string, pools: Pool[]): LiquidityPosition[] {
-  const positions: LiquidityPosition[] = [];
-  
-  for (let i = 0; i < Math.min(5, pools.length); i++) {
-    const pool = pools[i];
-    const token0Amt = Math.random() * 10 + 1;
-    const token1Amt = Math.random() * 10 + 1;
-    const totalLiquidity = token0Amt * pool.token0.priceUSD! + token1Amt * pool.token1.priceUSD!;
-    
-    positions.push({
-      id: `position-${i}`,
-      pool,
-      token0Amount: token0Amt.toFixed(6),
-      token1Amount: token1Amt.toFixed(6),
-      liquidityTokenBalance: (totalLiquidity / 100).toFixed(2),
-      totalLiquidity,
-      poolShare: Math.random() * 5,
-      feesEarned0: (Math.random() * 0.5).toFixed(4),
-      feesEarned1: (Math.random() * 0.5).toFixed(4),
-      rangeLow: pool.feeTier > 0.1 ? 0.8 : undefined,
-      rangeHigh: pool.feeTier > 0.1 ? 1.2 : undefined,
-      isActive: Math.random() > 0.2,
-    });
-  }
-  
-  return positions;
-}
-
-// ============================================================================
 // Main Pool Page Component
 // ============================================================================
 
@@ -250,6 +109,7 @@ export default function PoolPage() {
   const [positions, setPositions] = useState<LiquidityPosition[]>([]);
   const [stats, setStats] = useState<PoolStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedPool, setSelectedPool] = useState<Pool | null>(null);
   const [walletAddress] = useState<string | null>(null);
 
@@ -262,8 +122,8 @@ export default function PoolPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Create pool form
-  const [token0, setToken0] = useState<Token | null>(null);
-  const [token1, setToken1] = useState<Token | null>(null);
+  const [token0, setToken0] = useState<string>('');
+  const [token1, setToken1] = useState<string>('');
   const [amount0, setAmount0] = useState('');
   const [amount1, setAmount1] = useState('');
   const [feeTier, setFeeTier] = useState(0.3);
@@ -284,17 +144,26 @@ export default function PoolPage() {
 
   const loadPools = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const mockPools = generateMockPools(chainId, 25);
-      setPools(mockPools);
+      const poolsRes = await api.getLiquidityPools({ chainId });
+      const fetchedPools = poolsRes.success && poolsRes.data ? poolsRes.data : [];
+      setPools(fetchedPools);
 
       if (walletAddress) {
-        setPositions(generateMockPositions(walletAddress, mockPools));
+        const posRes = await api.getPoolPositions(walletAddress);
+        if (posRes.success && posRes.data) {
+          setPositions(posRes.data);
+        } else {
+          setPositions([]);
+        }
+      } else {
+        setPositions([]);
       }
 
-      const totalTVL = mockPools.reduce((sum, p) => sum + p.tvlUSD, 0);
-      const totalVolume24h = mockPools.reduce((sum, p) => sum + p.volume24h, 0);
-      const totalVolume7d = mockPools.reduce((sum, p) => sum + p.volume7d, 0);
+      const totalTVL = fetchedPools.reduce((sum, p) => sum + p.tvlUSD, 0);
+      const totalVolume24h = fetchedPools.reduce((sum, p) => sum + p.volume24h, 0);
+      const totalVolume7d = fetchedPools.reduce((sum, p) => sum + p.volume7d, 0);
       const totalFees24h = totalVolume24h * 0.003;
 
       setStats({
@@ -302,11 +171,17 @@ export default function PoolPage() {
         totalVolume24h,
         totalVolume7d,
         totalFees24h,
-        totalPools: mockPools.length,
-        topPools: mockPools.slice(0, 5),
+        totalPools: fetchedPools.length,
+        topPools: fetchedPools.slice(0, 5),
       });
-    } catch (error) {
-      console.error('Failed to load pools:', error);
+
+      if (!poolsRes.success) {
+        setError(poolsRes.error || 'Failed to load pools');
+      }
+    } catch (err: any) {
+      const message = err?.message || 'Failed to load pools';
+      setError(message);
+      console.error('Failed to load pools:', err);
     } finally {
       setLoading(false);
     }
@@ -328,16 +203,29 @@ export default function PoolPage() {
 
     setCreating(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      setSnackbar({ open: true, message: 'Pool created successfully!', severity: 'success' });
-      setShowCreatePool(false);
-      setToken0(null);
-      setToken1(null);
-      setAmount0('');
-      setAmount1('');
-      loadPools();
-    } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to create pool', severity: 'error' });
+      const res = await api.createLiquidityPool({
+        token0,
+        token1,
+        feeTier,
+        amount0,
+        amount1,
+        chainId,
+        priceRangeLow,
+        priceRangeHigh,
+      });
+      if (res.success) {
+        setSnackbar({ open: true, message: 'Pool created successfully!', severity: 'success' });
+        setShowCreatePool(false);
+        setToken0('');
+        setToken1('');
+        setAmount0('');
+        setAmount1('');
+        loadPools();
+      } else {
+        setSnackbar({ open: true, message: res.error || 'Failed to create pool', severity: 'error' });
+      }
+    } catch (err: any) {
+      setSnackbar({ open: true, message: err?.message || 'Failed to create pool', severity: 'error' });
     } finally {
       setCreating(false);
     }
@@ -348,12 +236,16 @@ export default function PoolPage() {
 
     setCreating(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      setSnackbar({ open: true, message: 'Liquidity added successfully!', severity: 'success' });
-      setShowPoolDetails(false);
-      loadPools();
-    } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to add liquidity', severity: 'error' });
+      const res = await api.addLiquidity(selectedPool.id, amount0, amount1);
+      if (res.success) {
+        setSnackbar({ open: true, message: 'Liquidity added successfully!', severity: 'success' });
+        setShowPoolDetails(false);
+        loadPools();
+      } else {
+        setSnackbar({ open: true, message: res.error || 'Failed to add liquidity', severity: 'error' });
+      }
+    } catch (err: any) {
+      setSnackbar({ open: true, message: err?.message || 'Failed to add liquidity', severity: 'error' });
     } finally {
       setCreating(false);
     }
@@ -588,6 +480,18 @@ export default function PoolPage() {
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}>
                 <CircularProgress sx={{ color: '#00d4aa' }} />
               </Box>
+            ) : error ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 5, gap: 2 }}>
+                <Typography sx={{ color: '#ef4444' }}>{error}</Typography>
+                <Button
+                  variant="outlined"
+                  startIcon={<Refresh />}
+                  onClick={loadPools}
+                  sx={{ borderColor: '#3a3a4e', color: 'white' }}
+                >
+                  Retry
+                </Button>
+              </Box>
             ) : activeTab === 0 ? (
               <TableContainer>
                 <Table>
@@ -603,7 +507,13 @@ export default function PoolPage() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {filteredPools.map((pool) => (
+                    {filteredPools.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} sx={{ textAlign: 'center', color: '#9ca3af', py: 5 }}>
+                          No pools found. Try adjusting your filters or create a new pool.
+                        </TableCell>
+                      </TableRow>
+                    ) : filteredPools.map((pool) => (
                       <TableRow key={pool.id} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -745,12 +655,8 @@ export default function PoolPage() {
                 fullWidth
                 size="small"
                 placeholder="Enter token symbol (e.g., ETH)"
-                value={token0?.symbol || ''}
-                onChange={(e) => {
-                  const symbol = e.target.value.toUpperCase();
-                  const found = COMMON_TOKENS[chainId]?.[symbol];
-                  if (found) setToken0({ ...found, chainId });
-                }}
+                value={token0}
+                onChange={(e) => setToken0(e.target.value.toUpperCase())}
                 sx={{
                   '& input': { color: 'white' },
                   '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#3a3a4e' } },
@@ -763,12 +669,8 @@ export default function PoolPage() {
                 fullWidth
                 size="small"
                 placeholder="Enter token symbol (e.g., USDC)"
-                value={token1?.symbol || ''}
-                onChange={(e) => {
-                  const symbol = e.target.value.toUpperCase();
-                  const found = COMMON_TOKENS[chainId]?.[symbol];
-                  if (found) setToken1({ ...found, chainId });
-                }}
+                value={token1}
+                onChange={(e) => setToken1(e.target.value.toUpperCase())}
                 sx={{
                   '& input': { color: 'white' },
                   '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#3a3a4e' } },
@@ -785,7 +687,7 @@ export default function PoolPage() {
                 value={amount0}
                 onChange={(e) => setAmount0(e.target.value)}
                 InputProps={{
-                  endAdornment: token0 ? <InputAdornment sx={{ color: '#9ca3af' }}>{token0.symbol}</InputAdornment> : null,
+                  endAdornment: token0 ? <InputAdornment sx={{ color: '#9ca3af' }}>{token0}</InputAdornment> : null,
                 }}
                 sx={{
                   '& input': { color: 'white' },
@@ -803,7 +705,7 @@ export default function PoolPage() {
                 value={amount1}
                 onChange={(e) => setAmount1(e.target.value)}
                 InputProps={{
-                  endAdornment: token1 ? <InputAdornment sx={{ color: '#9ca3af' }}>{token1.symbol}</InputAdornment> : null,
+                  endAdornment: token1 ? <InputAdornment sx={{ color: '#9ca3af' }}>{token1}</InputAdornment> : null,
                 }}
                 sx={{
                   '& input': { color: 'white' },

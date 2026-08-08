@@ -13,35 +13,11 @@ import {
   TrendingUp, Visibility, Close
 } from '@mui/icons-material';
 import { useTheme } from '../components/ThemeProvider';
+import { api, Proposal, Delegate } from '@/lib/api/client';
 
 // ============================================================================
 // Types & Interfaces
 // ============================================================================
-
-interface Proposal {
-  id: string;
-  title: string;
-  description: string;
-  proposer: string;
-  proposerAvatar?: string;
-  status: 'active' | 'pending' | 'passed' | 'failed' | 'executed' | 'queued';
-  type: 'governance' | 'treasury' | 'parameter' | 'partnership';
-  forVotes: number;
-  againstVotes: number;
-  totalVotes: number;
-  quorumRequired: number;
-  startTime: number;
-  endTime: number;
-  createdAt: number;
-  discussionUrl?: string;
-  ipfsHash?: string;
-  executionData?: string;
-  forPercentage: number;
-  againstPercentage: number;
-  quorumPercentage: number;
-  myVote?: 'for' | 'against' | 'abstain';
-  myVotingPower?: number;
-}
 
 interface Vote {
   proposalId: string;
@@ -50,16 +26,6 @@ interface Vote {
   votingPower: number;
   reason?: string;
   timestamp: number;
-}
-
-interface Delegate {
-  address: string;
-  name?: string;
-  votingPower: number;
-  delegatedPower: number;
-  proposalsCreated: number;
-  votesCast: number;
-  since: number;
 }
 
 // ============================================================================
@@ -121,122 +87,6 @@ function timeAgo(timestamp: number): string {
 }
 
 // ============================================================================
-// Mock Data Generators
-// ============================================================================
-
-function generateProposals(): Proposal[] {
-  return [
-    {
-      id: 'prop_1',
-      title: 'TIGER Tokenomics v2 - Increase Emissions by 20%',
-      description: 'Proposal to increase TIGER token emissions by 20% to support liquidity mining incentives for the next quarter. This will help attract more liquidity providers and increase TVL across all supported chains.',
-      proposer: '0x742d35Cc6634C0532925F6e1',
-      status: 'active',
-      type: 'governance',
-      forVotes: 45000000,
-      againstVotes: 12000000,
-      totalVotes: 57000000,
-      quorumRequired: 100000000,
-      startTime: Date.now() - 2 * 24 * 60 * 60 * 1000,
-      endTime: Date.now() + 5 * 24 * 60 * 60 * 1000,
-      createdAt: Date.now() - 3 * 24 * 60 * 60 * 1000,
-      discussionUrl: 'https://forum.tigerswap.io/t/prop-1-tiger-tokenomics-v2',
-      forPercentage: 78.9,
-      againstPercentage: 21.1,
-      quorumPercentage: 57,
-      myVote: undefined,
-      myVotingPower: 5000,
-    },
-    {
-      id: 'prop_2',
-      title: 'Treasury Diversification - Convert 10% to USDC',
-      description: 'Diversify protocol treasury by converting 10% of TIGER holdings to USDC for operational expenses and risk management.',
-      proposer: '0x8Ba1f109551bD432803012645Ac136ddd64DBA72',
-      status: 'active',
-      type: 'treasury',
-      forVotes: 28000000,
-      againstVotes: 5000000,
-      totalVotes: 33000000,
-      quorumRequired: 100000000,
-      startTime: Date.now() - 1 * 24 * 60 * 60 * 1000,
-      endTime: Date.now() + 6 * 24 * 60 * 60 * 1000,
-      createdAt: Date.now() - 2 * 24 * 60 * 60 * 1000,
-      forPercentage: 84.8,
-      againstPercentage: 15.2,
-      quorumPercentage: 33,
-      myVote: 'for',
-      myVotingPower: 5000,
-    },
-    {
-      id: 'prop_3',
-      title: 'Add Support for Solana Chain',
-      description: 'Expand multi-chain support by adding Solana blockchain integration, enabling swaps and liquidity provision on Solana DEXs.',
-      proposer: '0x3d44D6C896D2346484d5E05b6e3cEb5c5c5d5F9e',
-      status: 'pending',
-      type: 'governance',
-      forVotes: 0,
-      againstVotes: 0,
-      totalVotes: 0,
-      quorumRequired: 100000000,
-      startTime: Date.now() + 2 * 24 * 60 * 60 * 1000,
-      endTime: Date.now() + 9 * 24 * 60 * 60 * 1000,
-      createdAt: Date.now() - 1 * 24 * 60 * 60 * 1000,
-      forPercentage: 0,
-      againstPercentage: 0,
-      quorumPercentage: 0,
-    },
-    {
-      id: 'prop_4',
-      title: 'Reduce Trading Fee from 0.3% to 0.25%',
-      description: 'Parameter adjustment proposal to reduce the base trading fee from 0.3% to 0.25% to remain competitive with other top DEXs.',
-      proposer: '0x5B2b5C9A8B4E3D5f6E8c1A2B3D4E5F6A7B8C9D0e',
-      status: 'passed',
-      type: 'parameter',
-      forVotes: 85000000,
-      againstVotes: 15000000,
-      totalVotes: 100000000,
-      quorumRequired: 100000000,
-      startTime: Date.now() - 10 * 24 * 60 * 60 * 1000,
-      endTime: Date.now() - 3 * 24 * 60 * 60 * 1000,
-      createdAt: Date.now() - 12 * 24 * 60 * 60 * 1000,
-      forPercentage: 85,
-      againstPercentage: 15,
-      quorumPercentage: 100,
-      myVote: 'for',
-    },
-    {
-      id: 'prop_5',
-      title: 'Partnership with Circle for Native USDC Support',
-      description: 'Establish deeper integration with Circle for native USDC minting and improved cross-chain USDC transfers.',
-      proposer: '0x9C8B2E4c6D8F0A2B3C4D5E6F7A8B9C0D1E2F3A4b',
-      status: 'executed',
-      type: 'partnership',
-      forVotes: 95000000,
-      againstVotes: 5000000,
-      totalVotes: 100000000,
-      quorumRequired: 100000000,
-      startTime: Date.now() - 20 * 24 * 60 * 60 * 1000,
-      endTime: Date.now() - 13 * 24 * 60 * 60 * 1000,
-      createdAt: Date.now() - 22 * 24 * 60 * 60 * 1000,
-      forPercentage: 95,
-      againstPercentage: 5,
-      quorumPercentage: 100,
-      myVote: 'for',
-    },
-  ];
-}
-
-function generateTopHolders(): Delegate[] {
-  return [
-    { address: '0x742d35Cc6634C0532925F6e1', name: 'TigerDAO Multisig', votingPower: 25000000, delegatedPower: 0, proposalsCreated: 5, votesCast: 42, since: Date.now() - 180 * 24 * 60 * 60 * 1000 },
-    { address: '0x8Ba1f109551bD432803012645Ac136ddd64DBA72', name: 'Aave Grants', votingPower: 15000000, delegatedPower: 8000000, proposalsCreated: 2, votesCast: 38, since: Date.now() - 120 * 24 * 60 * 60 * 1000 },
-    { address: '0x3d44D6C896D2346484d5E05b6e3cEb5c5c5d5F9e', name: '链上巨鲸', votingPower: 12000000, delegatedPower: 5000000, proposalsCreated: 8, votesCast: 65, since: Date.now() - 90 * 24 * 60 * 60 * 1000 },
-    { address: '0x5B2b5C9A8B4E3D5f6E8c1A2B3D4E5F6A7B8C9D0e', name: 'Wintermute Trading', votingPower: 8000000, delegatedPower: 2000000, proposalsCreated: 1, votesCast: 25, since: Date.now() - 60 * 24 * 60 * 60 * 1000 },
-    { address: '0x9C8B2E4c6D8F0A2B3C4D5E6F7A8B9C0D1E2F3A4b', name: 'Jump Crypto', votingPower: 6000000, delegatedPower: 1500000, proposalsCreated: 3, votesCast: 30, since: Date.now() - 45 * 24 * 60 * 60 * 1000 },
-  ];
-}
-
-// ============================================================================
 // Main Governance Page Component
 // ============================================================================
 
@@ -245,9 +95,10 @@ export default function GovernancePage() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [topHolders, setTopHolders] = useState<Delegate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(0);
   const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
-  const [votingPower, setVotingPower] = useState(5000);
+  const [votingPower, setVotingPower] = useState(0);
   const [delegating, setDelegating] = useState(false);
   const [delegateAddress, setDelegateAddress] = useState('');
   const [showProposalDetail, setShowProposalDetail] = useState(false);
@@ -265,12 +116,32 @@ export default function GovernancePage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setProposals(generateProposals());
-      setTopHolders(generateTopHolders());
-    } catch (error) {
-      console.error('Failed to load governance data:', error);
+      const [proposalsRes, holdersRes, powerRes] = await Promise.all([
+        api.getProposals(),
+        api.getGovernanceDelegates(),
+        api.getVotingPower(),
+      ]);
+
+      if (proposalsRes.success && proposalsRes.data) {
+        setProposals(proposalsRes.data);
+      } else {
+        setProposals([]);
+      }
+
+      if (holdersRes.success && holdersRes.data) {
+        setTopHolders(holdersRes.data);
+      } else {
+        setTopHolders([]);
+      }
+
+      if (powerRes.success && typeof powerRes.data === 'number') {
+        setVotingPower(powerRes.data);
+      }
+    } catch (err) {
+      console.error('Failed to load governance data:', err);
+      setError('Failed to load governance data. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -286,7 +157,11 @@ export default function GovernancePage() {
 
   const handleVote = async (proposalId: string, vote: 'for' | 'against' | 'abstain') => {
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const res = await api.voteOnProposal(proposalId, vote);
+      if (!res.success) {
+        setSnackbar({ open: true, message: res.error || 'Failed to cast vote', severity: 'error' });
+        return;
+      }
 
       setProposals(prev => prev.map(p => {
         if (p.id !== proposalId) return p;
@@ -300,14 +175,14 @@ export default function GovernancePage() {
           forVotes: newForVotes,
           againstVotes: newAgainstVotes,
           totalVotes: newTotalVotes,
-          forPercentage: (newForVotes / newTotalVotes) * 100,
-          againstPercentage: (newAgainstVotes / newTotalVotes) * 100,
+          forPercentage: newTotalVotes > 0 ? (newForVotes / newTotalVotes) * 100 : 0,
+          againstPercentage: newTotalVotes > 0 ? (newAgainstVotes / newTotalVotes) * 100 : 0,
           myVote: vote,
         };
       }));
 
-      setSnackbar({ open: true, message: `Vote cast successfully!`, severity: 'success' });
-    } catch (error) {
+      setSnackbar({ open: true, message: 'Vote cast successfully!', severity: 'success' });
+    } catch (err) {
       setSnackbar({ open: true, message: 'Failed to cast vote', severity: 'error' });
     }
   };
@@ -320,10 +195,14 @@ export default function GovernancePage() {
 
     setDelegating(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const res = await api.delegateVotes(delegateAddress);
+      if (!res.success) {
+        setSnackbar({ open: true, message: res.error || 'Failed to delegate', severity: 'error' });
+        return;
+      }
       setSnackbar({ open: true, message: `Delegated ${votingPower.toLocaleString()} votes to ${formatAddress(delegateAddress)}`, severity: 'success' });
       setDelegateAddress('');
-    } catch (error) {
+    } catch (err) {
       setSnackbar({ open: true, message: 'Failed to delegate', severity: 'error' });
     } finally {
       setDelegating(false);
@@ -332,12 +211,16 @@ export default function GovernancePage() {
 
   const handleQueueExecution = async (proposalId: string) => {
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const res = await api.executeProposal(proposalId);
+      if (!res.success) {
+        setSnackbar({ open: true, message: res.error || 'Failed to execute proposal', severity: 'error' });
+        return;
+      }
       setProposals(prev => prev.map(p =>
         p.id === proposalId ? { ...p, status: 'executed' as const } : p
       ));
       setSnackbar({ open: true, message: 'Proposal executed successfully!', severity: 'success' });
-    } catch (error) {
+    } catch (err) {
       setSnackbar({ open: true, message: 'Failed to execute proposal', severity: 'error' });
     }
   };
@@ -516,6 +399,17 @@ export default function GovernancePage() {
             {loading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}>
                 <CircularProgress sx={{ color: '#00d4aa' }} />
+              </Box>
+            ) : error ? (
+              <Box sx={{ textAlign: 'center', py: 5 }}>
+                <Typography sx={{ color: '#ff5722', mb: 2 }}>{error}</Typography>
+                <Button variant="contained" onClick={loadData} sx={{ bgcolor: '#00d4aa', color: 'black' }}>
+                  Retry
+                </Button>
+              </Box>
+            ) : proposals.length === 0 && topHolders.length === 0 ? (
+              <Box sx={{ textAlign: 'center', py: 5 }}>
+                <Typography sx={{ color: '#9ca3af' }}>No governance data available yet.</Typography>
               </Box>
             ) : (
               <Box>
@@ -708,7 +602,13 @@ export default function GovernancePage() {
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {topHolders.map((holder, idx) => (
+                          {topHolders.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={6} sx={{ color: '#9ca3af', textAlign: 'center', py: 4 }}>
+                                No top holders data available.
+                              </TableCell>
+                            </TableRow>
+                          ) : topHolders.map((holder, idx) => (
                             <TableRow key={holder.address} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
                               <TableCell>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>

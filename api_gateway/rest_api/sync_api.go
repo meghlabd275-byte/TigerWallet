@@ -3,6 +3,8 @@
 // Sync features and updates from TigerSwap to white label products
 // ============================================================================
 
+package main
+
 import (
 	"encoding/json"
 	"fmt"
@@ -451,5 +453,3 @@ func (api *TigerSwapAPI) InitializeDefaultFeatures() {
 		CreatedAt:   time.Now().UTC().Format(time.RFC3339),
 	})
 }
-EOF
-echo "Sync API created"

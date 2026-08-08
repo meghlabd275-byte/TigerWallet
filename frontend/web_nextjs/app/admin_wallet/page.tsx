@@ -15,6 +15,7 @@ import {
   Security, Warning, CheckCircle, Error as ErrorIcon, Lock,
   AccountTree, Hexagon
 } from '@mui/icons-material';
+import { api } from '@/lib/api/client';
 
 // ============================================================================
 // Types & Interfaces
@@ -135,145 +136,64 @@ export default function AdminWalletPage() {
   
   const loadData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Mock wallets
-      setWallets([
-        {
-          id: 'w1',
-          name: 'Operations Hot Wallet',
-          type: 'hot',
-          address: '0x1234abcd1234abcd1234abcd1234abcd1234abcd',
-          chainId: 1,
-          chainName: 'Ethereum',
-          balance: 50.5,
-          balanceUSD: 175000,
-          tokenCount: 12,
-          status: 'active',
-          createdAt: Date.now() - 86400000 * 90,
-          lastActivity: Date.now() - 3600000,
-        },
-        {
-          id: 'w2',
-          name: 'Treasury Cold Wallet',
-          type: 'cold',
-          address: '0xabcd1234abcd1234abcd1234abcd1234abcd1234',
-          chainId: 1,
-          chainName: 'Ethereum',
-          balance: 2500,
-          balanceUSD: 8750000,
-          tokenCount: 25,
-          status: 'active',
-          createdAt: Date.now() - 86400000 * 180,
-          lastActivity: Date.now() - 86400000 * 7,
-        },
-        {
-          id: 'w3',
-          name: 'Multi-Sig Treasury',
-          type: 'multi_sig',
-          address: '0x5678567856785678567856785678567856785678',
-          chainId: 1,
-          chainName: 'Ethereum',
-          balance: 500,
-          balanceUSD: 1750000,
-          tokenCount: 8,
-          status: 'active',
-          signers: ['0xsig1...', '0xsig2...', '0xsig3...'],
-          threshold: 2,
-          createdAt: Date.now() - 86400000 * 365,
-          lastActivity: Date.now() - 86400000 * 2,
-        },
-        {
-          id: 'w4',
-          name: 'Fee Collector',
-          type: 'operations',
-          address: '0x9999999999999999999999999999999999999999',
-          chainId: 56,
-          chainName: 'BNB Chain',
-          balance: 10,
-          balanceUSD: 3000,
-          tokenCount: 5,
-          status: 'active',
-          createdAt: Date.now() - 86400000 * 30,
-          lastActivity: Date.now() - 7200000,
-        },
+      const [walletsRes, txRes] = await Promise.all([
+        api.getAdminWallets(),
+        api.getAdminTransactions(),
       ]);
-      
-      // Mock transactions
-      setTransactions([
-        {
-          id: 'tx1',
-          walletId: 'w1',
-          type: 'send',
-          token: 'USDC',
-          amount: 50000,
-          amountUSD: 50000,
-          status: 'confirmed',
-          from: '0x1234...abcd',
-          to: '0x5678...efgh',
-          txHash: '0xabc123...',
-          timestamp: Date.now() - 60000,
-          confirmations: 12,
-        },
-        {
-          id: 'tx2',
-          walletId: 'w2',
-          type: 'receive',
-          token: 'ETH',
-          amount: 100,
-          amountUSD: 350000,
-          status: 'confirmed',
-          from: '0x1111...2222',
-          to: '0xabcd...1234',
-          txHash: '0xdef456...',
-          timestamp: Date.now() - 3600000,
-          confirmations: 15,
-        },
-        {
-          id: 'tx3',
-          walletId: 'w3',
-          type: 'swap',
-          token: 'ETH→USDC',
-          amount: 50,
-          amountUSD: 175000,
-          status: 'confirmed',
-          from: '0xabcd...1234',
-          to: '0x5678...efgh',
-          txHash: '0xghi789...',
-          timestamp: Date.now() - 86400000,
-          confirmations: 18,
-        },
-        {
-          id: 'tx4',
-          walletId: 'w1',
-          type: 'send',
-          token: 'USDT',
-          amount: 25000,
-          amountUSD: 25000,
-          status: 'pending',
-          from: '0x1234...abcd',
-          to: '0x9999...ffff',
-          txHash: '0xjkl012...',
-          timestamp: Date.now() - 300000,
-          confirmations: 2,
-        },
-      ]);
-      
-      // Mock stats
+
+      const ws: any[] = walletsRes.data || [];
+      setWallets(ws.map((w) => ({
+        id: String(w.id ?? ''),
+        name: String(w.name ?? ''),
+        type: (w.type ?? 'hot') as Wallet['type'],
+        address: String(w.address ?? ''),
+        chainId: Number(w.chainId ?? 0),
+        chainName: String(w.chainName ?? ''),
+        balance: Number(w.balance ?? 0),
+        balanceUSD: Number(w.balanceUSD ?? 0),
+        tokenCount: Number(w.tokenCount ?? 0),
+        status: (w.status ?? 'active') as Wallet['status'],
+        signers: Array.isArray(w.signers) ? w.signers : undefined,
+        threshold: w.threshold != null ? Number(w.threshold) : undefined,
+        createdAt: Number(w.createdAt ?? 0),
+        lastActivity: Number(w.lastActivity ?? 0),
+      })));
+
+      const txs: any[] = txRes.data || [];
+      setTransactions(txs.map((t) => ({
+        id: String(t.id ?? ''),
+        walletId: String(t.walletId ?? ''),
+        type: (t.type ?? 'send') as Transaction['type'],
+        token: String(t.token ?? ''),
+        amount: Number(t.amount ?? 0),
+        amountUSD: Number(t.amountUSD ?? 0),
+        status: (t.status ?? 'pending') as Transaction['status'],
+        from: String(t.from ?? ''),
+        to: String(t.to ?? ''),
+        txHash: String(t.txHash ?? ''),
+        timestamp: Number(t.timestamp ?? 0),
+        confirmations: Number(t.confirmations ?? 0),
+      })));
+
+      // Derive stats from real wallet/transaction data
+      const activeWallets = ws.map((w) => ({
+        type: (w.type ?? 'hot') as Wallet['type'],
+        balance: Number(w.balance ?? 0),
+        balanceUSD: Number(w.balanceUSD ?? 0),
+      }));
       setStats({
-        totalWallets: 4,
-        totalBalance: 3060.5,
-        totalValue: 10677000,
-        hotWallets: 1,
-        coldWallets: 1,
-        multiSigWallets: 1,
-        pendingTransactions: 1,
+        totalWallets: activeWallets.length,
+        totalBalance: activeWallets.reduce((s, w) => s + w.balance, 0),
+        totalValue: activeWallets.reduce((s, w) => s + w.balanceUSD, 0),
+        hotWallets: activeWallets.filter(w => w.type === 'hot').length,
+        coldWallets: activeWallets.filter(w => w.type === 'cold').length,
+        multiSigWallets: activeWallets.filter(w => w.type === 'multi_sig').length,
+        pendingTransactions: txs.filter((t: any) => t.status === 'pending').length,
       });
-      
-      setSuccess('Wallet data loaded successfully');
     } catch (err: any) {
-      setError(err.message || 'Failed to load data');
+      setError(err?.response?.data?.error || err?.message || 'Failed to load wallet data');
     } finally {
       setLoading(false);
     }
@@ -290,54 +210,52 @@ export default function AdminWalletPage() {
     }
     
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      const newWallet: Wallet = {
-        id: `w${Date.now()}`,
+      await api.createAdminWallet({
         name: formData.name,
         type: formData.type,
-        address: `0x${Math.random().toString(16).slice(2)}${Math.random().toString(16).slice(2)}`.slice(0, 42),
         chainId: formData.chainId,
-        chainName: formData.chainId === 1 ? 'Ethereum' : formData.chainId === 56 ? 'BNB Chain' : 'Polygon',
-        balance: 0,
-        balanceUSD: 0,
-        tokenCount: 0,
-        status: 'active',
         signers: formData.type === 'multi_sig' ? formData.signers : undefined,
         threshold: formData.type === 'multi_sig' ? formData.threshold : undefined,
-        createdAt: Date.now(),
-        lastActivity: Date.now(),
-      };
-      
-      setWallets([...wallets, newWallet]);
+      });
       setSuccess(`Wallet "${formData.name}" created successfully`);
       setCreateDialogOpen(false);
       setFormData({ name: '', type: 'hot', chainId: 1, signers: [''], threshold: 2 });
+      await loadData();
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.response?.data?.error || err?.message || 'Failed to create wallet');
     } finally {
       setLoading(false);
     }
-  }, [formData, wallets]);
+  }, [formData, loadData]);
   
   const handleDeleteWallet = useCallback(async (walletId: string) => {
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      setWallets(wallets.filter(w => w.id !== walletId));
+      await api.deleteAdminWallet(walletId);
       setSuccess('Wallet deleted successfully');
+      await loadData();
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.response?.data?.error || err?.message || 'Failed to delete wallet');
     } finally {
       setLoading(false);
     }
-  }, [wallets]);
+  }, [loadData]);
   
   const handleFreezeWallet = useCallback(async (walletId: string) => {
-    setWallets(wallets.map(w => 
-      w.id === walletId ? { ...w, status: w.status === 'active' ? 'frozen' as const : 'active' as const } : w
-    ));
+    const wallet = wallets.find(w => w.id === walletId);
+    if (!wallet) return;
+    try {
+      const newStatus = wallet.status === 'active' ? 'frozen' : 'active';
+      await api.updateAdminWallet(walletId, { status: newStatus });
+      setWallets(wallets.map(w => 
+        w.id === walletId ? { ...w, status: newStatus as Wallet['status'] } : w
+      ));
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || 'Failed to update wallet status');
+    }
   }, [wallets]);
   
   const handleViewWallet = useCallback((wallet: Wallet) => {
@@ -463,6 +381,11 @@ export default function AdminWalletPage() {
       
       {/* Wallets Tab */}
       {activeTab === 0 && (
+        wallets.length === 0 ? (
+          <Box sx={{ textAlign: 'center', py: 6, color: '#9ca3af' }}>
+            No wallets found
+          </Box>
+        ) : (
         <Grid container spacing={3}>
           {wallets.map(wallet => (
             <Grid item xs={12} md={6} key={wallet.id}>
@@ -533,6 +456,7 @@ export default function AdminWalletPage() {
             </Grid>
           ))}
         </Grid>
+        )
       )}
       
       {/* Transactions Tab */}
@@ -552,7 +476,13 @@ export default function AdminWalletPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {transactions.map(tx => {
+              {transactions.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} align="center" sx={{ py: 5, color: '#9ca3af' }}>
+                    No transactions found
+                  </TableCell>
+                </TableRow>
+              ) : transactions.map(tx => {
                 const wallet = wallets.find(w => w.id === tx.walletId);
                 return (
                   <TableRow key={tx.id}>

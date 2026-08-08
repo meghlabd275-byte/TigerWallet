@@ -399,5 +399,3 @@ func DecryptField(value string, key []byte) (string, error) {
 	}
 	return string(decrypted), nil
 }
-EOF
-echo "Security module created"

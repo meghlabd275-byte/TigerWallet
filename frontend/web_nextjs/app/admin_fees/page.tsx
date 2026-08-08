@@ -15,6 +15,7 @@ import {
   Settings, Add, Edit, Delete, Refresh, ExpandMore, Warning,
   CheckCircle, Error as ErrorIcon, Money, CreditCard, Wallet
 } from '@mui/icons-material';
+import { api } from '@/lib/api/client';
 
 // ============================================================================
 // Types & Interfaces
@@ -127,50 +128,56 @@ export default function AdminFeesPage() {
   
   const loadData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Mock fee configs
-      setFeeConfigs([
-        { id: '1', name: 'ETH/USDC Swap', type: 'swap', chainId: 1, chainName: 'Ethereum', feeType: 'percentage', value: 0.3, isActive: true, updatedAt: Date.now() - 86400000 },
-        { id: '2', name: 'BTC/USDC Swap', type: 'swap', chainId: 1, chainName: 'Ethereum', feeType: 'percentage', value: 0.3, isActive: true, updatedAt: Date.now() - 86400000 },
-        { id: '3', name: 'BNB/USDT Swap', type: 'swap', chainId: 56, chainName: 'BNB Chain', feeType: 'percentage', value: 0.25, isActive: true, updatedAt: Date.now() - 86400000 },
-        { id: '4', name: 'MATIC/USDC Swap', type: 'swap', chainId: 137, chainName: 'Polygon', feeType: 'percentage', value: 0.3, isActive: true, updatedAt: Date.now() - 86400000 },
-        { id: '5', name: 'Liquidity Mint', type: 'mint', chainId: 1, chainName: 'Ethereum', feeType: 'percentage', value: 0.5, isActive: true, updatedAt: Date.now() - 86400000 },
-        { id: '6', name: 'Liquidity Burn', type: 'burn', chainId: 1, chainName: 'Ethereum', feeType: 'percentage', value: 0.5, isActive: true, updatedAt: Date.now() - 86400000 },
-        { id: '7', name: 'Market Maker Bot', type: 'bot', chainId: 1, chainName: 'All Chains', feeType: 'flat', value: 5000, isActive: true, updatedAt: Date.now() - 86400000 },
-        { id: '8', name: 'Arbitrage Bot', type: 'bot', chainId: 1, chainName: 'All Chains', feeType: 'flat', value: 3000, isActive: true, updatedAt: Date.now() - 86400000 },
-        { id: '9', name: 'Token Listing', type: 'listing', chainId: 1, chainName: 'Ethereum', feeType: 'flat', value: 10000, isActive: true, updatedAt: Date.now() - 86400000 },
-        { id: '10', name: 'Bot Subscription', type: 'subscription', chainId: 1, chainName: 'All Chains', feeType: 'flat', value: 500, isActive: true, updatedAt: Date.now() - 86400000 },
-        { id: '11', name: 'Network Withdrawal', type: 'withdrawal', chainId: 1, chainName: 'Ethereum', feeType: 'tiered', value: 10, minValue: 0, maxValue: 100, tier: 1, isActive: true, updatedAt: Date.now() - 86400000 },
-        { id: '12', name: 'Network Withdrawal', type: 'withdrawal', chainId: 56, chainName: 'BNB Chain', feeType: 'tiered', value: 1, minValue: 0, maxValue: 1000, tier: 1, isActive: true, updatedAt: Date.now() - 86400000 },
+      const [configsRes, txRes, revenueRes] = await Promise.all([
+        api.getFeeConfigs(),
+        api.getFeeTransactions(),
+        api.getFeeRevenueStats(),
       ]);
-      
-      // Mock transactions
-      setTransactions([
-        { id: 'tx1', type: 'swap', amount: 1500, token: 'USDC', feeRecipient: '0xfee...', txHash: '0x123...', timestamp: Date.now() - 60000, status: 'collected' },
-        { id: 'tx2', type: 'bot', amount: 5000, token: 'USDT', feeRecipient: '0xfee...', txHash: '0x456...', timestamp: Date.now() - 120000, status: 'distributed' },
-        { id: 'tx3', type: 'listing', amount: 10000, token: 'USDC', feeRecipient: '0xfee...', txHash: '0x789...', timestamp: Date.now() - 300000, status: 'collected' },
-        { id: 'tx4', type: 'subscription', amount: 500, token: 'USDC', feeRecipient: '0xfee...', txHash: '0xabc...', timestamp: Date.now() - 600000, status: 'collected' },
-        { id: 'tx5', type: 'swap', amount: 800, token: 'USDC', feeRecipient: '0xfee...', txHash: '0xdef...', timestamp: Date.now() - 900000, status: 'distributed' },
-      ]);
-      
-      // Mock revenue stats
+
+      const configs: any[] = configsRes.data || [];
+      setFeeConfigs(configs.map((f) => ({
+        id: String(f.id ?? ''),
+        name: String(f.name ?? ''),
+        type: (f.type ?? 'swap') as FeeConfig['type'],
+        chainId: Number(f.chainId ?? 0),
+        chainName: String(f.chainName ?? CHAINS.find(c => c.id === Number(f.chainId))?.name ?? 'Unknown'),
+        feeType: (f.feeType ?? 'percentage') as FeeConfig['feeType'],
+        value: Number(f.value ?? 0),
+        minValue: f.minValue != null ? Number(f.minValue) : undefined,
+        maxValue: f.maxValue != null ? Number(f.maxValue) : undefined,
+        tier: f.tier,
+        isActive: Boolean(f.isActive ?? true),
+        updatedAt: Number(f.updatedAt ?? f.timestamp ?? 0),
+      })));
+
+      const txs: any[] = txRes.data || [];
+      setTransactions(txs.map((t) => ({
+        id: String(t.id ?? ''),
+        type: String(t.type ?? ''),
+        amount: Number(t.amount ?? 0),
+        token: String(t.token ?? ''),
+        feeRecipient: String(t.feeRecipient ?? ''),
+        txHash: String(t.txHash ?? ''),
+        timestamp: Number(t.timestamp ?? 0),
+        status: (t.status ?? 'pending') as FeeTransaction['status'],
+      })));
+
+      const r = revenueRes.data || {};
       setRevenueStats({
-        totalRevenue: 1250000,
-        swapFees: 450000,
-        mintFees: 120000,
-        burnFees: 80000,
-        botFees: 350000,
-        listingFees: 150000,
-        subscriptionFees: 50000,
-        withdrawalFees: 50000,
-        monthlyGrowth: 15.5,
+        totalRevenue: Number(r.totalRevenue ?? 0),
+        swapFees: Number(r.swapFees ?? 0),
+        mintFees: Number(r.mintFees ?? 0),
+        burnFees: Number(r.burnFees ?? 0),
+        botFees: Number(r.botFees ?? 0),
+        listingFees: Number(r.listingFees ?? 0),
+        subscriptionFees: Number(r.subscriptionFees ?? 0),
+        withdrawalFees: Number(r.withdrawalFees ?? 0),
+        monthlyGrowth: Number(r.monthlyGrowth ?? 0),
       });
-      
-      setSuccess('Fee data loaded successfully');
     } catch (err: any) {
-      setError(err.message || 'Failed to load data');
+      setError(err?.response?.data?.error || err?.message || 'Failed to load fee data');
     } finally {
       setLoading(false);
     }
@@ -197,50 +204,53 @@ export default function AdminFeesPage() {
   
   const handleSaveFee = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+      const chainName = CHAINS.find(c => c.id === formData.chainId)?.name || 'Unknown';
+      const payload = { ...formData, chainName };
+
       if (selectedFee) {
-        setFeeConfigs(feeConfigs.map(f => 
-          f.id === selectedFee.id ? { ...f, ...formData, updatedAt: Date.now() } : f
-        ));
+        await api.updateFeeConfig(selectedFee.id, payload);
         setSuccess(`Fee "${formData.name}" updated successfully`);
       } else {
-        const newFee: FeeConfig = {
-          id: `fee-${Date.now()}`,
-          ...formData,
-          chainName: CHAINS.find(c => c.id === formData.chainId)?.name || 'Unknown',
-          updatedAt: Date.now(),
-        };
-        setFeeConfigs([...feeConfigs, newFee]);
+        await api.createFeeConfig(payload);
         setSuccess(`Fee "${formData.name}" created successfully`);
       }
-      
+
       setEditDialogOpen(false);
+      await loadData();
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.response?.data?.error || err?.message || 'Failed to save fee config');
     } finally {
       setLoading(false);
     }
-  }, [selectedFee, formData, feeConfigs]);
+  }, [selectedFee, formData, loadData]);
   
   const handleDeleteFee = useCallback(async (feeId: string) => {
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      setFeeConfigs(feeConfigs.filter(f => f.id !== feeId));
+      await api.deleteFeeConfig(feeId);
       setSuccess('Fee deleted successfully');
+      await loadData();
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.response?.data?.error || err?.message || 'Failed to delete fee config');
     } finally {
       setLoading(false);
     }
-  }, [feeConfigs]);
+  }, [loadData]);
   
   const handleToggleFee = useCallback(async (feeId: string) => {
-    setFeeConfigs(feeConfigs.map(f => 
-      f.id === feeId ? { ...f, isActive: !f.isActive } : f
-    ));
+    const fee = feeConfigs.find(f => f.id === feeId);
+    if (!fee) return;
+    try {
+      await api.updateFeeConfig(feeId, { isActive: !fee.isActive });
+      setFeeConfigs(feeConfigs.map(f => 
+        f.id === feeId ? { ...f, isActive: !f.isActive } : f
+      ));
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || 'Failed to toggle fee');
+    }
   }, [feeConfigs]);
   
   // ============================================================================
@@ -371,7 +381,13 @@ export default function AdminFeesPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {feeConfigs.map(fee => (
+              {feeConfigs.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} align="center" sx={{ py: 5, color: '#9ca3af' }}>
+                    No fee configurations found
+                  </TableCell>
+                </TableRow>
+              ) : feeConfigs.map(fee => (
                 <TableRow key={fee.id}>
                   <TableCell>{fee.name}</TableCell>
                   <TableCell>
@@ -430,7 +446,13 @@ export default function AdminFeesPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {transactions.map(tx => (
+              {transactions.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} align="center" sx={{ py: 5, color: '#9ca3af' }}>
+                    No fee transactions found
+                  </TableCell>
+                </TableRow>
+              ) : transactions.map(tx => (
                 <TableRow key={tx.id}>
                   <TableCell>
                     <Chip 

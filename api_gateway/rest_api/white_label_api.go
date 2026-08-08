@@ -2,6 +2,8 @@
 // WHITE LABEL MANAGEMENT - Complete White Label Product System
 // ============================================================================
 
+package main
+
 // WhiteLabelClient - White label client management
 type WhiteLabelClient struct {
 	ID                       string `json:"id"`

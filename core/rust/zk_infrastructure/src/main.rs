@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use zk_infrastructure::{
-    ZKManager, ZKCircuit, ZKProofInputs, ProofType,
+    ZKManager, ZKCircuit, ZKProofInputs,
 };
 
 use tracing::{info, error};
@@ -26,8 +26,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ("compression".to_string(), "Compression Circuit".to_string(), 1),
     ];
     
-    for (id, name, inputs) in circuits {
-        let circuit = ZKCircuit::new(id, name, inputs);
+    for (id, name, inputs) in &circuits {
+        let circuit = ZKCircuit::new(id.clone(), name.clone(), *inputs);
         manager.prover().register_circuit(circuit).await;
     }
     

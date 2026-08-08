@@ -37,15 +37,27 @@ impl ZKIdentity {
         challenge: &[u8],
     ) -> Result<ZKProof, crate::ZKError> {
         let identities = self.identities.read().await;
-        
+
         let identity = identities
             .get(identity_id)
             .ok_or(crate::ZKError::CircuitNotFound)?;
-        
+
+        // Lazily register + set up the identity circuit on first use.
+        if self.prover.get_circuit("identity").await.is_none() {
+            self.prover
+                .register_circuit(crate::ZKCircuit::new(
+                    "identity".to_string(),
+                    "Identity Circuit".to_string(),
+                    1,
+                ))
+                .await;
+            self.prover.setup("identity").await?;
+        }
+
         let inputs = crate::ZKProofInputs::new()
             .with_public(vec![challenge.to_vec()])
             .with_private(vec![identity.secret.clone()]);
-        
+
         self.prover.prove("identity", inputs).await
     }
     

@@ -69,18 +69,6 @@ const (
 // ENUMS
 // ============================================================================
 
-type UserRole string
-
-const (
-	RoleSuperAdmin   UserRole = "super_admin"
-	RoleAdmin        UserRole = "admin"
-	RoleFinanceAdmin UserRole = "finance_admin"
-	RoleBotOperator  UserRole = "bot_operator"
-	RoleTradingAdmin UserRole = "trading_admin"
-	RoleClient       UserRole = "client"
-	RoleUser         UserRole = "user"
-)
-
 type AuthMethod string
 
 const (
@@ -184,14 +172,6 @@ type AuthenticationStore struct {
 	// JWT keys
 	jwtSigningKey []byte
 	jwtRefreshKey []byte
-}
-
-// Rate limit info
-type RateLimitInfo struct {
-	Count     int
-	ResetAt   time.Time
-	Blocked   bool
-	BlockTill *time.Time
 }
 
 // NewAuthenticationStore creates new auth store
@@ -777,31 +757,6 @@ func (s *AuthenticationStore) GetFailedLoginAttempts(email string) int {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-func generateUUID() string {
-	return fmt.Sprintf("%s-%s-%s-%s-%s",
-		generateRandomHex(8),
-		generateRandomHex(4),
-		generateRandomHex(4),
-		generateRandomHex(4),
-		generateRandomHex(12),
-	)
-}
-
-func generateRandomToken(length int) string {
-	return generateRandomHex(length)
-}
-
-func generateRandomBytes(length int) []byte {
-	b := make([]byte, length)
-	rand.Read(b)
-	return b
-}
-
-func generateRandomHex(length int) string {
-	b := generateRandomBytes(length / 2)
-	return hex.EncodeToString(b)
-}
 
 func isValidEmail(email string) bool {
 	email = strings.ToLower(email)

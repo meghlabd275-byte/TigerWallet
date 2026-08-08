@@ -16,23 +16,7 @@ import {
   Timeline, People, Store, Dashboard, Notifications, History
 } from '@mui/icons-material';
 import { useTheme } from '../components/ThemeProvider';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8098';
-
-const fetchAPI = async <T,>(endpoint: string, options?: RequestInit): Promise<T> => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options?.headers,
-    },
-  });
-  if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
-  const data = await response.json();
-  return data.data || data;
-};
+import api from '../../src/lib/api/client';
 
 // ============================================================================
 // Types & Interfaces
@@ -196,105 +180,31 @@ export default function BotDashboard() {
   
   const loadData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      // Fetch real data from backend API
-      try {
-        const usersData = await fetchAPI<User[]>('/api/v1/bot/users');
-        setUsers(usersData);
-      } catch (e) {
-        console.log('Using mock users - API not available');
-        // Fallback to sample data if API not available
-        setUsers([
-          {
-            id: '1',
-            address: '0x1234...abcd',
-            name: 'Admin',
-            role: 'admin',
-            email: 'admin@tigerswap.io',
-            createdAt: Date.now() - 86400000 * 30,
-            isActive: true,
-          },
-          {
-            id: '2',
-            address: '0x5678...efgh',
-            name: 'Bot Operator',
-            role: 'operator',
-            email: 'operator@tigerswap.io',
-            createdAt: Date.now() - 86400000 * 20,
-            isActive: true,
-          },
-          {
-            id: '3',
-            address: '0xabcd...1234',
-            name: 'Client User',
-            role: 'client',
-            email: 'client@example.com',
-            createdAt: Date.now() - 86400000 * 10,
-            isActive: true,
-          },
-        ]);
-      }
-      
-      // Fetch bots from API
-      try {
-        const botsData = await fetchAPI<any[]>('/api/v1/bot/instances');
-        setBots(botsData);
-      } catch (e) {
-        console.log('Using mock bots - API not available');
-        setBots([
-          {
-            id: 'bot1',
-            name: 'ETH-USDC Market Maker',
-            type: 'market_maker',
-            status: 'running',
-            owner: '0x1234...abcd',
-            profit: 15420.5,
-            volume: 2500000,
-            trades: 1520,
-            winRate: 92.5,
-            createdAt: Date.now() - 86400000 * 15,
-            lastActive: Date.now() - 300000,
-            config: { minInvestment: 5000, maxInvestment: 50000, targetApy: 25, riskLevel: 3, maxDailyLoss: 1000, stopLoss: 5 },
-          },
-          {
-            id: 'bot2',
-            name: 'BTC Arbitrage',
-            type: 'arbitrage',
-            status: 'running',
-            owner: '0x5678...efgh',
-            profit: 8750.2,
-            volume: 1800000,
-            trades: 850,
-            winRate: 88.2,
-            createdAt: Date.now() - 86400000 * 10,
-            lastActive: Date.now() - 600000,
-            config: { minInvestment: 10000, maxInvestment: 100000, targetApy: 40, riskLevel: 6, maxDailyLoss: 2000, stopLoss: 8 },
-          },
-          {
-            id: 'bot3',
-            name: 'SOL Sniper',
-            type: 'sniper',
-            status: 'paused',
-            owner: '0xabcd...1234',
-            profit: 3200.0,
-            volume: 450000,
-            trades: 120,
-            winRate: 75.0,
-            createdAt: Date.now() - 86400000 * 5,
-            lastActive: Date.now() - 3600000,
-            config: { minInvestment: 1000, maxInvestment: 10000, targetApy: 50, riskLevel: 8, maxDailyLoss: 500, stopLoss: 10 },
-          },
-        ]);
-      }
-      
-      // Mock transactions
-      setTransactions([
-        { id: 'tx1', botId: 'bot1', exchange: 'Uniswap', type: 'buy', amount: 50000, price: 3500, profit: 150, status: 'success', timestamp: Date.now() - 60000 },
-        { id: 'tx2', botId: 'bot1', exchange: 'SushiSwap', type: 'sell', amount: 48000, price: 3510, profit: 480, status: 'success', timestamp: Date.now() - 120000 },
-        { id: 'tx3', botId: 'bot2', exchange: 'Curve', type: 'buy', amount: 100000, price: 1.0, profit: -50, status: 'failed', timestamp: Date.now() - 180000 },
-        { id: 'tx4', botId: 'bot2', exchange: 'Uniswap', type: 'sell', amount: 75000, price: 3505, profit: 375, status: 'success', timestamp: Date.now() - 240000 },
+      const [usersRes, botsRes, txRes] = await Promise.allSettled([
+        api.getBotUsers(),
+        api.getBots(),
+        api.getBotTransactions(),
       ]);
-      
+
+      if (usersRes.status === 'fulfilled' && usersRes.value.data) {
+        setUsers(usersRes.value.data);
+      } else if (usersRes.status === 'rejected') {
+        setError('Failed to load users');
+      }
+
+      if (botsRes.status === 'fulfilled' && botsRes.value.data) {
+        setBots(botsRes.value.data);
+      } else if (botsRes.status === 'rejected') {
+        setError('Failed to load bots');
+      }
+
+      if (txRes.status === 'fulfilled' && txRes.value.data) {
+        setTransactions(txRes.value.data);
+      }
+      // Transactions are optional; failures are silently ignored to avoid clobbering errors above.
+
       setSuccess('Data loaded successfully');
     } catch (err: any) {
       setError(err.message || 'Failed to load data');
@@ -308,17 +218,21 @@ export default function BotDashboard() {
   // ============================================================================
   
   const handleConnect = useCallback(async () => {
-    // Simulate wallet connection
-    setIsConnected(true);
-    setCurrentUser({
-      id: '1',
-      address: '0x1234...abcd',
-      name: 'Admin',
-      role: 'admin',
-      email: 'admin@tigerswap.io',
-      createdAt: Date.now(),
-      isActive: true,
-    });
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.getCurrentBotUser();
+      if (res.success && res.data) {
+        setCurrentUser(res.data);
+        setIsConnected(true);
+      } else {
+        setError(res.error || 'Failed to authenticate bot platform user');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to connect to bot platform');
+    } finally {
+      setLoading(false);
+    }
   }, []);
   
   const handleCreateUser = useCallback(async () => {
@@ -328,21 +242,19 @@ export default function BotDashboard() {
     }
     
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      setUsers([...users, {
-        id: String(users.length + 1),
-        ...newUser,
-        createdAt: Date.now(),
-        isActive: true,
-      }]);
-      
-      setSuccess(`User created: ${newUser.name}`);
-      setCreateUserDialog(false);
-      setNewUser({ name: '', email: '', role: 'client', address: '' });
+      const res = await api.createBotUser(newUser);
+      if (res.success && res.data) {
+        setUsers([...users, res.data]);
+        setSuccess(`User created: ${newUser.name}`);
+        setCreateUserDialog(false);
+        setNewUser({ name: '', email: '', role: 'client', address: '' });
+      } else {
+        setError(res.error || 'Failed to create user');
+      }
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Failed to create user');
     } finally {
       setLoading(false);
     }
@@ -350,12 +262,17 @@ export default function BotDashboard() {
   
   const handleDeleteUser = useCallback(async (userId: string) => {
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      setUsers(users.filter(u => u.id !== userId));
-      setSuccess('User deleted');
+      const res = await api.deleteBotUser(userId);
+      if (res.success) {
+        setUsers(users.filter(u => u.id !== userId));
+        setSuccess('User deleted');
+      } else {
+        setError(res.error || 'Failed to delete user');
+      }
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Failed to delete user');
     } finally {
       setLoading(false);
     }
@@ -372,50 +289,44 @@ export default function BotDashboard() {
     }
     
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      const bot: Bot = {
-        id: `bot${bots.length + 1}`,
+      const res = await api.createBot({
         name: newBot.name,
         type: newBot.type,
-        status: 'running',
-        owner: currentUser?.address || '0x0000...0000',
-        profit: 0,
-        volume: 0,
-        trades: 0,
-        winRate: 0,
-        createdAt: Date.now(),
-        lastActive: Date.now(),
-        config: {
-          minInvestment: newBot.minInvestment,
-          maxInvestment: newBot.maxInvestment,
-          targetApy: newBot.targetApy,
-          riskLevel: newBot.riskLevel,
-          maxDailyLoss: newBot.maxInvestment * 0.1,
-          stopLoss: 5,
-        },
-      };
-      
-      setBots([...bots, bot]);
-      setSuccess(`Bot created: ${newBot.name}`);
-      setCreateBotDialog(false);
-      setNewBot({ name: '', type: 'market_maker', minInvestment: 1000, maxInvestment: 10000, targetApy: 20, riskLevel: 5 });
+        minInvestment: newBot.minInvestment,
+        maxInvestment: newBot.maxInvestment,
+        targetApy: newBot.targetApy,
+        riskLevel: newBot.riskLevel,
+      });
+      if (res.success && res.data) {
+        setBots([...bots, res.data]);
+        setSuccess(`Bot created: ${newBot.name}`);
+        setCreateBotDialog(false);
+        setNewBot({ name: '', type: 'market_maker', minInvestment: 1000, maxInvestment: 10000, targetApy: 20, riskLevel: 5 });
+      } else {
+        setError(res.error || 'Failed to create bot');
+      }
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Failed to create bot');
     } finally {
       setLoading(false);
     }
-  }, [newBot, bots, currentUser]);
+  }, [newBot, bots]);
   
   const handleStartBot = useCallback(async (botId: string) => {
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      setBots(bots.map(b => b.id === botId ? { ...b, status: 'running' as const } : b));
-      setSuccess('Bot started');
+      const res = await api.startBot(botId);
+      if (res.success && res.data) {
+        setBots(bots.map(b => b.id === botId ? res.data! : b));
+        setSuccess('Bot started');
+      } else {
+        setError(res.error || 'Failed to start bot');
+      }
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Failed to start bot');
     } finally {
       setLoading(false);
     }
@@ -423,12 +334,17 @@ export default function BotDashboard() {
   
   const handleStopBot = useCallback(async (botId: string) => {
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      setBots(bots.map(b => b.id === botId ? { ...b, status: 'stopped' as const } : b));
-      setSuccess('Bot stopped');
+      const res = await api.stopBot(botId);
+      if (res.success && res.data) {
+        setBots(bots.map(b => b.id === botId ? res.data! : b));
+        setSuccess('Bot stopped');
+      } else {
+        setError(res.error || 'Failed to stop bot');
+      }
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Failed to stop bot');
     } finally {
       setLoading(false);
     }
@@ -436,12 +352,17 @@ export default function BotDashboard() {
   
   const handlePauseBot = useCallback(async (botId: string) => {
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      setBots(bots.map(b => b.id === botId ? { ...b, status: 'paused' as const } : b));
-      setSuccess('Bot paused');
+      const res = await api.pauseBot(botId);
+      if (res.success && res.data) {
+        setBots(bots.map(b => b.id === botId ? res.data! : b));
+        setSuccess('Bot paused');
+      } else {
+        setError(res.error || 'Failed to pause bot');
+      }
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Failed to pause bot');
     } finally {
       setLoading(false);
     }
@@ -452,25 +373,31 @@ export default function BotDashboard() {
       open: true,
       title: 'Delete Bot',
       message: 'Are you sure you want to delete this bot? This action cannot be undone.',
-      action: 'delete',
+      action: `delete:${botId}`,
     });
   }, []);
   
   const confirmAction = useCallback(async (action: string) => {
-    if (action === 'delete') {
+    if (action.startsWith('delete:')) {
+      const botId = action.split(':')[1];
       setLoading(true);
+      setError(null);
       try {
-        await new Promise(resolve => setTimeout(resolve, 300));
-        // Delete logic would go here
-        setSuccess('Bot deleted');
+        const res = await api.deleteBot(botId);
+        if (res.success) {
+          setBots(bots.filter(b => b.id !== botId));
+          setSuccess('Bot deleted');
+        } else {
+          setError(res.error || 'Failed to delete bot');
+        }
       } catch (err: any) {
-        setError(err.message);
+        setError(err.message || 'Failed to delete bot');
       } finally {
         setLoading(false);
         setConfirmDialog({ open: false, title: '', message: '', action: '' });
       }
     }
-  }, []);
+  }, [bots]);
   
   // ============================================================================
   // Helper Functions

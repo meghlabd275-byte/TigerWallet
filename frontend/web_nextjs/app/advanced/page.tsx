@@ -7,7 +7,7 @@ import {
   MenuItem, FormControl, InputLabel, ToggleButton, ToggleButtonGroup,
   Dialog, DialogTitle, DialogContent, DialogActions, Stepper, Step,
   StepLabel, Table, TableBody, TableCell, TableContainer, TableHead,
-  TableRow, Paper, IconButton, Tooltip
+  TableRow, Paper, IconButton, Tooltip, LinearProgress
 } from '@mui/material';
 import {
   ShowChart, TrendingUp, TrendingDown, Speed, AccountBalance, SwapHoriz,
@@ -15,6 +15,7 @@ import {
   FlashOn, Settings, Info, OpenInNew
 } from '@mui/icons-material';
 import { useTheme } from '../components/ThemeProvider';
+import { api } from '@/lib/api/client';
 
 // ============================================================================
 // Types & Interfaces
@@ -156,116 +157,111 @@ export default function AdvancedTradingInterface() {
   // ============================================================================
   
   const loadOrderBook = useCallback(async () => {
-    // Mock order book data
-    const mockBids: OrderBookEntry[] = [];
-    const mockAsks: OrderBookEntry[] = [];
-    
-    const basePrice = 3500;
-    for (let i = 0; i < 15; i++) {
-      mockBids.push({
-        price: basePrice - i * 0.5,
-        amount: Math.random() * 10 + 1,
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.getOrderbook(selectedPair);
+      const data: any = res.data || {};
+      const rawBids: any[] = data.bids || [];
+      const rawAsks: any[] = data.asks || [];
+
+      const toEntry = (b: any): OrderBookEntry => ({
+        price: Number(b.price ?? 0),
+        amount: Number(b.amount ?? b.size ?? 0),
         total: 0,
       });
-      mockAsks.push({
-        price: basePrice + (i + 1) * 0.5,
-        amount: Math.random() * 10 + 1,
-        total: 0,
-      });
+      const sortedBids = rawBids.map(toEntry).sort((a, b) => b.price - a.price);
+      const sortedAsks = rawAsks.map(toEntry).sort((a, b) => a.price - b.price);
+
+      let bidTotal = 0;
+      let askTotal = 0;
+      sortedBids.forEach(b => { bidTotal += b.amount; b.total = bidTotal; });
+      sortedAsks.forEach(a => { askTotal += a.amount; a.total = askTotal; });
+
+      setBids(sortedBids);
+      setAsks(sortedAsks);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || 'Failed to load order book');
+      setBids([]);
+      setAsks([]);
+    } finally {
+      setLoading(false);
     }
-    
-    // Calculate totals
-    let bidTotal = 0;
-    let askTotal = 0;
-    mockBids.forEach(b => { bidTotal += b.amount; b.total = bidTotal; });
-    mockAsks.forEach(a => { askTotal += a.amount; a.total = askTotal; });
-    
-    setBids(mockBids);
-    setAsks(mockAsks);
   }, [selectedPair]);
   
   const loadPositions = useCallback(async () => {
-    // Mock positions
-    setPositions([
-      {
-        id: '1',
-        pair: 'ETH/USDC',
-        side: 'long',
-        size: 1.5,
-        entryPrice: 3200,
-        currentPrice: 3500,
-        pnl: 450,
-        pnlPercent: 9.4,
-        margin: 1000,
-        leverage: 5,
-        liquidationPrice: 2800,
-      },
-    ]);
+    setError(null);
+    try {
+      const res = await api.getAdvancedPositions();
+      const list: any[] = res.data || [];
+      setPositions(list.map((p) => ({
+        id: String(p.id ?? ''),
+        pair: String(p.pair ?? ''),
+        side: (p.side ?? 'long') as Position['side'],
+        size: Number(p.size ?? 0),
+        entryPrice: Number(p.entryPrice ?? 0),
+        currentPrice: Number(p.currentPrice ?? 0),
+        pnl: Number(p.pnl ?? 0),
+        pnlPercent: Number(p.pnlPercent ?? 0),
+        margin: Number(p.margin ?? 0),
+        leverage: Number(p.leverage ?? 1),
+        liquidationPrice: Number(p.liquidationPrice ?? 0),
+      })));
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || 'Failed to load positions');
+      setPositions([]);
+    }
   }, []);
   
   const loadOrders = useCallback(async () => {
-    // Mock open orders
-    setOpenOrders([
-      {
-        id: '1',
-        type: 'limit',
-        pair: 'ETH/USDC',
-        side: 'buy',
-        price: 3400,
-        amount: 2,
-        filled: 0,
-        status: 'pending',
-        createdAt: Date.now() - 3600000,
-        expiresAt: Date.now() + 86400000,
-      },
-      {
-        id: '2',
-        type: 'stop_loss',
-        pair: 'ETH/USDC',
-        side: 'sell',
-        price: 3300,
-        amount: 1,
-        filled: 0,
-        status: 'pending',
-        createdAt: Date.now() - 1800000,
-        expiresAt: Date.now() + 172800000,
-        triggerPrice: 3300,
-      },
-    ]);
-    
-    // Mock order history
-    setOrderHistory([
-      {
-        id: '3',
-        type: 'twap',
-        pair: 'BTC/USDC',
-        side: 'buy',
-        price: 65000,
-        amount: 5,
-        filled: 5,
-        status: 'filled',
-        createdAt: Date.now() - 86400000,
-        expiresAt: Date.now() - 3600000,
-        interval: 3600,
-        numIntervals: 10,
-      },
-    ]);
+    setError(null);
+    try {
+      const res = await api.getAdvancedOrders();
+      const list: any[] = res.data || [];
+      const mapped: AdvancedOrder[] = list.map((o) => ({
+        id: String(o.id ?? ''),
+        type: String(o.type ?? 'market'),
+        pair: String(o.pair ?? ''),
+        side: (o.side ?? 'buy') as AdvancedOrder['side'],
+        price: Number(o.price ?? 0),
+        amount: Number(o.amount ?? 0),
+        filled: Number(o.filled ?? 0),
+        status: (o.status ?? 'pending') as AdvancedOrder['status'],
+        createdAt: Number(o.createdAt ?? 0),
+        expiresAt: Number(o.expiresAt ?? 0),
+        triggerPrice: o.triggerPrice != null ? Number(o.triggerPrice) : undefined,
+        trailingDistance: o.trailingDistance != null ? Number(o.trailingDistance) : undefined,
+        interval: o.interval != null ? Number(o.interval) : undefined,
+        numIntervals: o.numIntervals != null ? Number(o.numIntervals) : undefined,
+      }));
+      setOpenOrders(mapped.filter(o => o.status === 'pending'));
+      setOrderHistory(mapped.filter(o => o.status !== 'pending'));
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || 'Failed to load orders');
+      setOpenOrders([]);
+      setOrderHistory([]);
+    }
   }, []);
   
   const loadConcentratedPositions = useCallback(async () => {
-    // Mock concentrated positions
-    setConcentratedPositions([
-      {
-        id: 1,
-        token0: 'ETH',
-        token1: 'USDC',
-        tickLower: 20000,
-        tickUpper: 30000,
-        liquidity: 50000,
-        feesEarned: 125.5,
-        apr: 24.5,
-      },
-    ]);
+    setError(null);
+    try {
+      const res = await api.getPoolPositions();
+      const list: any[] = res.data || [];
+      setConcentratedPositions(list.map((p, i) => ({
+        id: Number(p.id ?? i),
+        token0: String(p.token0?.symbol ?? p.token0 ?? ''),
+        token1: String(p.token1?.symbol ?? p.token1 ?? ''),
+        tickLower: Number(p.tickLower ?? p.rangeLow ?? 0),
+        tickUpper: Number(p.tickUpper ?? p.rangeHigh ?? 0),
+        liquidity: Number(p.liquidity ?? p.totalLiquidity ?? 0),
+        feesEarned: Number(p.feesEarned ?? 0),
+        apr: Number(p.apr ?? 0),
+      })));
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || 'Failed to load liquidity positions');
+      setConcentratedPositions([]);
+    }
   }, []);
   
   // ============================================================================
@@ -320,8 +316,8 @@ export default function AdvancedTradingInterface() {
           orderData.type = 'market';
       }
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Submit order via API
+      await api.placeAdvancedOrder(orderData);
       
       setSuccess(`Order placed successfully: ${side.toUpperCase()} ${amount} ${selectedPair} @ ${orderType}`);
       setConfirmDialogOpen(false);
@@ -330,7 +326,7 @@ export default function AdvancedTradingInterface() {
       loadOrders();
       
     } catch (err: any) {
-      setError(err.message || 'Order failed');
+      setError(err?.response?.data?.error || err?.message || 'Order failed');
     } finally {
       setLoading(false);
     }
@@ -338,13 +334,13 @@ export default function AdvancedTradingInterface() {
   
   const handleCancelOrder = useCallback(async (orderId: string) => {
     setLoading(true);
-    
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await api.cancelAdvancedOrder(orderId);
       setSuccess('Order cancelled');
       loadOrders();
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.response?.data?.error || err?.message || 'Failed to cancel order');
     } finally {
       setLoading(false);
     }
@@ -352,13 +348,13 @@ export default function AdvancedTradingInterface() {
   
   const handleClosePosition = useCallback(async (positionId: string) => {
     setLoading(true);
-    
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setSuccess('Position closed with profit');
+      await api.closeAdvancedPosition(positionId);
+      setSuccess('Position closed');
       loadPositions();
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.response?.data?.error || err?.message || 'Failed to close position');
     } finally {
       setLoading(false);
     }
@@ -419,6 +415,7 @@ export default function AdvancedTradingInterface() {
           {success}
         </Alert>
       )}
+      {loading && <LinearProgress sx={{ mb: 2 }} />}
       
       {/* Tabs */}
       <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 3 }}>
@@ -679,7 +676,11 @@ export default function AdvancedTradingInterface() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {asks.slice(0, 10).map((ask, i) => (
+                    {asks.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} align="center" sx={{ py: 3, color: '#9ca3af' }}>No asks</TableCell>
+                      </TableRow>
+                    ) : asks.slice(0, 10).map((ask, i) => (
                       <TableRow key={i} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                         <TableCell sx={{ color: 'error.main' }}>{formatPrice(ask.price)}</TableCell>
                         <TableCell align="right">{ask.amount.toFixed(4)}</TableCell>
@@ -713,7 +714,11 @@ export default function AdvancedTradingInterface() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {bids.slice(0, 10).map((bid, i) => (
+                    {bids.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} align="center" sx={{ py: 3, color: '#9ca3af' }}>No bids</TableCell>
+                      </TableRow>
+                    ) : bids.slice(0, 10).map((bid, i) => (
                       <TableRow key={i} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                         <TableCell sx={{ color: 'success.main' }}>{formatPrice(bid.price)}</TableCell>
                         <TableCell align="right">{bid.amount.toFixed(4)}</TableCell>

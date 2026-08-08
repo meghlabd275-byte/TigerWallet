@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { api } from '@/lib/api/client';
+import type { Transaction as APITransaction } from '@/lib/api/client';
 
 interface Transaction {
   id: string;
@@ -42,66 +44,54 @@ interface PriceAlert {
   createdAt: number;
 }
 
-const MOCK_TRANSACTIONS: Transaction[] = [
-  { id: 'tx_1', hash: '0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E1234567890abcdef1234567890', from: '0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E', to: '0x1234567890abcdef1234567890abcdef12345678', amount: '1.5', token: 'ETH', tokenAddress: '0x0000000000000000000000000000000000000000', chainId: 1, chainName: 'Ethereum', status: 'confirmed', timestamp: Date.now() - 300000, type: 'send', fee: '0.005', blockNumber: 18500000, gasUsed: '21000', gasPrice: '0.00000002', nonce: 15 },
-  { id: 'tx_2', hash: '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890', from: '0xabcdef1234567890abcdef1234567890abcdef12', to: '0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E', amount: '5000', token: 'USDT', tokenAddress: '0xdAC17F958D2ee523a2206206994597C13D831ec7', chainId: 1, chainName: 'Ethereum', status: 'confirmed', timestamp: Date.now() - 3600000, type: 'receive', fee: '0.003', blockNumber: 18499500, gasUsed: '65000', gasPrice: '0.000000015', nonce: 14 },
-  { id: 'tx_3', hash: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef', from: '0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E', to: 'Uniswap V3', amount: '2.0', token: 'ETH', tokenAddress: '0x0000000000000000000000000000000000000000', chainId: 1, chainName: 'Ethereum', status: 'confirmed', timestamp: Date.now() - 86400000, type: 'swap', fee: '0.015', blockNumber: 18490000, gasUsed: '150000', gasPrice: '0.00000002', nonce: 13, metadata: { outputToken: 'USDC', outputAmount: '7000' } },
-  { id: 'tx_4', hash: '0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedc', from: '0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E', to: '0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E', amount: '32.5', token: 'MATIC', tokenAddress: '0x0000000000000000000000000000000000000000', chainId: 137, chainName: 'Polygon', status: 'confirmed', timestamp: Date.now() - 172800000, type: 'send', fee: '0.001', blockNumber: 45000000, gasUsed: '21000', nonce: 12 },
-  { id: 'tx_5', hash: '0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210', from: '0xabcd1234efgh5678ijkl9012mnop3456qrst7890', to: '0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E', amount: '0.5', token: 'BTC', tokenAddress: '', chainId: 0, chainName: 'Bitcoin', status: 'confirmed', timestamp: Date.now() - 259200000, type: 'receive', fee: '0.0001', blockNumber: 850000 },
-  { id: 'tx_6', hash: '0x5678901234abcd5678901234abcd5678901234abcd5678901234abcd5678901234', from: '0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E', to: 'Staking Contract', amount: '10', token: 'ETH', tokenAddress: '0x0000000000000000000000000000000000000000', chainId: 1, chainName: 'Ethereum', status: 'confirmed', timestamp: Date.now() - 604800000, type: 'stake', fee: '0.008', blockNumber: 18450000, nonce: 10, metadata: { validator: 'Lido', reward: '4.2% APY' } },
-  { id: 'tx_7', hash: '0xabcd5678901234efgh5678901234ijkl5678901234mnop5678901234qrst5678901234', from: '0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E', to: '0xdef4567890abcdef4567890abcdef4567890abcdef', amount: '1000', token: 'USDC', tokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', chainId: 56, chainName: 'BNB Chain', status: 'failed', timestamp: Date.now() - 7200000, type: 'send', fee: '0.0005', blockNumber: 32000000, gasUsed: '21000', nonce: 5 },
-  { id: 'tx_8', hash: '0xefgh9012345678ijkl9012345678mnop9012345678qrst9012345678uvwx9012345678', from: '0xBridge', to: '0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E', amount: '250', token: 'BNB', tokenAddress: '', chainId: 56, chainName: 'BNB Chain', status: 'confirmed', timestamp: Date.now() - 432000000, type: 'bridge', fee: '0.002', blockNumber: 31500000, metadata: { sourceChain: 'Ethereum', destinationChain: 'BNB Chain' } },
-];
-
-const MOCK_ALERTS: PriceAlert[] = [
-  { id: 'alert_1', symbol: 'ETH', targetPrice: 4000, condition: 'above', currentPrice: 3500, isActive: true, triggered: false, createdAt: Date.now() - 86400000 },
-  { id: 'alert_2', symbol: 'BTC', targetPrice: 70000, condition: 'above', currentPrice: 65000, isActive: true, triggered: false, createdAt: Date.now() - 172800000 },
-  { id: 'alert_3', symbol: 'SOL', targetPrice: 100, condition: 'below', currentPrice: 150, isActive: true, triggered: false, createdAt: Date.now() - 259200000 },
-];
-
-interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  error?: string;
+// Map a backend Transaction into the richer shape used by this page.
+function mapTransaction(tx: APITransaction): Transaction {
+  const isReceive = !!tx.to && !!tx.from && tx.to !== tx.from;
+  return {
+    id: tx.id || tx.hash,
+    hash: tx.hash || tx.id,
+    from: tx.from || '',
+    to: tx.to || '',
+    amount: tx.value || '0',
+    token: 'ETH',
+    tokenAddress: '',
+    chainId: 1,
+    chainName: 'Ethereum',
+    status: tx.status,
+    timestamp: tx.timestamp || Date.now(),
+    type: isReceive ? 'receive' : 'send',
+    fee: '0',
+    blockNumber: 0,
+  };
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.tigerwallet.io';
-
-const fetchAPI = async <T,>(endpoint: string, options?: RequestInit): Promise<T> => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options?.headers,
-    },
-  });
-  if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
-  const data: ApiResponse<T> = await response.json();
-  return data.data;
-};
-
 export default function TransactionHistory() {
-  const [transactions, setTransactions] = useState<Transaction[]>(MOCK_TRANSACTIONS);
-  const [alerts, setAlerts] = useState<PriceAlert[]>(MOCK_ALERTS);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [alerts, setAlerts] = useState<PriceAlert[]>([]);
   const [filters, setFilters] = useState<FilterOptions>({ type: [], status: [], chainId: null, dateRange: { start: 0, end: Date.now() }, searchQuery: '' });
   const [activeTab, setActiveTab] = useState<'transactions' | 'alerts'>('transactions');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Load data from backend
+  // Load transactions from the backend API client.
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [txData, alertsData] = await Promise.all([
-          fetchAPI<Transaction[]>('/transactions'),
-          fetchAPI<PriceAlert[]>('/alerts'),
-        ]);
-        if (txData && txData.length > 0) setTransactions(txData);
-        if (alertsData) setAlerts(alertsData);
-      } catch (err) {
-        console.log('Using fallback data');
+        setLoading(true);
+        setError(null);
+        const res = await api.getTransactions();
+        if (res.success && res.data) {
+          setTransactions(res.data.map(mapTransaction));
+        } else {
+          setTransactions([]);
+          if (res.error) setError(res.error);
+        }
+      } catch (err: any) {
+        setError(err?.message || 'Failed to load transactions');
+        setTransactions([]);
+      } finally {
+        setLoading(false);
       }
     };
     loadData();
@@ -127,18 +117,8 @@ export default function TransactionHistory() {
 
   const handleAddAlert = async (symbol: string, targetPrice: number, condition: 'above' | 'below') => {
     setLoading(true);
-    
     try {
-      const result = await fetchAPI<PriceAlert>('/alerts', {
-        method: 'POST',
-        body: JSON.stringify({ symbol, targetPrice, condition }),
-      });
-      setAlerts(prev => [...prev, result]);
-      setMessage({ type: 'success', text: `Price alert set for ${symbol} ${condition} $${targetPrice}` });
-    } catch (err) {
-      // Fallback to local
-      const prices: Record<string, number> = { 'ETH': 3500, 'BTC': 65000, 'SOL': 150, 'BNB': 600, 'MATIC': 0.8, 'USDT': 1, 'USDC': 1 };
-      const newAlert: PriceAlert = { id: `alert_${Date.now()}`, symbol, targetPrice, condition, currentPrice: prices[symbol] || 0, isActive: true, triggered: false, createdAt: Date.now() };
+      const newAlert: PriceAlert = { id: `alert_${Date.now()}`, symbol, targetPrice, condition, currentPrice: 0, isActive: true, triggered: false, createdAt: Date.now() };
       setAlerts(prev => [...prev, newAlert]);
       setMessage({ type: 'success', text: `Price alert set for ${symbol} ${condition} $${targetPrice}` });
     } finally {
@@ -195,7 +175,10 @@ export default function TransactionHistory() {
         )}
         {activeTab === 'transactions' && (
           <div className="space-y-4">
-            {filteredTransactions().length === 0 ? <div className="bg-white dark:bg-slate-800 rounded-lg p-12 text-center"><div className="text-6xl mb-4">📋</div><h3 className="text-xl font-semibold mb-2">No Transactions Found</h3></div> : filteredTransactions().map((tx) => (
+            {loading && <div className="bg-white dark:bg-slate-800 rounded-lg p-12 text-center"><div className="text-xl font-semibold mb-2">Loading transactions…</div></div>}
+            {error && !loading && <div className="bg-red-100 dark:bg-red-900 rounded-lg p-12 text-center text-red-700 dark:text-red-200"><div className="text-xl font-semibold mb-2">{error}</div></div>}
+            {!loading && !error && filteredTransactions().length === 0 && <div className="bg-white dark:bg-slate-800 rounded-lg p-12 text-center"><div className="text-6xl mb-4">📋</div><h3 className="text-xl font-semibold mb-2">No Transactions Found</h3></div>}
+            {!loading && !error && filteredTransactions().map((tx) => (
               <div key={tx.id} className="bg-white dark:bg-slate-800 rounded-lg p-4 shadow-sm">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-4"><div className="text-2xl">{getTypeIcon(tx.type)}</div><div><div className="flex items-center gap-2"><span className="font-semibold capitalize">{tx.type}</span><span className="text-slate-500 dark:text-slate-400">{tx.token}</span></div><div className="text-sm text-slate-500 mt-1">{tx.type !== 'swap' && tx.type !== 'stake' && <span className="font-mono">{formatAddress(tx.type === 'send' ? tx.to : tx.from)}</span>}{tx.type === 'swap' && <span>{tx.metadata?.outputToken}</span>}{tx.type === 'stake' && <span>{tx.metadata?.validator}</span>}</div><div className="text-xs text-slate-400 mt-1">{tx.chainName} • Block #{tx.blockNumber} • {formatTime(tx.timestamp)}</div></div></div>

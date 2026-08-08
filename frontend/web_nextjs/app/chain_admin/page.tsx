@@ -16,6 +16,7 @@ import {
   AccountBalance, Speed, ShowChart, TrendingUp, Warning, CheckCircle,
   Error as ErrorIcon, CloudQueue, Dns, Router, SwapHoriz
 } from '@mui/icons-material';
+import { api } from '@/lib/api/client';
 
 // ============================================================================
 // Types & Interfaces
@@ -179,235 +180,89 @@ export default function ChainAdminPanel() {
   
   const loadData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Mock chains
-      setChains([
-        {
-          id: 'eth-mainnet',
-          name: 'Ethereum',
-          type: 'evm',
-          chainId: 1,
-          rpcUrl: 'https://eth.llamarpc.com',
-          explorerUrl: 'https://etherscan.io',
-          status: 'active',
-          isTestnet: false,
-          nativeCurrency: 'ETH',
-          decimals: 18,
-          minGasPrice: 1000000000,
-          maxGasPrice: 100000000000,
-          blockTime: 12,
-          tps: 15,
-          tvl: 50000000000,
-          addedAt: Date.now() - 86400000 * 90,
-        },
-        {
-          id: 'bsc-mainnet',
-          name: 'BNB Smart Chain',
-          type: 'evm',
-          chainId: 56,
-          rpcUrl: 'https://bsc-dataseed.binance.org',
-          explorerUrl: 'https://bscscan.com',
-          status: 'active',
-          isTestnet: false,
-          nativeCurrency: 'BNB',
-          decimals: 18,
-          minGasPrice: 5000000000,
-          maxGasPrice: 100000000000,
-          blockTime: 3,
-          tps: 150,
-          tvl: 8000000000,
-          addedAt: Date.now() - 86400000 * 60,
-        },
-        {
-          id: 'polygon-mainnet',
-          name: 'Polygon',
-          type: 'evm',
-          chainId: 137,
-          rpcUrl: 'https://polygon-rpc.com',
-          explorerUrl: 'https://polygonscan.com',
-          status: 'active',
-          isTestnet: false,
-          nativeCurrency: 'MATIC',
-          decimals: 18,
-          minGasPrice: 1000000000,
-          maxGasPrice: 100000000000,
-          blockTime: 2,
-          tps: 350,
-          tvl: 2000000000,
-          addedAt: Date.now() - 86400000 * 45,
-        },
-        {
-          id: 'arbitrum-mainnet',
-          name: 'Arbitrum One',
-          type: 'evm',
-          chainId: 42161,
-          rpcUrl: 'https://arb1.arbitrum.io/rpc',
-          explorerUrl: 'https://arbiscan.io',
-          status: 'active',
-          isTestnet: false,
-          nativeCurrency: 'ETH',
-          decimals: 18,
-          minGasPrice: 100000000,
-          maxGasPrice: 10000000000,
-          blockTime: 1,
-          tps: 500,
-          tvl: 3000000000,
-          addedAt: Date.now() - 86400000 * 30,
-        },
-        {
-          id: 'solana-mainnet',
-          name: 'Solana',
-          type: 'solana',
-          chainId: 101,
-          rpcUrl: 'https://api.mainnet-beta.solana.com',
-          explorerUrl: 'https://solscan.io',
-          status: 'active',
-          isTestnet: false,
-          nativeCurrency: 'SOL',
-          decimals: 9,
-          minGasPrice: 0,
-          maxGasPrice: 0,
-          blockTime: 0.4,
-          tps: 6500,
-          tvl: 1500000000,
-          addedAt: Date.now() - 86400000 * 20,
-        },
-        {
-          id: 'aptos-mainnet',
-          name: 'Aptos',
-          type: 'aptos',
-          chainId: 1,
-          rpcUrl: 'https://aptos-mainnet.nodereal.io/v1',
-          explorerUrl: 'https://aptoscan.com',
-          status: 'active',
-          isTestnet: false,
-          nativeCurrency: 'APT',
-          decimals: 8,
-          minGasPrice: 0,
-          maxGasPrice: 0,
-          blockTime: 1,
-          tps: 2000,
-          tvl: 500000000,
-          addedAt: Date.now() - 86400000 * 10,
-        },
+      const [chainsRes, validatorsRes, bridgesRes, tokensRes, metricsRes] = await Promise.all([
+        api.getChains(),
+        api.getValidators(),
+        api.getBridges(),
+        api.getTokenDeployments(),
+        api.getChainMetrics(),
       ]);
-      
-      // Mock validators
-      setValidators([
-        {
-          id: 'val1',
-          address: '0x1234...abcd',
-          name: 'Primary Validator 1',
-          endpoint: 'https://validator1.tigerswap.io',
-          stake: 50000,
-          status: 'active',
-          performance: 99.9,
-          chains: ['eth-mainnet', 'bsc-mainnet'],
-        },
-        {
-          id: 'val2',
-          address: '0x5678...efgh',
-          name: 'Primary Validator 2',
-          endpoint: 'https://validator2.tigerswap.io',
-          stake: 45000,
-          status: 'active',
-          performance: 99.8,
-          chains: ['eth-mainnet', 'polygon-mainnet'],
-        },
-        {
-          id: 'val3',
-          address: '0xabcd...1234',
-          name: 'Backup Validator',
-          endpoint: 'https://validator3.tigerswap.io',
-          stake: 25000,
-          status: 'inactive',
-          performance: 98.5,
-          chains: ['solana-mainnet'],
-        },
-      ]);
-      
-      // Mock bridges
-      setBridges([
-        {
-          id: 'bridge1',
-          name: 'Ethereum Bridge',
-          sourceChain: 'eth-mainnet',
-          destChain: 'polygon-mainnet',
-          status: 'active',
-          minAmount: 100,
-          maxAmount: 1000000,
-          fee: 0.05,
-          volume24h: 5000000,
-        },
-        {
-          id: 'bridge2',
-          name: 'Solana Bridge',
-          sourceChain: 'solana-mainnet',
-          destChain: 'eth-mainnet',
-          status: 'active',
-          minAmount: 10,
-          maxAmount: 500000,
-          fee: 0.1,
-          volume24h: 2500000,
-        },
-        {
-          id: 'bridge3',
-          name: 'Aptos Bridge',
-          sourceChain: 'aptos-mainnet',
-          destChain: 'eth-mainnet',
-          status: 'active',
-          minAmount: 50,
-          maxAmount: 250000,
-          fee: 0.08,
-          volume24h: 1000000,
-        },
-      ]);
-      
-      // Mock token deployments
-      setTokenDeployments([
-        {
-          id: 'token1',
-          chainId: 'eth-mainnet',
-          tokenAddress: '0x1234...abcd',
-          name: 'Tiger Token',
-          symbol: 'TIGER',
-          decimals: 18,
-          totalSupply: 1000000000,
-          deployer: '0xadmin...xyz',
-          deployedAt: Date.now() - 86400000 * 30,
-          status: 'deployed',
-        },
-      ]);
-      
-      // Mock metrics
-      setMetrics({
-        'eth-mainnet': {
-          chainId: 'eth-mainnet',
-          tps: 15,
-          avgGasUsed: 21000,
-          avgBlockTime: 12,
-          uptime: 99.99,
-          totalTx: 2500000000,
-          totalVolume: 1500000000000,
-          activeUsers: 500000,
-        },
-        'bsc-mainnet': {
-          chainId: 'bsc-mainnet',
-          tps: 150,
-          avgGasUsed: 5000,
-          avgBlockTime: 3,
-          uptime: 99.95,
-          totalTx: 5000000000,
-          totalVolume: 800000000000,
-          activeUsers: 2000000,
-        },
-      });
-      
-      setSuccess('Chain data loaded successfully');
+
+      setChains((chainsRes.data || []).map((c: any) => ({
+        id: String(c.id ?? ''),
+        name: String(c.name ?? ''),
+        type: (c.type ?? 'evm') as Chain['type'],
+        chainId: Number(c.chainId ?? 0),
+        rpcUrl: String(c.rpcUrl ?? ''),
+        explorerUrl: String(c.explorerUrl ?? ''),
+        status: (c.status ?? 'inactive') as Chain['status'],
+        isTestnet: Boolean(c.isTestnet),
+        nativeCurrency: String(c.nativeCurrency ?? ''),
+        decimals: Number(c.decimals ?? 18),
+        minGasPrice: Number(c.minGasPrice ?? 0),
+        maxGasPrice: Number(c.maxGasPrice ?? 0),
+        blockTime: Number(c.blockTime ?? 0),
+        tps: Number(c.tps ?? 0),
+        tvl: Number(c.tvl ?? 0),
+        addedAt: Number(c.addedAt ?? 0),
+      })));
+
+      setValidators((validatorsRes.data || []).map((v: any) => ({
+        id: String(v.id ?? ''),
+        address: String(v.address ?? ''),
+        name: String(v.name ?? ''),
+        endpoint: String(v.endpoint ?? ''),
+        stake: Number(v.stake ?? 0),
+        status: (v.status ?? 'inactive') as Validator['status'],
+        performance: Number(v.performance ?? 0),
+        chains: Array.isArray(v.chains) ? v.chains.map(String) : [],
+      })));
+
+      setBridges((bridgesRes.data || []).map((b: any) => ({
+        id: String(b.id ?? ''),
+        name: String(b.name ?? ''),
+        sourceChain: String(b.sourceChain ?? ''),
+        destChain: String(b.destChain ?? ''),
+        status: (b.status ?? 'inactive') as Bridge['status'],
+        minAmount: Number(b.minAmount ?? 0),
+        maxAmount: Number(b.maxAmount ?? 0),
+        fee: Number(b.fee ?? 0),
+        volume24h: Number(b.volume24h ?? 0),
+      })));
+
+      setTokenDeployments((tokensRes.data || []).map((t: any) => ({
+        id: String(t.id ?? ''),
+        chainId: String(t.chainId ?? ''),
+        tokenAddress: String(t.tokenAddress ?? ''),
+        name: String(t.name ?? ''),
+        symbol: String(t.symbol ?? ''),
+        decimals: Number(t.decimals ?? 18),
+        totalSupply: Number(t.totalSupply ?? 0),
+        deployer: String(t.deployer ?? ''),
+        deployedAt: Number(t.deployedAt ?? 0),
+        status: (t.status ?? 'pending') as TokenDeployment['status'],
+      })));
+
+      const metricsData = (metricsRes.data || {}) as Record<string, any>;
+      const mapped: Record<string, ChainMetrics> = {};
+      for (const key of Object.keys(metricsData)) {
+        const m = metricsData[key];
+        mapped[key] = {
+          chainId: String(m.chainId ?? key),
+          tps: Number(m.tps ?? 0),
+          avgGasUsed: Number(m.avgGasUsed ?? 0),
+          avgBlockTime: Number(m.avgBlockTime ?? 0),
+          uptime: Number(m.uptime ?? 0),
+          totalTx: Number(m.totalTx ?? 0),
+          totalVolume: Number(m.totalVolume ?? 0),
+          activeUsers: Number(m.activeUsers ?? 0),
+        };
+      }
+      setMetrics(mapped);
     } catch (err: any) {
-      setError(err.message || 'Failed to load data');
+      setError(err?.response?.data?.error || err?.message || 'Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -424,21 +279,30 @@ export default function ChainAdminPanel() {
     }
     
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      setChains([...chains, {
-        id: `chain-${Date.now()}`,
-        ...newChain,
-        status: 'active',
-        minGasPrice: newChain.type === 'evm' ? 1000000000 : 0,
-        maxGasPrice: newChain.type === 'evm' ? 100000000000 : 0,
-        blockTime: 3,
-        tps: 100,
-        tvl: 0,
-        addedAt: Date.now(),
-      }]);
-      
+      const res = await api.addChain(newChain);
+      const created = res.data;
+      if (created) {
+        setChains(prev => [...prev, {
+          id: String(created.id ?? ''),
+          name: String(created.name ?? newChain.name),
+          type: (created.type ?? newChain.type) as Chain['type'],
+          chainId: Number(created.chainId ?? newChain.chainId),
+          rpcUrl: String(created.rpcUrl ?? newChain.rpcUrl),
+          explorerUrl: String(created.explorerUrl ?? newChain.explorerUrl),
+          status: (created.status ?? 'active') as Chain['status'],
+          isTestnet: Boolean(created.isTestnet ?? newChain.isTestnet),
+          nativeCurrency: String(created.nativeCurrency ?? newChain.nativeCurrency),
+          decimals: Number(created.decimals ?? newChain.decimals),
+          minGasPrice: Number(created.minGasPrice ?? 0),
+          maxGasPrice: Number(created.maxGasPrice ?? 0),
+          blockTime: Number(created.blockTime ?? 0),
+          tps: Number(created.tps ?? 0),
+          tvl: Number(created.tvl ?? 0),
+          addedAt: Number(created.addedAt ?? Date.now()),
+        }]);
+      }
       setSuccess(`Chain ${newChain.name} added successfully`);
       setAddChainDialog(false);
       setNewChain({
@@ -452,11 +316,11 @@ export default function ChainAdminPanel() {
         isTestnet: false,
       });
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.response?.data?.error || err?.message || 'Failed to add chain');
     } finally {
       setLoading(false);
     }
-  }, [newChain, chains]);
+  }, [newChain]);
   
   const handleAddValidator = useCallback(async () => {
     if (!newValidator.name || !newValidator.address) {
@@ -465,26 +329,31 @@ export default function ChainAdminPanel() {
     }
     
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      setValidators([...validators, {
-        id: `val-${Date.now()}`,
-        ...newValidator,
-        status: 'active',
-        performance: 100,
-        chains: [],
-      }]);
-      
+      const res = await api.addValidator(newValidator);
+      const created = res.data;
+      if (created) {
+        setValidators(prev => [...prev, {
+          id: String(created.id ?? ''),
+          address: String(created.address ?? newValidator.address),
+          name: String(created.name ?? newValidator.name),
+          endpoint: String(created.endpoint ?? newValidator.endpoint),
+          stake: Number(created.stake ?? newValidator.stake),
+          status: (created.status ?? 'active') as Validator['status'],
+          performance: Number(created.performance ?? 0),
+          chains: Array.isArray(created.chains) ? created.chains.map(String) : [],
+        }]);
+      }
       setSuccess('Validator added successfully');
       setAddValidatorDialog(false);
       setNewValidator({ name: '', address: '', endpoint: '', stake: 10000 });
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.response?.data?.error || err?.message || 'Failed to add validator');
     } finally {
       setLoading(false);
     }
-  }, [newValidator, validators]);
+  }, [newValidator]);
   
   const handleAddBridge = useCallback(async () => {
     if (!newBridge.name || !newBridge.sourceChain || !newBridge.destChain) {
@@ -493,38 +362,46 @@ export default function ChainAdminPanel() {
     }
     
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      setBridges([...bridges, {
-        id: `bridge-${Date.now()}`,
-        ...newBridge,
-        status: 'active',
-        volume24h: 0,
-      }]);
-      
+      const res = await api.addBridge(newBridge);
+      const created = res.data;
+      if (created) {
+        setBridges(prev => [...prev, {
+          id: String(created.id ?? ''),
+          name: String(created.name ?? newBridge.name),
+          sourceChain: String(created.sourceChain ?? newBridge.sourceChain),
+          destChain: String(created.destChain ?? newBridge.destChain),
+          status: (created.status ?? 'active') as Bridge['status'],
+          minAmount: Number(created.minAmount ?? newBridge.minAmount),
+          maxAmount: Number(created.maxAmount ?? newBridge.maxAmount),
+          fee: Number(created.fee ?? newBridge.fee),
+          volume24h: Number(created.volume24h ?? 0),
+        }]);
+      }
       setSuccess('Bridge added successfully');
       setAddBridgeDialog(false);
       setNewBridge({ name: '', sourceChain: '', destChain: '', minAmount: 100, maxAmount: 1000000, fee: 0.1 });
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.response?.data?.error || err?.message || 'Failed to add bridge');
     } finally {
       setLoading(false);
     }
-  }, [newBridge, bridges]);
+  }, [newBridge]);
   
   const handleUpdateChainStatus = useCallback(async (chainId: string, status: Chain['status']) => {
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      setChains(chains.map(c => c.id === chainId ? { ...c, status } : c));
+      await api.updateChainConfig(chainId, { status });
+      setChains(prev => prev.map(c => c.id === chainId ? { ...c, status } : c));
       setSuccess('Chain status updated');
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.response?.data?.error || err?.message || 'Failed to update chain status');
     } finally {
       setLoading(false);
     }
-  }, [chains]);
+  }, []);
   
   // ============================================================================
   // Helper Functions
@@ -642,7 +519,11 @@ export default function ChainAdminPanel() {
       {/* Chains Tab */}
       {activeTab === 0 && (
         <Grid container spacing={3}>
-          {chains.map(chain => (
+          {chains.length === 0 ? (
+            <Grid item xs={12}>
+              <Alert severity="info">No chains configured</Alert>
+            </Grid>
+          ) : chains.map(chain => (
             <Grid item xs={12} md={6} key={chain.id}>
               <Card>
                 <CardContent>
@@ -724,7 +605,11 @@ export default function ChainAdminPanel() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {validators.map(validator => (
+                {validators.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center" sx={{ py: 3, color: '#9ca3af' }}>No validators</TableCell>
+                  </TableRow>
+                ) : validators.map(validator => (
                   <TableRow key={validator.id}>
                     <TableCell>{validator.name}</TableCell>
                     <TableCell>{validator.address}</TableCell>
@@ -779,7 +664,11 @@ export default function ChainAdminPanel() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {bridges.map(bridge => (
+                {bridges.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center" sx={{ py: 3, color: '#9ca3af' }}>No bridges</TableCell>
+                  </TableRow>
+                ) : bridges.map(bridge => (
                   <TableRow key={bridge.id}>
                     <TableCell>{bridge.name}</TableCell>
                     <TableCell>{bridge.sourceChain}</TableCell>
@@ -818,7 +707,11 @@ export default function ChainAdminPanel() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {tokenDeployments.map(token => (
+              {tokenDeployments.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} align="center" sx={{ py: 3, color: '#9ca3af' }}>No token deployments</TableCell>
+                </TableRow>
+              ) : tokenDeployments.map(token => (
                 <TableRow key={token.id}>
                   <TableCell>{token.name} ({token.symbol})</TableCell>
                   <TableCell>{token.chainId}</TableCell>
@@ -843,7 +736,11 @@ export default function ChainAdminPanel() {
       {/* Metrics Tab */}
       {activeTab === 4 && (
         <Grid container spacing={3}>
-          {Object.entries(metrics).map(([chainId, m]) => (
+          {Object.keys(metrics).length === 0 ? (
+            <Grid item xs={12}>
+              <Alert severity="info">No metrics available</Alert>
+            </Grid>
+          ) : Object.entries(metrics).map(([chainId, m]) => (
             <Grid item xs={12} md={6} key={chainId}>
               <Card>
                 <CardContent>

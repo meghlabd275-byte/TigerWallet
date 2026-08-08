@@ -81,10 +81,12 @@ class MPCService {
   }
 
   // OAuth Social Login
-  async socialLogin(provider: string, idToken: string): Promise<{ walletAddress: string; sessionToken: string }> {
+  // The backend handles the full OAuth token-exchange flow with the provider
+  // and returns an MPC wallet session; the client never holds a raw id token.
+  async socialLogin(provider: string): Promise<{ walletAddress: string; sessionToken: string }> {
     return this.request('/auth/social', {
       method: 'POST',
-      body: JSON.stringify({ provider, idToken }),
+      body: JSON.stringify({ provider }),
     });
   }
 
@@ -94,6 +96,10 @@ class MPCService {
       method: 'POST',
       body: JSON.stringify({ threshold, totalShares }),
     });
+  }
+
+  async getKeyShares(): Promise<MPCKeyShare[]> {
+    return this.request('/keys/shares');
   }
 
   async distributeShare(shareId: string, deviceId: string): Promise<{ encryptedShare: string }> {
@@ -116,6 +122,12 @@ class MPCService {
       method: 'POST',
       body: JSON.stringify({ shareId, signature }),
     });
+  }
+
+  // Aggregate collected shares into the final signature. The backend coordinates
+  // share collection from devices and returns the completed signature.
+  async completeSigningSession(sessionId: string): Promise<{ signature: string; complete: boolean }> {
+    return this.request(`/signing/complete/${sessionId}`, { method: 'POST' });
   }
 
   // Device Management
@@ -202,12 +214,13 @@ export default function MPCWalletPage() {
   };
 
   const loadKeyShares = async () => {
-    // Load existing key shares info
-    setKeyShares([
-      { shareId: '1', holderId: 'device-1', index: 1, status: 'active' },
-      { shareId: '2', holderId: 'device-2', index: 2, status: 'distributed' },
-      { shareId: '3', holderId: 'recovery', index: 3, status: 'generated' },
-    ]);
+    try {
+      const shares = await mpcService.getKeyShares();
+      setKeyShares(shares);
+    } catch (err) {
+      console.error('Failed to load key shares:', err);
+      setKeyShares([]);
+    }
   };
 
   const handleSocialLogin = async (provider: string) => {
@@ -215,11 +228,9 @@ export default function MPCWalletPage() {
     setError(null);
     
     try {
-      // In production, this would initiate OAuth flow
-      // For demo, simulate with a mock ID token
-      const mockIdToken = `mock_token_${provider}_${Date.now()}`;
-      
-      const result = await mpcService.socialLogin(provider, mockIdToken);
+      // The backend performs the real OAuth token-exchange flow with the
+      // social provider (Google, Apple, etc.) and returns an MPC session.
+      const result = await mpcService.socialLogin(provider);
       setSessionToken(result.sessionToken);
       setWalletAddress(result.walletAddress);
       setIsAuthenticated(true);
@@ -310,14 +321,17 @@ export default function MPCWalletPage() {
       const session = await mpcService.createSigningSession(messageHash, threshold);
       setSigningSession(session);
       
-      // In production, this would collect signature shares from devices
-      // For demo, simulate completed signature
-      setTimeout(async () => {
-        const mockSignature = `0x${'a'.repeat(130)}`;
-        setSignature(mockSignature);
+      // The backend coordinates signature share collection from devices and
+      // returns the completed signature once the threshold is met.
+      const result = await mpcService.completeSigningSession(session.sessionId);
+      if (result.complete && result.signature) {
+        setSignature(result.signature);
         setSigningSession(null);
         setSuccess('Message signed successfully!');
-      }, 2000);
+      } else {
+        setError('Signing session did not complete; not enough shares collected.');
+        setSigningSession(null);
+      }
       
     } catch (err: any) {
       setError(err.message);

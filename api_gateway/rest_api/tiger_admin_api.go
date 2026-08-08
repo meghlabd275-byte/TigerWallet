@@ -19,8 +19,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/gorilla/mev"
 )
 
 // ============================================================================
@@ -34,17 +32,6 @@ const (
 // ============================================================================
 // ENUMS
 // ============================================================================
-
-type UserRole string
-
-const (
-	RoleSuperAdmin   UserRole = "super_admin"
-	RoleAdmin        UserRole = "admin"
-	RoleFinanceAdmin UserRole = "finance_admin"
-	RoleBotOperator  UserRole = "bot_operator"
-	RoleTradingAdmin UserRole = "trading_admin"
-	RoleClient       UserRole = "client"
-)
 
 type FeeType string
 

@@ -154,15 +154,6 @@ type SecurityStore struct {
 	allowedOrigins map[string]bool
 }
 
-// RateLimitInfo represents rate limit info
-type RateLimitInfo struct {
-	Count     int
-	ResetAt   time.Time
-	Blocked   bool
-	BlockTill *time.Time
-	Requests  []time.Time // for sliding window
-}
-
 // DDOSInfo represents DDOS detection info
 type DDOSInfo struct {
 	RequestCount int
@@ -780,26 +771,6 @@ func ValidateAddress(address string) bool {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-func generateRandomToken(length int) string {
-	return generateRandomHex(length)
-}
-
-func generateRandomHex(length int) string {
-	b := make([]byte, length)
-	rand.Read(b)
-	return hex.EncodeToString(b)
-}
-
-func generateUUID() string {
-	return fmt.Sprintf("%s-%s-%s-%s-%s",
-		generateRandomHex(8),
-		generateRandomHex(4),
-		generateRandomHex(4),
-		generateRandomHex(4),
-		generateRandomHex(12),
-	)
-}
 
 // ============================================================================
 // MIDDLEWARE
