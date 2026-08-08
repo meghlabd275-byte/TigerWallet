@@ -10,11 +10,8 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"math/big"
 	"os"
 	"os/signal"
 	"sync"
@@ -35,13 +32,13 @@ import (
 
 const (
 	// Chain IDs
-	ChainEthereum   = 1
-	ChainBSC        = 56
-	ChainPolygon    = 137
-	ChainArbitrum   = 42161
-	ChainOptimism   = 10
-	ChainBase      = 8453
-	ChainAvalanche = 43114
+	ChainEthereum   = "ethereum"
+	ChainBSC        = "bsc"
+	ChainPolygon    = "polygon"
+	ChainArbitrum   = "arbitrum"
+	ChainOptimism   = "optimism"
+	ChainBase      = "base"
+	ChainAvalanche = "avalanche"
 	ChainSolana    = "solana"
 	ChainAptos     = "aptos"
 	ChainSui       = "sui"
@@ -67,7 +64,7 @@ const (
 var logger zerolog.Logger
 
 func initLogger() {
-	output := zerolog.ConsoleWriter{Output: os.Stdout}
+	output := zerolog.ConsoleWriter{Out: os.Stdout}
 	logger = zerolog.New(output).With().Timestamp().Caller().Logger()
 	logger.Level(zerolog.InfoLevel)
 }

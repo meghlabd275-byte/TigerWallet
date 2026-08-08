@@ -8,11 +8,7 @@ package main
 import (
 	"context"
 	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
@@ -24,9 +20,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
@@ -411,7 +405,8 @@ func (s *MasterWalletService) ProcessWithdrawal(walletID, toAddress, token, amou
 		feeConfig = s.feeConfigs["withdraw_eth"]
 	}
 
-	fee := calculateFee(amount.Float64(), feeConfig)
+	f, _ := amount.Float64()
+	fee := calculateFee(f, feeConfig)
 
 	// Create transaction
 	tx := &Transaction{

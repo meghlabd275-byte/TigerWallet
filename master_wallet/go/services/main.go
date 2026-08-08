@@ -1,25 +1,21 @@
 package main
 
 import (
+	"bytes"
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
+	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
-	"runtime"
-	"sync"
+	"strings"
 	"syscall"
 	"time"
 
@@ -30,17 +26,15 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
-	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/net/http2"
-	"golang.org/x/sync/errgroup"
 )
 
 const (
 	// Database
-	DB_MAX_CONNS     = 100
-	DB_MIN_CONNS     = 10
-	DB_MAX_CONN_LIFETIME = 30 * time.Minute
+	DB_MAX_CONNS         = 100
+	DB_MIN_CONNS         = 10
+	DB_MAX_CONN_LIFETIME = 30 // minutes
 
 	// Redis
 	REDIS_POOL_SIZE = 50
@@ -296,7 +290,10 @@ func setupRoutes(r *gin.Engine, svc *MasterWalletService, cfg SecurityConfig) {
 	// Middleware
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
-	r.Use(gin.MaxBytesReader(MAX_HEADER_BYTES))
+	r.Use(func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, MAX_HEADER_BYTES)
+		c.Next()
+	})
 	r.Use(corsMiddleware())
 
 	// Health check
@@ -709,12 +706,32 @@ func (s *MasterWalletService) SignTransaction(c *gin.Context) {
 		return
 	}
 
-	// Sign transaction (simplified)
-	txHash := "0x" + hex.EncodeToString(randomBytes(32))
+	// Resolve the master wallet's chain and address so we broadcast a real
+	// transaction through the chain's RPC node instead of fabricating a hash.
+	ctx := context.Background()
+	var (
+		fromAddr string
+		chainID  int64
+	)
+	err := s.db.QueryRow(ctx,
+		`SELECT address, chain_id FROM master_wallets WHERE id = $1`,
+		id,
+	).Scan(&fromAddr, &chainID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Master wallet not found"})
+		return
+	}
+
+	chain := chainNameFromID(chainID)
+	txHash, err := broadcastTransactionByChain(chain, fromAddr, req.To, req.Amount, req.Token)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to broadcast transaction", "detail": err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"transaction_hash": txHash,
-		"status":          "signed",
+		"status":           "broadcast",
 	})
 }
 
@@ -866,30 +883,68 @@ func (s *MasterWalletService) TransferFromSubWallet(c *gin.Context) {
 		return
 	}
 
-	txHash := "0x" + hex.EncodeToString(randomBytes(32))
+	// Resolve the sub wallet's address and its master wallet's chain so we
+	// broadcast a real transaction instead of fabricating a hash.
+	ctx := context.Background()
+	var (
+		fromAddr     string
+		masterWalletID string
+	)
+	err := s.db.QueryRow(ctx,
+		`SELECT address, master_wallet_id FROM sub_wallets WHERE id = $1`,
+		id,
+	).Scan(&fromAddr, &masterWalletID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Sub wallet not found"})
+		return
+	}
+
+	var chainID int64
+	err = s.db.QueryRow(ctx,
+		`SELECT chain_id FROM master_wallets WHERE id = $1`,
+		masterWalletID,
+	).Scan(&chainID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Master wallet not found"})
+		return
+	}
+
+	chain := chainNameFromID(chainID)
+	txHash, err := broadcastTransactionByChain(chain, fromAddr, req.To, req.Amount, req.Token)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to broadcast transaction", "detail": err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"transaction_hash": txHash,
-		"status":          "pending",
+		"status":           "pending",
 	})
 }
 
 // Transaction Handlers
 func (s *MasterWalletService) GetTransactions(c *gin.Context) {
 	masterWalletID := c.Query("master_wallet_id")
+	status := c.Query("status")
+	ctx := context.Background()
 
-	rows, err := s.db.Query(context.Background(),
-		`SELECT id, master_wallet_id, sub_wallet_id, hash, from_address, to_address, amount, token, chain_id, status, fee, block_number, created_at, confirmed_at 
-		 FROM transactions WHERE master_wallet_id = $1 ORDER BY created_at DESC LIMIT 100`,
-		masterWalletID,
-	)
+	query := `SELECT id, master_wallet_id, sub_wallet_id, hash, from_address, to_address, amount, token, chain_id, status, fee, block_number, created_at, confirmed_at
+	          FROM transactions WHERE master_wallet_id = $1`
+	args := []interface{}{masterWalletID}
+	if status != "" {
+		query += " AND status = $2"
+		args = append(args, status)
+	}
+	query += " ORDER BY created_at DESC LIMIT 100"
+
+	rows, err := s.db.Query(ctx, query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch transactions"})
 		return
 	}
 	defer rows.Close()
 
-	var txs []Transaction
+	txs := []Transaction{} // non-nil so the JSON response is [] not null
 	for rows.Next() {
 		var tx Transaction
 		if err := rows.Scan(&tx.ID, &tx.MasterWalletID, &tx.SubWalletID, &tx.Hash, &tx.From, &tx.To, &tx.Amount, &tx.Token, &tx.ChainID, &tx.Status, &tx.Fee, &tx.BlockNumber, &tx.CreatedAt, &tx.ConfirmedAt); err != nil {
@@ -934,21 +989,65 @@ func (s *MasterWalletService) CreateTransaction(c *gin.Context) {
 		return
 	}
 
-	tx := Transaction{
-		ID:              uuid.New().String(),
-		MasterWalletID:  req.MasterWalletID,
-		SubWalletID:     req.SubWalletID,
-		Hash:            "0x" + hex.EncodeToString(randomBytes(32)),
-		From:            "", // Would be from sub-wallet
-		To:              req.To,
-		Amount:          req.Amount,
-		Token:           req.Token,
-		ChainID:         req.ChainID,
-		Status:          "pending",
-		CreatedAt:       time.Now(),
+	ctx := context.Background()
+
+	// Resolve the sending address. If a sub wallet is supplied, prefer it;
+	// otherwise fall back to the master wallet's address.
+	var (
+		fromAddr string
+		chainID  int64 = req.ChainID
+	)
+	if req.SubWalletID != "" {
+		var masterWalletID string
+		if err := s.db.QueryRow(ctx,
+			`SELECT address, master_wallet_id FROM sub_wallets WHERE id = $1`,
+			req.SubWalletID,
+		).Scan(&fromAddr, &masterWalletID); err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Sub wallet not found"})
+			return
+		}
+		if req.ChainID == 0 {
+			if err := s.db.QueryRow(ctx,
+				`SELECT chain_id FROM master_wallets WHERE id = $1`,
+				masterWalletID,
+			).Scan(&chainID); err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Master wallet not found"})
+				return
+			}
+		}
+	} else {
+		if err := s.db.QueryRow(ctx,
+			`SELECT address, chain_id FROM master_wallets WHERE id = $1`,
+			req.MasterWalletID,
+		).Scan(&fromAddr, &chainID); err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Master wallet not found"})
+			return
+		}
 	}
 
-	_, err := s.db.Exec(context.Background(),
+	// Broadcast the real transaction through the chain's RPC node. We do not
+	// persist a fabricated hash; the stored hash comes from the RPC response.
+	txHash, err := broadcastTransactionByChain(chainNameFromID(chainID), fromAddr, req.To, req.Amount, req.Token)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to broadcast transaction", "detail": err.Error()})
+		return
+	}
+
+	tx := Transaction{
+		ID:             uuid.New().String(),
+		MasterWalletID: req.MasterWalletID,
+		SubWalletID:    req.SubWalletID,
+		Hash:           txHash,
+		From:           fromAddr,
+		To:             req.To,
+		Amount:         req.Amount,
+		Token:          req.Token,
+		ChainID:        chainID,
+		Status:         "pending",
+		CreatedAt:      time.Now(),
+	}
+
+	_, err = s.db.Exec(ctx,
 		`INSERT INTO transactions (id, master_wallet_id, sub_wallet_id, hash, from_address, to_address, amount, token, chain_id, status, created_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		tx.ID, tx.MasterWalletID, tx.SubWalletID, tx.Hash, tx.From, tx.To, tx.Amount, tx.Token, tx.ChainID, tx.Status, tx.CreatedAt,
@@ -1400,35 +1499,98 @@ func (s *MasterWalletService) ResetPassword(c *gin.Context) {
 // Analytics Handlers
 func (s *MasterWalletService) GetVolumeAnalytics(c *gin.Context) {
 	masterWalletID := c.Query("master_wallet_id")
+	ctx := context.Background()
 
-	// Return mock analytics data
+	// Aggregate real transaction volume from the transactions table instead
+	// of returning hardcoded mock numbers.
+	query := `SELECT COALESCE(SUM(amount::numeric), 0),
+	                 COALESCE(SUM(amount::numeric) FILTER (WHERE created_at >= date_trunc('day', NOW())), 0),
+	                 COALESCE(SUM(amount::numeric) FILTER (WHERE created_at >= date_trunc('month', NOW())), 0),
+	                 COUNT(*)
+	          FROM transactions`
+	args := []interface{}{}
+	if masterWalletID != "" {
+		query += " WHERE master_wallet_id = $1"
+		args = append(args, masterWalletID)
+	}
+
+	var total, daily, monthly string
+	var count int64
+	if err := s.db.QueryRow(ctx, query, args...).Scan(&total, &daily, &monthly, &count); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load volume analytics"})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"total_volume":    "1000000",
-		"daily_volume":   "50000",
-		"monthly_volume": "500000",
-		"transaction_count": 1000,
+		"total_volume":      total,
+		"daily_volume":      daily,
+		"monthly_volume":    monthly,
+		"transaction_count": count,
 	})
 }
 
 func (s *MasterWalletService) GetTransactionAnalytics(c *gin.Context) {
 	masterWalletID := c.Query("master_wallet_id")
+	ctx := context.Background()
+
+	query := `SELECT COUNT(*) FILTER (WHERE status = 'pending'),
+	                 COUNT(*) FILTER (WHERE status = 'confirmed'),
+	                 COUNT(*) FILTER (WHERE status = 'failed')
+	          FROM transactions`
+	args := []interface{}{}
+	if masterWalletID != "" {
+		query += " WHERE master_wallet_id = $1"
+		args = append(args, masterWalletID)
+	}
+
+	var pending, confirmed, failed int64
+	if err := s.db.QueryRow(ctx, query, args...).Scan(&pending, &confirmed, &failed); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load transaction analytics"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"total_transactions":  1000,
-		"pending_transactions": 10,
-		"confirmed_transactions": 980,
-		"failed_transactions":   10,
+		"total_transactions":     pending + confirmed + failed,
+		"pending_transactions":   pending,
+		"confirmed_transactions": confirmed,
+		"failed_transactions":    failed,
 	})
 }
 
 func (s *MasterWalletService) GetWalletAnalytics(c *gin.Context) {
 	masterWalletID := c.Query("master_wallet_id")
+	ctx := context.Background()
+
+	// Aggregate real wallet counts from master_wallets and sub_wallets.
+	var totalMW, activeMW int64
+	mwQuery := `SELECT COUNT(*), COUNT(*) FILTER (WHERE is_active) FROM master_wallets`
+	mwArgs := []interface{}{}
+	if masterWalletID != "" {
+		mwQuery += " WHERE id = $1"
+		mwArgs = append(mwArgs, masterWalletID)
+	}
+	if err := s.db.QueryRow(ctx, mwQuery, mwArgs...).Scan(&totalMW, &activeMW); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load wallet analytics"})
+		return
+	}
+
+	var totalSW, activeSW int64
+	swQuery := `SELECT COUNT(*), COUNT(*) FILTER (WHERE is_active) FROM sub_wallets`
+	swArgs := []interface{}{}
+	if masterWalletID != "" {
+		swQuery += " WHERE master_wallet_id = $1"
+		swArgs = append(swArgs, masterWalletID)
+	}
+	if err := s.db.QueryRow(ctx, swQuery, swArgs...).Scan(&totalSW, &activeSW); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load sub-wallet analytics"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"total_wallets":      100,
-		"active_wallets":     80,
-		"sub_wallets":        500,
-		"active_sub_wallets": 400,
+		"total_wallets":      totalMW,
+		"active_wallets":     activeMW,
+		"sub_wallets":        totalSW,
+		"active_sub_wallets": activeSW,
 	})
 }
 
@@ -1584,6 +1746,247 @@ func verifyJWT(tokenString, secret string) (map[string]interface{}, error) {
 	return claims, nil
 }
 
+// ==================== CHAIN RPC CONFIG ====================
+
+// chainRPCEnv maps a chain name to the environment variable that holds its
+// JSON-RPC endpoint (e.g. ETH_RPC_URL, BSC_RPC_URL).
+var chainRPCEnv = map[string]string{
+	"ethereum": "ETH_RPC_URL",
+	"bsc":      "BSC_RPC_URL",
+	"polygon":  "POLYGON_RPC_URL",
+	"arbitrum": "ARBITRUM_RPC_URL",
+	"optimism": "OPTIMISM_RPC_URL",
+	"avalanche": "AVALANCHE_RPC_URL",
+}
+
+// chainIDToName maps the canonical EVM chain ids used by master_wallets to a
+// chain name understood by chainRPCEnv.
+var chainIDToName = map[int64]string{
+	1:       "ethereum",
+	56:      "bsc",
+	137:     "polygon",
+	42161:   "arbitrum",
+	10:      "optimism",
+	43114:   "avalanche",
+}
+
+// chainNameFromID maps a chain id to its canonical name. Unknown ids default
+// to ethereum.
+func chainNameFromID(chainID int64) string {
+	if name, ok := chainIDToName[chainID]; ok {
+		return name
+	}
+	return "ethereum"
+}
+
+func rpcURLForChain(chain string) (string, error) {
+	envVar, ok := chainRPCEnv[chain]
+	if !ok {
+		return "", fmt.Errorf("unsupported chain: %s", chain)
+	}
+	url := os.Getenv(envVar)
+	if url == "" {
+		return "", fmt.Errorf("RPC URL not configured for chain %s (env %s)", chain, envVar)
+	}
+	return url, nil
+}
+
+// jsonRPCRequest is the standard JSON-RPC 2.0 request envelope.
+type jsonRPCRequest struct {
+	JSONRPC string        `json:"jsonrpc"`
+	ID      int64         `json:"id"`
+	Method  string        `json:"method"`
+	Params  []interface{} `json:"params"`
+}
+
+// jsonRPCResponse holds a JSON-RPC 2.0 response. Result is decoded lazily by
+// the caller.
+type jsonRPCResponse struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      int64           `json:"id"`
+	Result  json.RawMessage `json:"result"`
+	Error   *struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
+}
+
+// rpcCall performs a JSON-RPC 2.0 call against url and unmarshals Result into
+// out.
+func rpcCall(url, method string, params []interface{}, out interface{}) error {
+	body, err := json.Marshal(jsonRPCRequest{
+		JSONRPC: "2.0",
+		ID:      1,
+		Method:  method,
+		Params:  params,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal rpc request: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build rpc request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("rpc call: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("rpc returned HTTP %d", resp.StatusCode)
+	}
+
+	var rpcResp jsonRPCResponse
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+		return fmt.Errorf("decode rpc response: %w", err)
+	}
+	if rpcResp.Error != nil {
+		return fmt.Errorf("rpc error %d: %s", rpcResp.Error.Code, rpcResp.Error.Message)
+	}
+	if out != nil {
+		if err := json.Unmarshal(rpcResp.Result, out); err != nil {
+			return fmt.Errorf("decode rpc result: %w", err)
+		}
+	}
+	return nil
+}
+
+// ethAddressBytes returns the 20-byte address payload of an 0x-prefixed hex
+// address, padding/truncating as needed.
+func ethAddressBytes(addr string) ([]byte, error) {
+	h := strings.TrimPrefix(addr, "0x")
+	raw, err := hex.DecodeString(h)
+	if err != nil {
+		return nil, fmt.Errorf("invalid address %q: %w", addr, err)
+	}
+	if len(raw) < 20 {
+		padded := make([]byte, 20)
+		copy(padded[20-len(raw):], raw)
+		raw = padded
+	}
+	return raw[len(raw)-20:], nil
+}
+
+// erc20TransferData builds the calldata for an ERC-20 transfer(to, amount).
+func erc20TransferData(to string, amount *big.Int) ([]byte, error) {
+	toBytes, err := ethAddressBytes(to)
+	if err != nil {
+		return nil, err
+	}
+	// transfer(address,uint256) selector = 0xa9059cbb
+	data := make([]byte, 4+32+32)
+	data[0], data[1], data[2], data[3] = 0xa9, 0x05, 0x9c, 0xbb
+	copy(data[4+12:], toBytes) // right-align address in 32-byte word
+	amountBytes := amount.Bytes()
+	copy(data[4+32+(32-len(amountBytes)):], amountBytes)
+	return data, nil
+}
+
+// amountToWei converts a decimal amount string (e.g. "1.5") to its smallest
+// unit integer value with the given decimals (e.g. 18 for ETH).
+func amountToWei(amount string, decimals int) (*big.Int, error) {
+	f, ok := new(big.Float).SetString(amount)
+	if !ok {
+		return nil, fmt.Errorf("invalid amount %q", amount)
+	}
+	scaler := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil))
+	wei, _ := new(big.Float).Mul(f, scaler).Int(nil)
+	return wei, nil
+}
+
+// hexToQuantity formats an *big.Int as a JSON-RPC hex quantity ("0x...").
+func hexToQuantity(n *big.Int) string {
+	if n == nil {
+		return "0x0"
+	}
+	return "0x" + n.Text(16)
+}
+
+// broadcastTransactionByChain constructs and broadcasts a transaction via the
+// chain's RPC node using eth_sendTransaction, returning the real tx hash from
+// the RPC response. It never fabricates a hash; on failure it returns an
+// error.
+//
+// The transaction is submitted as an unlocked "from" send via
+// eth_sendTransaction, which requires the node to hold the sending account's
+// key (e.g. a managed keystore/HSM-backed node). For a fully self-managed
+// flow, callers should sign locally and use eth_sendRawTransaction with the
+// resulting raw bytes instead.
+func broadcastTransactionByChain(chain, from, to, amount, token string) (string, error) {
+	rpcURL, err := rpcURLForChain(chain)
+	if err != nil {
+		return "", err
+	}
+
+	var value string
+	var data string
+
+	// Native asset transfer (token == "" or token == chain's native symbol).
+	nativeSymbol := map[string]string{
+		"ethereum": "ETH", "bsc": "BNB", "polygon": "MATIC",
+		"arbitrum": "ETH", "optimism": "ETH", "avalanche": "AVAX",
+	}
+	if token == "" || strings.EqualFold(token, nativeSymbol[chain]) {
+		wei, err := amountToWei(amount, 18)
+		if err != nil {
+			return "", err
+		}
+		value = hexToQuantity(wei)
+		data = "0x"
+	} else {
+		// ERC-20 transfer: value 0, data = transfer(to, amount) with the
+		// token contract as 'to'. 'token' is expected to be the token
+		// contract address here.
+		wei, err := amountToWei(amount, 18) // default 18 decimals; refine with per-token metadata as needed
+		if err != nil {
+			return "", err
+		}
+		calldata, err := erc20TransferData(to, wei)
+		if err != nil {
+			return "", err
+		}
+		value = "0x0"
+		data = "0x" + hex.EncodeToString(calldata)
+		to = token // destination becomes the token contract
+	}
+
+	// Fetch the sender's nonce and a suggested gas price from the node so the
+	// submitted transaction is valid.
+	var nonceHex, gasPriceHex string
+	if err := rpcCall(rpcURL, "eth_getTransactionCount", []interface{}{from, "latest"}, &nonceHex); err != nil {
+		return "", fmt.Errorf("get nonce: %w", err)
+	}
+	if err := rpcCall(rpcURL, "eth_gasPrice", []interface{}{}, &gasPriceHex); err != nil {
+		return "", fmt.Errorf("get gas price: %w", err)
+	}
+
+	txObj := map[string]interface{}{
+		"from":     from,
+		"to":       to,
+		"value":    value,
+		"data":     data,
+		"nonce":    nonceHex,
+		"gasPrice": gasPriceHex,
+	}
+	// Default gas limit for a simple transfer; node may still estimate.
+	txObj["gas"] = "0x5208"
+
+	var txHash string
+	if err := rpcCall(rpcURL, "eth_sendTransaction", []interface{}{txObj}, &txHash); err != nil {
+		return "", fmt.Errorf("send transaction: %w", err)
+	}
+	if txHash == "" {
+		return "", fmt.Errorf("rpc returned empty transaction hash")
+	}
+	return txHash, nil
+}
+
+
 func generatePrivateKey() ([]byte, error) {
 	curve := elliptic.P256()
 	privateKey, err := ecdsa.GenerateKey(curve, rand.Reader)
@@ -1604,11 +2007,6 @@ func deriveAddress(publicKey []byte) string {
 	return fmt.Sprintf("0x%x", hash[len(hash)-20:])
 }
 
-func randomBytes(n int) []byte {
-	b := make([]byte, n)
-	rand.Read(b)
-	return b
-}
 
 // ==================== DATABASE MIGRATION ====================
 
