@@ -103,9 +103,10 @@ impl Path {
     
     /// Get path string
     pub fn to_string(&self) -> String {
+        // BIP-44: purpose, coin_type, and account are hardened; change and index are not
         format!(
-            "m/44'/{}/{}'/{}/{}",
-            self.coin_type, self.account, self.change, self.index
+            "m/{}'/{}'/{}'/{}/{}",
+            self.purpose, self.coin_type, self.account, self.change, self.index
         )
     }
     
@@ -412,5 +413,53 @@ mod tests {
         assert_eq!("eth".parse::<Chain>().unwrap(), Chain::Ethereum);
         assert_eq!("btc".parse::<Chain>().unwrap(), Chain::Bitcoin);
         assert_eq!("sol".parse::<Chain>().unwrap(), Chain::Solana);
+    }
+
+    #[test]
+    fn test_bip44_path_derivation() {
+        // Parsing a canonical BIP-44 path round-trips through to_string
+        let path = Path::from_string("m/44'/60'/0'/0/0").unwrap();
+        assert_eq!(path.purpose, 44);
+        assert_eq!(path.coin_type, 60);
+        assert_eq!(path.account, 0);
+        assert_eq!(path.change, 0);
+        assert_eq!(path.index, 0);
+        assert_eq!(path.to_string(), "m/44'/60'/0'/0/0");
+
+        // to_derivation_path yields hardened purpose/coin_type/account indices
+        let dp = path.to_derivation_path();
+        let indices = dp.as_indices();
+        assert_eq!(indices[0], 0x80000000 | 44);
+        assert_eq!(indices[1], 0x80000000 | 60);
+        assert_eq!(indices[2], 0x80000000 | 0);
+        assert_eq!(indices[3], 0);
+        assert_eq!(indices[4], 0);
+    }
+
+    #[test]
+    fn test_bip44_with_index_and_chains() {
+        // with_index updates only the address index
+        let base = Path::ethereum();
+        let next = base.with_index(5);
+        assert_eq!(next.index, 5);
+        assert_eq!(next.coin_type, base.coin_type);
+
+        // Different chains map to their SLIP-44 coin types
+        assert_eq!(Path::bitcoin().coin_type, coin_types::BITCOIN);
+        assert_eq!(Path::solana().coin_type, coin_types::SOLANA);
+        assert_eq!(Path::polygon().coin_type, coin_types::POLYGON);
+
+        // default_path per chain matches the chain's coin type
+        assert_eq!(Chain::Ethereum.default_path().coin_type, coin_types::ETHEREUM);
+        assert_eq!(Chain::Bitcoin.default_path().coin_type, coin_types::BITCOIN);
+        assert_eq!(Chain::Solana.default_path().coin_type, coin_types::SOLANA);
+    }
+
+    #[test]
+    fn test_bip44_invalid_path() {
+        // Wrong number of components is rejected
+        assert!(Path::from_string("m/44'/60'/0'").is_err());
+        // Non-numeric index is rejected
+        assert!(Path::from_string("m/44'/60'/0'/0/abc").is_err());
     }
 }

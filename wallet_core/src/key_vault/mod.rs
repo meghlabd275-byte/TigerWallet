@@ -563,4 +563,83 @@ mod tests {
         let rotator = KeyRotation::new(vault.clone(), 30);
         assert!(!rotator.needs_rotation("test-key"));
     }
+
+    #[test]
+    fn test_aes256gcm_encrypt_decrypt_roundtrip() {
+        // AES-256-GCM round-trip: stored ciphertext decrypts back to the original
+        let vault = KeyVault::new();
+        let master_key = [42u8; 32];
+        vault.unlock(master_key).unwrap();
+
+        let plaintexts: &[&[u8]] = &[
+            b"",
+            b"a",
+            b"short secret",
+            &vec![0xab; 1024],
+        ];
+
+        for pt in plaintexts {
+            let (ciphertext, nonce) = vault.encrypt(pt).unwrap();
+            // GCM ciphertext includes a 16-byte authentication tag
+            assert!(ciphertext.len() >= pt.len());
+            assert_ne!(ciphertext.as_slice(), *pt);
+
+            let recovered = vault.decrypt(&ciphertext, nonce).unwrap();
+            assert_eq!(recovered.as_slice(), *pt);
+        }
+    }
+
+    #[test]
+    fn test_aes256gcm_tampered_ciphertext_rejected() {
+        // Authenticated encryption: tampering with the ciphertext must fail decryption
+        let vault = KeyVault::new();
+        let master_key = [7u8; 32];
+        vault.unlock(master_key).unwrap();
+
+        let plaintext = b"sensitive data";
+        let (mut ciphertext, nonce) = vault.encrypt(plaintext).unwrap();
+
+        // Flip a bit in the ciphertext body
+        ciphertext[0] ^= 0xff;
+        let result = vault.decrypt(&ciphertext, nonce);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(KeyVaultError::DecryptionFailed(_))));
+    }
+
+    #[test]
+    fn test_aes256gcm_nonce_uniqueness() {
+        // Each encryption produces a fresh random nonce
+        let vault = KeyVault::new();
+        let master_key = [9u8; 32];
+        vault.unlock(master_key).unwrap();
+
+        let data = b"same input";
+        let (_, n1) = vault.encrypt(data).unwrap();
+        let (_, n2) = vault.encrypt(data).unwrap();
+        assert_ne!(n1, n2, "nonces must be unique across encryptions");
+    }
+
+    #[test]
+    fn test_vault_locked_rejects_operations() {
+        // A locked vault refuses both store and retrieve
+        let vault = KeyVault::new();
+        assert!(vault.is_locked());
+
+        let store = vault.store_key("k".to_string(), KeyType::Secret, b"x", None);
+        assert!(store.is_err());
+        assert!(matches!(store, Err(KeyVaultError::VaultLocked(_))));
+
+        let get = vault.get_key("k", "admin");
+        assert!(get.is_err());
+        assert!(matches!(get, Err(KeyVaultError::VaultLocked(_))));
+
+        // After unlock, the master key round-trips data correctly
+        vault.unlock([1u8; 32]).unwrap();
+        vault.store_key("k".to_string(), KeyType::Secret, b"round-trip", None).unwrap();
+        assert_eq!(vault.get_key("k", "admin").unwrap(), b"round-trip");
+
+        // Locking again disables access
+        vault.lock().unwrap();
+        assert!(vault.get_key("k", "admin").is_err());
+    }
 }

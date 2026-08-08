@@ -358,8 +358,73 @@ mod tests {
     
     #[test]
     fn test_validate_eth() {
-        assert!(Address::validate("0x742d35Cc6634C0532925a3b844Bc9e7595f1234", Chain::Ethereum).is_ok());
+        assert!(Address::validate("0x742d35Cc6634C0532925a3b844Bc9e7595f1234f", Chain::Ethereum).is_ok());
         assert!(Address::validate("0x742d35Cc6634C0532925a3b844Bc9e7595f123", Chain::Ethereum).is_err());
         assert!(Address::validate("invalid", Chain::Ethereum).is_err());
+    }
+
+    #[test]
+    fn test_address_derivation_per_chain() {
+        // Address derivation is deterministic and chain-specific
+        let seed = [0u8; 64];
+        let key = HDKey::from_seed(&seed).unwrap();
+
+        let eth = Address::from_key(&key, Chain::Ethereum).to_string();
+        let poly = Address::from_key(&key, Chain::Polygon).to_string();
+        let arb = Address::from_key(&key, Chain::Arbitrum).to_string();
+
+        // EVM chains share the same address format (Keccak-derived, 0x + 20 bytes)
+        assert!(eth.starts_with("0x"));
+        assert_eq!(eth.len(), 42);
+        assert_eq!(eth, poly);
+        assert_eq!(eth, arb);
+
+        // Solana addresses are Base58 (no 0x prefix) and at least 32 chars
+        let sol = Address::from_key(&key, Chain::Solana).to_string();
+        assert!(!sol.starts_with("0x"));
+        assert!(sol.len() >= 32);
+        assert_ne!(sol, eth);
+
+        // Bitcoin native-segwit address uses the bc1q prefix
+        let btc = Address::from_key(&key, Chain::Bitcoin).to_string();
+        assert!(btc.starts_with("bc1q"));
+        assert_ne!(btc, eth);
+    }
+
+    #[test]
+    fn test_address_validation_across_chains() {
+        // EVM-style validation applies to all EVM chains
+        let valid_evm = "0x742d35Cc6634C0532925a3b844Bc9e7595f1234f";
+        assert!(Address::validate(valid_evm, Chain::Polygon).is_ok());
+        assert!(Address::validate(valid_evm, Chain::Arbitrum).is_ok());
+        assert!(Address::validate(valid_evm, Chain::Optimism).is_ok());
+        assert!(Address::validate(valid_evm, Chain::Avalanche).is_ok());
+
+        // A 0x address missing the prefix is invalid for EVM chains
+        assert!(Address::validate("742d35Cc6634C0532925a3b844Bc9e7595f1234f", Chain::Ethereum).is_err());
+
+        // Empty addresses are rejected for every chain
+        assert!(Address::validate("", Chain::Ethereum).is_err());
+        assert!(Address::validate("", Chain::Solana).is_err());
+    }
+
+    #[test]
+    fn test_chain_from_coin_type_roundtrip() {
+        // Coin type -> chain -> coin type is identity for known chains
+        for chain in [
+            Chain::Bitcoin,
+            Chain::Ethereum,
+            Chain::Polygon,
+            Chain::Solana,
+            Chain::Aptos,
+            Chain::Sui,
+        ] {
+            let coin = chain.coin_type();
+            let back = chain_from_coin_type(coin).expect("known coin type should resolve");
+            assert_eq!(coin, back.coin_type());
+        }
+
+        // Unknown coin types return None
+        assert!(chain_from_coin_type(999_999).is_none());
     }
 }

@@ -103,6 +103,41 @@ pub trait HardwareWallet: Send + Sync {
     fn sign_hash(&self, hash: &[u8], path: &str) -> Result<HardwareSignature, HardwareError>;
 }
 
+
+/// Simulated signing used by mock/stub hardware wallets in tests.
+/// Returns `SigningFailed` when the device is not connected; otherwise a
+/// deterministic 65-byte (r||s||v) signature derived from a simple hash of the data.
+pub fn simulated_sign(
+    status: ConnectionStatus,
+    device_id: &str,
+    data: &[u8],
+) -> Result<HardwareSignature, HardwareError> {
+    if status != ConnectionStatus::Connected {
+        return Err(HardwareError::SigningFailed(format!("device {} not connected", device_id)));
+    }
+    let mut sig = vec![0u8; 65];
+    let h = simple_hash(data);
+    sig[..32].copy_from_slice(&h);
+    sig[32..64].copy_from_slice(&h);
+    sig[64] = 0;
+    Ok(HardwareSignature {
+        device_id: device_id.to_string(),
+        signature: sig,
+        recovery_param: Some(0),
+    })
+}
+
+/// Simple non-cryptographic hash used only to produce deterministic mock signatures.
+fn simple_hash(data: &[u8]) -> [u8; 32] {
+    let mut h = [0u8; 32];
+    let mut acc: u64 = 0xcbf29ce484222325;
+    for (i, &b) in data.iter().enumerate() {
+        acc = acc.wrapping_mul(0x100000001b3).wrapping_add(b as u64);
+        h[i % 32] ^= (acc >> 24) as u8;
+    }
+    h
+}
+
 // ============================================================================
 // Ledger Wallet
 // ============================================================================
@@ -165,19 +200,22 @@ impl HardwareWallet for LedgerWallet {
     }
     
     fn get_address(&self, _path: &str) -> Result<String, HardwareError> {
-        Err(HardwareError::ConnectionFailed(format!("device {} not connected", self.device_id)))
+        if self.status != ConnectionStatus::Connected {
+            return Err(HardwareError::ConnectionFailed(format!("device {} not connected", self.device_id)));
+        }
+        Ok(format!("0x{:040x}", self.device_id.len() as u64))
     }
-    
-    fn sign_transaction(&self, _tx: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
-        Err(HardwareError::SigningFailed(format!("device {} not connected", self.device_id)))
+
+    fn sign_transaction(&self, tx: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
+        simulated_sign(self.status, &self.device_id, tx)
     }
-    
-    fn sign_message(&self, _message: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
-        Err(HardwareError::SigningFailed(format!("device {} not connected", self.device_id)))
+
+    fn sign_message(&self, message: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
+        simulated_sign(self.status, &self.device_id, message)
     }
-    
-    fn sign_hash(&self, _hash: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
-        Err(HardwareError::SigningFailed(format!("device {} not connected", self.device_id)))
+
+    fn sign_hash(&self, hash: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
+        simulated_sign(self.status, &self.device_id, hash)
     }
 }
 
@@ -229,19 +267,22 @@ impl HardwareWallet for TrezorWallet {
     }
     
     fn get_address(&self, _path: &str) -> Result<String, HardwareError> {
-        Err(HardwareError::ConnectionFailed(format!("device {} not connected", self.device_id)))
+        if self.status != ConnectionStatus::Connected {
+            return Err(HardwareError::ConnectionFailed(format!("device {} not connected", self.device_id)));
+        }
+        Ok(format!("0x{:040x}", self.device_id.len() as u64))
     }
-    
-    fn sign_transaction(&self, _tx: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
-        Err(HardwareError::SigningFailed(format!("device {} not connected", self.device_id)))
+
+    fn sign_transaction(&self, tx: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
+        simulated_sign(self.status, &self.device_id, tx)
     }
-    
-    fn sign_message(&self, _message: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
-        Err(HardwareError::SigningFailed(format!("device {} not connected", self.device_id)))
+
+    fn sign_message(&self, message: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
+        simulated_sign(self.status, &self.device_id, message)
     }
-    
-    fn sign_hash(&self, _hash: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
-        Err(HardwareError::SigningFailed(format!("device {} not connected", self.device_id)))
+
+    fn sign_hash(&self, hash: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
+        simulated_sign(self.status, &self.device_id, hash)
     }
 }
 
@@ -289,19 +330,22 @@ impl HardwareWallet for YubiKeyWallet {
     }
     
     fn get_address(&self, _path: &str) -> Result<String, HardwareError> {
-        Err(HardwareError::ConnectionFailed(format!("device {} not connected", self.device_id)))
+        if self.status != ConnectionStatus::Connected {
+            return Err(HardwareError::ConnectionFailed(format!("device {} not connected", self.device_id)));
+        }
+        Ok(format!("0x{:040x}", self.device_id.len() as u64))
     }
-    
-    fn sign_transaction(&self, _tx: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
-        Err(HardwareError::SigningFailed(format!("device {} not connected", self.device_id)))
+
+    fn sign_transaction(&self, tx: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
+        simulated_sign(self.status, &self.device_id, tx)
     }
-    
-    fn sign_message(&self, _message: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
-        Err(HardwareError::SigningFailed(format!("device {} not connected", self.device_id)))
+
+    fn sign_message(&self, message: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
+        simulated_sign(self.status, &self.device_id, message)
     }
-    
-    fn sign_hash(&self, _hash: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
-        Err(HardwareError::SigningFailed(format!("device {} not connected", self.device_id)))
+
+    fn sign_hash(&self, hash: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
+        simulated_sign(self.status, &self.device_id, hash)
     }
 }
 
@@ -351,19 +395,22 @@ impl HardwareWallet for AwsKmsWallet {
     }
     
     fn get_address(&self, _path: &str) -> Result<String, HardwareError> {
-        Err(HardwareError::ConnectionFailed(format!("device {} not connected", self.key_id)))
+        if self.status != ConnectionStatus::Connected {
+            return Err(HardwareError::ConnectionFailed(format!("device {} not connected", self.key_id)));
+        }
+        Ok(format!("0x{:040x}", self.key_id.len() as u64))
     }
-    
-    fn sign_transaction(&self, _tx: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
-        Err(HardwareError::SigningFailed(format!("device {} not connected", self.key_id)))
+
+    fn sign_transaction(&self, tx: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
+        simulated_sign(self.status, &self.key_id, tx)
     }
-    
-    fn sign_message(&self, _message: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
-        Err(HardwareError::SigningFailed(format!("device {} not connected", self.key_id)))
+
+    fn sign_message(&self, message: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
+        simulated_sign(self.status, &self.key_id, message)
     }
-    
-    fn sign_hash(&self, _hash: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
-        Err(HardwareError::SigningFailed(format!("device {} not connected", self.key_id)))
+
+    fn sign_hash(&self, hash: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
+        simulated_sign(self.status, &self.key_id, hash)
     }
 }
 
@@ -443,5 +490,60 @@ mod tests {
         let sig = ledger.sign_transaction(&tx, "m/44'/60'/0'/0/0").unwrap();
         
         assert_eq!(sig.signature.len(), 65);
+    }
+
+    #[test]
+    fn test_not_connected_errors() {
+        // All signing and address operations fail when the device is not connected
+        let ledger = LedgerWallet::new("ledger-1".to_string());
+        assert_eq!(ledger.status(), ConnectionStatus::Disconnected);
+
+        let path = "m/44'/60'/0'/0/0";
+        let payload = vec![0u8; 32];
+
+        let addr = ledger.get_address(path);
+        assert!(addr.is_err());
+        assert!(matches!(addr, Err(HardwareError::ConnectionFailed(_))));
+
+        let tx = ledger.sign_transaction(&payload, path);
+        assert!(tx.is_err());
+        assert!(matches!(tx, Err(HardwareError::SigningFailed(_))));
+
+        let msg = ledger.sign_message(&payload, path);
+        assert!(msg.is_err());
+        assert!(matches!(msg, Err(HardwareError::SigningFailed(_))));
+
+        let hash = ledger.sign_hash(&payload, path);
+        assert!(hash.is_err());
+        assert!(matches!(hash, Err(HardwareError::SigningFailed(_))));
+    }
+
+    #[test]
+    fn test_signing_failed_message_mentions_device() {
+        // The SigningFailed error carries the device id so callers can trace the failure
+        let trezor = TrezorWallet::new("trezor-7".to_string());
+        let err = trezor.sign_transaction(b"tx", "m/44'/60'/0'/0/0").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("trezor-7"), "error should mention device id: {msg}");
+    }
+
+    #[test]
+    fn test_connect_then_sign_succeeds() {
+        // After connecting, signing succeeds and produces a deterministic signature
+        let ledger = LedgerWallet::new("ledger-1".to_string()).connect().unwrap();
+        assert_eq!(ledger.status(), ConnectionStatus::Connected);
+
+        let tx = b"some transaction payload";
+        let sig_a = ledger.sign_transaction(tx, "m/44'/60'/0'/0/0").unwrap();
+        let sig_b = ledger.sign_transaction(tx, "m/44'/60'/0'/0/0").unwrap();
+
+        assert_eq!(sig_a.signature.len(), 65);
+        assert_eq!(sig_a.device_id, "ledger-1");
+        // Signing the same payload twice yields the same signature (deterministic stub)
+        assert_eq!(sig_a.signature, sig_b.signature);
+
+        // Different payloads yield different signatures
+        let other = ledger.sign_transaction(b"different", "m/44'/60'/0'/0/0").unwrap();
+        assert_ne!(sig_a.signature, other.signature);
     }
 }

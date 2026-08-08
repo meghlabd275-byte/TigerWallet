@@ -71,10 +71,9 @@ impl HDKey {
         let il = &result[..32];
         let ir = &result[32..];
         
-        // Validate that il is a valid private key
-        if il[0] >= 0x80 {
-            return Err(DerivationError::InvalidSeed("Invalid master key".to_string()));
-        }
+        // Validate that il is a valid secp256k1 private key (non-zero scalar < n)
+        NonZeroScalar::<Secp256k1>::try_from(il)
+            .map_err(|_| DerivationError::InvalidSeed("Invalid master key".to_string()))?;
         
         let mut key = [0u8; 32];
         key.copy_from_slice(il);
@@ -325,5 +324,57 @@ mod tests {
     fn test_path_display() {
         let path = DerivationPath::parse("m/44'/60'/0'/0/0").unwrap();
         assert_eq!(path.to_string(), "m/44'/60'/0'/0/0");
+    }
+
+    #[test]
+    fn test_parent_to_child_derivation() {
+        // HD key derivation: parent -> child produces a different key
+        let seed = [0u8; 64];
+        let parent = HDKey::from_seed(&seed).unwrap();
+
+        let child = parent.derive(0).unwrap();
+        let hardened_child = parent.derive(0x80000000).unwrap();
+
+        // Child must differ from parent
+        assert_ne!(child.key.as_slice(), parent.key.as_slice());
+        assert_ne!(child.chain_code.as_slice(), parent.chain_code.as_slice());
+
+        // Depth increments and child_number is preserved
+        assert_eq!(child.depth, parent.depth + 1);
+        assert_eq!(hardened_child.child_number, 0x80000000);
+
+        // Hardened and normal derivation produce distinct keys
+        assert_ne!(child.key.as_slice(), hardened_child.key.as_slice());
+
+        // Parent fingerprint is derived from the parent public key
+        let parent_pub = parent.public_key();
+        let mut hasher = sha2::Sha256::new();
+        use sha2::Digest;
+        hasher.update(&parent_pub);
+        let expected_fp = &hasher.finalize()[..4];
+        assert_eq!(&child.parent_fingerprint[..], expected_fp);
+    }
+
+    #[test]
+    fn test_derive_path_matches_sequential() {
+        // Deriving via a path string must equal deriving component by component
+        let seed = [0u8; 64];
+        let master = HDKey::from_seed(&seed).unwrap();
+
+        let via_path = master.derive_path("m/44'/60'/0'/0/0").unwrap();
+        let sequential = master
+            .derive(0x80000000 | 44)
+            .unwrap()
+            .derive(0x80000000 | 60)
+            .unwrap()
+            .derive(0x80000000 | 0)
+            .unwrap()
+            .derive(0)
+            .unwrap()
+            .derive(0)
+            .unwrap();
+
+        assert_eq!(via_path.key.as_slice(), sequential.key.as_slice());
+        assert_eq!(via_path.depth, 5);
     }
 }
