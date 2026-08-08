@@ -30,6 +30,7 @@ hex = "0.4.3"
 rand = "0.8.5"
 zeroize = { version = "1.7.1", features = ["derive"] }
 ripemd = "0.1"
+base58 = "0.2"
 
 # Async
 tokio = { version = "1.35.1", features = ["full"] }

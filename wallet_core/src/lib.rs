@@ -20,6 +20,11 @@ pub mod multisig;
 pub mod account_abstraction;
 pub mod evm;
 pub mod bitcoin;
+pub mod bip32;
+pub mod bip44;
+pub mod chains;
+pub mod hardware_wallet;
+pub mod key_vault;
 
 pub use mnemonic::*;
 pub use key_derivation::*;
