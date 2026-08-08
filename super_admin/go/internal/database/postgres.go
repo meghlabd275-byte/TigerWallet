@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/tigerwallet/admin/internal/config"
+	"github.com/tigerwallet/super-admin/internal/config"
 )
 
 var Pool *pgxpool.Pool

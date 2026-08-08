@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/tigerwallet/admin/internal/database"
+	"github.com/tigerwallet/super-admin/internal/database"
 )
 
 type SLAService struct{}

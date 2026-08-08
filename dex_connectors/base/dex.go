@@ -1,4 +1,4 @@
-module github.com/tigerswap/dex-connectors
+module github.com/tigerwallet/dex-connectors
 
 go 1.21
 

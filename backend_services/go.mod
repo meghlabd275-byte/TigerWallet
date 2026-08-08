@@ -1,4 +1,4 @@
-module github.com/meghlabd275-byte/TigerWallet/backend_services
+module github.com/tigerwallet/backend-services
 
 go 1.21
 

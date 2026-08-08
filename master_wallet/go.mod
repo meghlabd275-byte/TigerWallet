@@ -1,4 +1,4 @@
-module master_wallet
+module github.com/tigerwallet/master-wallet
 
 go 1.21
 

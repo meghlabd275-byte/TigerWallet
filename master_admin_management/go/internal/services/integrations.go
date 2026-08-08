@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tigerwallet/admin/internal/config"
+	"github.com/tigerwallet/master-admin-management/internal/config"
 )
 
 type IntegrationService struct {

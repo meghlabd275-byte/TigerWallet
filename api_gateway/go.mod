@@ -1,4 +1,4 @@
-module github.com/tigerswap/api-gateway
+module github.com/tigerwallet/api-gateway
 
 go 1.21
 

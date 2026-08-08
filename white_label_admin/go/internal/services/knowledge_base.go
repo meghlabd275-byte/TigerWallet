@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/tigerwallet/admin/internal/database"
-	"github.com/tigerwallet/admin/internal/models"
+	"github.com/tigerwallet/white-label-admin/internal/database"
+	"github.com/tigerwallet/white-label-admin/internal/models"
 )
 
 type KnowledgeBaseService struct{}

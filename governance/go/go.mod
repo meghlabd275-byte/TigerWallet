@@ -1,4 +1,4 @@
-module github.com/tigerswap/governance
+module github.com/tigerwallet/governance
 
 go 1.21
 

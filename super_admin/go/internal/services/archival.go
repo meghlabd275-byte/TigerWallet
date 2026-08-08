@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tigerwallet/admin/internal/database"
+	"github.com/tigerwallet/super-admin/internal/database"
 )
 
 type ArchivalService struct{}

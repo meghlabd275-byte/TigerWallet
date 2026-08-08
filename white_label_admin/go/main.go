@@ -12,9 +12,9 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/tigerwallet/admin/internal/config"
-	"github.com/tigerwallet/admin/internal/database"
-	"github.com/tigerwallet/admin/internal/middleware"
+	"github.com/tigerwallet/white-label-admin/internal/config"
+	"github.com/tigerwallet/white-label-admin/internal/database"
+	"github.com/tigerwallet/white-label-admin/internal/middleware"
 )
 
 func main() {

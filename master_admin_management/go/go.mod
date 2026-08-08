@@ -1,4 +1,4 @@
-module github.com/tigerwallet/admin
+module github.com/tigerwallet/master-admin-management
 
 go 1.21
 

@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/tigerwallet/admin/internal/config"
+	"github.com/tigerwallet/white-label-admin/internal/config"
 )
 
 type Claims struct {
