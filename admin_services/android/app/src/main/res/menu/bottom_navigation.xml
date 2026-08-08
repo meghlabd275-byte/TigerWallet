@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<menu xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:id="@+id/nav_dashboard" android:icon="@android:drawable/ic_menu_today" android:title="Dashboard" />
-    <item android:id="@+id/nav_services" android:icon="@android:drawable/ic_menu_manage" android:title="Services" />
-    <item android:id="@+id/nav_health" android:icon="@android:drawable/ic_menu_info_details" android:title="Health" />
-    <item android:id="@+id/nav_logs" android:icon="@android:drawable/ic_menu_agenda" android:title="Logs" />
-    <item android:id="@+id/nav_settings" android:icon="@android:drawable/ic_menu_preferences" android:title="Settings" />
-</menu>

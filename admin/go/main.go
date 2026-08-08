@@ -1,4 +1,6 @@
 // TigerWallet Admin - Main Entry Point
+// Canonical admin backend: Go for high-load distributed admin operations.
+// All handlers are real, DB-backed (PostgreSQL via GORM) with Redis caching.
 package main
 
 import (
@@ -10,200 +12,483 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/gin"
 	"github.com/tigerwallet/admin/internal/config"
-	"github.com/tigerwallet/admin/internal/database"
+	"github.com/tigerwallet/admin/internal/handlers"
 	"github.com/tigerwallet/admin/internal/middleware"
+	"github.com/tigerwallet/admin/internal/models"
+	"github.com/tigerwallet/admin/pkg/auth"
+	"github.com/tigerwallet/admin/pkg/database"
+	"github.com/tigerwallet/admin/pkg/redis"
+
+	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
+	_ "gorm.io/gorm"
 )
 
 func main() {
 	cfg := config.Load()
 
-	if err := database.Initialize(cfg); err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+	// Initialize PostgreSQL (GORM + connection pool + auto-migrate)
+	db, err := database.NewPostgresDB(cfg)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
 	}
-	defer database.Close()
+	defer db.Close()
+	log.Println("Connected to PostgreSQL")
 
-	log.Println("Database initialized successfully")
+	// Initialize Redis
+	redisClient, err := redis.NewRedisClient(cfg)
+	if err != nil {
+		log.Fatalf("Failed to connect to Redis: %v", err)
+	}
+	defer redisClient.Close()
+	log.Println("Connected to Redis")
 
-	router := gin.Default()
+	// Auth service (JWT + bcrypt + pepper)
+	authSvc := auth.NewAuthService(cfg)
 
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
+	// Create default super admin if none exists
+	createDefaultAdmin(db, cfg, authSvc)
+
+	// --- Initialize all handlers (real, DB-backed) ---
+	adminHandler := handlers.NewAdminHandler(db, redisClient, cfg, authSvc)
+	userHandler := handlers.NewUserHandler(db)
+	dashboardHandler := handlers.NewDashboardHandler(db)
+	transactionHandler := handlers.NewTransactionHandler(db)
+	kycHandler := handlers.NewKYCHandler(db, redisClient.Client)
+	tokenHandler := handlers.NewTokenHandler(db, authSvc)
+	withdrawalHandler := handlers.NewWithdrawalHandler(db, redisClient.Client)
+	whitelabelHandler := handlers.NewWhiteLabelHandler(db)
+	feeHandler := handlers.NewFeeHandler(db)
+	pairHandler := handlers.NewPairHandler(db)
+	apiKeyHandler := handlers.NewAPIKeyHandler(db)
+	analyticsHandler := handlers.NewAnalyticsHandler(db)
+	superAdminHandler := handlers.NewSuperAdminHandler(db, redisClient, cfg, authSvc)
+	twoFactorHandler := handlers.NewTwoFactorHandler(db, redisClient.Client)
+	notificationHandler := handlers.NewNotificationHandler(db)
+	supportHandler := handlers.NewSupportHandler(db)
+	integrationHandler := handlers.NewIntegrationHandler(db, redisClient.Client)
+	brokerHandler := handlers.NewBrokerHandler(db)
+	institutionalHandler := handlers.NewInstitutionalHandler(db)
+	complianceHandler := handlers.NewComplianceHandler(db)
+	knowledgeBaseHandler := handlers.NewKnowledgeBaseHandler(db)
+	multisigHandler := handlers.NewMultisigHandler(db)
+	nftHandler := handlers.NewNFTHandler(db)
+	masterWalletHandler := handlers.NewMasterWalletHandler(db.DB)
+	billingHandler := handlers.NewBillingHandler()
+	cryptoCardHandler := handlers.NewCryptoCardHandler(db.DB)
+	featuresHandler := handlers.NewFeaturesHandler(db.DB)
+	liquidityHandler := handlers.NewLiquidityHandler(db.DB)
+	marginTradingHandler := handlers.NewMarginTradingHandler(db.DB)
+	p2pMerchantHandler := handlers.NewP2PMerchantHandler(db.DB)
+
+	// --- Gin router ---
+	gin.SetMode(gin.ReleaseMode)
+	router := gin.New()
+	router.Use(gin.Recovery())
+	router.Use(middleware.RequestIDMiddleware())
+	router.Use(middleware.SecurityHeadersMiddleware())
+	router.Use(middleware.CORSMiddleware())
 
 	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "tiger-admin"})
+		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "tiger-admin", "timestamp": time.Now().Unix()})
 	})
 
 	api := router.Group("/api/v1")
 	{
-		auth := api.Group("/auth")
+		// Public auth endpoints
+		authGroup := api.Group("/auth")
 		{
-			auth.POST("/login", handleLogin)
-			auth.POST("/register", handleRegister)
-			auth.POST("/refresh", handleRefreshToken)
+			authGroup.POST("/login", adminHandler.Login)
+			authGroup.POST("/refresh", adminHandler.RefreshToken)
 		}
 
-		admin := api.Group("/admin")
-		admin.Use(middleware.JWTAuth(cfg))
-		admin.Use(middleware.IPWhitelistMiddleware(cfg))
+		// Protected endpoints
+		protected := api.Group("")
+		protected.Use(middleware.AuthMiddleware(authSvc))
 		{
-			admin.GET("/users", handleGetUsers)
-			admin.GET("/users/:id", handleGetUser)
-			admin.PUT("/users/:id/status", handleUpdateUserStatus)
-			admin.POST("/users/:id/ban", handleBanUser)
-			admin.POST("/users/:id/unban", handleUnbanUser)
-			admin.POST("/users/:id/suspend", handleSuspendUser)
+			// Auth / profile
+			protected.POST("/auth/logout", adminHandler.Logout)
+			protected.GET("/auth/profile", adminHandler.GetProfile)
+			protected.PUT("/auth/profile", adminHandler.UpdateProfile)
+			protected.POST("/auth/change-password", adminHandler.ChangePassword)
 
-			admin.GET("/kyc", handleGetKYC)
-			admin.POST("/kyc/:id/approve", handleApproveKYC)
-			admin.POST("/kyc/:id/reject", handleRejectKYC)
+			// 2FA
+			twofa := protected.Group("/2fa")
+			{
+				twofa.POST("/setup", twoFactorHandler.Setup2FA)
+				twofa.POST("/verify", twoFactorHandler.Verify2FA)
+				twofa.POST("/enable", twoFactorHandler.Enable2FA)
+				twofa.POST("/disable", twoFactorHandler.Disable2FA)
+				twofa.GET("/status", twoFactorHandler.Get2FAStatus)
+				twofa.POST("/backup-codes", twoFactorHandler.RegenerateBackupCodes)
+				twofa.GET("/users", twoFactorHandler.List2FAUsers)
+				twofa.GET("/stats", twoFactorHandler.Get2FAStats)
+			}
 
-			admin.GET("/transactions", handleGetTransactions)
-			admin.GET("/transactions/:id", handleGetTransaction)
-			admin.POST("/transactions/:id/flag", handleFlagTransaction)
-			admin.POST("/transactions/:id/unflag", handleUnflagTransaction)
+			// Admin management (super_admin only)
+			admins := protected.Group("/admins")
+			admins.Use(middleware.SuperAdminMiddleware())
+			{
+				admins.GET("", superAdminHandler.ListAdmins)
+				admins.POST("", superAdminHandler.CreateAdmin)
+				admins.GET("/:id", superAdminHandler.GetAdmin)
+				admins.PUT("/:id", superAdminHandler.UpdateAdmin)
+				admins.DELETE("/:id", superAdminHandler.DeleteAdmin)
+				admins.POST("/:id/suspend", superAdminHandler.SuspendAdmin)
+				admins.POST("/:id/activate", superAdminHandler.ActivateAdmin)
+				admins.GET("/:id/activities", adminHandler.GetAdminActivities)
+			}
 
-			admin.GET("/withdrawals", handleGetWithdrawals)
-			admin.POST("/withdrawals/:id/approve", handleApproveWithdrawal)
-			admin.POST("/withdrawals/:id/reject", handleRejectWithdrawal)
-			admin.POST("/withdrawals/:id/process", handleProcessWithdrawal)
+			// Dashboard & analytics
+			protected.GET("/dashboard", dashboardHandler.GetDashboard)
+			protected.GET("/analytics/users", analyticsHandler.GetUserAnalytics)
+			protected.GET("/analytics/transactions", analyticsHandler.GetTransactionAnalytics)
+			protected.GET("/analytics/revenue", analyticsHandler.GetRevenueAnalytics)
+			protected.GET("/analytics/custom", analyticsHandler.GetCustomDateRangeAnalytics)
+			protected.GET("/system/metrics", analyticsHandler.GetSystemMetrics)
 
-			admin.GET("/tokens", handleGetTokens)
-			admin.POST("/tokens", handleCreateToken)
-			admin.PUT("/tokens/:id", handleUpdateToken)
-			admin.DELETE("/tokens/:id", handleDeleteToken)
+			// Users
+			users := protected.Group("/users")
+			{
+				users.GET("", userHandler.ListUsers)
+				users.GET("/:id", userHandler.GetUser)
+				users.PUT("/:id", userHandler.UpdateUser)
+				users.DELETE("/:id", userHandler.DeleteUser)
+				users.POST("/:id/verify-kyc", userHandler.VerifyKYC)
+			}
 
-			admin.GET("/pairs", handleGetPairs)
-			admin.POST("/pairs", handleCreatePair)
-			admin.PUT("/pairs/:id/status", handleUpdatePairStatus)
+			// KYC
+			kyc := protected.Group("/kyc")
+			{
+				kyc.GET("", kycHandler.ListKYC)
+				kyc.GET("/:id", kycHandler.GetKYC)
+				kyc.POST("/:id/approve", kycHandler.ApproveKYC)
+				kyc.POST("/:id/reject", kycHandler.RejectKYC)
+				kyc.GET("/stats", kycHandler.GetKYCStats)
+			}
 
-			admin.GET("/blockchains", handleGetBlockchains)
-			admin.POST("/blockchains", handleCreateBlockchain)
-			admin.PUT("/blockchains/:id", handleUpdateBlockchain)
-			admin.PUT("/blockchains/:id/status", handleSetBlockchainStatus)
+			// Transactions
+			transactions := protected.Group("/transactions")
+			{
+				transactions.GET("", transactionHandler.ListTransactions)
+				transactions.GET("/:id", transactionHandler.GetTransaction)
+				transactions.POST("/:id/flag", transactionHandler.FlagTransaction)
+			}
 
-			admin.GET("/fees", handleGetFees)
-			admin.POST("/fees", handleCreateFee)
-			admin.PUT("/fees/:id", handleUpdateFee)
+			// Tokens
+			tokens := protected.Group("/tokens")
+			{
+				tokens.GET("", tokenHandler.ListTokens)
+				tokens.POST("", tokenHandler.CreateToken)
+				tokens.GET("/:id", tokenHandler.GetToken)
+				tokens.PUT("/:id", tokenHandler.UpdateToken)
+				tokens.DELETE("/:id", tokenHandler.DeleteToken)
+				tokens.POST("/:id/activate", tokenHandler.ActivateToken)
+				tokens.POST("/:id/deactivate", tokenHandler.DeactivateToken)
+				tokens.POST("/:id/verify", tokenHandler.VerifyToken)
+				tokens.GET("/stats", tokenHandler.GetTokenStats)
+				tokens.PUT("/:id/price", tokenHandler.UpdateTokenPrice)
+			}
 
-			admin.GET("/webhooks", handleGetWebhooks)
-			admin.POST("/webhooks", handleCreateWebhook)
-			admin.POST("/webhooks/:id/test", handleTestWebhook)
-			admin.DELETE("/webhooks/:id", handleDeleteWebhook)
+			// Withdrawals
+			withdrawals := protected.Group("/withdrawals")
+			{
+				withdrawals.GET("", withdrawalHandler.ListWithdrawals)
+				withdrawals.GET("/:id", withdrawalHandler.GetWithdrawal)
+				withdrawals.POST("/:id/approve", withdrawalHandler.ApproveWithdrawal)
+				withdrawals.POST("/:id/reject", withdrawalHandler.RejectWithdrawal)
+				withdrawals.POST("/:id/process", withdrawalHandler.ProcessWithdrawal)
+				withdrawals.GET("/stats", withdrawalHandler.GetWithdrawalStats)
+				withdrawals.POST("/bulk-approve", withdrawalHandler.BulkApproveWithdrawals)
+			}
 
-			admin.GET("/notifications", handleGetNotifications)
-			admin.PUT("/notifications/:id/read", handleMarkNotificationRead)
-			admin.POST("/notifications/send", handleSendNotification)
-			admin.POST("/notifications/broadcast", handleBroadcastNotification)
+			// White labels
+			whiteLabels := protected.Group("/white-labels")
+			{
+				whiteLabels.GET("", whitelabelHandler.ListWhiteLabels)
+				whiteLabels.POST("", whitelabelHandler.CreateWhiteLabel)
+				whiteLabels.GET("/:id", whitelabelHandler.GetWhiteLabel)
+				whiteLabels.PUT("/:id", whitelabelHandler.UpdateWhiteLabel)
+				whiteLabels.DELETE("/:id", whitelabelHandler.DeleteWhiteLabel)
+				whiteLabels.POST("/:id/approve", whitelabelHandler.ApproveWhiteLabel)
+				whiteLabels.POST("/:id/suspend", whitelabelHandler.SuspendWhiteLabel)
+				whiteLabels.GET("/stats", whitelabelHandler.GetWhiteLabelStats)
+			}
 
-			admin.GET("/audit-logs", handleGetAuditLogs)
-			admin.POST("/audit-logs/export", handleExportAuditLogs)
+			// Trading pairs
+			pairs := protected.Group("/pairs")
+			{
+				pairs.GET("", pairHandler.ListPairs)
+				pairs.POST("", pairHandler.CreatePair)
+				pairs.GET("/:id", pairHandler.GetPair)
+				pairs.PUT("/:id", pairHandler.UpdatePair)
+				pairs.DELETE("/:id", pairHandler.DeletePair)
+				pairs.PUT("/:id/status", pairHandler.UpdatePairStatus)
+				pairs.PUT("/:id/price", pairHandler.UpdatePairPrice)
+				pairs.GET("/stats", pairHandler.GetPairStats)
+			}
 
-			admin.GET("/sessions", handleGetSessions)
-			admin.DELETE("/sessions/:id", handleRevokeSession)
-			admin.DELETE("/sessions", handleRevokeAllSessions)
+			// Fees
+			fees := protected.Group("/fees")
+			{
+				fees.GET("", feeHandler.ListFees)
+				fees.POST("", feeHandler.CreateFee)
+				fees.GET("/:id", feeHandler.GetFee)
+				fees.PUT("/:id", feeHandler.UpdateFee)
+				fees.DELETE("/:id", feeHandler.DeleteFee)
+				fees.POST("/calculate", feeHandler.CalculateFee)
+				fees.GET("/stats", feeHandler.GetFeeStats)
+			}
 
-			admin.GET("/feature-flags", handleGetFeatureFlags)
-			admin.POST("/feature-flags", handleCreateFeatureFlag)
-			admin.PUT("/feature-flags/:id", handleUpdateFeatureFlag)
-			admin.DELETE("/feature-flags/:id", handleDeleteFeatureFlag)
+			// API keys
+			apiKeys := protected.Group("/api-keys")
+			{
+				apiKeys.GET("", apiKeyHandler.ListAPIKeys)
+				apiKeys.POST("", apiKeyHandler.CreateAPIKey)
+				apiKeys.GET("/:id", apiKeyHandler.GetAPIKey)
+				apiKeys.PUT("/:id", apiKeyHandler.UpdateAPIKey)
+				apiKeys.DELETE("/:id", apiKeyHandler.DeleteAPIKey)
+				apiKeys.POST("/:id/revoke", apiKeyHandler.RevokeAPIKey)
+				apiKeys.POST("/:id/reactivate", apiKeyHandler.ReactivateAPIKey)
+				apiKeys.POST("/:id/regenerate", apiKeyHandler.RegenerateAPIKey)
+				apiKeys.GET("/stats", apiKeyHandler.GetAPIKeyStats)
+			}
 
-			admin.GET("/ip-whitelist", handleGetIPWhitelist)
-			admin.POST("/ip-whitelist", handleAddIPWhitelist)
-			admin.DELETE("/ip-whitelist/:id", handleRemoveIPWhitelist)
+			// System config (super_admin)
+			sysConfig := protected.Group("/system")
+			sysConfig.Use(middleware.SuperAdminMiddleware())
+			{
+				sysConfig.GET("/config", superAdminHandler.GetSystemConfig)
+				sysConfig.PUT("/config", superAdminHandler.UpdateSystemConfig)
+				sysConfig.GET("/rate-limits", superAdminHandler.GetRateLimits)
+				sysConfig.PUT("/rate-limits", superAdminHandler.UpdateRateLimits)
+				sysConfig.GET("/master-wallets", superAdminHandler.ListMasterWallets)
+				sysConfig.GET("/master-wallets/:id", superAdminHandler.GetMasterWallet)
+				sysConfig.GET("/master-wallets/:id/balance", superAdminHandler.GetMasterWalletBalance)
+			}
 
-			admin.GET("/tickets", handleGetTickets)
-			admin.GET("/tickets/:id", handleGetTicket)
-			admin.POST("/tickets", handleCreateTicket)
-			admin.PUT("/tickets/:id/status", handleUpdateTicketStatus)
-			admin.POST("/tickets/:id/messages", handleAddTicketMessage)
-			admin.PUT("/tickets/:id/assign", handleAssignTicket)
+			// Feature flags
+			featureFlags := protected.Group("/feature-flags")
+			{
+				featureFlags.GET("", superAdminHandler.ListFeatureFlags)
+				featureFlags.POST("", superAdminHandler.CreateFeatureFlag)
+				featureFlags.PUT("/:id", superAdminHandler.UpdateFeatureFlag)
+				featureFlags.DELETE("/:id", superAdminHandler.DeleteFeatureFlag)
+			}
 
-			admin.GET("/white-labels", handleGetWhiteLabels)
-			admin.POST("/white-labels", handleCreateWhiteLabel)
-			admin.PUT("/white-labels/:id", handleUpdateWhiteLabel)
-			admin.DELETE("/white-labels/:id", handleDeleteWhiteLabel)
+			// Notifications
+			notifications := protected.Group("/notifications")
+			{
+				notifications.GET("", notificationHandler.GetNotifications)
+				notifications.GET("/:id", notificationHandler.GetNotification)
+				notifications.PUT("/:id/read", notificationHandler.MarkAsRead)
+				notifications.DELETE("/:id", notificationHandler.DeleteNotification)
+				notifications.GET("/stats", notificationHandler.GetNotificationStats)
+				notifications.POST("/send", notificationHandler.SendNotification)
+				notifications.POST("/broadcast", notificationHandler.SendToAllUsers)
+				notifications.POST("/template", notificationHandler.SendTemplateNotification)
+			}
 
-			admin.GET("/stats", handleGetStats)
-
-			admin.POST("/logout", handleLogout)
-			admin.POST("/change-password", handleChangePassword)
-			admin.POST("/2fa/enable", handleEnable2FA)
-			admin.POST("/2fa/disable", handleDisable2FA)
-
-			admin.GET("/admins", handleGetAdmins)
-			admin.GET("/admins/:id", handleGetAdmin)
-			admin.PUT("/admins/:id", handleUpdateAdmin)
-			admin.DELETE("/admins/:id", handleDeleteAdmin)
-			admin.POST("/admins/:id/suspend", handleSuspendAdmin)
-			admin.POST("/admins/:id/activate", handleActivateAdmin)
-
-			admin.GET("/workflows", handleGetWorkflows)
-			admin.POST("/workflows", handleCreateWorkflow)
-			admin.PUT("/workflows/:id", handleUpdateWorkflow)
-			admin.DELETE("/workflows/:id", handleDeleteWorkflow)
-
-			admin.GET("/approval-requests", handleGetApprovalRequests)
-			admin.POST("/approval-requests/:id/approve", handleApproveRequest)
-			admin.POST("/approval-requests/:id/reject", handleRejectRequest)
-
-			admin.GET("/backups", handleGetBackups)
-			admin.POST("/backups", handleCreateBackup)
-			admin.POST("/backups/:id/restore", handleRestoreBackup)
-			admin.DELETE("/backups/:id", handleDeleteBackup)
-
-			// Knowledge base
-			admin.GET("/knowledge-base", handleGetKnowledgeArticles)
-			admin.GET("/knowledge-base/:id", handleGetKnowledgeArticle)
-			admin.POST("/knowledge-base", handleCreateKnowledgeArticle)
-			admin.PUT("/knowledge-base/:id", handleUpdateKnowledgeArticle)
-			admin.DELETE("/knowledge-base/:id", handleDeleteKnowledgeArticle)
-
-			// Data archival
-			admin.GET("/archival/policies", handleGetArchivePolicies)
-			admin.POST("/archival/policies", handleCreateArchivePolicy)
-			admin.PUT("/archival/policies/:id", handleUpdateArchivePolicy)
-			admin.DELETE("/archival/policies/:id", handleDeleteArchivePolicy)
-			admin.POST("/archival/policies/:id/run", handleRunArchive)
-			admin.GET("/archival/records", handleGetArchiveRecords)
-
-			// Reports
-			admin.GET("/reports/configs", handleGetReportConfigs)
-			admin.POST("/reports/configs", handleCreateReportConfig)
-			admin.GET("/reports", handleGetReports)
-			admin.POST("/reports/generate", handleGenerateReport)
-
-			// SLA Management
-			admin.GET("/sla/policies", handleGetSLAPolicies)
-			admin.POST("/sla/policies", handleCreateSLAPolicy)
-			admin.PUT("/sla/policies/:id", handleUpdateSLAPolicy)
-			admin.DELETE("/sla/policies/:id", handleDeleteSLAPolicy)
-			admin.GET("/sla/reports", handleGetSLAReports)
-			admin.POST("/sla/reports/generate", handleGenerateSLAReport)
+			// Support tickets
+			tickets := protected.Group("/tickets")
+			{
+				tickets.GET("", supportHandler.ListTickets)
+				tickets.POST("", supportHandler.CreateTicket)
+				tickets.GET("/:id", supportHandler.GetTicket)
+				tickets.PUT("/:id", supportHandler.UpdateTicket)
+				tickets.POST("/:id/messages", supportHandler.AddMessage)
+				tickets.POST("/:id/close", supportHandler.CloseTicket)
+				tickets.GET("/stats", supportHandler.GetTicketStats)
+				tickets.GET("/sla-violations", supportHandler.GetSLAViolations)
+			}
 
 			// Integrations
-			admin.GET("/integrations", handleGetIntegrations)
-			admin.POST("/integrations", handleCreateIntegration)
-			admin.PUT("/integrations/:id", handleUpdateIntegration)
-			admin.DELETE("/integrations/:id", handleDeleteIntegration)
-			admin.POST("/integrations/:id/test", handleTestIntegration)
+			integrations := protected.Group("/integrations")
+			{
+				integrations.GET("", integrationHandler.ListIntegrations)
+				integrations.POST("", integrationHandler.CreateIntegration)
+				integrations.PUT("/:id", integrationHandler.UpdateIntegration)
+				integrations.DELETE("/:id", integrationHandler.DeleteIntegration)
+				integrations.POST("/:id/test", integrationHandler.TestIntegration)
+				integrations.POST("/slack", integrationHandler.SendSlackNotification)
+				integrations.POST("/pagerduty", integrationHandler.SendPagerDutyAlert)
+				integrations.POST("/datadog", integrationHandler.SendDatadogEvent)
+				integrations.POST("/webhook", integrationHandler.WebhookHandler)
+				integrations.GET("/stats", integrationHandler.GetIntegrationStats)
+			}
+
+			// Brokers
+			brokers := protected.Group("/brokers")
+			{
+				brokers.GET("", brokerHandler.ListBrokers)
+				brokers.POST("", brokerHandler.CreateBroker)
+				brokers.GET("/:id", brokerHandler.GetBroker)
+				brokers.PUT("/:id", brokerHandler.UpdateBroker)
+				brokers.DELETE("/:id", brokerHandler.DeleteBroker)
+				brokers.POST("/:id/approve", brokerHandler.ApproveBroker)
+				brokers.POST("/:id/suspend", brokerHandler.SuspendBroker)
+				brokers.PUT("/:id/commission", brokerHandler.SetBrokerCommission)
+				brokers.GET("/:id/clients", brokerHandler.GetBrokerClients)
+				brokers.GET("/stats", brokerHandler.GetBrokerStats)
+			}
+
+			// Institutional clients
+			institutional := protected.Group("/institutional")
+			{
+				institutional.GET("", institutionalHandler.ListClients)
+				institutional.POST("", institutionalHandler.CreateClient)
+				institutional.GET("/:id", institutionalHandler.GetClient)
+				institutional.PUT("/:id", institutionalHandler.UpdateClient)
+				institutional.DELETE("/:id", institutionalHandler.DeleteClient)
+				institutional.POST("/:id/approve", institutionalHandler.ApproveClient)
+				institutional.POST("/:id/suspend", institutionalHandler.SuspendClient)
+				institutional.PUT("/:id/limits", institutionalHandler.SetClientLimits)
+				institutional.PUT("/:id/account-manager", institutionalHandler.AssignAccountManager)
+				institutional.GET("/stats", institutionalHandler.GetClientStats)
+			}
+
+			// Compliance
+			compliance := protected.Group("/compliance")
+			{
+				compliance.POST("/aml-report", complianceHandler.GenerateAMLReport)
+				compliance.POST("/tax-report", complianceHandler.GenerateTaxReport)
+				compliance.POST("/gdpr", complianceHandler.ProcessGDPRRequest)
+				compliance.GET("/reports", complianceHandler.GetComplianceReports)
+				compliance.GET("/stats", complianceHandler.GetComplianceStats)
+				compliance.POST("/gdpr/export", complianceHandler.ExportGDPRData)
+				compliance.POST("/gdpr/anonymize", complianceHandler.AnonymizeUserData)
+			}
+
+			// Knowledge base
+			kb := protected.Group("/knowledge-base")
+			{
+				kb.GET("/categories", knowledgeBaseHandler.ListCategories)
+				kb.POST("/categories", knowledgeBaseHandler.CreateCategory)
+				kb.PUT("/categories/:id", knowledgeBaseHandler.UpdateCategory)
+				kb.DELETE("/categories/:id", knowledgeBaseHandler.DeleteCategory)
+				kb.GET("/articles", knowledgeBaseHandler.ListArticles)
+				kb.POST("/articles", knowledgeBaseHandler.CreateArticle)
+				kb.GET("/articles/:id", knowledgeBaseHandler.GetArticle)
+				kb.PUT("/articles/:id", knowledgeBaseHandler.UpdateArticle)
+				kb.DELETE("/articles/:id", knowledgeBaseHandler.DeleteArticle)
+				kb.GET("/stats", knowledgeBaseHandler.GetKnowledgeBaseStats)
+			}
+
+			// Multisig
+			multisig := protected.Group("/multisig")
+			{
+				multisig.GET("", multisigHandler.ListWallets)
+				multisig.POST("", multisigHandler.CreateWallet)
+				multisig.GET("/:id", multisigHandler.GetWallet)
+				multisig.PUT("/:id", multisigHandler.UpdateWallet)
+				multisig.DELETE("/:id", multisigHandler.DeleteWallet)
+			}
+
+			// NFT management
+			nfts := protected.Group("/nfts")
+			{
+				nfts.GET("", nftHandler.ListNFTs)
+				nfts.GET("/:id", nftHandler.GetNFT)
+				nfts.DELETE("/:id", nftHandler.DeleteNFT)
+				nfts.POST("/:id/flag", nftHandler.FlagNFT)
+				nfts.GET("/stats", nftHandler.GetNFTStats)
+			}
+
+			// Master wallet
+			masterWallet := protected.Group("/master-wallet")
+			{
+				masterWallet.GET("/stats", masterWalletHandler.GetStats)
+				masterWallet.GET("/balances", masterWalletHandler.GetBalances)
+				masterWallet.GET("/transactions", masterWalletHandler.GetTransactions)
+			}
+
+			// Billing
+			billing := protected.Group("/billing")
+			{
+				billing.GET("/plans", billingHandler.GetPlans)
+				billing.POST("/plans", billingHandler.CreatePlan)
+				billing.PUT("/plans/:id", billingHandler.UpdatePlan)
+				billing.DELETE("/plans/:id", billingHandler.DeletePlan)
+				billing.GET("/subscription", billingHandler.GetSubscription)
+				billing.POST("/subscription", billingHandler.CreateSubscription)
+				billing.DELETE("/subscription", billingHandler.CancelSubscription)
+				billing.GET("/invoices", billingHandler.GetInvoices)
+				billing.GET("/payment-methods", billingHandler.GetPaymentMethods)
+				billing.POST("/payment-methods", billingHandler.AddPaymentMethod)
+				billing.DELETE("/payment-methods/:id", billingHandler.DeletePaymentMethod)
+				billing.PUT("/payment-methods/:id/default", billingHandler.SetDefaultPaymentMethod)
+			}
+
+			// Crypto cards
+			cryptoCards := protected.Group("/crypto-cards")
+			{
+				cryptoCards.GET("", cryptoCardHandler.GetAll)
+				cryptoCards.POST("", cryptoCardHandler.Create)
+				cryptoCards.GET("/:id", cryptoCardHandler.GetByID)
+				cryptoCards.POST("/:id/block", cryptoCardHandler.Block)
+				cryptoCards.POST("/:id/activate", cryptoCardHandler.Activate)
+				cryptoCards.PUT("/:id/limit", cryptoCardHandler.SetLimit)
+			}
+
+			// Features
+			features := protected.Group("/features")
+			{
+				features.GET("", featuresHandler.GetAll)
+				features.POST("", featuresHandler.Create)
+				features.GET("/:id", featuresHandler.GetByID)
+				features.PUT("/:id", featuresHandler.Update)
+				features.POST("/:id/toggle", featuresHandler.Toggle)
+				features.PUT("/:id/rollout", featuresHandler.SetRollout)
+				features.DELETE("/:id", featuresHandler.Delete)
+				features.GET("/:id/check", featuresHandler.CheckFeature)
+			}
+
+			// Liquidity pools
+			liquidity := protected.Group("/liquidity")
+			{
+				liquidity.GET("/pools", liquidityHandler.GetPools)
+				liquidity.GET("/pools/:id", liquidityHandler.GetPoolByID)
+				liquidity.POST("/pools", liquidityHandler.CreatePool)
+				liquidity.POST("/pools/:id/add", liquidityHandler.AddLiquidity)
+				liquidity.POST("/pools/:id/remove", liquidityHandler.RemoveLiquidity)
+				liquidity.GET("/stats", liquidityHandler.GetStats)
+			}
+
+			// Margin trading
+			margin := protected.Group("/margin-trading")
+			{
+				margin.GET("/positions", marginTradingHandler.GetPositions)
+				margin.POST("/positions", marginTradingHandler.OpenPosition)
+				margin.POST("/positions/:id/close", marginTradingHandler.ClosePosition)
+				margin.PUT("/positions/:id/liquidation", marginTradingHandler.UpdateLiquidationPrice)
+				margin.GET("/stats", marginTradingHandler.GetStats)
+			}
+
+			// P2P merchants
+			p2p := protected.Group("/p2p-merchants")
+			{
+				p2p.GET("", p2pMerchantHandler.GetMerchants)
+				p2p.POST("", p2pMerchantHandler.CreateMerchant)
+				p2p.GET("/:id", p2pMerchantHandler.GetMerchantByID)
+				p2p.PUT("/:id", p2pMerchantHandler.UpdateMerchant)
+				p2p.POST("/:id/approve", p2pMerchantHandler.ApproveMerchant)
+				p2p.POST("/:id/reject", p2pMerchantHandler.RejectMerchant)
+				p2p.GET("/:id/transactions", p2pMerchantHandler.GetTransactions)
+			}
+
+			// Audit logs
+			protected.GET("/audit-logs", superAdminHandler.GetAuditLogs)
 		}
 	}
 
+	// --- HTTP server with timeouts ---
 	srv := &http.Server{
 		Addr:           ":" + cfg.ServerPort,
 		Handler:        router,
-		ReadTimeout:    cfg.ServerReadTimeout,
-		WriteTimeout:   cfg.ServerWriteTimeout,
-		IdleTimeout:    cfg.ServerIdleTimeout,
+		ReadTimeout:    30 * time.Second,
+		WriteTimeout:   30 * time.Second,
+		IdleTimeout:    120 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
 
@@ -219,135 +504,45 @@ func main() {
 	<-quit
 
 	log.Println("Shutting down server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatal("Server forced to shutdown:", err)
+		log.Fatalf("Server forced to shutdown: %v", err)
 	}
-
 	log.Println("Server exited properly")
 }
 
-func handleLogin(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "login handler"}) }
-func handleRegister(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "register handler"}) }
-func handleRefreshToken(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "refresh handler"}) }
-func handleLogout(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "logout handler"}) }
-func handleChangePassword(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "password changed"}) }
-func handleEnable2FA(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "2FA enabled"}) }
-func handleDisable2FA(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "2FA disabled"}) }
-func handleGetUsers(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"users": []}) }
-func handleGetUser(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"user": map[string]interface{}{}}) }
-func handleUpdateUserStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "status updated"}) }
-func handleBanUser(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "user banned"}) }
-func handleUnbanUser(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "user unbanned"}) }
-func handleSuspendUser(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "user suspended"}) }
-func handleGetKYC(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"kyc_requests": []}) }
-func handleApproveKYC(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "KYC approved"}) }
-func handleRejectKYC(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "KYC rejected"}) }
-func handleGetTransactions(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"transactions": []}) }
-func handleGetTransaction(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"transaction": map[string]interface{}{}}) }
-func handleFlagTransaction(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "transaction flagged"}) }
-func handleUnflagTransaction(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "transaction unflagged"}) }
-func handleGetWithdrawals(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"withdrawals": []}) }
-func handleApproveWithdrawal(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "withdrawal approved"}) }
-func handleRejectWithdrawal(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "withdrawal rejected"}) }
-func handleProcessWithdrawal(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "withdrawal processed"}) }
-func handleGetTokens(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"tokens": []}) }
-func handleCreateToken(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "token created"}) }
-func handleUpdateToken(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "token updated"}) }
-func handleDeleteToken(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "token deleted"}) }
-func handleGetPairs(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"pairs": []}) }
-func handleCreatePair(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "pair created"}) }
-func handleUpdatePairStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "pair status updated"}) }
-func handleGetBlockchains(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"blockchains": []}) }
-func handleCreateBlockchain(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "blockchain created"}) }
-func handleUpdateBlockchain(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "blockchain updated"}) }
-func handleSetBlockchainStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "status updated"}) }
-func handleGetFees(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"fees": []}) }
-func handleCreateFee(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "fee created"}) }
-func handleUpdateFee(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "fee updated"}) }
-func handleGetWebhooks(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"webhooks": []}) }
-func handleCreateWebhook(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "webhook created"}) }
-func handleTestWebhook(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "webhook test sent"}) }
-func handleDeleteWebhook(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "webhook deleted"}) }
-func handleGetNotifications(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"notifications": []}) }
-func handleMarkNotificationRead(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "notification marked as read"}) }
-func handleSendNotification(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "notification sent"}) }
-func handleBroadcastNotification(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "notification broadcasted"}) }
-func handleGetAuditLogs(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"audit_logs": []}) }
-func handleExportAuditLogs(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"file_path": "/exports/audit_logs.csv"}) }
-func handleGetSessions(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"sessions": []}) }
-func handleRevokeSession(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "session revoked"}) }
-func handleRevokeAllSessions(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "all sessions revoked"}) }
-func handleGetFeatureFlags(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"feature_flags": []}) }
-func handleCreateFeatureFlag(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "feature flag created"}) }
-func handleUpdateFeatureFlag(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "feature flag updated"}) }
-func handleDeleteFeatureFlag(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "feature flag deleted"}) }
-func handleGetIPWhitelist(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ip_whitelist": []}) }
-func handleAddIPWhitelist(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "IP added to whitelist"}) }
-func handleRemoveIPWhitelist(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "IP removed from whitelist"}) }
-func handleGetTickets(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"tickets": []}) }
-func handleGetTicket(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ticket": map[string]interface{}{}, "messages": []}) }
-func handleCreateTicket(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "ticket created"}) }
-func handleUpdateTicketStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ticket status updated"}) }
-func handleAddTicketMessage(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "message added"}) }
-func handleAssignTicket(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ticket assigned"}) }
-func handleGetWhiteLabels(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"white_labels": []}) }
-func handleCreateWhiteLabel(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "white label created"}) }
-func handleUpdateWhiteLabel(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "white label updated"}) }
-func handleDeleteWhiteLabel(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "white label deleted"}) }
-func handleGetStats(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"stats": map[string]interface{}{"total_users": 0, "active_users": 0}}) }
-func handleGetAdmins(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"admins": []}) }
-func handleGetAdmin(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"admin": map[string]interface{}{}}) }
-func handleUpdateAdmin(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "admin updated"}) }
-func handleDeleteAdmin(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "admin deleted"}) }
-func handleSuspendAdmin(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "admin suspended"}) }
-func handleActivateAdmin(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "admin activated"}) }
-func handleGetWorkflows(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"workflows": []}) }
-func handleCreateWorkflow(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "workflow created"}) }
-func handleUpdateWorkflow(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "workflow updated"}) }
-func handleDeleteWorkflow(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "workflow deleted"}) }
-func handleGetApprovalRequests(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"approval_requests": []}) }
-func handleApproveRequest(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "request approved"}) }
-func handleRejectRequest(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "request rejected"}) }
-func handleGetBackups(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"backups": []}) }
-func handleCreateBackup(c *gin.Context) { c.JSON(http.StatusAccepted, gin.H{"message": "backup started"}) }
-func handleRestoreBackup(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "restore started"}) }
-func handleDeleteBackup(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "backup deleted"}) }
+// createDefaultAdmin creates a default super admin account on first run.
+// The password is hashed with bcrypt + pepper; the plaintext is never stored.
+func createDefaultAdmin(db *database.PostgresDB, cfg *config.Config, authSvc *auth.AuthService) {
+	var count int64
+	db.Model(&models.Admin{}).Count(&count)
+	if count > 0 {
+		return
+	}
 
-// Knowledge base handlers
-func handleGetKnowledgeArticles(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"articles": []}) }
-func handleGetKnowledgeArticle(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"article": map[string]interface{}{}}) }
-func handleCreateKnowledgeArticle(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "article created"}) }
-func handleUpdateKnowledgeArticle(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "article updated"}) }
-func handleDeleteKnowledgeArticle(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "article deleted"}) }
+	hashedPassword := cfg.DefaultAdminPassword + cfg.PasswordPepper
+	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(hashedPassword), bcrypt.DefaultCost)
+	if err != nil {
+		log.Printf("Warning: Failed to hash default admin password: %v", err)
+		return
+	}
 
-// Archival handlers
-func handleGetArchivePolicies(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"policies": []}) }
-func handleCreateArchivePolicy(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "policy created"}) }
-func handleUpdateArchivePolicy(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "policy updated"}) }
-func handleDeleteArchivePolicy(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "policy deleted"}) }
-func handleRunArchive(c *gin.Context) { c.JSON(http.StatusAccepted, gin.H{"message": "archive started"}) }
-func handleGetArchiveRecords(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"records": []}) }
+	admin := models.Admin{
+		Username:      "admin",
+		Email:         cfg.DefaultAdminEmail,
+		PasswordHash:  string(hashedBytes),
+		FirstName:     "Super",
+		LastName:      "Admin",
+		Role:          "super_admin",
+		Status:        "active",
+		EmailVerified: true,
+	}
 
-// Report handlers
-func handleGetReportConfigs(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"configs": []}) }
-func handleCreateReportConfig(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "report config created"}) }
-func handleGetReports(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"reports": []}) }
-func handleGenerateReport(c *gin.Context) { c.JSON(http.StatusAccepted, gin.H{"message": "report generation started"}) }
-
-// SLA handlers
-func handleGetSLAPolicies(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"policies": []}) }
-func handleCreateSLAPolicy(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "SLA policy created"}) }
-func handleUpdateSLAPolicy(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "SLA policy updated"}) }
-func handleDeleteSLAPolicy(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "SLA policy deleted"}) }
-func handleGetSLAReports(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"reports": []}) }
-func handleGenerateSLAReport(c *gin.Context) { c.JSON(http.StatusAccepted, gin.H{"message": "SLA report generation started"}) }
-
-// Integration handlers
-func handleGetIntegrations(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"integrations": []}) }
-func handleCreateIntegration(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"message": "integration created"}) }
-func handleUpdateIntegration(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "integration updated"}) }
-func handleDeleteIntegration(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "integration deleted"}) }
-func handleTestIntegration(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"success": true, "message": "integration test successful"}) }
+	if err := db.Create(&admin).Error; err != nil {
+		log.Printf("Warning: Failed to create default admin: %v", err)
+		return
+	}
+	log.Println("Created default super admin")
+}

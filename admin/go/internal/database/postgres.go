@@ -21,8 +21,8 @@ func Initialize(cfg *config.Config) error {
 		return fmt.Errorf("failed to parse database config: %w", err)
 	}
 
-	poolConfig.MaxConns = cfg.DatabaseMaxConns
-	poolConfig.MinConns = cfg.DatabaseMinConns
+	poolConfig.MaxConns = int32(cfg.DatabaseMaxConns)
+	poolConfig.MinConns = int32(cfg.DatabaseMinConns)
 
 	Pool, err = pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {

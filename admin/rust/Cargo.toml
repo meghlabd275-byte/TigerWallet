@@ -1,43 +1,61 @@
 [package]
-name = "tiger-admin"
+name = "tiger-admin-rust"
 version = "1.0.0"
 edition = "2021"
-description = "TigerWallet Admin - High Performance Rust Backend"
-authors = ["TigerWallet Team"]
-license = "MIT"
+description = "TigerWallet Admin Rust Backend - High Performance"
 
 [dependencies]
-axum = "0.7.4"
-tower = "0.4.13"
-tower-http = { version = "0.5.1", features = ["cors", "trace"] }
-tokio = { version = "1.35.1", features = ["full"] }
-sqlx = { version = "0.8.0", features = ["runtime-tokio-native-tls", "postgres", "uuid", "chrono", "json"] }
-redis = { version = "0.26.0", features = ["tokio-comp", "connection-manager"] }
-serde = { version = "1.0.195", features = ["derive"] }
-serde_json = "1.0.111"
-jsonwebtoken = "9.3.0"
-bcrypt = "0.15.1"
-uuid = { version = "1.7.0", features = ["v4", "serde"] }
-chrono = { version = "0.4.33", features = ["serde"] }
-thiserror = "1.0.56"
-anyhow = "1.0.79"
-async-trait = "0.1.77"
-tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-tokio-tungstenite = "0.21.0"
-futures-util = "0.3.30"
-reqwest = { version = "0.11.23", features = ["json"] }
+# Web server
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace", "add-extension"] }
+
+# Database
+sqlx = { version = "0.7", features = ["runtime-tokio-native-tls", "postgres", "redis", "uuid", "chrono", "json"] }
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+
+# Authentication
+jsonwebtoken = "9"
+bcrypt = "0.15"
+argon2 = "0.5"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+
+# Async
+futures = "0.3"
+
+# Validation
+validator = { version = "0.16", features = ["derive"] }
+
+# Timeouts
+timeout = "0.3"
+
+[dev-dependencies]
+tokio-test = "0.4"
 
 [lib]
 name = "tiger_admin"
 path = "src/lib.rs"
 
 [[bin]]
-name = "tiger-admin-server"
+name = "tiger-admin"
 path = "src/main.rs"
 
 [profile.release]
 opt-level = 3
 lto = true
 codegen-units = 1
-strip = true

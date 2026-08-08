@@ -193,7 +193,7 @@ func (s *SLAService) CheckSLACompliance(ctx context.Context, ticketID uuid.UUID)
 	if ticket.FirstResponseAt != nil {
 		responseTime := ticket.FirstResponseAt.Sub(ticket.CreatedAt).Seconds()
 		if responseTime > float64(policy.ResponseTimeSLA) {
-			return false, "Response time SLA breached"
+			return false, "Response time SLA breached", nil
 		}
 	}
 
@@ -201,7 +201,7 @@ func (s *SLAService) CheckSLACompliance(ctx context.Context, ticketID uuid.UUID)
 	if ticket.ResolvedAt != nil {
 		resolutionTime := ticket.ResolvedAt.Sub(ticket.CreatedAt).Seconds()
 		if resolutionTime > float64(policy.ResolutionTimeSLA) {
-			return false, "Resolution time SLA breached"
+			return false, "Resolution time SLA breached", nil
 		}
 	}
 

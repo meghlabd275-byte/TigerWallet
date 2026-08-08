@@ -1,27 +1,20 @@
-// Middleware - Authentication and authorization middleware
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/tigerwallet/admin/pkg/auth"
+
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
-	"github.com/tigerwallet/admin/internal/config"
 )
 
-type Claims struct {
-	AdminID  uuid.UUID `json:"admin_id"`
-	Username string    `json:"username"`
-	Email    string    `json:"email"`
-	Role     string    `json:"role"`
-	jwt.RegisteredClaims
-}
-
-func JWTAuth(cfg *config.Config) gin.HandlerFunc {
+// AuthMiddleware creates authentication middleware
+func AuthMiddleware(authSvc *auth.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Get token from header
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
@@ -29,40 +22,29 @@ func JWTAuth(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization header format"})
-			c.Abort()
-			return
-		}
-
-		tokenString := parts[1]
-		claims := &Claims{}
-
-		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-			return []byte(cfg.JWTSecret), nil
-		})
-
-		if err != nil || !token.Valid {
+		// Verify token
+		claims, err := authSvc.VerifyToken(authHeader)
+		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
 			c.Abort()
 			return
 		}
 
-		c.Set("admin_id", claims.AdminID)
-		c.Set("username", claims.Username)
-		c.Set("email", claims.Email)
-		c.Set("role", claims.Role)
+		// Set admin info in context
+		c.Set("admin_id", uint(claims["admin_id"].(float64)))
+		c.Set("admin_email", claims["email"])
+		c.Set("admin_role", claims["role"])
 
 		c.Next()
 	}
 }
 
-func RoleAuth(allowedRoles ...string) gin.HandlerFunc {
+// RoleMiddleware creates role-based authorization middleware
+func RoleMiddleware(allowedRoles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		role, exists := c.Get("role")
+		role, exists := c.Get("admin_role")
 		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Role not found in token"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			c.Abort()
 			return
 		}
@@ -80,77 +62,168 @@ func RoleAuth(allowedRoles ...string) gin.HandlerFunc {
 	}
 }
 
-func RateLimiter(cfg *config.Config) gin.HandlerFunc {
-	type clientInfo struct {
-		requests int
-		resetAt  time.Time
-	}
-	clients := make(map[string]*clientInfo)
+// SuperAdminMiddleware creates super admin only middleware
+func SuperAdminMiddleware() gin.HandlerFunc {
+	return RoleMiddleware("super_admin")
+}
 
+// AdminMiddleware creates admin or higher middleware
+func AdminMiddleware() gin.HandlerFunc {
+	return RoleMiddleware("super_admin", "admin")
+}
+
+// PermissionMiddleware creates permission checking middleware
+func PermissionMiddleware(requiredPermission string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ip := c.ClientIP()
-		now := time.Now()
-
-		client, exists := clients[ip]
+		// Get admin role from context
+		role, exists := c.Get("admin_role")
 		if !exists {
-			clients[ip] = &clientInfo{requests: 1, resetAt: now.Add(cfg.RateLimitWindow)}
-			c.Next()
-			return
-		}
-
-		if now.After(client.resetAt) {
-			client.requests = 1
-			client.resetAt = now.Add(cfg.RateLimitWindow)
-			c.Next()
-			return
-		}
-
-		if client.requests >= cfg.RateLimitRequests {
-			c.JSON(http.StatusTooManyRequests, gin.H{"error": "Rate limit exceeded"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			c.Abort()
 			return
 		}
 
-		client.requests++
-		c.Next()
-	}
-}
+		roleStr := role.(string)
 
-func IPWhitelistMiddleware(cfg *config.Config) gin.HandlerFunc {
-	allowedIPs := make(map[string]bool)
-	for _, ip := range cfg.AllowedIPs {
-		allowedIPs[ip] = true
-	}
-
-	return func(c *gin.Context) {
-		if !cfg.EnableIPWhitelist {
+		// Super admin has all permissions
+		if roleStr == "super_admin" {
 			c.Next()
 			return
 		}
 
-		clientIP := c.ClientIP()
-		if allowedIPs[clientIP] {
-			c.Next()
+		// Check role-based permissions
+		rolePermissions := map[string][]string{
+			"admin": {
+				"users.read", "users.write",
+				"transactions.read",
+				"kyc.read", "kyc.write",
+				"wallets.read",
+				"analytics.read",
+			},
+			"support": {
+				"users.read",
+				"transactions.read",
+				"kyc.read",
+			},
+			"analyst": {
+				"users.read",
+				"transactions.read",
+				"analytics.read",
+			},
+			"moderator": {
+				"users.read", "users.write",
+				"transactions.read",
+				"kyc.read", "kyc.write",
+			},
+		}
+
+		permissions, ok := rolePermissions[roleStr]
+		if !ok {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
+			c.Abort()
 			return
 		}
 
-		c.JSON(http.StatusForbidden, gin.H{"error": "IP address not allowed"})
+		for _, perm := range permissions {
+			if perm == requiredPermission {
+				c.Next()
+				return
+			}
+		}
+
+		c.JSON(http.StatusForbidden, gin.H{"error": "Permission denied"})
 		c.Abort()
 	}
 }
 
-func GetAdminID(c *gin.Context) (uuid.UUID, bool) {
-	adminID, exists := c.Get("admin_id")
-	if !exists {
-		return uuid.Nil, false
-	}
-	return adminID.(uuid.UUID), true
+// RateLimitMiddleware creates rate limiting middleware
+type RateLimiter struct {
+	requests map[string]int
+	limits   map[string]int
 }
 
-func GetAdminRole(c *gin.Context) (string, bool) {
-	role, exists := c.Get("role")
-	if !exists {
-		return "", false
+func NewRateLimiter() *RateLimiter {
+	return &RateLimiter{
+		requests: make(map[string]int),
+		limits:   make(map[string]int),
 	}
-	return role.(string), true
+}
+
+func (rl *RateLimiter) Middleware(requestsPerMinute int) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Get client IP
+		clientIP := c.ClientIP()
+		key := "rate_limit:" + clientIP
+
+		// In production, use Redis for distributed rate limiting
+		// For now, use in-memory
+		rl.requests[key]++
+
+		if rl.requests[key] > requestsPerMinute {
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"error": "Rate limit exceeded",
+			})
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// CORSMiddleware creates CORS middleware
+func CORSMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// SecurityHeadersMiddleware adds security headers
+func SecurityHeadersMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("X-XSS-Protection", "1; mode=block")
+		c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		c.Header("Content-Security-Policy", "default-src 'self'")
+
+		c.Next()
+	}
+}
+
+// RequestIDMiddleware adds request ID to context
+func RequestIDMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		requestID := c.GetHeader("X-Request-ID")
+		if requestID == "" {
+			requestID = generateRequestID()
+		}
+		c.Set("request_id", requestID)
+		c.Header("X-Request-ID", requestID)
+
+		c.Next()
+	}
+}
+
+func generateRequestID() string {
+	// Simple request ID generation
+	return strings.ReplaceAll(
+		strings.ReplaceAll(
+			strings.ReplaceAll(
+				strings.ReplaceAll(
+					"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx",
+					"x", fmt.Sprintf("%x", time.Now().UnixNano()%16)),
+				"y", fmt.Sprintf("%x", (time.Now().UnixNano()%4)+8)),
+			"-", ""),
+		"_", "-")
 }

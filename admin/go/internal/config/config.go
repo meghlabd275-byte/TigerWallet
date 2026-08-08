@@ -1,4 +1,3 @@
-// Config - Application configuration for Admin Backend
 package config
 
 import (
@@ -7,108 +6,138 @@ import (
 	"time"
 )
 
+// Config holds all configuration for the admin backend
 type Config struct {
-	ServerPort          string
-	ServerReadTimeout   time.Duration
-	ServerWriteTimeout  time.Duration
-	ServerIdleTimeout   time.Duration
-	DatabaseURL         string
-	DatabaseMaxConns    int32
-	DatabaseMinConns    int32
-	RedisAddr           string
-	RedisPassword       string
-	RedisDB             int
-	JWTSecret           string
-	JWTExpiry           time.Duration
-	JWTRefreshExpiry    time.Duration
-	BCryptCost          int
-	EnableIPWhitelist   bool
-	AllowedIPs          []string
-	RateLimitRequests   int
-	RateLimitWindow     time.Duration
-	TwoFactorIssuer     string
-	BackupEnabled       bool
-	BackupPath          string
-	BackupInterval      time.Duration
-	BackupRetentionDays int
-	PagerDutyAPIKey     string
-	DatadogAPIKey       string
-	DatadogAppKey       string
-	DatadogSite         string
-	CloudflareAPIKey    string
-	CloudflareEmail     string
-	CloudflareZoneID    string
-	LogLevel            string
+	// Server
+	ServerPort string
+	ServerHost string
+
+	// Database
+	DBHost           string
+	DBPort           int
+	DBUser           string
+	DBPassword       string
+	DBName           string
+	DatabaseURL      string
+	DatabaseMaxConns int
+	DatabaseMinConns int
+	DBMaxOpenConns   int
+	DBMaxIdleConns   int
+	DBMaxLifetime    time.Duration
+
+	// Redis
+	RedisHost     string
+	RedisPort     int
+	RedisPassword string
+	RedisDB       int
+	RedisPoolSize int
+
+	// JWT
+	JWTSecret          string
+	JWTExpirationHours int
+	RefreshTokenExpiry int
+
+	// Security
+	EncryptionKey    string
+	PasswordPepper   string
+	MaxLoginAttempts int
+	LockoutDuration  time.Duration
+
+	// Rate Limiting
+	RateLimitRequests int
+	RateLimitWindow   time.Duration
+
+	// Logging
+	LogLevel  string
+	LogOutput string
+
+	// External Services
+	ExternalAPITimeout time.Duration
+
+	// Admin Settings
+	DefaultAdminEmail    string
+	DefaultAdminPassword string
+
+	// System Settings
+	SiteName               string
+	MaintenanceMode        bool
+	RegistrationEnabled    bool
+	PasswordMinLength      int
+	PasswordRequireNumber  bool
+	PasswordRequireSpecial bool
 }
 
+// Load loads configuration from environment variables
 func Load() *Config {
 	return &Config{
-		ServerPort:          getEnv("SERVER_PORT", "8082"),
-		ServerReadTimeout:   getDurationEnv("SERVER_READ_TIMEOUT", 30*time.Second),
-		ServerWriteTimeout:  getDurationEnv("SERVER_WRITE_TIMEOUT", 30*time.Second),
-		ServerIdleTimeout:   getDurationEnv("SERVER_IDLE_TIMEOUT", 120*time.Second),
-		DatabaseURL:         getEnv("DATABASE_URL", "postgres://tigerwallet:password@localhost:5432/admin?sslmode=disable"),
-		DatabaseMaxConns:    int32(getIntEnv("DATABASE_MAX_CONNS", 25)),
-		DatabaseMinConns:    int32(getIntEnv("DATABASE_MIN_CONNS", 5)),
-		RedisAddr:           getEnv("REDIS_ADDR", "localhost:6379"),
-		RedisPassword:       getEnv("REDIS_PASSWORD", ""),
-		RedisDB:             getIntEnv("REDIS_DB", 0),
-		JWTSecret:           getEnv("JWT_SECRET", "tigerwallet-admin-secret-key"),
-		JWTExpiry:           getDurationEnv("JWT_EXPIRY", 24*time.Hour),
-		JWTRefreshExpiry:    getDurationEnv("JWT_REFRESH_EXPIRY", 7*24*time.Hour),
-		BCryptCost:          getIntEnv("BCRYPT_COST", 14),
-		EnableIPWhitelist:   getBoolEnv("ENABLE_IP_WHITELIST", false),
-		AllowedIPs:          getEnvSlice("ALLOWED_IPS"),
-		RateLimitRequests:   getIntEnv("RATE_LIMIT_REQUESTS", 100),
-		RateLimitWindow:     getDurationEnv("RATE_LIMIT_WINDOW", time.Minute),
-		TwoFactorIssuer:     getEnv("TWO_FACTOR_ISSUER", "TigerWallet"),
-		BackupEnabled:       getBoolEnv("BACKUP_ENABLED", true),
-		BackupPath:          getEnv("BACKUP_PATH", "/var/backups/tigerwallet"),
-		BackupInterval:      getDurationEnv("BACKUP_INTERVAL", 24*time.Hour),
-		BackupRetentionDays: getIntEnv("BACKUP_RETENTION_DAYS", 30),
-		PagerDutyAPIKey:     getEnv("PAGERDUTY_API_KEY", ""),
-		DatadogAPIKey:       getEnv("DATADOG_API_KEY", ""),
-		DatadogAppKey:       getEnv("DATADOG_APP_KEY", ""),
-		DatadogSite:         getEnv("DATADOG_SITE", "datadoghq.com"),
-		CloudflareAPIKey:    getEnv("CLOUDFLARE_API_KEY", ""),
-		CloudflareEmail:     getEnv("CLOUDFLARE_EMAIL", ""),
-		CloudflareZoneID:    getEnv("CLOUDFLARE_ZONE_ID", ""),
-		LogLevel:            getEnv("LOG_LEVEL", "info"),
+		// Server
+		ServerPort: getEnv("ADMIN_PORT", "9093"),
+		ServerHost: getEnv("ADMIN_HOST", "0.0.0.0"),
+
+		// Database - PostgreSQL
+		DBHost:           getEnv("DB_HOST", "localhost"),
+		DBPort:           getEnvAsInt("DB_PORT", 5432),
+		DBUser:           getEnv("DB_USER", "tigerwallet"),
+		DBPassword:       getEnv("DB_PASSWORD", ""),
+		DBName:           getEnv("DB_NAME", "tigerwallet_admin"),
+		DatabaseURL:      getEnv("DATABASE_URL", "postgres://tigerwallet@localhost:5432/tigerwallet_admin?sslmode=disable"),
+		DatabaseMaxConns: getEnvAsInt("DB_MAX_CONNS", 25),
+		DatabaseMinConns: getEnvAsInt("DB_MIN_CONNS", 5),
+		DBMaxOpenConns:   getEnvAsInt("DB_MAX_OPEN_CONNS", 25),
+		DBMaxIdleConns:   getEnvAsInt("DB_MAX_IDLE_CONNS", 10),
+		DBMaxLifetime:    time.Duration(getEnvAsInt("DB_MAX_LIFETIME_MINUTES", 5)) * time.Minute,
+
+		// Redis
+		RedisHost:     getEnv("REDIS_HOST", "localhost"),
+		RedisPort:     getEnvAsInt("REDIS_PORT", 6379),
+		RedisPassword: getEnv("REDIS_PASSWORD", ""),
+		RedisDB:       getEnvAsInt("REDIS_DB", 0),
+		RedisPoolSize: getEnvAsInt("REDIS_POOL_SIZE", 10),
+
+		// JWT
+		JWTSecret:          getEnv("JWT_SECRET", ""),
+		JWTExpirationHours: getEnvAsInt("JWT_EXPIRATION_HOURS", 24),
+		RefreshTokenExpiry: getEnvAsInt("REFRESH_TOKEN_EXPIRY_DAYS", 30),
+
+		// Security
+		EncryptionKey:    getEnv("ENCRYPTION_KEY", ""),
+		PasswordPepper:   getEnv("PASSWORD_PEPPER", ""),
+		MaxLoginAttempts: getEnvAsInt("MAX_LOGIN_ATTEMPTS", 5),
+		LockoutDuration:  time.Duration(getEnvAsInt("LOCKOUT_DURATION_MINUTES", 15)) * time.Minute,
+
+		// Rate Limiting
+		RateLimitRequests: getEnvAsInt("RATE_LIMIT_REQUESTS", 100),
+		RateLimitWindow:   time.Duration(getEnvAsInt("RATE_LIMIT_WINDOW_SECONDS", 60)) * time.Second,
+
+		// Logging
+		LogLevel:  getEnv("LOG_LEVEL", "info"),
+		LogOutput: getEnv("LOG_OUTPUT", "stdout"),
+
+		// External Services
+		ExternalAPITimeout: time.Duration(getEnvAsInt("EXTERNAL_API_TIMEOUT_SECONDS", 30)) * time.Second,
+
+		// Admin Settings
+		DefaultAdminEmail:    getEnv("DEFAULT_ADMIN_EMAIL", "admin@tigerwallet.com"),
+		DefaultAdminPassword: getEnv("DEFAULT_ADMIN_PASSWORD", "ChangeMe123!"),
 	}
 }
 
 func getEnv(key, defaultValue string) string {
-	if value, exists := os.LookupEnv(key); exists {
+	if value := os.Getenv(key); value != "" {
 		return value
 	}
 	return defaultValue
 }
 
-func getIntEnv(key string, defaultValue int) int {
-	if value, exists := os.LookupEnv(key); exists {
-		if intVal, err := strconv.Atoi(value); err == nil {
-			return intVal
-		}
+func getEnvAsInt(key string, defaultValue int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
 	}
-	return defaultValue
-}
 
-func getBoolEnv(key string, defaultValue bool) bool {
-	if value, exists := os.LookupEnv(key); exists {
-		return value == "true" || value == "1"
+	intVal, err := strconv.Atoi(value)
+	if err != nil {
+		return defaultValue
 	}
-	return defaultValue
-}
-
-func getDurationEnv(key string, defaultValue time.Duration) time.Duration {
-	if value, exists := os.LookupEnv(key); exists {
-		if duration, err := time.ParseDuration(value); err == nil {
-			return duration
-		}
-	}
-	return defaultValue
-}
-
-func getEnvSlice(key string) []string {
-	return []string{}
+	return intVal
 }
