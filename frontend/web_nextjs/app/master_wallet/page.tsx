@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { generateMnemonic, validateMnemonic } from '@scure/bip39';
+import { wordlist } from '@scure/bip39/wordlists/english.js';
 
 // ============================================================================
 // Types
@@ -179,6 +181,118 @@ const generateBackupCode = (): string => {
 };
 
 // ============================================================================
+// Secure storage helpers
+// ----------------------------------------------------------------------------
+// The master wallet mnemonic must never be persisted in plaintext. We encrypt
+// it with AES-GCM using a key derived from a user password via PBKDF2
+// (600k iterations, SHA-256), then store only the ciphertext + salt + iv in
+// localStorage. The mnemonic is held in memory (React state) for the active
+// session and re-decrypted only when the user supplies the password.
+//
+// NOTE: Production should NOT rely on this. Store the mnemonic in a hardware
+// wallet / secure enclave / server-side HSM-backed KMS. This local encryption
+// only reduces (does not eliminate) the risk of leaking the seed via a
+// compromised browser extension or XSS.
+// ============================================================================
+
+const WALLET_STORAGE_KEY = 'masterWallet';
+const PBKDF2_ITERATIONS = 600_000;
+const SALT_BYTES = 16;
+const IV_BYTES = 12;
+
+interface EncryptedBlob {
+  v: 1;
+  salt: string; // base64
+  iv: string;   // base64
+  ciphertext: string; // base64
+}
+
+const toBase64 = (bytes: Uint8Array): string =>
+  btoa(String.fromCharCode(...bytes));
+
+const fromBase64 = (b64: string): Uint8Array =>
+  Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+
+async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
+  const baseKey = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(password),
+    { name: 'PBKDF2' },
+    false,
+    ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+// Encrypt the wallet payload and persist it. The plaintext mnemonic is NOT
+// stored; only the encrypted blob is written to localStorage.
+async function encryptAndStoreWallet(wallet: MasterWallet, password: string): Promise<void> {
+  const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
+  const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
+  const key = await deriveKey(password, salt);
+
+  const plaintext = new TextEncoder().encode(JSON.stringify(wallet));
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext)
+  );
+
+  const blob: EncryptedBlob = {
+    v: 1,
+    salt: toBase64(salt),
+    iv: toBase64(iv),
+    ciphertext: toBase64(ciphertext),
+  };
+  localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(blob));
+}
+
+async function decryptStoredWallet(password: string): Promise<MasterWallet | null> {
+  const raw = localStorage.getItem(WALLET_STORAGE_KEY);
+  if (!raw) return null;
+
+  let blob: EncryptedBlob;
+  try {
+    blob = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!blob || blob.v !== 1 || !blob.salt || !blob.iv || !blob.ciphertext) return null;
+
+  const salt = fromBase64(blob.salt);
+  const iv = fromBase64(blob.iv);
+  const ciphertext = fromBase64(blob.ciphertext);
+  const key = await deriveKey(password, salt);
+
+  try {
+    const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+    return JSON.parse(new TextDecoder().decode(plaintext)) as MasterWallet;
+  } catch {
+    // Wrong password or tampered ciphertext.
+    return null;
+  }
+}
+
+function hasStoredWallet(): boolean {
+  const raw = localStorage.getItem(WALLET_STORAGE_KEY);
+  if (!raw) return false;
+  try {
+    return JSON.parse(raw)?.v === 1;
+  } catch {
+    return false;
+  }
+}
+
+// Generate a valid 24-word BIP-39 mnemonic (256 bits of entropy + 8-bit
+// SHA-256 checksum). This replaces the previous invalid approach of picking
+// 24 words from only the first 24 BIP-39 words.
+const generateSeedPhrase = (): string => generateMnemonic(wordlist, 256);
+
+// ============================================================================
 // Component
 // ============================================================================
 
@@ -191,6 +305,13 @@ export default function MasterWalletPage() {
   const [showBackupCode, setShowBackupCode] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [hasExistingWallet, setHasExistingWallet] = useState(false);
+  // Password used to encrypt/decrypt the wallet blob in localStorage. Required
+  // to create or unlock a wallet; the mnemonic is only held in memory after
+  // a successful unlock.
+  const [walletPassword, setWalletPassword] = useState('');
+  // Seed phrase typed into the import textarea (submitted explicitly rather
+  // than auto-importing once 24 words are detected).
+  const [importSeedPhrase, setImportSeedPhrase] = useState('');
   
   // Tab State
   const [activeTab, setActiveTab] = useState<'dashboard' | 'fees' | 'blockchains' | 'tokens' | 'users' | 'transactions' | 'settings'>('dashboard');
@@ -232,11 +353,11 @@ export default function MasterWalletPage() {
     monthlyRevenue: 457500,
   });
 
-  // Check for existing master wallet
+  // Check for existing master wallet. We only detect whether an encrypted
+  // wallet blob exists; it is not decrypted here. The user must supply their
+  // password to unlock it (see unlockWallet).
   useEffect(() => {
-    const stored = localStorage.getItem('masterWallet');
-    if (stored) {
-      setMasterWallet(JSON.parse(stored));
+    if (hasStoredWallet()) {
       setHasExistingWallet(true);
     }
     
@@ -257,60 +378,92 @@ export default function MasterWalletPage() {
 
   // Create Master Wallet
   const createMasterWallet = useCallback(async () => {
+    if (!walletPassword || walletPassword.length < 8) {
+      alert('Please set an encryption password (min 8 characters) to protect your wallet.');
+      return;
+    }
     setIsCreating(true);
-    
-    // Generate 24-word seed phrase (simplified)
-    const wordList = ['abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract', 'absurd', 'abuse', 'access', 'accident', 'account', 'accuse', 'achieve', 'acid', 'acoustic', 'acquire', 'across', 'act', 'action', 'actor', 'actress', 'actual'];
-    const seedPhrase = Array(24).fill(0).map(() => wordList[Math.floor(Math.random() * wordList.length)]).join(' ');
-    
-    // Generate addresses for all blockchains
-    const addresses: { [key: string]: string } = {};
-    BLOCKCHAINS.forEach((chain, index) => {
-      addresses[chain.name] = generateAddressFromSeed(seedPhrase, index);
-    });
-    
-    const backupCode = generateBackupCode();
-    
-    const newWallet: MasterWallet = {
-      address: addresses['Ethereum'],
-      seedPhrase,
-      backupCode,
-      balance: 0,
-      totalRevenue: 457500,
-    };
-    
-    localStorage.setItem('masterWallet', JSON.stringify(newWallet));
-    setMasterWallet(newWallet);
-    setHasExistingWallet(true);
-    setIsCreating(false);
-  }, []);
+
+    try {
+      // Generate a valid 24-word BIP-39 mnemonic (256 bits of entropy + checksum).
+      const seedPhrase = generateSeedPhrase();
+
+      // Generate addresses for all blockchains
+      const addresses: { [key: string]: string } = {};
+      BLOCKCHAINS.forEach((chain, index) => {
+        addresses[chain.name] = generateAddressFromSeed(seedPhrase, index);
+      });
+
+      const backupCode = generateBackupCode();
+
+      const newWallet: MasterWallet = {
+        address: addresses['Ethereum'],
+        seedPhrase,
+        backupCode,
+        balance: 0,
+        totalRevenue: 457500,
+      };
+
+      // Persist only an encrypted blob; the plaintext mnemonic lives in memory.
+      await encryptAndStoreWallet(newWallet, walletPassword);
+      setMasterWallet(newWallet);
+      setHasExistingWallet(true);
+    } catch (err) {
+      console.error('Failed to create wallet', err);
+      alert('Failed to create wallet. Please try again.');
+    } finally {
+      setIsCreating(false);
+    }
+  }, [walletPassword]);
+
+  // Unlock an existing encrypted wallet with the user's password.
+  const unlockWallet = useCallback(async () => {
+    if (!walletPassword) {
+      alert('Please enter your wallet password.');
+      return;
+    }
+    const wallet = await decryptStoredWallet(walletPassword);
+    if (!wallet) {
+      alert('Incorrect password or corrupted wallet data.');
+      return;
+    }
+    setMasterWallet(wallet);
+  }, [walletPassword]);
 
   // Import Master Wallet
   const importMasterWallet = useCallback(async (seedPhrase: string) => {
-    if (seedPhrase.split(' ').length !== 24) {
-      alert('Please enter a valid 24-word seed phrase');
+    if (!walletPassword || walletPassword.length < 8) {
+      alert('Please set an encryption password (min 8 characters) to protect your wallet.');
       return;
     }
-    
+
+    const trimmed = seedPhrase.trim().replace(/\s+/g, ' ');
+    // Validate against the BIP-39 wordlist + checksum (replaces the previous
+    // word-count-only check, which accepted invalid mnemonics).
+    if (!validateMnemonic(trimmed, wordlist)) {
+      alert('Please enter a valid 24-word BIP-39 seed phrase (checksum must match).');
+      return;
+    }
+
     const addresses: { [key: string]: string } = {};
     BLOCKCHAINS.forEach((chain, index) => {
-      addresses[chain.name] = generateAddressFromSeed(seedPhrase, index);
+      addresses[chain.name] = generateAddressFromSeed(trimmed, index);
     });
-    
+
     const backupCode = generateBackupCode();
-    
+
     const wallet: MasterWallet = {
       address: addresses['Ethereum'],
-      seedPhrase,
+      seedPhrase: trimmed,
       backupCode,
       balance: 0,
       totalRevenue: 0,
     };
-    
-    localStorage.setItem('masterWallet', JSON.stringify(wallet));
+
+    await encryptAndStoreWallet(wallet, walletPassword);
     setMasterWallet(wallet);
     setHasExistingWallet(true);
-  }, []);
+  }, [walletPassword]);
 
   // Add Blockchain
   const handleAddBlockchain = useCallback(() => {
@@ -364,7 +517,7 @@ export default function MasterWalletPage() {
     setFees(prev => ({ ...prev, [key]: value }));
   }, []);
 
-  // Render Import/Create Screen
+  // Render Import/Create Screen (no wallet stored yet)
   if (!hasExistingWallet) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-purple-900 flex items-center justify-center p-4">
@@ -377,6 +530,20 @@ export default function MasterWalletPage() {
           
           {!masterWallet ? (
             <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Encryption Password (min 8 chars)</label>
+                <input
+                  type="password"
+                  placeholder="Choose a strong password"
+                  className="w-full p-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700"
+                  value={walletPassword}
+                  onChange={(e) => setWalletPassword(e.target.value)}
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Encrypts your wallet before storing locally. The mnemonic is never saved in plaintext.
+                </p>
+              </div>
+
               <button
                 onClick={createMasterWallet}
                 disabled={isCreating}
@@ -393,15 +560,18 @@ export default function MasterWalletPage() {
               <div>
                 <label className="block text-sm font-medium mb-2">Import with 24-word seed phrase</label>
                 <textarea
-                  placeholder="Enter your 24-word seed phrase..."
+                  placeholder="Enter your 24-word BIP-39 seed phrase..."
                   className="w-full p-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 h-24 resize-none"
-                  onChange={(e) => {
-                    if (e.target.value.split(' ').length === 24) {
-                      importMasterWallet(e.target.value);
-                    }
-                  }}
+                  value={importSeedPhrase}
+                  onChange={(e) => setImportSeedPhrase(e.target.value)}
                 />
-                <p className="text-xs text-slate-500 mt-1">Enter 24 words separated by spaces</p>
+                <p className="text-xs text-slate-500 mt-1">Enter 24 words separated by spaces (checksum is validated)</p>
+                <button
+                  onClick={() => importMasterWallet(importSeedPhrase)}
+                  className="mt-2 w-full py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600"
+                >
+                  Import Wallet
+                </button>
               </div>
             </div>
           ) : (
@@ -412,6 +582,36 @@ export default function MasterWalletPage() {
               </button>
             </div>
           )}
+        </div>
+      </div>
+    );
+  }
+
+  // Render Unlock Screen (encrypted wallet exists, not yet decrypted)
+  if (!masterWallet) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-purple-900 flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl p-8 max-w-md w-full">
+          <div className="text-center mb-8">
+            <div className="text-6xl mb-4">🐯</div>
+            <h1 className="text-2xl font-bold">Unlock Master Wallet</h1>
+            <p className="text-slate-500 mt-2">Enter your password to decrypt your wallet</p>
+          </div>
+          <div className="space-y-4">
+            <input
+              type="password"
+              placeholder="Wallet password"
+              className="w-full p-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700"
+              value={walletPassword}
+              onChange={(e) => setWalletPassword(e.target.value)}
+            />
+            <button
+              onClick={unlockWallet}
+              className="w-full py-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl font-semibold hover:opacity-90 transition-opacity"
+            >
+              Unlock
+            </button>
+          </div>
         </div>
       </div>
     );

@@ -48,3 +48,47 @@
 - A `hardhat.config.ts` also exists at `smart_contracts/evm_contracts/`; the
   repo historically used Hardhat, the Foundry project was added for the
   canonical AA stack.
+
+## dapp_browser/go (WalletConnect service)
+
+- Module: `tigerwallet/dapp_browser` (go.mod created in `dapp_browser/go/`).
+- `walletconnect.go`: `handlePersonalSign` / `handleEthSignTypedData_v4` now do
+  REAL signing via `github.com/ethereum/go-ethereum/crypto` (ECDSA secp256k1).
+  NEVER return a fake all-zero `0x0000...` signature — if no signer key is
+  configured, reject the request with JSON-RPC error `-32000`
+  ("Signing not available: wallet not connected").
+- The signer ECDSA private key is loaded from env `SIGNER_PRIVATE_KEY` (hex,
+  optional) into `WalletConnectService.signer`. Personal_sign prefixes with
+  keccak256("\x19Ethereum Signed Message:\n" + len + msg); typed data uses
+  `apitypes.TypedDataAndHash` (EIP-712).
+- gorilla/websocket is v1.5.3: `Upgrader.CheckOrigin` takes `*http.Request`
+  (NOT `*websocket.HandshakeRequest`), and `SetPongHandler` takes
+  `func(appData string) error` (NOT `func() error`). `net/http` must be
+  imported for the CheckOrigin signature.
+- Build: `cd dapp_browser/go && GOFLAGS=-mod=mod go build ./...` (exit 0).
+
+## frontend/web_nextjs (Next.js app)
+
+- `app/master_wallet/page.tsx` generates a VALID 24-word BIP-39 mnemonic via
+  `@scure/bip39` `generateMnemonic(wordlist, 256)` (256-bit entropy + checksum).
+  Import uses `validateMnemonic` (wordlist + checksum), not just word count.
+  NEVER pick words from only the first 24 BIP-39 words.
+- `@scure/bip39` subpath import MUST include the `.js` extension:
+  `import { wordlist } from '@scure/bip39/wordlists/english.js'` (the package
+  `exports` map keys require it; `moduleResolution: bundler` in tsconfig
+  resolves the types either way, but Node ESM at runtime needs the `.js`).
+- The wallet mnemonic is NOT stored in plaintext localStorage. It is encrypted
+  with AES-GCM (256-bit) using a PBKDF2-derived key (600k iters, SHA-256) from
+  a user password; only the `{v, salt, iv, ciphertext}` blob is persisted
+  (`masterWallet` key). Mnemonic lives in React state (memory) for the session;
+  `unlockWallet` decrypts on demand. NOTE comment: production should use a
+  hardware wallet / secure enclave / HSM-backed KMS.
+- `app/wallet/TigerWallet.tsx` has a PRE-EXISTING syntax error (line ~64:
+  `isEVM: true explorer:` missing comma) unrelated to wallet work; `npx tsc
+  --noEmit` reports it but it is not from these changes.
+
+## Network / package install
+
+- npm registry is reachable in this env (`npm ping` → PONG). `npm install`
+  works (installs the full tree). `@scure/bip39` + `@noble/hashes` +
+  `@scure/base` were added to `frontend/web_nextjs/package.json`.

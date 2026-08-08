@@ -5,17 +5,20 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
@@ -35,6 +38,14 @@ type WCConfig struct {
 	RedisPort   string `json:"redis_port"`
 	ProjectID   string `json:"project_id"`
 	MetadataURL string `json:"metadata_url"`
+
+	// SignerPrivateKey is the hex-encoded (with or without 0x prefix) ECDSA
+	// private key used to produce real signatures for personal_sign and
+	// eth_signTypedData_v4 requests. When empty, signing requests are rejected
+	// with a JSON-RPC error instead of returning a fake signature. In
+	// production this should be sourced from a KMS, HSM, or secure enclave
+	// rather than the environment.
+	SignerPrivateKey string `json:"signer_private_key"`
 }
 
 // WalletConnect v2 Methods
@@ -142,14 +153,19 @@ type Pairing struct {
 
 // WalletConnect Service
 type WalletConnectService struct {
-	db        *gorm.DB
-	redis     *redis.Client
-	config    WCConfig
-	upgrader  websocket.Upgrader
+	db       *gorm.DB
+	redis    *redis.Client
+	config   WCConfig
+	upgrader websocket.Upgrader
 	sessions sync.Map
 	pairings sync.Map
 	pending  sync.Map
 	clients  sync.Map
+
+	// signer holds the ECDSA private key used to produce real signatures for
+	// personal_sign and eth_signTypedData_v4. It is nil when no key is
+	// configured, in which case signing requests are rejected.
+	signer *ecdsa.PrivateKey
 }
 
 // NewWalletConnectService creates new service
@@ -177,13 +193,24 @@ func NewWalletConnectService(cfg WCConfig) (*WalletConnectService, error) {
 		return nil, err
 	}
 
+	// Load the signer private key (optional). Signing requests are rejected
+	// rather than faked when this is absent.
+	var signer *ecdsa.PrivateKey
+	if cfg.SignerPrivateKey != "" {
+		signer, err = crypto.HexToECDSA(trimHexPrefix(cfg.SignerPrivateKey))
+		if err != nil {
+			return nil, fmt.Errorf("invalid signer_private_key: %w", err)
+		}
+	}
+
 	return &WalletConnectService{
-		db:       db,
-		redis:    rdb,
-		config:   cfg,
+		db:     db,
+		redis:  rdb,
+		config: cfg,
 		upgrader: websocket.Upgrader{
-			CheckOrigin: func(r *websocket.HandshakeRequest) bool { return true },
+			CheckOrigin: func(r *http.Request) bool { return true },
 		},
+		signer: signer,
 	}, nil
 }
 
@@ -393,7 +420,7 @@ func (s *WalletConnectService) HandleWebSocket(c *gin.Context) {
 	defer s.clients.Delete(topic)
 
 	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-	conn.SetPongHandler(func() error {
+	conn.SetPongHandler(func(appData string) error {
 		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		return nil
 	})
@@ -479,13 +506,69 @@ func (s *WalletConnectService) handlePersonalSign(topic string, msg *WCMessage) 
 		return
 	}
 
-	signature := "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-	s.SendResponse(topic, msg.ID, signature)
+	// personal_sign params: [message, address]. The message may be a UTF-8
+	// string or a 0x-prefixed hex string.
+	var message string
+	if err := json.Unmarshal(params[0], &message); err != nil {
+		s.SendError(topic, msg.ID, -32602, "invalid message")
+		return
+	}
+
+	data := decodePersonalSignMessage(message)
+	if data == nil {
+		s.SendError(topic, msg.ID, -32602, "invalid message")
+		return
+	}
+
+	sig, err := s.signPersonalMessage(data)
+	if err != nil {
+		s.SendError(topic, msg.ID, -32000, err.Error())
+		return
+	}
+
+	s.SendResponse(topic, msg.ID, sig)
 }
 
 func (s *WalletConnectService) handleEthSignTypedData(topic string, msg *WCMessage) {
-	signature := "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-	s.SendResponse(topic, msg.ID, signature)
+	var params []json.RawMessage
+	if err := json.Unmarshal(mustMarshalJSON(msg.Params), &params); err != nil {
+		s.SendError(topic, msg.ID, -32602, "invalid params")
+		return
+	}
+
+	if len(params) < 2 {
+		s.SendError(topic, msg.ID, -32602, "invalid params")
+		return
+	}
+
+	// eth_signTypedData_v4 params: [address, typedData]
+	var raw json.RawMessage
+	if err := json.Unmarshal(params[1], &raw); err != nil {
+		s.SendError(topic, msg.ID, -32602, "invalid typed data")
+		return
+	}
+
+	var td apitypes.TypedData
+	if err := json.Unmarshal(raw, &td); err != nil {
+		s.SendError(topic, msg.ID, -32602, "invalid typed data")
+		return
+	}
+
+	// TypedDataAndHash returns the EIP-712 digest:
+	// keccak256(0x1901 || domainSeparator || structHash)
+	digest, _, err := apitypes.TypedDataAndHash(td)
+	if err != nil {
+		s.SendError(topic, msg.ID, -32602, "invalid EIP-712 payload")
+		return
+	}
+
+	sig, err := s.signDigest(digest)
+	if err != nil {
+		s.SendError(topic, msg.ID, -32000, err.Error())
+		return
+	}
+
+	s.SendResponse(topic, msg.ID, sig)
 }
 
 func (s *WalletConnectService) handleEthSendTransaction(topic string, msg *WCMessage) {
@@ -653,6 +736,64 @@ func generateHash() string {
 	return hex.EncodeToString(b[:])
 }
 
+// trimHexPrefix removes an optional "0x"/"0X" prefix from a hex string.
+func trimHexPrefix(s string) string {
+	if len(s) >= 2 && (s[:2] == "0x" || s[:2] == "0X") {
+		return s[2:]
+	}
+	return s
+}
+
+// decodePersonalSignMessage converts a personal_sign message parameter into the
+// raw bytes to be signed. Wallets may pass either a UTF-8 string or a
+// 0x-prefixed hex-encoded byte string.
+func decodePersonalSignMessage(message string) []byte {
+	if len(message) >= 2 && message[:2] == "0x" {
+		data, err := hex.DecodeString(message[2:])
+		if err == nil {
+			return data
+		}
+	}
+	return []byte(message)
+}
+
+// errSigningUnavailable is returned when no signer private key is configured.
+// It maps to JSON-RPC error code -32000 so dApps receive a clear rejection
+// instead of a fake (all-zero) signature.
+var errSigningUnavailable = fmt.Errorf("Signing not available: wallet not connected")
+
+// signPersonalMessage signs data using the EVM personal_sign format:
+// keccak256("\x19Ethereum Signed Message:\n" + len(message) + message).
+// The returned signature is a 0x-prefixed, 65-byte r||s||v value with v set to
+// 27 or 28 (personal_sign convention).
+func (s *WalletConnectService) signPersonalMessage(data []byte) (string, error) {
+	prefix := []byte(fmt.Sprintf("\x19Ethereum Signed Message:\n%d", len(data)))
+	digest := crypto.Keccak256(append(prefix, data...))
+	return s.signDigest(digest)
+}
+
+// signDigest signs a 32-byte digest with the configured signer and returns a
+// 0x-prefixed, 65-byte r||s||v signature with v in {27, 28}.
+func (s *WalletConnectService) signDigest(digest []byte) (string, error) {
+	if s.signer == nil {
+		return "", errSigningUnavailable
+	}
+
+	sig, err := crypto.Sign(digest, s.signer)
+	if err != nil {
+		return "", fmt.Errorf("signing failed: %w", err)
+	}
+
+	// crypto.Sign returns v as 0 or 1. For personal_sign and eth_signTypedData
+	// the recovery id is offset to 27/28.
+	if len(sig) != 65 {
+		return "", fmt.Errorf("signing failed: unexpected signature length")
+	}
+	sig[64] += 27
+
+	return "0x" + hex.EncodeToString(sig), nil
+}
+
 // Main
 
 func main() {
@@ -666,6 +807,10 @@ func main() {
 		RedisHost:   getEnv("REDIS_HOST", "localhost"),
 		RedisPort:   getEnv("REDIS_PORT", "6379"),
 		ProjectID:  getEnv("WC_PROJECT_ID", ""),
+		// Hex-encoded ECDSA private key used to sign personal_sign /
+		// eth_signTypedData_v4 requests. When unset, signing requests are
+		// rejected. Production should source this from a KMS/HSM, not env.
+		SignerPrivateKey: getEnv("WC_SIGNER_PRIVATE_KEY", ""),
 	}
 
 	service, err := NewWalletConnectService(cfg)
