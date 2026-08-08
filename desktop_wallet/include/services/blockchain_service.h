@@ -98,10 +98,12 @@ public:
     void setTransactionCallback(TransactionCallback callback);
 
 private:
-    BlockchainService();
-    ~BlockchainService();
     BlockchainService(const BlockchainService&) = delete;
     BlockchainService& operator=(const BlockchainService&) = delete;
+
+public:
+    BlockchainService();
+    ~BlockchainService();
 
     // RPC Communication
     JsonRpcResponse sendJsonRpc(const std::string& rpcUrl, const JsonRpcRequest& request);

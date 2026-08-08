@@ -110,3 +110,41 @@
   the identity point / malformed encodings. Do NOT regress these to stubs.
 - The Schnorr scheme has no trusted setup; `setup()` only marks the circuit
   keyed so `prove` refuses unset-up circuits (preserves the existing API).
+
+## desktop_wallet (C++)
+
+- CMake project at `desktop_wallet/`, C++20. Depends on CURL + OpenSSL
+  (dev pkgs: `libcurl4-openssl-dev libssl-dev`; `cmake` was not preinstalled —
+  `sudo apt-get install -y cmake`). `g++` 14.x is available.
+- UI is NOT a GUI toolkit (no ImGui/Qt/wx). UI components under
+  `src/ui/components/**.hpp` are header-only HTML-string generators. Themes
+  are therefore applied by injecting CSS color strings, not by styling a
+  native widget set. `ThemeManager` (`include/ui/theme.hpp` +
+  `src/ui/theme.cpp`, namespace `TigerWallet`) is a singleton that owns the
+  dark/light palettes and persists preference to a JSON file.
+- BUILD STATUS (fixed 2026-08-08): `cd desktop_wallet && rm -rf build && mkdir
+  build && cd build && cmake .. && make -j4` now succeeds with exit 0, building
+  `tigerwallet_core` (static lib) + `tigerwallet_test` targets. p2p_trading
+  service + theme code compile clean.
+- SINGLETON PATTERN FIX: service headers (`include/services/*` +
+  `include/services/master/master_wallet_service.h`) used the singleton pattern
+  with `private:` ctor/dtor, which breaks `std::make_shared`/`std::construct_at`
+  ("... is private within this context"). Fix applied: keep deleted copy ctor
+  + copy-assignment in `private:`, but MOVE the ctor/dtor to `public:`.
+  Headers fixed: blockchain_service.h, price_service.h, swap_service.h,
+  staking_service.h, nft_service.h, keychain_manager.h, api_client.h,
+  master_wallet_service.h. Do NOT regress these back to private ctor/dtor.
+- When a struct has a user-declared default constructor it is NOT an aggregate,
+  so brace-init-list assignment like `tokens_ = { {"BTC","Bitcoin",1.5,"₿"}, ... }`
+  fails ("no match for operator= ... <brace-enclosed initializer list>"). Fix:
+  add an explicit constructor taking all the initialized fields (done for
+  `ConvertToken`/`ConvertPair` in `src/services/convert_service.h` and
+  `Trader` in `src/services/copy_trading_service.h`). Include `<utility>` for
+  `std::move` in those headers.
+- `std::cerr` requires `#include <iostream>` — was missing in
+  `src/models/wallet_models.cpp`; added. `std::remove_if` requires
+  `#include <algorithm>` — was missing in `src/services/margin_trading_service.cpp`;
+  added.
+- Note: the bundled `cpp/rpc_manager/json.hpp` referenced as
+  `<nlohmann/json.hpp>` is a stub; not on the current build's include path for
+  the core/test targets, so it doesn't block the build.

@@ -51,10 +51,12 @@ public:
     std::vector<uint8_t> decrypt(const std::vector<uint8_t>& encryptedData, const std::string& password);
 
 private:
-    KeychainManager();
-    ~KeychainManager();
     KeychainManager(const KeychainManager&) = delete;
     KeychainManager& operator=(const KeychainManager&) = delete;
+
+public:
+    KeychainManager();
+    ~KeychainManager();
 
     // Platform-specific storage
     bool saveToStorage(const std::string& key, const std::vector<uint8_t>& data);

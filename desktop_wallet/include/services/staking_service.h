@@ -70,10 +70,12 @@ public:
     std::future<double> getTotalRewards(const std::string& walletId);
 
 private:
-    StakingService();
-    ~StakingService();
     StakingService(const StakingService&) = delete;
     StakingService& operator=(const StakingService&) = delete;
+
+public:
+    StakingService();
+    ~StakingService();
 
     // API Calls
     std::string callStakingAPI(const std::string& endpoint, const std::string& body);

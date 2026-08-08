@@ -8,6 +8,7 @@
 #include <vector>
 #include <map>
 #include <ctime>
+#include <utility>
 
 namespace tigerwallet {
 
@@ -33,6 +34,16 @@ struct Trader {
     
     Trader() : winRate(0), totalPnL(0), pnlPercent(0), followers(0), copyCount(0),
                monthlyPnL(0), weeklyPnL(0), dailyPnL(0), maxDrawdown(0), isFollowing(false), isVerified(false) {}
+    Trader(std::string address_, std::string username_, std::string avatar_,
+           double winRate_, double totalPnL_, double pnlPercent_, int followers_, int copyCount_,
+           std::string tradingPair_, double monthlyPnL_, double weeklyPnL_, double dailyPnL_,
+           double maxDrawdown_, std::string riskLevel_, bool isFollowing_, bool isVerified_)
+        : address(std::move(address_)), username(std::move(username_)), avatar(std::move(avatar_)),
+          winRate(winRate_), totalPnL(totalPnL_), pnlPercent(pnlPercent_),
+          followers(followers_), copyCount(copyCount_), tradingPair(std::move(tradingPair_)),
+          monthlyPnL(monthlyPnL_), weeklyPnL(weeklyPnL_), dailyPnL(dailyPnL_),
+          maxDrawdown(maxDrawdown_), riskLevel(std::move(riskLevel_)),
+          isFollowing(isFollowing_), isVerified(isVerified_) {}
 };
 
 struct CopyPosition {

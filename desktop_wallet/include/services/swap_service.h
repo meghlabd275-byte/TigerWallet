@@ -61,10 +61,12 @@ public:
     );
 
 private:
-    SwapService();
-    ~SwapService();
     SwapService(const SwapService&) = delete;
     SwapService& operator=(const SwapService&) = delete;
+
+public:
+    SwapService();
+    ~SwapService();
 
     // API Calls
     std::string callAggregatorAPI(const std::string& endpoint, const std::string& body);

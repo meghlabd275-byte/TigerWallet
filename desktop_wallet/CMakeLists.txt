@@ -14,6 +14,8 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/include/models
     ${CMAKE_SOURCE_DIR}/include/services
+    ${CMAKE_SOURCE_DIR}/include/ui
+    ${CMAKE_SOURCE_DIR}/src
     ${OPENSSL_INCLUDE_DIR}
     ${CURL_INCLUDE_DIRS}
 )
@@ -21,6 +23,10 @@ include_directories(
 # Source files
 set(MODEL_SOURCES
     src/models/wallet_models.cpp
+)
+
+set(THEME_SOURCES
+    src/ui/theme.cpp
 )
 
 set(SERVICE_SOURCES
@@ -42,6 +48,7 @@ set(SERVICE_SOURCES
 
 set(ALL_SOURCES
     ${MODEL_SOURCES}
+    ${THEME_SOURCES}
     ${SERVICE_SOURCES}
 )
 

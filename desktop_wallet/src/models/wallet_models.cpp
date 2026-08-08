@@ -3,6 +3,7 @@
  */
 
 #include "models/wallet_models.h"
+#include <iostream>
 #include <sstream>
 #include <iomanip>
 #include <random>

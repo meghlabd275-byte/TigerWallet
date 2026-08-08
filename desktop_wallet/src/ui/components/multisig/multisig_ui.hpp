@@ -15,6 +15,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "ui/theme.hpp"
+
 using json = nlohmann::json;
 
 namespace tigerwallet {
@@ -223,8 +225,8 @@ public:
 
 private:
     std::mutex mutex_;
-    std::string theme_;
-    
+    std::string theme_; // CSS class suffix derived from ThemeManager ("dark"/"light")
+
     std::string renderButton(const std::string& id, const std::string& text, 
                            const std::string& style, bool enabled);
     std::string renderCard(const std::string& title, const std::string& content);
@@ -233,8 +235,27 @@ private:
     std::string renderTable(const std::vector<std::string>& headers, 
                           const std::vector<std::vector<std::string>>& rows);
     
-    std::string getStatusColor(const std::string& status);
-    std::string getSeverityColor(const std::string& severity);
+    // Status/severity colors resolve through ThemeManager so badges match the
+    // active palette (dark/light). Semantic colors come from ThemeColors.
+    std::string getStatusColor(const std::string& status) {
+        const TigerWallet::ThemeColors& c =
+            TigerWallet::ThemeManager::getInstance().getColors();
+        if (status == "active" || status == "confirmed" || status == "executed")
+            return c.successColor;
+        if (status == "pending" || status == "waiting")
+            return c.warningColor;
+        if (status == "rejected" || status == "failed" || status == "removed")
+            return c.errorColor;
+        return c.textSecondaryColor;
+    }
+    std::string getSeverityColor(const std::string& severity) {
+        const TigerWallet::ThemeColors& c =
+            TigerWallet::ThemeManager::getInstance().getColors();
+        if (severity == "error" || severity == "critical") return c.errorColor;
+        if (severity == "warning") return c.warningColor;
+        if (severity == "success" || severity == "info") return c.successColor;
+        return c.accentColor;
+    }
 };
 
 // ============================================================================

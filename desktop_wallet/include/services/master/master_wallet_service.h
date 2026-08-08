@@ -105,10 +105,12 @@ public:
     double getBalance(const std::string& walletId);
 
 private:
-    MasterWalletService();
-    ~MasterWalletService();
     MasterWalletService(const MasterWalletService&) = delete;
     MasterWalletService& operator=(const MasterWalletService&) = delete;
+
+public:
+    MasterWalletService();
+    ~MasterWalletService();
 
     void loadNetworks();
     void saveNetworks();

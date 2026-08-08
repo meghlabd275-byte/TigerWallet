@@ -67,10 +67,12 @@ public:
     std::string resolveIPFS(const std::string& ipfsUrl);
 
 private:
-    NFTService();
-    ~NFTService();
     NFTService(const NFTService&) = delete;
     NFTService& operator=(const NFTService&) = delete;
+
+public:
+    NFTService();
+    ~NFTService();
 
     // API Calls
     std::string fetchFromAPI(const std::string& url);

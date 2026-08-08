@@ -16,6 +16,7 @@
 #include "services/nft_service.h"
 #include "services/api_client.h"
 #include "services/keychain_manager.h"
+#include "ui/theme.hpp"
 
 using namespace tiger::wallet;
 
@@ -172,6 +173,55 @@ void testAPIClient() {
     client->shutdown();
 }
 
+void testThemeManager() {
+    printHeader("Testing ThemeManager (Light/Dark/System)");
+
+    using TigerWallet::ThemeManager;
+    using TigerWallet::ThemeMode;
+    auto& tm = ThemeManager::getInstance();
+
+    const auto modeName = [](ThemeMode m) {
+        switch (m) {
+            case ThemeMode::Light:  return std::string("Light");
+            case ThemeMode::Dark:   return std::string("Dark");
+            case ThemeMode::System: return std::string("System");
+        }
+        return std::string("Unknown");
+    };
+
+    tm.setMode(ThemeMode::Dark);
+    std::cout << "Mode: " << modeName(tm.getMode())
+              << " | isDark=" << (tm.isDark() ? "yes" : "no") << "\n";
+    const auto& dark = tm.getColors();
+    std::cout << "  background=" << dark.backgroundColor
+              << " surface=" << dark.surfaceColor
+              << " text=" << dark.textColor
+              << " accent=" << dark.accentColor << "\n";
+
+    tm.setMode(ThemeMode::Light);
+    std::cout << "Mode: " << modeName(tm.getMode())
+              << " | isDark=" << (tm.isDark() ? "yes" : "no") << "\n";
+    const auto& light = tm.getColors();
+    std::cout << "  background=" << light.backgroundColor
+              << " surface=" << light.surfaceColor
+              << " text=" << light.textColor
+              << " accent=" << light.accentColor << "\n";
+
+    tm.toggleTheme();
+    std::cout << "After toggle -> mode: " << modeName(tm.getMode())
+              << " | isDark=" << (tm.isDark() ? "yes" : "no") << "\n";
+
+    const std::string cfgPath = "tigerwallet_theme.json";
+    tm.setMode(ThemeMode::Dark);
+    tm.saveToFile(cfgPath);
+    std::cout << "Saved theme preference to " << cfgPath << "\n";
+
+    tm.setMode(ThemeMode::Light);
+    tm.loadFromFile(cfgPath);
+    std::cout << "After loadFromFile -> mode: " << modeName(tm.getMode()) << "\n";
+}
+
+
 int main() {
     std::cout << "\n";
     std::cout << "╔═══════════════════════════════════════════════════════════╗\n";
@@ -188,6 +238,7 @@ int main() {
         testNFTService();
         testKeychainManager();
         testAPIClient();
+        testThemeManager();
         
         std::cout << "\n" << std::string(60, '=') << "\n";
         std::cout << "  ALL TESTS COMPLETED SUCCESSFULLY!\n";

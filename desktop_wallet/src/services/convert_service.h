@@ -8,6 +8,7 @@
 #include <vector>
 #include <map>
 #include <ctime>
+#include <utility>
 
 namespace tigerwallet {
 
@@ -18,6 +19,8 @@ struct ConvertToken {
     std::string icon;
     
     ConvertToken() : balance(0) {}
+    ConvertToken(std::string s, std::string n, double b, std::string i)
+        : symbol(std::move(s)), name(std::move(n)), balance(b), icon(std::move(i)) {}
 };
 
 struct ConvertPair {
@@ -29,6 +32,8 @@ struct ConvertPair {
     bool enabled;
     
     ConvertPair() : rate(0), inverseRate(0), fee(0), enabled(true) {}
+    ConvertPair(std::string f, std::string t, double r, double ir, double fe, bool en)
+        : from(std::move(f)), to(std::move(t)), rate(r), inverseRate(ir), fee(fe), enabled(en) {}
 };
 
 struct ConvertOrder {

@@ -3,6 +3,8 @@
 #include <sstream>
 #include <iomanip>
 #include <cmath>
+#include <algorithm>
+#include <cstdlib>
 
 namespace tigerwallet {
 

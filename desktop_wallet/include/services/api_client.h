@@ -90,10 +90,12 @@ public:
     };
 
 private:
-    APIClient();
-    ~APIClient();
     APIClient(const APIClient&) = delete;
     APIClient& operator=(const APIClient&) = delete;
+
+public:
+    APIClient();
+    ~APIClient();
 
     // Request Building
     std::string buildUrl(const std::string& endpoint, const std::optional<std::map<std::string, std::string>>& params);

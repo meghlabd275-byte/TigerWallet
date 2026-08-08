@@ -62,10 +62,12 @@ public:
     bool isCacheValid(const std::string& symbol) const;
 
 private:
-    PriceService();
-    ~PriceService();
     PriceService(const PriceService&) = delete;
     PriceService& operator=(const PriceService&) = delete;
+
+public:
+    PriceService();
+    ~PriceService();
 
     // API Calls
     std::string fetchFromAPI(const std::string& url);
