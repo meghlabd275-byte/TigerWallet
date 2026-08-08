@@ -6,8 +6,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"math"
 	"math/big"
@@ -341,14 +339,13 @@ func (s *SavingsService) Deposit(ctx *gin.Context) {
 	s.db.Save(&product)
 
 	// Create transaction record
-	txHash := s.generateTxHash(req.UserAddress, product.AssetAddress, req.Amount)
 	transaction := SavingsTransaction{
 		UserAddress:  req.UserAddress,
 		ProductID:   req.ProductID,
 		AssetAddress: product.AssetAddress,
 		Amount:      req.Amount,
 		Type:        "DEPOSIT",
-		TxHash:      txHash,
+		TxHash:      "",
 		ChainID:     req.ChainID,
 	}
 	s.db.Create(&transaction)
@@ -356,7 +353,7 @@ func (s *SavingsService) Deposit(ctx *gin.Context) {
 	ctx.JSON(200, DepositResponse{
 		Success:         true,
 		AccountID:       account.ID,
-		TransactionHash: txHash,
+		TransactionHash: "",
 		NewBalance:      account.Balance,
 		APY:             product.APY,
 		MaturityDate:    maturityDate,
@@ -458,7 +455,6 @@ func (s *SavingsService) Withdraw(ctx *gin.Context) {
 	product.TotalWithdrawn += withdrawAmount - feeApplied
 	s.db.Save(&product)
 
-	txHash := s.generateTxHash(req.UserAddress, product.AssetAddress, withdrawAmount)
 	transaction := SavingsTransaction{
 		UserAddress:  req.UserAddress,
 		ProductID:   req.ProductID,
@@ -466,14 +462,14 @@ func (s *SavingsService) Withdraw(ctx *gin.Context) {
 		Amount:      withdrawAmount,
 		Interest:    interestReceived,
 		Type:        "WITHDRAW",
-		TxHash:      txHash,
+		TxHash:      "",
 		ChainID:     req.ChainID,
 	}
 	s.db.Create(&transaction)
 
 	ctx.JSON(200, WithdrawResponse{
 		Success:          true,
-		TransactionHash:  txHash,
+		TransactionHash:  "",
 		AmountReceived:   withdrawAmount - feeApplied,
 		InterestReceived: interestReceived,
 		FeeApplied:       feeApplied,
@@ -512,11 +508,9 @@ func (s *SavingsService) ClaimInterest(ctx *gin.Context) {
 	account.AccruedInterest = 0
 	s.db.Save(&account)
 
-	txHash := s.generateTxHash(req.UserAddress, account.AssetAddress, interest)
-
 	ctx.JSON(200, gin.H{
 		"success":         true,
-		"transaction_hash": txHash,
+		"transaction_hash": "",
 		"amount_claimed":   interest,
 	})
 }
@@ -607,12 +601,6 @@ func (s *SavingsService) CalculateInterest() {
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-func (s *SavingsService) generateTxHash(user, asset string, amount float64) string {
-	data := fmt.Sprintf("%s:%s:%f:%d", user, asset, amount, time.Now().UnixNano())
-	hash := sha256.Sum256([]byte(data))
-	return "0x" + hex.EncodeToString(hash[:])
-}
 
 // ============================================================================
 // Main

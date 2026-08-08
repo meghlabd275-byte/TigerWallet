@@ -83,7 +83,7 @@ logger.Println("Starting Bots Service...")
 config.Port = getEnv("BOTS_PORT", "8107")
 config.DatabaseURL = getEnv("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet_admin")
 config.RedisURL = getEnv("REDIS_URL", "redis://localhost:6379")
-config.JWTSecret = getEnv("JWT_SECRET", "tigerwallet-bots-secret")
+config.JWTSecret = getEnv("JWT_SECRET", "")
 jwtSecret = []byte(config.JWTSecret)
 
 var err error

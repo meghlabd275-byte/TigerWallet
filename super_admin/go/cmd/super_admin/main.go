@@ -35,7 +35,7 @@ type Config struct {
 func LoadConfig() *Config {
 	return &Config{
 		Port:          getEnv("PORT", "8001"),
-		JWTSecret:     getEnv("JWT_SECRET", "tigerwallet-super-secret-key"),
+		JWTSecret:     getEnv("JWT_SECRET", ""),
 		JWTExpiration: 24 * time.Hour * 7, // 7 days
 		DatabaseURL:   getEnv("DATABASE_URL", "postgresql://localhost:5432/tigerwallet"),
 		RedisURL:      getEnv("REDIS_URL", "redis://localhost:6379"),

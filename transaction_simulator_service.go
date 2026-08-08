@@ -10,8 +10,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -784,10 +782,8 @@ func (s *TransactionSimulatorService) GetAccountState(c *gin.Context) {
 // ============================================================================
 
 func (s *TransactionSimulatorService) generateTxHash(req SimulateRequest) string {
-	data := fmt.Sprintf("%s%s%s%s%d%d",
-		req.FromAddress, req.ToAddress, req.Value, req.Data, req.ChainID, req.Nonce)
-	hash := sha256.Sum256([]byte(data))
-	return "0x" + hex.EncodeToString(hash[:])[:64]
+	log.Printf("generateTxHash: transaction broadcast not implemented - cannot generate tx hash without broadcasting")
+	return ""
 }
 
 func (s *TransactionSimulatorService) acquireSimSlot() bool {

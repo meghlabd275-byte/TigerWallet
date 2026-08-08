@@ -4,34 +4,29 @@
 package main
 
 import (
-	"context"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/pbkdf2"
 )
 
@@ -51,10 +46,20 @@ type Config struct {
 
 var cfg = Config{
 	Port:                8001,
-	JWTSecret:           "tiger-wallet-jwt-secret-key-2024",
+	JWTSecret:           getRequiredEnv("JWT_SECRET"),
 	RedisAddr:           "localhost:6379",
 	SessionTimeout:      24 * time.Hour,
 	MasterWalletAddress: "0x0000000000000000000000000000000000000001",
+}
+
+// getRequiredEnv reads a required environment variable and fatally exits if it
+// is unset. Used for secrets that must never fall back to insecure defaults.
+func getRequiredEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("%s environment variable must be set", key)
+	}
+	return value
 }
 
 // ============================================================================
@@ -292,7 +297,7 @@ func decryptData(encrypted string, key []byte) ([]byte, error) {
 }
 
 func hashPassword(password, salt string) string {
-	hash := sha256.Sum512([]byte(password + salt))
+	hash := sha512.Sum512([]byte(password + salt))
 	return hex.EncodeToString(hash[:])
 }
 
@@ -544,7 +549,7 @@ func (ws *WalletService) CreateWallet(c *gin.Context) {
 		MasterID:    req.UserID,
 		Chain:       req.Chain,
 		Address:     address,
-		PublicKey:  hex.EncodeToString elliptic.Marshal(elliptic.P256(), privateKey.PublicKey.X, privateKey.Y),
+		PublicKey:  hex.EncodeToString(elliptic.Marshal(elliptic.P256(), privateKey.PublicKey.X, privateKey.PublicKey.Y)),
 		Type:        "user",
 		Status:      "active",
 		Balance:    make(map[string]string),
@@ -601,7 +606,7 @@ func (ws *WalletService) ImportWallet(c *gin.Context) {
 		MasterID:    req.UserID,
 		Chain:       req.Chain,
 		Address:     address,
-		PublicKey:  hex.EncodeToString elliptic.Marshal(elliptic.P256(), privateKey.PublicKey.X, privateKey.PublicKey.Y),
+		PublicKey:  hex.EncodeToString(elliptic.Marshal(elliptic.P256(), privateKey.PublicKey.X, privateKey.PublicKey.Y)),
 		Type:        "user",
 		Status:      "active",
 		Balance:    make(map[string]string),
@@ -681,33 +686,12 @@ func (ws *WalletService) SendTransaction(c *gin.Context) {
 		return
 	}
 	
-	// In production, sign and broadcast transaction
-	// For now, create pending transaction
-	txID := uuid.New().String()
-	tx := &Transaction{
-		ID:         txID,
-		WalletID:   wallet.ID,
-		Chain:      req.Chain,
-		From:       req.From,
-		To:         req.To,
-		Value:      req.Value,
-		Status:     "pending",
-		Type:       "transfer",
-		Timestamp:  time.Now(),
-		Data:       req.Data,
-	}
-	
-	ws.txCache[wallet.ID] = append(ws.txCache[wallet.ID], tx)
-	
-	c.JSON(http.StatusAccepted, gin.H{
-		"success":     true,
-		"tx_id":       txID,
-		"hash":        "0x" + hex.EncodeToString([]byte(txID))[:64],
-		"status":      "pending",
-		"from":        req.From,
-		"to":          req.To,
-		"value":       req.Value,
-		"chain":       req.Chain,
+	// Transaction broadcast is not implemented: a real tx hash can only be
+	// obtained by signing and broadcasting the transaction via RPC
+	// (eth_sendRawTransaction). Fabricating a hash from a UUID would be
+	// misleading and insecure, so we fail honestly instead.
+	c.JSON(http.StatusNotImplemented, gin.H{
+		"error": "transaction broadcast not implemented - cannot generate tx hash without broadcasting",
 	})
 }
 

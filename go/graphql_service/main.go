@@ -1,9 +1,10 @@
 package main
 
 import (
+	crand "crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"os"
 	"os/signal"
 	"strings"
@@ -348,19 +349,7 @@ func (s *GraphQLService) initializeResolvers() {
 	s.resolvers["sendTransaction"] = FieldDefinition{
 		Name: "sendTransaction", Type: "Transaction",
 		Resolve: func(args map[string]interface{}) (interface{}, error) {
-			to := args["to"].(string)
-			amount := args["amount"].(float64)
-			token := args["token"].(string)
-			
-			return map[string]interface{}{
-				"hash":     "0x" + generateHash(),
-				"from":     "0x742d35Cc6634C0532925a3b844Bc9e7595f1234",
-				"to":       to,
-				"amount":   amount,
-				"token":    token,
-				"status":   "PENDING",
-				"timestamp": time.Now().Format(time.RFC3339),
-			}, nil
+			return nil, fmt.Errorf("transaction broadcast not implemented - cannot generate tx hash without broadcasting")
 		},
 	}
 }
@@ -560,21 +549,11 @@ func getMockPrice(token string) float64 {
 }
 
 func generateAddress() string {
-	chars := "0123456789abcdef"
-	addr := "0x"
-	for i := 0; i < 40; i++ {
-		addr += string(chars[rand.Intn(len(chars))])
+	b := make([]byte, 20)
+	if _, err := crand.Read(b); err != nil {
+		panic("failed to generate random address: " + err.Error())
 	}
-	return addr
-}
-
-func generateHash() string {
-	chars := "0123456789abcdef"
-	hash := ""
-	for i := 0; i < 64; i++ {
-		hash += string(chars[rand.Intn(len(chars))])
-	}
-	return hash
+	return "0x" + hex.EncodeToString(b)
 }
 
 func getEnv(key, defaultValue string) string {

@@ -6,8 +6,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -380,16 +378,14 @@ func (s *LendingService) Supply(ctx *gin.Context) {
 		s.db.Save(&userSupply)
 	}
 
-	// Generate transaction hash (in production, this would be from blockchain)
-	txHash := s.generateTxHash(req.UserAddress, req.AssetAddress, req.Amount)
-
+	// Transaction hash is only known after broadcasting; do not fabricate one.
 	// Update Redis cache
 	cacheKey := fmt.Sprintf("supply:%s:%s", req.UserAddress, req.AssetAddress)
 	s.redis.Set(ctx, cacheKey, userSupply.Balance, time.Hour)
 
 	ctx.JSON(200, SupplyResponse{
 		Success:         true,
-		TransactionHash: txHash,
+		TransactionHash: "",
 		NewBalance:      userSupply.Balance,
 		APY:             market.SupplyAPY,
 	})
@@ -480,11 +476,9 @@ func (s *LendingService) Borrow(ctx *gin.Context) {
 		s.db.Save(&userBorrow)
 	}
 
-	txHash := s.generateTxHash(req.UserAddress, req.AssetAddress, req.Amount)
-
 	ctx.JSON(200, BorrowResponse{
 		Success:          true,
-		TransactionHash:  txHash,
+		TransactionHash:  "",
 		NewBorrowBalance: userBorrow.Balance,
 		NewBorrowUSD:    newBorrowUSD,
 		APY:             market.BorrowAPY,
@@ -619,11 +613,9 @@ func (s *LendingService) Repay(ctx *gin.Context) {
 	market.TotalBorrows = new(big.Int).Sub(marketTotal, amount).String()
 	s.db.Save(&market)
 
-	txHash := s.generateTxHash(req.UserAddress, req.AssetAddress, req.Amount)
-
 	ctx.JSON(200, gin.H{
 		"success":           true,
-		"transaction_hash":  txHash,
+		"transaction_hash":  "",
 		"remaining_balance":  userBorrow.Balance,
 	})
 }
@@ -689,11 +681,9 @@ func (s *LendingService) Withdraw(ctx *gin.Context) {
 	market.TotalSupply = new(big.Int).Sub(marketTotal, amount).String()
 	s.db.Save(&market)
 
-	txHash := s.generateTxHash(req.UserAddress, req.AssetAddress, req.Amount)
-
 	ctx.JSON(200, gin.H{
 		"success":           true,
-		"transaction_hash":  txHash,
+		"transaction_hash":  "",
 		"remaining_balance": userSupply.Balance,
 	})
 }
@@ -771,12 +761,6 @@ func (s *LendingService) GetMarkets(ctx *gin.Context) {
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-func (s *LendingService) generateTxHash(user, asset, amount string) string {
-	data := fmt.Sprintf("%s:%s:%s:%d", user, asset, amount, time.Now().UnixNano())
-	hash := sha256.Sum256([]byte(data))
-	return "0x" + hex.EncodeToString(hash[:])
-}
 
 // ============================================================================
 // Main

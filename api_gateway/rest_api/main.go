@@ -863,6 +863,17 @@ func generateRandomBytes(n int) []byte {
 	return b
 }
 
+// getRequiredEnv reads a required environment variable and fatally exits if it
+// is unset. Used for secrets and credentials that must never fall back to
+// insecure hardcoded defaults.
+func getRequiredEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("%s environment variable must be set", key)
+	}
+	return value
+}
+
 func generateUUID() string {
 	return hex.EncodeToString(generateRandomBytes(16))
 }
@@ -1724,7 +1735,7 @@ func main() {
 		ID:           "super_admin_1",
 		Email:        "admin@tigerswap.com",
 		Username:     "admin",
-		PasswordHash: "$2a$10$dummy", // Replace with real hash in production
+		PasswordHash: getRequiredEnv("ADMIN_PASSWORD_HASH"),
 		Role:         RoleSuperAdmin,
 		IsActive:     true,
 		IsVerified:   true,

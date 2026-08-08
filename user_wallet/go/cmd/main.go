@@ -907,7 +907,7 @@ func main() {
 	config.Port = getEnv("USER_WALLET_PORT", "8105")
 	config.DatabaseURL = getEnv("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet_admin")
 	config.RedisURL = getEnv("REDIS_URL", "redis://localhost:6379")
-	config.JWTSecret = getEnv("JWT_SECRET", "tigerwallet-userwallet-secret")
+	config.JWTSecret = getEnv("JWT_SECRET", "")
 	jwtSecret = []byte(config.JWTSecret)
 
 	if err := initDatabase(); err != nil {

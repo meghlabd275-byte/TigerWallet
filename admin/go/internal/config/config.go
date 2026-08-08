@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log"
 	"os"
 	"strconv"
 	"time"
@@ -118,8 +119,17 @@ func Load() *Config {
 
 		// Admin Settings
 		DefaultAdminEmail:    getEnv("DEFAULT_ADMIN_EMAIL", "admin@tigerwallet.com"),
-		DefaultAdminPassword: getEnv("DEFAULT_ADMIN_PASSWORD", "ChangeMe123!"),
+		DefaultAdminPassword: getRequiredEnv("DEFAULT_ADMIN_PASSWORD"),
 	}
+}
+
+// getRequiredEnv reads an environment variable that must be set, or fatally exits.
+func getRequiredEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("%s environment variable must be set", key)
+	}
+	return value
 }
 
 func getEnv(key, defaultValue string) string {

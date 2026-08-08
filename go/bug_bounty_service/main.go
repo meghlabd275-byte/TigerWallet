@@ -15,13 +15,16 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/big"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -40,7 +43,7 @@ type Config struct {
 	Port                int           `json:"port"`
 	DBConnection        string        `json:"db_connection"`
 	RedisAddr           string        `json:"redis_addr"`
-	JWT Secret          string        `json:"jwt_secret"`
+	JWTSecret           string        `json:"jwt_secret"`
 	InitialRewardPool   string        `json:"initial_reward_pool"`
 	MinReward           string        `json:"min_reward"`
 	MaxReward           string        `json:"max_reward"`
@@ -50,13 +53,46 @@ type Config struct {
 
 var cfg = Config{
 	Port:              8080,
-	DBConnection:      "postgres://tigerwallet:password@localhost:5432/bugbounty",
+	DBConnection:      getDBConnection(),
 	RedisAddr:         "localhost:6379",
-	JWT Secret:        "tiger-bug-bounty-secret-2026",
+	JWTSecret:         getRequiredEnv("JWT_SECRET"),
 	InitialRewardPool: "100000000000000000000000", // 100,000 ETH
 	MinReward:         "100000000000000000",        // 0.1 ETH
 	MaxReward:         "100000000000000000000000", // 100 ETH
 	EscrowContract:    "0x0000000000000000000000000000000000000001",
+}
+
+// getRequiredEnv reads a required environment variable and fatally exits if it
+// is unset. Used for secrets that must never fall back to insecure defaults.
+func getRequiredEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("%s environment variable must be set", key)
+	}
+	return value
+}
+
+// getDBConnection builds the PostgreSQL connection string from individual env
+// vars, requiring a password rather than embedding a hardcoded credential.
+func getDBConnection() string {
+	host := os.Getenv("POSTGRES_HOST")
+	if host == "" {
+		host = "localhost"
+	}
+	port := os.Getenv("POSTGRES_PORT")
+	if port == "" {
+		port = "5432"
+	}
+	user := os.Getenv("POSTGRES_USER")
+	if user == "" {
+		user = "tigerwallet"
+	}
+	dbName := os.Getenv("POSTGRES_DB")
+	if dbName == "" {
+		dbName = "bugbounty"
+	}
+	password := getRequiredEnv("DATABASE_PASSWORD")
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s", user, password, host, port, dbName)
 }
 
 // ============================================================================
@@ -649,18 +685,22 @@ func (s *BugBountyService) RegisterHacker(c *gin.Context) {
 		return
 	}
 
-	// Hash password
-	hash, err := argon2.IDHash([]byte(req.Password), []byte(cfg.JWT Secret), 1, 64*1024, 4, 32)
-	if err != nil {
-		c.JSON(500, gin.H{"success": false, "error": "Failed to hash password"})
+	// Hash password with a per-hacker random salt. argon2.IDKey returns only the
+	// derived hash, so we generate a 16-byte salt with crypto/rand and store
+	// salt||hash together (both hex-encoded) for later verification.
+	salt := make([]byte, 16)
+	if _, err := rand.Read(salt); err != nil {
+		c.JSON(500, gin.H{"success": false, "error": "Failed to generate password salt"})
 		return
 	}
+	hash := argon2.IDKey([]byte(req.Password), salt, 1, 64*1024, 4, 32)
+	encoded := hex.EncodeToString(salt) + hex.EncodeToString(hash)
 
 	hacker := &Hacker{
 		ID:              uuid.New().String(),
 		Username:        req.Username,
 		Email:           req.Email,
-		PasswordHash:    hex.EncodeToString(hash),
+		PasswordHash:    encoded,
 		WalletAddress:   req.WalletAddress,
 		ReputationScore: 0,
 		TotalEarnings:   "0",

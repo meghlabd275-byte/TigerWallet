@@ -194,7 +194,7 @@ func loadConfig() *Config {
 			DBName:   getEnv("AUTH_DB_NAME", "tigerwallet_auth"),
 		},
 		JWT: JWTConfig{
-			Secret:          getEnv("JWT_SECRET", "tigerwallet-secret-key"),
+			Secret:          getRequiredEnv("JWT_SECRET"),
 			ExpiryHours:     getEnvInt("JWT_EXPIRY_HOURS", 24),
 			RefreshExpiryDays: getEnvInt("JWT_REFRESH_EXPIRY_DAYS", 30),
 		},
@@ -228,6 +228,17 @@ func getEnv(key, defaultValue string) string {
 		return v
 	}
 	return defaultValue
+}
+
+// getRequiredEnv reads a required environment variable and fatally exits if it
+// is unset. Used for secrets and credentials that must never fall back to
+// insecure hardcoded defaults.
+func getRequiredEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		log.Fatalf("%s environment variable must be set", key)
+	}
+	return v
 }
 
 func getEnvInt(key string, defaultValue int) int {
@@ -1243,7 +1254,7 @@ func generateAccessToken(userID, role string, tenantID interface{}) string {
 		"type":     "access",
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, _ := token.SignedString([]byte(getEnv("JWT_SECRET", "tigerwallet-secret-key")))
+	tokenString, _ := token.SignedString([]byte(getRequiredEnv("JWT_SECRET")))
 	return tokenString
 }
 
@@ -1255,13 +1266,13 @@ func generateRefreshToken(userID string) string {
 		"type":    "refresh",
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, _ := token.SignedString([]byte(getEnv("JWT_SECRET", "tigerwallet-secret-key")+"_refresh"))
+	tokenString, _ := token.SignedString([]byte(getRequiredEnv("JWT_SECRET")+"_refresh"))
 	return tokenString
 }
 
 func verifyRefreshToken(tokenString string) jwt.MapClaims {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		return []byte(getEnv("JWT_SECRET", "tigerwallet-secret-key") + "_refresh"), nil
+		return []byte(getRequiredEnv("JWT_SECRET") + "_refresh"), nil
 	})
 	if err != nil || !token.Valid {
 		return nil
@@ -1346,13 +1357,13 @@ func generatePasswordResetToken(userID string) string {
 		"exp":     time.Now().Add(time.Hour).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, _ := token.SignedString([]byte(getEnv("JWT_SECRET", "tigerwallet-secret-key") + "_reset"))
+	tokenString, _ := token.SignedString([]byte(getRequiredEnv("JWT_SECRET") + "_reset"))
 	return tokenString
 }
 
 func verifyPasswordResetToken(tokenString string) string {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		return []byte(getEnv("JWT_SECRET", "tigerwallet-secret-key") + "_reset"), nil
+		return []byte(getRequiredEnv("JWT_SECRET") + "_reset"), nil
 	})
 	if err != nil || !token.Valid {
 		return ""
@@ -1371,13 +1382,13 @@ func generateEmailVerificationToken(userID string) string {
 		"exp":     time.Now().Add(time.Hour * 24).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, _ := token.SignedString([]byte(getEnv("JWT_SECRET", "tigerwallet-secret-key") + "_verify"))
+	tokenString, _ := token.SignedString([]byte(getRequiredEnv("JWT_SECRET") + "_verify"))
 	return tokenString
 }
 
 func verifyEmailToken(tokenString string) string {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		return []byte(getEnv("JWT_SECRET", "tigerwallet-secret-key") + "_verify"), nil
+		return []byte(getRequiredEnv("JWT_SECRET") + "_verify"), nil
 	})
 	if err != nil || !token.Valid {
 		return ""
@@ -1398,7 +1409,7 @@ func generateInviteToken(email, tenantID, role string) string {
 		"exp":      time.Now().Add(time.Hour * 72).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, _ := token.SignedString([]byte(getEnv("JWT_SECRET", "tigerwallet-secret-key") + "_invite"))
+	tokenString, _ := token.SignedString([]byte(getRequiredEnv("JWT_SECRET") + "_invite"))
 	return tokenString
 }
 

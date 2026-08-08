@@ -292,23 +292,25 @@ func (s *TimelockService) ExecuteTransaction(txID string, executor string) (*Tim
 		return nil, fmt.Errorf("transaction expired")
 	}
 	
-	// Execute transaction (simulated)
-	execTxHash := generateTxHash()
-	
-	tx.Status = "executed"
+	// Execute transaction. Real on-chain broadcast is not implemented here;
+	// a transaction hash can only be obtained by broadcasting the signed
+	// transaction via an RPC node. We mark the transaction as pending rather
+	// than fabricating a hash.
+	execTxHash := ""
+	tx.Status = "pending_broadcast"
 	now := time.Now()
 	tx.ExecutedAt = &now
 	tx.ExecutedBy = executor
 	tx.ExecutionTxHash = execTxHash
-	
+
 	s.db.Save(&tx)
-	
+
 	// Remove from schedule
 	s.redis.ZRem(context.Background(), "timelock:schedule", txID)
 	s.redis.Del(context.Background(), fmt.Sprintf("timelock:tx:%s", txID))
-	
+
 	// Add history
-	s.addHistory(txID, "executed", executor, fmt.Sprintf("Executed with tx: %s", execTxHash))
+	s.addHistory(txID, "pending_broadcast", executor, "Transaction queued for broadcast; awaiting real on-chain hash")
 	
 	return &tx, nil
 }
@@ -486,11 +488,6 @@ func (s *TimelockService) addHistory(txID, action, actor, details string) {
 		Details:  details,
 	}
 	s.db.Create(&history)
-}
-
-func generateTxHash() string {
-	h := sha256.Sum256([]byte(time.Now().String() + uuid.New().String()))
-	return "0x" + hex.EncodeToString(h[:])
 }
 
 func generateSignature(txID, admin string) string {

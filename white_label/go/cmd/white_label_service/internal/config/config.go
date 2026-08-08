@@ -58,7 +58,7 @@ func Load() *Config {
 		RedisPort:        getEnv("REDIS_PORT", "6379"),
 		RedisPassword:    getEnv("REDIS_PASSWORD", ""),
 		RedisDB:          0,
-		JWTSecret:        getEnv("JWT_SECRET", "tigerwallet-super-secret-key-change-in-production"),
+		JWTSecret:        getEnv("JWT_SECRET", ""),
 		SessionExpiry:    24 * time.Hour,
 		MaxLoginAttempts: 3,
 		LockoutDuration:  15 * time.Minute,

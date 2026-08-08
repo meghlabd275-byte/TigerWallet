@@ -9,9 +9,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -927,6 +929,17 @@ func (n *NotificationService) SendTransactionNotification(txHash, status, symbol
 	return n.telegram.SendTelegram(title + "\n" + body)
 }
 
+// getRequiredEnv reads a required environment variable and fatally exits if it
+// is unset. Used for secrets/credentials that must never fall back to insecure
+// hardcoded defaults.
+func getRequiredEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		log.Fatalf("%s environment variable must be set", key)
+	}
+	return v
+}
+
 // ============================================================================
 // Main Entry Point
 // ============================================================================
@@ -937,8 +950,8 @@ func main() {
 
 	// Example: Create Binance client
 	binanceConfig := ExchangeConfig{
-		APIKey:       "your-api-key",
-		SecretKey:    "your-secret-key",
+		APIKey:       getRequiredEnv("EXCHANGE_API_KEY"),
+		SecretKey:    getRequiredEnv("EXCHANGE_API_SECRET"),
 		APIBase:      "https://api.binance.com",
 		WSBase:       "wss://stream.binance.com:9443",
 		HTTPTimeout:  30,

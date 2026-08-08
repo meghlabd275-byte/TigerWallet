@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log"
 	"os"
 	"strconv"
 	"time"
@@ -60,12 +61,12 @@ func Load() *Config {
 		TLSCert:     getEnv("TLS_CERT", ""),
 		TLSKey:      getEnv("TLS_KEY", ""),
 
-		DatabaseURL: getEnv("DATABASE_URL", "postgres://tigerwallet:password@localhost:5432/tigerwallet?sslmode=disable"),
+		DatabaseURL: getRequiredEnv("DATABASE_URL"),
 
 		RedisURL:      getEnv("REDIS_URL", "localhost:6379"),
 		RedisPassword: getEnv("REDIS_PASSWORD", ""),
 
-		JWTSecret:          getEnv("JWT_SECRET", "tigerwallet-secret-key-change-in-production"),
+		JWTSecret:          getRequiredEnv("JWT_SECRET"),
 		JWTExpirationHours: getEnvInt("JWT_EXPIRATION_HOURS", 24),
 
 		CORSOrigins: []string{
@@ -94,8 +95,19 @@ func Load() *Config {
 		SuperAdminAddresses: []string{
 			getEnv("SUPER_ADMIN_ADDRESS", "0x0000000000000000000000000000000000000001"),
 		},
-		AdminAPIKey: getEnv("ADMIN_API_KEY", "tigerwallet-admin-key"),
+		AdminAPIKey: getRequiredEnv("ADMIN_API_KEY"),
 	}
+}
+
+// getRequiredEnv reads a required environment variable and fatally exits if it
+// is unset. Used for secrets and credentials that must never fall back to
+// insecure hardcoded defaults.
+func getRequiredEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("%s environment variable must be set", key)
+	}
+	return value
 }
 
 func getEnv(key, defaultValue string) string {

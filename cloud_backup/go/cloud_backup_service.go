@@ -77,7 +77,7 @@ func LoadConfig() *Config {
 		DBUser:               getEnv("DB_USER", "tigerwallet"),
 		DBPassword:           getEnv("DB_PASSWORD", "password"),
 		DBName:               getEnv("DB_NAME", "tigerwallet"),
-		JWTSecret:            getEnv("JWT_SECRET", "cloud-backup-secret"),
+		JWTSecret:            getEnv("JWT_SECRET", ""),
 		AppleKeychainBucket:  getEnv("APPLE_KEYCHAIN_BUCKET", "tigerwallet-icloud"),
 		GoogleCredentialsJSON: getEnv("GOOGLE_CREDENTIALS_JSON", ""),
 		GoogleBucketName:     getEnv("GOOGLE_BUCKET_NAME", "tigerwallet-backups"),

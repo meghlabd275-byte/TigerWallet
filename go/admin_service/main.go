@@ -48,14 +48,14 @@ type Config struct {
 
 var cfg = Config{
 	Port:            8002,
-	JWTSecret:       "tiger-wallet-admin-jwt-secret-2024",
+	JWTSecret:       getRequiredEnv("JWT_SECRET"),
 	RedisAddr:       "localhost:6379",
 	MasterAdmin:     "admin@tigerwallet.io",
 	PostgresHost:    getEnv("POSTGRES_HOST", "localhost"),
 	PostgresPort:    5432,
 	PostgresDB:      getEnv("POSTGRES_DB", "tigerwallet"),
 	PostgresUser:    getEnv("POSTGRES_USER", "postgres"),
-	PostgresPass:    getEnv("POSTGRES_PASSWORD", "password"),
+	PostgresPass:    getRequiredEnv("DATABASE_PASSWORD"),
 }
 
 func getEnv(key, defaultValue string) string {
@@ -63,6 +63,89 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// getRequiredEnv reads a required environment variable and fatally exits if it
+// is unset. Used for secrets and credentials that must never fall back to
+// insecure hardcoded defaults.
+func getRequiredEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("%s environment variable must be set", key)
+	}
+	return value
+}
+
+// encryptionKey derives a 32-byte AES-256 key from the ENCRYPTION_KEY env var
+// by hashing it with SHA-256, so any length passphrase becomes a valid key.
+func encryptionKey() []byte {
+	key := os.Getenv("ENCRYPTION_KEY")
+	if key == "" {
+		log.Fatal("ENCRYPTION_KEY environment variable must be set")
+	}
+	sum := sha256.Sum256([]byte(key))
+	return sum[:]
+}
+
+// encryptString performs AES-256-GCM authenticated encryption and returns a
+// base64 (hex) string of nonce||ciphertext. Used for protecting secrets at
+// rest such as API keys and tokens.
+func encryptString(plaintext string) (string, error) {
+	key := encryptionKey()
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
+	return hex.EncodeToString(ciphertext), nil
+}
+
+// decryptString reverses encryptString, returning the original plaintext.
+func decryptString(ciphertextHex string) (string, error) {
+	key := encryptionKey()
+	ciphertext, err := hex.DecodeString(ciphertextHex)
+	if err != nil {
+		return "", err
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonceSize := gcm.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return "", fmt.Errorf("ciphertext too short")
+	}
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", err
+	}
+	return string(plaintext), nil
+}
+
+// secureRandomInt returns a uniform random non-negative int in [0, max) using
+// crypto/rand, avoiding modulo bias.
+func secureRandomInt(max int) int {
+	if max <= 0 {
+		return 0
+	}
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
+	if err != nil {
+		log.Fatalf("failed to generate secure random int: %v", err)
+	}
+	return int(n.Int64())
 }
 
 // Global database connection

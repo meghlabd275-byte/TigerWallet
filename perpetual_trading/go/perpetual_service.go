@@ -6,8 +6,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -581,12 +579,6 @@ func (s *PerpetualService) checkLiquidation(position *Position) bool {
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-func (s *PerpetualService) generateTxHash(user, symbol string, size float64) string {
-	data := fmt.Sprintf("%s:%s:%f:%d", user, symbol, size, time.Now().UnixNano())
-	hash := sha256.Sum256([]byte(data))
-	return "0x" + hex.EncodeToString(hash[:])
-}
 
 // ============================================================================
 // Main

@@ -502,7 +502,7 @@ func (s *OptionsService) executeOrder(order *OptionOrder, contract *OptionContra
 		Price:           fillPrice,
 		Total:           fillPrice * float64(order.Quantity),
 		Fee:             fillPrice * float64(order.Quantity) * 0.001, // 0.1% fee
-		TxHash:          generateTxHash(),
+		TxHash:          "", // not broadcast via RPC; real hash requires on-chain broadcast
 	}
 	s.db.Create(&trade)
 	
@@ -584,7 +584,7 @@ func (s *OptionsService) ClosePosition(userID uint, positionID uint, quantity in
 		Price:           closePrice,
 		Total:           closePrice * float64(quantity),
 		Fee:             closePrice * float64(quantity) * 0.001,
-		TxHash:          generateTxHash(),
+		TxHash:          "", // not broadcast via RPC; real hash requires on-chain broadcast
 	}
 	s.db.Create(&trade)
 	
@@ -649,7 +649,7 @@ func (s *OptionsService) ExerciseOption(userID uint, positionID uint) (*OptionSe
 		SettlementPrice:   underlyingPrice,
 		SettlementAmount:   settlementAmount,
 		Profit:             settlementAmount - (position.EntryPrice * float64(position.Quantity)),
-		TxHash:             generateTxHash(),
+		TxHash:             "", // not broadcast via RPC; real hash requires on-chain broadcast
 		Status:             "completed",
 	}
 	
@@ -699,7 +699,7 @@ func (s *OptionsService) ProcessExpiration() error {
 				SettlementPrice:   contract.StrikePrice,
 				SettlementAmount:  settlementAmount * float64(position.Quantity),
 				Profit:           -position.EntryPrice * float64(position.Quantity),
-				TxHash:           generateTxHash(),
+				TxHash:           "", // not broadcast via RPC; real hash requires on-chain broadcast
 				Status:           "completed",
 			}
 			s.db.Create(&settlement)
@@ -958,11 +958,6 @@ func getTotalVolume(contracts []OptionContract) int {
 		total += c.Volume24h
 	}
 	return total
-}
-
-func generateTxHash() string {
-	data := fmt.Sprintf("%d:%s", time.Now().UnixNano(), uuid.New().String())
-	return fmt.Sprintf("0x%x", data)
 }
 
 // ============================================================================

@@ -729,7 +729,7 @@ func main() {
 	cfg := Config{
 		ServerPort: getEnv("WHITELABEL_PORT", "8089"),
 		RedisAddr:  getEnv("REDIS_ADDR", "localhost:6379"),
-		JWTSecret: getEnv("JWT_SECRET", "tiger-whitelabel-secret-2026"),
+		JWTSecret: getEnv("JWT_SECRET", ""),
 	}
 
 	service := NewWhiteLabelService(cfg)

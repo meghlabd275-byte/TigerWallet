@@ -948,7 +948,7 @@ func main() {
 	config.Port = getEnv("PERMISSION_PORT", "8091")
 	config.DatabaseURL = getEnv("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet_admin")
 	config.RedisURL = getEnv("REDIS_URL", "redis://localhost:6379")
-	config.JWTSecret = getEnv("JWT_SECRET", "tigerwallet-permission-secret-key")
+	config.JWTSecret = getEnv("JWT_SECRET", "")
 	jwtSecret = []byte(config.JWTSecret)
 
 	permCache = &sync.Map{}

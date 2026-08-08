@@ -6,8 +6,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"math"
 	"os"
@@ -344,11 +342,11 @@ func (s *DCAService) executeBuy(strategy *DCAStrategy) {
 		Amount:      amount,
 		Price:       currentPrice,
 		TotalSpent:  strategy.InvestmentPerBuy,
-		Status:      "EXECUTED",
+		Status:      "pending_broadcast",
+		TxHash:      "",
 		ExecutedAt:  new(time.Time),
 	}
 	*buy.ExecutedAt = time.Now()
-	buy.TxHash = s.generateTxHash(strategy.UserAddress, strategy.Symbol)
 
 	s.db.Create(&buy)
 
@@ -447,12 +445,6 @@ func (s *DCAService) GetStrategyDetails(ctx *gin.Context) {
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-func (s *DCAService) generateTxHash(user, symbol string) string {
-	data := fmt.Sprintf("%s:%s:%d", user, symbol, time.Now().UnixNano())
-	hash := sha256.Sum256([]byte(data))
-	return "0x" + hex.EncodeToString(hash[:])
-}
 
 // ============================================================================
 // Main

@@ -436,13 +436,12 @@ func (s *LaunchpadService) ClaimTokens(ctx *gin.Context) {
 	allocation.ClaimedAt = &now
 	s.db.Save(&allocation)
 
-	// Generate transaction hash (in production, this would be from blockchain)
-	txHash := generateTxHash(req.UserAddress, allocation.ProjectID)
-
+	// Transaction has not been broadcast via RPC; no real hash is available.
 	ctx.JSON(200, gin.H{
-		"success":         true,
-		"transaction_hash": txHash,
-		"tokens_claimed":  allocation.Tokens,
+		"success":          true,
+		"transaction_hash": "",
+		"status":           "not_broadcast",
+		"tokens_claimed":   allocation.Tokens,
 	})
 }
 
@@ -574,12 +573,12 @@ func (s *LaunchpadService) ClaimRewards(ctx *gin.Context) {
 	stake.PendingReward = 0
 	s.db.Save(&stake)
 
-	txHash := generateTxHash(req.UserAddress, req.ProjectID)
-
+	// Transaction has not been broadcast via RPC; no real hash is available.
 	ctx.JSON(200, gin.H{
-		"success":         true,
-		"reward_claimed":  reward,
-		"transaction_hash": txHash,
+		"success":          true,
+		"reward_claimed":   reward,
+		"transaction_hash": "",
+		"status":           "not_broadcast",
 	})
 }
 
@@ -653,12 +652,6 @@ func generateProjectID() string {
 	data := fmt.Sprintf("project:%d", time.Now().UnixNano())
 	hash := sha256.Sum256([]byte(data))
 	return "lp_" + hex.EncodeToString(hash[:])[0:12]
-}
-
-func generateTxHash(user, project string) string {
-	data := fmt.Sprintf("%s:%s:%d", user, project, time.Now().UnixNano())
-	hash := sha256.Sum256([]byte(data))
-	return "0x" + hex.EncodeToString(hash[:])
 }
 
 func parseAmount(amountStr string) (float64, error) {

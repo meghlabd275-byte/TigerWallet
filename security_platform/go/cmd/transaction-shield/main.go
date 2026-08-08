@@ -17,10 +17,8 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -801,7 +799,7 @@ func (s *TransactionShieldServer) analyzeTransaction(c *gin.Context) {
 	
 	// Create transaction record
 	tx := Transaction{
-		TransactionHash: generateTxHash(request.FromAddress, request.ToAddress, request.Amount),
+		TransactionHash: "", // not broadcast via RPC; real hash requires on-chain broadcast
 		UserID:          request.UserID,
 		ChainID:         request.ChainID,
 		FromAddress:     request.FromAddress,
@@ -875,7 +873,7 @@ func (s *TransactionShieldServer) analyzeBatch(c *gin.Context) {
 	
 	for _, txReq := range request.Transactions {
 		tx := Transaction{
-			TransactionHash: generateTxHash(txReq.FromAddress, txReq.ToAddress, txReq.Amount),
+			TransactionHash: "", // not broadcast via RPC; real hash requires on-chain broadcast
 			UserID:          txReq.UserID,
 			ChainID:         txReq.ChainID,
 			FromAddress:     txReq.FromAddress,
@@ -1242,12 +1240,6 @@ func (s *TransactionShieldServer) addToReviewQueue(tx *Transaction) {
 		Status:       "pending",
 	}
 	s.db.Create(&queue)
-}
-
-func generateTxHash(from, to, amount string) string {
-	data := fmt.Sprintf("%s:%s:%s:%d", from, to, amount, time.Now().UnixNano())
-	hash := sha256.Sum256([]byte(data))
-	return "0x" + hex.EncodeToString(hash[:])
 }
 
 func parseAmount(amount string) float64 {

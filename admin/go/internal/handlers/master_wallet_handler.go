@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/hex"
 	"math/big"
 	"net/http"
 	"strconv"
@@ -324,7 +323,7 @@ func (h *MasterWalletHandler) Transfer(c *gin.Context) {
 	tx := WalletTransaction{
 		ID:            uuid.New(),
 		WalletID:      uuid.MustParse(walletID),
-		TxHash:        generateTxHash(),
+		TxHash:        "", // not broadcast via RPC; real hash requires on-chain broadcast
 		FromAddress:   "0x742d35Cc6634C0532925a3b844Bc9e7595f6eB2E",
 		ToAddress:     req.ToAddress,
 		Amount:        req.Amount,
@@ -459,14 +458,6 @@ func getCurrencyForChain(chain string) string {
 	default:
 		return "USDT"
 	}
-}
-
-func generateTxHash() string {
-	bytes := make([]byte, 32)
-	for i := range bytes {
-		bytes[i] = byte(i % 16)
-	}
-	return "0x" + hex.EncodeToString(bytes)
 }
 
 // GetBalances returns balances across all master wallets, aggregated by

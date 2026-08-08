@@ -6,6 +6,8 @@ package database
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
 	"sync"
 	"time"
 
@@ -28,12 +30,20 @@ type DatabaseConfig struct {
 
 // DefaultConfig returns default PostgreSQL configuration
 func DefaultConfig() *DatabaseConfig {
+	password := os.Getenv("DATABASE_PASSWORD")
+	if password == "" {
+		log.Fatal("DATABASE_PASSWORD environment variable must be set")
+	}
+	host := "localhost"
+	if v := os.Getenv("DB_HOST"); v != "" {
+		host = v
+	}
 	return &DatabaseConfig{
-		Host:            "localhost",
+		Host:            host,
 		Port:            5432,
 		Database:        "tigerwallet",
 		Username:        "postgres",
-		Password:        "password",
+		Password:        password,
 		MaxConns:        20,
 		MinConns:        5,
 		MaxConnLifetime: time.Hour,

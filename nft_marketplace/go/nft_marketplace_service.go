@@ -62,7 +62,7 @@ func LoadConfig() *Config {
 		DBName: getEnv("DB_NAME", "tigerwallet"),
 		RedisHost: getEnv("REDIS_HOST", "localhost"),
 		RedisPort: getEnv("REDIS_PORT", "6379"),
-		JWTSecret: getEnv("JWT_SECRET", "nft-secret"),
+		JWTSecret: getEnv("JWT_SECRET", ""),
 		PlatformFeePercent: 2.5,
 		MaxRoyaltyPercent: 15.0,
 	}

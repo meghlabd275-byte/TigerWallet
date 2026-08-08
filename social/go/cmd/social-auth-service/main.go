@@ -97,7 +97,7 @@ func LoadConfig() *Config {
 		DBName:            getEnv("DB_NAME", "tigerwallet"),
 		RedisHost:         getEnv("REDIS_HOST", "localhost"),
 		RedisPort:         getEnv("REDIS_PORT", "6379"),
-		JWTSecret:         getEnv("JWT_SECRET", "social-auth-secret-key"),
+		JWTSecret:         getEnv("JWT_SECRET", ""),
 		JWTExpiration:     24 * time.Hour,
 		RefreshTokenExpiry: 30 * 24 * time.Hour,
 		

@@ -5,6 +5,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -547,16 +548,16 @@ func parseBlockNumber(s string) uint64 {
 
 func generateHash() string {
 	b := make([]byte, 32)
-	for i := range b {
-		b[i] = byte((i * 17 + 13) % 256)
+	if _, err := rand.Read(b); err != nil {
+		log.Fatalf("failed to generate random hash: %v", err)
 	}
 	return "0x" + hex.EncodeToString(b)
 }
 
 func generateAddress() string {
 	b := make([]byte, 20)
-	for i := range b {
-		b[i] = byte((i * 13 + 7) % 256)
+	if _, err := rand.Read(b); err != nil {
+		log.Fatalf("failed to generate random address: %v", err)
 	}
 	return "0x" + hex.EncodeToString(b)
 }

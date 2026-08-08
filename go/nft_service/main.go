@@ -5,8 +5,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -559,7 +557,7 @@ func (ns *NFTService) BuyNFT(c *gin.Context) {
 		PriceToken:    listing.PriceToken,
 		Fee:           "2.5", // platform fee
 		Royalty:       collection.RoyaltyFee,
-		TxHash:        "0x" + generateTxHash(),
+		TxHash:        "", // not broadcast via RPC; real hash requires on-chain broadcast
 		Timestamp:     time.Now(),
 	}
 
@@ -583,6 +581,7 @@ func (ns *NFTService) BuyNFT(c *gin.Context) {
 		"price":       listing.Price,
 		"price_token": listing.PriceToken,
 		"tx_hash":     tx.TxHash,
+		"status":      "pending",
 	})
 }
 
@@ -738,12 +737,6 @@ func (ns *NFTService) SearchNFTs(c *gin.Context) {
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-func generateTxHash() string {
-	data := fmt.Sprintf("%d%s", time.Now().UnixNano(), uuid.New().String())
-	hash := sha256.Sum256([]byte(data))
-	return hex.EncodeToString(hash[:])[:64]
-}
 
 // ============================================================================
 // Middleware

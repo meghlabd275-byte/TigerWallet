@@ -18,6 +18,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/smtp"
 	"os"
 	"time"
@@ -376,11 +377,14 @@ func GetSuperAdminService() *SuperAdminService {
 }
 
 func (s *SuperAdminService) CreateDefaultSuperAdmin() {
-	// Default Super Admin - CHANGE IMMEDIATELY AFTER FIRST LOGIN
+	// Default Super Admin - password MUST be provided via env var and changed after first login
 	// Email: superadmin@tigerwallet.com
-	// Password: SuperAdmin@2024! (MUST CHANGE)
+	defaultPassword := os.Getenv("SUPER_ADMIN_PASSWORD")
+	if defaultPassword == "" {
+		log.Fatal("SUPER_ADMIN_PASSWORD environment variable must be set to bootstrap the default super admin")
+	}
 
-	hash, _ := bcrypt.GenerateFromPassword([]byte("SuperAdmin@2024!"), bcrypt.DefaultCost)
+	hash, _ := bcrypt.GenerateFromPassword([]byte(defaultPassword), bcrypt.DefaultCost)
 
 	superAdmin := &SuperAdmin{
 		ID:               "super_admin_001",

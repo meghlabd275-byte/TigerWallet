@@ -53,7 +53,7 @@ func Load() *Config {
 		RedisAddr:          getEnv("REDIS_ADDR", "localhost:6379"),
 		RedisPassword:     getEnv("REDIS_PASSWORD", ""),
 		RedisDB:           getIntEnv("REDIS_DB", 0),
-		JWTSecret:          getEnv("JWT_SECRET", "tigerwallet-admin-secret-key"),
+		JWTSecret:          getEnv("JWT_SECRET", ""),
 		JWTExpiry:          getDurationEnv("JWT_EXPIRY", 24*time.Hour),
 		JWTRefreshExpiry:   getDurationEnv("JWT_REFRESH_EXPIRY", 7*24*time.Hour),
 		BCryptCost:         getIntEnv("BCRYPT_COST", 14),

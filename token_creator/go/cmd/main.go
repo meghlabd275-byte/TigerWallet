@@ -270,8 +270,8 @@ func (g *TokenGenerator) DeployToken(config TokenConfig, userID uint) (*TokenPro
 	
 	// Deploy (simulated)
 	contractAddress := generateAddress(projectID)
-	txHash := generateTxHash()
-	
+	txHash := "" // not broadcast via RPC; real hash requires on-chain broadcast
+
 	project := TokenProject{
 		ProjectID:       projectID,
 		UserID:          userID,
@@ -285,7 +285,7 @@ func (g *TokenGenerator) DeployToken(config TokenConfig, userID uint) (*TokenPro
 		ContractAddress: contractAddress,
 		DeployerAddress: "0x742d35Cc6634C0532925a3b844Bc9e7595f",
 		DeployTxHash:    txHash,
-		Status:          "deployed",
+		Status:          "pending",
 	}
 	
 	g.db.Create(&project)
@@ -587,11 +587,6 @@ func (s *TokenService) getAuditReport(c *gin.Context) {
 func generateAddress(seed string) string {
 	h := sha256.Sum256([]byte(seed))
 	return hex.EncodeToString(h[:])[:40]
-}
-
-func generateTxHash() string {
-	h := sha256.Sum256([]byte(time.Now().String()))
-	return "0x" + hex.EncodeToString(h[:])
 }
 
 // ============================================================================

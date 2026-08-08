@@ -1114,7 +1114,7 @@ func main() {
 		Port:         getEnv("PORT", "8085"),
 		DatabaseURL:  getEnv("DATABASE_URL", "postgres://tigerwallet:tigerpass@localhost:5432/tigerwallet?sslmode=disable"),
 		RedisURL:     getEnv("REDIS_URL", "localhost:6379"),
-		JWTSecret:    getEnv("JWT_SECRET", "tigerwallet-secret-key"),
+		JWTSecret:    getEnv("JWT_SECRET", ""),
 		AdminEmail:   getEnv("ADMIN_EMAIL", "admin@tigerwallet.com"),
 	}
 

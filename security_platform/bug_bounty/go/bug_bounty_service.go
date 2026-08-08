@@ -71,7 +71,7 @@ func LoadConfig() *Config {
 		DBName:        getEnv("DB_NAME", "tigerwallet"),
 		RedisHost:     getEnv("REDIS_HOST", "localhost"),
 		RedisPort:     getEnv("REDIS_PORT", "6379"),
-		JWTSecret:     getEnv("JWT_SECRET", "bounty-secret"),
+		JWTSecret:     getEnv("JWT_SECRET", ""),
 		RewardPool:    1000000, // $1M pool
 		MinReward:     100,
 		MaxReward:     50000,

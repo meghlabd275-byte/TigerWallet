@@ -6,8 +6,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"math"
 	"os"
@@ -509,12 +507,6 @@ func (s *GridTradingService) GetStrategyDetails(ctx *gin.Context) {
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-func (s *GridTradingService) generateTxHash(user, symbol string) string {
-	data := fmt.Sprintf("%s:%s:%d", user, symbol, time.Now().UnixNano())
-	hash := sha256.Sum256([]byte(data))
-	return hex.EncodeToString(hash[:])
-}
 
 // ============================================================================
 // Main

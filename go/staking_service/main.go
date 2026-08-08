@@ -5,8 +5,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -460,7 +458,8 @@ func (ss *StakingService) Claim(c *gin.Context) {
 		"position_id":  req.PositionID,
 		"claimed":      rewardStr,
 		"reward_token": pool.RewardToken,
-		"tx_hash":      "0x" + generateTxHash(),
+		"tx_hash":      "",
+		"status":       "pending",
 	})
 }
 
@@ -595,8 +594,8 @@ func (ss *StakingService) Convert(c *gin.Context) {
 		"token":        token.Symbol,
 		"amount":       req.Amount,
 		"output_amount": req.Amount, // 1:1 for simplicity
-		"tx_hash":      "0x" + generateTxHash(),
-		"status":       "completed",
+		"tx_hash":      "",
+		"status":       "pending",
 	})
 }
 
@@ -645,12 +644,6 @@ func subtractStrings(a, b string) string {
 	cf.Sub(af, bf)
 	res, _ := cf.String()
 	return res
-}
-
-func generateTxHash() string {
-	data := fmt.Sprintf("%d%s", time.Now().UnixNano(), uuid.New().String())
-	hash := sha256.Sum256([]byte(data))
-	return hex.EncodeToString(hash[:])[:64]
 }
 
 // ============================================================================

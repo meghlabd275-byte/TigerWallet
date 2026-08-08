@@ -767,7 +767,7 @@ func main() {
 	cfg := Config{
 		ServerPort:    getEnv("MASTER_WALLET_PORT", "8088"),
 		RedisAddr:    getEnv("REDIS_ADDR", "localhost:6379"),
-		JWTSecret:    getEnv("JWT_SECRET", "tiger-master-secret-2026"),
+		JWTSecret:    getEnv("JWT_SECRET", ""),
 		MasterKeyHex: getEnv("MASTER_KEY_HEX", ""),
 		HotWalletLimit: 1000000000000000000, // 1 ETH
 	}

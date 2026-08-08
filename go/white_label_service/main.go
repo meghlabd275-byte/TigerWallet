@@ -49,7 +49,7 @@ func LoadConfig() *Config {
 		ServerPort:      getEnv("WL_SERVICE_PORT", "8085"),
 		DatabaseURL:     getEnv("DATABASE_URL", "postgres://tigerwallet:tigerpass@localhost:5432/tigerwallet?sslmode=disable"),
 		RedisURL:        getEnv("REDIS_URL", "redis://localhost:6379"),
-		JWTSecret:       getEnv("JWT_SECRET", "TigerWalletWLSecret2024!"),
+		JWTSecret:       getEnv("JWT_SECRET", ""),
 		AllowedOrigins:  getEnv("ALLOWED_ORIGINS", "*"),
 	}
 }

@@ -13,7 +13,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +25,25 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/shopspring/decimal"
 )
+
+// getRequiredEnv reads a required environment variable and fatally exits if it
+// is unset. Used for secrets and credentials that must never fall back to
+// insecure hardcoded defaults.
+func getRequiredEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("%s environment variable must be set", key)
+	}
+	return value
+}
+
+// getEnv reads an environment variable, returning defaultValue when unset.
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
 
 // ============================================================================
 // Types
@@ -769,14 +790,14 @@ func (s *FiatOnRampService) handleWebhook(c *gin.Context) {
 
 func main() {
 	config := &Config{
-		MoonPayAPIKey:     "pk_test_xxx",
-		MoonPaySecretKey:  "sk_test_xxx",
-		MoonPayCallbackURL: "https://api.tigerwallet.com/v1/onramp/webhook",
-		RampAPIKey:        "pk_live_xxx",
-		RampSecretKey:     "sk_live_xxx",
-		RampCallbackURL:   "https://api.tigerwallet.com/v1/onramp/webhook",
-		Port:              "8087",
-		RedisAddr:         "localhost:6379",
+		MoonPayAPIKey:      getRequiredEnv("MOONPAY_API_KEY"),
+		MoonPaySecretKey:   getRequiredEnv("MOONPAY_API_SECRET"),
+		MoonPayCallbackURL: getEnv("MOONPAY_CALLBACK_URL", "https://api.tigerwallet.com/v1/onramp/webhook"),
+		RampAPIKey:         getRequiredEnv("RAMP_API_KEY"),
+		RampSecretKey:      getRequiredEnv("RAMP_API_SECRET"),
+		RampCallbackURL:    getEnv("RAMP_CALLBACK_URL", "https://api.tigerwallet.com/v1/onramp/webhook"),
+		Port:               getEnv("PORT", "8087"),
+		RedisAddr:          getEnv("REDIS_ADDR", "localhost:6379"),
 	}
 
 	r := gin.Default()

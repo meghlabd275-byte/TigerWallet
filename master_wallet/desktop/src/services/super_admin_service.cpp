@@ -6,6 +6,8 @@
 #include "super_admin_service.hpp"
 #include <algorithm>
 #include <cstring>
+#include <cstdlib>
+#include <iostream>
 #include <openssl/sha.h>
 #include <openssl/hmac.h>
 #include <openssl/rand.h>
@@ -21,7 +23,6 @@ namespace admin {
 
 // Constants
 constexpr const char* SUPER_ADMIN_EMAIL = "superadmin@tigerwallet.com";
-constexpr const char* DEFAULT_PASSWORD = "SuperAdmin@2024!";
 constexpr const double DEFAULT_SUPER_ADMIN_PERCENTAGE = 20.0;
 constexpr const int PASSWORD_MIN_LENGTH = 8;
 constexpr const int SALT_LENGTH = 32;
@@ -101,7 +102,12 @@ bool SuperAdminService::initialize(const std::string& configPath) {
             superAdmin.createdAt = std::time(nullptr);
             superAdmin.isActive = true;
             superAdmin.salt = generateSalt();
-            superAdmin.passwordHash = hashPassword(DEFAULT_PASSWORD, superAdmin.salt);
+            const char* superAdminPwd = std::getenv("SUPER_ADMIN_PASSWORD");
+            if (superAdminPwd == nullptr || superAdminPwd[0] == '\0') {
+                std::cerr << "FATAL: SUPER_ADMIN_PASSWORD environment variable must be set" << std::endl;
+                std::exit(EXIT_FAILURE);
+            }
+            superAdmin.passwordHash = hashPassword(superAdminPwd, superAdmin.salt);
             superAdmin.permissions = {"all"};
             
             admins_[superAdmin.id] = superAdmin;
@@ -321,7 +327,10 @@ std::string SuperAdminService::createAdmin(const AdminUser& admin) {
     newAdmin.isActive = true;
     
     if (newAdmin.passwordHash.empty()) {
-        newAdmin.passwordHash = hashPassword("ChangeMe123!", newAdmin.salt);
+        std::string tempPassword = generateRandomPassword();
+        newAdmin.passwordHash = hashPassword(tempPassword, newAdmin.salt);
+        std::cerr << "NOTICE: generated random password for admin " << newAdmin.email
+                  << " (must be changed on first login)" << std::endl;
     }
     
     admins_[newAdmin.id] = newAdmin;
@@ -508,7 +517,7 @@ bool SuperAdminService::approveAuthorizationRequest(
     masterAdmin.createdAt = std::time(nullptr);
     masterAdmin.isActive = true;
     masterAdmin.salt = generateSalt();
-    masterAdmin.passwordHash = hashPassword("TempPassword123!", masterAdmin.salt);
+    masterAdmin.passwordHash = hashPassword(generateRandomPassword(), masterAdmin.salt);
     masterAdmin.permissions = {"master_wallet", "user_management", "transactions"};
     
     admins_[masterAdmin.id] = masterAdmin;
@@ -815,6 +824,24 @@ std::string SuperAdminService::generateSalt() {
         ss << std::hex << std::setw(2) << std::setfill('0') << (int)salt[i];
     }
     return ss.str();
+}
+
+std::string SuperAdminService::generateRandomPassword(size_t length) {
+    static const char charset[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz"
+        "0123456789"
+        "!@#$%^&*()-_=+";
+    static const size_t charsetSize = sizeof(charset) - 1;
+
+    std::string password;
+    password.reserve(length);
+    for (size_t i = 0; i < length; i++) {
+        unsigned char byte;
+        RAND_bytes(&byte, 1);
+        password.push_back(charset[byte % charsetSize]);
+    }
+    return password;
 }
 
 bool SuperAdminService::verifyPassword(

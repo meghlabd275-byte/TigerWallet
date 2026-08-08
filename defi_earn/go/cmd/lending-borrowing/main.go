@@ -17,10 +17,8 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -37,7 +35,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -702,7 +699,7 @@ func (s *LendingService) Liquidate(liquidatorID uint, victimUserID uint, repayAs
 		CollateralAmount:  fmt.Sprintf("%.8f", collateralAmount),
 		CollateralAmountUSD: repayAmountUSD * (1 + bonus),
 		ProfitUSD:         repayAmountUSD * bonus,
-		TxHash:            generateTxHash(),
+		TxHash:            "",
 		Status:            "pending",
 	}
 	s.db.Create(&liquidation)
@@ -747,9 +744,7 @@ func (s *LendingService) ExecuteFlashLoan(loan FlashLoan) (string, error) {
 	// 4. Verify repayment + fee
 	// 5. Revert if not repaid
 	
-	txHash := generateTxHash()
-	
-	return txHash, nil
+	return "", fmt.Errorf("transaction broadcast not implemented - cannot generate tx hash without broadcasting")
 }
 
 // ============================================================================
@@ -1034,30 +1029,23 @@ func (s *LendingService) getInterestRates(c *gin.Context) {
 // ============================================================================
 
 func (s *LendingService) recordTransaction(userID uint, walletAddress, chainID int, txType, assetID, amount string, amountUSD float64) string {
-	txHash := generateTxHash()
-	
+	log.Printf("recordTransaction: transaction broadcast not implemented - cannot generate tx hash without broadcasting")
 	tx := Transaction{
-		TxHash:       txHash,
-		UserID:       userID,
+		TxHash:        "",
+		UserID:        userID,
 		WalletAddress: walletAddress,
-		ChainID:      chainID,
-		Type:         txType,
-		AssetID:      assetID,
-		Amount:       amount,
-		AmountUSD:    amountUSD,
-		Status:       "confirmed",
-		BlockNumber:  0,
+		ChainID:       chainID,
+		Type:          txType,
+		AssetID:       assetID,
+		Amount:        amount,
+		AmountUSD:     amountUSD,
+		Status:        "pending",
+		BlockNumber:   0,
 	}
 	
 	s.db.Create(&tx)
 	
-	return txHash
-}
-
-func generateTxHash() string {
-	data := fmt.Sprintf("%d:%s", time.Now().UnixNano(), uuid.New().String())
-	hash := sha256.Sum256([]byte(data))
-	return "0x" + hex.EncodeToString(hash[:])
+	return ""
 }
 
 // ============================================================================

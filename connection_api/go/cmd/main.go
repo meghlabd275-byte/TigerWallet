@@ -679,7 +679,7 @@ func main() {
 	config.Port = getEnv("CONNECTION_PORT", "8092")
 	config.DatabaseURL = getEnv("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet_admin")
 	config.RedisURL = getEnv("REDIS_URL", "redis://localhost:6379")
-	config.JWTSecret = getEnv("JWT_SECRET", "tigerwallet-connection-secret")
+	config.JWTSecret = getEnv("JWT_SECRET", "")
 	config.HeartbeatTimeout = 60 // 60 seconds
 	config.MaxConnections = 100000
 

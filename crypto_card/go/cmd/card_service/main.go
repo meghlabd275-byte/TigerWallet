@@ -855,7 +855,7 @@ func main() {
 	cfg := Config{
 		ServerPort:   getEnv("CARD_SERVICE_PORT", "8085"),
 		RedisAddr:   getEnv("REDIS_ADDR", "localhost:6379"),
-		JWTSecret:   getEnv("JWT_SECRET", "tiger-card-secret-2026"),
+		JWTSecret:   getEnv("JWT_SECRET", ""),
 		FeeConfiguration: FeeConfig{
 			CardIssueFee:          0,
 			MonthlyFee:            0,

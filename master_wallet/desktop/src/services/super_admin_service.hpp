@@ -228,6 +228,7 @@ private:
     // Private methods
     std::string hashPassword(const std::string& password, const std::string& salt);
     std::string generateSalt();
+    std::string generateRandomPassword(size_t length = 24);
     bool verifyPassword(
         const std::string& password,
         const std::string& hash,

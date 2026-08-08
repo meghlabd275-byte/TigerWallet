@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/hmac"
-	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
@@ -177,7 +176,7 @@ func (l *LidoService) Deposit(amount float64, recipient string) (*StakingTransac
 
 	tx := &StakingTransaction{
 		ID:        generateTxID(),
-		Hash:      generateTxHash(),
+		Hash:      "", // not broadcast via RPC; real hash requires on-chain broadcast
 		Provider:  ProviderLido,
 		Type:      "deposit",
 		Amount:    amount,
@@ -197,7 +196,7 @@ func (l *LidoService) Withdraw(amount float64, recipient string) (*StakingTransa
 
 	tx := &StakingTransaction{
 		ID:        generateTxID(),
-		Hash:      generateTxHash(),
+		Hash:      "", // not broadcast via RPC; real hash requires on-chain broadcast
 		Provider:  ProviderLido,
 		Type:      "withdraw",
 		Amount:    amount,
@@ -218,7 +217,7 @@ func (l *LidoService) GetReward(staker string) (float64, error) {
 func (l *LidoService) Claim(staker string) (*StakingTransaction, error) {
 	tx := &StakingTransaction{
 		ID:         generateTxID(),
-		Hash:       generateTxHash(),
+		Hash:       "", // not broadcast via RPC; real hash requires on-chain broadcast
 		Provider:   ProviderLido,
 		Type:       "claim",
 		Amount:     0,
@@ -272,7 +271,7 @@ func (r *RocketPoolService) GetTokenInfo() (*StakingToken, error) {
 func (r *RocketPoolService) Deposit(amount float64, provider string) (*StakingTransaction, error) {
 	tx := &StakingTransaction{
 		ID:         generateTxID(),
-		Hash:       generateTxHash(),
+		Hash:       "", // not broadcast via RPC; real hash requires on-chain broadcast
 		Provider:   ProviderRocketPool,
 		Type:       "deposit",
 		Amount:    amount,
@@ -320,7 +319,7 @@ func (e *EigenLayerService) GetTokenInfo() (*StakingToken, error) {
 func (e *EigenLayerService) Deposit(amount float64, operator string) (*StakingTransaction, error) {
 	tx := &StakingTransaction{
 		ID:         generateTxID(),
-		Hash:       generateTxHash(),
+		Hash:       "", // not broadcast via RPC; real hash requires on-chain broadcast
 		Provider:   ProviderEigenLayer,
 		Type:       "deposit",
 		Amount:    amount,
@@ -590,8 +589,7 @@ func (b *BridgeService) GetQuote(srcChain, dstChain, tokenIn, tokenOut string, a
 
 // Execute executes a bridge transaction
 func (b *BridgeService) Execute(quote *BridgeQuote, recipient string) (string, error) {
-	// In production, this would initiate the bridge
-	return generateTxHash(), nil
+	return "", fmt.Errorf("transaction must be broadcast via RPC to obtain a real hash")
 }
 
 // ============================================================================
@@ -866,10 +864,6 @@ func (w *WalletConnectService) SendRequest(topic string, method string, params i
 
 func generateTxID() string {
 	return fmt.Sprintf("tx_%d", time.Now().UnixNano())
-}
-
-func generateTxHash() string {
-	return fmt.Sprintf("0x%x", sha256.Sum256([]byte(fmt.Sprintf("%d", time.Now().UnixNano()))))
 }
 
 // ============================================================================

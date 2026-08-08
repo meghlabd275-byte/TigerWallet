@@ -26,6 +26,7 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -61,21 +62,41 @@ type Config struct {
 }
 
 func DefaultConfig() *Config {
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET environment variable must be set")
+	}
+	encryptionKey := os.Getenv("ENCRYPTION_KEY")
+	if encryptionKey == "" {
+		log.Fatal("ENCRYPTION_KEY environment variable must be set")
+	}
+	dbPassword := os.Getenv("DATABASE_PASSWORD")
+	if dbPassword == "" {
+		log.Fatal("DATABASE_PASSWORD environment variable must be set")
+	}
 	return &Config{
-		Port:           ":8081",
-		DBHost:         "localhost",
+		Port:           getEnvDefault("PORT", ":8081"),
+		DBHost:         getEnvDefault("DB_HOST", "localhost"),
 		DBPort:         5432,
-		DBUser:         "tigerwallet",
-		DBPassword:     "password",
-		DBName:         "tigerwallet",
-		RedisHost:      "localhost",
+		DBUser:         getEnvDefault("DB_USER", "tigerwallet"),
+		DBPassword:     dbPassword,
+		DBName:         getEnvDefault("DB_NAME", "tigerwallet"),
+		RedisHost:      getEnvDefault("REDIS_HOST", "localhost"),
 		RedisPort:      6379,
-		JWTSecret:      "tigerwallet-jwt-secret-change-in-production",
+		JWTSecret:      jwtSecret,
 		JWTExpire:      24 * time.Hour * 7,
-		EncryptionKey:   "tigerwallet-encryption-key-32b",
+		EncryptionKey:   encryptionKey,
 		RateLimitRPM:   1000,
 		AllowedOrigins: []string{"*"},
 	}
+}
+
+// getEnvDefault reads an environment variable, returning a default when unset.
+func getEnvDefault(key, defaultValue string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultValue
 }
 
 // ============================================================================

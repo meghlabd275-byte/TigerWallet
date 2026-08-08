@@ -206,7 +206,7 @@ func (c *LedgerClient) SignTransaction(ctx context.Context, tx *TransactionReque
 	sigBytes[64] = 27 // V value for Ethereum
 
 	signature := hex.EncodeToString(sigBytes)
-	txHash := "0x" + generateTxHash(txData)
+	txHash := "" // not broadcast via RPC; real hash requires on-chain broadcast
 
 	return &SignedTransaction{
 		TxHash:     txHash,
@@ -268,7 +268,7 @@ func (c *TrezorClient) SignTransaction(ctx context.Context, tx *TransactionReque
 	sigBytes[64] = 27
 
 	signature := hex.EncodeToString(sigBytes)
-	txHash := "0x" + generateTxHash(buildEIP155Tx(tx))
+	txHash := "" // not broadcast via RPC; real hash requires on-chain broadcast
 
 	return &SignedTransaction{
 		TxHash:     txHash,
@@ -314,11 +314,6 @@ func generateSolanaAddress(path string) string {
 func generatePublicKey(path string) string {
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	return hex.EncodeToString(elliptic.MarshalCompressed(key.PublicKey, key.X, key.Y))
-}
-
-func generateTxHash(txData string) string {
-	hash := sha256.Sum256([]byte(txData))
-	return hex.EncodeToString(hash[:])
 }
 
 func buildEIP155Tx(tx *TransactionRequest) string {

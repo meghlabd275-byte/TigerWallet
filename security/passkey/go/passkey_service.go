@@ -68,12 +68,12 @@ func LoadConfig() *Config {
 		DBHost:           getEnv("DB_HOST", "localhost"),
 		DBPort:           getEnv("DB_PORT", "5432"),
 		DBUser:           getEnv("DB_USER", "tigerwallet"),
-		DBPassword:       getEnv("DB_PASSWORD", "password"),
+		DBPassword:       getRequiredEnv("DATABASE_PASSWORD"),
 		DBName:           getEnv("DB_NAME", "tigerwallet"),
 		RedisHost:        getEnv("REDIS_HOST", "localhost"),
 		RedisPort:        getEnv("REDIS_PORT", "6379"),
-		JWT_SECRET:       getEnv("JWT_SECRET", "tigerwallet-secret-key-change-in-production"),
-		ENCRYPTION_KEY:   getEnv("ENCRYPTION_KEY", "tigerwallet-32-byte-encryption!"),
+		JWT_SECRET:       getRequiredEnv("JWT_SECRET"),
+		ENCRYPTION_KEY:   getRequiredEnv("ENCRYPTION_KEY"),
 		RelyingPartyID:   getEnv("RP_ID", "tigerwallet.com"),
 		RelyingPartyName: getEnv("RP_NAME", "TigerWallet"),
 	}
@@ -84,6 +84,17 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// getRequiredEnv reads a required environment variable and fatally exits if it
+// is unset. Used for secrets and credentials that must never fall back to
+// insecure hardcoded defaults.
+func getRequiredEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("%s environment variable must be set", key)
+	}
+	return value
 }
 
 // ============================================================================

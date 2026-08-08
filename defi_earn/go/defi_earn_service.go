@@ -16,7 +16,6 @@ package defi
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -945,11 +944,9 @@ func (s *DeFiEarnService) ExecuteInternalTransfer(ctx context.Context, transferI
 		return fmt.Errorf("transfer already processed")
 	}
 
-	transfer.Status = "completed"
+	transfer.Status = "failed"
 	transfer.CompletedAt = time.Now().UnixMilli()
-	transfer.TxHash = generateTxHash()
-
-	return nil
+	return fmt.Errorf("transaction broadcast not implemented - cannot generate tx hash without broadcasting")
 }
 
 // GetTransfer retrieves a transfer
@@ -1011,12 +1008,6 @@ func (s *DeFiEarnService) ConvertToken(ctx context.Context, fromToken, toToken s
 
 func generateID() string {
 	return fmt.Sprintf("id_%d_%s", time.Now().UnixNano(), randomString(12))
-}
-
-func generateTxHash() string {
-	data := fmt.Sprintf("tx_%d_%s", time.Now().UnixNano(), randomString(16))
-	hash := sha256.Sum256([]byte(data))
-	return "0x" + hex.EncodeToString(hash[:])
 }
 
 func randomString(length int) string {

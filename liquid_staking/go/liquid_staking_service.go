@@ -86,7 +86,7 @@ func LoadConfig() *Config {
 		DBUser:             getEnv("DB_USER", "tigerwallet"),
 		DBPassword:         getEnv("DB_PASSWORD", "password"),
 		DBName:             getEnv("DB_NAME", "tigerwallet"),
-		JWTSecret:          getEnv("JWT_SECRET", "liquid-staking-secret"),
+		JWTSecret:          getEnv("JWT_SECRET", ""),
 		EthereumRPC:       getEnv("ETHEREUM_RPC", "https://eth.llamarpc.com"),
 		PolygonRPC:         getEnv("POLYGON_RPC", "https://polygon-rpc.com"),
 		SolanaRPC:          getEnv("SOLANA_RPC", "https://api.mainnet-beta.solana.com"),

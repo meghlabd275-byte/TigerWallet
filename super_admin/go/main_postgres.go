@@ -60,7 +60,7 @@ func loadSuperAdminConfig() *Config {
 		DBMaxConns:    50,
 		RedisHost:     getEnv("REDIS_HOST", "localhost"),
 		RedisPort:     getEnv("REDIS_PORT", "6379"),
-		JWTSecret:     getEnv("JWT_SECRET", "super-admin-secret-key"),
+		JWTSecret:     getEnv("JWT_SECRET", ""),
 		SessionExpiry: 24 * time.Hour,
 	}
 }

@@ -12,8 +12,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/big"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -64,6 +66,10 @@ type PrivateTx struct {
 	AccessList   []string `json:"access_list,omitempty"`
 	MaxFeePerGas string `json:"max_fee_per_gas,omitempty"`
 	MaxPriorityFeePerGas string `json:"max_priority_fee_per_gas,omitempty"`
+	// RawSignedTx is the hex-encoded signed raw transaction (0x-prefixed) that
+	// is broadcast to the network. The transaction hash is derived from this,
+	// never fabricated from request metadata.
+	RawSignedTx string `json:"raw_signed_tx,omitempty"`
 }
 
 type StateChange struct {
@@ -88,6 +94,10 @@ type ProtectedTx struct {
 	GasPrice    string   `json:"gas_price"`
 	Nonce       uint64   `json:"nonce"`
 	ChainID     uint64   `json:"chain_id"`
+	// RawSignedTx is the hex-encoded signed raw transaction submitted by the
+	// caller. It is required: the service derives the tx hash from the
+	// broadcast result rather than fabricating one.
+	RawSignedTx string   `json:"raw_signed_tx"`
 }
 
 type ProtectedBundle struct {
@@ -198,24 +208,25 @@ func (s *MEVProtectionService) CreateProtectedBundle(ctx context.Context, req *M
 		Status:         "pending",
 	}
 
-	// Convert transactions to private format
+	// Convert transactions to private format. Each protected tx MUST include a
+	// signed raw transaction; the tx hash is obtained from the broadcast
+	// result (sendToFlashbots) and never fabricated from request metadata.
 	for _, tx := range req.Transactions {
-		privateTx := PrivateTx{
-			To:           tx.To,
-			Value:        tx.Value,
-			Data:         tx.Data,
-			Gas:          tx.GasLimit,
-			GasPrice:     tx.GasPrice,
-			Nonce:        tx.Nonce,
-			ChainID:      tx.ChainID,
+		if tx.RawSignedTx == "" {
+			return nil, fmt.Errorf("transaction broadcast not implemented - cannot generate tx hash without broadcasting; raw_signed_tx is required")
 		}
-		
-		// Generate transaction hash
-		txHash := generateTxHash(privateTx)
-		privateTx.Hash = txHash
-		
+		privateTx := PrivateTx{
+			To:          tx.To,
+			Value:       tx.Value,
+			Data:        tx.Data,
+			Gas:         tx.GasLimit,
+			GasPrice:    tx.GasPrice,
+			Nonce:       tx.Nonce,
+			ChainID:     tx.ChainID,
+			RawSignedTx: tx.RawSignedTx,
+		}
+
 		bundle.Transactions = append(bundle.Transactions, privateTx)
-		bundle.TxHashes = append(bundle.TxHashes, txHash)
 	}
 
 	// Calculate expected gas price
@@ -223,14 +234,17 @@ func (s *MEVProtectionService) CreateProtectedBundle(ctx context.Context, req *M
 		bundle.GasPrice = bundle.Transactions[0].GasPrice
 	}
 
-	// Send to Flashbots if enabled
-	if req.ProtectionLevel == MEVLevelFlashbots {
-		bundleHash, err := s.sendToFlashbots(ctx, bundle)
-		if err != nil {
-			return nil, err
-		}
-		bundle.BundleHash = bundleHash
+	// Broadcast and collect real transaction hashes. The hash is only ever
+	// obtained from the broadcast result; it is never fabricated.
+	txHashes, bundleHash, err := s.broadcastBundle(ctx, bundle, req.ProtectionLevel)
+	if err != nil {
+		return nil, err
 	}
+	for i, h := range txHashes {
+		bundle.Transactions[i].Hash = h
+	}
+	bundle.TxHashes = txHashes
+	bundle.BundleHash = bundleHash
 
 	s.bundleMu.Lock()
 	s.bundles[bundleID] = bundle
@@ -238,7 +252,7 @@ func (s *MEVProtectionService) CreateProtectedBundle(ctx context.Context, req *M
 
 	// Store in Redis
 	bundleJSON, _ := json.Marshal(bundle)
-	s.redis.Set(ctx, fmt.Sprintf("mev:bundle:%s", bundleID), bundleJSON, config.BundleTimeout)
+	s.redis.Set(ctx, fmt.Sprintf("mev:bundle:%s", bundleID), bundleJSON, s.config.BundleTimeout)
 
 	return &ProtectedBundle{
 		BundleID:    bundleID,
@@ -482,11 +496,86 @@ func (s *MEVProtectionService) extractTokenFromData(data string, index int) stri
 	return ""
 }
 
-func (s *MEVProtectionService) sendToFlashbots(ctx context.Context, bundle *TransactionBundle) (string, error) {
-	// In production, would call Flashbots MEV-Share API
-	// This simulates the response
-	bundleHash := sha256.Sum256([]byte(bundle.ID))
-	return hex.EncodeToString(bundleHash[:]), nil
+// broadcastBundle submits each signed raw transaction in the bundle to the
+// configured RPC endpoint (Flashbots relay for flashbots protection level, a
+// regular JSON-RPC node otherwise) via eth_sendRawTransaction, and returns the
+// real transaction hashes reported by the network. A tx hash is NEVER
+// fabricated; it is always the value returned by the broadcast.
+func (s *MEVProtectionService) broadcastBundle(ctx context.Context, bundle *TransactionBundle, level MEVProtectionLevel) (txHashes []string, bundleHash string, err error) {
+	rpcURL := s.config.FlashbotsRPC
+	if level != MEVLevelFlashbots {
+		// For non-flashbots protection, fall back to a public RPC endpoint that
+		// must be configured. Without a real broadcast there is no real hash.
+		rpcURL = os.Getenv("ETH_RPC_URL")
+		if rpcURL == "" {
+			return nil, "", fmt.Errorf("transaction broadcast not implemented - cannot generate tx hash without broadcasting; ETH_RPC_URL environment variable must be set")
+		}
+	}
+	if s.config.FlashbotsSecret == "" && level == MEVLevelFlashbots {
+		return nil, "", fmt.Errorf("FLASHBOTS_SECRET environment variable must be set for flashbots-protected bundles")
+	}
+
+	txHashes = make([]string, 0, len(bundle.Transactions))
+	for _, tx := range bundle.Transactions {
+		hash, bErr := s.sendRawTransaction(ctx, rpcURL, tx.RawSignedTx)
+		if bErr != nil {
+			return nil, "", fmt.Errorf("broadcast failed for tx nonce %d: %w", tx.Nonce, bErr)
+		}
+		txHashes = append(txHashes, hash)
+	}
+
+	// The bundle hash is derived deterministically from the ordered list of
+	// real on-chain transaction hashes returned by the relay/RPC, not from a
+	// timestamp or request metadata.
+	bundleIDSource := strings.Join(txHashes, ":")
+	digest := sha256.Sum256([]byte(bundleIDSource))
+	bundleHash = "0x" + hex.EncodeToString(digest[:])
+	return txHashes, bundleHash, nil
+}
+
+// sendRawTransaction calls eth_sendRawTransaction against the given JSON-RPC
+// endpoint and returns the transaction hash reported by the node.
+func (s *MEVProtectionService) sendRawTransaction(ctx context.Context, rpcURL, rawSignedTx string) (string, error) {
+	payload := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "eth_sendRawTransaction",
+		"params":  []string{rawSignedTx},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshal rpc request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rpcURL, strings.NewReader(string(body)))
+	if err != nil {
+		return "", fmt.Errorf("build rpc request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("rpc request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Result string `json:"result"`
+		Error  *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("decode rpc response: %w", err)
+	}
+	if result.Error != nil {
+		return "", fmt.Errorf("rpc error %d: %s", result.Error.Code, result.Error.Message)
+	}
+	if result.Result == "" {
+		return "", fmt.Errorf("rpc returned empty transaction hash")
+	}
+	return result.Result, nil
 }
 
 func (s *MEVProtectionService) startSandwichDetector() {
@@ -643,22 +732,29 @@ func generateSandwichID() string {
 	return hex.EncodeToString(hash[:8])
 }
 
-func generateTxHash(tx PrivateTx) string {
-	data := fmt.Sprintf("%s-%s-%s-%d", tx.From, tx.To, tx.Value, tx.Nonce)
-	hash := sha256.Sum256([]byte(data))
-	return "0x" + hex.EncodeToString(hash[:])
-}
-
 // ============================================================================
 // Main
 // ============================================================================
 
 func main() {
+	flashbotsSecret := os.Getenv("FLASHBOTS_SECRET")
+	if flashbotsSecret == "" {
+		log.Println("warning: FLASHBOTS_SECRET not set; flashbots-protected bundles will be rejected at broadcast time")
+	}
+	port := os.Getenv("MEV_PROTECTION_PORT")
+	if port == "" {
+		port = "8089"
+	}
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+
 	config := &Config{
 		FlashbotsRPC:    "https://relay.flashbots.net",
-		FlashbotsSecret: "fb-secret",
-		RedisAddr:       "localhost:6379",
-		Port:            "8089",
+		FlashbotsSecret: flashbotsSecret,
+		RedisAddr:       redisAddr,
+		Port:            port,
 		BundleTimeout:   5 * time.Minute,
 		MaxBundleSize:   10,
 	}
@@ -671,5 +767,5 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "mev-protection"})
 	})
 
-	r.Run(":" + config.Port)
+	r.Run(":" + port)
 }

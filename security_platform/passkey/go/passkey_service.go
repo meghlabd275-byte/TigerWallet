@@ -65,7 +65,7 @@ func LoadConfig() *Config {
 		DBUser:      getEnv("DB_USER", "tigerwallet"),
 		DBPassword:  getEnv("DB_PASSWORD", "password"),
 		DBName:      getEnv("DB_NAME", "tigerwallet"),
-		JWTSecret:   getEnv("JWT_SECRET", "passkey-secret-key"),
+		JWTSecret:   getEnv("JWT_SECRET", ""),
 		JWTExpiry:   24 * time.Hour * 7, // 7 days
 		RPID:        getEnv("PASSKEY_RPID", "tigerwallet.com"),
 		RPOrigin:    getEnv("PASSKEY_ORIGIN", "https://tigerwallet.com"),

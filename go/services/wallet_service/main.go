@@ -62,7 +62,7 @@ func LoadConfig() *Config {
 		DBName:        getEnv("DB_NAME", "tigerwallet_wallet"),
 		RedisHost:     getEnv("REDIS_HOST", "localhost"),
 		RedisPort:     getEnv("REDIS_PORT", "6379"),
-		JWTSecret:     getEnv("JWT_SECRET", "wallet-secret-key-change-in-production"),
+		JWTSecret:     getEnv("JWT_SECRET", ""),
 		EncryptionKey: getEnv("ENCRYPTION_KEY", "wallet-32-byte-encryption-key!!"),
 		MasterWallet:  getEnv("MASTER_WALLET", ""),
 	}

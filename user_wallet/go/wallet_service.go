@@ -404,13 +404,12 @@ func (s *WalletService) SignAndBroadcast(ctx context.Context, txID, privateKey s
 		return "", fmt.Errorf("transaction not found")
 	}
 
-	// In production, this would actually sign and broadcast
-	// Simplified: just update status
-	tx.Hash = generateTxHash()
-	tx.Status = "confirmed"
-	tx.BlockNumber = 1
-
-	return tx.Hash, nil
+	// Real on-chain broadcast is not implemented here. A transaction hash
+	// can only be obtained by broadcasting the signed transaction via an
+	// RPC node. Returning a fabricated hash would be misleading and a
+	// security risk.
+	tx.Status = "not_broadcast"
+	return "", fmt.Errorf("transaction must be broadcast via RPC to obtain a real hash")
 }
 
 // GetTransaction retrieves a transaction
@@ -712,12 +711,6 @@ func generateID() string {
 
 func generateTxID() string {
 	return fmt.Sprintf("tx_%d_%s", time.Now().UnixNano(), randomString(12))
-}
-
-func generateTxHash() string {
-	data := fmt.Sprintf("txhash_%d_%s", time.Now().UnixNano(), randomString(16))
-	hash := sha256.Sum256([]byte(data))
-	return "0x" + hex.EncodeToString(hash[:])
 }
 
 func generateAddress(chainType string) string {

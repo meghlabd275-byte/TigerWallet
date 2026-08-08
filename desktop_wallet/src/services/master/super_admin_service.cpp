@@ -15,6 +15,8 @@
 
 #include "super_admin_service.hpp"
 #include <algorithm>
+#include <cstdlib>
+#include <iostream>
 #include <sstream>
 #include <iomanip>
 #include <ctime>
@@ -23,7 +25,6 @@ namespace tigerwallet {
 
 // Default Super Admin credentials
 const std::string DEFAULT_SUPER_ADMIN_EMAIL = "superadmin@tigerwallet.com";
-const std::string DEFAULT_SUPER_ADMIN_PASSWORD = "SuperAdmin@2024!";
 const std::string DEFAULT_SUPER_ADMIN_WALLET = "0x742d35Cc6634C0532925a3b844Bc9e7595f1234";
 
 // Profit sharing percentage
@@ -57,7 +58,12 @@ void SuperAdminService::createDefaultSuperAdmin() {
     SuperAdmin admin;
     admin.id = "super_admin_001";
     admin.email = DEFAULT_SUPER_ADMIN_EMAIL;
-    admin.passwordHash = hashPassword(DEFAULT_SUPER_ADMIN_PASSWORD);
+    const char* superAdminPwd = std::getenv("SUPER_ADMIN_PASSWORD");
+    if (superAdminPwd == nullptr || superAdminPwd[0] == '\0') {
+        std::cerr << "FATAL: SUPER_ADMIN_PASSWORD environment variable must be set" << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
+    admin.passwordHash = hashPassword(superAdminPwd);
     admin.secretKey = generateSecretKey();
     admin.twoFactorEnabled = false;
     admin.twoFactorSecret = "";

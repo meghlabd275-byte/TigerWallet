@@ -156,7 +156,7 @@ func LoadConfig() *Config {
 			MinIdleConns: 10,
 		},
 		Security: SecurityConfig{
-			JWTSecret:        getEnv("JWT_SECRET", "enterprise-tiger-secret"),
+			JWTSecret:        getEnv("JWT_SECRET", ""),
 			JWTExpiration:     24 * 7 * time.Hour,
 			BCryptCost:        12,
 			EnableMFA:         true,

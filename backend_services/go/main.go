@@ -25,9 +25,20 @@ import (
 )
 
 const (
-	JWT_SECRET           = "tigerwallet-secret-key-change-in-production"
 	JWT_EXPIRATION_HOURS = 24
 )
+
+// JWT_SECRET is loaded at startup from the JWT_SECRET environment variable.
+// It must never fall back to a hardcoded default.
+var JWT_SECRET string
+
+func getRequiredEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("%s environment variable must be set", key)
+	}
+	return value
+}
 
 // ============ Models ============
 
@@ -704,6 +715,8 @@ func randBytes(n int) []byte {
 
 func main() {
 	log.Println("Starting TigerWallet Backend...")
+
+	JWT_SECRET = getRequiredEnv("JWT_SECRET")
 
 	// Initialize service
 	svc := NewService()

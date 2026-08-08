@@ -5,8 +5,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -416,8 +414,8 @@ func (ss *SwapService) ExecuteSwap(c *gin.Context) {
 		Route:       req.Route,
 		Chain:       req.Chain,
 		DEX:         pair.DEX,
-		Status:      "completed",
-		TxHash:      "0x" + generateTxHash(),
+		Status:      "pending",
+		TxHash:      "", // not broadcast via RPC; real hash requires on-chain broadcast
 		GasUsed:     "150000",
 		Fee:         "0.003",
 		Timestamp:   time.Now(),
@@ -473,7 +471,7 @@ func (ss *SwapService) AddLiquidity(c *gin.Context) {
 			ID:           pairID,
 			BaseToken:   req.TokenA,
 			QuoteToken:  req.TokenB,
-			PairAddress: "0x" + generateTxHash()[:40],
+			PairAddress: "", // pair address requires on-chain contract deployment
 			Chain:       req.Chain,
 			DEX:         "tigerswap",
 			ReserveA:    req.AmountA,
@@ -631,12 +629,6 @@ func subtractStrings(a, b string) string {
 	cf.Sub(af, bf)
 	res, _ := cf.String()
 	return res
-}
-
-func generateTxHash() string {
-	data := fmt.Sprintf("%d%s", time.Now().UnixNano(), uuid.New().String())
-	hash := sha256.Sum256([]byte(data))
-	return hex.EncodeToString(hash[:])
 }
 
 // ============================================================================

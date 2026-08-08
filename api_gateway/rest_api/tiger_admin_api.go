@@ -13,7 +13,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -347,9 +349,16 @@ func canManageTrading(role UserRole) bool {
 // ============================================================================
 
 func initDefaultData() {
-	// Initialize encryption key
-	encryptionKey = make([]byte, 32)
-	copy(encryptionKey, []byte("tiger-admin-api-key-32-bytes!!"))
+	// Initialize encryption key from environment variable (must be exactly
+	// 32 bytes for AES-256). Never fall back to a hardcoded key.
+	key := os.Getenv("ENCRYPTION_KEY")
+	if key == "" {
+		log.Fatal("ENCRYPTION_KEY environment variable must be set (32 bytes for AES-256)")
+	}
+	if len(key) != 32 {
+		log.Fatalf("ENCRYPTION_KEY must be exactly 32 bytes for AES-256, got %d bytes", len(key))
+	}
+	encryptionKey = []byte(key)
 
 	// Initialize blockchains
 	blockchains["1"] = &Blockchain{

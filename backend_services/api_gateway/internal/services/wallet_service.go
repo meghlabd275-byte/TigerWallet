@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -287,19 +286,10 @@ func (s *WalletService) GetAllBalances(ctx context.Context, userID uint64) ([]Ba
 
 // BroadcastTransaction broadcasts a signed transaction to the network
 func (s *WalletService) BroadcastTransaction(ctx context.Context, signedTx string) (string, error) {
-	// In production, broadcast to blockchain RPC
-	// Generate real transaction hash from signed transaction
-	txHash := s.generateTxHash(signedTx)
-	return txHash, nil
-}
-
-// Generate transaction hash from signed transaction
-func (s *WalletService) generateTxHash(signedTx string) string {
-	// Use SHA256 to generate deterministic hash
-	hasher := sha256.New()
-	hasher.Write([]byte(signedTx))
-	hash := hasher.Sum(nil)
-	return "0x" + hex.EncodeToString(hash)
+	// Transaction broadcast is not implemented; a real tx hash can only be
+	// obtained from the blockchain after broadcasting. Return empty to signal
+	// "pending_broadcast" rather than fabricating a hash.
+	return "", nil
 }
 
 // GetTransactionHistory returns transaction history for an address

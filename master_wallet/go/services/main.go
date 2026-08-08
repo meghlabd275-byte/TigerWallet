@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -494,7 +495,7 @@ func (s *MasterWalletService) Login(c *gin.Context) {
 	}
 
 	// Generate JWT token
-	token, err := generateJWT(user.ID, user.Email, user.Role, "tigerwallet-secret-key")
+	token, err := generateJWT(user.ID, user.Email, user.Role, getRequiredEnv("JWT_SECRET"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
@@ -533,13 +534,13 @@ func (s *MasterWalletService) RefreshToken(c *gin.Context) {
 	}
 
 	// Verify and refresh token
-	claims, err := verifyJWT(req.Token, "tigerwallet-secret-key")
+	claims, err := verifyJWT(req.Token, getRequiredEnv("JWT_SECRET"))
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 		return
 	}
 
-	newToken, err := generateJWT(claims["user_id"].(string), claims["email"].(string), claims["role"].(string), "tigerwallet-secret-key")
+	newToken, err := generateJWT(claims["user_id"].(string), claims["email"].(string), claims["role"].(string), getRequiredEnv("JWT_SECRET"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
@@ -2007,6 +2008,16 @@ func deriveAddress(publicKey []byte) string {
 	return fmt.Sprintf("0x%x", hash[len(hash)-20:])
 }
 
+// getRequiredEnv reads a required environment variable and fatally exits if it
+// is not set. Centralized to avoid silently falling back to insecure defaults.
+func getRequiredEnv(key string) string {
+	val := os.Getenv(key)
+	if val == "" {
+		log.Fatalf("%s environment variable must be set", key)
+	}
+	return val
+}
+
 
 // ==================== DATABASE MIGRATION ====================
 
@@ -2168,7 +2179,7 @@ func main() {
 			MinIdleConns: 10,
 		},
 		Security: SecurityConfig{
-			JWTSecret:        "tigerwallet-secret-key-change-in-production",
+			JWTSecret:        getRequiredEnv("JWT_SECRET"),
 			Argon2Time:       2,
 			Argon2Memory:     65536,
 			Argon2Threads:    4,
@@ -2184,7 +2195,7 @@ func main() {
 		cfg.Database.Host = "localhost"
 		cfg.Database.Database = "tigerwallet"
 		cfg.Database.Username = "postgres"
-		cfg.Database.Password = "password"
+		cfg.Database.Password = getRequiredEnv("DATABASE_PASSWORD")
 	}
 	if cfg.Redis.Host == "" {
 		cfg.Redis.Host = "localhost"
