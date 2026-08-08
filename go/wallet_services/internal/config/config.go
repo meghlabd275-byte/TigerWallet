@@ -109,7 +109,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("redis.port", 6379)
 	viper.SetDefault("redis.pool_size", 100)
 
-	viper.SetDefault("jwt.secret", "your-secret-key-change-in-production")
+	viper.SetDefault("jwt.secret", "")
 	viper.SetDefault("jwt.access_expiry", 15*time.Minute)
 	viper.SetDefault("jwt.refresh_expiry", 7*24*time.Hour)
 	viper.SetDefault("jwt.issuer", "tigerwallet")

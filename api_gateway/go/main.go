@@ -13,6 +13,7 @@
 package main
 
 import (
+	"os"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -54,7 +55,7 @@ func DefaultConfig() *Config {
 		MaxHeaderBytes: 1 << 20, // 1MB
 		RateLimitRPM:   1000,
 		RateLimitBurst: 50,
-		JWTSecret:      "tigerswap-secret-key-change-in-production",
+		JWTSecret:      os.Getenv("JWT_SECRET"),
 		AllowedOrigins: []string{"*"},
 	}
 }

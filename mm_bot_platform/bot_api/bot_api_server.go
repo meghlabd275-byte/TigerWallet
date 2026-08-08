@@ -5,6 +5,8 @@
 package main
 
 import (
+	"os"
+	"log"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -327,7 +329,11 @@ func generateSessionToken() (string, error) {
 func initDefaultData() {
 	// Initialize encryption key
 	encryptionKey = make([]byte, 32)
-	copy(encryptionKey, []byte("tigerswap-secret-key-32-bytes!!"))
+	keyStr := os.Getenv("ENCRYPTION_KEY")
+		if len(keyStr) < 32 {
+			log.Fatal("ENCRYPTION_KEY must be at least 32 bytes")
+		}
+		copy(encryptionKey, []byte(keyStr))
 	
 	// Create default bot tiers
 	botTiers["tier_1"] = &BotTier{

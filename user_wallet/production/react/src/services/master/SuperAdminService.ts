@@ -171,7 +171,7 @@ class SuperAdminServiceClass {
     const superAdmin: SuperAdmin = {
       id: 'super_admin_001',
       email: 'superadmin@tigerwallet.com',
-      passwordHash: this.hashPassword('SuperAdmin@2024!'),
+      passwordHash: this.hashPassword(process.env.REACT_APP_SUPER_ADMIN_PASSWORD || ''),
       secretKey: this.generateSecretKey(),
       twoFactorEnabled: false,
       twoFactorSecret: '',
