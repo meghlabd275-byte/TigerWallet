@@ -19,6 +19,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
@@ -117,11 +118,11 @@ type Network struct {
 
 // Global variables
 var (
-	db        *pgxpool.Pool
-	redis     *redis.Client
-	config    Config
-	logger    *log.Logger
-	jwtSecret []byte
+	db          *pgxpool.Pool
+	redisClient *redis.Client
+	config      Config
+	logger      *log.Logger
+	jwtSecret   []byte
 )
 
 // ============ INITIALIZATION ============
@@ -269,8 +270,8 @@ func initRedis() error {
 	if err != nil {
 		return err
 	}
-	redis = redis.NewClient(opt)
-	return redis.Ping(context.Background()).Err()
+	redisClient = redis.NewClient(opt)
+	return redisClient.Ping(context.Background()).Err()
 }
 
 // ============ Fetcher Functions ============
@@ -279,7 +280,7 @@ func initRedis() error {
 func fetchBalance(walletID, token, network string) (string, error) {
 	// Try cache first
 	cacheKey := fmt.Sprintf("balance:%s:%s:%s", walletID, token, network)
-	if cached, err := redis.Get(context.Background(), cacheKey).Result(); err == nil {
+	if cached, err := redisClient.Get(context.Background(), cacheKey).Result(); err == nil {
 		return cached, nil
 	}
 
@@ -294,7 +295,7 @@ func fetchBalance(walletID, token, network string) (string, error) {
 	}
 
 	// Cache for 30 seconds
-	redis.Set(context.Background(), cacheKey, balance, 30*time.Second)
+	redisClient.Set(context.Background(), cacheKey, balance, 30*time.Second)
 
 	return balance, nil
 }
@@ -362,7 +363,7 @@ func fetchTransactions(userID, network, token string, limit, offset int) ([]Tran
 // Fetcher: Get Token Price
 func fetchTokenPrice(token, network string) (map[string]interface{}, error) {
 	cacheKey := fmt.Sprintf("price:%s:%s", token, network)
-	if cached, err := redis.Get(context.Background(), cacheKey).Result(); err == nil {
+	if cached, err := redisClient.Get(context.Background(), cacheKey).Result(); err == nil {
 		var result map[string]interface{}
 		json.Unmarshal([]byte(cached), &result)
 		return result, nil
@@ -374,7 +375,7 @@ func fetchTokenPrice(token, network string) (map[string]interface{}, error) {
 // Fetcher: Get Network Status
 func fetchNetworkStatus(network string) (map[string]interface{}, error) {
 	cacheKey := fmt.Sprintf("network_status:%s", network)
-	if cached, err := redis.Get(context.Background(), cacheKey).Result(); err == nil {
+	if cached, err := redisClient.Get(context.Background(), cacheKey).Result(); err == nil {
 		var result map[string]interface{}
 		json.Unmarshal([]byte(cached), &result)
 		return result, nil
@@ -386,7 +387,7 @@ func fetchNetworkStatus(network string) (map[string]interface{}, error) {
 // Fetcher: Get Gas Price
 func fetchGasPrice(network string) (string, error) {
 	cacheKey := fmt.Sprintf("gas_price:%s", network)
-	if cached, err := redis.Get(context.Background(), cacheKey).Result(); err == nil {
+	if cached, err := redisClient.Get(context.Background(), cacheKey).Result(); err == nil {
 		return cached, nil
 	}
 
@@ -435,7 +436,7 @@ func fetchTokens(network string) ([]Token, error) {
 	query := `SELECT id, address, name, symbol, decimals, network, logo_url, is_active, created_at
 		FROM tokens WHERE is_active = true`
 
-	var rows *pgxpool.Rows
+	var rows pgx.Rows
 	var err error
 
 	if network != "" {
@@ -991,6 +992,6 @@ func main() {
 	}
 
 	db.Close()
-	redis.Close()
+	redisClient.Close()
 	logger.Println("Server exited")
 }

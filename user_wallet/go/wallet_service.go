@@ -14,7 +14,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math/big"
 	"sync"
 	"time"
 )
@@ -122,16 +121,6 @@ type SwapQuote struct {
 	Fee              string          `json:"fee"`
 	GasEstimate      string          `json:"gas_estimate"`
 	ExpirationTime   int64           `json:"expiration_time"`
-}
-
-// SwapRoute represents a swap route
-type SwapRoute struct {
-	FromToken     string `json:"from_token"`
-	ToToken       string `json:"to_token"`
-	PoolAddress   string `json:"pool_address"`
-	PoolFee       int    `json:"pool_fee"`
-	FromAmount    string `json:"from_amount"`
-	ToAmount      string `json:"to_amount"`
 }
 
 // StakingPosition represents a staking position

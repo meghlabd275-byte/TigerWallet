@@ -1,6 +1,6 @@
 /**
  * TigerWallet DEX Aggregator Service - Complete Implementation
- * 
+ *
  * Multi-DEX aggregation with Uniswap, Sushiswap, Curve, Balancer
  * High-performance Go service for worldwide distribution
  */
@@ -9,13 +9,10 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math/big"
 	"net/http"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -27,32 +24,32 @@ import (
 
 // DEX Protocol
 type DEXProtocol struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Logo        string   `json:"logo"`
-	Fee         float64  `json:"fee"`
-	Chains      []uint64 `json:"chains"`
-	Pools       uint64   `json:"pools"`
-	Volume24h   float64  `json:"volume_24h"`
-	IsActive    bool     `json:"is_active"`
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	Logo      string   `json:"logo"`
+	Fee       float64  `json:"fee"`
+	Chains    []uint64 `json:"chains"`
+	Pools     uint64   `json:"pools"`
+	Volume24h float64  `json:"volume_24h"`
+	IsActive  bool     `json:"is_active"`
 }
 
 // Token pair
 type TokenPair struct {
-	SymbolA    string `json:"symbol_a"`
-	SymbolB    string `json:"symbol_b"`
-	AddressA   string `json:"address_a"`
-	AddressB   string `json:"address_b"`
-	ChainID    uint64 `json:"chain_id"`
-	ReserveA   string `json:"reserve_a"`
-	ReserveB   string `json:"reserve_b"`
-	Liquidity  string `json:"liquidity"`
-	Volume24h  string `json:"volume_24h"`
+	SymbolA   string `json:"symbol_a"`
+	SymbolB   string `json:"symbol_b"`
+	AddressA  string `json:"address_a"`
+	AddressB  string `json:"address_b"`
+	ChainID   uint64 `json:"chain_id"`
+	ReserveA  string `json:"reserve_a"`
+	ReserveB  string `json:"reserve_b"`
+	Liquidity string `json:"liquidity"`
+	Volume24h string `json:"volume_24h"`
 }
 
 // Swap route
 type SwapRoute struct {
-	Protocol    string   `json:"protocol"`
+	Protocol   string   `json:"protocol"`
 	FromToken  string   `json:"from_token"`
 	ToToken    string   `json:"to_token"`
 	FromAmount string   `json:"from_amount"`
@@ -63,60 +60,60 @@ type SwapRoute struct {
 
 // Swap quote request
 type SwapQuoteRequest struct {
-	FromChain  uint64 `json:"from_chain"`
-	ToChain    uint64 `json:"to_chain"`
-	FromToken string `json:"from_token"`
-	ToToken   string `json:"to_token"`
-	Amount    string `json:"amount"`
-	FromAddr  string `json:"from_address"`
+	FromChain uint64  `json:"from_chain"`
+	ToChain   uint64  `json:"to_chain"`
+	FromToken string  `json:"from_token"`
+	ToToken   string  `json:"to_token"`
+	Amount    string  `json:"amount"`
+	FromAddr  string  `json:"from_address"`
 	Slippage  float64 `json:"slippage"`
 }
 
 // Swap quote response
 type SwapQuote struct {
-	ID              string      `json:"id"`
-	Provider        string      `json:"provider"`
-	FromToken     string      `json:"from_token"`
-	ToToken       string      `json:"to_token"`
-	FromAmount    string      `json:"from_amount"`
-	ToAmount      string      `json:"to_to_amount"`
-	MinReceived   string      `json:"min_received"`
-	ExchangeRate  string      `json:"exchange_rate"`
+	ID           string      `json:"id"`
+	Provider     string      `json:"provider"`
+	FromToken    string      `json:"from_token"`
+	ToToken      string      `json:"to_token"`
+	FromAmount   string      `json:"from_amount"`
+	ToAmount     string      `json:"to_to_amount"`
+	MinReceived  string      `json:"min_received"`
+	ExchangeRate string      `json:"exchange_rate"`
 	PriceImpact  float64     `json:"price_impact"`
 	GasFee       string      `json:"gas_fee"`
-	ProtocolFee   string      `json:"protocol_fee"`
+	ProtocolFee  string      `json:"protocol_fee"`
 	TotalFee     string      `json:"total_fee"`
 	Routes       []SwapRoute `json:"routes"`
-	ValidUntil   time.Time  `json:"valid_until"`
+	ValidUntil   time.Time   `json:"valid_until"`
 }
 
 // Swap transaction
 type SwapTransaction struct {
-	ID           string    `json:"id"`
-	QuoteID      string    `json:"quote_id"`
-	Provider     string    `json:"provider"`
-	UserID       string    `json:"user_id"`
-	FromToken   string    `json:"from_token"`
-	ToToken     string    `json:"to_token"`
-	FromAmount  string    `json:"from_amount"`
-	ToAmount    string    `json:"to_amount"`
-	Status      string    `json:"status"`
-	TxHash      string    `json:"tx_hash"`
-	FromAddr    string    `json:"from_address"`
-	ToAddr      string    `json:"to_address"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID         string    `json:"id"`
+	QuoteID    string    `json:"quote_id"`
+	Provider   string    `json:"provider"`
+	UserID     string    `json:"user_id"`
+	FromToken  string    `json:"from_token"`
+	ToToken    string    `json:"to_token"`
+	FromAmount string    `json:"from_amount"`
+	ToAmount   string    `json:"to_amount"`
+	Status     string    `json:"status"`
+	TxHash     string    `json:"tx_hash"`
+	FromAddr   string    `json:"from_address"`
+	ToAddr     string    `json:"to_address"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // Token info
 type Token struct {
-	Symbol    string `json:"symbol"`
-	Name      string `json:"name"`
-	Address   string `json:"address"`
-	ChainID   uint64 `json:"chain_id"`
-	Decimals  uint8  `json:"decimals"`
-	LogoURL   string `json:"logo_url"`
-	PriceUSD  float64 `json:"price_usd"`
+	Symbol   string  `json:"symbol"`
+	Name     string  `json:"name"`
+	Address  string  `json:"address"`
+	ChainID  uint64  `json:"chain_id"`
+	Decimals uint8   `json:"decimals"`
+	LogoURL  string  `json:"logo_url"`
+	PriceUSD float64 `json:"price_usd"`
 }
 
 // ============================================================================
@@ -125,21 +122,21 @@ type Token struct {
 
 // DEXAggregatorService main service
 type DEXAggregatorService struct {
-	mu         sync.RWMutex
-	protocols  map[string]*DEXProtocol
-	pools      map[uint64]map[string]*TokenPair
-	tokens     map[uint64]map[string]*Token
-	quotes     map[string]*SwapQuote
+	mu           sync.RWMutex
+	protocols    map[string]*DEXProtocol
+	pools        map[uint64]map[string]*TokenPair
+	tokens       map[uint64]map[string]*Token
+	quotes       map[string]*SwapQuote
 	transactions map[string]*SwapTransaction
 }
 
 // NewDEXAggregatorService creates new service
 func NewDEXAggregatorService() *DEXAggregatorService {
 	s := &DEXAggregatorService{
-		protocols:   make(map[string]*DEXProtocol),
-		pools:      make(map[uint64]map[string]*TokenPair),
-		tokens:     make(map[uint64]map[string]*Token),
-		quotes:     make(map[string]*SwapQuote),
+		protocols:    make(map[string]*DEXProtocol),
+		pools:        make(map[uint64]map[string]*TokenPair),
+		tokens:       make(map[uint64]map[string]*Token),
+		quotes:       make(map[string]*SwapQuote),
 		transactions: make(map[string]*SwapTransaction),
 	}
 	s.initialize()
@@ -218,6 +215,7 @@ func (s *DEXAggregatorService) GetQuote(ctx context.Context, req SwapQuoteReques
 	if !ok {
 		return nil, fmt.Errorf("unsupported to token: %s", req.ToToken)
 	}
+	_ = fromToken
 
 	// Parse amount
 	amount := new(big.Float)
@@ -233,7 +231,8 @@ func (s *DEXAggregatorService) GetQuote(ctx context.Context, req SwapQuoteReques
 	// Calculate fees
 	protocolFee := new(big.Float).Mul(toAmount, big.NewFloat(0.003)) // 0.3% fee
 	gasFee := "0.001"
-	totalFee := new(big.Float).Add(protocolFee, new(big.Float().SetString(gasFee))
+	gasFeeFloat, _, _ := big.ParseFloat(gasFee, 10, 53, big.ToNearestEven)
+	totalFee := new(big.Float).Add(protocolFee, gasFeeFloat)
 
 	// Apply slippage
 	slippageMultiplier := big.NewFloat(1 - req.Slippage/100)
@@ -243,13 +242,13 @@ func (s *DEXAggregatorService) GetQuote(ctx context.Context, req SwapQuoteReques
 	provider := s.findBestProvider(req.FromChain, routes)
 
 	quote := &SwapQuote{
-		ID:            generateDEXID("quote"),
-		Provider:      provider.Name,
+		ID:           generateDEXID("quote"),
+		Provider:     provider.Name,
 		FromToken:    req.FromToken,
 		ToToken:      toToken.Symbol,
 		FromAmount:   req.Amount,
-		ToAmount:     toAmount.Text('f', toToken.Decimals),
-		MinReceived:  minReceived.Text('f', toToken.Decimals),
+		ToAmount:     toAmount.Text('f', int(toToken.Decimals)),
+		MinReceived:  minReceived.Text('f', int(toToken.Decimals)),
 		ExchangeRate: fmt.Sprintf("%.8f", exchangeRate),
 		PriceImpact:  0.1,
 		GasFee:       gasFee,
@@ -293,19 +292,19 @@ func (s *DEXAggregatorService) ExecuteSwap(ctx context.Context, quoteID, userID,
 	}
 
 	tx := &SwapTransaction{
-		ID:          generateDEXID("tx"),
-		QuoteID:     quoteID,
-		Provider:    quote.Provider,
-		UserID:      userID,
-		FromToken:   quote.FromToken,
-		ToToken:     quote.ToToken,
-		FromAmount:  quote.FromAmount,
-		ToAmount:    quote.MinReceived,
-		Status:      "pending",
-		FromAddr:    fromAddr,
-		ToAddr:      toAddr,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		ID:         generateDEXID("tx"),
+		QuoteID:    quoteID,
+		Provider:   quote.Provider,
+		UserID:     userID,
+		FromToken:  quote.FromToken,
+		ToToken:    quote.ToToken,
+		FromAmount: quote.FromAmount,
+		ToAmount:   quote.MinReceived,
+		Status:     "pending",
+		FromAddr:   fromAddr,
+		ToAddr:     toAddr,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
 	}
 
 	s.mu.Lock()
@@ -374,24 +373,24 @@ func (s *DEXAggregatorService) findBestRoute(fromChain, toChain uint64, fromToke
 	// Direct swap
 	routes = append(routes, SwapRoute{
 		Protocol:   "uniswap",
-		FromToken: fromToken,
-		ToToken:   toToken,
+		FromToken:  fromToken,
+		ToToken:    toToken,
 		FromAmount: amount.Text('f', 8),
-		ToAmount:  amount.Text('f', 8),
-		Path:      []string{fromToken, toToken},
-		GasLimit:  150000,
+		ToAmount:   amount.Text('f', 8),
+		Path:       []string{fromToken, toToken},
+		GasLimit:   150000,
 	})
 
 	// Add alternative routes
 	if fromToken != toToken {
 		routes = append(routes, SwapRoute{
 			Protocol:   "sushiswap",
-			FromToken: fromToken,
-			ToToken:   toToken,
+			FromToken:  fromToken,
+			ToToken:    toToken,
 			FromAmount: amount.Text('f', 8),
-			ToAmount:  amount.Text('f', 8),
-			Path:      []string{fromToken, toToken},
-			GasLimit:  180000,
+			ToAmount:   amount.Text('f', 8),
+			Path:       []string{fromToken, toToken},
+			GasLimit:   180000,
 		})
 	}
 
@@ -400,10 +399,10 @@ func (s *DEXAggregatorService) findBestRoute(fromChain, toChain uint64, fromToke
 
 func (s *DEXAggregatorService) calculateExchangeRate(fromToken, toToken string) float64 {
 	rates := map[string]map[string]float64{
-		"ETH":  {"USDC": 3500, "USDT": 3500, "WBTC": 0.0538, "LINK": 233.3, "UNI": 437.5, "AAVE": 14, "MATIC": 4117.6},
-		"USDC": {"ETH": 0.000286, "USDT": 1, "WBTC": 0.0000154, "LINK": 0.0667, "UNI": 0.125, "AAVE": 0.004, "MATIC": 1.176},
-		"USDT": {"ETH": 0.000286, "USDC": 1, "WBTC": 0.0000154, "LINK": 0.0667, "UNI": 0.125, "AAVE": 0.004, "MATIC": 1.176},
-		"BNB": {"USDC": 320, "USDT": 320, "CAKE": 128},
+		"ETH":   {"USDC": 3500, "USDT": 3500, "WBTC": 0.0538, "LINK": 233.3, "UNI": 437.5, "AAVE": 14, "MATIC": 4117.6},
+		"USDC":  {"ETH": 0.000286, "USDT": 1, "WBTC": 0.0000154, "LINK": 0.0667, "UNI": 0.125, "AAVE": 0.004, "MATIC": 1.176},
+		"USDT":  {"ETH": 0.000286, "USDC": 1, "WBTC": 0.0000154, "LINK": 0.0667, "UNI": 0.125, "AAVE": 0.004, "MATIC": 1.176},
+		"BNB":   {"USDC": 320, "USDT": 320, "CAKE": 128},
 		"MATIC": {"USDC": 0.00085, "USDT": 0.00085, "ETH": 0.000243, "QUICK": 0.017},
 	}
 
@@ -515,7 +514,7 @@ func (s *DEXAggregatorService) handleGetQuote(w http.ResponseWriter, r *http.Req
 }
 
 func (s *DEXAggregatorService) handleGetQuoteByID(w http.ResponseWriter, r *http.Request) {
-	quoteID := strings.TrimPrefix(path, "/api/v1/quote/")
+	quoteID := strings.TrimPrefix(r.URL.Path, "/api/v1/quote/")
 	quote, err := s.GetQuoteByID(quoteID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
@@ -545,7 +544,7 @@ func (s *DEXAggregatorService) handleExecuteSwap(w http.ResponseWriter, r *http.
 }
 
 func (s *DEXAggregatorService) handleGetTransaction(w http.ResponseWriter, r *http.Request) {
-	txID := strings.TrimPrefix(path, "/api/v1/transaction/")
+	txID := strings.TrimPrefix(r.URL.Path, "/api/v1/transaction/")
 	tx, err := s.GetTransaction(txID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)

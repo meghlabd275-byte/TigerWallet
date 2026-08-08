@@ -1,7 +1,7 @@
 /**
  * TigerWallet DEX Aggregator Service
  * Production-ready DEX aggregation with real API integrations
- * 
+ *
  * Features:
  * - Real-time price fetching from multiple DEXs
  * - Multi-hop routing
@@ -15,26 +15,22 @@ package main
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
 )
@@ -44,15 +40,15 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort     string
-	EthRPCURL      string
-	BSCRPCURL      string
-	ArbRPCURL      string
-	OptRPCURL      string
-	UniswapAPI     string
-	PancakeAPI     string
-	SushiSwapAPI   string
-	CoingeckoAPI   string
+	ServerPort   string
+	EthRPCURL    string
+	BSCRPCURL    string
+	ArbRPCURL    string
+	OptRPCURL    string
+	UniswapAPI   string
+	PancakeAPI   string
+	SushiSwapAPI string
+	CoingeckoAPI string
 }
 
 func LoadConfig() *Config {
@@ -81,64 +77,64 @@ func getEnv(key, def string) string {
 // ============================================================================
 
 type Token struct {
-	Address  string `json:"address"`
-	Symbol   string `json:"symbol"`
-	Name     string `json:"name"`
-	Decimals int    `json:"decimals"`
-	ChainID  int    `json:"chain_id"`
-	LogoURL  string `json:"logo_url"`
+	Address  string  `json:"address"`
+	Symbol   string  `json:"symbol"`
+	Name     string  `json:"name"`
+	Decimals int     `json:"decimals"`
+	ChainID  int     `json:"chain_id"`
+	LogoURL  string  `json:"logo_url"`
 	PriceUSD float64 `json:"price_usd"`
 }
 
 type RouteStep struct {
-	DEX       string  `json:"dex"`
-	FromToken string  `json:"from_token"`
-	ToToken   string  `json:"to_token"`
+	DEX        string `json:"dex"`
+	FromToken  string `json:"from_token"`
+	ToToken    string `json:"to_token"`
 	FromAmount string `json:"from_amount"`
 	ToAmount   string `json:"to_amount"`
-	PoolAddr  string `json:"pool_address"`
-	GasUsed   uint64 `json:"gas_used"`
+	PoolAddr   string `json:"pool_address"`
+	GasUsed    uint64 `json:"gas_used"`
 }
 
 type SwapRoute struct {
-	FromToken     string      `json:"from_token"`
-	ToToken       string      `json:"to_token"`
-	FromAmount    string      `json:"from_amount"`
-	ToAmount      string      `json:"to_amount"`
-	MinToAmount   string      `json:"min_to_amount"`
-	Routes        []RouteStep `json:"routes"`
-	GasUsed       uint64      `json:"gas_used"`
-	GasPrice      string      `json:"gas_price"`
-	TotalFee      float64     `json:"total_fee"`
-	PriceImpact   float64     `json:"price_impact"`
-	BlockNumber   uint64      `json:"block_number"`
+	FromToken   string      `json:"from_token"`
+	ToToken     string      `json:"to_token"`
+	FromAmount  string      `json:"from_amount"`
+	ToAmount    string      `json:"to_amount"`
+	MinToAmount string      `json:"min_to_amount"`
+	Routes      []RouteStep `json:"routes"`
+	GasUsed     uint64      `json:"gas_used"`
+	GasPrice    string      `json:"gas_price"`
+	TotalFee    float64     `json:"total_fee"`
+	PriceImpact float64     `json:"price_impact"`
+	BlockNumber uint64      `json:"block_number"`
 }
 
 type QuoteRequest struct {
 	FromToken string  `json:"from_token" binding:"required"`
 	ToToken   string  `json:"to_token" binding:"required"`
 	Amount    string  `json:"amount" binding:"required"`
-	Slippage float64 `json:"slippage"`
+	Slippage  float64 `json:"slippage"`
 	ChainID   int     `json:"chain_id"`
 }
 
 type DEXPool struct {
-	Address       string `json:"address"`
-	Token0       string `json:"token0"`
-	Token1       string `json:"token1"`
-	Reserve0     string `json:"reserve0"`
-	Reserve1     string `json:"reserve1"`
-	Fee          int    `json:"fee"`
-	DEX          string `json:"dex"`
-	ChainID      int    `json:"chain_id"`
+	Address  string `json:"address"`
+	Token0   string `json:"token0"`
+	Token1   string `json:"token1"`
+	Reserve0 string `json:"reserve0"`
+	Reserve1 string `json:"reserve1"`
+	Fee      int    `json:"fee"`
+	DEX      string `json:"dex"`
+	ChainID  int    `json:"chain_id"`
 }
 
 type SwapResult struct {
-	Route         SwapRoute `json:"route"`
-	TxData        string    `json:"tx_data"`
-	TxHash        string    `json:"tx_hash"`
-	EstimatedGas  uint64    `json:"estimated_gas"`
-	ExecutedAt    time.Time `json:"executed_at"`
+	Route        SwapRoute `json:"route"`
+	TxData       string    `json:"tx_data"`
+	TxHash       string    `json:"tx_hash"`
+	EstimatedGas uint64    `json:"estimated_gas"`
+	ExecutedAt   time.Time `json:"executed_at"`
 }
 
 // ============================================================================
@@ -199,7 +195,7 @@ func (c *HTTPClient) Get(ctx context.Context, path string, params map[string]str
 // ============================================================================
 
 type UniswapProvider struct {
-	http  *HTTPClient
+	http   *HTTPClient
 	client *ethclient.Client
 }
 
@@ -210,7 +206,7 @@ func NewUniswapProvider(ethRPC string) (*UniswapProvider, error) {
 	}
 
 	return &UniswapProvider{
-		http:  NewHTTPClient("https://api.uniswap.org/v3"),
+		http:   NewHTTPClient("https://api.uniswap.org/v3"),
 		client: client,
 	}, nil
 }
@@ -218,13 +214,13 @@ func NewUniswapProvider(ethRPC string) (*UniswapProvider, error) {
 func (p *UniswapProvider) GetQuote(ctx context.Context, tokenIn, tokenOut string, amountIn *big.Int, chainID int) (*SwapRoute, error) {
 	// Build quote request
 	params := map[string]string{
-		"tokenIn":    tokenIn,
-		"tokenOut":   tokenOut,
-		"amountIn":   amountIn.String(),
-		"type":       "exactIn",
-		"recipient":  "0x0000000000000000000000000000000000000000",
-		"slippage":   "50",
-		"deadline":   fmt.Sprintf("%d", time.Now().Add(10*time.Minute).Unix()),
+		"tokenIn":   tokenIn,
+		"tokenOut":  tokenOut,
+		"amountIn":  amountIn.String(),
+		"type":      "exactIn",
+		"recipient": "0x0000000000000000000000000000000000000000",
+		"slippage":  "50",
+		"deadline":  fmt.Sprintf("%d", time.Now().Add(10*time.Minute).Unix()),
 	}
 
 	// Call Uniswap API
@@ -262,16 +258,16 @@ func (p *UniswapProvider) GetQuote(ctx context.Context, tokenIn, tokenOut string
 		MinToAmount: quote.AmountOutMin,
 		Routes: []RouteStep{
 			{
-				DEX:       "uniswap_v3",
-				FromToken: tokenIn,
-				ToToken:   tokenOut,
+				DEX:        "uniswap_v3",
+				FromToken:  tokenIn,
+				ToToken:    tokenOut,
 				FromAmount: amountIn.String(),
-				ToAmount:  quote.AmountOut,
-				GasUsed:   gasUsed,
+				ToAmount:   quote.AmountOut,
+				GasUsed:    gasUsed,
 			},
 		},
 		GasUsed:     gasUsed,
-		GasPrice:   quote.GasPrice,
+		GasPrice:    quote.GasPrice,
 		BlockNumber: 0,
 	}, nil
 }
@@ -293,7 +289,7 @@ func (p *UniswapProvider) simulateQuote(tokenIn, tokenOut, amountIn, dex string)
 		ToToken:     tokenOut,
 		FromAmount:  amountIn,
 		ToAmount:    toAmount.String(),
-		MinToAmount: new(big.Int).Mul(toAmount, big.NewInt(99)).Div(nil, big.NewInt(100)).String(),
+		MinToAmount: new(big.Int).Div(new(big.Int).Mul(toAmount, big.NewInt(99)), big.NewInt(100)).String(),
 		Routes: []RouteStep{
 			{
 				DEX:        dex,
@@ -305,13 +301,13 @@ func (p *UniswapProvider) simulateQuote(tokenIn, tokenOut, amountIn, dex string)
 			},
 		},
 		GasUsed:     150000,
-		GasPrice:   "30000000000",
+		GasPrice:    "30000000000",
 		PriceImpact: 0.3,
 	}
 }
 
 type PancakeSwapProvider struct {
-	http  *HTTPClient
+	http   *HTTPClient
 	client *ethclient.Client
 }
 
@@ -322,17 +318,17 @@ func NewPancakeSwapProvider(bscRPC string) (*PancakeSwapProvider, error) {
 	}
 
 	return &PancakeSwapProvider{
-		http:  NewHTTPClient("https://api.pancakeswap.com/api/v3"),
+		http:   NewHTTPClient("https://api.pancakeswap.com/api/v3"),
 		client: client,
 	}, nil
 }
 
 func (p *PancakeSwapProvider) GetQuote(ctx context.Context, tokenIn, tokenOut string, amountIn *big.Int, chainID int) (*SwapRoute, error) {
 	params := map[string]string{
-		"tokenIn":   tokenIn,
-		"tokenOut":  tokenOut,
-		"amountIn":  amountIn.String(),
-		"fee":       "3000",
+		"tokenIn":  tokenIn,
+		"tokenOut": tokenOut,
+		"amountIn": amountIn.String(),
+		"fee":      "3000",
 	}
 
 	data, err := p.http.Get(ctx, "/quote", params)
@@ -374,7 +370,7 @@ func (p *PancakeSwapProvider) GetQuote(ctx context.Context, tokenIn, tokenOut st
 			},
 		},
 		GasUsed:     gasUsed,
-		GasPrice:   "5000000000",
+		GasPrice:    "5000000000",
 		PriceImpact: 0.3,
 	}, nil
 }
@@ -393,7 +389,7 @@ func (p *PancakeSwapProvider) simulateQuote(tokenIn, tokenOut, amountIn, dex str
 		ToToken:     tokenOut,
 		FromAmount:  amountIn,
 		ToAmount:    toAmount.String(),
-		MinToAmount: new(big.Int).Mul(toAmount, big.NewInt(99)).Div(nil, big.NewInt(100)).String(),
+		MinToAmount: new(big.Int).Div(new(big.Int).Mul(toAmount, big.NewInt(99)), big.NewInt(100)).String(),
 		Routes: []RouteStep{
 			{
 				DEX:        dex,
@@ -405,7 +401,7 @@ func (p *PancakeSwapProvider) simulateQuote(tokenIn, tokenOut, amountIn, dex str
 			},
 		},
 		GasUsed:     200000,
-		GasPrice:   "5000000000",
+		GasPrice:    "5000000000",
 		PriceImpact: 0.3,
 	}
 }
@@ -438,7 +434,7 @@ func (p *SushiSwapProvider) simulateQuote(tokenIn, tokenOut, amountIn, dex strin
 		ToToken:     tokenOut,
 		FromAmount:  amountIn,
 		ToAmount:    toAmount.String(),
-		MinToAmount: new(big.Int).Mul(toAmount, big.NewInt(99)).Div(nil, big.NewInt(100)).String(),
+		MinToAmount: new(big.Int).Div(new(big.Int).Mul(toAmount, big.NewInt(99)), big.NewInt(100)).String(),
 		Routes: []RouteStep{
 			{
 				DEX:        dex,
@@ -450,7 +446,7 @@ func (p *SushiSwapProvider) simulateQuote(tokenIn, tokenOut, amountIn, dex strin
 			},
 		},
 		GasUsed:     180000,
-		GasPrice:   "30000000000",
+		GasPrice:    "30000000000",
 		PriceImpact: 0.3,
 	}
 }
@@ -460,13 +456,13 @@ func (p *SushiSwapProvider) simulateQuote(tokenIn, tokenOut, amountIn, dex strin
 // ============================================================================
 
 type DEXAggregator struct {
-	config           *Config
-	uniswap          *UniswapProvider
-	pancakeswap      *PancakeSwapProvider
-	sushiswap        *SushiSwapProvider
-	tokenCache       map[string]*Token
+	config          *Config
+	uniswap         *UniswapProvider
+	pancakeswap     *PancakeSwapProvider
+	sushiswap       *SushiSwapProvider
+	tokenCache      map[string]*Token
 	cacheMu         sync.RWMutex
-	supportedTokens  map[int][]string
+	supportedTokens map[int][]string
 }
 
 func NewDEXAggregator(config *Config) (*DEXAggregator, error) {
@@ -483,16 +479,16 @@ func NewDEXAggregator(config *Config) (*DEXAggregator, error) {
 	sushiswap := NewSushiSwapProvider()
 
 	return &DEXAggregator{
-		config:          config,
-		uniswap:        uniswap,
-		pancakeswap:    pancakeswap,
-		sushiswap:      sushiswap,
-		tokenCache:     make(map[string]*Token),
+		config:      config,
+		uniswap:     uniswap,
+		pancakeswap: pancakeswap,
+		sushiswap:   sushiswap,
+		tokenCache:  make(map[string]*Token),
 		supportedTokens: map[int][]string{
-			1:   {"WETH", "USDC", "USDT", "WBTC", "DAI", "UNI", "AAVE"},
-			56:  {"WBNB", "USDC", "USDT", "BTCB", "ETH", "CAKE", "BUSD"},
+			1:     {"WETH", "USDC", "USDT", "WBTC", "DAI", "UNI", "AAVE"},
+			56:    {"WBNB", "USDC", "USDT", "BTCB", "ETH", "CAKE", "BUSD"},
 			42161: {"WETH", "USDC", "USDT", "WBTC", "ARB", "UNI"},
-			10:  {"WETH", "USDC", "USDT", "WBTC", "OP", "UNI"},
+			10:    {"WETH", "USDC", "USDT", "WBTC", "OP", "UNI"},
 		},
 	}, nil
 }
@@ -559,7 +555,7 @@ func (s *DEXAggregator) GetQuote(ctx context.Context, req QuoteRequest) ([]*Swap
 
 func (s *DEXAggregator) generateBestQuote(tokenIn, tokenOut, amountIn string, chainID int) *SwapRoute {
 	amt, _ := new(big.Int).SetString(amountIn, 10)
-	
+
 	// Calculate best output (simulating optimal routing)
 	// In production, this would use actual pool data
 	fee := 0.003 // 0.3% typical fee
@@ -601,7 +597,7 @@ func (s *DEXAggregator) generateBestQuote(tokenIn, tokenOut, amountIn string, ch
 			},
 		},
 		GasUsed:     150000,
-		GasPrice:   "30000000000",
+		GasPrice:    "30000000000",
 		TotalFee:    float64(amt.Int64()) * fee,
 		PriceImpact: 0.3,
 	}
@@ -626,10 +622,10 @@ func (s *DEXAggregator) ExecuteSwap(req QuoteRequest) (*SwapResult, error) {
 	txData := s.buildTxData(bestRoute)
 
 	result := &SwapResult{
-		Route:         *bestRoute,
-		TxData:        txData,
-		EstimatedGas:  bestRoute.GasUsed,
-		ExecutedAt:    time.Now(),
+		Route:        *bestRoute,
+		TxData:       txData,
+		EstimatedGas: bestRoute.GasUsed,
+		ExecutedAt:   time.Now(),
 	}
 
 	return result, nil
@@ -639,17 +635,17 @@ func (s *DEXAggregator) buildTxData(route *SwapRoute) string {
 	// Build swap transaction data
 	// In production, this would call the router contract
 	// For now, return encoded function call
-	
+
 	type SwapData struct {
-		Path       []string `json:"path"`
+		Path      []string `json:"path"`
 		AmountOut string   `json:"amountOut"`
 		AmountIn  string   `json:"amountIn"`
 	}
 
 	data, _ := json.Marshal(SwapData{
-		Path:       []string{route.FromToken, route.ToToken},
-		AmountOut:  route.MinToAmount,
-		AmountIn:   route.FromAmount,
+		Path:      []string{route.FromToken, route.ToToken},
+		AmountOut: route.MinToAmount,
+		AmountIn:  route.FromAmount,
 	})
 
 	return "0x" + hex.EncodeToString(data)
@@ -696,7 +692,7 @@ func (s *DEXAggregator) ExecuteSwapHandler(c *gin.Context) {
 
 func (s *DEXAggregator) GetTokensHandler(c *gin.Context) {
 	chainID := c.DefaultQuery("chain_id", "1")
-	
+
 	s.cacheMu.RLock()
 	tokens := s.supportedTokens[1]
 	if id, err := strconv.Atoi(chainID); err == nil {
@@ -743,7 +739,3 @@ func main() {
 
 	log.Println("Shutting down DEX Aggregator...")
 }
-
-import (
-	"strconv"
-)

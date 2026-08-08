@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/hex"
 	"fmt"
 	"math/big"
 	"net/http"
