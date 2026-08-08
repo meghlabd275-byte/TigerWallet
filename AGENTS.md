@@ -92,3 +92,21 @@
 - npm registry is reachable in this env (`npm ping` → PONG). `npm install`
   works (installs the full tree). `@scure/bip39` + `@noble/hashes` +
   `@scure/base` were added to `frontend/web_nextjs/package.json`.
+
+## Rust toolchain
+
+- No Rust toolchain is preinstalled in this env. Install on demand with
+  `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal`
+  then `. "$HOME/.cargo/env"`. Build/check zk_infrastructure with
+  `cargo check` / `cargo test --lib` from
+  `core/rust/zk_infrastructure`.
+
+## zk_infrastructure / ZK prover
+
+- `zk_infrastructure` uses a REAL Fiat-Shamir Schnorr proof of knowledge of a
+  discrete log over Ristretto255 (curve25519-dalek + sha2). No all-zero proof
+  stubs, no always-true verification. Prover serializes `R || s || Y`;
+  verifier recomputes the challenge and checks `s*G == R + e*Y` and rejects
+  the identity point / malformed encodings. Do NOT regress these to stubs.
+- The Schnorr scheme has no trusted setup; `setup()` only marks the circuit
+  keyed so `prove` refuses unset-up circuits (preserves the existing API).
