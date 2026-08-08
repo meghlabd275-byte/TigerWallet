@@ -1,0 +1,8 @@
+# Foundry build artifacts
+out/
+cache/
+
+# Foundry dependencies installed via `forge install --no-git`.
+# OpenZeppelin contracts are fetched on demand with
+# `forge install OpenZeppelin/openzeppelin-contracts --no-git`.
+lib/

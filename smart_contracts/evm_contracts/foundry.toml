@@ -1,0 +1,18 @@
+[profile.default]
+src = "account_abstraction"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.28"
+evm_version = "cancun"
+
+# NOTE: TigerWallet's evm_contracts/ also contains a legacy Hardhat-based
+# TigerSwap DEX tree (contracts/, interfaces/, test/, etc.) that is unrelated
+# to the ERC-4337 account-abstraction stack and is not part of this Foundry
+# project. Point test/script at (nonexistent) dedicated paths so `forge build`
+# only compiles the canonical account_abstraction source root and does not pick
+# up the legacy TigerSwap tests, which define interfaces that collide with
+# OpenZeppelin's IERC20 when both trees are compiled together.
+test = "test_aa"
+script = "script_aa"
+
+# See more config options https://book.getfoundry.sh/reference/config.html
