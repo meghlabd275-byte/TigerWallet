@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useWallet } from '../wallet';
+import { useTheme } from '../components/ThemeProvider';
 import { parseEther, parseUnits, formatEther } from 'viem';
 
 // ================================================================================
@@ -136,7 +137,9 @@ const aaAPI = new AccountAbstractionAPI();
 
 export default function AccountAbstractionPage() {
   const { address, isConnected, chainId } = useWallet();
-  
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
   const [smartAccount, setSmartAccount] = useState<SmartAccount | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -314,11 +317,11 @@ export default function AccountAbstractionPage() {
 
   if (!isConnected) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-8">
+      <div className={`min-h-screen p-8 ${isDark ? 'bg-gradient-to-br from-slate-900 to-slate-800' : 'bg-gradient-to-br from-slate-50 to-slate-100'}`}>
         <div className="max-w-4xl mx-auto">
-          <h1 className="text-4xl font-bold text-white mb-8">Account Abstraction</h1>
-          <div className="bg-slate-800 rounded-2xl p-8 border border-slate-700">
-            <p className="text-slate-300 text-lg">Please connect your wallet to use Account Abstraction features.</p>
+          <h1 className={`text-4xl font-bold mb-8 ${isDark ? 'text-white' : 'text-slate-900'}`}>Account Abstraction</h1>
+          <div className={`rounded-2xl p-8 border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+            <p className={`text-lg ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Please connect your wallet to use Account Abstraction features.</p>
           </div>
         </div>
       </div>
@@ -326,18 +329,18 @@ export default function AccountAbstractionPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-8">
+    <div className={`min-h-screen p-8 ${isDark ? 'bg-gradient-to-br from-slate-900 to-slate-800' : 'bg-gradient-to-br from-slate-50 to-slate-100'}`}>
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">Account Abstraction</h1>
-          <p className="text-slate-400">Smart wallet powered by ERC-4337</p>
+          <h1 className={`text-4xl font-bold mb-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>Account Abstraction</h1>
+          <p className={isDark ? "text-slate-400" : "text-slate-500"}>Smart wallet powered by ERC-4337</p>
         </div>
 
-        <div className="bg-slate-800/50 rounded-xl p-4 mb-6 border border-slate-700">
+        <div className={`rounded-xl p-4 mb-6 border ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200'}`}>
           <div className="flex items-center justify-between">
             <div>
-              <span className="text-slate-400 text-sm">Entry Point:</span>
-              <span className="text-white ml-2 font-mono text-sm">
+              <span className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>Entry Point:</span>
+              <span className={`ml-2 font-mono text-sm ${isDark ? "text-white" : "text-slate-900"}`}>
                 {entryPoints[0] || '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789'}
               </span>
             </div>
@@ -349,21 +352,21 @@ export default function AccountAbstractionPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-            <h2 className="text-xl font-semibold text-white mb-4">Smart Wallet</h2>
+          <div className={`rounded-2xl p-6 border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+            <h2 className={`text-xl font-semibold mb-4 ${isDark ? 'text-white' : 'text-slate-900'}`}>Smart Wallet</h2>
             
             {smartAccount ? (
               <div className="space-y-4">
-                <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
-                  <span className="text-slate-400">Address</span>
-                  <span className="text-white font-mono text-sm">{formatAddress(smartAccount.address)}</span>
+                <div className={`flex items-center justify-between p-3 rounded-lg ${isDark ? 'bg-slate-700/50' : 'bg-slate-100'}`}>
+                  <span className={isDark ? "text-slate-400" : "text-slate-500"}>Address</span>
+                  <span className={`font-mono text-sm ${isDark ? "text-white" : "text-slate-900"}`}>{formatAddress(smartAccount.address)}</span>
                 </div>
-                <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
-                  <span className="text-slate-400">Nonce</span>
-                  <span className="text-white">{smartAccount.nonce}</span>
+                <div className={`flex items-center justify-between p-3 rounded-lg ${isDark ? 'bg-slate-700/50' : 'bg-slate-100'}`}>
+                  <span className={isDark ? "text-slate-400" : "text-slate-500"}>Nonce</span>
+                  <span className={isDark ? "text-white" : "text-slate-900"}>{smartAccount.nonce}</span>
                 </div>
-                <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
-                  <span className="text-slate-400">Status</span>
+                <div className={`flex items-center justify-between p-3 rounded-lg ${isDark ? 'bg-slate-700/50' : 'bg-slate-100'}`}>
+                  <span className={isDark ? "text-slate-400" : "text-slate-500"}>Status</span>
                   <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                     smartAccount.isDeployed ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
                   }`}>
@@ -373,7 +376,7 @@ export default function AccountAbstractionPage() {
               </div>
             ) : (
               <div className="text-center py-8">
-                <p className="text-slate-400 mb-4">No smart wallet found. Create one to get started.</p>
+                <p className={`mb-4 ${isDark ? "text-slate-400" : "text-slate-500"}`}>No smart wallet found. Create one to get started.</p>
                 <button
                   onClick={createSmartWallet}
                   disabled={isCreating}
@@ -385,22 +388,22 @@ export default function AccountAbstractionPage() {
             )}
           </div>
 
-          <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-            <h2 className="text-xl font-semibold text-white mb-4">Gas Estimation</h2>
+          <div className={`rounded-2xl p-6 border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+            <h2 className={`text-xl font-semibold mb-4 ${isDark ? 'text-white' : 'text-slate-900'}`}>Gas Estimation</h2>
             
             {gasEstimate ? (
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-400">Call Gas Limit</span>
-                  <span className="text-white">{parseInt(gasEstimate.callGasLimit).toLocaleString()}</span>
+                  <span className={isDark ? "text-slate-400" : "text-slate-500"}>Call Gas Limit</span>
+                  <span className={isDark ? "text-white" : "text-slate-900"}>{parseInt(gasEstimate.callGasLimit).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-400">Verification Gas</span>
-                  <span className="text-white">{parseInt(gasEstimate.verificationGasLimit).toLocaleString()}</span>
+                  <span className={isDark ? "text-slate-400" : "text-slate-500"}>Verification Gas</span>
+                  <span className={isDark ? "text-white" : "text-slate-900"}>{parseInt(gasEstimate.verificationGasLimit).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-400">Max Fee</span>
-                  <span className="text-white">{formatGwei(gasEstimate.maxFeePerGas)} ETH</span>
+                  <span className={isDark ? "text-slate-400" : "text-slate-500"}>Max Fee</span>
+                  <span className={isDark ? "text-white" : "text-slate-900"}>{formatGwei(gasEstimate.maxFeePerGas)} ETH</span>
                 </div>
                 
                 {sponsorship?.enabled && (
@@ -413,43 +416,43 @@ export default function AccountAbstractionPage() {
                 )}
               </div>
             ) : (
-              <p className="text-slate-400 text-sm">Enter transaction details and estimate gas</p>
+              <p className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>Enter transaction details and estimate gas</p>
             )}
           </div>
         </div>
 
-        <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700 mb-6">
-          <h2 className="text-xl font-semibold text-white mb-4">Send Transaction</h2>
+        <div className={`rounded-2xl p-6 border mb-6 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+          <h2 className={`text-xl font-semibold mb-4 ${isDark ? 'text-white' : 'text-slate-900'}`}>Send Transaction</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div>
-              <label className="block text-slate-400 text-sm mb-2">To Address</label>
+              <label className={`block text-sm mb-2 ${isDark ? "text-slate-400" : "text-slate-500"}`}>To Address</label>
               <input
                 type="text"
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
                 placeholder="0x..."
-                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                className={`w-full border rounded-lg px-4 py-3 placeholder-slate-500 focus:outline-none focus:border-blue-500 ${isDark ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-300 text-slate-900'}`}
               />
             </div>
             <div>
-              <label className="block text-slate-400 text-sm mb-2">Amount (ETH)</label>
+              <label className={`block text-sm mb-2 ${isDark ? "text-slate-400" : "text-slate-500"}`}>Amount (ETH)</label>
               <input
                 type="text"
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 placeholder="0.0"
-                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                className={`w-full border rounded-lg px-4 py-3 placeholder-slate-500 focus:outline-none focus:border-blue-500 ${isDark ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-300 text-slate-900'}`}
               />
             </div>
             <div>
-              <label className="block text-slate-400 text-sm mb-2">Data</label>
+              <label className={`block text-sm mb-2 ${isDark ? "text-slate-400" : "text-slate-500"}`}>Data</label>
               <input
                 type="text"
                 value={data}
                 onChange={(e) => setData(e.target.value)}
                 placeholder="0x..."
-                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                className={`w-full border rounded-lg px-4 py-3 placeholder-slate-500 focus:outline-none focus:border-blue-500 ${isDark ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-300 text-slate-900'}`}
               />
             </div>
           </div>
@@ -461,7 +464,7 @@ export default function AccountAbstractionPage() {
             >
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${usePaymaster ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
-            <span className="text-slate-300">Use Paymaster (Gasless)</span>
+            <span className={isDark ? "text-slate-300" : "text-slate-700"}>Use Paymaster (Gasless)</span>
           </div>
 
           <div className="flex gap-4">
@@ -499,8 +502,8 @@ export default function AccountAbstractionPage() {
         )}
 
         {bundleStatus && (
-          <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-            <h2 className="text-xl font-semibold text-white mb-4">Transaction Status</h2>
+          <div className={`rounded-2xl p-6 border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+            <h2 className={`text-xl font-semibold mb-4 ${isDark ? 'text-white' : 'text-slate-900'}`}>Transaction Status</h2>
             <div className="flex items-center gap-4">
               <div className={`w-4 h-4 rounded-full ${
                 bundleStatus.status === 'confirmed' ? 'bg-green-500' :
@@ -508,7 +511,7 @@ export default function AccountAbstractionPage() {
                 bundleStatus.status === 'submitted' ? 'bg-blue-500' :
                 'bg-yellow-500 animate-pulse'
               }`}></div>
-              <span className="text-white font-medium capitalize">{bundleStatus.status}</span>
+              <span className={`font-medium capitalize ${isDark ? "text-white" : "text-slate-900"}`}>{bundleStatus.status}</span>
             </div>
           </div>
         )}

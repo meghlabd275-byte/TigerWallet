@@ -9,6 +9,7 @@ import {
   FormControlLabel, Slider, Grid, Avatar, Divider, List, ListItem,
   ListItemText, ListItemIcon, LinearProgress, Tooltip, Badge, AvatarGroup
 } from '@mui/material';
+import { useTheme } from '../components/ThemeProvider';
 import {
   ListAlt, Add, Edit, Delete, Refresh, CheckCircle, Error as ErrorIcon,
   Warning, Schedule, Verified, TrendingUp, TrendingDown, Visibility,
@@ -79,6 +80,9 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8097'
 // ============================================================================
 
 export default function AdminListingPage() {
+  const { isDark } = useTheme();
+  const bgPrimary = isDark ? '#0f172a' : '#f8fafc';
+  const textSecondary = isDark ? '#9ca3af' : '#6b7280';
   // State
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -280,7 +284,7 @@ export default function AdminListingPage() {
   // ============================================================================
   
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: 3, minHeight: '100vh', bgcolor: bgPrimary }}>
       {/* Header */}
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>

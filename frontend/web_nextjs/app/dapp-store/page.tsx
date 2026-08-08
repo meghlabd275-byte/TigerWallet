@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTheme } from '../components/ThemeProvider'
 
 // ================================================================================
 // Types
@@ -57,6 +58,7 @@ const CATEGORIES: Category[] = [
 // ================================================================================
 
 export default function DAppStorePage() {
+  const { isDark } = useTheme()
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedChain, setSelectedChain] = useState('all');
@@ -84,23 +86,23 @@ export default function DAppStorePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-8">
+    <div className={`'min-h-screen bg-gradient-to-br' ${isDark ? 'from-slate-900' : 'from-slate-50'} ${isDark ? 'to-slate-800' : 'to-slate-100'} 'p-8'`}>
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">DApp Store</h1>
-          <p className="text-slate-400">Discover and use decentralized applications</p>
+          <h1 className={`'text-4xl font-bold' ${isDark ? 'text-white' : 'text-slate-900'} 'mb-2'`}>DApp Store</h1>
+          <p className={`${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Discover and use decentralized applications</p>
         </div>
 
         {/* Trending */}
         <div className="mb-8">
-          <h2 className="text-xl font-semibold text-white mb-4">🔥 Trending</h2>
+          <h2 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-slate-900'} 'mb-4'`}>🔥 Trending</h2>
           <div className="flex gap-4 overflow-x-auto pb-4">
             {SAMPLE_DAPPS.filter(d => d.trending).map(dapp => (
               <div key={dapp.id} className="flex-shrink-0 w-48 p-4 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-xl border border-blue-500/30">
                 <div className="text-3xl mb-2">{dapp.logo}</div>
-                <h3 className="text-white font-medium">{dapp.name}</h3>
-                <p className="text-slate-400 text-sm">{dapp.category}</p>
+                <h3 className={`${isDark ? 'text-white' : 'text-slate-900'} 'font-medium'`}>{dapp.name}</h3>
+                <p className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'text-sm'`}>{dapp.category}</p>
               </div>
             ))}
           </div>
@@ -113,12 +115,12 @@ export default function DAppStorePage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search DApps..."
-            className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white"
+            className={`'flex-1' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-4 py-3' ${isDark ? 'text-white' : 'text-slate-900'}`}
           />
           <select
             value={selectedChain}
             onChange={(e) => setSelectedChain(e.target.value)}
-            className="bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white"
+            className={`${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-4 py-3' ${isDark ? 'text-white' : 'text-slate-900'}`}
           >
             <option value="all">All Chains</option>
             <option value="ethereum">Ethereum</option>
@@ -132,13 +134,13 @@ export default function DAppStorePage() {
               onClick={() => setViewMode('grid')}
               className={`p-3 rounded-lg ${viewMode === 'grid' ? 'bg-blue-600' : 'bg-slate-700'}`}
             >
-              <span className="text-white">▦</span>
+              <span className={`${isDark ? 'text-white' : 'text-slate-900'}`}>▦</span>
             </button>
             <button
               onClick={() => setViewMode('list')}
               className={`p-3 rounded-lg ${viewMode === 'list' ? 'bg-blue-600' : 'bg-slate-700'}`}
             >
-              <span className="text-white">☰</span>
+              <span className={`${isDark ? 'text-white' : 'text-slate-900'}`}>☰</span>
             </button>
           </div>
         </div>
@@ -165,24 +167,24 @@ export default function DAppStorePage() {
         {/* DApps Grid */}
         <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' : 'space-y-4'}>
           {filteredDapps.map(dapp => (
-            <div key={dapp.id} className="bg-slate-800 rounded-xl p-4 border border-slate-700 hover:border-slate-600 transition-colors">
+            <div key={dapp.id} className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-xl p-4 border' ${isDark ? 'border-slate-700' : 'border-slate-200'} ${isDark ? 'hover:border-slate-600' : 'hover:border-slate-300'} 'transition-colors'`}>
               <div className="flex items-start gap-4">
                 <span className="text-4xl">{dapp.logo}</span>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-white font-semibold">{dapp.name}</h3>
+                    <h3 className={`${isDark ? 'text-white' : 'text-slate-900'} 'font-semibold'`}>{dapp.name}</h3>
                     {dapp.verified && <span className="text-blue-400">✓</span>}
                   </div>
-                  <p className="text-slate-400 text-sm mt-1">{dapp.description}</p>
+                  <p className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'text-sm mt-1'`}>{dapp.description}</p>
                   
                   <div className="flex items-center gap-4 mt-3 text-sm">
                     <span className="text-yellow-400">★ {dapp.rating}</span>
-                    <span className="text-slate-400">{formatUsers(dapp.users)} users</span>
+                    <span className={`${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{formatUsers(dapp.users)} users</span>
                   </div>
                   
                   <div className="flex gap-2 mt-3">
                     {dapp.chains.map(chain => (
-                      <span key={chain} className="text-xs px-2 py-1 bg-slate-700 rounded text-slate-300 capitalize">
+                      <span key={chain} className={`'text-xs px-2 py-1' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'rounded' ${isDark ? 'text-slate-300' : 'text-slate-700'} 'capitalize'`}>
                         {chain}
                       </span>
                     ))}
@@ -191,7 +193,7 @@ export default function DAppStorePage() {
                 
                 <button
                   onClick={() => toggleBookmark(dapp.id)}
-                  className="text-slate-400 hover:text-yellow-400"
+                  className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'hover:text-yellow-400'`}
                 >
                   {bookmarkedDapps.includes(dapp.id) ? '★' : '☆'}
                 </button>
@@ -212,7 +214,7 @@ export default function DAppStorePage() {
         {filteredDapps.length === 0 && (
           <div className="text-center py-12">
             <span className="text-4xl mb-4 block">🔍</span>
-            <p className="text-slate-400">No DApps found matching your criteria</p>
+            <p className={`${isDark ? 'text-slate-400' : 'text-slate-500'}`}>No DApps found matching your criteria</p>
           </div>
         )}
       </div>

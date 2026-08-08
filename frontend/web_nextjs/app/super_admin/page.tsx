@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTheme } from '../components/ThemeProvider'
 import { useRouter } from 'next/navigation';
 
 // Types
@@ -416,6 +417,7 @@ const POPULAR_TOKENS = [
 ];
 
 export default function SuperAdmin() {
+  const { isDark } = useTheme()
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [loading, setLoading] = useState(false);
@@ -642,9 +644,9 @@ export default function SuperAdmin() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-50">
+    <div className={`'min-h-screen' ${isDark ? 'bg-slate-900' : 'bg-slate-50'} ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
       {/* Header */}
-      <header className="bg-slate-800 border-b border-slate-700">
+      <header className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'border-b' ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
@@ -654,7 +656,7 @@ export default function SuperAdmin() {
             <nav className="flex gap-4">
               <button
                 onClick={() => router.push('/')}
-                className="text-slate-400 hover:text-white transition-colors"
+                className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'hover:text-white transition-colors'`}
               >
                 Back to Wallet
               </button>
@@ -673,30 +675,30 @@ export default function SuperAdmin() {
       {/* Stats */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
-          <div className="bg-slate-800 rounded-lg p-6">
-            <div className="text-slate-400 text-sm">Total Users</div>
+          <div className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-lg p-6'`}>
+            <div className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'text-sm'`}>Total Users</div>
             <div className="text-2xl font-bold text-orange-500">{formatNumber(stats.totalUsers)}</div>
           </div>
-          <div className="bg-slate-800 rounded-lg p-6">
-            <div className="text-slate-400 text-sm">Active Users</div>
+          <div className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-lg p-6'`}>
+            <div className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'text-sm'`}>Active Users</div>
             <div className="text-2xl font-bold text-green-500">{formatNumber(stats.activeUsers)}</div>
           </div>
-          <div className="bg-slate-800 rounded-lg p-6">
-            <div className="text-slate-400 text-sm">Total Transactions</div>
+          <div className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-lg p-6'`}>
+            <div className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'text-sm'`}>Total Transactions</div>
             <div className="text-2xl font-bold text-blue-500">{formatNumber(stats.totalTransactions)}</div>
           </div>
-          <div className="bg-slate-800 rounded-lg p-6">
-            <div className="text-slate-400 text-sm">Total Volume</div>
+          <div className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-lg p-6'`}>
+            <div className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'text-sm'`}>Total Volume</div>
             <div className="text-2xl font-bold text-purple-500">{formatCurrency(stats.totalVolume)}</div>
           </div>
-          <div className="bg-slate-800 rounded-lg p-6">
-            <div className="text-slate-400 text-sm">Total Wallets</div>
+          <div className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-lg p-6'`}>
+            <div className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'text-sm'`}>Total Wallets</div>
             <div className="text-2xl font-bold text-yellow-500">{formatNumber(stats.totalWallets)}</div>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-slate-700 mb-6">
+        <div className={`'flex border-b' ${isDark ? 'border-slate-700' : 'border-slate-200'} 'mb-6'`}>
           <button
             onClick={() => setActiveTab('dashboard')}
             className={`px-4 py-2 ${activeTab === 'dashboard' ? 'border-b-2 border-orange-500 text-orange-500' : 'text-slate-400'}`}
@@ -720,7 +722,7 @@ export default function SuperAdmin() {
         {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-slate-800 rounded-lg p-6">
+            <div className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-lg p-6'`}>
               <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
               <div className="space-y-3">
                 <button
@@ -737,28 +739,28 @@ export default function SuperAdmin() {
                 </button>
               </div>
             </div>
-            <div className="bg-slate-800 rounded-lg p-6">
+            <div className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-lg p-6'`}>
               <h3 className="text-lg font-semibold mb-4">System Status</h3>
               <div className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-slate-400">API Server</span>
+                  <span className={`${isDark ? 'text-slate-400' : 'text-slate-500'}`}>API Server</span>
                   <span className="text-green-500">● Online</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Database</span>
+                  <span className={`${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Database</span>
                   <span className="text-green-500">● Online</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Blockchain Nodes</span>
+                  <span className={`${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Blockchain Nodes</span>
                   <span className="text-green-500">● 15 Active</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Supported Chains</span>
-                  <span className="text-white">{blockchains.length}</span>
+                  <span className={`${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Supported Chains</span>
+                  <span className={`${isDark ? 'text-white' : 'text-slate-900'}`}>{blockchains.length}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Supported Tokens</span>
-                  <span className="text-white">{tokens.length}+</span>
+                  <span className={`${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Supported Tokens</span>
+                  <span className={`${isDark ? 'text-white' : 'text-slate-900'}`}>{tokens.length}+</span>
                 </div>
               </div>
             </div>
@@ -769,81 +771,81 @@ export default function SuperAdmin() {
         {activeTab === 'blockchains' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Add Blockchain Form */}
-            <div className="bg-slate-800 rounded-lg p-6">
+            <div className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-lg p-6'`}>
               <h3 className="text-lg font-semibold mb-4">Add New Blockchain</h3>
               <form onSubmit={handleAddBlockchain} className="space-y-4">
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Chain Name</label>
+                  <label className={`'block text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'} 'mb-1'`}>Chain Name</label>
                   <input
                     type="text"
                     value={blockchainForm.name}
                     onChange={(e) => setBlockchainForm({ ...blockchainForm, name: e.target.value })}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                    className={`'w-full' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-3 py-2' ${isDark ? 'text-white' : 'text-slate-900'}`}
                     placeholder="e.g., Ethereum"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Symbol</label>
+                  <label className={`'block text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'} 'mb-1'`}>Symbol</label>
                   <input
                     type="text"
                     value={blockchainForm.symbol}
                     onChange={(e) => setBlockchainForm({ ...blockchainForm, symbol: e.target.value })}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                    className={`'w-full' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-3 py-2' ${isDark ? 'text-white' : 'text-slate-900'}`}
                     placeholder="e.g., ETH"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Chain ID</label>
+                  <label className={`'block text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'} 'mb-1'`}>Chain ID</label>
                   <input
                     type="number"
                     value={blockchainForm.chainId}
                     onChange={(e) => setBlockchainForm({ ...blockchainForm, chainId: parseInt(e.target.value) })}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                    className={`'w-full' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-3 py-2' ${isDark ? 'text-white' : 'text-slate-900'}`}
                     placeholder="e.g., 1"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">RPC URL</label>
+                  <label className={`'block text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'} 'mb-1'`}>RPC URL</label>
                   <input
                     type="url"
                     value={blockchainForm.rpcUrl}
                     onChange={(e) => setBlockchainForm({ ...blockchainForm, rpcUrl: e.target.value })}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                    className={`'w-full' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-3 py-2' ${isDark ? 'text-white' : 'text-slate-900'}`}
                     placeholder="https://..."
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Explorer URL</label>
+                  <label className={`'block text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'} 'mb-1'`}>Explorer URL</label>
                   <input
                     type="url"
                     value={blockchainForm.explorerUrl}
                     onChange={(e) => setBlockchainForm({ ...blockchainForm, explorerUrl: e.target.value })}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                    className={`'w-full' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-3 py-2' ${isDark ? 'text-white' : 'text-slate-900'}`}
                     placeholder="https://..."
                     required
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-slate-400 mb-1">Decimals</label>
+                    <label className={`'block text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'} 'mb-1'`}>Decimals</label>
                     <input
                       type="number"
                       value={blockchainForm.decimals}
                       onChange={(e) => setBlockchainForm({ ...blockchainForm, decimals: parseInt(e.target.value) })}
-                      className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                      className={`'w-full' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-3 py-2' ${isDark ? 'text-white' : 'text-slate-900'}`}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-400 mb-1">Gas Limit</label>
+                    <label className={`'block text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'} 'mb-1'`}>Gas Limit</label>
                     <input
                       type="number"
                       value={blockchainForm.gasLimit}
                       onChange={(e) => setBlockchainForm({ ...blockchainForm, gasLimit: parseInt(e.target.value) })}
-                      className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                      className={`'w-full' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-3 py-2' ${isDark ? 'text-white' : 'text-slate-900'}`}
                     />
                   </div>
                 </div>
@@ -855,7 +857,7 @@ export default function SuperAdmin() {
                     onChange={(e) => setBlockchainForm({ ...blockchainForm, isActive: e.target.checked })}
                     className="w-4 h-4"
                   />
-                  <label htmlFor="isActive" className="text-sm text-slate-400">Active</label>
+                  <label htmlFor="isActive" className={`'text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Active</label>
                 </div>
                 <button
                   type="submit"
@@ -868,14 +870,14 @@ export default function SuperAdmin() {
             </div>
 
             {/* Blockchain List */}
-            <div className="bg-slate-800 rounded-lg p-6">
+            <div className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-lg p-6'`}>
               <h3 className="text-lg font-semibold mb-4">Supported Blockchains ({blockchains.length})</h3>
               <div className="space-y-2 max-h-[500px] overflow-y-auto">
                 {blockchains.map((chain) => (
-                  <div key={chain.id} className="flex items-center justify-between bg-slate-700 rounded-lg p-3">
+                  <div key={chain.id} className={`'flex items-center justify-between' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'rounded-lg p-3'`}>
                     <div>
                       <div className="font-semibold">{chain.name}</div>
-                      <div className="text-sm text-slate-400">{chain.symbol} • Chain ID: {chain.chainId}</div>
+                      <div className={`'text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{chain.symbol} • Chain ID: {chain.chainId}</div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`px-2 py-1 rounded text-xs ${chain.isActive ? 'bg-green-600' : 'bg-red-600'}`}>
@@ -891,7 +893,7 @@ export default function SuperAdmin() {
                   </div>
                 ))}
                 {blockchains.length === 0 && (
-                  <div className="text-center text-slate-400 py-8">
+                  <div className={`'text-center' ${isDark ? 'text-slate-400' : 'text-slate-500'} 'py-8'`}>
                     No blockchains added yet
                   </div>
                 )}
@@ -904,15 +906,15 @@ export default function SuperAdmin() {
         {activeTab === 'tokens' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Add Token Form */}
-            <div className="bg-slate-800 rounded-lg p-6">
+            <div className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-lg p-6'`}>
               <h3 className="text-lg font-semibold mb-4">Add New Token</h3>
               <form onSubmit={handleAddToken} className="space-y-4">
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Blockchain</label>
+                  <label className={`'block text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'} 'mb-1'`}>Blockchain</label>
                   <select
                     value={tokenForm.chainId}
                     onChange={(e) => setTokenForm({ ...tokenForm, chainId: parseInt(e.target.value) })}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                    className={`'w-full' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-3 py-2' ${isDark ? 'text-white' : 'text-slate-900'}`}
                     required
                   >
                     {CHAIN_TYPES.map((chain) => (
@@ -923,55 +925,55 @@ export default function SuperAdmin() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Token Address (0x... for EVM)</label>
+                  <label className={`'block text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'} 'mb-1'`}>Token Address (0x... for EVM)</label>
                   <input
                     type="text"
                     value={tokenForm.address}
                     onChange={(e) => setTokenForm({ ...tokenForm, address: e.target.value })}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                    className={`'w-full' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-3 py-2' ${isDark ? 'text-white' : 'text-slate-900'}`}
                     placeholder="0x... (leave empty for native)"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Symbol</label>
+                  <label className={`'block text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'} 'mb-1'`}>Symbol</label>
                   <input
                     type="text"
                     value={tokenForm.symbol}
                     onChange={(e) => setTokenForm({ ...tokenForm, symbol: e.target.value })}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                    className={`'w-full' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-3 py-2' ${isDark ? 'text-white' : 'text-slate-900'}`}
                     placeholder="e.g., ETH"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Name</label>
+                  <label className={`'block text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'} 'mb-1'`}>Name</label>
                   <input
                     type="text"
                     value={tokenForm.name}
                     onChange={(e) => setTokenForm({ ...tokenForm, name: e.target.value })}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                    className={`'w-full' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-3 py-2' ${isDark ? 'text-white' : 'text-slate-900'}`}
                     placeholder="e.g., Ethereum"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Decimals</label>
+                  <label className={`'block text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'} 'mb-1'`}>Decimals</label>
                   <input
                     type="number"
                     value={tokenForm.decimals}
                     onChange={(e) => setTokenForm({ ...tokenForm, decimals: parseInt(e.target.value) })}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                    className={`'w-full' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-3 py-2' ${isDark ? 'text-white' : 'text-slate-900'}`}
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Price (USD)</label>
+                  <label className={`'block text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'} 'mb-1'`}>Price (USD)</label>
                   <input
                     type="number"
                     step="0.00000001"
                     value={tokenForm.priceUsd}
                     onChange={(e) => setTokenForm({ ...tokenForm, priceUsd: parseFloat(e.target.value) })}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                    className={`'w-full' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-3 py-2' ${isDark ? 'text-white' : 'text-slate-900'}`}
                     placeholder="0.00"
                   />
                 </div>
@@ -984,7 +986,7 @@ export default function SuperAdmin() {
                       onChange={(e) => setTokenForm({ ...tokenForm, isPopular: e.target.checked })}
                       className="w-4 h-4"
                     />
-                    <label htmlFor="isPopular" className="text-sm text-slate-400">Popular</label>
+                    <label htmlFor="isPopular" className={`'text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Popular</label>
                   </div>
                   <div className="flex items-center gap-2">
                     <input
@@ -994,7 +996,7 @@ export default function SuperAdmin() {
                       onChange={(e) => setTokenForm({ ...tokenForm, isStablecoin: e.target.checked })}
                       className="w-4 h-4"
                     />
-                    <label htmlFor="isStablecoin" className="text-sm text-slate-400">Stablecoin</label>
+                    <label htmlFor="isStablecoin" className={`'text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Stablecoin</label>
                   </div>
                   <div className="flex items-center gap-2">
                     <input
@@ -1004,7 +1006,7 @@ export default function SuperAdmin() {
                       onChange={(e) => setTokenForm({ ...tokenForm, isActive: e.target.checked })}
                       className="w-4 h-4"
                     />
-                    <label htmlFor="tokenIsActive" className="text-sm text-slate-400">Active</label>
+                    <label htmlFor="tokenIsActive" className={`'text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Active</label>
                   </div>
                 </div>
                 <button
@@ -1018,14 +1020,14 @@ export default function SuperAdmin() {
             </div>
 
             {/* Token List */}
-            <div className="bg-slate-800 rounded-lg p-6">
+            <div className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-lg p-6'`}>
               <h3 className="text-lg font-semibold mb-4">Supported Tokens ({tokens.length}+)</h3>
               <div className="space-y-2 max-h-[500px] overflow-y-auto">
                 {POPULAR_TOKENS.slice(0, 30).map((token, index) => (
-                  <div key={index} className="flex items-center justify-between bg-slate-700 rounded-lg p-3">
+                  <div key={index} className={`'flex items-center justify-between' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'rounded-lg p-3'`}>
                     <div>
                       <div className="font-semibold">{token.symbol}</div>
-                      <div className="text-sm text-slate-400">{token.name}</div>
+                      <div className={`'text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{token.name}</div>
                     </div>
                     <span className="text-xs text-slate-500">
                       {token.decimals} decimals
@@ -1033,10 +1035,10 @@ export default function SuperAdmin() {
                   </div>
                 ))}
                 {tokens.map((token) => (
-                  <div key={token.id} className="flex items-center justify-between bg-slate-700 rounded-lg p-3">
+                  <div key={token.id} className={`'flex items-center justify-between' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'rounded-lg p-3'`}>
                     <div>
                       <div className="font-semibold">{token.symbol}</div>
-                      <div className="text-sm text-slate-400">{token.name} • Chain: {token.chainId}</div>
+                      <div className={`'text-sm' ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{token.name} • Chain: {token.chainId}</div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`px-2 py-1 rounded text-xs ${token.isActive ? 'bg-green-600' : 'bg-red-600'}`}>

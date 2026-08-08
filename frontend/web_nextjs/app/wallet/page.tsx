@@ -20,6 +20,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTheme } from '../components/ThemeProvider'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 // ============================================================================
@@ -160,6 +161,7 @@ async function apiRequest(endpoint: string, options: RequestInit = {}) {
 // ============================================================================
 
 export default function TigerWallet() {
+  const { isDark } = useTheme()
   // State
   const [wallet, setWallet] = useState<WalletState | null>(null);
   const [currentView, setCurrentView] = useState<string>('dashboard');
@@ -649,8 +651,8 @@ export default function TigerWallet() {
       </div>
 
       {/* Portfolio Chart */}
-      <div className="bg-gray-800 rounded-xl p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Portfolio Performance</h3>
+      <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
+        <h3 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-gray-900'} 'mb-4'`}>Portfolio Performance</h3>
         <div className="h-48">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData}>
@@ -668,23 +670,23 @@ export default function TigerWallet() {
       </div>
 
       {/* Chain Balances */}
-      <div className="bg-gray-800 rounded-xl p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Chain Balances</h3>
+      <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
+        <h3 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-gray-900'} 'mb-4'`}>Chain Balances</h3>
         <div className="space-y-3">
           {DEFAULT_CHAINS.slice(0, 6).map((chain) => (
-            <div key={chain.id} className="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
+            <div key={chain.id} className={`'flex items-center justify-between p-3' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'rounded-lg'`}>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center text-white font-bold">
                   {chain.symbol.charAt(0)}
                 </div>
                 <div>
-                  <div className="text-white font-medium">{chain.name}</div>
-                  <div className="text-gray-400 text-sm">{chain.symbol}</div>
+                  <div className={`${isDark ? 'text-white' : 'text-gray-900'} 'font-medium'`}>{chain.name}</div>
+                  <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>{chain.symbol}</div>
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-white font-bold">$0.00</div>
-                <div className="text-gray-400 text-sm">0 {chain.symbol}</div>
+                <div className={`${isDark ? 'text-white' : 'text-gray-900'} 'font-bold'`}>$0.00</div>
+                <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>0 {chain.symbol}</div>
               </div>
             </div>
           ))}
@@ -692,20 +694,20 @@ export default function TigerWallet() {
       </div>
 
       {/* Recent Transactions */}
-      <div className="bg-gray-800 rounded-xl p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Recent Transactions</h3>
+      <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
+        <h3 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-gray-900'} 'mb-4'`}>Recent Transactions</h3>
         <div className="space-y-3">
           {transactions.length === 0 ? (
-            <div className="text-gray-400 text-center py-4">No transactions yet</div>
+            <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-center py-4'`}>No transactions yet</div>
           ) : (
             transactions.slice(0, 5).map((tx) => (
-              <div key={tx.id} className="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
+              <div key={tx.id} className={`'flex items-center justify-between p-3' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'rounded-lg'`}>
                 <div>
-                  <div className="text-white font-medium capitalize">{tx.type}</div>
-                  <div className="text-gray-400 text-sm">{tx.token}</div>
+                  <div className={`${isDark ? 'text-white' : 'text-gray-900'} 'font-medium capitalize'`}>{tx.type}</div>
+                  <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>{tx.token}</div>
                 </div>
                 <div className="text-right">
-                  <div className="text-white font-bold">{tx.amount} {tx.token.split('→')[0]}</div>
+                  <div className={`${isDark ? 'text-white' : 'text-gray-900'} 'font-bold'`}>{tx.amount} {tx.token.split('→')[0]}</div>
                   <div className={`text-sm ${tx.status === 'confirmed' ? 'text-green-400' : 'text-yellow-400'}`}>
                     {tx.status}
                   </div>
@@ -720,16 +722,16 @@ export default function TigerWallet() {
 
   const renderSend = () => (
     <div className="space-y-6">
-      <div className="bg-gray-800 rounded-xl p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Send Crypto</h3>
+      <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
+        <h3 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-gray-900'} 'mb-4'`}>Send Crypto</h3>
         
         {/* Chain Selector */}
         <div className="mb-4">
-          <label className="text-gray-400 text-sm">Select Chain</label>
+          <label className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>Select Chain</label>
           <select 
             value={selectedChain}
             onChange={(e) => setSelectedChain(Number(e.target.value))}
-            className="w-full bg-gray-700 text-white rounded-lg p-3 mt-1"
+            className={`'w-full' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} ${isDark ? 'text-white' : 'text-gray-900'} 'rounded-lg p-3 mt-1'`}
           >
             {DEFAULT_CHAINS.map((chain) => (
               <option key={chain.id} value={chain.id}>
@@ -741,11 +743,11 @@ export default function TigerWallet() {
 
         {/* Token Selector */}
         <div className="mb-4">
-          <label className="text-gray-400 text-sm">Token</label>
+          <label className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>Token</label>
           <select 
             value={sendToken}
             onChange={(e) => setSendToken(e.target.value)}
-            className="w-full bg-gray-700 text-white rounded-lg p-3 mt-1"
+            className={`'w-full' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} ${isDark ? 'text-white' : 'text-gray-900'} 'rounded-lg p-3 mt-1'`}
           >
             {DEFAULT_TOKENS.filter(t => t.chainId === selectedChain || t.chainId === 0).map((token) => (
               <option key={token.id} value={token.symbol}>
@@ -757,25 +759,25 @@ export default function TigerWallet() {
 
         {/* Recipient Address */}
         <div className="mb-4">
-          <label className="text-gray-400 text-sm">Recipient Address</label>
+          <label className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>Recipient Address</label>
           <input
             type="text"
             value={sendAddress}
             onChange={(e) => setSendAddress(e.target.value)}
             placeholder="0x..."
-            className="w-full bg-gray-700 text-white rounded-lg p-3 mt-1 font-mono text-sm"
+            className={`'w-full' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} ${isDark ? 'text-white' : 'text-gray-900'} 'rounded-lg p-3 mt-1 font-mono text-sm'`}
           />
         </div>
 
         {/* Amount */}
         <div className="mb-4">
-          <label className="text-gray-400 text-sm">Amount</label>
+          <label className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>Amount</label>
           <input
             type="number"
             value={sendAmount}
             onChange={(e) => setSendAmount(e.target.value)}
             placeholder="0.00"
-            className="w-full bg-gray-700 text-white rounded-lg p-3 mt-1"
+            className={`'w-full' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} ${isDark ? 'text-white' : 'text-gray-900'} 'rounded-lg p-3 mt-1'`}
           />
         </div>
 
@@ -790,8 +792,8 @@ export default function TigerWallet() {
       </div>
 
       {/* Quick Addresses */}
-      <div className="bg-gray-800 rounded-xl p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Quick Send</h3>
+      <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
+        <h3 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-gray-900'} 'mb-4'`}>Quick Send</h3>
         <div className="space-y-2">
           {[
             { name: 'Self (Ethereum)', address: wallet?.address || '' },
@@ -801,10 +803,10 @@ export default function TigerWallet() {
             <button
               key={i}
               onClick={() => setSendAddress(addr.address)}
-              className="w-full text-left p-3 bg-gray-700 rounded-lg hover:bg-gray-600 transition"
+              className={`'w-full text-left p-3' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'rounded-lg' ${isDark ? 'hover:bg-gray-600' : 'hover:bg-gray-100'} 'transition'`}
             >
-              <div className="text-white font-medium">{addr.name}</div>
-              <div className="text-gray-400 text-sm font-mono truncate">{addr.address.slice(0, 20)}...</div>
+              <div className={`${isDark ? 'text-white' : 'text-gray-900'} 'font-medium'`}>{addr.name}</div>
+              <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm font-mono truncate'`}>{addr.address.slice(0, 20)}...</div>
             </button>
           ))}
         </div>
@@ -814,17 +816,17 @@ export default function TigerWallet() {
 
   const renderSwap = () => (
     <div className="space-y-6">
-      <div className="bg-gray-800 rounded-xl p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Swap Tokens</h3>
+      <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
+        <h3 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-gray-900'} 'mb-4'`}>Swap Tokens</h3>
         
         {/* From Token */}
         <div className="mb-4">
-          <label className="text-gray-400 text-sm">From</label>
+          <label className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>From</label>
           <div className="flex gap-2 mt-1">
             <select 
               value={swapFromToken}
               onChange={(e) => setSwapFromToken(e.target.value)}
-              className="flex-1 bg-gray-700 text-white rounded-lg p-3"
+              className={`'flex-1' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} ${isDark ? 'text-white' : 'text-gray-900'} 'rounded-lg p-3'`}
             >
               {DEFAULT_TOKENS.map((token) => (
                 <option key={token.id} value={token.symbol}>
@@ -837,7 +839,7 @@ export default function TigerWallet() {
               value={swapAmount}
               onChange={(e) => setSwapAmount(e.target.value)}
               placeholder="0.00"
-              className="flex-1 bg-gray-700 text-white rounded-lg p-3 text-right"
+              className={`'flex-1' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} ${isDark ? 'text-white' : 'text-gray-900'} 'rounded-lg p-3 text-right'`}
             />
           </div>
         </div>
@@ -851,11 +853,11 @@ export default function TigerWallet() {
 
         {/* To Token */}
         <div className="mb-4">
-          <label className="text-gray-400 text-sm">To</label>
+          <label className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>To</label>
           <select 
             value={swapToToken}
             onChange={(e) => setSwapToToken(e.target.value)}
-            className="w-full bg-gray-700 text-white rounded-lg p-3 mt-1"
+            className={`'w-full' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} ${isDark ? 'text-white' : 'text-gray-900'} 'rounded-lg p-3 mt-1'`}
           >
             {DEFAULT_TOKENS.map((token) => (
               <option key={token.id} value={token.symbol}>
@@ -867,7 +869,7 @@ export default function TigerWallet() {
 
         {/* Slippage */}
         <div className="mb-4">
-          <label className="text-gray-400 text-sm">Slippage Tolerance</label>
+          <label className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>Slippage Tolerance</label>
           <div className="flex gap-2 mt-1">
             {[0.5, 1, 3].map((s) => (
               <button
@@ -894,8 +896,8 @@ export default function TigerWallet() {
       </div>
 
       {/* Exchange Rates */}
-      <div className="bg-gray-800 rounded-xl p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Exchange Rates</h3>
+      <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
+        <h3 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-gray-900'} 'mb-4'`}>Exchange Rates</h3>
         <div className="space-y-2">
           {[
             { from: 'ETH', to: 'USDT', rate: '3,450.00' },
@@ -903,10 +905,10 @@ export default function TigerWallet() {
             { from: 'SOL', to: 'USDT', rate: '145.00' },
             { from: 'BNB', to: 'USDT', rate: '580.00' },
           ].map((rate, i) => (
-            <div key={i} className="flex justify-between p-3 bg-gray-700 rounded-lg">
-              <div className="text-white">{rate.from}</div>
-              <div className="text-gray-400">→</div>
-              <div className="text-white font-medium">${rate.rate}</div>
+            <div key={i} className={`'flex justify-between p-3' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'rounded-lg'`}>
+              <div className={`${isDark ? 'text-white' : 'text-gray-900'}`}>{rate.from}</div>
+              <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'}`}>→</div>
+              <div className={`${isDark ? 'text-white' : 'text-gray-900'} 'font-medium'`}>${rate.rate}</div>
             </div>
           ))}
         </div>
@@ -917,8 +919,8 @@ export default function TigerWallet() {
   const renderEarn = () => (
     <div className="space-y-6">
       {/* Liquidity Pools */}
-      <div className="bg-gray-800 rounded-xl p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Liquidity Pools</h3>
+      <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
+        <h3 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-gray-900'} 'mb-4'`}>Liquidity Pools</h3>
         <div className="space-y-3">
           {[
             { pair: 'ETH/USDT', apy: '24.5%', tvl: '$2.4M' },
@@ -926,10 +928,10 @@ export default function TigerWallet() {
             { pair: 'SOL/USDC', apy: '32.1%', tvl: '$950K' },
             { pair: 'BNB/USDT', apy: '21.5%', tvl: '$1.2M' },
           ].map((pool, i) => (
-            <div key={i} className="flex items-center justify-between p-4 bg-gray-700 rounded-lg">
+            <div key={i} className={`'flex items-center justify-between p-4' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'rounded-lg'`}>
               <div>
-                <div className="text-white font-bold">{pool.pair}</div>
-                <div className="text-gray-400 text-sm">TVL: {pool.tvl}</div>
+                <div className={`${isDark ? 'text-white' : 'text-gray-900'} 'font-bold'`}>{pool.pair}</div>
+                <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>TVL: {pool.tvl}</div>
               </div>
               <div className="text-right">
                 <div className="text-green-400 font-bold">{pool.apy} APY</div>
@@ -946,8 +948,8 @@ export default function TigerWallet() {
       </div>
 
       {/* Airdrops */}
-      <div className="bg-gray-800 rounded-xl p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Claim Airdrops</h3>
+      <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
+        <h3 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-gray-900'} 'mb-4'`}>Claim Airdrops</h3>
         <div className="space-y-3">
           {[
             { name: 'LayerZero', amount: '500 ZRO', claimable: true },
@@ -955,10 +957,10 @@ export default function TigerWallet() {
             { name: 'Meta', amount: '200 META', claimable: false },
             { name: 'zkSync', amount: '500 ZK', claimable: true },
           ].map((airdrop, i) => (
-            <div key={i} className="flex items-center justify-between p-4 bg-gray-700 rounded-lg">
+            <div key={i} className={`'flex items-center justify-between p-4' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'rounded-lg'`}>
               <div>
-                <div className="text-white font-bold">{airdrop.name}</div>
-                <div className="text-gray-400 text-sm">{airdrop.amount}</div>
+                <div className={`${isDark ? 'text-white' : 'text-gray-900'} 'font-bold'`}>{airdrop.name}</div>
+                <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>{airdrop.amount}</div>
               </div>
               <button
                 onClick={() => claimAirdrop(airdrop.name, airdrop.amount)}
@@ -977,17 +979,17 @@ export default function TigerWallet() {
       </div>
 
       {/* Campaigns */}
-      <div className="bg-gray-800 rounded-xl p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Active Campaigns</h3>
+      <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
+        <h3 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-gray-900'} 'mb-4'`}>Active Campaigns</h3>
         <div className="space-y-3">
           {[
             { name: 'TigerSwap Launch', reward: '500 TIGER', participants: '12.5K' },
             { name: 'Multi-chain Boost', reward: '200% APY', participants: '8.2K' },
           ].map((campaign, i) => (
-            <div key={i} className="flex items-center justify-between p-4 bg-gray-700 rounded-lg">
+            <div key={i} className={`'flex items-center justify-between p-4' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'rounded-lg'`}>
               <div>
-                <div className="text-white font-bold">{campaign.name}</div>
-                <div className="text-gray-400 text-sm">Reward: {campaign.reward}</div>
+                <div className={`${isDark ? 'text-white' : 'text-gray-900'} 'font-bold'`}>{campaign.name}</div>
+                <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>Reward: {campaign.reward}</div>
               </div>
               <button
                 onClick={() => joinCampaign(campaign.name)}
@@ -1005,46 +1007,46 @@ export default function TigerWallet() {
   const renderSettings = () => (
     <div className="space-y-6">
       {/* Wallet Info */}
-      <div className="bg-gray-800 rounded-xl p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Wallet Information</h3>
+      <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
+        <h3 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-gray-900'} 'mb-4'`}>Wallet Information</h3>
         <div className="space-y-3">
           <div>
-            <div className="text-gray-400 text-sm">Wallet Name</div>
-            <div className="text-white">{wallet?.name}</div>
+            <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>Wallet Name</div>
+            <div className={`${isDark ? 'text-white' : 'text-gray-900'}`}>{wallet?.name}</div>
           </div>
           <div>
-            <div className="text-gray-400 text-sm">Wallet Address</div>
-            <div className="text-white font-mono text-sm break-all">{wallet?.address}</div>
+            <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>Wallet Address</div>
+            <div className={`${isDark ? 'text-white' : 'text-gray-900'} 'font-mono text-sm break-all'`}>{wallet?.address}</div>
           </div>
           <div>
-            <div className="text-gray-400 text-sm">Created</div>
-            <div className="text-white">{wallet?.createdAt}</div>
+            <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>Created</div>
+            <div className={`${isDark ? 'text-white' : 'text-gray-900'}`}>{wallet?.createdAt}</div>
           </div>
         </div>
       </div>
 
       {/* Security */}
-      <div className="bg-gray-800 rounded-xl p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Security</h3>
+      <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
+        <h3 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-gray-900'} 'mb-4'`}>Security</h3>
         <div className="space-y-3">
-          <button className="w-full text-left p-3 bg-gray-700 rounded-lg hover:bg-gray-600">
-            <div className="text-white font-medium">View Seed Phrase</div>
-            <div className="text-gray-400 text-sm">Backup your wallet</div>
+          <button className={`'w-full text-left p-3' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'rounded-lg' ${isDark ? 'hover:bg-gray-600' : 'hover:bg-gray-100'}`}>
+            <div className={`${isDark ? 'text-white' : 'text-gray-900'} 'font-medium'`}>View Seed Phrase</div>
+            <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>Backup your wallet</div>
           </button>
-          <button className="w-full text-left p-3 bg-gray-700 rounded-lg hover:bg-gray-600">
-            <div className="text-white font-medium">Export Private Key</div>
-            <div className="text-gray-400 text-sm">Advanced access</div>
+          <button className={`'w-full text-left p-3' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'rounded-lg' ${isDark ? 'hover:bg-gray-600' : 'hover:bg-gray-100'}`}>
+            <div className={`${isDark ? 'text-white' : 'text-gray-900'} 'font-medium'`}>Export Private Key</div>
+            <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>Advanced access</div>
           </button>
-          <button className="w-full text-left p-3 bg-gray-700 rounded-lg hover:bg-gray-600">
-            <div className="text-white font-medium">Change Password</div>
-            <div className="text-gray-400 text-sm">Update wallet password</div>
+          <button className={`'w-full text-left p-3' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'rounded-lg' ${isDark ? 'hover:bg-gray-600' : 'hover:bg-gray-100'}`}>
+            <div className={`${isDark ? 'text-white' : 'text-gray-900'} 'font-medium'`}>Change Password</div>
+            <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>Update wallet password</div>
           </button>
         </div>
       </div>
 
       {/* Admin Login */}
-      <div className="bg-gray-800 rounded-xl p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Admin Access</h3>
+      <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
+        <h3 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-gray-900'} 'mb-4'`}>Admin Access</h3>
         {!isAdmin ? (
           <div className="space-y-3">
             <input
@@ -1052,14 +1054,14 @@ export default function TigerWallet() {
               value={walletName}
               onChange={(e) => setWalletName(e.target.value)}
               placeholder="Admin Email"
-              className="w-full bg-gray-700 text-white rounded-lg p-3"
+              className={`'w-full' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} ${isDark ? 'text-white' : 'text-gray-900'} 'rounded-lg p-3'`}
             />
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
-              className="w-full bg-gray-700 text-white rounded-lg p-3"
+              className={`'w-full' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} ${isDark ? 'text-white' : 'text-gray-900'} 'rounded-lg p-3'`}
             />
             <button
               onClick={adminLogin}
@@ -1074,7 +1076,7 @@ export default function TigerWallet() {
             <div className="text-green-400">Logged in as Admin</div>
             <button
               onClick={() => setIsAdmin(false)}
-              className="w-full bg-gray-700 text-white rounded-lg py-2"
+              className={`'w-full' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} ${isDark ? 'text-white' : 'text-gray-900'} 'rounded-lg py-2'`}
             >
               Logout
             </button>
@@ -1087,8 +1089,8 @@ export default function TigerWallet() {
   const renderAdmin = () => (
     <div className="space-y-6">
       {/* Fee Configuration */}
-      <div className="bg-gray-800 rounded-xl p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Fee Configuration</h3>
+      <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
+        <h3 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-gray-900'} 'mb-4'`}>Fee Configuration</h3>
         <div className="grid grid-cols-2 gap-4">
           {[
             { key: 'swapFee', label: 'Swap Fee', value: fees?.swapFee || 0.2 },
@@ -1096,21 +1098,21 @@ export default function TigerWallet() {
             { key: 'withdrawalFee', label: 'Withdrawal Fee', value: fees?.withdrawalFee || 0 },
             { key: 'transferFee', label: 'Transfer Fee', value: fees?.transferFee || 0 },
           ].map((fee) => (
-            <div key={fee.key} className="bg-gray-700 rounded-lg p-3">
-              <div className="text-gray-400 text-sm">{fee.label}</div>
-              <div className="text-white font-bold">{fee.value}%</div>
+            <div key={fee.key} className={`${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'rounded-lg p-3'`}>
+              <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>{fee.label}</div>
+              <div className={`${isDark ? 'text-white' : 'text-gray-900'} 'font-bold'`}>{fee.value}%</div>
             </div>
           ))}
         </div>
       </div>
 
       {/* Chain Management */}
-      <div className="bg-gray-800 rounded-xl p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Supported Chains ({chains.length})</h3>
+      <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
+        <h3 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-gray-900'} 'mb-4'`}>Supported Chains ({chains.length})</h3>
         <div className="grid grid-cols-2 gap-2">
           {chains.map((chain) => (
-            <div key={chain.id} className="bg-gray-700 rounded-lg p-3 flex justify-between">
-              <div className="text-white">{chain.name}</div>
+            <div key={chain.id} className={`${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'rounded-lg p-3 flex justify-between'`}>
+              <div className={`${isDark ? 'text-white' : 'text-gray-900'}`}>{chain.name}</div>
               <div className={`text-sm ${chain.status === 'active' ? 'text-green-400' : 'text-red-400'}`}>
                 {chain.status}
               </div>
@@ -1120,22 +1122,22 @@ export default function TigerWallet() {
       </div>
 
       {/* Token Management */}
-      <div className="bg-gray-800 rounded-xl p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Supported Tokens ({tokens.length})</h3>
+      <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
+        <h3 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-gray-900'} 'mb-4'`}>Supported Tokens ({tokens.length})</h3>
         <div className="grid grid-cols-2 gap-2">
           {tokens.map((token) => (
-            <div key={token.id} className="bg-gray-700 rounded-lg p-3">
-              <div className="text-white font-medium">{token.symbol}</div>
-              <div className="text-gray-400 text-sm">{token.name}</div>
+            <div key={token.id} className={`${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'rounded-lg p-3'`}>
+              <div className={`${isDark ? 'text-white' : 'text-gray-900'} 'font-medium'`}>{token.symbol}</div>
+              <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>{token.name}</div>
             </div>
           ))}
         </div>
       </div>
 
       {/* White Label Management */}
-      <div className="bg-gray-800 rounded-xl p-6">
+      <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xl font-semibold text-white">White Labels</h3>
+          <h3 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-gray-900'}`}>White Labels</h3>
           <button
             onClick={() => setShowWhiteLabelRegister(true)}
             className="bg-orange-600 text-white px-4 py-2 rounded-lg"
@@ -1145,20 +1147,20 @@ export default function TigerWallet() {
         </div>
         
         {showWhiteLabelRegister && (
-          <div className="mb-4 p-4 bg-gray-700 rounded-lg space-y-3">
+          <div className={`'mb-4 p-4' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'rounded-lg space-y-3'`}>
             <input
               type="text"
               value={wlName}
               onChange={(e) => setWlName(e.target.value)}
               placeholder="White Label Name"
-              className="w-full bg-gray-600 text-white rounded-lg p-3"
+              className={`'w-full' ${isDark ? 'bg-gray-600' : 'bg-gray-200'} ${isDark ? 'text-white' : 'text-gray-900'} 'rounded-lg p-3'`}
             />
             <input
               type="email"
               value={wlEmail}
               onChange={(e) => setWlEmail(e.target.value)}
               placeholder="Admin Email"
-              className="w-full bg-gray-600 text-white rounded-lg p-3"
+              className={`'w-full' ${isDark ? 'bg-gray-600' : 'bg-gray-200'} ${isDark ? 'text-white' : 'text-gray-900'} 'rounded-lg p-3'`}
             />
             <button
               onClick={registerWhiteLabel}
@@ -1171,13 +1173,13 @@ export default function TigerWallet() {
         
         <div className="space-y-2">
           {whiteLabels.length === 0 ? (
-            <div className="text-gray-400 text-center py-4">No white labels registered</div>
+            <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-center py-4'`}>No white labels registered</div>
           ) : (
             whiteLabels.map((wl) => (
-              <div key={wl.id} className="bg-gray-700 rounded-lg p-3 flex justify-between items-center">
+              <div key={wl.id} className={`${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'rounded-lg p-3 flex justify-between items-center'`}>
                 <div>
-                  <div className="text-white font-medium">{wl.name}</div>
-                  <div className="text-gray-400 text-sm">Fee: {wl.feePercentage}%</div>
+                  <div className={`${isDark ? 'text-white' : 'text-gray-900'} 'font-medium'`}>{wl.name}</div>
+                  <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>Fee: {wl.feePercentage}%</div>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className={`text-sm ${wl.status === 'active' ? 'text-green-400' : 'text-yellow-400'}`}>
@@ -1207,10 +1209,10 @@ export default function TigerWallet() {
   if (!wallet) {
     // Show create/import wallet screen
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+      <div className={`'min-h-screen' ${isDark ? 'bg-gray-900' : 'bg-gray-50'} 'flex items-center justify-center p-4'`}>
         <div className="max-w-md w-full">
           <h1 className="text-4xl font-bold text-center text-orange-500 mb-8">TigerWallet</h1>
-          <p className="text-gray-400 text-center mb-8">Multi-chain Web3 Wallet</p>
+          <p className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-center mb-8'`}>Multi-chain Web3 Wallet</p>
           
           {error && (
             <div className="bg-red-900/50 text-red-400 p-3 rounded-lg mb-4 text-center">
@@ -1228,14 +1230,14 @@ export default function TigerWallet() {
               </button>
               <button
                 onClick={() => { setShowCreate(true); setIsImport(true); }}
-                className="w-full bg-gray-800 text-white rounded-xl py-4 font-bold text-lg hover:bg-gray-700 transition"
+                className={`'w-full' ${isDark ? 'bg-gray-800' : 'bg-white'} ${isDark ? 'text-white' : 'text-gray-900'} 'rounded-xl py-4 font-bold text-lg' ${isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} 'transition'`}
               >
                 Import Wallet
               </button>
             </div>
           ) : (
-            <div className="bg-gray-800 rounded-xl p-6 space-y-4">
-              <h2 className="text-xl font-bold text-white">
+            <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6 space-y-4'`}>
+              <h2 className={`'text-xl font-bold' ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 {isImport ? 'Import Wallet' : 'Create Wallet'}
               </h2>
               
@@ -1244,7 +1246,7 @@ export default function TigerWallet() {
                 value={walletName}
                 onChange={(e) => setWalletName(e.target.value)}
                 placeholder="Wallet Name"
-                className="w-full bg-gray-700 text-white rounded-lg p-3"
+                className={`'w-full' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} ${isDark ? 'text-white' : 'text-gray-900'} 'rounded-lg p-3'`}
               />
               
               {!isImport && (
@@ -1254,7 +1256,7 @@ export default function TigerWallet() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Password"
-                    className="w-full bg-gray-700 text-white rounded-lg p-3"
+                    className={`'w-full' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} ${isDark ? 'text-white' : 'text-gray-900'} 'rounded-lg p-3'`}
                   />
                   
                   <input
@@ -1262,7 +1264,7 @@ export default function TigerWallet() {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Confirm Password"
-                    className="w-full bg-gray-700 text-white rounded-lg p-3"
+                    className={`'w-full' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} ${isDark ? 'text-white' : 'text-gray-900'} 'rounded-lg p-3'`}
                   />
                 </>
               )}
@@ -1272,7 +1274,7 @@ export default function TigerWallet() {
                   value={importSeedPhrase}
                   onChange={(e) => setImportSeedPhrase(e.target.value)}
                   placeholder="Enter 24-word seed phrase (separated by spaces)"
-                  className="w-full bg-gray-700 text-white rounded-lg p-3 h-24 font-mono text-sm"
+                  className={`'w-full' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} ${isDark ? 'text-white' : 'text-gray-900'} 'rounded-lg p-3 h-24 font-mono text-sm'`}
                 />
               )}
               
@@ -1287,12 +1289,12 @@ export default function TigerWallet() {
               {showSeedPhrase && (
                 <div className="mt-4 p-4 bg-yellow-900/50 rounded-lg">
                   <h3 className="text-yellow-400 font-bold mb-2">⚠️ Save Your Seed Phrase</h3>
-                  <p className="text-gray-400 text-sm mb-2">
+                  <p className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm mb-2'`}>
                     Write down these 24 words in order. This is the only way to recover your wallet.
                   </p>
                   <div className="grid grid-cols-4 gap-2">
                     {seedPhrase.map((word, i) => (
-                      <div key={i} className="bg-gray-900 text-white text-sm p-2 rounded text-center">
+                      <div key={i} className={`${isDark ? 'bg-gray-900' : 'bg-gray-50'} ${isDark ? 'text-white' : 'text-gray-900'} 'text-sm p-2 rounded text-center'`}>
                         {i + 1}. {word}
                       </div>
                     ))}
@@ -1308,7 +1310,7 @@ export default function TigerWallet() {
               
               <button
                 onClick={() => setShowCreate(false)}
-                className="w-full text-gray-400 py-2"
+                className={`'w-full' ${isDark ? 'text-gray-400' : 'text-gray-500'} 'py-2'`}
               >
                 Back
               </button>
@@ -1320,14 +1322,14 @@ export default function TigerWallet() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className={`'min-h-screen' ${isDark ? 'bg-gray-900' : 'bg-gray-50'} ${isDark ? 'text-white' : 'text-gray-900'}`}>
       {/* Header */}
-      <header className="bg-gray-800 border-b border-gray-700 p-4 sticky top-0 z-50">
+      <header className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'border-b' ${isDark ? 'border-gray-700' : 'border-gray-200'} 'p-4 sticky top-0 z-50'`}>
         <div className="max-w-4xl mx-auto flex justify-between items-center">
           <h1 className="text-xl font-bold text-orange-500">TigerWallet</h1>
           <div className="flex items-center gap-4">
-            <span className="text-gray-400 text-sm">{wallet.name}</span>
-            <div className="bg-gray-700 px-3 py-1 rounded-full text-sm font-mono">
+            <span className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'text-sm'`}>{wallet.name}</span>
+            <div className={`${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'px-3 py-1 rounded-full text-sm font-mono'`}>
               {wallet.address.slice(0, 6)}...{wallet.address.slice(-4)}
             </div>
           </div>
@@ -1335,7 +1337,7 @@ export default function TigerWallet() {
       </header>
 
       {/* Navigation */}
-      <nav className="bg-gray-800 border-b border-gray-700 sticky top-[57px] z-50">
+      <nav className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'border-b' ${isDark ? 'border-gray-700' : 'border-gray-200'} 'sticky top-[57px] z-50'`}>
         <div className="max-w-4xl mx-auto flex">
           {[
             { id: 'dashboard', icon: '🏠', label: 'Dashboard' },

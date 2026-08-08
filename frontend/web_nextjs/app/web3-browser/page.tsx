@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTheme } from '../components/ThemeProvider'
 
 interface Bookmark {
   id: string;
@@ -50,6 +51,7 @@ const DEFAULT_BOOKMARKS: Bookmark[] = [
 ];
 
 export default function Web3BrowserPage() {
+  const { isDark } = useTheme()
   const [url, setUrl] = useState('');
   const [tabs, setTabs] = useState([{ id: '1', url: '', title: 'New Tab', favicon: '' }]);
   const [activeTab, setActiveTab] = useState('1');
@@ -170,9 +172,9 @@ export default function Web3BrowserPage() {
   const currentTab = tabs.find(t => t.id === activeTab);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800">
+    <div className={`'min-h-screen bg-gradient-to-br' ${isDark ? 'from-slate-900' : 'from-slate-50'} ${isDark ? 'to-slate-800' : 'to-slate-100'}`}>
       {/* Tab Bar */}
-      <div className="bg-slate-800 border-b border-slate-700">
+      <div className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'border-b' ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
         <div className="flex items-center gap-1 p-2 overflow-x-auto">
           {tabs.map(tab => (
             <div 
@@ -196,7 +198,7 @@ export default function Web3BrowserPage() {
           ))}
           <button 
             onClick={addNewTab}
-            className="px-2 py-1 text-slate-400 hover:text-white text-xl"
+            className={`'px-2 py-1' ${isDark ? 'text-slate-400' : 'text-slate-500'} 'hover:text-white text-xl'`}
           >
             +
           </button>
@@ -204,18 +206,18 @@ export default function Web3BrowserPage() {
       </div>
 
       {/* Navigation Bar */}
-      <div className="bg-slate-800 border-b border-slate-700">
+      <div className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'border-b' ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
         <div className="flex items-center gap-2 p-2">
           <button 
             onClick={() => { setShowHistory(!showHistory); setShowBookmarks(false); setShowAddBookmark(false); }}
-            className="p-2 text-slate-400 hover:text-white"
+            className={`'p-2' ${isDark ? 'text-slate-400' : 'text-slate-500'} 'hover:text-white'`}
             title="History"
           >
             🕐
           </button>
           <button 
             onClick={() => { setShowBookmarks(!showBookmarks); setShowHistory(false); setShowAddBookmark(false); }}
-            className="p-2 text-slate-400 hover:text-white"
+            className={`'p-2' ${isDark ? 'text-slate-400' : 'text-slate-500'} 'hover:text-white'`}
             title="Bookmarks"
           >
             ⭐
@@ -226,7 +228,7 @@ export default function Web3BrowserPage() {
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="Enter URL or search..."
-              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white placeholder-slate-400"
+              className={`'w-full' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-4 py-2' ${isDark ? 'text-white' : 'text-slate-900'} 'placeholder-slate-400'`}
             />
           </form>
         </div>
@@ -234,9 +236,9 @@ export default function Web3BrowserPage() {
 
       {/* Bookmarks Panel */}
       {showBookmarks && (
-        <div className="absolute top-36 left-2 bg-slate-800 rounded-lg shadow-xl z-50 w-80">
-          <div className="p-3 border-b border-slate-700 flex justify-between items-center">
-            <span className="text-white font-semibold">Bookmarks</span>
+        <div className={`'absolute top-36 left-2' ${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-lg shadow-xl z-50 w-80'`}>
+          <div className={`'p-3 border-b' ${isDark ? 'border-slate-700' : 'border-slate-200'} 'flex justify-between items-center'`}>
+            <span className={`${isDark ? 'text-white' : 'text-slate-900'} 'font-semibold'`}>Bookmarks</span>
             <button 
               onClick={() => setShowAddBookmark(true)}
               className="text-orange-500 hover:text-orange-400"
@@ -248,12 +250,12 @@ export default function Web3BrowserPage() {
             {bookmarks.map(bookmark => (
               <div 
                 key={bookmark.id}
-                className="flex items-center justify-between p-2 hover:bg-slate-700 cursor-pointer"
+                className={`'flex items-center justify-between p-2' ${isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} 'cursor-pointer'`}
                 onClick={() => { navigate(bookmark.url); setShowBookmarks(false); }}
               >
                 <div className="flex items-center gap-2">
                   <span>{bookmark.favicon}</span>
-                  <span className="text-white text-sm">{bookmark.title}</span>
+                  <span className={`${isDark ? 'text-white' : 'text-slate-900'} 'text-sm'`}>{bookmark.title}</span>
                 </div>
                 <button 
                   onClick={(e) => { e.stopPropagation(); removeBookmark(bookmark.id); }}
@@ -269,21 +271,21 @@ export default function Web3BrowserPage() {
 
       {/* Add Bookmark Modal */}
       {showAddBookmark && (
-        <div className="absolute top-36 left-2 bg-slate-800 rounded-lg shadow-xl z-50 w-80 p-3">
-          <div className="text-white font-semibold mb-3">Add Bookmark</div>
+        <div className={`'absolute top-36 left-2' ${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-lg shadow-xl z-50 w-80 p-3'`}>
+          <div className={`${isDark ? 'text-white' : 'text-slate-900'} 'font-semibold mb-3'`}>Add Bookmark</div>
           <input
             type="text"
             value={newBookmarkTitle}
             onChange={(e) => setNewBookmarkTitle(e.target.value)}
             placeholder="Title"
-            className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-white mb-2"
+            className={`'w-full' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded px-3 py-2' ${isDark ? 'text-white' : 'text-slate-900'} 'mb-2'`}
           />
           <input
             type="text"
             value={newBookmarkUrl}
             onChange={(e) => setNewBookmarkUrl(e.target.value)}
             placeholder="URL"
-            className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-white mb-3"
+            className={`'w-full' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded px-3 py-2' ${isDark ? 'text-white' : 'text-slate-900'} 'mb-3'`}
           />
           <div className="flex gap-2">
             <button 
@@ -294,7 +296,7 @@ export default function Web3BrowserPage() {
             </button>
             <button 
               onClick={() => setShowAddBookmark(false)}
-              className="flex-1 bg-slate-600 text-white py-2 rounded hover:bg-slate-500"
+              className={`'flex-1' ${isDark ? 'bg-slate-600' : 'bg-slate-200'} ${isDark ? 'text-white' : 'text-slate-900'} 'py-2 rounded hover:bg-slate-500'`}
             >
               Cancel
             </button>
@@ -304,9 +306,9 @@ export default function Web3BrowserPage() {
 
       {/* History Panel */}
       {showHistory && (
-        <div className="absolute top-36 left-2 bg-slate-800 rounded-lg shadow-xl z-50 w-80">
-          <div className="p-3 border-b border-slate-700 flex justify-between items-center">
-            <span className="text-white font-semibold">History</span>
+        <div className={`'absolute top-36 left-2' ${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-lg shadow-xl z-50 w-80'`}>
+          <div className={`'p-3 border-b' ${isDark ? 'border-slate-700' : 'border-slate-200'} 'flex justify-between items-center'`}>
+            <span className={`${isDark ? 'text-white' : 'text-slate-900'} 'font-semibold'`}>History</span>
             <button 
               onClick={clearHistory}
               className="text-orange-500 hover:text-orange-400 text-sm"
@@ -316,15 +318,15 @@ export default function Web3BrowserPage() {
           </div>
           <div className="max-h-64 overflow-y-auto">
             {history.length === 0 ? (
-              <div className="p-3 text-slate-400 text-sm">No history yet</div>
+              <div className={`'p-3' ${isDark ? 'text-slate-400' : 'text-slate-500'} 'text-sm'`}>No history yet</div>
             ) : (
               history.map(item => (
                 <div 
                   key={item.id}
-                  className="p-2 hover:bg-slate-700 cursor-pointer"
+                  className={`'p-2' ${isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} 'cursor-pointer'`}
                   onClick={() => { navigate(item.url); setShowHistory(false); }}
                 >
-                  <div className="text-white text-sm">{item.title}</div>
+                  <div className={`${isDark ? 'text-white' : 'text-slate-900'} 'text-sm'`}>{item.title}</div>
                   <div className="text-slate-500 text-xs">
                     {new Date(item.timestamp).toLocaleString()}
                   </div>
@@ -346,11 +348,11 @@ export default function Web3BrowserPage() {
           />
         ) : (
           <div className="flex flex-col items-center justify-center h-full p-8">
-            <h1 className="text-3xl font-bold text-white mb-4">Web3 Browser</h1>
-            <p className="text-slate-400 mb-8">Browse the decentralized web</p>
+            <h1 className={`'text-3xl font-bold' ${isDark ? 'text-white' : 'text-slate-900'} 'mb-4'`}>Web3 Browser</h1>
+            <p className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'mb-8'`}>Browse the decentralized web</p>
             
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-              <div className="col-span-full text-white font-semibold mb-2">Popular DApps</div>
+              <div className={`'col-span-full' ${isDark ? 'text-white' : 'text-slate-900'} 'font-semibold mb-2'`}>Popular DApps</div>
               {bookmarks.slice(0, 6).map(bookmark => (
                 <div 
                   key={bookmark.id} 
@@ -358,7 +360,7 @@ export default function Web3BrowserPage() {
                   className="flex items-center gap-3 p-4 bg-slate-700/50 hover:bg-slate-600/50 rounded-xl cursor-pointer transition-colors"
                 >
                   <span className="text-2xl">{bookmark.favicon}</span>
-                  <span className="text-white">{bookmark.title}</span>
+                  <span className={`${isDark ? 'text-white' : 'text-slate-900'}`}>{bookmark.title}</span>
                 </div>
               ))}
             </div>

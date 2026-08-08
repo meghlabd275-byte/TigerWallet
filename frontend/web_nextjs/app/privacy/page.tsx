@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 
 interface PrivacyFeature {
   id: string;
@@ -20,6 +21,8 @@ const PRIVACY_FEATURES: PrivacyFeature[] = [
 ];
 
 export default function PrivacyPage() {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
   const [features, setFeatures] = useState(PRIVACY_FEATURES);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -32,19 +35,19 @@ export default function PrivacyPage() {
   const enabledCount = features.filter(f => f.enabled).length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-8">
+    <div className={`min-h-screen p-8 ${isDark ? 'bg-gradient-to-br from-slate-900 to-slate-800' : 'bg-gradient-to-br from-slate-50 to-slate-100'}`}>
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-4xl font-bold text-white mb-2">Privacy Features</h1>
-        <p className="text-slate-400 mb-8">Protect your financial privacy</p>
+        <h1 className={`text-4xl font-bold mb-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>Privacy Features</h1>
+        <p className={`mb-8 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Protect your financial privacy</p>
 
-        <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700 mb-6">
+        <div className={`rounded-2xl p-6 border mb-6 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-xl font-semibold text-white">Privacy Shield</h2>
-              <p className="text-slate-400 text-sm">{enabledCount} of {features.length} features enabled</p>
+              <h2 className={`text-xl font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>Privacy Shield</h2>
+              <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{enabledCount} of {features.length} features enabled</p>
             </div>
-            <div className="w-32 h-2 bg-slate-700 rounded-full overflow-hidden">
-              <div 
+            <div className={`w-32 h-2 rounded-full overflow-hidden ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`}>
+              <div
                 className="h-full bg-gradient-to-r from-green-500 to-blue-500 transition-all"
                 style={{ width: `${(enabledCount / features.length) * 100}%` }}
               />
@@ -54,13 +57,13 @@ export default function PrivacyPage() {
 
         <div className="grid gap-4">
           {features.map(feature => (
-            <div key={feature.id} className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+            <div key={feature.id} className={`rounded-xl p-4 border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <span className="text-3xl">{feature.icon}</span>
                   <div>
-                    <h3 className="text-white font-medium">{feature.name}</h3>
-                    <p className="text-slate-400 text-sm">{feature.description}</p>
+                    <h3 className={`font-medium ${isDark ? 'text-white' : 'text-slate-900'}`}>{feature.name}</h3>
+                    <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{feature.description}</p>
                   </div>
                 </div>
                 <button

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 
 interface ConvertToken {
   symbol: string;
@@ -41,6 +42,7 @@ const CONVERT_PAIRS: ConvertPair[] = [
 ];
 
 export default function ConvertPage() {
+  const { isDark } = useTheme();
   const [fromToken, setFromToken] = useState<ConvertToken>(TOKENS[0]);
   const [toToken, setToToken] = useState<ConvertToken>(TOKENS[2]);
   const [fromAmount, setFromAmount] = useState('');
@@ -106,15 +108,15 @@ export default function ConvertPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-6">
+    <div className={`min-h-screen p-6 ${isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold">Convert</h1>
-          <p className="text-gray-400 mt-1">One-click conversion between crypto assets</p>
+          <p className={`mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>One-click conversion between crypto assets</p>
         </div>
 
         <div className="flex justify-center mb-6">
-          <div className="bg-gray-800 rounded-lg p-1 flex">
+          <div className={`rounded-lg p-1 flex ${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
             <button
               onClick={() => setActiveTab('convert')}
               className={`px-6 py-2 rounded-lg ${activeTab === 'convert' ? 'bg-blue-600' : 'bg-transparent'}`}
@@ -131,13 +133,13 @@ export default function ConvertPage() {
         </div>
 
         {activeTab === 'convert' && (
-          <div className="bg-gray-800 rounded-xl p-6">
+          <div className={`rounded-xl p-6 ${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200 shadow-sm'}`}>
             <div className="space-y-4">
               {/* From */}
-              <div className="bg-gray-700 rounded-lg p-4">
+              <div className={`rounded-lg p-4 ${isDark ? 'bg-gray-700' : 'bg-gray-100'}`}>
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-gray-400">From</span>
-                  <span className="text-gray-400">Balance: {fromToken.balance.toLocaleString()} {fromToken.symbol}</span>
+                  <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>From</span>
+                  <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Balance: {fromToken.balance.toLocaleString()} {fromToken.symbol}</span>
                 </div>
                 <div className="flex items-center space-x-4">
                   <div className="flex-1">
@@ -150,19 +152,19 @@ export default function ConvertPage() {
                     />
                   </div>
                   <div className="relative">
-                    <button className="flex items-center space-x-2 bg-gray-600 px-4 py-2 rounded-lg hover:bg-gray-500">
+                    <button className={`flex items-center space-x-2 px-4 py-2 rounded-lg ${isDark ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-200 hover:bg-gray-300'}`}>
                       <span>{fromToken.icon}</span>
                       <span>{fromToken.symbol}</span>
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </button>
-                    <div className="absolute top-full right-0 mt-2 bg-gray-700 rounded-lg shadow-xl z-10 w-48 max-h-60 overflow-y-auto">
+                    <div className={`absolute top-full right-0 mt-2 rounded-lg shadow-xl z-10 w-48 max-h-60 overflow-y-auto ${isDark ? 'bg-gray-700' : 'bg-white border border-gray-200'}`}>
                       {TOKENS.map((token) => (
                         <button
                           key={token.symbol}
                           onClick={() => selectToken(token, true)}
-                          className="w-full px-4 py-2 hover:bg-gray-600 flex items-center space-x-2"
+                          className={`w-full px-4 py-2 flex items-center space-x-2 ${isDark ? 'hover:bg-gray-600' : 'hover:bg-gray-100'}`}
                         >
                           <span>{token.icon}</span>
                           <span>{token.symbol}</span>
@@ -186,10 +188,10 @@ export default function ConvertPage() {
               </div>
 
               {/* To */}
-              <div className="bg-gray-700 rounded-lg p-4">
+              <div className={`rounded-lg p-4 ${isDark ? 'bg-gray-700' : 'bg-gray-100'}`}>
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-gray-400">To</span>
-                  <span className="text-gray-400">Balance: {toToken.balance.toLocaleString()} {toToken.symbol}</span>
+                  <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>To</span>
+                  <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Balance: {toToken.balance.toLocaleString()} {toToken.symbol}</span>
                 </div>
                 <div className="flex items-center space-x-4">
                   <div className="flex-1">
@@ -198,23 +200,23 @@ export default function ConvertPage() {
                       value={toAmount}
                       readOnly
                       placeholder="0.00"
-                      className="w-full bg-transparent text-2xl font-bold outline-none text-gray-300"
+                      className={`w-full bg-transparent text-2xl font-bold outline-none ${isDark ? 'text-gray-300' : 'text-gray-600'}`}
                     />
                   </div>
                   <div className="relative">
-                    <button className="flex items-center space-x-2 bg-gray-600 px-4 py-2 rounded-lg hover:bg-gray-500">
+                    <button className={`flex items-center space-x-2 px-4 py-2 rounded-lg ${isDark ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-200 hover:bg-gray-300'}`}>
                       <span>{toToken.icon}</span>
                       <span>{toToken.symbol}</span>
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </button>
-                    <div className="absolute top-full right-0 mt-2 bg-gray-700 rounded-lg shadow-xl z-10 w-48 max-h-60 overflow-y-auto">
+                    <div className={`absolute top-full right-0 mt-2 rounded-lg shadow-xl z-10 w-48 max-h-60 overflow-y-auto ${isDark ? 'bg-gray-700' : 'bg-white border border-gray-200'}`}>
                       {TOKENS.map((token) => (
                         <button
                           key={token.symbol}
                           onClick={() => selectToken(token, false)}
-                          className="w-full px-4 py-2 hover:bg-gray-600 flex items-center space-x-2"
+                          className={`w-full px-4 py-2 flex items-center space-x-2 ${isDark ? 'hover:bg-gray-600' : 'hover:bg-gray-100'}`}
                         >
                           <span>{token.icon}</span>
                           <span>{token.symbol}</span>
@@ -226,13 +228,13 @@ export default function ConvertPage() {
               </div>
 
               {/* Rate Info */}
-              <div className="bg-gray-700 rounded-lg p-4">
+              <div className={`rounded-lg p-4 ${isDark ? 'bg-gray-700' : 'bg-gray-100'}`}>
                 <div className="flex justify-between mb-2">
-                  <span className="text-gray-400">Exchange Rate</span>
+                  <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Exchange Rate</span>
                   <span>1 {fromToken.symbol} = {rate.toFixed(6)} {toToken.symbol}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-400">Fee (0.1%)</span>
+                  <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Fee (0.1%)</span>
                   <span>≈ {fee.toFixed(6)} {fromToken.symbol}</span>
                 </div>
               </div>
@@ -254,17 +256,17 @@ export default function ConvertPage() {
         )}
 
         {activeTab === 'history' && (
-          <div className="bg-gray-800 rounded-xl p-6">
+          <div className={`rounded-xl p-6 ${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200 shadow-sm'}`}>
             <h3 className="text-xl font-bold mb-4">Conversion History</h3>
             {conversion.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">No conversions yet</div>
+              <div className={`text-center py-12 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>No conversions yet</div>
             ) : (
               <div className="space-y-4">
                 {conversion.map((c, i) => (
-                  <div key={i} className="bg-gray-700 rounded-lg p-4 flex justify-between items-center">
+                  <div key={i} className={`rounded-lg p-4 flex justify-between items-center ${isDark ? 'bg-gray-700' : 'bg-gray-100'}`}>
                     <div>
                       <div className="font-bold">{c.from} → {c.to}</div>
-                      <div className="text-sm text-gray-400">{c.time.toLocaleString()}</div>
+                      <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{c.time.toLocaleString()}</div>
                     </div>
                     <div className="text-right">
                       <div className="font-bold">{c.amount} {c.from}</div>
@@ -282,9 +284,9 @@ export default function ConvertPage() {
           <h3 className="text-xl font-bold mb-4">Popular Pairs</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {CONVERT_PAIRS.slice(0, 8).map((pair, i) => (
-              <div key={i} className="bg-gray-800 rounded-lg p-4 hover:bg-gray-700 cursor-pointer">
+              <div key={i} className={`rounded-lg p-4 cursor-pointer ${isDark ? 'bg-gray-800 hover:bg-gray-700' : 'bg-white border border-gray-200 hover:bg-gray-50 shadow-sm'}`}>
                 <div className="font-bold">{pair.from}/{pair.to}</div>
-                <div className="text-sm text-gray-400">{pair.rate.toFixed(4)}</div>
+                <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{pair.rate.toFixed(4)}</div>
               </div>
             ))}
           </div>

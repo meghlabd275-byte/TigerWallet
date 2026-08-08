@@ -10,6 +10,7 @@ import {
   ListItemText, ListItemIcon, LinearProgress, Tooltip, Badge, Accordion,
   AccordionSummary, AccordionDetails, SelectChangeEvent
 } from '@mui/material';
+import { useTheme } from '../components/ThemeProvider';
 import {
   AccountTree, Lan, Storage, Cloud, Security, Settings, Add, PlayArrow,
   Stop, Pause, Delete, Refresh, ExpandMore, Link, Language,
@@ -119,6 +120,9 @@ const DEFAULT_EVM_CHAINS = [
 // ============================================================================
 
 export default function ChainAdminPanel() {
+  const { isDark } = useTheme();
+  const bgPrimary = isDark ? '#0f172a' : '#f8fafc';
+  const textSecondary = isDark ? '#9ca3af' : '#6b7280';
   // State
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -427,7 +431,7 @@ export default function ChainAdminPanel() {
   // ============================================================================
   
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: 3, minHeight: '100vh', bgcolor: bgPrimary }}>
       {/* Header */}
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>
@@ -607,7 +611,7 @@ export default function ChainAdminPanel() {
               <TableBody>
                 {validators.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} align="center" sx={{ py: 3, color: '#9ca3af' }}>No validators</TableCell>
+                    <TableCell colSpan={7} align="center" sx={{ py: 3, color: textSecondary }}>No validators</TableCell>
                   </TableRow>
                 ) : validators.map(validator => (
                   <TableRow key={validator.id}>
@@ -666,7 +670,7 @@ export default function ChainAdminPanel() {
               <TableBody>
                 {bridges.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} align="center" sx={{ py: 3, color: '#9ca3af' }}>No bridges</TableCell>
+                    <TableCell colSpan={7} align="center" sx={{ py: 3, color: textSecondary }}>No bridges</TableCell>
                   </TableRow>
                 ) : bridges.map(bridge => (
                   <TableRow key={bridge.id}>
@@ -709,7 +713,7 @@ export default function ChainAdminPanel() {
             <TableBody>
               {tokenDeployments.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 3, color: '#9ca3af' }}>No token deployments</TableCell>
+                  <TableCell colSpan={7} align="center" sx={{ py: 3, color: textSecondary }}>No token deployments</TableCell>
                 </TableRow>
               ) : tokenDeployments.map(token => (
                 <TableRow key={token.id}>

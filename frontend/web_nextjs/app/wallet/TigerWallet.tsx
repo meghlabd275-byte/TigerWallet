@@ -61,7 +61,7 @@ const DEFAULT_CHAINS: Chain[] = [
   { id: 42161, name: 'Arbitrum', symbol: 'ETH', isEVM: true, explorer: 'https://arbiscan.io', rpc: 'https://arb1.arbitrum.io' },
   { id: 10, name: 'Optimism', symbol: 'ETH', isEVM: true, explorer: 'https://optimistic.etherscan.io', rpc: 'https://mainnet.optimism.io' },
   { id: 8453, name: 'Base', symbol: 'ETH', isEVM: true, explorer: 'https://basescan.org', rpc: 'https://mainnet.base.org' },
-  { id: 43114, name: 'Avalanche', symbol: 'AVAX', isEVM: true explorer: 'https://snowtrace.io', rpc: 'https://api.avax.network' },
+  { id: 43114, name: 'Avalanche', symbol: 'AVAX', isEVM: true, explorer: 'https://snowtrace.io', rpc: 'https://api.avax.network' },
   { id: 101, name: 'Solana', symbol: 'SOL', isEVM: false, explorer: 'https://solscan.io', rpc: 'https://api.mainnet-beta.solana.com' },
 ];
 

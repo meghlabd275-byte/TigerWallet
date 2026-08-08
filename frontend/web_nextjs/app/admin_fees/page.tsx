@@ -10,6 +10,7 @@ import {
   ListItemText, ListItemIcon, LinearProgress, Tooltip, Badge, Accordion,
   AccordionSummary, AccordionDetails, SelectChangeEvent, TableSortLabel
 } from '@mui/material';
+import { useTheme } from '../components/ThemeProvider';
 import {
   AccountBalance, MonetizationOn, AttachMoney, Receipt, TrendingUp,
   Settings, Add, Edit, Delete, Refresh, ExpandMore, Warning,
@@ -87,6 +88,9 @@ const CHAINS = [
 // ============================================================================
 
 export default function AdminFeesPage() {
+  const { isDark } = useTheme();
+  const bgPrimary = isDark ? '#0f172a' : '#f8fafc';
+  const textSecondary = isDark ? '#9ca3af' : '#6b7280';
   // State
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -275,7 +279,7 @@ export default function AdminFeesPage() {
   // ============================================================================
   
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: 3, minHeight: '100vh', bgcolor: bgPrimary }}>
       {/* Header */}
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>
@@ -383,7 +387,7 @@ export default function AdminFeesPage() {
             <TableBody>
               {feeConfigs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} align="center" sx={{ py: 5, color: '#9ca3af' }}>
+                  <TableCell colSpan={8} align="center" sx={{ py: 5, color: textSecondary }}>
                     No fee configurations found
                   </TableCell>
                 </TableRow>
@@ -448,7 +452,7 @@ export default function AdminFeesPage() {
             <TableBody>
               {transactions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 5, color: '#9ca3af' }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 5, color: textSecondary }}>
                     No fee transactions found
                   </TableCell>
                 </TableRow>

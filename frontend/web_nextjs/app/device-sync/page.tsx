@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 
 interface Device {
   id: string;
@@ -11,6 +12,8 @@ interface Device {
 }
 
 export default function DeviceSyncPage() {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
   const [devices, setDevices] = useState<Device[]>([
     { id: '1', name: 'iPhone 15 Pro', type: 'mobile', lastSync: Date.now() - 300000, status: 'online' },
     { id: '2', name: 'MacBook Pro', type: 'desktop', lastSync: Date.now() - 3600000, status: 'offline' },
@@ -49,31 +52,31 @@ export default function DeviceSyncPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-8">
+    <div className={`min-h-screen p-8 ${isDark ? 'bg-gradient-to-br from-slate-900 to-slate-800' : 'bg-gradient-to-br from-slate-50 to-slate-100'}`}>
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-4xl font-bold text-white mb-2">Device Sync</h1>
-        <p className="text-slate-400 mb-8">Manage your connected devices</p>
+        <h1 className={`text-4xl font-bold mb-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>Device Sync</h1>
+        <p className={`mb-8 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Manage your connected devices</p>
 
-        <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700 mb-6">
+        <div className={`rounded-2xl p-6 border mb-6 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
           <div className="flex items-center gap-4">
             <div className="flex-1">
-              <p className="text-white font-medium">Sync Status</p>
-              <p className="text-slate-400 text-sm">All devices synchronized</p>
+              <p className={`font-medium ${isDark ? 'text-white' : 'text-slate-900'}`}>Sync Status</p>
+              <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>All devices synchronized</p>
             </div>
             <span className="text-green-400 text-2xl">✓</span>
           </div>
         </div>
 
-        <h2 className="text-xl font-semibold text-white mb-4">Connected Devices</h2>
+        <h2 className={`text-xl font-semibold mb-4 ${isDark ? 'text-white' : 'text-slate-900'}`}>Connected Devices</h2>
         <div className="space-y-4">
           {devices.map(device => (
-            <div key={device.id} className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+            <div key={device.id} className={`rounded-xl p-4 border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <span className="text-3xl">{getDeviceIcon(device.type)}</span>
                   <div>
-                    <h3 className="text-white font-medium">{device.name}</h3>
-                    <p className="text-slate-400 text-sm">
+                    <h3 className={`font-medium ${isDark ? 'text-white' : 'text-slate-900'}`}>{device.name}</h3>
+                    <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                       Last sync: {formatSyncTime(device.lastSync)}
                     </p>
                   </div>
@@ -101,8 +104,8 @@ export default function DeviceSyncPage() {
           ))}
         </div>
 
-        <div className="mt-8 p-4 bg-slate-800 rounded-xl border border-slate-700">
-          <h3 className="text-white font-medium mb-4">Sync Settings</h3>
+        <div className={`mt-8 p-4 rounded-xl border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+          <h3 className={`font-medium mb-4 ${isDark ? 'text-white' : 'text-slate-900'}`}>Sync Settings</h3>
           <div className="space-y-3">
             {[
               { name: 'Auto-sync', desc: 'Automatically sync across devices' },
@@ -110,7 +113,7 @@ export default function DeviceSyncPage() {
               { name: 'Sync contacts', desc: 'Sync address book' },
             ].map((item, i) => (
               <label key={i} className="flex items-center justify-between cursor-pointer">
-                <span className="text-white">{item.name}</span>
+                <span className={isDark ? 'text-white' : 'text-slate-900'}>{item.name}</span>
                 <input type="checkbox" defaultChecked className="w-5 h-5 rounded" />
               </label>
             ))}

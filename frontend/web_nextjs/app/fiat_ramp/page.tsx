@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTheme } from '../components/ThemeProvider'
 
 interface FiatProvider {
   id: string;
@@ -38,6 +39,7 @@ const CRYPTO_TOKENS = ['BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'SOL', 'ADA', 'MATIC
 const FIAT_CURRENCIES = ['USD', 'EUR', 'GBP', 'INR', 'AUD'];
 
 export default function FiatRampPage() {
+  const { isDark } = useTheme()
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
   const [selectedProvider, setSelectedProvider] = useState<string>('1');
   const [fiatCurrency, setFiatCurrency] = useState('USD');
@@ -75,15 +77,15 @@ export default function FiatRampPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-6">
+    <div className={`'min-h-screen' ${isDark ? 'bg-gray-900' : 'bg-gray-50'} ${isDark ? 'text-white' : 'text-gray-900'} 'p-6'`}>
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-bold">Buy Crypto</h1>
-          <p className="text-gray-400 mt-1">Purchase cryptocurrency using fiat currency</p>
+          <p className={`${isDark ? 'text-gray-400' : 'text-gray-500'} 'mt-1'`}>Purchase cryptocurrency using fiat currency</p>
         </div>
 
         {/* Tabs */}
-        <div className="flex space-x-4 mb-6 border-b border-gray-700">
+        <div className={`'flex space-x-4 mb-6 border-b' ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
           <button
             onClick={() => setActiveTab('buy')}
             className={`pb-3 px-4 font-medium ${activeTab === 'buy' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400'}`}
@@ -101,7 +103,7 @@ export default function FiatRampPage() {
         {activeTab === 'buy' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Main Form */}
-            <div className="lg:col-span-2 bg-gray-800 rounded-xl p-6">
+            <div className={`'lg:col-span-2' ${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
               {/* Side Selection */}
               <div className="flex space-x-4 mb-6">
                 <button
@@ -120,7 +122,7 @@ export default function FiatRampPage() {
 
               {/* Provider Selection */}
               <div className="mb-6">
-                <label className="block text-sm text-gray-400 mb-2">Provider</label>
+                <label className={`'block text-sm' ${isDark ? 'text-gray-400' : 'text-gray-500'} 'mb-2'`}>Provider</label>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {PROVIDERS.map(p => (
                     <button
@@ -138,34 +140,34 @@ export default function FiatRampPage() {
               {/* Amount Inputs */}
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">You Pay</label>
+                  <label className={`'block text-sm' ${isDark ? 'text-gray-400' : 'text-gray-500'} 'mb-2'`}>You Pay</label>
                   <input
                     type="number"
                     value={fiatAmount}
                     onChange={(e) => setFiatAmount(e.target.value)}
                     placeholder="0.00"
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-xl"
+                    className={`'w-full' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'border border-gray-600 rounded-lg px-4 py-3 text-xl'`}
                   />
                   <select
                     value={fiatCurrency}
                     onChange={(e) => setFiatCurrency(e.target.value)}
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 mt-2"
+                    className={`'w-full' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'border border-gray-600 rounded-lg px-4 py-2 mt-2'`}
                   >
                     {FIAT_CURRENCIES.map(f => <option key={f} value={f}>{f}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">You Receive</label>
+                  <label className={`'block text-sm' ${isDark ? 'text-gray-400' : 'text-gray-500'} 'mb-2'`}>You Receive</label>
                   <input
                     type="text"
                     value={cryptoAmount.toFixed(6)}
                     readOnly
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-xl text-gray-300"
+                    className={`'w-full' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'border border-gray-600 rounded-lg px-4 py-3 text-xl' ${isDark ? 'text-gray-300' : 'text-gray-600'}`}
                   />
                   <select
                     value={cryptoCurrency}
                     onChange={(e) => setCryptoCurrency(e.target.value)}
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 mt-2"
+                    className={`'w-full' ${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'border border-gray-600 rounded-lg px-4 py-2 mt-2'`}
                   >
                     {CRYPTO_TOKENS.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
@@ -173,17 +175,17 @@ export default function FiatRampPage() {
               </div>
 
               {/* Exchange Summary */}
-              <div className="bg-gray-700 rounded-lg p-4 mb-6">
+              <div className={`${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'rounded-lg p-4 mb-6'`}>
                 <div className="flex justify-between mb-2">
-                  <span className="text-gray-400">Exchange Rate</span>
+                  <span className={`${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Exchange Rate</span>
                   <span>1 {cryptoCurrency} = {(baseRates[cryptoCurrency]).toFixed(2)} {fiatCurrency}</span>
                 </div>
                 <div className="flex justify-between mb-2">
-                  <span className="text-gray-400">Provider Fee</span>
+                  <span className={`${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Provider Fee</span>
                   <span>{provider.feePercent}%</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-400">Processing Time</span>
+                  <span className={`${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Processing Time</span>
                   <span>{provider.processingTime}</span>
                 </div>
               </div>
@@ -198,29 +200,29 @@ export default function FiatRampPage() {
             </div>
 
             {/* Provider Info */}
-            <div className="bg-gray-800 rounded-xl p-6">
+            <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
               <h3 className="text-lg font-bold mb-4">Provider Details</h3>
               <div className="space-y-4">
                 <div className="flex items-center space-x-3">
                   <span className="text-3xl">{provider.logo}</span>
                   <div>
                     <div className="font-bold">{provider.name}</div>
-                    <div className="text-sm text-gray-400">{provider.processingTime}</div>
+                    <div className={`'text-sm' ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{provider.processingTime}</div>
                   </div>
                 </div>
-                <div className="border-t border-gray-700 pt-4">
-                  <div className="text-sm text-gray-400 mb-1">Min / Max</div>
+                <div className={`'border-t' ${isDark ? 'border-gray-700' : 'border-gray-200'} 'pt-4'`}>
+                  <div className={`'text-sm' ${isDark ? 'text-gray-400' : 'text-gray-500'} 'mb-1'`}>Min / Max</div>
                   <div>{provider.minAmount} - {provider.maxAmount} {fiatCurrency}</div>
                 </div>
-                <div className="border-t border-gray-700 pt-4">
-                  <div className="text-sm text-gray-400 mb-1">Fee</div>
+                <div className={`'border-t' ${isDark ? 'border-gray-700' : 'border-gray-200'} 'pt-4'`}>
+                  <div className={`'text-sm' ${isDark ? 'text-gray-400' : 'text-gray-500'} 'mb-1'`}>Fee</div>
                   <div className="text-green-400">{provider.feePercent}%</div>
                 </div>
-                <div className="border-t border-gray-700 pt-4">
-                  <div className="text-sm text-gray-400 mb-2">Payment Methods</div>
+                <div className={`'border-t' ${isDark ? 'border-gray-700' : 'border-gray-200'} 'pt-4'`}>
+                  <div className={`'text-sm' ${isDark ? 'text-gray-400' : 'text-gray-500'} 'mb-2'`}>Payment Methods</div>
                   <div className="flex flex-wrap gap-2">
                     {provider.paymentMethods.map(m => (
-                      <span key={m} className="bg-gray-700 px-2 py-1 rounded text-sm">{m}</span>
+                      <span key={m} className={`${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'px-2 py-1 rounded text-sm'`}>{m}</span>
                     ))}
                   </div>
                 </div>
@@ -230,21 +232,21 @@ export default function FiatRampPage() {
         )}
 
         {activeTab === 'orders' && (
-          <div className="bg-gray-800 rounded-xl p-6">
+          <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} 'rounded-xl p-6'`}>
             <h3 className="text-xl font-bold mb-4">Order History</h3>
             {orders.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">No orders yet</div>
+              <div className={`'text-center py-12' ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>No orders yet</div>
             ) : (
               <div className="space-y-4">
                 {orders.map(order => (
-                  <div key={order.id} className="bg-gray-700 rounded-lg p-4 flex justify-between items-center">
+                  <div key={order.id} className={`${isDark ? 'bg-gray-700' : 'bg-gray-100'} 'rounded-lg p-4 flex justify-between items-center'`}>
                     <div>
                       <div className="font-bold">{order.side} {order.cryptoCurrency}</div>
-                      <div className="text-sm text-gray-400">{order.provider}</div>
+                      <div className={`'text-sm' ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{order.provider}</div>
                     </div>
                     <div className="text-right">
                       <div className="font-bold">{order.cryptoAmount.toFixed(6)} {order.cryptoCurrency}</div>
-                      <div className="text-sm text-gray-400">{order.fiatAmount.toFixed(2)} {order.fiatCurrency}</div>
+                      <div className={`'text-sm' ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{order.fiatAmount.toFixed(2)} {order.fiatCurrency}</div>
                     </div>
                     <span className="bg-yellow-600 px-3 py-1 rounded text-sm">{order.status}</span>
                   </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTheme } from '../components/ThemeProvider'
 import { useWallet } from '../wallet';
 
 // ================================================================================
@@ -45,6 +46,7 @@ interface PriceAlert {
 // ================================================================================
 
 export default function NotificationsPage() {
+  const { isDark } = useTheme()
   const { address, isConnected } = useWallet();
   
   // Preferences
@@ -175,12 +177,12 @@ export default function NotificationsPage() {
   const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-8">
+    <div className={`'min-h-screen bg-gradient-to-br' ${isDark ? 'from-slate-900' : 'from-slate-50'} ${isDark ? 'to-slate-800' : 'to-slate-100'} 'p-8'`}>
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">Notifications</h1>
-          <p className="text-slate-400">Manage alerts and notifications</p>
+          <h1 className={`'text-4xl font-bold' ${isDark ? 'text-white' : 'text-slate-900'} 'mb-2'`}>Notifications</h1>
+          <p className={`${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Manage alerts and notifications</p>
         </div>
 
         {/* Tabs */}
@@ -206,9 +208,9 @@ export default function NotificationsPage() {
         </div>
 
         {/* Notifications List */}
-        <div className="bg-slate-800 rounded-2xl border border-slate-700 mb-6">
-          <div className="flex items-center justify-between p-4 border-b border-slate-700">
-            <h2 className="text-lg font-semibold text-white">Recent Notifications</h2>
+        <div className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-2xl border' ${isDark ? 'border-slate-700' : 'border-slate-200'} 'mb-6'`}>
+          <div className={`'flex items-center justify-between p-4 border-b' ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+            <h2 className={`'text-lg font-semibold' ${isDark ? 'text-white' : 'text-slate-900'}`}>Recent Notifications</h2>
             {unreadCount > 0 && (
               <button
                 onClick={markAllAsRead}
@@ -222,10 +224,10 @@ export default function NotificationsPage() {
           {filteredNotifications.length === 0 ? (
             <div className="p-8 text-center">
               <span className="text-4xl mb-4 block">🔔</span>
-              <p className="text-slate-400">No notifications</p>
+              <p className={`${isDark ? 'text-slate-400' : 'text-slate-500'}`}>No notifications</p>
             </div>
           ) : (
-            <div className="divide-y divide-slate-700">
+            <div className={`'divide-y' ${isDark ? 'divide-slate-700' : 'divide-slate-200'}`}>
               {filteredNotifications.map(notification => (
                 <div 
                   key={notification.id}
@@ -237,12 +239,12 @@ export default function NotificationsPage() {
                   <span className="text-2xl">{getNotificationIcon(notification.type)}</span>
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <h3 className="text-white font-medium">{notification.title}</h3>
+                      <h3 className={`${isDark ? 'text-white' : 'text-slate-900'} 'font-medium'`}>{notification.title}</h3>
                       {!notification.read && (
                         <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
                       )}
                     </div>
-                    <p className="text-slate-400 text-sm">{notification.message}</p>
+                    <p className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'text-sm'`}>{notification.message}</p>
                     <p className="text-slate-500 text-xs mt-1">{formatTime(notification.timestamp)}</p>
                   </div>
                   <button
@@ -261,9 +263,9 @@ export default function NotificationsPage() {
         </div>
 
         {/* Price Alerts */}
-        <div className="bg-slate-800 rounded-2xl border border-slate-700 mb-6">
-          <div className="p-4 border-b border-slate-700">
-            <h2 className="text-lg font-semibold text-white">Price Alerts</h2>
+        <div className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-2xl border' ${isDark ? 'border-slate-700' : 'border-slate-200'} 'mb-6'`}>
+          <div className={`'p-4 border-b' ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+            <h2 className={`'text-lg font-semibold' ${isDark ? 'text-white' : 'text-slate-900'}`}>Price Alerts</h2>
           </div>
           
           <div className="p-4">
@@ -271,7 +273,7 @@ export default function NotificationsPage() {
               <select
                 value={newAlertToken}
                 onChange={(e) => setNewAlertToken(e.target.value)}
-                className="bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
+                className={`${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-4 py-2' ${isDark ? 'text-white' : 'text-slate-900'}`}
               >
                 <option value="ETH">ETH</option>
                 <option value="BTC">BTC</option>
@@ -281,7 +283,7 @@ export default function NotificationsPage() {
               <select
                 value={newAlertCondition}
                 onChange={(e) => setNewAlertCondition(e.target.value as 'above' | 'below')}
-                className="bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
+                className={`${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-4 py-2' ${isDark ? 'text-white' : 'text-slate-900'}`}
               >
                 <option value="above">Above</option>
                 <option value="below">Below</option>
@@ -291,7 +293,7 @@ export default function NotificationsPage() {
                 value={newAlertPrice}
                 onChange={(e) => setNewAlertPrice(e.target.value)}
                 placeholder="Price"
-                className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
+                className={`'flex-1' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-4 py-2' ${isDark ? 'text-white' : 'text-slate-900'}`}
               />
               <button
                 onClick={createPriceAlert}
@@ -305,15 +307,15 @@ export default function NotificationsPage() {
               {priceAlerts.map(alert => (
                 <div key={alert.id} className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg">
                   <div className="flex items-center gap-3">
-                    <span className="text-white font-medium">{alert.token}</span>
-                    <span className="text-slate-400">goes</span>
+                    <span className={`${isDark ? 'text-white' : 'text-slate-900'} 'font-medium'`}>{alert.token}</span>
+                    <span className={`${isDark ? 'text-slate-400' : 'text-slate-500'}`}>goes</span>
                     <span className={alert.condition === 'above' ? 'text-green-400' : 'text-red-400'}>
                       {alert.condition}
                     </span>
-                    <span className="text-white font-mono">${alert.targetPrice}</span>
+                    <span className={`${isDark ? 'text-white' : 'text-slate-900'} 'font-mono'`}>${alert.targetPrice}</span>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="text-slate-400 text-sm">
+                    <span className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'text-sm'`}>
                       Current: ${alert.currentPrice}
                     </span>
                     <button
@@ -330,9 +332,9 @@ export default function NotificationsPage() {
         </div>
 
         {/* Notification Preferences */}
-        <div className="bg-slate-800 rounded-2xl border border-slate-700">
-          <div className="p-4 border-b border-slate-700">
-            <h2 className="text-lg font-semibold text-white">Notification Preferences</h2>
+        <div className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-2xl border' ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+          <div className={`'p-4 border-b' ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+            <h2 className={`'text-lg font-semibold' ${isDark ? 'text-white' : 'text-slate-900'}`}>Notification Preferences</h2>
           </div>
           
           <div className="p-4 space-y-4">
@@ -350,15 +352,15 @@ export default function NotificationsPage() {
                     type="checkbox"
                     checked={preferences[key as keyof NotificationPreferences] as boolean}
                     onChange={(e) => updatePreference(key as keyof NotificationPreferences, e.target.checked)}
-                    className="w-5 h-5 rounded bg-slate-700 border-slate-600 text-blue-600 focus:ring-blue-500"
+                    className={`'w-5 h-5 rounded' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} ${isDark ? 'border-slate-600' : 'border-slate-300'} 'text-blue-600 focus:ring-blue-500'`}
                   />
-                  <span className="text-white">{label}</span>
+                  <span className={`${isDark ? 'text-white' : 'text-slate-900'}`}>{label}</span>
                 </label>
               ))}
             </div>
             
-            <div className="border-t border-slate-700 pt-4">
-              <h3 className="text-white font-medium mb-4">Delivery Methods</h3>
+            <div className={`'border-t' ${isDark ? 'border-slate-700' : 'border-slate-200'} 'pt-4'`}>
+              <h3 className={`${isDark ? 'text-white' : 'text-slate-900'} 'font-medium mb-4'`}>Delivery Methods</h3>
               <div className="grid grid-cols-3 gap-4">
                 {[
                   ['pushNotifications', 'Push Notifications'],
@@ -370,9 +372,9 @@ export default function NotificationsPage() {
                       type="checkbox"
                       checked={preferences[key as keyof NotificationPreferences] as boolean}
                       onChange={(e) => updatePreference(key as keyof NotificationPreferences, e.target.checked)}
-                      className="w-5 h-5 rounded bg-slate-700 border-slate-600 text-blue-600 focus:ring-blue-500"
+                      className={`'w-5 h-5 rounded' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} ${isDark ? 'border-slate-600' : 'border-slate-300'} 'text-blue-600 focus:ring-blue-500'`}
                     />
-                    <span className="text-white">{label}</span>
+                    <span className={`${isDark ? 'text-white' : 'text-slate-900'}`}>{label}</span>
                   </label>
                 ))}
               </div>

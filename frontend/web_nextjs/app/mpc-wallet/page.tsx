@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useWallet } from '../wallet';
+import { useTheme } from '../components/ThemeProvider';
 
 // ================================================================================
 // Types
@@ -171,7 +172,9 @@ const mpcService = new MPCService();
 
 export default function MPCWalletPage() {
   const { address, isConnected } = useWallet();
-  
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
   // Auth state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
@@ -383,21 +386,21 @@ export default function MPCWalletPage() {
   // ============================================================================
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-8">
+    <div className={`min-h-screen p-8 ${isDark ? "bg-gradient-to-br from-slate-900 to-slate-800" : "bg-gradient-to-br from-slate-50 to-slate-100"}`}>
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">MPC Wallet</h1>
-          <p className="text-slate-400">Multi-Party Computation with Social Login</p>
+          <h1 className={`text-4xl font-bold mb-2 ${isDark ? "text-white" : "text-slate-900"}`}>MPC Wallet</h1>
+          <p className={isDark ? "text-slate-400" : "text-slate-500"}>Multi-Party Computation with Social Login</p>
         </div>
 
         {/* Wallet Address */}
         {walletAddress && (
-          <div className="bg-slate-800/50 rounded-xl p-4 mb-6 border border-slate-700">
+          <div className={`rounded-xl p-4 mb-6 border ${isDark ? "bg-slate-800/50 border-slate-700" : "bg-white border-slate-200"}`}>
             <div className="flex items-center justify-between">
               <div>
-                <span className="text-slate-400 text-sm">Wallet Address:</span>
-                <span className="text-white ml-2 font-mono">{formatAddress(walletAddress)}</span>
+                <span className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>Wallet Address:</span>
+                <span className={`ml-2 font-mono ${isDark ? "text-white" : "text-slate-900"}`}>{formatAddress(walletAddress)}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
@@ -426,8 +429,8 @@ export default function MPCWalletPage() {
 
         {/* Login Tab */}
         {activeTab === 'login' && (
-          <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-            <h2 className="text-xl font-semibold text-white mb-6">Social Login</h2>
+          <div className={`rounded-2xl p-6 border ${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"}`}>
+            <h2 className={`text-xl font-semibold mb-6 ${isDark ? "text-white" : "text-slate-900"}`}>Social Login</h2>
             
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
               {socialProviders.map(provider => (
@@ -435,18 +438,18 @@ export default function MPCWalletPage() {
                   key={provider.id}
                   onClick={() => handleSocialLogin(provider.id)}
                   disabled={isLoading}
-                  className="flex items-center gap-3 p-4 bg-slate-700/50 hover:bg-slate-700 rounded-xl transition-colors"
+                  className={`flex items-center gap-3 p-4 hover:bg-slate-700 rounded-xl transition-colors ${isDark ? "bg-slate-700/50" : "bg-slate-100"}`}
                   style={{ borderColor: provider.color }}
                 >
                   <span className="text-2xl">{provider.icon}</span>
-                  <span className="text-white font-medium">{provider.name}</span>
+                  <span className={`font-medium ${isDark ? "text-white" : "text-slate-900"}`}>{provider.name}</span>
                 </button>
               ))}
             </div>
 
-            <div className="border-t border-slate-700 pt-6 mt-6">
-              <h3 className="text-lg font-medium text-white mb-4">Or connect with Web3</h3>
-              <p className="text-slate-400 text-sm">
+            <div className={`border-t pt-6 mt-6 ${isDark ? "border-slate-700" : "border-slate-200"}`}>
+              <h3 className={`text-lg font-medium mb-4 ${isDark ? "text-white" : "text-slate-900"}`}>Or connect with Web3</h3>
+              <p className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
                 Connect your existing wallet to enable MPC key sharing and social recovery features.
               </p>
             </div>
@@ -455,8 +458,8 @@ export default function MPCWalletPage() {
 
         {/* Key Shares Tab */}
         {activeTab === 'keys' && (
-          <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-            <h2 className="text-xl font-semibold text-white mb-6">Key Share Management</h2>
+          <div className={`rounded-2xl p-6 border ${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"}`}>
+            <h2 className={`text-xl font-semibold mb-6 ${isDark ? "text-white" : "text-slate-900"}`}>Key Share Management</h2>
             
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div>
@@ -500,7 +503,7 @@ export default function MPCWalletPage() {
                       <span className="text-2xl">🔑</span>
                       <div>
                         <p className="text-white font-medium">Share #{share.index}</p>
-                        <p className="text-slate-400 text-sm">Holder: {share.holderId}</p>
+                        <p className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>Holder: {share.holderId}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
@@ -525,8 +528,8 @@ export default function MPCWalletPage() {
 
         {/* Devices Tab */}
         {activeTab === 'devices' && (
-          <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-            <h2 className="text-xl font-semibold text-white mb-6">Trusted Devices</h2>
+          <div className={`rounded-2xl p-6 border ${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"}`}>
+            <h2 className={`text-xl font-semibold mb-6 ${isDark ? "text-white" : "text-slate-900"}`}>Trusted Devices</h2>
             
             <div className="space-y-3 mb-6">
               {devices.length === 0 ? (
@@ -538,7 +541,7 @@ export default function MPCWalletPage() {
                       <span className="text-2xl">{getDeviceIcon(device.type)}</span>
                       <div>
                         <p className="text-white font-medium">{device.name}</p>
-                        <p className="text-slate-400 text-sm">
+                        <p className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
                           Last active: {new Date(device.lastActive).toLocaleDateString()}
                         </p>
                       </div>
@@ -593,8 +596,8 @@ export default function MPCWalletPage() {
 
         {/* Signing Tab */}
         {activeTab === 'signing' && (
-          <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-            <h2 className="text-xl font-semibold text-white mb-6">MPC Signing</h2>
+          <div className={`rounded-2xl p-6 border ${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"}`}>
+            <h2 className={`text-xl font-semibold mb-6 ${isDark ? "text-white" : "text-slate-900"}`}>MPC Signing</h2>
             
             <div className="mb-6">
               <label className="block text-slate-400 text-sm mb-2">Message to Sign</label>
@@ -635,8 +638,8 @@ export default function MPCWalletPage() {
 
         {/* Recovery Tab */}
         {activeTab === 'recovery' && (
-          <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-            <h2 className="text-xl font-semibold text-white mb-6">Account Recovery</h2>
+          <div className={`rounded-2xl p-6 border ${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"}`}>
+            <h2 className={`text-xl font-semibold mb-6 ${isDark ? "text-white" : "text-slate-900"}`}>Account Recovery</h2>
             
             <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl mb-6">
               <p className="text-blue-400">

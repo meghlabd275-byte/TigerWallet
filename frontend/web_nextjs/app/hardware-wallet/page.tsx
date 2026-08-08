@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTheme } from '../components/ThemeProvider'
 import { useWallet } from '../wallet';
 
 // ================================================================================
@@ -145,6 +146,7 @@ const hardwareService = new HardwareWalletService();
 // ================================================================================
 
 export default function HardwareWalletPage() {
+  const { isDark } = useTheme()
   const { address, isConnected, chainId } = useWallet();
   
   const [devices, setDevices] = useState<HardwareWallet[]>([]);
@@ -334,20 +336,20 @@ export default function HardwareWalletPage() {
   // ============================================================================
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-8">
+    <div className={`'min-h-screen bg-gradient-to-br' ${isDark ? 'from-slate-900' : 'from-slate-50'} ${isDark ? 'to-slate-800' : 'to-slate-100'} 'p-8'`}>
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">Hardware Wallet</h1>
-          <p className="text-slate-400">Connect and manage hardware wallets</p>
+          <h1 className={`'text-4xl font-bold' ${isDark ? 'text-white' : 'text-slate-900'} 'mb-2'`}>Hardware Wallet</h1>
+          <p className={`${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Connect and manage hardware wallets</p>
         </div>
 
         {/* Connected Devices */}
         {devices.length > 0 && (
-          <div className="bg-slate-800/50 rounded-xl p-4 mb-6 border border-slate-700">
+          <div className={`'bg-slate-800/50 rounded-xl p-4 mb-6 border' ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
             <div className="flex items-center gap-2 mb-4">
               <span className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
-              <span className="text-white font-medium">{devices.length} device(s) connected</span>
+              <span className={`${isDark ? 'text-white' : 'text-slate-900'} 'font-medium'`}>{devices.length} device(s) connected</span>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -367,8 +369,8 @@ export default function HardwareWalletPage() {
                   <div className="flex items-center gap-3 mb-3">
                     <span className="text-3xl">{getDeviceIcon(device.type)}</span>
                     <div>
-                      <p className="text-white font-medium">{device.name}</p>
-                      <p className="text-slate-400 text-sm">{device.model}</p>
+                      <p className={`${isDark ? 'text-white' : 'text-slate-900'} 'font-medium'`}>{device.name}</p>
+                      <p className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'text-sm'`}>{device.model}</p>
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
@@ -391,8 +393,8 @@ export default function HardwareWalletPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Connect New Device */}
-          <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-            <h2 className="text-xl font-semibold text-white mb-6">Connect Hardware Wallet</h2>
+          <div className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-2xl p-6 border' ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+            <h2 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-slate-900'} 'mb-6'`}>Connect Hardware Wallet</h2>
             
             <div className="grid grid-cols-2 gap-4">
               {HARDWARE_WALLETS.map(wallet => (
@@ -400,12 +402,12 @@ export default function HardwareWalletPage() {
                   key={`${wallet.type}-${wallet.model}`}
                   onClick={() => connectDevice(wallet.type)}
                   disabled={isConnecting}
-                  className="flex items-center gap-3 p-4 bg-slate-700/50 hover:bg-slate-700 rounded-xl transition-colors text-left"
+                  className={`'flex items-center gap-3 p-4 bg-slate-700/50' ${isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} 'rounded-xl transition-colors text-left'`}
                 >
                   <span className="text-2xl">{getDeviceIcon(wallet.type)}</span>
                   <div>
-                    <p className="text-white font-medium">{wallet.name}</p>
-                    <p className="text-slate-400 text-sm">{wallet.model}</p>
+                    <p className={`${isDark ? 'text-white' : 'text-slate-900'} 'font-medium'`}>{wallet.name}</p>
+                    <p className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'text-sm'`}>{wallet.model}</p>
                   </div>
                 </button>
               ))}
@@ -414,45 +416,45 @@ export default function HardwareWalletPage() {
 
           {/* Selected Device Info */}
           {selectedDevice && (
-            <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-              <h2 className="text-xl font-semibold text-white mb-6">Device Details</h2>
+            <div className={`${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-2xl p-6 border' ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+              <h2 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-slate-900'} 'mb-6'`}>Device Details</h2>
               
               <div className="space-y-4">
                 <div className="flex justify-between p-3 bg-slate-700/50 rounded-lg">
-                  <span className="text-slate-400">Device ID</span>
-                  <span className="text-white font-mono text-sm">{selectedDevice.id.slice(0, 8)}...</span>
+                  <span className={`${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Device ID</span>
+                  <span className={`${isDark ? 'text-white' : 'text-slate-900'} 'font-mono text-sm'`}>{selectedDevice.id.slice(0, 8)}...</span>
                 </div>
                 <div className="flex justify-between p-3 bg-slate-700/50 rounded-lg">
-                  <span className="text-slate-400">Model</span>
-                  <span className="text-white">{selectedDevice.model}</span>
+                  <span className={`${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Model</span>
+                  <span className={`${isDark ? 'text-white' : 'text-slate-900'}`}>{selectedDevice.model}</span>
                 </div>
                 <div className="flex justify-between p-3 bg-slate-700/50 rounded-lg">
-                  <span className="text-slate-400">Firmware</span>
-                  <span className="text-white">{selectedDevice.firmwareVersion || 'Unknown'}</span>
+                  <span className={`${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Firmware</span>
+                  <span className={`${isDark ? 'text-white' : 'text-slate-900'}`}>{selectedDevice.firmwareVersion || 'Unknown'}</span>
                 </div>
                 <div className="flex justify-between p-3 bg-slate-700/50 rounded-lg">
-                  <span className="text-slate-400">Status</span>
+                  <span className={`${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Status</span>
                   <span className="text-green-400">Ready</span>
                 </div>
                 
                 {deviceStatus && (
                   <>
                     <div className="flex justify-between p-3 bg-slate-700/50 rounded-lg">
-                      <span className="text-slate-400">Locked</span>
+                      <span className={`${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Locked</span>
                       <span className={deviceStatus.isLocked ? 'text-yellow-400' : 'text-green-400'}>
                         {deviceStatus.isLocked ? 'Yes' : 'No'}
                       </span>
                     </div>
                     <div className="flex justify-between p-3 bg-slate-700/50 rounded-lg">
-                      <span className="text-slate-400">Initialized</span>
+                      <span className={`${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Initialized</span>
                       <span className={deviceStatus.isInitialized ? 'text-green-400' : 'text-red-400'}>
                         {deviceStatus.isInitialized ? 'Yes' : 'No'}
                       </span>
                     </div>
                     {deviceStatus.batteryLevel !== undefined && (
                       <div className="flex justify-between p-3 bg-slate-700/50 rounded-lg">
-                        <span className="text-slate-400">Battery</span>
-                        <span className="text-white">{deviceStatus.batteryLevel}%</span>
+                        <span className={`${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Battery</span>
+                        <span className={`${isDark ? 'text-white' : 'text-slate-900'}`}>{deviceStatus.batteryLevel}%</span>
                       </div>
                     )}
                   </>
@@ -464,8 +466,8 @@ export default function HardwareWalletPage() {
 
         {/* Address Derivation */}
         {selectedDevice && (
-          <div className="mt-6 bg-slate-800 rounded-2xl p-6 border border-slate-700">
-            <h2 className="text-xl font-semibold text-white mb-6">Derive Addresses</h2>
+          <div className={`'mt-6' ${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-2xl p-6 border' ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+            <h2 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-slate-900'} 'mb-6'`}>Derive Addresses</h2>
             
             <div className="flex gap-4 mb-4">
               <input
@@ -473,7 +475,7 @@ export default function HardwareWalletPage() {
                 value={derivationPath}
                 onChange={(e) => setDerivationPath(e.target.value)}
                 placeholder="Derivation path (e.g., m/44'/60'/0'/0/0)"
-                className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white font-mono"
+                className={`'flex-1' ${isDark ? 'bg-slate-700' : 'bg-slate-100'} 'border' ${isDark ? 'border-slate-600' : 'border-slate-300'} 'rounded-lg px-4 py-3' ${isDark ? 'text-white' : 'text-slate-900'} 'font-mono'`}
               />
               <button
                 onClick={deriveAddresses}
@@ -486,11 +488,11 @@ export default function HardwareWalletPage() {
 
             {derivedAddresses.length > 0 && (
               <div className="space-y-2 mt-4">
-                <h3 className="text-white font-medium mb-3">Derived Addresses</h3>
+                <h3 className={`${isDark ? 'text-white' : 'text-slate-900'} 'font-medium mb-3'`}>Derived Addresses</h3>
                 {derivedAddresses.map((addr, i) => (
                   <div key={i} className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg">
-                    <span className="text-slate-400 text-sm">m/44'/60'/0'/0/{i}</span>
-                    <span className="text-white font-mono text-sm">{addr.slice(0, 6)}...{addr.slice(-4)}</span>
+                    <span className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'text-sm'`}>m/44'/60'/0'/0/{i}</span>
+                    <span className={`${isDark ? 'text-white' : 'text-slate-900'} 'font-mono text-sm'`}>{addr.slice(0, 6)}...{addr.slice(-4)}</span>
                   </div>
                 ))}
               </div>
@@ -500,17 +502,17 @@ export default function HardwareWalletPage() {
 
         {/* Transaction Signing */}
         {selectedDevice && (
-          <div className="mt-6 bg-slate-800 rounded-2xl p-6 border border-slate-700">
-            <h2 className="text-xl font-semibold text-white mb-6">Sign Transaction</h2>
+          <div className={`'mt-6' ${isDark ? 'bg-slate-800' : 'bg-white'} 'rounded-2xl p-6 border' ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+            <h2 className={`'text-xl font-semibold' ${isDark ? 'text-white' : 'text-slate-900'} 'mb-6'`}>Sign Transaction</h2>
             
             {pendingTransactions.length > 0 ? (
               <div className="space-y-3">
                 {pendingTransactions.map(tx => (
                   <div key={tx.id} className="flex items-center justify-between p-4 bg-slate-700/30 rounded-xl">
                     <div>
-                      <p className="text-white font-medium">Transaction</p>
-                      <p className="text-slate-400 text-sm">To: {tx.to.slice(0, 6)}...{tx.to.slice(-4)}</p>
-                      <p className="text-slate-400 text-sm">Value: {tx.value} ETH</p>
+                      <p className={`${isDark ? 'text-white' : 'text-slate-900'} 'font-medium'`}>Transaction</p>
+                      <p className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'text-sm'`}>To: {tx.to.slice(0, 6)}...{tx.to.slice(-4)}</p>
+                      <p className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'text-sm'`}>Value: {tx.value} ETH</p>
                     </div>
                     <div className="flex items-center gap-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadge(tx.status)}`}>
@@ -531,10 +533,10 @@ export default function HardwareWalletPage() {
               </div>
             ) : (
               <div className="text-center py-8">
-                <p className="text-slate-400 mb-4">No pending transactions</p>
+                <p className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'mb-4'`}>No pending transactions</p>
                 <button
                   onClick={() => selectedDevice && loadPendingTransactions(selectedDevice.id)}
-                  className="bg-slate-600 hover:bg-slate-500 text-white px-6 py-3 rounded-xl font-medium"
+                  className={`${isDark ? 'bg-slate-600' : 'bg-slate-200'} 'hover:bg-slate-500' ${isDark ? 'text-white' : 'text-slate-900'} 'px-6 py-3 rounded-xl font-medium'`}
                 >
                   Refresh Transactions
                 </button>
@@ -558,17 +560,17 @@ export default function HardwareWalletPage() {
 
         {/* Supported Features */}
         <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
-            <h3 className="text-white font-medium mb-2">Multi-Chain Support</h3>
-            <p className="text-slate-400 text-sm">Ethereum, Bitcoin, Solana, and 50+ chains</p>
+          <div className={`'bg-slate-800/50 rounded-xl p-4 border' ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+            <h3 className={`${isDark ? 'text-white' : 'text-slate-900'} 'font-medium mb-2'`}>Multi-Chain Support</h3>
+            <p className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'text-sm'`}>Ethereum, Bitcoin, Solana, and 50+ chains</p>
           </div>
-          <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
-            <h3 className="text-white font-medium mb-2">Secure Signing</h3>
-            <p className="text-slate-400 text-sm">Private keys never leave your device</p>
+          <div className={`'bg-slate-800/50 rounded-xl p-4 border' ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+            <h3 className={`${isDark ? 'text-white' : 'text-slate-900'} 'font-medium mb-2'`}>Secure Signing</h3>
+            <p className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'text-sm'`}>Private keys never leave your device</p>
           </div>
-          <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
-            <h3 className="text-white font-medium mb-2">Firmware Updates</h3>
-            <p className="text-slate-400 text-sm">Regular security updates from manufacturers</p>
+          <div className={`'bg-slate-800/50 rounded-xl p-4 border' ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+            <h3 className={`${isDark ? 'text-white' : 'text-slate-900'} 'font-medium mb-2'`}>Firmware Updates</h3>
+            <p className={`${isDark ? 'text-slate-400' : 'text-slate-500'} 'text-sm'`}>Regular security updates from manufacturers</p>
           </div>
         </div>
       </div>
