@@ -9,7 +9,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,7 +22,10 @@ var db *sql.DB
 
 func initDB() error {
 	var err error
-	connStr := "host=localhost port=5432 user=tigerswap password=securepass dbname=tigerswap sslmode=disable"
+	connStr := os.Getenv("DATABASE_URL")
+	if connStr == "" {
+		connStr = "host=localhost port=5432 user=tigerwallet dbname=tigerwallet sslmode=disable"
+	}
 	db, err = sql.Open("postgres", connStr)
 	if err != nil {
 		return err
@@ -438,7 +443,11 @@ func hashPassword(password string) (string, error) {
 }
 
 func encryptAPISecret(secret string) (string, error) {
-	key := []byte("tigerswap_wl_key_2026")
+	keyStr := os.Getenv("ENCRYPTION_KEY")
+	if len(keyStr) < 32 {
+		log.Fatal("ENCRYPTION_KEY environment variable must be set to at least 32 bytes")
+	}
+	key := []byte(keyStr)
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err

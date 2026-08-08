@@ -9,8 +9,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/big"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -22,7 +24,10 @@ var db *sql.DB
 
 func initDB() error {
 	var err error
-	connStr := "host=localhost port=5432 user=tigerswap password=securepass dbname=tigerswap sslmode=disable"
+	connStr := os.Getenv("DATABASE_URL")
+	if connStr == "" {
+		connStr = "host=localhost port=5432 user=tigerwallet dbname=tigerwallet sslmode=disable"
+	}
 	db, err = sql.Open("postgres", connStr)
 	if err != nil {
 		return err
@@ -577,7 +582,11 @@ func getUserIDFromContext(c *gin.Context) int {
 }
 
 func encryptData(data string) (string, error) {
-	key := []byte("tigerswap_master_key_2026")
+	keyStr := os.Getenv("ENCRYPTION_KEY")
+	if len(keyStr) < 32 {
+		log.Fatal("ENCRYPTION_KEY environment variable must be set to at least 32 bytes")
+	}
+	key := []byte(keyStr)
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err
@@ -595,7 +604,11 @@ func encryptData(data string) (string, error) {
 }
 
 func decryptData(encrypted string) (string, error) {
-	key := []byte("tigerswap_master_key_2026")
+	keyStr := os.Getenv("ENCRYPTION_KEY")
+	if len(keyStr) < 32 {
+		log.Fatal("ENCRYPTION_KEY environment variable must be set to at least 32 bytes")
+	}
+	key := []byte(keyStr)
 	data, err := hex.DecodeString(encrypted)
 	if err != nil {
 		return "", err

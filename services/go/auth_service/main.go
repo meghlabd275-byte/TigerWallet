@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -24,7 +25,10 @@ var db *sql.DB
 // Database connection
 func initDB() error {
 	var err error
-	connStr := "host=localhost port=5432 user=tigerswap password=securepass dbname=tigerswap sslmode=disable"
+	connStr := os.Getenv("DATABASE_URL")
+	if connStr == "" {
+		connStr = "host=localhost port=5432 user=tigerwallet dbname=tigerwallet sslmode=disable"
+	}
 	db, err = sql.Open("postgres", connStr)
 	if err != nil {
 		return err
