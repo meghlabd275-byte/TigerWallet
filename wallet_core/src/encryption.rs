@@ -9,6 +9,7 @@ use aes_gcm::{
 };
 use pbkdf2::pbkdf2_hmac;
 use sha2::{Sha256, Sha512, Digest};
+use subtle::ConstantTimeEq;
 use zeroize::Zeroize;
 use rand::RngCore;
 
@@ -227,14 +228,19 @@ pub fn decrypt_keystore(keystore: &Keystore, password: &str) -> Result<Vec<u8>, 
 pub fn verify_keystore(keystore: &Keystore, password: &str) -> bool {
     match decrypt_keystore(keystore, password) {
         Ok(_) => {
-            // Verify MAC
+            // Verify MAC. Compare the computed and stored MAC tags in
+            // constant time to avoid leaking information via timing.
             let decrypted = decrypt_keystore(keystore, password).unwrap();
             let mut mac_input = hex::decode(&keystore.crypto.ciphertext).unwrap();
             mac_input.extend_from_slice(&decrypted);
             let mut hasher = Sha256::new();
             hasher.update(&mac_input);
-            let mac = hex::encode(hasher.finalize());
-            mac == keystore.crypto.mac
+            let computed_mac = hasher.finalize();
+            let stored_mac = match hex::decode(&keystore.crypto.mac) {
+                Ok(bytes) => bytes,
+                Err(_) => return false,
+            };
+            computed_mac.as_slice().ct_eq(&stored_mac).unwrap_u8() == 1
         }
         Err(_) => false,
     }

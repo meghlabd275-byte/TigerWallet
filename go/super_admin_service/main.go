@@ -19,6 +19,7 @@ package main
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base32"
 	"encoding/base64"
 	"encoding/hex"
@@ -906,7 +907,7 @@ func (s *SuperAdminService) ValidateAPIKey(apiKey string) *WhiteLabel {
 	defer s.mu.RUnlock()
 	
 	for _, wl := range s.whiteLabels {
-		if wl.Status == 2 && (wl.APIKey == apiKey || s.VerifyPassword(apiKey, wl.APIKeyHash)) {
+		if wl.Status == 2 && (subtle.ConstantTimeCompare([]byte(wl.APIKey), []byte(apiKey)) == 1 || s.VerifyPassword(apiKey, wl.APIKeyHash)) {
 			return wl
 		}
 	}

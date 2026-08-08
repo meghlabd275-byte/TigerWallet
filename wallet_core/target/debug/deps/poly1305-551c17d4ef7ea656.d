@@ -1,0 +1,10 @@
+/workspace/project/TigerWallet/wallet_core/target/debug/deps/poly1305-551c17d4ef7ea656.d: /home/openhands/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/poly1305-0.8.0/src/lib.rs /home/openhands/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/poly1305-0.8.0/src/backend.rs /home/openhands/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/poly1305-0.8.0/src/backend/avx2.rs /home/openhands/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/poly1305-0.8.0/src/backend/avx2/helpers.rs /home/openhands/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/poly1305-0.8.0/src/backend/autodetect.rs /home/openhands/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/poly1305-0.8.0/src/backend/soft.rs
+
+/workspace/project/TigerWallet/wallet_core/target/debug/deps/libpoly1305-551c17d4ef7ea656.rmeta: /home/openhands/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/poly1305-0.8.0/src/lib.rs /home/openhands/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/poly1305-0.8.0/src/backend.rs /home/openhands/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/poly1305-0.8.0/src/backend/avx2.rs /home/openhands/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/poly1305-0.8.0/src/backend/avx2/helpers.rs /home/openhands/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/poly1305-0.8.0/src/backend/autodetect.rs /home/openhands/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/poly1305-0.8.0/src/backend/soft.rs
+
+/home/openhands/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/poly1305-0.8.0/src/lib.rs:
+/home/openhands/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/poly1305-0.8.0/src/backend.rs:
+/home/openhands/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/poly1305-0.8.0/src/backend/avx2.rs:
+/home/openhands/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/poly1305-0.8.0/src/backend/avx2/helpers.rs:
+/home/openhands/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/poly1305-0.8.0/src/backend/autodetect.rs:
+/home/openhands/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/poly1305-0.8.0/src/backend/soft.rs:

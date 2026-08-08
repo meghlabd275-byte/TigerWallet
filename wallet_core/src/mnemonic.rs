@@ -1,6 +1,7 @@
 //! Mnemonic module - BIP-39 mnemonic phrase generation and validation
 
 use bip39::{Language, Mnemonic};
+use zeroize::Zeroizing;
 
 /// Generate a new mnemonic phrase
 pub fn generate_mnemonic(word_count: usize) -> Result<String, MnemonicError> {
@@ -21,18 +22,20 @@ pub fn validate_mnemonic(mnemonic: &str) -> bool {
 pub fn mnemonic_to_seed(mnemonic: &str, passphrase: &str) -> Result<[u8; 64], MnemonicError> {
     let mnem = Mnemonic::parse_in(Language::English, mnemonic)
         .map_err(|e| MnemonicError::InvalidMnemonic(e.to_string()))?;
-    
-    let seed = mnem.to_seed(passphrase);
-    Ok(seed)
+
+    // The seed is high-value secret material (master entropy for all derived
+    // keys), so keep it in a Zeroizing wrapper while in scope.
+    let seed = Zeroizing::new(mnem.to_seed(passphrase));
+    Ok(*seed)
 }
 
 /// Get entropy from mnemonic
 pub fn mnemonic_to_entropy(mnemonic: &str) -> Result<Vec<u8>, MnemonicError> {
     let mnem = Mnemonic::parse_in(Language::English, mnemonic)
         .map_err(|e| MnemonicError::InvalidMnemonic(e.to_string()))?;
-    
-    let entropy = mnem.to_entropy();
-    Ok(entropy.to_vec())
+
+    let entropy = Zeroizing::new(mnem.to_entropy().to_vec());
+    Ok((*entropy).clone())
 }
 
 /// Mnemonic errors

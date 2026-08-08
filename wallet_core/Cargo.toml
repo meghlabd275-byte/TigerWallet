@@ -29,6 +29,7 @@ bech32 = "0.9"
 hex = "0.4.3"
 rand = "0.8.5"
 zeroize = { version = "1.7.1", features = ["derive"] }
+subtle = "2.5"
 ripemd = "0.1"
 base58 = "0.2"
 

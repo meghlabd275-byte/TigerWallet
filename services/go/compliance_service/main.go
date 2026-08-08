@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"sync"
 	"time"
@@ -162,7 +163,7 @@ func (c *ComplianceService) ValidateAPIKey(userID, key string) bool {
 	}
 	
 	for _, apiKey := range user.APIKeys {
-		if apiKey.Key == key && apiKey.Active && apiKey.ExpiresAt > time.Now().Unix() {
+		if subtle.ConstantTimeCompare([]byte(apiKey.Key), []byte(key)) == 1 && apiKey.Active && apiKey.ExpiresAt > time.Now().Unix() {
 			return true
 		}
 	}

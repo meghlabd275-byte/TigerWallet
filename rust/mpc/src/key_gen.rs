@@ -10,7 +10,7 @@ use sha2::{Sha256, Digest};
 use hmac::{Hmac, Mac};
 use rand::rngs::OsRng;
 use rand::RngCore;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 /// HMAC-SHA256
 type HmacSha256 = Hmac<Sha256>;
@@ -62,9 +62,12 @@ fn generate_secp256k1_shares(
 
     // Build the Shamir polynomial: f(x) = secret + a_1*x + ... + a_{t-1}*x^{t-1}
     // over the secp256k1 scalar field. coeffs[0] is the secret (constant term).
-    let mut coefficients: Vec<crypto_bigint::U256> = Vec::with_capacity(threshold);
-    let secret_bytes: [u8; 32] = signing_key.to_bytes().into();
-    coefficients.push(crypto_bigint::U256::from_be_bytes(secret_bytes));
+    let mut coefficients: Zeroizing<Vec<crypto_bigint::U256>> =
+        Zeroizing::new(Vec::with_capacity(threshold));
+    // Zeroize the raw secret bytes once we've folded them into the polynomial.
+    let mut secret_bytes = Zeroizing::new(<[u8; 32]>::from(signing_key.to_bytes()));
+    coefficients.push(crypto_bigint::U256::from_be_bytes(*secret_bytes));
+    secret_bytes.zeroize();
 
     for _ in 1..threshold {
         let mut coeff: [u8; 32] = [0u8; 32];
@@ -92,10 +95,10 @@ fn generate_secp256k1_shares(
         });
     }
 
-    let mut backup_key = [0u8; 32];
-    OsRng.fill_bytes(&mut backup_key);
+    let mut backup_key = Zeroizing::new([0u8; 32]);
+    OsRng.fill_bytes(&mut *backup_key);
     let secret_bytes: [u8; 32] = signing_key.to_bytes().into();
-    let backup = encrypt_master_key(&secret_bytes.to_vec(), &backup_key)?;
+    let backup = encrypt_master_key(&secret_bytes.to_vec(), &*backup_key)?;
 
     let key_id = generate_key_id(&public_key);
 
@@ -129,13 +132,13 @@ fn generate_ed25519_shares(
     let total_shares = config.total_shares as usize;
 
     let mut shares = Vec::with_capacity(total_shares);
-    let secret_bytes = signing_key.to_bytes();
+    let secret_bytes = Zeroizing::new(signing_key.to_bytes());
 
     for i in 1..=total_shares {
         let mut share_data = Vec::with_capacity(32);
         for (j, byte) in secret_bytes.iter().enumerate() {
             let mut hasher = Sha256::new();
-            hasher.update(&secret_bytes);
+            hasher.update(&*secret_bytes);
             hasher.update(&[i as u8]);
             hasher.update(&[j as u8]);
             let result = hasher.finalize();
@@ -151,9 +154,9 @@ fn generate_ed25519_shares(
         });
     }
 
-    let mut backup_key = [0u8; 32];
-    OsRng.fill_bytes(&mut backup_key);
-    let backup = encrypt_master_key(&secret_bytes.to_vec(), &backup_key)?;
+    let mut backup_key = Zeroizing::new([0u8; 32]);
+    OsRng.fill_bytes(&mut *backup_key);
+    let backup = encrypt_master_key(&*secret_bytes.to_vec(), &*backup_key)?;
 
     let key_id = generate_key_id(&public_key);
 
@@ -177,9 +180,9 @@ fn generate_p256_shares(
     seed.extend_from_slice(&rnd);
 
     let hash = Sha256::digest(&seed[..]);
-    let key_bytes: [u8; 32] = hash.into();
+    let key_bytes = Zeroizing::new(<[u8; 32]>::from(hash));
 
-    let public_key = Sha256::digest(&key_bytes).to_vec();
+    let public_key = Sha256::digest(&*key_bytes).to_vec();
 
     let threshold = config.threshold as usize;
     let total_shares = config.total_shares as usize;
@@ -188,7 +191,7 @@ fn generate_p256_shares(
 
     for i in 1..=total_shares {
         let mut hasher = Sha256::new();
-        hasher.update(&key_bytes);
+        hasher.update(&*key_bytes);
         hasher.update(&(i as u32).to_le_bytes());
         let share_data = hasher.finalize().to_vec();
 
@@ -201,9 +204,9 @@ fn generate_p256_shares(
         });
     }
 
-    let mut backup_key = [0u8; 32];
-    OsRng.fill_bytes(&mut backup_key);
-    let backup = encrypt_master_key(&key_bytes.to_vec(), &backup_key)?;
+    let mut backup_key = Zeroizing::new([0u8; 32]);
+    OsRng.fill_bytes(&mut *backup_key);
+    let backup = encrypt_master_key(&key_bytes.to_vec(), &*backup_key)?;
 
     let key_id = generate_key_id(&public_key);
 

@@ -8,6 +8,7 @@ use k256::ecdsa::{SigningKey, Signature};
 use k256::ecdsa::signature::{DigestVerifier, Signer};
 use sha2::{Sha256, Digest};
 use zeroize::Zeroizing;
+use subtle::ConstantTimeEq;
 
 /// Sign data using threshold signature
 pub fn sign(
@@ -47,9 +48,9 @@ fn sign_secp256k1(
     let secret = crate::field::lagrange_at_zero(&xs, &ys);
 
     // k256 expects the secret key as 32 big-endian bytes of a scalar < n.
-    let secret_bytes = crate::field::scalar_to_be_bytes(secret);
+    let secret_bytes = Zeroizing::new(crate::field::scalar_to_be_bytes(secret));
 
-    let signing_key = SigningKey::from_slice(&secret_bytes)
+    let signing_key = SigningKey::from_slice(&*secret_bytes)
         .map_err(|e| MpcError::SigningFailed(e.to_string()))?;
 
     // k256's `sign(&[u8])` hashes the message once internally (RFC6979 with
@@ -74,7 +75,7 @@ fn sign_ed25519(
 
     let threshold = config.threshold as usize;
 
-    let mut secret_bytes = [0u8; 32];
+    let mut secret_bytes = Zeroizing::new([0u8; 32]);
 
     for share in shares.iter().take(threshold) {
         for (j, byte) in share.iter().enumerate().take(32) {
@@ -82,11 +83,15 @@ fn sign_ed25519(
         }
     }
 
-    let signing_key = SigningKey::from_bytes(&secret_bytes);
+    let signing_key = SigningKey::from_bytes(&*secret_bytes);
 
     let signature = signing_key.sign(message);
 
     let sig_bytes = signature.to_bytes();
+
+    // `secret_bytes` is `Zeroizing` and `signing_key` zeroizes on drop
+    // (ed25519-dalek `zeroize` feature), so the reconstructed key material
+    // is wiped when this scope exits.
 
     Ok(SignResult {
         signature: sig_bytes.to_vec(),
@@ -104,7 +109,7 @@ fn sign_p256(
 ) -> Result<SignResult, MpcError> {
     let threshold = config.threshold as usize;
 
-    let mut secret_bytes = [0u8; 32];
+    let mut secret_bytes = Zeroizing::new([0u8; 32]);
 
     for share in shares.iter().take(threshold) {
         for (i, byte) in share.iter().enumerate().take(32) {
@@ -114,7 +119,7 @@ fn sign_p256(
 
     // P-256 crate is not available; use a deterministic placeholder signature.
     let mut hasher = Sha256::new();
-    hasher.update(&secret_bytes);
+    hasher.update(&*secret_bytes);
     hasher.update(message);
     let sig = hasher.finalize();
 
@@ -168,7 +173,9 @@ pub fn verify(
         CurveType::P256 => {
             let digest = Sha256::digest(message);
             let hash = Sha256::digest(public_key);
-            Ok(!signature.is_empty() && digest.as_slice() != hash.as_slice())
+            // Constant-time comparison: this is a verification check on hashes.
+            Ok(!signature.is_empty()
+                && digest.as_slice().ct_eq(hash.as_slice()).unwrap_u8() == 0)
         }
     }
 }

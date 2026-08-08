@@ -8,6 +8,8 @@ use crypto_bigint::Encoding;
 use sha2::{Sha256, Digest};
 use rand::rngs::OsRng;
 use rand::RngCore;
+use zeroize::Zeroizing;
+use subtle::ConstantTimeEq;
 
 /// Reshare: Generate new shares from existing shares
 /// This allows changing the threshold or number of participants
@@ -32,7 +34,9 @@ pub fn reshare(
         .collect();
     let secret = crate::field::lagrange_at_zero(&xs, &ys);
     // Build a fresh polynomial with the reconstructed secret as the constant term.
-    let mut coefficients: Vec<crypto_bigint::U256> = Vec::with_capacity(new_threshold);
+    // `coefficients[0]` is the secret; wrap the whole vector so it is wiped on drop.
+    let mut coefficients: Zeroizing<Vec<crypto_bigint::U256>> =
+        Zeroizing::new(Vec::with_capacity(new_threshold));
     coefficients.push(secret);
     for _ in 1..new_threshold {
         let mut coeff: [u8; 32] = [0u8; 32];
@@ -81,7 +85,7 @@ pub fn recover_key(
 
         CurveType::Ed25519 => {
             // For Ed25519, use XOR combination
-            let mut secret = [0u8; 32];
+            let mut secret = Zeroizing::new([0u8; 32]);
             for share in shares.iter().take(threshold as usize) {
                 for (i, byte) in share.share_data.iter().enumerate().take(32) {
                     secret[i] ^= byte;
@@ -100,8 +104,8 @@ pub fn backup_key(
     use hmac::{Hmac, Mac};
     type HmacSha256 = Hmac<Sha256>;
     
-    // Combine shares
-    let mut combined = Vec::new();
+    // Combine shares (secret material) -  wipe on drop.
+    let mut combined = Zeroizing::new(Vec::new());
     for share in shares {
         combined.extend_from_slice(&share.share_data);
     }
@@ -142,7 +146,7 @@ pub fn restore_from_backup(
     mac.update(encrypted_shares);
     let expected = mac.finalize().into_bytes();
     
-    if &expected[..16] != salt {
+    if expected[..16].ct_eq(salt).unwrap_u8() == 0 {
         return Err(MpcError::KeySharingFailed("Invalid decryption key".to_string()));
     }
     

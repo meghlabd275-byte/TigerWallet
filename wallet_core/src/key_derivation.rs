@@ -9,6 +9,7 @@ use sha2::{Sha256, Digest, Sha512};
 use hmac::{Hmac, Mac};
 use ripemd::Ripemd160;
 use ethereum_types::U256;
+use zeroize::{Zeroize, Zeroizing};
 
 use super::{ChainConfig, ChainType, DerivedAddress, WalletError};
 
@@ -90,18 +91,19 @@ pub fn derive_hd_key(seed: &[u8], path: &DerivationPath) -> Result<Vec<u8>, Wall
     let master_private_key = &result[..32];
     let master_chain_code = &result[32..64];
     
-    // Derive child key along the path
-    let mut private_key = master_private_key.to_vec();
-    let mut chain_code = master_chain_code.to_vec();
+    // Derive child key along the path. private_key/chain_code hold secret
+    // scalar material, so wrap them in Zeroizing to zeroize on drop.
+    let mut private_key = Zeroizing::new(master_private_key.to_vec());
+    let mut chain_code = Zeroizing::new(master_chain_code.to_vec());
     
     for child_num in path.clone().into_iter() {
         let (new_key, new_chain_code) = derive_child_key(&private_key, &chain_code, child_num)
             .map_err(|e| WalletError::DerivationFailed(format!("Child key derivation failed: {}", e)))?;
-        private_key = new_key;
-        chain_code = new_chain_code;
+        private_key = Zeroizing::new(new_key);
+        chain_code = Zeroizing::new(new_chain_code);
     }
     
-    Ok(private_key)
+    Ok((*private_key).clone())
 }
 
 /// Derive a child key from parent key using BIP-32 specification
@@ -147,8 +149,10 @@ fn derive_child_key(parent_key: &[u8], parent_chain_code: &[u8], child_num: Chil
         return Err(WalletError::DerivationFailed("Invalid child key (zero)".to_string()));
     }
     
-    let child_bytes = uint_to_be(child);
-    Ok((child_bytes.to_vec(), ir.to_vec()))
+    let mut child_bytes = Zeroizing::new(uint_to_be(child));
+    let out = (child_bytes.to_vec(), ir.to_vec());
+    child_bytes.zeroize();
+    Ok(out)
 }
 
 /// Convert an unsigned integer to a fixed-width big-endian private-key scalar.
