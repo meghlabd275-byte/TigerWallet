@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { stakingApi, walletApi } from '../api/service';
 
 interface StakingPosition {
   id: string;
@@ -30,45 +31,30 @@ interface StakingPool {
   description: string;
 }
 
-// Liquid Staking Pools - Enhanced with more options
-const STAKING_POOLS: StakingPool[] = [
-  // Liquid Staking Tokens (LST)
-  { id: '1', name: 'Lido Liquid Staking', token: 'ETH', chainId: 1, chainName: 'Ethereum', apy: 4.2, minStake: '0.01', lockPeriod: 0, totalStaked: '15.2B', rewardToken: 'stETH', description: 'Liquid staking - get stETH immediately' },
-  { id: '2', name: 'Rocket Pool Liquid Staking', token: 'ETH', chainId: 1, chainName: 'Ethereum', apy: 3.8, minStake: '0.01', lockPeriod: 0, totalStaked: '2.1B', rewardToken: 'rETH', description: 'Decentralized liquid staking' },
-  { id: '3', name: 'Coinbase Wrapped Staked ETH', token: 'ETH', chainId: 1, chainName: 'Ethereum', apy: 4.0, minStake: '0.01', lockPeriod: 0, totalStaked: '1.8B', rewardToken: 'cbETH', description: 'Coinbase liquid staking' },
-  { id: '4', name: 'Frax Ether Liquid Staking', token: 'ETH', chainId: 1, chainName: 'Ethereum', apy: 4.5, minStake: '0.01', lockPeriod: 0, totalStaked: '890M', rewardToken: 'frxETH', description: 'Frax liquid staking with LSD' },
-  { id: '5', name: 'StakeWise Liquid Staking', token: 'ETH', chainId: 1, chainName: 'Ethereum', apy: 4.1, minStake: '0.01', lockPeriod: 0, totalStaked: '450M', rewardToken: 'sETH2', description: 'Dual token liquid staking' },
-  // Native Staking
-  { id: '6', name: 'Solana Staking', token: 'SOL', chainId: 101, chainName: 'Solana', apy: 6.5, minStake: '1', lockPeriod: 2, totalStaked: '12.8B', rewardToken: 'SOL', description: 'Stake SOL with validators' },
-  { id: '7', name: 'Marinade Finance (Liquid)', token: 'SOL', chainId: 101, chainName: 'Solana', apy: 5.8, minStake: '1', lockPeriod: 0, totalStaked: '450M', rewardToken: 'mSOL', description: 'Liquid stake SOL' },
-  { id: '8', name: 'JPool Liquid Staking', token: 'SOL', chainId: 101, chainName: 'Solana', apy: 6.2, minStake: '1', lockPeriod: 0, totalStaked: '180M', rewardToken: 'jitoSOL', description: 'Jito liquid staking' },
-  { id: '9', name: 'Cosmos Staking', token: 'ATOM', chainId: 118, chainName: 'Cosmos', apy: 12.5, minStake: '1', lockPeriod: 21, totalStaked: '3.2B', rewardToken: 'ATOM', description: 'Stake Cosmos Hub' },
-  { id: '10', name: 'Polygon Staking', token: 'MATIC', chainId: 137, chainName: 'Polygon', apy: 5.2, minStake: '10', lockPeriod: 4, totalStaked: '1.8B', rewardToken: 'MATIC', description: 'Stake Polygon' },
-  { id: '11', name: 'Ankr Staking', token: 'ETH', chainId: 1, chainName: 'Ethereum', apy: 4.0, minStake: '0.01', lockPeriod: 0, totalStaked: '320M', rewardToken: 'ankrETH', description: 'Ankr liquid staking' },
-  { id: '12', name: 'StakedETH', token: 'ETH', chainId: 1, chainName: 'Ethereum', apy: 3.9, minStake: '0.01', lockPeriod: 0, totalStaked: '280M', rewardToken: 'ethX', description: 'Stader liquid staking' },
-  { id: '13', name: 'Swell Liquid Staking', token: 'ETH', chainId: 1, chainName: 'Ethereum', apy: 4.3, minStake: '0.01', lockPeriod: 0, totalStaked: '180M', rewardToken: 'swETH', description: 'Swell liquid staking' },
-  { id: '14', name: 'EtherFi Liquid Staking', token: 'ETH', chainId: 1, chainName: 'Ethereum', apy: 4.4, minStake: '0.01', lockPeriod: 0, totalStaked: '150M', rewardToken: 'weETH', description: 'EtherFi liquid staking' },
-  { id: '15', name: 'Renzo Liquid Staking', token: 'ETH', chainId: 1, chainName: 'Ethereum', apy: 4.6, minStake: '0.01', lockPeriod: 0, totalStaked: '95M', rewardToken: 'ezETH', description: 'Renzo liquid staking' },
-  { id: '16', name: 'Kelp DAO Liquid Staking', token: 'ETH', chainId: 1, chainName: 'Ethereum', apy: 4.5, minStake: '0.01', lockPeriod: 0, totalStaked: '75M', rewardToken: 'rsETH', description: 'Kelp DAO liquid staking' },
-  { id: '17', name: 'Swell Restaking', token: 'ETH', chainId: 1, chainName: 'Ethereum', apy: 8.5, minStake: '0.01', lockPeriod: 0, totalStaked: '2.1B', rewardToken: 'rswETH', description: 'EigenLayer restaking' },
-  { id: '18', name: 'EigenLayer Restaking', token: 'ETH', chainId: 1, chainName: 'Ethereum', apy: 12.0, minStake: '0.01', lockPeriod: 0, totalStaked: '5.2B', rewardToken: 'eETH', description: 'EigenLayer restaking' },
-  { id: '19', name: 'Avalanche Staking', token: 'AVAX', chainId: 43114, chainName: 'Avalanche', apy: 8.1, minStake: '25', lockPeriod: 14, totalStaked: '2.5B', rewardToken: 'AVAX', description: 'Stake Avalanche' },
-  { id: '20', name: 'Near Staking', token: 'NEAR', chainId: 1313161554, chainName: 'Near', apy: 10.2, minStake: '1', lockPeriod: 2, totalStaked: '1.2B', rewardToken: 'NEAR', description: 'Stake Near' },
-  { id: '21', name: 'Aptos Staking', token: 'APT', chainId: 637, chainName: 'Aptos', apy: 8.5, minStake: '10', lockPeriod: 14, totalStaked: '450M', rewardToken: 'APT', description: 'Stake Aptos' },
-  { id: '22', name: 'Osmosis Staking', token: 'OSMO', chainId: 0, chainName: 'Osmosis', apy: 15.2, minStake: '1', lockPeriod: 14, totalStaked: '320M', rewardToken: 'OSMO', description: 'Stake Osmosis' },
-  { id: '23', name: 'BNB Chain Staking', token: 'BNB', chainId: 56, chainName: 'BNB Chain', apy: 4.8, minStake: '1', lockPeriod: 7, totalStaked: '2.8B', rewardToken: 'BNB', description: 'Stake BNB' },
-  { id: '24', name: 'Arbitrum Staking', token: 'ARB', chainId: 42161, chainName: 'Arbitrum', apy: 5.5, minStake: '10', lockPeriod: 7, totalStaked: '180M', rewardToken: 'ARB', description: 'Stake Arbitrum' },
-  { id: '25', name: 'Optimism Staking', token: 'OP', chainId: 10, chainName: 'Optimism', apy: 5.2, minStake: '10', lockPeriod: 7, totalStaked: '145M', rewardToken: 'OP', description: 'Stake Optimism' },
-  { id: '26', name: 'Base Staking', token: 'ETH', chainId: 8453, chainName: 'Base', apy: 4.8, minStake: '0.01', lockPeriod: 0, totalStaked: '85M', rewardToken: 'cbETH', description: 'Stake on Base' },
-];
+const CHAIN_NAMES: Record<number, string> = {
+  1: 'Ethereum',
+  56: 'BNB Chain',
+  137: 'Polygon',
+  42161: 'Arbitrum',
+  10: 'Optimism',
+  8453: 'Base',
+  43114: 'Avalanche',
+};
 
-const MOCK_POSITIONS: StakingPosition[] = [
-  { id: 'pos_1', chainId: 1, chainName: 'Ethereum', token: 'ETH', stakedAmount: '5.5', reward: '0.23', apy: 4.2, validator: 'Lido', status: 'active', startTime: Date.now() - 86400000 * 30 },
-  { id: 'pos_2', chainId: 101, chainName: 'Solana', token: 'SOL', stakedAmount: '150', reward: '12.5', apy: 6.5, validator: 'Marinade', status: 'active', startTime: Date.now() - 86400000 * 15 },
+const STAKING_POOLS: StakingPool[] = [
+  { id: 'lido', name: 'Lido Liquid Staking', token: 'ETH', chainId: 1, chainName: 'Ethereum', apy: 4.2, minStake: '0.01', lockPeriod: 0, totalStaked: '15.2B', rewardToken: 'stETH', description: 'Liquid staking - get stETH immediately' },
+  { id: 'rocketpool', name: 'Rocket Pool Liquid Staking', token: 'ETH', chainId: 1, chainName: 'Ethereum', apy: 3.8, minStake: '0.01', lockPeriod: 0, totalStaked: '2.1B', rewardToken: 'rETH', description: 'Decentralized liquid staking' },
+  { id: 'aave', name: 'Aave Staking', token: 'AAVE', chainId: 1, chainName: 'Ethereum', apy: 5.5, minStake: '1', lockPeriod: 0, totalStaked: '180M', rewardToken: 'AAVE', description: 'Stake AAVE for rewards' },
+  { id: 'compound', name: 'Compound Staking', token: 'COMP', chainId: 1, chainName: 'Ethereum', apy: 4.8, minStake: '0.1', lockPeriod: 0, totalStaked: '120M', rewardToken: 'COMP', description: 'Stake COMP for governance rewards' },
+  { id: 'solana', name: 'Solana Staking', token: 'SOL', chainId: 101, chainName: 'Solana', apy: 6.5, minStake: '1', lockPeriod: 2, totalStaked: '12.8B', rewardToken: 'SOL', description: 'Stake SOL with validators' },
+  { id: 'polygon', name: 'Polygon Staking', token: 'MATIC', chainId: 137, chainName: 'Polygon', apy: 5.2, minStake: '10', lockPeriod: 4, totalStaked: '1.8B', rewardToken: 'MATIC', description: 'Stake Polygon' },
+  { id: 'avalanche', name: 'Avalanche Staking', token: 'AVAX', chainId: 43114, chainName: 'Avalanche', apy: 8.1, minStake: '25', lockPeriod: 14, totalStaked: '2.5B', rewardToken: 'AVAX', description: 'Stake Avalanche' },
+  { id: 'bsc', name: 'BNB Chain Staking', token: 'BNB', chainId: 56, chainName: 'BNB Chain', apy: 4.8, minStake: '1', lockPeriod: 7, totalStaked: '2.8B', rewardToken: 'BNB', description: 'Stake BNB' },
 ];
 
 export default function Staking() {
-  const [positions, setPositions] = useState<StakingPosition[]>(MOCK_POSITIONS);
+  const [positions, setPositions] = useState<StakingPosition[]>([]);
+  const [pools, setPools] = useState<StakingPool[]>(STAKING_POOLS);
   const [selectedPool, setSelectedPool] = useState<StakingPool | null>(null);
   const [stakeAmount, setStakeAmount] = useState('');
   const [activeTab, setActiveTab] = useState<'stake' | 'pools' | 'positions'>('pools');
