@@ -4,6 +4,10 @@
 
 ## Overview
 
+> ⚠️ **See [`GAPS.md`](GAPS.md) for what is missing in this area** — the `mm_bot_platform`
+> API server is in-memory demo only, on-chain contracts are not deployed/wired, and the
+> Super Admin BotsClients handlers are stubs.
+
 **BotsClients** is the white-label relationship/product that wraps the **Bot Platform**
 (`mm_bot_platform`) so that external and white-label operators can run trading bots —
 including **market-making (MM)** bots — under a fully **admin-controlled, role-gated**

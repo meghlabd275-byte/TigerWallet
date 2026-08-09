@@ -6,6 +6,10 @@
 
 ## Overview
 
+> ⚠️ **See [`GAPS.md`](GAPS.md) for what is missing in this area** — there is a
+> camelCase/snake_case JSON contract mismatch on pair create, no `/pairs/import` route on
+> the admin backend, stub import endpoints, and no `admin` service in `docker-compose`.
+
 Liquidity and trading-pair management is **completely admin-controlled** and lives in the
 **Admin Panel / Super Admin** layer. It provides:
 

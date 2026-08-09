@@ -4,6 +4,10 @@
 
 ## Overview
 
+> ⚠️ **See [`GAPS.md`](GAPS.md) for what is missing in this area** — several backends
+> are route scaffolds that return sample data without persistence, and there are known
+> port/JSON-contract mismatches.
+
 **ProjectParty** is the token/coin listing, trading-launch, and market-making services
 platform within the TigerWallet ecosystem. It lets users browse coins and tokens, submit
 new tokens for listing, run IDO/launchpad fundraisers, and provides market-making,
