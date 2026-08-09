@@ -8,7 +8,6 @@
 //! - Secure random generation with OS CSPRNG
 
 use std::convert::TryInto;
-use zeroize::Zeroizing;
 
 // ============================================================================
 // Error Types
@@ -64,27 +63,36 @@ pub fn generate_secure_random(length: usize) -> Result<Vec<u8>> {
 
 /// Generate a secure 256-bit (32 byte) key
 pub fn generate_key() -> Result<[u8; 32]> {
-    generate_secure_random(32)?
-        .try_into()
-        .map_err(|v| AdvancedCryptoError::RandomGenerationFailed(
+    let v: Vec<u8> = generate_secure_random(32)?;
+    v.try_into()
+        .map_err(|v: Vec<u8>| AdvancedCryptoError::RandomGenerationFailed(
             format!("Failed to create 32-byte key: len={}", v.len())
+        ))
+}
+
+/// Generate a secure 96-bit (12 byte) nonce for AES-GCM / ChaCha20-Poly1305
+pub fn generate_nonce_96() -> Result<[u8; 12]> {
+    let v: Vec<u8> = generate_secure_random(12)?;
+    v.try_into()
+        .map_err(|v: Vec<u8>| AdvancedCryptoError::RandomGenerationFailed(
+            format!("Failed to create 12-byte nonce: len={}", v.len())
         ))
 }
 
 /// Generate a secure 128-bit (16 byte) nonce
 pub fn generate_nonce_128() -> Result<[u8; 16]> {
-    generate_secure_random(16)?
-        .try_into()
-        .map_err(|v| AdvancedCryptoError::RandomGenerationFailed(
+    let v: Vec<u8> = generate_secure_random(16)?;
+    v.try_into()
+        .map_err(|v: Vec<u8>| AdvancedCryptoError::RandomGenerationFailed(
             format!("Failed to create 16-byte nonce: len={}", v.len())
         ))
 }
 
 /// Generate a secure 192-bit (24 byte) nonce for XChaCha20
 pub fn generate_nonce_192() -> Result<[u8; 24]> {
-    generate_secure_random(24)?
-        .try_into()
-        .map_err(|v| AdvancedCryptoError::RandomGenerationFailed(
+    let v: Vec<u8> = generate_secure_random(24)?;
+    v.try_into()
+        .map_err(|v: Vec<u8>| AdvancedCryptoError::RandomGenerationFailed(
             format!("Failed to create 24-byte nonce: len={}", v.len())
         ))
 }
@@ -115,7 +123,7 @@ pub fn aes256_gcm_encrypt(
     aad: &[u8],
 ) -> Result<Vec<u8>> {
     use aes_gcm::{
-        aead::{Aead, KeyInit, OsRng},
+        aead::{Aead, KeyInit},
         Aes256Gcm, Nonce,
     };
     
@@ -209,7 +217,7 @@ pub fn chacha20_poly1305_encrypt(
     aad: &[u8],
 ) -> Result<Vec<u8>> {
     use chacha20poly1305::{
-        aead::{Aead, KeyInit, OsRng},
+        aead::{Aead, KeyInit},
         ChaCha20Poly1305, Nonce,
     };
     
@@ -277,8 +285,8 @@ pub fn xchacha20_poly1305_encrypt(
     aad: &[u8],
 ) -> Result<Vec<u8>> {
     use chacha20poly1305::{
-        aead::{Aead, KeyInit, OsRng},
-        XChaCha20Poly1305, Nonce,
+        aead::{Aead, KeyInit},
+        XChaCha20Poly1305, XNonce,
     };
     
     if key.len() != 32 {
@@ -290,7 +298,7 @@ pub fn xchacha20_poly1305_encrypt(
     }
     
     let cipher = XChaCha20Poly1305::new(key.into());
-    let nonce = Nonce::from_slice(nonce);
+    let nonce = XNonce::from_slice(nonce);
     
     let ciphertext = cipher
         .encrypt(nonce, aead::Payload::from(plaintext))
@@ -308,7 +316,7 @@ pub fn xchacha20_poly1305_decrypt(
 ) -> Result<Vec<u8>> {
     use chacha20poly1305::{
         aead::{Aead, KeyInit},
-        XChaCha20Poly1305, Nonce,
+        XChaCha20Poly1305, XNonce,
     };
     
     if key.len() != 32 {
@@ -324,7 +332,7 @@ pub fn xchacha20_poly1305_decrypt(
     }
     
     let cipher = XChaCha20Poly1305::new(key.into());
-    let nonce = Nonce::from_slice(nonce);
+    let nonce = XNonce::from_slice(nonce);
     
     let plaintext = cipher
         .decrypt(nonce, aead::Payload::from(ciphertext))
@@ -366,10 +374,11 @@ pub fn argon2id_hash(password: &[u8], salt: &[u8]) -> Result<[u8; 32]> {
     let hash_bytes = hash.hash.ok_or_else(|| 
         AdvancedCryptoError::KeyDerivationFailed("No hash output".to_string())
     )?;
+    let hash_ref = hash_bytes.as_bytes();
     
     let mut result = [0u8; 32];
-    let len = std::cmp::min(32, hash_bytes.len());
-    result[..len].copy_from_slice(&hash_bytes[..len]);
+    let len = std::cmp::min(32, hash_ref.len());
+    result[..len].copy_from_slice(&hash_ref[..len]);
     
     Ok(result)
 }
@@ -388,9 +397,8 @@ pub fn argon2id_verify(password: &[u8], salt: &[u8], expected_hash: &[u8; 32]) -
 
 /// Securely zero memory (prevents compiler optimization from removing)
 pub fn secure_zero(data: &mut [u8]) {
-    use zeroize::Zeroizing;
-    let mut zeroized = Zeroizing::new(data);
-    zeroized.zero();
+    use zeroize::Zeroize;
+    data.zeroize();
 }
 
 /// Constant-time comparison (prevents timing attacks)
@@ -406,8 +414,6 @@ pub fn constant_time_compare(a: &[u8], b: &[u8]) -> bool {
 
 /// Constant-time selection
 pub fn constant_time_select<T: Clone>(condition: bool, a: &T, b: &T) -> T {
-    use subtle::ConditionallySelectable;
-    
     if condition {
         a.clone()
     } else {
@@ -425,13 +431,17 @@ pub fn aes_kw_wrap(key: &[u8; 32], kek: &[u8; 32]) -> Result<Vec<u8>> {
     // Simplified key wrap - in production use aes-kw crate
     // This creates a secure envelope around the key
     
-    let nonce = generate_nonce_128()?;
+    let nonce = generate_secure_random(12)?
+        .try_into()
+        .map_err(|v: Vec<u8>| AdvancedCryptoError::RandomGenerationFailed(
+            format!("Failed to create 12-byte nonce: len={}", v.len())
+        ))?;
     
     // Encrypt the key material
     let ciphertext = aes256_gcm_encrypt(key, kek, &nonce, &[])?;
     
-    // Combine: nonce (16) + ciphertext with tag
-    let mut result = Vec::with_capacity(16 + ciphertext.len());
+    // Combine: nonce (12) + ciphertext with tag
+    let mut result = Vec::with_capacity(12 + ciphertext.len());
     result.extend_from_slice(&nonce);
     result.extend_from_slice(&ciphertext);
     
@@ -440,7 +450,7 @@ pub fn aes_kw_wrap(key: &[u8; 32], kek: &[u8; 32]) -> Result<Vec<u8>> {
 
 /// Unwrap a key using AES-KW
 pub fn aes_kw_unwrap(wrapped: &[u8], kek: &[u8; 32]) -> Result<[u8; 32]> {
-    if wrapped.len() < 16 + 16 {
+    if wrapped.len() < 12 + 16 {
         return Err(AdvancedCryptoError::DecryptionFailed(
             "Wrapped key too short".to_string()
         ));
@@ -451,7 +461,7 @@ pub fn aes_kw_unwrap(wrapped: &[u8], kek: &[u8; 32]) -> Result<[u8; 32]> {
         wrapped[4], wrapped[5], wrapped[6], wrapped[7],
         wrapped[8], wrapped[9], wrapped[10], wrapped[11],
     ];
-    let ciphertext = &wrapped[16..];
+    let ciphertext = &wrapped[12..];
     
     let plaintext = aes256_gcm_decrypt(ciphertext, kek, &nonce, &[])?;
     
@@ -525,7 +535,7 @@ mod tests {
     fn test_aes256_gcm_roundtrip() {
         let plaintext = b"TigerWallet Secret Data";
         let key = generate_key().unwrap();
-        let nonce = generate_nonce_128().unwrap();
+        let nonce = generate_nonce_96().unwrap();
         
         let ciphertext = aes256_gcm_encrypt(plaintext, &key, &nonce, &[]).unwrap();
         let decrypted = aes256_gcm_decrypt(&ciphertext, &key, &nonce, &[]).unwrap();
@@ -537,7 +547,7 @@ mod tests {
     fn test_chacha20_roundtrip() {
         let plaintext = b"TigerWallet Secret Data";
         let key = generate_key().unwrap();
-        let nonce = generate_nonce_128().unwrap();
+        let nonce = generate_nonce_96().unwrap();
         
         let ciphertext = chacha20_poly1305_encrypt(plaintext, &key, &nonce, &[]).unwrap();
         let decrypted = chacha20_poly1305_decrypt(&ciphertext, &key, &nonce, &[]).unwrap();

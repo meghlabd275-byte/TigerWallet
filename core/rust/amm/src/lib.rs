@@ -19,7 +19,7 @@ mod tick;
 mod position;
 
 pub use math::{FullMath, BitMath, PriceMath, Q96, Q128, MAX_UINT256, TickMath};
-pub use pool::{PoolCore, PoolConfig, SwapResult, FEE_TIERS, PoolState, SwapDirection};
+pub use pool::{PoolCore, PoolConfig, SwapResult, FEE_TIERS, PoolState};
 pub use factory::{AMMFactory, SwapRouter};
 pub use swap::{SwapExecutor, SwapParams};
 pub use tick::{Tick, TickMap};

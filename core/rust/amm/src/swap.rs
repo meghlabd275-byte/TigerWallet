@@ -2,6 +2,7 @@
 
 use super::pool::{PoolCore, SwapResult};
 use num_bigint::BigUint;
+use num_traits::ToPrimitive;
 
 /// Swap parameters
 #[derive(Debug, Clone)]
@@ -39,7 +40,8 @@ impl SwapExecutor {
                 break;
             }
 
-            let result = pool.swap(&remaining, pool.fee());
+            let zero_for_one = pool.token0().to_lowercase() == params.token_in.to_lowercase();
+            let result = pool.swap(&remaining, zero_for_one, None)?;
             total_out += result.amount_out.clone();
             remaining = result.amount_out;
         }

@@ -2,6 +2,7 @@
 
 use super::math::{Q96, PriceMath};
 use num_bigint::BigUint;
+use num_traits::ToPrimitive;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -29,18 +30,18 @@ pub struct SwapResult {
 
 /// Core pool state
 #[derive(Debug, Clone)]
-struct PoolState {
-    token0: String,
-    token1: String,
-    fee: u32,
-    tick_spacing: u32,
-    sqrt_price_x96: BigUint,
-    current_tick: i32,
-    gross_liquidity: BigUint,
-    reserves0: BigUint,
-    reserves1: BigUint,
-    fee_growth_global0: BigUint,
-    fee_growth_global1: BigUint,
+pub struct PoolState {
+    pub token0: String,
+    pub token1: String,
+    pub fee: u32,
+    pub tick_spacing: u32,
+    pub sqrt_price_x96: BigUint,
+    pub current_tick: i32,
+    pub gross_liquidity: BigUint,
+    pub reserves0: BigUint,
+    pub reserves1: BigUint,
+    pub fee_growth_global0: BigUint,
+    pub fee_growth_global1: BigUint,
 }
 
 /// Core AMM Pool
@@ -91,32 +92,54 @@ impl PoolCore {
     }
 
     /// Execute a swap
-    pub fn swap(&self, amount_in: &BigUint, fee: u32) -> SwapResult {
+    pub fn swap(
+        &self,
+        amount_in: &BigUint,
+        zero_for_one: bool,
+        _sqrt_price_limit: Option<&BigUint>,
+    ) -> Result<SwapResult, String> {
         let mut state = self.state.write();
-        
+
+        let fee = state.fee;
         let fee_multiplier = BigUint::from(1000000u64) - BigUint::from(fee as u64);
-        let amount_in_with_fee = (amount_in * fee_multiplier) / BigUint::from(1000000u64);
-        
-        let new_reserve0 = state.reserves0.clone() + amount_in_with_fee.clone();
-        let new_reserve1 = (&state.reserves0 * &state.reserves1) / &new_reserve0;
-        let amount_out = &state.reserves1 - &new_reserve1;
-        
-        let sqrt_price_change = amount_in_with_fee.clone() / BigUint::from(1_000_000_000_000u64);
-        let new_sqrt_price = state.sqrt_price_x96.clone() + sqrt_price_change;
+        let amount_in_with_fee = (amount_in * &fee_multiplier) / BigUint::from(1000000u64);
+
+        let (reserve_in, reserve_out) = if zero_for_one {
+            (state.reserves0.clone(), state.reserves1.clone())
+        } else {
+            (state.reserves1.clone(), state.reserves0.clone())
+        };
+
+        let new_reserve_in = &reserve_in + &amount_in_with_fee;
+        let new_reserve_out = (&reserve_in * &reserve_out) / &new_reserve_in;
+        let amount_out = &reserve_out - &new_reserve_out;
+
+        let sqrt_price_change = &amount_in_with_fee / BigUint::from(1_000_000_000_000u64);
+        let new_sqrt_price = &state.sqrt_price_x96 + &sqrt_price_change;
         let new_tick = PriceMath::get_tick_at_sqrt_price(&new_sqrt_price);
-        
-        state.reserves0 = new_reserve0;
-        state.reserves1 = new_reserve1;
-        state.sqrt_price_x96 = new_sqrt_price;
+
+        if zero_for_one {
+            state.reserves0 = new_reserve_in;
+            state.reserves1 = new_reserve_out;
+        } else {
+            state.reserves1 = new_reserve_in;
+            state.reserves0 = new_reserve_out;
+        }
+        state.sqrt_price_x96 = new_sqrt_price.clone();
         state.current_tick = new_tick;
-        
+
         let fee_amount = amount_in - &amount_in_with_fee;
-        
-        SwapResult {
+
+        Ok(SwapResult {
             amount_out,
             new_price: new_sqrt_price,
             fee_amount,
-        }
+        })
+    }
+
+    /// Get current gross liquidity
+    pub fn liquidity(&self) -> BigUint {
+        self.state.read().gross_liquidity.clone()
     }
 
     /// Get reserve0

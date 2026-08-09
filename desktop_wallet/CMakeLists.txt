@@ -15,6 +15,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/models
     ${CMAKE_SOURCE_DIR}/include/services
     ${CMAKE_SOURCE_DIR}/include/ui
+    ${CMAKE_SOURCE_DIR}/include/crypto
     ${CMAKE_SOURCE_DIR}/src
     ${OPENSSL_INCLUDE_DIR}
     ${CURL_INCLUDE_DIRS}
@@ -23,6 +24,12 @@ include_directories(
 # Source files
 set(MODEL_SOURCES
     src/models/wallet_models.cpp
+)
+
+set(CRYPTO_SOURCES
+    src/crypto/bip39.cpp
+    src/crypto/bip32.cpp
+    src/crypto/evm_signer.cpp
 )
 
 set(THEME_SOURCES
@@ -48,6 +55,7 @@ set(SERVICE_SOURCES
 
 set(ALL_SOURCES
     ${MODEL_SOURCES}
+    ${CRYPTO_SOURCES}
     ${THEME_SOURCES}
     ${SERVICE_SOURCES}
 )

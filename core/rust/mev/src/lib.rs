@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// MEV Attack Types
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MEVAttackType {
     Sandwich,
     FrontRun,
@@ -198,8 +198,8 @@ impl MEVEngine {
                 let victim_pool = victim_tx.pool_address.as_ref()?;
                 
                 // Simple sandwich detection
-                if tx.pool_address.as_ref() == Some(victim_pool.clone()) &&
-                   tx.token_in.as_ref() == Some(victim_token.clone()) {
+                if tx.pool_address.as_ref() == Some(victim_pool) &&
+                   tx.token_in.as_ref() == Some(victim_token) {
                     return Some(MEVOpportunity::new(
                         0,
                         MEVAttackType::Sandwich,

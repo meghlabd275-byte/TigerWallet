@@ -142,10 +142,10 @@ void testKeychainManager() {
     
     // Save and load test
     std::string testMnemonic = "abandon ability able about above absent absorb abstract absurd abuse access accident";
-    bool saved = keychain->saveWalletSeed("test-wallet-1", testMnemonic);
-    std::cout << "Saved mnemonic: " << (saved ? "SUCCESS" : "FAILED") << "\n";
+    bool saved = keychain->saveWalletSeed("test-wallet-1", testMnemonic, "test-password-123");
+    std::cout << "Saved encrypted mnemonic: " << (saved ? "SUCCESS" : "FAILED") << "\n";
     
-    auto loaded = keychain->loadWalletSeed("test-wallet-1");
+    auto loaded = keychain->loadWalletSeed("test-wallet-1", "test-password-123");
     if (loaded) {
         std::cout << "Loaded mnemonic: " << loaded->substr(0, 20) << "...\n";
     }

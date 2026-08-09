@@ -98,34 +98,33 @@ bool KeychainManager::exists(const std::string& key) {
 // Wallet-specific Storage
 // ============================================================================
 
-bool KeychainManager::saveWalletSeed(const std::string& walletId, const std::string& mnemonic) {
+bool KeychainManager::saveWalletSeed(const std::string& walletId, const std::string& mnemonic, const std::string& password) {
+    // Encrypt the mnemonic with AES-256-GCM using the user's password before
+    // storing. Never store seeds in plaintext.
     std::vector<uint8_t> data(mnemonic.begin(), mnemonic.end());
-    return save("wallet_seed_" + walletId, data);
+    auto encrypted = encrypt(data, password);
+    return save("wallet_seed_" + walletId, encrypted);
 }
 
-std::optional<std::string> KeychainManager::loadWalletSeed(const std::string& walletId) {
+std::optional<std::string> KeychainManager::loadWalletSeed(const std::string& walletId, const std::string& password) {
     auto data = load("wallet_seed_" + walletId);
-    if (data && !data->empty()) {
-        return std::string(data->begin(), data->end());
-    }
-    return std::nullopt;
+    if (!data || data->empty()) return std::nullopt;
+    auto decrypted = decrypt(*data, password);
+    return std::string(decrypted.begin(), decrypted.end());
 }
 
-bool KeychainManager::removeWalletSeed(const std::string& walletId) {
-    return remove("wallet_seed_" + walletId);
-}
-
-bool KeychainManager::savePrivateKey(const std::string& walletId, const std::string& privateKey) {
+bool KeychainManager::savePrivateKey(const std::string& walletId, const std::string& privateKey, const std::string& password) {
+    // Encrypt private keys with AES-256-GCM before storing.
     std::vector<uint8_t> data(privateKey.begin(), privateKey.end());
-    return save("wallet_key_" + walletId, data);
+    auto encrypted = encrypt(data, password);
+    return save("wallet_key_" + walletId, encrypted);
 }
 
-std::optional<std::string> KeychainManager::loadPrivateKey(const std::string& walletId) {
+std::optional<std::string> KeychainManager::loadPrivateKey(const std::string& walletId, const std::string& password) {
     auto data = load("wallet_key_" + walletId);
-    if (data && !data->empty()) {
-        return std::string(data->begin(), data->end());
-    }
-    return std::nullopt;
+    if (!data || data->empty()) return std::nullopt;
+    auto decrypted = decrypt(*data, password);
+    return std::string(decrypted.begin(), decrypted.end());
 }
 
 bool KeychainManager::removePrivateKey(const std::string& walletId) {
@@ -165,61 +164,74 @@ void KeychainManager::clearSession() {
 }
 
 // ============================================================================
-// Encryption
+// Encryption (AES-256-GCM, authenticated — replaces insecure CBC)
 // ============================================================================
 
 std::vector<uint8_t> KeychainManager::encrypt(const std::vector<uint8_t>& data, const std::string& password) {
-    // Derive key from password
-    auto key = deriveMasterKey(password);
-    
-    // Generate random IV
-    std::vector<uint8_t> iv(16);
-    RAND_bytes(iv.data(), iv.size());
-    
-    // AES-256-CBC encryption
+    std::vector<uint8_t> key(32);
+    std::vector<uint8_t> iv(12);
+    std::vector<uint8_t> salt(16);
+    RAND_bytes(iv.data(), (int)iv.size());
+    RAND_bytes(salt.data(), (int)salt.size());
+
+    PKCS5_PBKDF2_HMAC(password.c_str(), password.length(),
+                      salt.data(), (int)salt.size(), 100000,
+                      EVP_sha256(), 32, key.data());
+
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-    
-    std::vector<uint8_t> encrypted(data.size() + 32); // Extra space for padding
-    int outLen1 = 0, outLen2 = 0;
-    
-    EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, key.data(), iv.data());
-    EVP_EncryptUpdate(ctx, encrypted.data(), &outLen1, data.data(), data.size());
-    EVP_EncryptFinal_ex(ctx, encrypted.data() + outLen1, &outLen2);
-    
+    EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, key.data(), iv.data());
+
+    std::vector<uint8_t> ciphertext(data.size() + 16);
+    int outLen1 = 0;
+    EVP_EncryptUpdate(ctx, ciphertext.data(), &outLen1, data.data(), (int)data.size());
+    int outLen2 = 0;
+    EVP_EncryptFinal_ex(ctx, ciphertext.data() + outLen1, &outLen2);
+    ciphertext.resize(outLen1 + outLen2);
+
+    std::vector<uint8_t> tag(16);
+    EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, tag.data());
     EVP_CIPHER_CTX_free(ctx);
-    
-    // Prepend IV to encrypted data
+
     std::vector<uint8_t> result;
+    result.insert(result.end(), salt.begin(), salt.end());
     result.insert(result.end(), iv.begin(), iv.end());
-    result.insert(result.end(), encrypted.begin(), encrypted.begin() + outLen1 + outLen2);
-    
+    result.insert(result.end(), tag.begin(), tag.end());
+    result.insert(result.end(), ciphertext.begin(), ciphertext.end());
     return result;
 }
 
 std::vector<uint8_t> KeychainManager::decrypt(const std::vector<uint8_t>& encryptedData, const std::string& password) {
-    if (encryptedData.size() < 16) {
+    if (encryptedData.size() < 44) {
         throw KeychainException(KeychainException::ErrorCode::DecryptionError, "Invalid encrypted data");
     }
-    
-    // Derive key from password
-    auto key = deriveMasterKey(password);
-    
-    // Extract IV
-    std::vector<uint8_t> iv(encryptedData.begin(), encryptedData.begin() + 16);
-    std::vector<uint8_t> ciphertext(encryptedData.begin() + 16, encryptedData.end());
-    
-    // AES-256-CBC decryption
+
+    std::vector<uint8_t> salt(encryptedData.begin(), encryptedData.begin() + 16);
+    std::vector<uint8_t> iv(encryptedData.begin() + 16, encryptedData.begin() + 28);
+    std::vector<uint8_t> tag(encryptedData.begin() + 28, encryptedData.begin() + 44);
+    std::vector<uint8_t> ciphertext(encryptedData.begin() + 44, encryptedData.end());
+
+    std::vector<uint8_t> key(32);
+    PKCS5_PBKDF2_HMAC(password.c_str(), password.length(),
+                      salt.data(), (int)salt.size(), 100000,
+                      EVP_sha256(), 32, key.data());
+
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-    
+    EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, key.data(), iv.data());
+
     std::vector<uint8_t> decrypted(ciphertext.size());
-    int outLen1 = 0, outLen2 = 0;
-    
-    EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, key.data(), iv.data());
-    EVP_DecryptUpdate(ctx, decrypted.data(), &outLen1, ciphertext.data(), ciphertext.size());
-    EVP_DecryptFinal_ex(ctx, decrypted.data() + outLen1, &outLen2);
-    
+    int outLen1 = 0;
+    EVP_DecryptUpdate(ctx, decrypted.data(), &outLen1, ciphertext.data(), (int)ciphertext.size());
+
+    EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, tag.data());
+    int outLen2 = 0;
+    int ret = EVP_DecryptFinal_ex(ctx, decrypted.data() + outLen1, &outLen2);
     EVP_CIPHER_CTX_free(ctx);
-    
+
+    if (ret <= 0) {
+        throw KeychainException(KeychainException::ErrorCode::DecryptionError,
+            "Decryption failed: wrong password or corrupted data");
+    }
+
     decrypted.resize(outLen1 + outLen2);
     return decrypted;
 }
@@ -274,23 +286,15 @@ bool KeychainManager::removeFromStorage(const std::string& key) {
 // ============================================================================
 
 std::vector<uint8_t> KeychainManager::deriveMasterKey(const std::string& password) {
-    // Use PBKDF2 for key derivation
-    std::vector<uint8_t> key(32); // 256 bits for AES-256
-    
-    // Salt for derivation (in production, use unique salt per user)
-    std::string salt = "TigerWalletSecureSalt2024";
-    
-    PKCS5_PBKDF2_HMAC(
-        password.c_str(),
-        password.length(),
-        reinterpret_cast<const unsigned char*>(salt.c_str()),
-        salt.length(),
-        100000, // iterations
-        EVP_sha256(),
-        32,
-        key.data()
-    );
-    
+    std::vector<uint8_t> key(32);
+    static std::vector<uint8_t> masterSalt;
+    if (masterSalt.empty()) {
+        masterSalt.resize(16);
+        RAND_bytes(masterSalt.data(), 16);
+    }
+    PKCS5_PBKDF2_HMAC(password.c_str(), password.length(),
+                      masterSalt.data(), (int)masterSalt.size(),
+                      100000, EVP_sha256(), 32, key.data());
     return key;
 }
 

@@ -10,6 +10,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
+use crate::sha3_256;
+
 // ============================================================================
 // Rate Limiter
 // ============================================================================
@@ -178,7 +180,7 @@ impl AntiPhishing {
 // ============================================================================
 
 pub mod zk {
-    use crate::crypto::{sha256, sha3_256};
+    use crate::{sha256, sha3_256};
     
     // Simplified zkSNARK implementation for demonstration
     // Production would use bellman or arkworks
@@ -348,7 +350,7 @@ impl MerkleTree {
         for p in proof {
             let mut combined = Vec::with_capacity(64);
             combined.extend_from_slice(&current);
-            combined.extend_from_slice(p);
+            combined.extend_from_slice(&[*p]);
             current = sha3_256(&combined);
         }
         

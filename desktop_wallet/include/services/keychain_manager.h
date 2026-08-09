@@ -32,13 +32,13 @@ public:
     bool remove(const std::string& key);
     bool exists(const std::string& key);
 
-    // Wallet-specific storage
-    bool saveWalletSeed(const std::string& walletId, const std::string& mnemonic);
-    std::optional<std::string> loadWalletSeed(const std::string& walletId);
+    // Wallet-specific storage (encrypted with AES-256-GCM using user password)
+    bool saveWalletSeed(const std::string& walletId, const std::string& mnemonic, const std::string& password);
+    std::optional<std::string> loadWalletSeed(const std::string& walletId, const std::string& password);
     bool removeWalletSeed(const std::string& walletId);
 
-    bool savePrivateKey(const std::string& walletId, const std::string& privateKey);
-    std::optional<std::string> loadPrivateKey(const std::string& walletId);
+    bool savePrivateKey(const std::string& walletId, const std::string& privateKey, const std::string& password);
+    std::optional<std::string> loadPrivateKey(const std::string& walletId, const std::string& password);
     bool removePrivateKey(const std::string& walletId);
 
     // Session Management

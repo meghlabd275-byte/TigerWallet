@@ -120,6 +120,19 @@ public:
         const std::optional<std::string>& data = std::nullopt
     );
 
+    // Sign and broadcast a transaction with real ECDSA secp256k1 (EIP-155).
+    // Loads the encrypted mnemonic from the keychain, derives the key via
+    // BIP-32/44, signs locally, and broadcasts via eth_sendRawTransaction.
+    std::string signAndSendTransaction(
+        const std::string& walletId,
+        const std::string& password,
+        const std::string& to,
+        const std::string& valueWei,
+        const Chain& chain,
+        uint64_t gasLimit = 21000,
+        const std::optional<std::string>& data = std::nullopt
+    );
+
     // Solana Operations
     double solanaGetBalance(const std::string& address, const Chain& chain);
 

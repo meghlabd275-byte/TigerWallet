@@ -9,7 +9,6 @@
 //! - Multi-sig
 
 use std::collections::HashMap;
-use std::convert::TryInto;
 
 // ============================================================================
 // Error Types
@@ -34,6 +33,12 @@ pub enum BitcoinError {
     
     #[error("Lightning error: {0}")]
     LightningError(String),
+
+    #[error("Network error: {0}")]
+    Network(String),
+
+    #[error("Parse error: {0}")]
+    Parse(String),
 }
 
 pub type Result<T> = std::result::Result<T, BitcoinError>;
@@ -103,9 +108,7 @@ pub struct BitcoinAddress {
 impl BitcoinAddress {
     /// Create from base58check encoding
     pub fn from_base58(base58: &str, network: Network) -> Result<Self> {
-        use base58::FromBase58;
-        
-        let data = base58.from_base58()
+        let data = bs58::decode(base58).into_vec()
             .map_err(|e| BitcoinError::InvalidAddress(e.to_string()))?;
         
         if data.len() < 1 + 20 {
@@ -191,7 +194,7 @@ fn sha256_hash(data: &[u8]) -> Vec<u8> {
 }
 
 fn ripemd160_hash(data: &[u8]) -> Vec<u8> {
-    use ripemd160::Ripemd160;
+    use ripemd::{Ripemd160, Digest};
     let mut hasher = Ripemd160::new();
     hasher.update(data);
     hasher.finalize().to_vec()
@@ -225,6 +228,7 @@ fn bech32_encode(hrp: &str, data: &[u8]) -> String {
 // Transaction Building
 // ============================================================================
 
+#[derive(Clone)]
 pub struct BitcoinTransaction {
     pub version: i32,
     pub inputs: Vec<TxInput>,
@@ -233,17 +237,20 @@ pub struct BitcoinTransaction {
     pub witness: Vec<Vec<Vec<u8>>>, // For SegWit: [input][witness_item][witness_element]
 }
 
+#[derive(Clone)]
 pub struct TxInput {
     pub previous_output: OutPoint,
     pub script_sig: Vec<u8>,
     pub sequence: u32,
 }
 
+#[derive(Clone)]
 pub struct TxOutput {
     pub value: u64,
     pub script_pub_key: Vec<u8>,
 }
 
+#[derive(Clone)]
 pub struct OutPoint {
     pub txid: [u8; 32],
     pub vout: u32,
@@ -520,11 +527,11 @@ impl OrdinalsService {
         let response = client.get(&url)
             .timeout(std::time::Duration::from_secs(10))
             .send()
-            .map_err(|e| Error::Network(e.to_string()))?;
+            .map_err(|e| BitcoinError::Network(e.to_string()))?;
         
         if response.status() == 200 {
             let inscription: serde_json::Value = response.json()
-                .map_err(|e| Error::Parse(e.to_string()))?;
+                .map_err(|e| BitcoinError::Parse(e.to_string()))?;
             
             Ok(OrdinalInscription {
                 id: inscription_id.to_string(),
@@ -823,7 +830,7 @@ impl MultiSigWallet {
         let checksum = double_sha256(&address)[..4].to_vec();
         address.extend_from_slice(&checksum);
         
-        let mut address_b58 = base58::ToBase58::to_base58(&address);
+        let mut address_b58 = bs58::encode(&address).into_string();
         
         Ok(MultiSigWallet {
             threshold,
@@ -862,16 +869,14 @@ impl MultiSigWallet {
 
 fn address_to_script(address: &str) -> Vec<u8> {
     // Simplified - real implementation would decode address
-    use base58::FromBase58;
-    
-    if let Ok(data) = address.from_base58() {
+    if let Ok(data) = bs58::decode(address).into_vec() {
         if data.len() >= 21 {
             let mut script = vec![0x00, 0x14]; // P2PKH script
             script.extend_from_slice(&data[1..21]);
             return script;
         }
     }
-    
+
     Vec::new()
 }
 
@@ -903,7 +908,8 @@ mod tests {
     
     #[test]
     fn test_psbt_sign() {
-        let tx = BitcoinTransaction::new();
+        let mut tx = BitcoinTransaction::new();
+        tx.add_input([0u8; 32], 0, Vec::new());
         let mut psbt = PSBT::new(tx);
         
         psbt.sign(0, &[0u8; 33], &[0u8; 64]);

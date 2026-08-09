@@ -15,16 +15,21 @@ use std::sync::{Arc, RwLock};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 use sha2::{Sha256, Sha512, Digest};
-use k256::ecdsa::{SigningKey, VerifyingKey, Signature, signature::Signer, signature::Verifier};
-use k256::elliptic_curve::sec1::ToEncodedPoint;
-use k256::sha2::Sha256 as K256Sha256;
+use hmac::{Hmac, Mac};
+use k256::ecdsa::{SigningKey, VerifyingKey, Signature as EcdsaSignature, signature::Signer};
+use k256::{Scalar, SecretKey};
+use k256::elliptic_curve::{ops::Reduce, PrimeField};
 use rand::rngs::OsRng;
+use rand::RngCore;
 use aes_gcm::{
     aead::{Aead, KeyInit, OsRng as AesOsRng},
     Aes256Gcm, Nonce,
 };
 use argon2::{Argon2, password_hash::{PasswordHasher, SaltString}};
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use tiny_keccak::{Hasher as KeccakHasher, Keccak};
+use ripemd::Ripemd160;
+
+type HmacSha512 = Hmac<Sha512>;
 
 /// Key pair with REAL cryptographic data
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -177,7 +182,7 @@ impl KeyStore {
         let master_key = self.master_key.read().unwrap();
         let encrypted_private_key = match master_key.as_ref() {
             Some(key) => self.encrypt_private_key(&signing_key.to_bytes().to_vec(), key)?,
-            None => signing_key.to_bytes().to_vec(), // Store raw if no master key (not recommended for production)
+            None => signing_key.to_bytes().to_vec(),
         };
 
         let key_pair = KeyPair {
@@ -209,13 +214,13 @@ impl KeyStore {
         let seed = self.mnemonic_to_seed(&mnemonic, "")?;
         
         // Generate key from seed using BIP-44
-        let (public_key, address) = self.derive_bip44_key(&seed, chain)?;
+        let (public_key, private_key, address) = self.derive_bip44_key(&seed, chain)?;
         
         // Get master key for encryption
         let master_key = self.master_key.read().unwrap();
         let encrypted_private_key = match master_key.as_ref() {
-            Some(key) => self.encrypt_private_key(&seed[..32].to_vec(), key)?,
-            None => seed[..32].to_vec(),
+            Some(key) => self.encrypt_private_key(&private_key, key)?,
+            None => private_key,
         };
 
         let key_pair = KeyPair {
@@ -244,9 +249,10 @@ impl KeyStore {
         let wordlist = include_str!("bip39_wordlist.txt");
         let words: Vec<&str> = wordlist.lines().collect();
         
-        // Calculate checksum
+        // Calculate checksum: for 256 bits of entropy, BIP-39 appends the
+        // first ENT/32 = 8 bits (= 1 byte) of SHA-256(entropy).
         let checksum = Sha256::digest(&entropy);
-        let checksum_bits = &checksum[..4]; // 256/32 = 8 bits
+        let checksum_bits = &checksum[..1]; // 8 checksum bits
         
         // Combine entropy + checksum
         let mut bits = Vec::new();
@@ -273,105 +279,121 @@ impl KeyStore {
         Ok(mnemonic.join(" "))
     }
 
-    /// Convert mnemonic to seed
+    /// Convert mnemonic to seed (BIP-39: PBKDF2-HMAC-SHA512, 2048 iterations)
     fn mnemonic_to_seed(&self, mnemonic: &str, password: &str) -> Result<Vec<u8>, String> {
-        let salt = "mnemonic".to_string() + password;
-        let salt_bytes = salt.as_bytes();
-        
-        // Use PBKDF2 with 2048 iterations
+        let salt = format!("mnemonic{}", password);
         let mut seed = vec![0u8; 64];
-        pbkdf2::pbkdf2::<Sha512>(mnemonic.as_bytes(), salt_bytes, 2048, &mut seed);
-        
+        pbkdf2::pbkdf2_hmac::<Sha512>(mnemonic.as_bytes(), salt.as_bytes(), 2048, &mut seed);
         Ok(seed)
     }
 
     /// Derive BIP-44 key for specific chain
-    fn derive_bip44_key(&self, seed: &[u8], chain: &str) -> Result<(Vec<u8>, String), String> {
+    /// Implements real BIP-32 hierarchical deterministic key derivation using
+    /// HMAC-SHA512, following the path m/44'/coin_type'/0'/0/0 (BIP-44).
+    fn derive_bip44_key(&self, seed: &[u8], chain: &str) -> Result<(Vec<u8>, Vec<u8>, String), String> {
         let chain_type = ChainType::from_str(chain)
             .ok_or_else(|| "Unsupported chain".to_string())?;
-        
-        // Simplified BIP-44 derivation: m/44'/coin_type'/0'/0/0
-        // In production, use proper HMAC-SHA512
-        let mut hasher = Sha512::new();
-        hasher.update(seed);
-        hasher.update(format!("m/44'/{}'/0'/0/0", chain_type.coin_type()).as_bytes());
-        let result = hasher.finalize();
-        
-        // Use first 32 bytes as private key
-        let private_key = result[..32].to_vec();
-        
-        // Generate public key
-        let signing_key = SigningKey::from_bytes(&private_key.try_into().map_err(|_| "Invalid key")?);
+
+        // BIP-32 root key: I = HMAC-SHA512(key="Bitcoin seed", data=seed)
+        // IL = master private key, IR = master chain code
+        let (master_key, master_chain_code) = master_key_from_seed(seed)?;
+
+        // Derivation path: m/44'/coin_type'/0'/0/0
+        let path: Vec<u32> = vec![
+            44 | 0x8000_0000,                       // 44' (hardened)
+            chain_type.coin_type() | 0x8000_0000,   // coin_type' (hardened)
+            0 | 0x8000_0000,                        // 0' (hardened)
+            0,                                       // 0 (non-hardened)
+            0,                                       // 0 (non-hardened)
+        ];
+
+        // Walk the path applying CKDpriv at each level
+        let (private_key, _chain_code): (Vec<u8>, Vec<u8>) = path.iter().try_fold(
+            (master_key, master_chain_code),
+            |(parent_key, parent_code): (Vec<u8>, Vec<u8>), &index| {
+                ckd_priv(&parent_key, &parent_code, index)
+            },
+        )?;
+
+        // Build the signing key from the derived private scalar
+        let signing_key = SigningKey::from_slice(&private_key)
+            .map_err(|e| format!("Invalid derived key: {}", e))?;
         let verifying_key = VerifyingKey::from(&signing_key);
-        let public_key_bytes = verifying_key.to_encoded_point(false);
-        
-        // Derive address
-        let address = self.derive_address(chain, public_key_bytes.as_bytes())?;
-        
-        Ok((public_key_bytes.as_bytes().to_vec(), address))
+        let encoded = verifying_key.to_encoded_point(false);
+        let public_key_bytes = encoded.as_bytes().to_vec();
+
+        let address = self.derive_address(chain, &public_key_bytes)?;
+
+        Ok((public_key_bytes, private_key, address))
     }
 
     /// Derive address from public key based on chain
     fn derive_address(&self, chain: &str, public_key: &[u8]) -> Result<String, String> {
         let chain_type = ChainType::from_str(chain)
             .ok_or_else(|| "Unsupported chain".to_string())?;
-        
-        match chain_type {
-            ChainType::Ethereum | ChainType::Polygon | ChainType::Arbitrum | 
+
+        let address = match chain_type {
+            ChainType::Ethereum | ChainType::Polygon | ChainType::Arbitrum |
              ChainType::Optimism | ChainType::Avalanche | ChainType::BNBChain => {
-                // Ethereum-style address: keccak256(pubkey)[12:]
-                let hash = self.keccak256(&public_key[1..]); // Skip 0x04 prefix
-                format!("0x{}", hex::encode(&hash[12..]))
+                // EVM-style address: keccak256(pubkey_without_prefix)[12:]
+                // public_key is an uncompressed SEC1 key (65 bytes, 0x04 prefix)
+                let payload = if public_key.len() == 65 { &public_key[1..] } else { public_key };
+                let hash = self.keccak256(payload);
+                let addr = &hash[12..];
+                // EIP-55 checksum: capitalize hex letters based on keccak256 of the lowercase hex string
+                let hex_addr = hex::encode(addr);
+                let checksum = self.keccak256(hex_addr.as_bytes());
+                let mut eip55 = String::with_capacity(40);
+                for (i, ch) in hex_addr.chars().enumerate() {
+                    if ch.is_ascii_alphabetic() {
+                        let nibble = (checksum[i / 2] >> (if i % 2 == 0 { 4 } else { 0 })) & 0x0f;
+                        if nibble >= 8 {
+                            eip55.push(ch.to_ascii_uppercase());
+                        } else {
+                            eip55.push(ch);
+                        }
+                    } else {
+                        eip55.push(ch);
+                    }
+                }
+                format!("0x{}", eip55)
             }
             ChainType::Bitcoin => {
-                // Legacy P2PKH address would go here
-                format!("1{}", hex::encode(&public_key[1..21]))
+                // Legacy P2PKH address: base58check(0x00 || RIPEMD160(SHA256(pubkey)))
+                // public_key may be uncompressed (65 bytes, 0x04 prefix) or compressed (33 bytes)
+                let pubkey_payload = public_key;
+                let sha = {
+                    let mut h = Sha256::new();
+                    h.update(pubkey_payload);
+                    h.finalize()
+                };
+                let ripemd = ripemd160(&sha);
+                let mut data = vec![0x00u8];
+                data.extend_from_slice(&ripemd);
+                base58check_encode(&data)
             }
             ChainType::Solana => {
-                // Base58 encode
-                base58::encode(&public_key[1..33])
+                // Solana addresses are the 32-byte ed25519 public key, base58 encoded.
+                // For secp256k1 keys we base58-encode the public key bytes directly.
+                base58_encode(if public_key.len() == 65 { &public_key[1..33] } else { public_key })
             }
             _ => {
-                // Default to Ethereum-style
-                let hash = self.keccak256(&public_key[1..]);
+                // Default to EVM-style
+                let payload = if public_key.len() == 65 { &public_key[1..] } else { public_key };
+                let hash = self.keccak256(payload);
                 format!("0x{}", hex::encode(&hash[12..]))
             }
-        }
+        };
+        Ok(address)
     }
 
-    /// Keccak-256 hash
+    /// Keccak-256 hash (the variant used by Ethereum, NOT SHA3-256)
     fn keccak256(&self, data: &[u8]) -> Vec<u8> {
-        // Proper Keccak-256 implementation
-        // For production, use the keccak crate
-        // This implements the sponge construction
-        
-        let mut sponge = [0u8; 200];
-        
-        // Absorb phase
-        for (i, &byte) in data.iter().enumerate() {
-            sponge[i % 200] ^= byte;
-        }
-        
-        // Squeeze phase - output 32 bytes
-        let mut output = Vec::with_capacity(32);
-        for round in 0..24 {
-            // Keccak-f[1600] permutation rounds
-            for i in 0..200 {
-                sponge[i] = sponge[i].rotate_left(round as u8 + 1);
-                sponge[i] ^= sponge[(i + 1) % 200].wrapping_add((i * 0x9E3779B97F4A7C15 >> (i % 64)) as u8);
-            }
-            
-            if round < 4 {
-                output.push(sponge[round * 8]);
-            }
-        }
-        
-        // Ensure we have 32 bytes
-        while output.len() < 32 {
-            output.push(sponge[output.len() % 200]);
-        }
-        
-        output[..32].to_vec()
+        let mut keccak = Keccak::v256();
+        let mut output = [0u8; 32];
+        keccak.update(data);
+        keccak.finalize(&mut output);
+        output.to_vec()
     }
 
     /// Create Shamir secret sharing shards
@@ -462,17 +484,18 @@ impl KeyStore {
             None => key_pair.encrypted_private_key.clone(),
         };
         
-        // Create signing key
-        let signing_key = SigningKey::from_bytes(&private_key.try_into()
-            .map_err(|_| "Invalid private key")?);
-        
-        // Hash message
+        // Create signing key from the stored private scalar
+        let signing_key = SigningKey::from_slice(&private_key)
+            .map_err(|e| format!("Invalid private key: {}", e))?;
+
+        // Compute the message digest (SHA-256) for record-keeping
         let mut hasher = Sha256::new();
         hasher.update(message.as_bytes());
         let message_hash = hasher.finalize();
-        
-        // Sign
-        let signature: Signature = signing_key.sign(&message_hash);
+
+        // Sign the raw message. k256's Signer<Signature> impl hashes the message
+        // with SHA-256 (RFC6979 deterministic) internally, so we pass the message bytes.
+        let signature: EcdsaSignature = signing_key.sign(message.as_bytes());
         let signature_bytes = signature.to_bytes().to_vec();
         
         let sig = Signature {
@@ -519,51 +542,110 @@ fn current_time() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
 }
 
-// PBKDF2 implementation
-mod pbkdf2 {
-    use sha2::{Sha512, Digest};
-    
-    pub fn pbkdf2<T: Digest>(password: &[u8], salt: &[u8], iterations: usize, output: &mut [u8]) {
-        let mut block = Vec::new();
-        block.extend_from_slice(salt);
-        block.extend_from_slice(&[0, 0, 0, 1]); // Block counter
-        
-        let mut u = {
-            let mut hasher = T::new();
-            hasher.update(password);
-            hasher.update(&block);
-            hasher.finalize()
-        };
-        
-        output.copy_from_slice(&u);
-        
-        for _ in 1..iterations {
-            let mut next_u = T::new();
-            next_u.update(&u);
-            u = next_u.finalize();
-            
-            for (i, byte) in u.iter().enumerate() {
-                output[i] ^= byte;
-            }
-        }
-    }
+/// BIP-32 master key derivation: I = HMAC-SHA512(key="Bitcoin seed", data=seed).
+/// Returns (master_private_key, master_chain_code).
+fn master_key_from_seed(seed: &[u8]) -> Result<(Vec<u8>, Vec<u8>), String> {
+    let mut mac = <HmacSha512 as Mac>::new_from_slice(b"Bitcoin seed")
+        .map_err(|e| format!("HMAC init failed: {}", e))?;
+    mac.update(seed);
+    let i = mac.finalize().into_bytes();
+    Ok((i[..32].to_vec(), i[32..].to_vec()))
 }
 
-// Simple UUID generation
-mod uuid {
-    pub struct Uuid;
-    impl Uuid {
-        pub fn new_v4() -> String {
-            let bytes = rand::random::<[u8; 16]>();
-            format!("{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-                bytes[0], bytes[1], bytes[2], bytes[3],
-                bytes[4], bytes[5],
-                (bytes[6] & 0x0f) | 0x40, bytes[7],
-                (bytes[8] & 0x3f) | 0x80, bytes[9],
-                bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
-            )
+/// BIP-32 CKDpriv: derive a child private key from a parent private key and
+/// parent chain code using HMAC-SHA512.
+///
+/// - Hardened (index >= 0x8000_0000): data = 0x00 || parent_key || index_be
+/// - Non-hardened: data = parent_pubkey || index_be
+///
+/// Returns (child_key, child_chain_code). IL + parent_key mod n = child key.
+fn ckd_priv(parent_key: &[u8], parent_chain_code: &[u8], index: u32) -> Result<(Vec<u8>, Vec<u8>), String> {
+    let mut data: Vec<u8> = Vec::with_capacity(37);
+    if index >= 0x8000_0000 {
+        // Hardened derivation: 0x00 || parent_key (32 bytes)
+        data.push(0x00);
+        data.extend_from_slice(parent_key);
+    } else {
+        // Non-hardened derivation: parent public key (compressed, 33 bytes)
+        let secret = SecretKey::from_slice(parent_key)
+            .map_err(|e| format!("Invalid parent key: {}", e))?;
+        let pubkey = secret.public_key();
+        let compressed = pubkey.to_sec1_bytes();
+        data.extend_from_slice(&compressed);
+    }
+    data.extend_from_slice(&index.to_be_bytes());
+
+    // I = HMAC-SHA512(key = parent_chain_code, data)
+    let mut mac = <HmacSha512 as Mac>::new_from_slice(parent_chain_code)
+        .map_err(|e| format!("HMAC init failed: {}", e))?;
+    mac.update(&data);
+    let i = mac.finalize().into_bytes();
+    let il = k256::FieldBytes::from_slice(&i[..32]);
+    let ir = i[32..].to_vec();
+
+    // child_key = (parse256(IL) + k_parent) mod n
+    // Use the same approach as wallet_core: parse IL as a NonZeroScalar and
+    // add it to the parent key's scalar via SigningKey. reduce_bytes is used
+    // for IL because IL may be >= n and must be reduced mod n (parse256).
+    let il_scalar: Scalar = Reduce::<k256::U256>::reduce_bytes(il);
+    let parent_key_obj = SigningKey::from_bytes(parent_key.into())
+        .map_err(|e| format!("Invalid parent key: {}", e))?;
+    let parent_scalar: &Scalar = parent_key_obj.as_nonzero_scalar();
+    let child_scalar = (*parent_scalar + &il_scalar).to_bytes();
+
+    Ok((child_scalar.to_vec(), ir))
+}
+
+/// RIPEMD-160 digest
+fn ripemd160(data: &[u8]) -> [u8; 20] {
+    let mut hasher = Ripemd160::new();
+    hasher.update(data);
+    let out = hasher.finalize();
+    let mut buf = [0u8; 20];
+    buf.copy_from_slice(&out);
+    buf
+}
+
+const BASE58_ALPHABET: &[u8] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+/// Base58 encode (Bitcoin style, no checksum)
+fn base58_encode(data: &[u8]) -> String {
+    if data.is_empty() {
+        return String::new();
+    }
+    // Count leading zero bytes -> '1' characters
+    let zeros = data.iter().take_while(|&&b| b == 0).count();
+
+    // Convert to base 58
+    let mut digits: Vec<u8> = Vec::new();
+    for &byte in data {
+        let mut carry = byte as u32;
+        for d in digits.iter_mut() {
+            carry += (*d as u32) << 8;
+            *d = (carry % 58) as u8;
+            carry /= 58;
+        }
+        while carry > 0 {
+            digits.push((carry % 58) as u8);
+            carry /= 58;
         }
     }
+
+    let mut out: Vec<u8> = vec![b'1'; zeros];
+    for d in digits.iter().rev() {
+        out.push(BASE58_ALPHABET[*d as usize]);
+    }
+    String::from_utf8(out).expect("base58 alphabet is valid UTF-8")
+}
+
+/// Base58Check encode: base58(payload || first_4_bytes_of(SHA256(SHA256(payload))))
+fn base58check_encode(payload: &[u8]) -> String {
+    let mut checksum_input = Vec::with_capacity(payload.len() * 2);
+    let h1 = Sha256::digest(payload);
+    let h2 = Sha256::digest(&h1);
+    checksum_input.extend_from_slice(payload);
+    checksum_input.extend_from_slice(&h2[..4]);
+    base58_encode(&checksum_input)
 }
 
 fn main() {
@@ -596,4 +678,252 @@ fn main() {
     println!("\nStats: Total={}, MPC={}, Mnemonic={}", total, mpc_count, mnemonic_count);
     
     println!("\nService running on :8084");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // BIP-32 test vector 1 seed (from BIP-32 spec)
+    // seed = 000102030405060708090a0b0c0d0e0f
+    const BIP32_SEED: [u8; 16] = [
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+    ];
+
+    fn hex_to_bytes(s: &str) -> Vec<u8> {
+        hex::decode(s).unwrap()
+    }
+
+    #[test]
+    fn test_bip32_ckdpriv_h0_debug() {
+        let (mk, cc) = master_key_from_seed(&BIP32_SEED).unwrap();
+        let mut mac = <HmacSha512 as Mac>::new_from_slice(&cc).unwrap();
+        let mut data = vec![0x00u8];
+        data.extend_from_slice(&mk);
+        data.extend_from_slice(&(0x8000_0000u32).to_be_bytes());
+        mac.update(&data);
+        let i = mac.finalize().into_bytes();
+        eprintln!("IL = {}", hex::encode(&i[..32]));
+        eprintln!("IR = {}", hex::encode(&i[32..]));
+        let il_scalar: Scalar = Reduce::<k256::U256>::reduce_bytes(k256::FieldBytes::from_slice(&i[..32]));
+        let parent_scalar: Scalar = Scalar::from_repr(k256::FieldBytes::from_slice(&mk).clone()).into_option().unwrap();
+        let child = il_scalar.add(&parent_scalar);
+        eprintln!("child = {}", hex::encode(child.to_bytes()));
+        // expected IR = 47fdacbd0f1097043b78c63c20c34ef4ed9a111d980047ad16282c7ae6236141
+        // expected child = edb2e14f9ee77d26dd93b4ecede8d16ed408ce149b6cd80b0715a2d911a0afea
+    }
+
+    #[test]
+    fn test_bip32_master_key_from_seed() {
+        // BIP-32 test vector 1:
+        // master private key  = e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35
+        // master chain code   = 873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508
+        let (mk, cc) = master_key_from_seed(&BIP32_SEED).unwrap();
+        assert_eq!(
+            hex::encode(&mk),
+            "e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35"
+        );
+        assert_eq!(
+            hex::encode(&cc),
+            "873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508"
+        );
+    }
+
+    #[test]
+    fn test_bip32_ckdpriv_h0() {
+        // m/0' from BIP-32 test vector 1:
+        // priv = edb2e14f9ee77d26dd93b4ecede8d16ed408ce149b6cd80b0715a2d911a0afea
+        // chain code = 47fdacbd0f1097043b78c63c20c34ef4ed9a111d980047ad16282c7ae6236141
+        let (mk, cc) = master_key_from_seed(&BIP32_SEED).unwrap();
+        let (child, child_cc) = ckd_priv(&mk, &cc, 0x8000_0000).unwrap();
+        assert_eq!(
+            hex::encode(&child),
+            "edb2e14f9ee77d26dd93b4ecede8d16ed408ce149b6cd80b0715a2d911a0afea"
+        );
+        assert_eq!(
+            hex::encode(&child_cc),
+            "47fdacbd0f1097043b78c63c20c34ef4ed9a111d980047ad16282c7ae6236141"
+        );
+    }
+
+    #[test]
+    fn test_bip32_ckdpriv_h0_1() {
+        // m/0'/1 from BIP-32 test vector 1 (non-hardened child):
+        // priv = 3c6cb8d0f6a264c91ea8b5030fadaa8e538b020f0a387421a12de9319dc93368
+        // chain code = 2a7857631386ba23dacac34180dd1983734e444fdbf774041578e9b6adb37c19
+        let (mk, cc) = master_key_from_seed(&BIP32_SEED).unwrap();
+        let (h0, cc0) = ckd_priv(&mk, &cc, 0x8000_0000).unwrap();
+        let (child, child_cc) = ckd_priv(&h0, &cc0, 1).unwrap();
+        assert_eq!(
+            hex::encode(&child),
+            "3c6cb8d0f6a264c91ea8b5030fadaa8e538b020f0a387421a12de9319dc93368"
+        );
+        assert_eq!(
+            hex::encode(&child_cc),
+            "2a7857631386ba23dacac34180dd1983734e444fdbf774041578e9b6adb37c19"
+        );
+    }
+
+    #[test]
+    fn test_bip32_derive_path() {
+        // Derive m/0'/1/2'/2 from BIP-32 test vector 1 and compare to the
+        // documented extended private key's private key bytes.
+        // Expected priv (m/0'/1/2'/2):
+        //   0f479245fb19a38a1954c5c7c0ebab2f9bdfd96a17563ef28a6a4b1a2a764ef4
+        let (mk, cc) = master_key_from_seed(&BIP32_SEED).unwrap();
+        let (k0, c0) = ckd_priv(&mk, &cc, 0x8000_0000).unwrap();
+        let (k1, c1) = ckd_priv(&k0, &c0, 1).unwrap();
+        let (k2, c2) = ckd_priv(&k1, &c1, 0x8000_0002).unwrap();
+        let (k2b, _c2b) = ckd_priv(&k2, &c2, 2).unwrap();
+        assert_eq!(
+            hex::encode(&k2b),
+            "0f479245fb19a38a1954c5c7c0ebab2f9bdfd96a17563ef28a6a4b1a2a764ef4"
+        );
+    }
+
+    #[test]
+    fn test_bip44_ethereum_known_vector() {
+        // Mnemonic (BIP-39 test vector, all-entropy "abandon...about"):
+        //   abandon abandon abandon abandon abandon abandon
+        //   abandon abandon abandon abandon abandon about
+        // Empty passphrase. m/44'/60'/0'/0/0 must produce:
+        //   address 0x9858EfFD232B4033E47d90003D41EC34EcaEda94
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let store = KeyStore::new();
+        let seed = store.mnemonic_to_seed(mnemonic, "").unwrap();
+        let (_pub, priv_key, address) = store.derive_bip44_key(&seed, "ethereum").unwrap();
+        // The well-known private key for this path is:
+        //   1ab42cc412b618bdea3a599e3c9bae199ebf030895b039e9db1e30dafb12b727
+        assert_eq!(
+            hex::encode(&priv_key),
+            "1ab42cc412b618bdea3a599e3c9bae199ebf030895b039e9db1e30dafb12b727"
+        );
+        assert_eq!(address, "0x9858EfFD232B4033E47d90003D41EC34EcaEda94");
+    }
+
+    #[test]
+    fn test_bip39_generates_24_words() {
+        let store = KeyStore::new();
+        let mnemonic = store.generate_bip39_mnemonic().unwrap();
+        let words: Vec<&str> = mnemonic.split_whitespace().collect();
+        assert_eq!(words.len(), 24, "BIP-39 256-bit entropy must yield 24 words");
+    }
+
+    #[test]
+    fn test_bip44_bitcoin_address_is_base58check() {
+        // Deriving a Bitcoin address must yield a P2PKH base58check string
+        // starting with '1' and of the expected length (26..35 chars).
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let store = KeyStore::new();
+        let seed = store.mnemonic_to_seed(mnemonic, "").unwrap();
+        let (_pub, _priv, address) = store.derive_bip44_key(&seed, "bitcoin").unwrap();
+        assert!(address.starts_with('1'));
+        assert!(address.len() >= 26 && address.len() <= 35);
+        // Round-trip: the payload (version byte + 20-byte hash) base58-decodes
+        // and the checksum verifies.
+        base58check_decode_verify(&address, 0x00);
+    }
+
+    /// Decode a base58check string and verify its checksum + version byte.
+    fn base58check_decode_verify(addr: &str, expected_version: u8) {
+        let decoded = base58_decode(addr);
+        // 1 version byte + 20 hash bytes + 4 checksum bytes
+        assert_eq!(decoded.len(), 25, "bad base58check length for {}", addr);
+        assert_eq!(decoded[0], expected_version, "bad version byte");
+        let (payload, checksum) = decoded.split_at(21);
+        let h1 = Sha256::digest(payload);
+        let h2 = Sha256::digest(&h1);
+        assert_eq!(&h2[..4], checksum, "base58check checksum mismatch");
+    }
+
+    /// Base58 decode (inverse of base58_encode).
+    fn base58_decode(s: &str) -> Vec<u8> {
+        if s.is_empty() {
+            return Vec::new();
+        }
+        let alphabet: HashMap<u8, u32> = BASE58_ALPHABET
+            .iter()
+            .enumerate()
+            .map(|(i, &c)| (c, i as u32))
+            .collect();
+        // Each leading '1' encodes a leading 0x00 byte (most-significant).
+        let leading_zeros = s.bytes().take_while(|&b| b == b'1').count();
+        // Decode the remaining base58 digits into a big integer stored
+        // little-endian in `bytes` (bytes[0] is the least-significant byte).
+        let mut bytes: Vec<u8> = Vec::new();
+        for ch in s.bytes().skip_while(|&b| b == b'1') {
+            let mut carry = *alphabet.get(&ch).expect("invalid base58 char");
+            for b in bytes.iter_mut() {
+                carry += (*b as u32) * 58;
+                *b = (carry & 0xff) as u8;
+                carry >>= 8;
+            }
+            while carry > 0 {
+                bytes.push((carry & 0xff) as u8);
+                carry >>= 8;
+            }
+        }
+        bytes.reverse();
+        // Prepend the leading zero bytes AFTER accumulating so they are not
+        // consumed as the least-significant byte of the integer.
+        let mut result = vec![0u8; leading_zeros];
+        result.extend_from_slice(&bytes);
+        result
+    }
+
+    #[test]
+    fn test_address_eip55_checksum() {
+        // Known EIP-55 address: keccak of uncompressed pubkey must match the
+        // canonical mixed-case checksum. We verify the canonical example.
+        // Canonical EIP-55: 0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed
+        let addr = "5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+        let store = KeyStore::new();
+        // EIP-55 hashes the LOWERCASE hex address (not the mixed-case form).
+        let lower = addr.to_ascii_lowercase();
+        let checksum = store.keccak256(lower.as_bytes());
+        let mut eip55 = String::with_capacity(40);
+        for (i, ch) in lower.chars().enumerate() {
+            if ch.is_ascii_alphabetic() {
+                let nibble = (checksum[i / 2] >> (if i % 2 == 0 { 4 } else { 0 })) & 0x0f;
+                if nibble >= 8 {
+                    eip55.push(ch.to_ascii_uppercase());
+                } else {
+                    eip55.push(ch);
+                }
+            } else {
+                eip55.push(ch);
+            }
+        }
+        assert_eq!(eip55, addr);
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_roundtrip() {
+        let store = KeyStore::new();
+        store.set_master_key("test_password_roundtrip").unwrap();
+        let master = store.master_key.read().unwrap().clone().unwrap();
+        let plaintext = b"some secret key material 32 bytes!".to_vec();
+        let ct = store.encrypt_private_key(&plaintext, &master).unwrap();
+        let pt = store.decrypt_private_key(&ct, &master).unwrap();
+        assert_eq!(pt, plaintext);
+    }
+
+    #[test]
+    fn test_sign_and_verify() {
+        let store = KeyStore::new();
+        store.set_master_key("sign_password").unwrap();
+        store
+            .generate_mpc_key("k1", "ethereum", 3, 2)
+            .unwrap();
+        let sig = store.sign("k1", "message to sign").unwrap();
+        assert!(!sig.signature.is_empty());
+
+        // Verify the ECDSA signature against the stored public key.
+        let kp = store.get_key("k1").unwrap();
+        let verifying = VerifyingKey::from_sec1_bytes(&kp.public_key).unwrap();
+        let sig_obj = EcdsaSignature::from_slice(&sig.signature).unwrap();
+        use k256::ecdsa::signature::Verifier;
+        verifying.verify(b"message to sign", &sig_obj).unwrap();
+    }
 }

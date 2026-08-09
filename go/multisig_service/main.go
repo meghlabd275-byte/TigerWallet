@@ -3,11 +3,8 @@ package main
 import (
 	"context"
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
@@ -15,15 +12,34 @@ import (
 	"os"
 	"os/signal"
 	"sort"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto/secp256k1"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
-	"github.com/go-redis/redis/v8"
-	"golang.org/x/crypto/sha3"
+	"github.com/redis/go-redis/v9"
 )
+
+// ABI type aliases used for execute() calldata encoding.
+var (
+	typeAddress = abi.Type{}
+	typeUint256 = abi.Type{}
+	typeBytes   = abi.Type{}
+)
+
+func init() {
+	// Resolve ABI types once at startup.
+	typeAddress, _ = abi.NewType("address", "", nil)
+	typeUint256, _ = abi.NewType("uint256", "", nil)
+	typeBytes, _ = abi.NewType("bytes", "", nil)
+}
 
 // ============================================================================
 // Configuration
@@ -32,6 +48,7 @@ import (
 type Config struct {
 	Port      string
 	RedisURL  string
+	RpcURL    string
 	ChainID   int64
 }
 
@@ -39,6 +56,8 @@ func LoadConfig() *Config {
 	return &Config{
 		Port:     getEnv("PORT", "8450"),
 		RedisURL: getEnv("REDIS_URL", "redis://localhost:6379"),
+		// Public Ethereum endpoint; override ETH_RPC_URL with a private/archive node.
+		RpcURL:   getEnv("ETH_RPC_URL", "https://ethereum-rpc.publicnode.com"),
 		ChainID:  1,
 	}
 }
@@ -111,20 +130,40 @@ type MultiSigService struct {
 }
 
 func NewMultiSigService(config *Config) *MultiSigService {
-	redisClient := redis.NewClient(&redis.Options{
-		Addr: config.RedisURL,
-	})
+	redisOpts, err := redis.ParseURL(config.RedisURL)
+	if err != nil {
+		// Fall back to a plain address if REDIS_URL is not a full redis:// URL.
+		redisOpts = &redis.Options{Addr: config.RedisURL}
+	}
+	redisClient := redis.NewClient(redisOpts)
 
-	// Generate deployment key
-	privateKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	// Deployment/relayer key: real secp256k1 (Ethereum) key, generated locally.
+	// For production deployments, supply the key via ETH_RELAYER_PRIVATE_KEY
+	// instead of relying on the generated ephemeral key.
+	privateKey, err := loadRelayerKey()
+	if err != nil {
+		log.Fatalf("failed to load relayer key: %v", err)
+	}
 
 	return &MultiSigService{
-		config:         config,
-		redis:          redisClient,
-		wallets:        make(map[string]*MultiSigWallet),
-		transactions:   make(map[string]*TransactionRequest),
-		privateKey:     privateKey,
+		config:       config,
+		redis:        redisClient,
+		wallets:      make(map[string]*MultiSigWallet),
+		transactions: make(map[string]*TransactionRequest),
+		privateKey:   privateKey,
 	}
+}
+
+// loadRelayerKey returns the secp256k1 private key used to broadcast the
+// multisig wallet's transactions. It reads ETH_RELAYER_PRIVATE_KEY from the
+// environment (hex, optionally 0x-prefixed). If unset, a fresh ephemeral key is
+// generated so the service is still operational, though its address will have no
+// funds to pay for gas.
+func loadRelayerKey() (*ecdsa.PrivateKey, error) {
+	if hexKey := os.Getenv("ETH_RELAYER_PRIVATE_KEY"); hexKey != "" {
+		return crypto.HexToECDSA(strings.TrimPrefix(hexKey, "0x"))
+	}
+	return crypto.GenerateKey()
 }
 
 // ============================================================================
@@ -333,11 +372,20 @@ func (s *MultiSigService) ExecuteTransaction(txID string) (string, error) {
 		return "", fmt.Errorf("transaction not approved")
 	}
 
+	if !s.VerifySignatures(tx) {
+		tx.Status = StatusFailed
+		return "", fmt.Errorf("signature verification failed")
+	}
+
 	// Build execute data
 	executeData := s.buildExecuteData(tx)
 
-	// In production, would broadcast to network
-	txHash := s.broadcastTransaction(wallet.Address, tx.To, tx.Value, executeData)
+	// Broadcast to a real Ethereum node via JSON-RPC.
+	txHash, err := s.broadcastTransaction(wallet.Address, tx.To, tx.Value, executeData)
+	if err != nil {
+		tx.Status = StatusFailed
+		return "", fmt.Errorf("broadcast failed: %w", err)
+	}
 
 	tx.Status = StatusExecuted
 	tx.ExecutedAt = time.Now().Unix()
@@ -398,37 +446,216 @@ func (s *MultiSigService) GetPendingTransactions(walletID string) []*Transaction
 // Crypto Helpers
 // ============================================================================
 
+// computeAddress derives the multisig wallet's Ethereum address from the
+// relayer's secp256k1 public key. Real EIP-55 checksummed address, derived as
+// keccak256(pubkey[1:])[-20:].
 func (s *MultiSigService) computeAddress(owners []string, threshold uint) string {
-	// Simplified address computation
-	data := fmt.Sprintf("%s:%d:%v", strings.Join(owners, ","), threshold, owners)
-	hash := sha256.Sum256([]byte(data))
-	return "0x" + hex.EncodeToString(hash[:20])
+	addr := crypto.PubkeyToAddress(s.privateKey.PublicKey)
+	return addr.Hex()
 }
 
+// buildExecuteData encodes the calldata forwarded to the multisig wallet
+// contract's execute() entrypoint. The destination, value and payload are
+// ABI-encoded; the signatures collected from owners are appended for on-chain
+// verification (EIP-1271-style). Returns the raw calldata bytes.
 func (s *MultiSigService) buildExecuteData(tx *TransactionRequest) []byte {
-	// EIP-1271 magic value
-	magicValue := "0x1626ba7e"
-	
-	// Encode parameters
-	// In production, would properly encode the transaction data
-	return []byte(magicValue)
+	toAddr := common.HexToAddress(tx.To)
+	valueWei, ok := new(big.Int).SetString(tx.Value, 10)
+	if !ok {
+		valueWei = new(big.Int)
+	}
+	dataBytes, _ := hex.DecodeString(strings.TrimPrefix(tx.Data, "0x"))
+
+	args := struct {
+		To    common.Address
+		Value *big.Int
+		Data  []byte
+	}{To: toAddr, Value: valueWei, Data: dataBytes}
+
+	enc, err := encodeExecuteArgs(args, tx.Signatures)
+	if err != nil {
+		// Should not happen with the types above; fall back to the raw payload.
+		return dataBytes
+	}
+	return enc
 }
 
-func (s *MultiSigService) broadcastTransaction(from, to, value string, data []byte) string {
-	// Simplified - would broadcast to network
-	txHash := sha256.Sum256([]byte(from + to + value + string(data)))
-	return "0x" + hex.EncodeToString(txHash[:])
+// broadcastTransaction signs and submits a real transaction to an Ethereum
+// node over JSON-RPC. It connects to ETH_RPC_URL (env), fetches the pending
+// nonce and suggested gas price, estimates gas, signs with the relayer's
+// secp256k1 key via crypto.Sign, and submits with eth_sendRawTransaction.
+// Returns the real 32-byte transaction hash.
+func (s *MultiSigService) broadcastTransaction(from, to, value string, data []byte) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	client, err := ethclient.Dial(s.config.RpcURL)
+	if err != nil {
+		return "", fmt.Errorf("dial rpc: %w", err)
+	}
+	defer client.Close()
+
+	fromAddr := crypto.PubkeyToAddress(s.privateKey.PublicKey)
+	_ = from // accepted for API compatibility; the relayer address is derived from the key
+
+	nonce, err := client.PendingNonceAt(ctx, fromAddr)
+	if err != nil {
+		return "", fmt.Errorf("nonce: %w", err)
+	}
+
+	valueWei, ok := new(big.Int).SetString(value, 10)
+	if !ok {
+		valueWei = new(big.Int)
+	}
+
+	toAddr := common.HexToAddress(to)
+	gasLimit := uint64(210000) // conservative default; sufficient for contract exec + transfer
+	if gasEstimate, err := client.EstimateGas(ctx, ethereumCall(fromAddr, toAddr, valueWei, data)); err == nil {
+		// Pad the estimate ~20% to avoid edge-case reverts on broadcast.
+		gasLimit = gasEstimate * 120 / 100
+		if gasLimit < 21000 {
+			gasLimit = 21000
+		}
+	}
+
+	chainID := big.NewInt(s.config.ChainID)
+	gasPrice, err := client.SuggestGasPrice(ctx)
+	if err != nil {
+		return "", fmt.Errorf("gas price: %w", err)
+	}
+	tip, err := client.SuggestGasTipCap(ctx)
+	if err != nil {
+		tip = gasPrice
+	}
+	feeCap := new(big.Int).Add(gasPrice, tip)
+
+	signer := types.NewLondonSigner(chainID)
+	tx := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     nonce,
+		To:        &toAddr,
+		Value:     valueWei,
+		Gas:       gasLimit,
+		GasFeeCap: feeCap,
+		GasTipCap: tip,
+		Data:      data,
+	})
+
+	signedTx, err := types.SignTx(tx, signer, s.privateKey)
+	if err != nil {
+		return "", fmt.Errorf("sign tx: %w", err)
+	}
+
+	if err := client.SendTransaction(ctx, signedTx); err != nil {
+		return "", fmt.Errorf("send raw transaction: %w", err)
+	}
+
+	return signedTx.Hash().Hex(), nil
 }
 
+// SignHash performs a real ECDSA secp256k1 signature over the provided 32-byte
+// hash using the relayer private key via go-ethereum's crypto.Sign. The returned
+// (v, r, s) are the Ethereum-style signature components: v is normalized to 27
+// or 28 (legacy parity bit), and r/s are hex-encoded 32-byte big-endian values.
+// crypto.Sign produces a low-s signature and a recovery id (0/1); we add 27 to
+// the recovery id to match the Signature struct's legacy v convention.
 func (s *MultiSigService) SignHash(owner string, hash []byte) (uint8, string, string, error) {
-	// Simplified signature - in production would use actual private key
-	r := sha256.Sum256(hash)
-	sig := sha3.New256()
-	sig.Write(r[:])
-	sig.Write([]byte(owner))
-	signature := sig.Sum(nil)
+	_ = owner // owner is tracked at the wallet layer; signing uses the relayer key.
+	if len(hash) != 32 {
+		return 0, "", "", fmt.Errorf("hash must be 32 bytes, got %d", len(hash))
+	}
 
-	return 27, hex.EncodeToString(signature[:32]), hex.EncodeToString(signature[32:]), nil
+	sig, err := crypto.Sign(hash, s.privateKey)
+	if err != nil {
+		return 0, "", "", fmt.Errorf("sign: %w", err)
+	}
+
+	// crypto.Sign returns crypto.SignatureLength (65 bytes): r[32] || s[32] || v[1]
+	if len(sig) != crypto.SignatureLength {
+		return 0, "", "", fmt.Errorf("unexpected signature length %d", len(sig))
+	}
+
+	v := sig[64]
+	// go-ethereum's recovery id is 0/1; EIP-2 mandates low-s, which crypto.Sign
+	// already enforces. Convert to the legacy Ethereum parity convention.
+	if v == 0 || v == 1 {
+		v += 27
+	}
+
+	r := hex.EncodeToString(sig[:32])
+	sVal := hex.EncodeToString(sig[32:64])
+	return v, r, sVal, nil
+}
+
+// VerifySignatures verifies every collected owner signature against the
+// transaction hash using real secp256k1 ECDSA recovery (crypto.Ecrecover),
+// rejecting high-s and malformed signatures.
+func (s *MultiSigService) VerifySignatures(tx *TransactionRequest) bool {
+	digest := s.transactionDigest(tx)
+	for _, sig := range tx.Signatures {
+		rBytes, err := hex.DecodeString(strings.TrimPrefix(sig.R, "0x"))
+		if err != nil || len(rBytes) != 32 {
+			return false
+		}
+		sBytes, err := hex.DecodeString(strings.TrimPrefix(sig.S, "0x"))
+		if err != nil || len(sBytes) != 32 {
+			return false
+		}
+
+		// EIP-2: enforce low-s to prevent signature malleability.
+		sVal := new(big.Int).SetBytes(sBytes)
+		secpHalfN := new(big.Int).Rsh(secp256k1.S256().N, 1)
+		if sVal.Cmp(secpHalfN) == 1 {
+			return false
+		}
+
+		v := sig.V
+		if v == 27 || v == 28 {
+			v -= 27
+		} else if v != 0 && v != 1 {
+			return false
+		}
+
+		sigBytes := make([]byte, 65)
+		copy(sigBytes[:32], rBytes)
+		copy(sigBytes[32:64], sBytes)
+		sigBytes[64] = v
+
+		pubKey, err := crypto.Ecrecover(digest, sigBytes)
+		if err != nil {
+			return false
+		}
+		recoveredAddr := crypto.PubkeyToAddress(toECDSAPubKey(pubKey))
+		if !strings.EqualFold(recoveredAddr.Hex(), sig.Owner) {
+			return false
+		}
+	}
+	return true
+}
+
+// transactionDigest returns the 32-byte keccak256 digest that owners sign over
+// for this transaction request (EIP-712-style structured hash).
+func (s *MultiSigService) transactionDigest(tx *TransactionRequest) []byte {
+	wallet, ok := s.wallets[tx.WalletID]
+	if !ok {
+		return crypto.Keccak256(nil)
+	}
+	var chainID big.Int
+	chainID.SetUint64(uint64(wallet.ChainID))
+	to := common.HexToAddress(tx.To)
+	value, ok := new(big.Int).SetString(tx.Value, 10)
+	if !ok {
+		value = new(big.Int)
+	}
+	data, _ := hex.DecodeString(strings.TrimPrefix(tx.Data, "0x"))
+	return crypto.Keccak256(
+		common.LeftPadBytes(chainID.Bytes(), 32),
+		common.LeftPadBytes(big.NewInt(int64(tx.Nonce)).Bytes(), 32),
+		common.LeftPadBytes(to.Bytes(), 32),
+		common.LeftPadBytes(value.Bytes(), 32),
+		common.LeftPadBytes(new(big.Int).SetUint64(uint64(len(data))).Bytes(), 32),
+		data,
+	)
 }
 
 // ============================================================================
@@ -446,7 +673,7 @@ func (s *MultiSigService) VerifyTransaction(tx *TransactionRequest) (bool, error
 		return false, fmt.Errorf("not enough signatures")
 	}
 
-	// Verify each signature
+	// Verify each signature cryptographically against the wallet owner set.
 	for _, sig := range tx.Signatures {
 		isOwner := false
 		for _, owner := range wallet.Owners {
@@ -460,7 +687,7 @@ func (s *MultiSigService) VerifyTransaction(tx *TransactionRequest) (bool, error
 		}
 	}
 
-	return true, nil
+	return s.VerifySignatures(tx), nil
 }
 
 // ============================================================================
@@ -677,6 +904,71 @@ func (s *MultiSigService) handleGetPendingTransactions(c *gin.Context) {
 
 	txs := s.GetPendingTransactions(id)
 	c.JSON(http.StatusOK, gin.H{"transactions": txs})
+}
+
+// ============================================================================
+// ABI / ethereum helpers
+// ============================================================================
+
+// ethereumCall builds an ethereum.CallMsg for gas estimation.
+func ethereumCall(from, to common.Address, value *big.Int, data []byte) ethereum.CallMsg {
+	return ethereum.CallMsg{
+		From:     from,
+		To:       &to,
+		GasPrice: big.NewInt(0),
+		Value:    value,
+		Data:     data,
+	}
+}
+
+// toECDSAPubKey converts the 65-byte uncompressed pubkey returned by
+// crypto.Ecrecover into an ecdsa.PublicKey on secp256k1.
+func toECDSAPubKey(uncompressed []byte) ecdsa.PublicKey {
+	if len(uncompressed) == 0 {
+		return ecdsa.PublicKey{}
+	}
+	pub, err := crypto.UnmarshalPubkey(uncompressed)
+	if err != nil || pub == nil {
+		return ecdsa.PublicKey{}
+	}
+	return *pub
+}
+
+// encodeExecuteArgs ABI-encodes the execute() calldata (to, value, data) and
+// appends the owner signatures so the on-chain wallet can verify them.
+func encodeExecuteArgs(args struct {
+	To    common.Address
+	Value *big.Int
+	Data  []byte
+}, signatures []Signature) ([]byte, error) {
+	arguments := abi.Arguments{
+		{Type: typeAddress},
+		{Type: typeUint256},
+		{Type: typeBytes},
+	}
+	packed, err := arguments.Pack(args.To, args.Value, args.Data)
+	if err != nil {
+		return nil, fmt.Errorf("abi pack: %w", err)
+	}
+
+	// Append the (v,r,s,owner) signature tuples for on-chain verification.
+	for _, sig := range signatures {
+		rBytes, err := hex.DecodeString(strings.TrimPrefix(sig.R, "0x"))
+		if err != nil {
+			return nil, err
+		}
+		sBytes, err := hex.DecodeString(strings.TrimPrefix(sig.S, "0x"))
+		if err != nil {
+			return nil, err
+		}
+		rFixed := common.LeftPadBytes(rBytes, 32)
+		sFixed := common.LeftPadBytes(sBytes, 32)
+		packed = append(packed, byte(sig.V))
+		packed = append(packed, rFixed...)
+		packed = append(packed, sFixed...)
+		packed = append(packed, []byte(sig.Owner)...)
+	}
+	return packed, nil
 }
 
 // ============================================================================

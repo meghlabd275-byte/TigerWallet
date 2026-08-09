@@ -77,7 +77,7 @@ annual
 another
 answer
 antenna
-anticipate
+antique
 anxiety
 any
 apart
@@ -101,6 +101,7 @@ arrest
 arrive
 arrow
 art
+artefact
 artist
 artwork
 ask
@@ -185,7 +186,7 @@ blade
 blame
 blanket
 blast
-blaze
+bleak
 bless
 blind
 blood
@@ -311,6 +312,7 @@ chat
 cheap
 check
 cheese
+chef
 cherry
 chest
 chicken
@@ -418,6 +420,7 @@ crowd
 crucial
 cruel
 cruise
+crumble
 crunch
 crush
 cry
@@ -525,6 +528,7 @@ dove
 draft
 dragon
 drama
+drastic
 draw
 dream
 dress
@@ -562,8 +566,7 @@ educate
 effort
 egg
 eight
-eject
-elastic
+either
 elbow
 elder
 electric
@@ -762,6 +765,7 @@ garage
 garbage
 garden
 garlic
+garment
 gas
 gasp
 gate
@@ -833,7 +837,7 @@ half
 hammer
 hamster
 hand
-handle
+happy
 harbor
 hard
 harsh
@@ -868,7 +872,10 @@ holiday
 hollow
 home
 honey
-honor
+hood
+hope
+horn
+horror
 horse
 hospital
 host
@@ -928,7 +935,6 @@ input
 inquiry
 insane
 insect
-insert
 inside
 inspire
 install
@@ -1067,9 +1073,7 @@ magnet
 maid
 mail
 main
-maintain
 major
-majority
 make
 mammal
 man
@@ -1106,10 +1110,7 @@ melody
 melt
 member
 memory
-men
-mend
-mental
-mentor
+mention
 menu
 mercy
 merge
@@ -1134,6 +1135,7 @@ misery
 miss
 mistake
 mix
+mixed
 mixture
 mobile
 model
@@ -1425,12 +1427,9 @@ rate
 rather
 raven
 raw
-reach
-react
-read
+razor
+ready
 real
-realm
-rear
 reason
 rebel
 rebuild
@@ -1439,7 +1438,6 @@ receive
 recipe
 record
 recycle
-red
 reduce
 reflect
 reform
@@ -1455,7 +1453,6 @@ rely
 remain
 remember
 remind
-remote
 remove
 render
 renew
@@ -1464,11 +1461,7 @@ reopen
 repair
 repeat
 replace
-reply
 report
-represent
-reproduce
-public
 require
 rescue
 resemble
@@ -1549,6 +1542,7 @@ scene
 scheme
 school
 science
+scissors
 scorpion
 scout
 scrap
@@ -1761,8 +1755,6 @@ swamp
 swap
 swarm
 swear
-sweat
-sweep
 sweet
 swift
 swim
@@ -1824,6 +1816,7 @@ tissue
 title
 toast
 tobacco
+today
 toddler
 toe
 together
@@ -1938,7 +1931,9 @@ van
 vanish
 vapor
 various
-vegan
+vast
+vault
+vehicle
 velvet
 vendor
 venture
@@ -1975,7 +1970,6 @@ voyage
 wage
 wagon
 wait
-wake
 walk
 wall
 walnut

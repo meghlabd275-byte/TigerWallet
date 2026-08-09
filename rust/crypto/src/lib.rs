@@ -1,5 +1,5 @@
 //! TigerWallet Crypto Library - High-Speed Cryptographic Operations
-//! 
+//!
 //! This module provides fast cryptographic functions for:
 //! - Key generation and derivation
 //! - Signing and verification
@@ -10,8 +10,6 @@
 //! - Bitcoin, Ordinals, Lightning, Stacks support
 //! - Analytics and reporting
 //! - Security features
-
-use std::ops::Deref;
 
 pub mod advanced_encryption;
 pub mod mnemonic;
@@ -27,21 +25,34 @@ pub mod security_module;
 pub enum CryptoError {
     #[error("Invalid key: {0}")]
     InvalidKey(String),
-    
+
     #[error("Signing failed: {0}")]
     SigningFailed(String),
-    
+
     #[error("Verification failed: {0}")]
     VerificationFailed(String),
-    
+
     #[error("Invalid address: {0}")]
     InvalidAddress(String),
-    
+
     #[error("Encoding error: {0}")]
     EncodingError(String),
 }
 
 pub type Result<T> = std::result::Result<T, CryptoError>;
+
+// ============================================================================
+// Secure Random
+// ============================================================================
+
+/// Generate cryptographically secure random bytes
+pub fn generate_secure_random(len: usize) -> std::result::Result<Vec<u8>, String> {
+    use rand::rngs::OsRng;
+    use rand::RngCore;
+    let mut buf = vec![0u8; len];
+    OsRng.fill_bytes(&mut buf);
+    Ok(buf)
+}
 
 // ============================================================================
 // Hash Functions
@@ -63,10 +74,11 @@ pub fn sha3_256(data: &[u8]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-/// Keccak-256 (Ethereum style)
+/// Keccak-256 (Ethereum style, uses sha3 crate's Keccak256 which is real Keccak)
 pub fn keccak256(data: &[u8]) -> [u8; 32] {
-    use keccak::{Keccak, digest::Digest};
-    let mut hasher = Keccak::new_keccak_256();
+    use sha3::Keccak256;
+    use sha3::Digest;
+    let mut hasher = Keccak256::new();
     hasher.update(data);
     hasher.finalize().into()
 }
@@ -81,7 +93,7 @@ pub fn blake2b(data: &[u8], output_len: usize) -> Vec<u8> {
 
 /// RIPEMD-160 hash
 pub fn ripemd160(data: &[u8]) -> [u8; 20] {
-    use ripemd160::Ripemd160;
+    use ripemd::{Ripemd160, Digest};
     let mut hasher = Ripemd160::new();
     hasher.update(data);
     let result = hasher.finalize();
@@ -96,11 +108,11 @@ pub fn ripemd160(data: &[u8]) -> [u8; 20] {
 pub fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
     use hmac::{Hmac, Mac};
     type HmacSha256 = Hmac<sha2::Sha256>;
-    
+
     let mut mac = HmacSha256::new_from_slice(key)
         .expect("HMAC can take key of any size");
     mac.update(data);
-    
+
     let result = mac.finalize();
     result.into_bytes().into()
 }
@@ -109,7 +121,7 @@ pub fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
 pub fn pbkdf2_sha256(password: &[u8], salt: &[u8], iterations: u32) -> [u8; 32] {
     use pbkdf2::pbkdf2_hmac_array;
     use sha2::Sha256;
-    
+
     pbkdf2_hmac_array::<Sha256, 32>(password, salt, iterations)
 }
 
@@ -117,7 +129,7 @@ pub fn pbkdf2_sha256(password: &[u8], salt: &[u8], iterations: u32) -> [u8; 32] 
 pub fn pbkdf2_sha512(password: &[u8], salt: &[u8], iterations: u32) -> [u8; 64] {
     use pbkdf2::pbkdf2_hmac_array;
     use sha2::Sha512;
-    
+
     pbkdf2_hmac_array::<Sha512, 64>(password, salt, iterations)
 }
 
@@ -129,21 +141,22 @@ pub fn pbkdf2_sha512(password: &[u8], salt: &[u8], iterations: u32) -> [u8; 64] 
 pub fn generate_private_key() -> [u8; 32] {
     use secp256k1::SecretKey;
     use rand::rngs::OsRng;
-    
-    SecretKey::generate(&mut OsRng).0
+
+    SecretKey::new(&mut OsRng).secret_bytes()
 }
 
 /// Get public key from private key
 pub fn private_to_public(private_key: &[u8; 32]) -> [u8; 64] {
-    use secp256k1::{PublicKey, SecretKey};
-    
+    use secp256k1::{PublicKey, SecretKey, Secp256k1};
+
+    let secp = Secp256k1::new();
     let secret = SecretKey::from_slice(private_key)
         .expect("32 bytes");
-    let public = PublicKey::from_secret_key(&secret);
-    
+    let public = PublicKey::from_secret_key(&secp, &secret);
+
     let serialized = public.serialize_uncompressed();
     // Skip first byte (0x04), take next 64 bytes
-    [serialized[1..65].try_into().unwrap()]
+    serialized[1..65].try_into().unwrap()
 }
 
 /// Get Ethereum address from public key
@@ -162,61 +175,55 @@ pub fn private_to_eth_address(private_key: &[u8; 32]) -> String {
 
 /// Sign message (EIP-191 format)
 pub fn sign_message(message: &[u8], private_key: &[u8; 32]) -> Result<(String, String)> {
-    use secp256k1::{SecretKey, Message, SignableHash, Signature};
-    
+    use secp256k1::{SecretKey, Message, Secp256k1};
+
+    let secp = Secp256k1::new();
     let secret = SecretKey::from_slice(private_key)
         .map_err(|e| CryptoError::SigningFailed(e.to_string()))?;
-    
-    // Create message hash (EIP-191)
+
     let prefix = format!("\x19Ethereum Signed Message:\n{}", message.len());
     let message_hash = keccak256(format!("{}{}", prefix, String::from_utf8_lossy(message)).as_bytes());
-    
-    let msg = SignableHash::from_raw(&message_hash);
-    let signature = secret.sign_ecdsa(msg);
-    
-    let r = signature.r().to_bytes();
-    let s = signature.s().to_bytes();
-    
-    let mut sig = Vec::with_capacity(64);
-    sig.extend_from_slice(&r);
-    sig.extend_from_slice(&s);
-    
+
+    let msg = Message::from_slice(&message_hash)
+        .map_err(|e| CryptoError::SigningFailed(e.to_string()))?;
+    let signature = secp.sign_ecdsa(&msg, &secret);
+
+    let sig_bytes = signature.serialize_compact();
+
     Ok((
-        format!("0x{}", hex::encode(sig)),
+        format!("0x{}", hex::encode(sig_bytes)),
         format!("0x{}", hex::encode(message_hash))
     ))
 }
 
 /// Recover address from signature
 pub fn recover_address(message: &[u8], signature: &[u8; 65]) -> Result<String> {
-    use secp256k1::{Message, SignableHash, RecoveryId, Signature};
-    
-    // Parse signature
+    use secp256k1::{Message, Secp256k1, ecdsa::{RecoveryId, RecoverableSignature}};
+
     if signature[64] > 3 {
         return Err(CryptoError::VerificationFailed("Invalid recovery id".to_string()));
     }
-    
-    let r = &signature[..32];
-    let s = &signature[32..64];
+
+    let secp = Secp256k1::new();
+    let sig_bytes: [u8; 64] = signature[..64].try_into().unwrap();
     let v = signature[64];
-    
-    let sig = Signature::from_compact(r, s)
+
+    let recovery_id = RecoveryId::from_i32(v as i32)
         .map_err(|e| CryptoError::VerificationFailed(e.to_string()))?;
-    let recovery_id = RecoveryId::from_raw(v)
+    let sig = RecoverableSignature::from_compact(&sig_bytes, recovery_id)
         .map_err(|e| CryptoError::VerificationFailed(e.to_string()))?;
-    
-    // Create message hash
+
     let prefix = format!("\x19Ethereum Signed Message:\n{}", message.len());
     let message_hash = keccak256(format!("{}{}", prefix, String::from_utf8_lossy(message)).as_bytes());
-    let msg = SignableHash::from_raw(&message_hash);
-    
-    // Recover public key
-    let public = secp256k1::recover(&msg, &sig, &recovery_id)
+    let msg = Message::from_slice(&message_hash)
         .map_err(|e| CryptoError::VerificationFailed(e.to_string()))?;
-    
+
+    let public = secp.recover_ecdsa(&msg, &sig)
+        .map_err(|e| CryptoError::VerificationFailed(e.to_string()))?;
+
     let serialized = public.serialize_uncompressed();
     let address = public_to_eth_address(&serialized[1..65].try_into().unwrap());
-    
+
     Ok(address)
 }
 
@@ -259,14 +266,12 @@ pub fn is_valid_sol_address(address: &str) -> bool {
 
 /// Base58 encode
 pub fn base58_encode(data: &[u8]) -> String {
-    use base58::ToBase58;
-    data.to_base58()
+    bs58::encode(data).into_string()
 }
 
 /// Base58 decode
 pub fn base58_decode(data: &str) -> Result<Vec<u8>> {
-    use base58::FromBase58;
-    data.from_base58()
+    bs58::decode(data).into_vec()
         .map_err(|e| CryptoError::EncodingError(e.to_string()))
 }
 
@@ -304,13 +309,13 @@ pub fn encode_function_call(function: &str, params: &[&[u8]]) -> String {
     // Calculate function selector (first 4 bytes of keccak256)
     let selector = keccak256(function.as_bytes());
     let selector_hex = format!("0x{}", hex::encode(&selector[..4]));
-    
+
     // Encode parameters
     let mut encoded = selector_hex;
     for param in params {
         encoded.push_str(&hex::encode(param));
     }
-    
+
     encoded
 }
 
@@ -320,14 +325,14 @@ pub fn decode_function_call(data: &str) -> Result<(String, Vec<Vec<u8>>)> {
     if data.len() < 8 {
         return Err(CryptoError::EncodingError("Data too short".to_string()));
     }
-    
+
     // First 4 bytes = function selector
     let selector = &data[..8];
     let params_hex = &data[8..];
-    
+
     // Return selector as function name (would need ABI lookup in production)
     let func_name = format!("0x{}", selector);
-    
+
     // Decode parameters (32 bytes each)
     let mut params = Vec::new();
     for chunk in params_hex.as_bytes().chunks(64) {
@@ -337,7 +342,7 @@ pub fn decode_function_call(data: &str) -> Result<(String, Vec<Vec<u8>>)> {
             }
         }
     }
-    
+
     Ok((func_name, params))
 }
 
@@ -349,13 +354,12 @@ pub fn decode_function_call(data: &str) -> Result<(String, Vec<Vec<u8>>)> {
 pub fn aes256_cbc_encrypt(plaintext: &[u8], key: &[u8; 32], iv: &[u8; 16]) -> Result<Vec<u8>> {
     use aes::Aes256;
     use cbc::{Encryptor, cipher::{BlockEncryptMut, KeyIvInit}};
-    
+
     type Aes256Cbc = Encryptor<Aes256>;
-    
+
     let cipher = Aes256Cbc::new(key.into(), iv.into());
-    let ciphertext = cipher.encrypt_padded_vec_mut::<aes::cipher::block_padding::NoPadding>(plaintext.to_vec())
-        .map_err(|e| CryptoError::EncodingError(e.to_string()))?;
-    
+    let ciphertext = cipher.encrypt_padded_vec_mut::<aes::cipher::block_padding::NoPadding>(plaintext);
+
     Ok(ciphertext)
 }
 
@@ -363,11 +367,11 @@ pub fn aes256_cbc_encrypt(plaintext: &[u8], key: &[u8; 32], iv: &[u8; 16]) -> Re
 pub fn aes256_cbc_decrypt(ciphertext: &[u8], key: &[u8; 32], iv: &[u8; 16]) -> Result<Vec<u8>> {
     use aes::Aes256;
     use cbc::{Decryptor, cipher::{BlockDecryptMut, KeyIvInit}};
-    
+
     type Aes256Cbc = Decryptor<Aes256>;
-    
+
     let cipher = Aes256Cbc::new(key.into(), iv.into());
-    cipher.decrypt_padded_vec_mut::<aes::cipher::block_padding::NoPadding>(ciphertext.to_vec())
+    cipher.decrypt_padded_vec_mut::<aes::cipher::block_padding::NoPadding>(ciphertext)
         .map_err(|e| CryptoError::EncodingError(e.to_string()))
 }
 
@@ -378,14 +382,14 @@ pub fn aes256_cbc_decrypt(ciphertext: &[u8], key: &[u8; 32], iv: &[u8; 16]) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_sha256() {
         let data = b"hello";
         let hash = sha256(data);
         assert_eq!(hash.len(), 32);
     }
-    
+
     #[test]
     fn test_keccak256() {
         let data = b"";
@@ -393,22 +397,22 @@ mod tests {
         // Known empty string keccak256
         assert_eq!(hash.len(), 32);
     }
-    
+
     #[test]
     fn test_address_generation() {
         let private_key = generate_private_key();
         let address = private_to_eth_address(&private_key);
-        
+
         assert!(address.starts_with("0x"));
         assert_eq!(address.len(), 42);
     }
-    
+
     #[test]
     fn test_address_validation() {
         assert!(is_valid_eth_address("0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E"));
         assert!(!is_valid_eth_address("0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1"));
     }
-    
+
     #[test]
     fn test_base58() {
         let data = b"Hello, TigerWallet!";
@@ -416,7 +420,7 @@ mod tests {
         let decoded = base58_decode(&encoded).unwrap();
         assert_eq!(data.to_vec(), decoded);
     }
-    
+
     #[test]
     fn test_base64() {
         let data = b"Hello, TigerWallet!";
@@ -424,7 +428,7 @@ mod tests {
         let decoded = base64_decode(&encoded).unwrap();
         assert_eq!(data.to_vec(), decoded);
     }
-    
+
     #[test]
     fn test_hex() {
         let data = b"Hello";
@@ -432,19 +436,21 @@ mod tests {
         let decoded = hex_decode(&encoded).unwrap();
         assert_eq!(data.to_vec(), decoded);
     }
-    
+
     #[test]
     fn test_aes_cbc() {
         let key = [0u8; 32];
         let iv = [0u8; 16];
-        let plaintext = b"Hello, TigerWallet!";
-        
-        let ciphertext = aes256_cbc_encrypt(plaintext, &key, &iv).unwrap();
+        let plaintext = b"Hello, TigerWallet!!"; // 20 bytes -> pad to 32 (block multiple with NoPadding)
+        let mut pt = plaintext.to_vec();
+        pt.resize(32, 0);
+
+        let ciphertext = aes256_cbc_encrypt(&pt, &key, &iv).unwrap();
         let decrypted = aes256_cbc_decrypt(&ciphertext, &key, &iv).unwrap();
-        
-        assert_eq!(plaintext.to_vec(), decrypted);
+
+        assert_eq!(pt, decrypted);
     }
-    
+
     #[test]
     fn test_hmac() {
         let key = b"secret";
@@ -452,7 +458,7 @@ mod tests {
         let result = hmac_sha256(key, data);
         assert_eq!(result.len(), 32);
     }
-    
+
     #[test]
     fn test_pbkdf2() {
         let password = b"password";

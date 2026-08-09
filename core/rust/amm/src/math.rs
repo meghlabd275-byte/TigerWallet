@@ -4,29 +4,32 @@
 //! All calculations are self-contained with no external dependencies
 
 use num_bigint::{BigUint, BigInt};
-use num_traits::{One, Zero};
+use num_integer::Integer;
+use num_traits::{One, ToPrimitive, Zero};
+use std::sync::LazyLock;
 
 /// Q96 constant (2^96)
-pub const Q96: BigUint = BigUint::from(1u64) << 96;
+pub static Q96: LazyLock<BigUint> = LazyLock::new(|| BigUint::from(1u64) << 96);
 /// Q128 constant (2^128)
-pub const Q128: BigUint = BigUint::from(1u64) << 128;
+pub static Q128: LazyLock<BigUint> = LazyLock::new(|| BigUint::from(1u64) << 128);
 /// Q192 constant (2^192)
-pub const Q192: BigUint = BigUint::from(1u64) << 192;
+pub static Q192: LazyLock<BigUint> = LazyLock::new(|| BigUint::from(1u64) << 192);
 /// Max uint256
-pub const MAX_UINT256: BigUint = BigUint::parse_bytes(
-    b"115792089237316195423570985008687907853269984665640564039457584007913129639935",
-    10
-).unwrap();
+pub static MAX_UINT256: LazyLock<BigUint> = LazyLock::new(|| {
+    BigUint::parse_bytes(
+        b"115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        10,
+    )
+    .unwrap()
+});
 /// Max uint160 (for sqrt price)
-pub const MAX_UINT160: BigUint = BigUint::parse_bytes(
-    b"1461501637330902918203684832716283019655932542976",
-    10
-).unwrap();
+pub static MAX_UINT160: LazyLock<BigUint> = LazyLock::new(|| {
+    BigUint::parse_bytes(b"1461501637330902918203684832716283019655932542976", 10).unwrap()
+});
 /// Max uint128
-pub const MAX_UINT128: BigUint = BigUint::parse_bytes(
-    b"340282366920938463463374607431768211455",
-    10
-).unwrap();
+pub static MAX_UINT128: LazyLock<BigUint> = LazyLock::new(|| {
+    BigUint::parse_bytes(b"340282366920938463463374607431768211455", 10).unwrap()
+});
 
 /// Full math library for precise calculations
 pub struct FullMath;
@@ -68,7 +71,7 @@ impl FullMath {
 
     /// Safe cast to u128 (returns None if overflow)
     pub fn to_u128(value: &BigUint) -> Option<u128> {
-        if value > &MAX_UINT128 {
+        if value > &*MAX_UINT128 {
             None
         } else {
             value.to_u128()
@@ -172,8 +175,8 @@ impl PriceMath {
 
     /// Get tick from sqrt price
     pub fn get_tick_at_sqrt_price(sqrt_price_x96: &BigUint) -> i32 {
-        if sqrt_price_x96 < &Q96 {
-            let ratio = &Q96 / sqrt_price_x96;
+        if sqrt_price_x96 < &*Q96 {
+            let ratio = &*Q96 / sqrt_price_x96;
             let msb = BitMath::most_significant_bit(&ratio);
             -((msb as i32 - 96) * 2 + 1)
         } else {
@@ -196,7 +199,7 @@ impl PriceMath {
         };
 
         let numerator1 = liquidity * Q96.clone();
-        let numerator2 = ratio_b - ratio_a;
+        let numerator2 = &ratio_b - &ratio_a;
 
         if round_up {
             FullMath::mul_div_rounding_up(
@@ -223,9 +226,9 @@ impl PriceMath {
         };
 
         if round_up {
-            FullMath::mul_div_rounding_up(liquidity, &(ratio_b - ratio_a), &Q96)
+            FullMath::mul_div_rounding_up(liquidity, &(ratio_b - ratio_a), &*Q96)
         } else {
-            FullMath::mul_div_floor(liquidity, &(ratio_b - ratio_a), &Q96)
+            FullMath::mul_div_floor(liquidity, &(ratio_b - ratio_a), &*Q96)
         }
     }
 

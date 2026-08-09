@@ -4,7 +4,6 @@
 
 use parking_lot::RwLock;
 use std::collections::{BTreeMap, HashMap};
-use std::sync::Arc;
 
 // ============================================================================
 // Constants
@@ -310,17 +309,17 @@ impl OrderBookEngine {
             .ok_or("Order book not found")?;
 
         let opposite_side = order.side.opposite();
-        let book_side = match opposite_side {
-            OrderSide::Bid => &mut book.asks,
-            OrderSide::Ask => &mut book.bids,
-        };
-
         let mut remaining = order.size - order.filled;
 
-        // Walk through price levels
+        // Collect price levels first (immutable borrow ends before the mutable borrow below)
         let prices: Vec<u64> = match opposite_side {
             OrderSide::Bid => book.asks.keys().cloned().collect(),
             OrderSide::Ask => book.bids.keys().cloned().rev().collect(),
+        };
+
+        let book_side = match opposite_side {
+            OrderSide::Bid => &mut book.asks,
+            OrderSide::Ask => &mut book.bids,
         };
 
         for price in prices {
@@ -341,7 +340,7 @@ impl OrderBookEngine {
 
             let mut i = 0;
             while i < level.len() && remaining > 0 {
-                let maker_order = &level[i];
+                let maker_order = &mut level[i];
 
                 if maker_order.user == order.user {
                     i += 1;
@@ -448,8 +447,9 @@ impl OrderBookEngine {
             .map(|(p, o)| (*p, o.iter().map(|x| x.size - x.filled).sum()))
             .collect();
 
-        let spread = if let (Some(&best_bid), Some(&best_ask)) = (bids.first(), asks.first()) {
-            best_ask - best_bid
+        let best_bid_price = bids.first().map(|(p, _)| *p).unwrap_or(1u64);
+        let spread = if let (Some(&(best_bid, _)), Some(&(best_ask, _))) = (bids.first(), asks.first()) {
+            best_ask.saturating_sub(best_bid)
         } else {
             0
         };
@@ -459,7 +459,9 @@ impl OrderBookEngine {
             bids,
             asks,
             spread,
-            spread_bps: if spread > 0 { (spread as f64 / bids.first().map(|p| *p as f64).unwrap_or(1.0) * 10000.0) as u64 } else { 0 },
+            spread_bps: if spread > 0 {
+                (spread as f64 / best_bid_price as f64 * 10000.0) as u64
+            } else { 0 },
             last_update_id: book.last_update_id,
         }
     }

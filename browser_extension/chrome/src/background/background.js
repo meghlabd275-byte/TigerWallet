@@ -9,6 +9,21 @@ const WALLET_STATE_KEY = 'tigerwallet_state';
 const RPC_CONFIG_KEY = 'tigerwallet_rpc';
 const CHAIN_CONFIG_KEY = 'tigerwallet_chains';
 
+// Go wallet-api backend (real BIP-39/32, secp256k1, keccak256, ECDSA signing,
+// broadcasting). Default port matches wallet_api's WALLET_API_PORT (8443).
+const WALLET_API_URL = 'http://localhost:8443';
+
+// Auth state (JWT issued by the backend's /api/v1/auth/* endpoints). Cached in
+// memory + chrome.storage.local so it survives service-worker restarts.
+let authToken = null;
+const AUTH_TOKEN_KEY = 'tigerwallet_auth_token';
+const AUTH_USER_KEY = 'tigerwallet_auth_user';
+
+// In-memory cache of the wallet password for the duration of a signing request.
+// The password is never persisted; it is only used to unlock the server-side
+// encrypted seed for /api/v1/send and /api/v1/sign.
+let cachedWalletPassword = null;
+
 // Default RPC endpoints for major chains
 const DEFAULT_RPC = {
   ethereum: 'https://eth.llamarpc.com',
@@ -135,9 +150,12 @@ class CryptoUtils {
     return Array.from(bytes);
   }
   
-  // Address derivation must be provided by the audited wallet-core bridge.
+  // Address derivation from a public key (secp256k1 + keccak256) is performed
+  // server-side by the wallet-api. There is no synchronous client-side path
+  // that can do real secp256k1/keccak256; callers must use the async backend
+  // wallet creation flow (WalletManager.createWallet) instead.
   static publicKeyToAddress(_publicKey) {
-    throw new Error('Address derivation is unavailable until the canonical wallet-core bridge is connected.');
+    throw new Error('Address derivation is performed by the wallet-api backend. Create or import the wallet via WalletManager to obtain a real address.');
   }
   
   // Validate Ethereum address
@@ -151,16 +169,28 @@ class CryptoUtils {
 // ============================================================================
 
 class KeyDerivation {
+  // BIP-39 seed derivation (PBKDF2-HMAC-SHA512 over the mnemonic) happens
+  // server-side in the Go wallet-api (go-bip39). The browser cannot reproduce it
+  // reliably without shipping a WASM crypto bundle, so callers must delegate to
+  // WalletManager.createWallet/importWallet, which call POST /api/v1/wallets.
   static async mnemonicToSeed(_mnemonic, _password = '') {
-    throw new Error('Mnemonic derivation is unavailable until the canonical wallet-core bridge is connected.');
+    throw new Error('BIP-39 seed derivation is performed by the wallet-api backend. Use WalletManager.createWallet/importWallet, which call POST /api/v1/wallets.');
   }
-  
+
+  // BIP-32 HD key derivation is performed server-side by the wallet-api
+  // (go-ethereum/accounts DerivationPath). Callers obtain a real derived
+  // address via the backend wallet creation flow.
   static async deriveKey(_seed, _path) {
-    throw new Error('HD key derivation is unavailable until the canonical wallet-core bridge is connected.');
+    throw new Error('BIP-32 HD key derivation is performed by the wallet-api backend. Use WalletManager.createWallet/importWallet, which call POST /api/v1/wallets.');
   }
-  
+
+  // Generates a real BIP-39 mnemonic by creating a wallet on the backend with
+  // no supplied mnemonic (the Go server calls bip39.NewEntropy/NewMnemonic).
+  // Returns the mnemonic string (returned once on creation).
   static async generateMnemonic() {
-    throw new Error('Mnemonic generation is unavailable until the canonical wallet-core bridge is connected.');
+    const password = await generateSecurePassword();
+    const result = await createWalletViaBackend('Generated Wallet', password, 1);
+    return result.mnemonic;
   }
 }
 
@@ -169,122 +199,112 @@ class KeyDerivation {
 // ============================================================================
 
 class WalletManager {
-  // Create new wallet
+  // Create a new wallet via the Go wallet-api backend (real BIP-39 mnemonic,
+  // real BIP-32/44 HD derivation, real secp256k1 key, keccak256 address,
+  // encrypted seed stored server-side). The mnemonic is returned once.
   static async createWallet(password) {
-    const mnemonic = await KeyDerivation.generateMnemonic();
-    const seed = await KeyDerivation.mnemonicToSeed(mnemonic, password);
-    
-    // Derive addresses for all supported chains
-    const addresses = {};
-    const chains = ['ethereum', 'bsc', 'polygon', 'arbitrum', 'optimism', 'base', 'avalanche', 'fantom'];
-    
-    for (const chain of chains) {
-      const key = await KeyDerivation.deriveKey(seed, `m/44'/60'/0'/0/0`);
-      // Simplified address generation
-      const hash = await CryptoUtils.keccak256(JSON.stringify(Array.from(key)));
-      addresses[chain] = '0x' + hash.slice(-40);
+    if (!password || password.length < 8) {
+      throw new Error('Password must be at least 8 characters');
     }
-    
-    // Save wallet state
+    cachedWalletPassword = password;
+
+    const result = await createWalletViaBackend('TigerWallet', password, 1);
+    const address = result.address;
+
+    // The same EVM private key drives the address on every EVM-compatible
+    // chain we support, so mirror the real derived address across them.
+    const addresses = {};
+    for (const chain of ['ethereum', 'bsc', 'polygon', 'arbitrum', 'optimism', 'base', 'avalanche', 'fantom']) {
+      addresses[chain] = address;
+    }
+
     walletState = {
       isUnlocked: true,
       currentChain: 'ethereum',
+      walletId: result.id,
+      derivationPath: result.derivation_path,
       addresses,
       balances: {},
       transactions: [],
-      encryptedMnemonic: await CryptoUtils.encrypt(mnemonic, password),
+      // The mnemonic is sensitive; keep it in memory only long enough to show
+      // it once in the popup, then it must be cleared by the caller.
+      mnemonic: result.mnemonic,
     };
-    
+
     await saveState();
     return walletState;
   }
-  
-  // Import wallet from mnemonic
+
+  // Import an existing wallet from a mnemonic via the backend, which validates
+  // the BIP-39 checksum and derives the real address server-side.
   static async importWallet(mnemonic, password) {
-    // Validate mnemonic
+    if (!mnemonic) {
+      throw new Error('Mnemonic is required');
+    }
     const words = mnemonic.trim().split(/\s+/);
-    if (words.length !== 12 && words.length !== 24) {
+    if (words.length !== 12 && words.length !== 15 && words.length !== 18 && words.length !== 21 && words.length !== 24) {
       throw new Error('Invalid mnemonic length');
     }
-    
-    const seed = await KeyDerivation.mnemonicToSeed(mnemonic, password);
-    
-    // Derive addresses
-    const addresses = {};
-    const chains = ['ethereum', 'bsc', 'polygon', 'arbitrum', 'optimism', 'base', 'avalanche', 'fantom'];
-    
-    for (const chain of chains) {
-      const key = await KeyDerivation.deriveKey(seed, `m/44'/60'/0'/0/0`);
-      const hash = await CryptoUtils.keccak256(JSON.stringify(Array.from(key)));
-      addresses[chain] = '0x' + hash.slice(-40);
+    if (!password || password.length < 8) {
+      throw new Error('Password must be at least 8 characters');
     }
-    
+    cachedWalletPassword = password;
+
+    const result = await importWalletViaBackend(mnemonic, 'TigerWallet', password, 1);
+    const address = result.address;
+
+    const addresses = {};
+    for (const chain of ['ethereum', 'bsc', 'polygon', 'arbitrum', 'optimism', 'base', 'avalanche', 'fantom']) {
+      addresses[chain] = address;
+    }
+
     walletState = {
       isUnlocked: true,
       currentChain: 'ethereum',
+      walletId: result.id,
+      derivationPath: result.derivation_path,
       addresses,
       balances: {},
       transactions: [],
-      encryptedMnemonic: await CryptoUtils.encrypt(mnemonic, password),
     };
-    
+
     await saveState();
     return walletState;
   }
-  
-  // Import wallet from private key
+
+  // Import a wallet from a raw private key. The wallet-api backend persists
+  // wallets by BIP-39 mnemonic + HD derivation path (real BIP-32/44), so it has
+  // no endpoint that accepts a raw secp256k1 private key directly. We surface a
+  // clear, actionable error rather than fabricating a fake address/signature.
   static async importPrivateKey(privateKey, password) {
-    // Remove 0x prefix
     const key = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
-    
-    // Validate hex
     if (!/^[a-fA-F0-9]{64}$/.test(key)) {
       throw new Error('Invalid private key');
     }
-    
-    // Derive address from private key
-    const publicKey = await this.privateKeyToPublicKey(privateKey);
-    const address = CryptoUtils.publicKeyToAddress(publicKey);
-    
-    walletState = {
-      isUnlocked: true,
-      currentChain: 'ethereum',
-      addresses: { ethereum: address },
-      balances: {},
-      transactions: [],
-      privateKey: await CryptoUtils.encrypt(privateKey, password),
-    };
-    
-    await saveState();
-    return walletState;
+    if (!password || password.length < 8) {
+      throw new Error('Password must be at least 8 characters');
+    }
+    throw new Error(
+      'Raw private key import is not supported by the wallet-api backend, which persists wallets by BIP-39 mnemonic + HD path. Import the mnemonic that generated this key via WalletManager.importWallet, or add a private-key import endpoint to the Go backend.'
+    );
   }
-  
-  // Unlock wallet with password
+
+  // Unlock the wallet by verifying the password against the backend. We perform
+  // a personal_sign of a sentinel message: the backend returns 401 on an
+  // incorrect password before it ever signs, so this is a safe password check
+  // that does NOT broadcast any transaction. The verified password is then
+  // cached in memory for subsequent signing/broadcast calls in this session.
   static async unlockWallet(password) {
     await loadState();
-    
-    if (!walletState.encryptedMnemonic && !walletState.privateKey) {
+    if (!walletState.walletId) {
       throw new Error('No wallet found');
     }
-    
+    if (!password || password.length < 8) {
+      throw new Error('Invalid password');
+    }
     try {
-      if (walletState.encryptedMnemonic) {
-        const mnemonic = await CryptoUtils.decrypt(walletState.encryptedMnemonic, password);
-        const seed = await KeyDerivation.mnemonicToSeed(mnemonic, password);
-        
-        // Re-derive addresses
-        const chains = ['ethereum', 'bsc', 'polygon', 'arbitrum', 'optimism', 'base', 'avalanche', 'fantom'];
-        for (const chain of chains) {
-          const key = await KeyDerivation.deriveKey(seed, `m/44'/60'/0'/0/0`);
-          const hash = await CryptoUtils.keccak256(JSON.stringify(Array.from(key)));
-          walletState.addresses[chain] = '0x' + hash.slice(-40);
-        }
-      } else if (walletState.privateKey) {
-        const privateKey = await CryptoUtils.decrypt(walletState.privateKey, password);
-        const publicKey = await this.privateKeyToPublicKey(privateKey);
-        walletState.addresses.ethereum = CryptoUtils.publicKeyToAddress(publicKey);
-      }
-      
+      await signMessageViaBackend(walletState.walletId, password, 'TigerWallet unlock verification');
+      cachedWalletPassword = password;
       walletState.isUnlocked = true;
       await saveState();
       return walletState;
@@ -292,20 +312,21 @@ class WalletManager {
       throw new Error('Invalid password');
     }
   }
-  
+
   // Lock wallet
   static lockWallet() {
     walletState.isUnlocked = false;
+    cachedWalletPassword = null;
     saveState();
     return true;
   }
-  
+
   // Get current address
   static getAddress(chain = null) {
     const targetChain = chain || walletState.currentChain;
     return walletState.addresses[targetChain] || '';
   }
-  
+
   // Switch chain
   static switchChain(chainId) {
     if (!CHAIN_CONFIG[chainId]) {
@@ -315,87 +336,41 @@ class WalletManager {
     saveState();
     return walletState;
   }
-  
-  // Sign transaction (simplified)
+
+  // Sign and broadcast a real transaction via the backend's /api/v1/send
+  // endpoint (real ECDSA signing + nonce/gas fetch + broadcast).
   static async signTransaction(tx) {
     if (!walletState.isUnlocked) {
       throw new Error('Wallet is locked');
     }
-    
-    // In production, this would:
-    // 1. Build proper transaction
-    // 2. Sign with private key
-    // 3. Return signed transaction
-    
-    const txHash = await CryptoUtils.keccak256(JSON.stringify(tx) + Date.now());
-    return '0x' + txHash;
+    if (!walletState.walletId) {
+      throw new Error('No wallet loaded');
+    }
+    const password = cachedWalletPassword || await getWalletPassword();
+    const chainId = tx.chainId ? parseInt(tx.chainId, 16) : 1;
+    const result = await sendTransactionViaBackend(
+      walletState.walletId,
+      password,
+      tx.to,
+      tx.value || '0',
+      chainId,
+      tx.data || '0x'
+    );
+    return result.tx_hash;
   }
-  
-  // Sign message
+
+  // Sign a message via the backend's real ECDSA personal_sign endpoint
+  // (keccak256("\x19Ethereum Signed Message:\n" + len + msg)).
   static async signMessage(message) {
     if (!walletState.isUnlocked) {
       throw new Error('Wallet is locked');
     }
-    
-    const signature = await CryptoUtils.keccak256(message + Date.now());
-    return '0x' + signature;
-  }
-  
-  // Encrypt data
-  static async encrypt(data, password) {
-    const encoder = new TextEncoder();
-    const dataBuffer = encoder.encode(JSON.stringify(data));
-    const keyBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(password));
-    
-    const iv = await CryptoUtils.randomBytes(16);
-    const key = await crypto.subtle.importKey(
-      'raw',
-      keyBuffer,
-      { name: 'AES-GCM' },
-      false,
-      ['encrypt']
-    );
-    
-    const encrypted = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv },
-      key,
-      dataBuffer
-    );
-    
-    return JSON.stringify({
-      iv: Array.from(iv),
-      data: Array.from(new Uint8Array(encrypted)),
-    });
-  }
-  
-  // Decrypt data
-  static async decrypt(encryptedData, password) {
-    const { iv, data } = JSON.parse(encryptedData);
-    const encoder = new TextEncoder();
-    const keyBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(password));
-    
-    const key = await crypto.subtle.importKey(
-      'raw',
-      keyBuffer,
-      { name: 'AES-GCM' },
-      false,
-      ['decrypt']
-    );
-    
-    const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: new Uint8Array(iv) },
-      key,
-      new Uint8Array(data)
-    );
-    
-    const decoder = new TextDecoder();
-    return JSON.parse(decoder.decode(decrypted));
-  }
-  
-  // Get private key from public key (simplified - NOT real crypto)
-  static async privateKeyToPublicKey(privateKey) {
-    const hash = await CryptoUtils.keccak256(privateKey);
-    return '0x04' + hash.repeat(4).slice(0, 128);
+    if (!walletState.walletId) {
+      throw new Error('No wallet loaded');
+    }
+    const password = cachedWalletPassword || await getWalletPassword();
+    const result = await signMessageViaBackend(walletState.walletId, password, message);
+    return result.signature;
   }
 }
 
@@ -604,6 +579,195 @@ class EventEmitter {
 }
 
 // ============================================================================
+// WALLET-API BACKEND WIRING
+// All crypto (BIP-39/32, secp256k1, keccak256, ECDSA signing, broadcasting)
+// happens server-side in the Go wallet-api. These helpers are the only way the
+// extension touches keys.
+// ============================================================================
+
+// Load the cached JWT (if any) from chrome.storage.local on startup.
+async function loadAuthToken() {
+  try {
+    const data = await chrome.storage.local.get(AUTH_TOKEN_KEY);
+    if (data[AUTH_TOKEN_KEY]) {
+      authToken = data[AUTH_TOKEN_KEY];
+    }
+  } catch (e) { /* storage may be unavailable in some contexts */ }
+}
+
+async function setAuthToken(token, user = null) {
+  authToken = token;
+  const payload = { [AUTH_TOKEN_KEY]: token };
+  if (user) payload[AUTH_USER_KEY] = user;
+  await chrome.storage.local.set(payload);
+}
+
+async function clearAuthToken() {
+  authToken = null;
+  await chrome.storage.local.remove([AUTH_TOKEN_KEY, AUTH_USER_KEY]);
+}
+
+function getAuthHeaders() {
+  return authToken ? { Authorization: `Bearer ${authToken}` } : {};
+}
+
+// Low-level fetch wrapper for the wallet-api. Throws with the server's `error`
+// field on non-2xx responses so callers can surface a meaningful message.
+async function backendFetch(path, options = {}) {
+  const url = `${WALLET_API_URL}${path}`;
+  const res = await fetch(url, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders(), ...(options.headers || {}) },
+  });
+  let body = null;
+  try { body = await res.json(); } catch (e) { /* non-JSON body */ }
+  if (!res.ok) {
+    const msg = (body && body.error) || `wallet-api error ${res.status}`;
+    throw new Error(msg);
+  }
+  return body;
+}
+
+// Register a new wallet-api user account and cache the returned JWT. The
+// wallet-api's protected routes (/api/v1/wallets, /api/v1/send, /api/v1/sign)
+// all require a Bearer token, so we register/login once and reuse the token.
+async function registerViaBackend(email, username, password) {
+  const result = await backendFetch('/api/v1/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ email, username, password }),
+    headers: {}, // intentionally no auth header on register/login
+  });
+  if (result && result.token) {
+    await setAuthToken(result.token, result.user_id || result.user);
+  }
+  return result;
+}
+
+// Log in an existing wallet-api user and cache the returned JWT.
+async function loginViaBackend(email, password) {
+  const result = await backendFetch('/api/v1/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+    headers: {},
+  });
+  if (result && result.token) {
+    await setAuthToken(result.token, result.user);
+  }
+  return result;
+}
+
+// Ensure we have an auth token before calling a protected route. If none is
+// cached, throw a clear error directing the caller to register/login first.
+async function requireAuthToken() {
+  if (!authToken) {
+    await loadAuthToken();
+  }
+  if (!authToken) {
+    throw new Error('Not authenticated with the wallet-api backend. Register or log in via /api/v1/auth first.');
+  }
+  return authToken;
+}
+
+// Create a real wallet on the backend (POST /api/v1/wallets). When no mnemonic
+// is supplied, the Go server generates a real BIP-39 mnemonic (256 bits of
+// entropy) and derives the address via BIP-32/44 + secp256k1 + keccak256.
+async function createWalletViaBackend(label, password, chainId = 1) {
+  await requireAuthToken();
+  return backendFetch('/api/v1/wallets', {
+    method: 'POST',
+    body: JSON.stringify({ label, password, chain_id: chainId }),
+  });
+}
+
+// Import an existing mnemonic via the backend. The Go server validates the
+// BIP-39 checksum, derives the seed (PBKDF2-HMAC-SHA512), and derives the real
+// address server-side.
+async function importWalletViaBackend(mnemonic, label, password, chainId = 1) {
+  await requireAuthToken();
+  return backendFetch('/api/v1/wallets', {
+    method: 'POST',
+    body: JSON.stringify({ mnemonic, label, password, chain_id: chainId }),
+  });
+}
+
+// Sign + broadcast a real transaction via POST /api/v1/send. The backend fetches
+// the nonce/gas price, signs with the real secp256k1 key (EIP-155), and
+// broadcasts the raw tx to the chain's RPC endpoint. Returns { tx_hash, ... }.
+async function sendTransactionViaBackend(walletId, password, to, value, chainId, data) {
+  await requireAuthToken();
+  return backendFetch('/api/v1/send', {
+    method: 'POST',
+    body: JSON.stringify({
+      wallet_id: walletId,
+      password,
+      to,
+      value,
+      chain_id: chainId,
+      data: data || '0x',
+    }),
+  });
+}
+
+// Sign a message via POST /api/v1/sign. The backend performs a real ECDSA
+// personal_sign: keccak256("\x19Ethereum Signed Message:\n" + len + msg).
+// Returns { signature: "0x..." }.
+async function signMessageViaBackend(walletId, password, message) {
+  await requireAuthToken();
+  return backendFetch('/api/v1/sign', {
+    method: 'POST',
+    body: JSON.stringify({ wallet_id: walletId, password, message }),
+  });
+}
+
+// Fetch the real on-chain balance for an address via the backend's read-only
+// balance endpoint (no auth required). Returns { address, balance, ... }.
+async function getBalanceViaBackend(address, chainId) {
+  return backendFetch(`/api/v1/public/balance?address=${encodeURIComponent(address)}&chain_id=${chainId}`);
+}
+
+// Fetch real transaction history for an address via the backend's read-only
+// transactions endpoint.
+async function getTransactionsViaBackend(address, chainId) {
+  return backendFetch(`/api/v1/public/transactions?address=${encodeURIComponent(address)}&chain_id=${chainId}`);
+}
+
+// Generate a cryptographically-secure random password (32 hex chars) using the
+// Web Crypto API. Used only by KeyDerivation.generateMnemonic, which creates a
+// throwaway server-side wallet purely to obtain a fresh BIP-39 mnemonic.
+async function generateSecurePassword() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Prompt the user for their wallet password via the popup. The password is kept
+// in memory only for the duration of the signing request and is never
+// persisted. Used when no password is cached (e.g. signing after a restart).
+async function getWalletPassword() {
+  return new Promise((resolve, reject) => {
+    chrome.windows.create({
+      url: chrome.runtime.getURL('src/popup/popup.html?action=password'),
+      type: 'popup',
+      width: 360,
+      height: 480,
+    }, (win) => {
+      const listener = (msg) => {
+        if (msg && msg.type === 'PASSWORD_SUBMIT' && msg.password) {
+          chrome.runtime.onMessage.removeListener(listener);
+          resolve(msg.password);
+          chrome.windows.remove(win.id).catch(() => {});
+        } else if (msg && msg.type === 'PASSWORD_CANCEL') {
+          chrome.runtime.onMessage.removeListener(listener);
+          reject(new Error('User cancelled password entry'));
+          chrome.windows.remove(win.id).catch(() => {});
+        }
+      };
+      chrome.runtime.onMessage.addListener(listener);
+    });
+  });
+}
+
+// ============================================================================
 // MESSAGE HANDLING
 // ============================================================================
 
@@ -614,6 +778,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       let result;
       
       switch (message.type) {
+        // Auth (wallet-api JWT)
+        case 'REGISTER':
+          result = await registerViaBackend(message.email, message.username, message.password);
+          break;
+
+        case 'LOGIN':
+          result = await loginViaBackend(message.email, message.password);
+          break;
+
+        case 'LOGOUT':
+          await clearAuthToken();
+          result = true;
+          break;
+
+        case 'GET_AUTH_STATE':
+          await loadAuthToken();
+          result = { authenticated: !!authToken };
+          break;
+
         // Wallet operations
         case 'CREATE_WALLET':
           result = await WalletManager.createWallet(message.password);
@@ -662,10 +845,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           result = await RpcClient.request(message.chainId, message.method, message.params);
           break;
           
-        case 'GET_BALANCE':
-          result = await RpcClient.getBalance(message.chain, message.address);
+        case 'GET_BALANCE': {
+          const cfg = CHAIN_CONFIG[message.chain];
+          const chainId = cfg ? parseInt(cfg.id, 16) : 1;
+          const address = message.address || WalletManager.getAddress(message.chain);
+          result = await getBalanceViaBackend(address, chainId);
           break;
-          
+        }
+
+        case 'GET_TRANSACTIONS': {
+          const cfg = CHAIN_CONFIG[message.chain];
+          const chainId = cfg ? parseInt(cfg.id, 16) : 1;
+          const address = message.address || WalletManager.getAddress(message.chain);
+          result = await getTransactionsViaBackend(address, chainId);
+          break;
+        }
+
         // WalletConnect
         case 'WC_CREATE_SESSION':
           result = await WalletConnectManager.createSession(message.peerId, message.peerMeta);
@@ -713,6 +908,9 @@ async function saveState() {
     // Don't save sensitive data to local storage
     encryptedMnemonic: undefined,
     privateKey: undefined,
+    mnemonic: undefined,
+    // Password cache lives only in memory
+    cachedWalletPassword: undefined,
   };
   
   await chrome.storage.local.set({ [WALLET_STATE_KEY]: stateToSave });
@@ -732,8 +930,9 @@ async function loadState() {
 async function initialize() {
   console.log('TigerWallet Extension initialized');
   
-  // Load saved state
+  // Load saved state + cached auth token
   await loadState();
+  await loadAuthToken();
   
   // Set up chain change listener
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -748,11 +947,13 @@ async function initialize() {
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'updateBalances' && walletState.isUnlocked) {
-    // Update balances for all chains
+    // Update balances for all chains via the backend's real balance endpoint
     for (const chain of Object.keys(walletState.addresses)) {
       try {
-        const balance = await RpcClient.getBalance(chain, walletState.addresses[chain]);
-        walletState.balances[chain] = balance;
+        const cfg = CHAIN_CONFIG[chain];
+        const chainId = cfg ? parseInt(cfg.id, 16) : 1;
+        const result = await getBalanceViaBackend(walletState.addresses[chain], chainId);
+        walletState.balances[chain] = (result && result.balance) ? result.balance : '0';
       } catch (e) {
         console.error(`Failed to update balance for ${chain}:`, e);
       }

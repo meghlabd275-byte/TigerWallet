@@ -8,7 +8,6 @@
 package mpc
 
 import (
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -17,6 +16,8 @@ import (
 	"math/big"
 	"sync"
 	"time"
+
+	"github.com/ethereum/go-ethereum/crypto/secp256k1"
 )
 
 const (
@@ -35,44 +36,37 @@ const (
 
 // CurveParameters represents the elliptic curve for MPC
 type CurveParameters struct {
-	Curve       elliptic.Curve
-	Name        string
-	Prefix      string
-	P           *big.Int
-	N           *big.Int
-	Gx, Gy      *big.Int
+	Curve  *secp256k1.BitCurve
+	Name   string
+	Prefix string
+	P      *big.Int
+	N      *big.Int
+	Gx, Gy *big.Int
 }
 
-// GetP256Curve returns P-256 curve parameters
+// GetSecp256k1Curve returns secp256k1 curve parameters (the curve used by Ethereum).
+func GetSecp256k1Curve() *CurveParameters {
+	c := secp256k1.S256()
+	return &CurveParameters{
+		Curve:  c,
+		Name:   "secp256k1",
+		Prefix: "02",
+		P:      new(big.Int).Set(c.Params().P),
+		N:      new(big.Int).Set(c.Params().N),
+		Gx:     new(big.Int).Set(c.Params().Gx),
+		Gy:     new(big.Int).Set(c.Params().Gy),
+	}
+}
+
+// GetP256Curve returns secp256k1 curve parameters (P-256 is not used for
+// Ethereum-compatible signing; secp256k1 is used instead for real ECDSA).
 func GetP256Curve() *CurveParameters {
-	return &CurveParameters{
-		Curve:  elliptic.P256(),
-		Name:   "P-256",
-		Prefix: "02",
-		P:      big.NewInt(0).Sub(
-			elliptic.P256().Params().P,
-			big.NewInt(0),
-		),
-		N:      elliptic.P256().Params().N,
-		Gx:     elliptic.P256().Params().Gx,
-		Gy:     elliptic.P256().Params().Gy,
-	}
+	return GetSecp256k1Curve()
 }
 
-// GetP384Curve returns P-384 curve parameters
+// GetP384Curve returns secp256k1 curve parameters (kept for API compatibility).
 func GetP384Curve() *CurveParameters {
-	return &CurveParameters{
-		Curve:  elliptic.P384(),
-		Name:   "P-384",
-		Prefix: "02",
-		P:      big.NewInt(0).Sub(
-			elliptic.P384().Params().P,
-			big.NewInt(0),
-		),
-		N:      elliptic.P384().Params().N,
-		Gx:     elliptic.P384().Params().Gx,
-		Gy:     elliptic.P384().Params().Gy,
-	}
+	return GetSecp256k1Curve()
 }
 
 // KeyGenerationRequest represents a request for distributed key generation
@@ -214,17 +208,18 @@ func (s *KeyGenerationSession) GenerateShare(signerID string) (*KeyShare, error)
 		return nil, fmt.Errorf("participant not found")
 	}
 	
-	// Generate random share
-	share, err := rand.Int(rand.Reader, s.Curve.N)
+	// Generate random share in [1, N-1]
+	share, err := rand.Int(rand.Reader, new(big.Int).Sub(s.Curve.N, big.NewInt(1)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate share: %w", err)
 	}
+	share.Add(share, big.NewInt(1))
 	
-	// Generate verifier
-	verifier := new(big.Int).Mod(
-		new(big.Int).Mul(s.Curve.Gx, share),
-		s.Curve.P,
-	)
+	// Verifier is the public point (public key) corresponding to this share:
+	// V = share * G, computed on the real secp256k1 curve.
+	vx, vy := s.Curve.Curve.ScalarBaseMult(share.Bytes())
+	verifierBytes := secp256k1.CompressPubkey(vx, vy)
+	verifier := new(big.Int).SetBytes(verifierBytes)
 	
 	// Generate chain code
 	chainCode, err := rand.Int(rand.Reader, big.NewInt(0).Lsh(big.NewInt(1), 256))
@@ -262,10 +257,24 @@ func (s *KeyGenerationSession) ComputePublicKey(commitments map[string]string) (
 		return nil, fmt.Errorf("insufficient commitments")
 	}
 	
-	// In production, this would use actual MPC to compute the public key
-	// Simplified version: compute from first commitment
-	pubKeyX, pubKeyY := s.Curve.Curve.ScalarBaseMult(big.NewInt(1).Bytes())
-	s.PublicKey = pubKeyX
+	// Compute the collective public key by summing each participant's public
+	// share point (V_i = share_i * G). The resulting point is the group public
+	// key Y = sum(V_i), which is what reconstructed secrets sign against.
+	var sumX, sumY *big.Int
+	for _, share := range s.ReceivedShares {
+		sx, sy := s.Curve.Curve.ScalarBaseMult(share.Share.Bytes())
+		if sumX == nil {
+			sumX, sumY = sx, sy
+		} else {
+			sumX, sumY = s.Curve.Curve.Add(sumX, sumY, sx, sy)
+		}
+	}
+	if sumX == nil {
+		// No shares yet: fall back to the generator point.
+		sumX, sumY = s.Curve.Curve.ScalarBaseMult(big.NewInt(1).Bytes())
+	}
+	pubBytes := secp256k1.CompressPubkey(sumX, sumY)
+	s.PublicKey = new(big.Int).SetBytes(pubBytes)
 	
 	return s.PublicKey, nil
 }
@@ -313,15 +322,16 @@ func (s *KeyGenerationSession) CompleteSession() error {
 
 // VerifyShare verifies a key share is valid
 func (s *KeyGenerationSession) VerifyShare(share *KeyShare) bool {
-	// Verify: G^share = verifier (mod P)
-	expectedX, expectedY := s.Curve.Curve.ScalarBaseMult(share.Share.String())
-	
-	gx := new(big.Int).Mod(
-		new(big.Int).Mul(s.Curve.Gx, share.Verifier),
-		s.Curve.P,
-	)
-	
-	return expectedX.Cmp(gx) == 0
+	// Verify: share * G equals the verifier point (the compressed public key
+	// stored in share.Verifier). This is a real EC point comparison on
+	// secp256k1, not a modular multiplication hack.
+	actualX, actualY := s.Curve.Curve.ScalarBaseMult(share.Share.Bytes())
+	actualCompressed := secp256k1.CompressPubkey(actualX, actualY)
+	expectedCompressed := share.Verifier.Bytes()
+	if len(expectedCompressed) == 0 {
+		return false
+	}
+	return ctEqual(actualCompressed, expectedCompressed)
 }
 
 // GetSessionInfo returns session information
@@ -476,4 +486,17 @@ func DeserializeKeyShare(data string) (*KeyShare, error) {
 	}
 	
 	return &share, nil
+}
+
+// ctEqual performs a constant-time comparison of two byte slices and reports
+// whether they are equal in length and content.
+func ctEqual(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	var v byte
+	for i := range a {
+		v |= a[i] ^ b[i]
+	}
+	return v == 0
 }

@@ -8,6 +8,10 @@ description = "TigerWallet Secure Key Management - Real cryptographic implementa
 # Cryptographic libraries
 k256 = { version = "0.13", features = ["ecdsa", "sha2", "arithmetic"] }
 sha2 = "0.10"
+hmac = "0.12"
+tiny-keccak = { version = "2.0", features = ["keccak"] }
+ripemd = "0.1"
+pbkdf2 = "0.12"
 aes-gcm = "0.10"
 argon2 = "0.5"
 hex = "0.4"

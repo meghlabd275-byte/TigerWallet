@@ -1,53 +1,23 @@
-//! TigerWallet BIP-39 Mnemonic & Key Derivation System
-//!
-//! Complete BIP-39 implementation with:
-//! - 24-word and 12-word mnemonic generation
-//! - BIP-32 HD wallet derivation
-//! - BIP-44 multi-chain address derivation
-//! - Hardware Security Module (HSM) simulation
-//! - Multi-signature support
-//! - Social recovery preparation
+/**
+ * TigerWallet Desktop - BIP-39 Implementation
+ *
+ * Real BIP-39: entropy generation, mnemonic creation, validation,
+ * and seed derivation via PBKDF2-HMAC-SHA512 (2048 iterations).
+ * Uses the canonical English wordlist from the BIP-39 spec.
+ */
 
-use std::collections::HashMap;
+#include "crypto/bip39.h"
+#include <openssl/sha.h>
+#include <openssl/evp.h>
+#include <openssl/rand.h>
+#include <sstream>
+#include <cstring>
+#include <stdexcept>
 
-// ============================================================================
-// Error Types
-// ============================================================================
+namespace tiger {
+namespace wallet {
 
-#[derive(Debug, thiserror::Error)]
-pub enum MnemonicError {
-    #[error("Invalid mnemonic: {0}")]
-    InvalidMnemonic(String),
-
-    #[error("Invalid passphrase: {0}")]
-    InvalidPassphrase(String),
-
-    #[error("Derivation failed: {0}")]
-    DerivationFailed(String),
-
-    #[error("Invalid path: {0}")]
-    InvalidPath(String),
-
-    #[error("HSM error: {0}")]
-    HSMError(String),
-
-    #[error("Invalid key: {0}")]
-    InvalidKey(String),
-}
-
-pub type Result<T> = std::result::Result<T, MnemonicError>;
-
-impl From<String> for MnemonicError {
-    fn from(e: String) -> Self {
-        MnemonicError::HSMError(e)
-    }
-}
-
-// ============================================================================
-// BIP-39 Word List (2048 words - English)
-// ============================================================================
-
-pub const BIP39_WORDLIST: &[&str; 2048] = &[
+const char* BIP39::WORDLIST[2048] = {
     "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract",
     "absurd", "abuse", "access", "accident", "account", "accuse", "achieve", "acid",
     "acoustic", "acquire", "across", "act", "action", "actor", "actress", "actual",
@@ -304,523 +274,143 @@ pub const BIP39_WORDLIST: &[&str; 2048] = &[
     "wonder", "wood", "wool", "word", "work", "world", "worry", "worth",
     "wrap", "wreck", "wrestle", "wrist", "write", "wrong", "yard", "year",
     "yellow", "you", "young", "youth", "zebra", "zero", "zone", "zoo",
-];
+};
 
-// ============================================================================
-// Mnemonic Generation
-// ============================================================================
-
-/// Compute entropy from mnemonic (for verification)
-fn mnemonic_to_entropy(mnemonic: &[&str]) -> Result<Vec<u8>> {
-    if mnemonic.len() != 12 && mnemonic.len() != 24 {
-        return Err(MnemonicError::InvalidMnemonic(
-            format!("Mnemonic must be 12 or 24 words, got {}", mnemonic.len())
-        ));
+std::vector<uint8_t> BIP39::generateEntropy(int bits) {
+    int bytes = bits / 8;
+    std::vector<uint8_t> entropy(bytes);
+    if (RAND_bytes(entropy.data(), bytes) != 1) {
+        throw std::runtime_error("Failed to generate random entropy");
     }
-
-    // Join words and hash to get entropy
-    let mut entropy = Vec::new();
-    for word in mnemonic {
-        let idx = BIP39_WORDLIST.iter().position(|w| *w == *word);
-        match idx {
-            Some(i) => {
-                // Each word represents 11 bits
-                entropy.extend_from_slice(&(i as u16).to_be_bytes());
-            },
-            None => {
-                return Err(MnemonicError::InvalidMnemonic(
-                    format!("Invalid word: {}", word)
-                ));
-            }
-        }
-    }
-
-    Ok(entropy)
+    return entropy;
 }
 
-/// Generate random mnemonic (12 or 24 words)
-pub fn generate_mnemonic(word_count: usize) -> Result<Vec<String>> {
-    if word_count != 12 && word_count != 24 {
-        return Err(MnemonicError::InvalidMnemonic(
-            format!("Word count must be 12 or 24, got {}", word_count)
-        ));
+int BIP39::checksumBits(const std::vector<uint8_t>& entropy) {
+    return entropy.size() * 8 / 32;
+}
+
+std::vector<uint8_t> BIP39::sha256(const uint8_t* data, size_t len) {
+    std::vector<uint8_t> hash(SHA256_DIGEST_LENGTH);
+    SHA256(data, len, hash.data());
+    return hash;
+}
+
+std::string BIP39::generateMnemonic(int entropyBits) {
+    if (entropyBits % 32 != 0 || entropyBits < 128 || entropyBits > 256) {
+        throw std::runtime_error("Invalid entropy bits (must be 128-256, multiple of 32)");
     }
+    auto entropy = generateEntropy(entropyBits);
+    auto hash = sha256(entropy.data(), entropy.size());
+    int csBits = checksumBits(entropy);
+    int totalBits = entropyBits + csBits;
+    int wordCount = totalBits / 11;
 
-    // Generate random entropy.
-    // BIP-39: entropy_bits = word_count * 32 / 3 (128 for 12 words, 256 for 24).
-    // Checksum bits = word_count / 3 (4 for 12, 8 for 24).
-    // Total = word_count * 11 bits.
-    let entropy_bits = word_count * 32 / 3; // 128 or 256 bits
-    let entropy = super::generate_secure_random(entropy_bits / 8)?;
-
-    // Convert entropy to words using checksum.
-    // BIP-39: words are 11-bit indices read MSB-first from [entropy || checksum],
-    // where checksum = the first (word_count/3) bits of sha256(entropy).
-    let entropy_hash = super::sha256(&entropy);
-
-    let mut words = Vec::new();
-    for i in 0..word_count {
-        let mut value: u16 = 0;
-        for b in 0..11 {
-            let bit_index = i * 11 + b;
-            let bit = if bit_index < entropy_bits {
-                let byte_pos = bit_index / 8;
-                let bit_offset = 7 - (bit_index % 8);
-                (entropy[byte_pos] >> bit_offset) & 1
+    std::vector<int> indices;
+    for (int i = 0; i < wordCount; i++) {
+        int idx = 0;
+        for (int b = 0; b < 11; b++) {
+            int absBit = i * 11 + b;
+            int byteIdx = absBit / 8;
+            int bitInByte = 7 - (absBit % 8);
+            int val;
+            if (byteIdx < (int)entropy.size()) {
+                val = (entropy[byteIdx] >> bitInByte) & 1;
             } else {
-                // Checksum bits come from the high bits of sha256(entropy)
-                let cs_index = bit_index - entropy_bits;
-                let bit_offset = 7 - cs_index;
-                (entropy_hash[0] >> bit_offset) & 1
-            };
-            value = (value << 1) | (bit as u16);
+                int csByteIdx = byteIdx - entropy.size();
+                val = (hash[csByteIdx] >> bitInByte) & 1;
+            }
+            idx = (idx << 1) | val;
         }
-
-        if (value as usize) < BIP39_WORDLIST.len() {
-            words.push(BIP39_WORDLIST[value as usize].to_string());
-        }
+        indices.push_back(idx);
     }
 
-    Ok(words)
+    std::ostringstream oss;
+    for (size_t i = 0; i < indices.size(); i++) {
+        if (i > 0) oss << " ";
+        oss << WORDLIST[indices[i]];
+    }
+    return oss.str();
 }
 
-// ============================================================================
-// BIP-39 Seed Derivation
-// ============================================================================
+bool BIP39::validateMnemonic(const std::string& mnemonic) {
+    std::istringstream iss(mnemonic);
+    std::vector<std::string> words_vec;
+    std::string word;
+    while (iss >> word) words_vec.push_back(word);
 
-/// Convert mnemonic to BIP-39 seed
-pub fn mnemonic_to_seed(mnemonic: &[String], passphrase: &str) -> Result<[u8; 64]> {
-    use pbkdf2::pbkdf2_hmac_array;
-    use sha2::Sha512;
+    int wc = words_vec.size();
+    if (wc != 12 && wc != 15 && wc != 18 && wc != 21 && wc != 24) return false;
 
-    // Validate mnemonic
-    for word in mnemonic {
-        if !BIP39_WORDLIST.contains(&word.as_str()) {
-            return Err(MnemonicError::InvalidMnemonic(
-                format!("Unknown word: {}", word)
-            ));
+    std::vector<int> indices;
+    for (const auto& w : words_vec) {
+        int idx = wordIndex(w);
+        if (idx < 0) return false;
+        indices.push_back(idx);
+    }
+
+    int totalBits = wc * 11;
+    int csBits = totalBits / 33;
+    int entropyBits = totalBits - csBits;
+    int entropyBytes = entropyBits / 8;
+
+    std::vector<uint8_t> entropy(entropyBytes, 0);
+    std::vector<uint8_t> checksum(1, 0);
+
+    int bitPos = 0;
+    for (int idx : indices) {
+        for (int b = 10; b >= 0; b--) {
+            int val = (idx >> b) & 1;
+            int byteIdx = bitPos / 8;
+            int bitInByte = 7 - (bitPos % 8);
+            if (byteIdx < entropyBytes) {
+                entropy[byteIdx] |= (val << bitInByte);
+            } else {
+                checksum[0] |= (val << bitInByte);
+            }
+            bitPos++;
         }
     }
 
-    let mnemonic_str = mnemonic.join(" ");
-    let salt = format!("mnemonic{}", passphrase);
+    auto hash = sha256(entropy.data(), entropy.size());
+    for (int i = 0; i < csBits; i++) {
+        int hashBit = (hash[i / 8] >> (7 - (i % 8))) & 1;
+        int csBit = (checksum[0] >> (7 - (i % 8))) & 1;
+        if (hashBit != csBit) return false;
+    }
+    return true;
+}
 
-    // PBKDF2-SHA512 with 2048 iterations
-    let seed = pbkdf2_hmac_array::<Sha512, 64>(
-        mnemonic_str.as_bytes(),
-        salt.as_bytes(),
+std::vector<uint8_t> BIP39::mnemonicToSeed(const std::string& mnemonic,
+                                            const std::string& passphrase) {
+    std::string salt = "mnemonic" + passphrase;
+    std::vector<uint8_t> seed(64);
+    PKCS5_PBKDF2_HMAC(
+        mnemonic.c_str(), mnemonic.length(),
+        reinterpret_cast<const unsigned char*>(salt.c_str()), salt.length(),
         2048,
+        EVP_sha512(),
+        64,
+        seed.data()
     );
-
-    Ok(seed)
+    return seed;
 }
 
-// ============================================================================
-// BIP-32 HD Wallet
-// ============================================================================
-
-/// HD Wallet key structure
-#[derive(Clone, Debug)]
-pub struct HDKey {
-    pub key: [u8; 32],       // Private key (or public key for public derivation)
-    pub chain_code: [u8; 32], // Chain code for child derivation
-    pub public_key: Option<[u8; 33]>, // Compressed public key
+int BIP39::wordIndex(const std::string& word) {
+    int lo = 0, hi = 2047;
+    while (lo <= hi) {
+        int mid = (lo + hi) / 2;
+        int cmp = strcmp(WORDLIST[mid], word.c_str());
+        if (cmp == 0) return mid;
+        if (cmp < 0) lo = mid + 1;
+        else hi = mid - 1;
+    }
+    return -1;
 }
 
-/// Create root HD key from seed
-pub fn hd_key_from_seed(seed: &[u8; 64]) -> Result<HDKey> {
-    use hmac::{Hmac, Mac};
-    use sha2::Sha512;
-
-    type HmacSha512 = Hmac<Sha512>;
-
-    // I = HMAC-SHA512(Key = "Bitcoin seed", Data = seed)
-    let mut mac = HmacSha512::new_from_slice(b"Bitcoin seed")
-        .map_err(|e| MnemonicError::DerivationFailed(e.to_string()))?;
-    mac.update(seed);
-
-    let result = mac.finalize().into_bytes();
-
-    let mut key = [0u8; 32];
-    let mut chain_code = [0u8; 32];
-
-    key.copy_from_slice(&result[..32]);
-    chain_code.copy_from_slice(&result[32..]);
-
-    // Generate compressed public key via secp256k1
-    use secp256k1::{SecretKey, PublicKey, Secp256k1};
-    let secp = Secp256k1::new();
-    let sk = SecretKey::from_slice(&key)
-        .map_err(|e| MnemonicError::DerivationFailed(format!("Invalid master key: {}", e)))?;
-    let pk = PublicKey::from_secret_key(&secp, &sk);
-    let compressed = pk.serialize();
-
-    Ok(HDKey {
-        key,
-        chain_code,
-        public_key: Some(compressed),
-    })
+std::string BIP39::wordAt(int index) {
+    if (index < 0 || index >= 2048) return "";
+    return WORDLIST[index];
 }
 
-/// Derive child key (BIP-32)
-pub fn derive_child_key(parent: &HDKey, index: u32) -> Result<HDKey> {
-    let is_hardened = index >= 0x80000000;
-
-    let mut data = Vec::new();
-
-    if is_hardened {
-        // Hardened derivation: 0x00 || parent.key || index
-        data.push(0x00);
-        data.extend_from_slice(&parent.key);
-    } else {
-        // Normal derivation: parent.public_key || index
-        if let Some(ref pk) = parent.public_key {
-            data.extend_from_slice(pk);
-        }
-    }
-
-    data.extend_from_slice(&index.to_be_bytes());
-
-    // HMAC-SHA512
-    use hmac::{Hmac, Mac};
-    use sha2::Sha512;
-
-    type HmacSha512 = Hmac<Sha512>;
-
-    let mut mac = HmacSha512::new_from_slice(&parent.chain_code)
-        .map_err(|e| MnemonicError::DerivationFailed(e.to_string()))?;
-    mac.update(&data);
-
-    let result = mac.finalize().into_bytes();
-
-    let mut child_key = [0u8; 32];
-    let mut child_chain_code = [0u8; 32];
-
-    child_key.copy_from_slice(&result[..32]);
-    child_chain_code.copy_from_slice(&result[32..]);
-
-    // child_key = (IL + parent_key) mod n (BIP-32 spec, NOT XOR)
-    use secp256k1::{SecretKey, Secp256k1, Scalar};
-    let secp = Secp256k1::new();
-    let il = SecretKey::from_slice(&result[..32])
-        .map_err(|e| MnemonicError::DerivationFailed(format!("IL out of range: {}", e)))?;
-    let parent_sk = SecretKey::from_slice(&parent.key)
-        .map_err(|e| MnemonicError::DerivationFailed(format!("Invalid parent key: {}", e)))?;
-    let il_scalar = Scalar::from(il);
-    let child_sk = parent_sk.add_tweak(&il_scalar)
-        .map_err(|e| MnemonicError::DerivationFailed(format!("Tweak add failed: {}", e)))?;
-    child_key.copy_from_slice(&child_sk.secret_bytes());
-
-    // Generate compressed public key via secp256k1
-    let secp = secp256k1::Secp256k1::new();
-    let sk = secp256k1::SecretKey::from_slice(&child_key)
-        .map_err(|e| MnemonicError::DerivationFailed(format!("Invalid child key: {}", e)))?;
-    let pk = secp256k1::PublicKey::from_secret_key(&secp, &sk);
-    let compressed = pk.serialize();
-
-    Ok(HDKey {
-        key: child_key,
-        chain_code: child_chain_code,
-        public_key: Some(compressed),
-    })
-}
-
-// ============================================================================
-// BIP-44 Path Derivation
-// ============================================================================
-
-/// BIP-44 purpose constant
-pub const BIP44_PURPOSE: u32 = 0x8000002C; // 44' (hardened)
-/// BIP-44 coin types
-pub const COIN_ETH: u32 = 0x8000035C;    // 60' (Ethereum)
-pub const COIN_BTC: u32 = 0x80000000;    // 0' (Bitcoin)
-pub const COIN_SOL: u32 = 0x8000012C;    // 501' (Solana)
-pub const COIN_COSMOS: u32 = 0x8000014B;   // 118' (Cosmos)
-pub const COIN_POLKADOT: u32 = 0x80000154; // 354' (Polkadot)
-
-/// BIP-44 path structure
-#[derive(Clone, Debug)]
-pub struct BIP44Path {
-    pub purpose: u32,
-    pub coin_type: u32,
-    pub account: u32,
-    pub change: u32,
-    pub address_index: u32,
-}
-
-impl BIP44Path {
-    /// Parse path string like "m/44'/60'/0'/0/0"
-    pub fn from_string(path: &str) -> Result<Self> {
-        let parts: Vec<&str> = path.trim_start_matches("m/").split('/').collect();
-
-        if parts.len() != 5 {
-            return Err(MnemonicError::InvalidPath(format!("Invalid path: {}", path)));
-        }
-
-        let purpose = parse_path_component(parts[0])?;
-        let coin_type = parse_path_component(parts[1])?;
-        let account = parse_path_component(parts[2])?;
-        let change = parse_path_component(parts[3])?;
-        let address_index = parse_path_component(parts[4])?;
-
-        Ok(BIP44Path {
-            purpose,
-            coin_type,
-            account,
-            change,
-            address_index,
-        })
-    }
-
-    /// Derive key from root using this path
-    pub fn derive(&self, root: &HDKey) -> Result<HDKey> {
-        let key = derive_child_key(root, self.purpose)?;
-        let key = derive_child_key(&key, self.coin_type)?;
-        let key = derive_child_key(&key, self.account)?;
-        let key = derive_child_key(&key, self.change)?;
-        let key = derive_child_key(&key, self.address_index)?;
-        Ok(key)
-    }
-
-    /// Get Ethereum path: m/44'/60'/0'/0/0
-    pub fn ethereum(account: u32, address_index: u32) -> Self {
-        BIP44Path {
-            purpose: BIP44_PURPOSE,
-            coin_type: COIN_ETH,
-            account,
-            change: 0,
-            address_index,
-        }
-    }
-
-    /// Get Bitcoin path: m/44'/0'/0'/0/0
-    pub fn bitcoin(account: u32, address_index: u32) -> Self {
-        BIP44Path {
-            purpose: BIP44_PURPOSE,
-            coin_type: COIN_BTC,
-            account,
-            change: 0,
-            address_index,
-        }
-    }
-
-    /// Get Solana path: m/44'/501'/0'/0'
-    pub fn solana(account: u32, address_index: u32) -> Self {
-        BIP44Path {
-            purpose: BIP44_PURPOSE,
-            coin_type: COIN_SOL,
-            account,
-            change: 0,
-            address_index,
-        }
-    }
-}
-
-fn parse_path_component(s: &str) -> Result<u32> {
-    // BIP-32 hardened components are denoted with a trailing ' or h.
-    // The hardened bit (0x80000000) is OR'd into the index value.
-    let hardened = s.ends_with('\'') || s.ends_with('h') || s.ends_with('H');
-    let s = s.trim_end_matches(|c| c == '\'' || c == 'h' || c == 'H');
-    let index = s
-        .parse::<u32>()
-        .map_err(|e| MnemonicError::InvalidPath(format!("Invalid component: {}", e)))?;
-    Ok(if hardened { index | 0x8000_0000 } else { index })
-}
-
-// ============================================================================
-// Hardware Security Module (HSM) Simulation
-// ============================================================================
-
-/// HSM Key Store - simulates hardware security module
-pub struct HSMKeyStore {
-    keys: HashMap<String, HSMKeyEntry>,
-}
-
-#[derive(Clone)]
-struct HSMKeyEntry {
-    key: Vec<u8>,
-    created_at: u64,
-    usage_count: u32,
-}
-
-impl HSMKeyStore {
-    pub fn new() -> Self {
-        HSMKeyStore {
-            keys: HashMap::new(),
-        }
-    }
-
-    /// Generate key in HSM (simulated)
-    pub fn generate_key(&mut self, key_id: &str) -> Result<()> {
-        let key = crate::generate_private_key();
-
-        self.keys.insert(key_id.to_string(), HSMKeyEntry {
-            key: key.to_vec(),
-            created_at: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as u64,
-            usage_count: 0,
-        });
-
-        Ok(())
-    }
-
-    /// Sign with HSM key (simulated)
-    pub fn sign(&mut self, key_id: &str, message: &[u8]) -> Result<Vec<u8>> {
-        let entry = self.keys.get_mut(key_id)
-            .ok_or_else(|| MnemonicError::HSMError("Key not found".to_string()))?;
-
-        entry.usage_count += 1;
-
-        // Sign with the key
-        let key_array: [u8; 32] = entry.key.as_slice().try_into()
-            .map_err(|_| MnemonicError::HSMError("Invalid key length".to_string()))?;
-
-        // Use simple HMAC for simulation (real HSM would use ECDSA)
-        Ok(super::hmac_sha256(&key_array, message).to_vec())
-    }
-
-    /// Delete key from HSM
-    pub fn delete_key(&mut self, key_id: &str) -> Result<()> {
-        self.keys.remove(key_id)
-            .ok_or_else(|| MnemonicError::HSMError("Key not found".to_string()))?;
-        Ok(())
-    }
-}
-
-impl Default for HSMKeyStore {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-// ============================================================================
-// Multi-Signature Wallet Support
-// ============================================================================
-
-/// Multi-signature key set
-#[derive(Clone)]
-pub struct MultisigKeySet {
-    pub threshold: u8,
-    pub pubkeys: Vec<Vec<u8>>,
-}
-
-impl MultisigKeySet {
-    /// Create new multi-sig with threshold
-    pub fn new(threshold: u8, pubkeys: Vec<Vec<u8>>) -> Result<Self> {
-        if threshold == 0 || threshold > pubkeys.len() as u8 {
-            return Err(MnemonicError::InvalidKey(
-                "Invalid threshold".to_string()
-            ));
-        }
-
-        Ok(MultisigKeySet { threshold, pubkeys })
-    }
-
-    /// Combine signatures (simplified - real implementation would be ECDSA)
-    pub fn combine_signatures(&self, signatures: &[Vec<u8>]) -> Result<Vec<u8>> {
-        if signatures.len() < self.threshold as usize {
-            return Err(MnemonicError::DerivationFailed(
-                format!("Need {} signatures, got {}", self.threshold, signatures.len())
-            ));
-        }
-
-        // Simplified: concatenate signatures
-        let mut combined = Vec::new();
-        for sig in signatures.iter().take(self.threshold as usize) {
-            combined.extend_from_slice(sig);
-            combined.push(b',');
-        }
-        combined.pop(); // Remove trailing comma
-
-        Ok(combined)
-    }
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_generate_mnemonic_12() {
-        let mnemonic = generate_mnemonic(12).unwrap();
-        assert_eq!(mnemonic.len(), 12);
-        println!("12-word mnemonic: {:?}", mnemonic);
-    }
-
-    #[test]
-    fn test_generate_mnemonic_24() {
-        let mnemonic = generate_mnemonic(24).unwrap();
-        assert_eq!(mnemonic.len(), 24);
-        println!("24-word mnemonic: {:?}", mnemonic);
-    }
-
-    #[test]
-    fn test_mnemonic_to_seed() {
-        let mnemonic = vec![
-            "abandon".to_string(), "abandon".to_string(), "abandon".to_string(),
-            "abandon".to_string(), "abandon".to_string(), "abandon".to_string(),
-            "abandon".to_string(), "abandon".to_string(), "abandon".to_string(),
-            "abandon".to_string(), "abandon".to_string(), "abandon".to_string(),
-        ];
-
-        let seed = mnemonic_to_seed(&mnemonic, "").unwrap();
-        assert_eq!(seed.len(), 64);
-    }
-
-    #[test]
-    fn test_hd_key_derivation() {
-        let mnemonic = generate_mnemonic(12).unwrap();
-        let seed = mnemonic_to_seed(&mnemonic, "").unwrap();
-        let root = hd_key_from_seed(&seed).unwrap();
-
-        // Derive first child
-        let child = derive_child_key(&root, 0).unwrap();
-
-        assert!(!child.key.iter().all(|&b| b == 0));
-    }
-
-    #[test]
-    fn test_bip44_path() {
-        let path = BIP44Path::ethereum(0, 0);
-        assert_eq!(path.purpose, BIP44_PURPOSE);
-        assert_eq!(path.coin_type, COIN_ETH);
-
-        // Parse from string
-        let path2 = BIP44Path::from_string("m/44'/60'/0'/0/0").unwrap();
-        assert_eq!(path.purpose, path2.purpose);
-    }
-
-    #[test]
-    fn test_hsm() {
-        let mut hsm = HSMKeyStore::new();
-
-        hsm.generate_key("test-key").unwrap();
-        let sig = hsm.sign("test-key", b"message").unwrap();
-
-        assert_eq!(sig.len(), 32);
-
-        hsm.delete_key("test-key").unwrap();
-    }
-
-    #[test]
-    fn test_multisig() {
-        let pubkeys = vec![
-            vec![1u8; 33],
-            vec![2u8; 33],
-            vec![3u8; 33],
-        ];
-
-        let ms = MultisigKeySet::new(2, pubkeys).unwrap();
-
-        let sigs = vec![vec![1u8; 32], vec![2u8; 32]];
-        let combined = ms.combine_signatures(&sigs).unwrap();
-
-        assert!(!combined.is_empty());
-    }
-}
+} // namespace wallet
+} // namespace tiger

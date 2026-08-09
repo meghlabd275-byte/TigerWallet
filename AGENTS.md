@@ -198,3 +198,74 @@
 - Note: the bundled `cpp/rpc_manager/json.hpp` referenced as
   `<nlohmann/json.hpp>` is a stub; not on the current build's include path for
   the core/test targets, so it doesn't block the build.
+
+## rust/key_management crypto tests (src/main.rs)
+
+- `keccak256` uses `tiny_keccak::Keccak::v256` (correct Ethereum keccak256, NOT
+  sha3-256). The production `derive_address` EIP-55 path already hashes the
+  LOWERCASE hex address and is correct.
+- BIP-32 `ckd_priv` + `master_key_from_seed` are CORRECT per official BIP-32
+  test vector 1 (verified against `bip32utils`):
+  - seed 000102...0f -> m/0' priv
+    edb2e14f9ee77d26dd93b4ecede8d16ed408ce149b6cd80b0715a2d911a0afea, cc
+    47fdacbd0f1097043b78c63c20c34ef4ed9a111d980047ad16282c7ae6236141;
+    m/0'/1 priv 3c6cb8d0..., cc 2a7857631386ba23dacac34180dd1983734e444fdbf774041578e9b6adb37c19;
+    m/0'/1/2'/2 priv 0f479245fb19a38a1954c5c7c0ebab2f9bdfd96a17563ef28a6a4b1a2a764ef4.
+- BIP-39 abandon...about / empty passphrase -> m/44'/60'/0'/0/0 priv
+  1ab42cc412b618bdea3a599e3c9bae199ebf030895b039e9db1e30dafb12b727, address
+  0x9858EfFD232B4033E47d90003D41EC34EcaEda94 (both correct). The
+  Hardhat/test-junk key ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+  derives address 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 -- do NOT use it as
+  the expected private key for the abandon mnemonic; it is a different vector.
+- TWO test-helper bugs were fixed (NOT expected-value changes):
+  1. test_address_eip55_checksum hashed the MIXED-CASE address instead of the
+     lowercase one -> fixed to hash `lower`.
+  2. base58_decode consumed leading zero bytes as the LSB of the big integer
+     (prepending them BEFORE accumulation) -> fixed to prepend them AFTER
+     accumulation. Bitcoin P2PKH addresses are 25 bytes (1 version + 20 hash160
+     + 4 double-SHA256 checksum).
+- The 4 BIP-32/BIP-44 tests (test_bip32_ckdpriv_h0, test_bip32_ckdpriv_h0_1,
+  test_bip32_derive_path, test_bip44_ethereum_known_vector) have WRONG expected
+  values in the test file that conflict with the official BIP-32 vectors the
+  code (correctly) produces. They cannot pass without either corrupting correct
+  crypto or correcting the expected values. The test_bip44_ethereum_known_vector
+  priv-key assertion is also internally inconsistent with its own address
+  assertion. Left unchanged per explicit user constraint not to edit expected
+  values -- needs user decision.
+
+## core/rust AMM/orderbook/mev crates (fixed 2026-08-09)
+
+- `num-bigint` `BigUint` has **no** `to_f64()` method. Use
+  `num_traits::ToPrimitive` (`biguint.to_f64()`), or fall back to
+  `to_string().parse::<f64>()`.
+- `is_even()`/`is_odd()` on BigUint come from the **`num-integer`** crate
+  (`num_integer::Integer`), NOT `num_traits::Integer` (which doesn't exist).
+  Add `num-integer = "0.1"` to Cargo.toml.
+- Const evaluation of `BigUint::from(1u64) << 96` fails in const context (used
+  for Q96/Q128/MAX_UINT128). Use `std::sync::LazyLock` with
+  `LazyLock::new(|| BigUint::from(1u64) << 96)`.
+- `&LazyLock<BigUint>` does NOT auto-deref in arithmetic comparisons/divisions.
+  Use `&*Q96` (or `&*MAX_UINT128`) explicitly.
+- `serde::Deserialize` derive needs `serde` with the `derive` feature in
+  Cargo.toml + `use serde::Deserialize;`.
+- `ahash::AHashMap` requires the `ahash` crate as an explicit dep.
+- `amm`: `PoolCore::liquidity()` added (reads `gross_liquidity`); `swap()`
+  signature changed to `swap(&self, amount_in, zero_for_one, sqrt_price_limit:
+  Option<&BigUint>) -> Result<SwapResult, String>` (was 2-arg -> SwapResult);
+  `PoolState` fields made `pub`. Cargo.toml gained `num-integer` + `ahash`.
+- `mev`: `#[derive(Deserialize)]` added to `MEVAttackType`; `pool_address` type
+  mismatch fixed.
+- `orderbook`: borrow/mutability fixes (clone where needed, reorder statements).
+- Build: `source "$HOME/.cargo/env"` then `cargo check` per crate. All three
+  crates now compile with 0 errors (warnings only).
+
+
+## Go services (multisig_service, mpc) - crypto/build notes
+- Go binary: /home/openhands/.local/go/bin/go (add to PATH). System go not installed.
+- Two modules: go/multisig_service (github.com/tigerwallet/multisig-service), go/mpc (github.com/tigerwallet/mpc).
+- All signing uses github.com/ethereum/go-ethereum/crypto (real ECDSA secp256k1, low-s). No sha256/sha3 fakes.
+- multisig_service: broadcastTransaction (main.go) and broadcastRawTransaction (multisig_service.go) use ethclient.Dial + types.NewTx(DynamicFeeTx) + types.SignTx + client.SendTransaction. RPC from ETH_RPC_URL env.
+- SignHash uses crypto.Sign(hash, privKey), v normalized to 27/28.
+- mpc/enterprise.go: real Shamir + Lagrange over secp256k1; CombineShares reconstructs then crypto.Sign. Real crypto.Ecrecover verification. secp256k1 only (no P256 for crypto).
+- pkg/threshold/sign.go: HashMessage = Keccak-256; CombineSignatures/SignWithTSS use lagrangeCoefficients + crypto.Ecrecover; low-s normalization. Structs carry PublicKey []byte; SigningSession has GroupPublicKey []byte.
+- Build/vet both clean: cd go/<dir> && go build ./... && go vet ./...

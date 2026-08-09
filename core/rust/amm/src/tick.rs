@@ -88,7 +88,8 @@ impl Tick {
     ) {
         self.fee_growth_outside_0 = fee_growth_0.clone() - self.fee_growth_outside_0.clone();
         self.fee_growth_outside_1 = fee_growth_1.clone() - self.fee_growth_outside_1.clone();
-        self.seconds_per_liquidity_outside = seconds_per_liquidity.clone() - self.seconds_per_liquidity_outside;
+        self.seconds_per_liquidity_outside =
+            seconds_per_liquidity.clone() - self.seconds_per_liquidity_outside.clone();
         self.seconds_outside = seconds - self.seconds_outside;
         self.tick_cumulative_outside = -self.tick_cumulative_outside;
     }

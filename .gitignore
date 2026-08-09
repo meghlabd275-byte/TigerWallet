@@ -90,3 +90,13 @@ local.properties
 # Binary outputs
 *.wasm
 *.wat
+
+# Rust build artifacts
+target/
+
+# Go build artifacts
+*.test
+*.out
+
+# Desktop wallet build
+desktop_wallet/build/

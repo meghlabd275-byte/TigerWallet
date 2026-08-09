@@ -46,7 +46,7 @@ impl AMMFactory {
             config.token0,
             config.token1,
             config.fee,
-            config.tick_spacing as i32,
+            config.tick_spacing,
             sqrt_price,
         ));
         
