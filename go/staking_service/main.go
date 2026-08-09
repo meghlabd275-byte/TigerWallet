@@ -5,16 +5,17 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
@@ -24,13 +25,22 @@ import (
 // ============================================================================
 
 type Config struct {
-	Port     int    `json:"port"`
+	Port      int    `json:"port"`
 	RedisAddr string `json:"redis_addr"`
+	JWTSecret string `json:"jwt_secret"`
 }
 
 var cfg = Config{
-	Port:     8003,
+	Port:      8003,
 	RedisAddr: "localhost:6379",
+	JWTSecret: getEnvOrDefault("JWT_SECRET", ""),
+}
+
+func getEnvOrDefault(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
 
 // ============================================================================
@@ -90,7 +100,8 @@ type Validator struct {
 	Delegators  int    `json:"delegators" bson:"delegators"`
 	TotalStake  string `json:"total_stake" bson:"total_stake"`
 	RewardRate  string `json:"reward_rate" bson:"reward_rate"`
-	Status      string `json:"status" bson:"status"` // active, inactive, jailed
+	Status      string `json:"status" bson:"status"`   // active, inactive, jailed
+	Verified    bool   `json:"verified" bson:"verified"` // true only for on-chain verified validators
 }
 
 type LiquidStakingToken struct {
@@ -198,11 +209,14 @@ func (ss *StakingService) initializeDefaultData() {
 		ss.pools[pool.ID] = &pool
 	}
 
-	// Initialize validators
+	// Initialize validators. These are SAMPLE entries with empty addresses
+	// and Verified=false: they MUST NOT be used for real on-chain delegation.
+	// Production deployments must load verified validator addresses from an
+	// on-chain validator registry (e.g. the deposit contract / staking manager).
 	validators := []Validator{
-		{ID: "val-1", Name: "TigerValidator 1", Chain: "ethereum", Address: "0x1234...", Commission: "5%", Uptime: "99.9%", Delegators: 1000, TotalStake: "100000", RewardRate: "4.2%", Status: "active"},
-		{ID: "val-2", Name: "TigerValidator 2", Chain: "ethereum", Address: "0x5678...", Commission: "4%", Uptime: "99.95%", Delegators: 1500, TotalStake: "150000", RewardRate: "4.3%", Status: "active"},
-		{ID: "val-3", Name: "SolanaHub 1", Chain: "solana", Address: "sol1...", Commission: "6%", Uptime: "99.8%", Delegators: 2000, TotalStake: "50000", RewardRate: "6.5%", Status: "active"},
+		{ID: "val-1", Name: "Sample Ethereum Validator", Chain: "ethereum", Address: "", Commission: "5%", Uptime: "99.9%", Delegators: 0, TotalStake: "0", RewardRate: "4.2%", Status: "sample", Verified: false},
+		{ID: "val-2", Name: "Sample Ethereum Validator 2", Chain: "ethereum", Address: "", Commission: "4%", Uptime: "99.95%", Delegators: 0, TotalStake: "0", RewardRate: "4.3%", Status: "sample", Verified: false},
+		{ID: "val-3", Name: "Sample Solana Validator", Chain: "solana", Address: "", Commission: "6%", Uptime: "99.8%", Delegators: 0, TotalStake: "0", RewardRate: "6.5%", Status: "sample", Verified: false},
 	}
 
 	for _, val := range validators {
@@ -631,8 +645,7 @@ func addStrings(a, b string) string {
 	bf.SetString(b)
 	cf := new(big.Float)
 	cf.Add(af, bf)
-	res, _ := cf.String()
-	return res
+	return cf.String()
 }
 
 func subtractStrings(a, b string) string {
@@ -642,8 +655,7 @@ func subtractStrings(a, b string) string {
 	bf.SetString(b)
 	cf := new(big.Float)
 	cf.Sub(af, bf)
-	res, _ := cf.String()
-	return res
+	return cf.String()
 }
 
 // ============================================================================
@@ -666,8 +678,40 @@ func (ss *StakingService) AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// In production, validate JWT
-		c.Set("user_id", "user-123")
+		if cfg.JWTSecret == "" {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "JWT_SECRET not configured"})
+			c.Abort()
+			return
+		}
+
+		token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
+			return []byte(cfg.JWTSecret), nil
+		})
+		if err != nil || !token.Valid {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			c.Abort()
+			return
+		}
+
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid claims"})
+			c.Abort()
+			return
+		}
+		uid, _ := claims["user_id"].(string)
+		if uid == "" {
+			uid, _ = claims["sub"].(string)
+		}
+		if uid == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing user_id in token"})
+			c.Abort()
+			return
+		}
+		c.Set("user_id", uid)
 		c.Next()
 	}
 }

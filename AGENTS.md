@@ -269,3 +269,53 @@
 - mpc/enterprise.go: real Shamir + Lagrange over secp256k1; CombineShares reconstructs then crypto.Sign. Real crypto.Ecrecover verification. secp256k1 only (no P256 for crypto).
 - pkg/threshold/sign.go: HashMessage = Keccak-256; CombineSignatures/SignWithTSS use lagrangeCoefficients + crypto.Ecrecover; low-s normalization. Structs carry PublicKey []byte; SigningSession has GroupPublicKey []byte.
 - Build/vet both clean: cd go/<dir> && go build ./... && go vet ./...
+
+## Go services fixed 2026-08-09 (wallet_service, swap, staking, payment, ens)
+- go/wallet_service/main.go: REWRITTEN as a deprecation reverse-proxy shim to
+  canonical wallet_api (stdlib net/http/httputil only). The old P-256 +
+  sha512(seed) broken crypto is GONE. go.mod trimmed to no external deps
+  (no go.sum). Build: `cd go/wallet_service && go build ./... && go vet ./...`
+  (OK). Set WALLET_API_URL env (default http://localhost:8443), PORT (default 8001).
+- go/swap_service/main.go: ExecuteSwap no longer fabricates TxHash; status
+  "quote_ready" + `action_required` -> wallet_api POST /api/v1/send. Fixed
+  pre-existing build breaks: big.Float.String() returns 1 value (not 2),
+  removed unused context/encoding/json imports, fixed mangled AddLiquidity
+  (req.B_token -> req.TokenB, removed duplicated dangling block). Build+vet OK.
+- go/staking_service/: moved staking_service.go into staking/ subpackage
+  (package staking) to resolve the "two packages in one dir" build break
+  (main.go is package main). main.go: fake validators (0x1234...) -> empty
+  Address + Verified:false + Status:"sample"; no-op JWT (c.Set user_id
+  "user-123") -> real golang-jwt/v5 HMAC validation with JWT_SECRET env.
+  staking/staking.go: SetString returns (*Int,bool) not (*Int,error); added
+  missing LastClaimTime field to UserStake. Build+vet OK.
+- go/payment/main.go: processWithdrawal now does a REAL on-chain ERC-20
+  transfer(address,uint256) — manual calldata (selector 0xa9059cbb + padded
+  addr + amount) + types.NewTx(DynamicFeeTx) + types.SignTx(NewLondonSigner)
+  + ethclient.SendTransaction. No more `0x%x` of timestamp. If no hot-wallet
+  key/RPC, status="requires_signing" (not failed, not faked).
+  generatePaymentAddress returns getHotWalletAddress() (no fabricated sha256
+  deposit address). Removed unused aes/cipher/elliptic/rand/sha256/hex
+  imports. Fixed receipt.BlockNumber (*big.Int) confirmation math. Build+vet OK.
+- go/ens_service/main.go: nameHash/labelHash now use crypto.Keccak256 (EIP-137
+  recursive namehash; was sha256). Resolve/ReverseResolve do real on-chain
+  CallContract against ENSRegistry (0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e):
+  resolver(bytes32)=0x0178b8bf, addr(bytes32)=0x3b3b57de, name(bytes32)=0x691f3431.
+  No more hardcoded 0x0000...0001/0x0000...0000. Added ethclient to struct +
+  NewENSService. Created go.mod (github.com/tigerwallet/ens-service) with
+  go-ethereum + gin + go-redis/v8. Build+vet OK.
+
+## frontend/web_nextjs fixes 2026-08-09
+- app/wallet/page.tsx: REWRITTEN to use real WalletService (createWallet,
+  sendTransaction, getBalance, getTransactions) + auth (login/register). No
+  more Math.random() mnemonic / fabricated 0x addresses.
+- app/api/service.ts: API_CONFIG.baseURL is same-origin '' in browser (talks
+  to Next.js proxy routes) and BACKEND_URL on server. BlockchainService
+  delegates to backend (ethers removed).
+- app/api/v1/_proxy.ts: unchanged (proxyGet/proxyMutation, BACKEND_URL).
+- Fixed 30 route.ts files: _proxy import had one extra ../ (resolved).
+- Added 15 missing proxy routes: app/api/v1/{wallets,send,sign,balance,
+  tokens,transactions,nfts,gas,chains,auth/login,auth/register,
+  public/balance,public/tokens,public/transactions,public/nfts}/route.ts.
+- tsc --noEmit: 0 errors in all changed files (57 pre-existing errors in
+  OTHER pages like hardware-wallet/launchpad/lending/bridge remain — not
+  from these changes).

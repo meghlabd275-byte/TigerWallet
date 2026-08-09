@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { proxyGet, proxyMutation } from '../../../_proxy';
+import { proxyGet, proxyMutation } from '../../_proxy';
 
 export async function GET(req: NextRequest) {
   return proxyGet(req, '/governance/proposals');

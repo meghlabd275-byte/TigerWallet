@@ -8,13 +8,7 @@ package main
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -24,7 +18,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -585,26 +578,91 @@ func (s *PaymentService) CreateWithdrawal(c *gin.Context) {
 	})
 }
 
-// Process withdrawal - in production, broadcast to blockchain
+// processWithdrawal performs a REAL on-chain ERC-20 transfer(to, amount)
+// from the configured hot wallet. If no hot wallet key or RPC client is
+// configured, the withdrawal is marked "requires_signing" so the caller can
+// submit it via the canonical wallet_api signing endpoint. We NEVER fabricate
+// a transaction hash.
 func (s *PaymentService) processWithdrawal(payment *Payment) {
 	client, ok := s.ethClients[payment.Chain]
 	if !ok {
-		payment.Status = "failed"
+		payment.Status = "requires_signing"
 		payment.UpdatedAt = time.Now()
+		log.Printf("Withdrawal %s: no RPC client for chain %s, requires external signing via wallet_api", payment.ID, payment.Chain)
+		return
+	}
+	if s.privateKey == nil {
+		payment.Status = "requires_signing"
+		payment.UpdatedAt = time.Now()
+		log.Printf("Withdrawal %s: no hot wallet key, requires external signing via wallet_api", payment.ID)
 		return
 	}
 
 	tokenAddr := StablecoinContracts[payment.Chain][payment.Token]
 	chainID := big.NewInt(ChainIDs[payment.Chain])
 
-	// Parse amount
-	amount := new(big.Int)
-	amount.SetString(payment.Amount, 10)
+	amount, ok := new(big.Int).SetString(payment.Amount, 10)
+	if !ok {
+		payment.Status = "failed"
+		payment.UpdatedAt = time.Now()
+		log.Printf("Withdrawal %s: invalid amount %s", payment.ID, payment.Amount)
+		return
+	}
 
-	// In production: call token transfer
-	// For now, simulate broadcast
+	toAddr := common.HexToAddress(payment.ToAddress)
+
+	// Build ERC-20 transfer(address,uint256) calldata:
+	// selector = keccak256("transfer(address,uint256)")[:4] = 0xa9059cbb
+	data := make([]byte, 4+32+32)
+	data[0], data[1], data[2], data[3] = 0xa9, 0x05, 0x9c, 0xbb
+	copy(data[4+12:], toAddr.Bytes())     // address right-padded to 32
+	amount.FillBytes(data[36:68])          // uint256 big-endian, left-padded to 32
+
+	nonce, err := client.PendingNonceAt(context.Background(), crypto.PubkeyToAddress(s.privateKey.PublicKey))
+	if err != nil {
+		payment.Status = "failed"
+		payment.UpdatedAt = time.Now()
+		log.Printf("Withdrawal %s: nonce error: %v", payment.ID, err)
+		return
+	}
+
+	gprice, err := client.SuggestGasPrice(context.Background())
+	if err != nil {
+		payment.Status = "failed"
+		payment.UpdatedAt = time.Now()
+		log.Printf("Withdrawal %s: gas price error: %v", payment.ID, err)
+		return
+	}
+
+	gLimit := uint64(60000) // ERC-20 transfer typical cost
+	tx := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     nonce,
+		To:        &tokenAddr,
+		Value:     big.NewInt(0),
+		Gas:       gLimit,
+		GasFeeCap: gprice,
+		GasTipCap: big.NewInt(1),
+		Data:      data,
+	})
+
+	signedTx, err := types.SignTx(tx, types.NewLondonSigner(chainID), s.privateKey)
+	if err != nil {
+		payment.Status = "failed"
+		payment.UpdatedAt = time.Now()
+		log.Printf("Withdrawal %s: sign error: %v", payment.ID, err)
+		return
+	}
+
+	if err := client.SendTransaction(context.Background(), signedTx); err != nil {
+		payment.Status = "failed"
+		payment.UpdatedAt = time.Now()
+		log.Printf("Withdrawal %s: broadcast error: %v", payment.ID, err)
+		return
+	}
+
 	payment.Status = "broadcasted"
-	payment.TxHash = fmt.Sprintf("0x%x", time.Now().UnixNano())
+	payment.TxHash = signedTx.Hash().Hex()
 	payment.UpdatedAt = time.Now()
 
 	s.mu.Lock()
@@ -826,11 +884,13 @@ func (s *PaymentService) HealthCheck(c *gin.Context) {
 // Helper Functions
 // ============================================================================
 
+// generatePaymentAddress returns the hot wallet's address for receiving
+// payments on the given chain. It NEVER fabricates a deposit address: users
+// must only send funds to a real key-controlled address. If no hot wallet key
+// is configured, an empty string is returned and the caller must reject the
+// deposit (do NOT substitute a placeholder address).
 func (s *PaymentService) generatePaymentAddress(chain string) string {
-	// Generate a deterministic address based on chain and timestamp
-	// In production, use HD wallet derivation
-	hash := sha256.Sum256([]byte(fmt.Sprintf("%s-%d-%s", chain, time.Now().UnixNano(), uuid.New().String())))
-	return "0x" + hex.EncodeToString(hash[:20])
+	return s.getHotWalletAddress()
 }
 
 func (s *PaymentService) getHotWalletAddress() string {
@@ -928,7 +988,7 @@ func (s *PaymentService) checkPaymentConfirmation(payment *Payment) {
 		return
 	}
 
-	confirmations := int64(block - receipt.BlockNumber)
+	confirmations := int64(block) - receipt.BlockNumber.Int64()
 
 	s.mu.Lock()
 	payment.Confirmations = confirmations

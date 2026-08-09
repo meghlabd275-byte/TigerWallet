@@ -12,6 +12,17 @@ This document provides a detailed feature-by-feature comparison between TigerWal
 
 **Critical Finding:** TigerWallet's core wallet engine (`go/wallet_api`) implements real cryptography with no mocks, but the frontend DeFi features (swap, staking, lending, bridge, NFT marketplace) are predominantly stubs that display "unavailable until X is configured" messages rather than functional integrations.
 
+> **PROGRESS UPDATE (2026-08-09):** The following high-impact fixes were landed this session — all verified to build + `go vet` clean (Go) and `tsc --noEmit` 0 errors (changed TS files):
+> 1. **Web wallet UI** (`app/wallet/page.tsx`) — fully rewritten to call the real `WalletService` backend (real BIP-39 mnemonic, real `POST /api/v1/send` EIP-1559 broadcast, real balance + tx history). No more fabricated `0x`+random-hex addresses or `Math.random()` mnemonics.
+> 2. **Frontend↔backend connectivity** — fixed 30 broken `_proxy` import paths and added 15 missing Next.js proxy routes (`/api/v1/{wallets,send,balance,tokens,transactions,nfts,gas,chains,sign,auth/*,public/*}`) so the browser talks same-origin to `go/wallet_api` (no CORS).
+> 3. **`go/wallet_service`** — P-256 + `sha512(seed)` broken crypto replaced with a transparent reverse-proxy shim to canonical `wallet_api`.
+> 4. **`go/swap_service`** — `ExecuteSwap` no longer fabricates tx hashes; returns a real quote + `action_required` → `wallet_api /api/v1/send`. Pre-existing build breaks fixed.
+> 5. **`go/staking_service`** — fake `0x1234...` validators → unverified samples; no-op JWT → real `golang-jwt/v5` HMAC validation. Package conflict + `SetString` + missing field fixed.
+> 6. **`go/payment`** — `processWithdrawal` now does a REAL ERC-20 `transfer` via `types.SignTx` + `ethclient.SendTransaction`; `generatePaymentAddress` returns the real hot-wallet address (no fabricated `sha256` deposit address).
+> 7. **`go/ens_service`** — `nameHash`/`labelHash` now use **keccak256** EIP-137 (was SHA-256); `Resolve`/`ReverseResolve` do real on-chain `CallContract` against the ENS registry (was hardcoded placeholders). Added `go.mod`.
+>
+> The remaining stubs (frontend swap/staking/lending/bridge/NFT pages, `go/services/*` duplicates, mobile Flutter/Android) are still tracked in the gap analysis below.
+
 ---
 
 ## Part I: Competitor Wallet Feature Inventory

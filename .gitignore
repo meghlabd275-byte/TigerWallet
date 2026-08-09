@@ -100,3 +100,13 @@ target/
 
 # Desktop wallet build
 desktop_wallet/build/
+
+# Go build binaries (do not commit)
+go/ens_service/ens-service
+go/multisig_service/multisig-service
+go/payment/payment
+go/swap_service/swap-service
+go/staking_service/staking-service
+go/wallet_service/wallet-service
+go/wallet_api/wallet-api
+go/mpc/mpc

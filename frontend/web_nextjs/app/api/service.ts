@@ -5,14 +5,18 @@
  * All endpoints connect to Go backend services
  */
 
-import { ethers } from 'ethers';
-
 // ============================================================================
 // Configuration
 // ============================================================================
 
+// In the browser we talk same-origin to the Next.js API routes (which proxy
+// to the Go wallet-api backend), avoiding CORS. On the server we hit the
+// backend directly. NEXT_PUBLIC_API_URL can override either.
+const isBrowser = typeof window !== 'undefined';
 const API_CONFIG = {
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8443',
+  baseURL: isBrowser
+    ? (process.env.NEXT_PUBLIC_API_URL || '')
+    : (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8443'),
   wsURL: process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8443',
   timeout: 30000,
   retries: 3,
@@ -505,55 +509,25 @@ export const api = new APIClient(API_CONFIG.baseURL);
 // ============================================================================
 
 export class BlockchainService {
-  private providers: Map<number, ethers.JsonRpcProvider> = new Map();
-
-  getProvider(chainId: number): ethers.JsonRpcProvider {
-    if (!this.providers.has(chainId)) {
-      const rpcURLs: Record<number, string> = {
-        1: 'https://eth.llamarpc.com',
-        137: 'https://polygon.llamarpc.com',
-        42161: 'https://arb1.arbitrum.io/rpc',
-        10: 'https://mainnet.optimism.io',
-        43114: 'https://api.avax.network/ext/bc/C/rpc',
-        56: 'https://bsc-dataseed1.binance.org',
-      };
-      
-      const rpcURL = rpcURLs[chainId] || `https://rpc.ankr.com/eth/${chainId}`;
-      this.providers.set(chainId, new ethers.JsonRpcProvider(rpcURL));
-    }
-    
-    return this.providers.get(chainId)!;
-  }
-
   async getBalance(address: string, chainId: number): Promise<string> {
-    const provider = this.getProvider(chainId);
-    const balance = await provider.getBalance(address);
-    return balance.toString();
-  }
-
-  async getTransactionCount(address: string, chainId: number): Promise<number> {
-    const provider = this.getProvider(chainId);
-    return provider.getTransactionCount(address);
+    const res = await fetch(`${API_CONFIG.baseURL}/api/v1/public/balance?address=${address}&chain_id=${chainId}`);
+    if (!res.ok) throw new Error('Failed to fetch balance');
+    const data = await res.json();
+    return data.balance ?? '0';
   }
 
   async getGasPrice(chainId: number): Promise<string> {
-    const provider = this.getProvider(chainId);
-    const feeData = await provider.getFeeData();
-    return feeData.gasPrice?.toString() || '0';
+    const res = await fetch(`${API_CONFIG.baseURL}/api/v1/gas?chain_id=${chainId}`);
+    if (!res.ok) throw new Error('Failed to fetch gas price');
+    const data = await res.json();
+    return data.gas_price ?? '0';
   }
 
-  async sendTransaction(
-    signedTx: string,
-    chainId: number
-  ): Promise<string> {
-    const provider = this.getProvider(chainId);
-    const tx = await provider.broadcastTransaction(signedTx);
-    return tx;
-  }
-
-  async getTransactionReceipt(txHash: string, chainId: number) {
-    const provider = this.getProvider(chainId);
-    return provider.getTransactionReceipt(txHash);
+  async getTransactionReceipt(txHash: string, chainId: number): Promise<unknown> {
+    const res = await fetch(`${API_CONFIG.baseURL}/api/v1/public/transactions?address=&chain_id=${chainId}`);
+    if (!res.ok) throw new Error('Failed to fetch transactions');
+    const data = await res.json();
+    return (data.transactions ?? []).find((t: { hash: string }) => t.hash === txHash) ?? null;
   }
 }
 

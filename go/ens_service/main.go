@@ -2,11 +2,9 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math/big"
 	"net/http"
@@ -16,6 +14,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 )
@@ -71,12 +73,17 @@ type ReverseRecord struct {
 }
 
 type ENSService struct {
-	config  *Config
-	redis   *redis.Client
-	client  *http.Client
-	records map[string]*ENSRecord
-	reverse map[string]*ReverseRecord
+	config   *Config
+	redis    *redis.Client
+	client   *http.Client
+	eth      *ethclient.Client // real Ethereum RPC client for on-chain ENS lookup
+	records  map[string]*ENSRecord
+	reverse  map[string]*ReverseRecord
 }
+
+// ENSRegistry is the canonical ENS registry deployed on Ethereum mainnet.
+// See ENS deployment docs. Used to resolve resolver(bytes32 node).
+var ENSRegistry = common.HexToAddress("0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e")
 
 // ============================================================================
 // ENS Contract ABIs (Simplified)
@@ -96,44 +103,52 @@ func NewENSService(config *Config) *ENSService {
 		Addr: config.RedisURL,
 	})
 
-	return &ENSService{
+	svc := &ENSService{
 		config:  config,
 		redis:   redisClient,
 		client:  &http.Client{Timeout: 30 * time.Second},
 		records: make(map[string]*ENSRecord),
 		reverse: make(map[string]*ReverseRecord),
 	}
+
+	// Initialize a real Ethereum RPC client for on-chain ENS resolution.
+	if config.EthRPCURL != "" {
+		client, err := ethclient.Dial(config.EthRPCURL)
+		if err != nil {
+			log.Printf("ENS: failed to connect to Ethereum RPC %s: %v", config.EthRPCURL, err)
+		} else {
+			svc.eth = client
+			log.Printf("ENS: connected to Ethereum RPC %s", config.EthRPCURL)
+		}
+	}
+
+	return svc
 }
 
 // ============================================================================
 // Name Processing
 // ============================================================================
 
+// nameHash implements the EIP-137 namehash algorithm using keccak256.
+// namehash("") = 0x00...00; namehash(name) = keccak256(namehash(parent) || keccak256(label)).
+// Labels are processed in reverse order (TLD last). This is the real ENS
+// algorithm; the previous implementation incorrectly used SHA-256.
 func (s *ENSService) nameHash(name string) string {
-	// Simplified namehash calculation
-	// In production, would follow ENS namehash algorithm
-	
+	node := make([]byte, 32) // namehash("") = 32 zero bytes
 	if name == "" {
-		return "0000000000000000000000000000000000000000000000000000000000000000"
+		return hex.EncodeToString(node)
 	}
-
-	parts := strings.Split(name, ".")
-	if len(parts) < 2 {
-		// Not a valid ENS name
-		return ""
+	labels := strings.Split(name, ".")
+	for i := len(labels) - 1; i >= 0; i-- {
+		labelHash := crypto.Keccak256([]byte(labels[i]))
+		node = crypto.Keccak256(append(node, labelHash...))
 	}
-
-	// Calculate labelhash for first label
-	label := parts[0]
-	labelHash := sha256.Sum256([]byte(label))
-	
-	// Return simplified hash
-	return hex.EncodeToString(labelHash[:])
+	return hex.EncodeToString(node)
 }
 
+// labelHash returns keccak256(label) - the ENS labelhash (EIP-137).
 func (s *ENSService) labelHash(label string) string {
-	hash := sha256.Sum256([]byte(label))
-	return hex.EncodeToString(hash[:])
+	return hex.EncodeToString(crypto.Keccak256([]byte(label)))
 }
 
 // ============================================================================
@@ -155,21 +170,47 @@ func (s *ENSService) Resolve(name string) (*ENSRecord, error) {
 		return nil, fmt.Errorf("invalid ENS name: must end with .eth")
 	}
 
-	// Simplified resolution - would query Ethereum
 	nodehash := s.nameHash(name)
+	node := common.HexToHash(nodehash)
 
-	// Create record (would query contracts)
 	record := &ENSRecord{
 		Name:         name,
 		Labelhash:    s.labelHash(strings.TrimSuffix(name, ".eth")),
 		Nodehash:     nodehash,
-		Owner:        "0x" + hex.EncodeToString([]byte(name[:8])) + "000000000000000000000000",
-		Resolver:     "0x0000000000000000000000000000000000000001",
-		TTL:         86400,
-		Address:     "0x0000000000000000000000000000000000000000",
 		TextRecords: make(map[string]string),
 		Coins:       make(map[string]string),
 		ResolvedAt:   time.Now().Unix(),
+	}
+
+	// Real on-chain ENS resolution. If no Ethereum RPC client is configured,
+	// return only the computed namehash (no fabricated owner/resolver/address).
+	if s.eth == nil {
+		return record, fmt.Errorf("ETH_RPC_URL not configured: cannot resolve on-chain ENS record")
+	}
+
+	// resolver(bytes32) selector = 0x0178b8bf
+	resolverData := append([]byte{0x01, 0x78, 0xb8, 0xbf}, node.Bytes()...)
+	res, err := s.eth.CallContract(context.Background(), ethereum.CallMsg{
+		To:   &ENSRegistry,
+		Data: resolverData,
+	}, nil)
+	if err != nil || len(res) < 32 {
+		return record, fmt.Errorf("no resolver set for %s: %v", name, err)
+	}
+	resolverAddr := common.BytesToAddress(res[12:32])
+	record.Resolver = resolverAddr.Hex()
+	if resolverAddr == (common.Address{}) {
+		return record, fmt.Errorf("no resolver set for %s", name)
+	}
+
+	// addr(bytes32) selector = 0x3b3b57de
+	addrData := append([]byte{0x3b, 0x3b, 0x57, 0xde}, node.Bytes()...)
+	addrRes, err := s.eth.CallContract(context.Background(), ethereum.CallMsg{
+		To:   &resolverAddr,
+		Data: addrData,
+	}, nil)
+	if err == nil && len(addrRes) >= 32 {
+		record.Address = common.BytesToAddress(addrRes[12:32]).Hex()
 	}
 
 	// Cache result
@@ -191,18 +232,61 @@ func (s *ENSService) ReverseResolve(address string) (*ReverseRecord, error) {
 		}
 	}
 
-	// Simplified - would query reverse registrar
-	// Convert address to reverse name
-	reverseName := address[2:10] + ".addr.reverse"
+	// Real reverse resolution via the ENS reverse registrar. The reverse node
+	// is namehash("<lowercase-hex-addr-without-0x>.addr.reverse"). If no RPC
+	// client is configured we return an empty name (never a fabricated one).
+	cleanAddr := strings.ToLower(strings.TrimPrefix(address, "0x"))
+	if cleanAddr == "" {
+		return nil, fmt.Errorf("invalid address")
+	}
 
 	record := &ReverseRecord{
 		Address:    address,
-		Name:       reverseName,
+		Name:       "",
 		ResolvedAt: time.Now().Unix(),
 	}
 
+	if s.eth == nil {
+		return record, fmt.Errorf("ETH_RPC_URL not configured: cannot reverse-resolve on-chain")
+	}
+
+	reverseNode := common.HexToHash(s.nameHash(cleanAddr + ".addr.reverse"))
+
+	// resolver(bytes32) on the ENS registry
+	resolverData := append([]byte{0x01, 0x78, 0xb8, 0xbf}, reverseNode.Bytes()...)
+	res, err := s.eth.CallContract(context.Background(), ethereum.CallMsg{
+		To:   &ENSRegistry,
+		Data: resolverData,
+	}, nil)
+	if err != nil || len(res) < 32 {
+		return record, fmt.Errorf("no reverse resolver for %s: %v", address, err)
+	}
+	resolverAddr := common.BytesToAddress(res[12:32])
+	if resolverAddr == (common.Address{}) {
+		return record, fmt.Errorf("no reverse resolver set for %s", address)
+	}
+
+	// name(bytes32) selector = 0x691f3431
+	nameData := append([]byte{0x69, 0x1f, 0x34, 0x31}, reverseNode.Bytes()...)
+	nameRes, err := s.eth.CallContract(context.Background(), ethereum.CallMsg{
+		To:   &resolverAddr,
+		Data: nameData,
+	}, nil)
+	if err != nil || len(nameRes) < 96 {
+		return record, fmt.Errorf("no reverse name for %s: %v", address, err)
+	}
+
+	// ABI-decode a dynamic string: offset(32) + length(32) + data
+	offset := new(big.Int).SetBytes(nameRes[0:32]).Int64()
+	length := new(big.Int).SetBytes(nameRes[offset : offset+32]).Int64()
+	end := offset + 32 + length
+	if end > int64(len(nameRes)) {
+		end = int64(len(nameRes))
+	}
+	record.Name = string(nameRes[offset+32 : end])
+
 	// Cache result
-	if data, err := json.Marshal(record); err == nil {
+	if data, err := json.Marshal(record); err == nil && record.Name != "" {
 		s.redis.Set(context.Background(), "reverse:"+address, string(data), 24*time.Hour)
 	}
 

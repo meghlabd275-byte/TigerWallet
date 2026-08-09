@@ -4,8 +4,6 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
@@ -400,22 +398,28 @@ func (ss *SwapService) ExecuteSwap(c *gin.Context) {
 		)
 	}
 
-	// Create swap transaction
+	// Create swap quote record. The on-chain execution (approve + swap
+	// through the DEX router) requires signing with the wallet's encrypted
+	// seed, which only the canonical go/wallet_api can do. This service
+	// computes the quote/route and returns the exact on-chain call the
+	// client must submit via wallet_api's POST /api/v1/send endpoint. We
+	// never fabricate a transaction hash.
 	swapID := uuid.New().String()
+	toAmountStr := fmt.Sprintf("%.6f", outputAmount)
 	tx := &SwapTransaction{
-		ID:           swapID,
-		UserID:       req.UserID,
+		ID:          swapID,
+		UserID:      req.UserID,
 		FromToken:   req.FromToken,
 		ToToken:     req.ToToken,
 		FromAmount:  req.FromAmount,
-		ToAmount:    fmt.Sprintf("%.6f", outputAmount),
+		ToAmount:    toAmountStr,
 		PriceImpact: "0.5",
-		Slippage:    "0.5",
+		Slippage:    req.Slippage,
 		Route:       req.Route,
 		Chain:       req.Chain,
 		DEX:         pair.DEX,
-		Status:      "pending",
-		TxHash:      "", // not broadcast via RPC; real hash requires on-chain broadcast
+		Status:      "quote_ready",
+		TxHash:      "",
 		GasUsed:     "150000",
 		Fee:         "0.003",
 		Timestamp:   time.Now(),
@@ -434,15 +438,27 @@ func (ss *SwapService) ExecuteSwap(c *gin.Context) {
 	pair.Volume24h = addStrings(pair.Volume24h, req.FromAmount)
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":     true,
-		"swap_id":    swapID,
-		"from_token": req.FromToken,
-		"to_token":   req.ToToken,
-		"from_amount": req.FromAmount,
-		"to_amount":  tx.ToAmount,
-		"tx_hash":    tx.TxHash,
-		"status":     tx.Status,
-		"dex":        tx.DEX,
+		"success":      true,
+		"swap_id":      swapID,
+		"from_token":   req.FromToken,
+		"to_token":     req.ToToken,
+		"from_amount":  req.FromAmount,
+		"to_amount":    tx.ToAmount,
+		"min_output":   req.MinOutput,
+		"tx_hash":      "",
+		"status":       tx.Status,
+		"dex":          tx.DEX,
+		"price_impact": tx.PriceImpact,
+		"gas_estimate": tx.GasUsed,
+		"fee":          tx.Fee,
+		"action_required": gin.H{
+			"endpoint":     "POST /api/v1/send (wallet_api)",
+			"description":  "Submit the on-chain swap through the signing backend (wallet_api) which holds the encrypted seed.",
+			"chain":        req.Chain,
+			"to":           "DEX router contract",
+			"value":        req.FromAmount,
+			"requires_erc20_approve": req.FromToken != "",
+		},
 	})
 }
 
@@ -528,14 +544,9 @@ func (ss *SwapService) AddLiquidity(c *gin.Context) {
 		"pool_id":   poolID,
 		"lp_tokens":  pool.LpTokens,
 		"token_a":   req.TokenA,
-		"token_b":   req.B_token,
+		"token_b":   req.TokenB,
 		"amount_a":  req.AmountA,
 		"amount_b":  req.AmountB,
-	})
-}
-
-// Get user's liquidity positions
-		"share":     pool.Share,
 	})
 }
 
@@ -616,8 +627,7 @@ func addStrings(a, b string) string {
 	bf.SetString(b)
 	cf := new(big.Float)
 	cf.Add(af, bf)
-	res, _ := cf.String()
-	return res
+	return cf.String()
 }
 
 func subtractStrings(a, b string) string {
@@ -627,8 +637,7 @@ func subtractStrings(a, b string) string {
 	bf.SetString(b)
 	cf := new(big.Float)
 	cf.Sub(af, bf)
-	res, _ := cf.String()
-	return res
+	return cf.String()
 }
 
 // ============================================================================

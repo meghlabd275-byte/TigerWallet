@@ -101,6 +101,7 @@ type UserStake struct {
 	ClaimedRewards string    `json:"claimed_rewards"`
 	StakeTime      int64     `json:"stake_time"`
 	UnlockTime     int64     `json:"unlock_time"`
+	LastClaimTime  int64     `json:"last_claim_time"`
 	Status         string    `json:"status"` // staked, unbonding, claimed
 }
 
@@ -371,8 +372,8 @@ func (s *StakingService) Stake(ctx context.Context, stake *UserStake) (*UserStak
 	}
 
 	// Validate amount
-	amount, err := new(big.Int).SetString(stake.Amount, 10)
-	if err != nil {
+	amount, ok := new(big.Int).SetString(stake.Amount, 10)
+	if !ok {
 		return nil, fmt.Errorf("invalid amount")
 	}
 
@@ -483,8 +484,8 @@ func (s *StakingService) RequestUnbonding(ctx context.Context, userID, poolID, a
 
 	// Validate amount
 	stakedAmount, _ := new(big.Int).SetString(stake.Amount, 10)
-	requestAmount, err := new(big.Int).SetString(amount, 10)
-	if err != nil {
+	requestAmount, ok := new(big.Int).SetString(amount, 10)
+	if !ok {
 		return nil, fmt.Errorf("invalid amount")
 	}
 
