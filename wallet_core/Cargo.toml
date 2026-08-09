@@ -54,8 +54,8 @@ chrono = { version = "0.4.31", features = ["serde"] }
 # UUID
 uuid = { version = "1.6.1", features = ["v4", "serde"] }
 
-# Network
-reqwest = { version = "0.11", features = ["json"] }
+# Network (rustls — no system OpenSSL dependency)
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
 
 # Ethereum types
 ethereum-types = "0.14"

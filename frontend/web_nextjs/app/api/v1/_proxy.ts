@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export const BACKEND_URL = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+export const BACKEND_URL = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8443';
 
 export function authHeaders(req: NextRequest): Record<string, string> {
   const auth = req.headers.get('authorization');

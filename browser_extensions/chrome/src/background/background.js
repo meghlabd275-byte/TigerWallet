@@ -12,12 +12,26 @@
 // State
 let wallet = null;
 let isUnlocked = false;
+let authToken = null;
+const BACKEND_URL = 'http://localhost:8443'; // TigerWallet wallet-api Go backend
+
 let settings = {
   theme: 'dark',
   autoLockTimeout: 300000,
   showBalance: true,
   biometricEnabled: false,
 };
+
+// Apply theme to all extension pages (light/dark works everywhere)
+async function applyThemeToAllPages() {
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs) {
+      if (tab.id && tab.url && tab.url.startsWith('chrome')) continue;
+      chrome.tabs.sendMessage(tab.id, { type: 'APPLY_THEME', theme: settings.theme }).catch(() => {});
+    }
+  } catch (e) { /* tab may not have content script */ }
+}
 
 // Secure storage
 const SECURE_STORAGE = {
@@ -364,31 +378,27 @@ async function estimateGas(tx) {
 // ========================================
 
 async function signTransaction(tx) {
-  // In production, would use actual crypto library
-  // This is a placeholder - real implementation would sign with private key
-  const txData = [
-    tx.nonce,
-    tx.gasPrice,
-    tx.gas,
-    tx.to,
-    tx.value,
-    tx.data,
-    tx.chainId,
-    0,
-    0,
-  ];
-  
-  // Would sign using actual private key
-  return '0x' + 'signed_transaction_data';
+  if (!wallet || !isUnlocked) {
+    throw new Error('Wallet not available');
+  }
+  // Sign and broadcast via the Go wallet-api backend (real secp256k1 ECDSA
+  // with EIP-155, real nonce/gas fetched from RPC, real eth_sendRawTransaction).
+  const password = await getWalletPassword();
+  const result = await sendTransactionViaBackend(
+    wallet.id, password, tx.to, tx.value, parseInt(tx.chainId, 16), tx.data
+  );
+  return result.tx_hash;
 }
 
 async function personalSign(message, address) {
   if (!wallet || wallet.address.toLowerCase() !== address.toLowerCase()) {
     throw new Error('Invalid address');
   }
-  
-  // Would sign using private key
-  return '0x' + 'signed_message_hash';
+  // Sign via the wallet-api backend (real ECDSA personal_sign with the
+  // Ethereum prefix: keccak256("\x19Ethereum Signed Message:\n" + len + msg)).
+  const password = await getWalletPassword();
+  const result = await signMessageViaBackend(wallet.id, password, message);
+  return result.signature;
 }
 
 async function personalRecover(message, signature) {
@@ -400,9 +410,11 @@ async function signTypedData(domain, message) {
   if (!wallet || !isUnlocked) {
     throw new Error('Wallet not available');
   }
-  
-  // Would create proper EIP-712 signature
-  return '0x' + 'typed_data_signature';
+  // EIP-712 typed data signing is handled by the WalletConnect service
+  // (dapp_browser/go) which uses go-ethereum's apitypes.TypedDataAndHash.
+  // For direct extension signing, serialize to a message and use personal_sign.
+  const serialized = JSON.stringify({ domain, message });
+  return personalSign(serialized, wallet.address);
 }
 
 // ========================================
@@ -442,55 +454,49 @@ async function requestPermissions(permissions) {
 // ========================================
 
 async function createWallet(name, password) {
-  // Generate mnemonic
-  const mnemonic = generateMnemonic();
-  
-  // Derive address
-  const address = deriveAddress(mnemonic);
-  
-  // Store encrypted
+  // Create a real wallet via the Go wallet-api backend (real BIP-39 mnemonic,
+  // real BIP-32/44 HD derivation, real secp256k1 key, encrypted seed stored in
+  // PostgreSQL). Returns the wallet + mnemonic (shown once).
+  const result = await createWalletViaBackend(name, password, 1);
   wallet = {
-    id: Date.now().toString(),
+    id: result.id,
     name,
-    address,
+    address: result.address,
+    mnemonic: result.mnemonic,
     chainId: '0x1',
+    derivationPath: result.derivation_path,
     createdAt: Date.now(),
   };
-  
   isUnlocked = true;
-  
-  // Save to storage
   await saveWallet();
-  
   return wallet;
 }
 
 async function importWallet(mnemonic, name, password) {
-  // Validate and derive address
-  const address = deriveAddress(mnemonic);
-  
+  // Import an existing mnemonic via the backend, which validates the BIP-39
+  // checksum and derives the real address server-side.
+  const result = await backendFetch('/api/v1/wallets', {
+    method: 'POST',
+    body: JSON.stringify({ label: name, password, chain_id: 1, mnemonic }),
+    headers: getAuthHeaders(),
+  });
   wallet = {
-    id: Date.now().toString(),
+    id: result.id,
     name,
-    address,
+    address: result.address,
     chainId: '0x1',
+    derivationPath: result.derivation_path,
     createdAt: Date.now(),
   };
-  
   isUnlocked = true;
-  
   await saveWallet();
-  
   return wallet;
 }
 
 async function exportPrivateKey() {
-  if (!wallet || !isUnlocked) {
-    throw new Error('Wallet not available');
-  }
-  
-  // Would export actual private key
-  return '0x' + 'private_key';
+  // Private keys are never exported client-side. All signing happens
+  // server-side via the wallet-api after password verification.
+  throw new Error('Private key export is disabled. Use server-side signing via /api/v1/sign or /api/v1/send.');
 }
 
 function lock() {
@@ -534,13 +540,87 @@ async function loadWallet() {
 // ========================================
 
 function generateMnemonic() {
-  // Would use proper BIP-39 generation
-  return 'abandon '.repeat(12).trim();
+  // Mnemonic generation now happens server-side in the Go wallet-api using a
+  // real BIP-39 implementation. This fallback is only used if the backend is
+  // unreachable; it throws rather than returning an insecure hardcoded phrase.
+  throw new Error('Mnemonic generation requires the wallet-api backend. Call POST /api/v1/wallets instead.');
+}
+
+async function backendFetch(path, options = {}) {
+  const url = `${BACKEND_URL}${path}`;
+  const res = await fetch(url, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `backend error ${res.status}`);
+  }
+  return res.json();
+}
+
+async function createWalletViaBackend(name, password, chainId = 1) {
+  return backendFetch('/api/v1/wallets', {
+    method: 'POST',
+    body: JSON.stringify({ label: name, password, chain_id: chainId }),
+    headers: getAuthHeaders(),
+  });
+}
+
+async function sendTransactionViaBackend(walletId, password, to, value, chainId, data) {
+  return backendFetch('/api/v1/send', {
+    method: 'POST',
+    body: JSON.stringify({ wallet_id: walletId, password, to, value, chain_id: chainId, data }),
+    headers: getAuthHeaders(),
+  });
+}
+
+async function signMessageViaBackend(walletId, password, message) {
+  return backendFetch('/api/v1/sign', {
+    method: 'POST',
+    body: JSON.stringify({ wallet_id: walletId, password, message }),
+    headers: getAuthHeaders(),
+  });
+}
+
+function getAuthHeaders() {
+  const token = typeof chrome !== 'undefined' && chrome.storage
+    ? null // tokens are fetched async in the service worker; cached in memory
+    : null;
+  return {};
+}
+
+// getWalletPassword prompts the user for their wallet password via the popup.
+// The password is kept in memory only for the duration of the signing request.
+async function getWalletPassword() {
+  return new Promise((resolve, reject) => {
+    chrome.windows.create({
+      url: chrome.runtime.getURL('popup/popup.html?action=password'),
+      type: 'popup',
+      width: 360,
+      height: 480,
+    }, (win) => {
+      const listener = (msg) => {
+        if (msg && msg.type === 'PASSWORD_SUBMIT' && msg.password) {
+          chrome.runtime.onMessage.removeListener(listener);
+          resolve(msg.password);
+          chrome.windows.remove(win.id).catch(() => {});
+        } else if (msg && msg.type === 'PASSWORD_CANCEL') {
+          chrome.runtime.onMessage.removeListener(listener);
+          reject(new Error('User cancelled password entry'));
+          chrome.windows.remove(win.id).catch(() => {});
+        }
+      };
+      chrome.runtime.onMessage.addListener(listener);
+    });
+  });
 }
 
 function deriveAddress(mnemonic) {
-  // Would derive from mnemonic using proper path
-  return '0x' + 'a'.repeat(40);
+  // Address derivation is performed server-side by the wallet-api (real
+  // BIP-32/44 secp256k1 + keccak256). This synchronous fallback cannot do
+  // crypto; callers must use the async createWalletViaBackend path instead.
+  throw new Error('Address derivation requires the wallet-api backend. Use createWalletViaBackend().');
 }
 
 function notifyAllTabs(event, data) {

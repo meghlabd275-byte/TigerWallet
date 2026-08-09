@@ -9,7 +9,7 @@ use ethereum::{TransactionAction, TransactionV2 as EthTransaction};
 use ethereum_types::{U64, U256, H160, H256, H512, Address as EthAddress};
 use rlp::{Rlp, RlpStream};
 use sha3::{Keccak256, Digest};
-use k256::ecdsa::{SigningKey, VerifyingKey, signature::{Signer, Verifier}};
+use k256::ecdsa::{SigningKey, VerifyingKey, signature::Verifier, RecoveryId};
 use k256::SecretKey;
 
 // ============================================================================
@@ -120,7 +120,9 @@ impl EvmTransaction {
         })
     }
 
-    /// Sign transaction with private key
+    /// Sign transaction with private key. Returns a valid RLP-encoded signed
+    /// transaction (legacy EIP-155 or EIP-1559 typed) ready for
+    /// `eth_sendRawTransaction`.
     pub fn sign(&self, private_key: &[u8]) -> Result<Vec<u8>, TxError> {
         if private_key.len() != 32 {
             return Err(TxError::InvalidPrivateKey);
@@ -129,42 +131,70 @@ impl EvmTransaction {
         let key = SecretKey::from_bytes(private_key.into())
             .map_err(|_| TxError::InvalidPrivateKey)?;
         let signing_key = SigningKey::from(&key);
-        let verifying_key = VerifyingKey::from(&signing_key);
-        let encoded_point = verifying_key.to_encoded_point(false);
-        let public_key = encoded_point.as_bytes();
-        let digest = Keccak256::digest(&public_key[1..]);
-        let sender = EthAddress::from_slice(&digest[12..]);
 
-        // Update nonce to sender's nonce if not set
-        let mut tx = self.clone();
-        if tx.nonce == U256::zero() && sender != EthAddress::zero() {
-            // In production, fetch nonce from RPC
-            tx.nonce = U256::zero();
-        }
-
-        let encoded = match tx.tx_type {
-            EvmTxType::Legacy => encode_legacy_tx(&tx, tx.chain_id),
-            EvmTxType::Eip1559 => encode_eip1559_tx(&tx, tx.chain_id),
-            _ => encode_eip1559_tx(&tx, tx.chain_id),
+        // EIP-155 signing payload
+        let encoded = match self.tx_type {
+            EvmTxType::Legacy => encode_legacy_tx(self, self.chain_id),
+            EvmTxType::Eip1559 => encode_eip1559_tx(self, self.chain_id),
+            _ => encode_eip1559_tx(self, self.chain_id),
         };
+        let hash = Keccak256::digest(&encoded);
 
-        // Sign with EIP-155
-        let mut hasher = Keccak256::new();
-        hasher.update(&encoded);
-        let hash = hasher.finalize();
-        
-        let signature: k256::ecdsa::Signature = signing_key.sign(&hash);
+        // Recoverable signature so we get the parity bit for v / y_parity
+        let (signature, recovery_id) = signing_key
+            .sign_recoverable(&hash)
+            .map_err(|_| TxError::SigningFailed)?;
         let sig_bytes = signature.to_bytes();
-        
-        // Create signed transaction RLP
-        let mut signed = RlpStream::new();
-        signed.append(&encoded);
-        signed.append(&U256::from(tx.chain_id));
-        signed.append(&U256::from(0)); // v
-        signed.append(&U256::from_big_endian(&sig_bytes[0..32])); // r
-        signed.append(&U256::from_big_endian(&sig_bytes[32..64])); // s
-        
-        Ok(signed.as_raw().to_vec())
+        let r = U256::from_big_endian(&sig_bytes[0..32]);
+        let s = U256::from_big_endian(&sig_bytes[32..64]);
+
+        match self.tx_type {
+            EvmTxType::Legacy => {
+                // EIP-155: v = recovery_id + 35 + 2*chain_id
+                let v = U256::from(recovery_id.to_byte())
+                    + U256::from(35)
+                    + U256::from(2) * U256::from(self.chain_id);
+                let mut stream = RlpStream::new();
+                stream.append(&self.nonce);
+                stream.append(&self.gas_price);
+                stream.append(&self.gas_limit);
+                if let Some(to) = &self.to {
+                    stream.append(&to.as_bytes());
+                } else {
+                    stream.append(&Vec::<u8>::new());
+                }
+                stream.append(&self.value);
+                stream.append(&self.data);
+                stream.append(&v);
+                stream.append(&r);
+                stream.append(&s);
+                Ok(stream.out().to_vec())
+            }
+            _ => {
+                // EIP-1559: 0x02 || rlp([chain_id, nonce, max_prio, max_fee, gas, to, value, data, access_list, y_parity, r, s])
+                let y_parity = U256::from(recovery_id.to_byte());
+                let mut stream = RlpStream::new();
+                stream.append(&self.chain_id);
+                stream.append(&self.nonce);
+                stream.append(&self.max_priority_fee_per_gas);
+                stream.append(&self.max_fee_per_gas);
+                stream.append(&self.gas_limit);
+                if let Some(to) = &self.to {
+                    stream.append(&to.as_bytes());
+                } else {
+                    stream.append(&Vec::<u8>::new());
+                }
+                stream.append(&self.value);
+                stream.append(&self.data);
+                stream.begin_list(0); // empty access list
+                stream.append(&y_parity);
+                stream.append(&r);
+                stream.append(&s);
+                let mut out = vec![0x02];
+                out.extend_from_slice(stream.as_raw());
+                Ok(out)
+            }
+        }
     }
 
     /// Encode transaction for RPC

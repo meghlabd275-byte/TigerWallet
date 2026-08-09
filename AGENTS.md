@@ -89,6 +89,56 @@
 
 ## Network / package install
 
+## go/wallet_api (canonical wallet backend — REAL)
+
+- The canonical Go wallet backend at `go/wallet_api/` is the ONLY service that
+  performs key management and signing. It replaces the old `go/wallet_service`
+  (which used NIST P-256 + `sha512(seed)` — NOT secp256k1/BIP-32). Do NOT use
+  `go/wallet_service` for signing.
+- Real BIP-39 mnemonic generation (`tyler-smith/go-bip39`), real BIP-32 HD
+  derivation (`hd_derive.go`: HMAC-SHA512 "Bitcoin seed" master + CKDpriv mod-n
+  via secp256k1), BIP-44 path parsing (`m/44'/60'/0'/0/0`, `'`/`h`/`H` hardened
+  suffixes). The **canonical BIP-44 test vector PASSES**: mnemonic
+  "abandon abandon ... about" m/44'/60'/0'/0/0 → `0x9858EfFD232B4033E47d90003D41EC34EcaEda94`.
+- Real EVM transaction signing via `go-ethereum/core/types.SignTx` +
+  `NewLondonSigner` (EIP-1559 DynamicFeeTx + legacy LegacyTx), real
+  `eth_sendRawTransaction` broadcast. `MarshalBinary()` gives the signed RLP.
+- Real ECDSA personal_sign (`crypto.Sign` with Ethereum prefix
+  `keccak256("\x19Ethereum Signed Message:\n" + len + msg)`), recovery byte 27/28.
+- Seed encryption: AES-256-GCM with scrypt-derived key (N=32768, r=8, p=1).
+  Password never stored; wrong password fails (GCM auth tag).
+- PostgreSQL persistence (`store.go`, pgx/v5 pool): `users`, `wallets` (stores
+  `encrypted_seed`), `address_book`, `transaction_log`. Redis cache for
+  balances/prices/gas (30-60s TTL). No SQLite anywhere.
+- Real fetchers (`fetchers.go`): native balance via `eth_getBalance`, ERC-20
+  via `balanceOf` eth_call, tx history via Etherscan API, NFTs via Etherscan,
+  prices via CoinGecko, gas via `eth_feeHistory`/`eth_gasPrice`.
+- REST API (gin, port 8443): `/api/v1/auth/{register,login}`,
+  `/api/v1/wallets` (POST create, GET list), `/api/v1/{balance,tokens,transactions,nfts}`,
+  `/api/v1/send`, `/api/v1/sign`, `/api/v1/gas`, `/api/v1/price`, `/api/v1/chains`.
+  Public read endpoints at `/api/v1/public/{balance,tokens,transactions,nfts}`.
+  JWT (HS256, 24h) auth middleware on protected routes.
+- Build: `cd go/wallet_api && go build ./...` (exit 0). Tests: `go test ./...`
+  (11 tests pass, including BIP-44 test vector). `go vet` clean.
+- Docker: `go/wallet_api/Dockerfile` (multi-stage, golang:1.23-alpine → alpine).
+- Frontend connects to this backend (port 8443, not 8080). All Next.js API
+  routes updated to use `localhost:8443`. The `WalletService` class in
+  `frontend/web_nextjs/app/api/service.ts` calls the real endpoints.
+- Browser extension (`browser_extensions/chrome`) connects to the same backend
+  via `BACKEND_URL = 'http://localhost:8443'`. All fake stubs removed
+  (`generateMnemonic`, `deriveAddress`, `signTransaction`, `personalSign`,
+  `signTypedData`, `exportPrivateKey` now call the backend or throw). No more
+  hardcoded `"abandon "`×12 or `0x`+fake signatures.
+
+## docker-compose.yml (cleaned)
+
+- Rewritten from 17 broken services → 10 working services: `postgres`,
+  `redis`, `wallet-api`, `wallet-frontend`, `super-admin-api`,
+  `white-label-frontend`, `permission-service`, `connection-api`,
+  `fetcher-gateway`, `monitoring-dashboard`. All build contexts have real
+  Dockerfiles. `database/init.sql` creates the `tigerwallet` DB + schema on
+  first boot. No SQLite.
+
 - npm registry is reachable in this env (`npm ping` → PONG). `npm install`
   works (installs the full tree). `@scure/bip39` + `@noble/hashes` +
   `@scure/base` were added to `frontend/web_nextjs/package.json`.

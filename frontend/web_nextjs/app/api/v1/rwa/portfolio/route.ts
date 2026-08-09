@@ -1,7 +1,7 @@
 // RWA Portfolio API Route
 import { NextResponse } from 'next/server'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8443'
 
 export async function GET() {
   try {

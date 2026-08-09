@@ -496,7 +496,7 @@ export function SocialRecoveryPanel({ walletAddress }: SocialRecoveryPanelProps)
     executeRecovery,
     cancelRecovery,
   } = useSocialRecovery({
-    apiUrl: process.env.NEXT_PUBLIC_SOCIAL_RECOVERY_API || 'http://localhost:8080',
+    apiUrl: process.env.NEXT_PUBLIC_SOCIAL_RECOVERY_API || 'http://localhost:8443',
     chainId: parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '1'),
   });
 

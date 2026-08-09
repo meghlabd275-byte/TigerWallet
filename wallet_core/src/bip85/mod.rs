@@ -19,7 +19,7 @@
 
 use std::fmt;
 use hmac::{Hmac, Mac};
-use sha512::Sha512;
+use sha2::Sha512;
 
 // Application constants
 pub const APP_BITCOIN: u32 = 0;

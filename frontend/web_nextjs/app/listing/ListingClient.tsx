@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../components/ThemeProvider';
 
 // API Base URL
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8443';
 
 // Types
 interface User {

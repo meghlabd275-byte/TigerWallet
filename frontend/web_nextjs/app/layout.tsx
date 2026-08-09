@@ -20,7 +20,7 @@ export default function RootLayout({
             __html: `
               (function() {
                 // Default to dark theme for crypto wallet
-                var theme = localStorage.getItem('tigerwallet-theme');
+                var theme = localStorage.getItem('tigerwallet_theme_mode');
                 if (!theme) {
                   // Check system preference
                   if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {

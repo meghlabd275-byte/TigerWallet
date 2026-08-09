@@ -1,0 +1,260 @@
+package main
+
+// store.go — PostgreSQL persistence layer (pgx) + Redis cache.
+// Replaces all in-memory / SQLite storage. Stores encrypted wallet seeds,
+// user accounts, and transaction history cache.
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/go-redis/redis/v8"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// Store is the canonical data store: PostgreSQL for durable data, Redis for
+// hot caches (balances, prices, gas).
+type Store struct {
+	PG    *pgxpool.Pool
+	Redis *redis.Client
+}
+
+// NewStore connects to PostgreSQL and Redis.
+func NewStore(ctx context.Context, dbURL, redisAddr string) (*Store, error) {
+	cfg, err := pgxpool.ParseConfig(dbURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse db url: %w", err)
+	}
+	cfg.MaxConns = 25
+	cfg.MinConns = 2
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("connect postgres: %w", err)
+	}
+
+	rdb := redis.NewClient(&redis.Options{Addr: redisAddr, DB: 0})
+
+	s := &Store{PG: pool, Redis: rdb}
+	if err := s.migrate(ctx); err != nil {
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	return s, nil
+}
+
+// migrate creates the schema if not exists.
+func (s *Store) migrate(ctx context.Context) error {
+	_, err := s.PG.Exec(ctx, schemaSQL)
+	return err
+}
+
+const schemaSQL = `
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    kyc_status TEXT DEFAULT 'unverified',
+    kyc_level INT DEFAULT 0,
+    two_factor_enabled BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS wallets (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    label TEXT NOT NULL,
+    chain_id BIGINT NOT NULL,
+    address TEXT NOT NULL,
+    encrypted_seed TEXT NOT NULL,
+    derivation_path TEXT NOT NULL,
+    account_index INT DEFAULT 0,
+    is_primary BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS address_book (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    address TEXT NOT NULL,
+    chain_id BIGINT NOT NULL,
+    note TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS transaction_log (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    wallet_id UUID NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,
+    tx_hash TEXT NOT NULL,
+    chain_id BIGINT NOT NULL,
+    from_addr TEXT NOT NULL,
+    to_addr TEXT NOT NULL,
+    value TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_wallets_user ON wallets(user_id);
+CREATE INDEX IF NOT EXISTS idx_wallets_address ON wallets(address);
+CREATE INDEX IF NOT EXISTS idx_txlog_user ON transaction_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_txlog_hash ON transaction_log(tx_hash);
+`
+
+// ---- User operations ----
+
+func (s *Store) CreateUser(ctx context.Context, email, username, passwordHash string) (uuid.UUID, error) {
+	id := uuid.New()
+	_, err := s.PG.Exec(ctx,
+		"INSERT INTO users (id, email, username, password_hash) VALUES ($1, $2, $3, $4)",
+		id, email, username, passwordHash)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return id, nil
+}
+
+func (s *Store) GetUserByEmail(ctx context.Context, email string) (*UserRecord, error) {
+	row := s.PG.QueryRow(ctx,
+		"SELECT id, email, username, password_hash, kyc_status, kyc_level, two_factor_enabled FROM users WHERE email=$1", email)
+	u := &UserRecord{}
+	err := row.Scan(&u.ID, &u.Email, &u.Username, &u.PasswordHash, &u.KYCStatus, &u.KYCLevel, &u.TwoFactorEnabled)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	return u, err
+}
+
+// ---- Wallet operations ----
+
+func (s *Store) SaveWallet(ctx context.Context, w *WalletRecord) error {
+	if w.ID == uuid.Nil {
+		w.ID = uuid.New()
+	}
+	_, err := s.PG.Exec(ctx,
+		`INSERT INTO wallets (id, user_id, label, chain_id, address, encrypted_seed, derivation_path, account_index, is_primary)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		w.ID, w.UserID, w.Label, w.ChainID, w.Address, w.EncryptedSeed, w.DerivationPath, w.AccountIndex, w.IsPrimary)
+	return err
+}
+
+func (s *Store) GetWalletsByUser(ctx context.Context, userID uuid.UUID) ([]WalletRecord, error) {
+	rows, err := s.PG.Query(ctx,
+		"SELECT id, user_id, label, chain_id, address, encrypted_seed, derivation_path, account_index, is_primary FROM wallets WHERE user_id=$1 ORDER BY created_at",
+		userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []WalletRecord
+	for rows.Next() {
+		var w WalletRecord
+		if err := rows.Scan(&w.ID, &w.UserID, &w.Label, &w.ChainID, &w.Address, &w.EncryptedSeed, &w.DerivationPath, &w.AccountIndex, &w.IsPrimary); err != nil {
+			return nil, err
+		}
+		out = append(out, w)
+	}
+	return out, nil
+}
+
+func (s *Store) GetWalletByID(ctx context.Context, id uuid.UUID) (*WalletRecord, error) {
+	row := s.PG.QueryRow(ctx,
+		"SELECT id, user_id, label, chain_id, address, encrypted_seed, derivation_path, account_index, is_primary FROM wallets WHERE id=$1", id)
+	w := &WalletRecord{}
+	err := row.Scan(&w.ID, &w.UserID, &w.Label, &w.ChainID, &w.Address, &w.EncryptedSeed, &w.DerivationPath, &w.AccountIndex, &w.IsPrimary)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	return w, err
+}
+
+func (s *Store) LogTransaction(ctx context.Context, tx *TxLogRecord) error {
+	if tx.ID == uuid.Nil {
+		tx.ID = uuid.New()
+	}
+	_, err := s.PG.Exec(ctx,
+		`INSERT INTO transaction_log (id, user_id, wallet_id, tx_hash, chain_id, from_addr, to_addr, value, status)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		tx.ID, tx.UserID, tx.WalletID, tx.TxHash, tx.ChainID, tx.FromAddr, tx.ToAddr, tx.Value, tx.Status)
+	return err
+}
+
+// ---- Redis cache ----
+
+func (s *Store) cacheKey(parts ...string) string {
+	return "tigerwallet:" + joinStr(parts, ":")
+}
+
+func (s *Store) SetCache(ctx context.Context, key string, val interface{}, ttl time.Duration) error {
+	data, err := json.Marshal(val)
+	if err != nil {
+		return err
+	}
+	return s.Redis.Set(ctx, key, data, ttl).Err()
+}
+
+func (s *Store) GetCache(ctx context.Context, key string, dst interface{}) error {
+	data, err := s.Redis.Get(ctx, key).Bytes()
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, dst)
+}
+
+func (s *Store) DeleteCache(ctx context.Context, key string) error {
+	return s.Redis.Del(ctx, key).Err()
+}
+
+// joinStr joins strings with a separator.
+func joinStr(parts []string, sep string) string {
+	out := ""
+	for i, p := range parts {
+		if i > 0 {
+			out += sep
+		}
+		out += p
+	}
+	return out
+}
+
+// ---- Record types ----
+
+type UserRecord struct {
+	ID               uuid.UUID `json:"id"`
+	Email            string    `json:"email"`
+	Username         string    `json:"username"`
+	PasswordHash     string    `json:"-"`
+	KYCStatus        string    `json:"kyc_status"`
+	KYCLevel         int       `json:"kyc_level"`
+	TwoFactorEnabled bool      `json:"two_factor_enabled"`
+}
+
+type WalletRecord struct {
+	ID             uuid.UUID `json:"id"`
+	UserID         uuid.UUID `json:"user_id"`
+	Label          string    `json:"label"`
+	ChainID        int64     `json:"chain_id"`
+	Address        string    `json:"address"`
+	EncryptedSeed  string    `json:"-"`
+	DerivationPath string    `json:"derivation_path"`
+	AccountIndex   int       `json:"account_index"`
+	IsPrimary      bool      `json:"is_primary"`
+}
+
+type TxLogRecord struct {
+	ID       uuid.UUID `json:"id"`
+	UserID   uuid.UUID `json:"user_id"`
+	WalletID uuid.UUID `json:"wallet_id"`
+	TxHash   string    `json:"tx_hash"`
+	ChainID  int64     `json:"chain_id"`
+	FromAddr string    `json:"from_addr"`
+	ToAddr   string    `json:"to_addr"`
+	Value    string    `json:"value"`
+	Status   string    `json:"status"`
+}

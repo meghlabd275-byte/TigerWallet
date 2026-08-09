@@ -62,7 +62,7 @@ interface BundleStatus {
 // API Service
 // ================================================================================
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_AA_API_URL || 'http://localhost:8080/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_AA_API_URL || 'http://localhost:8443/v1';
 
 class AccountAbstractionAPI {
   private baseUrl: string;

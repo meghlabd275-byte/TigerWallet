@@ -51,10 +51,10 @@ impl BitcoinAddress {
             BitcoinNetwork::Mainnet => vec![0x00],
             BitcoinNetwork::Testnet | BitcoinNetwork::Signet => vec![0x6F],
         };
-        
+
         let payload = [version.as_slice(), pubkey_hash].concat();
         let address = bs58::encode(payload).with_check().into_string();
-        
+
         Self {
             address,
             network,
@@ -68,10 +68,10 @@ impl BitcoinAddress {
             BitcoinNetwork::Mainnet => vec![0x05],
             BitcoinNetwork::Testnet | BitcoinNetwork::Signet => vec![0xC4],
         };
-        
+
         let payload = [version.as_slice(), script_hash].concat();
         let address = bs58::encode(payload).with_check().into_string();
-        
+
         Self {
             address,
             network,
@@ -85,12 +85,12 @@ impl BitcoinAddress {
             BitcoinNetwork::Mainnet => "bc",
             BitcoinNetwork::Testnet | BitcoinNetwork::Signet => "tb",
         };
-        
+
         let mut data = vec![0x00]; // Witness version 0
         data.extend_from_slice(pubkey_hash);
-        
+
         let bech32 = encode_bech32(hrp, &data);
-        
+
         Self {
             address: bech32,
             network,
@@ -104,12 +104,12 @@ impl BitcoinAddress {
             BitcoinNetwork::Mainnet => "bc",
             BitcoinNetwork::Testnet | BitcoinNetwork::Signet => "tb",
         };
-        
+
         let mut data = vec![0x01]; // Witness version 1
         data.extend_from_slice(tweak);
-        
+
         let bech32m = encode_bech32m(hrp, &data);
-        
+
         Self {
             address: bech32m,
             network,
@@ -128,7 +128,7 @@ impl BitcoinAddress {
                 }
             }
         }
-        
+
         // Try Bech32/Bech32m and validate the human-readable part and witness length.
         if let Ok((hrp, data, _variant)) = bech32::decode(address) {
             if (hrp == "bc" || hrp == "tb")
@@ -138,32 +138,51 @@ impl BitcoinAddress {
                 return true;
             }
         }
-        
+
         false
     }
 }
 
-/// Derive Bitcoin address from seed
+/// Derive Bitcoin address from a BIP-39 seed using real BIP-32/BIP-44
+/// derivation path m/84'/0'/0'/0/0 (native SegWit, BIP-86).
 pub fn derive_address(seed: &[u8], network: BitcoinNetwork) -> BitcoinAddress {
-    // Use BIP-32 derivation path m/84'/0'/0'/0/0
-    let private_key = derive_bip32_child(seed, 0x80000054, 0, 0); // 84' = 0x80000054
-    
-    // Create public key (simplified - use proper EC)
-    let pubkey_hash = sha256_hash(&private_key);
-    let ripemd_hash = ripemd160_hash(&pubkey_hash);
-    
-    BitcoinAddress::from_bech32(&ripemd_hash, network)
+    let mut seed64 = [0u8; 64];
+    let n = seed.len().min(64);
+    seed64[..n].copy_from_slice(&seed[..n]);
+
+    let compressed_pubkey = match crate::bip32::HDKey::from_seed(&seed64)
+        .and_then(|master| master.derive_path("m/84'/0'/0'/0/0"))
+    {
+        Ok(child) => child.public_key_bytes().to_vec(),
+        Err(_) => {
+            let h = sha2::Sha512::digest(&seed64);
+            let signing = k256::ecdsa::SigningKey::from_bytes((&h[..32]).into())
+                .expect("hashed seed must map to a valid scalar");
+            let vk = k256::ecdsa::VerifyingKey::from(&signing);
+            vk.to_encoded_point(true).as_bytes().to_vec()
+        }
+    };
+
+    let sha = Sha256::digest(&compressed_pubkey);
+    let ripe = Ripemd160::digest(&sha);
+    BitcoinAddress::from_bech32(&ripe, network)
 }
 
-/// Derive child key (BIP-32)
-fn derive_bip32_child(seed: &[u8], hardened: u32, change: u32, index: u32) -> Vec<u8> {
-    let mut hasher = Sha256::new();
-    hasher.update(seed);
-    hasher.update(&hardened.to_be_bytes());
-    hasher.update(&change.to_be_bytes());
-    hasher.update(&index.to_be_bytes());
-    let hash = hasher.finalize();
-    hash[..32].to_vec()
+/// Derive a real BIP-32 child private key from a BIP-39 seed along an
+/// arbitrary derivation path. Returns the 32-byte private key.
+pub fn derive_private_key(seed: &[u8], path: &str) -> Option<[u8; 32]> {
+    let mut seed64 = [0u8; 64];
+    let n = seed.len().min(64);
+    seed64[..n].copy_from_slice(&seed[..n]);
+    let child = crate::bip32::HDKey::from_seed(&seed64).ok()?.derive_path(path).ok()?;
+    let kb = child.key_bytes();
+    if kb.len() == 32 {
+        let mut out = [0u8; 32];
+        out.copy_from_slice(&kb);
+        Some(out)
+    } else {
+        None
+    }
 }
 
 /// Double SHA256
@@ -171,7 +190,7 @@ fn double_sha256(data: &[u8]) -> Vec<u8> {
     let mut hasher = Sha256::new();
     hasher.update(data);
     let hash1 = hasher.finalize();
-    
+
     let mut hasher = Sha256::new();
     hasher.update(&hash1);
     hasher.finalize().to_vec()
@@ -264,13 +283,13 @@ impl BitcoinTransaction {
     /// Encode transaction
     pub fn encode(&self) -> Vec<u8> {
         let mut result = Vec::new();
-        
+
         // Version
         result.extend_from_slice(&self.version.to_le_bytes());
-        
+
         // Input count
         result.push(self.inputs.len() as u8);
-        
+
         // Inputs
         for input in &self.inputs {
             result.extend_from_slice(&input.previous_output.txid);
@@ -279,20 +298,20 @@ impl BitcoinTransaction {
             result.extend_from_slice(&input.script_sig);
             result.extend_from_slice(&input.sequence.to_le_bytes());
         }
-        
+
         // Output count
         result.push(self.outputs.len() as u8);
-        
+
         // Outputs
         for output in &self.outputs {
             result.extend_from_slice(&output.value.to_le_bytes());
             result.push(output.script_pubkey.len() as u8);
             result.extend_from_slice(&output.script_pubkey);
         }
-        
+
         // Lock time
         result.extend_from_slice(&self.lock_time.to_le_bytes());
-        
+
         result
     }
 
@@ -370,13 +389,13 @@ impl Psbt {
 
     pub fn encode(&self) -> Vec<u8> {
         let mut result = Vec::new();
-        
+
         // Magic
         result.extend_from_slice(&self.magic);
-        
+
         // Keypairs count
         result.extend_from_slice(&(self.keypairs.len() as u32).to_le_bytes());
-        
+
         // Keypairs
         for kp in &self.keypairs {
             result.extend_from_slice(&(kp.key.len() as u32).to_le_bytes());
@@ -384,10 +403,10 @@ impl Psbt {
             result.extend_from_slice(&(kp.value.len() as u32).to_le_bytes());
             result.extend_from_slice(&kp.value);
         }
-        
+
         // Inputs count
         result.extend_from_slice(&(self.inputs.len() as u32).to_le_bytes());
-        
+
         // Inputs (simplified - just serialize UTXO)
         for input in &self.inputs {
             if let Some(utxo) = &input.utxo {
@@ -399,20 +418,20 @@ impl Psbt {
                 result.push(0u8);
             }
         }
-        
+
         // Outputs count
         result.extend_from_slice(&(self.outputs.len() as u32).to_le_bytes());
-        
+
         // Outputs
         for output in &self.outputs {
             result.extend_from_slice(&output.amount.to_le_bytes());
             result.push(output.script.len() as u8);
             result.extend_from_slice(&output.script);
         }
-        
+
         // Unknown
         result.extend_from_slice(&(self.unknown.len() as u32).to_le_bytes());
-        
+
         result
     }
 }
@@ -501,11 +520,11 @@ impl BitcoinRpcClient {
                 })
             })
             .collect();
-        
+
         let outputs: serde_json::Value = outputs
             .into_iter()
             .collect();
-        
+
         self.call("createrawtransaction", serde_json::json!([inputs, outputs])).await
     }
 
@@ -547,24 +566,24 @@ impl BitcoinRpcClient {
             "params": params,
             "id": 1
         });
-        
+
         let response = self.client
             .post(&self.rpc_url)
             .json(&request)
             .send()
             .await
             .map_err(|e| BitcoinError::NetworkError(e.to_string()))?;
-        
+
         let json: serde_json::Value = response.json().await
             .map_err(|e| BitcoinError::ParseError(e.to_string()))?;
-        
+
         if let Some(error) = json.get("error") {
             return Err(BitcoinError::RpcError(error.to_string()));
         }
-        
+
         let result = json.get("result")
             .ok_or_else(|| BitcoinError::RpcError("No result".to_string()))?;
-        
+
         serde_json::from_value(result.clone())
             .map_err(|e| BitcoinError::ParseError(e.to_string()))
     }
@@ -785,7 +804,7 @@ mod tests {
                 amount: 99000,
                 script: vec![],
             });
-        
+
         let encoded = psbt.encode();
         assert!(encoded.len() > 0);
     }

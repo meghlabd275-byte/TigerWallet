@@ -564,26 +564,242 @@ export const blockchain = new BlockchainService();
 // ============================================================================
 
 export class WalletService {
-  async generateWallet(): Promise<{ address: string; privateKey: string }> {
-    const wallet = ethers.Wallet.createRandom();
-    return {
-      address: wallet.address,
-      privateKey: wallet.privateKey,
-    };
+  /**
+   * Create a new wallet via the real Go wallet-api backend. Generates a real
+   * BIP-39 mnemonic server-side, derives the real secp256k1 key + EVM address,
+   * and stores the encrypted seed in PostgreSQL. Returns the mnemonic once.
+   */
+  async createWallet(params: {
+    password: string;
+    label?: string;
+    chainId?: number;
+    mnemonic?: string;
+    accountIndex?: number;
+    entropyBits?: number;
+  }): Promise<{
+    id: string;
+    label: string;
+    chainId: number;
+    address: string;
+    derivationPath: string;
+    mnemonic?: string;
+  }> {
+    const token = this.getAuthToken();
+    const res = await fetch(`${API_CONFIG.baseURL}/api/v1/wallets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create wallet');
+    }
+    return res.json();
   }
 
-  async importWallet(mnemonic: string): Promise<{ address: string; privateKey: string }> {
-    const wallet = ethers.Wallet.fromPhrase(mnemonic);
-    return {
-      address: wallet.address,
-      privateKey: wallet.privateKey,
-    };
+  async listWallets(): Promise<{ wallets: WalletInfo[] }> {
+    const token = this.getAuthToken();
+    const res = await fetch(`${API_CONFIG.baseURL}/api/v1/wallets`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error('Failed to list wallets');
+    return res.json();
   }
 
-  signTransaction(tx: ethers.TransactionRequest, privateKey: string): Promise<string> {
-    const wallet = new ethers.Wallet(privateKey);
-    return wallet.signTransaction(tx);
+  async getBalance(address: string, chainId: number): Promise<BalanceResult> {
+    const res = await fetch(
+      `${API_CONFIG.baseURL}/api/v1/public/balance?address=${address}&chain_id=${chainId}`
+    );
+    if (!res.ok) throw new Error('Failed to fetch balance');
+    return res.json();
   }
+
+  async getTokenBalances(address: string, chainId: number): Promise<{ tokens: TokenBalance[] }> {
+    const res = await fetch(
+      `${API_CONFIG.baseURL}/api/v1/public/tokens?address=${address}&chain_id=${chainId}`
+    );
+    if (!res.ok) throw new Error('Failed to fetch token balances');
+    return res.json();
+  }
+
+  async getTransactions(address: string, chainId: number): Promise<{ transactions: TransactionHistory[] }> {
+    const res = await fetch(
+      `${API_CONFIG.baseURL}/api/v1/public/transactions?address=${address}&chain_id=${chainId}`
+    );
+    if (!res.ok) throw new Error('Failed to fetch transactions');
+    return res.json();
+  }
+
+  async getNFTs(address: string, chainId: number): Promise<{ nfts: NFTAsset[] }> {
+    const res = await fetch(
+      `${API_CONFIG.baseURL}/api/v1/public/nfts?address=${address}&chain_id=${chainId}`
+    );
+    if (!res.ok) throw new Error('Failed to fetch NFTs');
+    return res.json();
+  }
+
+  async sendTransaction(params: {
+    walletId: string;
+    password: string;
+    to: string;
+    value: string;
+    chainId?: number;
+    gasLimit?: number;
+    data?: string;
+  }): Promise<{ tx_hash: string; raw_tx: string; nonce: number }> {
+    const token = this.getAuthToken();
+    const res = await fetch(`${API_CONFIG.baseURL}/api/v1/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to send transaction');
+    }
+    return res.json();
+  }
+
+  async signMessage(params: { walletId: string; password: string; message: string }): Promise<{ signature: string }> {
+    const token = this.getAuthToken();
+    const res = await fetch(`${API_CONFIG.baseURL}/api/v1/sign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to sign message');
+    }
+    return res.json();
+  }
+
+  async getGasPrice(chainId: number): Promise<{
+    chain_id: number;
+    gas_price: string;
+    max_fee_per_gas: string;
+    max_priority_fee: string;
+    gas_price_gwei: number;
+  }> {
+    const res = await fetch(`${API_CONFIG.baseURL}/api/v1/gas?chain_id=${chainId}`);
+    if (!res.ok) throw new Error('Failed to fetch gas price');
+    return res.json();
+  }
+
+  async getPrice(coin?: string): Promise<{ usd: number; usd_24h_change: number }> {
+    const res = await fetch(`${API_CONFIG.baseURL}/api/v1/price?coin=${coin || 'ethereum'}`);
+    if (!res.ok) throw new Error('Failed to fetch price');
+    return res.json();
+  }
+
+  async getSupportedChains(): Promise<{ chains: ChainInfo[] }> {
+    const res = await fetch(`${API_CONFIG.baseURL}/api/v1/chains`);
+    if (!res.ok) throw new Error('Failed to fetch supported chains');
+    return res.json();
+  }
+
+  async login(email: string, password: string): Promise<{ token: string; user: unknown }> {
+    const res = await fetch(`${API_CONFIG.baseURL}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Login failed');
+    }
+    const data = await res.json();
+    if (data.token) localStorage.setItem('tigerwallet_token', data.token);
+    return data;
+  }
+
+  async register(email: string, username: string, password: string): Promise<{ user_id: string; token: string }> {
+    const res = await fetch(`${API_CONFIG.baseURL}/api/v1/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, username, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Registration failed');
+    }
+    const data = await res.json();
+    if (data.token) localStorage.setItem('tigerwallet_token', data.token);
+    return data;
+  }
+
+  logout(): void {
+    localStorage.removeItem('tigerwallet_token');
+  }
+
+  private getAuthToken(): string | null {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('tigerwallet_token');
+  }
+}
+
+// ---- Types matching the Go backend ----
+
+export interface WalletInfo {
+  id: string;
+  label: string;
+  chainId: number;
+  address: string;
+  derivationPath: string;
+}
+
+export interface BalanceResult {
+  chain_id: number;
+  symbol: string;
+  address: string;
+  balance: string;
+  balance_f: number;
+  usd_value: number;
+}
+
+export interface TokenBalance {
+  contract: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  balance: string;
+  balance_f: number;
+  usd_price: number;
+  usd_value: number;
+  logo?: string;
+}
+
+export interface TransactionHistory {
+  hash: string;
+  from: string;
+  to: string;
+  value: string;
+  value_f: number;
+  timestamp: number;
+  status: string;
+  direction: string;
+  gas_used: string;
+  is_token: boolean;
+  token_symbol?: string;
+}
+
+export interface NFTAsset {
+  contract: string;
+  token_id: string;
+  name: string;
+  description: string;
+  image_url: string;
+  collection: string;
+  standard: string;
+}
+
+export interface ChainInfo {
+  id: number;
+  name: string;
+  symbol: string;
+  rpc_endpoint: string;
+  derivation_path: string;
+  explorer_api: string;
 }
 
 export const walletService = new WalletService();
