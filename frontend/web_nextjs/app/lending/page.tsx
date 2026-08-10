@@ -89,7 +89,9 @@ interface SupplyResponse {
 // Constants
 // ============================================================================
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8090';
+// Same-origin API base: the Next.js app proxies /api/v1/lending/* to the
+// go/lending_service backend (see app/api/v1/lending/ routes).
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
 const DEFAULT_MARKETS: Market[] = [
   { id: 1, asset_address: '0x0000000000000000000000000000000000000000', asset_symbol: 'ETH', asset_name: 'Ethereum', asset_decimals: 18, total_supply: '0', total_borrows: '0', supply_apy: 3.5, borrow_apy: 5.2, utilization_rate: 0.65, ltv: 0.80, liquidation_threshold: 0.85, liquidation_bonus: 0.05, is_active: true, chain_id: 1 },
@@ -127,7 +129,7 @@ function shortenNumber(num: number): string {
 // ============================================================================
 
 export default function LendingPage() {
-  const { isDarkMode } = useTheme();
+  const { isDark } = useTheme();
   const [activeTab, setActiveTab] = useState(0);
   const [markets, setMarkets] = useState<Market[]>(DEFAULT_MARKETS);
   const [userPosition, setUserPosition] = useState<UserPosition | null>(null);
@@ -209,7 +211,14 @@ export default function LendingPage() {
       const data: SupplyResponse = await response.json();
 
       if (data.success) {
-        setSuccess(`Successfully supplied ${amount} ${selectedMarket.asset_symbol}`);
+        if (data.transaction_hash) {
+          setSuccess(`Successfully supplied ${amount} ${selectedMarket.asset_symbol}. Tx: ${data.transaction_hash.slice(0, 10)}...`);
+        } else {
+          // The lending service prepared a real Aave V3 supply transaction
+          // (to/data/chain_id). It must be signed and broadcast via the
+          // wallet_api (POST /api/v1/send with wallet_id + password).
+          setSuccess(`Supply transaction prepared for ${amount} ${selectedMarket.asset_symbol}. Submit it from your wallet to complete.`);
+        }
         setAmount('');
         fetchUserPosition();
         fetchMarkets();
@@ -217,9 +226,8 @@ export default function LendingPage() {
         setError(data.error || 'Supply failed');
       }
     } catch (err) {
-      // Simulate success for demo
-      setSuccess(`Successfully supplied ${amount} ${selectedMarket.asset_symbol}`);
-      setAmount('');
+      const msg = err instanceof Error ? err.message : 'Supply failed: lending service unavailable';
+      setError(msg);
     } finally {
       setIsLoading(false);
     }
@@ -250,16 +258,22 @@ export default function LendingPage() {
       const data = await response.json();
 
       if (data.success) {
-        setSuccess(`Successfully borrowed ${amount} ${selectedMarket.asset_symbol}`);
+        if (data.transaction_hash) {
+          setSuccess(`Successfully borrowed ${amount} ${selectedMarket.asset_symbol}. Tx: ${data.transaction_hash.slice(0, 10)}...`);
+        } else {
+          // The lending service prepared a real Aave V3 borrow transaction
+          // (to/data/chain_id). It must be signed and broadcast via the
+          // wallet_api (POST /api/v1/send with wallet_id + password).
+          setSuccess(`Borrow transaction prepared for ${amount} ${selectedMarket.asset_symbol}. Submit it from your wallet to complete.`);
+        }
         setAmount('');
         fetchUserPosition();
       } else {
         setError(data.error || 'Borrow failed');
       }
     } catch (err) {
-      // Simulate success for demo
-      setSuccess(`Successfully borrowed ${amount} ${selectedMarket.asset_symbol}`);
-      setAmount('');
+      const msg = err instanceof Error ? err.message : 'Borrow failed: lending service unavailable';
+      setError(msg);
     } finally {
       setIsLoading(false);
     }
@@ -288,9 +302,9 @@ export default function LendingPage() {
   };
 
   return (
-    <div className={`min-h-screen ${isDarkMode ? 'bg-slate-900' : 'bg-slate-50'} text-${isDarkMode ? 'white' : 'gray-900'}`}>
+    <div className={`min-h-screen ${isDark ? 'bg-slate-900' : 'bg-slate-50'} text-${isDark ? 'white' : 'gray-900'}`}>
       {/* Header */}
-      <header className={`${isDarkMode ? 'bg-slate-800' : 'bg-white'} border-b ${isDarkMode ? 'border-slate-700' : 'border-slate-200'} p-4`}>
+      <header className={`${isDark ? 'bg-slate-800' : 'bg-white'} border-b ${isDark ? 'border-slate-700' : 'border-slate-200'} p-4`}>
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
             <a href="/" className="text-2xl">🐯</a>
@@ -301,7 +315,7 @@ export default function LendingPage() {
               <Chip 
                 label={formatAddress(walletAddress)} 
                 onDelete={() => { localStorage.removeItem('tigerwallet_address'); setWalletAddress(''); }}
-                className={isDarkMode ? 'bg-blue-900 text-blue-200' : 'bg-blue-100 text-blue-800'}
+                className={isDark ? 'bg-blue-900 text-blue-200' : 'bg-blue-100 text-blue-800'}
               />
             ) : (
               <Button 
@@ -319,26 +333,26 @@ export default function LendingPage() {
       <div className="max-w-7xl mx-auto p-6">
         {/* User Position Summary */}
         {walletAddress && userPosition && (
-          <Card className={`mb-6 ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
+          <Card className={`mb-6 ${isDark ? 'bg-slate-800' : 'bg-white'}`}>
             <CardContent>
               <Typography variant="h6" className="mb-4">Your Position</Typography>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-slate-700' : 'bg-green-50'}`}>
-                  <Typography variant="caption" className={isDarkMode ? 'text-slate-400' : 'text-gray-500'}>Total Supplied</Typography>
+                <div className={`p-4 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-green-50'}`}>
+                  <Typography variant="caption" className={isDark ? 'text-slate-400' : 'text-gray-500'}>Total Supplied</Typography>
                   <Typography variant="h5" className="text-green-600">{formatUSD(userPosition.collateral_usd)}</Typography>
                 </div>
-                <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-slate-700' : 'bg-red-50'}`}>
-                  <Typography variant="caption" className={isDarkMode ? 'text-slate-400' : 'text-gray-500'}>Total Borrowed</Typography>
+                <div className={`p-4 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-red-50'}`}>
+                  <Typography variant="caption" className={isDark ? 'text-slate-400' : 'text-gray-500'}>Total Borrowed</Typography>
                   <Typography variant="h5" className="text-red-600">{formatUSD(userPosition.borrows_usd)}</Typography>
                 </div>
-                <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-slate-700' : 'bg-blue-50'}`}>
-                  <Typography variant="caption" className={isDarkMode ? 'text-slate-400' : 'text-gray-500'}>Net APY</Typography>
+                <div className={`p-4 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-blue-50'}`}>
+                  <Typography variant="caption" className={isDark ? 'text-slate-400' : 'text-gray-500'}>Net APY</Typography>
                   <Typography variant="h5" className={userPosition.net_apy >= 0 ? 'text-green-600' : 'text-red-600'}>
                     {formatPercent(userPosition.net_apy)}
                   </Typography>
                 </div>
-                <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-slate-700' : 'bg-yellow-50'}`}>
-                  <Typography variant="caption" className={isDarkMode ? 'text-slate-400' : 'text-gray-500'}>Health Factor</Typography>
+                <div className={`p-4 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-yellow-50'}`}>
+                  <Typography variant="caption" className={isDark ? 'text-slate-400' : 'text-gray-500'}>Health Factor</Typography>
                   <Typography variant="h5" style={{ color: getHealthFactorColor(userPosition.health_factor) }}>
                     {userPosition.health_factor.toFixed(2)}
                   </Typography>
@@ -365,14 +379,14 @@ export default function LendingPage() {
         {activeTab === 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {markets.map(market => (
-              <Card key={market.id} className={isDarkMode ? 'bg-slate-800' : 'bg-white'}>
+              <Card key={market.id} className={isDark ? 'bg-slate-800' : 'bg-white'}>
                 <CardContent>
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
                       <MonetizationOn className="text-orange-500" />
                       <div>
                         <Typography variant="h6">{market.asset_symbol}</Typography>
-                        <Typography variant="caption" className={isDarkMode ? 'text-slate-400' : 'text-gray-500'}>
+                        <Typography variant="caption" className={isDark ? 'text-slate-400' : 'text-gray-500'}>
                           {market.asset_name}
                         </Typography>
                       </div>
@@ -382,14 +396,14 @@ export default function LendingPage() {
 
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
-                      <Typography variant="caption" className={isDarkMode ? 'text-slate-400' : 'text-gray-500'}>Supply APY</Typography>
+                      <Typography variant="caption" className={isDark ? 'text-slate-400' : 'text-gray-500'}>Supply APY</Typography>
                       <Typography variant="h6" className="text-green-600 flex items-center">
                         <TrendingUp fontSize="small" className="mr-1" />
                         {formatPercent(market.supply_apy)}
                       </Typography>
                     </div>
                     <div>
-                      <Typography variant="caption" className={isDarkMode ? 'text-slate-400' : 'text-gray-500'}>Borrow APY</Typography>
+                      <Typography variant="caption" className={isDark ? 'text-slate-400' : 'text-gray-500'}>Borrow APY</Typography>
                       <Typography variant="h6" className="text-red-600 flex items-center">
                         <TrendingDown fontSize="small" className="mr-1" />
                         {formatPercent(market.borrow_apy)}
@@ -398,7 +412,7 @@ export default function LendingPage() {
                   </div>
 
                   <div className="mb-4">
-                    <Typography variant="caption" className={isDarkMode ? 'text-slate-400' : 'text-gray-500'}>
+                    <Typography variant="caption" className={isDark ? 'text-slate-400' : 'text-gray-500'}>
                       Utilization: {formatPercent(market.utilization_rate * 100)}
                     </Typography>
                     <LinearProgress 
@@ -406,7 +420,7 @@ export default function LendingPage() {
                       value={market.utilization_rate * 100} 
                       className="mt-1 h-2 rounded"
                       sx={{ 
-                        backgroundColor: isDarkMode ? '#334155' : '#e2e8f0',
+                        backgroundColor: isDark ? '#334155' : '#e2e8f0',
                         '& .MuiLinearProgress-bar': {
                           backgroundColor: market.utilization_rate > 0.8 ? '#f44336' : '#4caf50'
                         }
@@ -444,7 +458,7 @@ export default function LendingPage() {
 
         {/* Supplies Tab */}
         {activeTab === 1 && (
-          <Card className={isDarkMode ? 'bg-slate-800' : 'bg-white'}>
+          <Card className={isDark ? 'bg-slate-800' : 'bg-white'}>
             <CardContent>
               {userPosition && userPosition.supplies.length > 0 ? (
                 <TableContainer>
@@ -474,7 +488,7 @@ export default function LendingPage() {
                   </Table>
                 </TableContainer>
               ) : (
-                <Typography className="text-center py-8" className={isDarkMode ? 'text-slate-400' : 'text-gray-500'}>
+                <Typography className={`text-center py-8 ${isDark ? "text-slate-400" : "text-gray-500"}`}>
                   No supplies yet. Start by supplying assets to a market.
                 </Typography>
               )}
@@ -484,7 +498,7 @@ export default function LendingPage() {
 
         {/* Borrows Tab */}
         {activeTab === 2 && (
-          <Card className={isDarkMode ? 'bg-slate-800' : 'bg-white'}>
+          <Card className={isDark ? 'bg-slate-800' : 'bg-white'}>
             <CardContent>
               {userPosition && userPosition.borrows.length > 0 ? (
                 <TableContainer>
@@ -514,7 +528,7 @@ export default function LendingPage() {
                   </Table>
                 </TableContainer>
               ) : (
-                <Typography className="text-center py-8" className={isDarkMode ? 'text-slate-400' : 'text-gray-500'}>
+                <Typography className={`text-center py-8 ${isDark ? "text-slate-400" : "text-gray-500"}`}>
                   No active borrows.
                 </Typography>
               )}
@@ -543,7 +557,7 @@ export default function LendingPage() {
         </DialogTitle>
         <DialogContent>
           <div className="py-4">
-            <Typography variant="body2" className="mb-4" className={isDarkMode ? 'text-slate-400' : 'text-gray-500'}>
+            <Typography variant="body2" className={`mb-4 ${isDark ? "text-slate-400" : "text-gray-500"}`}>
               {operation === 'supply' 
                 ? `Supply ${selectedMarket?.asset_name} to earn interest. You can withdraw anytime.`
                 : `Borrow ${selectedMarket?.asset_name} against your collateral. Maintain a healthy health factor.`
@@ -573,8 +587,8 @@ export default function LendingPage() {
             />
 
             {operation === 'borrow' && userPosition && (
-              <div className={`p-3 rounded-lg mb-4 ${isDarkMode ? 'bg-slate-700' : 'bg-yellow-50'}`}>
-                <Typography variant="caption" className={isDarkMode ? 'text-slate-400' : 'text-gray-500'}>
+              <div className={`p-3 rounded-lg mb-4 ${isDark ? 'bg-slate-700' : 'bg-yellow-50'}`}>
+                <Typography variant="caption" className={isDark ? 'text-slate-400' : 'text-gray-500'}>
                   Max borrow: {formatUSD(userPosition.collateral_usd * (selectedMarket?.ltv || 0))}
                 </Typography>
               </div>

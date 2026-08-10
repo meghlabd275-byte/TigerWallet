@@ -14,10 +14,8 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/big"
 	"mime/multipart"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -358,8 +356,8 @@ func (s *KYCService) SubmitDocument(ctx context.Context, sessionID string, docTy
 	session.Steps[stepIndex].CompletedAt = &now
 
 	// Save session
-	sessionData, _ = json.Marshal(session)
-	s.redis.Set(ctx, sessionKey, sessionData, s.config.SessionTimeout)
+	sessionBytes, _ := json.Marshal(session)
+	s.redis.Set(ctx, sessionKey, sessionBytes, s.config.SessionTimeout)
 
 	// If all steps completed, trigger verification
 	allCompleted := true
@@ -736,19 +734,27 @@ func (s *ListingService) GetTravelRule(c *gin.Context) {
 }
 
 func (s *ListingService) KYCWebhook(c *gin.Context) {
-	// Verify webhook signature
+	// Verify webhook signature using the KYC service's HMAC-SHA256 key.
 	signature := c.GetHeader("X-KYC-Signature")
+	kycService := NewKYCService(s.redis, DefaultKYCConfig)
+
+	var bodyBytes []byte
 	if signature != "" {
-		body, _ := io.ReadAll(c.Request.Body)
-		expectedSig := s.computeWebhookSignature(body)
-		if signature != expectedSig {
+		// Read body once so we can both verify the signature and decode JSON.
+		bodyBytes, _ = io.ReadAll(c.Request.Body)
+		expectedSig := kycService.computeWebhookSignature(bodyBytes)
+		if !hmac.Equal([]byte(signature), []byte(expectedSig)) {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid signature"})
 			return
 		}
 	}
 
 	var payload map[string]interface{}
-	c.ShouldBindJSON(&payload)
+	if len(bodyBytes) > 0 {
+		_ = json.Unmarshal(bodyBytes, &payload)
+	} else {
+		_ = c.ShouldBindJSON(&payload)
+	}
 
 	// Process webhook based on event type
 	eventType, _ := payload["event_type"].(string)

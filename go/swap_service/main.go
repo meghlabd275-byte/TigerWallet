@@ -265,17 +265,22 @@ func (ss *SwapService) GetPair(c *gin.Context) {
 
 // Get quote for swap
 type QuoteRequest struct {
-	FromToken string `json:"from_token" binding:"required"`
-	ToToken   string `json:"to_token" binding:"required"`
-	Amount    string `json:"amount" binding:"required"`
-	Slippage  string `json:"slippage"`
+	FromToken string `json:"from_token" form:"from_token" binding:"required"`
+	ToToken   string `json:"to_token" form:"to_token" binding:"required"`
+	Amount    string `json:"amount" form:"amount" binding:"required"`
+	Slippage  string `json:"slippage" form:"slippage"`
 }
 
 func (ss *SwapService) GetQuote(c *gin.Context) {
 	var req QuoteRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+	if err := c.ShouldBindQuery(&req); err != nil {
+		req.FromToken = c.Query("token_in")
+		req.ToToken = c.Query("token_out")
+		req.Amount = c.Query("amount")
+		if req.FromToken == "" || req.ToToken == "" || req.Amount == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "from_token/to_token/amount required"})
+			return
+		}
 	}
 
 	// Find pair

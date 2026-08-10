@@ -7,15 +7,13 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
-	"math/big"
+	"net/http"
 	"sync"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -422,9 +420,7 @@ func (s *AutoApprovalService) applyCustomRules(ctx context.Context, listing *Tok
 		case "chain":
 			fieldValue = listing.Chain
 		default:
-			if val, ok := listing.Description; ok {
-				fieldValue = val
-			}
+			fieldValue = listing.Description
 		}
 
 		// Apply rule
@@ -546,10 +542,28 @@ type KYCInfo struct {
 	VerifiedAt time.Time `json:"verified_at"`
 }
 
+// TrustScoreService evaluates project trustworthiness for auto-approval.
+// The score is derived from on-chain signals (verified contract, audit
+// reports, liquidity depth) and off-chain signals (socials, age). When no
+// external trust-score oracle is configured, the service computes a
+// conservative heuristic from the listing metadata so the pipeline still
+// runs without a fabricated "always-trust" result.
+type TrustScoreService struct {
+	scoreServiceURL string
+}
+
 type TrustScoreInfo struct {
 	Score     int       `json:"score"`
 	Factors   []string  `json:"factors"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// TokenAuditService queries external token-audit reports
+// (e.g. from the wallet_guardian / honeypot_detector services) to inform
+// auto-approval. When no audit oracle is configured it returns a
+// conservative "unknown" result rather than fabricating a clean audit.
+type TokenAuditService struct {
+	auditServiceURL string
 }
 
 type TokenAuditInfo struct {

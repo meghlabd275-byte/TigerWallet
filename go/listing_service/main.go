@@ -6,19 +6,16 @@
 package main
 
 import (
+	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/big"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
@@ -332,10 +329,18 @@ func (s *ListingService) SubmitApplication(c *gin.Context) {
 		"webhook_url": fmt.Sprintf("%s/api/v1/listing/payment/webhook", cfg.PaymentServiceURL),
 	}
 
-	// Call payment service (in production, this would be an HTTP call)
-	// For now, store the payment intent
-	listing.PaymentID = fmt.Sprintf("pay_%s", listing.ID[:8])
-	listing.PaymentStatus = "pending"
+	// Create a real payment intent via the payment service HTTP API. If the
+	// payment service is unreachable, record the listing as "payment_pending"
+	// (no fabricated payment ID).
+	paymentID, payErr := s.createPaymentIntent(paymentReq)
+	if payErr != nil {
+		log.Printf("listing %s: payment service error: %v", listing.ID, payErr)
+		listing.PaymentID = ""
+		listing.PaymentStatus = "payment_pending"
+	} else {
+		listing.PaymentID = paymentID
+		listing.PaymentStatus = "pending"
+	}
 
 	s.mu.Lock()
 	s.listings[listing.ID] = listing
@@ -364,16 +369,74 @@ func (s *ListingService) SubmitApplication(c *gin.Context) {
 }
 
 // Verify token contract exists on chain
+// verifyTokenContract performs a real on-chain check that bytecode exists at
+// the given address (i.e. it is a deployed contract, not an EOA). It also
+// validates the address format. If no RPC client is configured it returns
+// an error rather than blindly accepting any hex string.
 func (s *ListingService) verifyTokenContract(chain, address string) (bool, error) {
-	// In production, this would call the blockchain to verify the contract
-	// For now, basic hex address validation is done
-	return common.IsHexAddress(address), nil
+	if !common.IsHexAddress(address) {
+		return false, fmt.Errorf("invalid address format: %s", address)
+	}
+	if s.ethClient == nil {
+		return false, fmt.Errorf("ETH_RPC_URL not configured: cannot verify contract on chain %s", chain)
+	}
+	addr := common.HexToAddress(address)
+	code, err := s.ethClient.CodeAt(context.Background(), addr, nil)
+	if err != nil {
+		return false, fmt.Errorf("failed to fetch code at %s: %v", address, err)
+	}
+	if len(code) == 0 {
+		return false, fmt.Errorf("address %s has no contract code on chain %s", address, chain)
+	}
+	return true, nil
 }
 
+// getPaymentAddress returns the real configured fee-recipient wallet
+// (AdminWallet). It NEVER fabricates a deposit address: users must only send
+// listing fees to a real key-controlled address. If no admin wallet is
+// configured, the listing cannot collect a payment and returns an error
+// indicator (empty string).
 func (s *ListingService) getPaymentAddress(listing *TokenListing) string {
-	// Generate deterministic payment address based on listing ID
-	hash := sha256.Sum256([]byte(listing.ID))
-	return "0x" + hex.EncodeToString(hash[:20])
+	if cfg.AdminWallet == "" || !common.IsHexAddress(cfg.AdminWallet) {
+		log.Printf("listing %s: no valid ADMIN_WALLET configured, payment unavailable", listing.ID)
+		return ""
+	}
+	return common.HexToAddress(cfg.AdminWallet).Hex()
+}
+
+// createPaymentIntent POSTs a real payment intent to the configured payment
+// service and returns the payment ID it assigned. Returns an error (not a fake
+// id) if the service is unreachable or rejects the request.
+func (s *ListingService) createPaymentIntent(req map[string]interface{}) (string, error) {
+	if s.paymentURL == "" {
+		return "", fmt.Errorf("payment service URL not configured")
+	}
+	body, err := json.Marshal(req)
+	if err != nil {
+		return "", err
+	}
+	resp, err := http.Post(s.paymentURL+"/api/v1/payment/intent", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("payment service unreachable: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return "", fmt.Errorf("payment service returned status %d", resp.StatusCode)
+	}
+	var result struct {
+		PaymentID string `json:"payment_id"`
+		ID        string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("invalid payment service response: %v", err)
+	}
+	if result.PaymentID == "" && result.ID != "" {
+		result.PaymentID = result.ID
+	}
+	if result.PaymentID == "" {
+		return "", fmt.Errorf("payment service returned no payment id")
+	}
+	return result.PaymentID, nil
 }
 
 // Get listing status

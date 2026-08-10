@@ -12,7 +12,10 @@ import {
   OpenInNew, Shield, Speed, CompareArrows
 } from '@mui/icons-material';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+// Same-origin API base: the Next.js app proxies /api/v1/* to the backend
+// services (see app/api/v1/_proxy.ts). In the browser this resolves to the
+// current host, so no CORS and no hardcoded port.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
 interface SwapToken {
   address: string;
@@ -86,13 +89,26 @@ export default function SwapPage() {
 
   const fetchTokens = useCallback(async () => {
     try {
+      // Backend (go/swap_service) filters tokens by `chain` (string name).
       const response = await fetch(`${API_BASE}/api/v1/swap/tokens?chain_id=${chainId}`);
       if (response.ok) {
         const data = await response.json();
         if (data.tokens && data.tokens.length > 0) {
-          setTokens(data.tokens);
-          if (!tokenIn) setTokenIn(data.tokens[0]);
-          if (!tokenOut && data.tokens.length > 1) setTokenOut(data.tokens[1]);
+          // Map backend Token fields to the frontend SwapToken interface.
+          const mapped: SwapToken[] = data.tokens.map((t: any) => ({
+            address: t.contract || '',
+            symbol: t.symbol,
+            name: t.name,
+            decimals: t.decimals,
+            chainId: chainId,
+            isNative: t.symbol === 'ETH' || t.symbol === 'WETH',
+            isStable: ['USDT', 'USDC', 'DAI'].includes(t.symbol),
+            priceUsd: parseFloat(t.price_usd) || 0,
+            logoUri: undefined,
+          }));
+          setTokens(mapped);
+          if (!tokenIn) setTokenIn(mapped[0]);
+          if (!tokenOut && mapped.length > 1) setTokenOut(mapped[1]);
         } else {
           setDefaultTokens();
         }
@@ -108,38 +124,6 @@ export default function SwapPage() {
     fetchTokens();
   }, [fetchTokens]);
 
-  const calculateLocalQuote = useCallback(() => {
-    if (!tokenIn || !tokenOut || !amountIn) return;
-    
-    const priceIn = tokenIn.priceUsd || 1;
-    const priceOut = tokenOut.priceUsd || 1;
-    const inputAmount = parseFloat(amountIn);
-    
-    if (isNaN(inputAmount) || inputAmount <= 0) {
-      setQuote(null);
-      setAmountOut('');
-      return;
-    }
-    
-    const outputAmount = (inputAmount * priceIn) / priceOut;
-    const minOut = outputAmount * (1 - slippage / 100);
-    
-    setQuote({
-      inputToken: tokenIn.symbol,
-      outputToken: tokenOut.symbol,
-      inputAmount,
-      outputAmount,
-      minimumOut: minOut,
-      priceImpact: 0.5,
-      gasEstimate: 0.002,
-      gasFeeUsd: 0.002 * 3500,
-      exchangeRate: priceIn / priceOut,
-      expiresAt: Date.now() + 30000,
-      route: [{ dex: 'Uniswap V3', fee: 500, amountIn: inputAmount, amountOut: outputAmount }],
-    });
-    setAmountOut(outputAmount.toFixed(6));
-  }, [tokenIn, tokenOut, amountIn, slippage]);
-
   const fetchQuote = useCallback(async () => {
     if (!tokenIn || !tokenOut || !amountIn || parseFloat(amountIn) <= 0) {
       setQuote(null);
@@ -154,17 +138,39 @@ export default function SwapPage() {
       );
       if (response.ok) {
         const data = await response.json();
-        setQuote(data);
-        setAmountOut(data.outputAmount.toFixed(6));
+        // Map backend quote (to_amount, min_received, price_impact, gas_estimate)
+        // to the frontend SwapQuote interface.
+        const outputAmount = parseFloat(data.to_amount) || 0;
+        const inputAmount = parseFloat(amountIn) || 0;
+        const minReceived = parseFloat(data.min_received) || outputAmount;
+        setQuote({
+          inputToken: tokenIn.symbol,
+          outputToken: tokenOut.symbol,
+          inputAmount,
+          outputAmount,
+          minimumOut: minReceived,
+          priceImpact: parseFloat(data.price_impact) || 0,
+          gasEstimate: parseFloat(data.gas_estimate) || 0,
+          gasFeeUsd: 0,
+          exchangeRate: inputAmount > 0 ? outputAmount / inputAmount : 0,
+          expiresAt: Date.now() + 30000,
+          route: [{ dex: data.dex || 'DEX', fee: 3000, amountIn: inputAmount, amountOut: outputAmount }],
+        });
+        setAmountOut(outputAmount.toFixed(6));
       } else {
-        calculateLocalQuote();
+        // Backend quote failed: show no quote rather than fabricate one.
+        setQuote(null);
+        setAmountOut('');
+        setError('Unable to fetch quote from swap service');
       }
     } catch (err) {
-      calculateLocalQuote();
+      setQuote(null);
+      setAmountOut('');
+      setError('Unable to reach swap service');
     } finally {
       setLoadingQuote(false);
     }
-  }, [tokenIn, tokenOut, amountIn, chainId, calculateLocalQuote]);
+  }, [tokenIn, tokenOut, amountIn, chainId]);
 
   useEffect(() => {
     fetchQuote();
@@ -194,23 +200,39 @@ export default function SwapPage() {
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
+      const chainName = CHAIN_CONFIG[chainId]?.name?.toLowerCase() || 'ethereum';
       const response = await fetch(`${API_BASE}/api/v1/swap/execute`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          token_in: tokenIn?.symbol,
-          token_out: tokenOut?.symbol,
-          amount_in: parseFloat(amountIn),
-          min_out: quote.minimumOut,
-          recipient: walletAddress,
-          chain_id: chainId,
+          // Match go/swap_service SwapRequest field names.
+          user_id: walletAddress,
+          from_token: tokenIn?.symbol,
+          to_token: tokenOut?.symbol,
+          from_amount: amountIn,
+          min_output: String(quote.minimumOut),
+          slippage: String(slippage),
+          chain: chainName,
         }),
       });
 
       const data = await response.json();
-      if (data.success && data.tx_hash) {
-        setSuccess(`Swap successful! TX: ${data.tx_hash}`);
-        setTxHash(data.tx_hash);
+      if (data.success) {
+        // The swap service computes the quote/route and returns the on-chain
+        // action the client must submit through the signing backend
+        // (wallet_api /api/v1/send). It does NOT fabricate a tx hash.
+        if (data.tx_hash) {
+          setSuccess(`Swap broadcast! TX: ${data.tx_hash}`);
+          setTxHash(data.tx_hash);
+        } else if (data.action_required) {
+          setSuccess(
+            `Quote ready (swap ${data.swap_id}). ${data.action_required.description} ` +
+            `Next: submit via ${data.action_required.endpoint}.`
+          );
+          setTxHash('');
+        } else {
+          setSuccess(`Swap quote ready (swap ${data.swap_id}). Status: ${data.status}`);
+        }
         setAmountIn('');
         setAmountOut('');
         setQuote(null);

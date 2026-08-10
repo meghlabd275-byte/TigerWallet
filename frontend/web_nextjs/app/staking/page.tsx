@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { stakingApi, walletApi } from '../api/service';
 
 interface StakingPosition {
   id: string;
@@ -52,6 +51,10 @@ const STAKING_POOLS: StakingPool[] = [
   { id: 'bsc', name: 'BNB Chain Staking', token: 'BNB', chainId: 56, chainName: 'BNB Chain', apy: 4.8, minStake: '1', lockPeriod: 7, totalStaked: '2.8B', rewardToken: 'BNB', description: 'Stake BNB' },
 ];
 
+// Same-origin API base: the Next.js app proxies /api/v1/staking/* to the
+// go/staking_service backend (see app/api/v1/staking/ routes).
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+
 export default function Staking() {
   const [positions, setPositions] = useState<StakingPosition[]>([]);
   const [pools, setPools] = useState<StakingPool[]>(STAKING_POOLS);
@@ -61,48 +64,182 @@ export default function Staking() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const getUserId = () => {
+    if (typeof window === 'undefined') return '';
+    return localStorage.getItem('tigerwallet_user_id') || localStorage.getItem('tigerwallet_address') || '';
+  };
+
+  const getAuthHeaders = (): HeadersInit => {
+    const headers: HeadersInit = { 'Content-Type': 'application/json' };
+    if (typeof window !== 'undefined') {
+      const authToken = localStorage.getItem('tigerwallet_token');
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    return headers;
+  };
+
+  // Fetch staking pools from the backend (go/staking_service).
+  const fetchPools = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/staking/pools`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.pools && data.pools.length > 0) {
+          // Map backend StakingPool fields to the frontend interface.
+          const mapped: StakingPool[] = data.pools.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            token: p.token,
+            chainId: 0,
+            chainName: p.chain,
+            apy: parseFloat(p.apy) || 0,
+            minStake: p.min_stake,
+            lockPeriod: p.lock_period,
+            totalStaked: p.total_staked,
+            rewardToken: p.reward_token,
+            description: `${p.chain} staking pool`,
+          }));
+          setPools(mapped);
+        }
+      }
+    } catch (err) {
+      // Keep default pools if backend unreachable.
+    }
+  }, []);
+
+  // Fetch the user's staking positions from the backend.
+  const fetchPositions = useCallback(async () => {
+    const userId = getUserId();
+    if (!userId) return;
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/staking/positions?user_id=${userId}`, {
+        headers: getAuthHeaders(),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.positions) {
+          const mapped: StakingPosition[] = data.positions.map((p: any) => ({
+            id: p.id,
+            chainId: 0,
+            chainName: p.chain,
+            token: p.token || '',
+            stakedAmount: p.amount,
+            reward: p.reward_pending || '0',
+            apy: 0,
+            validator: p.pool_id,
+            status: p.status === 'staked' ? 'active' : p.status === 'unbonding' ? 'unbonding' : 'claimed',
+            startTime: p.stake_time ? new Date(p.stake_time).getTime() : Date.now(),
+            unlockTime: p.unlock_time ? new Date(p.unlock_time).getTime() : undefined,
+          }));
+          setPositions(mapped);
+        }
+      }
+    } catch (err) {
+      // No positions or backend unreachable.
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPools();
+    fetchPositions();
+  }, [fetchPools, fetchPositions]);
+
   const handleStake = useCallback(async () => {
     if (!selectedPool || !stakeAmount || parseFloat(stakeAmount) < parseFloat(selectedPool.minStake)) {
       setMessage({ type: 'error', text: `Minimum stake is ${selectedPool?.minStake}` });
       return;
     }
+    const userId = getUserId();
+    if (!userId) {
+      setMessage({ type: 'error', text: 'Please connect your wallet first' });
+      return;
+    }
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    const newPosition: StakingPosition = {
-      id: `pos_${Date.now()}`,
-      chainId: selectedPool.chainId,
-      chainName: selectedPool.chainName,
-      token: selectedPool.token,
-      stakedAmount: stakeAmount,
-      reward: '0',
-      apy: selectedPool.apy,
-      validator: selectedPool.name,
-      status: 'active',
-      startTime: Date.now(),
-    };
-    setPositions(prev => [...prev, newPosition]);
-    setMessage({ type: 'success', text: `Successfully staked ${stakeAmount} ${selectedPool.token}!` });
-    setStakeAmount('');
-    setSelectedPool(null);
-    setActiveTab('positions');
-    setLoading(false);
-  }, [selectedPool, stakeAmount]);
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/staking/stake`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ user_id: userId, pool_id: selectedPool.id, amount: stakeAmount }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setMessage({ type: 'success', text: `Successfully staked ${stakeAmount} ${selectedPool.token}!` });
+        setStakeAmount('');
+        setSelectedPool(null);
+        setActiveTab('positions');
+        fetchPositions();
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Stake failed' });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Stake failed' });
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedPool, stakeAmount, fetchPositions]);
 
   const handleUnstake = useCallback(async (positionId: string) => {
+    const userId = getUserId();
+    if (!userId) {
+      setMessage({ type: 'error', text: 'Please connect your wallet first' });
+      return;
+    }
+    const position = positions.find(p => p.id === positionId);
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setPositions(prev => prev.map(p => p.id === positionId ? { ...p, status: 'unbonding' as const, unlockTime: Date.now() + 86400000 * 14 } : p));
-    setMessage({ type: 'success', text: 'Unstake initiated! Your tokens will be available after the lock period.' });
-    setLoading(false);
-  }, []);
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/staking/unstake`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          user_id: userId,
+          pool_id: position?.validator || '',
+          position_id: positionId,
+          amount: position?.stakedAmount || '0',
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setPositions(prev => prev.map(p => p.id === positionId ? { ...p, status: 'unbonding' as const, unlockTime: Date.now() + 86400000 * 14 } : p));
+        setMessage({ type: 'success', text: 'Unstake initiated! Your tokens will be available after the lock period.' });
+        fetchPositions();
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Unstake failed' });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Unstake failed' });
+    } finally {
+      setLoading(false);
+    }
+  }, [positions, fetchPositions]);
 
   const handleClaim = useCallback(async (positionId: string) => {
+    const userId = getUserId();
+    if (!userId) {
+      setMessage({ type: 'error', text: 'Please connect your wallet first' });
+      return;
+    }
+    const position = positions.find(p => p.id === positionId);
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setPositions(prev => prev.filter(p => p.id !== positionId));
-    setMessage({ type: 'success', text: 'Rewards claimed successfully!' });
-    setLoading(false);
-  }, []);
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/staking/claim`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ user_id: userId, pool_id: position?.validator || '', position_id: positionId }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setPositions(prev => prev.filter(p => p.id !== positionId));
+        setMessage({ type: 'success', text: 'Rewards claimed successfully!' });
+        fetchPositions();
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Claim failed' });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Claim failed' });
+    } finally {
+      setLoading(false);
+    }
+  }, [positions, fetchPositions]);
 
   const formatTime = (timestamp: number): string => {
     const diff = Date.now() - timestamp;

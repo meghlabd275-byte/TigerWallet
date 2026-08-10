@@ -9,12 +9,15 @@ import {
 } from '@mui/material';
 import {
   SwapHoriz, ArrowForward, AccountBalance, CheckCircle,
-  Error, AccessTime, Speed, Security, Warning,
+  ErrorOutline, AccessTime, Speed, Security, Warning,
   ContentCopy, Refresh, ArrowDropDown
 } from '@mui/icons-material';
 import { useTheme } from '../components/ThemeProvider';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+// Same-origin API base: the Next.js app proxies /api/v1/* to the backend
+// services (see app/api/v1/_proxy.ts). In the browser this resolves to the
+// current host.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
 // ============================================================================
 // Types & Interfaces
@@ -149,11 +152,12 @@ export default function BridgePage() {
   const [amount, setAmount] = useState('');
   const [quote, setQuote] = useState<BridgeQuote | null>(null);
   const [selectedRoute, setSelectedRoute] = useState('across');
+  const [routes, setRoutes] = useState<BridgeRoute[]>([]);
   const [loading, setLoading] = useState(false);
   const [transferHistory, setTransferHistory] = useState<BridgeTransfer[]>([]);
   const [activeTab, setActiveTab] = useState(0);
   const [activeStep, setActiveStep] = useState(0);
-  const [walletAddress] = useState('0x742d35Cc6634C0532...5F6e1');
+  const [walletAddress, setWalletAddress] = useState('');
 
   // Snackbar
   const [snackbar, setSnackbar] = useState({
@@ -167,7 +171,8 @@ export default function BridgePage() {
   // ============================================================================
 
   useEffect(() => {
-    // Fetch routes from API
+    // Fetch routes from API. The bridge service does not currently expose a
+    // /routes endpoint, so routes default to empty until one is added.
     const fetchRoutes = async () => {
       try {
         const response = await fetch(`${API_BASE}/api/v1/bridge/routes?from_chain=${fromChain}&to_chain=${toChain}`);
@@ -178,51 +183,61 @@ export default function BridgePage() {
           }
         }
       } catch (err) {
-        // Use default routes
+        // No routes endpoint: leave routes empty (no fabricated routes).
       }
     };
-    
-    // Fetch quote from API
+
+    // Fetch quote from API (go/bridge_service GetQuote is a POST with JSON body).
     const fetchQuote = async () => {
       if (!amount || parseFloat(amount) <= 0) {
         setQuote(null);
         return;
       }
       try {
-        const response = await fetch(
-          `${API_BASE}/api/v1/bridge/quote?from_chain=${fromChain}&to_chain=${toChain}&token=${token}&amount=${amount}`
-        );
+        const response = await fetch(`${API_BASE}/api/v1/bridge/quote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from_chain: String(fromChain),
+            to_chain: String(toChain),
+            token,
+            amount,
+          }),
+        });
         if (response.ok) {
           const data = await response.json();
-          setQuote(data);
+          const feeNum = parseFloat(data.fee) || 0;
+          const parsedAmount = parseFloat(amount);
+          setQuote({
+            fromChain,
+            toChain,
+            token,
+            amount: parsedAmount.toString(),
+            bridgeFee: feeNum,
+            networkFee: 0,
+            estimatedTime: `${data.estimated_time || 600}s`,
+            receivedAmount: (parsedAmount - feeNum).toString(),
+            rate: 1.0,
+            availableRoutes: routes,
+          });
+        } else {
+          setQuote(null);
         }
       } catch (err) {
-        // Calculate locally
-        const parsedAmount = parseFloat(amount);
-        const bridgeFee = parsedAmount * 0.003;
-        const networkFee = 5;
-        setQuote({
-          fromChain,
-          toChain,
-          token,
-          amount: parsedAmount.toString(),
-          bridgeFee,
-          networkFee,
-          estimatedTime: '5-10 min',
-          receivedAmount: (parsedAmount - bridgeFee - networkFee / 3500).toString(),
-          rate: 1.0,
-          availableRoutes: [],
-        });
+        // Backend unreachable: show no quote rather than fabricate one.
+        setQuote(null);
       }
     };
-    
-    // Fetch history
+
+    // Fetch history. The bridge service exposes a per-tx status endpoint but
+    // not a bulk /history list, so history stays empty until one is added; we
+    // do not fabricate transfer history.
     const fetchHistory = async () => {
       try {
-        const token = localStorage.getItem('tigerwallet_token');
+        const authToken = localStorage.getItem('tigerwallet_token');
         const headers: HeadersInit = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        
+        if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
         const response = await fetch(`${API_BASE}/api/v1/bridge/history`, { headers });
         if (response.ok) {
           const data = await response.json();
@@ -231,15 +246,14 @@ export default function BridgePage() {
           }
         }
       } catch (err) {
-        // No history
+        // No history endpoint available yet.
       }
     };
-    
+
     fetchRoutes();
     fetchQuote();
     fetchHistory();
-    setTransferHistory([]);
-  }, [fromChain, toChain, token, amount]);
+  }, [fromChain, toChain, token, amount, routes]);
 
   // ============================================================================
   // Handlers
@@ -265,33 +279,35 @@ export default function BridgePage() {
     setSnackbar({ open: true, message: 'Processing bridge transfer...', severity: 'info' });
 
     try {
-      const token = localStorage.getItem('tigerwallet_token');
+      const authToken = localStorage.getItem('tigerwallet_token');
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
       const response = await fetch(`${API_BASE}/api/v1/bridge/transfer`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          from_chain: fromChain,
-          to_chain: toChain,
+          // Match go/bridge_service InitiateTransfer field names.
+          user_id: walletAddress,
+          from_chain: String(fromChain),
+          to_chain: String(toChain),
           token,
-          amount: parseFloat(amount),
-          route: selectedRoute,
-          dest_address: walletAddress,
+          amount,
+          recipient: walletAddress,
         }),
       });
 
       const data = await response.json();
-      if (data.success && data.transfer_id) {
-        setSnackbar({ open: true, message: `Bridge initiated! ID: ${data.transfer_id}`, severity: 'success' });
+      if (data.success && data.tx_id) {
+        setSnackbar({ open: true, message: `Bridge initiated! ID: ${data.tx_id}`, severity: 'success' });
         setAmount('');
         setQuote(null);
       } else {
         setSnackbar({ open: true, message: data.error || 'Bridge failed', severity: 'error' });
       }
     } catch (err) {
-      setSnackbar({ open: true, message: err instanceof Error ? err.message : 'Bridge failed', severity: 'error' });
+      const msg = err instanceof Error ? err.message : 'Bridge failed';
+      setSnackbar({ open: true, message: msg, severity: 'error' });
     } finally {
       setLoading(false);
     }
@@ -408,7 +424,7 @@ export default function BridgePage() {
                       onChange={(e) => setAmount(e.target.value)}
                       InputProps={{
                         endAdornment: (
-                          <InputAdornment>
+                          <InputAdornment position="end">
                             <Button size="small" onClick={handleMaxAmount} sx={{ color: '#00d4aa', minWidth: 0 }}>
                               MAX
                             </Button>
