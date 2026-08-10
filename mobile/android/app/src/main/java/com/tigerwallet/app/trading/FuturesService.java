@@ -2,16 +2,16 @@ package com.tigerwallet.app.trading;
 
 /**
  * Futures Trading Service - Android Implementation
- * Perpetual futures trading
+ *
+ * WARNING: There is currently NO real backend endpoint for futures trading.
+ * Market data (pairs/prices) and order placement were previously fabricated
+ * (hardcoded price arrays + Math.random for change24h). Those methods now
+ * throw UnsupportedOperationException. The pure-math helpers
+ * (calculateLiquidationPrice, calculatePnL) and the in-memory order status
+ * mutator are retained since they perform deterministic operations only.
  */
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 public class FuturesService {
-    
+
     public static class FuturesPair {
         public String id;
         public String base;
@@ -25,7 +25,7 @@ public class FuturesService {
         public double makerFee;
         public double takerFee;
     }
-    
+
     public static class FuturesPosition {
         public String id;
         public String userId;
@@ -42,7 +42,7 @@ public class FuturesService {
         public String marginMode;
         public long openTime;
     }
-    
+
     public static class FuturesOrder {
         public String id;
         public String userId;
@@ -57,86 +57,40 @@ public class FuturesService {
         public String marginMode;
         public long createTime;
     }
-    
-    private static final String[] bases = {"BTC", "ETH", "BNB", "SOL", "XRP", "DOGE", "ADA", "AVAX", "DOT", "LINK", "MATIC", "LTC", "UNI", "ATOM", "XLM", "NEAR", "APT", "ARB", "OP", "INJ"};
-    private static final double[] prices = {43250.0, 2280.0, 312.5, 98.75, 0.62, 0.082, 0.58, 38.2, 7.85, 14.50, 0.92, 72.30, 6.25, 10.45, 0.125, 3.25, 9.80, 1.12, 2.45, 35.50};
-    
-    private Map<String, Double> priceMap = new HashMap<>();
-    
+
     public FuturesService() {
-        initializePrices();
     }
-    
-    private void initializePrices() {
-        for (int i = 0; i < bases.length; i++) {
-            priceMap.put(bases[i], prices[i]);
-        }
+
+    /**
+     * @throws UnsupportedOperationException no real futures backend is configured
+     */
+    public java.util.List<FuturesPair> getPairs() {
+        throw new UnsupportedOperationException(
+            "futures trading backend is not configured; no market data available");
     }
-    
-    public List<FuturesPair> getPairs() {
-        List<FuturesPair> pairs = new ArrayList<>();
-        String[] quotes = {"USDT", "USDC"};
-        
-        for (int i = 0; i < bases.length; i++) {
-            for (String quote : quotes) {
-                if (!bases[i].equals(quote)) {
-                    FuturesPair pair = new FuturesPair();
-                    pair.id = "futures_" + i;
-                    pair.base = bases[i];
-                    pair.quote = quote;
-                    pair.symbol = bases[i] + "/" + quote;
-                    pair.price = prices[i];
-                    pair.change24h = (Math.random() * 10 - 5);
-                    pair.volume24h = prices[i] * 1000000;
-                    pair.high24h = prices[i] * 1.05;
-                    pair.low24h = prices[i] * 0.95;
-                    pair.makerFee = 0.02;
-                    pair.takerFee = 0.04;
-                    pairs.add(pair);
-                }
-            }
-        }
-        return pairs;
+
+    /**
+     * @throws UnsupportedOperationException no real futures backend is configured
+     */
+    public FuturesOrder openPosition(String userId, String symbol, String side,
+                                     double size, double price, int leverage, String marginMode) {
+        throw new UnsupportedOperationException(
+            "futures trading backend is not configured; cannot open position");
     }
-    
-    public FuturesOrder openPosition(String userId, String symbol, String side, 
-                                   double size, double price, int leverage, String marginMode) {
-        FuturesOrder order = new FuturesOrder();
-        order.id = "futures_order_" + System.currentTimeMillis();
-        order.userId = userId;
-        order.symbol = symbol;
-        order.side = side;
-        order.type = "MARKET";
-        order.size = size;
-        order.price = price;
-        order.status = "PENDING";
-        order.leverage = leverage;
-        order.marginMode = marginMode;
-        order.createTime = System.currentTimeMillis();
-        return order;
-    }
-    
+
+    /**
+     * @throws UnsupportedOperationException no real futures backend is configured
+     */
     public FuturesOrder placeOrder(String userId, String symbol, String side, String type,
-                                  double size, double price, int leverage, String marginMode) {
-        FuturesOrder order = new FuturesOrder();
-        order.id = "futures_order_" + System.currentTimeMillis();
-        order.userId = userId;
-        order.symbol = symbol;
-        order.side = side;
-        order.type = type;
-        order.size = size;
-        order.price = price;
-        order.status = "PENDING";
-        order.leverage = leverage;
-        order.marginMode = marginMode;
-        order.createTime = System.currentTimeMillis();
-        return order;
+                                   double size, double price, int leverage, String marginMode) {
+        throw new UnsupportedOperationException(
+            "futures trading backend is not configured; cannot place order");
     }
-    
+
     public void cancelOrder(FuturesOrder order) {
         order.status = "CANCELLED";
     }
-    
+
     public double calculateLiquidationPrice(double entryPrice, int leverage, String side) {
         double liquidationPercent = 1.0 / leverage;
         if ("LONG".equals(side)) {
@@ -145,7 +99,7 @@ public class FuturesService {
             return entryPrice * (1 + liquidationPercent);
         }
     }
-    
+
     public double calculatePnL(double entryPrice, double closePrice, double size, String side) {
         if ("LONG".equals(side)) {
             return (closePrice - entryPrice) * size;

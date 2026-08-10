@@ -2,15 +2,17 @@ package com.tigerwallet.app.trading;
 
 /**
  * Crypto Card Service - Android Implementation
- * Virtual and Physical Crypto Cards
+ *
+ * WARNING: There is currently NO real backend endpoint for crypto cards.
+ * Card numbers, CVVs, expiry dates, and payment transaction records were
+ * previously FABRICATED locally (java.util.Random). That code has been
+ * removed: card creation and payment processing now throw
+ * UnsupportedOperationException. The simple in-memory status mutators are
+ * retained for state management of a card object, but no card can be issued
+ * without a real backend.
  */
-
-import java.util.UUID;
-import java.util.Random;
-
 public class CryptoCardService {
-    private Random random = new Random();
-    
+
     public static class CryptoCard {
         public String id;
         public String userId;
@@ -29,7 +31,7 @@ public class CryptoCardService {
         public boolean googlePayEnabled;
         public String maskedNumber;
     }
-    
+
     public static class CardTransaction {
         public String id;
         public String cardId;
@@ -40,90 +42,49 @@ public class CryptoCardService {
         public String status;
         public long timestamp;
     }
-    
-    private String generateCardNumber() {
-        return "4532" + String.format("%012d", Math.abs(random.nextLong()) % 1000000000000L);
-    }
-    
-    private String generateCVV() {
-        return String.format("%03d", random.nextInt(900) + 100);
-    }
-    
-    private String generateExpiry() {
-        int month = random.nextInt(12) + 1;
-        int year = (2024 + 3) % 100;
-        return String.format("%02d/%02d", month, year);
-    }
-    
+
+    /**
+     * @throws UnsupportedOperationException no real crypto-card backend is configured
+     */
     public CryptoCard createVirtualCard(String userId, String cardHolder, String type, String network) {
-        CryptoCard card = new CryptoCard();
-        card.id = "card_" + UUID.randomUUID().toString();
-        card.userId = userId;
-        card.cardNumber = generateCardNumber();
-        card.cardHolder = cardHolder;
-        card.expiryDate = generateExpiry();
-        card.cvv = generateCVV();
-        card.type = type != null ? type : "VIRTUAL";
-        card.network = network != null ? network : "VISA";
-        card.status = "ACTIVE";
-        card.dailyLimit = 10000;
-        card.monthlyLimit = 100000;
-        card.dailySpent = 0;
-        card.monthlySpent = 0;
-        card.applePayEnabled = true;
-        card.googlePayEnabled = true;
-        card.maskedNumber = "•••• •••• •••• " + card.cardNumber.substring(card.cardNumber.length() - 4);
-        return card;
+        throw new UnsupportedOperationException(
+            "crypto card backend is not configured; cannot issue virtual card");
     }
-    
+
+    /**
+     * @throws UnsupportedOperationException no real crypto-card backend is configured
+     */
     public CryptoCard createPhysicalCard(String userId, String cardHolder, String shippingAddress) {
-        CryptoCard card = createVirtualCard(userId, cardHolder, "PHYSICAL", "VISA");
-        card.status = "PENDING_ACTIVATION";
-        return card;
+        throw new UnsupportedOperationException(
+            "crypto card backend is not configured; cannot issue physical card");
     }
-    
+
+    /**
+     * @throws UnsupportedOperationException no real crypto-card backend is configured
+     */
     public CardTransaction processPayment(CryptoCard card, double amount, String currency, String merchantName) {
-        if (!"ACTIVE".equals(card.status)) {
-            throw new RuntimeException("Card is not active");
-        }
-        if (card.dailySpent + amount > card.dailyLimit) {
-            throw new RuntimeException("Daily limit exceeded");
-        }
-        
-        card.dailySpent += amount;
-        card.monthlySpent += amount;
-        
-        CardTransaction txn = new CardTransaction();
-        txn.id = "txn_" + System.currentTimeMillis();
-        txn.cardId = card.id;
-        txn.userId = card.userId;
-        txn.amount = amount;
-        txn.currency = currency;
-        txn.merchantName = merchantName;
-        txn.status = "COMPLETED";
-        txn.timestamp = System.currentTimeMillis();
-        
-        return txn;
+        throw new UnsupportedOperationException(
+            "crypto card backend is not configured; cannot process payment");
     }
-    
+
     public void freezeCard(CryptoCard card) {
         card.status = "FROZEN";
     }
-    
+
     public void unfreezeCard(CryptoCard card) {
         card.status = "ACTIVE";
     }
-    
+
     public void terminateCard(CryptoCard card) {
         card.status = "TERMINATED";
         card.applePayEnabled = false;
         card.googlePayEnabled = false;
     }
-    
+
     public void enableApplePay(CryptoCard card) {
         card.applePayEnabled = true;
     }
-    
+
     public void enableGooglePay(CryptoCard card) {
         card.googlePayEnabled = true;
     }

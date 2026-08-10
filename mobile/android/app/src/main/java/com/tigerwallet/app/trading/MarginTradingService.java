@@ -2,11 +2,15 @@ package com.tigerwallet.app.trading;
 
 /**
  * Margin Trading Service - Android Implementation
- * Supports Cross/Isolated Margin, Long/Short, Leverage 1-125x
+ *
+ * WARNING: There is currently NO real backend endpoint for margin trading.
+ * The methods that would fabricate market data, account balances, or orders
+ * therefore throw UnsupportedOperationException rather than returning invented
+ * data. The pure-math helpers (calculateLiquidationPrice, calculatePnL) are
+ * retained since they perform deterministic calculation only.
  */
-
 public class MarginTradingService {
-    
+
     public static class MarginPair {
         public String id;
         public String base;
@@ -18,10 +22,10 @@ public class MarginTradingService {
         public double borrowable;
         public double interestRate;
         public boolean isActive;
-        
+
         public MarginPair() {}
     }
-    
+
     public static class MarginPosition {
         public String id;
         public String userId;
@@ -38,7 +42,7 @@ public class MarginTradingService {
         public String marginMode;
         public long openTime;
     }
-    
+
     public static class MarginOrder {
         public String id;
         public String userId;
@@ -52,7 +56,7 @@ public class MarginTradingService {
         public int leverage;
         public String marginMode;
     }
-    
+
     public static class MarginAccount {
         public String userId;
         public double totalAssets;
@@ -63,62 +67,32 @@ public class MarginTradingService {
         public double marginRatio;
         public String riskLevel;
     }
-    
-    private static MarginPair[] generatePairs() {
-        String[] bases = {"BTC", "ETH", "BNB", "SOL", "XRP", "DOGE", "ADA", "AVAX", "DOT", "LINK"};
-        double[] prices = {43250.0, 2280.0, 312.5, 98.75, 0.62, 0.082, 0.58, 38.2, 7.85, 14.50};
-        
-        MarginPair[] pairs = new MarginPair[bases.length];
-        for (int i = 0; i < bases.length; i++) {
-            MarginPair pair = new MarginPair();
-            pair.id = "margin_" + i;
-            pair.base = bases[i];
-            pair.quote = "USDT";
-            pair.symbol = bases[i] + "/USDT";
-            pair.price = prices[i];
-            pair.change24h = (Math.random() * 10 - 5);
-            pair.volume24h = prices[i] * 1000000;
-            pair.borrowable = prices[i] * 50000000;
-            pair.interestRate = 0.0001;
-            pair.isActive = true;
-            pairs[i] = pair;
-        }
-        return pairs;
-    }
-    
+
+    /**
+     * @throws UnsupportedOperationException no real margin-trading backend is configured
+     */
     public MarginPair[] getPairs() {
-        return generatePairs();
+        throw new UnsupportedOperationException(
+            "margin trading backend is not configured; no market data available");
     }
-    
+
+    /**
+     * @throws UnsupportedOperationException no real margin-trading backend is configured
+     */
     public MarginAccount getAccount(String userId) {
-        MarginAccount account = new MarginAccount();
-        account.userId = userId;
-        account.totalAssets = 50000.0;
-        account.totalLiabilities = 5000.0;
-        account.netAssets = 45000.0;
-        account.availableBalance = 40000.0;
-        account.totalBorrowed = 5000.0;
-        account.marginRatio = 9.0;
-        account.riskLevel = "SAFE";
-        return account;
+        throw new UnsupportedOperationException(
+            "margin trading backend is not configured; account data unavailable");
     }
-    
-    public MarginOrder openPosition(String userId, String symbol, String side, 
-                                   double size, double price, int leverage, String marginMode) {
-        MarginOrder order = new MarginOrder();
-        order.id = "margin_order_" + System.currentTimeMillis();
-        order.userId = userId;
-        order.symbol = symbol;
-        order.side = side;
-        order.type = "MARKET";
-        order.size = size;
-        order.price = price;
-        order.status = "PENDING";
-        order.leverage = leverage;
-        order.marginMode = marginMode;
-        return order;
+
+    /**
+     * @throws UnsupportedOperationException no real margin-trading backend is configured
+     */
+    public MarginOrder openPosition(String userId, String symbol, String side,
+                                    double size, double price, int leverage, String marginMode) {
+        throw new UnsupportedOperationException(
+            "margin trading backend is not configured; cannot open position");
     }
-    
+
     public double calculateLiquidationPrice(double entryPrice, int leverage, String side) {
         double liquidationPercent = 1.0 / leverage;
         if ("LONG".equals(side)) {
@@ -127,7 +101,7 @@ public class MarginTradingService {
             return entryPrice * (1 + liquidationPercent);
         }
     }
-    
+
     public double calculatePnL(double entryPrice, double closePrice, double size, String side) {
         if ("LONG".equals(side)) {
             return (closePrice - entryPrice) * size;

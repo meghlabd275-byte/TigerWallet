@@ -1,8 +1,6 @@
 package com.tigerwallet.app.services.mpc;
 
 import android.content.Context;
-import android.util.Base64;
-import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -10,271 +8,255 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.security.SecureRandom;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * MPC Wallet Service for Android
- * Provides distributed key generation and transaction signing
+ * MPC Wallet Service for Android.
+ *
+ * Talks to the REAL Go MPC backend (go/mpc), which exposes ONLY:
+ *   POST /api/v1/mpc/create           { threshold, totalShards } -> { keyId, address, publicKey, threshold, totalShards, createdAt }
+ *   POST /api/v1/mpc/sign             { keyId, messageHash }      -> { signature, keyId, address, signedAt }
+ *   GET  /api/v1/mpc/wallet/{keyId}                               -> { keyId, address, publicKey, threshold, totalShards, createdAt }
+ *
+ * There is NO import / publickey / session / rotate / sign-message / txData
+ * endpoint on the backend, so those operations are not implemented here. No
+ * signatures, public keys, or wallet metadata are ever fabricated locally;
+ * everything comes from the backend.
  */
 public class MPCWalletService {
     private static final String TAG = "MPCWalletService";
-    private static final String BASE_URL = "https://api.tigerwallet.com/v1/mpc";
-    
+
+    /** Default MPC backend URL. Override via the "tigerwallet.mpc.baseurl" system property. */
+    private static final String DEFAULT_BASE_URL = "http://localhost:8085";
+
     private final Context context;
     private final ExecutorService executor;
-    private String sessionKey;
-    private Map<String, String> walletCache;
-    
+    private final String baseUrl;
+    // Map from wallet address -> backend keyId, populated when wallets are created.
+    private final Map<String, String> addressToKeyId;
+
     public interface Callback<T> {
         void onSuccess(T result);
         void onError(Exception error);
     }
-    
+
     public MPCWalletService(Context context) {
-        this.context = context;
-        this.executor = Executors.newFixedThreadPool(4);
-        this.walletCache = new HashMap<>();
+        this(context, System.getProperty("tigerwallet.mpc.baseurl", DEFAULT_BASE_URL));
     }
-    
+
+    public MPCWalletService(Context context, String baseUrl) {
+        this.context = context;
+        this.baseUrl = baseUrl;
+        this.executor = Executors.newFixedThreadPool(4);
+        this.addressToKeyId = new HashMap<>();
+    }
+
     /**
-     * Create a new MPC wallet
+     * Create a new MPC wallet.
+     *
+     * The backend's createRequest only accepts {threshold, totalShards}; the
+     * userId argument is intentionally NOT sent in the body. The signature is
+     * kept for caller compatibility.
      */
     public void createWallet(String userId, Callback<MPCWallet> callback) {
         executor.execute(() -> {
             try {
                 JSONObject body = new JSONObject();
-                body.put("userId", userId);
-                
-                JSONObject response = makePostRequest("/wallet", body);
-                
+                body.put("threshold", 2);
+                body.put("totalShards", 3);
+
+                JSONObject response = makePostRequest("/api/v1/mpc/create", body);
+
                 MPCWallet wallet = new MPCWallet();
+                wallet.keyId = response.getString("keyId");
                 wallet.address = response.getString("address");
                 wallet.publicKey = response.getString("publicKey");
+                wallet.threshold = response.optInt("threshold");
+                wallet.totalShards = response.optInt("totalShards");
                 wallet.createdAt = response.getLong("createdAt");
-                
-                walletCache.put(wallet.address, wallet.toJson());
-                
+
+                addressToKeyId.put(wallet.address, wallet.keyId);
+
                 callback.onSuccess(wallet);
             } catch (Exception e) {
                 callback.onError(e);
             }
         });
     }
-    
+
     /**
-     * Import existing wallet using mnemonic
-     */
-    public void importWallet(String mnemonic, String userId, Callback<MPCWallet> callback) {
-        executor.execute(() -> {
-            try {
-                JSONObject body = new JSONObject();
-                body.put("mnemonic", mnemonic);
-                body.put("userId", userId);
-                
-                JSONObject response = makePostRequest("/wallet/import", body);
-                
-                MPCWallet wallet = new MPCWallet();
-                wallet.address = response.getString("address");
-                wallet.publicKey = response.getString("publicKey");
-                wallet.createdAt = response.getLong("createdAt");
-                
-                walletCache.put(wallet.address, wallet.toJson());
-                
-                callback.onSuccess(wallet);
-            } catch (Exception e) {
-                callback.onError(e);
-            }
-        });
-    }
-    
-    /**
-     * Get public key for an address
-     */
-    public void getPublicKey(String address, Callback<String> callback) {
-        executor.execute(() -> {
-            try {
-                JSONObject response = makeGetRequest("/publickey/" + address);
-                callback.onSuccess(response.getString("publicKey"));
-            } catch (Exception e) {
-                callback.onError(e);
-            }
-        });
-    }
-    
-    /**
-     * Sign a transaction using MPC
+     * Sign a transaction payload using MPC.
+     *
+     * @param txData   transaction data to sign (raw bytes represented as a UTF-8 string)
+     * @param address  wallet address whose MPC key should sign
      */
     public void signTransaction(String txData, String address, Callback<String> callback) {
-        executor.execute(() -> {
-            try {
-                JSONObject body = new JSONObject();
-                body.put("txData", txData);
-                body.put("address", address);
-                
-                JSONObject response = makePostRequest("/sign", body);
-                callback.onSuccess(response.getString("signature"));
-            } catch (Exception e) {
-                callback.onError(e);
-            }
-        });
+        signPayload(txData, address, callback);
     }
-    
+
     /**
-     * Sign a message using MPC
+     * Sign an arbitrary message using MPC.
+     *
+     * @param message  message to sign
+     * @param address  wallet address whose MPC key should sign
      */
     public void signMessage(String message, String address, Callback<String> callback) {
+        signPayload(message, address, callback);
+    }
+
+    private void signPayload(String payload, String address, Callback<String> callback) {
         executor.execute(() -> {
             try {
+                String keyId = addressToKeyId.get(address);
+                if (keyId == null) {
+                    callback.onError(new IllegalStateException(
+                        "no MPC wallet for address " + address
+                            + " (call createWallet first)"));
+                    return;
+                }
+
+                String messageHash = sha256Hex(payload);
+
                 JSONObject body = new JSONObject();
-                body.put("message", message);
-                body.put("address", address);
-                
-                JSONObject response = makePostRequest("/sign-message", body);
+                body.put("keyId", keyId);
+                body.put("messageHash", messageHash);
+
+                JSONObject response = makePostRequest("/api/v1/mpc/sign", body);
                 callback.onSuccess(response.getString("signature"));
             } catch (Exception e) {
                 callback.onError(e);
             }
         });
     }
-    
+
     /**
-     * Get session key for quick operations
-     */
-    public void getSessionKey(String address, Callback<SessionKey> callback) {
-        executor.execute(() -> {
-            try {
-                JSONObject response = makeGetRequest("/session/" + address);
-                
-                SessionKey sessionKey = new SessionKey();
-                sessionKey.key = response.getString("key");
-                sessionKey.expiresAt = response.getLong("expiresAt");
-                
-                this.sessionKey = sessionKey.key;
-                callback.onSuccess(sessionKey);
-            } catch (Exception e) {
-                callback.onError(e);
-            }
-        });
-    }
-    
-    /**
-     * Rotate key share for enhanced security
-     */
-    public void rotateKey(String address, Callback<String> callback) {
-        executor.execute(() -> {
-            try {
-                JSONObject body = new JSONObject();
-                body.put("address", address);
-                
-                JSONObject response = makePostRequest("/rotate", body);
-                callback.onSuccess(response.getString("newKeyShare"));
-            } catch (Exception e) {
-                callback.onError(e);
-            }
-        });
-    }
-    
-    /**
-     * Get wallet information
+     * Get wallet information for a previously created wallet.
+     *
+     * @param address wallet address; the backend is keyed by keyId, which is
+     *                looked up from the local cache populated at create time.
      */
     public void getWalletInfo(String address, Callback<WalletInfo> callback) {
         executor.execute(() -> {
             try {
-                JSONObject response = makeGetRequest("/wallet/" + address);
-                
+                String keyId = addressToKeyId.get(address);
+                if (keyId == null) {
+                    callback.onError(new IllegalStateException(
+                        "no MPC wallet for address " + address
+                            + " (call createWallet first)"));
+                    return;
+                }
+
+                JSONObject response = makeGetRequest("/api/v1/mpc/wallet/" + keyId);
+
                 WalletInfo info = new WalletInfo();
+                info.keyId = response.getString("keyId");
                 info.address = response.getString("address");
                 info.publicKey = response.getString("publicKey");
+                info.threshold = response.optInt("threshold");
+                info.totalShards = response.optInt("totalShards");
                 info.createdAt = response.getLong("createdAt");
-                info.keyShares = response.getInt("keyShares");
-                info.securityLevel = response.getString("securityLevel");
-                
+
                 callback.onSuccess(info);
             } catch (Exception e) {
                 callback.onError(e);
             }
         });
     }
-    
+
     /**
-     * Generate key share locally (for added security)
+     * Compute a 32-byte message hash as hex ("0x" + hex).
+     *
+     * TODO: EVM-compatible signing requires keccak-256, which Android does not
+     * provide in the JDK. Replace this with a real keccak-256 implementation
+     * (e.g. BouncyCastle) before using these signatures against an EVM chain.
+     * SHA-256 is used here only so the backend's "32-byte hex" requirement is
+     * satisfied; it is NOT a valid EVM message digest. The signature itself is
+     * always produced by the real backend -- nothing is fabricated.
      */
-    public String generateKeyShare() {
-        SecureRandom random = new SecureRandom();
-        byte[] keyShare = new byte[32];
-        random.nextBytes(keyShare);
-        return Base64.encodeToString(keyShare, Base64.NO_WRAP);
-    }
-    
-    /**
-     * Compute combined public key from shares
-     */
-    public String computePublicKey(String[] keyShares) throws Exception {
+    private static String sha256Hex(String input) throws Exception {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        for (String share : keyShares) {
-            digest.update(share.getBytes(StandardCharsets.UTF_8));
+        byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+        StringBuilder hex = new StringBuilder(2 + hash.length * 2);
+        hex.append("0x");
+        for (byte b : hash) {
+            hex.append(String.format("%02x", b));
         }
-        byte[] hash = digest.digest();
-        return "0x" + Base64.encodeToString(hash, Base64.NO_WRAP);
+        return hex.toString();
     }
-    
+
     private JSONObject makePostRequest(String endpoint, JSONObject body) throws Exception {
-        URL url = new URL(BASE_URL + endpoint);
+        URL url = new URL(baseUrl + endpoint);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("POST");
-        conn.setRequestProperty("Content-Type", "application/json");
-        conn.setDoOutput(true);
-        
-        conn.getOutputStream().write(body.toString().getBytes(StandardCharsets.UTF_8));
-        
-        BufferedReader reader = new BufferedReader(
-            new InputStreamReader(conn.getInputStream())
-        );
-        
-        StringBuilder response = new StringBuilder();
-        String line;
-        while ((line = reader.readLine()) != null) {
-            response.append(line);
+        try {
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(30000);
+            conn.setDoOutput(true);
+
+            conn.getOutputStream().write(body.toString().getBytes(StandardCharsets.UTF_8));
+
+            return readResponse(conn);
+        } finally {
+            conn.disconnect();
         }
-        reader.close();
-        
-        return new JSONObject(response.toString());
     }
-    
+
     private JSONObject makeGetRequest(String endpoint) throws Exception {
-        URL url = new URL(BASE_URL + endpoint);
+        URL url = new URL(baseUrl + endpoint);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("GET");
-        
+        try {
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(30000);
+
+            return readResponse(conn);
+        } finally {
+            conn.disconnect();
+        }
+    }
+
+    private static JSONObject readResponse(HttpURLConnection conn) throws Exception {
+        int code = conn.getResponseCode();
         BufferedReader reader = new BufferedReader(
-            new InputStreamReader(conn.getInputStream())
+            new InputStreamReader(
+                (code >= 200 && code < 400) ? conn.getInputStream() : conn.getErrorStream()
+            )
         );
-        
         StringBuilder response = new StringBuilder();
         String line;
         while ((line = reader.readLine()) != null) {
             response.append(line);
         }
         reader.close();
-        
-        return new JSONObject(response.toString());
+
+        String body = response.toString();
+        if (code < 200 || code >= 400) {
+            throw new RuntimeException("MPC backend HTTP " + code + ": " + body);
+        }
+        return new JSONObject(body);
     }
-    
+
     // Data classes
     public static class MPCWallet {
+        public String keyId;
         public String address;
-        public String publicKey;
+        public String publicKey; // base64-encoded 65-byte uncompressed secp256k1 key (from backend)
+        public int threshold;
+        public int totalShards;
         public long createdAt;
-        
+
         public String toJson() {
             try {
                 JSONObject obj = new JSONObject();
+                obj.put("keyId", keyId);
                 obj.put("address", address);
                 obj.put("publicKey", publicKey);
+                obj.put("threshold", threshold);
+                obj.put("totalShards", totalShards);
                 obj.put("createdAt", createdAt);
                 return obj.toString();
             } catch (Exception e) {
@@ -282,17 +264,20 @@ public class MPCWalletService {
             }
         }
     }
-    
+
+    // Retained for compilation compatibility. The real MPC backend has no
+    // session-key endpoint, so no method populates it.
     public static class SessionKey {
         public String key;
         public long expiresAt;
     }
-    
+
     public static class WalletInfo {
+        public String keyId;
         public String address;
         public String publicKey;
+        public int threshold;
+        public int totalShards;
         public long createdAt;
-        public int keyShares;
-        public String securityLevel;
     }
 }
