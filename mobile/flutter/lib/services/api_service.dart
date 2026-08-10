@@ -224,56 +224,29 @@ class NotificationService {
   }
 }
 
-// Security Service - Biometric & Encryption
-import 'dart:convert';
-import 'package:crypto/crypto.dart';
+// Security Service - Biometric & secure storage coordination
+//
+// No local crypto: the canonical wallet-api backend performs all
+// encryption (AES-256-GCM seed encryption) and signing (secp256k1).
+// This service only coordinates device biometrics. Device biometric
+// gating is deferred to the local_auth plugin at integration time;
+// until it is wired it MUST fail closed (deny), never silently allow.
 
 class SecurityService {
   static final SecurityService instance = SecurityService._();
-  
+
   SecurityService._();
-  
+
   static SecurityService get instance => instance;
-  
+
   Future<void> initialize() async {
-    // Initialize security service
+    // No secrets to initialize; backend owns key material.
   }
-  
-  // Encrypt data
-  String encrypt(String data, String key) {
-    final keyBytes = sha256.convert(utf8.encode(key)).bytes;
-    final dataBytes = utf8.encode(data);
-    final encrypted = List<int>.generate(
-      dataBytes.length,
-      (i) => dataBytes[i] ^ keyBytes[i % keyBytes.length],
-    );
-    return base64Encode(encrypted);
-  }
-  
-  // Decrypt data
-  String decrypt(String encryptedData, String key) {
-    final keyBytes = sha256.convert(utf8.encode(key)).bytes;
-    final dataBytes = base64Decode(encryptedData);
-    final decrypted = List<int>.generate(
-      dataBytes.length,
-      (i) => dataBytes[i] ^ keyBytes[i % keyBytes.length],
-    );
-    return utf8.decode(decrypted);
-  }
-  
-  // Hash password
-  String hashPassword(String password) {
-    return sha256.convert(utf8.encode(password)).toString();
-  }
-  
-  // Verify password
-  bool verifyPassword(String password, String hash) {
-    return hashPassword(password) == hash;
-  }
-  
-  // Biometric authentication
+
+  // Device biometric unlock. Fails closed until local_auth is integrated so
+  // we never silently grant access. Returns false (deny) when unavailable.
   Future<bool> authenticateWithBiometrics() async {
-    // Use local_auth package
-    return true;
+    return false;
   }
+}
 }
