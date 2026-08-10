@@ -7,11 +7,9 @@ export class BrowserAdapter {
    * Check if WebAuthn is supported
    */
   isWebAuthnSupported(): boolean {
-    return !!(
-      typeof navigator !== 'undefined' &&
-      navigator.credentials?.create &&
-      navigator.credentials?.get
-    );
+    if (typeof navigator === 'undefined' || !navigator.credentials) return false;
+    return typeof navigator.credentials.create === 'function'
+      && typeof navigator.credentials.get === 'function';
   }
 
   /**

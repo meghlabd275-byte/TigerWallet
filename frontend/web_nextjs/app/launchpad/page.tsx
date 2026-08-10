@@ -269,7 +269,7 @@ export default function LaunchpadPage() {
           {project.auditStatus === 'completed' && (
             <Chip label="✅ Audited" size="small" sx={{ bgcolor: '#00d4aa20', color: '#00d4aa', fontSize: '0.65rem' }} />
           )}
-          {project.vestingPercent > 0 && (
+          {((project.vestingPercent ?? 0) > 0) && (
             <Chip label={`${project.vestingPercent}% TGE`} size="small" sx={{ bgcolor: '#00d4ff20', color: '#00d4ff', fontSize: '0.65rem' }} />
           )}
         </Box>
@@ -508,15 +508,15 @@ export default function LaunchpadPage() {
               </Box>
 
               {/* Vesting */}
-              {selectedProject.vestingPercent > 0 && (
+              {((selectedProject.vestingPercent ?? 0) > 0) && (
                 <Box sx={{ bgcolor: '#2a2a3e', p: 2, borderRadius: 2, mb: 3 }}>
                   <Typography variant="caption" sx={{ color: '#9ca3af', mb: 1, display: 'block' }}>
                     Vesting Schedule
                   </Typography>
                   <Typography sx={{ color: '#00d4aa', fontWeight: 'bold' }}>
                     {selectedProject.vestingPercent}% at TGE
-                    {selectedProject.vestingCliff > 0 && `, ${selectedProject.vestingCliff} month cliff`}
-                    {selectedProject.vestingPeriod > 0 && `, ${selectedProject.vestingPeriod} months vesting`}
+                    {((selectedProject.vestingCliff ?? 0) > 0) && `, ${selectedProject.vestingCliff} month cliff`}
+                    {((selectedProject.vestingPeriod ?? 0) > 0) && `, ${selectedProject.vestingPeriod} months vesting`}
                   </Typography>
                 </Box>
               )}
@@ -558,13 +558,13 @@ export default function LaunchpadPage() {
 
               {/* Links */}
               <Box sx={{ display: 'flex', gap: 2, mt: 3 }}>
-                <Button size="small" href={selectedProject.website} target="_blank" sx={{ color: '#00d4aa' }}>
+                <Button size="small" href={selectedProject.website || '#'} target="_blank" sx={{ color: '#00d4aa' }}>
                   Website
                 </Button>
-                <Button size="small" href={`https://twitter.com/${selectedProject.twitter}`} target="_blank" sx={{ color: '#00d4aa' }}>
+                <Button size="small" href={selectedProject.twitter ? `https://twitter.com/${selectedProject.twitter}` : '#'} target="_blank" sx={{ color: '#00d4aa' }}>
                   Twitter
                 </Button>
-                <Button size="small" href={selectedProject.whitepaper} target="_blank" sx={{ color: '#00d4aa' }}>
+                <Button size="small" href={selectedProject.whitepaper || '#'} target="_blank" sx={{ color: '#00d4aa' }}>
                   Docs
                 </Button>
               </Box>

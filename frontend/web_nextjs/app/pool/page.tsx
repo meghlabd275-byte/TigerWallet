@@ -687,7 +687,7 @@ export default function PoolPage() {
                 value={amount0}
                 onChange={(e) => setAmount0(e.target.value)}
                 InputProps={{
-                  endAdornment: token0 ? <InputAdornment sx={{ color: '#9ca3af' }}>{token0}</InputAdornment> : null,
+                  endAdornment: token0 ? <InputAdornment position="end" sx={{ color: "#9ca3af" }}>{token0}</InputAdornment> : null,
                 }}
                 sx={{
                   '& input': { color: 'white' },
@@ -705,7 +705,7 @@ export default function PoolPage() {
                 value={amount1}
                 onChange={(e) => setAmount1(e.target.value)}
                 InputProps={{
-                  endAdornment: token1 ? <InputAdornment sx={{ color: '#9ca3af' }}>{token1}</InputAdornment> : null,
+                  endAdornment: token1 ? <InputAdornment position="end" sx={{ color: "#9ca3af" }}>{token1}</InputAdornment> : null,
                 }}
                 sx={{
                   '& input': { color: 'white' },

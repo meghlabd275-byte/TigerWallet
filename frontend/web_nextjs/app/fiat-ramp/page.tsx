@@ -197,7 +197,7 @@ export default function FiatRampPage() {
         fiatCurrency,
         paymentMethod,
         email,
-        walletAddress: address,
+        walletAddress: address || undefined,
       });
 
       if (res.success && res.data) {

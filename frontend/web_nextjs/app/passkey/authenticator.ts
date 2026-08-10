@@ -30,7 +30,7 @@ export interface PasskeyRegistrationOptions {
     displayName: string;
   };
   challenge: string;
-  pubKeyCredParams: PublicKeyCredentialParams[];
+  pubKeyCredParams: PublicKeyCredentialParameters[];
   timeout?: number;
   excludeCredentials?: PublicKeyCredentialDescriptor[];
   authenticatorSelection?: AuthenticatorSelectionCriteria;
@@ -351,29 +351,8 @@ export class PasskeyAuthenticator {
 
 // ============================================================================
 // Browser Adapter for WebAuthn Support Detection
+// (re-exported from ./browser_adapter to avoid a duplicate local class)
 // ============================================================================
-
-class BrowserAdapter {
-  isWebAuthnSupported(): boolean {
-    return !!(
-      navigator.credentials?.create &&
-      navigator.credentials?.get
-    );
-  }
-
-  isSecureContext(): boolean {
-    return window.isSecureContext;
-  }
-
-  getBrowserName(): string {
-    const ua = navigator.userAgent;
-    if (ua.includes('Chrome')) return 'Chrome';
-    if (ua.includes('Firefox')) return 'Firefox';
-    if (ua.includes('Safari')) return 'Safari';
-    if (ua.includes('Edge')) return 'Edge';
-    return 'Unknown';
-  }
-}
 
 // ============================================================================
 // Default Export

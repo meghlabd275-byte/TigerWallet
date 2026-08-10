@@ -595,10 +595,6 @@ class TigerWalletAPI {
     return (await this.client.get('/copy-trading/traders')).data;
   }
 
-  async startCopying(traderId: string, copyRatio: string): Promise<APIResponse<any>> {
-    return (await this.client.post('/copy-trading/start', { traderId, copyRatio })).data;
-  }
-
   // Token Deployer
   async createTokenDeployment(config: any): Promise<APIResponse<any>> {
     return (await this.client.post('/token/create', config)).data;

@@ -11,7 +11,7 @@ interface BugReport {
   title: string;
   description: string;
   severity: 'critical' | 'high' | 'medium' | 'low';
-  status: 'submitted' | 'triaged' | 'accepted' | 'rejected' | 'fixed' | 'rewarded';
+  status: 'submitted' | 'triaged' | 'accepted' | 'rejected' | 'fixed' | 'rewarded' | 'verified';
   reward: string;
   reporter: string;
   date: number;

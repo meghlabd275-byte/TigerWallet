@@ -825,7 +825,7 @@ export default function TWAPPage() {
               value={totalAmount}
               onChange={(e) => setTotalAmount(e.target.value)}
               InputProps={{
-                startAdornment: <InputAdornment sx={{ color: '#9ca3af' }}>$</InputAdornment>,
+                startAdornment: <InputAdornment position="start" sx={{ color: '#9ca3af' }}>$</InputAdornment>,
               }}
               sx={{ mb: 3, '& .MuiInputLabel-root': { color: '#9ca3af' }, '& input': { color: 'white' }, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#3a3a4e' } } }}
             />

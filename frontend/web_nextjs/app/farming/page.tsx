@@ -619,7 +619,7 @@ export default function FarmingPage() {
                 value={stakeAmount}
                 onChange={(e) => setStakeAmount(e.target.value)}
                 InputProps={{
-                  endAdornment: <InputAdornment sx={{ color: '#9ca3af' }}>LP</InputAdornment>,
+                  endAdornment: <InputAdornment position="end" sx={{ color: "#9ca3af" }}>LP</InputAdornment>,
                 }}
                 sx={{
                   mb: 3,
@@ -697,7 +697,7 @@ export default function FarmingPage() {
                 value={unstakeAmount}
                 onChange={(e) => setUnstakeAmount(e.target.value)}
                 InputProps={{
-                  endAdornment: <InputAdornment sx={{ color: '#9ca3af' }}>LP</InputAdornment>,
+                  endAdornment: <InputAdornment position="end" sx={{ color: "#9ca3af" }}>LP</InputAdornment>,
                 }}
                 sx={{
                   mb: 3,

@@ -41,7 +41,7 @@ interface Claim {
 }
 
 // API Base URL - configurable
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9097';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
 export default function ProtectionFundPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'claims' | 'coverage'>('overview');
@@ -318,14 +318,14 @@ export default function ProtectionFundPage() {
 
             {activeTab === 'claims' && (
               <div className="space-y-4">
-                {MOCK_CLAIMS.map(claim => (
-                  <div key={claim.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                {claims.map(claim => (
+                  <div key={claim.claimId} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
-                        {claim.user.slice(2, 4).toUpperCase()}
+                        {claim.userAddress.slice(2, 4).toUpperCase()}
                       </div>
                       <div>
-                        <p className="font-medium">{claim.user}</p>
+                        <p className="font-medium">{claim.userAddress}</p>
                         <p className="text-sm text-slate-500">{claim.reason}</p>
                       </div>
                     </div>

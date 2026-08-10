@@ -38,14 +38,14 @@ interface DeviceStatus {
 
 // Hardware wallet providers
 const HARDWARE_WALLETS: Omit<HardwareWallet, 'id' | 'connected' | 'firmwareVersion' | 'addresses'>[] = [
-  { type: 'ledger', name: 'Ledger', model: 'Nano X / S Plus' },
-  { type: 'ledger', name: 'Ledger', model: 'Stax' },
-  { type: 'trezor', name: 'Trezor', model: 'Model T' },
-  { type: 'trezor', name: 'Trezor', model: 'Model One' },
-  { type: 'keystone', name: 'Keystone', model: 'Pro' },
-  { type: 'airgap', name: 'AirGap', model: 'Vault + Wallet' },
-  { type: 'coldcard', name: 'ColdCard', model: 'Mk4' },
-  { type: 'bitbox02', name: 'BitBox02', model: 'Multi-Signature' },
+  { type: 'ledger', name: 'Ledger', model: 'Nano X / S Plus', derivationPath: "m/44'/60'/0'/0/0" },
+  { type: 'ledger', name: 'Ledger', model: 'Stax', derivationPath: "m/44'/60'/0'/0/0" },
+  { type: 'trezor', name: 'Trezor', model: 'Model T', derivationPath: "m/44'/60'/0'/0/0" },
+  { type: 'trezor', name: 'Trezor', model: 'Model One', derivationPath: "m/44'/60'/0'/0/0" },
+  { type: 'keystone', name: 'Keystone', model: 'Pro', derivationPath: "m/44'/60'/0'/0/0" },
+  { type: 'airgap', name: 'AirGap', model: 'Vault + Wallet', derivationPath: "m/44'/60'/0'/0/0" },
+  { type: 'coldcard', name: 'ColdCard', model: 'Mk4', derivationPath: "m/44'/60'/0'/0/0" },
+  { type: 'bitbox02', name: 'BitBox02', model: 'Multi-Signature', derivationPath: "m/44'/60'/0'/0/0" },
 ];
 
 // ================================================================================

@@ -29,6 +29,9 @@ interface LoginCredentials {
   code2FA?: string;
 }
 
+// A logged-in user (admin or standard). AdminUser is the canonical shape.
+type User = AdminUser;
+
 interface RegisterData {
   email: string;
   username: string;
