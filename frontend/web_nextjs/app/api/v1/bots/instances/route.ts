@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { proxyGet } from '../../_proxy';
+import { NextRequest } from 'next/server';
+import { proxyGetFrom, BOTS_SERVICE_URL } from '../../_proxy';
 
 export async function GET(req: NextRequest) {
-  return proxyGet(req, '/bots/instances');
+  return proxyGetFrom(req, BOTS_SERVICE_URL, '/api/v1/bots');
 }

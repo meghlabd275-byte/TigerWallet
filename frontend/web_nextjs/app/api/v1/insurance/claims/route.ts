@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { proxyGet, proxyMutation } from '../../_proxy';
+import { NextRequest } from 'next/server';
+import { proxyGetFrom, proxyMutationFrom, INSURANCE_SERVICE_URL } from '../../_proxy';
 
 export async function GET(req: NextRequest) {
-  return proxyGet(req, '/insurance/claims');
+  return proxyGetFrom(req, INSURANCE_SERVICE_URL, '/api/v1/insurance/claims');
 }
 
 export async function POST(req: NextRequest) {
-  return proxyMutation(req, '/insurance/claims', 'POST');
+  return proxyMutationFrom(req, INSURANCE_SERVICE_URL, '/api/v1/insurance/claims', 'POST');
 }

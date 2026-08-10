@@ -116,4 +116,11 @@ go/rwa_service/rwa_service
 go/card_service/card_service
 go/nft_service/nft-service
 go/listing_service/listing_service
+go/leaderboard_service/leaderboard_service
+go/insurance_service/insurance_service
+go/ieo_service/ieo_service
+go/bots_service/bots_service
+go/twap_service/twap_service
+go/pool_service/pool_service
+go/launchpad_service/launchpad_service
 *.test

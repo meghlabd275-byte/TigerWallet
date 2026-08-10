@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { proxyMutation } from '../../../_proxy';
+import { NextRequest } from 'next/server';
+import { proxyMutationFrom, BOTS_SERVICE_URL } from '../../../_proxy';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  return proxyMutation(req, `/bots/${params.id}/pause`, 'POST');
+  return proxyMutationFrom(req, BOTS_SERVICE_URL, `/api/v1/bots/${params.id}/stop`, 'POST');
 }
