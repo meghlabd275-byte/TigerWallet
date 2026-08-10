@@ -1,7 +1,7 @@
 /**
  * TigerWallet - MPC Login Component
  * Multi-Party Computation social login with key sharding
- * 
+ *
  * Features:
  * - Social login (Google, Apple, Discord, Twitter)
  * - Key sharding (2-of-3, 3-of-5)
@@ -11,9 +11,14 @@
 
 import React, { useState, useCallback } from 'react';
 import { useWallet } from '../../../app/wallet';
-import { ethers } from 'ethers';
 
 type Provider = 'google' | 'apple' | 'discord' | 'twitter' | 'email';
+
+// Base URL of the TigerWallet MPC service (go/mpc server.go).
+const MPC_API_BASE =
+  (typeof window !== 'undefined' && (window as unknown as { __MPC_API_BASE__?: string }).__MPC_API_BASE__) ||
+  process.env.NEXT_PUBLIC_MPC_API_URL ||
+  'http://localhost:9099';
 
 interface MPCWallet {
   address: string;
@@ -81,24 +86,20 @@ export function useMPCLogin(config: SocialLoginConfig) {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      // Redirect to OAuth
+      if (!config.clientId) {
+        throw new Error(
+          'Social login is not configured. Set a real OAuth client_id to enable social MPC login.'
+        );
+      }
+      // Real OIDC authorization-code redirect. The IdP returns to redirectUri
+      // with a `code`; a backend callback exchanges it for an id_token, after
+      // which createMPCWallet binds the wallet to that identity.
       const oauthUrl = getOAuthUrl(provider);
-      
-      // In production, would redirect
-      // window.location.href = oauthUrl;
-      
-      // For demo, simulate the login flow
-      const mockIdToken = await simulateOAuthFlow(provider);
-      
-      // Create MPC wallet
-      const wallet = await createMPCWallet(mockIdToken, config.keyThreshold, config.keyTotalShards);
-      
-      setState({
-        isLoading: false,
-        error: null,
-        wallet,
-        isAuthenticated: true,
-      });
+      sessionStorage.setItem('mpc_login_provider', provider);
+      sessionStorage.setItem('mpc_login_threshold', String(config.keyThreshold));
+      sessionStorage.setItem('mpc_login_total_shards', String(config.keyTotalShards));
+      window.location.href = oauthUrl;
+      // The browser navigates away; state stays loading until the callback resolves.
     } catch (error: any) {
       setState(prev => ({
         ...prev,
@@ -114,21 +115,25 @@ export function useMPCLogin(config: SocialLoginConfig) {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      // Send magic link
-      // In production, would call API
-      console.log('Sending magic link to:', email);
-      
-      // Simulate
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const wallet = await createMPCWallet(`email:${email}`, config.keyThreshold, config.keyTotalShards);
-      
-      setState({
-        isLoading: false,
-        error: null,
-        wallet,
-        isAuthenticated: true,
+      // Request a real magic-link from the wallet backend. The backend sends
+      // an email and issues a one-time token; the user clicks the link, which
+      // returns here with a token used to create the MPC wallet.
+      const apiBase = process.env.NEXT_PUBLIC_WALLET_API_URL || '';
+      const mlRes = await fetch(`${apiBase}/api/v1/auth/magic-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
       });
+      if (!mlRes.ok) {
+        const d = await mlRes.text();
+        throw new Error(`Magic link request failed (${mlRes.status}): ${d}`);
+      }
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+        error: 'Check your email for a magic sign-in link.',
+      }));
+      return;  // wallet is created when the user returns from the magic link.
     } catch (error: any) {
       setState(prev => ({
         ...prev,
@@ -222,30 +227,33 @@ function generateState(): string {
   return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-async function simulateOAuthFlow(provider: Provider): Promise<string> {
-  // Simulate OAuth flow
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  return `mock_token_${provider}_${Date.now()}`;
-}
-
 async function createMPCWallet(
   idToken: string,
   threshold: number,
   totalShards: number
 ): Promise<MPCWallet> {
-  // In production, would call MPC backend
-  // For demo, generate mock wallet
-  
-  const privateKey = ethers.utils.randomBytes(32);
-  const publicKey = ethers.utils.computeAddress(privateKey);
-  
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
+
+  const res = await fetch(`${MPC_API_BASE}/api/v1/mpc/create`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ threshold, totalShards }),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`MPC wallet creation failed (${res.status}): ${detail}`);
+  }
+
+  const data = await res.json();
   return {
-    address: publicKey,
-    publicKey,
-    keyId: `key_${Date.now()}`,
-    shardId: `shard_${Math.random().toString(36).substr(2, 9)}`,
-    threshold,
-    totalShards,
+    address: data.address,
+    publicKey: data.publicKey,
+    keyId: data.keyId,
+    shardId: data.keyId,
+    threshold: data.threshold,
+    totalShards: data.totalShards,
   };
 }
 
@@ -341,12 +349,12 @@ interface MPCLoginModalProps {
   isLoading: boolean;
 }
 
-export function MPCLoginModal({ 
-  isOpen, 
-  onClose, 
-  onLogin, 
+export function MPCLoginModal({
+  isOpen,
+  onClose,
+  onLogin,
   onEmailLogin,
-  isLoading 
+  isLoading
 }: MPCLoginModalProps) {
   const [email, setEmail] = useState('');
   const [showEmail, setShowEmail] = useState(false);
@@ -356,7 +364,7 @@ export function MPCLoginModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={onClose}></div>
-      
+
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8">
         <button
           onClick={onClose}
