@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -946,9 +947,13 @@ func (as *AdminService) ImportPairs(c *gin.Context) {
 		return
 	}
 
-	// In production, fetch from exchange APIs
-	// For now, simulate import
-	imported := 50 // Simulated
+	// Fetch real pairs from the requested exchange's public API. No
+	// fabrication: the count is the number of symbols actually returned.
+	imported, err := fetchExchangePairs(req.Source)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"success": false, "error": err.Error(), "source": req.Source})
+		return
+	}
 
 	as.logActivity(c.GetString("admin_id"), "import_pairs", req.Source, fmt.Sprintf("Imported %d pairs from %s", imported, req.Source), c.ClientIP())
 
@@ -958,6 +963,68 @@ func (as *AdminService) ImportPairs(c *gin.Context) {
 		"source":   req.Source,
 		"status":   "completed",
 	})
+}
+
+// fetchExchangePairs queries a public exchange API and returns the real count
+// of tradeable symbols. Unknown sources and fetch failures return an error so
+// the caller can surface a 502 rather than a fabricated count.
+func fetchExchangePairs(source string) (int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	var url string
+	switch strings.ToLower(source) {
+	case "binance":
+		url = "https://api.binance.com/api/v3/ticker/price"
+	case "coinbase":
+		url = "https://api.exchange.coinbase.com/products"
+	default:
+		return 0, fmt.Errorf("unsupported exchange source: %s", source)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return 0, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("fetch %s: %w", source, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("fetch %s: upstream returned status %d", source, resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, fmt.Errorf("read %s response: %w", source, err)
+	}
+
+	var count int
+	switch strings.ToLower(source) {
+	case "binance":
+		// Binance returns an array of {symbol, price} objects.
+		var tickers []struct {
+			Symbol string `json:"symbol"`
+		}
+		if err := json.Unmarshal(body, &tickers); err != nil {
+			return 0, fmt.Errorf("parse %s response: %w", source, err)
+		}
+		count = len(tickers)
+	case "coinbase":
+		// Coinbase Exchange returns an array of product objects.
+		var products []struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(body, &products); err != nil {
+			return 0, fmt.Errorf("parse %s response: %w", source, err)
+		}
+		count = len(products)
+	}
+
+	return count, nil
 }
 
 // ============================================================================
@@ -1496,9 +1563,9 @@ func (as *AdminService) ExportUsersCSV(c *gin.Context) {
 	c.Writer.Write([]byte("ID,Email,Username,KYC Status,Account Status,Balance,Trading Volume,Created At\n"))
 
 	for _, user := range as.users {
-		line := fmt.Sprintf("%s,%s,%s,%s,%s,%s,%s,%d\n",
+		line := fmt.Sprintf("%s,%s,%s,%s,%s,%s,%s,%s\n",
 			user.ID, user.Email, user.Username, user.KYCStatus,
-			user.AccountStatus, user.Balance, user.TradingVolume, user.CreatedAt)
+			user.AccountStatus, user.Balance, user.TradingVolume, user.CreatedAt.Format(time.RFC3339))
 		c.Writer.Write([]byte(line))
 	}
 }
@@ -1534,9 +1601,9 @@ func (as *AdminService) ExportWithdrawalsCSV(c *gin.Context) {
 	c.Writer.Write([]byte("ID,UserID,Token,Amount,Chain,Address,Status,Fee,Created At\n"))
 
 	for _, wd := range as.withdrawals {
-		line := fmt.Sprintf("%s,%s,%s,%s,%s,%s,%s,%s,%d\n",
+		line := fmt.Sprintf("%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
 			wd.ID, wd.UserID, wd.Token, wd.Amount, wd.Chain,
-			wd.Address, wd.Status, wd.Fee, wd.CreatedAt)
+			wd.Address, wd.Status, wd.Fee, wd.CreatedAt.Format(time.RFC3339))
 		c.Writer.Write([]byte(line))
 	}
 }

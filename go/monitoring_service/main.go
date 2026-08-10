@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"math/rand"
 	"os"
 	"os/signal"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -274,14 +277,50 @@ func (e *MonitoringEngine) collectMemory() {
 	var stats runtime.MemStats
 	runtime.ReadMemStats(&stats)
 
-	// Simplified memory stats
-	memTotal := float64(stats.TotalAlloc) * 2 // Estimate
+	// memUsed is the real Go heap allocation, not an estimate.
 	memUsed := float64(stats.Alloc)
-	memUsage := (memUsed / memTotal) * 100
-
-	e.recordMetric("system_memory_total", memTotal, nil)
 	e.recordMetric("system_memory_used", memUsed, nil)
-	e.recordMetric("system_memory_usage_percent", memUsage, nil)
+
+	// Read the real system MemTotal from /proc/meminfo (Linux). On non-Linux
+	// or parse failure we omit total/usage metrics rather than estimating.
+	memTotal, ok := readProcMemTotal()
+	if !ok {
+		return
+	}
+	e.recordMetric("system_memory_total", memTotal, nil)
+	if memTotal > 0 {
+		e.recordMetric("system_memory_usage_percent", (memUsed/memTotal)*100, nil)
+	}
+}
+
+// readProcMemTotal parses the "MemTotal:" line of /proc/meminfo (kB) and
+// returns the value in bytes. It returns (0, false) on non-Linux systems or
+// any parse failure so callers can omit the metric instead of guessing.
+func readProcMemTotal() (float64, bool) {
+	f, err := os.Open("/proc/meminfo")
+	if err != nil {
+		return 0, false
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "MemTotal:") {
+			continue
+		}
+		fields := strings.Fields(line)
+		// ["MemTotal:", "16384000", "kB"]
+		if len(fields) < 2 {
+			return 0, false
+		}
+		kb, err := strconv.ParseFloat(fields[1], 64)
+		if err != nil {
+			return 0, false
+		}
+		return kb * 1024, true
+	}
+	return 0, false
 }
 
 func (e *MonitoringEngine) collectDisk() {

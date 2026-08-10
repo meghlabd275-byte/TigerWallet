@@ -4,12 +4,7 @@
 package main
 
 import (
-	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"math"
 	"math/big"
 	"os"
 	"os/signal"
@@ -754,11 +749,11 @@ func (s *DeFiService) CreateRedPacket(ctx *gin.Context) {
 		return
 	}
 
-	// Generate claim ID for sender (simplified - random distribution)
-	// In production, this would use cryptographic sharing
+	// Generate claim ID for sender (deterministic equal-share distribution;
+	// the exact per-claim amounts are derived verifiably in ClaimRedPacket).
 	ctx.JSON(200, gin.H{
-		"success":     true,
-		"packet_id":   packet.PacketID,
+		"success":      true,
+		"packet_id":    packet.PacketID,
 		"total_amount": packet.TotalAmount,
 		"total_count":  packet.TotalCount,
 		"expires_at":   packet.ExpiresAt,
@@ -796,16 +791,24 @@ func (s *DeFiService) ClaimRedPacket(ctx *gin.Context) {
 		return
 	}
 
-	// Calculate claim amount (simplified - equal distribution)
-	totalAmount, _ := strconv.ParseFloat(packet.TotalAmount, 64)
-	perPerson := totalAmount / float64(packet.TotalCount)
+	// Deterministic, verifiable split: TotalAmount is divided evenly across
+	// TotalCount at 8-decimal precision; any remainder unit is added to the
+	// first claim(s). This guarantees the sum of all claims exactly equals
+	// TotalAmount and is reproducible from (TotalAmount, TotalCount, claim
+	// index) alone — no math/rand and no floating-point drift.
+	claimUnits, claimedUnits, ok := computeRedPacketClaimUnits(packet.TotalAmount, packet.TotalCount, packet.ClaimedCount)
+	if !ok {
+		ctx.JSON(400, gin.H{"error": "invalid red packet amount"})
+		return
+	}
+	claimAmount := unitsToDecimalString(claimUnits)
 
 	// Create claim
 	claim := &RedPacketClaim{
 		ClaimID:   uuid.New().String(),
 		PacketID:  req.PacketID,
 		ClaimerID: req.ClaimerID,
-		Amount:    fmt.Sprintf("%.8f", perPerson),
+		Amount:    claimAmount,
 		ClaimTime: time.Now().Unix(),
 		ChainID:   req.ChainID,
 	}
@@ -817,8 +820,7 @@ func (s *DeFiService) ClaimRedPacket(ctx *gin.Context) {
 
 	// Update packet
 	packet.ClaimedCount++
-	claimed, _ := strconv.ParseFloat(packet.ClaimedAmount, 64)
-	packet.ClaimedAmount = fmt.Sprintf("%.8f", claimed+perPerson)
+	packet.ClaimedAmount = unitsToDecimalString(claimedUnits)
 
 	if packet.ClaimedCount >= packet.TotalCount {
 		packet.Status = "claimed"
@@ -827,11 +829,118 @@ func (s *DeFiService) ClaimRedPacket(ctx *gin.Context) {
 	s.db.Save(&packet)
 
 	ctx.JSON(200, gin.H{
-		"success":     true,
-		"claim_id":   claim.ClaimID,
-		"amount":      claim.Amount,
-		"remaining":   packet.TotalCount - packet.ClaimedCount,
+		"success":   true,
+		"claim_id":  claim.ClaimID,
+		"amount":    claim.Amount,
+		"remaining": packet.TotalCount - packet.ClaimedCount,
 	})
+}
+
+// redPacketUnitScale is the number of decimals amounts are tracked at.
+const redPacketUnitScale = 8
+
+// computeRedPacketClaimUnits returns the integer-unit amount for the claim at
+// position claimIndex (0-based, i.e. the current ClaimedCount) plus the total
+// units claimed so far (including this claim). TotalAmount is parsed as a
+// decimal string and scaled to integer units. Returns ok=false on parse error
+// or non-positive TotalCount.
+func computeRedPacketClaimUnits(totalAmount string, totalCount, claimIndex int) (claimUnits, claimedUnits *big.Int, ok bool) {
+	totalUnits, ok := decimalStringToUnits(totalAmount)
+	if !ok || totalCount <= 0 || claimIndex < 0 || claimIndex >= totalCount {
+		return nil, nil, false
+	}
+
+	base := new(big.Int).Quo(totalUnits, big.NewInt(int64(totalCount)))
+	remainder := new(big.Int).Rem(totalUnits, big.NewInt(int64(totalCount)))
+
+	// The first `remainder` claims receive one extra unit.
+	claim := new(big.Int).Set(base)
+	if int64(claimIndex) < remainder.Int64() {
+		claim.Add(claim, big.NewInt(1))
+	}
+
+	// Total claimed after this claim = base*(claimIndex+1) + min(remainder, claimIndex+1)
+	claimed := new(big.Int).Mul(base, big.NewInt(int64(claimIndex+1)))
+	extra := new(big.Int).Set(remainder)
+	if extra.Int64() > int64(claimIndex+1) {
+		extra.SetInt64(int64(claimIndex + 1))
+	}
+	claimed.Add(claimed, extra)
+
+	return claim, claimed, true
+}
+
+// decimalStringToUnits parses a decimal string and scales it to integer units
+// at redPacketUnitScale decimals (e.g. "1.5" -> 150000000). Trailing digits
+// beyond the scale are truncated. Returns ok=false on parse failure.
+func decimalStringToUnits(s string) (*big.Int, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, false
+	}
+	negative := false
+	if s[0] == '-' {
+		negative = true
+		s = s[1:]
+	} else if s[0] == '+' {
+		s = s[1:]
+	}
+	parts := strings.SplitN(s, ".", 2)
+	intPart := parts[0]
+	if intPart == "" {
+		intPart = "0"
+	}
+	fracPart := ""
+	if len(parts) == 2 {
+		fracPart = parts[1]
+	}
+
+	intVal, ok := new(big.Int).SetString(intPart, 10)
+	if !ok {
+		return nil, false
+	}
+	// Scale integer part.
+	scale := new(big.Int).Exp(big.NewInt(10), big.NewInt(redPacketUnitScale), nil)
+	intVal.Mul(intVal, scale)
+
+	// Scale fractional part, padding/truncating to redPacketUnitScale digits.
+	if len(fracPart) > redPacketUnitScale {
+		fracPart = fracPart[:redPacketUnitScale]
+	}
+	for len(fracPart) < redPacketUnitScale {
+		fracPart += "0"
+	}
+	fracVal, ok := new(big.Int).SetString(fracPart, 10)
+	if !ok {
+		return nil, false
+	}
+
+	total := new(big.Int).Add(intVal, fracVal)
+	if negative {
+		total.Neg(total)
+	}
+	return total, true
+}
+
+// unitsToDecimalString converts integer units back to a decimal string with
+// exactly redPacketUnitScale decimal places.
+func unitsToDecimalString(units *big.Int) string {
+	negative := units.Sign() < 0
+	abs := new(big.Int).Abs(units)
+	scale := new(big.Int).Exp(big.NewInt(10), big.NewInt(redPacketUnitScale), nil)
+	intPart := new(big.Int).Quo(abs, scale)
+	fracPart := new(big.Int).Rem(abs, scale)
+
+	fracStr := fracPart.String()
+	for len(fracStr) < redPacketUnitScale {
+		fracStr = "0" + fracStr
+	}
+
+	out := intPart.String() + "." + fracStr
+	if negative {
+		out = "-" + out
+	}
+	return out
 }
 
 // ============================================================================

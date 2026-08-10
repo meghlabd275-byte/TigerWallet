@@ -6,10 +6,14 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -17,8 +21,9 @@ import (
 type Task struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
+	Type     string `json:"type"` // optional handler key for registered handlers
 	Schedule string `json:"schedule"` // cron
-	Endpoint string `json:"endpoint"`
+	Endpoint string `json:"endpoint"` // optional URL to invoke
 	LastRun  int64  `json:"last_run"`
 	NextRun  int64  `json:"next_run"`
 	Status   string `json:"status"`
@@ -38,6 +43,7 @@ type Execution struct {
 type Scheduler struct {
 	tasks      map[string]*Task
 	executions []Execution
+	handlers   map[string]func(*Task) (string, error)
 	mu         sync.RWMutex
 }
 
@@ -45,7 +51,17 @@ func NewScheduler() *Scheduler {
 	return &Scheduler{
 		tasks:      make(map[string]*Task),
 		executions: make([]Execution, 0),
+		handlers:   make(map[string]func(*Task) (string, error)),
 	}
+}
+
+// RegisterHandler associates a task type with the real handler invoked when
+// the scheduler runs a task of that type. Handlers return their output and
+// any error; the execution status reflects the real result.
+func (s *Scheduler) RegisterHandler(taskType string, fn func(*Task) (string, error)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.handlers[taskType] = fn
 }
 
 func (s *Scheduler) Run() error {
@@ -91,10 +107,17 @@ func (s *Scheduler) executeTask(task *Task) {
 	s.executions = append(s.executions, exec)
 	s.mu.Unlock()
 
-	// Simulate task execution
-	time.Sleep(100 * time.Millisecond)
+	// Execute the task for real: prefer a registered handler keyed by task
+	// type; otherwise, if the task carries an endpoint URL, invoke it via
+	// HTTP. If neither is available the execution is marked "no_handler"
+	// rather than pretending to succeed.
+	output, execErr, status := s.runTask(task)
 
-	exec.Status = "completed"
+	exec.Status = status
+	exec.Output = output
+	if execErr != nil {
+		exec.Error = execErr.Error()
+	}
 	exec.EndedAt = time.Now().UnixMilli()
 
 	s.mu.Lock()
@@ -105,6 +128,60 @@ func (s *Scheduler) executeTask(task *Task) {
 		}
 	}
 	s.mu.Unlock()
+}
+
+// runTask performs the real work for a task and returns (output, err, status).
+func (s *Scheduler) runTask(task *Task) (string, error, string) {
+	// Registered handler takes precedence.
+	s.mu.RLock()
+	handler, hasHandler := s.handlers[task.Type]
+	s.mu.RUnlock()
+	if hasHandler {
+		out, err := handler(task)
+		if err != nil {
+			return out, err, "failed"
+		}
+		return out, nil, "completed"
+	}
+
+	// Fall back to invoking the task's endpoint URL, if any.
+	if strings.TrimSpace(task.Endpoint) != "" {
+		return s.invokeEndpoint(task)
+	}
+
+	// Nothing to do: record honestly rather than faking success.
+	return "", nil, "no_handler"
+}
+
+// invokeEndpoint POSTs the task JSON to the configured endpoint URL and
+// reports the real outcome.
+func (s *Scheduler) invokeEndpoint(task *Task) (string, error, string) {
+	body, err := json.Marshal(task)
+	if err != nil {
+		return "", err, "failed"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, task.Endpoint, bytes.NewReader(body))
+	if err != nil {
+		return "", err, "failed"
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err, "failed"
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	out := strings.TrimSpace(string(respBody))
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return out, nil, "completed"
+	}
+	return out, fmt.Errorf("endpoint returned status %d", resp.StatusCode), "failed"
 }
 
 func (s *Scheduler) handleTasks(w http.ResponseWriter, r *http.Request) {

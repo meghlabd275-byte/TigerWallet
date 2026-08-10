@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -70,13 +71,16 @@ func (c *LiFiClient) GetQuote(req RouteRequest) (*LiFiQuote, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		// Return simulated quote if API fails
-		return c.getSimulatedQuote(req), nil
+		return nil, fmt.Errorf("LiFi API returned status %d", resp.StatusCode)
 	}
 
 	var quote LiFiQuote
 	if err := json.NewDecoder(resp.Body).Decode(&quote); err != nil {
-		return c.getSimulatedQuote(req), nil
+		return nil, fmt.Errorf("LiFi API decode error: %w", err)
+	}
+
+	if quote.ID == "" || strings.HasPrefix(quote.ID, "sim-") {
+		return nil, fmt.Errorf("LiFi API returned no usable quote")
 	}
 
 	return &quote, nil
@@ -142,26 +146,7 @@ func NewStargateClient() *StargateClient {
 }
 
 func (c *StargateClient) GetQuote(req RouteRequest) (*StargateQuote, error) {
-	// Real Stargate quote calculation
-	fromAmount, _ := new(big.Int).SetString(req.FromAmount, 10)
-
-	// Stargate fee is typically 0.05%
-	fee := new(big.Int).Div(fromAmount, big.NewInt(2000))
-	toAmount := new(big.Int).Sub(fromAmount, fee)
-
-	return &StargateQuote{
-		RouteID:      "stargate-" + strconv.FormatUint(uint64(time.Now().UnixNano()), 10),
-		SrcChainID:   req.FromChain,
-		DstChainID:   req.ToChain,
-		SrcToken:     req.FromToken,
-		DstToken:     req.ToToken,
-		FromAmount:   req.FromAmount,
-		ToAmount:     toAmount.String(),
-		GasEstimate:  "150000",
-		GasFeeUSD:    5.0,
-		BridgeFeeUSD: 0.1,
-		ReceivalTime: 300, // 5 minutes
-	}, nil
+	return nil, fmt.Errorf("Stargate quote not implemented: configure a real Stargate API endpoint to enable")
 }
 
 type StargateQuote struct {
@@ -192,25 +177,7 @@ func NewCelerClient() *CelerClient {
 }
 
 func (c *CelerClient) GetQuote(req RouteRequest) (*CelerQuote, error) {
-	// Real Celer quote
-	fromAmount, _ := new(big.Int).SetString(req.FromAmount, 10)
-
-	// Celer fee is typically 0.03%
-	fee := new(big.Int).Div(fromAmount, big.NewInt(3333))
-	toAmount := new(big.Int).Sub(fromAmount, fee)
-
-	return &CelerQuote{
-		TransferID:        "celer-" + strconv.FormatUint(uint64(time.Now().UnixNano()), 10),
-		FromChainID:       req.FromChain,
-		ToChainID:         req.ToChain,
-		FromToken:         req.FromToken,
-		ToToken:           req.ToToken,
-		AmountIn:          req.FromAmount,
-		AmountOut:         toAmount.String(),
-		SlippageTolerance: 300,
-		Deadline:          time.Now().Add(30 * time.Minute).Unix(),
-		EstimatedDuration: 180, // 3 minutes
-	}, nil
+	return nil, fmt.Errorf("Celer quote not implemented: configure a real cBridge API endpoint to enable")
 }
 
 type CelerQuote struct {
@@ -240,24 +207,7 @@ func NewAcrossClient() *AcrossClient {
 }
 
 func (c *AcrossClient) GetQuote(req RouteRequest) (*AcrossQuote, error) {
-	// Real Across quote
-	fromAmount, _ := new(big.Int).SetString(req.FromAmount, 10)
-
-	// Across fee is typically 0.1%
-	fee := new(big.Int).Div(fromAmount, big.NewInt(1000))
-	toAmount := new(big.Int).Sub(fromAmount, fee)
-
-	return &AcrossQuote{
-		RouteID:        "across-" + strconv.FormatUint(uint64(time.Now().UnixNano()), 10),
-		InputToken:     req.FromToken,
-		OutputToken:    req.ToToken,
-		InputAmount:    req.FromAmount,
-		OutputAmount:   toAmount.String(),
-		FillDeadline:   3600, // 1 hour
-		Expiration:     time.Now().Add(30 * time.Minute).Unix(),
-		EstimatedL1Fee: "0",     // Would calculate real L1 fee
-		RelayerFeePct:  "0.001", // 0.1%
-	}, nil
+	return nil, fmt.Errorf("Across quote not implemented: configure a real Across API endpoint to enable")
 }
 
 type AcrossQuote struct {
@@ -270,28 +220,6 @@ type AcrossQuote struct {
 	Expiration     int64  `json:"expiration"`
 	EstimatedL1Fee string `json:"estimatedL1Fee"`
 	RelayerFeePct  string `json:"relayerFeePct"`
-}
-
-// Simulated quote fallback
-func (c *LiFiClient) getSimulatedQuote(req RouteRequest) *LiFiQuote {
-	fromAmount, _ := new(big.Int).SetString(req.FromAmount, 10)
-	fee := new(big.Int).Div(fromAmount, big.NewInt(1000))
-	toAmount := new(big.Int).Sub(fromAmount, fee)
-
-	return &LiFiQuote{
-		ID:             "sim-" + strconv.FormatUint(uint64(time.Now().UnixNano()), 10),
-		FromChain:      int(req.FromChain),
-		ToChain:        int(req.ToChain),
-		FromToken:      req.FromToken,
-		ToToken:        req.ToToken,
-		FromAmount:     req.FromAmount,
-		ToAmount:       toAmount.String(),
-		ToAmountMin:    toAmount.String(),
-		GasEstimate:    "200000",
-		GasEstimateUSD: 5.0,
-		Bridge:         "LiFi",
-		Steps:          []LiFiStep{},
-	}
 }
 
 // ============================================================================
@@ -518,6 +446,10 @@ func (s *BridgeAggregator) GetQuotes(req RouteRequest) ([]*BridgeQuote, error) {
 		return iAmount.Cmp(jAmount) > 0
 	})
 
+	if len(quotes) == 0 {
+		return nil, fmt.Errorf("no bridge route available for the requested pair")
+	}
+
 	return quotes, nil
 }
 
@@ -693,7 +625,7 @@ func (s *BridgeAggregator) handleGetQuotes(c *gin.Context) {
 
 	quotes, err := s.GetQuotes(req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
 

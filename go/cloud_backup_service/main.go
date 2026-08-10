@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -18,6 +19,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awscfg "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	"golang.org/x/crypto/pbkdf2"
@@ -40,8 +45,14 @@ type Config struct {
 
 func LoadConfig() *Config {
 	return &Config{
-		Port:     getEnv("PORT", "8452"),
-		RedisURL: getEnv("REDIS_URL", "redis://localhost:6379"),
+		Port:        getEnv("PORT", "8452"),
+		RedisURL:   getEnv("REDIS_URL", "redis://localhost:6379"),
+		S3Bucket:   os.Getenv("S3_BUCKET"),
+		S3Region:   os.Getenv("AWS_REGION"),
+		S3AccessKey: os.Getenv("AWS_ACCESS_KEY_ID"),
+		S3SecretKey: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		GCPProject: os.Getenv("GCP_PROJECT"),
+		GCPBucket:  os.Getenv("GCP_BUCKET"),
 	}
 }
 
@@ -186,39 +197,115 @@ type CloudStorage interface {
 // ============================================================================
 
 type S3Storage struct {
-	bucket string
-	region string
-	client *http.Client
+	bucket     string
+	region     string
+	accessKey  string
+	secretKey  string
+	client     *s3.Client
+	httpClient *http.Client
 }
 
-func NewS3Storage(bucket, region string) *S3Storage {
-	return &S3Storage{
-		bucket: bucket,
-		region: region,
-		client: &http.Client{Timeout: 30 * time.Second},
+// NewS3Storage returns an S3Storage. The S3 client is only built when the
+// required AWS credentials and bucket are present; otherwise the returned
+// storage is left unconfigured and every operation returns a real error so
+// backup data is never silently dropped.
+func NewS3Storage(bucket, region, accessKey, secretKey string) *S3Storage {
+	s := &S3Storage{
+		bucket:    bucket,
+		region:    region,
+		accessKey: accessKey,
+		secretKey: secretKey,
+		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
+	if s.isConfigured() {
+		cfg, err := awscfg.LoadDefaultConfig(context.Background(),
+			awscfg.WithRegion(region),
+			awscfg.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
+		)
+		if err != nil {
+			log.Printf("[S3] failed to load AWS config: %v", err)
+			return s
+		}
+		s.client = s3.NewFromConfig(cfg)
+	}
+	return s
+}
+
+func (s *S3Storage) isConfigured() bool {
+	return s.bucket != "" && s.region != "" && s.accessKey != "" && s.secretKey != ""
+}
+
+func (s *S3Storage) notConfiguredError() error {
+	return fmt.Errorf("S3 not configured: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION and S3_BUCKET are required")
 }
 
 func (s *S3Storage) Upload(path string, data []byte) error {
-	// Simplified - would use AWS SDK
-	log.Printf("[S3] Uploading to %s/%s", s.bucket, path)
+	if !s.isConfigured() || s.client == nil {
+		return s.notConfiguredError()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(path),
+		Body:   bytes.NewReader(data),
+	})
+	if err != nil {
+		return fmt.Errorf("S3 upload failed for %s: %w", path, err)
+	}
 	return nil
 }
 
 func (s *S3Storage) Download(path string) ([]byte, error) {
-	// Simplified - would use AWS SDK
-	log.Printf("[S3] Downloading from %s/%s", s.bucket, path)
-	return []byte(""), nil
+	if !s.isConfigured() || s.client == nil {
+		return nil, s.notConfiguredError()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(path),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("S3 download failed for %s: %w", path, err)
+	}
+	defer out.Body.Close()
+	body, err := io.ReadAll(out.Body)
+	if err != nil {
+		return nil, fmt.Errorf("S3 read body failed for %s: %w", path, err)
+	}
+	return body, nil
 }
 
 func (s *S3Storage) Delete(path string) error {
-	log.Printf("[S3] Deleting %s/%s", s.bucket, path)
+	if !s.isConfigured() || s.client == nil {
+		return s.notConfiguredError()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(path),
+	})
+	if err != nil {
+		return fmt.Errorf("S3 delete failed for %s: %w", path, err)
+	}
 	return nil
 }
 
 func (s *S3Storage) GetSignedURL(path string, expiry time.Duration) (string, error) {
-	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s?expiry=%d",
-		s.bucket, s.region, path, time.Now().Add(expiry).Unix()), nil
+	if !s.isConfigured() || s.client == nil {
+		return "", s.notConfiguredError()
+	}
+	presignClient := s3.NewPresignClient(s.client)
+	req, err := presignClient.PresignGetObject(context.Background(), &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(path),
+	}, s3.WithPresignExpires(expiry))
+	if err != nil {
+		return "", fmt.Errorf("S3 presign failed for %s: %w", path, err)
+	}
+	return req.URL, nil
 }
 
 // ============================================================================
@@ -237,25 +324,36 @@ func NewGoogleDriveStorage(folderID, token string) *GoogleDriveStorage {
 	}
 }
 
+func (g *GoogleDriveStorage) notConfiguredError() error {
+	return fmt.Errorf("Google Drive not configured: a valid OAuth access token is required")
+}
+
 func (g *GoogleDriveStorage) Upload(path string, data []byte) error {
-	// Simplified - would use Google Drive API
-	log.Printf("[GoogleDrive] Uploading to %s", path)
-	return nil
+	if g.token == "" {
+		return g.notConfiguredError()
+	}
+	return fmt.Errorf("Google Drive upload not implemented for %s", path)
 }
 
 func (g *GoogleDriveStorage) Download(path string) ([]byte, error) {
-	log.Printf("[GoogleDrive] Downloading %s", path)
-	return []byte(""), nil
+	if g.token == "" {
+		return nil, g.notConfiguredError()
+	}
+	return nil, fmt.Errorf("Google Drive download not implemented for %s", path)
 }
 
 func (g *GoogleDriveStorage) Delete(path string) error {
-	log.Printf("[GoogleDrive] Deleting %s", path)
-	return nil
+	if g.token == "" {
+		return g.notConfiguredError()
+	}
+	return fmt.Errorf("Google Drive delete not implemented for %s", path)
 }
 
 func (g *GoogleDriveStorage) GetSignedURL(path string, expiry time.Duration) (string, error) {
-	// Google Drive uses different URL scheme
-	return fmt.Sprintf("https://drive.google.com/uc?export=download&id=%s", path), nil
+	if g.token == "" {
+		return "", g.notConfiguredError()
+	}
+	return "", fmt.Errorf("Google Drive signed URL not implemented for %s", path)
 }
 
 // ============================================================================
@@ -272,23 +370,24 @@ func NewICloudStorage(container string) *ICloudStorage {
 	}
 }
 
+func (i *ICloudStorage) notConfiguredError() error {
+	return fmt.Errorf("iCloud not configured: a valid iCloud container and credentials are required")
+}
+
 func (i *ICloudStorage) Upload(path string, data []byte) error {
-	log.Printf("[iCloud] Uploading to %s/%s", i.container, path)
-	return nil
+	return i.notConfiguredError()
 }
 
 func (i *ICloudStorage) Download(path string) ([]byte, error) {
-	log.Printf("[iCloud] Downloading %s/%s", i.container, path)
-	return []byte(""), nil
+	return nil, i.notConfiguredError()
 }
 
 func (i *ICloudStorage) Delete(path string) error {
-	log.Printf("[iCloud] Deleting %s/%s", i.container, path)
-	return nil
+	return i.notConfiguredError()
 }
 
 func (i *ICloudStorage) GetSignedURL(path string, expiry time.Duration) (string, error) {
-	return fmt.Sprintf("https://icloud.com/%s/%s", i.container, path), nil
+	return "", i.notConfiguredError()
 }
 
 // ============================================================================
@@ -308,8 +407,8 @@ func NewCloudBackupService(config *Config) *CloudBackupService {
 	})
 
 	storage := make(map[string]CloudStorage)
-	storage["s3"] = NewS3Storage(config.S3Bucket, config.S3Region)
-	storage["google"] = NewGoogleDriveStorage(config.GCPBucket, "")
+	storage["s3"] = NewS3Storage(config.S3Bucket, config.S3Region, config.S3AccessKey, config.S3SecretKey)
+	storage["google"] = NewGoogleDriveStorage(config.GCPBucket, os.Getenv("GDRIVE_TOKEN"))
 	storage["apple"] = NewICloudStorage("TigerWallet")
 
 	return &CloudBackupService{
@@ -438,8 +537,11 @@ func (s *CloudBackupService) DeleteBackup(id string) error {
 
 	// Delete from cloud
 	storage, ok := s.storage[backup.CloudProvider]
-	if ok {
-		storage.Delete(backup.CloudPath)
+	if !ok {
+		return fmt.Errorf("storage provider not found")
+	}
+	if err := storage.Delete(backup.CloudPath); err != nil {
+		return fmt.Errorf("failed to delete from cloud: %w", err)
 	}
 
 	backup.IsActive = false

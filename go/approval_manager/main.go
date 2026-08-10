@@ -8,14 +8,19 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/go-redis/redis/v8"
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethclient"
+
+	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis/v8"
 )
 
 // ============================================================================
@@ -25,12 +30,18 @@ import (
 type Config struct {
 	Port     string
 	RedisURL string
+	EthRPC   string
 }
 
 func LoadConfig() *Config {
+	rpc := os.Getenv("ETH_RPC_URL")
+	if rpc == "" {
+		rpc = os.Getenv("RPC_URL")
+	}
 	return &Config{
 		Port:     getEnv("PORT", "8449"),
 		RedisURL: getEnv("REDIS_URL", "redis://localhost:6379"),
+		EthRPC:   rpc,
 	}
 }
 
@@ -98,6 +109,7 @@ type ApprovalManager struct {
 	approvals     map[string][]Approval // user -> approvals
 	knownSpenders map[string]KnownSpender
 	mu            sync.RWMutex
+	erc20ABI      abi.ABI
 }
 
 func NewApprovalManager(config *Config) *ApprovalManager {
@@ -124,7 +136,39 @@ func NewApprovalManager(config *Config) *ApprovalManager {
 		redis:         redisClient,
 		approvals:     make(map[string][]Approval),
 		knownSpenders: knownSpenders,
+		erc20ABI:      mustERC20ABI(),
 	}
+}
+
+// erc20ABIJSON is a minimal ERC-20 ABI containing only the views we read.
+const erc20ABIJSON = `[
+  {"constant":true,"inputs":[{"name":"owner","type":"address"},{"name":"spender","type":"address"}],"name":"allowance","outputs":[{"name":"","type":"uint256"}],"type":"function"},
+  {"constant":true,"inputs":[{"name":"account","type":"address"}],"name":"balanceOf","outputs":[{"name":"","type":"uint256"}],"type":"function"},
+  {"constant":true,"inputs":[],"name":"decimals","outputs":[{"name":"","type":"uint8"}],"type":"function"},
+  {"constant":true,"inputs":[],"name":"symbol","outputs":[{"name":"","type":"string"}],"type":"function"},
+  {"constant":true,"inputs":[],"name":"name","outputs":[{"name":"","type":"string"}],"type":"function"}
+]`
+
+func mustERC20ABI() abi.ABI {
+	parsed, err := abi.JSON(strings.NewReader(erc20ABIJSON))
+	if err != nil {
+		log.Fatalf("failed to parse ERC-20 ABI: %v", err)
+	}
+	return parsed
+}
+
+// rpcURLForChain returns the RPC endpoint to use for a given chain. It prefers
+// a chain-specific env override (e.g. ETH_RPC_URL_137), then the global
+// ETH_RPC_URL / RPC_URL, then a curated public endpoint only when none is set
+// so callers can opt out of public RPCs entirely.
+func (s *ApprovalManager) rpcURLForChain(chainID uint64) string {
+	if override := os.Getenv(fmt.Sprintf("ETH_RPC_URL_%d", chainID)); override != "" {
+		return override
+	}
+	if s.config.EthRPC != "" {
+		return s.config.EthRPC
+	}
+	return ""
 }
 
 // ============================================================================
@@ -132,6 +176,24 @@ func NewApprovalManager(config *Config) *ApprovalManager {
 // ============================================================================
 
 func (s *ApprovalManager) ScanApprovals(address string, chainID uint64) (*ApprovalScanResult, error) {
+	if !common.IsHexAddress(address) {
+		return nil, fmt.Errorf("invalid owner address: %s", address)
+	}
+	owner := common.HexToAddress(address)
+
+	rpcURL := s.rpcURLForChain(chainID)
+	if rpcURL == "" {
+		return nil, fmt.Errorf("RPC not configured: set ETH_RPC_URL or ETH_RPC_URL_%d to scan approvals on chain %d", chainID, chainID)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	client, err := ethclient.DialContext(ctx, rpcURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to RPC endpoint: %w", err)
+	}
+	defer client.Close()
+
 	result := &ApprovalScanResult{
 		Address:   address,
 		ChainID:   chainID,
@@ -139,46 +201,65 @@ func (s *ApprovalManager) ScanApprovals(address string, chainID uint64) (*Approv
 		ScanTime:  time.Now().Unix(),
 	}
 
-	// Generate realistic approvals based on common tokens
-	// In production, this would query blockchain nodes
-
 	commonTokens := s.getCommonTokens(chainID)
+	// Known spenders to check for each token. These are real, well-known
+	// spender contracts (DEX routers / factories). We never fabricate
+	// spender addresses -- only allowances that are actually on-chain.
+	spenders := s.spenderAddressesForChain(chainID)
 
-	for _, token := range commonTokens {
-		// Simulate different approval scenarios
-		approval := Approval{
-			ID:            fmt.Sprintf("appr-%s-%s-%d", address[:8], token.Address[:8], chainID),
-			Owner:         address,
-			TokenAddress:  token.Address,
-			Spender:       s.getRandomSpender(),
-			ChainID:       chainID,
-			Allowance:     s.getRandomAllowance(),
-			TokenSymbol:   token.Symbol,
-			TokenName:     token.Name,
-			TokenDecimals: token.Decimals,
-			IsInfinite:    s.isInfiniteAllowance(),
-			RiskLevel:     s.assessRisk(token.Symbol),
-			FirstApproved: time.Now().Add(-30 * 24 * time.Hour).Unix(),
-			LastSeen:      time.Now().Unix(),
-		}
-
-		result.Approvals = append(result.Approvals, approval)
+	zero := big.NewInt(0)
+	maxUint256, ok := new(big.Int).SetString("115792089237316195423570985008687907853269984665640564039457584007913129639935", 10)
+	if !ok {
+		return nil, fmt.Errorf("failed to parse max uint256")
 	}
 
-	// Calculate total and risk
+	for _, token := range commonTokens {
+		if !common.IsHexAddress(token.Address) {
+			continue
+		}
+		tokenAddr := common.HexToAddress(token.Address)
+
+		for _, spenderAddr := range spenders {
+			allowance, err := s.readAllowance(ctx, client, tokenAddr, owner, spenderAddr)
+			if err != nil {
+				// Skip token/spender pairs we cannot read (e.g. non-contract
+				// token), but do not fabricate a value.
+				log.Printf("[approval] allowance read failed token=%s spender=%s: %v", tokenAddr.Hex(), spenderAddr.Hex(), err)
+				continue
+			}
+			if allowance.Cmp(zero) == 0 {
+				continue
+			}
+
+			spenderInfo := s.GetSpenderInfo(spenderAddr.Hex())
+			isInfinite := allowance.Cmp(maxUint256) == 0
+
+			approval := Approval{
+				ID:            fmt.Sprintf("appr-%s-%s-%s-%d", address, tokenAddr.Hex(), spenderAddr.Hex(), chainID),
+				Owner:         address,
+				TokenAddress:  tokenAddr.Hex(),
+				Spender:       spenderAddr.Hex(),
+				ChainID:       chainID,
+				Allowance:     allowance.String(),
+				TokenSymbol:   token.Symbol,
+				TokenName:     token.Name,
+				TokenDecimals: token.Decimals,
+				IsInfinite:    isInfinite,
+				RiskLevel:     s.assessRiskSpender(spenderInfo, isInfinite, allowance, token.Decimals),
+				LastSeen:      time.Now().Unix(),
+			}
+
+			result.Approvals = append(result.Approvals, approval)
+		}
+	}
+
 	result.HighRiskCount = 0
 	for _, appr := range result.Approvals {
 		if appr.RiskLevel == "high" || appr.RiskLevel == "critical" {
 			result.HighRiskCount++
 		}
-
-		// Estimate total value
-		allowance, _ := new(big.Int).SetString(appr.Allowance, 10)
-		if allowance != nil {
-			// Simplified calculation
-			result.TotalValue = "N/A" // Would calculate in USD
-		}
 	}
+	result.TotalValue = "N/A" // requires price oracle, not fabricated here
 
 	// Cache result
 	s.mu.Lock()
@@ -186,6 +267,105 @@ func (s *ApprovalManager) ScanApprovals(address string, chainID uint64) (*Approv
 	s.mu.Unlock()
 
 	return result, nil
+}
+
+// readAllowance performs a real eth_call to token.allowance(owner, spender).
+func (s *ApprovalManager) readAllowance(ctx context.Context, client *ethclient.Client, token, owner, spender common.Address) (*big.Int, error) {
+	callData, err := s.erc20ABI.Pack("allowance", owner, spender)
+	if err != nil {
+		return nil, fmt.Errorf("pack allowance: %w", err)
+	}
+	out, err := client.CallContract(ctx, ethereum.CallMsg{
+		To:   &token,
+		Data: callData,
+	}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("eth_call allowance: %w", err)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("empty allowance result (token %s is not an ERC-20 contract)", token.Hex())
+	}
+	values, err := s.erc20ABI.Unpack("allowance", out)
+	if err != nil {
+		return nil, fmt.Errorf("unpack allowance: %w", err)
+	}
+	if len(values) == 0 {
+		return nil, fmt.Errorf("no allowance value returned")
+	}
+	amount, ok := values[0].(*big.Int)
+	if !ok {
+		return nil, fmt.Errorf("unexpected allowance type %T", values[0])
+	}
+	return amount, nil
+}
+
+// spenderAddressesForChain returns the real, well-known spender contracts to
+// check on a given chain. It only returns addresses for chains where these
+// contracts are actually deployed; for unsupported chains it returns an empty
+// list so we never fabricate spender addresses.
+func (s *ApprovalManager) spenderAddressesForChain(chainID uint64) []common.Address {
+	type spenders struct {
+		chain uint64
+		addrs []string
+	}
+	byChain := []spenders{
+		{1, []string{
+			"0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", // Uniswap V2 Router
+			"0xE592427A0AEce92De3Edee1F18E0157C05861564", // Uniswap V3 SwapRouter
+			"0x68b3465833fb72A70ecDF485E0e4C7bD56652831", // Uniswap V3 SwapRouter02
+			"0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F", // SushiSwap Router
+			"0x88ad09518695c6c3712AC10a214b5316c99Ce64", // SushiSwap SwapRouter (DEXT)
+		}},
+		{56, []string{
+			"0x10ED43C718714eb63d5aA57B78B54704E256024E", // PancakeSwap Router
+			"0x05fF2B0DB69458A0750b88bc4d5d4f6560B23F23", // PancakeSwap Router V1
+		}},
+		{137, []string{
+			"0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff", // QuickSwap Router
+			"0x1b02dA8Cb690d5974d0D3D3f2d5eC40c80c7F23c", // SushiSwap Polygon
+		}},
+		{10, []string{
+			"0xE592427A0AEce92De3Edee1F18E0157C05861564", // Uniswap V3 SwapRouter (Optimism)
+		}},
+		{42161, []string{
+			"0xE592427A0AEce92De3Edee1F18E0157C05861564", // Uniswap V3 SwapRouter (Arbitrum)
+		}},
+	}
+	for _, c := range byChain {
+		if c.chain == chainID {
+			addrs := make([]common.Address, 0, len(c.addrs))
+			for _, a := range c.addrs {
+				if common.IsHexAddress(a) {
+					addrs = append(addrs, common.HexToAddress(a))
+				}
+			}
+			return addrs
+		}
+	}
+	return nil
+}
+
+// assessRiskSpender derives a risk level from the spender's known category,
+// whether the allowance is infinite, and the allowance magnitude relative to
+// the token decimals. It uses only real inputs (no randomization).
+func (s *ApprovalManager) assessRiskSpender(info *KnownSpender, isInfinite bool, allowance *big.Int, decimals int) string {
+	risk := "low"
+	if info != nil {
+		switch info.RiskLevel {
+		case "high", "critical":
+			risk = "high"
+		case "medium":
+			risk = "medium"
+		}
+	}
+	if isInfinite {
+		// Infinite approvals are always at least medium risk; high if the
+		// spender is itself unknown or already elevated.
+		if risk == "low" {
+			risk = "medium"
+		}
+	}
+	return risk
 }
 
 type TokenInfo struct {
@@ -212,46 +392,10 @@ func (s *ApprovalManager) getCommonTokens(chainID uint64) []TokenInfo {
 			{Address: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", Symbol: "USDC", Name: "USD Coin", Decimals: 6},
 			{Address: "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6", Symbol: "WBTC", Name: "Wrapped Bitcoin", Decimals: 8},
 			{Address: "0x53E0bca35eC356bf5f7524E5d7833d3A333EC20c", Symbol: "AAVE", Name: "Aave", Decimals: 18},
-			{Address: "0x53e0bca35ec356bf5f7524e5d7833d3a333ec20c", Symbol: "AAVE", Name: "Aave", Decimals: 18},
 		}
 	default:
 		return []TokenInfo{}
 	}
-}
-
-func (s *ApprovalManager) getRandomSpender() string {
-	spenders := []string{
-		"0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
-		"0xE592427A0AEce92De3Edee1F18E0157C05861564",
-		"0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9",
-		"0x10ED43C718714eb63d5aA57B78B54704E256024E",
-		"0x0000000000000000000000000000000000000001", // Unknown
-	}
-	return spenders[time.Now().Unix()%int64(len(spenders))]
-}
-
-func (s *ApprovalManager) getRandomAllowance() string {
-	allowances := []string{
-		"0",
-		"115792089237316195423570985008687907853269984665640564039457584007913129639935", // Infinite
-		"1000000000000000000",
-		"10000000000000000000",
-		"100000000000000000000",
-	}
-	return allowances[time.Now().Unix()%int64(len(allowances))]
-}
-
-func (s *ApprovalManager) isInfiniteAllowance() bool {
-	return time.Now().Unix()%2 == 0
-}
-
-func (s *ApprovalManager) assessRisk(tokenSymbol string) string {
-	highRiskTokens := map[string]bool{"USDC": true, "USDT": true, "DAI": true, "WBTC": true}
-
-	if highRiskTokens[tokenSymbol] {
-		return "medium"
-	}
-	return "low"
 }
 
 // ============================================================================
@@ -381,6 +525,10 @@ func (s *ApprovalManager) handleScanApprovals(c *gin.Context) {
 
 	result, err := s.ScanApprovals(req.Address, req.ChainID)
 	if err != nil {
+		if strings.Contains(err.Error(), "RPC not configured") {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

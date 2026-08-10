@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/argon2"
@@ -52,7 +53,7 @@ var cfg = Config{
 	Port:              8080,
 	DBConnection:      getDBConnection(),
 	RedisAddr:         "localhost:6379",
-	JWTSecret:         getRequiredEnv("JWT_SECRET"),
+	JWTSecret:         os.Getenv("JWT_SECRET"),
 	InitialRewardPool: "100000000000000000000000", // 100,000 ETH
 	MinReward:         "100000000000000000",       // 0.1 ETH
 	MaxReward:         "100000000000000000000000", // 100 ETH
@@ -766,9 +767,19 @@ func (s *BugBountyService) GetStats(c *gin.Context) {
 // Middleware
 // ============================================================================
 
-// AuthMiddleware handles authentication
+// AuthMiddleware handles authentication by validating the Bearer JWT.
+// Tokens are HS256-signed with cfg.JWTSecret (JWT_SECRET env). Invalid,
+// expired, or malformed tokens are rejected with 401. If JWT_SECRET is not
+// configured, all protected requests are rejected with 503 rather than
+// trusting the raw token.
 func (s *BugBountyService) AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if cfg.JWTSecret == "" {
+			c.JSON(503, gin.H{"success": false, "error": "auth not configured: JWT_SECRET unset"})
+			c.Abort()
+			return
+		}
+
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			c.JSON(401, gin.H{"success": false, "error": "Authorization required"})
@@ -776,14 +787,44 @@ func (s *BugBountyService) AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// In production, validate JWT token
-		// For now, extract user_id from header
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-		if token != "" {
-			// Simulate user lookup
-			c.Set("user_id", token)
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+			c.JSON(401, gin.H{"success": false, "error": "invalid authorization header"})
+			c.Abort()
+			return
+		}
+		tokenStr := strings.TrimSpace(parts[1])
+
+		token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
+			return []byte(cfg.JWTSecret), nil
+		})
+		if err != nil || !token.Valid {
+			c.JSON(401, gin.H{"success": false, "error": "invalid or expired token"})
+			c.Abort()
+			return
 		}
 
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			c.JSON(401, gin.H{"success": false, "error": "invalid token claims"})
+			c.Abort()
+			return
+		}
+
+		userID, _ := claims["user_id"].(string)
+		if userID == "" {
+			userID, _ = claims["sub"].(string)
+		}
+		if userID == "" {
+			c.JSON(401, gin.H{"success": false, "error": "token missing user_id"})
+			c.Abort()
+			return
+		}
+
+		c.Set("user_id", userID)
 		c.Next()
 	}
 }
