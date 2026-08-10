@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { useTheme } from '../components/ThemeProvider';
-import { isValidSeedPhrase, secureStore, hash } from '../wallet/lib/security';
 
 // ============================================================================
 // Types
@@ -60,35 +59,6 @@ const SECURITY_CONFIG = {
 };
 
 // ============================================================================
-// Encryption Utilities (AES-256-GCM simulation for client-side)
-// ============================================================================
-
-const encryptData = async (data: string, key: string): Promise<string> => {
-  // In production, use Web Crypto API for real encryption
-  const encoder = new TextEncoder();
-  const dataBuffer = encoder.encode(data);
-  
-  // Simulate encryption with base64 (in production, use real AES-256-GCM)
-  const encrypted = btoa(String.fromCharCode(...dataBuffer));
-  return encrypted;
-};
-
-const hashPassword = async (password: string, salt: string): Promise<string> => {
-  // In production, use Web Crypto API with PBKDF2
-  const combined = password + salt;
-  const encoder = new TextEncoder();
-  const data = encoder.encode(combined);
-  
-  // Simple hash simulation (in production, use bcrypt or Argon2)
-  let hash = 0;
-  for (let i = 0; i < data.length; i++) {
-    hash = ((hash << 5) - hash) + data[i];
-    hash = hash & hash;
-  }
-  return Math.abs(hash).toString(16);
-};
-
-// ============================================================================
 // Validation Functions
 // ============================================================================
 
@@ -100,7 +70,7 @@ const validateEmail = (email: string): boolean => {
 const validatePassword = (password: string): { valid: boolean; errors: string[] } => {
   const errors: string[] = [];
   const config = SECURITY_CONFIG.PASSWORD_REQUIREMENTS;
-  
+
   if (password.length < config.minLength) {
     errors.push(`Password must be at least ${config.minLength} characters`);
   }
@@ -116,7 +86,7 @@ const validatePassword = (password: string): { valid: boolean; errors: string[] 
   if (config.special && !/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
     errors.push('Password must contain at least one special character');
   }
-  
+
   return { valid: errors.length === 0, errors };
 };
 
@@ -137,123 +107,123 @@ const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(credentials),
     });
-    
+
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.message || 'Login failed');
     }
-    
+
     return response.json();
   },
-  
+
   async register(data: RegisterData): Promise<{ userId: string; status: string }> {
     const response = await fetch('/api/v1/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    
+
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.message || 'Registration failed');
     }
-    
+
     return response.json();
   },
-  
+
   async verifyEmail(code: string): Promise<{ verified: boolean }> {
     const response = await fetch('/api/v1/auth/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
     });
-    
+
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.message || 'Verification failed');
     }
-    
+
     return response.json();
   },
-  
+
   async enable2FA(): Promise<{ secret: string; qrCode: string }> {
     const response = await fetch('/api/v1/auth/2fa/enable', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     });
-    
+
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.message || '2FA enable failed');
     }
-    
+
     return response.json();
   },
-  
+
   async verify2FA(code: string): Promise<{ enabled: boolean }> {
     const response = await fetch('/api/v1/auth/2fa/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
     });
-    
+
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.message || '2FA verification failed');
     }
-    
+
     return response.json();
   },
-  
+
   async refreshToken(refreshToken: string): Promise<{ token: string }> {
     const response = await fetch('/api/v1/auth/refresh', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken }),
     });
-    
+
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.message || 'Token refresh failed');
     }
-    
+
     return response.json();
   },
-  
+
   async logout(): Promise<void> {
     await fetch('/api/v1/auth/logout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     });
   },
-  
+
   async getCurrentUser(): Promise<User> {
     const response = await fetch('/api/v1/auth/me', {
       method: 'GET',
     });
-    
+
     if (!response.ok) {
       throw new Error('Not authenticated');
     }
-    
+
     return response.json();
   },
-  
+
   async createAdmin(data: { email: string; username: string; role: string }): Promise<{ adminId: string }> {
     const response = await fetch('/api/v1/admin/create-admin', {
       method: 'POST',
-      headers: { 
+      headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${localStorage.getItem('token')}`,
       },
       body: JSON.stringify(data),
     });
-    
+
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.message || 'Admin creation failed');
     }
-    
+
     return response.json();
   },
 };
@@ -267,38 +237,38 @@ const sessionManager = {
     localStorage.setItem('token', token);
     localStorage.setItem('tokenExpiry', (Date.now() + SECURITY_CONFIG.SESSION_DURATION).toString());
   },
-  
+
   getToken(): string | null {
     const token = localStorage.getItem('token');
     const expiry = localStorage.getItem('tokenExpiry');
-    
+
     if (!token || !expiry || Date.now() > parseInt(expiry)) {
       this.clearSession();
       return null;
     }
-    
+
     return token;
   },
-  
+
   setRefreshToken(token: string): void {
     localStorage.setItem('refreshToken', token);
   },
-  
+
   getRefreshToken(): string | null {
     return localStorage.getItem('refreshToken');
   },
-  
+
   clearSession(): void {
     localStorage.removeItem('token');
     localStorage.removeItem('tokenExpiry');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
   },
-  
+
   setUser(user: User): void {
     localStorage.setItem('user', JSON.stringify(user));
   },
-  
+
   getUser(): User | null {
     const userStr = localStorage.getItem('user');
     if (!userStr) return null;
@@ -317,13 +287,13 @@ const sessionManager = {
 export default function LoginPage() {
   const router = useRouter();
   const { theme } = useTheme();
-  
+
   // State
   const [mode, setMode] = useState<'login' | 'register' | 'verify' | '2fa'>('login');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  
+
   // Form state
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -331,21 +301,21 @@ export default function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [code2FA, setCode2FA] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
-  
+
   // Security state
   const [loginAttempts, setLoginAttempts] = useState(0);
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
-  
+
   // 2FA state
   const [twoFactorSecret, setTwoFactorSecret] = useState('');
   const [twoFactorQR, setTwoFactorQR] = useState('');
-  
+
   // ============================================================================
   // Effects
   // ============================================================================
-  
+
   useEffect(() => {
     // Check if already logged in
     const token = sessionManager.getToken();
@@ -353,13 +323,13 @@ export default function LoginPage() {
       router.push('/wallet');
     }
   }, [router]);
-  
+
   useEffect(() => {
     // Check lockout
     if (lockedUntil && Date.now() < lockedUntil) {
       const remaining = Math.ceil((lockedUntil - Date.now()) / 1000);
       setError(`Too many failed attempts. Try again in ${remaining} seconds`);
-      
+
       const interval = setInterval(() => {
         if (Date.now() >= lockedUntil) {
           setLockedUntil(null);
@@ -368,56 +338,56 @@ export default function LoginPage() {
           clearInterval(interval);
         }
       }, 1000);
-      
+
       return () => clearInterval(interval);
     }
   }, [lockedUntil]);
-  
+
   // ============================================================================
   // Handlers
   // ============================================================================
-  
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
-    
+
     // Validate inputs
     if (!email || !password) {
       setError('Please enter email and password');
       return;
     }
-    
+
     if (!validateEmail(email)) {
       setError('Please enter a valid email address');
       return;
     }
-    
+
     // Check lockout
     if (lockedUntil && Date.now() < lockedUntil) {
       return;
     }
-    
+
     setLoading(true);
-    
+
     try {
       const credentials: LoginCredentials = {
         email,
         password,
       };
-      
+
       const response = await api.login(credentials);
-      
+
       // Store session
       sessionManager.setToken(response.token);
       sessionManager.setRefreshToken(response.refreshToken);
       sessionManager.setUser(response.user);
-      
+
       // Reset attempts
       setLoginAttempts(0);
-      
+
       setSuccess('Login successful! Redirecting...');
-      
+
       // Redirect based on role
       if (response.user.role === 'super_admin') {
         router.push('/admin_wallet');
@@ -429,7 +399,7 @@ export default function LoginPage() {
     } catch (err: any) {
       const newAttempts = loginAttempts + 1;
       setLoginAttempts(newAttempts);
-      
+
       if (newAttempts >= SECURITY_CONFIG.MAX_LOGIN_ATTEMPTS) {
         setLockedUntil(Date.now() + SECURITY_CONFIG.LOCKOUT_DURATION);
         setError('Too many failed attempts. Account locked for 15 minutes');
@@ -440,42 +410,42 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
-  
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
-    
+
     // Validate inputs
     if (!email || !username || !password || !confirmPassword) {
       setError('Please fill in all fields');
       return;
     }
-    
+
     if (!validateEmail(email)) {
       setError('Please enter a valid email address');
       return;
     }
-    
+
     if (!validateUsername(username)) {
       setError('Username must be 3-20 characters, alphanumeric and underscores only');
       return;
     }
-    
+
     const passwordValidation = validatePassword(password);
     if (!passwordValidation.valid) {
       setPasswordErrors(passwordValidation.errors);
       setError(passwordValidation.errors[0]);
       return;
     }
-    
+
     if (password !== confirmPassword) {
       setError('Passwords do not match');
       return;
     }
-    
+
     setLoading(true);
-    
+
     try {
       const data: RegisterData = {
         email,
@@ -483,9 +453,9 @@ export default function LoginPage() {
         password,
         confirmPassword,
       };
-      
+
       await api.register(data);
-      
+
       setSuccess('Registration successful! Please check your email to verify.');
       setMode('verify');
     } catch (err: any) {
@@ -494,18 +464,18 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
-  
+
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    
+
     if (!verificationCode) {
       setError('Please enter the verification code');
       return;
     }
-    
+
     setLoading(true);
-    
+
     try {
       await api.verifyEmail(verificationCode);
       setSuccess('Email verified! Please login.');
@@ -516,10 +486,10 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
-  
+
   const handleEnable2FA = async () => {
     setLoading(true);
-    
+
     try {
       const result = await api.enable2FA();
       setTwoFactorSecret(result.secret);
@@ -531,18 +501,18 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
-  
+
   const handleVerify2FA = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    
+
     if (!code2FA) {
       setError('Please enter the 2FA code');
       return;
     }
-    
+
     setLoading(true);
-    
+
     try {
       await api.verify2FA(code2FA);
       setSuccess('2FA enabled successfully!');
@@ -553,7 +523,7 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
-  
+
   const handleLogout = async () => {
     try {
       await api.logout();
@@ -562,24 +532,24 @@ export default function LoginPage() {
       router.push('/login');
     }
   };
-  
+
   const handlePasswordChange = (value: string) => {
     setPassword(value);
     const validation = validatePassword(value);
     setPasswordErrors(validation.errors);
   };
-  
+
   // ============================================================================
   // Render
   // ============================================================================
-  
+
   return (
     <div className="min-h-screen bg-slate-950 dark:bg-slate-950">
       <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10">
         <div className="logo text-2xl font-bold text-orange-500">🐯 TigerWallet</div>
         <ThemeToggle />
       </div>
-      
+
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="w-full max-w-md">
           {/* Error/Success Messages */}
@@ -593,13 +563,13 @@ export default function LoginPage() {
               {success}
             </div>
           )}
-          
+
           {/* Login Form */}
           {mode === 'login' && (
             <div className="bg-slate-900/80 dark:bg-slate-900/80 bg-white/50 rounded-2xl p-8 backdrop-blur-xl border border-slate-800">
               <h1 className="text-3xl font-bold text-white dark:text-white text-slate-900 mb-2">Welcome Back</h1>
               <p className="text-slate-400 dark:text-slate-500 mb-8">Sign in to your TigerWallet account</p>
-              
+
               <form onSubmit={handleLogin}>
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-slate-300 dark:text-slate-400 text-slate-700 mb-2">
@@ -614,7 +584,7 @@ export default function LoginPage() {
                     required
                   />
                 </div>
-                
+
                 <div className="mb-6">
                   <label className="block text-sm font-medium text-slate-300 dark:text-slate-400 text-slate-700 mb-2">
                     Password
@@ -637,7 +607,7 @@ export default function LoginPage() {
                     </button>
                   </div>
                 </div>
-                
+
                 <button
                   type="submit"
                   disabled={loading || (lockedUntil !== null && Date.now() < lockedUntil)}
@@ -646,7 +616,7 @@ export default function LoginPage() {
                   {loading ? 'Signing in...' : 'Sign In'}
                 </button>
               </form>
-              
+
               <div className="mt-6 text-center">
                 <p className="text-slate-400 dark:text-slate-500 text-slate-600">
                   Don't have an account?{' '}
@@ -661,7 +631,7 @@ export default function LoginPage() {
                   </button>
                 </p>
               </div>
-              
+
               <div className="mt-4 pt-4 border-t border-slate-800">
                 <p className="text-xs text-slate-500 text-center">
                   🔒 Industrial-grade security with AES-256-GCM encryption
@@ -669,13 +639,13 @@ export default function LoginPage() {
               </div>
             </div>
           )}
-          
+
           {/* Register Form */}
           {mode === 'register' && (
             <div className="bg-slate-900/80 dark:bg-slate-900/80 bg-white/50 rounded-2xl p-8 backdrop-blur-xl border border-slate-800">
               <h1 className="text-3xl font-bold text-white dark:text-white text-slate-900 mb-2">Create Account</h1>
               <p className="text-slate-400 dark:text-slate-500 mb-8">Join TigerWallet - The most secure Web3 wallet</p>
-              
+
               <form onSubmit={handleRegister}>
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-slate-300 dark:text-slate-400 text-slate-700 mb-2">
@@ -690,7 +660,7 @@ export default function LoginPage() {
                     required
                   />
                 </div>
-                
+
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-slate-300 dark:text-slate-400 text-slate-700 mb-2">
                     Username
@@ -704,7 +674,7 @@ export default function LoginPage() {
                     required
                   />
                 </div>
-                
+
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-slate-300 dark:text-slate-400 text-slate-700 mb-2">
                     Password
@@ -734,7 +704,7 @@ export default function LoginPage() {
                     </div>
                   )}
                 </div>
-                
+
                 <div className="mb-6">
                   <label className="block text-sm font-medium text-slate-300 dark:text-slate-400 text-slate-700 mb-2">
                     Confirm Password
@@ -748,7 +718,7 @@ export default function LoginPage() {
                     required
                   />
                 </div>
-                
+
                 <button
                   type="submit"
                   disabled={loading}
@@ -757,7 +727,7 @@ export default function LoginPage() {
                   {loading ? 'Creating Account...' : 'Create Account'}
                 </button>
               </form>
-              
+
               <div className="mt-6 text-center">
                 <p className="text-slate-400 dark:text-slate-500 text-slate-600">
                   Already have an account?{' '}
@@ -774,13 +744,13 @@ export default function LoginPage() {
               </div>
             </div>
           )}
-          
+
           {/* Verification Form */}
           {mode === 'verify' && (
             <div className="bg-slate-900/80 dark:bg-slate-900/80 bg-white/50 rounded-2xl p-8 backdrop-blur-xl border border-slate-800">
               <h1 className="text-3xl font-bold text-white dark:text-white text-slate-900 mb-2">Verify Email</h1>
               <p className="text-slate-400 dark:text-slate-500 mb-8">Enter the verification code sent to your email</p>
-              
+
               <form onSubmit={handleVerify}>
                 <div className="mb-6">
                   <label className="block text-sm font-medium text-slate-300 dark:text-slate-400 text-slate-700 mb-2">
@@ -796,7 +766,7 @@ export default function LoginPage() {
                     required
                   />
                 </div>
-                
+
                 <button
                   type="submit"
                   disabled={loading}
@@ -807,21 +777,21 @@ export default function LoginPage() {
               </form>
             </div>
           )}
-          
+
           {/* 2FA Setup Form */}
           {mode === '2fa' && (
             <div className="bg-slate-900/80 dark:bg-slate-900/80 bg-white/50 rounded-2xl p-8 backdrop-blur-xl border border-slate-800">
               <h1 className="text-3xl font-bold text-white dark:text-white text-slate-900 mb-2">Enable 2FA</h1>
               <p className="text-slate-400 dark:text-slate-500 mb-8">Scan the QR code with your authenticator app</p>
-              
+
               <div className="text-center mb-6">
                 <img src={twoFactorQR} alt="2FA QR Code" className="mx-auto" />
               </div>
-              
+
               <p className="text-sm text-slate-400 mb-4">
                 Or enter this code manually: <code className="bg-slate-800 px-2 py-1 rounded">{twoFactorSecret}</code>
               </p>
-              
+
               <form onSubmit={handleVerify2FA}>
                 <div className="mb-6">
                   <label className="block text-sm font-medium text-slate-300 dark:text-slate-400 text-slate-700 mb-2">
@@ -837,7 +807,7 @@ export default function LoginPage() {
                     required
                   />
                 </div>
-                
+
                 <button
                   type="submit"
                   disabled={loading}

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { generateMnemonic, validateMnemonic } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english.js';
+import { ethers } from 'ethers';
 
 // ============================================================================
 // Types
@@ -16,18 +17,18 @@ const MasterThemeContext = React.createContext({
 
 export function MasterWalletThemeProvider({ children }: { children: React.ReactNode }) {
   const [isDarkMode, setIsDarkMode] = useState(true);
-  
+
   useEffect(() => {
     const stored = localStorage.getItem('master_wallet_theme');
     if (stored) setIsDarkMode(stored === 'dark');
   }, []);
-  
+
   const toggleTheme = () => {
     const newMode = !isDarkMode;
     setIsDarkMode(newMode);
     localStorage.setItem('master_wallet_theme', newMode ? 'dark' : 'light');
   };
-  
+
   return (
     <MasterThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
       {children}
@@ -155,18 +156,22 @@ const TOKENS: Token[] = [
   { id: 12, chainId: 1, chainName: 'Ethereum', address: '0x7Fc66500c84A76ad7e9c93437bFc5Ac33E2DDaE9', symbol: 'AAVE', name: 'Aave', decimals: 18, isActive: true, isPopular: true, isStablecoin: false, priceUsd: 280 },
 ];
 
-// Generate deterministic address from seed phrase
-const generateAddressFromSeed = (seed: string, chainIndex: number): string => {
-  const seedHash = seed + chainIndex.toString();
-  let hash = 0;
-  for (let i = 0; i < seedHash.length; i++) {
-    const char = seedHash.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
+// Derive a real EVM address from a BIP-39 mnemonic using BIP-32/BIP-44 HD
+// derivation (m/44'/60'/0'/0/0) via ethers — the same path the canonical
+// go/wallet_api uses (verified against the BIP-44 test vector). All EVM
+// chains share one address because they use the same derivation path. Non-EVM
+// chains (Solana/Bitcoin/Tron/...) need chain-specific derivation libraries
+// and are left empty here; they are derived on demand by the backend.
+const generateAddressFromSeed = (mnemonic: string, chain: Blockchain): string => {
+  if (!chain.isEVM) {
+    return '';
   }
-  // Generate EVM address
-  const evmAddress = '0x' + Math.abs(hash).toString(16).padStart(40, '0').slice(0, 40);
-  return evmAddress;
+  try {
+    const node = ethers.utils.HDNode.fromMnemonic(mnemonic).derivePath("m/44'/60'/0'/0/0");
+    return node.address;
+  } catch {
+    return '';
+  }
 };
 
 // Generate backup code
@@ -298,7 +303,7 @@ const generateSeedPhrase = (): string => generateMnemonic(wordlist, 256);
 
 export default function MasterWalletPage() {
   const router = useRouter();
-  
+
   // Master Wallet State
   const [masterWallet, setMasterWallet] = useState<MasterWallet | null>(null);
   const [showSeedPhrase, setShowSeedPhrase] = useState(false);
@@ -312,10 +317,10 @@ export default function MasterWalletPage() {
   // Seed phrase typed into the import textarea (submitted explicitly rather
   // than auto-importing once 24 words are detected).
   const [importSeedPhrase, setImportSeedPhrase] = useState('');
-  
+
   // Tab State
   const [activeTab, setActiveTab] = useState<'dashboard' | 'fees' | 'blockchains' | 'tokens' | 'users' | 'transactions' | 'settings'>('dashboard');
-  
+
   // Fee Configuration
   const [fees, setFees] = useState<FeeConfig>({
     swapFee: 0.3,
@@ -326,54 +331,69 @@ export default function MasterWalletPage() {
     airdropFee: 0.2,
     campaignFee: 0.5,
   });
-  
+
   // Blockchain State
   const [blockchains, setBlockchains] = useState<Blockchain[]>(BLOCKCHAINS);
   const [showAddBlockchain, setShowAddBlockchain] = useState(false);
   const [newBlockchain, setNewBlockchain] = useState<Partial<Blockchain>>({});
-  
+
   // Token State
   const [tokens, setTokens] = useState<Token[]>(TOKENS);
   const [showAddToken, setShowAddToken] = useState(false);
   const [newToken, setNewToken] = useState<Partial<Token>>({});
-  
+
   // User Wallets State
   const [userWallets, setUserWallets] = useState<UserWallet[]>([]);
-  
+
   // Transactions State
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  
+
   // Stats
   const [stats, setStats] = useState<SystemStats>({
-    totalUsers: 12580,
-    activeUsers: 8920,
-    totalTransactions: 456230,
-    totalVolume: 125000000,
-    dailyRevenue: 15250,
-    monthlyRevenue: 457500,
+    totalUsers: 0,
+    activeUsers: 0,
+    totalTransactions: 0,
+    totalVolume: 0,
+    dailyRevenue: 0,
+    monthlyRevenue: 0,
   });
 
   // Check for existing master wallet. We only detect whether an encrypted
   // wallet blob exists; it is not decrypted here. The user must supply their
   // password to unlock it (see unlockWallet).
+  // Load admin stats + user wallets/transactions from the backend. No hardcoded
+  // sample data; the dashboard reflects the real wallet_api / monitoring state.
   useEffect(() => {
     if (hasStoredWallet()) {
       setHasExistingWallet(true);
     }
-    
-    // Load sample user wallets
-    setUserWallets([
-      { id: '1', address: '0x7a23...8d4f', seedPhrase: '', createdAt: Date.now() - 86400000 * 30, lastActive: Date.now() - 3600000, totalVolume: 25000, status: 'active' },
-      { id: '2', address: '0x3f8b...2c1e', seedPhrase: '', createdAt: Date.now() - 86400000 * 20, lastActive: Date.now() - 7200000, totalVolume: 15000, status: 'active' },
-      { id: '3', address: '0x9b2d...5a4c', seedPhrase: '', createdAt: Date.now() - 86400000 * 10, lastActive: Date.now() - 86400000, totalVolume: 8000, status: 'active' },
-    ]);
-    
-    // Load sample transactions
-    setTransactions([
-      { id: '1', type: 'swap', amount: 2500, token: 'USDT', chain: 'Ethereum', fromUser: '0x7a23...8d4f', toAddress: '0x3f8b...2c1e', fee: 7.5, masterWalletRevenue: 7.5, status: 'completed', timestamp: Date.now() - 3600000, txHash: '0xabc...123' },
-      { id: '2', type: 'withdraw', amount: 1000, token: 'USDC', chain: 'Polygon', fromUser: '0x3f8b...2c1e', toAddress: '0x9b2d...5a4c', fee: 1, masterWalletRevenue: 1, status: 'completed', timestamp: Date.now() - 7200000, txHash: '0xdef...456' },
-      { id: '3', type: 'bridge', amount: 5000, token: 'ETH', chain: 'Ethereum', fromUser: '0x9b2d...5a4c', toAddress: '0x1a2b...3c4d', fee: 25, masterWalletRevenue: 25, status: 'completed', timestamp: Date.now() - 86400000, txHash: '0x789...abc' },
-    ]);
+    (async () => {
+      const apiBase = ''; // same-origin -> Next.js proxy routes -> wallet_api
+      try {
+        const r = await fetch(`${apiBase}/api/v1/admin/stats`);
+        if (r.ok) {
+          const d = await r.json();
+          if (d) {
+            setStats({
+              totalUsers: d.totalUsers ?? 0,
+              activeUsers: d.activeUsers ?? 0,
+              totalTransactions: d.totalTransactions ?? 0,
+              totalVolume: d.totalVolume ?? 0,
+              dailyRevenue: d.dailyRevenue ?? 0,
+              monthlyRevenue: d.monthlyRevenue ?? 0,
+            });
+          }
+        }
+      } catch { /* backend unavailable; stats stay at zero */ }
+      try {
+        const wr = await fetch(`${apiBase}/api/v1/admin/wallets`);
+        if (wr.ok) setUserWallets(await wr.json());
+      } catch { /* leave empty */ }
+      try {
+        const tr = await fetch(`${apiBase}/api/v1/admin/transactions`);
+        if (tr.ok) setTransactions(await tr.json());
+      } catch { /* leave empty */ }
+    })();
   }, []);
 
   // Create Master Wallet
@@ -390,8 +410,8 @@ export default function MasterWalletPage() {
 
       // Generate addresses for all blockchains
       const addresses: { [key: string]: string } = {};
-      BLOCKCHAINS.forEach((chain, index) => {
-        addresses[chain.name] = generateAddressFromSeed(seedPhrase, index);
+      BLOCKCHAINS.forEach((chain) => {
+        addresses[chain.name] = generateAddressFromSeed(seedPhrase, chain);
       });
 
       const backupCode = generateBackupCode();
@@ -446,8 +466,8 @@ export default function MasterWalletPage() {
     }
 
     const addresses: { [key: string]: string } = {};
-    BLOCKCHAINS.forEach((chain, index) => {
-      addresses[chain.name] = generateAddressFromSeed(trimmed, index);
+    BLOCKCHAINS.forEach((chain) => {
+      addresses[chain.name] = generateAddressFromSeed(trimmed, chain);
     });
 
     const backupCode = generateBackupCode();
@@ -468,7 +488,7 @@ export default function MasterWalletPage() {
   // Add Blockchain
   const handleAddBlockchain = useCallback(() => {
     if (!newBlockchain.name || !newBlockchain.symbol) return;
-    
+
     const chain: Blockchain = {
       id: blockchains.length + 1,
       name: newBlockchain.name,
@@ -483,7 +503,7 @@ export default function MasterWalletPage() {
       isEVM: newBlockchain.isEVM || true,
       isNonEVM: newBlockchain.isNonEVM || false,
     };
-    
+
     setBlockchains(prev => [...prev, chain]);
     setNewBlockchain({});
     setShowAddBlockchain(false);
@@ -492,7 +512,7 @@ export default function MasterWalletPage() {
   // Add Token
   const handleAddToken = useCallback(() => {
     if (!newToken.name || !newToken.symbol) return;
-    
+
     const token: Token = {
       id: tokens.length + 1,
       chainId: newToken.chainId || 1,
@@ -506,7 +526,7 @@ export default function MasterWalletPage() {
       isStablecoin: newToken.isStablecoin || false,
       priceUsd: newToken.priceUsd || 0,
     };
-    
+
     setTokens(prev => [...prev, token]);
     setNewToken({});
     setShowAddToken(false);
@@ -527,7 +547,7 @@ export default function MasterWalletPage() {
             <h1 className="text-2xl font-bold">Master Wallet Setup</h1>
             <p className="text-slate-500 mt-2">Create or import your master wallet</p>
           </div>
-          
+
           {!masterWallet ? (
             <div className="space-y-4">
               <div>
@@ -551,12 +571,12 @@ export default function MasterWalletPage() {
               >
                 {isCreating ? 'Creating Wallet...' : 'Create New Master Wallet'}
               </button>
-              
+
               <div className="relative">
                 <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-300"></div></div>
                 <div className="relative flex justify-center text-sm"><span className="px-2 bg-white dark:bg-slate-800 text-slate-500">or</span></div>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium mb-2">Import with 24-word seed phrase</label>
                 <textarea
@@ -668,7 +688,7 @@ export default function MasterWalletPage() {
               </button>
             </div>
           </div>
-          
+
           {(showSeedPhrase || showBackupCode) && (
             <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
               {showSeedPhrase && (
@@ -766,7 +786,7 @@ export default function MasterWalletPage() {
                     </div>
                   </div>
                 </div>
-                
+
                 <div>
                   <h3 className="font-semibold mb-4">Recent Revenue</h3>
                   <div className="space-y-2">

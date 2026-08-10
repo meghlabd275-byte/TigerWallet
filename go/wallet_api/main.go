@@ -79,6 +79,15 @@ func main() {
 		wallet.GET("/nfts", handleNFTs)
 		wallet.POST("/send", handleSendTransaction)
 		wallet.POST("/sign", handleSignMessage)
+
+		// ---- Admin / dashboard routes (authenticated) ----
+		// Back the master-wallet dashboard with real PostgreSQL aggregates.
+		admin := wallet.Group("/admin")
+		{
+			admin.GET("/stats", handleAdminStats)
+			admin.GET("/wallets", handleAdminWallets)
+			admin.GET("/transactions", handleAdminTransactions)
+		}
 	}
 
 	// Also expose balance/tokens/tx/nfts/gas without auth for read-only public

@@ -267,6 +267,17 @@
 - multisig_service: broadcastTransaction (main.go) and broadcastRawTransaction (multisig_service.go) use ethclient.Dial + types.NewTx(DynamicFeeTx) + types.SignTx + client.SendTransaction. RPC from ETH_RPC_URL env.
 - SignHash uses crypto.Sign(hash, privKey), v normalized to 27/28.
 - mpc/enterprise.go: real Shamir + Lagrange over secp256k1; CombineShares reconstructs then crypto.Sign. Real crypto.Ecrecover verification. secp256k1 only (no P256 for crypto).
+- mpc/server.go: REAL HTTP service exposing the TSS engine. Endpoints:
+  POST /api/v1/mpc/create ({threshold,totalShards} -> {keyId,address,publicKey});
+  POST /api/v1/mpc/sign ({keyId,messageHash(hex)} -> {signature}); GET
+  /api/v1/mpc/wallet/:keyId; GET /api/v1/health. Port from MPC_PORT (default
+  9099). VERIFIED end-to-end: Ecrecover recovers the wallet address from the
+  produced signature. The old demo print-based main() was removed from
+  enterprise.go. go build + go vet clean.
+- Frontend MPCLogin (src/components/mpc/MPCLogin.tsx) now calls the real MPC
+  backend (createMPCWallet POSTs to /api/v1/mpc/create). login() does a real
+  OIDC redirect (throws if no client_id). loginWithEmail requests a real
+  magic-link. NO MORE simulateOAuthFlow / random-32-byte local key.
 - pkg/threshold/sign.go: HashMessage = Keccak-256; CombineSignatures/SignWithTSS use lagrangeCoefficients + crypto.Ecrecover; low-s normalization. Structs carry PublicKey []byte; SigningSession has GroupPublicKey []byte.
 - Build/vet both clean: cd go/<dir> && go build ./... && go vet ./...
 
@@ -319,3 +330,27 @@
 - tsc --noEmit: 0 errors in all changed files (57 pre-existing errors in
   OTHER pages like hardware-wallet/launchpad/lending/bridge remain — not
   from these changes).
+
+## frontend/web_nextjs fixes 2026-08-09/10 (TS strict + wallet hook)
+- ALL TypeScript errors fixed (48 -> 0 via `npx tsc --noEmit`). Key fixes:
+  - ThemeProvider (app/components/ThemeProvider.tsx): added full ThemeColors
+    palette (bgPrimary/Secondary/Tertiary/Card, textPrimary/Secondary/Tertiary,
+    border, accent, success, error, warning, overlay) + LIGHT_COLORS/DARK_COLORS
+    + `colors` in context, so listing/admin pages render in both themes.
+  - launchpad: `?? 0` on optional vesting fields, `|| '#'` on optional href.
+  - master_wallet: cast `Uint8Array` -> `BufferSource` for WebCrypto
+    deriveKey/decrypt (TS 5.7 typing of `Uint8Array<ArrayBufferLike>`).
+  - bug-bounty: added `'verified'` to status union.
+  - protection-fund: real `claims` state (not MOCK_CLAIMS), field names
+    claimId/userAddress, same-origin API_BASE.
+  - fiat-ramp: `address || undefined` coercion.
+  - farming/pool/twap: MUI v5 `InputAdornment` requires `position` prop.
+  - passkey: removed duplicate local BrowserAdapter class; fixed
+    PublicKeyCredentialParameters type; typeof checks for WebAuthn support.
+  - client.ts: removed duplicate startCopying method.
+- app/wallet.ts: REWROTE the mock `useWallet` hook (hardcoded fake address
+  0x742d35Cc... + balance '1.5') as a REAL EIP-1193 injected-provider hook:
+  connect() -> eth_requestAccounts; balance via eth_getBalance; listens to
+  accountsChanged/chainChanged; silent reconnect on mount via eth_accounts.
+  The canonical `window.ethereum` (Eip1193Provider) global type lives here;
+  TigerWalletKit.tsx's duplicate declaration was removed.
