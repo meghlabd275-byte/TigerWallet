@@ -47,6 +47,7 @@ export interface Account {
 }
 
 export interface TigerWalletKitOptions {
+  children?: React.ReactNode;
   chains: Chain[];
   wallets?: Wallet[];
   theme?: 'light' | 'dark' | 'auto';
@@ -134,7 +135,7 @@ export const DEFAULT_WALLETS: Wallet[] = [
       if (typeof window === 'undefined' || !window.ethereum) {
         throw new Error('MetaMask not installed');
       }
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
       return provider.getSigner();
     },
     isInstalled: () => typeof window !== 'undefined' && !!window.ethereum?.isMetaMask,
@@ -156,7 +157,7 @@ export const DEFAULT_WALLETS: Wallet[] = [
       if (typeof window === 'undefined' || !window.ethereum) {
         throw new Error('Coinbase Wallet not installed');
       }
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
       return provider.getSigner();
     },
     isInstalled: () => typeof window !== 'undefined' && !!window.ethereum?.isCoinbaseWallet,
@@ -171,7 +172,7 @@ export const DEFAULT_WALLETS: Wallet[] = [
         throw new Error('Browser only');
       }
       // Use injected provider or create connection
-      const provider = new ethers.BrowserProvider(window.ethereum || {});
+      const provider = new ethers.providers.Web3Provider(window.ethereum as any);
       return provider.getSigner();
     },
   },
@@ -192,7 +193,10 @@ export function TigerWalletKitProvider({
   const [account, setAccount] = useState<Account | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [activeChain, setActiveChain] = useState<Chain | null>(chains[0] || null);
-  const [theme, setTheme] = useState<'light' | 'dark'>(initialTheme);
+  const resolvedTheme: 'light' | 'dark' = initialTheme === 'auto'
+    ? (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    : initialTheme;
+  const [theme, setTheme] = useState<'light' | 'dark'>(resolvedTheme);
 
   // Apply theme to document
   useEffect(() => {
@@ -217,7 +221,8 @@ export function TigerWalletKitProvider({
     try {
       const signer = await wallet.connector();
       const address = await signer.getAddress();
-      const network = await signer.provider.getNetwork();
+      const provider = signer.provider as ethers.providers.JsonRpcProvider;
+      const network = await provider.getNetwork();
       
       const newAccount: Account = {
         address,
@@ -255,7 +260,7 @@ export function TigerWalletKitProvider({
     if (account?.signer?.provider) {
       try {
         // Request chain switch
-        await account.signer.provider.send('wallet_switchEthereumChain', [
+        const swp = account.signer.provider as ethers.providers.JsonRpcProvider; await swp.send('wallet_switchEthereumChain', [
           { chainId: `0x${chainId.toString(16)}` },
         ]);
         setActiveChain(chain);
@@ -265,7 +270,7 @@ export function TigerWalletKitProvider({
       } catch (error: any) {
         // Chain not added to wallet, try to add
         if (error.code === 4902) {
-          await account.signer.provider.send('wallet_addEthereumChain', [{
+          const adp = account.signer.provider as ethers.providers.JsonRpcProvider; await adp.send('wallet_addEthereumChain', [{
             chainId: `0x${chainId.toString(16)}`,
             chainName: chain.name,
             nativeCurrency: chain.nativeCurrency,
@@ -329,7 +334,7 @@ export function ConnectButton({
   showBalance = true,
   chainSelector = true,
 }: ConnectButtonProps) {
-  const { account, isConnecting, connect, disconnect, chains, activeChain, switchChain } = useTigerWallet();
+  const { account, isConnecting, connect, disconnect, chains, activeChain, switchChain, theme } = useTigerWallet();
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [showChainModal, setShowChainModal] = useState(false);
 

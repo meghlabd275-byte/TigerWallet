@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { useWallet } from '../wallet-context';
+import { useWallet } from '../../../app/wallet';
 import { ethers } from 'ethers';
 
 type Provider = 'google' | 'apple' | 'discord' | 'twitter' | 'email';
@@ -39,7 +39,7 @@ interface SocialLoginConfig {
 }
 
 export function useMPCLogin(config: SocialLoginConfig) {
-  const { provider } = useWallet();
+  useWallet();
   const [state, setState] = useState<MPCLoginState>({
     isLoading: false,
     error: null,
@@ -149,17 +149,8 @@ export function useMPCLogin(config: SocialLoginConfig) {
       const credential = await navigator.credentials.get({
         publicKey: {
           challenge: new Uint8Array(32),
-          rp: {
-            name: 'TigerWallet',
-          },
-          user: {
-            id: new Uint8Array(16),
-            name: 'user',
-            displayName: 'User',
-          },
-          pubKeyCredParams: [
-            { type: 'public-key', alg: -7 },
-          ],
+          timeout: 60000,
+          userVerification: 'preferred',
         },
       });
 

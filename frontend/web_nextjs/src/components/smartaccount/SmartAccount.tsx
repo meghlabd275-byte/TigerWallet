@@ -11,7 +11,7 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { useWallet } from './wallet-context';
+import { useWallet } from '../../../app/wallet';
 import { ethers, BigNumber } from 'ethers';
 
 // Types
@@ -88,7 +88,13 @@ const FACTORY_ABI = [
 ];
 
 export function useSmartAccount(config: SmartAccountConfig) {
-  const { provider, address: eoaAddress } = useWallet();
+  const { address: eoaAddress } = useWallet();
+  // Build a real ethers provider from the injected EIP-1193 provider rather
+  // than relying on the wallet context (which does not expose one).
+  const provider = React.useMemo(() => {
+    if (typeof window === 'undefined' || !(window as any).ethereum) return null;
+    return new ethers.providers.Web3Provider((window as any).ethereum);
+  }, []);
   const [state, setState] = useState<SmartAccountState>({
     address: null,
     isDeployed: false,

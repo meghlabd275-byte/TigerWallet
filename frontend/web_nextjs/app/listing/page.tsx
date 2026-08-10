@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react'
 import { useTheme } from '../components/ThemeProvider'
 
 // API Base URL
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8097'
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || ''
 
 interface Tier {
   id: string

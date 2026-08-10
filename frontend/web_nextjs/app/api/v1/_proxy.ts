@@ -12,6 +12,9 @@ export const STAKING_SERVICE_URL = process.env.STAKING_SERVICE_URL || process.en
 // The NFT marketplace service (go/nft_service) runs on port 8008.
 export const NFT_SERVICE_URL = process.env.NFT_SERVICE_URL || process.env.NEXT_PUBLIC_NFT_URL || 'http://localhost:8008';
 
+// The listing service (go/listing_service) runs on port 8097.
+export const LISTING_SERVICE_URL = process.env.LISTING_SERVICE_URL || process.env.NEXT_PUBLIC_LISTING_URL || 'http://localhost:8097';
+
 // The lending service (go/lending_service) runs on port 8009.
 export const LENDING_SERVICE_URL = process.env.LENDING_SERVICE_URL || process.env.NEXT_PUBLIC_LENDING_URL || 'http://localhost:8009';
 
