@@ -763,17 +763,6 @@ if (typeof document !== 'undefined') {
   document.head.appendChild(styleSheet);
 }
 
-// Add type for window.ethereum
-declare global {
-  interface Window {
-    ethereum?: {
-      isMetaMask?: boolean;
-      isCoinbaseWallet?: boolean;
-      request: (args: any) => Promise<any>;
-      on: (event: string, callback: any) => void;
-      removeListener: (event: string, callback: any) => void;
-    };
-  }
-}
+// window.ethereum type is declared centrally in app/wallet.ts (Eip1193Provider).
 
 export default TigerWalletKitProvider;
