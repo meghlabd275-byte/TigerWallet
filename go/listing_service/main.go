@@ -982,6 +982,7 @@ func main() {
 
 	// Setup routes
 	ls.SetupRoutes(r)
+	ls.KYCRouter(r)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("Listing service starting on %s", addr)
