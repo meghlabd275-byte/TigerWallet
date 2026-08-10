@@ -133,3 +133,4 @@ go/perpetual_service/perpetual_service
 go/rpc_service/rpc_service
 *.test
 /go/social_recovery_service/social_recovery_service
+/go/signature_service/signature_service
