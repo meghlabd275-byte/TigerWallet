@@ -56,6 +56,8 @@ func main() {
 		api.POST("/position", svc.openPosition)
 		api.POST("/position/:id/close", svc.closePosition)
 		api.GET("/positions", svc.listPositions)
+		api.GET("/users/:userId/positions", svc.listUserPositions)
+		api.POST("/order", svc.openOrder)
 		api.GET("/pairs/:id/funding", svc.fundingHistory)
 	}
 

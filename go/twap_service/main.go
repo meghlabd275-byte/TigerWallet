@@ -56,6 +56,8 @@ func main() {
 		api.POST("", svc.createOrder)
 		api.GET("/:id", svc.getOrder)
 		api.POST("/:id/cancel", svc.cancelOrder)
+		api.PUT("/:id/cancel", svc.cancelOrder)
+		api.DELETE("/:id/cancel", svc.cancelOrder)
 		api.GET("/:id/fills", svc.listFills)
 	}
 

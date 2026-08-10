@@ -171,8 +171,8 @@ func ReconstructSecret(shares []SecretShare, threshold uint) (string, error) {
 			return "", fmt.Errorf("invalid share format")
 		}
 
-		x := new(big.Int).SetString(parts[0], 16)
-		y := new(big.Int).SetString(parts[1], 16)
+		x, _ := new(big.Int).SetString(parts[0], 16)
+		y, _ := new(big.Int).SetString(parts[1], 16)
 
 		// Calculate Lagrange coefficient
 		numerator := big.NewInt(1)
@@ -182,7 +182,7 @@ func ReconstructSecret(shares []SecretShare, threshold uint) (string, error) {
 			if i != j {
 				shareJ := shares[j]
 				partsJ := strings.Split(shareJ.ShareData, ":")
-				xj := new(big.Int).SetString(partsJ[0], 16)
+				xj, _ := new(big.Int).SetString(partsJ[0], 16)
 
 				// numerator *= -xj
 				numerator.Mul(numerator, xj)
@@ -374,6 +374,20 @@ func (s *SocialRecoveryService) GetWallet(idOrAddress string) (*Wallet, error) {
 		return nil, fmt.Errorf("wallet not found")
 	}
 	return wallet, nil
+}
+
+// ListWallets returns every registered wallet. When owner is non-empty the
+// result is filtered to that owner's wallets. Backs GET /api/v1/social-recovery/wallets.
+func (s *SocialRecoveryService) ListWallets(owner string) []*Wallet {
+	out := []*Wallet{}
+	for _, w := range s.wallets {
+		if owner != "" && !strings.EqualFold(w.Owner, owner) {
+			continue
+		}
+		cp := *w
+		out = append(out, &cp)
+	}
+	return out
 }
 
 // ============================================================================
@@ -644,6 +658,7 @@ func (s *SocialRecoveryService) RegisterRoutes(r *gin.Engine) {
 	api := r.Group("/api/v1/social-recovery")
 	{
 		api.POST("/wallets", s.handleRegisterWallet)
+		api.GET("/wallets", s.handleListWallets)
 		api.GET("/wallets/:id", s.handleGetWallet)
 
 		api.POST("/wallets/:id/guardians", s.handleAddGuardian)
@@ -690,6 +705,14 @@ func (s *SocialRecoveryService) handleGetWallet(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, wallet)
+}
+
+// handleListWallets backs GET /api/v1/social-recovery/wallets. Supports an
+// optional ?owner= filter so a user can list only their own wallets.
+func (s *SocialRecoveryService) handleListWallets(c *gin.Context) {
+	owner := c.Query("owner")
+	wallets := s.ListWallets(owner)
+	c.JSON(http.StatusOK, gin.H{"wallets": wallets, "count": len(wallets)})
 }
 
 func (s *SocialRecoveryService) handleAddGuardian(c *gin.Context) {

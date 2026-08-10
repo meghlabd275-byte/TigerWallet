@@ -53,6 +53,7 @@ func main() {
 		api.GET("/rounds/:id", svc.getRound)
 		api.POST("/rounds", svc.auth(), svc.createRound) // admin-gated inside
 		api.POST("/participate", svc.auth(), svc.participate)
+		api.POST("/rounds/:id/participate", svc.auth(), svc.participateByRound)
 		api.GET("/participations", svc.auth(), svc.listParticipations)
 		api.POST("/claim", svc.auth(), svc.claim)
 	}
@@ -239,6 +240,32 @@ func (s *service) participate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	s.participateCore(c, req)
+}
+
+// participateByRound accepts the round id from the URL path (`:id`) instead of
+// the request body, then delegates to the standard participate flow. The
+// frontend terminal routes call POST /api/v1/ieo/rounds/:id/participate.
+func (s *service) participateByRound(c *gin.Context) {
+	roundID := c.Param("id")
+	if roundID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "round id required"})
+		return
+	}
+	var body map[string]any
+	_ = c.ShouldBindJSON(&body) // body optional; amount may be query or body
+	amount, _ := body["amount"].(string)
+	if amount == "" {
+		amount = c.Query("amount")
+	}
+	if amount == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "amount required"})
+		return
+	}
+	s.participateCore(c, participateReq{RoundID: roundID, Amount: amount})
+}
+
+func (s *service) participateCore(c *gin.Context, req participateReq) {
 	amt, ok := new(big.Int).SetString(req.Amount, 10)
 	if !ok || amt.Sign() <= 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid amount"})
