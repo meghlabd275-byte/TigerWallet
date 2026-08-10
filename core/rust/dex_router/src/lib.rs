@@ -58,7 +58,7 @@ impl From<RouterError> for String {
 // ============================================================================
 
 pub const Q96: u128 = 1 << 96;
-pub const Q128: u128 = 1 << 128;
+// Q128 (2^128) intentionally omitted: unrepresentable in u128 and unused here.
 pub const MAX_HOPS: usize = 6;
 pub const MAX_INTERMEDIATE_TOKENS: usize = 50;
 pub const MIN_LIQUIDITY: u128 = 1000;
@@ -252,7 +252,7 @@ pub struct QuoteRequest {
     pub excluded_dexes: Vec<DEXProtocol>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct RouteNode {
     token: String,
     amount_out: u128,

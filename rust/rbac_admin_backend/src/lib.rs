@@ -13,14 +13,14 @@ use uuid::Uuid;
 
 // ==================== TYPES ====================
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UserStatus {
     Active = 1,
     Suspended = 2,
     Banned = 3,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KYCStatus {
     None = 0,
     Pending = 1,
@@ -28,14 +28,14 @@ pub enum KYCStatus {
     Rejected = 3,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TransactionStatus {
     Pending = 1,
     Completed = 2,
     Failed = 3,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TransactionType {
     Deposit = 1,
     Withdrawal = 2,
@@ -43,14 +43,14 @@ pub enum TransactionType {
     Swap = 4,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PairStatus {
     Active = 1,
     Suspended = 2,
     Halted = 3,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum APIKeyTier {
     Free = 1,
     Basic = 2,
@@ -327,7 +327,7 @@ impl RBACAdminService {
             Blockchain { id: "solana".to_string(), name: "Solana".to_string(), symbol: "SOL".to_string(), chain_id: 101, is_evm: false, rpc_url: "https://api.mainnet-beta.solana.com".to_string(), explorer_url: "https://solscan.io".to_string(), native_token: "SOL".to_string(), decimals: 9, is_active: true, avg_gas_price_gwei: 0.0 },
         ];
         
-        let mut blockchains = self.blockchains.write();
+        let mut blockchains = self.blockchains.try_write().expect("init lock");
         for chain in chains {
             blockchains.insert(chain.id.clone(), chain);
         }
@@ -340,7 +340,7 @@ impl RBACAdminService {
             BotTier { id: "tier_3".to_string(), name: "tier_3".to_string(), display_name: "Enterprise".to_string(), monthly_fee_usd: 10000.0, per_dex_fee_usd: 1000.0, per_cex_fee_usd: 100.0, max_bots: 10, max_dexs: 20, max_cexs: 200, max_position_usd: 5000000.0, max_daily_volume: 50000000.0, latency_target_ms: 10, is_active: true },
         ];
         
-        let mut bot_tiers = self.bot_tiers.write();
+        let mut bot_tiers = self.bot_tiers.try_write().expect("init lock");
         for tier in tiers {
             bot_tiers.insert(tier.id.clone(), tier);
         }
@@ -354,7 +354,7 @@ impl RBACAdminService {
             FeeStructure { id: "deposit".to_string(), fee_type: "deposit".to_string(), asset: "*".to_string(), fee_percent: 0.0, fee_fixed: 0.0, min_fee: 0.0, max_fee: None, tier: "all".to_string(), is_active: true, chain_id: 0 },
         ];
         
-        let mut fee_structures = self.fee_structures.write();
+        let mut fee_structures = self.fee_structures.try_write().expect("init lock");
         for fee in fees {
             fee_structures.insert(fee.id.clone(), fee);
         }
@@ -369,7 +369,7 @@ impl RBACAdminService {
             TradingPair { id: "sol_usdt".to_string(), base: "SOL".to_string(), quote: "USDT".to_string(), pair_name: "SOL/USDT".to_string(), price: 150.0, volume_24h: 20000000.0, liquidity: 40000000.0, status: PairStatus::Active, chain_id: 101, created_at: Utc::now().timestamp(), updated_at: Utc::now().timestamp() },
         ];
         
-        let mut trading_pairs = self.trading_pairs.write();
+        let mut trading_pairs = self.trading_pairs.try_write().expect("init lock");
         for pair in pairs {
             trading_pairs.insert(pair.id.clone(), pair);
         }

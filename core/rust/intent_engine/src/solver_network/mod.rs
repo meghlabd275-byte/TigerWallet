@@ -5,6 +5,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+use crate::Intent;
+
 #[derive(Debug, Clone)]
 pub struct Solver {
     pub id: String,

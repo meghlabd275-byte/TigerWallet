@@ -283,7 +283,10 @@ impl MMEngine {
     
     /// Fill order
     pub fn fill_order(&mut self, order_id: &str, amount: f64) -> bool {
-        let order = self.orders.get_mut(order_id)?;
+        let order = match self.orders.get_mut(order_id) {
+            Some(o) => o,
+            None => return false,
+        };
         
         if order.status != MMOrderStatus::Open && order.status != MMOrderStatus::PartiallyFilled {
             return false;
@@ -311,7 +314,10 @@ impl MMEngine {
     
     /// Cancel order
     pub fn cancel_order(&mut self, order_id: &str) -> bool {
-        let order = self.orders.get_mut(order_id)?;
+        let order = match self.orders.get_mut(order_id) {
+            Some(o) => o,
+            None => return false,
+        };
         
         if order.status == MMOrderStatus::Open || order.status == MMOrderStatus::PartiallyFilled {
             order.status = MMOrderStatus::Cancelled;

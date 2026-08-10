@@ -108,6 +108,7 @@ impl BankingService {
     }
 
     pub fn add_account(&self, req: AddBankAccountRequest) -> Result<BankAccount, Error> {
+        let user_id = req.user_id.clone();
         let account = BankAccount {
             id: Uuid::new_v4().to_string(),
             user_id: req.user_id,
@@ -118,12 +119,12 @@ impl BankingService {
             currency: req.currency,
             created_at: Utc::now(),
         };
-        
+
         let mut accounts = self.accounts.write()
             .map_err(|_| Error::Internal("Lock error".to_string()))?;
-        
-        accounts.entry(req.user_id).or_insert_with(Vec::new);
-        if let Some(user_accounts) = accounts.get_mut(&req.user_id) {
+
+        accounts.entry(user_id.clone()).or_insert_with(Vec::new);
+        if let Some(user_accounts) = accounts.get_mut(&user_id) {
             user_accounts.push(account.clone());
         }
         

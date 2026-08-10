@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 /// Rate Limiter
 pub struct RateLimiter {
-    requests: RwLock<HashMap<String, Vec<DateTime>>>,
+    requests: RwLock<HashMap<String, Vec<DateTime<Utc>>>>,
     limit: u64,
 }
 
@@ -26,8 +26,7 @@ impl RateLimiter {
         let now = Utc::now();
         
         let client_requests = requests.entry(client_id.to_string()).or_insert_with(Vec::new);
-        client_requests.retain(|t| (now - *t).num_seconds() < 60);
-        
+        client_requests.retain(|t| now.timestamp() - t.timestamp() < 60);        
         if client_requests.len() as u64 >= self.limit {
             return Err(Error::RateLimitExceeded);
         }

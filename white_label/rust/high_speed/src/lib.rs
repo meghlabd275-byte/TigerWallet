@@ -11,6 +11,7 @@ use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use sha2::Digest;
 
 // ============================================================================
 // High-Speed Authentication Module
@@ -360,8 +361,7 @@ impl PasswordHasher {
     /// Hash password with bcrypt - production ready
     pub fn hash(password: &str) -> Result<String, PasswordHashError> {
         // Use bcrypt for production
-        let salt = bcrypt::gen_salt(12);
-        bcrypt::hash(password, salt)
+        bcrypt::hash(password, bcrypt::DEFAULT_COST)
             .map_err(|e| PasswordHashError::HashFailed(e.to_string()))
     }
 

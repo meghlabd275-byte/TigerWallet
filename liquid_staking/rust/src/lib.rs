@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use parking_lot::RwLock;
 use chrono::{DateTime, Utc};
+use sha3::Digest;
 
 /// Liquid staking pool configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,7 +24,7 @@ pub struct LiquidStakingConfig {
     pub lst_token_symbol: String,
     pub reward_token: String,      // Reward token
     pub min_stake_amount: u64,
-    pub max_stake_amount: u64,
+    pub max_stake_amount: u128,
     pub cooldown_period_seconds: u64,
     pub instant_unstake_fee_bps: u16,  // Basis points for instant unstake
     pub apy_bps: u32,             // Annual percentage yield in basis points
@@ -39,7 +40,7 @@ impl Default for LiquidStakingConfig {
             lst_token_symbol: "twETH".to_string(),
             reward_token: "0x0000000000000000000000000000000000000000".to_string(),
             min_stake_amount: 10000000000000000,  // 0.01 ETH
-            max_stake_amount: 1000000000000000000000, // 1000 ETH
+            max_stake_amount: 1000000000000000000000u128, // 1000 ETH
             cooldown_period_seconds: 86400 * 7,  // 7 days
             instant_unstake_fee_bps: 50,  // 0.5%
             apy_bps: 500,  // 5% APY
@@ -137,7 +138,7 @@ impl LiquidStakingPool {
         if amount < config.min_stake_amount {
             return Err(StakingError::AmountTooSmall);
         }
-        if amount > config.max_stake_amount {
+        if (amount as u128) > config.max_stake_amount {
             return Err(StakingError::AmountTooLarge);
         }
 
@@ -221,7 +222,7 @@ impl LiquidStakingPool {
             },
             instant,
             instant_fee_bps: config.instant_unstake_fee_bps,
-            status: if instant { UnstakeStatus::Ready } else { UnkakeStatus::Pending },
+            status: if instant { UnstakeStatus::Ready } else { UnstakeStatus::Pending },
         };
 
         // Store request

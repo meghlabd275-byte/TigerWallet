@@ -34,7 +34,7 @@ pub const TOP_DEXS: [&str; 20] = [
 
 // ============================================================================
 // TOP 200 CEXs (major centralized exchanges)
-pub const TOP_CEXS: [&str; 200] = [
+pub const TOP_CEXS: [&str; 176] = [
     "binance", "coinbase", "kraken", "okx", "bybit", "kucoin", "htx", "gateio",
     "bitget", "mexc", "binance_us", "crypto_com", "lbank", "bitmart", "bitex",
     "cryptology", "luno", "valr", "bit2c", "koinearth", "bitso", "btcmex",

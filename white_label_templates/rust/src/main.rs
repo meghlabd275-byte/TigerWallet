@@ -356,16 +356,16 @@ async fn get_templates(
     let templates: Vec<WhiteLabelTemplate> = rows
         .iter()
         .map(|row| {
-            let config_json: serde_json::Value = row.get("config").unwrap_or(serde_json::json!({}));
-            let pricing_json: serde_json::Value = row.get("pricing").unwrap_or(serde_json::json!({}));
+            let config_json: serde_json::Value = row.try_get("config").unwrap_or(serde_json::json!({}));
+            let pricing_json: serde_json::Value = row.try_get("pricing").unwrap_or(serde_json::json!({}));
             
             WhiteLabelTemplate {
-                id: row.get("id").unwrap_or_default(),
-                name: row.get("name").unwrap_or_default(),
-                description: row.get("description").unwrap_or_default(),
+                id: row.try_get("id").unwrap_or_default(),
+                name: row.try_get("name").unwrap_or_default(),
+                description: row.try_get("description").unwrap_or_default(),
                 category: TemplateCategory::Custom,
                 template_type: TemplateType::Starter,
-                thumbnail_url: row.get("thumbnail_url").unwrap_or_default(),
+                thumbnail_url: row.try_get("thumbnail_url").unwrap_or_default(),
                 preview_urls: vec![],
                 config: serde_json::from_value(config_json).unwrap_or(TemplateConfig {
                     branding: BrandingConfig {
@@ -435,11 +435,11 @@ async fn get_templates(
                     features_included: vec![],
                     support_level: "standard".to_string(),
                 }),
-                is_featured: row.get("is_featured").unwrap_or_default(),
-                is_premium: row.get("is_premium").unwrap_or_default(),
-                download_count: row.get("download_count").unwrap_or_default(),
-                rating: row.get("rating").unwrap_or(0.0),
-                review_count: row.get("review_count").unwrap_or_default(),
+                is_featured: row.try_get("is_featured").unwrap_or_default(),
+                is_premium: row.try_get("is_premium").unwrap_or_default(),
+                download_count: row.try_get("download_count").unwrap_or_default(),
+                rating: row.try_get("rating").unwrap_or(0.0),
+                review_count: row.try_get("review_count").unwrap_or_default(),
                 status: TemplateStatus::Active,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
@@ -466,16 +466,16 @@ async fn get_template(state: web::Data<AppState>, path: web::Path<String>) -> im
 
     match row {
         Ok(Some(row)) => {
-            let config_json: serde_json::Value = row.get("config").unwrap_or(serde_json::json!({}));
-            let pricing_json: serde_json::Value = row.get("pricing").unwrap_or(serde_json::json!({}));
+            let config_json: serde_json::Value = row.try_get("config").unwrap_or(serde_json::json!({}));
+            let pricing_json: serde_json::Value = row.try_get("pricing").unwrap_or(serde_json::json!({}));
             
             let template = WhiteLabelTemplate {
-                id: row.get("id").unwrap_or_default(),
-                name: row.get("name").unwrap_or_default(),
-                description: row.get("description").unwrap_or_default(),
+                id: row.try_get("id").unwrap_or_default(),
+                name: row.try_get("name").unwrap_or_default(),
+                description: row.try_get("description").unwrap_or_default(),
                 category: TemplateCategory::Custom,
                 template_type: TemplateType::Starter,
-                thumbnail_url: row.get("thumbnail_url").unwrap_or_default(),
+                thumbnail_url: row.try_get("thumbnail_url").unwrap_or_default(),
                 preview_urls: vec![],
                 config: serde_json::from_value(config_json).unwrap_or(TemplateConfig {
                     branding: BrandingConfig {
@@ -545,11 +545,11 @@ async fn get_template(state: web::Data<AppState>, path: web::Path<String>) -> im
                     features_included: vec![],
                     support_level: "standard".to_string(),
                 }),
-                is_featured: row.get("is_featured").unwrap_or_default(),
-                is_premium: row.get("is_premium").unwrap_or_default(),
-                download_count: row.get("download_count").unwrap_or_default(),
-                rating: row.get("rating").unwrap_or(0.0),
-                review_count: row.get("review_count").unwrap_or_default(),
+                is_featured: row.try_get("is_featured").unwrap_or_default(),
+                is_premium: row.try_get("is_premium").unwrap_or_default(),
+                download_count: row.try_get("download_count").unwrap_or_default(),
+                rating: row.try_get("rating").unwrap_or(0.0),
+                review_count: row.try_get("review_count").unwrap_or_default(),
                 status: TemplateStatus::Active,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
@@ -680,16 +680,16 @@ async fn get_template_reviews(
     let reviews: Vec<TemplateReview> = rows
         .iter()
         .map(|row| TemplateReview {
-            id: row.get("id").unwrap_or_default(),
-            template_id: row.get("template_id").unwrap_or_default(),
-            user_id: row.get("user_id").unwrap_or_default(),
-            rating: row.get("rating").unwrap_or_default(),
-            title: row.get("title").unwrap_or_default(),
-            content: row.get("content").unwrap_or_default(),
+            id: row.try_get("id").unwrap_or_default(),
+            template_id: row.try_get("template_id").unwrap_or_default(),
+            user_id: row.try_get("user_id").unwrap_or_default(),
+            rating: row.try_get("rating").unwrap_or_default(),
+            title: row.try_get("title").unwrap_or_default(),
+            content: row.try_get("content").unwrap_or_default(),
             pros: vec![],
             cons: vec![],
-            helpful_count: row.get("helpful_count").unwrap_or_default(),
-            status: row.get("status").unwrap_or_default(),
+            helpful_count: row.try_get("helpful_count").unwrap_or_default(),
+            status: row.try_get("status").unwrap_or_default(),
             created_at: Utc::now(),
         })
         .collect();

@@ -43,7 +43,7 @@ impl Portfolio {
         let mut total_unrealized = Decimal::from(0);
         let mut total_cost = Decimal::from(0);
 
-        for pos in &self.positions {
+        for pos in &mut self.positions {
             pos.unrealized_pnl = (pos.current_price - pos.avg_cost) * pos.quantity;
             total_unrealized += pos.unrealized_pnl;
             total_cost += pos.cost_basis;
@@ -51,7 +51,7 @@ impl Portfolio {
 
         let total = self.pnl.realized + total_unrealized;
         let roi = if total_cost > Decimal::from(0) {
-            (total / total_cost) * 100
+            (total / total_cost) * Decimal::from(100)
         } else {
             Decimal::from(0)
         };

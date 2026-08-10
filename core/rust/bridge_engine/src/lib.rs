@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Supported chains
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ChainId {
     Ethereum = 1,
     BSC = 56,
@@ -22,8 +22,8 @@ pub enum ChainId {
     Optimism = 10,
     Avalanche = 43114,
     Solana = 101,
-    Aptos = 1,
-    SUI = 1,
+    Aptos = 4,
+    SUI = 19,
 }
 
 impl ChainId {
@@ -43,7 +43,7 @@ impl ChainId {
 }
 
 /// Bridge protocol
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BridgeProtocol {
     LayerZero,
     Hyperlane,
@@ -105,7 +105,7 @@ pub struct BridgeTransfer {
     pub updated_at: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TransferStatus {
     Pending,
     Sent,
@@ -199,7 +199,7 @@ impl BridgeEngine {
     }
 
     /// Create bridge transfer
-    pub fn create_transfer(&self, request: &BridgeQuoteRequest) -> Result<BridgeTransfer, String> {
+    pub fn create_transfer(&mut self, request: &BridgeQuoteRequest) -> Result<BridgeTransfer, String> {
         let quote = self.get_quote(request).ok_or("No route available")?;
         
         let transfer = BridgeTransfer {

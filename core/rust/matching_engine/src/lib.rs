@@ -165,7 +165,7 @@ pub struct Trade {
 // ============================================================================
 
 /// Order book for a trading pair
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct OrderBook {
     pub pair: String,
     pub bids: VecDeque<Order>,  // Buy orders, sorted by price desc
@@ -186,30 +186,24 @@ impl OrderBook {
         match order.side {
             OrderSide::Buy => {
                 // Insert sorted by price desc, then by time
-                let mut inserted = false;
-                for (i, existing) in self.bids.iter().enumerate() {
-                    if existing.price < order.price {
-                        self.bids.insert(i, order);
-                        inserted = true;
-                        break;
-                    }
-                }
-                if !inserted {
-                    self.bids.push_back(order);
+                let pos = self
+                    .bids
+                    .iter()
+                    .position(|existing| existing.price < order.price);
+                match pos {
+                    Some(i) => self.bids.insert(i, order),
+                    None => self.bids.push_back(order),
                 }
             }
             OrderSide::Sell => {
                 // Insert sorted by price asc, then by time
-                let mut inserted = false;
-                for (i, existing) in self.asks.iter().enumerate() {
-                    if existing.price > order.price {
-                        self.asks.insert(i, order);
-                        inserted = true;
-                        break;
-                    }
-                }
-                if !inserted {
-                    self.asks.push_back(order);
+                let pos = self
+                    .asks
+                    .iter()
+                    .position(|existing| existing.price > order.price);
+                match pos {
+                    Some(i) => self.asks.insert(i, order),
+                    None => self.asks.push_back(order),
                 }
             }
         }
@@ -228,7 +222,7 @@ impl OrderBook {
     /// Get spread
     pub fn spread(&self) -> Option<f64> {
         match (self.best_bid(), self.best_ask()) {
-            (Some(bid), Some(ask) => Some(ask.price - bid.price),
+            (Some(bid), Some(ask)) => Some(ask.price - bid.price),
             _ => None,
         }
     }
@@ -270,7 +264,7 @@ impl MatchingEngine {
         Self {
             order_books: RwLock::new(HashMap::new()),
             orders: RwLock::new(HashMap::new()),
-            trades: VecDeque::new(),
+            trades: RwLock::new(VecDeque::new()),
             stats: RwLock::new(MatchingStats::new()),
             enabled: RwLock::new(true),
         }
@@ -306,10 +300,10 @@ impl MatchingEngine {
         if order.remaining_amount > 0.0 && order.status == OrderStatus::Open {
             let mut books = self.order_books.write().await;
             if let Some(book) = books.get_mut(&pair) {
-                book.add_order(order);
+                book.add_order(order.clone());
             }
         }
-        
+
         // Record order
         let mut orders = self.orders.write().await;
         orders.insert(order.order_id.clone(), order);
@@ -393,13 +387,13 @@ impl MatchingEngine {
     /// Record trade
     pub async fn record_trade(&self, trade: Trade) {
         let mut trades = self.trades.write().await;
-        trades.push_back(trade);
-        
+        trades.push_back(trade.clone());
+
         // Keep last 10000 trades
         while trades.len() > 10000 {
             trades.pop_front();
         }
-        
+
         // Update stats
         let mut stats = self.stats.write().await;
         stats.total_trades += 1;
@@ -642,19 +636,3 @@ mod tests {
 // ============================================================================
 // Library Exports
 // ============================================================================
-
-pub use self::{
-    order::{Order, OrderSide, OrderType, OrderStatus},
-    trade::Trade,
-    order_book::OrderBook,
-    matching::{MatchingEngine, MatchingCluster, ClusterNode, NodeRole, NodeStatus},
-    ticker::Ticker,
-    stats::MatchingStats,
-};
-
-mod order;
-mod trade;
-mod order_book;
-mod matching;
-mod ticker;
-mod stats;

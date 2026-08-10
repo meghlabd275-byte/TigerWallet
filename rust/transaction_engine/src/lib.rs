@@ -509,6 +509,7 @@ struct ChainConfig {
     confirmations: u64,
 }
 
+#[derive(Debug, Clone)]
 struct MultiChainTx {
     id: String,
     transactions: Vec<EvmTransaction>,

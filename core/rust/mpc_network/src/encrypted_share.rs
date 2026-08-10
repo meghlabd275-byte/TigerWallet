@@ -70,7 +70,7 @@ impl EncryptedShare {
     /// Re-encrypt for new node
     pub fn reencrypt(&self, new_node_id: &str) -> Result<Self, &'static str> {
         let plaintext = self.decrypt()?;
-        self.encrypt(&plaintext, new_node_id, &self.session_id)
+        Self::encrypt(&plaintext, new_node_id, &self.session_id)
     }
     
     /// Verify integrity

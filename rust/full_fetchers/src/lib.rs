@@ -88,6 +88,7 @@ impl FullFetcherManager {
         for (name, fetcher) in &self.fetchers {
             let running = self.running.clone();
             let fetcher = fetcher.clone_as_fetcher();
+            let name = name.clone();
             
             thread::spawn(move || {
                 while running.load(Ordering::SeqCst) {

@@ -101,18 +101,21 @@ impl WhiteLevelClient {
         *running = true;
         drop(running);
 
-        let connection = Arc::new(self.connection.get_state());
-        let config = self.config.clone();
-        
+        let connection = self.connection.clone();
+        let running = self.running.clone();
+
         tokio::spawn(async move {
             let mut ticker = interval(Duration::from_secs(30));
-            
-            while {
+
+            loop {
                 ticker.tick().await;
-                *self.running.read()
-            } {
-                let state = connection.clone();
-                
+
+                if !*running.read() {
+                    break;
+                }
+
+                let state = connection.get_state();
+
                 let heartbeat = Heartbeat {
                     connection_key: state.connection_key.clone().unwrap_or_default(),
                     status: ConnectionStatus::Connected,
@@ -120,7 +123,7 @@ impl WhiteLevelClient {
                     metrics: ConnectionMetrics::default(),
                 };
 
-                if let Err(e) = self.connection.heartbeat(heartbeat).await {
+                if let Err(e) = connection.heartbeat(heartbeat).await {
                     tracing::error!("Heartbeat failed: {}", e);
                 }
             }

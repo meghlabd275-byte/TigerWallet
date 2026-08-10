@@ -56,7 +56,7 @@ impl Block {
         Self {
             block_number,
             block_hash: format!("0x{:x}", Sha256::digest(&block_number.to_le_bytes())),
-            parent_hash: format!("0x{:x}", Sha256::digest(&((block_number - 1).to_le_bytes())),
+            parent_hash: format!("0x{:x}", Sha256::digest(&(block_number - 1).to_le_bytes())),
             timestamp: chrono::Utc::now().timestamp(),
             miner: String::new(),
             gas_limit: 30_000_000,
@@ -318,13 +318,13 @@ impl StateReconciliation {
     /// Update token balance
     pub async fn update_token_balance(&self, key: &str, balance: TokenBalance) {
         let mut balances = self.token_balances.write().await;
-        balances.insert(key.to_string(), balance);
+        balances.entry(key.to_string()).or_default().push(balance);
     }
-    
+
     /// Get token balance
     pub async fn get_token_balance(&self, key: &str) -> Option<TokenBalance> {
         let balances = self.token_balances.read().await;
-        balances.get(key).cloned()
+        balances.get(key).and_then(|v| v.last()).cloned()
     }
     
     /// Reconcile state changes
@@ -540,21 +540,3 @@ mod tests {
 // ============================================================================
 // Library Exports
 // ============================================================================
-
-pub use self::{
-    block::{Block, Transaction, TransactionType, TransactionStatus},
-    event::Event,
-    state::{AccountState, TokenBalance, StateChange},
-    decoder::BlockDecoder,
-    parser::EventParser,
-    reconciliation::StateReconciliation,
-    indexer::Indexer,
-};
-
-mod block;
-mod event;
-mod state;
-mod decoder;
-mod parser;
-mod reconciliation;
-mod indexer;

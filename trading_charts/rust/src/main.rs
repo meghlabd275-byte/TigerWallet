@@ -4,7 +4,7 @@
 use actix_web::{web, App, HttpResponse, HttpServer, Responder, middleware};
 use chrono::{DateTime, Utc, Duration};
 use serde::{Deserialize, Serialize};
-use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
+use sqlx::{postgres::PgPoolOptions, Pool, Postgres, Row};
 use std::sync::Arc;
 
 // ============================================================================
@@ -302,13 +302,13 @@ async fn get_chart_data(
         .iter()
         .rev()
         .map(|row| {
-            let time: chrono::DateTime<Utc> = row.get("time").unwrap_or_else(|_| Utc::now());
+            let time: chrono::DateTime<Utc> = row.try_get("time").unwrap_or_else(|_| Utc::now());
             Candle {
                 time: time.timestamp(),
-                open: row.get::<f64, _>("open").unwrap_or(0.0),
-                high: row.get::<f64, _>("high").unwrap_or(0.0),
-                low: row.get::<f64, _>("low").unwrap_or(0.0),
-                close: row.get::<f64, _>("close").unwrap_or(0.0),
+                open: row.try_get::<f64, _>("open").unwrap_or(0.0),
+                high: row.try_get::<f64, _>("high").unwrap_or(0.0),
+                low: row.try_get::<f64, _>("low").unwrap_or(0.0),
+                close: row.try_get::<f64, _>("close").unwrap_or(0.0),
             }
         })
         .collect();
@@ -317,12 +317,12 @@ async fn get_chart_data(
         .iter()
         .rev()
         .map(|row| {
-            let time: chrono::DateTime<Utc> = row.get("time").unwrap_or_else(|_| Utc::now());
-            let close: f64 = row.get("close").unwrap_or(0.0);
-            let open: f64 = row.get("open").unwrap_or(0.0);
+            let time: chrono::DateTime<Utc> = row.try_get("time").unwrap_or_else(|_| Utc::now());
+            let close: f64 = row.try_get("close").unwrap_or(0.0);
+            let open: f64 = row.try_get("open").unwrap_or(0.0);
             VolumeBar {
                 time: time.timestamp(),
-                volume: row.get::<f64, _>("volume").unwrap_or(0.0),
+                volume: row.try_get::<f64, _>("volume").unwrap_or(0.0),
                 color: if close >= open { "#22C55E".to_string() } else { "#EF4444".to_string() },
             }
         })
@@ -358,7 +358,7 @@ async fn get_indicators(
     let prices: Vec<f64> = rows
         .iter()
         .rev()
-        .map(|row| row.get::<f64, _>("close").unwrap_or(0.0))
+        .map(|row| row.try_get::<f64, _>("close").unwrap_or(0.0))
         .collect();
 
     let mut indicators = Vec::new();
@@ -488,14 +488,30 @@ async fn get_market_stats(
 }
 
 async fn get_trading_pairs(state: web::Data<AppState>) -> impl Responder {
-    let rows = sqlx::query_as!(
-        TradingPair,
-        "SELECT id, base_asset, quote_asset, symbol, status, min_price, max_price, 
+    let rows = sqlx::query(
+        "SELECT id, base_asset, quote_asset, symbol, status, min_price, max_price,
          tick_size, min_quantity, max_quantity, step_size FROM trading_pairs WHERE status = 'active'"
     )
     .fetch_all(&state.db_pool)
     .await
     .unwrap_or_else(|_| vec![]);
+
+    let rows: Vec<TradingPair> = rows
+        .iter()
+        .map(|row| TradingPair {
+            id: row.try_get("id").unwrap_or_default(),
+            base_asset: row.try_get("base_asset").unwrap_or_default(),
+            quote_asset: row.try_get("quote_asset").unwrap_or_default(),
+            symbol: row.try_get("symbol").unwrap_or_default(),
+            status: row.try_get("status").unwrap_or_default(),
+            min_price: row.try_get("min_price").unwrap_or(0.0),
+            max_price: row.try_get("max_price").unwrap_or(0.0),
+            tick_size: row.try_get("tick_size").unwrap_or(0.0),
+            min_quantity: row.try_get("min_quantity").unwrap_or(0.0),
+            max_quantity: row.try_get("max_quantity").unwrap_or(0.0),
+            step_size: row.try_get("step_size").unwrap_or(0.0),
+        })
+        .collect();
 
     HttpResponse::Ok().json(serde_json::json!({ "pairs": rows }))
 }
@@ -518,11 +534,11 @@ async fn search_symbol(
     let results: Vec<TradingPair> = rows
         .iter()
         .map(|row| TradingPair {
-            id: row.get("id").unwrap_or_default(),
-            base_asset: row.get("base_asset").unwrap_or_default(),
-            quote_asset: row.get("quote_asset").unwrap_or_default(),
-            symbol: row.get("symbol").unwrap_or_default(),
-            status: row.get("status").unwrap_or_default(),
+            id: row.try_get("id").unwrap_or_default(),
+            base_asset: row.try_get("base_asset").unwrap_or_default(),
+            quote_asset: row.try_get("quote_asset").unwrap_or_default(),
+            symbol: row.try_get("symbol").unwrap_or_default(),
+            status: row.try_get("status").unwrap_or_default(),
             min_price: 0.0,
             max_price: 0.0,
             tick_size: 0.0,

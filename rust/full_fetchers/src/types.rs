@@ -1,6 +1,7 @@
 //! Type definitions for TigerWallet Full Fetchers
 
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 /// Timestamp in milliseconds
@@ -70,6 +71,7 @@ pub struct NetworkData {
 /// Swap quote
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SwapQuote {
+    pub id: String,
     pub from_token: Address,
     pub to_token: Address,
     pub from_amount: TokenAmount,

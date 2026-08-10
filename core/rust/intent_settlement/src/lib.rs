@@ -666,21 +666,3 @@ mod tests {
         assert_eq!(fill.fill_amount, 1000);
     }
 }
-
-// ============================================================================
-// Library Exports
-// ============================================================================
-
-pub use self::{
-    intent::{Intent, IntentStatus},
-    solver::{Solver, SolverStatus, SolverStats},
-    settlement::{SettlementEngine, Fill, FillStatus, PendingFill},
-    auction::{IntentAuction, Auction, AuctionStatus},
-    network::IntentSettlementNetwork,
-};
-
-mod intent;
-mod solver;
-mod settlement;
-mod auction;
-mod network;

@@ -237,7 +237,7 @@ impl NodeRuntime {
     
     /// Update heartbeat
     pub async fn heartbeat(&self) {
-        self.node.read().await.update_heartbeat();
+        self.node.write().await.update_heartbeat();
     }
 }
 

@@ -299,8 +299,8 @@ impl LaunchpadService {
         let amount_float: f64 = amount.parse().map_err(|_| "Invalid amount")?;
         
         // Check allocation
-        if let Some(tier) = user_tier {
-            let max_alloc: f64 = tier.max_allocation.parse().map_err(|_| "Invalid allocation")?;
+        if let Some(tier) = &user_tier {
+            let max_alloc: f64 = tier.allocation.parse().map_err(|_| "Invalid allocation")?;
             let used: f64 = tier.used_allocation.parse().map_err(|_| "Invalid allocation")?;
             
             if amount_float + used > max_alloc {

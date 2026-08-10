@@ -214,8 +214,9 @@ impl LimitOrdersService {
         order.updated_at = current_timestamp();
 
         // Update order book
+        let pair = orders.get(order_id).map(|o| o.pair.clone()).unwrap_or_default();
         drop(orders);
-        self.update_order_book(&orders.get(order_id).map(|o| o.pair.clone()).unwrap_or_default());
+        self.update_order_book(&pair);
 
         Ok(true)
     }
@@ -285,7 +286,7 @@ impl LimitOrdersService {
         bids.sort_by(|a, b| b.price.partial_cmp(&a.price).unwrap_or(std::cmp::Ordering::Equal));
         asks.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap_or(std::cmp::Ordering::Equal));
 
-        let spread = if let (Some(&best_bid), Some(&best_ask)) = (bids.first(), asks.first()) {
+        let spread = if let (Some(best_bid), Some(best_ask)) = (bids.first(), asks.first()) {
             best_ask.price - best_bid.price
         } else {
             0.0

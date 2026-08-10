@@ -25,6 +25,9 @@ num-traits = "0.2"
 ethers = { version = "2.0", features = ["abigen", "solc"] }
 log = "0.4"
 env_logger = "0.10"
+parking_lot = "0.12"
+uuid = { version = "1.6", features = ["v4"] }
+sha3 = "0.10"
 
 [dev-dependencies]
 tempfile = "3.8"

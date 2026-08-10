@@ -1,6 +1,7 @@
 //! Threshold Signature Module - Threshold signature generation and combination
 
 use serde::{Deserialize, Serialize};
+use serde_big_array::BigArray;
 use thiserror::Error;
 
 use crate::{MPCError, PublicKeyShare};
@@ -15,11 +16,39 @@ pub enum SignatureError {
     CombinationFailed,
 }
 
+/// Wrapper for a 65-byte combined signature (serde supports arrays up to 32 natively).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CombinedSignature(#[serde(with = "BigArray")] [u8; 65]);
+
+impl CombinedSignature {
+    pub fn new(arr: [u8; 65]) -> Self {
+        Self(arr)
+    }
+    pub fn as_bytes(&self) -> &[u8; 65] {
+        &self.0
+    }
+}
+
+/// Wrapper for a 33-byte combined public key (serde supports arrays up to 32 natively).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CombinedPubKey(#[serde(with = "BigArray")] [u8; 33]);
+
+impl CombinedPubKey {
+    pub fn new(arr: [u8; 33]) -> Self {
+        Self(arr)
+    }
+    pub fn as_bytes(&self) -> &[u8; 33] {
+        &self.0
+    }
+}
+
 /// Partial signature from a single MPC node
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartialSignature {
     pub node_id: String,
+    #[serde(with = "BigArray")]
     pub signature: [u8; 64],
+    #[serde(with = "BigArray")]
     pub public_share: [u8; 33],
     pub message_hash: [u8; 32],
     pub timestamp: i64,
@@ -51,8 +80,8 @@ pub struct ThresholdSignature {
     pub message_hash: [u8; 32],
     pub threshold: u32,
     pub total_shares: u32,
-    pub combined_signature: Option<[u8; 65]>,
-    pub combined_public_key: Option<[u8; 33]>,
+    pub combined_signature: Option<CombinedSignature>,
+    pub combined_public_key: Option<CombinedPubKey>,
 }
 
 impl ThresholdSignature {
@@ -70,7 +99,7 @@ impl ThresholdSignature {
         // Simplified combination using XOR (BLS-like in production)
         let mut combined_sig = [0u8; 65];
         let mut combined_pubkey = [0u8; 33];
-        
+
         for partial in &self.signatures {
             for i in 0..64 {
                 combined_sig[i] ^= partial.signature[i];
@@ -79,26 +108,26 @@ impl ThresholdSignature {
                 combined_pubkey[i] ^= partial.public_share[i];
             }
         }
-        
-        self.combined_signature = Some(combined_sig);
-        self.combined_public_key = Some(combined_pubkey);
-        
+
+        self.combined_signature = Some(CombinedSignature::new(combined_sig));
+        self.combined_public_key = Some(CombinedPubKey::new(combined_pubkey));
+
         Ok(())
     }
-    
+
     /// Get combined signature bytes
     pub fn signature_bytes(&self) -> Option<&[u8; 65]> {
-        self.combined_signature.as_ref()
+        self.combined_signature.as_ref().map(|s| s.as_bytes())
     }
-    
+
     /// Get combined public key bytes
     pub fn public_key_bytes(&self) -> Option<&[u8; 33]> {
-        self.combined_public_key.as_ref()
+        self.combined_public_key.as_ref().map(|k| k.as_bytes())
     }
-    
+
     /// Serialize to ethereum signature format
     pub fn to_ethereum_signature(&self) -> Option<String> {
-        self.combined_signature.map(|sig| hex::encode(sig))
+        self.combined_signature.as_ref().map(|sig| hex::encode(sig.as_bytes()))
     }
 }
 
@@ -125,6 +154,7 @@ impl SignatureCommitment {
 pub struct KnowledgeProof {
     pub challenge: [u8; 32],
     pub response: [u8; 32],
+    #[serde(with = "BigArray")]
     pub public_share: [u8; 33],
 }
 

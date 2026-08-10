@@ -17,8 +17,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use serde::{Deserialize, Serialize};
 use ring::{
-    aead::{Aad, BoundKey, Nonce, NonceSequence, UnboundKey, AES_256_GCM},
-    rand::SystemRandom,
+    aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM},
+    rand::{SecureRandom, SystemRandom},
     digest::digest,
 };
 use thiserror::Error;
@@ -169,12 +169,12 @@ impl MasterWalletService {
         self.rng.fill(&mut nonce_bytes)
             .map_err(|e| MasterError::EncryptionError(e.to_string()))?;
         
-        let nonce_seq = MasterOneNonce::new(Nonce::assume_unique_for_slice(nonce_bytes));
-        let mut bound_key = unbound_key.into_bound_key(nonce_seq);
+        let key = LessSafeKey::new(unbound_key);
+        let nonce = Nonce::assume_unique_for_key(nonce_bytes);
         
         let mut in_out = data.to_vec();
-        bound_key.seal_in_place_separate_tag(Aad::empty())
-            .map_err(|e| MasterError::EncryptionError(e.to_string()))?;
+        key.seal_in_place_append_tag(nonce, Aad::empty(), &mut in_out)
+            .map_err(|_| MasterError::EncryptionError("seal failed".to_string()))?;
         
         let mut result = nonce_bytes.to_vec();
         result.append(&mut in_out);
@@ -196,12 +196,12 @@ impl MasterWalletService {
         let unbound_key = UnboundKey::new(&AES_256_GCM, &self.encryption_key)
             .map_err(|e| MasterError::DecryptionError(e.to_string()))?;
         
-        let nonce_seq = MasterOneNonce::new(Nonce::assume_unique_for_slice(nonce_bytes));
-        let mut bound_key = unbound_key.into_bound_key(nonce_seq);
+        let key = LessSafeKey::new(unbound_key);
+        let nonce = Nonce::assume_unique_for_key(nonce_bytes);
         
         let mut in_out = ciphertext.to_vec();
-        bound_key.open_in_place(Aad::empty())
-            .map_err(|e| MasterError::DecryptionError(e.to_string()))?;
+        key.open_in_place(nonce, Aad::empty(), &mut in_out)
+            .map_err(|_| MasterError::DecryptionError("open failed".to_string()))?;
         
         Ok(in_out)
     }
@@ -395,23 +395,6 @@ pub struct TransferReceipt {
     pub fee: u64,
     pub tx_hash: String,
     pub timestamp: i64,
-}
-
-/// One-time nonce
-struct MasterOneNonce {
-    nonce: Option<Nonce>,
-}
-
-impl MasterOneNonce {
-    fn new(nonce: Nonce) -> Self {
-        Self { nonce: Some(nonce) }
-    }
-}
-
-impl NonceSequence for MasterOneNonce {
-    fn advance(&mut self) -> Result<Nonce, ring::error::Unspecified> {
-        self.nonce.take().ok_or(ring::error::Unspecified)
-    }
 }
 
 /// Master wallet errors

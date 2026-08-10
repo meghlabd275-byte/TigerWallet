@@ -484,7 +484,7 @@ impl Erc20TokenFetcher {
 }
 
 impl Fetcher for Erc20TokenFetcher {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing ERC20 Token Fetcher");
         self.base.set_running(true);
         
@@ -532,12 +532,12 @@ impl Fetcher for Erc20TokenFetcher {
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         // Background refresh handled by async methods
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }
@@ -591,18 +591,18 @@ impl GasEstimatorFetcher {
 }
 
 impl Fetcher for GasEstimatorFetcher {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing Gas Estimator Fetcher");
         self.base.set_running(true);
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         // Fetched on-demand
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }
@@ -666,18 +666,18 @@ impl PriceFeedFetcher {
 }
 
 impl Fetcher for PriceFeedFetcher {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing Price Feed Fetcher");
         self.base.set_running(true);
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         // Fetched on-demand
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }
@@ -747,17 +747,17 @@ impl DAppConnectionFetcher {
 }
 
 impl Fetcher for DAppConnectionFetcher {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing DApp Connection Fetcher");
         self.base.set_running(true);
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }
@@ -857,17 +857,17 @@ impl NetworkFetcher {
 }
 
 impl Fetcher for NetworkFetcher {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing Network Fetcher");
         self.base.set_running(true);
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }
@@ -917,6 +917,7 @@ impl SwapQuoteFetcher {
         };
 
         let quote = SwapQuote {
+            id: format!("{}_{}_{}", current_timestamp(), from_token, to_token),
             from_token: from_token.to_string(),
             to_token: to_token.to_string(),
             from_amount: amount.to_string(),
@@ -940,17 +941,17 @@ impl SwapQuoteFetcher {
 }
 
 impl Fetcher for SwapQuoteFetcher {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing Swap Quote Fetcher");
         self.base.set_running(true);
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }
@@ -1002,17 +1003,17 @@ impl AIPricePredictorFetcher {
 }
 
 impl Fetcher for AIPricePredictorFetcher {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing AI Price Predictor Fetcher");
         self.base.set_running(true);
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }
@@ -1046,17 +1047,17 @@ impl MEVOpportunityFetcher {
 }
 
 impl Fetcher for MEVOpportunityFetcher {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing MEV Opportunity Fetcher");
         self.base.set_running(true);
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }
@@ -1099,17 +1100,17 @@ impl LiquidityFetcher {
 }
 
 impl Fetcher for LiquidityFetcher {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing Liquidity Fetcher");
         self.base.set_running(true);
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }
@@ -1138,17 +1139,17 @@ impl ArbitrageFetcher {
 }
 
 impl Fetcher for ArbitrageFetcher {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing Arbitrage Fetcher");
         self.base.set_running(true);
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }
@@ -1200,17 +1201,17 @@ impl TokenRiskFetcher {
 }
 
 impl Fetcher for TokenRiskFetcher {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing Token Risk Fetcher");
         self.base.set_running(true);
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }
@@ -1254,17 +1255,17 @@ impl SmartContractFetcher {
 }
 
 impl Fetcher for SmartContractFetcher {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing Smart Contract Fetcher");
         self.base.set_running(true);
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }
@@ -1293,17 +1294,17 @@ impl GasMarketFetcher {
 }
 
 impl Fetcher for GasMarketFetcher {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing Gas Market Fetcher");
         self.base.set_running(true);
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }
@@ -1332,17 +1333,17 @@ impl DeFiYieldFetcher {
 }
 
 impl Fetcher for DeFiYieldFetcher {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing DeFi Yield Fetcher");
         self.base.set_running(true);
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }
@@ -1371,17 +1372,17 @@ impl StakingOptimizerFetcher {
 }
 
 impl Fetcher for StakingOptimizerFetcher {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing Staking Optimizer Fetcher");
         self.base.set_running(true);
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }
@@ -1410,17 +1411,17 @@ impl NFTFloorPriceFetcher {
 }
 
 impl Fetcher for NFTFloorPriceFetcher {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing NFT Floor Price Fetcher");
         self.base.set_running(true);
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }
@@ -1449,17 +1450,17 @@ impl WhaleTransactionFetcher {
 }
 
 impl Fetcher for WhaleTransactionFetcher {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing Whale Transaction Fetcher");
         self.base.set_running(true);
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }
@@ -1488,17 +1489,17 @@ impl OnChainAnalyticsFetcher {
 }
 
 impl Fetcher for OnChainAnalyticsFetcher {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing On-Chain Analytics Fetcher");
         self.base.set_running(true);
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }
@@ -1525,17 +1526,17 @@ impl TransactionSimulatorFetcher {
 }
 
 impl Fetcher for TransactionSimulatorFetcher {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing Transaction Simulator Fetcher");
         self.base.set_running(true);
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }
@@ -1562,17 +1563,17 @@ impl CrossChainRouteOptimizer {
 }
 
 impl Fetcher for CrossChainRouteOptimizer {
-    fn initialize(&self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Initializing Cross-Chain Route Optimizer");
         self.base.set_running(true);
         Ok(())
     }
 
-    fn fetch(&self) -> Result<(), Box<dyn Error>> {
+    fn fetch(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(())
     }
 
-    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+    fn shutdown(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.base.set_running(false);
         Ok(())
     }

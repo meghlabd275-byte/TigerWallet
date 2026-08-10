@@ -16,7 +16,7 @@ pub enum Precision {
 }
 
 impl Precision {
-    fn scale(&self) -> u32 {
+    fn scale(&self) -> u64 {
         match self {
             Precision::Low => 1_000_000,
             Precision::Medium => 100_000_000,

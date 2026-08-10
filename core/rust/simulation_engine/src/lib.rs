@@ -55,9 +55,9 @@ impl SimulationEngine {
         
         // Calculate route if needed
         if result.success {
-            let route = self.route.find_optimal_route(
-                params.token_in,
-                params.token_out,
+            let _route = self.route.find_optimal_route(
+                &params.token_in,
+                &params.token_out,
                 params.amount_in,
             );
             
@@ -71,7 +71,15 @@ impl SimulationEngine {
                 errors: result.errors,
             }
         } else {
-            result
+            SimulationResult {
+                success: result.success,
+                expected_output: result.expected_output,
+                actual_output: result.actual_output,
+                gas_used: gas,
+                slippage: result.slippage,
+                price_impact: result.price_impact,
+                errors: result.errors,
+            }
         }
     }
     

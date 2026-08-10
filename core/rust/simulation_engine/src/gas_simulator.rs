@@ -18,12 +18,14 @@ impl GasSimulator {
         };
         
         // Default gas costs
-        let mut costs = simulator.gas_costs.write().unwrap();
-        costs.insert("swap".to_string(), 150000);
-        costs.insert("transfer".to_string(), 21000);
-        costs.insert("approve".to_string(), 46000);
-        costs.insert("mint".to_string(), 200000);
-        costs.insert("burn".to_string(), 100000);
+        {
+            let mut costs = simulator.gas_costs.write().unwrap();
+            costs.insert("swap".to_string(), 150000);
+            costs.insert("transfer".to_string(), 21000);
+            costs.insert("approve".to_string(), 46000);
+            costs.insert("mint".to_string(), 200000);
+            costs.insert("burn".to_string(), 100000);
+        }
         
         simulator
     }

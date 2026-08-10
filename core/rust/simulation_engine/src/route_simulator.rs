@@ -3,6 +3,7 @@
 //! Finds optimal routes for swaps.
 
 use std::collections::HashMap;
+use std::sync::RwLock;
 
 #[derive(Debug, Clone)]
 pub struct RouteStep {

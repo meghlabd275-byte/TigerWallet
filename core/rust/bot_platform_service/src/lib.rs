@@ -386,7 +386,7 @@ impl ArbitrageBot {
     pub fn execute(&mut self, opp: &ArbitrageOpportunity) -> Result<Trade, BotError> {
         let trade = Trade::new(
             &format!("ARB-{}", self.bot_id),
-            &opp.pair,
+            opp.pair.clone(),
             OrderSide::Buy,
             opp.size,
             opp.buy_price,
@@ -501,7 +501,7 @@ impl SniperBot {
         
         let trade = Trade::new(
             &format!("SNIPE-{}", self.bot_id),
-            &target.token,
+            target.token.clone(),
             OrderSide::Buy,
             target.target_size,
             current_price,
@@ -758,23 +758,3 @@ mod tests {
         assert_eq!(bots.len(), 1);
     }
 }
-
-// ============================================================================
-// Library Exports
-// ============================================================================
-
-pub use self::{
-    bot::{BotType, BotStatus, BotInfo, BotManager},
-    grid::{GridBot, GridConfig, GridLevel},
-    market_making::{MarketMakingBot, MarketMakingConfig},
-    arbitrage::{ArbitrageBot, ArbitrageConfig, ArbitrageOpportunity, Price},
-    sniper::{SniperBot, SniperConfig, SniperTarget},
-    order::{Order, OrderSide, OrderStatus, Trade},
-};
-
-mod bot;
-mod grid;
-mod market_making;
-mod arbitrage;
-mod sniper;
-mod order;

@@ -2,6 +2,9 @@
 //! 
 //! Simulates cross-chain bridge transactions.
 
+use std::collections::HashMap;
+use std::sync::RwLock;
+
 use crate::SimulationResult;
 use crate::SwapParams; // For BridgeParams
 

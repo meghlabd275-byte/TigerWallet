@@ -2,10 +2,11 @@
 
 use secp256k1::PublicKey;
 use serde::{Deserialize, Serialize};
+use serde_big_array::BigArray;
 
 /// Public key share for secp256k1 (compressed format)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PublicKeyShare([u8; 33]);
+pub struct PublicKeyShare(#[serde(with = "BigArray")] [u8; 33]);
 
 impl PublicKeyShare {
     /// Create from secp256k1 public key
@@ -46,6 +47,7 @@ impl PublicKeyShare {
 /// Combined public key from threshold signature
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CombinedPublicKey {
+    #[serde(with = "BigArray")]
     pub key: [u8; 33],
     pub threshold: u32,
     pub total_shares: u32,

@@ -6,9 +6,8 @@ use std::collections::HashMap;
 // ============================================================================
 // Constants
 // ============================================================================
-
+// Q128 (2^128) intentionally omitted: unrepresentable in u128 and unused here.
 const Q96: u128 = 1 << 96;
-const Q128: u128 = 1 << 128;
 
 // ============================================================================
 // Data Structures
@@ -124,7 +123,7 @@ impl QuoteEngine {
 
         // Calculate outputs
         let output_amount = self.calculate_output(pool, req.amount_in);
-        let amount_min = output_amount * (10000 - req.slippage_bps) / 10000;
+        let amount_min = output_amount * (10000u128 - req.slippage_bps as u128) / 10000;
 
         // Price impact
         let spot_price = (pool.reserve_b as f64) / (pool.reserve_a as f64);
@@ -186,7 +185,7 @@ impl QuoteEngine {
             (pool.reserve_b, pool.reserve_a)
         };
 
-        let fee_multiplier = 10000 - pool.fee_bps;
+        let fee_multiplier = (10000 - pool.fee_bps) as u128;
         let numerator = amount_in * reserve_out * fee_multiplier;
         let denominator = reserve_in * 10000 + amount_in * fee_multiplier;
 

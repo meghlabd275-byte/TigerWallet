@@ -20,9 +20,8 @@ use aes_gcm::{
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use chrono::{DateTime, Utc};
-use elliptic_curve::ecdh::diffie_hellman;
-use elliptic_curve::secp256k1::{PublicKey as Secp256k1PublicKey, SecretKey as Secp256k1SecretKey};
 use k256::ecdsa::{SigningKey as EcdsaSigningKey, VerifyingKey as EcdsaVerifyingKey};
+use k256::{PublicKey as Secp256k1PublicKey, SecretKey as Secp256k1SecretKey};
 use rand::RngCore;
 use ring::aead::{Aad, LessSafeKey, Nonce as RingNonce, UnboundKey, AES_256_GCM};
 use serde::{Deserialize, Serialize};
@@ -57,6 +56,10 @@ pub enum HSMError {
     PermissionDenied(String),
     #[error("HSM internal error: {0}")]
     InternalError(String),
+    #[error("Invalid key: {0}")]
+    InvalidKey(String),
+    #[error("Verification failed: {0}")]
+    VerificationFailed(String),
 }
 
 impl Serialize for HSMError {
@@ -129,6 +132,7 @@ pub enum KeyType {
 pub struct KeyMetadata {
     pub key_id: String,
     pub key_type: KeyType,
+    pub public_key: String,
     pub label: String,
     pub created_at: DateTime<Utc>,
     pub last_used: Option<DateTime<Utc>>,
@@ -301,21 +305,21 @@ impl HSMManager {
         let (public_key, private_handle) = match kt {
             KeyType::ECP256K => {
                 // Generate secp256k1 key pair
-                let secret_key = Secp256k1SecretKey::random_from_rng(OsRng);
-                let public_key = Secp256k1PublicKey::from_secret_key(&secret_key);
+                let secret_key = Secp256k1SecretKey::random(&mut OsRng);
+                let public_key = secret_key.public_key();
                 
                 (
-                    format!("{:02x}", public_key.to_bytes()),
+                    BASE64.encode(public_key.to_sec1_bytes()),
                     format!("hsm:{}", key_id),
                 )
             }
             KeyType::ECP256 => {
                 // Generate P-256 key pair
-                let secret_key = k256::SecretKey::random(&mut OsRng);
-                let public_key = k256::PublicKey::from(&secret_key);
+                let secret_key = p256::SecretKey::random(&mut OsRng);
+                let public_key = secret_key.public_key();
                 
                 (
-                    BASE64.encode(public_key.to_bytes()),
+                    BASE64.encode(public_key.to_sec1_bytes()),
                     format!("hsm:{}", key_id),
                 )
             }
@@ -339,8 +343,9 @@ impl HSMManager {
                 let rsa = rsa::RsaPrivateKey::new(&mut OsRng, bits)
                     .map_err(|e| HSMError::KeyOperationFailed(e.to_string()))?;
                 
-                let public_key = rsa.public_key();
-                let public_key_der = rsa::pkcs8::EncodePublicKey::to_der(&public_key)
+                let public_key = rsa.to_public_key();
+                use rsa::pkcs8::EncodePublicKey;
+                let public_key_der = public_key.to_public_key_der()
                     .map_err(|e| HSMError::KeyOperationFailed(e.to_string()))?;
                 
                 (
@@ -363,6 +368,7 @@ impl HSMManager {
         let metadata = KeyMetadata {
             key_id: key_id.clone(),
             key_type: kt.clone(),
+            public_key: public_key.clone(),
             label,
             created_at: now,
             last_used: None,
@@ -386,7 +392,7 @@ impl HSMManager {
 
         // Store key metadata
         let mut store = self.key_store.lock().unwrap();
-        store.insert(key_id.clone(), metadata);
+        store.insert(key_id.clone(), metadata.clone());
         drop(store);
         
         self.save_keys()?;
@@ -472,7 +478,8 @@ impl HSMManager {
         let store = self.key_store.lock().unwrap();
         
         let metadata = store.get(key_id)
-            .ok_or_else(|| HSMError::KeyNotFound(key_id.to_string()))?;
+            .ok_or_else(|| HSMError::KeyNotFound(key_id.to_string()))?
+            .clone();
         
         if !metadata.is_active {
             return Err(HSMError::KeyOperationFailed("Key is not active".to_string()));
@@ -483,12 +490,12 @@ impl HSMManager {
         let signature = match metadata.key_type {
             KeyType::ECP256K => {
                 // Sign with secp256k1
-                let secret = Secp256k1SecretKey::random_from_rng(OsRng);
+                let secret = Secp256k1SecretKey::random(&mut OsRng);
                 let message_hash = Sha256::digest(message);
                 
                 use k256::ecdsa::{signature::Signer, Signature};
                 let signer = EcdsaSigningKey::from(secret);
-                let sig: Signature<k256::secp256k1::Secp256k1> = signer.sign(&message_hash);
+                let sig: Signature = signer.sign(&message_hash);
                 
                 BASE64.encode(sig.to_bytes())
             }
@@ -499,13 +506,14 @@ impl HSMManager {
                 
                 use k256::ecdsa::{signature::Signer, Signature};
                 let signer = EcdsaSigningKey::from(secret);
-                let sig: Signature<k256::secp256k1::Secp256k1> = signer.sign(&message_hash);
+                let sig: Signature = signer.sign(&message_hash);
                 
                 BASE64.encode(sig.to_bytes())
             }
             KeyType::Ed25519 => {
                 // Sign with Ed25519
                 let secret = ed25519_dalek::SigningKey::generate(&mut OsRng);
+                use ed25519_dalek::Signer;
                 let signature = secret.sign(message);
                 
                 BASE64.encode(signature.to_bytes())
@@ -516,6 +524,7 @@ impl HSMManager {
                     .map_err(|e| HSMError::KeyOperationFailed(e.to_string()))?;
                 
                 use rsa::signature::Signer;
+                use rsa::signature::SignatureEncoding;
                 let scheme = rsa::pkcs1v15::SigningKey::<Sha256>::new(rsa);
                 let signature = scheme.sign(message);
                 
@@ -551,7 +560,8 @@ impl HSMManager {
         let store = self.key_store.lock().unwrap();
         
         let metadata = store.get(key_id)
-            .ok_or_else(|| HSMError::KeyNotFound(key_id.to_string()))?;
+            .ok_or_else(|| HSMError::KeyNotFound(key_id.to_string()))?
+            .clone();
         
         if !metadata.is_active {
             return Err(HSMError::KeyOperationFailed("Key is not active".to_string()));
@@ -559,20 +569,52 @@ impl HSMManager {
         
         drop(store);
         
-        // Verify using the public key with proper ECDSA verification
-        use p256::ecdsa::{VerifyingKey, signature::Verifier};
-        
-        let key_bytes: [u8; 65] = public_key.try_into()
-            .map_err(|_| HSMError::InvalidKey("Invalid public key length".to_string()))?;
-        
-        let verifying_key = VerifyingKey::from_sec1_bytes(&key_bytes)
-            .map_err(|e| HSMError::KeyOperationFailed(format!("Invalid public key: {}", e)))?;
-        
-        // Parse signature (assumed to be DER format)
-        let signature = p256::ecdsa::Signature::from_slice(&signature)
-            .map_err(|e| HSMError::VerificationFailed(format!("Invalid signature: {}", e)))?;
-        
-        let result = verifying_key.verify(message, &signature).is_ok();
+        // Decode the stored public key (BASE64-encoded SEC1/SPKI bytes)
+        let key_bytes = BASE64.decode(&metadata.public_key)
+            .map_err(|e| HSMError::InvalidKey(format!("Invalid public key encoding: {}", e)))?;
+
+        let result = match metadata.key_type {
+            KeyType::ECP256K => {
+                use k256::ecdsa::{VerifyingKey, signature::Verifier};
+                let verifying_key = VerifyingKey::from_sec1_bytes(&key_bytes)
+                    .map_err(|e| HSMError::KeyOperationFailed(format!("Invalid public key: {}", e)))?;
+                let sig = k256::ecdsa::Signature::from_slice(&signature)
+                    .map_err(|e| HSMError::VerificationFailed(format!("Invalid signature: {}", e)))?;
+                verifying_key.verify(message, &sig).is_ok()
+            }
+            KeyType::ECP256 => {
+                use p256::ecdsa::{VerifyingKey, signature::Verifier};
+                let verifying_key = VerifyingKey::from_sec1_bytes(&key_bytes)
+                    .map_err(|e| HSMError::KeyOperationFailed(format!("Invalid public key: {}", e)))?;
+                let sig = p256::ecdsa::Signature::from_slice(&signature)
+                    .map_err(|e| HSMError::VerificationFailed(format!("Invalid signature: {}", e)))?;
+                verifying_key.verify(message, &sig).is_ok()
+            }
+            KeyType::Ed25519 => {
+                use ed25519_dalek::{VerifyingKey, Verifier};
+                let key_arr: [u8; 32] = key_bytes.as_slice().try_into()
+                    .map_err(|_| HSMError::InvalidKey("Invalid ed25519 public key length".to_string()))?;
+                let verifying_key = VerifyingKey::from_bytes(&key_arr)
+                    .map_err(|e| HSMError::KeyOperationFailed(format!("Invalid public key: {}", e)))?;
+                let sig = ed25519_dalek::Signature::from_slice(&signature)
+                    .map_err(|e| HSMError::VerificationFailed(format!("Invalid signature: {}", e)))?;
+                verifying_key.verify(message, &sig).is_ok()
+            }
+            KeyType::RSA2048 | KeyType::RSA4096 => {
+                use rsa::pkcs1v15::VerifyingKey;
+                use rsa::signature::Verifier;
+                use rsa::pkcs8::DecodePublicKey;
+                let rsa_pub = rsa::RsaPublicKey::from_public_key_der(&key_bytes)
+                    .map_err(|e| HSMError::KeyOperationFailed(format!("Invalid public key: {}", e)))?;
+                let verifying_key = VerifyingKey::<Sha256>::new(rsa_pub);
+                let sig = rsa::pkcs1v15::Signature::try_from(signature)
+                    .map_err(|e| HSMError::VerificationFailed(format!("Invalid signature: {}", e)))?;
+                verifying_key.verify(message, &sig).is_ok()
+            }
+            _ => return Err(HSMError::KeyOperationFailed(
+                "Key type does not support verification".to_string()
+            )),
+        };
         
         self.log_audit("verify", Some(key_id), result, None);
         
@@ -778,10 +820,7 @@ impl HSMManager {
             metadata: HashMap::new(),
         };
 
-        let mut logs = self.audit_logs.lock().unwrap();
-        logs.push(log);
-
-        // Write to audit file
+        // Write to audit file (serialize before moving into logs)
         if let Some(path) = &self.config.audit_path {
             if let Ok(data) = serde_json::to_string(&log) {
                 let _ = fs::OpenOptions::new()
@@ -794,6 +833,9 @@ impl HSMManager {
                     });
             }
         }
+
+        let mut logs = self.audit_logs.lock().unwrap();
+        logs.push(log);
     }
 
     pub fn get_audit_logs(&self, key_id: Option<&str>, limit: usize) -> Vec<AuditLog> {

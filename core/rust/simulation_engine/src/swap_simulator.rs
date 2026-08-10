@@ -1,6 +1,9 @@
 //! Swap Simulator
 //! 
 //! Simulates swap transactions for prediction.
+use std::collections::HashMap;
+use std::sync::RwLock;
+
 
 #[derive(Debug, Clone)]
 pub struct SwapParams {

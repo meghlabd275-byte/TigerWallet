@@ -266,7 +266,7 @@ impl PerformanceMetrics {
             self.annualized_return = self.yearly_return;
         } else if prices.len() > 1 {
             let days = prices.len() as f64;
-            self.annualized_return = (1.0 + self.total_return).pow_ref(365.0 / days) - 1.0;
+            self.annualized_return = (1.0 + self.total_return).powf(365.0 / days) - 1.0;
         }
         
         self.cumulative_return = self.total_return;
@@ -590,7 +590,6 @@ impl Default for AnalyticsEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
     #[test]
     fn test_tvl() {
         let mut tvl = TVL::new();
@@ -659,21 +658,3 @@ mod tests {
         assert_eq!(analytics.total_trades, 2);
     }
 }
-
-// ============================================================================
-// Library Exports
-// ============================================================================
-
-pub use self::{
-    metrics::{TVL, PnL, RiskMetrics, PerformanceMetrics},
-    pool::{PoolAnalytics, PoolAnalyticsBuilder},
-    trading::{TradingAnalytics, Trade, TradeSide},
-    analytics::AnalyticsEngine,
-    period::TimePeriod,
-};
-
-mod metrics;
-mod pool;
-mod trading;
-mod analytics;
-mod period;

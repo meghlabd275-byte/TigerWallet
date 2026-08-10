@@ -57,6 +57,7 @@ impl ConnectionEventHandler for () {
 }
 
 /// Connection manager
+#[derive(Clone)]
 pub struct ConnectionManager {
     config: Config,
     state: Arc<RwLock<ConnectionState>>,
@@ -165,17 +166,21 @@ impl ConnectionManager {
 
     /// Send heartbeat
     pub async fn heartbeat(&self, heartbeat: Heartbeat) -> Result<()> {
-        let state = self.state.read();
-        
-        let Some(connection_key) = &state.connection_key else {
-            return Err(SdkError::NotConnected);
+        let session_token = {
+            let state = self.state.read();
+
+            let Some(_connection_key) = &state.connection_key else {
+                return Err(SdkError::NotConnected);
+            };
+
+            state.session_token.as_ref().ok_or(SdkError::NotConnected)?.clone()
         };
 
         let url = format!("{}/api/v1/heartbeat", self.config.super_admin_url);
-        
+
         let response = self.http_client
             .post(&url)
-            .header("Authorization", format!("Bearer {}", state.session_token.as_ref().unwrap()))
+            .header("Authorization", format!("Bearer {}", session_token))
             .header("X-API-Key", &self.config.api_key)
             .json(&heartbeat)
             .send()
@@ -187,7 +192,6 @@ impl ConnectionManager {
         }
 
         // Update last heartbeat time
-        drop(state);
         {
             let mut state = self.state.write();
             state.last_heartbeat = Some(Instant::now());

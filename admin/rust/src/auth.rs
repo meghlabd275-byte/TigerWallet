@@ -14,6 +14,7 @@ pub struct Claims {
     pub iat: i64,
 }
 
+#[derive(Clone)]
 pub struct AuthState {
     pub jwt_secret: String,
 }

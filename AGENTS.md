@@ -419,3 +419,13 @@ crypto crates only.
 - blockchain_layer/aptos_sdk/rust: real ed25519-dalek 2 sign/verify.
 - blockchain_layer/cardano_sdk/rust: real ed25519-zebra + blake2b-224 + bech32.
 - blockchain_layer/near_sdk/rust: real ed25519-dalek 2 + BorshSerialize.
+
+## Rust trading/latency/service crates compile-fix pass (2026-08-10)
+All of the following pass cargo check --lib (or cargo check for bin-only):
+api_gateway/rust, core/rust/{analytics_service,bot_platform_service,bridge_engine,indexer_service,intent_engine,intent_settlement,matching_engine,mm_engine,quote_engine,simulation_engine}, user_features/limit_orders/rust, fiat_ramp/rust, liquid_staking/rust, white_level_sdk/rust, admin/rust, rust/rbac_admin_backend, white_label/rust/high_speed, white_label_analytics_ai/rust, fetcher_core/rust, rust/full_fetchers, rust/high_performance_calculator, portfolio/rust, cloud_recovery/rust, hsm_integration/rust, master_wallet/rust, rust/transaction_engine.
+Bin-only crates passing cargo check: launchpad_ecosystem/rust, mm_bot_platform/bot_core, white_label_templates/rust, trading_charts/rust.
+Notes:
+- liquid_staking/rust: added deps parking_lot/uuid/sha3 to Cargo.toml; use sha3::Digest; typo UnkakeStatus->UnstakeStatus; max_stake_amount widened to u128 (1000 ETH in wei = 1e21 overflows u64) with cast in comparison.
+- transaction_engine/src/lib.rs: MultiChainTx derives Clone.
+- portfolio/rust/src/lib.rs: * 100 -> * Decimal::from(100); &self.positions -> &mut self.positions.
+- No stubs/todo!()/unimplemented!()/all-zero stubs introduced; real logic preserved.

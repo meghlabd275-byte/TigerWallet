@@ -5,21 +5,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-/// Bid for solver
-#[derive(Debug, Clone)]
-pub struct Bid {
-    pub solver_id: String,
-    pub intent_id: String,
-    pub amount: u64,
-    pub gas_price: u64,
-}
-
-/// Intent reference
-#[derive(Debug, Clone)]
-pub struct Intent {
-    pub id: String,
-    pub data: Vec<u8>,
-}
+use crate::{Intent, solver_network::Bid};
 
 #[derive(Debug, Clone)]
 pub struct Auction {

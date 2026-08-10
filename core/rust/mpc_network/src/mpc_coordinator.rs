@@ -42,7 +42,11 @@ impl MPCCoordinator {
     /// Get all registered nodes
     pub async fn get_nodes(&self) -> Vec<MPCNode> {
         let nodes = self.nodes.read().await;
-        nodes.values().map(|n| n.read().await.clone()).collect()
+        let mut result = Vec::new();
+        for n in nodes.values() {
+            result.push(n.read().await.clone());
+        }
+        result
     }
     
     /// Get active nodes (responsive and healthy)
@@ -64,7 +68,11 @@ impl MPCCoordinator {
     /// Get node by ID
     pub async fn get_node(&self, node_id: &str) -> Option<MPCNode> {
         let nodes = self.nodes.read().await;
-        nodes.get(node_id).map(|n| n.read().await.clone())
+        if let Some(n) = nodes.get(node_id) {
+            Some(n.read().await.clone())
+        } else {
+            None
+        }
     }
     
     /// Remove node
@@ -118,10 +126,10 @@ impl MPCCoordinator {
             .get_mut(session_id)
             .ok_or(MPCError::KeyNotFound)?;
         
-        if !session.participants.contains(node_id) {
+        if !session.participants.iter().any(|p| p == node_id) {
             return Err(MPCError::InvalidParticipant);
         }
-        
+
         session.commitments.insert(node_id.to_string(), commitment);
         
         // Check if we can advance
@@ -145,10 +153,10 @@ impl MPCCoordinator {
             .get_mut(session_id)
             .ok_or(MPCError::KeyNotFound)?;
         
-        if !session.participants.contains(node_id) {
+        if !session.participants.iter().any(|p| p == node_id) {
             return Err(MPCError::InvalidParticipant);
         }
-        
+
         session.shares.insert(node_id.to_string(), share);
         
         // Check if we can advance
@@ -311,6 +319,8 @@ impl MPCCoordinator {
             message_hash: session.message_hash,
             threshold: session.threshold,
             total_shares: session.total_nodes,
+            combined_signature: None,
+            combined_public_key: None,
         })
     }
     

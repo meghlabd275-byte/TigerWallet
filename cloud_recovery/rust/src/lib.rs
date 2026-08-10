@@ -1,16 +1,5 @@
-/**
- * TigerWallet Cloud Recovery System
- * 
- * Production-ready cloud backup system for wallet recovery
- * Supports:
- * - iCloud Keychain backup
- * - Google Drive backup
- * - End-to-end encryption
- * - Multi-device sync
- * - Automatic backup scheduling
- */
-
 #![allow(dead_code)]
+
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -61,7 +50,7 @@ pub enum CloudRecoveryError {
 // ============================================================================
 
 /// Supported cloud providers
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum CloudProvider {
     #[serde(rename = "icloud")]
     ICloud,
@@ -97,7 +86,7 @@ pub struct WalletBackup {
 }
 
 /// Recovery data after decryption
-#[derive(Debug, Clone, Zeroize, ZeroizeOnDrop)]
+#[derive(Debug, Clone)]
 pub struct RecoveryData {
     pub seed_phrase: String,
     pub password: Option<String>,
@@ -451,7 +440,7 @@ impl GoogleDriveProvider {
                 &base64::engine::general_purpose::STANDARD,
                 EncryptionService::generate_key(),
             ),
-            refresh_token: Some(token),
+            refresh_token: Some(token.clone()),
             access_token: Some(token),
             token_expires_at: Some(Utc::now() + chrono::Duration::hours(1)),
             custom_endpoint: None,
