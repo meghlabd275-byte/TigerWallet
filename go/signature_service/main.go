@@ -1,14 +1,9 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/sha256"
-	"crypto/sha512"
-	"crypto/subtle"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -293,7 +288,8 @@ func (s *SignatureService) SignMessage(
 	case "personal_sign":
 		signature, err = crypto.Sign(accounts.TextHash([]byte(request.Message)), privateKey)
 	case "eth_sign":
-		signature, err = crypto.Sign(accounts.Hash(request.Message).Bytes(), privateKey)
+		// eth_sign signs the raw keccak256 hash of the message (no Ethereum prefix).
+		signature, err = crypto.Sign(crypto.Keccak256([]byte(request.Message)), privateKey)
 	default:
 		signature, err = crypto.Sign(accounts.TextHash([]byte(request.Message)), privateKey)
 	}
@@ -599,11 +595,13 @@ func (s *SignatureService) GetAuditLogs(userID string, limit int) []AuditLog {
 }
 
 func calculateMessageHash(message string) string {
-	// Ethereum personal_sign hash
+	// Ethereum personal_sign hash: keccak256("\x19Ethereum Signed Message:\n" + len + msg).
+	// Must use keccak256 (NOT sha256) so the stored hash matches the signature
+	// produced by crypto.Sign(accounts.TextHash(...)).
 	prefix := "\x19Ethereum Signed Message:\n"
 	fullMessage := prefix + fmt.Sprintf("%d", len(message)) + message
-	hash := sha256.Sum256([]byte(fullMessage))
-	return hex.EncodeToString(hash[:])
+	hash := crypto.Keccak256([]byte(fullMessage))
+	return hex.EncodeToString(hash)
 }
 
 // ============================================================================
@@ -611,7 +609,10 @@ func calculateMessageHash(message string) string {
 // ============================================================================
 
 func GenerateKeyPair() (string, string, error) {
-	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	// Ethereum uses secp256k1 (NOT NIST P-256). crypto.GenerateKey() produces a
+	// cryptographically-secure secp256k1 key compatible with Ethereum addresses,
+	// EIP-191/712 signing, and eth_sendRawTransaction.
+	privateKey, err := crypto.GenerateKey()
 	if err != nil {
 		return "", "", fmt.Errorf("failed to generate key: %w", err)
 	}
@@ -955,7 +956,7 @@ func main() {
 
 	log.Println("Shutting down server...")
 
-	ctx := c.Request.Context()
+	ctx := context.Background()
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatal("Server forced to shutdown:", err)
 	}
