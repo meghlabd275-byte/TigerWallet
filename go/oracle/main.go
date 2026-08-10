@@ -1,7 +1,7 @@
 /**
  * TigerWallet Price Oracle Service
  * High-Load Distributed Go Implementation
- * 
+ *
  * Features:
  * - Multi-source price aggregation
  * - TWAP, VWAP calculations
@@ -15,7 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
+	"math/rand/v2"
 	"net/http"
 	"sync"
 	"time"
@@ -37,7 +37,7 @@ type PriceSource struct {
 }
 
 type OracleConfig struct {
-	Sources   []string  `json:"sources"`
+	Sources   []string `json:"sources"`
 	Deviation float64  `json:"deviation"` // Max deviation before alert
 	Staleness int64    `json:"staleness"` // Max age in seconds
 }
@@ -51,11 +51,11 @@ type PriceAlert struct {
 }
 
 type OracleService struct {
-	prices      map[string]*Price
-	sources     map[string][]PriceSource
-	alerts      []PriceAlert
-	config      OracleConfig
-	mu          sync.RWMutex
+	prices  map[string]*Price
+	sources map[string][]PriceSource
+	alerts  []PriceAlert
+	config  OracleConfig
+	mu      sync.RWMutex
 }
 
 func NewOracleService() *OracleService {
@@ -120,7 +120,7 @@ func (o *OracleService) updatePrices() {
 
 			o.prices[sym] = &Price{
 				Symbol:    sym,
-				Price:    avgPrice,
+				Price:     avgPrice,
 				Change24h: change,
 				Volume24h: o.getVolume(sym),
 				Sources:   len(prices),
@@ -139,10 +139,10 @@ func (o *OracleService) fetchFromSources(symbol string) []PriceSource {
 	basePrice := o.getBasePrice(symbol)
 
 	return []PriceSource{
-		{Name: "binance", Price: basePrice * (1 + (math.random()-0.5)*0.002), Weight: 0.4},
-		{Name: "coinbase", Price: basePrice * (1 + (math.random()-0.5)*0.002), Weight: 0.3},
-		{Name: "kraken", Price: basePrice * (1 + (math.random()-0.5)*0.003), Weight: 0.2},
-		{Name: "gemini", Price: basePrice * (1 + (math.random()-0.5)*0.003), Weight: 0.1},
+		{Name: "binance", Price: basePrice * (1 + (rand.Float64()-0.5)*0.002), Weight: 0.4},
+		{Name: "coinbase", Price: basePrice * (1 + (rand.Float64()-0.5)*0.002), Weight: 0.3},
+		{Name: "kraken", Price: basePrice * (1 + (rand.Float64()-0.5)*0.003), Weight: 0.2},
+		{Name: "gemini", Price: basePrice * (1 + (rand.Float64()-0.5)*0.003), Weight: 0.1},
 	}
 }
 
@@ -258,8 +258,8 @@ func (o *OracleService) handleHealth(w http.ResponseWriter, r *http.Request) {
 	defer o.mu.RUnlock()
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":  "healthy",
-		"prices":  len(o.prices),
+		"status": "healthy",
+		"prices": len(o.prices),
 		"alerts": len(o.alerts),
 	})
 }

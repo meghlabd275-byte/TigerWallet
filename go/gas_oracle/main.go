@@ -2,11 +2,9 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math"
-	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
@@ -47,26 +45,26 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type GasPrice struct {
-	ChainID       uint64  `json:"chainId"`
-	ChainName     string  `json:"chainName"`
-	Slow          string  `json:"slow"`
-	Standard      string  `json:"standard"`
-	Fast          string  `json:"fast"`
-	SlowUSD       float64 `json:"slowUsd"`
-	StandardUSD   float64 `json:"standardUsd"`
-	FastUSD       float64 `json:"fastUsd"`
-	LastUpdated   int64   `json:"lastUpdated"`
-	BaseFee       string  `json:"baseFee,omitempty"`
-	PriorityFee   string  `json:"priorityFee,omitempty"`
+	ChainID     uint64  `json:"chainId"`
+	ChainName   string  `json:"chainName"`
+	Slow        string  `json:"slow"`
+	Standard    string  `json:"standard"`
+	Fast        string  `json:"fast"`
+	SlowUSD     float64 `json:"slowUsd"`
+	StandardUSD float64 `json:"standardUsd"`
+	FastUSD     float64 `json:"fastUsd"`
+	LastUpdated int64   `json:"lastUpdated"`
+	BaseFee     string  `json:"baseFee,omitempty"`
+	PriorityFee string  `json:"priorityFee,omitempty"`
 }
 
 type ChainConfig struct {
-	ID           uint64
-	Name         string
-	Symbol       string
-	RPCURLs      []string
-	ExplorerURL  string
-	NativePrice  float64
+	ID          uint64
+	Name        string
+	Symbol      string
+	RPCURLs     []string
+	ExplorerURL string
+	NativePrice float64
 }
 
 // ============================================================================
@@ -74,12 +72,12 @@ type ChainConfig struct {
 // ============================================================================
 
 type GasOracleService struct {
-	config     *Config
-	redis      *redis.Client
-	chainInfo  map[uint64]ChainConfig
-	mu         sync.RWMutex
-	prices     map[uint64]*GasPrice
-	history    map[uint64][]GasPrice
+	config    *Config
+	redis     *redis.Client
+	chainInfo map[uint64]ChainConfig
+	mu        sync.RWMutex
+	prices    map[uint64]*GasPrice
+	history   map[uint64][]GasPrice
 }
 
 func NewGasOracleService(config *Config) (*GasOracleService, error) {
@@ -192,7 +190,7 @@ func (s *GasOracleService) GetRecommendation(chainID uint64) (map[string]GasPric
 type CostEstimate struct {
 	ChainID      uint64  `json:"chainId"`
 	Operation    string  `json:"operation"`
-	GasLimit    uint64  `json:"gasLimit"`
+	GasLimit     uint64  `json:"gasLimit"`
 	GasPrice     string  `json:"gasPrice"`
 	TotalCost    string  `json:"totalCost"`
 	TotalCostUSD float64 `json:"totalCostUsd"`
@@ -222,9 +220,9 @@ func (s *GasOracleService) EstimateCost(chainID uint64, operation string, gasLim
 	return &CostEstimate{
 		ChainID:      chainID,
 		Operation:    operation,
-		GasLimit:    gasLimit,
-		GasPrice:    price.Standard,
-		TotalCost:   strconv.FormatInt(totalWei, 10),
+		GasLimit:     gasLimit,
+		GasPrice:     price.Standard,
+		TotalCost:    strconv.FormatInt(totalWei, 10),
 		TotalCostUSD: math.Round(float64(totalWei)/1e18*2500*100) / 100,
 	}, nil
 }

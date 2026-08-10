@@ -1,6 +1,22 @@
 
-# Compiled Go binaries
-*/listing_service
-*lending-service
-*swap-service
-*staking_service
+# Compiled Go binaries (built artifacts, named after the module / dir)
+# Match any extensionless executable file in a service dir. Keep source.
+*
+!/**/
+!*.go
+!*.mod
+!*.sum
+!*.md
+!*.sh
+!*.json
+!*.yaml
+!*.yml
+!*.toml
+!*.sql
+!*.txt
+!Dockerfile
+!Dockerfile.*
+!Makefile
+!.env
+!.env.*
+!.gitignore

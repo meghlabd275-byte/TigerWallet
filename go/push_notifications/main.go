@@ -1,7 +1,7 @@
 /**
  * TigerWallet Push Notifications Service
  * High-Load Distributed Go Implementation
- * 
+ *
  * Features:
  * - WebPush for browser notifications
  * - APNs for iOS
@@ -41,36 +41,36 @@ type Notification struct {
 }
 
 type Device struct {
-	ID          string `json:"id"`
-	UserID      string `json:"user_id"`
-	Platform    string `json:"platform"` // ios, android, web
-	Token       string `json:"token"`
-	Enabled     bool   `json:"enabled"`
-	LastActive  int64  `json:"last_active"`
-	CreatedAt   int64  `json:"created_at"`
+	ID         string `json:"id"`
+	UserID     string `json:"user_id"`
+	Platform   string `json:"platform"` // ios, android, web
+	Token      string `json:"token"`
+	Enabled    bool   `json:"enabled"`
+	LastActive int64  `json:"last_active"`
+	CreatedAt  int64  `json:"created_at"`
 }
 
 type Subscription struct {
-	ID        string `json:"id"`
-	UserID    string `json:"user_id"`
-	Endpoint  string `json:"endpoint"`
+	ID        string     `json:"id"`
+	UserID    string     `json:"user_id"`
+	Endpoint  string     `json:"endpoint"`
 	Keys      P256DHKeys `json:"keys"`
-	CreatedAt int64  `json:"created_at"`
+	CreatedAt int64      `json:"created_at"`
 }
 
 type P256DHKeys struct {
-	Auth  string `json:"auth"`
+	Auth   string `json:"auth"`
 	P256DH string `json:"p256dh"`
 }
 
 type Template struct {
-	ID        string            `json:"id"`
-	Name      string            `json:"name"`
-	Type      string            `json:"type"`
-	Title     string            `json:"title"`
-	Body      string            `json:"body"`
-	Icon      string            `json:"icon"`
-	Actions   []NotificationAction `json:"actions"`
+	ID      string               `json:"id"`
+	Name    string               `json:"name"`
+	Type    string               `json:"type"`
+	Title   string               `json:"title"`
+	Body    string               `json:"body"`
+	Icon    string               `json:"icon"`
+	Actions []NotificationAction `json:"actions"`
 }
 
 type NotificationAction struct {
@@ -80,11 +80,11 @@ type NotificationAction struct {
 }
 
 type DeliveryReport struct {
-	NotificationID string    `json:"notification_id"`
-	DeviceID      string    `json:"device_id"`
-	Status        string    `json:"status"`
-	DeliveredAt   int64     `json:"delivered_at"`
-	Error         string    `json:"error,omitempty"`
+	NotificationID string `json:"notification_id"`
+	DeviceID       string `json:"device_id"`
+	Status         string `json:"status"`
+	DeliveredAt    int64  `json:"delivered_at"`
+	Error          string `json:"error,omitempty"`
 }
 
 // ============== Service ==============
@@ -335,10 +335,10 @@ func (s *NotificationService) handleGetHistory(w http.ResponseWriter, r *http.Re
 func (s *NotificationService) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":       "healthy",
+		"status":        "healthy",
 		"notifications": len(s.notifications),
-		"devices":      len(s.devices),
-		"timestamp":    time.Now().Unix(),
+		"devices":       len(s.devices),
+		"timestamp":     time.Now().Unix(),
 	})
 }
 

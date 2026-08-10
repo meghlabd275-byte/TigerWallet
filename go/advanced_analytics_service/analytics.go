@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"math"
 	"math/rand"
@@ -21,21 +20,21 @@ import (
 // ============================================================================
 
 type Config struct {
-	DatabaseURL        string
-	RedisURL           string
-	ServerPort         string
-	AnalyticsInterval  time.Duration
-	RetentionDays      int
-	MaxWorkers         int
-	EnableRealtime     bool
-	EnableAggregation  bool
+	DatabaseURL       string
+	RedisURL          string
+	ServerPort        string
+	AnalyticsInterval time.Duration
+	RetentionDays     int
+	MaxWorkers        int
+	EnableRealtime    bool
+	EnableAggregation bool
 }
 
 var config = Config{
 	DatabaseURL:       getEnv("DATABASE_URL", "postgres://tigerwallet:password@localhost:5432/tigerwallet?sslmode=disable"),
 	RedisURL:          getEnv("REDIS_URL", "redis://localhost:6379"),
 	ServerPort:        getEnv("PORT", "8086"),
-	AnalyticsInterval:  time.Minute * 5,
+	AnalyticsInterval: time.Minute * 5,
 	RetentionDays:     90,
 	MaxWorkers:        10,
 	EnableRealtime:    true,
@@ -53,31 +52,31 @@ type Event struct {
 	SessionID   string                 `json:"session_id,omitempty"`
 	Properties  map[string]interface{} `json:"properties"`
 	Timestamp   time.Time              `json:"timestamp"`
-	ChainID     int64                 `json:"chain_id,omitempty"`
+	ChainID     int64                  `json:"chain_id,omitempty"`
 	TokenSymbol string                 `json:"token_symbol,omitempty"`
-	Amount      float64               `json:"amount,omitempty"`
-	GasUsed     float64               `json:"gas_used,omitempty"`
+	Amount      float64                `json:"amount,omitempty"`
+	GasUsed     float64                `json:"gas_used,omitempty"`
 	Network     string                 `json:"network,omitempty"`
 	IPAddress   string                 `json:"ip_address,omitempty"`
 	UserAgent   string                 `json:"user_agent,omitempty"`
 }
 
 type UserEvent struct {
-	ID             string    `json:"id"`
-	UserID         string    `json:"user_id"`
-	EventType      string    `json:"event_type"`
-	EventName      string    `json:"event_name"`
-	Timestamp      time.Time `json:"timestamp"`
-	ChainID        int64     `json:"chain_id"`
-	Network        string    `json:"network"`
-	TokenSymbol    string    `json:"token_symbol"`
-	Amount         float64   `json:"amount"`
-	USDValue       float64   `json:"usd_value"`
-	GasUsed        float64   `json:"gas_used"`
-	GasUSDValue    float64   `json:"gas_usd_value"`
-	TransactionHash string   `json:"transaction_hash,omitempty"`
-	Status         string    `json:"status"`
-	ErrorMessage   string    `json:"error_message,omitempty"`
+	ID              string    `json:"id"`
+	UserID          string    `json:"user_id"`
+	EventType       string    `json:"event_type"`
+	EventName       string    `json:"event_name"`
+	Timestamp       time.Time `json:"timestamp"`
+	ChainID         int64     `json:"chain_id"`
+	Network         string    `json:"network"`
+	TokenSymbol     string    `json:"token_symbol"`
+	Amount          float64   `json:"amount"`
+	USDValue        float64   `json:"usd_value"`
+	GasUsed         float64   `json:"gas_used"`
+	GasUSDValue     float64   `json:"gas_usd_value"`
+	TransactionHash string    `json:"transaction_hash,omitempty"`
+	Status          string    `json:"status"`
+	ErrorMessage    string    `json:"error_message,omitempty"`
 }
 
 type DailyStats struct {
@@ -95,41 +94,42 @@ type DailyStats struct {
 }
 
 type TokenStats struct {
-	Symbol           string  `json:"symbol"`
-	Name             string  `json:"name"`
-	ChainID          int64   `json:"chain_id"`
-	TotalVolumeUSD   float64 `json:"total_volume_usd"`
-	TotalTransactions int    `json:"total_transactions"`
-	UniqueSenders    int     `json:"unique_senders"`
-	UniqueReceivers  int     `json:"unique_receivers"`
+	Symbol             string  `json:"symbol"`
+	Name               string  `json:"name"`
+	ChainID            int64   `json:"chain_id"`
+	TotalVolumeUSD     float64 `json:"total_volume_usd"`
+	TotalTransactions  int     `json:"total_transactions"`
+	UniqueSenders      int     `json:"unique_senders"`
+	UniqueReceivers    int     `json:"unique_receivers"`
 	AvgTransactionSize float64 `json:"avg_transaction_size"`
-	MaxTransaction    float64 `json:"max_transaction"`
-	AvgGasUsed        float64 `json:"avg_gas_used"`
-	PriceUSD         float64 `json:"price_usd"`
+	MaxTransaction     float64 `json:"max_transaction"`
+	AvgGasUsed         float64 `json:"avg_gas_used"`
+	PriceUSD           float64 `json:"price_usd"`
 }
 
 type NetworkStats struct {
-	Network          string  `json:"network"`
-	ChainID          int64   `json:"chain_id"`
-	TotalTransactions int    `json:"total_transactions"`
-	ActiveUsers      int     `json:"active_users"`
-	VolumeUSD        float64 `json:"volume_usd"`
-	AvgGasPrice      float64 `json:"avg_gas_price"`
-	TPS              float64 `json:"tps"`
-	BlockTime        float64 `json:"block_time"`
+	Network           string  `json:"network"`
+	ChainID           int64   `json:"chain_id"`
+	TotalTransactions int       `json:"total_transactions"`
+	ActiveUsers       int       `json:"active_users"`
+	VolumeUSD         float64   `json:"volume_usd"`
+	AvgGasPrice       float64   `json:"avg_gas_price"`
+	TPS               float64   `json:"tps"`
+	BlockTime         float64   `json:"block_time"`
+	LastUpdate        time.Time `json:"last_update"`
 }
 
 type UserStats struct {
-	UserID           string  `json:"user_id"`
-	FirstSeen        time.Time `json:"first_seen"`
-	LastSeen         time.Time `json:"last_seen"`
-	TotalTransactions int     `json:"total_transactions"`
-	TotalVolumeUSD   float64 `json:"total_volume_usd"`
-	NetworksUsed     []string `json:"networks_used"`
-	TokensUsed       []string `json:"tokens_used"`
-	FavoriteNetwork  string   `json:"favorite_network"`
-	FavoriteToken    string   `json:"favorite_token"`
-	AvgTransactionSize float64 `json:"avg_transaction_size"`
+	UserID             string    `json:"user_id"`
+	FirstSeen          time.Time `json:"first_seen"`
+	LastSeen           time.Time `json:"last_seen"`
+	TotalTransactions  int       `json:"total_transactions"`
+	TotalVolumeUSD     float64   `json:"total_volume_usd"`
+	NetworksUsed       []string  `json:"networks_used"`
+	TokensUsed         []string  `json:"tokens_used"`
+	FavoriteNetwork    string    `json:"favorite_network"`
+	FavoriteToken      string    `json:"favorite_token"`
+	AvgTransactionSize float64   `json:"avg_transaction_size"`
 }
 
 type CohortData struct {
@@ -177,14 +177,14 @@ type MetricValue struct {
 // ============================================================================
 
 type AnalyticsEngine struct {
-	db            *sql.DB
-	redis         *RedisClient
-	eventChan     chan Event
-	statsCache    *StatsCache
-	workers       int
-	wg            sync.WaitGroup
-	ctx           context.Context
-	cancel        context.CancelFunc
+	db         *sql.DB
+	redis      *RedisClient
+	eventChan  chan Event
+	statsCache *StatsCache
+	workers    int
+	wg         sync.WaitGroup
+	ctx        context.Context
+	cancel     context.CancelFunc
 }
 
 type RedisClient struct {
@@ -193,16 +193,16 @@ type RedisClient struct {
 }
 
 type StatsCache struct {
-	mu         sync.RWMutex
-	dailyStats map[string]*DailyStats
-	tokenStats map[string]*TokenStats
+	mu           sync.RWMutex
+	dailyStats   map[string]*DailyStats
+	tokenStats   map[string]*TokenStats
 	networkStats map[string]*NetworkStats
-	userStats  map[string]*UserStats
+	userStats    map[string]*UserStats
 }
 
 func NewAnalyticsEngine(cfg Config) (*AnalyticsEngine, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	engine := &AnalyticsEngine{
 		eventChan:  make(chan Event, 10000),
 		statsCache: NewStatsCache(),
@@ -210,13 +210,13 @@ func NewAnalyticsEngine(cfg Config) (*AnalyticsEngine, error) {
 		ctx:        ctx,
 		cancel:     cancel,
 	}
-	
+
 	// Initialize database connection
 	db, err := sql.Open("postgres", cfg.DatabaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-	
+
 	// Test connection
 	if err := db.Ping(); err != nil {
 		// Continue without database for demo
@@ -224,10 +224,10 @@ func NewAnalyticsEngine(cfg Config) (*AnalyticsEngine, error) {
 	} else {
 		engine.db = db
 	}
-	
+
 	// Initialize Redis
 	engine.redis = &RedisClient{addr: cfg.RedisURL}
-	
+
 	return engine, nil
 }
 
@@ -246,21 +246,21 @@ func NewStatsCache() *StatsCache {
 
 func (e *AnalyticsEngine) Start() error {
 	fmt.Println("Starting Analytics Engine...")
-	
+
 	// Start workers
 	for i := 0; i < e.workers; i++ {
 		e.wg.Add(1)
 		go e.eventWorker(i)
 	}
-	
+
 	// Start aggregation scheduler
 	if config.EnableAggregation {
 		go e.aggregationLoop()
 	}
-	
+
 	// Start API server
 	go e.startAPIServer()
-	
+
 	fmt.Println("Analytics Engine started successfully")
 	return nil
 }
@@ -276,7 +276,7 @@ func (e *AnalyticsEngine) Stop() {
 func (e *AnalyticsEngine) eventWorker(id int) {
 	defer e.wg.Done()
 	fmt.Printf("Worker %d started\n", id)
-	
+
 	for {
 		select {
 		case <-e.ctx.Done():
@@ -307,7 +307,7 @@ func (e *AnalyticsEngine) processEvent(event Event) {
 	case "api_request":
 		e.processAPIEvent(event)
 	}
-	
+
 	// Update real-time stats
 	e.updateRealtimeStats(event)
 }
@@ -316,7 +316,7 @@ func (e *AnalyticsEngine) processTransactionEvent(event Event) {
 	stats := e.statsCache.getOrCreateDaily(event.Timestamp.Format("2006-01-02"))
 	stats.TotalTransactions++
 	stats.VolumeUSD += event.Amount
-	
+
 	if event.Properties != nil {
 		if txType, ok := event.Properties["tx_type"].(string); ok {
 			switch txType {
@@ -329,7 +329,7 @@ func (e *AnalyticsEngine) processTransactionEvent(event Event) {
 			}
 		}
 	}
-	
+
 	stats.GasFeesUSD += event.GasUsed * getGasPrice(event.Network)
 }
 
@@ -369,7 +369,7 @@ func (e *AnalyticsEngine) updateRealtimeStats(event Event) {
 	if !config.EnableRealtime {
 		return
 	}
-	
+
 	// Update Redis cache for real-time access
 	e.redis.Set(fmt.Sprintf("realtime:%s", event.Type), time.Now().Unix(), 300)
 }
@@ -381,7 +381,7 @@ func (e *AnalyticsEngine) updateRealtimeStats(event Event) {
 func (e *AnalyticsEngine) aggregationLoop() {
 	ticker := time.NewTicker(config.AnalyticsInterval)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-e.ctx.Done():
@@ -394,25 +394,25 @@ func (e *AnalyticsEngine) aggregationLoop() {
 
 func (e *AnalyticsEngine) runAggregation() {
 	fmt.Println("Running analytics aggregation...")
-	
+
 	// Aggregate daily stats
 	e.aggregateDailyStats()
-	
+
 	// Aggregate token stats
 	e.aggregateTokenStats()
-	
+
 	// Aggregate network stats
 	e.aggregateNetworkStats()
-	
+
 	// Calculate user cohorts
 	e.calculateUserCohorts()
-	
+
 	// Calculate funnels
 	e.calculateFunnels()
-	
+
 	// Cleanup old data
 	e.cleanupOldData()
-	
+
 	fmt.Println("Analytics aggregation completed")
 }
 
@@ -420,7 +420,7 @@ func (e *AnalyticsEngine) aggregateDailyStats() {
 	// Simulate aggregation from in-memory cache to persistent storage
 	date := time.Now().Format("2006-01-02")
 	stats := e.statsCache.getOrCreateDaily(date)
-	
+
 	// Store in database
 	if e.db != nil {
 		query := `
@@ -449,7 +449,7 @@ func (e *AnalyticsEngine) aggregateTokenStats() {
 		if stats.TotalTransactions > 0 {
 			stats.AvgTransactionSize = stats.TotalVolumeUSD / float64(stats.TotalTransactions)
 		}
-		
+
 		// Store in cache
 		e.statsCache.tokenStats[symbol] = stats
 	}
@@ -460,11 +460,11 @@ func (e *AnalyticsEngine) aggregateNetworkStats() {
 	now := time.Now()
 	for network, stats := range e.statsCache.networkStats {
 		// Calculate TPS (transactions per second)
-		elapsedMinutes := now.Sub(stats.TotalTransactions).Minutes()
+		elapsedMinutes := now.Sub(stats.LastUpdate).Minutes()
 		if elapsedMinutes > 0 {
 			stats.TPS = float64(stats.TotalTransactions) / elapsedMinutes / 60
 		}
-		
+
 		e.statsCache.networkStats[network] = stats
 	}
 }
@@ -472,11 +472,11 @@ func (e *AnalyticsEngine) aggregateNetworkStats() {
 func (e *AnalyticsEngine) calculateUserCohorts() {
 	// Calculate user retention cohorts
 	cohorts := []CohortData{}
-	
+
 	for i := 0; i < 30; i++ {
 		date := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
 		cohortSize := rand.Intn(1000) + 100
-		
+
 		cohort := CohortData{
 			CohortDate: date,
 			CohortSize: cohortSize,
@@ -490,50 +490,50 @@ func (e *AnalyticsEngine) calculateUserCohorts() {
 		}
 		cohorts = append(cohorts, cohort)
 	}
-	
+
 	_ = cohorts // Store or return
 }
 
 func (e *AnalyticsEngine) calculateFunnels() {
 	funnels := []FunnelData{
 		{
-			FunnelName: "User Onboarding",
-			Step1:      10000,
-			Step2:      7500,
-			Step3:      6000,
-			Step4:      4500,
-			Step5:      3500,
+			FunnelName:  "User Onboarding",
+			Step1:       10000,
+			Step2:       7500,
+			Step3:       6000,
+			Step4:       4500,
+			Step5:       3500,
 			DropOffRate: 65.0,
 		},
 		{
-			FunnelName: "Swap Flow",
-			Step1:      5000,
-			Step2:      4500,
-			Step3:      4000,
-			Step4:      3500,
-			Step5:      3000,
+			FunnelName:  "Swap Flow",
+			Step1:       5000,
+			Step2:       4500,
+			Step3:       4000,
+			Step4:       3500,
+			Step5:       3000,
 			DropOffRate: 40.0,
 		},
 		{
-			FunnelName: "Staking Flow",
-			Step1:      3000,
-			Step2:      2500,
-			Step3:      2000,
-			Step4:      1500,
-			Step5:      1000,
+			FunnelName:  "Staking Flow",
+			Step1:       3000,
+			Step2:       2500,
+			Step3:       2000,
+			Step4:       1500,
+			Step5:       1000,
 			DropOffRate: 66.7,
 		},
 	}
-	
+
 	_ = funnels // Store or return
 }
 
 func (e *AnalyticsEngine) cleanupOldData() {
 	// Clean up data older than retention period
 	cutoffDate := time.Now().AddDate(0, 0, -config.RetentionDays)
-	
+
 	fmt.Printf("Cleaning up data older than %s\n", cutoffDate.Format("2006-01-02"))
-	
+
 	// In production, would delete from database
 }
 
@@ -544,11 +544,11 @@ func (e *AnalyticsEngine) cleanupOldData() {
 func (c *StatsCache) getOrCreateDaily(date string) *DailyStats {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	if stats, ok := c.dailyStats[date]; ok {
 		return stats
 	}
-	
+
 	stats := &DailyStats{Date: date}
 	c.dailyStats[date] = stats
 	return stats
@@ -557,12 +557,12 @@ func (c *StatsCache) getOrCreateDaily(date string) *DailyStats {
 func (c *StatsCache) getOrCreateToken(symbol string, chainID int64) *TokenStats {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	key := fmt.Sprintf("%s_%d", symbol, chainID)
 	if stats, ok := c.tokenStats[key]; ok {
 		return stats
 	}
-	
+
 	stats := &TokenStats{Symbol: symbol, ChainID: chainID}
 	c.tokenStats[key] = stats
 	return stats
@@ -571,13 +571,13 @@ func (c *StatsCache) getOrCreateToken(symbol string, chainID int64) *TokenStats 
 func (c *StatsCache) getOrCreateNetwork(network string, chainID int64) *NetworkStats {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	key := fmt.Sprintf("%s_%d", network, chainID)
 	if stats, ok := c.networkStats[key]; ok {
 		return stats
 	}
-	
-	stats := &NetworkStats{Network: network, ChainID: chainID}
+
+	stats := &NetworkStats{Network: network, ChainID: chainID, LastUpdate: time.Now()}
 	c.networkStats[key] = stats
 	return stats
 }
@@ -585,11 +585,11 @@ func (c *StatsCache) getOrCreateNetwork(network string, chainID int64) *NetworkS
 func (c *StatsCache) getOrCreateUser(userID string) *UserStats {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	if stats, ok := c.userStats[userID]; ok {
 		return stats
 	}
-	
+
 	stats := &UserStats{UserID: userID}
 	c.userStats[userID] = stats
 	return stats
@@ -602,7 +602,7 @@ func (c *StatsCache) getOrCreateUser(userID string) *UserStats {
 func (r *RedisClient) Set(key string, value interface{}, expiration int) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	// Simplified - in production use actual Redis
 	_ = key
 	_ = value
@@ -613,7 +613,7 @@ func (r *RedisClient) Set(key string, value interface{}, expiration int) error {
 func (r *RedisClient) Get(key string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	// Simplified
 	_ = key
 	return "", nil
@@ -675,7 +675,7 @@ func getGasPrice(network string) float64 {
 		"avalanche": 25.0,
 		"bsc":       5.0,
 	}
-	
+
 	if price, ok := gasPrices[network]; ok {
 		return price
 	}
@@ -695,24 +695,24 @@ func getEnv(key, defaultValue string) string {
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
-	
+
 	fmt.Println("============================================")
 	fmt.Println("TigerWallet Advanced Analytics Service")
 	fmt.Println("============================================")
-	
+
 	// Create analytics engine
 	engine, err := NewAnalyticsEngine(config)
 	if err != nil {
 		fmt.Printf("Failed to create analytics engine: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	// Start engine
 	if err := engine.Start(); err != nil {
 		fmt.Printf("Failed to start analytics engine: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	// Generate sample events for demonstration
 	go func() {
 		for i := 0; i < 100; i++ {
@@ -721,23 +721,23 @@ func main() {
 				Type:      "transaction",
 				UserID:    fmt.Sprintf("user_%d", rand.Intn(1000)),
 				Timestamp: time.Now(),
-				ChainID:    1,
-				Network:    "ethereum",
-				Amount:     rand.Float64() * 10,
-				GasUsed:    rand.Float64() * 100000,
+				ChainID:   1,
+				Network:   "ethereum",
+				Amount:    rand.Float64() * 10,
+				GasUsed:   rand.Float64() * 100000,
 			}
 			engine.eventChan <- event
 			time.Sleep(time.Millisecond * 10)
 		}
 	}()
-	
+
 	// Wait for signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
-	
+
 	fmt.Println("\nShutting down...")
 	engine.Stop()
-	
+
 	fmt.Println("Analytics service stopped")
 }

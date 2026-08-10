@@ -15,44 +15,43 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
 
 // OKX Connector
 type OKXConnector struct {
-	apiKey     string
-	apiSecret  string
-	passphrase string
-	baseURL    string
-	httpClient *http.Client
-	symbols    map[string]*OKXSymbol
-	orderCache map[string]*Order
-	mu         sync.RWMutex
+	apiKey      string
+	apiSecret   string
+	passphrase  string
+	baseURL     string
+	httpClient  *http.Client
+	symbols     map[string]*OKXSymbol
+	orderCache  map[string]*Order
+	mu          sync.RWMutex
 	rateLimiter *RateLimiter
 }
 
 func NewOKXConnector(apiKey, apiSecret, passphrase string) *OKXConnector {
 	return &OKXConnector{
-		apiKey:     apiKey,
-		apiSecret:  apiSecret,
-		passphrase: passphrase,
-		baseURL:    "https://www.okx.com",
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		symbols:    make(map[string]*OKXSymbol),
-		orderCache: make(map[string]*Order),
+		apiKey:      apiKey,
+		apiSecret:   apiSecret,
+		passphrase:  passphrase,
+		baseURL:     "https://www.okx.com",
+		httpClient:  &http.Client{Timeout: 30 * time.Second},
+		symbols:     make(map[string]*OKXSymbol),
+		orderCache:  make(map[string]*Order),
 		rateLimiter: NewRateLimiter(10, time.Second),
 	}
 }
 
 type OKXSymbol struct {
-	InstID  string `json:"instId"`
+	InstID   string `json:"instId"`
 	InstType string `json:"instType"`
-	BaseCcy string `json:"baseCcy"`
+	BaseCcy  string `json:"baseCcy"`
 	QuoteCcy string `json:"quoteCcy"`
-	MinSize string `json:"minSz"`
-	MaxSize string `json:"maxSz"`
+	MinSize  string `json:"minSz"`
+	MaxSize  string `json:"maxSz"`
 	MinPrice string `json:"minPx"`
 	MaxPrice string `json:"maxPx"`
 }
@@ -188,7 +187,7 @@ func (o *OKXConnector) CreateOrder(order *Order) (*Order, error) {
 
 	var result struct {
 		Data []struct {
-			OrdID string `json:"ordId"`
+			OrdID   string `json:"ordId"`
 			ClOrdID string `json:"clOrdId"`
 		} `json:"data"`
 	}
@@ -264,8 +263,8 @@ func (o *OKXConnector) GetBalance(ccy string) (*Balance, error) {
 	var result struct {
 		Data []struct {
 			Details []struct {
-				Ccy   string `json:"ccy"`
-				Avail string `json:"availBal"`
+				Ccy    string `json:"ccy"`
+				Avail  string `json:"availBal"`
 				Frozen string `json:"frozenBal"`
 			} `json:"details"`
 		} `json:"data"`

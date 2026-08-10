@@ -27,9 +27,9 @@ type BalanceResult struct {
 	ChainID  int64   `json:"chain_id"`
 	Symbol   string  `json:"symbol"`
 	Address  string  `json:"address"`
-	Balance  string  `json:"balance"`        // raw wei
-	BalanceF float64 `json:"balance_f"`      // human-readable
-	USDValue float64 `json:"usd_value"`      // fiat value
+	Balance  string  `json:"balance"`   // raw wei
+	BalanceF float64 `json:"balance_f"` // human-readable
+	USDValue float64 `json:"usd_value"` // fiat value
 }
 
 type TokenBalance struct {
@@ -37,8 +37,8 @@ type TokenBalance struct {
 	Symbol   string  `json:"symbol"`
 	Name     string  `json:"name"`
 	Decimals int     `json:"decimals"`
-	Balance  string  `json:"balance"`        // raw
-	BalanceF float64 `json:"balance_f"`      // human-readable
+	Balance  string  `json:"balance"`   // raw
+	BalanceF float64 `json:"balance_f"` // human-readable
 	USDPrice float64 `json:"usd_price"`
 	USDValue float64 `json:"usd_value"`
 	Logo     string  `json:"logo,omitempty"`
@@ -59,13 +59,13 @@ type TransactionHistory struct {
 }
 
 type NFTAsset struct {
-	Contract      string `json:"contract"`
-	TokenID       string `json:"token_id"`
-	Name          string `json:"name"`
-	Description   string `json:"description"`
-	ImageURL      string `json:"image_url"`
-	Collection    string `json:"collection"`
-	Standard      string `json:"standard"` // ERC-721 / ERC-1155
+	Contract    string `json:"contract"`
+	TokenID     string `json:"token_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	ImageURL    string `json:"image_url"`
+	Collection  string `json:"collection"`
+	Standard    string `json:"standard"` // ERC-721 / ERC-1155
 }
 
 // ---- RPC helpers ----
@@ -156,8 +156,8 @@ func erc20BalanceOfData(addr common.Address) []byte {
 }
 
 // erc20SymbolData / Name / Decimals selectors
-func erc20SymbolData() []byte  { return []byte{0x95, 0xd8, 0x9b, 0x41} }
-func erc20NameData() []byte    { return []byte{0x06, 0xfd, 0xde, 0x03} }
+func erc20SymbolData() []byte   { return []byte{0x95, 0xd8, 0x9b, 0x41} }
+func erc20NameData() []byte     { return []byte{0x06, 0xfd, 0xde, 0x03} }
 func erc20DecimalsData() []byte { return []byte{0x31, 0x3c, 0xe5, 0x67} }
 
 // ethCall performs an eth_call.
@@ -349,14 +349,14 @@ func FetchTransactionHistory(ctx context.Context, explorerAPI, apiKey, address s
 		Status  string `json:"status"`
 		Message string `json:"message"`
 		Result  []struct {
-			Hash        string `json:"hash"`
-			From        string `json:"from"`
-			To          string `json:"to"`
-			Value       string `json:"value"`
-			TimeStamp   string `json:"timeStamp"`
-			IsError     string `json:"isError"`
-			GasUsed     string `json:"gasUsed"`
-			GasPrice    string `json:"gasPrice"`
+			Hash      string `json:"hash"`
+			From      string `json:"from"`
+			To        string `json:"to"`
+			Value     string `json:"value"`
+			TimeStamp string `json:"timeStamp"`
+			IsError   string `json:"isError"`
+			GasUsed   string `json:"gasUsed"`
+			GasPrice  string `json:"gasPrice"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {

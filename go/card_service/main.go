@@ -188,10 +188,10 @@ func (s *service) getBalance(c *gin.Context) {
 		"balance":          avail,
 		"currency":         cur,
 		"available_credit": avail,
-		"daily_limit":     dlimit,
-		"monthly_limit":   mlimit,
-		"used_today":      usedToday,
-		"used_month":      usedMonth,
+		"daily_limit":      dlimit,
+		"monthly_limit":    mlimit,
+		"used_today":       usedToday,
+		"used_month":       usedMonth,
 	})
 }
 
@@ -207,7 +207,10 @@ FROM card_transactions WHERE user_id=$1 ORDER BY created_at DESC LIMIT 200`, use
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var t struct{ ID, Mer, Amt, Cur, Cat string; Ts int64 }
+		var t struct {
+			ID, Mer, Amt, Cur, Cat string
+			Ts                     int64
+		}
 		if err := rows.Scan(&t.ID, &t.Mer, &t.Amt, &t.Cur, &t.Cat, &t.Ts); err != nil {
 			continue
 		}

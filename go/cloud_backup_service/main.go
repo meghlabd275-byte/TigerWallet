@@ -8,16 +8,12 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"log"
 	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -59,32 +55,32 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type Backup struct {
-	ID           string      `json:"id"`
-	UserID       string      `json:"user_id"`
-	WalletID     string      `json:"wallet_id"`
-	EncryptedData string    `json:"encrypted_data"`
-	Checksum     string      `json:"checksum"`
-	CloudProvider string    `json:"cloud_provider"` // "google", "apple", "custom"
-	CloudPath    string      `json:"cloud_path"`
-	Size         int64       `json:"size"`
-	Version      uint        `json:"version"`
-	IsActive     bool       `json:"is_active"`
-	CreatedAt    int64       `json:"created_at"`
-	UpdatedAt    int64       `json:"updated_at"`
+	ID            string `json:"id"`
+	UserID        string `json:"user_id"`
+	WalletID      string `json:"wallet_id"`
+	EncryptedData string `json:"encrypted_data"`
+	Checksum      string `json:"checksum"`
+	CloudProvider string `json:"cloud_provider"` // "google", "apple", "custom"
+	CloudPath     string `json:"cloud_path"`
+	Size          int64  `json:"size"`
+	Version       uint   `json:"version"`
+	IsActive      bool   `json:"is_active"`
+	CreatedAt     int64  `json:"created_at"`
+	UpdatedAt     int64  `json:"updated_at"`
 }
 
 type BackupMetadata struct {
-	WalletID     string            `json:"wallet_id"`
-	ChainIDs      []uint64          `json:"chain_ids"`
-	Addresses    map[uint64]string `json:"addresses"`
-	PublicKeys   map[uint64]string `json:"public_keys"`
-	Name         string            `json:"name"`
-	LastBackup   int64             `json:"last_backup"`
+	WalletID   string            `json:"wallet_id"`
+	ChainIDs   []uint64          `json:"chain_ids"`
+	Addresses  map[uint64]string `json:"addresses"`
+	PublicKeys map[uint64]string `json:"public_keys"`
+	Name       string            `json:"name"`
+	LastBackup int64             `json:"last_backup"`
 }
 
 type BackupRequest struct {
-	WalletID     string   `json:"wallet_id" binding:"required"`
-	Data        string   `json:"data" binding:"required"`
+	WalletID      string `json:"wallet_id" binding:"required"`
+	Data          string `json:"data" binding:"required"`
 	CloudProvider string `json:"cloud_provider"`
 }
 
@@ -120,9 +116,9 @@ func EncryptBackup(data, password string) (string, string, error) {
 	// Calculate checksum
 	checksum := sha256.Sum256(ciphertext)
 
-	return base64.StdEncoding.EncodeToString(ciphertext), 
-		   hex.EncodeToString(checksum[:]),
-		   nil
+	return base64.StdEncoding.EncodeToString(ciphertext),
+		hex.EncodeToString(checksum[:]),
+		nil
 }
 
 func DecryptBackup(encryptedData, password string) (string, error) {
@@ -184,9 +180,9 @@ type CloudStorage interface {
 // ============================================================================
 
 type S3Storage struct {
-	bucket   string
-	region   string
-	client   *http.Client
+	bucket string
+	region string
+	client *http.Client
 }
 
 func NewS3Storage(bucket, region string) *S3Storage {
@@ -215,7 +211,7 @@ func (s *S3Storage) Delete(path string) error {
 }
 
 func (s *S3Storage) GetSignedURL(path string, expiry time.Duration) (string, error) {
-	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s?expiry=%d", 
+	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s?expiry=%d",
 		s.bucket, s.region, path, time.Now().Add(expiry).Unix()), nil
 }
 
@@ -294,10 +290,10 @@ func (i *ICloudStorage) GetSignedURL(path string, expiry time.Duration) (string,
 // ============================================================================
 
 type CloudBackupService struct {
-	config       *Config
-	redis        *redis.Client
-	backups      map[string]*Backup
-	storage      map[string]CloudStorage
+	config  *Config
+	redis   *redis.Client
+	backups map[string]*Backup
+	storage map[string]CloudStorage
 }
 
 func NewCloudBackupService(config *Config) *CloudBackupService {
@@ -311,10 +307,10 @@ func NewCloudBackupService(config *Config) *CloudBackupService {
 	storage["apple"] = NewICloudStorage("TigerWallet")
 
 	return &CloudBackupService{
-		config:   config,
-		redis:    redisClient,
-		backups:  make(map[string]*Backup),
-		storage:  storage,
+		config:  config,
+		redis:   redisClient,
+		backups: make(map[string]*Backup),
+		storage: storage,
 	}
 }
 
@@ -342,7 +338,7 @@ func (s *CloudBackupService) CreateBackup(userID, walletID, data, password, prov
 	}
 
 	cloudPath := fmt.Sprintf("backups/%s/%s_%d.enc", userID, walletID, time.Now().Unix())
-	
+
 	if err := storage.Upload(cloudPath, []byte(encryptedData)); err != nil {
 		return nil, err
 	}
@@ -519,9 +515,9 @@ func (s *CloudBackupService) RegisterRoutes(r *gin.Engine) {
 func (s *CloudBackupService) handleCreateBackup(c *gin.Context) {
 	var req struct {
 		UserID        string `json:"user_id" binding:"required"`
-		WalletID     string `json:"wallet_id" binding:"required"`
-		Data         string `json:"data" binding:"required"`
-		Password     string `json:"password" binding:"required"`
+		WalletID      string `json:"wallet_id" binding:"required"`
+		Data          string `json:"data" binding:"required"`
+		Password      string `json:"password" binding:"required"`
 		CloudProvider string `json:"cloud_provider"`
 	}
 

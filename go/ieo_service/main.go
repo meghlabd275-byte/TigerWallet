@@ -176,7 +176,10 @@ func (s *service) listRounds(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var r struct{ ID, Sym, Name, Addr, Price, Supply, Sold, Max, Status string; Start, End int64 }
+		var r struct {
+			ID, Sym, Name, Addr, Price, Supply, Sold, Max, Status string
+			Start, End                                            int64
+		}
 		if err := rows.Scan(&r.ID, &r.Sym, &r.Name, &r.Addr, &r.Price, &r.Supply, &r.Sold, &r.Max, &r.Start, &r.End, &r.Status); err != nil {
 			continue
 		}
@@ -187,7 +190,10 @@ func (s *service) listRounds(c *gin.Context) {
 
 func (s *service) getRound(c *gin.Context) {
 	id := c.Param("id")
-	var r struct{ ID, Sym, Name, Addr, Price, Supply, Sold, Max, Status string; Start, End int64 }
+	var r struct {
+		ID, Sym, Name, Addr, Price, Supply, Sold, Max, Status string
+		Start, End                                            int64
+	}
 	err := s.pg.QueryRow(c, `SELECT id,token_symbol,token_name,token_address,price::text,total_supply::text,sold::text,max_per_user::text,extract(epoch from start_time)::bigint,extract(epoch from end_time)::bigint,status FROM ieo_rounds WHERE id=$1`, id).
 		Scan(&r.ID, &r.Sym, &r.Name, &r.Addr, &r.Price, &r.Supply, &r.Sold, &r.Max, &r.Start, &r.End, &r.Status)
 	if err != nil {
@@ -198,14 +204,14 @@ func (s *service) getRound(c *gin.Context) {
 }
 
 type createRoundReq struct {
-	TokenSymbol string `json:"token_symbol" binding:"required"`
-	TokenName  string `json:"token_name" binding:"required"`
+	TokenSymbol  string `json:"token_symbol" binding:"required"`
+	TokenName    string `json:"token_name" binding:"required"`
 	TokenAddress string `json:"token_address" binding:"required"`
-	Price       string `json:"price" binding:"required"`
-	TotalSupply string `json:"total_supply" binding:"required"`
-	MaxPerUser  string `json:"max_per_user" binding:"required"`
-	StartEpoch  int64  `json:"start_time" binding:"required"`
-	EndEpoch    int64  `json:"end_time" binding:"required"`
+	Price        string `json:"price" binding:"required"`
+	TotalSupply  string `json:"total_supply" binding:"required"`
+	MaxPerUser   string `json:"max_per_user" binding:"required"`
+	StartEpoch   int64  `json:"start_time" binding:"required"`
+	EndEpoch     int64  `json:"end_time" binding:"required"`
 }
 
 func (s *service) createRound(c *gin.Context) {
@@ -363,7 +369,11 @@ func (s *service) listParticipations(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var p struct{ ID, RID, Amt, Paid string; Claimed bool; Ts int64 }
+		var p struct {
+			ID, RID, Amt, Paid string
+			Claimed            bool
+			Ts                 int64
+		}
 		if err := rows.Scan(&p.ID, &p.RID, &p.Amt, &p.Paid, &p.Claimed, &p.Ts); err != nil {
 			continue
 		}

@@ -20,19 +20,19 @@ type Config struct {
 var cfg = Config{Port: 8007}
 
 type BridgeTransaction struct {
-	ID             string    `json:"id"`
-	UserID         string    `json:"user_id"`
-	FromChain      string    `json:"from_chain"`
-	ToChain        string    `json:"to_chain"`
-	Token          string    `json:"token"`
-	Amount         string    `json:"amount"`
-	Recipient      string    `json:"recipient"`
-	Status         string    `json:"status"` // pending, processing, completed, failed
-	FromTxHash     string    `json:"from_tx_hash"`
-	ToTxHash        string    `json:"to_tx_hash"`
-	Fee            string    `json:"fee"`
-	EstimatedTime  int       `json:"estimated_time"`
-	Timestamp      time.Time `json:"timestamp"`
+	ID            string    `json:"id"`
+	UserID        string    `json:"user_id"`
+	FromChain     string    `json:"from_chain"`
+	ToChain       string    `json:"to_chain"`
+	Token         string    `json:"token"`
+	Amount        string    `json:"amount"`
+	Recipient     string    `json:"recipient"`
+	Status        string    `json:"status"` // pending, processing, completed, failed
+	FromTxHash    string    `json:"from_tx_hash"`
+	ToTxHash      string    `json:"to_tx_hash"`
+	Fee           string    `json:"fee"`
+	EstimatedTime int       `json:"estimated_time"`
+	Timestamp     time.Time `json:"timestamp"`
 }
 
 type BridgeService struct {
@@ -62,13 +62,13 @@ func (bs *BridgeService) GetQuote(c *gin.Context) {
 	fee := fmt.Sprintf("%.6f", 0.0)
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":         true,
+		"success":        true,
 		"from_chain":     req.FromChain,
 		"to_chain":       req.ToChain,
 		"token":          req.Token,
-		"amount":          req.Amount,
+		"amount":         req.Amount,
 		"fee":            fee,
-		"estimated_time":  "600", // seconds
+		"estimated_time": "600", // seconds
 		"min_amount":     "10",
 		"max_amount":     "100000",
 	})
@@ -76,11 +76,11 @@ func (bs *BridgeService) GetQuote(c *gin.Context) {
 
 func (bs *BridgeService) InitiateTransfer(c *gin.Context) {
 	var req struct {
-		UserID     string `json:"user_id" binding:"required"`
-		FromChain  string `json:"from_chain" binding:"required"`
-		ToChain    string `json:"to_chain" binding:"required"`
-		Token      string `json:"token" binding:"required"`
-		Amount     string `json:"amount" binding:"required"`
+		UserID    string `json:"user_id" binding:"required"`
+		FromChain string `json:"from_chain" binding:"required"`
+		ToChain   string `json:"to_chain" binding:"required"`
+		Token     string `json:"token" binding:"required"`
+		Amount    string `json:"amount" binding:"required"`
 		Recipient string `json:"recipient" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -105,13 +105,13 @@ func (bs *BridgeService) InitiateTransfer(c *gin.Context) {
 	bs.transactions[tx.ID] = tx
 
 	c.JSON(http.StatusCreated, gin.H{
-		"success":       true,
-		"tx_id":        tx.ID,
-		"from_chain":   req.FromChain,
-		"to_chain":     req.ToChain,
-		"amount":       req.Amount,
-		"fee":          tx.Fee,
-		"status":       tx.Status,
+		"success":    true,
+		"tx_id":      tx.ID,
+		"from_chain": req.FromChain,
+		"to_chain":   req.ToChain,
+		"amount":     req.Amount,
+		"fee":        tx.Fee,
+		"status":     tx.Status,
 	})
 }
 

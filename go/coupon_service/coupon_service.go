@@ -1,6 +1,6 @@
 /**
  * TigerWallet Coupon Service
- * 
+ *
  * Promo codes and discounts management.
  * Built with Go for high-load distributed operations.
  */
@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
@@ -19,34 +20,34 @@ import (
 
 // Coupon represents a coupon
 type Coupon struct {
-	ID              string    `json:"id"`
-	Code            string    `json:"code"`
-	Type            string    `json:"type"` // percentage, fixed, fee_discount
-	Value           string    `json:"value"`
-	MinAmount       string    `json:"min_amount"`
-	MaxUses         int       `json:"max_uses"`
-	UsedCount       int       `json:"used_count"`
-	ValidFrom       int64     `json:"valid_from"`
-	ValidUntil      int64     `json:"valid_until"`
+	ID               string   `json:"id"`
+	Code             string   `json:"code"`
+	Type             string   `json:"type"` // percentage, fixed, fee_discount
+	Value            string   `json:"value"`
+	MinAmount        string   `json:"min_amount"`
+	MaxUses          int      `json:"max_uses"`
+	UsedCount        int      `json:"used_count"`
+	ValidFrom        int64    `json:"valid_from"`
+	ValidUntil       int64    `json:"valid_until"`
 	ApplicableChains []string `json:"applicable_chains"`
 	ApplicablePairs  []string `json:"applicable_pairs"`
-	Status          string    `json:"status"`
-	CreatedAt       int64     `json:"created_at"`
+	Status           string   `json:"status"`
+	CreatedAt        int64    `json:"created_at"`
 }
 
 // CouponUsage represents coupon usage
 type CouponUsage struct {
-	ID          string    `json:"id"`
-	CouponID    string    `json:"coupon_id"`
-	UserID      string    `json:"user_id"`
-	OrderID     string    `json:"order_id"`
-	Discount    string    `json:"discount"`
-	UsedAt      int64     `json:"used_at"`
+	ID       string `json:"id"`
+	CouponID string `json:"coupon_id"`
+	UserID   string `json:"user_id"`
+	OrderID  string `json:"order_id"`
+	Discount string `json:"discount"`
+	UsedAt   int64  `json:"used_at"`
 }
 
 // CouponService manages coupon operations
 type CouponService struct {
-	mu     sync.RWMutex
+	mu      sync.RWMutex
 	coupons map[string]*Coupon
 	usages  map[string]*CouponUsage
 }
@@ -173,7 +174,7 @@ func (s *CouponService) ApplyCoupon(ctx context.Context, code, userID, orderID, 
 	case "percentage":
 		orderAmt, _ := new(big.Int).SetString(orderAmount, 10)
 		value, _ := new(big.Int).SetString(coupon.Value, 10)
-		discount = new(big.Int).Div(new(big.Int).Mul(orderAmt, value), big.NewInt(10000))
+		discount = new(big.Int).Div(new(big.Int).Mul(orderAmt, value), big.NewInt(10000)).String()
 	case "fixed":
 		discount = coupon.Value
 	case "fee_discount":

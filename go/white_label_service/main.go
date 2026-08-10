@@ -21,7 +21,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -37,20 +36,20 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort      string
-	DatabaseURL     string
-	RedisURL        string
+	ServerPort     string
+	DatabaseURL    string
+	RedisURL       string
 	JWTSecret      string
 	AllowedOrigins string
 }
 
 func LoadConfig() *Config {
 	return &Config{
-		ServerPort:      getEnv("WL_SERVICE_PORT", "8085"),
-		DatabaseURL:     getEnv("DATABASE_URL", "postgres://tigerwallet:tigerpass@localhost:5432/tigerwallet?sslmode=disable"),
-		RedisURL:        getEnv("REDIS_URL", "redis://localhost:6379"),
-		JWTSecret:       getEnv("JWT_SECRET", ""),
-		AllowedOrigins:  getEnv("ALLOWED_ORIGINS", "*"),
+		ServerPort:     getEnv("WL_SERVICE_PORT", "8085"),
+		DatabaseURL:    getEnv("DATABASE_URL", "postgres://tigerwallet:tigerpass@localhost:5432/tigerwallet?sslmode=disable"),
+		RedisURL:       getEnv("REDIS_URL", "redis://localhost:6379"),
+		JWTSecret:      getEnv("JWT_SECRET", ""),
+		AllowedOrigins: getEnv("ALLOWED_ORIGINS", "*"),
 	}
 }
 
@@ -60,6 +59,8 @@ func getEnv(key, defaultValue string) string {
 	}
 	return defaultValue
 }
+
+var config = LoadConfig()
 
 // ============================================================================
 // DATABASE
@@ -111,10 +112,10 @@ func InitRedis(redisURL string) error {
 type AdminRole string
 
 const (
-	RoleSuperAdmin       AdminRole = "super_admin"
-	RoleMasterAdmin      AdminRole = "master_admin"
+	RoleSuperAdmin      AdminRole = "super_admin"
+	RoleMasterAdmin     AdminRole = "master_admin"
 	RoleWhiteLabelAdmin AdminRole = "white_label_admin"
-	RoleSupport          AdminRole = "support"
+	RoleSupport         AdminRole = "support"
 )
 
 type WhiteLabelStatus string
@@ -127,161 +128,161 @@ const (
 )
 
 type Admin struct {
-	ID                string     `json:"id"`
+	ID               string     `json:"id"`
 	Username         string     `json:"username"`
 	Email            string     `json:"email"`
 	PasswordHash     string     `json:"-"`
 	Role             AdminRole  `json:"role"`
-	SecurityLevel    int       `json:"security_level"`
-	Permissions      []string  `json:"permissions"`
-	TwoFactorEnabled bool      `json:"two_factor_enabled"`
-	Status           string    `json:"status"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	SecurityLevel    int        `json:"security_level"`
+	Permissions      []string   `json:"permissions"`
+	TwoFactorEnabled bool       `json:"two_factor_enabled"`
+	Status           string     `json:"status"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 	LastLogin        *time.Time `json:"last_login"`
 }
 
 type WhiteLabel struct {
-	ID                     string          `json:"id"`
-	Name                  string          `json:"name"`
-	Domain                string          `json:"domain"`
-	Subdomain             *string         `json:"subdomain"`
-	APIKeyHash            string          `json:"-"`
-	Status                WhiteLabelStatus `json:"status"`
-	FeePercent            float64         `json:"fee_percent"`
-	ProfitSharePercent    float64         `json:"profit_share_percent"`
-	PlanTier              string          `json:"plan_tier"`
-	MaxUsers              int             `json:"max_users"`
-	MaxAPICalls           int             `json:"max_api_calls"`
-	MonthlyFee            float64         `json:"monthly_fee"`
-	BrandingConfig        json.RawMessage `json:"branding_config"`
-	Features              []string        `json:"features"`
-	MasterWalletAddress   *string         `json:"master_wallet_address"`
-	CustomBranding       bool            `json:"custom_branding"`
-	SupportEmail         *string         `json:"support_email"`
-	TermsURL             *string         `json:"terms_url"`
-	PrivacyURL           *string         `json:"privacy_url"`
-	CreatedAt            time.Time       `json:"created_at"`
-	UpdatedAt            time.Time       `json:"updated_at"`
-	ApprovedAt           *time.Time      `json:"approved_at"`
+	ID                  string           `json:"id"`
+	Name                string           `json:"name"`
+	Domain              string           `json:"domain"`
+	Subdomain           *string          `json:"subdomain"`
+	APIKeyHash          string           `json:"-"`
+	Status              WhiteLabelStatus `json:"status"`
+	FeePercent          float64          `json:"fee_percent"`
+	ProfitSharePercent  float64          `json:"profit_share_percent"`
+	PlanTier            string           `json:"plan_tier"`
+	MaxUsers            int              `json:"max_users"`
+	MaxAPICalls         int              `json:"max_api_calls"`
+	MonthlyFee          float64          `json:"monthly_fee"`
+	BrandingConfig      json.RawMessage  `json:"branding_config"`
+	Features            []string         `json:"features"`
+	MasterWalletAddress *string          `json:"master_wallet_address"`
+	CustomBranding      bool             `json:"custom_branding"`
+	SupportEmail        *string          `json:"support_email"`
+	TermsURL            *string          `json:"terms_url"`
+	PrivacyURL          *string          `json:"privacy_url"`
+	CreatedAt           time.Time        `json:"created_at"`
+	UpdatedAt           time.Time        `json:"updated_at"`
+	ApprovedAt          *time.Time       `json:"approved_at"`
 }
 
 type WhiteLabelAdmin struct {
-	ID                string     `json:"id"`
-	WhiteLabelID     string     `json:"white_label_id"`
-	Username         string     `json:"username"`
-	Email            string     `json:"email"`
-	PasswordHash     string     `json:"-"`
-	Role             string     `json:"role"`
-	Permissions      []string  `json:"permissions"`
-	Status           string    `json:"status"`
-	CreatedAt        time.Time `json:"created_at"`
-	LastLogin        *time.Time `json:"last_login"`
+	ID           string     `json:"id"`
+	WhiteLabelID string     `json:"white_label_id"`
+	Username     string     `json:"username"`
+	Email        string     `json:"email"`
+	PasswordHash string     `json:"-"`
+	Role         string     `json:"role"`
+	Permissions  []string   `json:"permissions"`
+	Status       string     `json:"status"`
+	CreatedAt    time.Time  `json:"created_at"`
+	LastLogin    *time.Time `json:"last_login"`
 }
 
 type Product struct {
-	ID              string          `json:"id"`
-	WhiteLabelID   *string         `json:"white_label_id"`
-	Name           string          `json:"name"`
-	Type           string          `json:"type"`
-	Description    *string         `json:"description"`
-	Status         string          `json:"status"`
-	FeePercent     float64         `json:"fee_percent"`
-	MinDeposit     float64         `json:"min_deposit"`
-	MaxDeposit     *float64        `json:"max_deposit"`
-	Features       []string        `json:"features"`
-	SupportedChains []string       `json:"supported_chains"`
-	IsGlobal       bool            `json:"is_global"`
-	CreatedAt      time.Time       `json:"created_at"`
+	ID              string    `json:"id"`
+	WhiteLabelID    *string   `json:"white_label_id"`
+	Name            string    `json:"name"`
+	Type            string    `json:"type"`
+	Description     *string   `json:"description"`
+	Status          string    `json:"status"`
+	FeePercent      float64   `json:"fee_percent"`
+	MinDeposit      float64   `json:"min_deposit"`
+	MaxDeposit      *float64  `json:"max_deposit"`
+	Features        []string  `json:"features"`
+	SupportedChains []string  `json:"supported_chains"`
+	IsGlobal        bool      `json:"is_global"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 type TradingPair struct {
-	ID                  string     `json:"id"`
-	WhiteLabelID       *string    `json:"white_label_id"`
-	BaseToken          string     `json:"base_token"`
-	QuoteToken         string     `json:"quote_token"`
-	PairSymbol         string     `json:"pair_symbol"`
-	MinTradeAmount     float64    `json:"min_trade_amount"`
-	MaxTradeAmount     *float64   `json:"max_trade_amount"`
-	MakerFee           float64    `json:"maker_fee"`
-	TakerFee           float64    `json:"taker_fee"`
-	Status             string     `json:"status"`
-	ChainID            *string    `json:"chain_id"`
-	PricePrecision     int        `json:"price_precision"`
-	QuantityPrecision  int        `json:"quantity_precision"`
-	CreatedAt          time.Time  `json:"created_at"`
+	ID                string    `json:"id"`
+	WhiteLabelID      *string   `json:"white_label_id"`
+	BaseToken         string    `json:"base_token"`
+	QuoteToken        string    `json:"quote_token"`
+	PairSymbol        string    `json:"pair_symbol"`
+	MinTradeAmount    float64   `json:"min_trade_amount"`
+	MaxTradeAmount    *float64  `json:"max_trade_amount"`
+	MakerFee          float64   `json:"maker_fee"`
+	TakerFee          float64   `json:"taker_fee"`
+	Status            string    `json:"status"`
+	ChainID           *string   `json:"chain_id"`
+	PricePrecision    int       `json:"price_precision"`
+	QuantityPrecision int       `json:"quantity_precision"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 type User struct {
-	ID              string          `json:"id"`
-	WhiteLabelID   *string         `json:"white_label_id"`
-	Email           *string        `json:"email"`
-	Username        *string        `json:"username"`
-	WalletAddress   *string        `json:"wallet_address"`
-	KYCStatus       string         `json:"kyc_status"`
-	Status          string         `json:"status"`
-	RiskScore       int            `json:"risk_score"`
-	Metadata        json.RawMessage `json:"metadata"`
-	Country         *string        `json:"country"`
-	CreatedAt       time.Time      `json:"created_at"`
-	LastActive      *time.Time     `json:"last_active"`
+	ID            string          `json:"id"`
+	WhiteLabelID  *string         `json:"white_label_id"`
+	Email         *string         `json:"email"`
+	Username      *string         `json:"username"`
+	WalletAddress *string         `json:"wallet_address"`
+	KYCStatus     string          `json:"kyc_status"`
+	Status        string          `json:"status"`
+	RiskScore     int             `json:"risk_score"`
+	Metadata      json.RawMessage `json:"metadata"`
+	Country       *string         `json:"country"`
+	CreatedAt     time.Time       `json:"created_at"`
+	LastActive    *time.Time      `json:"last_active"`
 }
 
 type Transaction struct {
-	ID            string     `json:"id"`
-	UserID        *string    `json:"user_id"`
-	WhiteLabelID  *string    `json:"white_label_id"`
-	TxHash        *string    `json:"tx_hash"`
-	Type          string     `json:"type"`
-	Status        string     `json:"status"`
-	FromAddress   *string    `json:"from_address"`
-	ToAddress     *string    `json:"to_address"`
-	TokenSymbol   *string    `json:"token_symbol"`
-	ChainID       *string    `json:"chain_id"`
-	Amount        float64    `json:"amount"`
-	Fee           float64    `json:"fee"`
-	USDValue      *float64   `json:"usd_value"`
-	CreatedAt     time.Time  `json:"created_at"`
+	ID           string    `json:"id"`
+	UserID       *string   `json:"user_id"`
+	WhiteLabelID *string   `json:"white_label_id"`
+	TxHash       *string   `json:"tx_hash"`
+	Type         string    `json:"type"`
+	Status       string    `json:"status"`
+	FromAddress  *string   `json:"from_address"`
+	ToAddress    *string   `json:"to_address"`
+	TokenSymbol  *string   `json:"token_symbol"`
+	ChainID      *string   `json:"chain_id"`
+	Amount       float64   `json:"amount"`
+	Fee          float64   `json:"fee"`
+	USDValue     *float64  `json:"usd_value"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type Blockchain struct {
-	ID            string     `json:"id"`
-	Name          string     `json:"name"`
-	Symbol        string     `json:"symbol"`
-	ChainID       string     `json:"chain_id"`
-	ChainType     *string    `json:"chain_type"`
-	NativeToken   string     `json:"native_token"`
-	Decimals      int        `json:"decimals"`
-	IsActive      bool       `json:"is_active"`
-	IsTestnet     bool       `json:"is_testnet"`
-	RPCURLs       []string   `json:"rpc_urls"`
-	ExplorerURLs  []string   `json:"explorer_urls"`
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Symbol       string   `json:"symbol"`
+	ChainID      string   `json:"chain_id"`
+	ChainType    *string  `json:"chain_type"`
+	NativeToken  string   `json:"native_token"`
+	Decimals     int      `json:"decimals"`
+	IsActive     bool     `json:"is_active"`
+	IsTestnet    bool     `json:"is_testnet"`
+	RPCURLs      []string `json:"rpc_urls"`
+	ExplorerURLs []string `json:"explorer_urls"`
 }
 
 type FeeStructure struct {
-	ID            string     `json:"id"`
-	WhiteLabelID  *string    `json:"white_label_id"`
-	Name          string     `json:"name"`
-	Type          string     `json:"type"`
-	TokenSymbol   *string    `json:"token_symbol"`
-	ChainID        *string    `json:"chain_id"`
-	FeePercent    float64    `json:"fee_percent"`
-	FeeFixed      float64    `json:"fee_fixed"`
-	IsActive      bool       `json:"is_active"`
+	ID           string  `json:"id"`
+	WhiteLabelID *string `json:"white_label_id"`
+	Name         string  `json:"name"`
+	Type         string  `json:"type"`
+	TokenSymbol  *string `json:"token_symbol"`
+	ChainID      *string `json:"chain_id"`
+	FeePercent   float64 `json:"fee_percent"`
+	FeeFixed     float64 `json:"fee_fixed"`
+	IsActive     bool    `json:"is_active"`
 }
 
 type APIKey struct {
-	ID             string     `json:"id"`
-	WhiteLabelID   string     `json:"white_label_id"`
-	Name           string     `json:"name"`
-	KeyHash        string     `json:"-"`
-	Permissions    []string   `json:"permissions"`
-	RateLimitMin   int        `json:"rate_limit_minute"`
-	RateLimitDay   int        `json:"rate_limit_day"`
-	IsActive       bool       `json:"is_active"`
-	ExpiresAt      *time.Time `json:"expires_at"`
-	LastUsed       *time.Time `json:"last_used"`
-	CreatedAt      time.Time  `json:"created_at"`
+	ID           string     `json:"id"`
+	WhiteLabelID string     `json:"white_label_id"`
+	Name         string     `json:"name"`
+	KeyHash      string     `json:"-"`
+	Permissions  []string   `json:"permissions"`
+	RateLimitMin int        `json:"rate_limit_minute"`
+	RateLimitDay int        `json:"rate_limit_day"`
+	IsActive     bool       `json:"is_active"`
+	ExpiresAt    *time.Time `json:"expires_at"`
+	LastUsed     *time.Time `json:"last_used"`
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 type Webhook struct {
@@ -295,19 +296,19 @@ type Webhook struct {
 	RetryCount    int        `json:"retry_count"`
 	LastTriggered *time.Time `json:"last_triggered"`
 	FailureCount  int        `json:"failure_count"`
-	CreatedAt      time.Time  `json:"created_at"`
+	CreatedAt     time.Time  `json:"created_at"`
 }
 
 type Notification struct {
-	ID          string          `json:"id"`
-	UserID      *string         `json:"user_id"`
-	WhiteLabelID *string       `json:"white_label_id"`
-	Type        string          `json:"type"`
-	Title       string          `json:"title"`
-	Message     *string         `json:"message"`
-	Data        json.RawMessage `json:"data"`
-	IsRead      bool            `json:"is_read"`
-	CreatedAt   time.Time       `json:"created_at"`
+	ID           string          `json:"id"`
+	UserID       *string         `json:"user_id"`
+	WhiteLabelID *string         `json:"white_label_id"`
+	Type         string          `json:"type"`
+	Title        string          `json:"title"`
+	Message      *string         `json:"message"`
+	Data         json.RawMessage `json:"data"`
+	IsRead       bool            `json:"is_read"`
+	CreatedAt    time.Time       `json:"created_at"`
 }
 
 // ============================================================================
@@ -556,10 +557,10 @@ func GetAdminsHandler(c *gin.Context) {
 		}
 		admins = append(admins, gin.H{
 			"id":         admin.ID,
-			"username":    admin.Username,
+			"username":   admin.Username,
 			"email":      admin.Email,
 			"role":       admin.Role,
-			"status":      admin.Status,
+			"status":     admin.Status,
 			"created_at": admin.CreatedAt,
 			"last_login": admin.LastLogin,
 		})
@@ -644,9 +645,9 @@ func UpdateAdminHandler(c *gin.Context) {
 	}
 
 	var req struct {
-		Username    *string   `json:"username"`
-		Email      *string   `json:"email"`
-		Role       *string   `json:"role"`
+		Username    *string  `json:"username"`
+		Email       *string  `json:"email"`
+		Role        *string  `json:"role"`
 		Permissions []string `json:"permissions"`
 	}
 
@@ -755,8 +756,8 @@ func GetWhiteLabelsHandler(c *gin.Context) {
 	var whiteLabels []gin.H
 	for rows.Next() {
 		var wl WhiteLabel
-		if err := rows.Scan(&wl.ID, &wl.Name, &wl.Domain, &wl.Status, &wl.FeePercent, 
-			&wl.ProfitSharePercent, &wl.PlanTier, &wl.MaxUsers, &wl.MonthlyFee, 
+		if err := rows.Scan(&wl.ID, &wl.Name, &wl.Domain, &wl.Status, &wl.FeePercent,
+			&wl.ProfitSharePercent, &wl.PlanTier, &wl.MaxUsers, &wl.MonthlyFee,
 			&wl.CustomBranding, &wl.CreatedAt, &wl.UpdatedAt); err != nil {
 			continue
 		}
@@ -770,9 +771,9 @@ func GetWhiteLabelsHandler(c *gin.Context) {
 			"plan_tier":            wl.PlanTier,
 			"max_users":            wl.MaxUsers,
 			"monthly_fee":          wl.MonthlyFee,
-			"custom_branding":     wl.CustomBranding,
-			"created_at":          wl.CreatedAt,
-			"updated_at":          wl.UpdatedAt,
+			"custom_branding":      wl.CustomBranding,
+			"created_at":           wl.CreatedAt,
+			"updated_at":           wl.UpdatedAt,
 		})
 	}
 
@@ -789,10 +790,10 @@ func GetWhiteLabelHandler(c *gin.Context) {
 			master_wallet_address, custom_branding, support_email, terms_url, privacy_url,
 			created_at, updated_at, approved_at
 		FROM white_labels WHERE id = $1
-	`, wlID).Scan(&wl.ID, &wl.Name, &wl.Domain, &wl.Subdomain, &wl.Status, 
-		&wl.FeePercent, &wl.ProfitSharePercent, &wl.PlanTier, &wl.MaxUsers, 
+	`, wlID).Scan(&wl.ID, &wl.Name, &wl.Domain, &wl.Subdomain, &wl.Status,
+		&wl.FeePercent, &wl.ProfitSharePercent, &wl.PlanTier, &wl.MaxUsers,
 		&wl.MaxAPICalls, &wl.MonthlyFee, &wl.BrandingConfig, &wl.Features,
-		&wl.MasterWalletAddress, &wl.CustomBranding, &wl.SupportEmail, 
+		&wl.MasterWalletAddress, &wl.CustomBranding, &wl.SupportEmail,
 		&wl.TermsURL, &wl.PrivacyURL, &wl.CreatedAt, &wl.UpdatedAt, &wl.ApprovedAt)
 
 	if err != nil {
@@ -807,11 +808,11 @@ func CreateWhiteLabelHandler(c *gin.Context) {
 	adminID, _ := c.Get("admin_id")
 
 	var req struct {
-		Name        string  `json:"name" binding:"required"`
-		Domain      string  `json:"domain" binding:"required"`
-		PlanTier    string  `json:"plan_tier"`
-		MaxUsers    int     `json:"max_users"`
-		MonthlyFee  float64 `json:"monthly_fee"`
+		Name       string  `json:"name" binding:"required"`
+		Domain     string  `json:"domain" binding:"required"`
+		PlanTier   string  `json:"plan_tier"`
+		MaxUsers   int     `json:"max_users"`
+		MonthlyFee float64 `json:"monthly_fee"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -850,17 +851,17 @@ func CreateWhiteLabelHandler(c *gin.Context) {
 		return
 	}
 
-	logAudit(adminID.(string), "CREATE_WHITE_LABEL", "white_label", id, 
+	logAudit(adminID.(string), "CREATE_WHITE_LABEL", "white_label", id,
 		"Created white label: "+req.Name, c.ClientIP())
 
 	c.JSON(http.StatusCreated, gin.H{
-		"id":          id,
-		"name":        req.Name,
-		"domain":      req.Domain,
-		"api_key":     apiKey,
-		"status":      "pending",
-		"plan_tier":   req.PlanTier,
-		"max_users":   maxUsers,
+		"id":        id,
+		"name":      req.Name,
+		"domain":    req.Domain,
+		"api_key":   apiKey,
+		"status":    "pending",
+		"plan_tier": req.PlanTier,
+		"max_users": maxUsers,
 	})
 }
 
@@ -869,15 +870,15 @@ func UpdateWhiteLabelHandler(c *gin.Context) {
 	adminID, _ := c.Get("admin_id")
 
 	var req struct {
-		Name              *string         `json:"name"`
-		Domain            *string         `json:"domain"`
-		PlanTier          *string         `json:"plan_tier"`
-		MaxUsers          *int            `json:"max_users"`
-		MonthlyFee        *float64        `json:"monthly_fee"`
-		FeePercent        *float64        `json:"fee_percent"`
-		ProfitSharePercent *float64       `json:"profit_share_percent"`
-		BrandingConfig    json.RawMessage `json:"branding_config"`
-		Features          []string        `json:"features"`
+		Name               *string         `json:"name"`
+		Domain             *string         `json:"domain"`
+		PlanTier           *string         `json:"plan_tier"`
+		MaxUsers           *int            `json:"max_users"`
+		MonthlyFee         *float64        `json:"monthly_fee"`
+		FeePercent         *float64        `json:"fee_percent"`
+		ProfitSharePercent *float64        `json:"profit_share_percent"`
+		BrandingConfig     json.RawMessage `json:"branding_config"`
+		Features           []string        `json:"features"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1113,25 +1114,25 @@ func GetProductsHandler(c *gin.Context) {
 	var products []gin.H
 	for rows.Next() {
 		var p Product
-		if err := rows.Scan(&p.ID, &p.WhiteLabelID, &p.Name, &p.Type, &p.Description, 
-			&p.Status, &p.FeePercent, &p.MinDeposit, &p.MaxDeposit, &p.Features, 
+		if err := rows.Scan(&p.ID, &p.WhiteLabelID, &p.Name, &p.Type, &p.Description,
+			&p.Status, &p.FeePercent, &p.MinDeposit, &p.MaxDeposit, &p.Features,
 			&p.SupportedChains, &p.IsGlobal, &p.CreatedAt); err != nil {
 			continue
 		}
 		products = append(products, gin.H{
 			"id":               p.ID,
-			"white_label_id":  p.WhiteLabelID,
+			"white_label_id":   p.WhiteLabelID,
 			"name":             p.Name,
-			"type":            p.Type,
+			"type":             p.Type,
 			"description":      p.Description,
-			"status":          p.Status,
-			"fee_percent":     p.FeePercent,
-			"min_deposit":     p.MinDeposit,
-			"max_deposit":     p.MaxDeposit,
-			"features":        p.Features,
+			"status":           p.Status,
+			"fee_percent":      p.FeePercent,
+			"min_deposit":      p.MinDeposit,
+			"max_deposit":      p.MaxDeposit,
+			"features":         p.Features,
 			"supported_chains": p.SupportedChains,
-			"is_global":       p.IsGlobal,
-			"created_at":      p.CreatedAt,
+			"is_global":        p.IsGlobal,
+			"created_at":       p.CreatedAt,
 		})
 	}
 
@@ -1142,16 +1143,16 @@ func CreateProductHandler(c *gin.Context) {
 	adminID, _ := c.Get("admin_id")
 
 	var req struct {
-		WhiteLabelID   *string  `json:"white_label_id"`
-		Name           string   `json:"name" binding:"required"`
-		Type           string   `json:"type" binding:"required"`
-		Description    *string  `json:"description"`
-		FeePercent     float64  `json:"fee_percent"`
-		MinDeposit     float64  `json:"min_deposit"`
-		MaxDeposit     *float64 `json:"max_deposit"`
-		Features       []string `json:"features"`
+		WhiteLabelID    *string  `json:"white_label_id"`
+		Name            string   `json:"name" binding:"required"`
+		Type            string   `json:"type" binding:"required"`
+		Description     *string  `json:"description"`
+		FeePercent      float64  `json:"fee_percent"`
+		MinDeposit      float64  `json:"min_deposit"`
+		MaxDeposit      *float64 `json:"max_deposit"`
+		Features        []string `json:"features"`
 		SupportedChains []string `json:"supported_chains"`
-		IsGlobal       bool     `json:"is_global"`
+		IsGlobal        bool     `json:"is_global"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1191,14 +1192,14 @@ func UpdateProductHandler(c *gin.Context) {
 	adminID, _ := c.Get("admin_id")
 
 	var req struct {
-		Name           *string         `json:"name"`
-		Description    *string         `json:"description"`
-		Status         *string         `json:"status"`
-		FeePercent     *float64        `json:"fee_percent"`
-		MinDeposit     *float64        `json:"min_deposit"`
-		MaxDeposit     *float64        `json:"max_deposit"`
-		Features       []string        `json:"features"`
-		SupportedChains []string       `json:"supported_chains"`
+		Name            *string  `json:"name"`
+		Description     *string  `json:"description"`
+		Status          *string  `json:"status"`
+		FeePercent      *float64 `json:"fee_percent"`
+		MinDeposit      *float64 `json:"min_deposit"`
+		MaxDeposit      *float64 `json:"max_deposit"`
+		Features        []string `json:"features"`
+		SupportedChains []string `json:"supported_chains"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1306,27 +1307,27 @@ func GetTradingPairsHandler(c *gin.Context) {
 	var pairs []gin.H
 	for rows.Next() {
 		var p TradingPair
-		if err := rows.Scan(&p.ID, &p.WhiteLabelID, &p.BaseToken, &p.QuoteToken, 
-			&p.PairSymbol, &p.MinTradeAmount, &p.MaxTradeAmount, &p.MakerFee, 
-			&p.TakerFee, &p.Status, &p.ChainID, &p.PricePrecision, 
+		if err := rows.Scan(&p.ID, &p.WhiteLabelID, &p.BaseToken, &p.QuoteToken,
+			&p.PairSymbol, &p.MinTradeAmount, &p.MaxTradeAmount, &p.MakerFee,
+			&p.TakerFee, &p.Status, &p.ChainID, &p.PricePrecision,
 			&p.QuantityPrecision, &p.CreatedAt); err != nil {
 			continue
 		}
 		pairs = append(pairs, gin.H{
 			"id":                 p.ID,
 			"white_label_id":     p.WhiteLabelID,
-			"base_token":        p.BaseToken,
-			"quote_token":       p.QuoteToken,
-			"pair_symbol":       p.PairSymbol,
-			"min_trade_amount":  p.MinTradeAmount,
-			"max_trade_amount":  p.MaxTradeAmount,
+			"base_token":         p.BaseToken,
+			"quote_token":        p.QuoteToken,
+			"pair_symbol":        p.PairSymbol,
+			"min_trade_amount":   p.MinTradeAmount,
+			"max_trade_amount":   p.MaxTradeAmount,
 			"maker_fee":          p.MakerFee,
 			"taker_fee":          p.TakerFee,
-			"status":            p.Status,
-			"chain_id":          p.ChainID,
-			"price_precision":   p.PricePrecision,
+			"status":             p.Status,
+			"chain_id":           p.ChainID,
+			"price_precision":    p.PricePrecision,
 			"quantity_precision": p.QuantityPrecision,
-			"created_at":        p.CreatedAt,
+			"created_at":         p.CreatedAt,
 		})
 	}
 
@@ -1339,7 +1340,7 @@ func CreateTradingPairHandler(c *gin.Context) {
 	var req struct {
 		WhiteLabelID      *string  `json:"white_label_id"`
 		BaseToken         string   `json:"base_token" binding:"required"`
-		QuoteToken         string   `json:"quote_token" binding:"required"`
+		QuoteToken        string   `json:"quote_token" binding:"required"`
 		PairSymbol        string   `json:"pair_symbol" binding:"required"`
 		MinTradeAmount    float64  `json:"min_trade_amount"`
 		MaxTradeAmount    *float64 `json:"max_trade_amount"`
@@ -1386,7 +1387,7 @@ func CreateTradingPairHandler(c *gin.Context) {
 		return
 	}
 
-	logAudit(adminID.(string), "CREATE_TRADING_PAIR", "trading_pair", id, 
+	logAudit(adminID.(string), "CREATE_TRADING_PAIR", "trading_pair", id,
 		"Created trading pair: "+req.PairSymbol, c.ClientIP())
 
 	c.JSON(http.StatusCreated, gin.H{"id": id, "pair_symbol": req.PairSymbol})
@@ -1449,29 +1450,29 @@ func GetUsersHandler(c *gin.Context) {
 	var users []gin.H
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.WhiteLabelID, &u.Email, &u.Username, &u.WalletAddress, 
+		if err := rows.Scan(&u.ID, &u.WhiteLabelID, &u.Email, &u.Username, &u.WalletAddress,
 			&u.KYCStatus, &u.Status, &u.RiskScore, &u.Country, &u.CreatedAt, &u.LastActive); err != nil {
 			continue
 		}
 		users = append(users, gin.H{
-			"id":            u.ID,
+			"id":             u.ID,
 			"white_label_id": u.WhiteLabelID,
-			"email":        u.Email,
-			"username":     u.Username,
+			"email":          u.Email,
+			"username":       u.Username,
 			"wallet_address": u.WalletAddress,
-			"kyc_status":   u.KYCStatus,
-			"status":       u.Status,
-			"risk_score":   u.RiskScore,
-			"country":      u.Country,
-			"created_at":   u.CreatedAt,
-			"last_active":  u.LastActive,
+			"kyc_status":     u.KYCStatus,
+			"status":         u.Status,
+			"risk_score":     u.RiskScore,
+			"country":        u.Country,
+			"created_at":     u.CreatedAt,
+			"last_active":    u.LastActive,
 		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"users": users,
-		"total": total,
-		"limit": limit,
+		"users":  users,
+		"total":  total,
+		"limit":  limit,
 		"offset": offset,
 	})
 }
@@ -1482,14 +1483,14 @@ func GetUsersHandler(c *gin.Context) {
 
 func GetDashboardStatsHandler(c *gin.Context) {
 	var stats struct {
-		ActiveWhiteLabels    int64   `json:"active_white_labels"`
-		PendingWhiteLabels  int64   `json:"pending_white_labels"`
-		TotalUsers          int64   `json:"total_users"`
-		ActiveUsers         int64   `json:"active_users"`
-		Transactions24h     int64   `json:"transactions_24h"`
-		TotalRevenue        float64 `json:"total_revenue"`
-		TotalAdmins         int64   `json:"total_admins"`
-		TotalProducts        int64   `json:"total_products"`
+		ActiveWhiteLabels  int64   `json:"active_white_labels"`
+		PendingWhiteLabels int64   `json:"pending_white_labels"`
+		TotalUsers         int64   `json:"total_users"`
+		ActiveUsers        int64   `json:"active_users"`
+		Transactions24h    int64   `json:"transactions_24h"`
+		TotalRevenue       float64 `json:"total_revenue"`
+		TotalAdmins        int64   `json:"total_admins"`
+		TotalProducts      int64   `json:"total_products"`
 	}
 
 	db.QueryRow("SELECT COUNT(*) FROM white_labels WHERE status = 'active'").Scan(&stats.ActiveWhiteLabels)
@@ -1508,11 +1509,11 @@ func GetWhiteLabelStatsHandler(c *gin.Context) {
 	wlID := c.Param("id")
 
 	var stats struct {
-		TotalUsers       int64   `json:"total_users"`
-		ActiveUsers     int64   `json:"active_users"`
-		TotalVolume     float64 `json:"total_volume"`
+		TotalUsers        int64   `json:"total_users"`
+		ActiveUsers       int64   `json:"active_users"`
+		TotalVolume       float64 `json:"total_volume"`
 		TotalTransactions int64   `json:"total_transactions"`
-		Revenue         float64 `json:"revenue"`
+		Revenue           float64 `json:"revenue"`
 	}
 
 	db.QueryRow("SELECT COUNT(*) FROM users WHERE white_label_id = $1", wlID).Scan(&stats.TotalUsers)
@@ -1547,20 +1548,20 @@ func GetAPIKeysHandler(c *gin.Context) {
 	var keys []gin.H
 	for rows.Next() {
 		var k APIKey
-		if err := rows.Scan(&k.ID, &k.Name, &k.Permissions, &k.RateLimitMin, 
+		if err := rows.Scan(&k.ID, &k.Name, &k.Permissions, &k.RateLimitMin,
 			&k.RateLimitDay, &k.IsActive, &k.LastUsed, &k.ExpiresAt, &k.CreatedAt); err != nil {
 			continue
 		}
 		keys = append(keys, gin.H{
-			"id":               k.ID,
-			"name":            k.Name,
-			"permissions":     k.Permissions,
-			"rate_limit_min":  k.RateLimitMin,
-			"rate_limit_day":  k.RateLimitDay,
-			"is_active":       k.IsActive,
-			"last_used":       k.LastUsed,
-			"expires_at":      k.ExpiresAt,
-			"created_at":      k.CreatedAt,
+			"id":             k.ID,
+			"name":           k.Name,
+			"permissions":    k.Permissions,
+			"rate_limit_min": k.RateLimitMin,
+			"rate_limit_day": k.RateLimitDay,
+			"is_active":      k.IsActive,
+			"last_used":      k.LastUsed,
+			"expires_at":     k.ExpiresAt,
+			"created_at":     k.CreatedAt,
 		})
 	}
 
@@ -1572,11 +1573,11 @@ func CreateAPIKeyHandler(c *gin.Context) {
 	adminID, _ := c.Get("admin_id")
 
 	var req struct {
-		Name           string   `json:"name" binding:"required"`
-		Permissions    []string `json:"permissions"`
-		RateLimitMin  int      `json:"rate_limit_minute"`
-		RateLimitDay  int      `json:"rate_limit_day"`
-		ExpiresAt     *string  `json:"expires_at"`
+		Name         string   `json:"name" binding:"required"`
+		Permissions  []string `json:"permissions"`
+		RateLimitMin int      `json:"rate_limit_minute"`
+		RateLimitDay int      `json:"rate_limit_day"`
+		ExpiresAt    *string  `json:"expires_at"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1663,8 +1664,8 @@ func GetBlockchainsHandler(c *gin.Context) {
 	for rows.Next() {
 		var b Blockchain
 		var rpcJSON, explorerJSON sql.NullString
-		if err := rows.Scan(&b.ID, &b.Name, &b.Symbol, &b.ChainID, &b.ChainType, 
-			&b.NativeToken, &b.Decimals, &b.IsActive, &b.IsTestnet, 
+		if err := rows.Scan(&b.ID, &b.Name, &b.Symbol, &b.ChainID, &b.ChainType,
+			&b.NativeToken, &b.Decimals, &b.IsActive, &b.IsTestnet,
 			&rpcJSON, &explorerJSON); err != nil {
 			continue
 		}
@@ -1677,16 +1678,16 @@ func GetBlockchainsHandler(c *gin.Context) {
 		}
 
 		chains = append(chains, gin.H{
-			"id":           b.ID,
-			"name":         b.Name,
-			"symbol":       b.Symbol,
-			"chain_id":     b.ChainID,
-			"chain_type":   b.ChainType,
-			"native_token": b.NativeToken,
-			"decimals":     b.Decimals,
-			"is_active":    b.IsActive,
-			"is_testnet":   b.IsTestnet,
-			"rpc_urls":     b.RPCURLs,
+			"id":            b.ID,
+			"name":          b.Name,
+			"symbol":        b.Symbol,
+			"chain_id":      b.ChainID,
+			"chain_type":    b.ChainType,
+			"native_token":  b.NativeToken,
+			"decimals":      b.Decimals,
+			"is_active":     b.IsActive,
+			"is_testnet":    b.IsTestnet,
+			"rpc_urls":      b.RPCURLs,
 			"explorer_urls": b.ExplorerURLs,
 		})
 	}
@@ -1723,20 +1724,20 @@ func GetFeeStructuresHandler(c *gin.Context) {
 	var fees []gin.H
 	for rows.Next() {
 		var f FeeStructure
-		if err := rows.Scan(&f.ID, &f.WhiteLabelID, &f.Name, &f.Type, 
+		if err := rows.Scan(&f.ID, &f.WhiteLabelID, &f.Name, &f.Type,
 			&f.TokenSymbol, &f.ChainID, &f.FeePercent, &f.FeeFixed, &f.IsActive); err != nil {
 			continue
 		}
 		fees = append(fees, gin.H{
-			"id":           f.ID,
+			"id":             f.ID,
 			"white_label_id": f.WhiteLabelID,
-			"name":         f.Name,
-			"type":         f.Type,
-			"token_symbol": f.TokenSymbol,
-			"chain_id":     f.ChainID,
-			"fee_percent":  f.FeePercent,
-			"fee_fixed":    f.FeeFixed,
-			"is_active":    f.IsActive,
+			"name":           f.Name,
+			"type":           f.Type,
+			"token_symbol":   f.TokenSymbol,
+			"chain_id":       f.ChainID,
+			"fee_percent":    f.FeePercent,
+			"fee_fixed":      f.FeeFixed,
+			"is_active":      f.IsActive,
 		})
 	}
 
@@ -1800,7 +1801,7 @@ func GetAuditLogsHandler(c *gin.Context) {
 			CreatedAt  time.Time `json:"created_at"`
 		}
 
-		if err := rows.Scan(&log.ID, &log.AdminID, &log.Action, &log.EntityType, 
+		if err := rows.Scan(&log.ID, &log.AdminID, &log.Action, &log.EntityType,
 			&log.EntityID, &log.Details, &log.IPAddress, &log.Status, &log.CreatedAt); err != nil {
 			continue
 		}
@@ -1944,7 +1945,6 @@ func SetupRoutes(r *gin.Engine) {
 // ============================================================================
 
 func main() {
-	config := LoadConfig()
 
 	// Initialize database
 	if err := InitDatabase(config.DatabaseURL); err != nil {
@@ -1968,14 +1968,19 @@ func main() {
 	origins := strings.Split(config.AllowedOrigins, ",")
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     origins,
-		AllowMethods:    []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:    []string{"Origin", "Content-Type", "Accept", "Authorization"},
-		ExposeHeaders:   []string{"Content-Length"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 	}))
 
 	// Setup routes
 	SetupRoutes(r)
+
+	// TLS config
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
 
 	// Server
 	srv := &http.Server{
@@ -1984,11 +1989,7 @@ func main() {
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
-	}
-
-	// TLS config
-	tlsConfig := &tls.Config{
-		MinVersion: tls.VersionTLS12,
+		TLSConfig:    tlsConfig,
 	}
 
 	// Graceful shutdown

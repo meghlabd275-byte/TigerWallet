@@ -184,11 +184,11 @@ func (s *service) resumeActive() {
 }
 
 type createReq struct {
-	Pair      string `json:"pair" binding:"required"`
-	Side      int    `json:"side" binding:"required"`
-	Amount    string `json:"amount" binding:"required"`
-	Slices    int    `json:"slices" binding:"required"`
-	Interval  int    `json:"interval_seconds" binding:"required"`
+	Pair     string `json:"pair" binding:"required"`
+	Side     int    `json:"side" binding:"required"`
+	Amount   string `json:"amount" binding:"required"`
+	Slices   int    `json:"slices" binding:"required"`
+	Interval int    `json:"interval_seconds" binding:"required"`
 }
 
 func (s *service) createOrder(c *gin.Context) {
@@ -232,7 +232,11 @@ func (s *service) listOrders(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var o struct{ ID, Pair, Total, Filled, Status string; Side, Slices int; End int64 }
+		var o struct {
+			ID, Pair, Total, Filled, Status string
+			Side, Slices                    int
+			End                             int64
+		}
 		if err := rows.Scan(&o.ID, &o.Pair, &o.Side, &o.Total, &o.Filled, &o.Slices, &o.Status, &o.End); err != nil {
 			continue
 		}
@@ -243,7 +247,11 @@ func (s *service) listOrders(c *gin.Context) {
 
 func (s *service) getOrder(c *gin.Context) {
 	id := c.Param("id")
-	var o struct{ ID, Pair, Total, Filled, Status string; Side, Slices int; End int64 }
+	var o struct {
+		ID, Pair, Total, Filled, Status string
+		Side, Slices                    int
+		End                             int64
+	}
 	err := s.pg.QueryRow(c, `SELECT id,pair,side,total_amount::text,filled_amount::text,slices,status,extract(epoch from end_time)::bigint FROM twap_orders WHERE id=$1 AND user_id=$2`, id, c.GetString("user_id")).
 		Scan(&o.ID, &o.Pair, &o.Side, &o.Total, &o.Filled, &o.Slices, &o.Status, &o.End)
 	if err != nil {
@@ -274,7 +282,10 @@ func (s *service) listFills(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var f struct{ ID, Price, Amount string; Ts int64 }
+		var f struct {
+			ID, Price, Amount string
+			Ts                int64
+		}
 		if err := rows.Scan(&f.ID, &f.Price, &f.Amount, &f.Ts); err != nil {
 			continue
 		}

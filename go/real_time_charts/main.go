@@ -1,9 +1,9 @@
 /**
  * TigerWallet Real-Time Charts Service
- * 
+ *
  * High-performance WebSocket service for live cryptocurrency charts
  * Uses Go for high load handling and worldwide distribution
- * 
+ *
  * Features:
  * - Sub-second chart updates
  * - Multiple timeframes (1m, 5m, 15m, 1h, 4h, 1d)
@@ -17,7 +17,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -29,13 +28,13 @@ import (
 // ============== Data Structures ==============
 
 type Candle struct {
-	Timestamp  int64   `json:"timestamp"`
-	Open       float64 `json:"open"`
-	High       float64 `json:"high"`
-	Low        float64 `json:"low"`
-	Close      float64 `json:"close"`
-	Volume     float64 `json:"volume"`
-	Trades     int     `json:"trades"`
+	Timestamp int64   `json:"timestamp"`
+	Open      float64 `json:"open"`
+	High      float64 `json:"high"`
+	Low       float64 `json:"low"`
+	Close     float64 `json:"close"`
+	Volume    float64 `json:"volume"`
+	Trades    int     `json:"trades"`
 }
 
 type Ticker struct {
@@ -69,19 +68,19 @@ type ChartRequest struct {
 }
 
 type ChartResponse struct {
-	Symbol     string    `json:"symbol"`
-	Timeframe  string    `json:"timeframe"`
-	Candles    []Candle  `json:"candles"`
+	Symbol     string     `json:"symbol"`
+	Timeframe  string     `json:"timeframe"`
+	Candles    []Candle   `json:"candles"`
 	Indicators Indicators `json:"indicators"`
 }
 
 type Indicators struct {
-	SMA20       []float64 `json:"sma_20"`
-	SMA50       []float64 `json:"sma_50"`
-	EMA20       []float64 `json:"ema_20"`
-	RSI         []float64 `json:"rsi"`
-	MACD        MACD      `json:"macd"`
-	Bollinger   Bollinger `json:"bollinger"`
+	SMA20     []float64 `json:"sma_20"`
+	SMA50     []float64 `json:"sma_50"`
+	EMA20     []float64 `json:"ema_20"`
+	RSI       []float64 `json:"rsi"`
+	MACD      MACD      `json:"macd"`
+	Bollinger Bollinger `json:"bollinger"`
 }
 
 type MACD struct {
@@ -91,9 +90,9 @@ type MACD struct {
 }
 
 type Bollinger struct {
-	Upper []float64 `json:"upper"`
+	Upper  []float64 `json:"upper"`
 	Middle []float64 `json:"middle"`
-	Lower []float64 `json:"lower"`
+	Lower  []float64 `json:"lower"`
 }
 
 type WSMessage struct {
@@ -106,13 +105,13 @@ type WSMessage struct {
 type ChartService struct {
 	clients    map[*websocket.Conn]bool
 	broadcast  chan WSMessage
-	register  chan *websocket.Conn
+	register   chan *websocket.Conn
 	unregister chan *websocket.Conn
 	mu         sync.RWMutex
 
 	// Market data storage
-	tickers   map[string]*Ticker
-	candles   map[string]map[string][]Candle // symbol -> timeframe -> candles
+	tickers    map[string]*Ticker
+	candles    map[string]map[string][]Candle // symbol -> timeframe -> candles
 	orderBooks map[string]*OrderBook
 
 	// Price aggregation (multiple sources)
@@ -124,7 +123,7 @@ type ChartService struct {
 
 var (
 	supportedTimeframes = []string{"1m", "5m", "15m", "1h", "4h", "1d"}
-	supportedSymbols   = []string{
+	supportedSymbols    = []string{
 		"ETH/USDT", "BTC/USDT", "BNB/USDT", "SOL/USDT", "XRP/USDT",
 		"ADA/USDT", "DOGE/USDT", "MATIC/USDT", "DOT/USDT", "LTC/USDT",
 		"AVAX/USDT", "LINK/USDT", "ATOM/USDT", "UNI/USDT", "XLM/USDT",
@@ -257,7 +256,7 @@ func (s *ChartService) sendInitialData(conn *websocket.Conn) {
 	}
 
 	// Send order books
-	for symbol, ob := range s.orderBooks {
+	for _, ob := range s.orderBooks {
 		conn.WriteJSON(WSMessage{
 			Type:    "orderbook",
 			Payload: ob,
@@ -375,7 +374,7 @@ func (s *ChartService) handleChartsAPI(w http.ResponseWriter, r *http.Request) {
 
 func (s *ChartService) handleTickerAPI(w http.ResponseWriter, r *http.Request) {
 	symbol := r.URL.Query().Get("symbol")
-	
+
 	if symbol != "" {
 		if ticker, ok := s.tickers[symbol]; ok {
 			w.Header().Set("Content-Type", "application/json")
@@ -391,13 +390,13 @@ func (s *ChartService) handleTickerAPI(w http.ResponseWriter, r *http.Request) {
 
 func (s *ChartService) handleOrderBookAPI(w http.ResponseWriter, r *http.Request) {
 	symbol := r.URL.Query().Get("symbol")
-	
+
 	if ob, ok := s.orderBooks[symbol]; ok {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(ob)
 		return
 	}
-	
+
 	http.Error(w, "Symbol not found", http.StatusNotFound)
 }
 
@@ -419,9 +418,9 @@ func (s *ChartService) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":    "healthy",
-		"clients":    len(s.clients),
-		"symbols":    len(s.tickers),
-		"timestamp":  time.Now().Unix(),
+		"clients":   len(s.clients),
+		"symbols":   len(s.tickers),
+		"timestamp": time.Now().Unix(),
 	})
 }
 
@@ -480,7 +479,7 @@ func calculateEMA(data []float64, period int) []float64 {
 
 	// Calculate rest
 	for i := period; i < len(data); i++ {
-		ema[i] = (data[i] - ema[i-1])*multiplier + ema[i-1]
+		ema[i] = (data[i]-ema[i-1])*multiplier + ema[i-1]
 	}
 	return ema
 }
@@ -599,14 +598,14 @@ func calculateBollinger(data []float64, period int, stdDev float64) Bollinger {
 
 func getSimulatedPrice(symbol string) float64 {
 	prices := map[string]float64{
-		"ETH/USDT":  3500.0,
-		"BTC/USDT":  65000.0,
-		"BNB/USDT":  600.0,
-		"SOL/USDT":  145.0,
-		"XRP/USDT":  0.55,
+		"ETH/USDT": 3500.0,
+		"BTC/USDT": 65000.0,
+		"BNB/USDT": 600.0,
+		"SOL/USDT": 145.0,
+		"XRP/USDT": 0.55,
 	}
 	if price, ok := prices[symbol]; ok {
-		return price + (randFloat64() - 0.5) * price * 0.01
+		return price + (randFloat64()-0.5)*price*0.01
 	}
 	return 100.0
 }
@@ -617,9 +616,9 @@ func getSimulatedChange() float64 {
 
 func getSimulatedVolume(symbol string) float64 {
 	volumes := map[string]float64{
-		"ETH/USDT":  1500000000,
-		"BTC/USDT":  35000000000,
-		"BNB/USDT":  1200000000,
+		"ETH/USDT": 1500000000,
+		"BTC/USDT": 35000000000,
+		"BNB/USDT": 1200000000,
 	}
 	return volumes[symbol]
 }
@@ -631,8 +630,8 @@ func generateCandle(symbol, timeframe string) Candle {
 	open := price
 	change := (randFloat64() - 0.5) * 2 * volatility * price
 	close := open + change
-	high := max(open, close) + randFloat64() * volatility * price
-	low := min(open, close) - randFloat64() * volatility * price
+	high := max(open, close) + randFloat64()*volatility*price
+	low := min(open, close) - randFloat64()*volatility*price
 
 	duration, _ := time.ParseDuration(timeframe + "m")
 	if timeframe == "1h" || timeframe == "4h" || timeframe == "1d" {
@@ -711,9 +710,9 @@ func randFloat64() float64 {
 func main() {
 	ctx := context.Background()
 	log.Println("Starting TigerWallet Real-Time Charts Service...")
-	
+
 	service := NewChartService()
 	service.Run()
-	
+
 	<-ctx.Done()
 }

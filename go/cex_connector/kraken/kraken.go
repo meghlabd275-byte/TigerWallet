@@ -6,7 +6,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/sha512"
@@ -28,26 +27,26 @@ import (
 // ============================================================================
 
 type KrakenConnector struct {
-	apiKey       string
-	apiSecret    string
-	baseURL      string
-	wsURL        string
-	httpClient   *http.Client
-	symbols      map[string]*KrakenPair
-	orderCache   map[string]*Order
-	mu           sync.RWMutex
-	rateLimiter  *RateLimiter
+	apiKey      string
+	apiSecret   string
+	baseURL     string
+	wsURL       string
+	httpClient  *http.Client
+	symbols     map[string]*KrakenPair
+	orderCache  map[string]*Order
+	mu          sync.RWMutex
+	rateLimiter *RateLimiter
 }
 
 func NewKrakenConnector(apiKey, apiSecret string) *KrakenConnector {
 	return &KrakenConnector{
-		apiKey:     apiKey,
-		apiSecret:  apiSecret,
-		baseURL:    "https://api.kraken.com",
-		wsURL:      "wss://ws.kraken.com",
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		symbols:    make(map[string]*KrakenPair),
-		orderCache: make(map[string]*Order),
+		apiKey:      apiKey,
+		apiSecret:   apiSecret,
+		baseURL:     "https://api.kraken.com",
+		wsURL:       "wss://ws.kraken.com",
+		httpClient:  &http.Client{Timeout: 30 * time.Second},
+		symbols:     make(map[string]*KrakenPair),
+		orderCache:  make(map[string]*Order),
 		rateLimiter: NewRateLimiter(10, time.Second),
 	}
 }
@@ -81,19 +80,19 @@ func (k *KrakenConnector) IsConnected() bool {
 }
 
 type KrakenPair struct {
-	Name       string `json:"altname"`
-	Base       string `json:"base"`
-	Quote      string `json:"quote"`
-	Pair       string `json:"pair"`
-	Lot        string `json:"lot"`
-	PairDecimal int   `json:"pair_decimals"`
-	LotDecimal  int   `json:"lot_decimals"`
-	MinLot     string `json:"minlot"`
-	MinPrice   string `json:"minprice"`
-	MaxPrice   string `json:"maxprice"`
-	MinOrder   string `json:"minorder"`
-	MaxOrder   string `json:"maxorder"`
-	FeeVolume  string `json:"feevolume"`
+	Name        string `json:"altname"`
+	Base        string `json:"base"`
+	Quote       string `json:"quote"`
+	Pair        string `json:"pair"`
+	Lot         string `json:"lot"`
+	PairDecimal int    `json:"pair_decimals"`
+	LotDecimal  int    `json:"lot_decimals"`
+	MinLot      string `json:"minlot"`
+	MinPrice    string `json:"minprice"`
+	MaxPrice    string `json:"maxprice"`
+	MinOrder    string `json:"minorder"`
+	MaxOrder    string `json:"maxorder"`
+	FeeVolume   string `json:"feevolume"`
 }
 
 func (k *KrakenConnector) GetAssetPairs() (map[string]*KrakenPair, error) {
@@ -135,19 +134,19 @@ func (k *KrakenConnector) GetAssetPairs() (map[string]*KrakenPair, error) {
 		}
 
 		pairs[name] = &KrakenPair{
-			Name:       name,
-			Base:       info["base"].(string),
-			Quote:      info["quote"].(string),
-			Pair:       info["pair"].(string),
-			Lot:        lot,
+			Name:        name,
+			Base:        info["base"].(string),
+			Quote:       info["quote"].(string),
+			Pair:        info["pair"].(string),
+			Lot:         lot,
 			PairDecimal: pairDecimal,
 			LotDecimal:  lotDecimal,
-			MinLot:     info["minlot"].(string),
-			MinPrice:   info["minprice"].(string),
-			MaxPrice:   info["maxprice"].(string),
-			MinOrder:   info["minorder"].(string),
-			MaxOrder:   info["maxorder"].(string),
-			FeeVolume:  info["feevolume"].(string),
+			MinLot:      info["minlot"].(string),
+			MinPrice:    info["minprice"].(string),
+			MaxPrice:    info["maxprice"].(string),
+			MinOrder:    info["minorder"].(string),
+			MaxOrder:    info["maxorder"].(string),
+			FeeVolume:   info["feevolume"].(string),
 		}
 	}
 
@@ -172,17 +171,17 @@ func (k *KrakenConnector) GetSymbols() ([]Symbol, error) {
 }
 
 type Ticker struct {
-	Pair   string
-	Ask    []string // [price, wholeLotVolume, lotVolume]
-	Bid    []string // [price, wholeLotVolume, lotVolume]
-	Last   []string // [price, wholeLotVolume, lotVolume]
-	Volume []string // [today, last24h]
+	Pair      string
+	Ask       []string // [price, wholeLotVolume, lotVolume]
+	Bid       []string // [price, wholeLotVolume, lotVolume]
+	Last      []string // [price, wholeLotVolume, lotVolume]
+	Volume    []string // [today, last24h]
 	VolumeAvg []string
-	Trades [][]string
-	High   []string // [today, last24h]
-	Low    []string // [today, last24h]
-	Open   float64
-	Today  float64
+	Trades    [][]string
+	High      []string // [today, last24h]
+	Low       []string // [today, last24h]
+	Open      float64
+	Today     float64
 }
 
 func (k *KrakenConnector) GetTicker(pair string) (*Ticker, error) {
@@ -198,7 +197,7 @@ func (k *KrakenConnector) GetTicker(pair string) (*Ticker, error) {
 	}
 
 	var data struct {
-		Error []interface{}              `json:"error"`
+		Error  []interface{}              `json:"error"`
 		Result map[string]json.RawMessage `json:"result"`
 	}
 
@@ -219,9 +218,9 @@ func (k *KrakenConnector) GetTicker(pair string) (*Ticker, error) {
 }
 
 type OrderBook struct {
-	Pair   string
-	Bids   [][]string // [price, volume, timestamp]
-	Asks   [][]string // [price, volume, timestamp]
+	Pair string
+	Bids [][]string // [price, volume, timestamp]
+	Asks [][]string // [price, volume, timestamp]
 }
 
 func (k *KrakenConnector) GetOrderBook(pair string, count int) (*OrderBook, error) {
@@ -262,14 +261,14 @@ func (k *KrakenConnector) GetOrderBook(pair string, count int) (*OrderBook, erro
 }
 
 type OHLC struct {
-	Timestamp  int64
-	Open       float64
-	High       float64
-	Low        float64
-	Close      float64
-	VWAP       float64
-	Volume     float64
-	Count      int
+	Timestamp int64
+	Open      float64
+	High      float64
+	Low       float64
+	Close     float64
+	VWAP      float64
+	Volume    float64
+	Count     int
 }
 
 func (k *KrakenConnector) GetOHLC(pair, interval string) ([]OHLC, error) {
@@ -285,8 +284,8 @@ func (k *KrakenConnector) GetOHLC(pair, interval string) ([]OHLC, error) {
 	}
 
 	var data struct {
-		Error  []interface{}              `json:"error"`
-		Result map[string][]interface{}   `json:"result"`
+		Error  []interface{}            `json:"error"`
+		Result map[string][]interface{} `json:"result"`
 	}
 
 	if err := json.Unmarshal(body, &data); err != nil {
@@ -379,7 +378,7 @@ func (k *KrakenConnector) CreateOrder(order *Order) (*Order, error) {
 		Error  []string `json:"error"`
 		Result struct {
 			TransactionIDs []string `json:"txid"`
-			OrderDescr    struct {
+			OrderDescr     struct {
 				Order string `json:"order"`
 			} `json:"orderDescr"`
 		} `json:"result"`
@@ -411,8 +410,8 @@ func (k *KrakenConnector) CancelOrder(orderID string) error {
 	nonce := time.Now().UnixNano()
 
 	postData := map[string]string{
-		"txid":   orderID,
-		"nonce":  strconv.FormatInt(nonce, 10),
+		"txid":  orderID,
+		"nonce": strconv.FormatInt(nonce, 10),
 	}
 
 	path := "/0/private/CancelOrder"
@@ -451,8 +450,8 @@ func (k *KrakenConnector) GetOrder(orderID string) (*Order, error) {
 	nonce := time.Now().UnixNano()
 
 	postData := map[string]string{
-		"txid":   orderID,
-		"nonce":  strconv.FormatInt(nonce, 10),
+		"txid":  orderID,
+		"nonce": strconv.FormatInt(nonce, 10),
 	}
 
 	path := "/0/private/QueryOrders"
@@ -479,8 +478,8 @@ func (k *KrakenConnector) GetOrder(orderID string) (*Order, error) {
 	}
 
 	var result struct {
-		Error  []string          `json:"error"`
-		Result map[string]any    `json:"result"`
+		Error  []string       `json:"error"`
+		Result map[string]any `json:"result"`
 	}
 
 	if err := json.Unmarshal(body, &result); err != nil {
@@ -540,8 +539,8 @@ func (k *KrakenConnector) GetOpenOrders() ([]Order, error) {
 	}
 
 	var result struct {
-		Error  []string          `json:"error"`
-		Result map[string]any    `json:"result"`
+		Error  []string       `json:"error"`
+		Result map[string]any `json:"result"`
 	}
 
 	if err := json.Unmarshal(body, &result); err != nil {
@@ -625,14 +624,14 @@ func (k *KrakenConnector) GetAccount() (*Account, error) {
 		account.Balances = append(account.Balances, Balance{
 			Asset: asset,
 			Total: balance,
-			Free: balance,
+			Free:  balance,
 		})
 	}
 
 	return account, nil
 }
 
-func (k *KrakenConnector) GetBalance(asset string) (*Balance, error) {
+func (k *KrakenConnector) GetAssetBalance(asset string) (*Balance, error) {
 	balances, err := k.GetBalance()
 	if err != nil {
 		return nil, err
@@ -672,7 +671,11 @@ func (k *KrakenConnector) sign(path string, postData map[string]string, nonce in
 	message := path + hex.EncodeToString(sha256Hash.Sum(nil))
 
 	// HMAC-SHA512 with secret
-	hmacHash := hmac.New(sha512.New, base64.StdEncoding.DecodeString(k.apiSecret))
+	secret, err := base64.StdEncoding.DecodeString(k.apiSecret)
+	if err != nil {
+		return ""
+	}
+	hmacHash := hmac.New(sha512.New, secret)
 	hmacHash.Write([]byte(message))
 
 	return base64.StdEncoding.EncodeToString(hmacHash.Sum(nil))

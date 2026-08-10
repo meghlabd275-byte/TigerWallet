@@ -279,12 +279,12 @@ func (s *Store) DeleteCache(ctx context.Context, key string) error {
 // Real aggregate stats computed from PostgreSQL (no hardcoded numbers).
 
 type AdminStats struct {
-	TotalUsers         int64   `json:"totalUsers"`
-	ActiveUsers        int64   `json:"activeUsers"`
-	TotalTransactions  int64   `json:"totalTransactions"`
-	TotalVolume        float64 `json:"totalVolume"`
-	DailyRevenue       float64 `json:"dailyRevenue"`
-	MonthlyRevenue     float64 `json:"monthlyRevenue"`
+	TotalUsers        int64   `json:"totalUsers"`
+	ActiveUsers       int64   `json:"activeUsers"`
+	TotalTransactions int64   `json:"totalTransactions"`
+	TotalVolume       float64 `json:"totalVolume"`
+	DailyRevenue      float64 `json:"dailyRevenue"`
+	MonthlyRevenue    float64 `json:"monthlyRevenue"`
 }
 
 func (s *Store) GetAdminStats(ctx context.Context) (*AdminStats, error) {

@@ -68,12 +68,12 @@ func parseAdminJWT(tokenStr string) (string, error) {
 // ============================================================================
 
 type Config struct {
-	Port            int    `json:"port"`
-	RedisAddr       string `json:"redis_addr"`
-	MongoURI        string `json:"mongo_uri"`
+	Port              int    `json:"port"`
+	RedisAddr         string `json:"redis_addr"`
+	MongoURI          string `json:"mongo_uri"`
 	PaymentServiceURL string `json:"payment_service_url"`
-	AdminWallet     string `json:"admin_wallet"`
-	EthRPCURL       string `json:"eth_rpc_url"`
+	AdminWallet       string `json:"admin_wallet"`
+	EthRPCURL         string `json:"eth_rpc_url"`
 }
 
 var cfg = Config{
@@ -87,13 +87,13 @@ var cfg = Config{
 // ============================================================================
 
 var SupportedChains = map[string]int64{
-	"ethereum":   1,
-	"bsc":        56,
-	"polygon":    137,
-	"arbitrum":   42161,
-	"optimism":   10,
-	"avalanche":  43114,
-	"base":       8453,
+	"ethereum":  1,
+	"bsc":       56,
+	"polygon":   137,
+	"arbitrum":  42161,
+	"optimism":  10,
+	"avalanche": 43114,
+	"base":      8453,
 }
 
 var ChainNames = map[int64]string{
@@ -111,46 +111,46 @@ var ChainNames = map[int64]string{
 // ============================================================================
 
 type TokenListing struct {
-	ID              string    `json:"id" bson:"_id"`
-	ApplicantEmail  string    `json:"applicant_email" bson:"applicant_email"`
-	ApplicantName  string    `json:"applicant_name" bson:"applicant_name"`
-	TokenSymbol    string    `json:"token_symbol" bson:"token_symbol"`
-	TokenName      string    `json:"token_name" bson:"token_name"`
-	ContractAddr   string    `json:"contract_address" bson:"contract_address"`
-	ChainID        int64     `json:"chain_id" bson:"chain_id"`
-	Chain          string    `json:"chain" bson:"chain"`
-	QuoteToken     string    `json:"quote_token" bson:"quote_token"`
-	Tier           string    `json:"tier" bson:"tier"`
-	FeeAmount      string    `json:"fee_amount" bson:"fee_amount"`
-	FeeToken       string    `json:"fee_token" bson:"fee_token"`
-	FeeUSD         string    `json:"fee_usd" bson:"fee_usd"`
-	PaymentID      string    `json:"payment_id" bson:"payment_id"`
-	PaymentStatus  string    `json:"payment_status" bson:"payment_status"`
-	Status         string    `json:"status" bson:"status"` // pending, paid, reviewing, approved, rejected
-	AdminNotes     string    `json:"admin_notes" bson:"admin_notes"`
-	ReviewedBy     string    `json:"reviewed_by" bson:"reviewed_by"`
-	ReviewedAt     *time.Time `json:"reviewed_at" bson:"reviewed_at"`
-	Website        string    `json:"website" bson:"website"`
-	Twitter        string    `json:"twitter" bson:"twitter"`
-	Telegram       string    `json:"telegram" bson:"telegram"`
-	Discord        string    `json:"discord" bson:"discord"`
-	Whitepaper     string    `json:"whitepaper" bson:"whitepaper"`
-	LogoURL        string    `json:"logo_url" bson:"logo_url"`
-	Description    string    `json:"description" bson:"description"`
-	TotalSupply    string    `json:"total_supply" bson:"total_supply"`
-	CirculatingSupply string `json:"circulating_supply" bson:"circulating_supply"`
-	TokenType      string    `json:"token_type" bson:"token_type"` // ERC20, BEP20, etc
-	CreatedAt      time.Time `json:"created_at" bson:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at" bson:"updated_at"`
+	ID                string     `json:"id" bson:"_id"`
+	ApplicantEmail    string     `json:"applicant_email" bson:"applicant_email"`
+	ApplicantName     string     `json:"applicant_name" bson:"applicant_name"`
+	TokenSymbol       string     `json:"token_symbol" bson:"token_symbol"`
+	TokenName         string     `json:"token_name" bson:"token_name"`
+	ContractAddr      string     `json:"contract_address" bson:"contract_address"`
+	ChainID           int64      `json:"chain_id" bson:"chain_id"`
+	Chain             string     `json:"chain" bson:"chain"`
+	QuoteToken        string     `json:"quote_token" bson:"quote_token"`
+	Tier              string     `json:"tier" bson:"tier"`
+	FeeAmount         string     `json:"fee_amount" bson:"fee_amount"`
+	FeeToken          string     `json:"fee_token" bson:"fee_token"`
+	FeeUSD            string     `json:"fee_usd" bson:"fee_usd"`
+	PaymentID         string     `json:"payment_id" bson:"payment_id"`
+	PaymentStatus     string     `json:"payment_status" bson:"payment_status"`
+	Status            string     `json:"status" bson:"status"` // pending, paid, reviewing, approved, rejected
+	AdminNotes        string     `json:"admin_notes" bson:"admin_notes"`
+	ReviewedBy        string     `json:"reviewed_by" bson:"reviewed_by"`
+	ReviewedAt        *time.Time `json:"reviewed_at" bson:"reviewed_at"`
+	Website           string     `json:"website" bson:"website"`
+	Twitter           string     `json:"twitter" bson:"twitter"`
+	Telegram          string     `json:"telegram" bson:"telegram"`
+	Discord           string     `json:"discord" bson:"discord"`
+	Whitepaper        string     `json:"whitepaper" bson:"whitepaper"`
+	LogoURL           string     `json:"logo_url" bson:"logo_url"`
+	Description       string     `json:"description" bson:"description"`
+	TotalSupply       string     `json:"total_supply" bson:"total_supply"`
+	CirculatingSupply string     `json:"circulating_supply" bson:"circulating_supply"`
+	TokenType         string     `json:"token_type" bson:"token_type"` // ERC20, BEP20, etc
+	CreatedAt         time.Time  `json:"created_at" bson:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at" bson:"updated_at"`
 }
 
 type TierConfig struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	FeeAmount   string `json:"fee_amount"`
-	FeeUSD      string `json:"fee_usd"`
-	FeeToken    string `json:"fee_token"`
-	Features    []string `json:"features"`
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	FeeAmount string   `json:"fee_amount"`
+	FeeUSD    string   `json:"fee_usd"`
+	FeeToken  string   `json:"fee_token"`
+	Features  []string `json:"features"`
 }
 
 var TierConfigs = map[string]*TierConfig{
@@ -193,22 +193,22 @@ var TierConfigs = map[string]*TierConfig{
 // ============================================================================
 
 type ListingService struct {
-	redis       *redis.Client
-	ethClient   *ethclient.Client
-	mu          sync.RWMutex
-	listings    map[string]*TokenListing
-	adminUsers  map[string]*AdminUser
-	paymentURL  string
+	redis      *redis.Client
+	ethClient  *ethclient.Client
+	mu         sync.RWMutex
+	listings   map[string]*TokenListing
+	adminUsers map[string]*AdminUser
+	paymentURL string
 }
 
 type AdminUser struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	Role      string    `json:"role"` // superadmin, admin, reviewer
-	CanApprove bool     `json:"can_approve"`
-	CanEdit   bool     `json:"can_edit"`
-	CanDelete bool     `json:"can_delete"`
-	CreatedAt time.Time `json:"created_at"`
+	ID         string    `json:"id"`
+	Email      string    `json:"email"`
+	Role       string    `json:"role"` // superadmin, admin, reviewer
+	CanApprove bool      `json:"can_approve"`
+	CanEdit    bool      `json:"can_edit"`
+	CanDelete  bool      `json:"can_delete"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 func NewListingService() *ListingService {
@@ -223,13 +223,13 @@ func NewListingService() *ListingService {
 func (s *ListingService) initAdminUsers() {
 	// Default SuperAdmin
 	s.adminUsers["superadmin@tigerwallet.com"] = &AdminUser{
-		ID:        uuid.New().String(),
-		Email:     "superadmin@tigerwallet.com",
-		Role:      "superadmin",
+		ID:         uuid.New().String(),
+		Email:      "superadmin@tigerwallet.com",
+		Role:       "superadmin",
 		CanApprove: true,
-		CanEdit:   true,
-		CanDelete: true,
-		CreatedAt: time.Now(),
+		CanEdit:    true,
+		CanDelete:  true,
+		CreatedAt:  time.Now(),
 	}
 }
 
@@ -345,13 +345,13 @@ func (s *ListingService) SubmitApplication(c *gin.Context) {
 		Status:         "pending",
 		Website:        req.Website,
 		Twitter:        req.Twitter,
-		Telegram:      req.Telegram,
-		Discord:       req.Discord,
-		Whitepaper:    req.Whitepaper,
-		Description:   req.Description,
-		LogoURL:       req.LogoURL,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
+		Telegram:       req.Telegram,
+		Discord:        req.Discord,
+		Whitepaper:     req.Whitepaper,
+		Description:    req.Description,
+		LogoURL:        req.LogoURL,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 
 	s.mu.Lock()
@@ -360,12 +360,12 @@ func (s *ListingService) SubmitApplication(c *gin.Context) {
 
 	// Create payment request via Payment Service
 	paymentReq := map[string]interface{}{
-		"user_id":    listing.ID,
-		"order_id":   fmt.Sprintf("LISTING-%s", listing.ID[:8]),
-		"amount":     tier.FeeAmount,
-		"amount_usd": tier.FeeUSD,
-		"chain":      "ethereum",
-		"token":      tier.FeeToken,
+		"user_id":     listing.ID,
+		"order_id":    fmt.Sprintf("LISTING-%s", listing.ID[:8]),
+		"amount":      tier.FeeAmount,
+		"amount_usd":  tier.FeeUSD,
+		"chain":       "ethereum",
+		"token":       tier.FeeToken,
 		"webhook_url": fmt.Sprintf("%s/api/v1/listing/payment/webhook", cfg.PaymentServiceURL),
 	}
 
@@ -389,21 +389,21 @@ func (s *ListingService) SubmitApplication(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
 		"listing": map[string]interface{}{
-			"id":               listing.ID,
-			"status":           listing.Status,
-			"tier":             listing.Tier,
-			"fee_amount":       listing.FeeAmount,
-			"fee_token":        listing.FeeToken,
-			"payment_id":       listing.PaymentID,
-			"payment_status":   listing.PaymentStatus,
-			"payment_address":  s.getPaymentAddress(listing),
-			"expires_at":       time.Now().Add(24 * time.Hour),
+			"id":              listing.ID,
+			"status":          listing.Status,
+			"tier":            listing.Tier,
+			"fee_amount":      listing.FeeAmount,
+			"fee_token":       listing.FeeToken,
+			"payment_id":      listing.PaymentID,
+			"payment_status":  listing.PaymentStatus,
+			"payment_address": s.getPaymentAddress(listing),
+			"expires_at":      time.Now().Add(24 * time.Hour),
 		},
 		"instructions": map[string]string{
-			"title":          "Complete Payment",
-			"description":    fmt.Sprintf("Send exactly %s %s to the address below", listing.FeeAmount, listing.FeeToken),
+			"title":           "Complete Payment",
+			"description":     fmt.Sprintf("Send exactly %s %s to the address below", listing.FeeAmount, listing.FeeToken),
 			"payment_address": s.getPaymentAddress(listing),
-			"network":        "Ethereum (ERC20)",
+			"network":         "Ethereum (ERC20)",
 		},
 	})
 }
@@ -528,12 +528,12 @@ func (s *ListingService) HandlePaymentWebhook(c *gin.Context) {
 	var payload struct {
 		Event       string `json:"event"`
 		PaymentID   string `json:"payment_id"`
-		OrderID    string `json:"order_id"`
+		OrderID     string `json:"order_id"`
 		Status      string `json:"status"`
-		TxHash     string `json:"tx_hash"`
-		Amount     string `json:"amount"`
-		Token      string `json:"token"`
-		Chain      string `json:"chain"`
+		TxHash      string `json:"tx_hash"`
+		Amount      string `json:"amount"`
+		Token       string `json:"token"`
+		Chain       string `json:"chain"`
 		CompletedAt string `json:"completed_at"`
 	}
 
@@ -671,11 +671,11 @@ func (s *ListingService) ListAllListings(c *gin.Context) {
 	s.mu.RUnlock()
 
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
+		"success":  true,
 		"listings": result,
-		"total":   len(result),
-		"page":    page,
-		"limit":   limit,
+		"total":    len(result),
+		"page":     page,
+		"limit":    limit,
 	})
 }
 
@@ -719,11 +719,11 @@ func (s *ListingService) UpdateListingStatus(c *gin.Context) {
 	}
 
 	validStatuses := map[string]bool{
-		"pending":    true,
-		"paid":       true,
-		"reviewing":  true,
-		"approved":   true,
-		"rejected":   true,
+		"pending":   true,
+		"paid":      true,
+		"reviewing": true,
+		"approved":  true,
+		"rejected":  true,
 	}
 
 	if !validStatuses[req.Status] {
@@ -801,12 +801,12 @@ func (s *ListingService) GetListingStats(c *gin.Context) {
 	defer s.mu.RUnlock()
 
 	stats := map[string]int{
-		"total":       len(s.listings),
-		"pending":     0,
-		"paid":        0,
-		"reviewing":   0,
-		"approved":    0,
-		"rejected":    0,
+		"total":     len(s.listings),
+		"pending":   0,
+		"paid":      0,
+		"reviewing": 0,
+		"approved":  0,
+		"rejected":  0,
 	}
 
 	for _, l := range s.listings {
@@ -825,11 +825,11 @@ func (s *ListingService) GetListingStats(c *gin.Context) {
 
 func (s *ListingService) CreateAdminUser(c *gin.Context) {
 	var req struct {
-		Email    string `json:"email" binding:"required,email"`
-		Role     string `json:"role" binding:"required"`
-		CanApprove bool  `json:"can_approve"`
-		CanEdit  bool   `json:"can_edit"`
-		CanDelete bool   `json:"can_delete"`
+		Email      string `json:"email" binding:"required,email"`
+		Role       string `json:"role" binding:"required"`
+		CanApprove bool   `json:"can_approve"`
+		CanEdit    bool   `json:"can_edit"`
+		CanDelete  bool   `json:"can_delete"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -844,13 +844,13 @@ func (s *ListingService) CreateAdminUser(c *gin.Context) {
 	}
 
 	admin := &AdminUser{
-		ID:        uuid.New().String(),
-		Email:     req.Email,
-		Role:      req.Role,
+		ID:         uuid.New().String(),
+		Email:      req.Email,
+		Role:       req.Role,
 		CanApprove: req.CanApprove,
-		CanEdit:   req.CanEdit,
-		CanDelete: req.CanDelete,
-		CreatedAt: time.Now(),
+		CanEdit:    req.CanEdit,
+		CanDelete:  req.CanDelete,
+		CreatedAt:  time.Now(),
 	}
 
 	s.mu.Lock()

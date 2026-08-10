@@ -1,6 +1,6 @@
 /**
  * TigerWallet Earn Service
- * 
+ *
  * Complete earn products including fixed deposits, flexible savings,
  * and yield farming.
  * Built with Go for high-load distributed operations.
@@ -25,26 +25,26 @@ import (
 
 // EarnProduct represents an earn product
 type EarnProduct struct {
-	ID              string           `json:"id"`
-	Name            string           `json:"name"`
-	Description     string           `json:"description"`
-	ProductType    ProductType       `json:"product_type"`
-	ChainID        uint64           `json:"chain_id"`
-	TokenAddress   string           `json:"token_address"`
-	Token          *TokenInfo       `json:"token"`
-	APY            string           `json:"apy"`
-	APYType        APYType          `json:"apy_type"` // fixed, flexible, tiered
-	MinDeposit     string           `json:"min_deposit"`
-	MaxDeposit     string           `json:"max_deposit"`
-	MinTerm        int64            `json:"min_term"` // in seconds
-	MaxTerm        int64            `json:"max_term"` // in seconds
-	TotalDeposited string           `json:"total_deposited"`
-	TotalValue     string           `json:"total_value"`
-	MaxCapacity    string           `json:"max_capacity"`
-	Status         ProductStatus    `json:"status"`
-	Features       []string         `json:"features"` // auto-compound, early-withdrawal, etc.
-	CreatedAt      int64            `json:"created_at"`
-	UpdatedAt      int64            `json:"updated_at"`
+	ID             string        `json:"id"`
+	Name           string        `json:"name"`
+	Description    string        `json:"description"`
+	ProductType    ProductType   `json:"product_type"`
+	ChainID        uint64        `json:"chain_id"`
+	TokenAddress   string        `json:"token_address"`
+	Token          *TokenInfo    `json:"token"`
+	APY            string        `json:"apy"`
+	APYType        APYType       `json:"apy_type"` // fixed, flexible, tiered
+	MinDeposit     string        `json:"min_deposit"`
+	MaxDeposit     string        `json:"max_deposit"`
+	MinTerm        int64         `json:"min_term"` // in seconds
+	MaxTerm        int64         `json:"max_term"` // in seconds
+	TotalDeposited string        `json:"total_deposited"`
+	TotalValue     string        `json:"total_value"`
+	MaxCapacity    string        `json:"max_capacity"`
+	Status         ProductStatus `json:"status"`
+	Features       []string      `json:"features"` // auto-compound, early-withdrawal, etc.
+	CreatedAt      int64         `json:"created_at"`
+	UpdatedAt      int64         `json:"updated_at"`
 }
 
 // TokenInfo represents token information
@@ -60,10 +60,10 @@ type TokenInfo struct {
 type ProductType string
 
 const (
-	ProductTypeFixed     ProductType = "fixed"
-	ProductTypeFlexible  ProductType = "flexible"
-	ProductTypeTiered    ProductType = "tiered"
-	ProductTypeLockdrop  ProductType = "lockdrop"
+	ProductTypeFixed    ProductType = "fixed"
+	ProductTypeFlexible ProductType = "flexible"
+	ProductTypeTiered   ProductType = "tiered"
+	ProductTypeLockdrop ProductType = "lockdrop"
 )
 
 // APYType represents APY calculation type
@@ -79,7 +79,7 @@ const (
 type ProductStatus string
 
 const (
-	ProductStatusActive   ProductStatus = "active"
+	ProductStatusActive  ProductStatus = "active"
 	ProductStatusPaused  ProductStatus = "paused"
 	ProductStatusClosed  ProductStatus = "closed"
 	ProductStatusExpired ProductStatus = "expired"
@@ -87,19 +87,19 @@ const (
 
 // UserDeposit represents a user deposit
 type UserDeposit struct {
-	ID             string    `json:"id"`
-	UserID         string    `json:"user_id"`
-	ProductID      string    `json:"product_id"`
-	Amount         string    `json:"amount"`
-	Principal      string    `json:"principal"`
-	Interest       string    `json:"interest"`
-	APY            string    `json:"apy"`
-	Term           int64     `json:"term"` // in seconds
-	StartTime      int64     `json:"start_time"`
-	MaturityTime   int64     `json:"maturity_time"`
-	ClaimTime      int64     `json:"claim_time"`
-	Status         string    `json:"status"` // active, matured, claimed, withdrawn
-	AutoCompound   bool      `json:"auto_compound"`
+	ID           string `json:"id"`
+	UserID       string `json:"user_id"`
+	ProductID    string `json:"product_id"`
+	Amount       string `json:"amount"`
+	Principal    string `json:"principal"`
+	Interest     string `json:"interest"`
+	APY          string `json:"apy"`
+	Term         int64  `json:"term"` // in seconds
+	StartTime    int64  `json:"start_time"`
+	MaturityTime int64  `json:"maturity_time"`
+	ClaimTime    int64  `json:"claim_time"`
+	Status       string `json:"status"` // active, matured, claimed, withdrawn
+	AutoCompound bool   `json:"auto_compound"`
 }
 
 // Tier represents APY tier
@@ -111,19 +111,19 @@ type Tier struct {
 
 // YieldSnapshot represents yield snapshot
 type YieldSnapshot struct {
-	ID        string    `json:"id"`
-	ProductID string    `json:"product_id"`
-	APY       string    `json:"apy"`
-	Timestamp int64     `json:"timestamp"`
+	ID        string `json:"id"`
+	ProductID string `json:"product_id"`
+	APY       string `json:"apy"`
+	Timestamp int64  `json:"timestamp"`
 }
 
 // EarnService manages earn products
 type EarnService struct {
-	mu            sync.RWMutex
-	products      map[string]*EarnProduct
-	deposits      map[string]*UserDeposit
-	tierAPYs      map[string][]Tier
-	snapshots     map[string]*YieldSnapshot
+	mu        sync.RWMutex
+	products  map[string]*EarnProduct
+	deposits  map[string]*UserDeposit
+	tierAPYs  map[string][]Tier
+	snapshots map[string]*YieldSnapshot
 }
 
 // ============================================================================
@@ -140,8 +140,8 @@ func GetEarnService() *EarnService {
 	earnServiceOnce.Do(func() {
 		earnService = &EarnService{
 			products:  make(map[string]*EarnProduct),
-			deposits: make(map[string]*UserDeposit),
-			tierAPYs: make(map[string][]Tier),
+			deposits:  make(map[string]*UserDeposit),
+			tierAPYs:  make(map[string][]Tier),
 			snapshots: make(map[string]*YieldSnapshot),
 		}
 	})
@@ -280,8 +280,8 @@ func (s *EarnService) Deposit(ctx context.Context, deposit *UserDeposit) (*UserD
 	}
 
 	// Validate amount
-	amount, err := new(big.Int).SetString(deposit.Amount, 10)
-	if err != nil {
+	amount, ok := new(big.Int).SetString(deposit.Amount, 10)
+	if !ok {
 		return nil, fmt.Errorf("invalid amount")
 	}
 
@@ -344,8 +344,8 @@ func (s *EarnService) calculateTieredAPY(productID string, amount string) string
 		return "0"
 	}
 
-	amountInt, err := new(big.Int).SetString(amount, 10)
-	if err != nil {
+	amountInt, ok := new(big.Int).SetString(amount, 10)
+	if !ok {
 		return "0"
 	}
 
@@ -457,9 +457,9 @@ func (s *EarnService) Withdraw(ctx context.Context, depositID string, amount str
 	}
 
 	// Calculate interest
-	withdrawAmount, err := new(big.Int).SetString(amount, 10)
-	if err != nil {
-		return "0", err
+	withdrawAmount, ok := new(big.Int).SetString(amount, 10)
+	if !ok {
+		return "0", fmt.Errorf("invalid number")
 	}
 
 	principal, _ := new(big.Int).SetString(deposit.Principal, 10)
@@ -506,7 +506,7 @@ func (s *EarnService) Claim(ctx context.Context, depositID string) (string, erro
 		return "0", fmt.Errorf("already claimed")
 	}
 
-	product, exists := s.products[deposit.ProductID]
+	_, exists = s.products[deposit.ProductID]
 	if !exists {
 		return "0", fmt.Errorf("product not found")
 	}
@@ -536,7 +536,7 @@ func (s *EarnService) Claim(ctx context.Context, depositID string) (string, erro
 
 // calculateInterest calculates interest for a deposit
 func (s *EarnService) calculateInterest(deposit *UserDeposit) (string, error) {
-	product, exists := s.products[deposit.ProductID]
+	_, exists := s.products[deposit.ProductID]
 	if !exists {
 		return "0", fmt.Errorf("product not found")
 	}
@@ -605,20 +605,20 @@ func (s *EarnService) CalculateProjectedReturns(ctx context.Context, productID, 
 		return "0", fmt.Errorf("product not found")
 	}
 
-	amountInt, err := new(big.Int).SetString(amount, 10)
-	if err != nil {
-		return "0", err
+	amountInt, ok := new(big.Int).SetString(amount, 10)
+	if !ok {
+		return "0", fmt.Errorf("invalid number")
 	}
 
-	termInt, err := new(big.Int).SetString(term, 10)
-	if err != nil {
-		return "0", err
+	termInt, ok := new(big.Int).SetString(term, 10)
+	if !ok {
+		return "0", fmt.Errorf("invalid number")
 	}
 
 	// Get APY
-	apy, err := new(big.Int).SetString(product.APY, 10)
-	if err != nil {
-		return "0", err
+	apy, ok := new(big.Int).SetString(product.APY, 10)
+	if !ok {
+		return "0", fmt.Errorf("invalid number")
 	}
 
 	// Returns = amount * apy * term / (100 * 365 * 86400)

@@ -100,12 +100,12 @@ type createWalletReq struct {
 }
 
 type walletResp struct {
-	ID           string `json:"id"`
-	Label        string `json:"label"`
-	ChainID      int64  `json:"chain_id"`
-	Address      string `json:"address"`
+	ID             string `json:"id"`
+	Label          string `json:"label"`
+	ChainID        int64  `json:"chain_id"`
+	Address        string `json:"address"`
 	DerivationPath string `json:"derivation_path"`
-	Mnemonic     string `json:"mnemonic,omitempty"` // only returned on creation
+	Mnemonic       string `json:"mnemonic,omitempty"` // only returned on creation
 }
 
 func handleCreateWallet(c *gin.Context) {
@@ -321,13 +321,13 @@ func handleNFTs(c *gin.Context) {
 // ---- Send transaction ----
 
 type sendTxReq struct {
-	WalletID     string `json:"wallet_id" binding:"required"`
-	Password     string `json:"password" binding:"required"`
-	ToAddress    string `json:"to" binding:"required"`
-	Value        string `json:"value" binding:"required"` // in ether
-	GasLimit     uint64 `json:"gas_limit"`
-	Data         string `json:"data"`
-	ChainID      int64  `json:"chain_id"`
+	WalletID  string `json:"wallet_id" binding:"required"`
+	Password  string `json:"password" binding:"required"`
+	ToAddress string `json:"to" binding:"required"`
+	Value     string `json:"value" binding:"required"` // in ether
+	GasLimit  uint64 `json:"gas_limit"`
+	Data      string `json:"data"`
+	ChainID   int64  `json:"chain_id"`
 }
 
 func handleSendTransaction(c *gin.Context) {
@@ -479,11 +479,11 @@ func handleGasPrice(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"chain_id":              chainID,
-		"gas_price":             gasPrice.String(),
-		"max_fee_per_gas":       maxFee.String(),
-		"max_priority_fee":      maxPrioFee.String(),
-		"gas_price_gwei":        weiToGweiFloat(gasPrice),
+		"chain_id":         chainID,
+		"gas_price":        gasPrice.String(),
+		"max_fee_per_gas":  maxFee.String(),
+		"max_priority_fee": maxPrioFee.String(),
+		"gas_price_gwei":   weiToGweiFloat(gasPrice),
 	})
 }
 

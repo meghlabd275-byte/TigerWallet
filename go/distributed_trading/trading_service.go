@@ -18,18 +18,18 @@ type MarginMode string
 type PositionSide string
 
 const (
-	OrderTypeMarket   OrderType = "market"
-	OrderTypeLimit    OrderType = "limit"
-	OrderTypeStop     OrderType = "stop"
+	OrderTypeMarket OrderType = "market"
+	OrderTypeLimit  OrderType = "limit"
+	OrderTypeStop   OrderType = "stop"
 
 	OrderSideBuy  OrderSide = "buy"
 	OrderSideSell OrderSide = "sell"
 
 	OrderStatusOpen      OrderStatus = "open"
-	OrderStatusFilled   OrderStatus = "filled"
+	OrderStatusFilled    OrderStatus = "filled"
 	OrderStatusCancelled OrderStatus = "cancelled"
 
-	MarginModeCross     MarginMode = "cross"
+	MarginModeCross    MarginMode = "cross"
 	MarginModeIsolated MarginMode = "isolated"
 
 	PositionSideLong  PositionSide = "long"
@@ -63,20 +63,20 @@ type TradingPair struct {
 // ============================================================================
 
 type Order struct {
-	ID           string      `json:"id"`
-	UserID       string      `json:"userId"`
-	Symbol       string      `json:"symbol"`
-	Side         OrderSide   `json:"side"`
-	Type         OrderType   `json:"type"`
-	Size         float64     `json:"size"`
-	Filled       float64     `json:"filled"`
-	Price        float64     `json:"price"`
-	StopPrice    float64     `json:"stopPrice,omitempty"`
-	Leverage     int         `json:"leverage"`
-	MarginMode   MarginMode  `json:"marginMode"`
-	Status       OrderStatus `json:"status"`
-	CreateTime   int64       `json:"createTime"`
-	UpdateTime   int64       `json:"updateTime"`
+	ID         string      `json:"id"`
+	UserID     string      `json:"userId"`
+	Symbol     string      `json:"symbol"`
+	Side       OrderSide   `json:"side"`
+	Type       OrderType   `json:"type"`
+	Size       float64     `json:"size"`
+	Filled     float64     `json:"filled"`
+	Price      float64     `json:"price"`
+	StopPrice  float64     `json:"stopPrice,omitempty"`
+	Leverage   int         `json:"leverage"`
+	MarginMode MarginMode  `json:"marginMode"`
+	Status     OrderStatus `json:"status"`
+	CreateTime int64       `json:"createTime"`
+	UpdateTime int64       `json:"updateTime"`
 }
 
 // ============================================================================
@@ -84,11 +84,11 @@ type Order struct {
 // ============================================================================
 
 type Position struct {
-	ID                string       `json:"id"`
-	UserID            string       `json:"userId"`
-	Symbol            string       `json:"symbol"`
-	Side              PositionSide `json:"side"`
-	Size              float64      `json:"size"`
+	ID               string       `json:"id"`
+	UserID           string       `json:"userId"`
+	Symbol           string       `json:"symbol"`
+	Side             PositionSide `json:"side"`
+	Size             float64      `json:"size"`
 	EntryPrice       float64      `json:"entryPrice"`
 	MarkPrice        float64      `json:"markPrice"`
 	Leverage         int          `json:"leverage"`
@@ -105,29 +105,29 @@ type Position struct {
 // ============================================================================
 
 type DistributedTradingService struct {
-	mu          sync.RWMutex
-	pairs       map[string]*TradingPair
+	mu         sync.RWMutex
+	pairs      map[string]*TradingPair
 	orders     map[string]*Order
 	positions  map[string]*Position
-	orderCount  int64
-	pairCount   int64
-	
+	orderCount int64
+	pairCount  int64
+
 	// For distributed consistency
-	shards      int
+	shards       int
 	shardMutexes []sync.RWMutex
-	
+
 	// Metrics
-	totalOrders   int64
+	totalOrders  int64
 	totalVolume  float64
-	ordersPerSec  int64
+	ordersPerSec int64
 }
 
 func NewDistributedTradingService(shards int) *DistributedTradingService {
 	dts := &DistributedTradingService{
-		pairs:       make(map[string]*TradingPair),
-		orders:      make(map[string]*Order),
-		positions:   make(map[string]*Position),
-		shards:      shards,
+		pairs:        make(map[string]*TradingPair),
+		orders:       make(map[string]*Order),
+		positions:    make(map[string]*Position),
+		shards:       shards,
 		shardMutexes: make([]sync.RWMutex, shards),
 	}
 	dts.initializePairs()
@@ -146,7 +146,7 @@ func (dts *DistributedTradingService) initializePairs() {
 
 	id := 0
 	// Top 200 pre-installed pairs
-	for i, base := range bases {
+	for _, base := range bases {
 		for _, quote := range quotes {
 			if base != quote {
 				id++
@@ -200,7 +200,7 @@ func (dts *DistributedTradingService) initializePairs() {
 		}
 		dts.pairs[pair.Symbol] = pair
 	}
-	
+
 	dts.pairCount = int64(len(dts.pairs))
 }
 
@@ -330,20 +330,20 @@ func (dts *DistributedTradingService) OpenPosition(userID, symbol string, side P
 	now := time.Now().UnixNano()
 
 	position := &Position{
-		ID:                positionID,
-		UserID:            userID,
-		Symbol:            symbol,
-		Side:              side,
-		Size:              size,
-		EntryPrice:        entryPrice,
-		MarkPrice:         entryPrice,
-		Leverage:          leverage,
-		Margin:            margin,
-		MarginMode:        MarginModeCross,
-		PNL:               0,
-		PNLPercent:        0,
+		ID:               positionID,
+		UserID:           userID,
+		Symbol:           symbol,
+		Side:             side,
+		Size:             size,
+		EntryPrice:       entryPrice,
+		MarkPrice:        entryPrice,
+		Leverage:         leverage,
+		Margin:           margin,
+		MarginMode:       MarginModeCross,
+		PNL:              0,
+		PNLPercent:       0,
 		LiquidationPrice: liquidationPrice,
-		OpenTime:          now,
+		OpenTime:         now,
 	}
 
 	key := fmt.Sprintf("%s_%s", userID, symbol)
@@ -428,11 +428,11 @@ func (dts *DistributedTradingService) calculatePNL(position *Position) {
 
 func (dts *DistributedTradingService) GetMetrics() map[string]interface{} {
 	return map[string]interface{}{
-		"totalPairs":    atomic.LoadInt64(&dts.pairCount),
-		"totalOrders":   atomic.LoadInt64(&dts.totalOrders),
-		"totalVolume":    atomic.LoadFloat64(&dts.totalVolume),
-		"ordersPerSec":  atomic.LoadInt64(&dts.ordersPerSec),
-		"activeShards":   dts.shards,
+		"totalPairs":   atomic.LoadInt64(&dts.pairCount),
+		"totalOrders":  atomic.LoadInt64(&dts.totalOrders),
+		"totalVolume":  dts.totalVolume,
+		"ordersPerSec": atomic.LoadInt64(&dts.ordersPerSec),
+		"activeShards": dts.shards,
 	}
 }
 

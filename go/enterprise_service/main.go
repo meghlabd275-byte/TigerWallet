@@ -2,24 +2,15 @@ package main
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/tls"
 	"database/sql"
-	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
-	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -33,7 +24,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
-	"golang.org/x/net/ipv4"
 )
 
 // ============================================================================
@@ -41,28 +31,28 @@ import (
 // ============================================================================
 
 type Config struct {
-	Server          ServerConfig
-	Database        DatabaseConfig
-	Redis           RedisConfig
-	Security        SecurityConfig
-	Blockchain      BlockchainConfig
-	Enterprise      EnterpriseConfig
+	Server     ServerConfig
+	Database   DatabaseConfig
+	Redis      RedisConfig
+	Security   SecurityConfig
+	Blockchain BlockchainConfig
+	Enterprise EnterpriseConfig
 }
 
 type ServerConfig struct {
-	Port            string
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
-	MaxHeaderBytes  int
-	EnableTLS       bool
-	TLSCertFile     string
-	TLSKeyFile      string
-	RateLimit       RateLimitConfig
+	Port           string
+	ReadTimeout    time.Duration
+	WriteTimeout   time.Duration
+	MaxHeaderBytes int
+	EnableTLS      bool
+	TLSCertFile    string
+	TLSKeyFile     string
+	RateLimit      RateLimitConfig
 }
 
 type RateLimitConfig struct {
 	RequestsPerSecond int
-	Burst            int
+	Burst             int
 }
 
 type DatabaseConfig struct {
@@ -86,13 +76,13 @@ type RedisConfig struct {
 }
 
 type SecurityConfig struct {
-	JWTSecret          string
-	JWTExpiration      time.Duration
-	BCryptCost         int
-	EnableMFA          bool
-	SessionTimeout     time.Duration
-	MaxLoginAttempts   int
-	LockoutDuration    time.Duration
+	JWTSecret        string
+	JWTExpiration    time.Duration
+	BCryptCost       int
+	EnableMFA        bool
+	SessionTimeout   time.Duration
+	MaxLoginAttempts int
+	LockoutDuration  time.Duration
 }
 
 type BlockchainConfig struct {
@@ -103,23 +93,23 @@ type BlockchainConfig struct {
 }
 
 type NetworkConfig struct {
-	ID           uint64
-	Name         string
-	Symbol       string
-	ChainID      int64
-	RPCURLs      []string
-	ExplorerURL  string
-	IsEnabled    bool
-	IsTestnet    bool
+	ID          uint64
+	Name        string
+	Symbol      string
+	ChainID     int64
+	RPCURLs     []string
+	ExplorerURL string
+	IsEnabled   bool
+	IsTestnet   bool
 }
 
 type EnterpriseConfig struct {
-	EnableWhiteLabel    bool
-	EnableBroker        bool
-	EnableInstitution   bool
-	MaxWhiteLabels     int
-	MaxAPIKeys         int
-	WebhookTimeout     time.Duration
+	EnableWhiteLabel  bool
+	EnableBroker      bool
+	EnableInstitution bool
+	MaxWhiteLabels    int
+	MaxAPIKeys        int
+	WebhookTimeout    time.Duration
 }
 
 func LoadConfig() *Config {
@@ -134,7 +124,7 @@ func LoadConfig() *Config {
 			TLSKeyFile:     getEnv("TLS_KEY_FILE", "server.key"),
 			RateLimit: RateLimitConfig{
 				RequestsPerSecond: 1000,
-				Burst:            2000,
+				Burst:             2000,
 			},
 		},
 		Database: DatabaseConfig{
@@ -157,12 +147,12 @@ func LoadConfig() *Config {
 		},
 		Security: SecurityConfig{
 			JWTSecret:        getEnv("JWT_SECRET", ""),
-			JWTExpiration:     24 * 7 * time.Hour,
-			BCryptCost:        12,
-			EnableMFA:         true,
-			SessionTimeout:     24 * time.Hour,
-			MaxLoginAttempts:  5,
-			LockoutDuration:   15 * time.Minute,
+			JWTExpiration:    24 * 7 * time.Hour,
+			BCryptCost:       12,
+			EnableMFA:        true,
+			SessionTimeout:   24 * time.Hour,
+			MaxLoginAttempts: 5,
+			LockoutDuration:  15 * time.Minute,
 		},
 		Blockchain: BlockchainConfig{
 			Networks: []NetworkConfig{
@@ -173,14 +163,14 @@ func LoadConfig() *Config {
 				{ID: 5, Name: "Avalanche", Symbol: "AVAX", ChainID: 43114, IsEnabled: true},
 				{ID: 6, Name: "BNB Chain", Symbol: "BNB", ChainID: 56, IsEnabled: true},
 			},
-			GasOracleURL:    "https://api.etherscan.io/api?module=gastracker&action=gasoracle",
-			MaxGasPrice:     500000000000, // 500 Gwei
+			GasOracleURL:       "https://api.etherscan.io/api?module=gastracker&action=gasoracle",
+			MaxGasPrice:        500000000000, // 500 Gwei
 			ConfirmationBlocks: 12,
 		},
 		Enterprise: EnterpriseConfig{
 			EnableWhiteLabel:  true,
 			EnableBroker:      true,
-			EnableInstitution:  true,
+			EnableInstitution: true,
 			MaxWhiteLabels:    1000,
 			MaxAPIKeys:        100,
 			WebhookTimeout:    30 * time.Second,
@@ -200,145 +190,145 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type User struct {
-	ID                string    `json:"id" db:"id"`
-	Email            string    `json:"email" db:"email"`
-	Username         string    `json:"username" db:"username"`
-	PasswordHash     string    `json:"-" db:"password_hash"`
-	KYCStatus        string    `json:"kycStatus" db:"kyc_status"`
-	KYCLevel         int       `json:"kycLevel" db:"kyc_level"`
-	EmailVerified    bool      `json:"emailVerified" db:"email_verified"`
-	PhoneVerified    bool      `json:"phoneVerified" db:"phone_verified"`
-	MFAEnabled       bool      `json:"mfaEnabled" db:"mfa_enabled"`
-	M FASecret       string    `json:"-" db:"mfa_secret"`
-	FailedLoginCount int       `json:"failedLoginCount" db:"failed_login_count"`
+	ID               string     `json:"id" db:"id"`
+	Email            string     `json:"email" db:"email"`
+	Username         string     `json:"username" db:"username"`
+	PasswordHash     string     `json:"-" db:"password_hash"`
+	KYCStatus        string     `json:"kycStatus" db:"kyc_status"`
+	KYCLevel         int        `json:"kycLevel" db:"kyc_level"`
+	EmailVerified    bool       `json:"emailVerified" db:"email_verified"`
+	PhoneVerified    bool       `json:"phoneVerified" db:"phone_verified"`
+	MFAEnabled       bool       `json:"mfaEnabled" db:"mfa_enabled"`
+	MFASecret        string     `json:"-" db:"mfa_secret"`
+	FailedLoginCount int        `json:"failedLoginCount" db:"failed_login_count"`
 	LockedUntil      *time.Time `json:"lockedUntil" db:"locked_until"`
-	RiskScore        int       `json:"riskScore" db:"risk_score"`
-	CreatedAt        time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt        time.Time `json:"updatedAt" db:"updated_at"`
-	LastLoginAt     *time.Time `json:"lastLoginAt" db:"last_login_at"`
-	IPWhitelist     []string   `json:"ipWhitelist" db:"ip_whitelist"`
+	RiskScore        int        `json:"riskScore" db:"risk_score"`
+	CreatedAt        time.Time  `json:"createdAt" db:"created_at"`
+	UpdatedAt        time.Time  `json:"updatedAt" db:"updated_at"`
+	LastLoginAt      *time.Time `json:"lastLoginAt" db:"last_login_at"`
+	IPWhitelist      []string   `json:"ipWhitelist" db:"ip_whitelist"`
 }
 
 type WhiteLabelClient struct {
-	ID                  string    `json:"id" db:"id"`
-	Name                string    `json:"name" db:"name"`
-	Domain              string    `json:"domain" db:"domain"`
-	Email               string    `json:"email" db:"email"`
-	Status              string    `json:"status" db:"status"` // active, paused, halted
-	FeePercentage       float64   `json:"feePercentage" db:"fee_percentage"`
-	APIKey              string    `json:"apiKey" db:"-"`
-	APIKeyHash          string    `json:"-" db:"api_key_hash"`
-	AllowedChains       []string  `json:"allowedChains" db:"allowed_chains"`
-	AllowedFeatures     []string  `json:"allowedFeatures" db:"allowed_features"`
-	CustomBranding      bool      `json:"customBranding" db:"custom_branding"`
-	MaxUsers            int       `json:"maxUsers" db:"max_users"`
-	CurrentUsers        int       `json:"currentUsers" db:"current_users"`
-	CreatedAt           time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt           time.Time `json:"updatedAt" db:"updated_at"`
+	ID              string    `json:"id" db:"id"`
+	Name            string    `json:"name" db:"name"`
+	Domain          string    `json:"domain" db:"domain"`
+	Email           string    `json:"email" db:"email"`
+	Status          string    `json:"status" db:"status"` // active, paused, halted
+	FeePercentage   float64   `json:"feePercentage" db:"fee_percentage"`
+	APIKey          string    `json:"apiKey" db:"-"`
+	APIKeyHash      string    `json:"-" db:"api_key_hash"`
+	AllowedChains   []string  `json:"allowedChains" db:"allowed_chains"`
+	AllowedFeatures []string  `json:"allowedFeatures" db:"allowed_features"`
+	CustomBranding  bool      `json:"customBranding" db:"custom_branding"`
+	MaxUsers        int       `json:"maxUsers" db:"max_users"`
+	CurrentUsers    int       `json:"currentUsers" db:"current_users"`
+	CreatedAt       time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt       time.Time `json:"updatedAt" db:"updated_at"`
 }
 
 type Broker struct {
-	ID              string    `json:"id" db:"id"`
-	Name            string    `json:"name" db:"name"`
-	Email           string    `json:"email" db:"email"`
-	WhiteLabelID    string    `json:"whiteLabelId" db:"white_label_id"`
-	Status          string    `json:"status" db:"status"`
-	CommissionRate  float64   `json:"commissionRate" db:"commission_rate"`
-	APIKey          string    `json:"apiKey" db:"-"`
-	APIKeyHash      string    `json:"-" db:"api_key_hash"`
-	AllowedIPs      []string  `json:"allowedIPs" db:"allowed_ips"`
-	MaxDailyVolume  float64   `json:"maxDailyVolume" db:"max_daily_volume"`
-	CurrentVolume   float64   `json:"currentVolume" db:"current_volume"`
-	CreatedAt       time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt       time.Time `json:"updatedAt" db:"updated_at"`
+	ID             string    `json:"id" db:"id"`
+	Name           string    `json:"name" db:"name"`
+	Email          string    `json:"email" db:"email"`
+	WhiteLabelID   string    `json:"whiteLabelId" db:"white_label_id"`
+	Status         string    `json:"status" db:"status"`
+	CommissionRate float64   `json:"commissionRate" db:"commission_rate"`
+	APIKey         string    `json:"apiKey" db:"-"`
+	APIKeyHash     string    `json:"-" db:"api_key_hash"`
+	AllowedIPs     []string  `json:"allowedIPs" db:"allowed_ips"`
+	MaxDailyVolume float64   `json:"maxDailyVolume" db:"max_daily_volume"`
+	CurrentVolume  float64   `json:"currentVolume" db:"current_volume"`
+	CreatedAt      time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt      time.Time `json:"updatedAt" db:"updated_at"`
 }
 
 type Institution struct {
-	ID                string    `json:"id" db:"id"`
-	Name              string    `json:"name" db:"name"`
-	Email             string    `json:"email" db:"email"`
-	WhiteLabelID      string    `json:"whiteLabelId" db:"white_label_id"`
-	Status            string    `json:"status" db:"status"`
-	APIKey            string    `json:"apiKey" db:"-"`
-	APIKeyHash        string    `json:"-" db:"api_key_hash"`
-	KYCStatus         string    `json:"kycStatus" db:"kyc_status"`
-	AccountType       string    `json:"accountType" db:"account_type"` // retail, professional, institutional
-	TradingLimits     float64   `json:"tradingLimits" db:"trading_limits"`
-	FeeTier           int       `json:"feeTier" db:"fee_tier"`
-	AllowedChains     []string  `json:"allowedChains" db:"allowed_chains"`
-	WebhookURL        string    `json:"webhookUrl" db:"webhook_url"`
-	CreatedAt         time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt         time.Time `json:"updatedAt" db:"updated_at"`
+	ID            string    `json:"id" db:"id"`
+	Name          string    `json:"name" db:"name"`
+	Email         string    `json:"email" db:"email"`
+	WhiteLabelID  string    `json:"whiteLabelId" db:"white_label_id"`
+	Status        string    `json:"status" db:"status"`
+	APIKey        string    `json:"apiKey" db:"-"`
+	APIKeyHash    string    `json:"-" db:"api_key_hash"`
+	KYCStatus     string    `json:"kycStatus" db:"kyc_status"`
+	AccountType   string    `json:"accountType" db:"account_type"` // retail, professional, institutional
+	TradingLimits float64   `json:"tradingLimits" db:"trading_limits"`
+	FeeTier       int       `json:"feeTier" db:"fee_tier"`
+	AllowedChains []string  `json:"allowedChains" db:"allowed_chains"`
+	WebhookURL    string    `json:"webhookUrl" db:"webhook_url"`
+	CreatedAt     time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt     time.Time `json:"updatedAt" db:"updated_at"`
 }
 
 type Wallet struct {
-	ID              string    `json:"id" db:"id"`
-	UserID          string    `json:"userId" db:"user_id"`
-	WhiteLabelID    string    `json:"whiteLabelId" db:"white_label_id"`
-	WalletType      string    `json:"walletType" db:"wallet_type"` // user, master
-	Address         string    `json:"address" db:"address"`
-	ChainID         uint64    `json:"chainId" db:"chain_id"`
-	EncryptedKey    string    `json:"-" db:"encrypted_key"`
-	IsActive        bool      `json:"isActive" db:"is_active"`
-	CreatedAt       time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt       time.Time `json:"updatedAt" db:"updated_at"`
+	ID           string    `json:"id" db:"id"`
+	UserID       string    `json:"userId" db:"user_id"`
+	WhiteLabelID string    `json:"whiteLabelId" db:"white_label_id"`
+	WalletType   string    `json:"walletType" db:"wallet_type"` // user, master
+	Address      string    `json:"address" db:"address"`
+	ChainID      uint64    `json:"chainId" db:"chain_id"`
+	EncryptedKey string    `json:"-" db:"encrypted_key"`
+	IsActive     bool      `json:"isActive" db:"is_active"`
+	CreatedAt    time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt    time.Time `json:"updatedAt" db:"updated_at"`
 }
 
 type Transaction struct {
-	ID              string    `json:"id" db:"id"`
-	Hash            string    `json:"hash" db:"hash"`
-	FromAddress     string    `json:"fromAddress" db:"from_address"`
-	ToAddress       string    `json:"toAddress" db:"to_address"`
-	Value           string    `json:"value" db:"value"`
-	GasPrice        string    `json:"gasPrice" db:"gas_price"`
-	GasLimit        uint64    `json:"gasLimit" db:"gas_limit"`
-	GasUsed          uint64    `json:"gasUsed" db:"gas_used"`
-	ChainID         uint64    `json:"chainId" db:"chain_id"`
-	Status          string    `json:"status" db:"status"` // pending, confirmed, failed
-	ErrorMessage    string    `json:"errorMessage" db:"error_message"`
-	BlockNumber     uint64    `json:"blockNumber" db:"block_number"`
-	Timestamp       time.Time `json:"timestamp" db:"timestamp"`
-	CreatedAt       time.Time `json:"createdAt" db:"created_at"`
+	ID           string    `json:"id" db:"id"`
+	Hash         string    `json:"hash" db:"hash"`
+	FromAddress  string    `json:"fromAddress" db:"from_address"`
+	ToAddress    string    `json:"toAddress" db:"to_address"`
+	Value        string    `json:"value" db:"value"`
+	GasPrice     string    `json:"gasPrice" db:"gas_price"`
+	GasLimit     uint64    `json:"gasLimit" db:"gas_limit"`
+	GasUsed      uint64    `json:"gasUsed" db:"gas_used"`
+	ChainID      uint64    `json:"chainId" db:"chain_id"`
+	Status       string    `json:"status" db:"status"` // pending, confirmed, failed
+	ErrorMessage string    `json:"errorMessage" db:"error_message"`
+	BlockNumber  uint64    `json:"blockNumber" db:"block_number"`
+	Timestamp    time.Time `json:"timestamp" db:"timestamp"`
+	CreatedAt    time.Time `json:"createdAt" db:"created_at"`
 }
 
 type APIKey struct {
-	ID              string    `json:"id" db:"id"`
-	UserID          string    `json:"userId" db:"user_id"`
-	WhiteLabelID    string    `json:"whiteLabelId" db:"white_label_id"`
-	KeyHash         string    `json:"-" db:"key_hash"`
-	Name            string    `json:"name" db:"name"`
-	Permissions     []string  `json:"permissions" db:"permissions"`
-	RateLimit       int       `json:"rateLimit" db:"rate_limit"`
-	ExpiresAt       *time.Time `json:"expiresAt" db:"expires_at"`
-	LastUsedAt     *time.Time `json:"lastUsedAt" db:"last_used_at"`
-	IsActive        bool      `json:"isActive" db:"is_active"`
-	CreatedAt       time.Time `json:"createdAt" db:"created_at"`
+	ID           string     `json:"id" db:"id"`
+	UserID       string     `json:"userId" db:"user_id"`
+	WhiteLabelID string     `json:"whiteLabelId" db:"white_label_id"`
+	KeyHash      string     `json:"-" db:"key_hash"`
+	Name         string     `json:"name" db:"name"`
+	Permissions  []string   `json:"permissions" db:"permissions"`
+	RateLimit    int        `json:"rateLimit" db:"rate_limit"`
+	ExpiresAt    *time.Time `json:"expiresAt" db:"expires_at"`
+	LastUsedAt   *time.Time `json:"lastUsedAt" db:"last_used_at"`
+	IsActive     bool       `json:"isActive" db:"is_active"`
+	CreatedAt    time.Time  `json:"createdAt" db:"created_at"`
 }
 
 type AuditLog struct {
-	ID          string    `json:"id" db:"id"`
-	UserID      string    `json:"userId" db:"user_id"`
-	Action      string    `json:"action" db:"action"`
-	Resource    string    `json:"resource" db:"resource"`
-	ResourceID  string    `json:"resourceId" db:"resource_id"`
-	Details     string    `json:"details" db:"details"`
-	IPAddress   string    `json:"ipAddress" db:"ip_address"`
-	UserAgent   string    `json:"userAgent" db:"user_agent"`
-	CreatedAt   time.Time `json:"createdAt" db:"created_at"`
+	ID         string    `json:"id" db:"id"`
+	UserID     string    `json:"userId" db:"user_id"`
+	Action     string    `json:"action" db:"action"`
+	Resource   string    `json:"resource" db:"resource"`
+	ResourceID string    `json:"resourceId" db:"resource_id"`
+	Details    string    `json:"details" db:"details"`
+	IPAddress  string    `json:"ipAddress" db:"ip_address"`
+	UserAgent  string    `json:"userAgent" db:"user_agent"`
+	CreatedAt  time.Time `json:"createdAt" db:"created_at"`
 }
 
 type Token struct {
-	ID          string    `json:"id" db:"id"`
-	Address     string    `json:"address" db:"address"`
-	ChainID     uint64    `json:"chainId" db:"chain_id"`
-	Name        string    `json:"name" db:"name"`
-	Symbol      string    `json:"symbol" db:"symbol"`
-	Decimals    int       `json:"decimals" db:"decimals"`
-	IsEnabled   bool      `json:"isEnabled" db:"is_enabled"`
-	IsPopular   bool      `json:"isPopular" db:"is_popular"`
-	LogoURL     string    `json:"logoUrl" db:"logo_url"`
-	PriceUSD    float64   `json:"priceUsd" db:"price_usd"`
-	CreatedAt   time.Time `json:"createdAt" db:"created_at"`
+	ID        string    `json:"id" db:"id"`
+	Address   string    `json:"address" db:"address"`
+	ChainID   uint64    `json:"chainId" db:"chain_id"`
+	Name      string    `json:"name" db:"name"`
+	Symbol    string    `json:"symbol" db:"symbol"`
+	Decimals  int       `json:"decimals" db:"decimals"`
+	IsEnabled bool      `json:"isEnabled" db:"is_enabled"`
+	IsPopular bool      `json:"isPopular" db:"is_popular"`
+	LogoURL   string    `json:"logoUrl" db:"logo_url"`
+	PriceUSD  float64   `json:"priceUsd" db:"price_usd"`
+	CreatedAt time.Time `json:"createdAt" db:"created_at"`
 }
 
 // ============================================================================
@@ -570,11 +560,11 @@ func NewAuthService(config SecurityConfig, db *sql.DB) *AuthService {
 }
 
 type JWTClaims struct {
-	UserID      string   `json:"userId"`
-	Email       string   `json:"email"`
-	Role        string   `json:"role"`
-	WhiteLabelID string  `json:"whiteLabelId,omitempty"`
-	Permissions []string `json:"permissions"`
+	UserID       string   `json:"userId"`
+	Email        string   `json:"email"`
+	Role         string   `json:"role"`
+	WhiteLabelID string   `json:"whiteLabelId,omitempty"`
+	Permissions  []string `json:"permissions"`
 	jwt.RegisteredClaims
 }
 
@@ -594,7 +584,8 @@ func (s *AuthService) GenerateToken(user *User, permissions []string) (string, t
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(s.config.JWTSecret))
+	signed, err := token.SignedString([]byte(s.config.JWTSecret))
+	return signed, expiresAt, err
 }
 
 func (s *AuthService) ValidateToken(tokenString string) (*JWTClaims, error) {
@@ -621,16 +612,16 @@ func (s *AuthService) RegisterUser(email, username, password string) (*User, err
 	}
 
 	user := &User{
-		ID:             uuid.New().String(),
-		Email:          email,
-		Username:       username,
-		PasswordHash:   string(hashedPassword),
-		KYCStatus:      "pending",
-		KYCLevel:       0,
-		EmailVerified:  false,
-		RiskScore:      0,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+		ID:            uuid.New().String(),
+		Email:         email,
+		Username:      username,
+		PasswordHash:  string(hashedPassword),
+		KYCStatus:     "pending",
+		KYCLevel:      0,
+		EmailVerified: false,
+		RiskScore:     0,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	_, err = s.db.Exec(`
@@ -775,8 +766,8 @@ func (s *WalletService) GetBalance(address string, chainID uint64) (string, erro
 // ============================================================================
 
 type TransactionService struct {
-	db        *sql.DB
-	redis     *redis.Client
+	db         *sql.DB
+	redis      *redis.Client
 	blockchain BlockchainConfig
 }
 
@@ -878,15 +869,15 @@ func (s *APIKeyService) CreateAPIKey(userID, whiteLabelID, name string, permissi
 	keyHashStr := hex.EncodeToString(keyHash[:])
 
 	apiKeyRecord := &APIKey{
-		ID:            uuid.New().String(),
-		UserID:        userID,
-		WhiteLabelID:  whiteLabelID,
-		KeyHash:       keyHashStr,
-		Name:          name,
-		Permissions:   permissions,
-		RateLimit:     1000,
-		IsActive:      true,
-		CreatedAt:     time.Now(),
+		ID:           uuid.New().String(),
+		UserID:       userID,
+		WhiteLabelID: whiteLabelID,
+		KeyHash:      keyHashStr,
+		Name:         name,
+		Permissions:  permissions,
+		RateLimit:    1000,
+		IsActive:     true,
+		CreatedAt:    time.Now(),
 	}
 
 	_, err := s.db.Exec(`
@@ -986,10 +977,10 @@ func (s *AuditService) GetAuditLogs(userID string, limit int) ([]AuditLog, error
 // ============================================================================
 
 type Metrics struct {
-	totalRequests   atomic.Int64
-	totalErrors    atomic.Int64
-	activeUsers    atomic.Int64
-	activeConns    atomic.Int64
+	totalRequests atomic.Int64
+	totalErrors   atomic.Int64
+	activeUsers   atomic.Int64
+	activeConns   atomic.Int64
 }
 
 func NewMetrics() *Metrics {
@@ -1006,9 +997,9 @@ func (m *Metrics) RecordError() {
 
 func (m *Metrics) GetStats() map[string]interface{} {
 	return map[string]interface{}{
-		"total_requests":  m.totalRequests.Load(),
-		"total_errors":    m.totalErrors.Load(),
-		"active_users":    m.activeUsers.Load(),
+		"total_requests": m.totalRequests.Load(),
+		"total_errors":   m.totalErrors.Load(),
+		"active_users":   m.activeUsers.Load(),
 		"active_conns":   m.activeConns.Load(),
 	}
 }
@@ -1095,9 +1086,9 @@ func (s *EnterpriseService) RegisterRoutes(r *gin.Engine) {
 	// Health check
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"status":   "ok",
-			"service":  "enterprise-api",
-			"metrics":  s.metrics.GetStats(),
+			"status":  "ok",
+			"service": "enterprise-api",
+			"metrics": s.metrics.GetStats(),
 		})
 	})
 
@@ -1346,7 +1337,7 @@ func (s *EnterpriseService) handleGetTransaction(c *gin.Context) {
 }
 
 func (s *EnterpriseService) handleGetAPIKeys(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"apiKeys": []})
+	c.JSON(http.StatusOK, gin.H{"apiKeys": []interface{}{}})
 }
 
 func (s *EnterpriseService) handleCreateAPIKey(c *gin.Context) {
@@ -1380,7 +1371,7 @@ func (s *EnterpriseService) handleRevokeAPIKey(c *gin.Context) {
 }
 
 func (s *EnterpriseService) handleGetWhiteLabels(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"whiteLabels": []})
+	c.JSON(http.StatusOK, gin.H{"whiteLabels": []interface{}{}})
 }
 
 func (s *EnterpriseService) handleCreateWhiteLabel(c *gin.Context) {
@@ -1392,7 +1383,7 @@ func (s *EnterpriseService) handleUpdateWhiteLabel(c *gin.Context) {
 }
 
 func (s *EnterpriseService) handleGetBrokers(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"brokers": []})
+	c.JSON(http.StatusOK, gin.H{"brokers": []interface{}{}})
 }
 
 func (s *EnterpriseService) handleCreateBroker(c *gin.Context) {
@@ -1400,7 +1391,7 @@ func (s *EnterpriseService) handleCreateBroker(c *gin.Context) {
 }
 
 func (s *EnterpriseService) handleGetInstitutions(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"institutions": []})
+	c.JSON(http.StatusOK, gin.H{"institutions": []interface{}{}})
 }
 
 func (s *EnterpriseService) handleCreateInstitution(c *gin.Context) {
@@ -1408,7 +1399,7 @@ func (s *EnterpriseService) handleCreateInstitution(c *gin.Context) {
 }
 
 func (s *EnterpriseService) handleGetTokens(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"tokens": []})
+	c.JSON(http.StatusOK, gin.H{"tokens": []interface{}{}})
 }
 
 func (s *EnterpriseService) handleCreateToken(c *gin.Context) {

@@ -1,7 +1,7 @@
 /**
  * TigerWallet Cross-Chain Aggregator Service
  * High-Load Distributed Go Implementation
- * 
+ *
  * Features:
  * - Multi-bridge aggregation (LayerZero, Wormhole, Axelar, Stargate)
  * - Best route finding
@@ -18,7 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
+	"math/rand/v2"
 	"net/http"
 	"sort"
 	"sync"
@@ -28,27 +28,27 @@ import (
 // ============== Data Structures ==============
 
 type BridgeRoute struct {
-	RouteID       string      `json:"route_id"`
-	SourceChain   string      `json:"source_chain"`
-	TargetChain   string      `json:"target_chain"`
-	Token         string      `json:"token"`
-	Amount        float64     `json:"amount"`
-	SourceBridge  string      `json:"source_bridge"`
-	TargetBridge  string      `json:"target_bridge"`
-	EstimatedTime string      `json:"estimated_time"`
-	FeeUSD        float64     `json:"fee_usd"`
-	FeeToken      string      `json:"fee_token"`
-	MinAmount     float64     `json:"min_amount"`
-	MaxAmount     float64     `json:"max_amount"`
-	Slippage      float64     `json:"slippage"`
-	Confidence    float64     `json:"confidence"`
+	RouteID       string       `json:"route_id"`
+	SourceChain   string       `json:"source_chain"`
+	TargetChain   string       `json:"target_chain"`
+	Token         string       `json:"token"`
+	Amount        float64      `json:"amount"`
+	SourceBridge  string       `json:"source_bridge"`
+	TargetBridge  string       `json:"target_bridge"`
+	EstimatedTime string       `json:"estimated_time"`
+	FeeUSD        float64      `json:"fee_usd"`
+	FeeToken      string       `json:"fee_token"`
+	MinAmount     float64      `json:"min_amount"`
+	MaxAmount     float64      `json:"max_amount"`
+	Slippage      float64      `json:"slippage"`
+	Confidence    float64      `json:"confidence"`
 	Steps         []BridgeStep `json:"steps"`
 }
 
 type BridgeStep struct {
-	Step     int    `json:"step"`
-	Action   string `json:"action"` // bridge, swap, approve
-	Protocol string `json:"protocol"`
+	Step      int    `json:"step"`
+	Action    string `json:"action"` // bridge, swap, approve
+	Protocol  string `json:"protocol"`
 	FromToken string `json:"from_token"`
 	ToToken   string `json:"to_token"`
 	Estimate  string `json:"estimate"`
@@ -63,10 +63,10 @@ type QuoteRequest struct {
 }
 
 type QuoteResponse struct {
-	RequestID   string        `json:"request_id"`
-	Routes      []BridgeRoute `json:"routes"`
-	BestRoute   *BridgeRoute  `json:"best_route"`
-	UpdatedAt   int64         `json:"updated_at"`
+	RequestID string        `json:"request_id"`
+	Routes    []BridgeRoute `json:"routes"`
+	BestRoute *BridgeRoute  `json:"best_route"`
+	UpdatedAt int64         `json:"updated_at"`
 }
 
 type SwapQuote struct {
@@ -81,15 +81,15 @@ type SwapQuote struct {
 }
 
 type TransferStatus struct {
-	TransferID   string    `json:"transfer_id"`
-	Status       string    `json:"status"` // pending, processing, completed, failed
-	SourceTx     string    `json:"source_tx"`
-	TargetTx     string    `json:"target_tx"`
-	SourceChain  string    `json:"source_chain"`
-	TargetChain  string    `json:"target_chain"`
-	Progress     float64   `json:"progress"`
-	Steps        []StepStatus `json:"steps"`
-	UpdatedAt    int64     `json:"updated_at"`
+	TransferID  string       `json:"transfer_id"`
+	Status      string       `json:"status"` // pending, processing, completed, failed
+	SourceTx    string       `json:"source_tx"`
+	TargetTx    string       `json:"target_tx"`
+	SourceChain string       `json:"source_chain"`
+	TargetChain string       `json:"target_chain"`
+	Progress    float64      `json:"progress"`
+	Steps       []StepStatus `json:"steps"`
+	UpdatedAt   int64        `json:"updated_at"`
 }
 
 type StepStatus struct {
@@ -100,35 +100,35 @@ type StepStatus struct {
 }
 
 type ChainConfig struct {
-	ChainID      int      `json:"chain_id"`
-	Name         string   `json:"name"`
-	Symbol       string   `json:"symbol"`
-	Bridges      []string `json:"bridges"`
-	NativeToken  string   `json:"native_token"`
-	Explorer     string   `json:"explorer"`
+	ChainID     int      `json:"chain_id"`
+	Name        string   `json:"name"`
+	Symbol      string   `json:"symbol"`
+	Bridges     []string `json:"bridges"`
+	NativeToken string   `json:"native_token"`
+	Explorer    string   `json:"explorer"`
 }
 
 // ============== Service ==============
 
 type CrossChainService struct {
-	chains      map[string]*ChainConfig
-	bridges     map[string]BridgeConfig
-	routes      map[string]*BridgeRoute
-	transfers   map[string]*TransferStatus
-	quotes      map[string]*QuoteResponse
-	priceCache  map[string]float64
+	chains     map[string]*ChainConfig
+	bridges    map[string]BridgeConfig
+	routes     map[string]*BridgeRoute
+	transfers  map[string]*TransferStatus
+	quotes     map[string]*QuoteResponse
+	priceCache map[string]float64
 
 	mu         sync.RWMutex
 	httpServer *http.Server
 }
 
 type BridgeConfig struct {
-	Name          string  `json:"name"`
-	MinAmount     float64 `json:"min_amount"`
-	MaxAmount     float64 `json:"max_amount"`
-	FeePercent    float64 `json:"fee_percent"`
-	AvgTimeMin    int     `json:"avg_time_min"`
-	SuccessRate   float64 `json:"success_rate"`
+	Name        string  `json:"name"`
+	MinAmount   float64 `json:"min_amount"`
+	MaxAmount   float64 `json:"max_amount"`
+	FeePercent  float64 `json:"fee_percent"`
+	AvgTimeMin  int     `json:"avg_time_min"`
+	SuccessRate float64 `json:"success_rate"`
 }
 
 func NewCrossChainService() *CrossChainService {
@@ -149,16 +149,16 @@ func NewCrossChainService() *CrossChainService {
 
 func (s *CrossChainService) initChains() {
 	s.chains = map[string]*ChainConfig{
-		"ethereum":       {ChainID: 1, Name: "Ethereum", Symbol: "ETH", Bridges: []string{"layerzero", "wormhole", "axelar"}, NativeToken: "ETH", Explorer: "https://etherscan.io"},
-		"polygon":        {ChainID: 137, Name: "Polygon", Symbol: "MATIC", Bridges: []string{"layerzero", "wormhole"}, NativeToken: "MATIC", Explorer: "https://polygonscan.com"},
-		"avalanche":      {ChainID: 43114, Name: "Avalanche", Symbol: "AVAX", Bridges: []string{"layerzero", "wormhole", "stargate"}, NativeToken: "AVAX", Explorer: "https://snowtrace.io"},
-		"arbitrum":       {ChainID: 42161, Name: "Arbitrum", Symbol: "ETH", Bridges: []string{"layerzero", "wormhole"}, NativeToken: "ETH", Explorer: "https://arbiscan.io"},
-		"optimism":       {ChainID: 10, Name: "Optimism", Symbol: "ETH", Bridges: []string{"layerzero", "wormhole"}, NativeToken: "ETH", Explorer: "https://optimistic.etherscan.io"},
-		"bsc":            {ChainID: 56, Name: "BNB Chain", Symbol: "BNB", Bridges: []string{"layerzero", "wormhole"}, NativeToken: "BNB", Explorer: "https://bscscan.com"},
-		"solana":         {ChainID: 101, Name: "Solana", Symbol: "SOL", Bridges: []string{"wormhole", "bridge"}, NativeToken: "SOL", Explorer: "https://solscan.io"},
-		"base":           {ChainID: 8453, Name: "Base", Symbol: "ETH", Bridges: []string{"layerzero"}, NativeToken: "ETH", Explorer: "https://basescan.org"},
+		"ethereum":      {ChainID: 1, Name: "Ethereum", Symbol: "ETH", Bridges: []string{"layerzero", "wormhole", "axelar"}, NativeToken: "ETH", Explorer: "https://etherscan.io"},
+		"polygon":       {ChainID: 137, Name: "Polygon", Symbol: "MATIC", Bridges: []string{"layerzero", "wormhole"}, NativeToken: "MATIC", Explorer: "https://polygonscan.com"},
+		"avalanche":     {ChainID: 43114, Name: "Avalanche", Symbol: "AVAX", Bridges: []string{"layerzero", "wormhole", "stargate"}, NativeToken: "AVAX", Explorer: "https://snowtrace.io"},
+		"arbitrum":      {ChainID: 42161, Name: "Arbitrum", Symbol: "ETH", Bridges: []string{"layerzero", "wormhole"}, NativeToken: "ETH", Explorer: "https://arbiscan.io"},
+		"optimism":      {ChainID: 10, Name: "Optimism", Symbol: "ETH", Bridges: []string{"layerzero", "wormhole"}, NativeToken: "ETH", Explorer: "https://optimistic.etherscan.io"},
+		"bsc":           {ChainID: 56, Name: "BNB Chain", Symbol: "BNB", Bridges: []string{"layerzero", "wormhole"}, NativeToken: "BNB", Explorer: "https://bscscan.com"},
+		"solana":        {ChainID: 101, Name: "Solana", Symbol: "SOL", Bridges: []string{"wormhole", "bridge"}, NativeToken: "SOL", Explorer: "https://solscan.io"},
+		"base":          {ChainID: 8453, Name: "Base", Symbol: "ETH", Bridges: []string{"layerzero"}, NativeToken: "ETH", Explorer: "https://basescan.org"},
 		"fantom":        {ChainID: 250, Name: "Fantom", Symbol: "FTM", Bridges: []string{"layerzero"}, NativeToken: "FTM", Explorer: "https://ftmscan.com"},
-		"arbitrum_nova":  {ChainID: 42170, Name: "Arbitrum Nova", Symbol: "ETH", Bridges: []string{"layerzero"}, NativeToken: "ETH", Explorer: "https://nova.arbiscan.io"},
+		"arbitrum_nova": {ChainID: 42170, Name: "Arbitrum Nova", Symbol: "ETH", Bridges: []string{"layerzero"}, NativeToken: "ETH", Explorer: "https://nova.arbiscan.io"},
 	}
 }
 
@@ -286,9 +286,9 @@ func (s *CrossChainService) handleRoutes(w http.ResponseWriter, r *http.Request)
 
 func (s *CrossChainService) handleTransfer(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		RouteID string  `json:"route_id"`
-		Amount  float64 `json:"amount"`
-		ToAddress string `json:"to_address"`
+		RouteID   string  `json:"route_id"`
+		Amount    float64 `json:"amount"`
+		ToAddress string  `json:"to_address"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -315,7 +315,7 @@ func (s *CrossChainService) handleTransfer(w http.ResponseWriter, r *http.Reques
 
 	transfer := &TransferStatus{
 		TransferID:  transferID,
-		Status:       "pending",
+		Status:      "pending",
 		SourceChain: route.SourceChain,
 		TargetChain: route.TargetChain,
 		Progress:    0,
@@ -363,8 +363,8 @@ func (s *CrossChainService) handleHealth(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":    "healthy",
-		"chains":   len(s.chains),
-		"bridges":  len(s.bridges),
+		"chains":    len(s.chains),
+		"bridges":   len(s.bridges),
 		"transfers": len(s.transfers),
 		"timestamp": time.Now().Unix(),
 	})
@@ -389,12 +389,12 @@ func (s *CrossChainService) calculateRoute(req QuoteRequest, bridgeName string, 
 	}
 
 	route := BridgeRoute{
-		RouteID:      fmt.Sprintf("%s_%s_%s", req.SourceChain, req.TargetChain, bridgeName),
-		SourceChain:  req.SourceChain,
-		TargetChain:  req.TargetChain,
-		Token:        req.Token,
-		Amount:       req.Amount,
-		SourceBridge: bridgeName,
+		RouteID:       fmt.Sprintf("%s_%s_%s", req.SourceChain, req.TargetChain, bridgeName),
+		SourceChain:   req.SourceChain,
+		TargetChain:   req.TargetChain,
+		Token:         req.Token,
+		Amount:        req.Amount,
+		SourceBridge:  bridgeName,
 		EstimatedTime: fmt.Sprintf("%d min", bridge.AvgTimeMin),
 		FeeUSD:        feeUSD,
 		FeeToken:      req.Token,
@@ -470,7 +470,7 @@ func (s *CrossChainService) updatePrices() {
 		s.mu.Lock()
 		for token, price := range prices {
 			// Add small variance
-			variance := (math.random() - 0.5) * 0.02 * price
+			variance := (rand.Float64() - 0.5) * 0.02 * price
 			s.priceCache[token] = price + variance
 		}
 		s.mu.Unlock()

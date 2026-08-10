@@ -10,9 +10,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -22,7 +20,7 @@ import (
 )
 
 const (
-	SERVER_PORT       = "8095"
+	SERVER_PORT      = "8095"
 	WRITE_TIMEOUT    = 10 * time.Second
 	READ_TIMEOUT     = 60 * time.Second
 	PING_INTERVAL    = 30 * time.Second
@@ -30,16 +28,16 @@ const (
 )
 
 var (
-	upgrader           websocket.Upgrader
-	redisClient        *redis.Client
-	hub               *Hub
-	channels          = make(map[string]map[*Client]bool)
-	channelsMux       sync.RWMutex
+	upgrader    websocket.Upgrader
+	redisClient *redis.Client
+	hub         *Hub
+	channels    = make(map[string]map[*Client]bool)
+	channelsMux sync.RWMutex
 )
 
 type Hub struct {
 	// Registered clients
-	clients    map[*Client]bool
+	clients map[*Client]bool
 	// Registered clients by user ID
 	clientsByUser map[string]map[*Client]bool
 	// Inbound messages from clients
@@ -66,8 +64,8 @@ type Message struct {
 	Type      string          `json:"type"`
 	Channel   string          `json:"channel,omitempty"`
 	Payload   json.RawMessage `json:"payload"`
-	UserID    string         `json:"user_id,omitempty"`
-	Timestamp int64          `json:"timestamp"`
+	UserID    string          `json:"user_id,omitempty"`
+	Timestamp int64           `json:"timestamp"`
 }
 
 type WSMessage struct {
@@ -83,22 +81,22 @@ type SubscriptionRequest struct {
 }
 
 type AuthPayload struct {
-	UserID string `json:"user_id"`
-	Email  string `json:"email"`
+	UserID string   `json:"user_id"`
+	Email  string   `json:"email"`
 	Roles  []string `json:"roles"`
 }
 
 // Channel types
 const (
-	ChannelTicker     = "ticker"
-	ChannelOrderBook  = "orderbook"
-	ChannelTrade      = "trade"
-	ChannelBot        = "bot"
-	ChannelListing   = "listing"
-	ChannelPayment   = "payment"
-	ChannelWallet    = "wallet"
+	ChannelTicker       = "ticker"
+	ChannelOrderBook    = "orderbook"
+	ChannelTrade        = "trade"
+	ChannelBot          = "bot"
+	ChannelListing      = "listing"
+	ChannelPayment      = "payment"
+	ChannelWallet       = "wallet"
 	ChannelNotification = "notification"
-	ChannelAdmin     = "admin"
+	ChannelAdmin        = "admin"
 )
 
 // ============================================================================
@@ -109,9 +107,9 @@ func newHub() *Hub {
 	return &Hub{
 		clients:       make(map[*Client]bool),
 		clientsByUser: make(map[string]map[*Client]bool),
-		broadcast:    make(chan *Message, 256),
-		register:     make(chan *Client),
-		unregister:   make(chan *Client),
+		broadcast:     make(chan *Message, 256),
+		register:      make(chan *Client),
+		unregister:    make(chan *Client),
 	}
 }
 
@@ -451,11 +449,11 @@ func StartTickerStream(exchanges []string) {
 // ============================================================================
 
 type OrderBookUpdate struct {
-	Symbol   string           `json:"symbol"`
-	Bids     [][]float64      `json:"bids"`
-	Asks     [][]float64      `json:"asks"`
-	Exchange string           `json:"exchange"`
-	Timestamp int64           `json:"timestamp"`
+	Symbol    string      `json:"symbol"`
+	Bids      [][]float64 `json:"bids"`
+	Asks      [][]float64 `json:"asks"`
+	Exchange  string      `json:"exchange"`
+	Timestamp int64       `json:"timestamp"`
 }
 
 func StartOrderBookStream() {
@@ -468,10 +466,10 @@ func StartOrderBookStream() {
 		for range ticker.C {
 			for _, symbol := range symbols {
 				update := OrderBookUpdate{
-					Symbol:   symbol,
-					Bids:     [][]float64{{40000, 1.5}, {39999, 2.0}, {39998, 3.0}},
-					Asks:     [][]float64{{40001, 1.0}, {40002, 2.5}, {40003, 1.5}},
-					Exchange: "binance",
+					Symbol:    symbol,
+					Bids:      [][]float64{{40000, 1.5}, {39999, 2.0}, {39998, 3.0}},
+					Asks:      [][]float64{{40001, 1.0}, {40002, 2.5}, {40003, 1.5}},
+					Exchange:  "binance",
 					Timestamp: time.Now().UnixMilli(),
 				}
 
@@ -508,7 +506,7 @@ func StartBotStatusStream() {
 					BotID:     botID,
 					BotType:   "grid",
 					Status:    "running",
-					PnL:       float64(time.Now().Unix()%1000),
+					PnL:       float64(time.Now().Unix() % 1000),
 					Volume:    50000,
 					Orders:    int(time.Now().Unix() % 100),
 					Timestamp: time.Now().UnixMilli(),
@@ -525,11 +523,11 @@ func StartBotStatusStream() {
 // ============================================================================
 
 type PaymentStatusUpdate struct {
-	PaymentID   string `json:"payment_id"`
-	Status      string `json:"status"` // pending, confirmed, completed, failed
-	Confirmations int  `json:"confirmations"`
-	TxHash      string `json:"tx_hash,omitempty"`
-	Timestamp   int64  `json:"timestamp"`
+	PaymentID     string `json:"payment_id"`
+	Status        string `json:"status"` // pending, confirmed, completed, failed
+	Confirmations int    `json:"confirmations"`
+	TxHash        string `json:"tx_hash,omitempty"`
+	Timestamp     int64  `json:"timestamp"`
 }
 
 // ============================================================================
@@ -581,9 +579,9 @@ func GetStats(c *gin.Context) {
 		"success": true,
 		"data": gin.H{
 			"total_connections": totalClients,
-			"unique_users":    userCount,
-			"channels":        channelCount,
-			"uptime":         time.Since(startTime).Seconds(),
+			"unique_users":      userCount,
+			"channels":          channelCount,
+			"uptime":            time.Since(startTime).Seconds(),
 		},
 	})
 }
@@ -609,7 +607,7 @@ func SendTestMessage(c *gin.Context) {
 
 func SendToUser(c *gin.Context) {
 	var req struct {
-		UserID string `json:"user_id" binding:"required"`
+		UserID  string `json:"user_id" binding:"required"`
 		Message string `json:"message" binding:"required"`
 	}
 

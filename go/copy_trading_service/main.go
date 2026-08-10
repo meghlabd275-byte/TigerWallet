@@ -183,7 +183,11 @@ func (s *service) listTraders(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var t struct{ ID, UID, Addr, Name, Status, Win, PnL string; Fol int; Ts int64 }
+		var t struct {
+			ID, UID, Addr, Name, Status, Win, PnL string
+			Fol                                   int
+			Ts                                    int64
+		}
 		if err := rows.Scan(&t.ID, &t.UID, &t.Addr, &t.Name, &t.Status, &t.Win, &t.PnL, &t.Fol, &t.Ts); err != nil {
 			continue
 		}
@@ -214,7 +218,11 @@ func (s *service) registerTrader(c *gin.Context) {
 
 func (s *service) getTrader(c *gin.Context) {
 	id := c.Param("id")
-	var t struct{ ID, UID, Addr, Name, Status, Win, PnL string; Fol int; Ts int64 }
+	var t struct {
+		ID, UID, Addr, Name, Status, Win, PnL string
+		Fol                                   int
+		Ts                                    int64
+	}
 	err := s.pg.QueryRow(c, `SELECT id,user_id,address,name,status,win_rate::text,pnl_pct::text,followers,extract(epoch from created_at)::bigint FROM copy_traders WHERE id=$1`, id).
 		Scan(&t.ID, &t.UID, &t.Addr, &t.Name, &t.Status, &t.Win, &t.PnL, &t.Fol, &t.Ts)
 	if err != nil {
@@ -225,7 +233,7 @@ func (s *service) getTrader(c *gin.Context) {
 }
 
 type followReq struct {
-	TraderID  string `json:"trader_id" binding:"required"`
+	TraderID   string `json:"trader_id" binding:"required"`
 	Allocation string `json:"allocation"`
 }
 
@@ -262,7 +270,10 @@ func (s *service) listCopiers(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var p struct{ ID, TID, Addr, Alloc, Status string; Ts int64 }
+		var p struct {
+			ID, TID, Addr, Alloc, Status string
+			Ts                           int64
+		}
 		if err := rows.Scan(&p.ID, &p.TID, &p.Addr, &p.Alloc, &p.Status, &p.Ts); err != nil {
 			continue
 		}
@@ -321,7 +332,11 @@ func (s *service) listSignals(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var sig struct{ ID, TID, Pair, Price, Amount string; Side int; Ts int64 }
+		var sig struct {
+			ID, TID, Pair, Price, Amount string
+			Side                         int
+			Ts                           int64
+		}
 		if err := rows.Scan(&sig.ID, &sig.TID, &sig.Side, &sig.Pair, &sig.Price, &sig.Amount, &sig.Ts); err != nil {
 			continue
 		}

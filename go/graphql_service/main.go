@@ -1,10 +1,11 @@
 package main
 
 import (
+	"context"
 	crand "crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
 	"os/signal"
 	"strings"
@@ -20,18 +21,18 @@ import (
 // ============================================================================
 
 type Config struct {
-	ListenAddr      string
-	MaxQueryDepth   int
-	MaxQueryCost    int
-	Timeout         time.Duration
+	ListenAddr          string
+	MaxQueryDepth       int
+	MaxQueryCost        int
+	Timeout             time.Duration
 	EnableIntrospection bool
 }
 
 var config = Config{
-	ListenAddr:        getEnv("GRAPHQL_LISTEN_ADDR", ":9003"),
-	MaxQueryDepth:     10,
-	MaxQueryCost:      1000,
-	Timeout:           time.Second * 30,
+	ListenAddr:          getEnv("GRAPHQL_LISTEN_ADDR", ":9003"),
+	MaxQueryDepth:       10,
+	MaxQueryCost:        1000,
+	Timeout:             time.Second * 30,
 	EnableIntrospection: true,
 }
 
@@ -41,18 +42,18 @@ var config = Config{
 
 type GraphQLRequest struct {
 	Query         string                 `json:"query"`
-	Variables    map[string]interface{} `json:"variables,omitempty"`
-	OperationName string                `json:"operationName,omitempty"`
+	Variables     map[string]interface{} `json:"variables,omitempty"`
+	OperationName string                 `json:"operationName,omitempty"`
 }
 
 type GraphQLResponse struct {
-	Data   interface{} `json:"data,omitempty"`
+	Data   interface{}    `json:"data,omitempty"`
 	Errors []GraphQLError `json:"errors,omitempty"`
 }
 
 type GraphQLError struct {
-	Message   string   `json:"message"`
-	Locations []Location `json:"locations,omitempty"`
+	Message   string        `json:"message"`
+	Locations []Location    `json:"locations,omitempty"`
 	Path      []interface{} `json:"path,omitempty"`
 }
 
@@ -62,33 +63,33 @@ type Location struct {
 }
 
 type Schema struct {
-	Types       []TypeDefinition    `json:"types"`
-	Queries     []FieldDefinition   `json:"queries"`
-	Mutations   []FieldDefinition   `json:"mutations"`
+	Types         []TypeDefinition  `json:"types"`
+	Queries       []FieldDefinition `json:"queries"`
+	Mutations     []FieldDefinition `json:"mutations"`
 	Subscriptions []FieldDefinition `json:"subscriptions"`
 }
 
 type TypeDefinition struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
 	Fields      []FieldDefinition `json:"fields,omitempty"`
-	Kind        string          `json:"kind"` // scalar, object, interface, enum, union, input_object
-	EnumValues  []EnumValue     `json:"enumValues,omitempty"`
-	InputFields []InputValue    `json:"inputFields,omitempty"`
+	Kind        string            `json:"kind"` // scalar, object, interface, enum, union, input_object
+	EnumValues  []EnumValue       `json:"enumValues,omitempty"`
+	InputFields []InputValue      `json:"inputFields,omitempty"`
 }
 
 type FieldDefinition struct {
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	Type        string     `json:"type"`
-	Args        []InputValue `json:"args,omitempty"`
+	Name        string                                                 `json:"name"`
+	Description string                                                 `json:"description"`
+	Type        string                                                 `json:"type"`
+	Args        []InputValue                                           `json:"args,omitempty"`
 	Resolve     func(args map[string]interface{}) (interface{}, error) `json:"-"`
 }
 
 type InputValue struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Type        string `json:"type"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	Type         string `json:"type"`
 	DefaultValue string `json:"defaultValue,omitempty"`
 }
 
@@ -98,10 +99,10 @@ type EnumValue struct {
 }
 
 type ResolverContext struct {
-	RequestID  string
-	UserID     string
-	Variables  map[string]interface{}
-	StartTime  time.Time
+	RequestID string
+	UserID    string
+	Variables map[string]interface{}
+	StartTime time.Time
 }
 
 // ============================================================================
@@ -109,13 +110,13 @@ type ResolverContext struct {
 // ============================================================================
 
 type GraphQLService struct {
-	schema      Schema
-	resolvers   map[string]FieldDefinition
-	resolveMu   sync.RWMutex
-	queries     int
-	queriesMu   sync.RWMutex
-	ctx         context.Context
-	cancel      context.CancelFunc
+	schema    Schema
+	resolvers map[string]FieldDefinition
+	resolveMu sync.RWMutex
+	queries   int
+	queriesMu sync.RWMutex
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 type contextKey string
@@ -127,10 +128,10 @@ func NewGraphQLService() *GraphQLService {
 		resolvers: make(map[string]FieldDefinition),
 		ctx:       context.Background(),
 	}
-	
+
 	svc.initializeSchema()
 	svc.initializeResolvers()
-	
+
 	return svc
 }
 
@@ -138,9 +139,9 @@ func (s *GraphQLService) initializeSchema() {
 	s.schema = Schema{
 		Types: []TypeDefinition{
 			{
-				Name: "User",
+				Name:        "User",
 				Description: "User account information",
-				Kind: "object",
+				Kind:        "object",
 				Fields: []FieldDefinition{
 					{Name: "id", Type: "ID!", Description: "User ID"},
 					{Name: "email", Type: "String", Description: "User email"},
@@ -149,9 +150,9 @@ func (s *GraphQLService) initializeSchema() {
 				},
 			},
 			{
-				Name: "Wallet",
+				Name:        "Wallet",
 				Description: "Wallet information",
-				Kind: "object",
+				Kind:        "object",
 				Fields: []FieldDefinition{
 					{Name: "id", Type: "ID!", Description: "Wallet ID"},
 					{Name: "address", Type: "String!", Description: "Wallet address"},
@@ -161,9 +162,9 @@ func (s *GraphQLService) initializeSchema() {
 				},
 			},
 			{
-				Name: "Token",
+				Name:        "Token",
 				Description: "Token information",
-				Kind: "object",
+				Kind:        "object",
 				Fields: []FieldDefinition{
 					{Name: "symbol", Type: "String!", Description: "Token symbol"},
 					{Name: "name", Type: "String!", Description: "Token name"},
@@ -173,9 +174,9 @@ func (s *GraphQLService) initializeSchema() {
 				},
 			},
 			{
-				Name: "Transaction",
+				Name:        "Transaction",
 				Description: "Transaction information",
-				Kind: "object",
+				Kind:        "object",
 				Fields: []FieldDefinition{
 					{Name: "hash", Type: "ID!", Description: "Transaction hash"},
 					{Name: "from", Type: "String!", Description: "From address"},
@@ -187,9 +188,9 @@ func (s *GraphQLService) initializeSchema() {
 				},
 			},
 			{
-				Name: "TransactionStatus",
+				Name:        "TransactionStatus",
 				Description: "Transaction status enum",
-				Kind: "enum",
+				Kind:        "enum",
 				EnumValues: []EnumValue{
 					{Name: "PENDING", Description: "Transaction is pending"},
 					{Name: "CONFIRMED", Description: "Transaction is confirmed"},
@@ -197,9 +198,9 @@ func (s *GraphQLService) initializeSchema() {
 				},
 			},
 			{
-				Name: "SwapQuote",
+				Name:        "SwapQuote",
 				Description: "Swap quote information",
-				Kind: "object",
+				Kind:        "object",
 				Fields: []FieldDefinition{
 					{Name: "fromToken", Type: "String!", Description: "Source token"},
 					{Name: "toToken", Type: "String!", Description: "Destination token"},
@@ -211,9 +212,9 @@ func (s *GraphQLService) initializeSchema() {
 				},
 			},
 			{
-				Name: "MarketData",
+				Name:        "MarketData",
 				Description: "Market data for a trading pair",
-				Kind: "object",
+				Kind:        "object",
 				Fields: []FieldDefinition{
 					{Name: "pair", Type: "String!", Description: "Trading pair"},
 					{Name: "price", Type: "Float!", Description: "Current price"},
@@ -247,7 +248,7 @@ func (s *GraphQLService) initializeSchema() {
 func (s *GraphQLService) initializeResolvers() {
 	s.resolveMu.Lock()
 	defer s.resolveMu.Unlock()
-	
+
 	// Query resolvers
 	s.resolvers["user"] = FieldDefinition{
 		Name: "user", Type: "User",
@@ -260,7 +261,7 @@ func (s *GraphQLService) initializeResolvers() {
 			}, nil
 		},
 	}
-	
+
 	s.resolvers["me"] = FieldDefinition{
 		Name: "me", Type: "User",
 		Resolve: func(args map[string]interface{}) (interface{}, error) {
@@ -272,7 +273,7 @@ func (s *GraphQLService) initializeResolvers() {
 			}, nil
 		},
 	}
-	
+
 	s.resolvers["wallet"] = FieldDefinition{
 		Name: "wallet", Type: "Wallet",
 		Resolve: func(args map[string]interface{}) (interface{}, error) {
@@ -286,56 +287,56 @@ func (s *GraphQLService) initializeResolvers() {
 			}, nil
 		},
 	}
-	
+
 	s.resolvers["swapQuote"] = FieldDefinition{
 		Name: "swapQuote", Type: "SwapQuote",
 		Resolve: func(args map[string]interface{}) (interface{}, error) {
 			fromToken := args["fromToken"].(string)
 			toToken := args["toToken"].(string)
 			amount := args["amount"].(float64)
-			
+
 			// Simulate quote calculation
 			rate := getMockRate(fromToken, toToken)
 			toAmount := amount * rate
-			
+
 			return map[string]interface{}{
-				"fromToken":    fromToken,
-				"toToken":      toToken,
-				"fromAmount":   amount,
-				"toAmount":     toAmount,
-				"priceImpact":  0.5,
-				"route":        []string{fromToken, toToken},
-				"gasEstimate":  0.01,
+				"fromToken":   fromToken,
+				"toToken":     toToken,
+				"fromAmount":  amount,
+				"toAmount":    toAmount,
+				"priceImpact": 0.5,
+				"route":       []string{fromToken, toToken},
+				"gasEstimate": 0.01,
 			}, nil
 		},
 	}
-	
+
 	s.resolvers["marketData"] = FieldDefinition{
 		Name: "marketData", Type: "MarketData",
 		Resolve: func(args map[string]interface{}) (interface{}, error) {
 			pair := args["pair"].(string)
 			parts := strings.Split(pair, "/")
-			
+
 			price := getMockPrice(parts[0])
-			
+
 			return map[string]interface{}{
-				"pair":       pair,
-				"price":      price,
-				"volume24h":  rand.Float64() * 1000000,
-				"change24h":  (rand.Float64() - 0.5) * 10,
-				"high24h":    price * 1.05,
-				"low24h":     price * 0.95,
+				"pair":      pair,
+				"price":     price,
+				"volume24h": rand.Float64() * 1000000,
+				"change24h": (rand.Float64() - 0.5) * 10,
+				"high24h":   price * 1.05,
+				"low24h":    price * 0.95,
 			}, nil
 		},
 	}
-	
+
 	// Mutation resolvers
 	s.resolvers["createWallet"] = FieldDefinition{
 		Name: "createWallet", Type: "Wallet",
 		Resolve: func(args map[string]interface{}) (interface{}, error) {
 			chain := args["chain"].(string)
 			walletID := fmt.Sprintf("wallet_%d", rand.Intn(1000000))
-			
+
 			return map[string]interface{}{
 				"id":      walletID,
 				"address": generateAddress(),
@@ -345,7 +346,7 @@ func (s *GraphQLService) initializeResolvers() {
 			}, nil
 		},
 	}
-	
+
 	s.resolvers["sendTransaction"] = FieldDefinition{
 		Name: "sendTransaction", Type: "Transaction",
 		Resolve: func(args map[string]interface{}) (interface{}, error) {
@@ -356,10 +357,10 @@ func (s *GraphQLService) initializeResolvers() {
 
 func (s *GraphQLService) Start() error {
 	fmt.Println("Starting GraphQL Service...")
-	
+
 	// Start HTTP server
 	go s.startHTTPServer()
-	
+
 	fmt.Println("GraphQL Service started successfully")
 	return nil
 }
@@ -370,23 +371,23 @@ func (s *GraphQLService) Stop() {
 
 func (s *GraphQLService) startHTTPServer() {
 	router := gin.Default()
-	
+
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "healthy"})
 	})
-	
+
 	router.POST("/graphql", s.graphQLHandler)
 	router.GET("/graphql", s.graphQLHandler)
 	router.GET("/schema", s.schemaHandler)
 	router.GET("/introspection", s.introspectionHandler)
-	
+
 	fmt.Printf("GraphQL API server starting on %s\n", config.ListenAddr)
 	router.Run(config.ListenAddr)
 }
 
 func (s *GraphQLService) graphQLHandler(c *gin.Context) {
 	var request GraphQLRequest
-	
+
 	if c.Request.Method == "POST" {
 		if err := c.ShouldBindJSON(&request); err != nil {
 			c.JSON(400, GraphQLResponse{
@@ -398,14 +399,14 @@ func (s *GraphQLService) graphQLHandler(c *gin.Context) {
 		request.Query = c.Query("query")
 		request.OperationName = c.Query("operationName")
 	}
-	
+
 	if request.Query == "" {
 		c.JSON(400, GraphQLResponse{
 			Errors: []GraphQLError{{Message: "Query is required"}},
 		})
 		return
 	}
-	
+
 	// Parse and execute query
 	result, err := s.executeQuery(request.Query, request.Variables, request.OperationName)
 	if err != nil {
@@ -414,20 +415,20 @@ func (s *GraphQLService) graphQLHandler(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	s.queriesMu.Lock()
 	s.queries++
 	s.queriesMu.Unlock()
-	
+
 	c.JSON(200, GraphQLResponse{Data: result})
 }
 
 func (s *GraphQLService) executeQuery(query string, variables map[string]interface{}, operationName string) (map[string]interface{}, error) {
 	// Simplified query parser and executor
 	// In production, would use a proper GraphQL parser
-	
+
 	result := make(map[string]interface{})
-	
+
 	// Handle query root
 	if strings.Contains(query, "query") {
 		// Extract field names from query
@@ -468,7 +469,7 @@ func (s *GraphQLService) executeQuery(query string, variables map[string]interfa
 			}
 		}
 	}
-	
+
 	// Handle mutation root
 	if strings.Contains(query, "mutation") {
 		if strings.Contains(query, "createWallet") {
@@ -484,7 +485,7 @@ func (s *GraphQLService) executeQuery(query string, variables map[string]interfa
 			}
 		}
 	}
-	
+
 	return result, nil
 }
 
@@ -497,17 +498,17 @@ func (s *GraphQLService) introspectionHandler(c *gin.Context) {
 		c.JSON(404, gin.H{"error": "introspection disabled"})
 		return
 	}
-	
+
 	// Simplified introspection query
 	introspection := map[string]interface{}{
 		"__schema": map[string]interface{}{
-			"queryType":        map[string]string{"name": "Query"},
-			"mutationType":     map[string]string{"name": "Mutation"},
-			"types":            s.schema.Types,
-			"directives":      []interface{}{},
+			"queryType":    map[string]string{"name": "Query"},
+			"mutationType": map[string]string{"name": "Mutation"},
+			"types":        s.schema.Types,
+			"directives":   []interface{}{},
 		},
 	}
-	
+
 	c.JSON(200, introspection)
 }
 
@@ -517,34 +518,34 @@ func (s *GraphQLService) introspectionHandler(c *gin.Context) {
 
 func getMockRate(fromToken, toToken string) float64 {
 	rates := map[string]map[string]float64{
-		"ETH": {"USDT": 3500, "BTC": 0.053, "BNB": 5.8},
-		"BTC": {"USDT": 65000, "ETH": 18.8, "BNB": 108},
+		"ETH":  {"USDT": 3500, "BTC": 0.053, "BNB": 5.8},
+		"BTC":  {"USDT": 65000, "ETH": 18.8, "BNB": 108},
 		"USDT": {"ETH": 0.00028, "BTC": 0.000015, "BNB": 0.0017},
 	}
-	
+
 	if rates[fromToken] != nil {
 		if rate, ok := rates[fromToken][toToken]; ok {
 			return rate
 		}
 	}
-	
+
 	return 1.0
 }
 
 func getMockPrice(token string) float64 {
 	prices := map[string]float64{
-		"ETH": 3500.0,
-		"BTC": 65000.0,
-		"BNB": 600.0,
-		"SOL": 100.0,
+		"ETH":  3500.0,
+		"BTC":  65000.0,
+		"BNB":  600.0,
+		"SOL":  100.0,
 		"USDT": 1.0,
 		"USDC": 1.0,
 	}
-	
+
 	if price, ok := prices[token]; ok {
 		return price
 	}
-	
+
 	return 100.0
 }
 
@@ -569,24 +570,24 @@ func getEnv(key, defaultValue string) string {
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
-	
+
 	fmt.Println("============================================")
 	fmt.Println("TigerWallet GraphQL Service")
 	fmt.Println("============================================")
-	
+
 	svc := NewGraphQLService()
-	
+
 	if err := svc.Start(); err != nil {
 		fmt.Printf("Failed to start GraphQL service: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
-	
+
 	fmt.Println("\nShutting down...")
 	svc.Stop()
-	
+
 	fmt.Println("GraphQL service stopped")
 }

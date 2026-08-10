@@ -46,10 +46,10 @@ func init() {
 // ============================================================================
 
 type Config struct {
-	Port      string
-	RedisURL  string
-	RpcURL    string
-	ChainID   int64
+	Port     string
+	RedisURL string
+	RpcURL   string
+	ChainID  int64
 }
 
 func LoadConfig() *Config {
@@ -57,8 +57,8 @@ func LoadConfig() *Config {
 		Port:     getEnv("PORT", "8450"),
 		RedisURL: getEnv("REDIS_URL", "redis://localhost:6379"),
 		// Public Ethereum endpoint; override ETH_RPC_URL with a private/archive node.
-		RpcURL:   getEnv("ETH_RPC_URL", "https://ethereum-rpc.publicnode.com"),
-		ChainID:  1,
+		RpcURL:  getEnv("ETH_RPC_URL", "https://ethereum-rpc.publicnode.com"),
+		ChainID: 1,
 	}
 }
 
@@ -74,47 +74,47 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type MultiSigWallet struct {
-	ID              string   `json:"id"`
-	Name            string   `json:"name"`
-	Threshold       uint     `json:"threshold"`
-	Owners          []string `json:"owners"`
-	Nonce           uint64   `json:"nonce"`
-	ChainID         int64    `json:"chain_id"`
-	Address         string   `json:"address"`
-	IsActive        bool     `json:"is_active"`
-	CreatedAt       int64    `json:"created_at"`
-	UpdatedAt       int64    `json:"updated_at"`
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	Threshold uint     `json:"threshold"`
+	Owners    []string `json:"owners"`
+	Nonce     uint64   `json:"nonce"`
+	ChainID   int64    `json:"chain_id"`
+	Address   string   `json:"address"`
+	IsActive  bool     `json:"is_active"`
+	CreatedAt int64    `json:"created_at"`
+	UpdatedAt int64    `json:"updated_at"`
 }
 
 type TransactionRequest struct {
-	ID          string   `json:"id"`
-	WalletID    string   `json:"wallet_id"`
-	To          string   `json:"to"`
-	Value       string   `json:"value"`
-	Data        string   `json:"data"`
-	Nonce       uint64   `json:"nonce"`
-	Signatures  []Signature `json:"signatures"`
-	Status      TransactionStatus `json:"status"`
-	ExecutedBy  string   `json:"executed_by"`
-	ExecutedAt  int64    `json:"executed_at"`
-	CreatedAt   int64    `json:"created_at"`
+	ID         string            `json:"id"`
+	WalletID   string            `json:"wallet_id"`
+	To         string            `json:"to"`
+	Value      string            `json:"value"`
+	Data       string            `json:"data"`
+	Nonce      uint64            `json:"nonce"`
+	Signatures []Signature       `json:"signatures"`
+	Status     TransactionStatus `json:"status"`
+	ExecutedBy string            `json:"executed_by"`
+	ExecutedAt int64             `json:"executed_at"`
+	CreatedAt  int64             `json:"created_at"`
 }
 
 type Signature struct {
-	Owner   string `json:"owner"`
-	V       uint8  `json:"v"`
-	R       string `json:"r"`
-	S       string `json:"s"`
+	Owner string `json:"owner"`
+	V     uint8  `json:"v"`
+	R     string `json:"r"`
+	S     string `json:"s"`
 }
 
 type TransactionStatus string
 
 const (
-	StatusPending   TransactionStatus = "pending"
+	StatusPending  TransactionStatus = "pending"
 	StatusApproved TransactionStatus = "approved"
 	StatusExecuted TransactionStatus = "executed"
 	StatusFailed   TransactionStatus = "failed"
-	StatusRevoked TransactionStatus = "revoked"
+	StatusRevoked  TransactionStatus = "revoked"
 )
 
 // ============================================================================
@@ -122,11 +122,11 @@ const (
 // ============================================================================
 
 type MultiSigService struct {
-	config    *Config
-	redis     *redis.Client
-	wallets   map[string]*MultiSigWallet
+	config       *Config
+	redis        *redis.Client
+	wallets      map[string]*MultiSigWallet
 	transactions map[string]*TransactionRequest
-	privateKey *ecdsa.PrivateKey
+	privateKey   *ecdsa.PrivateKey
 }
 
 func NewMultiSigService(config *Config) *MultiSigService {
@@ -297,7 +297,7 @@ func (s *MultiSigService) CreateTransaction(walletID, to, value, data string) (*
 		To:         to,
 		Value:      value,
 		Data:       data,
-		Nonce:     wallet.Nonce,
+		Nonce:      wallet.Nonce,
 		Signatures: make([]Signature, 0),
 		Status:     StatusPending,
 		CreatedAt:  time.Now().Unix(),

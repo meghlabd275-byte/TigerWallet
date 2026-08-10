@@ -30,13 +30,13 @@ import (
 // ============================================================================
 
 type Config struct {
-	Port             int           `json:"port"`
-	RedisAddr        string        `json:"redis_addr"`
-	RequestTimeout   time.Duration `json:"request_timeout"`
-	MaxConnections   int           `json:"max_connections"`
-	RateLimit        int           `json:"rate_limit"`
-	RetryAttempts    int           `json:"retry_attempts"`
-	RetryDelay       time.Duration `json:"retry_delay"`
+	Port           int           `json:"port"`
+	RedisAddr      string        `json:"redis_addr"`
+	RequestTimeout time.Duration `json:"request_timeout"`
+	MaxConnections int           `json:"max_connections"`
+	RateLimit      int           `json:"rate_limit"`
+	RetryAttempts  int           `json:"retry_attempts"`
+	RetryDelay     time.Duration `json:"retry_delay"`
 }
 
 var globalConfig = Config{
@@ -45,8 +45,8 @@ var globalConfig = Config{
 	RequestTimeout: 30 * time.Second,
 	MaxConnections: 1000,
 	RateLimit:      100,
-	RetryAttempts:   3,
-	RetryDelay:      500 * time.Millisecond,
+	RetryAttempts:  3,
+	RetryDelay:     500 * time.Millisecond,
 }
 
 // ============================================================================
@@ -213,7 +213,7 @@ func NewRPCManager(redisAddr string) *RPCManager {
 	rdb := redis.NewClient(&redis.Options{
 		Addr: redisAddr,
 	})
-	
+
 	return &RPCManager{
 		clients: make(map[string]*RPCClient),
 		redis:   rdb,
@@ -274,7 +274,7 @@ func (rm *RPCManager) GetClient(chain string) (*RPCClient, error) {
 
 func (rc *RPCClient) callWithRetry(ctx context.Context, operation func() (interface{}, error)) (interface{}, error) {
 	var lastErr error
-	
+
 	for attempt := 0; attempt < globalConfig.RetryAttempts; attempt++ {
 		// Check rate limit
 		if err := rc.rateLimiter.Wait(ctx); err != nil {
@@ -287,7 +287,7 @@ func (rc *RPCClient) callWithRetry(ctx context.Context, operation func() (interf
 		}
 
 		lastErr = err
-		
+
 		// Try next RPC if available
 		if rc.shouldSwitchRPC(err) {
 			rc.switchRPC()
@@ -314,7 +314,7 @@ func (rc *RPCClient) shouldSwitchRPC(err error) bool {
 		"network",
 		"max rate limit",
 	}
-	
+
 	errLower := strings.ToLower(errStr)
 	for _, s := range switches {
 		if strings.Contains(errLower, s) {
@@ -333,7 +333,7 @@ func (rc *RPCClient) switchRPC() {
 	}
 
 	nextURL := (rc.currentURL + 1) % len(rc.config.RPCURLs)
-	
+
 	for i := 0; i < len(rc.config.RPCURLs); i++ {
 		ethClient, err := ethclient.Dial(rc.config.RPCURLs[nextURL])
 		if err == nil {
@@ -430,12 +430,12 @@ func (h *APIHandler) GetBalance(c *gin.Context) {
 		if err != nil {
 			return nil, err
 		}
-		
+
 		decimals := big.NewInt(int64(client.config.Decimals))
 		divisor := new(big.Int).Exp(big.NewInt(10), decimals, nil)
-		
+
 		humanBalance := new(big.Rat).SetFrac(balance, divisor)
-		
+
 		return BalanceResponse{
 			Address:    req.Address,
 			Chain:      req.Chain,
@@ -525,7 +525,7 @@ func (h *APIHandler) CallContract(c *gin.Context) {
 			To:   &to,
 			Data: data,
 		}
-		
+
 		output, err := client.client.CallContract(ctx, msg, nil)
 		if err != nil {
 			return nil, err
@@ -597,13 +597,13 @@ func (h *APIHandler) EstimateGas(c *gin.Context) {
 
 	fromAddr := common.HexToAddress(from)
 	toAddr := common.HexToAddress(to)
-	
+
 	val := new(big.Int)
 	val.SetString(value, 10)
-	
+
 	msg := ethereum.CallMsg{
-		From: fromAddr,
-		To:   &toAddr,
+		From:  fromAddr,
+		To:    &toAddr,
 		Value: val,
 	}
 
@@ -627,7 +627,7 @@ func (h *APIHandler) EstimateGas(c *gin.Context) {
 
 func (h *APIHandler) GetSupportedChains(c *gin.Context) {
 	chains := make([]ChainInfoResponse, 0)
-	
+
 	for _, config := range chainConfigs {
 		if config.IsActive {
 			chains = append(chains, ChainInfoResponse{
@@ -710,19 +710,19 @@ func main() {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Chain")
-		
+
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(http.StatusOK)
 			return
 		}
-		
+
 		c.Next()
 	})
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"status": "healthy",
-			"service": "blockchain-rpc",
+			"status":    "healthy",
+			"service":   "blockchain-rpc",
 			"timestamp": time.Now().Unix(),
 		})
 	})

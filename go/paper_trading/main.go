@@ -30,56 +30,56 @@ type PaperTradingEngine struct {
 }
 
 type PaperTradingConfig struct {
-	InitialCapital    float64   `json:"initialCapital"`
-	Leverage          float64   `json:"leverage"`
-	MakerFee          float64   `json:"makerFee"`
-	TakerFee          float64   `json:"takerFee"`
-	Slippage          float64   `json:"slippage"`
-	SimulationSpeed  float64   `json:"simulationSpeed"`
-	EnableShorting    bool      `json:"enableShorting"`
-	EnableMargin      bool      `json:"enableMargin"`
+	InitialCapital  float64 `json:"initialCapital"`
+	Leverage        float64 `json:"leverage"`
+	MakerFee        float64 `json:"makerFee"`
+	TakerFee        float64 `json:"takerFee"`
+	Slippage        float64 `json:"slippage"`
+	SimulationSpeed float64 `json:"simulationSpeed"`
+	EnableShorting  bool    `json:"enableShorting"`
+	EnableMargin    bool    `json:"enableMargin"`
 }
 
 type PaperAccount struct {
-	UserID       string             `json:"userId"`
-	Balance      float64            `json:"balance"`
-	Equity       float64            `json:"equity"`
-	MarginUsed   float64            `json:"marginUsed"`
-	MarginFree   float64            `json:"marginFree"`
-	UnrealizedPNL float64           `json:"unrealizedPnl"`
-	Positions    map[string]*PaperPosition `json:"positions"`
+	UserID        string                    `json:"userId"`
+	Balance       float64                   `json:"balance"`
+	Equity        float64                   `json:"equity"`
+	MarginUsed    float64                   `json:"marginUsed"`
+	MarginFree    float64                   `json:"marginFree"`
+	UnrealizedPNL float64                   `json:"unrealizedPnl"`
+	Positions     map[string]*PaperPosition `json:"positions"`
 }
 
 type PaperPosition struct {
-	Symbol           string    `json:"symbol"`
-	Side             string    `json:"side"`
-	EntryPrice       float64   `json:"entryPrice"`
-	CurrentPrice     float64   `json:"currentPrice"`
-	Quantity         float64   `json:"quantity"`
-	Leverage         float64   `json:"leverage"`
-	UnrealizedPNL    float64   `json:"unrealizedPnl"`
-	ROE              float64   `json:"roe"`
-	LiquidationPrice float64   `json:"liquidationPrice"`
-	OpenedAt         int64     `json:"openedAt"`
-	UpdatedAt        int64     `json:"updatedAt"`
+	Symbol           string  `json:"symbol"`
+	Side             string  `json:"side"`
+	EntryPrice       float64 `json:"entryPrice"`
+	CurrentPrice     float64 `json:"currentPrice"`
+	Quantity         float64 `json:"quantity"`
+	Leverage         float64 `json:"leverage"`
+	UnrealizedPNL    float64 `json:"unrealizedPnl"`
+	ROE              float64 `json:"roe"`
+	LiquidationPrice float64 `json:"liquidationPrice"`
+	OpenedAt         int64   `json:"openedAt"`
+	UpdatedAt        int64   `json:"updatedAt"`
 }
 
 type PaperOrder struct {
-	OrderID      string    `json:"orderId"`
-	UserID       string    `json:"userId"`
-	Symbol       string    `json:"symbol"`
-	Side         string    `json:"side"`
-	OrderType    string    `json:"orderType"`
-	Price        float64   `json:"price"`
-	StopPrice    float64   `json:"stopPrice"`
-	Quantity     float64   `json:"quantity"`
-	FilledQty    float64   `json:"filledQty"`
-	AvgFillPrice float64   `json:"avgFillPrice"`
-	Status       string    `json:"status"`
-	SideEffect   string    `json:"sideEffect"`
-	CreatedAt    int64     `json:"createdAt"`
-	UpdatedAt    int64     `json:"updatedAt"`
-	FilledAt     *int64    `json:"filledAt"`
+	OrderID      string  `json:"orderId"`
+	UserID       string  `json:"userId"`
+	Symbol       string  `json:"symbol"`
+	Side         string  `json:"side"`
+	OrderType    string  `json:"orderType"`
+	Price        float64 `json:"price"`
+	StopPrice    float64 `json:"stopPrice"`
+	Quantity     float64 `json:"quantity"`
+	FilledQty    float64 `json:"filledQty"`
+	AvgFillPrice float64 `json:"avgFillPrice"`
+	Status       string  `json:"status"`
+	SideEffect   string  `json:"sideEffect"`
+	CreatedAt    int64   `json:"createdAt"`
+	UpdatedAt    int64   `json:"updatedAt"`
+	FilledAt     *int64  `json:"filledAt"`
 }
 
 type OrderBook struct {
@@ -114,20 +114,20 @@ type Trade struct {
 }
 
 type PaperTradingStats struct {
-	TotalTrades    int     `json:"totalTrades"`
-	WinningTrades  int     `json:"winningTrades"`
-	LosingTrades   int     `json:"losingTrades"`
-	WinRate        float64 `json:"winRate"`
-	TotalVolume    float64 `json:"totalVolume"`
-	TotalFees      float64 `json:"totalFees"`
-	TotalPNL       float64 `json:"totalPnl"`
-	BestTrade      float64 `json:"bestTrade"`
-	WorstTrade     float64 `json:"worstTrade"`
-	AverageWin     float64 `json:"averageWin"`
-	AverageLoss    float64 `json:"averageLoss"`
-	ProfitFactor   float64 `json:"profitFactor"`
-	SharpeRatio    float64 `json:"sharpeRatio"`
-	MaxDrawdown    float64 `json:"maxDrawdown"`
+	TotalTrades   int     `json:"totalTrades"`
+	WinningTrades int     `json:"winningTrades"`
+	LosingTrades  int     `json:"losingTrades"`
+	WinRate       float64 `json:"winRate"`
+	TotalVolume   float64 `json:"totalVolume"`
+	TotalFees     float64 `json:"totalFees"`
+	TotalPNL      float64 `json:"totalPnl"`
+	BestTrade     float64 `json:"bestTrade"`
+	WorstTrade    float64 `json:"worstTrade"`
+	AverageWin    float64 `json:"averageWin"`
+	AverageLoss   float64 `json:"averageLoss"`
+	ProfitFactor  float64 `json:"profitFactor"`
+	SharpeRatio   float64 `json:"sharpeRatio"`
+	MaxDrawdown   float64 `json:"maxDrawdown"`
 }
 
 // ============================================================================
@@ -150,7 +150,7 @@ func NewPaperTradingEngine(config *PaperTradingConfig) *PaperTradingEngine {
 
 	return &PaperTradingEngine{
 		config:         config,
-		accounts:      make(map[string]*PaperAccount),
+		accounts:       make(map[string]*PaperAccount),
 		orders:         make(map[string]*PaperOrder),
 		positions:      make(map[string]*PaperPosition),
 		orderBook:      NewOrderBook(),
@@ -184,12 +184,12 @@ func (e *PaperTradingEngine) CreateAccount(userID string) *PaperAccount {
 	defer e.mu.Unlock()
 
 	account := &PaperAccount{
-		UserID:      userID,
-		Balance:     e.config.InitialCapital,
-		Equity:      e.config.InitialCapital,
-		MarginUsed:  0,
-		MarginFree:  e.config.InitialCapital,
-		Positions:   make(map[string]*PaperPosition),
+		UserID:     userID,
+		Balance:    e.config.InitialCapital,
+		Equity:     e.config.InitialCapital,
+		MarginUsed: 0,
+		MarginFree: e.config.InitialCapital,
+		Positions:  make(map[string]*PaperPosition),
 	}
 
 	e.accounts[userID] = account
@@ -217,12 +217,12 @@ func (e *PaperTradingEngine) ResetAccount(userID string) error {
 	}
 
 	e.accounts[userID] = &PaperAccount{
-		UserID:      userID,
-		Balance:     e.config.InitialCapital,
-		Equity:      e.config.InitialCapital,
-		MarginUsed:  0,
-		MarginFree:  e.config.InitialCapital,
-		Positions:   make(map[string]*PaperPosition),
+		UserID:     userID,
+		Balance:    e.config.InitialCapital,
+		Equity:     e.config.InitialCapital,
+		MarginUsed: 0,
+		MarginFree: e.config.InitialCapital,
+		Positions:  make(map[string]*PaperPosition),
 	}
 
 	for id, order := range e.orders {
@@ -387,25 +387,25 @@ func (e *PaperTradingEngine) updatePosition(order *PaperOrder, fillPrice float64
 		existingPos.UpdatedAt = time.Now().UnixMilli()
 	} else if order.Side == "buy" {
 		e.positions[positionKey] = &PaperPosition{
-			Symbol:           order.Symbol,
-			Side:             "long",
-			EntryPrice:       fillPrice,
-			CurrentPrice:     fillPrice,
-			Quantity:         order.Quantity,
-			Leverage:         e.config.Leverage,
-			OpenedAt:         time.Now().UnixMilli(),
-			UpdatedAt:        time.Now().UnixMilli(),
+			Symbol:       order.Symbol,
+			Side:         "long",
+			EntryPrice:   fillPrice,
+			CurrentPrice: fillPrice,
+			Quantity:     order.Quantity,
+			Leverage:     e.config.Leverage,
+			OpenedAt:     time.Now().UnixMilli(),
+			UpdatedAt:    time.Now().UnixMilli(),
 		}
 	} else if e.config.EnableShorting {
 		e.positions[positionKey] = &PaperPosition{
-			Symbol:           order.Symbol,
-			Side:             "short",
-			EntryPrice:       fillPrice,
-			CurrentPrice:     fillPrice,
-			Quantity:         order.Quantity,
-			Leverage:         e.config.Leverage,
-			OpenedAt:         time.Now().UnixMilli(),
-			UpdatedAt:        time.Now().UnixMilli(),
+			Symbol:       order.Symbol,
+			Side:         "short",
+			EntryPrice:   fillPrice,
+			CurrentPrice: fillPrice,
+			Quantity:     order.Quantity,
+			Leverage:     e.config.Leverage,
+			OpenedAt:     time.Now().UnixMilli(),
+			UpdatedAt:    time.Now().UnixMilli(),
 		}
 	}
 }
@@ -481,6 +481,7 @@ func (e *PaperTradingEngine) GetStats(userID string) (*PaperTradingStats, error)
 	defer e.mu.RUnlock()
 
 	positionKey := fmt.Sprintf("%s_%s", userID, "*")
+	_ = positionKey
 	var totalPNL, bestTrade, worstTrade float64
 	var winningTrades, losingTrades int
 
@@ -563,14 +564,14 @@ func main() {
 	fmt.Println("==================================")
 
 	config := &PaperTradingConfig{
-		InitialCapital: 10000.0,
-		Leverage:       3.0,
-		MakerFee:       0.001,
-		TakerFee:       0.001,
-		Slippage:       0.0005,
+		InitialCapital:  10000.0,
+		Leverage:        3.0,
+		MakerFee:        0.001,
+		TakerFee:        0.001,
+		Slippage:        0.0005,
 		SimulationSpeed: 1.0,
-		EnableShorting: true,
-		EnableMargin:   true,
+		EnableShorting:  true,
+		EnableMargin:    true,
 	}
 
 	engine := NewPaperTradingEngine(config)

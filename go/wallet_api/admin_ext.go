@@ -125,12 +125,12 @@ func handleAdminDeleteChain(c *gin.Context) {
 // ---- Bridges ----
 
 type adminBridgeRow struct {
-	ID             uuid.UUID `json:"id"`
-	FromChainID    int64     `json:"from_chain_id"`
-	ToChainID      int64     `json:"to_chain_id"`
-	BridgeName     string    `json:"bridge_name"`
-	ContractAddress string   `json:"contract_address"`
-	Status         string    `json:"status"`
+	ID              uuid.UUID `json:"id"`
+	FromChainID     int64     `json:"from_chain_id"`
+	ToChainID       int64     `json:"to_chain_id"`
+	BridgeName      string    `json:"bridge_name"`
+	ContractAddress string    `json:"contract_address"`
+	Status          string    `json:"status"`
 }
 
 func handleAdminListBridges(c *gin.Context) {
@@ -183,11 +183,11 @@ func handleAdminCreateBridge(c *gin.Context) {
 // ---- Validators ----
 
 type adminValidatorRow struct {
-	ID              uuid.UUID `json:"id"`
-	ChainID         int64     `json:"chain_id"`
-	ValidatorAddress string   `json:"validator_address"`
-	Name            string    `json:"name"`
-	Status          string    `json:"status"`
+	ID               uuid.UUID `json:"id"`
+	ChainID          int64     `json:"chain_id"`
+	ValidatorAddress string    `json:"validator_address"`
+	Name             string    `json:"name"`
+	Status           string    `json:"status"`
 }
 
 func handleAdminListValidators(c *gin.Context) {
@@ -241,10 +241,10 @@ func handleAdminCreateValidator(c *gin.Context) {
 // tables plus configured chain status.
 
 type chainMetricRow struct {
-	ChainID         int64  `json:"chain_id"`
-	WalletCount     int64  `json:"wallet_count"`
-	TransactionCount int64 `json:"transaction_count"`
-	Status          string `json:"status"`
+	ChainID          int64  `json:"chain_id"`
+	WalletCount      int64  `json:"wallet_count"`
+	TransactionCount int64  `json:"transaction_count"`
+	Status           string `json:"status"`
 }
 
 func handleAdminChainMetrics(c *gin.Context) {
@@ -307,14 +307,14 @@ func handleAdminTokenDeployments(c *gin.Context) {
 // ---- Fees ----
 
 type feeTierRow struct {
-	ID             uuid.UUID `json:"id"`
-	TierName       string    `json:"tier_name"`
-	FeeType        string    `json:"fee_type"`
-	RateBasisPoints string  `json:"rate_basis_points"`
-	MinAmount      string    `json:"min_amount"`
-	MaxAmount      string    `json:"max_amount"`
-	ChainID        *int64    `json:"chain_id"`
-	Status         string    `json:"status"`
+	ID              uuid.UUID `json:"id"`
+	TierName        string    `json:"tier_name"`
+	FeeType         string    `json:"fee_type"`
+	RateBasisPoints string    `json:"rate_basis_points"`
+	MinAmount       string    `json:"min_amount"`
+	MaxAmount       string    `json:"max_amount"`
+	ChainID         *int64    `json:"chain_id"`
+	Status          string    `json:"status"`
 }
 
 func handleAdminListFees(c *gin.Context) {
@@ -337,13 +337,13 @@ func handleAdminListFees(c *gin.Context) {
 }
 
 type feeTierCreate struct {
-	TierName        string  `json:"tier_name" binding:"required"`
-	FeeType         string  `json:"fee_type" binding:"required"`
-	RateBasisPoints string  `json:"rate_basis_points" binding:"required"`
-	MinAmount       string  `json:"min_amount"`
-	MaxAmount       string  `json:"max_amount"`
-	ChainID         *int64  `json:"chain_id"`
-	Status          string  `json:"status"`
+	TierName        string `json:"tier_name" binding:"required"`
+	FeeType         string `json:"fee_type" binding:"required"`
+	RateBasisPoints string `json:"rate_basis_points" binding:"required"`
+	MinAmount       string `json:"min_amount"`
+	MaxAmount       string `json:"max_amount"`
+	ChainID         *int64 `json:"chain_id"`
+	Status          string `json:"status"`
 }
 
 func handleAdminCreateFee(c *gin.Context) {
@@ -408,14 +408,14 @@ func handleAdminDeleteFee(c *gin.Context) {
 // ---- Fee transactions / revenue ----
 
 type feeTxRow struct {
-	ID       uuid.UUID `json:"id"`
+	ID       uuid.UUID  `json:"id"`
 	UserID   *uuid.UUID `json:"user_id"`
-	FeeType  string    `json:"fee_type"`
-	Amount   string    `json:"amount"`
-	Currency string    `json:"currency"`
-	ChainID  *int64    `json:"chain_id"`
-	TxHash   string    `json:"tx_hash"`
-	Status   string    `json:"status"`
+	FeeType  string     `json:"fee_type"`
+	Amount   string     `json:"amount"`
+	Currency string     `json:"currency"`
+	ChainID  *int64     `json:"chain_id"`
+	TxHash   string     `json:"tx_hash"`
+	Status   string     `json:"status"`
 }
 
 func handleAdminFeeTransactions(c *gin.Context) {

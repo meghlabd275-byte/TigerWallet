@@ -1,9 +1,9 @@
 /**
  * TigerWallet Tax Reports Service
- * 
+ *
  * Generate comprehensive tax reports for cryptocurrency transactions
  * Uses Go for high load handling and worldwide distribution
- * 
+ *
  * Features:
  * - Cost basis calculation (FIFO, LIFO, HIFO, Specific ID)
  * - Capital gains/losses calculation
@@ -16,7 +16,6 @@
 package main
 
 import (
-	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -25,7 +24,6 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -33,74 +31,82 @@ import (
 // ============== Data Structures ==============
 
 type Transaction struct {
-	ID            string    `json:"id"`
-	Timestamp     time.Time `json:"timestamp"`
-	Type          string    `json:"type"` // buy, sell, transfer, stake_reward, airdrop, mining, loan, repay
-	Token         string    `json:"token"`
-	Chain         string    `json:"chain"`
-	Amount        float64   `json:"amount"`
-	PriceUSD      float64   `json:"price_usd"`
-	ValueUSD      float64   `json:"value_usd"`
-	FeeUSD        float64   `json:"fee_usd"`
-	FromAddress   string    `json:"from_address"`
-	ToAddress     string    `json:"to_address"`
-	Hash          string    `json:"hash"`
-	Exchange      string    `json:"exchange,omitempty"`
-	Notes         string    `json:"notes,omitempty"`
+	ID          string    `json:"id"`
+	Timestamp   time.Time `json:"timestamp"`
+	Type        string    `json:"type"` // buy, sell, transfer, stake_reward, airdrop, mining, loan, repay
+	Token       string    `json:"token"`
+	Chain       string    `json:"chain"`
+	Amount      float64   `json:"amount"`
+	PriceUSD    float64   `json:"price_usd"`
+	ValueUSD    float64   `json:"value_usd"`
+	FeeUSD      float64   `json:"fee_usd"`
+	FromAddress string    `json:"from_address"`
+	ToAddress   string    `json:"to_address"`
+	Hash        string    `json:"hash"`
+	Exchange    string    `json:"exchange,omitempty"`
+	Notes       string    `json:"notes,omitempty"`
 }
 
 type TaxEvent struct {
-	ID              string    `json:"id"`
-	Date            time.Time `json:"date"`
-	Type            string    `json:"type"` // capital_gain, capital_loss, income, gift, transfer
-	Token           string    `json:"token"`
-	Amount          float64   `json:"amount"`
-	CostBasis       float64   `json:"cost_basis"`
-	Proceeds        float64   `json:"proceeds"`
-	GainLoss        float64   `json:"gain_loss"`
-	Term            string    `json:"term"` // short_term, long_term
-	TaxYear         int       `json:"tax_year"`
-	HoldingPeriod   int       `json:"holding_period_days"`
-	TransactionID   string    `json:"transaction_id"`
+	ID            string    `json:"id"`
+	Date          time.Time `json:"date"`
+	Type          string    `json:"type"` // capital_gain, capital_loss, income, gift, transfer
+	Token         string    `json:"token"`
+	Amount        float64   `json:"amount"`
+	CostBasis     float64   `json:"cost_basis"`
+	Proceeds      float64   `json:"proceeds"`
+	GainLoss      float64   `json:"gain_loss"`
+	Term          string    `json:"term"` // short_term, long_term
+	TaxYear       int       `json:"tax_year"`
+	HoldingPeriod int       `json:"holding_period_days"`
+	TransactionID string    `json:"transaction_id"`
+}
+
+// Lot represents a cost-basis lot for FIFO/LIFO/HIFO tracking.
+type Lot struct {
+	Token     string
+	Amount    float64
+	CostBasis float64
+	Date      time.Time
 }
 
 type TaxReport struct {
-	UserID          string     `json:"user_id"`
-	TaxYear         int        `json:"tax_year"`
-	Jurisdiction    string     `json:"jurisdiction"`
-	GeneratedAt     time.Time  `json:"generated_at"`
+	UserID       string    `json:"user_id"`
+	TaxYear      int       `json:"tax_year"`
+	Jurisdiction string    `json:"jurisdiction"`
+	GeneratedAt  time.Time `json:"generated_at"`
 
 	// Summary
-	TotalProceeds    float64    `json:"total_proceeds"`
-	TotalCostBasis  float64    `json:"total_cost_basis"`
-	TotalGainLoss   float64    `json:"total_gain_loss"`
-	ShortTermGain   float64    `json:"short_term_gain"`
-	LongTermGain    float64    `json:"long_term_gain"`
-	ShortTermLoss  float64    `json:"short_term_loss"`
-	LongTermLoss   float64    `json:"long_term_loss"`
+	TotalProceeds  float64 `json:"total_proceeds"`
+	TotalCostBasis float64 `json:"total_cost_basis"`
+	TotalGainLoss  float64 `json:"total_gain_loss"`
+	ShortTermGain  float64 `json:"short_term_gain"`
+	LongTermGain   float64 `json:"long_term_gain"`
+	ShortTermLoss  float64 `json:"short_term_loss"`
+	LongTermLoss   float64 `json:"long_term_loss"`
 
 	// Income
-	StakingIncome   float64    `json:"staking_income"`
-	MiningIncome    float64    `json:"mining_income"`
-	AirdropIncome  float64    `json:"airdrop_income"`
-	InterestIncome  float64    `json:"interest_income"`
-	TotalIncome    float64    `json:"total_income"`
+	StakingIncome  float64 `json:"staking_income"`
+	MiningIncome   float64 `json:"mining_income"`
+	AirdropIncome  float64 `json:"airdrop_income"`
+	InterestIncome float64 `json:"interest_income"`
+	TotalIncome    float64 `json:"total_income"`
 
 	// Transactions
-	Transactions    []Transaction `json:"transactions"`
-	TaxEvents       []TaxEvent    `json:"tax_events"`
+	Transactions []Transaction `json:"transactions"`
+	TaxEvents    []TaxEvent    `json:"tax_events"`
 
 	// Holdings
-	Holdings        []Holding    `json:"holdings"`
+	Holdings []Holding `json:"holdings"`
 }
 
 type Holding struct {
-	Token          string    `json:"token"`
-	Amount         float64   `json:"amount"`
-	CostBasis      float64   `json:"cost_basis"`
+	Token            string  `json:"token"`
+	Amount           float64 `json:"amount"`
+	CostBasis        float64 `json:"cost_basis"`
 	CostBasisPerUnit float64 `json:"cost_basis_per_unit"`
-	CurrentValue   float64   `json:"current_value"`
-	UnrealizedGL   float64   `json:"unrealized_gain_loss"`
+	CurrentValue     float64 `json:"current_value"`
+	UnrealizedGL     float64 `json:"unrealized_gain_loss"`
 }
 
 type TaxConfig struct {
@@ -124,7 +130,7 @@ const (
 
 type TaxService struct {
 	transactions map[string][]Transaction // userID -> transactions
-	taxEvents    map[string][]TaxEvent   // userID -> tax events
+	taxEvents    map[string][]TaxEvent    // userID -> tax events
 	holdings     map[string][]Holding     // userID -> holdings
 
 	mu         sync.RWMutex
@@ -141,7 +147,7 @@ func NewTaxService() *TaxService {
 
 func (s *TaxService) Run() error {
 	mux := http.NewServeMux()
-	
+
 	// API endpoints
 	mux.HandleFunc("/api/report/generate", s.handleGenerateReport)
 	mux.HandleFunc("/api/report/export", s.handleExportReport)
@@ -149,7 +155,7 @@ func (s *TaxService) Run() error {
 	mux.HandleFunc("/api/holdings", s.handleGetHoldings)
 	mux.HandleFunc("/api/config", s.handleConfig)
 	mux.HandleFunc("/api/transactions/add", s.handleAddTransaction)
-	
+
 	// Health check
 	mux.HandleFunc("/health", s.handleHealth)
 
@@ -253,7 +259,7 @@ func (s *TaxService) handleConfig(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		
+
 		// Store config (in real app, save to database)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "saved"})
@@ -383,13 +389,6 @@ func (s *TaxService) calculateTaxEvents(txs []Transaction, method string) []TaxE
 	var events []TaxEvent
 	var lots []Lot // For cost basis tracking
 
-	type Lot struct {
-		Token     string
-		Amount    float64
-		CostBasis float64
-		Date      time.Time
-	}
-
 	// Sort transactions by date
 	sort.Slice(txs, func(i, j int) bool {
 		return txs[i].Timestamp.Before(txs[j].Timestamp)
@@ -457,9 +456,8 @@ func (s *TaxService) calculateTaxEvents(txs []Transaction, method string) []TaxE
 			}
 
 			events = append(events, event)
-		}
 
-		case "income", "interest", "staking", "mining", "airdrop":
+		case "income", "interest", "staking":
 			event := TaxEvent{
 				ID:            fmt.Sprintf("event_%s", tx.ID),
 				Date:          tx.Timestamp,
@@ -558,7 +556,7 @@ func (s *TaxService) calculateHIFO(lots []Lot, token string, amount float64) (fl
 			break
 		}
 
-		sold := math.Min(remaining, hlots[hlot.idx].Amount)
+		sold := math.Min(remaining, hLots[hlot.idx].Amount)
 		costBasis += hlot.CostBasis * sold
 		lots[hlot.idx].Amount -= sold
 		remaining -= sold
@@ -596,7 +594,7 @@ func (s *TaxService) calculateHoldings(txs []Transaction) []Holding {
 		if h.Amount > 0.0001 {
 			h.CostBasisPerUnit = h.CostBasis / h.Amount
 			h.CurrentValue = h.CostBasis // Simplified
-			h.UnrealizedGL = 0 // Would calculate with current price
+			h.UnrealizedGL = 0           // Would calculate with current price
 			result = append(result, h)
 		}
 	}

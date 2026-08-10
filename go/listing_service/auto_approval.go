@@ -22,29 +22,29 @@ import (
 // ============================================================================
 
 type AutoApprovalConfig struct {
-	Enabled              bool              `json:"enabled"`
-	MinKYCLevel         int               `json:"min_kyc_level"` // 1: Email, 2: Phone, 3: ID, 4: Enhanced
-	RequireTokenAudit   bool              `json:"require_token_audit"`
-	RequireSocialMedia  bool              `json:"require_social_media"`
-	MinLiquidityUSD     float64           `json:"min_liquidity_usd"`
-	MaxSupply           string            `json:"max_supply"`
-	AllowContractVerify bool              `json:"allow_contract_verify"`
-	TrustScoreThreshold int               `json:"trust_score_threshold"`
-	TierAutoApproval    map[string]bool   `json:"tier_auto_approval"` // Which tiers can auto-approve
-	CustomRules         []CustomRule      `json:"custom_rules"`
+	Enabled             bool            `json:"enabled"`
+	MinKYCLevel         int             `json:"min_kyc_level"` // 1: Email, 2: Phone, 3: ID, 4: Enhanced
+	RequireTokenAudit   bool            `json:"require_token_audit"`
+	RequireSocialMedia  bool            `json:"require_social_media"`
+	MinLiquidityUSD     float64         `json:"min_liquidity_usd"`
+	MaxSupply           string          `json:"max_supply"`
+	AllowContractVerify bool            `json:"allow_contract_verify"`
+	TrustScoreThreshold int             `json:"trust_score_threshold"`
+	TierAutoApproval    map[string]bool `json:"tier_auto_approval"` // Which tiers can auto-approve
+	CustomRules         []CustomRule    `json:"custom_rules"`
 }
 
 type CustomRule struct {
-	Name        string   `json:"name"`
-	Field      string   `json:"field"`
-	Operator   string   `json:"operator"` // equals, contains, gt, lt, in
-	Value      string   `json:"value"`
-	Action     string   `json:"action"` // approve, reject, manual_review
-	Priority   int      `json:"priority"`
+	Name     string `json:"name"`
+	Field    string `json:"field"`
+	Operator string `json:"operator"` // equals, contains, gt, lt, in
+	Value    string `json:"value"`
+	Action   string `json:"action"` // approve, reject, manual_review
+	Priority int    `json:"priority"`
 }
 
 var DefaultAutoApprovalConfig = &AutoApprovalConfig{
-	Enabled:              true,
+	Enabled:             true,
 	MinKYCLevel:         2,
 	RequireTokenAudit:   true,
 	RequireSocialMedia:  true,
@@ -77,7 +77,7 @@ type AutoApprovalService struct {
 }
 
 type ApprovalRequest struct {
-	ListingID       string                 `json:"listing_id"`
+	ListingID      string                 `json:"listing_id"`
 	TokenSymbol    string                 `json:"token_symbol"`
 	TokenName      string                 `json:"token_name"`
 	ContractAddr   string                 `json:"contract_address"`
@@ -89,20 +89,20 @@ type ApprovalRequest struct {
 }
 
 type ApprovalResult struct {
-	ListingID       string    `json:"listing_id"`
-	Decision        string    `json:"decision"` // auto_approved, auto_rejected, manual_review
-	Reason          string    `json:"reason"`
-	Score           int       `json:"score"`
-	Checks          []CheckResult `json:"checks"`
-	ProcessedAt     time.Time `json:"processed_at"`
-	AutoApprovedBy  string    `json:"auto_approved_by,omitempty"`
+	ListingID      string        `json:"listing_id"`
+	Decision       string        `json:"decision"` // auto_approved, auto_rejected, manual_review
+	Reason         string        `json:"reason"`
+	Score          int           `json:"score"`
+	Checks         []CheckResult `json:"checks"`
+	ProcessedAt    time.Time     `json:"processed_at"`
+	AutoApprovedBy string        `json:"auto_approved_by,omitempty"`
 }
 
 type CheckResult struct {
-	Name      string `json:"name"`
-	Status    string `json:"status"` // pass, fail, skip
-	Score     int    `json:"score"`
-	Details   string `json:"details"`
+	Name      string    `json:"name"`
+	Status    string    `json:"status"` // pass, fail, skip
+	Score     int       `json:"score"`
+	Details   string    `json:"details"`
 	Timestamp time.Time `json:"timestamp"`
 }
 
@@ -425,7 +425,7 @@ func (s *AutoApprovalService) applyCustomRules(ctx context.Context, listing *Tok
 
 		// Apply rule
 		passed := s.evaluateRule(fieldValue, rule.Operator, rule.Value)
-		
+
 		if passed {
 			check.Status = "pass"
 			check.Score = 5
@@ -455,8 +455,8 @@ func (s *AutoApprovalService) evaluateRule(fieldValue, operator, ruleValue strin
 	case "equals":
 		return fieldValue == ruleValue
 	case "contains":
-		return len(fieldValue) > 0 && len(ruleValue) > 0 && 
-		       (len(fieldValue) >= len(ruleValue))
+		return len(fieldValue) > 0 && len(ruleValue) > 0 &&
+			(len(fieldValue) >= len(ruleValue))
 	case "gt":
 		// For numeric comparisons
 		return false // Simplified
@@ -537,8 +537,8 @@ func (s *AutoApprovalService) GetConfig(ctx context.Context) (*AutoApprovalConfi
 // ============================================================================
 
 type KYCInfo struct {
-	Level   int    `json:"level"`
-	Status  string `json:"status"`
+	Level      int       `json:"level"`
+	Status     string    `json:"status"`
 	VerifiedAt time.Time `json:"verified_at"`
 }
 

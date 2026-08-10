@@ -197,7 +197,10 @@ func (s *service) listBots(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var b struct{ ID, Name, Strat, Pair, Params, Status string; Ts int64 }
+		var b struct {
+			ID, Name, Strat, Pair, Params, Status string
+			Ts                                    int64
+		}
 		if err := rows.Scan(&b.ID, &b.Name, &b.Strat, &b.Pair, &b.Params, &b.Status, &b.Ts); err != nil {
 			continue
 		}
@@ -207,9 +210,9 @@ func (s *service) listBots(c *gin.Context) {
 }
 
 type createBotReq struct {
-	Name     string `json:"name" binding:"required"`
-	Strategy string `json:"strategy" binding:"required"`
-	Pair     string `json:"pair" binding:"required"`
+	Name     string                 `json:"name" binding:"required"`
+	Strategy string                 `json:"strategy" binding:"required"`
+	Pair     string                 `json:"pair" binding:"required"`
 	Params   map[string]interface{} `json:"params"`
 }
 
@@ -241,7 +244,10 @@ func (s *service) createBot(c *gin.Context) {
 
 func (s *service) getBot(c *gin.Context) {
 	id := c.Param("id")
-	var b struct{ ID, Name, Strat, Pair, Params, Status string; Ts int64 }
+	var b struct {
+		ID, Name, Strat, Pair, Params, Status string
+		Ts                                    int64
+	}
 	err := s.pg.QueryRow(c, `SELECT id,name,strategy,pair,params::text,status,extract(epoch from created_at)::bigint FROM trading_bots WHERE id=$1 AND user_id=$2`, id, c.GetString("user_id")).
 		Scan(&b.ID, &b.Name, &b.Strat, &b.Pair, &b.Params, &b.Status, &b.Ts)
 	if err != nil {

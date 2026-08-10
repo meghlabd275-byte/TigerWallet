@@ -9,13 +9,10 @@ import (
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
-	"crypto/sha512"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
@@ -28,26 +25,26 @@ import (
 // ============================================================================
 
 type CoinbaseConnector struct {
-	apiKey        string
-	apiSecret     string
-	passphrase    string
-	baseURL       string
-	httpClient    *http.Client
-	symbols       map[string]*Symbol
-	orderCache    map[string]*Order
-	mu            sync.RWMutex
-	rateLimiter   *RateLimiter
+	apiKey      string
+	apiSecret   string
+	passphrase  string
+	baseURL     string
+	httpClient  *http.Client
+	symbols     map[string]*Product
+	orderCache  map[string]*Order
+	mu          sync.RWMutex
+	rateLimiter *RateLimiter
 }
 
 func NewCoinbaseConnector(apiKey, apiSecret, passphrase string) *CoinbaseConnector {
 	return &CoinbaseConnector{
-		apiKey:     apiKey,
-		apiSecret:  apiSecret,
-		passphrase: passphrase,
-		baseURL:    "https://api.coinbase.com",
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		symbols:    make(map[string]*Symbol),
-		orderCache: make(map[string]*Order),
+		apiKey:      apiKey,
+		apiSecret:   apiSecret,
+		passphrase:  passphrase,
+		baseURL:     "https://api.coinbase.com",
+		httpClient:  &http.Client{Timeout: 30 * time.Second},
+		symbols:     make(map[string]*Product),
+		orderCache:  make(map[string]*Order),
 		rateLimiter: NewRateLimiter(10, time.Second),
 	}
 }
@@ -71,7 +68,7 @@ func (c *CoinbaseConnector) Connect() error {
 func (c *CoinbaseConnector) Disconnect() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.symbols = make(map[string]*Symbol)
+	c.symbols = make(map[string]*Product)
 }
 
 func (c *CoinbaseConnector) IsConnected() bool {
@@ -81,25 +78,25 @@ func (c *CoinbaseConnector) IsConnected() bool {
 }
 
 type Product struct {
-	ID                   string  `json:"id"`
-	BaseCurrency        string  `json:"base_currency"`
-	QuoteCurrency       string  `json:"quote_currency"`
-	BaseMinSize         float64 `json:"base_min_size,string"`
-	BaseMaxSize         float64 `json:"base_max_size,string"`
-	QuoteMinSize        float64 `json:"quote_min_size,string"`
-	QuoteIncrement      float64 `json:"quote_increment,string"`
-	DisplayName         string  `json:"display_name"`
-	Status              string  `json:"status"`
-	StatusMessage       string  `json:"status_message"`
-	MinMarketFunds      float64 `json:"min_market_funds,string"`
-	MaxMarketFunds      float64 `json:"max_market_funds,string"`
-	PostOnly            bool    `json:"post_only"`
-	LimitOnly           bool    `json:"limit_only"`
-	CancelOnly          bool    `json:"cancel_only"`
-	TradingDisabled     bool    `json:"trading_disabled"`
-	AuctionMode         bool    `json:"auction_mode"`
-	AuctionStartTime    *string `json:"auction_start_time"`
-	AuctionEndTime      *string `json:"auction_end_time"`
+	ID               string  `json:"id"`
+	BaseCurrency     string  `json:"base_currency"`
+	QuoteCurrency    string  `json:"quote_currency"`
+	BaseMinSize      float64 `json:"base_min_size,string"`
+	BaseMaxSize      float64 `json:"base_max_size,string"`
+	QuoteMinSize     float64 `json:"quote_min_size,string"`
+	QuoteIncrement   float64 `json:"quote_increment,string"`
+	DisplayName      string  `json:"display_name"`
+	Status           string  `json:"status"`
+	StatusMessage    string  `json:"status_message"`
+	MinMarketFunds   float64 `json:"min_market_funds,string"`
+	MaxMarketFunds   float64 `json:"max_market_funds,string"`
+	PostOnly         bool    `json:"post_only"`
+	LimitOnly        bool    `json:"limit_only"`
+	CancelOnly       bool    `json:"cancel_only"`
+	TradingDisabled  bool    `json:"trading_disabled"`
+	AuctionMode      bool    `json:"auction_mode"`
+	AuctionStartTime *string `json:"auction_start_time"`
+	AuctionEndTime   *string `json:"auction_end_time"`
 }
 
 func (c *CoinbaseConnector) GetProducts() ([]*Product, error) {
@@ -165,12 +162,12 @@ func (c *CoinbaseConnector) GetSymbols() ([]Symbol, error) {
 }
 
 type Ticker struct {
-	TradeID       int64   `json:"trade_id,string"`
-	Price         string  `json:"price"`
-	Size          string  `json:"size"`
-	Side          string  `json:"side"`
-	Time          string  `json:"time"`
-	ProductID     string  `json:"product_id"`
+	TradeID   int64  `json:"trade_id,string"`
+	Price     string `json:"price"`
+	Size      string `json:"size"`
+	Side      string `json:"side"`
+	Time      string `json:"time"`
+	ProductID string `json:"product_id"`
 }
 
 func (c *CoinbaseConnector) GetTicker(productID string) (*Ticker, error) {
@@ -199,18 +196,18 @@ func (c *CoinbaseConnector) GetTicker(productID string) (*Ticker, error) {
 }
 
 type OrderBookEntry struct {
-	PriceLevel string   `json:"price_level"`
-	Proceeds   string   `json:"proceeds"`
-	Size       string   `json:"size"`
-	NumOrders  int      `json:"num_orders,string"`
+	PriceLevel string `json:"price_level"`
+	Proceeds   string `json:"proceeds"`
+	Size       string `json:"size"`
+	NumOrders  int    `json:"num_orders,string"`
 }
 
 type OrderBook struct {
-	ProductID    string         `json:"product_id"`
-	Bids         []OrderBookEntry `json:"bids"`
-	Asks         []OrderBookEntry `json:"asks"`
-	Time         string         `json:"time"`
-	SequenceNum  int64          `json:"sequence_num,string"`
+	ProductID   string           `json:"product_id"`
+	Bids        []OrderBookEntry `json:"bids"`
+	Asks        []OrderBookEntry `json:"asks"`
+	Time        string           `json:"time"`
+	SequenceNum int64            `json:"sequence_num,string"`
 }
 
 func (c *CoinbaseConnector) GetOrderBook(productID string, level int) (*OrderBook, error) {
@@ -239,17 +236,17 @@ func (c *CoinbaseConnector) GetOrderBook(productID string, level int) (*OrderBoo
 }
 
 type Candle struct {
-	Start         float64
-	High          float64
-	Low           float64
-	Open          float64
-	Close         float64
-	Volume        float64
-	Timestamp     time.Time
+	Start     float64
+	High      float64
+	Low       float64
+	Open      float64
+	Close     float64
+	Volume    float64
+	Timestamp time.Time
 }
 
 func (c *CoinbaseConnector) GetCandles(productID string, start, end time.Time, granularity string) ([]Candle, error) {
-	req, err := http.NewRequest("GET", 
+	req, err := http.NewRequest("GET",
 		fmt.Sprintf("%s/api/v3/brokerage/products/%s/candles?start=%s&end=%s&granularity=%s",
 			c.baseURL, productID, start.Format(time.RFC3339), end.Format(time.RFC3339), granularity), nil)
 	if err != nil {
@@ -297,9 +294,9 @@ func (c *CoinbaseConnector) GetCandles(productID string, start, end time.Time, g
 
 func (c *CoinbaseConnector) CreateOrder(order *Order) (*Order, error) {
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
-	
+
 	endpoint := c.baseURL + "/api/v3/brokerage/orders"
-	
+
 	side := "BUY"
 	if order.Side == SELL {
 		side = "SELL"
@@ -324,7 +321,7 @@ func (c *CoinbaseConnector) CreateOrder(order *Order) (*Order, error) {
 	}
 
 	jsonBody, _ := json.Marshal(orderRequest)
-	
+
 	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return nil, err
@@ -333,7 +330,7 @@ func (c *CoinbaseConnector) CreateOrder(order *Order) (*Order, error) {
 	// Sign request
 	message := timestamp + "POST" + "/api/v3/brokerage/orders" + string(jsonBody)
 	signature := c.sign(message)
-	
+
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("CB-ACCESS-KEY", c.apiKey)
 	req.Header.Set("CB-ACCESS-SIGN", signature)
@@ -371,25 +368,25 @@ func (c *CoinbaseConnector) CreateOrder(order *Order) (*Order, error) {
 }
 
 type OrderResponse struct {
-	OrderID          string `json:"order_id"`
-	ProductID        string `json:"product_id"`
-	Side             string `json:"side"`
-	OrderType        string `json:"order_type"`
-	Status           string `json:"status"`
-	TimeInForce     string `json:"time_in_force"`
-	PostOnly         bool   `json:"post_only"`
-	CreatedAt        string `json:"created_at"`
-	FillFee          string `json:"fill_fee"`
-	FilledSize       string `json:"filled_size"`
-	RemainingSize    string `json:"remaining_size"`
+	OrderID            string `json:"order_id"`
+	ProductID          string `json:"product_id"`
+	Side               string `json:"side"`
+	OrderType          string `json:"order_type"`
+	Status             string `json:"status"`
+	TimeInForce        string `json:"time_in_force"`
+	PostOnly           bool   `json:"post_only"`
+	CreatedAt          string `json:"created_at"`
+	FillFee            string `json:"fill_fee"`
+	FilledSize         string `json:"filled_size"`
+	RemainingSize      string `json:"remaining_size"`
 	AverageFilledPrice string `json:"average_filled_price"`
 }
 
 func (c *CoinbaseConnector) CancelOrder(orderID string) error {
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
-	
+
 	endpoint := c.baseURL + "/api/v3/brokerage/orders/" + orderID
-	
+
 	req, err := http.NewRequest("DELETE", endpoint, nil)
 	if err != nil {
 		return err
@@ -397,7 +394,7 @@ func (c *CoinbaseConnector) CancelOrder(orderID string) error {
 
 	message := timestamp + "DELETE" + "/api/v3/brokerage/orders/" + orderID
 	signature := c.sign(message)
-	
+
 	req.Header.Set("CB-ACCESS-KEY", c.apiKey)
 	req.Header.Set("CB-ACCESS-SIGN", signature)
 	req.Header.Set("CB-ACCESS-TIMESTAMP", timestamp)
@@ -425,9 +422,9 @@ func (c *CoinbaseConnector) GetOrder(orderID string) (*Order, error) {
 	c.mu.RUnlock()
 
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
-	
+
 	endpoint := c.baseURL + "/api/v3/brokerage/orders/" + orderID
-	
+
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -435,7 +432,7 @@ func (c *CoinbaseConnector) GetOrder(orderID string) (*Order, error) {
 
 	message := timestamp + "GET" + "/api/v3/brokerage/orders/" + orderID
 	signature := c.sign(message)
-	
+
 	req.Header.Set("CB-ACCESS-KEY", c.apiKey)
 	req.Header.Set("CB-ACCESS-SIGN", signature)
 	req.Header.Set("CB-ACCESS-TIMESTAMP", timestamp)
@@ -461,13 +458,13 @@ func (c *CoinbaseConnector) GetOrder(orderID string) (*Order, error) {
 	}
 
 	order := &Order{
-		OrderID:   response.Order.OrderID,
-		Symbol:    response.Order.ProductID,
-		Side:      BUY,
-		Status:    OrderStatus(response.Order.Status),
-		Price:     0,
+		OrderID:     response.Order.OrderID,
+		Symbol:      response.Order.ProductID,
+		Side:        BUY,
+		Status:      OrderStatus(response.Order.Status),
+		Price:       0,
 		ExecutedQty: 0,
-		CreateTime: time.Now().UnixMilli(),
+		CreateTime:  time.Now().UnixMilli(),
 	}
 
 	return order, nil
@@ -475,9 +472,9 @@ func (c *CoinbaseConnector) GetOrder(orderID string) (*Order, error) {
 
 func (c *CoinbaseConnector) GetOpenOrders() ([]Order, error) {
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
-	
+
 	endpoint := c.baseURL + "/api/v3/brokerage/orders?status=open"
-	
+
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -485,7 +482,7 @@ func (c *CoinbaseConnector) GetOpenOrders() ([]Order, error) {
 
 	message := timestamp + "GET" + "/api/v3/brokerage/orders?status=open"
 	signature := c.sign(message)
-	
+
 	req.Header.Set("CB-ACCESS-KEY", c.apiKey)
 	req.Header.Set("CB-ACCESS-SIGN", signature)
 	req.Header.Set("CB-ACCESS-TIMESTAMP", timestamp)
@@ -541,9 +538,9 @@ type Account struct {
 
 func (c *CoinbaseConnector) GetAccounts() ([]Account, error) {
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
-	
+
 	endpoint := c.baseURL + "/api/v3/brokerage/accounts"
-	
+
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -551,7 +548,7 @@ func (c *CoinbaseConnector) GetAccounts() ([]Account, error) {
 
 	message := timestamp + "GET" + "/api/v3/brokerage/accounts"
 	signature := c.sign(message)
-	
+
 	req.Header.Set("CB-ACCESS-KEY", c.apiKey)
 	req.Header.Set("CB-ACCESS-SIGN", signature)
 	req.Header.Set("CB-ACCESS-TIMESTAMP", timestamp)

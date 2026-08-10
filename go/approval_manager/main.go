@@ -2,14 +2,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -46,26 +44,26 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type Approval struct {
-	ID              string    `json:"id"`
-	Owner           string    `json:"owner"`
-	TokenAddress    string    `json:"tokenAddress"`
-	Spender        string    `json:"spender"`
-	ChainID        uint64    `json:"chainId"`
-	Allowance      string    `json:"allowance"`
-	TokenSymbol    string    `json:"tokenSymbol"`
-	TokenName      string    `json:"tokenName"`
-	TokenDecimals  int       `json:"tokenDecimals"`
-	IsInfinite     bool      `json:"isInfinite"`
-	RiskLevel      string    `json:"riskLevel"` // low, medium, high, critical
-	FirstApproved  int64     `json:"firstApproved"`
-	LastSeen       int64     `json:"lastSeen"`
-	TxHash         string    `json:"txHash"`
-	BlockNumber    uint64    `json:"blockNumber"`
+	ID            string `json:"id"`
+	Owner         string `json:"owner"`
+	TokenAddress  string `json:"tokenAddress"`
+	Spender       string `json:"spender"`
+	ChainID       uint64 `json:"chainId"`
+	Allowance     string `json:"allowance"`
+	TokenSymbol   string `json:"tokenSymbol"`
+	TokenName     string `json:"tokenName"`
+	TokenDecimals int    `json:"tokenDecimals"`
+	IsInfinite    bool   `json:"isInfinite"`
+	RiskLevel     string `json:"riskLevel"` // low, medium, high, critical
+	FirstApproved int64  `json:"firstApproved"`
+	LastSeen      int64  `json:"lastSeen"`
+	TxHash        string `json:"txHash"`
+	BlockNumber   uint64 `json:"blockNumber"`
 }
 
 type ApprovalScanResult struct {
 	Address       string     `json:"address"`
-	ChainID       uint64    `json:"chainId"`
+	ChainID       uint64     `json:"chainId"`
 	Approvals     []Approval `json:"approvals"`
 	TotalValue    string     `json:"totalValue"`
 	HighRiskCount int        `json:"highRiskCount"`
@@ -73,19 +71,19 @@ type ApprovalScanResult struct {
 }
 
 type RevokeRequest struct {
-	Owner         string `json:"owner" binding:"required"`
-	TokenAddress  string `json:"tokenAddress" binding:"required"`
-	Spender       string `json:"spender" binding:"required"`
-	ChainID       uint64 `json:"chainId" binding:"required"`
-	PrivateKey    string `json:"privateKey"` // For signing (would use MPC in production)
+	Owner        string `json:"owner" binding:"required"`
+	TokenAddress string `json:"tokenAddress" binding:"required"`
+	Spender      string `json:"spender" binding:"required"`
+	ChainID      uint64 `json:"chainId" binding:"required"`
+	PrivateKey   string `json:"privateKey"` // For signing (would use MPC in production)
 }
 
 type KnownSpender struct {
-	Address    string `json:"address"`
-	Name       string `json:"name"`
-	Category   string `json:"category"` // defi, nft, bridge, unknown
-	RiskLevel  string `json:"riskLevel"`
-	Verified   bool   `json:"verified"`
+	Address   string `json:"address"`
+	Name      string `json:"name"`
+	Category  string `json:"category"` // defi, nft, bridge, unknown
+	RiskLevel string `json:"riskLevel"`
+	Verified  bool   `json:"verified"`
 }
 
 // ============================================================================
@@ -93,11 +91,11 @@ type KnownSpender struct {
 // ============================================================================
 
 type ApprovalManager struct {
-	config       *Config
-	redis        *redis.Client
-	approvals    map[string][]Approval // user -> approvals
+	config        *Config
+	redis         *redis.Client
+	approvals     map[string][]Approval // user -> approvals
 	knownSpenders map[string]KnownSpender
-	mu           sync.RWMutex
+	mu            sync.RWMutex
 }
 
 func NewApprovalManager(config *Config) *ApprovalManager {
@@ -109,20 +107,20 @@ func NewApprovalManager(config *Config) *ApprovalManager {
 	knownSpenders := map[string]KnownSpender{
 		"0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D": {Address: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", Name: "Uniswap V2 Router", Category: "defi", RiskLevel: "low", Verified: true},
 		"0xE592427A0AEce92De3Edee1F18E0157C05861564": {Address: "0xE592427A0AEce92De3Edee1F18E0157C05861564", Name: "Uniswap V3 Router", Category: "defi", RiskLevel: "low", Verified: true},
-		"0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9": {Address: "0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9", Name: "SushiSwap Router", Category: "defi", RiskLevel: "low", Verified: true},
+		"0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9":  {Address: "0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9", Name: "SushiSwap Router", Category: "defi", RiskLevel: "low", Verified: true},
 		"0x10ED43C718714eb63d5aA57B78B54704E256024E": {Address: "0x10ED43C718714eb63d5aA57B78B54704E256024E", Name: "PancakeSwap Router", Category: "defi", RiskLevel: "low", Verified: true},
-		"0x3fC91A3afd703E599c8bfCee1B2b2d05d6A7d7C": {Address: "0x3fC91A3afd703E599c8bfCee1B2b2d05d6A7d7C", Name: "Velodrome Router", Category: "defi", RiskLevel: "low", Verified: true},
-		"0x1b02dA8Cb690d5974d0D3D3f2d5eC40c80c7F23": {Address: "0x1b02dA8Cb690d5974d0D3D3f2d5eC40c80c7F23", Name: "SushiSwap Polygon", Category: "defi", RiskLevel: "low", Verified: true},
+		"0x3fC91A3afd703E599c8bfCee1B2b2d05d6A7d7C":  {Address: "0x3fC91A3afd703E599c8bfCee1B2b2d05d6A7d7C", Name: "Velodrome Router", Category: "defi", RiskLevel: "low", Verified: true},
+		"0x1b02dA8Cb690d5974d0D3D3f2d5eC40c80c7F23":  {Address: "0x1b02dA8Cb690d5974d0D3D3f2d5eC40c80c7F23", Name: "SushiSwap Polygon", Category: "defi", RiskLevel: "low", Verified: true},
 		"0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff": {Address: "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff", Name: "QuickSwap Router", Category: "defi", RiskLevel: "low", Verified: true},
 		"0x0d4A10D435F5D2Cf1ba80F6553F15D0f12d0b3E5": {Address: "0x0d4A10D435F5D2Cf1ba80F6553F15D0f12d0b3E5", Name: "SpookySwap", Category: "defi", RiskLevel: "low", Verified: true},
-		"0xf164fC0Ec4E93085d2d0055634f0C981f0b3a0E": {Address: "0xf164fC0Ec4E93085d2d0055634f0C981f0b3a0E", Name: "Uniswap V2 Factory", Category: "defi", RiskLevel: "low", Verified: true},
+		"0xf164fC0Ec4E93085d2d0055634f0C981f0b3a0E":  {Address: "0xf164fC0Ec4E93085d2d0055634f0C981f0b3a0E", Name: "Uniswap V2 Factory", Category: "defi", RiskLevel: "low", Verified: true},
 		"0x1F98431c8aD98523631AE4a59f267346ea31F984": {Address: "0x1F98431c8aD98523631AE4a59f267346ea31F984", Name: "Uniswap V3 Factory", Category: "defi", RiskLevel: "low", Verified: true},
 	}
 
 	return &ApprovalManager{
-		config:       config,
-		redis:        redisClient,
-		approvals:    make(map[string][]Approval),
+		config:        config,
+		redis:         redisClient,
+		approvals:     make(map[string][]Approval),
 		knownSpenders: knownSpenders,
 	}
 }
@@ -133,35 +131,35 @@ func NewApprovalManager(config *Config) *ApprovalManager {
 
 func (s *ApprovalManager) ScanApprovals(address string, chainID uint64) (*ApprovalScanResult, error) {
 	result := &ApprovalScanResult{
-		Address:    address,
-		ChainID:    chainID,
-		Approvals:  []Approval{},
-		ScanTime:   time.Now().Unix(),
+		Address:   address,
+		ChainID:   chainID,
+		Approvals: []Approval{},
+		ScanTime:  time.Now().Unix(),
 	}
 
 	// Generate realistic approvals based on common tokens
 	// In production, this would query blockchain nodes
-	
+
 	commonTokens := s.getCommonTokens(chainID)
-	
+
 	for _, token := range commonTokens {
 		// Simulate different approval scenarios
 		approval := Approval{
-			ID:             fmt.Sprintf("appr-%s-%s-%d", address[:8], token.Address[:8], chainID),
-			Owner:          address,
-			TokenAddress:   token.Address,
+			ID:            fmt.Sprintf("appr-%s-%s-%d", address[:8], token.Address[:8], chainID),
+			Owner:         address,
+			TokenAddress:  token.Address,
 			Spender:       s.getRandomSpender(),
-			ChainID:        chainID,
+			ChainID:       chainID,
 			Allowance:     s.getRandomAllowance(),
-			TokenSymbol:    token.Symbol,
-			TokenName:      token.Name,
-			TokenDecimals:  token.Decimals,
-			IsInfinite:     s.isInfiniteAllowance(),
-			RiskLevel:      s.assessRisk(token.Symbol),
-			FirstApproved:  time.Now().Add(-30 * 24 * time.Hour).Unix(),
-			LastSeen:       time.Now().Unix(),
+			TokenSymbol:   token.Symbol,
+			TokenName:     token.Name,
+			TokenDecimals: token.Decimals,
+			IsInfinite:    s.isInfiniteAllowance(),
+			RiskLevel:     s.assessRisk(token.Symbol),
+			FirstApproved: time.Now().Add(-30 * 24 * time.Hour).Unix(),
+			LastSeen:      time.Now().Unix(),
 		}
-		
+
 		result.Approvals = append(result.Approvals, approval)
 	}
 
@@ -171,7 +169,7 @@ func (s *ApprovalManager) ScanApprovals(address string, chainID uint64) (*Approv
 		if appr.RiskLevel == "high" || appr.RiskLevel == "critical" {
 			result.HighRiskCount++
 		}
-		
+
 		// Estimate total value
 		allowance, _ := new(big.Int).SetString(appr.Allowance, 10)
 		if allowance != nil {
@@ -247,7 +245,7 @@ func (s *ApprovalManager) isInfiniteAllowance() bool {
 
 func (s *ApprovalManager) assessRisk(tokenSymbol string) string {
 	highRiskTokens := map[string]bool{"USDC": true, "USDT": true, "DAI": true, "WBTC": true}
-	
+
 	if highRiskTokens[tokenSymbol] {
 		return "medium"
 	}
@@ -263,31 +261,34 @@ func (s *ApprovalManager) RevokeApproval(req RevokeRequest) (string, error) {
 	// 1. Build a transaction to set allowance to 0
 	// 2. Sign it with MPC or private key
 	// 3. Broadcast to network
-	
+
 	// For now, return a mock tx hash
 	txHash := fmt.Sprintf("0x%x", time.Now().UnixNano())
-	
+
 	return txHash, nil
 }
 
 func (s *ApprovalManager) RevokeAllApprovals(address string, chainID uint64) ([]string, error) {
-	result := s.ScanApprovals(address, chainID)
+	result, err := s.ScanApprovals(address, chainID)
+	if err != nil {
+		return nil, err
+	}
 	txHashes := make([]string, 0)
-	
+
 	for _, approval := range result.Approvals {
 		if approval.Allowance != "0" {
 			txHash, err := s.RevokeApproval(RevokeRequest{
 				Owner:        address,
 				TokenAddress: approval.TokenAddress,
-				Spender:     approval.Spender,
-				ChainID:     chainID,
+				Spender:      approval.Spender,
+				ChainID:      chainID,
 			})
 			if err == nil {
 				txHashes = append(txHashes, txHash)
 			}
 		}
 	}
-	
+
 	return txHashes, nil
 }
 
@@ -309,7 +310,7 @@ func (s *ApprovalManager) GetSpenderInfo(address string) *KnownSpender {
 		return &KnownSpender{
 			Address:   address,
 			Name:      "Unknown Contract",
-			Category: "unknown",
+			Category:  "unknown",
 			RiskLevel: "unknown",
 			Verified:  false,
 		}
@@ -330,17 +331,17 @@ func (s *ApprovalManager) RegisterRoutes(r *gin.Engine) {
 	{
 		// Scan approvals
 		api.POST("/scan", s.handleScanApprovals)
-		
+
 		// Revoke single
 		api.POST("/revoke", s.handleRevoke)
-		
+
 		// Revoke all
 		api.POST("/revoke-all", s.handleRevokeAll)
-		
+
 		// Known spenders
 		api.GET("/spenders", s.handleGetKnownSpenders)
 		api.GET("/spender/:address", s.handleGetSpenderInfo)
-		
+
 		// Risk assessment
 		api.POST("/assess-risk", s.handleAssessRisk)
 	}
@@ -351,18 +352,18 @@ func (s *ApprovalManager) handleScanApprovals(c *gin.Context) {
 		Address string `json:"address" binding:"required"`
 		ChainID uint64 `json:"chainId" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	result, err := s.ScanApprovals(req.Address, req.ChainID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, result)
 }
 
@@ -372,13 +373,13 @@ func (s *ApprovalManager) handleRevoke(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	txHash, err := s.RevokeApproval(req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"txHash": txHash, "message": "Approval revoked"})
 }
 
@@ -387,18 +388,18 @@ func (s *ApprovalManager) handleRevokeAll(c *gin.Context) {
 		Address string `json:"address" binding:"required"`
 		ChainID uint64 `json:"chainId" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	txHashes, err := s.RevokeAllApprovals(req.Address, req.ChainID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"txHashes": txHashes, "count": len(txHashes)})
 }
 
@@ -417,17 +418,17 @@ func (s *ApprovalManager) handleAssessRisk(c *gin.Context) {
 	var req struct {
 		Approvals []Approval `json:"approvals" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Calculate risk score
 	highRisk := 0
 	mediumRisk := 0
 	lowRisk := 0
-	
+
 	for _, appr := range req.Approvals {
 		switch appr.RiskLevel {
 		case "high", "critical":
@@ -438,7 +439,7 @@ func (s *ApprovalManager) handleAssessRisk(c *gin.Context) {
 			lowRisk++
 		}
 	}
-	
+
 	riskScore := float64(highRisk*10 + mediumRisk*5 + lowRisk*1)
 	riskLevel := "low"
 	if riskScore > 50 {
@@ -448,13 +449,13 @@ func (s *ApprovalManager) handleAssessRisk(c *gin.Context) {
 	} else if riskScore > 10 {
 		riskLevel = "medium"
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{
-		"riskScore":   riskScore,
-		"riskLevel":   riskLevel,
-		"highRisk":    highRisk,
-		"mediumRisk":  mediumRisk,
-		"lowRisk":     lowRisk,
+		"riskScore":      riskScore,
+		"riskLevel":      riskLevel,
+		"highRisk":       highRisk,
+		"mediumRisk":     mediumRisk,
+		"lowRisk":        lowRisk,
 		"recommendation": "Revoke high-risk approvals immediately",
 	})
 }

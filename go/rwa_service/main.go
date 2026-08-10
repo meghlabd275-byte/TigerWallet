@@ -108,9 +108,9 @@ type service struct {
 // The RWA asset catalog. These map to real CoinGecko coin IDs so prices are
 // live market data, not fabricated values.
 type asset struct {
-	Symbol   string `json:"symbol"`
-	Name     string `json:"name"`
-	Type     string `json:"type"`
+	Symbol    string `json:"symbol"`
+	Name      string `json:"name"`
+	Type      string `json:"type"`
 	CoinGecko string `json:"coin_id"`
 }
 
@@ -330,7 +330,7 @@ func (s *service) getPortfolio(c *gin.Context) {
 		}
 		total += amt * p
 		holdings = append(holdings, gin.H{
-			"symbol": sym, "amount": amtStr, "avg_cost": costStr, "current_price": p, "value": amt * p, "pnl": (amt*p)-(amt*cost),
+			"symbol": sym, "amount": amtStr, "avg_cost": costStr, "current_price": p, "value": amt * p, "pnl": (amt * p) - (amt * cost),
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"holdings": holdings, "total_value": total})
@@ -338,7 +338,7 @@ func (s *service) getPortfolio(c *gin.Context) {
 
 type orderReq struct {
 	Symbol string `json:"symbol" binding:"required"`
-	Side   int    `json:"side" binding:"required"`  // 1 buy, 0 sell
+	Side   int    `json:"side" binding:"required"`   // 1 buy, 0 sell
 	Amount string `json:"amount" binding:"required"` // quantity of the asset
 }
 
@@ -445,7 +445,11 @@ func (s *service) listOrders(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var o struct{ ID, Sym, Amt, Price, Status string; Side int; Ts int64 }
+		var o struct {
+			ID, Sym, Amt, Price, Status string
+			Side                        int
+			Ts                          int64
+		}
 		if err := rows.Scan(&o.ID, &o.Sym, &o.Side, &o.Amt, &o.Price, &o.Status, &o.Ts); err != nil {
 			continue
 		}

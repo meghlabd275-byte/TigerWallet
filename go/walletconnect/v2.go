@@ -50,8 +50,8 @@ type Client struct {
 	connCancel   context.CancelFunc
 	connCtx      context.Context
 	connDone     chan struct{}
-	subscribed   map[string]bool     // topics currently subscribed on the relay
-	symKeys      map[string][]byte   // topic -> 32-byte symKey
+	subscribed   map[string]bool             // topics currently subscribed on the relay
+	symKeys      map[string][]byte           // topic -> 32-byte symKey
 	pending      map[int64]chan *rpcEnvelope // request id -> response waiter
 	pendingMutex sync.Mutex
 	handlers     map[string]func(*rpcEnvelope) // inbound peer request/notification handlers
@@ -59,27 +59,27 @@ type Client struct {
 
 // Metadata describes the dApp
 type Metadata struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	URL        string `json:"url"`
-	Icons      []string `json:"icons"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	URL         string   `json:"url"`
+	Icons       []string `json:"icons"`
 }
 
 // Session represents an active WalletConnect session
 type Session struct {
-	Topic      string
-	Metadata   Metadata
-	Chains     []uint64
-	Methods    []string
-	Events     []string
-	Expiry     time.Time
-	PublicKey  string
-	symKey     []byte // 32-byte symmetric key used for relay encryption
+	Topic     string
+	Metadata  Metadata
+	Chains    []uint64
+	Methods   []string
+	Events    []string
+	Expiry    time.Time
+	PublicKey string
+	symKey    []byte // 32-byte symmetric key used for relay encryption
 }
 
 // URI represents WalletConnect URI
 type URI struct {
-	Protocol   string
+	Protocol  string
 	Version   string
 	Topic     string
 	PublicKey string
@@ -183,18 +183,18 @@ func (c *Client) GenerateURI() (*URI, error) {
 	if _, err := rand.Read(topicBytes); err != nil {
 		return nil, err
 	}
-	
+
 	symKeyBytes := make([]byte, 32)
 	if _, err := rand.Read(symKeyBytes); err != nil {
 		return nil, err
 	}
-	
+
 	topic := hex.EncodeToString(topicBytes)
 	symKey := hex.EncodeToString(symKeyBytes)
 	pubKey := c.generateKeyPair()
-	
+
 	return &URI{
-		Protocol:   "wc",
+		Protocol:  "wc",
 		Version:   "2",
 		Topic:     topic,
 		PublicKey: pubKey,
@@ -394,12 +394,12 @@ func (c *Client) Disconnect(ctx context.Context, sessionTopic string) error {
 func (c *Client) GetSessions() []*Session {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	
+
 	sessions := make([]*Session, 0, len(c.sessions))
 	for _, s := range c.sessions {
 		sessions = append(sessions, s)
 	}
-	
+
 	return sessions
 }
 
@@ -414,7 +414,7 @@ func (c *Client) ApproveRequest(ctx context.Context, sessionTopic string, reques
 func (c *Client) RejectRequest(ctx context.Context, sessionTopic string, requestID int64, message string) error {
 	return c.Respond(ctx, sessionTopic, requestID, map[string]interface{}{
 		"approved": false,
-		"message": message,
+		"message":  message,
 	})
 }
 
@@ -424,19 +424,19 @@ func (c *Client) RejectRequest(ctx context.Context, sessionTopic string, request
 
 // Request methods
 const (
-	MethodEthRequestAccounts  = "eth_requestAccounts"
-	MethodEthAccounts      = "eth_accounts"
-	MethodEthChainId     = "eth_chainId"
-	MethodEthGasPrice   = "eth_gasPrice"
-	MethodEthBlockNumber = "eth_blockNumber"
-	MethodEthGetBalance = "eth_getBalance"
-	MethodEthCall       = "eth_call"
+	MethodEthRequestAccounts = "eth_requestAccounts"
+	MethodEthAccounts        = "eth_accounts"
+	MethodEthChainId         = "eth_chainId"
+	MethodEthGasPrice        = "eth_gasPrice"
+	MethodEthBlockNumber     = "eth_blockNumber"
+	MethodEthGetBalance      = "eth_getBalance"
+	MethodEthCall            = "eth_call"
 	MethodEthSendTransaction = "eth_sendTransaction"
-	MethodEthSign       = "eth_sign"
-	MethodPersonalSign = "personal_sign"
-	MethodTypedDataSign = "eth_signTypedData_v4"
-	MethodWalletSwitchChain = "wallet_switchEthereumChain"
-	MethodWalletAddChain = "wallet_addEthereumChain"
+	MethodEthSign            = "eth_sign"
+	MethodPersonalSign       = "personal_sign"
+	MethodTypedDataSign      = "eth_signTypedData_v4"
+	MethodWalletSwitchChain  = "wallet_switchEthereumChain"
+	MethodWalletAddChain     = "wallet_addEthereumChain"
 )
 
 // ChainChanged is emitted when chain changes
@@ -464,11 +464,11 @@ func (c *Client) SignMessage(ctx context.Context, sessionTopic string, address s
 		"address": address,
 		"message": message,
 	})
-	
+
 	if err != nil {
 		return "", err
 	}
-	
+
 	return result.(string), nil
 }
 
@@ -476,25 +476,25 @@ func (c *Client) SignMessage(ctx context.Context, sessionTopic string, address s
 func (c *Client) SignTypedData(ctx context.Context, sessionTopic string, address string, domain, message string) (string, error) {
 	result, err := c.Request(ctx, sessionTopic, MethodTypedDataSign, map[string]interface{}{
 		"address": address,
-		"domain": domain,
+		"domain":  domain,
 		"message": message,
 	})
-	
+
 	if err != nil {
 		return "", err
 	}
-	
+
 	return result.(string), nil
 }
 
 // SendTransaction sends a transaction
 func (c *Client) SendTransaction(ctx context.Context, sessionTopic string, tx map[string]interface{}) (string, error) {
 	result, err := c.Request(ctx, sessionTopic, MethodEthSendTransaction, tx)
-	
+
 	if err != nil {
 		return "", err
 	}
-	
+
 	return result.(string), nil
 }
 
@@ -503,29 +503,29 @@ func (c *Client) SwitchChain(ctx context.Context, sessionTopic string, chainID u
 	_, err := c.Request(ctx, sessionTopic, MethodWalletSwitchChain, map[string]interface{}{
 		"chainId": fmt.Sprintf("0x%x", chainID),
 	})
-	
+
 	return err
 }
 
 // AddChain adds a new chain
 func (c *Client) AddChain(ctx context.Context, sessionTopic string, chain ChainInfo) error {
 	_, err := c.Request(ctx, sessionTopic, MethodWalletAddChain, map[string]interface{}{
-		"chainId": fmt.Sprintf("0x%x", chain.ChainID),
+		"chainId":   fmt.Sprintf("0x%x", chain.ChainID),
 		"chainName": chain.Name,
 		"nativeCurrency": map[string]string{
-			"name": chain.Symbol,
-			"symbol": chain.Symbol,
+			"name":     chain.Symbol,
+			"symbol":   chain.Symbol,
 			"decimals": fmt.Sprintf("%d", chain.Decimals),
 		},
 		"rpcUrls": chain.RPCURLs,
 	})
-	
+
 	return err
 }
 
 // ChainInfo represents chain information
 type ChainInfo struct {
-	ChainID   uint64
+	ChainID  uint64
 	Name     string
 	Symbol   string
 	Decimals uint8
@@ -560,12 +560,12 @@ func hash(data []byte) []byte {
 // publish messages. Either Method/Params (request/notification) or
 // Result/Error (response) is set.
 type rpcEnvelope struct {
-	JSONRPC string     `json:"jsonrpc"`
-	ID      int64      `json:"id,omitempty"`
-	Method  string     `json:"method,omitempty"`
+	JSONRPC string      `json:"jsonrpc"`
+	ID      int64       `json:"id,omitempty"`
+	Method  string      `json:"method,omitempty"`
 	Params  interface{} `json:"params,omitempty"`
 	Result  interface{} `json:"result,omitempty"`
-	Error   *rpcError  `json:"error,omitempty"`
+	Error   *rpcError   `json:"error,omitempty"`
 }
 
 type rpcError struct {
@@ -933,9 +933,9 @@ func (c *Client) HandleWalletConnectURI(w ResponseWriter, r Request) {
 		WriteError(w, r, err.Error())
 		return
 	}
-	
+
 	WriteJSON(w, map[string]string{
-		"uri": fmt.Sprintf("wc:%s@2?publicKey=%s&symKey=%s", 
+		"uri": fmt.Sprintf("wc:%s@2?publicKey=%s&symKey=%s",
 			uri.Topic, uri.PublicKey, uri.SymKey),
 	})
 }
@@ -945,24 +945,24 @@ func (c *Client) HandleConnect(w ResponseWriter, r Request) {
 	var req struct {
 		URI string `json:"uri"`
 	}
-	
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		WriteError(w, r, err.Error())
 		return
 	}
-	
+
 	uri, err := ParseURI(req.URI)
 	if err != nil {
 		WriteError(w, r, err.Error())
 		return
 	}
-	
+
 	session, err := c.Connect(r.Context(), uri)
 	if err != nil {
 		WriteError(w, r, err.Error())
 		return
 	}
-	
+
 	WriteJSON(w, session)
 }
 
@@ -973,29 +973,29 @@ func (c *Client) HandleRequest(w ResponseWriter, r Request) {
 		WriteError(w, r, err.Error())
 		return
 	}
-	
+
 	result, err := c.Request(r.Context(), rpcReq.Topic, rpcReq.Method, rpcReq.Params)
 	if err != nil {
 		WriteError(w, r, err.Error())
 		return
 	}
-	
+
 	WriteJSON(w, map[string]interface{}{
 		"jsonrpc": "2.0",
-		"id":     rpcReq.ID,
-		"result": result,
+		"id":      rpcReq.ID,
+		"result":  result,
 	})
 }
 
 // HandleDisconnect handles disconnect
 func (c *Client) HandleDisconnect(w ResponseWriter, r Request) {
 	topic := r.URL.Query().Get("topic")
-	
+
 	if err := c.Disconnect(r.Context(), topic); err != nil {
 		WriteError(w, r, err.Error())
 		return
 	}
-	
+
 	WriteJSON(w, map[string]string{"status": "disconnected"})
 }
 
@@ -1032,15 +1032,15 @@ func (c *Client) Serve(addr string) error {
 	http.HandleFunc("/request", c.HandleRequest)
 	http.HandleFunc("/disconnect", c.HandleDisconnect)
 	http.HandleFunc("/sessions", c.HandleSessions)
-	
+
 	return http.ListenAndServe(addr, nil)
 }
 
 // JSONRPCRequest represents JSON-RPC request
 type JSONRPCRequest struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID     int64           `json:"id"`
-	Method string          `json:"method"`
-	Params interface{}    `json:"params"`
-	Topic string          `json:"topic,omitempty"`
+	JSONRPC string      `json:"jsonrpc"`
+	ID      int64       `json:"id"`
+	Method  string      `json:"method"`
+	Params  interface{} `json:"params"`
+	Topic   string      `json:"topic,omitempty"`
 }

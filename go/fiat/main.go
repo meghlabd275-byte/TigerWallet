@@ -178,7 +178,11 @@ func (s *service) listProviders(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var p struct{ ID, Name, URL, Currencies string; Fee int; Active bool }
+		var p struct {
+			ID, Name, URL, Currencies string
+			Fee                       int
+			Active                    bool
+		}
 		if err := rows.Scan(&p.ID, &p.Name, &p.URL, &p.Currencies, &p.Fee, &p.Active); err != nil {
 			continue
 		}
@@ -293,7 +297,10 @@ func (s *service) listOrders(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var o struct{ ID, PID, Dir, FCur, CCur, FAmount, CAmount, Rate, Status, Ref string; Ts int64 }
+		var o struct {
+			ID, PID, Dir, FCur, CCur, FAmount, CAmount, Rate, Status, Ref string
+			Ts                                                            int64
+		}
 		if err := rows.Scan(&o.ID, &o.PID, &o.Dir, &o.FCur, &o.CCur, &o.FAmount, &o.CAmount, &o.Rate, &o.Status, &o.Ref, &o.Ts); err != nil {
 			continue
 		}
@@ -303,11 +310,11 @@ func (s *service) listOrders(c *gin.Context) {
 }
 
 type createOrderReq struct {
-	ProviderID string `json:"provider_id" binding:"required"`
-	Direction  string `json:"direction"`
-	FiatCurrency    string `json:"fiat_currency" binding:"required"`
-	CryptoCurrency  string `json:"crypto_currency" binding:"required"`
-	FiatAmount string `json:"fiat_amount" binding:"required"`
+	ProviderID     string `json:"provider_id" binding:"required"`
+	Direction      string `json:"direction"`
+	FiatCurrency   string `json:"fiat_currency" binding:"required"`
+	CryptoCurrency string `json:"crypto_currency" binding:"required"`
+	FiatAmount     string `json:"fiat_amount" binding:"required"`
 }
 
 func (s *service) createOrder(c *gin.Context) {
@@ -358,7 +365,10 @@ func (s *service) createOrder(c *gin.Context) {
 
 func (s *service) getOrder(c *gin.Context) {
 	id := c.Param("id")
-	var o struct{ ID, PID, Dir, FCur, CCur, FAmount, CAmount, Rate, Status, Ref string; Ts int64 }
+	var o struct {
+		ID, PID, Dir, FCur, CCur, FAmount, CAmount, Rate, Status, Ref string
+		Ts                                                            int64
+	}
 	err := s.pg.QueryRow(c, `SELECT id,provider_id,direction,fiat_currency,crypto_currency,fiat_amount::text,crypto_amount::text,rate::text,status,provider_ref,extract(epoch from created_at)::bigint FROM fiat_orders WHERE id=$1 AND user_id=$2`, id, c.GetString("user_id")).
 		Scan(&o.ID, &o.PID, &o.Dir, &o.FCur, &o.CCur, &o.FAmount, &o.CAmount, &o.Rate, &o.Status, &o.Ref, &o.Ts)
 	if err != nil {

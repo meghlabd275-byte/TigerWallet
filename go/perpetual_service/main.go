@@ -387,7 +387,11 @@ func (s *service) listPositions(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var p struct{ ID, PID, Size, Entry, Lev, Margin, Status, PnL, Liq string; Side int; Ts int64 }
+		var p struct {
+			ID, PID, Size, Entry, Lev, Margin, Status, PnL, Liq string
+			Side                                                int
+			Ts                                                  int64
+		}
 		if err := rows.Scan(&p.ID, &p.PID, &p.Side, &p.Size, &p.Entry, &p.Lev, &p.Margin, &p.Status, &p.PnL, &p.Liq, &p.Ts); err != nil {
 			continue
 		}
@@ -406,7 +410,10 @@ func (s *service) fundingHistory(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var f struct{ ID, Rate string; Ts int64 }
+		var f struct {
+			ID, Rate string
+			Ts       int64
+		}
 		if err := rows.Scan(&f.ID, &f.Rate, &f.Ts); err != nil {
 			continue
 		}

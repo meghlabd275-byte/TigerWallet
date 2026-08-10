@@ -1,6 +1,6 @@
 /**
  * TigerWallet Red Packets Service
- * 
+ *
  * Lucky money/gift distribution service.
  * Built with Go for high-load distributed operations.
  */
@@ -20,33 +20,33 @@ import (
 
 // RedPacket represents a red packet
 type RedPacket struct {
-	ID              string    `json:"id"`
-	SenderID        string    `json:"sender_id"`
-	SenderAddress   string    `json:"sender_address"`
-	TokenAddress    string    `json:"token_address"`
-	ChainID         uint64    `json:"chain_id"`
-	TotalAmount     string    `json:"total_amount"`
-	Quantity        int       `json:"quantity"`
-	RemainingAmount string    `json:"remaining_amount"`
-	RemainingQty    int       `json:"remaining_qty"`
-	ClaimType       string    `json:"claim_type"` // random, fixed
-	Password        string    `json:"password"`
-	Message         string    `json:"message"`
-	ExpiredAt       int64     `json:"expired_at"`
-	Status          string    `json:"status"`
-	TxHash          string    `json:"tx_hash"`
-	CreatedAt       int64     `json:"created_at"`
+	ID              string `json:"id"`
+	SenderID        string `json:"sender_id"`
+	SenderAddress   string `json:"sender_address"`
+	TokenAddress    string `json:"token_address"`
+	ChainID         uint64 `json:"chain_id"`
+	TotalAmount     string `json:"total_amount"`
+	Quantity        int    `json:"quantity"`
+	RemainingAmount string `json:"remaining_amount"`
+	RemainingQty    int    `json:"remaining_qty"`
+	ClaimType       string `json:"claim_type"` // random, fixed
+	Password        string `json:"password"`
+	Message         string `json:"message"`
+	ExpiredAt       int64  `json:"expired_at"`
+	Status          string `json:"status"`
+	TxHash          string `json:"tx_hash"`
+	CreatedAt       int64  `json:"created_at"`
 }
 
 // RedPacketClaim represents a claim
 type RedPacketClaim struct {
-	ID            string    `json:"id"`
-	PacketID      string    `json:"packet_id"`
-	ClaimerID     string    `json:"claimer_id"`
-	ClaimerAddress string   `json:"claimer_address"`
-	Amount        string    `json:"amount"`
-	ClaimTxHash   string    `json:"claim_tx_hash"`
-	ClaimedAt     int64     `json:"claimed_at"`
+	ID             string `json:"id"`
+	PacketID       string `json:"packet_id"`
+	ClaimerID      string `json:"claimer_id"`
+	ClaimerAddress string `json:"claimer_address"`
+	Amount         string `json:"amount"`
+	ClaimTxHash    string `json:"claim_tx_hash"`
+	ClaimedAt      int64  `json:"claimed_at"`
 }
 
 // RedPacketService manages red packet operations
@@ -174,7 +174,8 @@ func (s *RedPacketService) Claim(ctx context.Context, packetID, claimerID, claim
 			avg := new(big.Int).Div(remaining, big.NewInt(int64(packet.RemainingQty)))
 			max := new(big.Int).Mul(avg, big.NewInt(2))
 			amount = new(big.Int).Mod(big.NewInt(time.Now().UnixNano()), max).String()
-			if new(big.Int).SetString(amount, 10).Cmp(big.NewInt(0)) <= 0 {
+			amt, ok := new(big.Int).SetString(amount, 10)
+			if !ok || amt.Cmp(big.NewInt(0)) <= 0 {
 				amount = "1"
 			}
 		}

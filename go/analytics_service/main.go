@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -20,20 +19,20 @@ type Config struct {
 var cfg = Config{Port: 8010}
 
 type Analytics struct {
-	TotalUsers       int64   `json:"total_users"`
-	ActiveUsers24h  int64   `json:"active_users_24h"`
-	TotalWallets    int64   `json:"total_wallets"`
-	TotalVolume24h  string   `json:"total_volume_24h"`
-	TotalFees24h   string   `json:"total_fees_24h"`
-	TotalTransactions int64  `json:"total_transactions"`
-	TopChains       []map[string]interface{} `json:"top_chains"`
-	TopTokens       []map[string]interface{} `json:"top_tokens"`
-	TopPairs        []map[string]interface{} `json:"top_pairs"`
+	TotalUsers        int64                    `json:"total_users"`
+	ActiveUsers24h    int64                    `json:"active_users_24h"`
+	TotalWallets      int64                    `json:"total_wallets"`
+	TotalVolume24h    string                   `json:"total_volume_24h"`
+	TotalFees24h      string                   `json:"total_fees_24h"`
+	TotalTransactions int64                    `json:"total_transactions"`
+	TopChains         []map[string]interface{} `json:"top_chains"`
+	TopTokens         []map[string]interface{} `json:"top_tokens"`
+	TopPairs          []map[string]interface{} `json:"top_pairs"`
 }
 
 type AnalyticsService struct {
-	mu       sync.RWMutex
-	metrics  map[string]interface{}
+	mu      sync.RWMutex
+	metrics map[string]interface{}
 }
 
 func NewAnalyticsService() *AnalyticsService {
@@ -45,11 +44,11 @@ func NewAnalyticsService() *AnalyticsService {
 
 func (as *AnalyticsService) GetOverview(c *gin.Context) {
 	analytics := Analytics{
-		TotalUsers:       150000,
-		ActiveUsers24h:  45000,
-		TotalWallets:    250000,
-		TotalVolume24h:  "1.5B",
-		TotalFees24h:    "3M",
+		TotalUsers:        150000,
+		ActiveUsers24h:    45000,
+		TotalWallets:      250000,
+		TotalVolume24h:    "1.5B",
+		TotalFees24h:      "3M",
 		TotalTransactions: 5000000,
 		TopChains: []map[string]interface{}{
 			{"name": "Ethereum", "volume": "500M", "txs": 100000},
@@ -89,11 +88,11 @@ func (as *AnalyticsService) GetTradingStats(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"stats": map[string]interface{}{
-			"total_volume_24h":    "1.5B",
-			"total_volume_7d":     "10B",
-			"total_volume_30d":    "45B",
-			"total_fees_24h":     "3M",
-			"total_transactions":  5000000,
+			"total_volume_24h":     "1.5B",
+			"total_volume_7d":      "10B",
+			"total_volume_30d":     "45B",
+			"total_fees_24h":       "3M",
+			"total_transactions":   5000000,
 			"avg_transaction_size": "1500",
 		},
 	})
@@ -116,14 +115,14 @@ func (as *AnalyticsService) GetRevenueStats(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"revenue": map[string]interface{}{
-			"total_revenue":       "50M",
-			"revenue_24h":        "3M",
-			"revenue_7d":         "20M",
-			"revenue_30d":         "85M",
-			"swap_fees":          "2M",
-			"withdrawal_fees":    "500K",
-			"nft_fees":           "300K",
-			"staking_fees":        "200K",
+			"total_revenue":   "50M",
+			"revenue_24h":     "3M",
+			"revenue_7d":      "20M",
+			"revenue_30d":     "85M",
+			"swap_fees":       "2M",
+			"withdrawal_fees": "500K",
+			"nft_fees":        "300K",
+			"staking_fees":    "200K",
 		},
 	})
 }

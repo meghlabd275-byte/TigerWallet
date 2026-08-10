@@ -8,14 +8,10 @@ package main
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
-	"math/big"
 	"net/http"
 	"strings"
 	"sync"
@@ -31,77 +27,77 @@ import (
 // ============================================================================
 
 type OffRampConfig struct {
-	Port              int                     `json:"port"`
-	RedisAddr         string                  `json:"redis_addr"`
-	SupportedFiat     []string               `json:"supported_fiat"`
-	SupportedCrypto   []string               `json:"supported_crypto"`
-	SupportedChains   []string               `json:"supported_chains"`
-	Providers         map[string]OffRampProviderConfig `json:"providers"`
-	WebhookSecret    string                  `json:"webhook_secret"`
-	MinOrderUSD      float64                 `json:"min_order_usd"`
-	MaxOrderUSD      float64                 `json:"max_order_usd"`
+	Port            int                              `json:"port"`
+	RedisAddr       string                           `json:"redis_addr"`
+	SupportedFiat   []string                         `json:"supported_fiat"`
+	SupportedCrypto []string                         `json:"supported_crypto"`
+	SupportedChains []string                         `json:"supported_chains"`
+	Providers       map[string]OffRampProviderConfig `json:"providers"`
+	WebhookSecret   string                           `json:"webhook_secret"`
+	MinOrderUSD     float64                          `json:"min_order_usd"`
+	MaxOrderUSD     float64                          `json:"max_order_usd"`
 }
 
 type OffRampProviderConfig struct {
-	Name           string   `json:"name"`
-	Enabled        bool     `json:"enabled"`
-	APIKey         string   `json:"api_key"`
-	APISecret      string   `json:"api_secret"`
-	WebhookURL     string   `json:"webhook_url"`
-	BaseURL        string   `json:"base_url"`
-	FeePercent     float64  `json:"fee_percent"`
-	MinOrder       float64  `json:"min_order"`
-	MaxOrder       float64  `json:"max_order"`
-	Currencies     []string `json:"currencies"`
-	BankCountries  []string `json:"bank_countries"`
+	Name          string   `json:"name"`
+	Enabled       bool     `json:"enabled"`
+	APIKey        string   `json:"api_key"`
+	APISecret     string   `json:"api_secret"`
+	WebhookURL    string   `json:"webhook_url"`
+	BaseURL       string   `json:"base_url"`
+	FeePercent    float64  `json:"fee_percent"`
+	MinOrder      float64  `json:"min_order"`
+	MaxOrder      float64  `json:"max_order"`
+	Currencies    []string `json:"currencies"`
+	BankCountries []string `json:"bank_countries"`
 }
 
 var defaultOffRampConfig = OffRampConfig{
-	Port:           8452,
-	RedisAddr:      "localhost:6379",
+	Port:            8452,
+	RedisAddr:       "localhost:6379",
 	SupportedFiat:   []string{"USD", "EUR", "GBP", "AUD", "CAD", "JPY", "KRW", "INR", "BRL"},
 	SupportedCrypto: []string{"BTC", "ETH", "USDT", "USDC", "MATIC", "BNB", "SOL", "AVAX", "DOT", "ADA"},
 	SupportedChains: []string{"ethereum", "polygon", "bsc", "arbitrum", "optimism", "avalanche", "solana"},
 	Providers: map[string]OffRampProviderConfig{
 		"moonpay": {
-			Name:       "MoonPay",
-			Enabled:    true,
-			FeePercent: 2.5,
-			MinOrder:   100,
-			MaxOrder:   5000,
-			Currencies: []string{"USD", "EUR", "GBP"},
+			Name:          "MoonPay",
+			Enabled:       true,
+			FeePercent:    2.5,
+			MinOrder:      100,
+			MaxOrder:      5000,
+			Currencies:    []string{"USD", "EUR", "GBP"},
 			BankCountries: []string{"US", "GB", "EU"},
 		},
 		"transak": {
-			Name:       "Transak",
-			Enabled:    true,
-			FeePercent: 2.0,
-			MinOrder:   50,
-			MaxOrder:   10000,
-			Currencies: []string{"USD", "EUR", "GBP", "INR"},
+			Name:          "Transak",
+			Enabled:       true,
+			FeePercent:    2.0,
+			MinOrder:      50,
+			MaxOrder:      10000,
+			Currencies:    []string{"USD", "EUR", "GBP", "INR"},
 			BankCountries: []string{"US", "GB", "EU", "IN"},
 		},
 		"wyre": {
-			Name:       "Wyre",
-			Enabled:    true,
-			FeePercent: 1.8,
-			MinOrder:   50,
-			MaxOrder:   2500,
-			Currencies: []string{"USD", "EUR", "GBP", "AUD", "CAD"},
+			Name:          "Wyre",
+			Enabled:       true,
+			FeePercent:    1.8,
+			MinOrder:      50,
+			MaxOrder:      2500,
+			Currencies:    []string{"USD", "EUR", "GBP", "AUD", "CAD"},
 			BankCountries: []string{"US", "GB", "EU", "AU", "CA"},
 		},
 		"binance": {
-			Name:       "Binance P2P",
-			Enabled:    true,
-			FeePercent: 0,
-			MinOrder:   10,
-			MaxOrder:   100000,
-			Currencies: []string{"USD", "EUR", "GBP", "AUD", "CAD", "JPY", "KRW", "INR", "BRL", "RUB", "TRY", "VND", "THB", "PHP", "IDR", "MYR"},
+			Name:          "Binance P2P",
+			Enabled:       true,
+			FeePercent:    0,
+			MinOrder:      10,
+			MaxOrder:      100000,
+			Currencies:    []string{"USD", "EUR", "GBP", "AUD", "CAD", "JPY", "KRW", "INR", "BRL", "RUB", "TRY", "VND", "THB", "PHP", "IDR", "MYR"},
 			BankCountries: []string{"*"},
 		},
 	},
-	MinOrderUSD:  50,
-	MaxOrderUSD:  50000,
+	MinOrderUSD: 50,
+	MaxOrderUSD: 50000,
 }
 
 // ============================================================================
@@ -109,30 +105,30 @@ var defaultOffRampConfig = OffRampConfig{
 // ============================================================================
 
 type OffRampOrder struct {
-	ID               string     `json:"id"`
-	UserID           string     `json:"user_id"`
-	Provider         string     `json:"provider"`
-	Status           string     `json:"status"` // pending, processing, completed, failed, refunded, cancelled
-	CryptoAmount     float64    `json:"crypto_amount"`
-	CryptoCurrency   string     `json:"crypto_currency"`
-	Chain            string     `json:"chain"`
-	FiatAmount       float64    `json:"fiat_amount"`
-	FiatCurrency     string     `json:"fiat_currency"`
-	FiatEquivalent   float64    `json:"fiat_equivalent"`
-	ExchangeRate     float64    `json:"exchange_rate"`
-	FeeAmount        float64    `json:"fee_amount"`
-	ProviderFee      float64    `json:"provider_fee"`
-	NetworkFee       float64    `json:"network_fee"`
-	CryptoAddress    string     `json:"crypto_address"`
-	TxHash           string     `json:"tx_hash"`
-	BankAccount      BankAccount `json:"bank_account"`
-	ProviderOrderID  string     `json:"provider_order_id"`
-	IPAddress        string     `json:"ip_address"`
-	UserAgent        string     `json:"user_agent"`
-	ErrorMessage     string     `json:"error_message"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
-	CompletedAt      *time.Time `json:"completed_at"`
+	ID              string      `json:"id"`
+	UserID          string      `json:"user_id"`
+	Provider        string      `json:"provider"`
+	Status          string      `json:"status"` // pending, processing, completed, failed, refunded, cancelled
+	CryptoAmount    float64     `json:"crypto_amount"`
+	CryptoCurrency  string      `json:"crypto_currency"`
+	Chain           string      `json:"chain"`
+	FiatAmount      float64     `json:"fiat_amount"`
+	FiatCurrency    string      `json:"fiat_currency"`
+	FiatEquivalent  float64     `json:"fiat_equivalent"`
+	ExchangeRate    float64     `json:"exchange_rate"`
+	FeeAmount       float64     `json:"fee_amount"`
+	ProviderFee     float64     `json:"provider_fee"`
+	NetworkFee      float64     `json:"network_fee"`
+	CryptoAddress   string      `json:"crypto_address"`
+	TxHash          string      `json:"tx_hash"`
+	BankAccount     BankAccount `json:"bank_account"`
+	ProviderOrderID string      `json:"provider_order_id"`
+	IPAddress       string      `json:"ip_address"`
+	UserAgent       string      `json:"user_agent"`
+	ErrorMessage    string      `json:"error_message"`
+	CreatedAt       time.Time   `json:"created_at"`
+	UpdatedAt       time.Time   `json:"updated_at"`
+	CompletedAt     *time.Time  `json:"completed_at"`
 }
 
 type BankAccount struct {
@@ -151,38 +147,38 @@ type BankAccount struct {
 type OffRampQuoteRequest struct {
 	CryptoAmount   float64 `json:"crypto_amount"`
 	CryptoCurrency string  `json:"crypto_currency"`
-	Chain         string  `json:"chain"`
-	FiatCurrency  string  `json:"fiat_currency"`
+	Chain          string  `json:"chain"`
+	FiatCurrency   string  `json:"fiat_currency"`
 }
 
 type OffRampQuoteResponse struct {
-	Provider       string  `json:"provider"`
-	FiatAmount    float64 `json:"fiat_amount"`
-	ExchangeRate  float64 `json:"exchange_rate"`
+	Provider         string  `json:"provider"`
+	FiatAmount       float64 `json:"fiat_amount"`
+	ExchangeRate     float64 `json:"exchange_rate"`
 	CryptoEquivalent float64 `json:"crypto_equivalent"`
-	FeeAmount     float64 `json:"fee_amount"`
-	ProviderFee   float64 `json:"provider_fee"`
-	NetworkFee    float64 `json:"network_fee"`
-	ValidUntil    int64   `json:"valid_until"`
+	FeeAmount        float64 `json:"fee_amount"`
+	ProviderFee      float64 `json:"provider_fee"`
+	NetworkFee       float64 `json:"network_fee"`
+	ValidUntil       int64   `json:"valid_until"`
 }
 
 type CreateOffRampRequest struct {
-	UserID         string       `json:"user_id"`
-	CryptoAmount   float64      `json:"crypto_amount"`
-	CryptoCurrency string       `json:"crypto_currency"`
-	Chain         string       `json:"chain"`
-	FiatCurrency  string       `json:"fiat_currency"`
-	CryptoAddress string       `json:"crypto_address"`
-	BankAccount   BankAccount  `json:"bank_account"`
-	Provider      string       `json:"provider"`
-	IPAddress     string       `json:"-"`
-	UserAgent     string       `json:"-"`
+	UserID         string      `json:"user_id"`
+	CryptoAmount   float64     `json:"crypto_amount"`
+	CryptoCurrency string      `json:"crypto_currency"`
+	Chain          string      `json:"chain"`
+	FiatCurrency   string      `json:"fiat_currency"`
+	CryptoAddress  string      `json:"crypto_address"`
+	BankAccount    BankAccount `json:"bank_account"`
+	Provider       string      `json:"provider"`
+	IPAddress      string      `json:"-"`
+	UserAgent      string      `json:"-"`
 }
 
 type CreateOffRampResponse struct {
-	OrderID         string `json:"order_id"`
-	Provider        string `json:"provider"`
-	DepositAddress  string `json:"deposit_address"`
+	OrderID        string `json:"order_id"`
+	Provider       string `json:"provider"`
+	DepositAddress string `json:"deposit_address"`
 	DepositQRCode  string `json:"deposit_qr_code"`
 	ExpiresAt      int64  `json:"expires_at"`
 }
@@ -192,13 +188,13 @@ type CreateOffRampResponse struct {
 // ============================================================================
 
 type OffRampService struct {
-	redis            *redis.Client
-	config           *OffRampConfig
-	providerClients  map[string]OffRampProviderClient
-	orderCache       map[string]*OffRampOrder
-	mu               sync.RWMutex
-	exchangeRates    map[string]float64
-	rateMu           sync.RWMutex
+	redis           *redis.Client
+	config          *OffRampConfig
+	providerClients map[string]OffRampProviderClient
+	orderCache      map[string]*OffRampOrder
+	mu              sync.RWMutex
+	exchangeRates   map[string]float64
+	rateMu          sync.RWMutex
 }
 
 type OffRampProviderClient interface {
@@ -214,11 +210,11 @@ func NewOffRampService(config *OffRampConfig) *OffRampService {
 		config = &defaultOffRampConfig
 	}
 	return &OffRampService{
-		redis:          redis.NewClient(&redis.Options{Addr: config.RedisAddr}),
-		config:         config,
+		redis:           redis.NewClient(&redis.Options{Addr: config.RedisAddr}),
+		config:          config,
 		providerClients: make(map[string]OffRampProviderClient),
-		orderCache:    make(map[string]*OffRampOrder),
-		exchangeRates: make(map[string]float64),
+		orderCache:      make(map[string]*OffRampOrder),
+		exchangeRates:   make(map[string]float64),
 	}
 }
 
@@ -269,8 +265,8 @@ func (s *OffRampService) GetBestQuote(ctx context.Context, req *OffRampQuoteRequ
 
 	type qr struct {
 		provider string
-		quote   *OffRampQuoteResponse
-		err     error
+		quote    *OffRampQuoteResponse
+		err      error
 	}
 
 	results := make(chan qr, len(s.providerClients))
@@ -371,7 +367,7 @@ func (s *OffRampService) CreateOrder(ctx context.Context, req *CreateOffRampRequ
 		CryptoAmount:   req.CryptoAmount,
 		CryptoCurrency: req.CryptoCurrency,
 		Chain:          req.Chain,
-		FiatCurrency:  req.FiatCurrency,
+		FiatCurrency:   req.FiatCurrency,
 	}
 
 	quote, err := client.GetQuote(ctx, quoteReq)
@@ -395,11 +391,11 @@ func (s *OffRampService) CreateOrder(ctx context.Context, req *CreateOffRampRequ
 		ProviderFee:    quote.ProviderFee,
 		NetworkFee:     quote.NetworkFee,
 		CryptoAddress:  req.CryptoAddress,
-		BankAccount:   req.BankAccount,
-		IPAddress:     req.IPAddress,
-		UserAgent:     req.UserAgent,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
+		BankAccount:    req.BankAccount,
+		IPAddress:      req.IPAddress,
+		UserAgent:      req.UserAgent,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 
 	createReq := &CreateOffRampRequest{
@@ -407,9 +403,9 @@ func (s *OffRampService) CreateOrder(ctx context.Context, req *CreateOffRampRequ
 		CryptoAmount:   req.CryptoAmount,
 		CryptoCurrency: req.CryptoCurrency,
 		Chain:          req.Chain,
-		FiatCurrency:  req.FiatCurrency,
+		FiatCurrency:   req.FiatCurrency,
 		CryptoAddress:  req.CryptoAddress,
-		BankAccount:   req.BankAccount,
+		BankAccount:    req.BankAccount,
 	}
 
 	providerResp, err := client.CreateOrder(ctx, createReq)
@@ -420,15 +416,15 @@ func (s *OffRampService) CreateOrder(ctx context.Context, req *CreateOffRampRequ
 		return nil, err
 	}
 
-	order.ProviderOrderID = providerResp.ProviderOrderID
+	order.ProviderOrderID = providerResp.OrderID
 	s.saveOrder(order)
 
 	return &CreateOffRampResponse{
 		OrderID:        orderID,
 		Provider:       provider,
 		DepositAddress: providerResp.DepositAddress,
-		DepositQRCode: providerResp.DepositQRCode,
-		ExpiresAt:     providerResp.ExpiresAt,
+		DepositQRCode:  providerResp.DepositQRCode,
+		ExpiresAt:      providerResp.ExpiresAt,
 	}, nil
 }
 
@@ -644,9 +640,9 @@ func (s *OffRampService) GetExchangeRatesEndpoint(c *gin.Context) {
 func (s *OffRampService) GetSupportedCurrenciesEndpoint(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"fiat":   s.config.SupportedFiat,
-		"crypto": s.config.SupportedCrypto,
-		"chains": s.config.SupportedChains,
+		"fiat":    s.config.SupportedFiat,
+		"crypto":  s.config.SupportedCrypto,
+		"chains":  s.config.SupportedChains,
 	})
 }
 
@@ -681,7 +677,9 @@ func (s *OffRampService) HandleWebhook(c *gin.Context) {
 
 type MoonPayOffRampClient struct{ config OffRampProviderConfig }
 
-func NewMoonPayOffRampClient(cfg OffRampProviderConfig) *MoonPayOffRampClient { return &MoonPayOffRampClient{config: cfg} }
+func NewMoonPayOffRampClient(cfg OffRampProviderConfig) *MoonPayOffRampClient {
+	return &MoonPayOffRampClient{config: cfg}
+}
 
 func (c *MoonPayOffRampClient) GetQuote(ctx context.Context, req *OffRampQuoteRequest) (*OffRampQuoteResponse, error) {
 	rate := 2500.0 // ETH rate
@@ -693,12 +691,12 @@ func (c *MoonPayOffRampClient) GetQuote(ctx context.Context, req *OffRampQuoteRe
 
 	fiatAmount := req.CryptoAmount * rate * 0.975
 	return &OffRampQuoteResponse{
-		FiatAmount:      fiatAmount,
-		ExchangeRate:   rate,
+		FiatAmount:       fiatAmount,
+		ExchangeRate:     rate,
 		CryptoEquivalent: req.CryptoAmount,
-		FeeAmount:      req.CryptoAmount * rate * 0.025,
-		ProviderFee:    req.CryptoAmount * rate * 0.025,
-		ValidUntil:    time.Now().Add(5 * time.Minute).Unix(),
+		FeeAmount:        req.CryptoAmount * rate * 0.025,
+		ProviderFee:      req.CryptoAmount * rate * 0.025,
+		ValidUntil:       time.Now().Add(5 * time.Minute).Unix(),
 	}, nil
 }
 
@@ -725,16 +723,18 @@ func (c *MoonPayOffRampClient) HandleWebhook(ctx context.Context, payload []byte
 
 type TransakOffRampClient struct{ config OffRampProviderConfig }
 
-func NewTransakOffRampClient(cfg OffRampProviderConfig) *TransakOffRampClient { return &TransakOffRampClient{config: cfg} }
+func NewTransakOffRampClient(cfg OffRampProviderConfig) *TransakOffRampClient {
+	return &TransakOffRampClient{config: cfg}
+}
 
 func (c *TransakOffRampClient) GetQuote(ctx context.Context, req *OffRampQuoteRequest) (*OffRampQuoteResponse, error) {
 	rate := 2500.0
 	fiatAmount := req.CryptoAmount * rate * 0.98
 	return &OffRampQuoteResponse{
-		FiatAmount:     fiatAmount,
-		ExchangeRate:   rate,
-		FeeAmount:     req.CryptoAmount * rate * 0.02,
-		ProviderFee:   req.CryptoAmount * rate * 0.02,
+		FiatAmount:   fiatAmount,
+		ExchangeRate: rate,
+		FeeAmount:    req.CryptoAmount * rate * 0.02,
+		ProviderFee:  req.CryptoAmount * rate * 0.02,
 		ValidUntil:   time.Now().Add(5 * time.Minute).Unix(),
 	}, nil
 }
@@ -762,16 +762,18 @@ func (c *TransakOffRampClient) HandleWebhook(ctx context.Context, payload []byte
 
 type WyreOffRampClient struct{ config OffRampProviderConfig }
 
-func NewWyreOffRampClient(cfg OffRampProviderConfig) *WyreOffRampClient { return &WyreOffRampClient{config: cfg} }
+func NewWyreOffRampClient(cfg OffRampProviderConfig) *WyreOffRampClient {
+	return &WyreOffRampClient{config: cfg}
+}
 
 func (c *WyreOffRampClient) GetQuote(ctx context.Context, req *OffRampQuoteRequest) (*OffRampQuoteResponse, error) {
 	rate := 2500.0
 	fiatAmount := req.CryptoAmount * rate * 0.982
 	return &OffRampQuoteResponse{
-		FiatAmount:     fiatAmount,
-		ExchangeRate:   rate,
-		FeeAmount:     req.CryptoAmount * rate * 0.018,
-		ProviderFee:   req.CryptoAmount * rate * 0.018,
+		FiatAmount:   fiatAmount,
+		ExchangeRate: rate,
+		FeeAmount:    req.CryptoAmount * rate * 0.018,
+		ProviderFee:  req.CryptoAmount * rate * 0.018,
 		ValidUntil:   time.Now().Add(5 * time.Minute).Unix(),
 	}, nil
 }
@@ -799,16 +801,18 @@ func (c *WyreOffRampClient) HandleWebhook(ctx context.Context, payload []byte) (
 
 type BinanceP2PClient struct{ config OffRampProviderConfig }
 
-func NewBinanceP2PClient(cfg OffRampProviderConfig) *BinanceP2PClient { return &BinanceP2PClient{config: cfg} }
+func NewBinanceP2PClient(cfg OffRampProviderConfig) *BinanceP2PClient {
+	return &BinanceP2PClient{config: cfg}
+}
 
 func (c *BinanceP2PClient) GetQuote(ctx context.Context, req *OffRampQuoteRequest) (*OffRampQuoteResponse, error) {
 	rate := 2500.0
 	fiatAmount := req.CryptoAmount * rate // No fees for P2P
 	return &OffRampQuoteResponse{
-		FiatAmount:    fiatAmount,
-		ExchangeRate:  rate,
-		FeeAmount:     0,
-		ProviderFee:   0,
+		FiatAmount:   fiatAmount,
+		ExchangeRate: rate,
+		FeeAmount:    0,
+		ProviderFee:  0,
 		ValidUntil:   time.Now().Add(10 * time.Minute).Unix(),
 	}, nil
 }

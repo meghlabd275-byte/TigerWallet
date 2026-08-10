@@ -1,29 +1,23 @@
 /**
  * TigerWallet Protection Fund Service
- * 
+ *
  * Production-ready protection fund with:
  * - User reimbursement claims
  * - Insurance pool management
  * - Coverage verification
  * - Multi-sig governance
  * - Real-time monitoring
- * 
+ *
  * This is a REAL PRODUCTION implementation, NOT a stub
  */
 
 package main
 
 import (
-	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math"
 	"math/big"
 	"strings"
 	"sync"
@@ -39,25 +33,25 @@ import (
 // ============================================================================
 
 type Config struct {
-	Port               int           `json:"port"`
-	DBConnection       string        `json:"db_connection"`
-	RedisAddr          string        `json:"redis_addr"`
-	InitialFundSize    string        `json:"initial_fund_size"`
-	MinClaimAmount     string        `json:"min_claim_amount"`
-	MaxClaimAmount     string        `json:"max_claim_amount"`
-	CoveragePercentage int            `json:"coverage_percentage"` // 100 = 100%
-	GovernanceThreshold int           `json:"governance_threshold"` // signatures required
-	MonitoringInterval int           `json:"monitoring_interval"` // seconds
+	Port                int    `json:"port"`
+	DBConnection        string `json:"db_connection"`
+	RedisAddr           string `json:"redis_addr"`
+	InitialFundSize     string `json:"initial_fund_size"`
+	MinClaimAmount      string `json:"min_claim_amount"`
+	MaxClaimAmount      string `json:"max_claim_amount"`
+	CoveragePercentage  int    `json:"coverage_percentage"`  // 100 = 100%
+	GovernanceThreshold int    `json:"governance_threshold"` // signatures required
+	MonitoringInterval  int    `json:"monitoring_interval"`  // seconds
 }
 
 var cfg = Config{
-	Port:               8081,
-	DBConnection:       "postgres://tigerwallet:password@localhost:5432/protection_fund",
-	RedisAddr:          "localhost:6379",
-	InitialFundSize:    "1000000000000000000000000", // 1000 ETH
-	MinClaimAmount:     "100000000000000000",        // 0.1 ETH
-	MaxClaimAmount:     "100000000000000000000000", // 100 ETH
-	CoveragePercentage: 100,
+	Port:                8081,
+	DBConnection:        "postgres://tigerwallet:password@localhost:5432/protection_fund",
+	RedisAddr:           "localhost:6379",
+	InitialFundSize:     "1000000000000000000000000", // 1000 ETH
+	MinClaimAmount:      "100000000000000000",        // 0.1 ETH
+	MaxClaimAmount:      "100000000000000000000000",  // 100 ETH
+	CoveragePercentage:  100,
 	GovernanceThreshold: 3,
 	MonitoringInterval:  60,
 }
@@ -68,89 +62,89 @@ var cfg = Config{
 
 // ProtectionFund represents the main fund contract
 type ProtectionFund struct {
-	ID                string    `json:"id" db:"id"`
-	Name              string    `json:"name" db:"name"`
-	ContractAddress   string    `json:"contract_address" db:"contract_address"`
-	TotalBalance      string    `json:"total_balance" db:"total_balance"`
-	AvailableBalance  string    `json:"available_balance" db:"available_balance"`
-	ReservedBalance   string    `json:"reserved_balance" db:"reserved_balance"`
-	TotalPaidOut      string    `json:"total_paid_out" db:"total_paid_out"`
-	CoveragePercent   int       `json:"coverage_percent" db:"coverage_percent"`
-	TokenAddress      string    `json:"token_address" db:"token_address"`
-	GovernanceMultisig string   `json:"governance_multisig" db:"governance_multisig"`
-	Status            string    `json:"status" db:"status"` // active, paused, depleted
-	CreatedAt         time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at" db:"updated_at"`
+	ID                 string    `json:"id" db:"id"`
+	Name               string    `json:"name" db:"name"`
+	ContractAddress    string    `json:"contract_address" db:"contract_address"`
+	TotalBalance       string    `json:"total_balance" db:"total_balance"`
+	AvailableBalance   string    `json:"available_balance" db:"available_balance"`
+	ReservedBalance    string    `json:"reserved_balance" db:"reserved_balance"`
+	TotalPaidOut       string    `json:"total_paid_out" db:"total_paid_out"`
+	CoveragePercent    int       `json:"coverage_percent" db:"coverage_percent"`
+	TokenAddress       string    `json:"token_address" db:"token_address"`
+	GovernanceMultisig string    `json:"governance_multisig" db:"governance_multisig"`
+	Status             string    `json:"status" db:"status"` // active, paused, depleted
+	CreatedAt          time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // Claim represents a user claim
 type Claim struct {
-	ID              string    `json:"id" db:"id"`
-	FundID          string    `json:"fund_id" db:"fund_id"`
-	UserID          string    `json:"user_id" db:"user_id"`
-	ClaimAmount     string    `json:"claim_amount" db:"claim_amount"`
-	ClaimCurrency   string    `json:"claim_currency" db:"claim_currency"`
-	CoveredAmount   string    `json:"covered_amount" db:"covered_amount"`
-	IncidentType    string    `json:"incident_type" db:"incident_type"` // hack, exploit, bug, phishing
-	IncidentDate    time.Time `json:"incident_date" db:"incident_date"`
-	Description     string    `json:"description" db:"description"`
-	Evidence        string    `json:"evidence" db:"evidence"` // JSON
-	Status          string    `json:"status" db:"status"` // pending, review, approved, rejected, paid
-	ReviewerID      string    `json:"reviewer_id" db:"reviewer_id"`
-	ApproverIDs     string    `json:"approver_ids" db:"approver_ids"` // JSON array
-	RejectionReason string    `json:"rejection_reason" db:"rejection_reason"`
-	TxHash          string    `json:"tx_hash" db:"tx_hash"`
+	ID              string     `json:"id" db:"id"`
+	FundID          string     `json:"fund_id" db:"fund_id"`
+	UserID          string     `json:"user_id" db:"user_id"`
+	ClaimAmount     string     `json:"claim_amount" db:"claim_amount"`
+	ClaimCurrency   string     `json:"claim_currency" db:"claim_currency"`
+	CoveredAmount   string     `json:"covered_amount" db:"covered_amount"`
+	IncidentType    string     `json:"incident_type" db:"incident_type"` // hack, exploit, bug, phishing
+	IncidentDate    time.Time  `json:"incident_date" db:"incident_date"`
+	Description     string     `json:"description" db:"description"`
+	Evidence        string     `json:"evidence" db:"evidence"` // JSON
+	Status          string     `json:"status" db:"status"`     // pending, review, approved, rejected, paid
+	ReviewerID      string     `json:"reviewer_id" db:"reviewer_id"`
+	ApproverIDs     string     `json:"approver_ids" db:"approver_ids"` // JSON array
+	RejectionReason string     `json:"rejection_reason" db:"rejection_reason"`
+	TxHash          string     `json:"tx_hash" db:"tx_hash"`
 	ProcessedAt     *time.Time `json:"processed_at" db:"processed_at"`
-	CreatedAt       time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at" db:"updated_at"`
+	CreatedAt       time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at" db:"updated_at"`
 }
 
 // CoveragePolicy represents a coverage policy
 type CoveragePolicy struct {
-	ID              string    `json:"id" db:"id"`
-	FundID          string    `json:"fund_id" db:"fund_id"`
-	Name            string    `json:"name" db:"name"`
-	Description     string    `json:"description" db:"description"`
-	IncidentTypes   string    `json:"incident_types" db:"incident_types"` // JSON array
-	CoveragePercent int       `json:"coverage_percent" db:"coverage_percent"`
-	MinClaim        string    `json:"min_claim" db:"min_claim"`
-	MaxClaim        string    `json:"max_claim" db:"max_claim"`
-	WaitingPeriod   int       `json:"waiting_period" db:"waiting_period"` // days
-	MaxClaimsPerUser int     `json:"max_claims_per_user" db:"max_claims_per_user"`
-	Active          bool      `json:"active" db:"active"`
-	CreatedAt       time.Time `json:"created_at" db:"created_at"`
+	ID               string    `json:"id" db:"id"`
+	FundID           string    `json:"fund_id" db:"fund_id"`
+	Name             string    `json:"name" db:"name"`
+	Description      string    `json:"description" db:"description"`
+	IncidentTypes    string    `json:"incident_types" db:"incident_types"` // JSON array
+	CoveragePercent  int       `json:"coverage_percent" db:"coverage_percent"`
+	MinClaim         string    `json:"min_claim" db:"min_claim"`
+	MaxClaim         string    `json:"max_claim" db:"max_claim"`
+	WaitingPeriod    int       `json:"waiting_period" db:"waiting_period"` // days
+	MaxClaimsPerUser int       `json:"max_claims_per_user" db:"max_claims_per_user"`
+	Active           bool      `json:"active" db:"active"`
+	CreatedAt        time.Time `json:"created_at" db:"created_at"`
 }
 
 // UserCoverage represents user coverage info
 type UserCoverage struct {
-	ID              string    `json:"id" db:"id"`
-	UserID          string    `json:"user_id" db:"user_id"`
-	FundID          string    `json:"fund_id" db:"fund_id"`
-	PolicyID        string    `json:"policy_id" db:"policy_id"`
-	CoverageLimit   string    `json:"coverage_limit" db:"coverage_limit"`
-	UsedCoverage    string    `json:"used_coverage" db:"used_coverage"`
-	RemainingCover  string    `json:"remaining_cover" db:"remaining_cover"`
-	Active          bool      `json:"active" db:"active"`
-	EnrollmentDate  time.Time `json:"enrollment_date" db:"enrollment_date"`
-	ExpiryDate      *time.Time `json:"expiry_date" db:"expiry_date"`
+	ID             string     `json:"id" db:"id"`
+	UserID         string     `json:"user_id" db:"user_id"`
+	FundID         string     `json:"fund_id" db:"fund_id"`
+	PolicyID       string     `json:"policy_id" db:"policy_id"`
+	CoverageLimit  string     `json:"coverage_limit" db:"coverage_limit"`
+	UsedCoverage   string     `json:"used_coverage" db:"used_coverage"`
+	RemainingCover string     `json:"remaining_cover" db:"remaining_cover"`
+	Active         bool       `json:"active" db:"active"`
+	EnrollmentDate time.Time  `json:"enrollment_date" db:"enrollment_date"`
+	ExpiryDate     *time.Time `json:"expiry_date" db:"expiry_date"`
 }
 
 // GovernanceProposal represents a governance proposal
 type GovernanceProposal struct {
-	ID            string    `json:"id" db:"id"`
-	FundID        string    `json:"fund_id" db:"fund_id"`
-	ProposerID    string    `json:"proposer_id" db:"proposer_id"`
-	Title         string    `json:"title" db:"title"`
-	Description   string    `json:"description" db:"description"`
-	ProposalType  string    `json:"proposal_type" db:"proposal_type"` // claim_approval, parameter_change, fund_mgmt
-	Status        string    `json:"status" db:"status"` // pending, voted, executed, rejected
-	VotesFor      int       `json:"votes_for" db:"votes_for"`
-	VotesAgainst  int       `json:"votes_against" db:"votes_against"`
-	Signatures    string    `json:"signatures" db:"signatures"` // JSON array
-	ExecuteAfter  *time.Time `json:"execute_after" db:"execute_after"`
-	ExecutedAt     *time.Time `json:"executed_at" db:"executed_at"`
-	CreatedAt      time.Time `json:"created_at" db:"created_at"`
-	ExpiresAt      time.Time `json:"expires_at" db:"expires_at"`
+	ID           string     `json:"id" db:"id"`
+	FundID       string     `json:"fund_id" db:"fund_id"`
+	ProposerID   string     `json:"proposer_id" db:"proposer_id"`
+	Title        string     `json:"title" db:"title"`
+	Description  string     `json:"description" db:"description"`
+	ProposalType string     `json:"proposal_type" db:"proposal_type"` // claim_approval, parameter_change, fund_mgmt
+	Status       string     `json:"status" db:"status"`               // pending, voted, executed, rejected
+	VotesFor     int        `json:"votes_for" db:"votes_for"`
+	VotesAgainst int        `json:"votes_against" db:"votes_against"`
+	Signatures   string     `json:"signatures" db:"signatures"` // JSON array
+	ExecuteAfter *time.Time `json:"execute_after" db:"execute_after"`
+	ExecutedAt   *time.Time `json:"executed_at" db:"executed_at"`
+	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
+	ExpiresAt    time.Time  `json:"expires_at" db:"expires_at"`
 }
 
 // IncidentType defines covered incident types
@@ -170,15 +164,15 @@ var IncidentTypes = []string{
 // ============================================================================
 
 type ProtectionFundService struct {
-	db          *sql.DB
-	redis       *redis.Client
-	funds       map[string]*ProtectionFund
-	claims      map[string]*Claim
-	policies    map[string]*CoveragePolicy
-	users       map[string]*UserCoverage
-	proposals   map[string]*GovernanceProposal
-	mu          sync.RWMutex
-	multiSig    []string // Governance signers
+	db        *sql.DB
+	redis     *redis.Client
+	funds     map[string]*ProtectionFund
+	claims    map[string]*Claim
+	policies  map[string]*CoveragePolicy
+	users     map[string]*UserCoverage
+	proposals map[string]*GovernanceProposal
+	mu        sync.RWMutex
+	multiSig  []string // Governance signers
 }
 
 // NewProtectionFundService creates a new protection fund service
@@ -320,19 +314,19 @@ func (s *ProtectionFundService) createTables() error {
 
 func (s *ProtectionFundService) initDefaultFund() error {
 	fund := &ProtectionFund{
-		ID:                uuid.New().String(),
-		Name:              "TigerWallet Protection Fund",
-		ContractAddress:   "0x0000000000000000000000000000000000001001",
-		TotalBalance:      cfg.InitialFundSize,
-		AvailableBalance:  cfg.InitialFundSize,
-		ReservedBalance:   "0",
-		TotalPaidOut:      "0",
-		CoveragePercent:   cfg.CoveragePercentage,
-		TokenAddress:      "0x0000000000000000000000000000000000000000", // ETH
+		ID:                 uuid.New().String(),
+		Name:               "TigerWallet Protection Fund",
+		ContractAddress:    "0x0000000000000000000000000000000000001001",
+		TotalBalance:       cfg.InitialFundSize,
+		AvailableBalance:   cfg.InitialFundSize,
+		ReservedBalance:    "0",
+		TotalPaidOut:       "0",
+		CoveragePercent:    cfg.CoveragePercentage,
+		TokenAddress:       "0x0000000000000000000000000000000000000000", // ETH
 		GovernanceMultisig: "0x" + strings.Repeat("a", 40),
-		Status:            "active",
-		CreatedAt:        time.Now(),
-		UpdatedAt:         time.Now(),
+		Status:             "active",
+		CreatedAt:          time.Now(),
+		UpdatedAt:          time.Now(),
 	}
 
 	s.funds[fund.ID] = fund
@@ -366,7 +360,7 @@ func (s *ProtectionFundService) initDefaultPolicies() error {
 	policies := []struct {
 		Name            string
 		Description     string
-		IncidentTypes  []string
+		IncidentTypes   []string
 		CoveragePercent int
 		MinClaim        string
 		MaxClaim        string
@@ -375,8 +369,8 @@ func (s *ProtectionFundService) initDefaultPolicies() error {
 	}{
 		{
 			Name:            "Standard Coverage",
-			Description:    "Basic protection for all TigerWallet users",
-			IncidentTypes:  []string{"smart_contract_hack", "protocol_exploit", "bridge_exploit"},
+			Description:     "Basic protection for all TigerWallet users",
+			IncidentTypes:   []string{"smart_contract_hack", "protocol_exploit", "bridge_exploit"},
 			CoveragePercent: 100,
 			MinClaim:        cfg.MinClaimAmount,
 			MaxClaim:        "100000000000000000000000", // 100 ETH
@@ -385,8 +379,8 @@ func (s *ProtectionFundService) initDefaultPolicies() error {
 		},
 		{
 			Name:            "Premium Coverage",
-			Description:    "Enhanced coverage for verified users",
-			IncidentTypes:  []string{"smart_contract_hack", "protocol_exploit", "bridge_exploit", "phishing_attack", "private_key_compromise"},
+			Description:     "Enhanced coverage for verified users",
+			IncidentTypes:   []string{"smart_contract_hack", "protocol_exploit", "bridge_exploit", "phishing_attack", "private_key_compromise"},
 			CoveragePercent: 100,
 			MinClaim:        "0",
 			MaxClaim:        "1000000000000000000000000", // 1000 ETH
@@ -395,8 +389,8 @@ func (s *ProtectionFundService) initDefaultPolicies() error {
 		},
 		{
 			Name:            "Enterprise Coverage",
-			Description:    "Maximum protection for institutional users",
-			IncidentTypes:  IncidentTypes,
+			Description:     "Maximum protection for institutional users",
+			IncidentTypes:   IncidentTypes,
 			CoveragePercent: 100,
 			MinClaim:        "0",
 			MaxClaim:        "10000000000000000000000000", // 10000 ETH
@@ -569,19 +563,19 @@ func (s *ProtectionFundService) SubmitClaim(c *gin.Context) {
 
 	// Create claim
 	claim := &Claim{
-		ID:             uuid.New().String(),
-		FundID:         req.FundID,
-		UserID:         userIDStr,
-		ClaimAmount:    req.ClaimAmount,
-		ClaimCurrency:  "ETH",
-		CoveredAmount:  coveredAmount.String(),
-		IncidentType:   req.IncidentType,
-		IncidentDate:   incidentDate,
-		Description:    req.Description,
-		Evidence:       req.Evidence,
-		Status:         "pending",
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+		ID:            uuid.New().String(),
+		FundID:        req.FundID,
+		UserID:        userIDStr,
+		ClaimAmount:   req.ClaimAmount,
+		ClaimCurrency: "ETH",
+		CoveredAmount: coveredAmount.String(),
+		IncidentType:  req.IncidentType,
+		IncidentDate:  incidentDate,
+		Description:   req.Description,
+		Evidence:      req.Evidence,
+		Status:        "pending",
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	s.mu.Lock()
@@ -597,10 +591,10 @@ func (s *ProtectionFundService) SubmitClaim(c *gin.Context) {
 	s.mu.Unlock()
 
 	c.JSON(201, gin.H{
-		"success":     true,
-		"data":        claim,
-		"message":    "Claim submitted successfully",
-		"note":       "Your claim is pending review",
+		"success": true,
+		"data":    claim,
+		"message": "Claim submitted successfully",
+		"note":    "Your claim is pending review",
 	})
 }
 
@@ -736,10 +730,10 @@ func (s *ProtectionFundService) ApproveClaim(c *gin.Context) {
 	}
 
 	c.JSON(200, gin.H{
-		"success":     true,
-		"data":        claim,
-		"approvals":   len(approvers),
-		"required":    cfg.GovernanceThreshold,
+		"success":   true,
+		"data":      claim,
+		"approvals": len(approvers),
+		"required":  cfg.GovernanceThreshold,
 	})
 }
 
@@ -785,10 +779,10 @@ func (s *ProtectionFundService) ProcessClaimPayment(c *gin.Context) {
 	}
 
 	c.JSON(200, gin.H{
-		"success":  true,
-		"data":     claim,
-		"tx_hash":  claim.TxHash,
-		"message":  "Payment processed successfully",
+		"success": true,
+		"data":    claim,
+		"tx_hash": claim.TxHash,
+		"message": "Payment processed successfully",
 	})
 }
 
@@ -829,15 +823,15 @@ func (s *ProtectionFundService) GetStats(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"success": true,
 		"data": gin.H{
-			"total_funds":      len(s.funds),
-			"total_claims":     totalClaims,
-			"pending_claims":   pending,
-			"approved_claims":  approved,
-			"paid_claims":      paid,
-			"rejected_claims":  rejected,
-			"total_paid_out":   totalPaidOut.String(),
-			"total_reserved":   totalReserved.String(),
-			"active_policies":  len(s.policies),
+			"total_funds":     len(s.funds),
+			"total_claims":    totalClaims,
+			"pending_claims":  pending,
+			"approved_claims": approved,
+			"paid_claims":     paid,
+			"rejected_claims": rejected,
+			"total_paid_out":  totalPaidOut.String(),
+			"total_reserved":  totalReserved.String(),
+			"active_policies": len(s.policies),
 		},
 	})
 }
@@ -862,8 +856,8 @@ func (s *ProtectionFundService) GetUserCoverage(c *gin.Context) {
 // EnrollUser enrolls a user in coverage
 func (s *ProtectionFundService) EnrollUser(c *gin.Context) {
 	var req struct {
-		PolicyID string `json:"policy_id" binding:"required"`
-		UserID   string `json:"user_id" binding:"required"`
+		PolicyID      string `json:"policy_id" binding:"required"`
+		UserID        string `json:"user_id" binding:"required"`
 		CoverageLimit string `json:"coverage_limit"`
 	}
 
@@ -916,9 +910,9 @@ func (s *ProtectionFundService) EnrollUser(c *gin.Context) {
 	s.mu.Unlock()
 
 	c.JSON(201, gin.H{
-		"success":     true,
-		"data":        enrollment,
-		"message":     "Successfully enrolled in coverage",
+		"success":      true,
+		"data":         enrollment,
+		"message":      "Successfully enrolled in coverage",
 		"waiting_days": policy.WaitingPeriod,
 	})
 }

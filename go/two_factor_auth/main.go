@@ -1,16 +1,11 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
-	"crypto/sha256"
-	"crypto/tls"
-	"encoding/base32"
 	"encoding/base64"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"log"
-	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
@@ -29,13 +24,13 @@ import (
 // ============================================================================
 
 type Config struct {
-	Port        string
-	IssuerName  string
-	SMTPServer  string
-	SMTPPort    int
-	SMTPUser    string
-	SMTPPass    string
-	FromEmail   string
+	Port       string
+	IssuerName string
+	SMTPServer string
+	SMTPPort   int
+	SMTPUser   string
+	SMTPPass   string
+	FromEmail  string
 }
 
 func LoadConfig() *Config {
@@ -62,14 +57,14 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type User2FA struct {
-	UserID        string    `json:"userId"`
-	Email         string    `json:"email"`
-	Secret        string    `json:"secret,omitempty"`
-	Enabled       bool      `json:"enabled"`
-	BackupCodes   []string  `json:"backupCodes,omitempty"`
-	TrustedDevices []string `json:"trustedDevices"`
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	UserID         string    `json:"userId"`
+	Email          string    `json:"email"`
+	Secret         string    `json:"secret,omitempty"`
+	Enabled        bool      `json:"enabled"`
+	BackupCodes    []string  `json:"backupCodes,omitempty"`
+	TrustedDevices []string  `json:"trustedDevices"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 type TOTPRequest struct {
@@ -78,9 +73,9 @@ type TOTPRequest struct {
 }
 
 type Enable2FARequest struct {
-	UserID  string `json:"userId" binding:"required"`
-	Email   string `json:"email" binding:"required"`
-	Code    string `json:"code" binding:"required"`
+	UserID string `json:"userId" binding:"required"`
+	Email  string `json:"email" binding:"required"`
+	Code   string `json:"code" binding:"required"`
 }
 
 type VerifyRequest struct {
@@ -96,19 +91,19 @@ type VerificationCode struct {
 }
 
 type BackupCode struct {
-	Code       string
-	Used       bool
-	UsedAt    *time.Time
+	Code   string
+	Used   bool
+	UsedAt *time.Time
 }
 
 type WebAuthnCredential struct {
-	CredentialID   string `json:"credentialId"`
-	PublicKey      string `json:"publicKey"`
-	Counter        int64  `json:"counter"`
-	DeviceName     string `json:"deviceName"`
-	Transport      string `json:"transport"` // usb, nfc, hybrid
-	CreatedAt      time.Time `json:"createdAt"`
-	LastUsed       *time.Time `json:"lastUsed"`
+	CredentialID string     `json:"credentialId"`
+	PublicKey    string     `json:"publicKey"`
+	Counter      int64      `json:"counter"`
+	DeviceName   string     `json:"deviceName"`
+	Transport    string     `json:"transport"` // usb, nfc, hybrid
+	CreatedAt    time.Time  `json:"createdAt"`
+	LastUsed     *time.Time `json:"lastUsed"`
 }
 
 // ============================================================================
@@ -116,20 +111,20 @@ type WebAuthnCredential struct {
 // ============================================================================
 
 type TwoFactorService struct {
-	config     *Config
-	users      map[string]*User2FA
-	pending    map[string]*VerificationCode
-	attempts   map[string]int
-	mu         sync.RWMutex
-	webAuthn   map[string][]WebAuthnCredential
+	config   *Config
+	users    map[string]*User2FA
+	pending  map[string]*VerificationCode
+	attempts map[string]int
+	mu       sync.RWMutex
+	webAuthn map[string][]WebAuthnCredential
 }
 
 func NewTwoFactorService(config *Config) *TwoFactorService {
 	return &TwoFactorService{
-		config:    config,
-		users:     make(map[string]*User2FA),
-		pending:   make(map[string]*VerificationCode),
-		attempts:  make(map[string]int),
+		config:   config,
+		users:    make(map[string]*User2FA),
+		pending:  make(map[string]*VerificationCode),
+		attempts: make(map[string]int),
 		webAuthn: make(map[string][]WebAuthnCredential),
 	}
 }
@@ -139,31 +134,32 @@ func NewTwoFactorService(config *Config) *TwoFactorService {
 // ============================================================================
 
 func (s *TwoFactorService) GenerateSecret(userID, email string) (string, error) {
-	key, err := totp.GenerateCode(otp.RandomSecret(20), time.Now(), totp.ValidateOpts{
-		Period:    30,
-		Skew:      1,
-		Digits:    otp.DigitsSix,
-		Algorithm: otp.AlgorithmSHA1,
+	key, err := totp.Generate(totp.GenerateOpts{
+		Issuer:      s.config.IssuerName,
+		AccountName: email,
+		Period:      30,
+		Digits:      otp.DigitsSix,
+		Algorithm:   otp.AlgorithmSHA1,
 	})
 	if err != nil {
 		return "", err
 	}
 
-	// Generate actual secret
-	secret := base32.StdEncoding.EncodeToString([]byte(key))
+	// Use the secret from the generated key
+	secret := key.Secret()
 
 	// Generate backup codes
 	backupCodes := s.generateBackupCodes(10)
 
 	user := &User2FA{
-		UserID:        userID,
-		Email:         email,
-		Secret:        secret,
-		Enabled:       false,
-		BackupCodes:   backupCodes,
+		UserID:         userID,
+		Email:          email,
+		Secret:         secret,
+		Enabled:        false,
+		BackupCodes:    backupCodes,
 		TrustedDevices: []string{},
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 
 	s.mu.Lock()
@@ -347,7 +343,7 @@ func (s *TwoFactorService) RegisterWebAuthn(userID, deviceName string) (string, 
 	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey)
 
 	credential := WebAuthnCredential{
-		CredentialID:  credID,
+		CredentialID: credID,
 		PublicKey:    pubKeyB64,
 		Counter:      0,
 		DeviceName:   deviceName,
@@ -578,9 +574,9 @@ func (s *TwoFactorService) handleGet2FAStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"enabled":      user.Enabled,
-		"backupCodes":  len(user.BackupCodes),
-		"webAuthn":     len(s.GetWebAuthnCredentials(userID)),
+		"enabled":     user.Enabled,
+		"backupCodes": len(user.BackupCodes),
+		"webAuthn":    len(s.GetWebAuthnCredentials(userID)),
 	})
 }
 
@@ -612,8 +608,8 @@ func (s *TwoFactorService) handleRegenerateBackupCodes(c *gin.Context) {
 
 func (s *TwoFactorService) handleSendCode(c *gin.Context) {
 	var req struct {
-		UserID     string `json:"userId" binding:"required"`
-		Method    string `json:"method" binding:"required"` // sms, email
+		UserID      string `json:"userId" binding:"required"`
+		Method      string `json:"method" binding:"required"` // sms, email
 		Destination string `json:"destination" binding:"required"`
 	}
 
@@ -653,7 +649,7 @@ func (s *TwoFactorService) handleVerifyCode(c *gin.Context) {
 
 func (s *TwoFactorService) handleWebAuthnRegister(c *gin.Context) {
 	var req struct {
-		UserID    string `json:"userId" binding:"required"`
+		UserID     string `json:"userId" binding:"required"`
 		DeviceName string `json:"deviceName" binding:"required"`
 	}
 
@@ -673,11 +669,11 @@ func (s *TwoFactorService) handleWebAuthnRegister(c *gin.Context) {
 
 func (s *TwoFactorService) handleWebAuthnVerify(c *gin.Context) {
 	var req struct {
-		UserID        string `json:"userId" binding:"required"`
-		CredentialID  string `json:"credentialId" binding:"required"`
-		ClientDataJSON string `json:"clientDataJSON"`
+		UserID            string `json:"userId" binding:"required"`
+		CredentialID      string `json:"credentialId" binding:"required"`
+		ClientDataJSON    string `json:"clientDataJSON"`
 		AuthenticatorData string `json:"authenticatorData"`
-		Signature     string `json:"signature"`
+		Signature         string `json:"signature"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -699,7 +695,7 @@ func (s *TwoFactorService) handleGetWebAuthnCredentials(c *gin.Context) {
 	for i, cred := range credentials {
 		sanitized[i] = gin.H{
 			"credentialId": cred.CredentialID,
-			"deviceName":  cred.DeviceName,
+			"deviceName":   cred.DeviceName,
 			"transport":    cred.Transport,
 			"createdAt":    cred.CreatedAt,
 			"lastUsed":     cred.LastUsed,

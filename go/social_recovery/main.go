@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -46,26 +45,26 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type Guardian struct {
-	ID          string    `json:"id"`
-	Address     string    `json:"address"`
-	Email       string    `json:"email"`
-	Name        string    `json:"name"`
-	IsFamily    bool      `json:"isFamily"`
-	Weight      int       `json:"weight"` // Voting weight
-	Confirmed   bool      `json:"confirmed"`
-	ConfirmedAt *int64    `json:"confirmedAt"`
+	ID          string `json:"id"`
+	Address     string `json:"address"`
+	Email       string `json:"email"`
+	Name        string `json:"name"`
+	IsFamily    bool   `json:"isFamily"`
+	Weight      int    `json:"weight"` // Voting weight
+	Confirmed   bool   `json:"confirmed"`
+	ConfirmedAt *int64 `json:"confirmedAt"`
 }
 
 type RecoveryRequest struct {
-	ID             string    `json:"id"`
-	UserID         string    `json:"userId"`
-	NewPublicKey   string    `json:"newPublicKey"`
-	Threshold      int       `json:"threshold"`
+	ID             string     `json:"id"`
+	UserID         string     `json:"userId"`
+	NewPublicKey   string     `json:"newPublicKey"`
+	Threshold      int        `json:"threshold"`
 	Guardians      []Guardian `json:"guardians"`
-	ConfirmedCount int       `json:"confirmedCount"`
-	Status         string    `json:"status"` // pending, confirmed, executed, cancelled
-	CreatedAt      int64     `json:"createdAt"`
-	ExecutedAt     *int64    `json:"executedAt"`
+	ConfirmedCount int        `json:"confirmedCount"`
+	Status         string     `json:"status"` // pending, confirmed, executed, cancelled
+	CreatedAt      int64      `json:"createdAt"`
+	ExecutedAt     *int64     `json:"executedAt"`
 }
 
 type GuardianConfirmation struct {
@@ -76,11 +75,11 @@ type GuardianConfirmation struct {
 }
 
 type SocialRecoveryService struct {
-	config     *Config
-	redis     *redis.Client
+	config           *Config
+	redis            *redis.Client
 	recoveryRequests map[string]*RecoveryRequest
-	guardians map[string][]Guardian
-	mu        sync.RWMutex
+	guardians        map[string][]Guardian
+	mu               sync.RWMutex
 }
 
 func NewSocialRecoveryService(config *Config) *SocialRecoveryService {
@@ -90,9 +89,9 @@ func NewSocialRecoveryService(config *Config) *SocialRecoveryService {
 
 	return &SocialRecoveryService{
 		config:           config,
-		redis:           redisClient,
+		redis:            redisClient,
 		recoveryRequests: make(map[string]*RecoveryRequest),
-		guardians:       make(map[string][]Guardian),
+		guardians:        make(map[string][]Guardian),
 	}
 }
 
@@ -277,22 +276,22 @@ func (s *SocialRecoveryService) RegisterRoutes(r *gin.Engine) {
 	{
 		// Setup guardians
 		api.POST("/guardians", s.handleSetupGuardians)
-		
+
 		// Get user guardians
 		api.GET("/guardians/:userId", s.handleGetGuardians)
-		
+
 		// Initiate recovery
 		api.POST("/initiate", s.handleInitiateRecovery)
-		
+
 		// Confirm recovery (by guardian)
 		api.POST("/confirm", s.handleConfirmRecovery)
-		
+
 		// Execute recovery
 		api.POST("/execute/:requestId", s.handleExecuteRecovery)
-		
+
 		// Cancel recovery
 		api.POST("/cancel", s.handleCancelRecovery)
-		
+
 		// Get status
 		api.GET("/status/:requestId", s.handleGetStatus)
 	}

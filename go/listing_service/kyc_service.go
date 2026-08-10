@@ -30,30 +30,30 @@ import (
 // ============================================================================
 
 type KYCConfig struct {
-	Provider           string            `json:"provider"` // internal, synaps, sumsub, veriff
-	APIKey             string            `json:"api_key"`
-	APISecret          string            `json:"api_secret"`
-	WebhookSecret     string            `json:"webhook_secret"`
-	BaseURL           string            `json:"base_url"`
-	CallbackURL       string            `json:"callback_url"`
-	RequiredLevels    map[int]KYCLevel  `json:"required_levels"`
-	AMLEnabled        bool              `json:"aml_enabled"`
-	TravelRuleEnabled bool              `json:"travel_rule_enabled"`
-	MaxRetryAttempts  int               `json:"max_retry_attempts"`
-	SessionTimeout    time.Duration     `json:"session_timeout"`
+	Provider          string           `json:"provider"` // internal, synaps, sumsub, veriff
+	APIKey            string           `json:"api_key"`
+	APISecret         string           `json:"api_secret"`
+	WebhookSecret     string           `json:"webhook_secret"`
+	BaseURL           string           `json:"base_url"`
+	CallbackURL       string           `json:"callback_url"`
+	RequiredLevels    map[int]KYCLevel `json:"required_levels"`
+	AMLEnabled        bool             `json:"aml_enabled"`
+	TravelRuleEnabled bool             `json:"travel_rule_enabled"`
+	MaxRetryAttempts  int              `json:"max_retry_attempts"`
+	SessionTimeout    time.Duration    `json:"session_timeout"`
 }
 
 type KYCLevel struct {
-	Name             string   `json:"name"`
-	RequiredDocs     []string `json:"required_docs"`
+	Name             string        `json:"name"`
+	RequiredDocs     []string      `json:"required_docs"`
 	VerificationTime time.Duration `json:"verification_time"`
-	TrustScoreBoost  int      `json:"trust_score_boost"`
+	TrustScoreBoost  int           `json:"trust_score_boost"`
 }
 
 var DefaultKYCConfig = &KYCConfig{
-	Provider:          "internal",
-	BaseURL:           "https://api.tigerwallet.com",
-	CallbackURL:       "https://api.tigerwallet.com/kyc/callback",
+	Provider:    "internal",
+	BaseURL:     "https://api.tigerwallet.com",
+	CallbackURL: "https://api.tigerwallet.com/kyc/callback",
 	RequiredLevels: map[int]KYCLevel{
 		1: {
 			Name:             "Email Verification",
@@ -91,27 +91,27 @@ var DefaultKYCConfig = &KYCConfig{
 // ============================================================================
 
 type KYCUser struct {
-	ID                string          `json:"id" bson:"_id"`
-	Email             string          `json:"email" bson:"email"`
-	Phone             string          `json:"phone" bson:"phone"`
-	Level             int             `json:"level" bson:"level"`
-	Status            string          `json:"status" bson:"status"` // pending, reviewing, verified, rejected, expired
-	Country           string          `json:"country" bson:"country"`
-	FirstName         string          `json:"first_name" bson:"first_name"`
-	LastName          string          `json:"last_name" bson:"last_name"`
-	DateOfBirth       string          `json:"date_of_birth" bson:"date_of_birth"`
-	Address           *Address        `json:"address" bson:"address"`
-	Documents         []*KYCDocument  `json:"documents" bson:"documents"`
-	AMLCheck          *AMLCheckResult `json:"aml_check" bson:"aml_check"`
-	TravelRule        *TravelRuleData `json:"travel_rule" bson:"travel_rule"`
-	RiskScore         int             `json:"risk_score" bson:"risk_score"`
-	TrustScore        int             `json:"trust_score" bson:"trust_score"`
-	ExternalID        string          `json:"external_id" bson:"external_id"`
-	Provider          string          `json:"provider" bson:"provider"`
-	CreatedAt         time.Time       `json:"created_at" bson:"created_at"`
-	UpdatedAt         time.Time       `json:"updated_at" bson:"updated_at"`
-	VerifiedAt        *time.Time      `json:"verified_at" bson:"verified_at"`
-	ExpiresAt         *time.Time      `json:"expires_at" bson:"expires_at"`
+	ID          string          `json:"id" bson:"_id"`
+	Email       string          `json:"email" bson:"email"`
+	Phone       string          `json:"phone" bson:"phone"`
+	Level       int             `json:"level" bson:"level"`
+	Status      string          `json:"status" bson:"status"` // pending, reviewing, verified, rejected, expired
+	Country     string          `json:"country" bson:"country"`
+	FirstName   string          `json:"first_name" bson:"first_name"`
+	LastName    string          `json:"last_name" bson:"last_name"`
+	DateOfBirth string          `json:"date_of_birth" bson:"date_of_birth"`
+	Address     *Address        `json:"address" bson:"address"`
+	Documents   []*KYCDocument  `json:"documents" bson:"documents"`
+	AMLCheck    *AMLCheckResult `json:"aml_check" bson:"aml_check"`
+	TravelRule  *TravelRuleData `json:"travel_rule" bson:"travel_rule"`
+	RiskScore   int             `json:"risk_score" bson:"risk_score"`
+	TrustScore  int             `json:"trust_score" bson:"trust_score"`
+	ExternalID  string          `json:"external_id" bson:"external_id"`
+	Provider    string          `json:"provider" bson:"provider"`
+	CreatedAt   time.Time       `json:"created_at" bson:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at" bson:"updated_at"`
+	VerifiedAt  *time.Time      `json:"verified_at" bson:"verified_at"`
+	ExpiresAt   *time.Time      `json:"expires_at" bson:"expires_at"`
 }
 
 type Address struct {
@@ -123,28 +123,28 @@ type Address struct {
 }
 
 type KYCDocument struct {
-	ID         string    `json:"id" bson:"_id"`
-	Type       string    `json:"type" bson:"type"` // passport, id_card, drivers_license, proof_of_address
-	Number     string    `json:"number" bson:"number"`
-	IssuedBy   string    `json:"issued_by" bson:"issued_by"`
-	ExpiryDate string    `json:"expiry_date" bson:"expiry_date"`
-	Status     string    `json:"status" bson:"status"` // pending, verified, rejected, expired
-	FrontURL   string    `json:"front_url" bson:"front_url"`
-	BackURL    string    `json:"back_url" bson:"back_url"`
-	SelfieURL  string    `json:"selfie_url" bson:"selfie_url"`
-	VerifiedAt time.Time `json:"verified_at" bson:"verified_at"`
-	RejectReason string `json:"reject_reason" bson:"reject_reason"`
+	ID           string    `json:"id" bson:"_id"`
+	Type         string    `json:"type" bson:"type"` // passport, id_card, drivers_license, proof_of_address
+	Number       string    `json:"number" bson:"number"`
+	IssuedBy     string    `json:"issued_by" bson:"issued_by"`
+	ExpiryDate   string    `json:"expiry_date" bson:"expiry_date"`
+	Status       string    `json:"status" bson:"status"` // pending, verified, rejected, expired
+	FrontURL     string    `json:"front_url" bson:"front_url"`
+	BackURL      string    `json:"back_url" bson:"back_url"`
+	SelfieURL    string    `json:"selfie_url" bson:"selfie_url"`
+	VerifiedAt   time.Time `json:"verified_at" bson:"verified_at"`
+	RejectReason string    `json:"reject_reason" bson:"reject_reason"`
 }
 
 type AMLCheckResult struct {
-	CheckedAt     time.Time   `json:"checked_at" bson:"checked_at"`
-	Status        string      `json:"status" bson:"status"` // clear, flagged, suspicious
-	RiskLevel     string      `json:"risk_level" bson:"risk_level"` // low, medium, high, critical
-	PEPStatus     string      `json:"pep_status" bson:"pep_status"` // yes, no
-	SanctionsStatus string    `json:"sanctions_status" bson:"sanctions_status"`
-	AdverseMediaStatus string `json:"adverse_media_status" bson:"adverse_media_status"`
-	ReportURL     string      `json:"report_url" bson:"report_url"`
-	MatchDetails  []AMLMatch  `json:"match_details" bson:"match_details"`
+	CheckedAt          time.Time  `json:"checked_at" bson:"checked_at"`
+	Status             string     `json:"status" bson:"status"`         // clear, flagged, suspicious
+	RiskLevel          string     `json:"risk_level" bson:"risk_level"` // low, medium, high, critical
+	PEPStatus          string     `json:"pep_status" bson:"pep_status"` // yes, no
+	SanctionsStatus    string     `json:"sanctions_status" bson:"sanctions_status"`
+	AdverseMediaStatus string     `json:"adverse_media_status" bson:"adverse_media_status"`
+	ReportURL          string     `json:"report_url" bson:"report_url"`
+	MatchDetails       []AMLMatch `json:"match_details" bson:"match_details"`
 }
 
 type AMLMatch struct {
@@ -157,7 +157,7 @@ type AMLMatch struct {
 }
 
 type TravelRuleData struct {
-	Enabled          bool      `json:"enabled" bson:"enabled"`
+	Enabled         bool      `json:"enabled" bson:"enabled"`
 	BeneficiaryName string    `json:"beneficiary_name" bson:"beneficiary_name"`
 	BeneficiaryAddr string    `json:"beneficiary_addr" bson:"beneficiary_addr"`
 	BeneficiaryID   string    `json:"beneficiary_id" bson:"beneficiary_id"`
@@ -194,10 +194,10 @@ type KYCSession struct {
 }
 
 type KYCStep struct {
-	Name      string    `json:"name"`
-	Status    string    `json:"status"` // pending, in_progress, completed, failed
-	CompletedAt *time.Time `json:"completed_at"`
-	Data      map[string]interface{} `json:"data"`
+	Name        string                 `json:"name"`
+	Status      string                 `json:"status"` // pending, in_progress, completed, failed
+	CompletedAt *time.Time             `json:"completed_at"`
+	Data        map[string]interface{} `json:"data"`
 }
 
 func NewKYCService(redisClient *redis.Client, config *KYCConfig) *KYCService {
@@ -206,9 +206,9 @@ func NewKYCService(redisClient *redis.Client, config *KYCConfig) *KYCService {
 	}
 
 	return &KYCService{
-		redis: redisClient,
-		config: config,
-		users: make(map[string]*KYCUser),
+		redis:    redisClient,
+		config:   config,
+		users:    make(map[string]*KYCUser),
 		sessions: make(map[string]*KYCSession),
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
@@ -432,11 +432,11 @@ func (s *KYCService) runAMLCheck(userID string) {
 
 	// Simulate AML check
 	amlCheck := &AMLCheckResult{
-		CheckedAt:     time.Now(),
-		Status:        "clear",
-		RiskLevel:     "low",
-		PEPStatus:     "no",
-		SanctionsStatus: "clear",
+		CheckedAt:          time.Now(),
+		Status:             "clear",
+		RiskLevel:          "low",
+		PEPStatus:          "no",
+		SanctionsStatus:    "clear",
 		AdverseMediaStatus: "clear",
 	}
 
@@ -490,7 +490,7 @@ func (s *KYCService) GetUserByEmail(ctx context.Context, email string) (*KYCUser
 // saveUser saves a user to Redis
 func (s *KYCService) saveUser(ctx context.Context, user *KYCUser) {
 	userData, _ := json.Marshal(user)
-	
+
 	userKey := fmt.Sprintf("kyc:email:%s", user.Email)
 	s.redis.Set(ctx, userKey, userData, 0)
 
@@ -519,13 +519,13 @@ func (s *KYCService) GetTravelRuleData(ctx context.Context, userID string, amoun
 	}
 
 	travelRule := &TravelRuleData{
-		Enabled:          true,
-		BeneficiaryName:  user.FirstName + " " + user.LastName,
-		OriginatorName:   user.FirstName + " " + user.LastName,
-		OriginatorID:     user.ID,
-		Amount:           amount,
-		Currency:         currency,
-		Date:             time.Now(),
+		Enabled:         true,
+		BeneficiaryName: user.FirstName + " " + user.LastName,
+		OriginatorName:  user.FirstName + " " + user.LastName,
+		OriginatorID:    user.ID,
+		Amount:          amount,
+		Currency:        currency,
+		Date:            time.Now(),
 	}
 
 	if user.Address != nil {
@@ -594,9 +594,9 @@ func (s *ListingService) KYCRouter(r *gin.Engine) {
 
 func (s *ListingService) RegisterKYCUser(c *gin.Context) {
 	var req struct {
-		Email    string `json:"email" binding:"required,email"`
-		Phone    string `json:"phone"`
-		Country  string `json:"country" binding:"required"`
+		Email   string `json:"email" binding:"required,email"`
+		Phone   string `json:"phone"`
+		Country string `json:"country" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -613,7 +613,7 @@ func (s *ListingService) RegisterKYCUser(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
-		"user":   user,
+		"user":    user,
 	})
 }
 
@@ -664,7 +664,7 @@ func (s *ListingService) SubmitKYCDocument(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
+		"success":  true,
 		"document": doc,
 	})
 }
@@ -681,7 +681,7 @@ func (s *ListingService) GetKYCStatus(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"user":   user,
+		"user":    user,
 	})
 }
 
@@ -720,7 +720,7 @@ func (s *ListingService) ValidateTravelRuleEndpoint(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"valid":  true,
+		"valid":   true,
 	})
 }
 

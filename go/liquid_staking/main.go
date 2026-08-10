@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
@@ -46,27 +45,27 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type Validator struct {
-	ID             string  `json:"id"`
-	Name           string  `json:"name"`
-	Commission     float64 `json:"commission"`
-	StakedAmount   string  `json:"stakedAmount"`
-	Delegators     int     `json:"delegators"`
-	Uptime         float64 `json:"uptime"`
-	APY            float64 `json:"apy"`
-	Active         bool    `json:"active"`
-	Slashed        bool    `json:"slashed"`
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	Commission   float64 `json:"commission"`
+	StakedAmount string  `json:"stakedAmount"`
+	Delegators   int     `json:"delegators"`
+	Uptime       float64 `json:"uptime"`
+	APY          float64 `json:"apy"`
+	Active       bool    `json:"active"`
+	Slashed      bool    `json:"slashed"`
 }
 
 type StakePosition struct {
-	UserID         string  `json:"userId"`
-	StakerToken    string  `json:"stakerToken"`    // LST user receives
-	StakedAmount   string  `json:"stakedAmount"`   // Amount staked
-	StakerTokenAmt string  `json:"stakerTokenAmt"` // LST minted
-	StakeTime      int64   `json:"stakeTime"`
-	ChainID        uint64  `json:"chainId"`
-	ValidatorID    string  `json:"validatorId"`
-	RewardsEarned  string  `json:"rewardsEarned"`
-	Status         string  `json:"status"` // active, unstaking, claimed
+	UserID         string `json:"userId"`
+	StakerToken    string `json:"stakerToken"`    // LST user receives
+	StakedAmount   string `json:"stakedAmount"`   // Amount staked
+	StakerTokenAmt string `json:"stakerTokenAmt"` // LST minted
+	StakeTime      int64  `json:"stakeTime"`
+	ChainID        uint64 `json:"chainId"`
+	ValidatorID    string `json:"validatorId"`
+	RewardsEarned  string `json:"rewardsEarned"`
+	Status         string `json:"status"` // active, unstaking, claimed
 }
 
 type UnstakeRequest struct {
@@ -79,14 +78,14 @@ type UnstakeRequest struct {
 }
 
 type PoolStats struct {
-	ChainID          uint64  `json:"chainId"`
-	TotalStaked      string  `json:"totalStaked"`
-	TotalLSTMinted   string  `json:"totalLstMinted"`
-	CurrentAPY       float64 `json:"currentApy"`
-	RewardRate       float64 `json:"rewardRate"`
-	UnstakingQueue   int     `json:"unstakingQueue"`
-	TotalValidators  int     `json:"totalValidators"`
-	TotalDelegators  int     `json:"totalDelegators"`
+	ChainID         uint64  `json:"chainId"`
+	TotalStaked     string  `json:"totalStaked"`
+	TotalLSTMinted  string  `json:"totalLstMinted"`
+	CurrentAPY      float64 `json:"currentApy"`
+	RewardRate      float64 `json:"rewardRate"`
+	UnstakingQueue  int     `json:"unstakingQueue"`
+	TotalValidators int     `json:"totalValidators"`
+	TotalDelegators int     `json:"totalDelegators"`
 }
 
 type StakeRequest struct {
@@ -177,7 +176,7 @@ func (s *LiquidStakingService) Stake(req StakeRequest) (*StakePosition, error) {
 	// Get validator
 	chainStr := strconv.FormatUint(req.ChainID, 10)
 	chainValidators := s.validators[chainStr]
-	
+
 	var validator Validator
 	if req.ValidatorID != "" {
 		for _, v := range chainValidators {
@@ -215,17 +214,17 @@ func (s *LiquidStakingService) Stake(req StakeRequest) (*StakePosition, error) {
 	// Store position
 	s.mu.Lock()
 	s.positions[req.UserID] = append(s.positions[req.UserID], *position)
-	
+
 	// Update pool stats
 	if stats, ok := s.poolStats[req.ChainID]; ok {
 		currentStaked, _ := new(big.Int).SetString(stats.TotalStaked, 10)
 		newStaked := new(big.Int).Add(currentStaked, amount)
 		stats.TotalStaked = newStaked.String()
-		
+
 		currentMinted, _ := new(big.Int).SetString(stats.TotalLSTMinted, 10)
 		newMinted := new(big.Int).Add(currentMinted, amount)
 		stats.TotalLSTMinted = newMinted.String()
-		
+
 		stats.TotalDelegators++
 	}
 	s.mu.Unlock()
@@ -259,18 +258,18 @@ func (s *LiquidStakingService) Unstake(req UnstakeRequestInput) (*UnstakeRequest
 
 	// Create unstake request
 	unstake := &UnstakeRequest{
-		UserID:      req.UserID,
-		PositionID: req.PositionID,
-		Amount:     req.Amount,
-		RequestTime: time.Now().Unix(),
+		UserID:       req.UserID,
+		PositionID:   req.PositionID,
+		Amount:       req.Amount,
+		RequestTime:  time.Now().Unix(),
 		CompleteTime: time.Now().Add(7 * 24 * time.Hour).Unix(), // 7 day unstaking period
-		Status:      "pending",
+		Status:       "pending",
 	}
 
 	// Store unstake
 	s.mu.Lock()
 	s.unstakes[req.UserID] = append(s.unstakes[req.UserID], *unstake)
-	
+
 	// Update pool stats
 	if stats, ok := s.poolStats[position.ChainID]; ok {
 		stats.UnstakingQueue++
@@ -285,15 +284,15 @@ func (s *LiquidStakingService) ClaimUnstake(userID, unstakeID string) error {
 	defer s.mu.Unlock()
 
 	userUnstakes := s.unstakes[userID]
-	
+
 	for i, unstake := range userUnstakes {
 		if fmt.Sprintf("unstake-%d", i) == unstakeID || unstake.PositionID == unstakeID {
 			if unstake.Status != "ready" {
 				return fmt.Errorf("unstake not ready")
 			}
-			
+
 			userUnstakes[i].Status = "completed"
-			
+
 			// Update pool stats
 			if stats, ok := s.poolStats[1]; ok {
 				stats.UnstakingQueue--
@@ -302,7 +301,7 @@ func (s *LiquidStakingService) ClaimUnstake(userID, unstakeID string) error {
 				newStaked := new(big.Int).Sub(currentStaked, amount)
 				stats.TotalStaked = newStaked.String()
 			}
-			
+
 			return nil
 		}
 	}
@@ -336,28 +335,28 @@ func (s *LiquidStakingService) CalculateRewards(userID string) (string, error) {
 	s.mu.RUnlock()
 
 	totalRewards := big.NewInt(0)
-	
+
 	for _, pos := range positions {
 		if pos.Status != "active" {
 			continue
 		}
-		
+
 		staked, _ := new(big.Int).SetString(pos.StakedAmount, 10)
 		if staked == nil {
 			continue
 		}
-		
+
 		chainStats := stats[pos.ChainID]
 		if chainStats == nil {
 			continue
 		}
-		
+
 		// Calculate rewards: staked * reward_rate * time
 		// Simplified calculation
 		rewardRate := big.NewFloat(chainStats.RewardRate)
 		stakedFloat := new(big.Float).SetInt(staked)
 		rewards := new(big.Float).Mul(rewardRate, stakedFloat)
-		
+
 		rewardsInt, _ := rewards.Int(nil)
 		totalRewards.Add(totalRewards, rewardsInt)
 	}
@@ -378,25 +377,25 @@ func (s *LiquidStakingService) RegisterRoutes(r *gin.Engine) {
 	{
 		// Pool stats
 		api.GET("/pool/:chainId", s.handleGetPoolStats)
-		
+
 		// Validators
 		api.GET("/validators/:chainId", s.handleGetValidators)
-		
+
 		// Stake
 		api.POST("/stake", s.handleStake)
-		
+
 		// Unstake
 		api.POST("/unstake", s.handleUnstake)
-		
+
 		// Claim
 		api.POST("/claim", s.handleClaim)
-		
+
 		// User positions
 		api.GET("/positions/:userId", s.handleGetPositions)
-		
+
 		// Rewards
 		api.GET("/rewards/:userId", s.handleGetRewards)
-		
+
 		// LST price
 		api.GET("/lst/:chainId", s.handleGetLSTPrice)
 	}
@@ -514,12 +513,12 @@ func (s *LiquidStakingService) handleGetLSTPrice(c *gin.Context) {
 	// Calculate LST price (Total Staked / Total LST Minted)
 	staked, _ := new(big.Int).SetString(stats.TotalStaked, 10)
 	minted, _ := new(big.Int).SetString(stats.TotalLSTMinted, 10)
-	
+
 	if minted.Sign() == 0 {
 		c.JSON(http.StatusOK, gin.H{"price": "1.0", "symbol": "tigerLST"})
 		return
 	}
-	
+
 	price := new(big.Float).Quo(new(big.Float).SetInt(staked), new(big.Float).SetInt(minted))
 	priceStr, _ := price.Float64()
 

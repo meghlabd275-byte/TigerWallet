@@ -1,9 +1,9 @@
 /**
  * TigerWallet Portfolio Tracker Service
- * 
+ *
  * Comprehensive portfolio tracking across all chains and DeFi positions
  * Uses Go for high load handling and worldwide distribution
- * 
+ *
  * Features:
  * - Multi-chain portfolio aggregation
  * - DeFi position tracking (lending, staking, LP)
@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"math/rand/v2"
 	"net/http"
 	"sync"
 	"time"
@@ -28,30 +29,30 @@ import (
 // ============== Data Structures ==============
 
 type Portfolio struct {
-	UserID           string           `json:"user_id"`
-	TotalValueUSD    float64         `json:"total_value_usd"`
-	Change24h        float64         `json:"change_24h"`
-	ChangePercent24h float64         `json:"change_percent_24h"`
-	Positions        []Position      `json:"positions"`
-	Chains           []ChainSummary  `json:"chains"`
-	Assets           []AssetSummary  `json:"assets"`
-	UpdatedAt        int64           `json:"updated_at"`
+	UserID           string         `json:"user_id"`
+	TotalValueUSD    float64        `json:"total_value_usd"`
+	Change24h        float64        `json:"change_24h"`
+	ChangePercent24h float64        `json:"change_percent_24h"`
+	Positions        []Position     `json:"positions"`
+	Chains           []ChainSummary `json:"chains"`
+	Assets           []AssetSummary `json:"assets"`
+	UpdatedAt        int64          `json:"updated_at"`
 }
 
 type Position struct {
-	ID            string        `json:"id"`
-	Type          string        `json:"type"` // wallet, staking, lp, lending, farm, nft
-	Chain         string        `json:"chain"`
-	Protocol      string        `json:"protocol"`
-	TokenA        string        `json:"token_a,omitempty"`
-	TokenB        string        `json:"token_b,omitempty"`
-	Balance       float64       `json:"balance"`
-	ValueUSD      float64       `json:"value_usd"`
-	APY           float64       `json:"apy,omitempty"`
-	RewardUSD     float64       `json:"reward_usd,omitempty"`
-	PnL           float64       `json:"pnl,omitempty"`
-	PnLPercent    float64       `json:"pnl_percent,omitempty"`
-	OpenTime      int64         `json:"open_time,omitempty"`
+	ID         string  `json:"id"`
+	Type       string  `json:"type"` // wallet, staking, lp, lending, farm, nft
+	Chain      string  `json:"chain"`
+	Protocol   string  `json:"protocol"`
+	TokenA     string  `json:"token_a,omitempty"`
+	TokenB     string  `json:"token_b,omitempty"`
+	Balance    float64 `json:"balance"`
+	ValueUSD   float64 `json:"value_usd"`
+	APY        float64 `json:"apy,omitempty"`
+	RewardUSD  float64 `json:"reward_usd,omitempty"`
+	PnL        float64 `json:"pnl,omitempty"`
+	PnLPercent float64 `json:"pnl_percent,omitempty"`
+	OpenTime   int64   `json:"open_time,omitempty"`
 }
 
 type ChainSummary struct {
@@ -68,16 +69,16 @@ type AssetSummary struct {
 }
 
 type Transaction struct {
-	ID          string  `json:"id"`
-	Timestamp   int64   `json:"timestamp"`
-	Type        string  `json:"type"` // send, receive, swap, stake, unstake, claim
-	Chain       string  `json:"chain"`
-	Token       string  `json:"token"`
-	Amount      float64 `json:"amount"`
-	ValueUSD    float64 `json:"value_usd"`
-	Fee         float64 `json:"fee"`
-	Status      string  `json:"status"`
-	Hash        string  `json:"hash"`
+	ID        string  `json:"id"`
+	Timestamp int64   `json:"timestamp"`
+	Type      string  `json:"type"` // send, receive, swap, stake, unstake, claim
+	Chain     string  `json:"chain"`
+	Token     string  `json:"token"`
+	Amount    float64 `json:"amount"`
+	ValueUSD  float64 `json:"value_usd"`
+	Fee       float64 `json:"fee"`
+	Status    string  `json:"status"`
+	Hash      string  `json:"hash"`
 }
 
 type PortfolioRequest struct {
@@ -87,12 +88,12 @@ type PortfolioRequest struct {
 }
 
 type Analytics struct {
-	TotalValue       float64         `json:"total_value"`
-	BestPerformer   AssetSummary    `json:"best_performer"`
-	WorstPerformer  AssetSummary    `json:"worst_performer"`
-	Allocation      []Allocation    `json:"allocation"`
-	RiskScore       float64         `json:"risk_score"`
-	Diversification float64         `json:"diversification"`
+	TotalValue      float64      `json:"total_value"`
+	BestPerformer   AssetSummary `json:"best_performer"`
+	WorstPerformer  AssetSummary `json:"worst_performer"`
+	Allocation      []Allocation `json:"allocation"`
+	RiskScore       float64      `json:"risk_score"`
+	Diversification float64      `json:"diversification"`
 }
 
 type Allocation struct {
@@ -107,23 +108,23 @@ type HistoricalPoint struct {
 }
 
 type PerformanceReport struct {
-	Period          string           `json:"period"`
-	StartValue      float64          `json:"start_value"`
-	EndValue        float64          `json:"end_value"`
-	Change          float64          `json:"change"`
-	ChangePercent   float64          `json:"change_percent"`
-	BestTrade       TradeSummary     `json:"best_trade"`
-	WorstTrade      TradeSummary     `json:"worst_trade"`
-	TotalTrades     int              `json:"total_trades"`
-	WinningTrades   int              `json:"winning_trades"`
-	LosingTrades    int              `json:"losing_trades"`
-	WinRate         float64          `json:"win_rate"`
-	Historical      []HistoricalPoint `json:"historical"`
+	Period        string            `json:"period"`
+	StartValue    float64           `json:"start_value"`
+	EndValue      float64           `json:"end_value"`
+	Change        float64           `json:"change"`
+	ChangePercent float64           `json:"change_percent"`
+	BestTrade     TradeSummary      `json:"best_trade"`
+	WorstTrade    TradeSummary      `json:"worst_trade"`
+	TotalTrades   int               `json:"total_trades"`
+	WinningTrades int               `json:"winning_trades"`
+	LosingTrades  int               `json:"losing_trades"`
+	WinRate       float64           `json:"win_rate"`
+	Historical    []HistoricalPoint `json:"historical"`
 }
 
 type TradeSummary struct {
-	Token    string  `json:"token"`
-	Change   float64 `json:"change"`
+	Token         string  `json:"token"`
+	Change        float64 `json:"change"`
 	ChangePercent float64 `json:"change_percent"`
 }
 
@@ -134,7 +135,7 @@ type PortfolioService struct {
 	mu         sync.RWMutex
 
 	// Price cache
-	prices map[string]float64
+	prices   map[string]float64
 	pricesMu sync.RWMutex
 
 	// Transaction history
@@ -146,9 +147,9 @@ type PortfolioService struct {
 
 func NewPortfolioService() *PortfolioService {
 	return &PortfolioService{
-		portfolios:    make(map[string]*Portfolio),
-		prices:        make(map[string]float64),
-		transactions:  make(map[string][]Transaction),
+		portfolios:   make(map[string]*Portfolio),
+		prices:       make(map[string]float64),
+		transactions: make(map[string][]Transaction),
 	}
 }
 
@@ -172,8 +173,8 @@ func (s *PortfolioService) Run() error {
 	s.server = &http.Server{
 		Addr:         ":8081",
 		Handler:      mux,
-		ReadTimeout:   10 * time.Second,
-		WriteTimeout:  10 * time.Second,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
 	}
 
 	log.Println("Portfolio service starting on :8081")
@@ -187,32 +188,32 @@ func (s *PortfolioService) updatePrices() {
 	for range ticker.C {
 		// Update prices from multiple sources
 		newPrices := map[string]float64{
-			"ETH":  3500.0,
-			"BTC":  65000.0,
-			"BNB":  600.0,
-			"SOL":  145.0,
-			"USDT": 1.0,
-			"USDC": 1.0,
-			"DAI":  1.0,
+			"ETH":   3500.0,
+			"BTC":   65000.0,
+			"BNB":   600.0,
+			"SOL":   145.0,
+			"USDT":  1.0,
+			"USDC":  1.0,
+			"DAI":   1.0,
 			"MATIC": 0.8,
-			"ARB":  1.2,
-			"OP":   2.5,
-			"AVAX": 35.0,
-			"LINK": 18.0,
-			"UNI":  10.0,
-			"AAVE": 280.0,
-			"ATOM": 9.0,
-			"DOT":  7.0,
-			"ADA":  0.45,
-			"XRP":  0.55,
-			"DOGE": 0.12,
-			"SHIB": 0.000025,
+			"ARB":   1.2,
+			"OP":    2.5,
+			"AVAX":  35.0,
+			"LINK":  18.0,
+			"UNI":   10.0,
+			"AAVE":  280.0,
+			"ATOM":  9.0,
+			"DOT":   7.0,
+			"ADA":   0.45,
+			"XRP":   0.55,
+			"DOGE":  0.12,
+			"SHIB":  0.000025,
 		}
 
 		s.pricesMu.Lock()
 		for token, price := range newPrices {
 			// Add some randomness
-			variance := (math.random() - 0.5) * 0.02 * price
+			variance := (rand.Float64() - 0.5) * 0.02 * price
 			s.prices[token] = price + variance
 		}
 		s.pricesMu.Unlock()
@@ -225,13 +226,13 @@ func (s *PortfolioService) updatePortfolios() {
 
 	for range ticker.C {
 		s.mu.Lock()
-		for userID, portfolio := range s.portfolios {
+		for _, portfolio := range s.portfolios {
 			portfolio.TotalValueUSD = 0
 			portfolio.Change24h = 0
 
 			for i := range portfolio.Positions {
 				pos := &portfolio.Positions[i]
-				
+
 				s.pricesMu.RLock()
 				price := s.prices[pos.Chain]
 				if price == 0 {
@@ -243,7 +244,7 @@ func (s *PortfolioService) updatePortfolios() {
 				portfolio.TotalValueUSD += pos.ValueUSD
 			}
 
-			portfolio.Change24h = portfolio.TotalValueUSD * 0.02 * (math.random() - 0.5)
+			portfolio.Change24h = portfolio.TotalValueUSD * 0.02 * (rand.Float64() - 0.5)
 			portfolio.ChangePercent24h = (portfolio.Change24h / portfolio.TotalValueUSD) * 100
 			portfolio.UpdatedAt = time.Now().UnixMilli()
 
@@ -410,9 +411,9 @@ func (s *PortfolioService) handleGetHistory(w http.ResponseWriter, r *http.Reque
 func (s *PortfolioService) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":   "healthy",
-		"users":    len(s.portfolios),
-		"prices":   len(s.prices),
+		"status":    "healthy",
+		"users":     len(s.portfolios),
+		"prices":    len(s.prices),
 		"timestamp": time.Now().Unix(),
 	})
 }
@@ -455,8 +456,8 @@ func (s *PortfolioService) calculateAnalytics(portfolio *Portfolio) Analytics {
 	}
 
 	return Analytics{
-		TotalValue:       portfolio.TotalValueUSD,
-		BestPerformer:    best,
+		TotalValue:      portfolio.TotalValueUSD,
+		BestPerformer:   best,
 		WorstPerformer:  worst,
 		Allocation:      allocation,
 		RiskScore:       riskScore,
@@ -508,7 +509,7 @@ func (s *PortfolioService) generateHistory(userID, period string) []HistoricalPo
 	value := 10000.0
 	for i := days - 1; i >= 0; i-- {
 		// Random walk
-		change := (math.random() - 0.48) * 0.05 * value
+		change := (rand.Float64() - 0.48) * 0.05 * value
 		value += change
 
 		history[days-1-i] = HistoricalPoint{
@@ -543,9 +544,9 @@ func (s *PortfolioService) createDemoPortfolio(userID string) *Portfolio {
 
 func (s *PortfolioService) buildPortfolio(userID string, addresses []string, chains []string) *Portfolio {
 	portfolio := &Portfolio{
-		UserID:     userID,
-		Positions:  []Position{},
-		UpdatedAt:  time.Now().UnixMilli(),
+		UserID:    userID,
+		Positions: []Position{},
+		UpdatedAt: time.Now().UnixMilli(),
 	}
 
 	// Simulate fetching positions from blockchain
@@ -557,12 +558,12 @@ func (s *PortfolioService) buildPortfolio(userID string, addresses []string, cha
 		}
 
 		portfolio.Positions = append(portfolio.Positions, Position{
-			ID:        fmt.Sprintf("pos_%s", chain),
-			Type:      "wallet",
-			Chain:     chain,
-			Protocol:  chain,
-			Balance:   10.0,
-			ValueUSD:  10.0 * price,
+			ID:       fmt.Sprintf("pos_%s", chain),
+			Type:     "wallet",
+			Chain:    chain,
+			Protocol: chain,
+			Balance:  10.0,
+			ValueUSD: 10.0 * price,
 		})
 	}
 	s.pricesMu.RUnlock()

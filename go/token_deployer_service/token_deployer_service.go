@@ -1,6 +1,6 @@
 /**
  * TigerWallet Token Deployer Service
- * 
+ *
  * Complete token deployment service for EVM and non-EVM chains.
  * Built with Go for high-load distributed operations.
  */
@@ -24,47 +24,47 @@ import (
 
 // TokenDeployment represents a token deployment request
 type TokenDeployment struct {
-	ID              string        `json:"id"`
-	UserID          string        `json:"user_id"`
-	Name            string        `json:"name"`
-	Symbol          string        `json:"symbol"`
-	Decimals        int           `json:"decimals"`
-	TotalSupply     string        `json:"total_supply"`
-	ChainID         uint64        `json:"chain_id"`
-	TokenType       TokenType     `json:"token_type"`
-	ContractAddress string        `json:"contract_address"`
-	TransactionHash string        `json:"transaction_hash"`
-	DeployerAddress string        `json:"deployer_address"`
+	ID              string         `json:"id"`
+	UserID          string         `json:"user_id"`
+	Name            string         `json:"name"`
+	Symbol          string         `json:"symbol"`
+	Decimals        int            `json:"decimals"`
+	TotalSupply     string         `json:"total_supply"`
+	ChainID         uint64         `json:"chain_id"`
+	TokenType       TokenType      `json:"token_type"`
+	ContractAddress string         `json:"contract_address"`
+	TransactionHash string         `json:"transaction_hash"`
+	DeployerAddress string         `json:"deployer_address"`
 	Features        []TokenFeature `json:"features"`
-	Status          DeployStatus  `json:"status"`
-	Deployer        string        `json:"deployer"`
-	CreatedAt       int64         `json:"created_at"`
-	DeployedAt      int64         `json:"deployed_at"`
+	Status          DeployStatus   `json:"status"`
+	Deployer        string         `json:"deployer"`
+	CreatedAt       int64          `json:"created_at"`
+	DeployedAt      int64          `json:"deployed_at"`
 }
 
 // TokenType represents token type
 type TokenType string
 
 const (
-	TokenTypeERC20      TokenType = "ERC20"
-	TokenTypeERC721     TokenType = "ERC721"
-	TokenTypeERC1155    TokenType = "ERC1155"
-	TokenTypeBEP20      TokenType = "BEP20"
-	TokenTypeTRC20      TokenType = "TRC20"
-	TokenTypeSPL        TokenType = "SPL"
-	TokenTypeCAP20      TokenType = "CAP20"
+	TokenTypeERC20   TokenType = "ERC20"
+	TokenTypeERC721  TokenType = "ERC721"
+	TokenTypeERC1155 TokenType = "ERC1155"
+	TokenTypeBEP20   TokenType = "BEP20"
+	TokenTypeTRC20   TokenType = "TRC20"
+	TokenTypeSPL     TokenType = "SPL"
+	TokenTypeCAP20   TokenType = "CAP20"
 )
 
 // TokenFeature represents token features
 type TokenFeature string
 
 const (
-	FeatureMintable    TokenFeature = "mintable"
-	FeatureBurnable    TokenFeature = "burnable"
-	FeaturePausable    TokenFeature = "pausable"
-	FeatureSnapshots   TokenFeature = "snapshots"
-	FeatureVotes       TokenFeature = "votes"
-	FeatureFlashMint   TokenFeature = "flash_mint"
+	FeatureMintable  TokenFeature = "mintable"
+	FeatureBurnable  TokenFeature = "burnable"
+	FeaturePausable  TokenFeature = "pausable"
+	FeatureSnapshots TokenFeature = "snapshots"
+	FeatureVotes     TokenFeature = "votes"
+	FeatureFlashMint TokenFeature = "flash_mint"
 )
 
 // DeployStatus represents deployment status
@@ -79,15 +79,15 @@ const (
 
 // TokenConfig represents token configuration
 type TokenConfig struct {
-	Name             string            `json:"name"`
-	Symbol           string            `json:"symbol"`
-	Decimals         int               `json:"decimals"`
-	TotalSupply      string            `json:"total_supply"`
-	InitialHolders   []Holder          `json:"initial_holders"`
-	MintAddress      string            `json:"mint_address"`
-	MaxSupply        string            `json:"max_supply"`
-	TransferFee      string            `json:"transfer_fee"`
-	FeeRecipient     string            `json:"fee_recipient"`
+	Name           string   `json:"name"`
+	Symbol         string   `json:"symbol"`
+	Decimals       int      `json:"decimals"`
+	TotalSupply    string   `json:"total_supply"`
+	InitialHolders []Holder `json:"initial_holders"`
+	MintAddress    string   `json:"mint_address"`
+	MaxSupply      string   `json:"max_supply"`
+	TransferFee    string   `json:"transfer_fee"`
+	FeeRecipient   string   `json:"fee_recipient"`
 }
 
 // Holder represents initial holder

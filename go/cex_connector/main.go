@@ -12,11 +12,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"hash"
-	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -42,44 +39,44 @@ const (
 	SOL  = "SOL"
 
 	// Exchange IDs
-	BINANCE   = "binance"
-	COINBASE  = "coinbase"
-	KRAKEN    = "kraken"
-	KUCOIN    = "kucoin"
-	BYBIT     = "bybit"
-	OKX       = "okx"
-	GATE      = "gate"
-	BITGET    = "bitget"
-	HUOBI     = "huobi"
-	MEXC      = "mexc"
+	BINANCE  = "binance"
+	COINBASE = "coinbase"
+	KRAKEN   = "kraken"
+	KUCOIN   = "kucoin"
+	BYBIT    = "bybit"
+	OKX      = "okx"
+	GATE     = "gate"
+	BITGET   = "bitget"
+	HUOBI    = "huobi"
+	MEXC     = "mexc"
 )
 
 var (
-	redisClient *redis.Client
+	redisClient  *redis.Client
 	exchangeAPI  map[string]*ExchangeAPI
 	orderBooks   map[string]*OrderBook
 	orderBookMux sync.RWMutex
 )
 
 type ExchangeAPI struct {
-	Name         string
-	BaseURL      string
-	WSURL        string
-	APIKey       string
-	APISecret    string
-	Passphrase   string // For exchanges that need it
-	httpClient   *http.Client
-	wsConn       *websocket.Conn
-	subscribed   map[string]bool
-	mu           sync.RWMutex
+	Name       string
+	BaseURL    string
+	WSURL      string
+	APIKey     string
+	APISecret  string
+	Passphrase string // For exchanges that need it
+	httpClient *http.Client
+	wsConn     *websocket.Conn
+	subscribed map[string]bool
+	mu         sync.RWMutex
 }
 
 type Ticker struct {
-	Symbol          string  `json:"symbol"`
+	Symbol         string  `json:"symbol"`
 	LastPrice      float64 `json:"lastPrice"`
 	BidPrice       float64 `json:"bidPrice"`
 	AskPrice       float64 `json:"askPrice"`
-	Volume24h     float64 `json:"volume24h"`
+	Volume24h      float64 `json:"volume24h"`
 	QuoteVolume24h float64 `json:"quoteVolume24h"`
 	PriceChange    float64 `json:"priceChange"`
 	PriceChangePct float64 `json:"priceChangePercent"`
@@ -89,12 +86,12 @@ type Ticker struct {
 }
 
 type OrderBook struct {
-	Symbol      string           `json:"symbol"`
-	Bids        []OrderBookEntry `json:"bids"`
-	Asks        []OrderBookEntry `json:"asks"`
-	LastUpdateID int64           `json:"lastUpdateId"`
-	Exchange    string           `json:"exchange"`
-	Timestamp   int64            `json:"timestamp"`
+	Symbol       string           `json:"symbol"`
+	Bids         []OrderBookEntry `json:"bids"`
+	Asks         []OrderBookEntry `json:"asks"`
+	LastUpdateID int64            `json:"lastUpdateId"`
+	Exchange     string           `json:"exchange"`
+	Timestamp    int64            `json:"timestamp"`
 }
 
 type OrderBookEntry struct {
@@ -103,102 +100,102 @@ type OrderBookEntry struct {
 }
 
 type Order struct {
-	OrderID        string  `json:"orderId"`
-	Symbol         string  `json:"symbol"`
-	Side           string  `json:"side"`
-	Type           string  `json:"type"`
-	Price          float64 `json:"price"`
-	Amount         float64 `json:"amount"`
-	FilledAmount   float64 `json:"filledAmount"`
-	Status         string  `json:"status"`
-	CreatedAt      int64   `json:"createdAt"`
-	FilledAt       *int64  `json:"filledAt"`
-	Commission     float64 `json:"commission"`
-	Exchange       string  `json:"exchange"`
-}
-
-type Balance struct {
-	Currency  string  `json:"currency"`
-	Free      float64 `json:"free"`
-	Locked    float64 `json:"locked"`
-	Total     float64 `json:"total"`
-	USDValue  float64 `json:"usdValue"`
-}
-
-type Trade struct {
-	TradeID      string  `json:"tradeId"`
 	OrderID      string  `json:"orderId"`
 	Symbol       string  `json:"symbol"`
 	Side         string  `json:"side"`
+	Type         string  `json:"type"`
 	Price        float64 `json:"price"`
 	Amount       float64 `json:"amount"`
+	FilledAmount float64 `json:"filledAmount"`
+	Status       string  `json:"status"`
+	CreatedAt    int64   `json:"createdAt"`
+	FilledAt     *int64  `json:"filledAt"`
 	Commission   float64 `json:"commission"`
-	CommissionAsset string `json:"commissionAsset"`
-	Timestamp    int64   `json:"timestamp"`
 	Exchange     string  `json:"exchange"`
 }
 
+type Balance struct {
+	Currency string  `json:"currency"`
+	Free     float64 `json:"free"`
+	Locked   float64 `json:"locked"`
+	Total    float64 `json:"total"`
+	USDValue float64 `json:"usdValue"`
+}
+
+type Trade struct {
+	TradeID         string  `json:"tradeId"`
+	OrderID         string  `json:"orderId"`
+	Symbol          string  `json:"symbol"`
+	Side            string  `json:"side"`
+	Price           float64 `json:"price"`
+	Amount          float64 `json:"amount"`
+	Commission      float64 `json:"commission"`
+	CommissionAsset string  `json:"commissionAsset"`
+	Timestamp       int64   `json:"timestamp"`
+	Exchange        string  `json:"exchange"`
+}
+
 type KLine struct {
-	OpenTime     int64
-	Open         float64
-	High         float64
-	Low          float64
-	Close        float64
-	Volume       float64
-	CloseTime    int64
-	QuoteVolume  float64
-	NumTrades    int64
+	OpenTime    int64
+	Open        float64
+	High        float64
+	Low         float64
+	Close       float64
+	Volume      float64
+	CloseTime   int64
+	QuoteVolume float64
+	NumTrades   int64
 }
 
 type WithdrawRequest struct {
-	Currency    string  `json:"currency"`
-	Address     string  `json:"address"`
-	Amount      float64 `json:"amount"`
-	Network     string  `json:"network"`
-	Fee         float64 `json:"fee"`
-	Timestamp   int64   `json:"timestamp"`
+	Currency  string  `json:"currency"`
+	Address   string  `json:"address"`
+	Amount    float64 `json:"amount"`
+	Network   string  `json:"network"`
+	Fee       float64 `json:"fee"`
+	Timestamp int64   `json:"timestamp"`
 }
 
 type DepositAddress struct {
-	Currency    string `json:"currency"`
-	Address     string `json:"address"`
-	Memo        string `json:"memo,omitempty"`
-	Network     string `json:"network"`
-	Tag         string `json:"tag,omitempty"`
+	Currency string `json:"currency"`
+	Address  string `json:"address"`
+	Memo     string `json:"memo,omitempty"`
+	Network  string `json:"network"`
+	Tag      string `json:"tag,omitempty"`
 }
 
 type Market struct {
-	Symbol         string `json:"symbol"`
-	BaseAsset      string `json:"baseAsset"`
-	QuoteAsset     string `json:"quoteAsset"`
-	MinPrice       float64 `json:"minPrice"`
-	MaxPrice       float64 `json:"maxPrice"`
-	MinAmount      float64 `json:"minAmount"`
-	MaxAmount      float64 `json:"maxAmount"`
-	MinNotional    float64 `json:"minNotional"`
-	PricePrecision int     `json:"pricePrecision"`
-	AmountPrecision int    `json:"amountPrecision"`
-	QuotePrecision int     `json:"quotePrecision"`
-	Status        string  `json:"status"`
+	Symbol          string  `json:"symbol"`
+	BaseAsset       string  `json:"baseAsset"`
+	QuoteAsset      string  `json:"quoteAsset"`
+	MinPrice        float64 `json:"minPrice"`
+	MaxPrice        float64 `json:"maxPrice"`
+	MinAmount       float64 `json:"minAmount"`
+	MaxAmount       float64 `json:"maxAmount"`
+	MinNotional     float64 `json:"minNotional"`
+	PricePrecision  int     `json:"pricePrecision"`
+	AmountPrecision int     `json:"amountPrecision"`
+	QuotePrecision  int     `json:"quotePrecision"`
+	Status          string  `json:"status"`
 }
 
 type ExchangeStats struct {
-	Exchange       string  `json:"exchange"`
-	Status         string  `json:"status"`
-	LatencyMs      float64 `json:"latencyMs"`
-	LastUpdate     int64   `json:"lastUpdate"`
-	TickersCount   int     `json:"tickersCount"`
-	OrderBooksCount int    `json:"orderBooksCount"`
-	WebSocketConnected bool `json:"wsConnected"`
+	Exchange           string  `json:"exchange"`
+	Status             string  `json:"status"`
+	LatencyMs          float64 `json:"latencyMs"`
+	LastUpdate         int64   `json:"lastUpdate"`
+	TickersCount       int     `json:"tickersCount"`
+	OrderBooksCount    int     `json:"orderBooksCount"`
+	WebSocketConnected bool    `json:"wsConnected"`
 }
 
 type PaymentRequest struct {
-	UserID      string  `json:"user_id"`
-	ListingID   string  `json:"listing_id"`
-	Currency    string  `json:"currency"` // USDT, USDC, ETH, BTC, BNB, SOL
-	Amount      float64 `json:"amount"`
-	Network     string  `json:"network"` // For crypto: eth, bsc, arb, etc.
-	WalletType  string  `json:"wallet_type"` // master_wallet, user_wallet
+	UserID     string  `json:"user_id"`
+	ListingID  string  `json:"listing_id"`
+	Currency   string  `json:"currency"` // USDT, USDC, ETH, BTC, BNB, SOL
+	Amount     float64 `json:"amount"`
+	Network    string  `json:"network"`     // For crypto: eth, bsc, arb, etc.
+	WalletType string  `json:"wallet_type"` // master_wallet, user_wallet
 }
 
 type PaymentResponse struct {
@@ -216,21 +213,21 @@ type PaymentResponse struct {
 }
 
 type CryptoPayment struct {
-	ID          string    `json:"id"`
-	UserID      string    `json:"user_id"`
-	ListingID   string    `json:"listing_id"`
-	Currency    string    `json:"currency"`
-	Amount      float64   `json:"amount"`
-	Address     string    `json:"address"`
-	Memo        string    `json:"memo"`
-	Network     string    `json:"network"`
-	TxHash      string    `json:"tx_hash"`
-	Status      string    `json:"status"` // pending, confirmed, completed, failed
-	Confirmations int     `json:"confirmations"`
-	RequiredConfirmations int `json:"required_confirmations"`
-	CreatedAt   int64     `json:"created_at"`
-	UpdatedAt   int64     `json:"updated_at"`
-	CompletedAt *int64    `json:"completed_at"`
+	ID                    string  `json:"id"`
+	UserID                string  `json:"user_id"`
+	ListingID             string  `json:"listing_id"`
+	Currency              string  `json:"currency"`
+	Amount                float64 `json:"amount"`
+	Address               string  `json:"address"`
+	Memo                  string  `json:"memo"`
+	Network               string  `json:"network"`
+	TxHash                string  `json:"tx_hash"`
+	Status                string  `json:"status"` // pending, confirmed, completed, failed
+	Confirmations         int     `json:"confirmations"`
+	RequiredConfirmations int     `json:"required_confirmations"`
+	CreatedAt             int64   `json:"created_at"`
+	UpdatedAt             int64   `json:"updated_at"`
+	CompletedAt           *int64  `json:"completed_at"`
 }
 
 // Initialize exchange APIs
@@ -240,22 +237,22 @@ func initExchangeAPIs() {
 
 	// Binance
 	exchangeAPI[BINANCE] = &ExchangeAPI{
-		Name:      "Binance",
-		BaseURL:   "https://api.binance.com",
-		WSURL:     "wss://stream.binance.com:9443/ws",
-		APIKey:    os.Getenv("BINANCE_API_KEY"),
-		APISecret: os.Getenv("BINANCE_API_SECRET"),
+		Name:       "Binance",
+		BaseURL:    "https://api.binance.com",
+		WSURL:      "wss://stream.binance.com:9443/ws",
+		APIKey:     os.Getenv("BINANCE_API_KEY"),
+		APISecret:  os.Getenv("BINANCE_API_SECRET"),
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 		subscribed: make(map[string]bool),
 	}
 
 	// Coinbase
 	exchangeAPI[COINBASE] = &ExchangeAPI{
-		Name:      "Coinbase",
-		BaseURL:   "https://api.coinbase.com",
-		WSURL:     "wss://ws-feed.coinbase.com",
-		APIKey:    os.Getenv("COINBASE_API_KEY"),
-		APISecret: os.Getenv("COINBASE_API_SECRET"),
+		Name:       "Coinbase",
+		BaseURL:    "https://api.coinbase.com",
+		WSURL:      "wss://ws-feed.coinbase.com",
+		APIKey:     os.Getenv("COINBASE_API_KEY"),
+		APISecret:  os.Getenv("COINBASE_API_SECRET"),
 		Passphrase: os.Getenv("COINBASE_PASS"),
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 		subscribed: make(map[string]bool),
@@ -263,22 +260,22 @@ func initExchangeAPIs() {
 
 	// Kraken
 	exchangeAPI[KRAKEN] = &ExchangeAPI{
-		Name:      "Kraken",
-		BaseURL:   "https://api.kraken.com",
-		WSURL:     "wss://ws.kraken.com",
-		APIKey:    os.Getenv("KRAKEN_API_KEY"),
-		APISecret: os.Getenv("KRAKEN_API_SECRET"),
+		Name:       "Kraken",
+		BaseURL:    "https://api.kraken.com",
+		WSURL:      "wss://ws.kraken.com",
+		APIKey:     os.Getenv("KRAKEN_API_KEY"),
+		APISecret:  os.Getenv("KRAKEN_API_SECRET"),
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 		subscribed: make(map[string]bool),
 	}
 
 	// KuCoin
 	exchangeAPI[KUCOIN] = &ExchangeAPI{
-		Name:      "KuCoin",
-		BaseURL:   "https://api.kucoin.com",
-		WSURL:     "wss://ws-api.kucoin.com",
-		APIKey:    os.Getenv("KUCOIN_API_KEY"),
-		APISecret: os.Getenv("KUCOIN_API_SECRET"),
+		Name:       "KuCoin",
+		BaseURL:    "https://api.kucoin.com",
+		WSURL:      "wss://ws-api.kucoin.com",
+		APIKey:     os.Getenv("KUCOIN_API_KEY"),
+		APISecret:  os.Getenv("KUCOIN_API_SECRET"),
 		Passphrase: os.Getenv("KUCOIN_PASS"),
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 		subscribed: make(map[string]bool),
@@ -286,22 +283,22 @@ func initExchangeAPIs() {
 
 	// Bybit
 	exchangeAPI[BYBIT] = &ExchangeAPI{
-		Name:      "Bybit",
-		BaseURL:   "https://api.bybit.com",
-		WSURL:     "wss://stream.bybit.com/v5/public/spot",
-		APIKey:    os.Getenv("BYBIT_API_KEY"),
-		APISecret: os.Getenv("BYBIT_API_SECRET"),
+		Name:       "Bybit",
+		BaseURL:    "https://api.bybit.com",
+		WSURL:      "wss://stream.bybit.com/v5/public/spot",
+		APIKey:     os.Getenv("BYBIT_API_KEY"),
+		APISecret:  os.Getenv("BYBIT_API_SECRET"),
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 		subscribed: make(map[string]bool),
 	}
 
 	// OKX
 	exchangeAPI[OKX] = &ExchangeAPI{
-		Name:      "OKX",
-		BaseURL:   "https://www.okx.com",
-		WSURL:     "wss://ws.okx.com:8443/ws/v5/public",
-		APIKey:    os.Getenv("OKX_API_KEY"),
-		APISecret: os.Getenv("OKX_API_SECRET"),
+		Name:       "OKX",
+		BaseURL:    "https://www.okx.com",
+		WSURL:      "wss://ws.okx.com:8443/ws/v5/public",
+		APIKey:     os.Getenv("OKX_API_KEY"),
+		APISecret:  os.Getenv("OKX_API_SECRET"),
 		Passphrase: os.Getenv("OKX_PASS"),
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 		subscribed: make(map[string]bool),
@@ -309,44 +306,44 @@ func initExchangeAPIs() {
 
 	// Gate
 	exchangeAPI[GATE] = &ExchangeAPI{
-		Name:      "Gate",
-		BaseURL:   "https://api.gateio.ws",
-		WSURL:     "wss://api.gateio.ws/ws/v4/",
-		APIKey:    os.Getenv("GATE_API_KEY"),
-		APISecret: os.Getenv("GATE_API_SECRET"),
+		Name:       "Gate",
+		BaseURL:    "https://api.gateio.ws",
+		WSURL:      "wss://api.gateio.ws/ws/v4/",
+		APIKey:     os.Getenv("GATE_API_KEY"),
+		APISecret:  os.Getenv("GATE_API_SECRET"),
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 		subscribed: make(map[string]bool),
 	}
 
 	// Bitget
 	exchangeAPI[BITGET] = &ExchangeAPI{
-		Name:      "Bitget",
-		BaseURL:   "https://api.bitget.com",
-		WSURL:     "wss://ws.bitget.com/v2/spot/public",
-		APIKey:    os.Getenv("BITGET_API_KEY"),
-		APISecret: os.Getenv("BITGET_API_SECRET"),
+		Name:       "Bitget",
+		BaseURL:    "https://api.bitget.com",
+		WSURL:      "wss://ws.bitget.com/v2/spot/public",
+		APIKey:     os.Getenv("BITGET_API_KEY"),
+		APISecret:  os.Getenv("BITGET_API_SECRET"),
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 		subscribed: make(map[string]bool),
 	}
 
 	// Huobi
 	exchangeAPI[HUOBI] = &ExchangeAPI{
-		Name:      "Huobi",
-		BaseURL:   "https://api.huobi.pro",
-		WSURL:     "wss://api.huobi.pro/ws",
-		APIKey:    os.Getenv("HUOBI_API_KEY"),
-		APISecret: os.Getenv("HUOBI_API_SECRET"),
+		Name:       "Huobi",
+		BaseURL:    "https://api.huobi.pro",
+		WSURL:      "wss://api.huobi.pro/ws",
+		APIKey:     os.Getenv("HUOBI_API_KEY"),
+		APISecret:  os.Getenv("HUOBI_API_SECRET"),
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 		subscribed: make(map[string]bool),
 	}
 
 	// MEXC
 	exchangeAPI[MEXC] = &ExchangeAPI{
-		Name:      "MEXC",
-		BaseURL:   "https://api.mexc.com",
-		WSURL:     "wss://ws.mexc.com/ws",
-		APIKey:    os.Getenv("MEXC_API_KEY"),
-		APISecret: os.Getenv("MEXC_API_SECRET"),
+		Name:       "MEXC",
+		BaseURL:    "https://api.mexc.com",
+		WSURL:      "wss://ws.mexc.com/ws",
+		APIKey:     os.Getenv("MEXC_API_KEY"),
+		APISecret:  os.Getenv("MEXC_API_SECRET"),
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 		subscribed: make(map[string]bool),
 	}
@@ -381,16 +378,15 @@ var cryptoNetworks = map[string][]string{
 
 // Master wallet addresses (these would be real addresses in production)
 var masterWalletAddresses = map[string]string{
-	"ETH":    "0x742d35Cc6634C0532925a3b844Bc9e7595f5eD5B",
-	"BSC":    "0x742d35Cc6634C0532925a3b844Bc9e7595f5eD5B",
-	"ARB":    "0x742d35Cc6634C0532925a3b844Bc9e7595f5eD5B",
-	"AVAX":   "0x742d35Cc6634C0532925a3b844Bc9e7595f5eD5B",
-	"POLYGON": "0x742d35Cc6634C0532925a3b844Bc9e7595f5eD5B",
+	"ETH":      "0x742d35Cc6634C0532925a3b844Bc9e7595f5eD5B",
+	"BSC":      "0x742d35Cc6634C0532925a3b844Bc9e7595f5eD5B",
+	"ARB":      "0x742d35Cc6634C0532925a3b844Bc9e7595f5eD5B",
+	"AVAX":     "0x742d35Cc6634C0532925a3b844Bc9e7595f5eD5B",
+	"POLYGON":  "0x742d35Cc6634C0532925a3b844Bc9e7595f5eD5B",
 	"OPTIMISM": "0x742d35Cc6634C0532925a3b844Bc9e7595f5eD5B",
-	"TRON":   "TJhqY7GMz6iM7sCqYqN3pF2xMqE7Kdm2rW",
-	"SOLANA": "7Eqpo6gnY9xq5uM1WqE3K2tX5rY8xPzA3vB6wD9kLm",
-	"BTC":    "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
-	"BSC":    "0x742d35Cc6634C0532925a3b844Bc9e7595f5eD5B",
+	"TRON":     "TJhqY7GMz6iM7sCqYqN3pF2xMqE7Kdm2rW",
+	"SOLANA":   "7Eqpo6gnY9xq5uM1WqE3K2tX5rY8xPzA3vB6wD9kLm",
+	"BTC":      "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
 }
 
 var masterWalletCounter = 0
@@ -450,20 +446,20 @@ func CreateCryptoPayment(c *gin.Context) {
 	// Create payment record
 	now := time.Now()
 	payment := &CryptoPayment{
-		ID:                       paymentID,
-		UserID:                   req.UserID,
-		ListingID:                req.ListingID,
-		Currency:                 req.Currency,
-		Amount:                  req.Amount,
-		Address:                  address,
-		Memo:                     memo,
-		Network:                  network,
-		Status:                   "pending",
-		Confirmations:            0,
-		RequiredConfirmations:    getRequiredConfirmations(req.Currency),
-		CreatedAt:                now.Unix(),
-		UpdatedAt:                now.Unix(),
-		CompletedAt:              nil,
+		ID:                    paymentID,
+		UserID:                req.UserID,
+		ListingID:             req.ListingID,
+		Currency:              req.Currency,
+		Amount:                req.Amount,
+		Address:               address,
+		Memo:                  memo,
+		Network:               network,
+		Status:                "pending",
+		Confirmations:         0,
+		RequiredConfirmations: getRequiredConfirmations(req.Currency),
+		CreatedAt:             now.Unix(),
+		UpdatedAt:             now.Unix(),
+		CompletedAt:           nil,
 	}
 
 	// Store payment
@@ -499,17 +495,17 @@ func CreateCryptoPayment(c *gin.Context) {
 
 func getRequiredConfirmations(currency string) int {
 	confirmations := map[string]int{
-		"USDT":   12,
-		"USDC":   12,
-		"ETH":    12,
-		"BSC":    15,
-		"ARB":    15,
-		"AVAX":   12,
-		"POLYGON": 128,
-		"OPTIMISM": 1024,
-		"TRON":   19,
-		"SOLANA": 32,
-		"BTC":    6,
+		"USDT":         12,
+		"USDC":         12,
+		"ETH":          12,
+		"BSC":          15,
+		"ARB":          15,
+		"AVAX":         12,
+		"POLYGON":      128,
+		"OPTIMISM":     1024,
+		"TRON":         19,
+		"SOLANA":       32,
+		"BTC":          6,
 		"BTC (SegWit)": 6,
 	}
 
@@ -573,11 +569,11 @@ func VerifyCryptoPayment(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"payment_id":      payment.ID,
-			"status":         payment.Status,
-			"confirmations":  payment.Confirmations,
-			"required":       payment.RequiredConfirmations,
-			"tx_hash":        payment.TxHash,
+			"payment_id":    payment.ID,
+			"status":        payment.Status,
+			"confirmations": payment.Confirmations,
+			"required":      payment.RequiredConfirmations,
+			"tx_hash":       payment.TxHash,
 		},
 	})
 }
@@ -605,18 +601,18 @@ func GetPaymentStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"payment_id":         payment.ID,
-			"currency":           payment.Currency,
-			"amount":             payment.Amount,
-			"address":           payment.Address,
-			"memo":              payment.Memo,
-			"network":           payment.Network,
-			"tx_hash":           payment.TxHash,
-			"status":            payment.Status,
-			"confirmations":     payment.Confirmations,
+			"payment_id":             payment.ID,
+			"currency":               payment.Currency,
+			"amount":                 payment.Amount,
+			"address":                payment.Address,
+			"memo":                   payment.Memo,
+			"network":                payment.Network,
+			"tx_hash":                payment.TxHash,
+			"status":                 payment.Status,
+			"confirmations":          payment.Confirmations,
 			"required_confirmations": payment.RequiredConfirmations,
-			"created_at":        payment.CreatedAt,
-			"completed_at":      payment.CompletedAt,
+			"created_at":             payment.CreatedAt,
+			"completed_at":           payment.CompletedAt,
 		},
 	})
 }
@@ -712,17 +708,17 @@ func (e *ExchangeAPI) binanceGetTicker(symbol string) (*Ticker, error) {
 	}
 
 	ticker := &Ticker{
-		Symbol:          result["symbol"].(string),
-		LastPrice:       parseFloat(result["lastPrice"]),
-		BidPrice:        parseFloat(result["bidPrice"]),
-		AskPrice:        parseFloat(result["askPrice"]),
-		Volume24h:       parseFloat(result["volume"]),
-		QuoteVolume24h:  parseFloat(result["quoteVolume"]),
-		PriceChange:     parseFloat(result["priceChange"]),
-		PriceChangePct:  parseFloat(result["priceChangePercent"]),
+		Symbol:         result["symbol"].(string),
+		LastPrice:      parseFloat(result["lastPrice"]),
+		BidPrice:       parseFloat(result["bidPrice"]),
+		AskPrice:       parseFloat(result["askPrice"]),
+		Volume24h:      parseFloat(result["volume"]),
+		QuoteVolume24h: parseFloat(result["quoteVolume"]),
+		PriceChange:    parseFloat(result["priceChange"]),
+		PriceChangePct: parseFloat(result["priceChangePercent"]),
 		High24h:        parseFloat(result["highPrice"]),
-		Low24h:          parseFloat(result["lowPrice"]),
-		Timestamp:       time.Now().UnixMilli(),
+		Low24h:         parseFloat(result["lowPrice"]),
+		Timestamp:      time.Now().UnixMilli(),
 	}
 
 	return ticker, nil
@@ -747,10 +743,10 @@ func (e *ExchangeAPI) binanceGetOrderBook(symbol string, limit int) (*OrderBook,
 	}
 
 	ob := &OrderBook{
-		Symbol:      symbol,
+		Symbol:       symbol,
 		LastUpdateID: int64(result["lastUpdateId"].(float64)),
-		Exchange:    BINANCE,
-		Timestamp:   time.Now().UnixMilli(),
+		Exchange:     BINANCE,
+		Timestamp:    time.Now().UnixMilli(),
 	}
 
 	for _, b := range result["bids"].([]interface{}) {
@@ -792,12 +788,12 @@ func (e *ExchangeAPI) coinbaseGetTicker(symbol string) (*Ticker, error) {
 
 	price := parseFloat(result["price"])
 	ticker := &Ticker{
-		Symbol:     symbol,
-		LastPrice:  price,
-		Volume24h:  parseFloat(result["volume"]),
-		High24h:    parseFloat(result["high_24_h"]),
-		Low24h:     parseFloat(result["low_24_h"]),
-		Timestamp:  time.Now().UnixMilli(),
+		Symbol:    symbol,
+		LastPrice: price,
+		Volume24h: parseFloat(result["volume"]),
+		High24h:   parseFloat(result["high_24_h"]),
+		Low24h:    parseFloat(result["low_24_h"]),
+		Timestamp: time.Now().UnixMilli(),
 	}
 
 	return ticker, nil
@@ -858,8 +854,8 @@ func (e *ExchangeAPI) bybitGetTicker(symbol string) (*Ticker, error) {
 		Symbol:         data["symbol"].(string),
 		LastPrice:      parseFloat(data["lastPrice"]),
 		BidPrice:       parseFloat(data["bid1Price"]),
-		AskPrice:        parseFloat(data["ask1Price"]),
-		Volume24h:       parseFloat(data["volume24h"]),
+		AskPrice:       parseFloat(data["ask1Price"]),
+		Volume24h:      parseFloat(data["volume24h"]),
 		QuoteVolume24h: parseFloat(data["quoteVolume24h"]),
 		High24h:        parseFloat(data["highPrice24h"]),
 		Low24h:         parseFloat(data["lowPrice24h"]),
@@ -895,7 +891,7 @@ func (e *ExchangeAPI) bybitGetOrderBook(symbol string, limit int) (*OrderBook, e
 	data := list[0].(map[string]interface{})
 
 	ob := &OrderBook{
-		Symbol:   symbol,
+		Symbol:    symbol,
 		Exchange:  BYBIT,
 		Timestamp: time.Now().UnixMilli(),
 	}
@@ -920,11 +916,11 @@ func (e *ExchangeAPI) bybitGetOrderBook(symbol string, limit int) (*OrderBook, e
 }
 
 // Placeholder implementations for other exchanges
-func (e *ExchangeAPI) krakenGetTicker(symbol string) (*Ticker, error)   { return nil, nil }
-func (e *ExchangeAPI) kucoinGetTicker(symbol string) (*Ticker, error)   { return nil, nil }
-func (e *ExchangeAPI) okxGetTicker(symbol string) (*Ticker, error)     { return nil, nil }
-func (e *ExchangeAPI) gateGetTicker(symbol string) (*Ticker, error)     { return nil, nil }
-func (e *ExchangeAPI) bitgetGetTicker(symbol string) (*Ticker, error)  { return nil, nil }
+func (e *ExchangeAPI) krakenGetTicker(symbol string) (*Ticker, error) { return nil, nil }
+func (e *ExchangeAPI) kucoinGetTicker(symbol string) (*Ticker, error) { return nil, nil }
+func (e *ExchangeAPI) okxGetTicker(symbol string) (*Ticker, error)    { return nil, nil }
+func (e *ExchangeAPI) gateGetTicker(symbol string) (*Ticker, error)   { return nil, nil }
+func (e *ExchangeAPI) bitgetGetTicker(symbol string) (*Ticker, error) { return nil, nil }
 func (e *ExchangeAPI) huobiGetTicker(symbol string) (*Ticker, error)  { return nil, nil }
 func (e *ExchangeAPI) mexcGetTicker(symbol string) (*Ticker, error)   { return nil, nil }
 
@@ -1015,9 +1011,9 @@ func GetExchangeStats(c *gin.Context) {
 
 	for name, api := range exchangeAPI {
 		stat := ExchangeStats{
-			Exchange:       name,
-			Status:         "online",
-			LastUpdate:     time.Now().UnixMilli(),
+			Exchange:           name,
+			Status:             "online",
+			LastUpdate:         time.Now().UnixMilli(),
 			WebSocketConnected: api.wsConn != nil,
 		}
 
@@ -1059,10 +1055,10 @@ func ComparePrice(c *gin.Context) {
 
 		prices = append(prices, Price{
 			Exchange: name,
-			Price:   ticker.LastPrice,
-			Bid:     ticker.BidPrice,
-			Ask:     ticker.AskPrice,
-			Spread:  ticker.AskPrice - ticker.BidPrice,
+			Price:    ticker.LastPrice,
+			Bid:      ticker.BidPrice,
+			Ask:      ticker.AskPrice,
+			Spread:   ticker.AskPrice - ticker.BidPrice,
 		})
 	}
 

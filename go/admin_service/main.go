@@ -33,27 +33,27 @@ import (
 // ============================================================================
 
 type Config struct {
-	Port            int    `json:"port"`
-	JWTSecret       string `json:"jwt_secret"`
-	RedisAddr       string `json:"redis_addr"`
-	MasterAdmin     string `json:"master_admin"`
-	PostgresHost    string `json:"postgres_host"`
-	PostgresPort    int    `json:"postgres_port"`
-	PostgresDB      string `json:"postgres_db"`
-	PostgresUser    string `json:"postgres_user"`
-	PostgresPass    string `json:"postgres_pass"`
+	Port         int    `json:"port"`
+	JWTSecret    string `json:"jwt_secret"`
+	RedisAddr    string `json:"redis_addr"`
+	MasterAdmin  string `json:"master_admin"`
+	PostgresHost string `json:"postgres_host"`
+	PostgresPort int    `json:"postgres_port"`
+	PostgresDB   string `json:"postgres_db"`
+	PostgresUser string `json:"postgres_user"`
+	PostgresPass string `json:"postgres_pass"`
 }
 
 var cfg = Config{
-	Port:            8002,
-	JWTSecret:       getRequiredEnv("JWT_SECRET"),
-	RedisAddr:       "localhost:6379",
-	MasterAdmin:     "admin@tigerwallet.io",
-	PostgresHost:    getEnv("POSTGRES_HOST", "localhost"),
-	PostgresPort:    5432,
-	PostgresDB:      getEnv("POSTGRES_DB", "tigerwallet"),
-	PostgresUser:    getEnv("POSTGRES_USER", "postgres"),
-	PostgresPass:    getRequiredEnv("DATABASE_PASSWORD"),
+	Port:         8002,
+	JWTSecret:    getRequiredEnv("JWT_SECRET"),
+	RedisAddr:    "localhost:6379",
+	MasterAdmin:  "admin@tigerwallet.io",
+	PostgresHost: getEnv("POSTGRES_HOST", "localhost"),
+	PostgresPort: 5432,
+	PostgresDB:   getEnv("POSTGRES_DB", "tigerwallet"),
+	PostgresUser: getEnv("POSTGRES_USER", "postgres"),
+	PostgresPass: getRequiredEnv("DATABASE_PASSWORD"),
 }
 
 func getEnv(key, defaultValue string) string {
@@ -155,30 +155,30 @@ var redisClient *redis.Client
 // ============================================================================
 
 type Admin struct {
-	ID             string         `json:"id" bson:"_id"`
-	Email          string         `json:"email" bson:"email"`
-	Username       string         `json:"username" bson:"username"`
-	PasswordHash   string         `json:"-" bson:"password_hash"`
-	Role           string         `json:"role" bson:"role"` // super_admin, white_label, support, finance, compliance
-	Permissions    AdminPermissions `json:"permissions" bson:"permissions"`
-	Status         string         `json:"status" bson:"status"` // active, suspended, deleted
-	CreatedBy      string         `json:"created_by" bson:"created_by"`
-	Products       []string      `json:"products" bson:"products"` // wallet, exchange, defi, nft, etc
-	WhiteLabelID   string        `json:"white_label_id" bson:"white_label_id"`
-	CreatedAt       time.Time     `json:"created_at" bson:"created_at"`
-	UpdatedAt       time.Time     `json:"updated_at" bson:"updated_at"`
-	LastLoginAt    time.Time     `json:"last_login_at" bson:"last_login_at"`
-	LoginIP        string        `json:"login_ip" bson:"login_ip"`
-	ActivityLog    []Activity    `json:"activity_log" bson:"activity_log"`
+	ID           string           `json:"id" bson:"_id"`
+	Email        string           `json:"email" bson:"email"`
+	Username     string           `json:"username" bson:"username"`
+	PasswordHash string           `json:"-" bson:"password_hash"`
+	Role         string           `json:"role" bson:"role"` // super_admin, white_label, support, finance, compliance
+	Permissions  AdminPermissions `json:"permissions" bson:"permissions"`
+	Status       string           `json:"status" bson:"status"` // active, suspended, deleted
+	CreatedBy    string           `json:"created_by" bson:"created_by"`
+	Products     []string         `json:"products" bson:"products"` // wallet, exchange, defi, nft, etc
+	WhiteLabelID string           `json:"white_label_id" bson:"white_label_id"`
+	CreatedAt    time.Time        `json:"created_at" bson:"created_at"`
+	UpdatedAt    time.Time        `json:"updated_at" bson:"updated_at"`
+	LastLoginAt  time.Time        `json:"last_login_at" bson:"last_login_at"`
+	LoginIP      string           `json:"login_ip" bson:"login_ip"`
+	ActivityLog  []Activity       `json:"activity_log" bson:"activity_log"`
 }
 
 type AdminPermissions struct {
 	// User Management
-	CanCreateUser    bool `json:"can_create_user"`
-	CanEditUser      bool `json:"can_edit_user"`
-	CanDeleteUser    bool `json:"can_delete_user"`
-	CanViewUser      bool `json:"can_view_user"`
-	CanManageKYC     bool `json:"can_manage_kyc"`
+	CanCreateUser bool `json:"can_create_user"`
+	CanEditUser   bool `json:"can_edit_user"`
+	CanDeleteUser bool `json:"can_delete_user"`
+	CanViewUser   bool `json:"can_view_user"`
+	CanManageKYC  bool `json:"can_manage_kyc"`
 
 	// Wallet Management
 	CanViewWallet    bool `json:"can_view_wallet"`
@@ -186,24 +186,24 @@ type AdminPermissions struct {
 	CanWithdrawFunds bool `json:"can_withdraw_funds"`
 
 	// Trading Management
-	CanManagePairs   bool `json:"can_manage_pairs"`
+	CanManagePairs     bool `json:"can_manage_pairs"`
 	CanManageLiquidity bool `json:"can_manage_liquidity"`
-	CanManageFees    bool `json:"can_manage_fees"`
-	CanManageListing bool `json:"can_manage_listing"`
+	CanManageFees      bool `json:"can_manage_fees"`
+	CanManageListing   bool `json:"can_manage_listing"`
 
 	// White Label
-	CanManageWhiteLabel bool `json:"can_manage_white_label"`
-	CanManageWLWallet   bool `json:"can_manage_wl_wallet"`
+	CanManageWhiteLabel   bool `json:"can_manage_white_label"`
+	CanManageWLWallet     bool `json:"can_manage_wl_wallet"`
 	CanManageWLBlockchain bool `json:"can_manage_wl_blockchain"`
 
 	// Token Management
-	CanCreateToken    bool `json:"can_create_token"`
-	CanPauseToken     bool `json:"can_pause_token"`
-	CanDeleteToken    bool `json:"can_delete_token"`
+	CanCreateToken bool `json:"can_create_token"`
+	CanPauseToken  bool `json:"can_pause_token"`
+	CanDeleteToken bool `json:"can_delete_token"`
 
 	// NFT Management
-	CanManageNFT      bool `json:"can_manage_nft"`
-	CanMintNFT        bool `json:"can_mint_nft"`
+	CanManageNFT bool `json:"can_manage_nft"`
+	CanMintNFT   bool `json:"can_mint_nft"`
 
 	// System
 	CanManageAdmins   bool `json:"can_manage_admins"`
@@ -223,127 +223,127 @@ type Activity struct {
 }
 
 type WhiteLabelClient struct {
-	ID          string               `json:"id" bson:"_id"`
-	Name        string              `json:"name" bson:"name"`
-	Domain      string              `json:"domain" bson:"domain"`
-	Branding    WhiteLabelBranding  `json:"branding" bson:"branding"`
-	Status      string              `json:"status" bson:"status"` // active, paused, halted
-	Products    []string            `json:"products" bson:"products"`
-	Admins      []string            `json:"admins" bson:"admins"`
+	ID           string             `json:"id" bson:"_id"`
+	Name         string             `json:"name" bson:"name"`
+	Domain       string             `json:"domain" bson:"domain"`
+	Branding     WhiteLabelBranding `json:"branding" bson:"branding"`
+	Status       string             `json:"status" bson:"status"` // active, paused, halted
+	Products     []string           `json:"products" bson:"products"`
+	Admins       []string           `json:"admins" bson:"admins"`
 	CustomChains []string           `json:"custom_chains" bson:"custom_chains"`
 	CustomTokens []string           `json:"custom_tokens" bson:"custom_tokens"`
-	FeeStructure FeeStructure        `json:"fee_structure" bson:"fee_structure"`
-	CreatedAt   time.Time          `json:"created_at" bson:"created_at"`
-	UpdatedAt   time.Time          `json:"updated_at" bson:"updated_at"`
+	FeeStructure FeeStructure       `json:"fee_structure" bson:"fee_structure"`
+	CreatedAt    time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt    time.Time          `json:"updated_at" bson:"updated_at"`
 }
 
 type WhiteLabelBranding struct {
-	Logo         string `json:"logo" bson:"logo"`
-	Favicon      string `json:"favicon" bson:"favicon"`
-	PrimaryColor string `json:"primary_color" bson:"primary_color"`
+	Logo           string `json:"logo" bson:"logo"`
+	Favicon        string `json:"favicon" bson:"favicon"`
+	PrimaryColor   string `json:"primary_color" bson:"primary_color"`
 	SecondaryColor string `json:"secondary_color" bson:"secondary_color"`
-	AccentColor string `json:"accent_color" bson:"accent_color"`
-	FontFamily  string `json:"font_family" bson:"font_family"`
+	AccentColor    string `json:"accent_color" bson:"accent_color"`
+	FontFamily     string `json:"font_family" bson:"font_family"`
 }
 
 type FeeStructure struct {
 	TradingFee    string `json:"trading_fee" bson:"trading_fee"`
 	WithdrawalFee string `json:"withdrawal_fee" bson:"withdrawal_fee"`
 	DepositFee    string `json:"deposit_fee" bson:"deposit_fee"`
-	NFTFee       string `json:"nft_fee" bson:"nft_fee"`
+	NFTFee        string `json:"nft_fee" bson:"nft_fee"`
 }
 
 type UserManagement struct {
-	ID              string    `json:"id" bson:"_id"`
-	Email           string    `json:"email" bson:"email"`
-	Username        string    `json:"username" bson:"username"`
-	KYCStatus       string    `json:"kyc_status" bson:"kyc_status"` // none, pending, verified, rejected
-	KYCLevel        int       `json:"kyc_level" bson:"kyc_level"`
-	VerificationDocs []string `json:"verification_docs" bson:"verification_docs"`
-	AccountStatus   string    `json:"account_status" bson:"account_status"` // active, suspended, locked
-	Balance         string    `json:"balance" bson:"balance"`
-	TradingVolume   string    `json:"trading_volume" bson:"trading_volume"`
-	ReferralCode    string    `json:"referral_code" bson:"referral_code"`
-	ReferredBy     string    `json:"referred_by" bson:"referred_by"`
-	CreatedAt       time.Time `json:"created_at" bson:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at" bson:"updated_at"`
+	ID               string    `json:"id" bson:"_id"`
+	Email            string    `json:"email" bson:"email"`
+	Username         string    `json:"username" bson:"username"`
+	KYCStatus        string    `json:"kyc_status" bson:"kyc_status"` // none, pending, verified, rejected
+	KYCLevel         int       `json:"kyc_level" bson:"kyc_level"`
+	VerificationDocs []string  `json:"verification_docs" bson:"verification_docs"`
+	AccountStatus    string    `json:"account_status" bson:"account_status"` // active, suspended, locked
+	Balance          string    `json:"balance" bson:"balance"`
+	TradingVolume    string    `json:"trading_volume" bson:"trading_volume"`
+	ReferralCode     string    `json:"referral_code" bson:"referral_code"`
+	ReferredBy       string    `json:"referred_by" bson:"referred_by"`
+	CreatedAt        time.Time `json:"created_at" bson:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at" bson:"updated_at"`
 }
 
 type TradingPair struct {
-	ID           string  `json:"id" bson:"_id"`
-	BaseAsset   string  `json:"base_asset" bson:"base_asset"`
-	QuoteAsset  string  `json:"quote_asset" bson:"quote_asset"`
-	PairSymbol  string  `json:"pair_symbol" bson:"pair_symbol"`
-	Chain       string  `json:"chain" bson:"chain"`
-	Status      string  `json:"status" bson:"status"` // active, suspended, halted, delisted
-	Price       string  `json:"price" bson:"price"`
-	Volume24h   string  `json:"volume_24h" bson:"volume_24h"`
-	Liquidity   string  `json:"liquidity" bson:"liquidity"`
-	MakerFee    string  `json:"maker_fee" bson:"maker_fee"`
-	TakerFee    string  `json:"taker_fee" bson:"taker_fee"`
-	MinTrade    string  `json:"min_trade" bson:"min_trade"`
-	MaxTrade    string  `json:"max_trade" bson:"max_trade"`
-	ImportedFrom string `json:"imported_from" bson:"imported_from"`
-	CreatedAt   time.Time `json:"created_at" bson:"created_at"`
+	ID           string    `json:"id" bson:"_id"`
+	BaseAsset    string    `json:"base_asset" bson:"base_asset"`
+	QuoteAsset   string    `json:"quote_asset" bson:"quote_asset"`
+	PairSymbol   string    `json:"pair_symbol" bson:"pair_symbol"`
+	Chain        string    `json:"chain" bson:"chain"`
+	Status       string    `json:"status" bson:"status"` // active, suspended, halted, delisted
+	Price        string    `json:"price" bson:"price"`
+	Volume24h    string    `json:"volume_24h" bson:"volume_24h"`
+	Liquidity    string    `json:"liquidity" bson:"liquidity"`
+	MakerFee     string    `json:"maker_fee" bson:"maker_fee"`
+	TakerFee     string    `json:"taker_fee" bson:"taker_fee"`
+	MinTrade     string    `json:"min_trade" bson:"min_trade"`
+	MaxTrade     string    `json:"max_trade" bson:"max_trade"`
+	ImportedFrom string    `json:"imported_from" bson:"imported_from"`
+	CreatedAt    time.Time `json:"created_at" bson:"created_at"`
 }
 
 type Token struct {
-	ID          string `json:"id" bson:"_id"`
-	Symbol      string `json:"symbol" bson:"symbol"`
-	Name        string `json:"name" bson:"name"`
-	Contract    string `json:"contract" bson:"contract"`
-	Chain       string `json:"chain" bson:"chain"`
-	Decimals    int    `json:"decimals" bson:"decimals"`
-	TotalSupply string `json:"total_supply" bson:"total_supply"`
-	Status      string `json:"status" bson:"status"` // active, paused, halted, deleted
-	Type        string `json:"type" bson:"type"` // erc20, erc721, etc
-	IsVerified  bool   `json:"is_verified" bson:"is_verified"`
-	PriceUSD    string `json:"price_usd" bson:"price_usd"`
-	MarketCap   string `json:"market_cap" bson:"market_cap"`
+	ID          string    `json:"id" bson:"_id"`
+	Symbol      string    `json:"symbol" bson:"symbol"`
+	Name        string    `json:"name" bson:"name"`
+	Contract    string    `json:"contract" bson:"contract"`
+	Chain       string    `json:"chain" bson:"chain"`
+	Decimals    int       `json:"decimals" bson:"decimals"`
+	TotalSupply string    `json:"total_supply" bson:"total_supply"`
+	Status      string    `json:"status" bson:"status"` // active, paused, halted, deleted
+	Type        string    `json:"type" bson:"type"`     // erc20, erc721, etc
+	IsVerified  bool      `json:"is_verified" bson:"is_verified"`
+	PriceUSD    string    `json:"price_usd" bson:"price_usd"`
+	MarketCap   string    `json:"market_cap" bson:"market_cap"`
 	CreatedAt   time.Time `json:"created_at" bson:"created_at"`
 }
 
 type Blockchain struct {
-	ID              string `json:"id" bson:"_id"`
-	Name            string `json:"name" bson:"name"`
-	Symbol          string `json:"symbol" bson:"symbol"`
-	ChainID         uint64 `json:"chain_id" bson:"chain_id"`
-	RPCURL          string `json:"rpc_url" bson:"rpc_url"`
-	ExplorerURL     string `json:"explorer_url" bson:"explorer_url"`
-	Type            string `json:"type" bson:"type"` // evm, non-evm
-	Status          string `json:"status" bson:"status"` // active, inactive
-	BlockTime       int    `json:"block_time" bson:"block_time"`
-	IsDefault       bool   `json:"is_default" bson:"is_default"`
-	GasToken        string `json:"gas_token" bson:"gas_token"`
-	SupportedTokens []string `json:"supported_tokens" bson:"supported_tokens"`
+	ID              string    `json:"id" bson:"_id"`
+	Name            string    `json:"name" bson:"name"`
+	Symbol          string    `json:"symbol" bson:"symbol"`
+	ChainID         uint64    `json:"chain_id" bson:"chain_id"`
+	RPCURL          string    `json:"rpc_url" bson:"rpc_url"`
+	ExplorerURL     string    `json:"explorer_url" bson:"explorer_url"`
+	Type            string    `json:"type" bson:"type"`     // evm, non-evm
+	Status          string    `json:"status" bson:"status"` // active, inactive
+	BlockTime       int       `json:"block_time" bson:"block_time"`
+	IsDefault       bool      `json:"is_default" bson:"is_default"`
+	GasToken        string    `json:"gas_token" bson:"gas_token"`
+	SupportedTokens []string  `json:"supported_tokens" bson:"supported_tokens"`
 	CreatedAt       time.Time `json:"created_at" bson:"created_at"`
 }
 
 type WithdrawalRequest struct {
-	ID          string    `json:"id" bson:"_id"`
-	UserID      string    `json:"user_id" bson:"user_id"`
-	WalletID    string    `json:"wallet_id" bson:"wallet_id"`
-	Chain       string    `json:"chain" bson:"chain"`
-	Address     string    `json:"address" bson:"address"`
-	Amount      string    `json:"amount" bson:"amount"`
-	Token       string    `json:"token" bson:"token"`
-	Status      string    `json:"status" bson:"status"` // pending, approved, rejected, processing, completed, failed
-	Fee         string    `json:"fee" bson:"fee"`
-	TxHash      string    `json:"tx_hash" bson:"tx_hash"`
-	ApprovedBy  string    `json:"approved_by" bson:"approved_by"`
+	ID          string     `json:"id" bson:"_id"`
+	UserID      string     `json:"user_id" bson:"user_id"`
+	WalletID    string     `json:"wallet_id" bson:"wallet_id"`
+	Chain       string     `json:"chain" bson:"chain"`
+	Address     string     `json:"address" bson:"address"`
+	Amount      string     `json:"amount" bson:"amount"`
+	Token       string     `json:"token" bson:"token"`
+	Status      string     `json:"status" bson:"status"` // pending, approved, rejected, processing, completed, failed
+	Fee         string     `json:"fee" bson:"fee"`
+	TxHash      string     `json:"tx_hash" bson:"tx_hash"`
+	ApprovedBy  string     `json:"approved_by" bson:"approved_by"`
 	ProcessedAt *time.Time `json:"processed_at" bson:"processed_at"`
-	CreatedAt   time.Time `json:"created_at" bson:"created_at"`
+	CreatedAt   time.Time  `json:"created_at" bson:"created_at"`
 }
 
 type Analytics struct {
-	TotalUsers       int64   `json:"total_users"`
-	ActiveUsers      int64   `json:"active_users"`
-	TotalVolume24h   string  `json:"total_volume_24h"`
-	TotalFees24h     string  `json:"total_fees_24h"`
-	TotalWallets     int64   `json:"total_wallets"`
-	TotalTransactions int64   `json:"total_transactions"`
-	TopPairs         []map[string]string `json:"top_pairs"`
-	TopTokens        []map[string]string `json:"top_tokens"`
+	TotalUsers        int64               `json:"total_users"`
+	ActiveUsers       int64               `json:"active_users"`
+	TotalVolume24h    string              `json:"total_volume_24h"`
+	TotalFees24h      string              `json:"total_fees_24h"`
+	TotalWallets      int64               `json:"total_wallets"`
+	TotalTransactions int64               `json:"total_transactions"`
+	TopPairs          []map[string]string `json:"top_pairs"`
+	TopTokens         []map[string]string `json:"top_tokens"`
 }
 
 // ============================================================================
@@ -351,13 +351,13 @@ type Analytics struct {
 // ============================================================================
 
 type AdminService struct {
-	redis      *redis.Client
-	mu         sync.RWMutex
-	admins     map[string]*Admin
+	redis       *redis.Client
+	mu          sync.RWMutex
+	admins      map[string]*Admin
 	whiteLabels map[string]*WhiteLabelClient
-	users      map[string]*UserManagement
-	pairs      map[string]*TradingPair
-	tokens     map[string]*Token
+	users       map[string]*UserManagement
+	pairs       map[string]*TradingPair
+	tokens      map[string]*Token
 	blockchains map[string]*Blockchain
 	withdrawals map[string]*WithdrawalRequest
 	activities  []Activity
@@ -370,11 +370,11 @@ func NewAdminService() *AdminService {
 
 	as := &AdminService{
 		redis:       rdb,
-		admins:     make(map[string]*Admin),
+		admins:      make(map[string]*Admin),
 		whiteLabels: make(map[string]*WhiteLabelClient),
-		users:      make(map[string]*UserManagement),
-		pairs:      make(map[string]*TradingPair),
-		tokens:     make(map[string]*Token),
+		users:       make(map[string]*UserManagement),
+		pairs:       make(map[string]*TradingPair),
+		tokens:      make(map[string]*Token),
 		blockchains: make(map[string]*Blockchain),
 		withdrawals: make(map[string]*WithdrawalRequest),
 		activities:  []Activity{},
@@ -403,10 +403,10 @@ func (as *AdminService) initializeDefaultData() {
 			CanManageNFT: true, CanMintNFT: true,
 			CanManageAdmins: true, CanViewAnalytics: true, CanManageAPI: true, CanManageSettings: true,
 		},
-		Status:      "active",
-		Products:    []string{"wallet", "exchange", "defi", "nft", "staking", "launchpad", "white_label"},
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		Status:    "active",
+		Products:  []string{"wallet", "exchange", "defi", "nft", "staking", "launchpad", "white_label"},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 	as.admins[superAdmin.Email] = superAdmin
 
@@ -465,18 +465,18 @@ func (as *AdminService) initializeDefaultData() {
 // ============================================================================
 
 type AdminClaims struct {
-	AdminID  string         `json:"admin_id"`
-	Email    string         `json:"email"`
-	Role     string         `json:"role"`
+	AdminID     string           `json:"admin_id"`
+	Email       string           `json:"email"`
+	Role        string           `json:"role"`
 	Permissions AdminPermissions `json:"permissions"`
 	jwt.RegisteredClaims
 }
 
 func (as *AdminService) generateToken(admin *Admin) (string, error) {
 	claims := AdminClaims{
-		AdminID:    admin.ID,
-		Email:      admin.Email,
-		Role:       admin.Role,
+		AdminID:     admin.ID,
+		Email:       admin.Email,
+		Role:        admin.Role,
 		Permissions: admin.Permissions,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
@@ -484,7 +484,7 @@ func (as *AdminService) generateToken(admin *Admin) (string, error) {
 			Issuer:    "tigerwallet-admin",
 		},
 	}
-	
+
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(cfg.JWTSecret))
 }
@@ -493,15 +493,15 @@ func (as *AdminService) validateToken(tokenString string) (*AdminClaims, error) 
 	token, err := jwt.ParseWithClaims(tokenString, &AdminClaims{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(cfg.JWTSecret), nil
 	})
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if claims, ok := token.Claims.(*AdminClaims); ok && token.Valid {
 		return claims, nil
 	}
-	
+
 	return nil, fmt.Errorf("invalid token")
 }
 
@@ -561,11 +561,11 @@ func (as *AdminService) Login(c *gin.Context) {
 // ============================================================================
 
 type CreateAdminRequest struct {
-	Email       string   `json:"email" binding:"required,email"`
-	Username    string   `json:"username" binding:"required"`
-	Password    string   `json:"password" binding:"required,min=8"`
-	Role        string   `json:"role" binding:"required"`
-	Products    []string `json:"products"`
+	Email       string           `json:"email" binding:"required,email"`
+	Username    string           `json:"username" binding:"required"`
+	Password    string           `json:"password" binding:"required,min=8"`
+	Role        string           `json:"role" binding:"required"`
+	Products    []string         `json:"products"`
 	Permissions AdminPermissions `json:"permissions"`
 }
 
@@ -639,7 +639,7 @@ func (as *AdminService) ListUsers(c *gin.Context) {
 
 func (as *AdminService) GetUser(c *gin.Context) {
 	userID := c.Param("id")
-	
+
 	user, exists := as.users[userID]
 	if !exists {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
@@ -654,7 +654,7 @@ func (as *AdminService) GetUser(c *gin.Context) {
 
 func (as *AdminService) UpdateKYC(c *gin.Context) {
 	userID := c.Param("id")
-	
+
 	var req struct {
 		Status string `json:"status" binding:"required"`
 		Level  int    `json:"level"`
@@ -684,7 +684,7 @@ func (as *AdminService) UpdateKYC(c *gin.Context) {
 
 func (as *AdminService) SuspendUser(c *gin.Context) {
 	userID := c.Param("id")
-	
+
 	user, exists := as.users[userID]
 	if !exists {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
@@ -698,7 +698,7 @@ func (as *AdminService) SuspendUser(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"status": "suspended",
+		"status":  "suspended",
 	})
 }
 
@@ -707,12 +707,12 @@ func (as *AdminService) SuspendUser(c *gin.Context) {
 // ============================================================================
 
 type CreateChainRequest struct {
-	Name      string `json:"name" binding:"required"`
-	Symbol    string `json:"symbol" binding:"required"`
-	ChainID   uint64 `json:"chain_id" binding:"required"`
-	RPCURL    string `json:"rpc_url" binding:"required"`
-	Type      string `json:"type" binding:"required"`
-	GasToken  string `json:"gas_token" binding:"required"`
+	Name     string `json:"name" binding:"required"`
+	Symbol   string `json:"symbol" binding:"required"`
+	ChainID  uint64 `json:"chain_id" binding:"required"`
+	RPCURL   string `json:"rpc_url" binding:"required"`
+	Type     string `json:"type" binding:"required"`
+	GasToken string `json:"gas_token" binding:"required"`
 }
 
 func (as *AdminService) CreateBlockchain(c *gin.Context) {
@@ -724,15 +724,15 @@ func (as *AdminService) CreateBlockchain(c *gin.Context) {
 
 	chainID := uuid.New().String()
 	chain := &Blockchain{
-		ID:         chainID,
-		Name:       req.Name,
-		Symbol:     req.Symbol,
-		ChainID:    req.ChainID,
-		RPCURL:     req.RPCURL,
-		Type:       req.Type,
-		Status:     "active",
-		GasToken:   req.GasToken,
-		IsDefault:  false,
+		ID:        chainID,
+		Name:      req.Name,
+		Symbol:    req.Symbol,
+		ChainID:   req.ChainID,
+		RPCURL:    req.RPCURL,
+		Type:      req.Type,
+		Status:    "active",
+		GasToken:  req.GasToken,
+		IsDefault: false,
 		CreatedAt: time.Now(),
 	}
 
@@ -741,7 +741,7 @@ func (as *AdminService) CreateBlockchain(c *gin.Context) {
 	as.logActivity(c.GetString("admin_id"), "create_blockchain", chainID, "Created blockchain: "+req.Name, c.ClientIP())
 
 	c.JSON(http.StatusCreated, gin.H{
-		"success":     true,
+		"success":    true,
 		"blockchain": chain,
 	})
 }
@@ -761,7 +761,7 @@ func (as *AdminService) ListBlockchains(c *gin.Context) {
 
 func (as *AdminService) UpdateBlockchain(c *gin.Context) {
 	chainID := c.Param("id")
-	
+
 	chain, exists := as.blockchains[chainID]
 	if !exists {
 		c.JSON(http.StatusNotFound, gin.H{"error": "blockchain not found"})
@@ -784,14 +784,14 @@ func (as *AdminService) UpdateBlockchain(c *gin.Context) {
 	as.logActivity(c.GetString("admin_id"), "update_blockchain", chainID, "Updated blockchain", c.ClientIP())
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":     true,
+		"success":    true,
 		"blockchain": chain,
 	})
 }
 
 func (as *AdminService) DeleteBlockchain(c *gin.Context) {
 	chainID := c.Param("id")
-	
+
 	if _, exists := as.blockchains[chainID]; !exists {
 		c.JSON(http.StatusNotFound, gin.H{"error": "blockchain not found"})
 		return
@@ -841,13 +841,13 @@ func (as *AdminService) CreateToken(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
-		"token":  &token,
+		"token":   &token,
 	})
 }
 
 func (as *AdminService) UpdateTokenStatus(c *gin.Context) {
 	tokenID := c.Param("id")
-	
+
 	var req struct {
 		Status string `json:"status" binding:"required"`
 	}
@@ -912,7 +912,7 @@ func (as *AdminService) CreatePair(c *gin.Context) {
 
 func (as *AdminService) UpdatePairStatus(c *gin.Context) {
 	pairID := c.Param("id")
-	
+
 	var req struct {
 		Status string `json:"status" binding:"required"`
 	}
@@ -953,10 +953,10 @@ func (as *AdminService) ImportPairs(c *gin.Context) {
 	as.logActivity(c.GetString("admin_id"), "import_pairs", req.Source, fmt.Sprintf("Imported %d pairs from %s", imported, req.Source), c.ClientIP())
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":    true,
-		"imported":   imported,
-		"source":     req.Source,
-		"status":     "completed",
+		"success":  true,
+		"imported": imported,
+		"source":   req.Source,
+		"status":   "completed",
 	})
 }
 
@@ -971,9 +971,9 @@ func (as *AdminService) ListWhiteLabels(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":     true,
+		"success":      true,
 		"white_labels": whiteLabels,
-		"total":       len(whiteLabels),
+		"total":        len(whiteLabels),
 	})
 }
 
@@ -1001,7 +1001,7 @@ func (as *AdminService) CreateWhiteLabel(c *gin.Context) {
 
 func (as *AdminService) UpdateWhiteLabel(c *gin.Context) {
 	wlID := c.Param("id")
-	
+
 	wl, exists := as.whiteLabels[wlID]
 	if !exists {
 		c.JSON(http.StatusNotFound, gin.H{"error": "white label not found"})
@@ -1042,15 +1042,15 @@ func (as *AdminService) ListWithdrawals(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":    true,
+		"success":     true,
 		"withdrawals": withdrawals,
-		"total":      len(withdrawals),
+		"total":       len(withdrawals),
 	})
 }
 
 func (as *AdminService) ApproveWithdrawal(c *gin.Context) {
 	withdrawalID := c.Param("id")
-	
+
 	withdrawal, exists := as.withdrawals[withdrawalID]
 	if !exists {
 		c.JSON(http.StatusNotFound, gin.H{"error": "withdrawal not found"})
@@ -1070,7 +1070,7 @@ func (as *AdminService) ApproveWithdrawal(c *gin.Context) {
 
 func (as *AdminService) RejectWithdrawal(c *gin.Context) {
 	withdrawalID := c.Param("id")
-	
+
 	withdrawal, exists := as.withdrawals[withdrawalID]
 	if !exists {
 		c.JSON(http.StatusNotFound, gin.H{"error": "withdrawal not found"})
@@ -1094,11 +1094,11 @@ func (as *AdminService) RejectWithdrawal(c *gin.Context) {
 
 func (as *AdminService) GetAnalytics(c *gin.Context) {
 	analytics := Analytics{
-		TotalUsers:       150000,
-		ActiveUsers:      50000,
-		TotalVolume24h:   "1.5B",
-		TotalFees24h:     "3M",
-		TotalWallets:    200000,
+		TotalUsers:        150000,
+		ActiveUsers:       50000,
+		TotalVolume24h:    "1.5B",
+		TotalFees24h:      "3M",
+		TotalWallets:      200000,
 		TotalTransactions: 5000000,
 		TopPairs: []map[string]string{
 			{"symbol": "ETH/USDT", "volume": "500M"},
@@ -1132,9 +1132,9 @@ func (as *AdminService) logActivity(adminID, action, target, details, ip string)
 		IPAddress: ip,
 		Timestamp: time.Now(),
 	}
-	
+
 	as.activities = append(as.activities, activity)
-	
+
 	// Keep only last 1000 activities
 	if len(as.activities) > 1000 {
 		as.activities = as.activities[len(as.activities)-1000:]
@@ -1146,12 +1146,12 @@ func (as *AdminService) GetActivities(c *gin.Context) {
 	if l := c.Query("limit"); l != "" {
 		fmt.Sscanf(l, "%d", &limit)
 	}
-	
+
 	start := 0
 	if len(as.activities) > limit {
 		start = len(as.activities) - limit
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"success":    true,
 		"activities": as.activities[start:],
@@ -1244,8 +1244,8 @@ func (as *AdminService) BulkSuspendUsers(c *gin.Context) {
 	as.logActivity(adminID, "bulk_suspend_users", "", "Suspended "+fmt.Sprintf("%d", suspended)+" users", c.ClientIP())
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":      true,
-		"suspended":    suspended,
+		"success":         true,
+		"suspended":       suspended,
 		"total_requested": len(req.UserIDs),
 	})
 }
@@ -1274,8 +1274,8 @@ func (as *AdminService) BulkActivateUsers(c *gin.Context) {
 	as.logActivity(adminID, "bulk_activate_users", "", "Activated "+fmt.Sprintf("%d", activated)+" users", c.ClientIP())
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":      true,
-		"activated":    activated,
+		"success":         true,
+		"activated":       activated,
 		"total_requested": len(req.UserIDs),
 	})
 }
@@ -1303,8 +1303,8 @@ func (as *AdminService) BulkDeleteUsers(c *gin.Context) {
 	as.logActivity(adminID, "bulk_delete_users", "", "Deleted "+fmt.Sprintf("%d", deleted)+" users", c.ClientIP())
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":      true,
-		"deleted":      deleted,
+		"success":         true,
+		"deleted":         deleted,
 		"total_requested": len(req.UserIDs),
 	})
 }
@@ -1335,9 +1335,9 @@ func (as *AdminService) BulkUpdateTokenStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":     true,
-		"updated":     updated,
-		"new_status":  req.Status,
+		"success":    true,
+		"updated":    updated,
+		"new_status": req.Status,
 	})
 }
 
@@ -1361,8 +1361,8 @@ func (as *AdminService) BulkDeleteTokens(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":      true,
-		"deleted":      deleted,
+		"success": true,
+		"deleted": deleted,
 	})
 }
 
@@ -1448,8 +1448,8 @@ func (as *AdminService) BulkApproveWithdrawals(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":    true,
-		"approved":   approved,
+		"success":         true,
+		"approved":        approved,
 		"total_requested": len(req.WithdrawalIDs),
 	})
 }
@@ -1479,8 +1479,8 @@ func (as *AdminService) BulkRejectWithdrawals(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":    true,
-		"rejected":  rejected,
+		"success":         true,
+		"rejected":        rejected,
 		"total_requested": len(req.WithdrawalIDs),
 	})
 }
@@ -1546,9 +1546,9 @@ func (as *AdminService) ExportWithdrawalsCSV(c *gin.Context) {
 // ============================================================================
 
 type UpdateFeeRequest struct {
-	Fee    string `json:"fee" binding:"required"`
-	Chain  string `json:"chain"`
-	Token  string `json:"token"`
+	Fee   string `json:"fee" binding:"required"`
+	Chain string `json:"chain"`
+	Token string `json:"token"`
 }
 
 func (as *AdminService) UpdateTradingFee(c *gin.Context) {
@@ -1563,9 +1563,9 @@ func (as *AdminService) UpdateTradingFee(c *gin.Context) {
 	as.logActivity(adminID, "update_trading_fee", "", "Updated trading fee to: "+req.Fee, c.ClientIP())
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":    true,
-		"fee_type":   "trading",
-		"new_value":  req.Fee,
+		"success":   true,
+		"fee_type":  "trading",
+		"new_value": req.Fee,
 	})
 }
 
@@ -1580,9 +1580,9 @@ func (as *AdminService) UpdateWithdrawalFee(c *gin.Context) {
 	as.logActivity(adminID, "update_withdrawal_fee", "", "Updated withdrawal fee to: "+req.Fee, c.ClientIP())
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":    true,
-		"fee_type":   "withdrawal",
-		"new_value":  req.Fee,
+		"success":   true,
+		"fee_type":  "withdrawal",
+		"new_value": req.Fee,
 	})
 }
 
@@ -1597,9 +1597,9 @@ func (as *AdminService) UpdateDepositFee(c *gin.Context) {
 	as.logActivity(adminID, "update_deposit_fee", "", "Updated deposit fee to: "+req.Fee, c.ClientIP())
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":    true,
-		"fee_type":   "deposit",
-		"new_value":  req.Fee,
+		"success":   true,
+		"fee_type":  "deposit",
+		"new_value": req.Fee,
 	})
 }
 
@@ -1666,8 +1666,8 @@ func (as *AdminService) RevokeAPIKey(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":  true,
-		"message":  "API key revoked successfully",
+		"success": true,
+		"message": "API key revoked successfully",
 	})
 }
 
@@ -1683,7 +1683,7 @@ func (as *AdminService) AuthMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		
+
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		claims, err := as.validateToken(tokenString)
 		if err != nil {
@@ -1691,7 +1691,7 @@ func (as *AdminService) AuthMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		
+
 		c.Set("admin_id", claims.AdminID)
 		c.Set("email", claims.Email)
 		c.Set("role", claims.Role)
@@ -1722,7 +1722,7 @@ func main() {
 		MaxConnLifetime: time.Hour,
 		MaxConnIdleTime: 30 * time.Minute,
 	}
-	
+
 	var err error
 	db, err = database.New(dbConfig)
 	if err != nil {
@@ -1730,7 +1730,7 @@ func main() {
 		log.Println("Continuing without database connection...")
 	} else {
 		log.Println("PostgreSQL connected successfully")
-		
+
 		// Initialize database schema
 		ctx := context.Background()
 		if err := db.InitSchema(ctx); err != nil {
@@ -1747,7 +1747,7 @@ func main() {
 		Password: "",
 		DB:       0,
 	})
-	
+
 	ctx := context.Background()
 	if _, err := redisClient.Ping(ctx).Result(); err != nil {
 		log.Printf("Warning: Could not connect to Redis: %v", err)
@@ -1794,43 +1794,43 @@ func main() {
 		// Admin Management
 		api.POST("/admins", as.CreateAdmin)
 		api.GET("/admins", as.ListAdmins)
-		
+
 		// User Management
 		api.GET("/users", as.ListUsers)
 		api.GET("/users/:id", as.GetUser)
 		api.PUT("/users/:id/kyc", as.UpdateKYC)
 		api.POST("/users/:id/suspend", as.SuspendUser)
-		
+
 		// Blockchain Management
 		api.GET("/blockchains", as.ListBlockchains)
 		api.POST("/blockchains", as.CreateBlockchain)
 		api.PUT("/blockchains/:id", as.UpdateBlockchain)
 		api.DELETE("/blockchains/:id", as.DeleteBlockchain)
-		
+
 		// Token Management
 		api.GET("/tokens", as.ListTokens)
 		api.POST("/tokens", as.CreateToken)
 		api.PUT("/tokens/:id/status", as.UpdateTokenStatus)
-		
+
 		// Trading Pairs
 		api.GET("/pairs", as.ListPairs)
 		api.POST("/pairs", as.CreatePair)
 		api.PUT("/pairs/:id/status", as.UpdatePairStatus)
 		api.POST("/pairs/import", as.ImportPairs)
-		
+
 		// White Label
 		api.GET("/white-labels", as.ListWhiteLabels)
 		api.POST("/white-labels", as.CreateWhiteLabel)
 		api.PUT("/white-labels/:id", as.UpdateWhiteLabel)
-		
+
 		// Withdrawals
 		api.GET("/withdrawals", as.ListWithdrawals)
 		api.POST("/withdrawals/:id/approve", as.ApproveWithdrawal)
 		api.POST("/withdrawals/:id/reject", as.RejectWithdrawal)
-		
+
 		// Analytics
 		api.GET("/analytics", as.GetAnalytics)
-		
+
 		// Activity Log
 		api.GET("/activities", as.GetActivities)
 

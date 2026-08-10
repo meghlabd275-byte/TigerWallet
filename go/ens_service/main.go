@@ -53,32 +53,32 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type ENSRecord struct {
-	Name         string `json:"name"`
-	Labelhash    string `json:"labelhash"`
-	Nodehash     string `json:"nodehash"`
-	Owner        string `json:"owner"`
-	Resolver     string `json:"resolver"`
-	TTL          uint64 `json:"ttl"`
-	Address      string `json:"address,omitempty"`
-	ContentHash  string `json:"content_hash,omitempty"`
-	TextRecords  map[string]string `json:"text_records,omitempty"`
-	Coins        map[string]string `json:"coins,omitempty"`
-	ResolvedAt   int64 `json:"resolved_at"`
+	Name        string            `json:"name"`
+	Labelhash   string            `json:"labelhash"`
+	Nodehash    string            `json:"nodehash"`
+	Owner       string            `json:"owner"`
+	Resolver    string            `json:"resolver"`
+	TTL         uint64            `json:"ttl"`
+	Address     string            `json:"address,omitempty"`
+	ContentHash string            `json:"content_hash,omitempty"`
+	TextRecords map[string]string `json:"text_records,omitempty"`
+	Coins       map[string]string `json:"coins,omitempty"`
+	ResolvedAt  int64             `json:"resolved_at"`
 }
 
 type ReverseRecord struct {
-	Address   string `json:"address"`
-	Name     string `json:"name"`
-	ResolvedAt int64 `json:"resolved_at"`
+	Address    string `json:"address"`
+	Name       string `json:"name"`
+	ResolvedAt int64  `json:"resolved_at"`
 }
 
 type ENSService struct {
-	config   *Config
-	redis    *redis.Client
-	client   *http.Client
-	eth      *ethclient.Client // real Ethereum RPC client for on-chain ENS lookup
-	records  map[string]*ENSRecord
-	reverse  map[string]*ReverseRecord
+	config  *Config
+	redis   *redis.Client
+	client  *http.Client
+	eth     *ethclient.Client // real Ethereum RPC client for on-chain ENS lookup
+	records map[string]*ENSRecord
+	reverse map[string]*ReverseRecord
 }
 
 // ENSRegistry is the canonical ENS registry deployed on Ethereum mainnet.
@@ -174,12 +174,12 @@ func (s *ENSService) Resolve(name string) (*ENSRecord, error) {
 	node := common.HexToHash(nodehash)
 
 	record := &ENSRecord{
-		Name:         name,
-		Labelhash:    s.labelHash(strings.TrimSuffix(name, ".eth")),
-		Nodehash:     nodehash,
+		Name:        name,
+		Labelhash:   s.labelHash(strings.TrimSuffix(name, ".eth")),
+		Nodehash:    nodehash,
 		TextRecords: make(map[string]string),
 		Coins:       make(map[string]string),
-		ResolvedAt:   time.Now().Unix(),
+		ResolvedAt:  time.Now().Unix(),
 	}
 
 	// Real on-chain ENS resolution. If no Ethereum RPC client is configured,
@@ -572,7 +572,7 @@ func (s *ENSService) handleSetTextRecord(c *gin.Context) {
 
 func (s *ENSService) handleSetContentHash(c *gin.Context) {
 	var req struct {
-		Name       string `json:"name" binding:"required"`
+		Name        string `json:"name" binding:"required"`
 		ContentHash string `json:"content_hash" binding:"required"`
 	}
 

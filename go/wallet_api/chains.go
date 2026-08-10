@@ -6,12 +6,12 @@ import (
 
 // ChainConfig describes a supported EVM chain and its derivation path.
 type ChainConfig struct {
-	ID           int64  `json:"id"`
-	Name         string `json:"name"`
-	Symbol       string `json:"symbol"`
-	RPCEndpoint  string `json:"rpc_endpoint"`
+	ID             int64  `json:"id"`
+	Name           string `json:"name"`
+	Symbol         string `json:"symbol"`
+	RPCEndpoint    string `json:"rpc_endpoint"`
 	DerivationPath string `json:"derivation_path"`
-	ExplorerAPI  string `json:"explorer_api"`
+	ExplorerAPI    string `json:"explorer_api"`
 }
 
 // SupportedChains is the canonical chain registry. RPC endpoints are public

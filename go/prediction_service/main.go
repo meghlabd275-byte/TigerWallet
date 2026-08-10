@@ -248,7 +248,7 @@ FROM prediction_markets WHERE ($1='' OR status=$1) ORDER BY created_at DESC LIMI
 	for rows.Next() {
 		var m struct {
 			ID, Question, Desc, Cat, Status, Outcome, Yes, No, Fund, Creator string
-			EndTime int64
+			EndTime                                                          int64
 		}
 		if err := rows.Scan(&m.ID, &m.Question, &m.Desc, &m.Cat, &m.Status, &m.Outcome, &m.Yes, &m.No, &m.Fund, &m.EndTime, &m.Creator); err != nil {
 			continue
@@ -267,7 +267,7 @@ func (s *service) getMarket(c *gin.Context) {
 	id := c.Param("id")
 	var m struct {
 		ID, Question, Desc, Cat, Status, Outcome, Yes, No, Fund, Creator string
-		EndTime, Created int64
+		EndTime, Created                                                 int64
 	}
 	err := s.pg.QueryRow(c, `
 SELECT id,question,description,category,status,COALESCE(outcome,''),yes_pool::text,no_pool::text,funding::text,
@@ -390,7 +390,12 @@ func (s *service) listBets(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var b struct{ ID, UID string; Side int; Amt, Price string; Ts int64 }
+		var b struct {
+			ID, UID    string
+			Side       int
+			Amt, Price string
+			Ts         int64
+		}
 		if err := rows.Scan(&b.ID, &b.UID, &b.Side, &b.Amt, &b.Price, &b.Ts); err != nil {
 			continue
 		}
@@ -437,7 +442,11 @@ WHERE b.user_id=$1 ORDER BY b.created_at DESC LIMIT 200`, user)
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var p struct{ ID, MID, Amt, Price, Q, Outcome, Status string; Side int; Ts int64 }
+		var p struct {
+			ID, MID, Amt, Price, Q, Outcome, Status string
+			Side                                    int
+			Ts                                      int64
+		}
 		if err := rows.Scan(&p.ID, &p.MID, &p.Side, &p.Amt, &p.Price, &p.Q, &p.Outcome, &p.Status, &p.Ts); err != nil {
 			continue
 		}

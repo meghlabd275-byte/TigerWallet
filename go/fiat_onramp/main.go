@@ -30,35 +30,36 @@ import (
 // ============================================================================
 
 type FiatConfig struct {
-	Port              int                     `json:"port"`
-	RedisAddr         string                  `json:"redis_addr"`
-	SupportedFiat     []string               `json:"supported_fiat"`
-	SupportedCrypto   []string               `json:"supported_crypto"`
-	SupportedChains   []string               `json:"supported_chains"`
-	Providers         map[string]ProviderConfig `json:"providers"`
-	WebhookSecret    string                  `json:"webhook_secret"`
-	MinOrderUSD      float64                 `json:"min_order_usd"`
-	MaxOrderUSD      float64                 `json:"max_order_usd"`
-	DefaultCrypto    string                  `json:"default_crypto"`
-	DefaultChain    string                  `json:"default_chain"`
+	Port            int                       `json:"port"`
+	RedisAddr       string                    `json:"redis_addr"`
+	SupportedFiat   []string                  `json:"supported_fiat"`
+	SupportedCrypto []string                  `json:"supported_crypto"`
+	SupportedChains []string                  `json:"supported_chains"`
+	Providers       map[string]ProviderConfig `json:"providers"`
+	WebhookSecret   string                    `json:"webhook_secret"`
+	MinOrderUSD     float64                   `json:"min_order_usd"`
+	MaxOrderUSD     float64                   `json:"max_order_usd"`
+	DefaultCrypto   string                    `json:"default_crypto"`
+	DefaultChain    string                    `json:"default_chain"`
 }
 
 type ProviderConfig struct {
-	Name       string   `json:"name"`
-	Enabled    bool     `json:"enabled"`
-	APIKey     string   `json:"api_key"`
-	APISecret  string   `json:"api_secret"`
-	WebhookURL string   `json:"webhook_url"`
-	BaseURL    string   `json:"base_url"`
-	FeePercent float64  `json:"fee_percent"`
-	MinOrder   float64  `json:"min_order"`
-	MaxOrder   float64  `json:"max_order"`
-	Currencies []string `json:"currencies"`
+	Name          string   `json:"name"`
+	Enabled       bool     `json:"enabled"`
+	APIKey        string   `json:"api_key"`
+	APISecret     string   `json:"api_secret"`
+	WebhookURL    string   `json:"webhook_url"`
+	WebhookSecret string   `json:"webhook_secret"`
+	BaseURL       string   `json:"base_url"`
+	FeePercent    float64  `json:"fee_percent"`
+	MinOrder      float64  `json:"min_order"`
+	MaxOrder      float64  `json:"max_order"`
+	Currencies    []string `json:"currencies"`
 }
 
 var defaultConfig = FiatConfig{
-	Port:           8451,
-	RedisAddr:      "localhost:6379",
+	Port:            8451,
+	RedisAddr:       "localhost:6379",
 	SupportedFiat:   []string{"USD", "EUR", "GBP", "AUD", "CAD", "JPY", "KRW", "INR", "BRL"},
 	SupportedCrypto: []string{"BTC", "ETH", "USDT", "USDC", "MATIC", "BNB", "SOL", "AVAX", "DOT", "ADA"},
 	SupportedChains: []string{"ethereum", "polygon", "bsc", "arbitrum", "optimism", "avalanche", "solana"},
@@ -68,8 +69,8 @@ var defaultConfig = FiatConfig{
 		"stripe":  {Name: "Stripe", Enabled: true, FeePercent: 1.5, MinOrder: 10, MaxOrder: 25000, Currencies: []string{"USD", "EUR", "GBP"}},
 		"wyre":    {Name: "Wyre", Enabled: true, FeePercent: 1.8, MinOrder: 20, MaxOrder: 2500, Currencies: []string{"USD", "EUR", "GBP", "AUD", "CAD"}},
 	},
-	MinOrderUSD:  20,
-	MaxOrderUSD:  25000,
+	MinOrderUSD:   20,
+	MaxOrderUSD:   25000,
 	DefaultCrypto: "USDT",
 	DefaultChain:  "polygon",
 }
@@ -79,27 +80,29 @@ var defaultConfig = FiatConfig{
 // ============================================================================
 
 type Order struct {
-	ID               string     `json:"id"`
-	UserID           string     `json:"user_id"`
-	Provider         string     `json:"provider"`
-	Status           string     `json:"status"`
-	FiatAmount       float64    `json:"fiat_amount"`
-	FiatCurrency     string     `json:"fiat_currency"`
-	CryptoAmount     float64    `json:"crypto_amount"`
-	CryptoCurrency   string     `json:"crypto_currency"`
-	Chain            string     `json:"chain"`
-	CryptoAddress    string     `json:"crypto_address"`
-	ProviderOrderID  string     `json:"provider_order_id"`
-	PaymentURL       string     `json:"payment_url"`
-	FiatEquivalent   float64    `json:"fiat_equivalent"`
-	ExchangeRate     float64    `json:"exchange_rate"`
-	FeeAmount        float64    `json:"fee_amount"`
-	ProviderFee      float64    `json:"provider_fee"`
-	IPAddress        string     `json:"ip_address"`
-	ErrorMessage     string     `json:"error_message"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
-	CompletedAt      *time.Time `json:"completed_at"`
+	ID              string     `json:"id"`
+	UserID          string     `json:"user_id"`
+	Provider        string     `json:"provider"`
+	Status          string     `json:"status"`
+	FiatAmount      float64    `json:"fiat_amount"`
+	FiatCurrency    string     `json:"fiat_currency"`
+	CryptoAmount    float64    `json:"crypto_amount"`
+	CryptoCurrency  string     `json:"crypto_currency"`
+	Chain           string     `json:"chain"`
+	CryptoAddress   string     `json:"crypto_address"`
+	ProviderOrderID string     `json:"provider_order_id"`
+	PaymentURL      string     `json:"payment_url"`
+	FiatEquivalent  float64    `json:"fiat_equivalent"`
+	ExchangeRate    float64    `json:"exchange_rate"`
+	FeeAmount       float64    `json:"fee_amount"`
+	ProviderFee     float64    `json:"provider_fee"`
+	IPAddress       string     `json:"ip_address"`
+	WalletAddress   string     `json:"wallet_address"`
+	UserAgent       string     `json:"user_agent"`
+	ErrorMessage    string     `json:"error_message"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	CompletedAt     *time.Time `json:"completed_at"`
 }
 
 type QuoteRequest struct {
@@ -110,28 +113,28 @@ type QuoteRequest struct {
 }
 
 type QuoteResponse struct {
-	Provider      string  `json:"provider"`
-	CryptoAmount  float64 `json:"crypto_amount"`
-	ExchangeRate  float64 `json:"exchange_rate"`
+	Provider       string  `json:"provider"`
+	CryptoAmount   float64 `json:"crypto_amount"`
+	ExchangeRate   float64 `json:"exchange_rate"`
 	FiatEquivalent float64 `json:"fiat_equivalent"`
-	FeeAmount     float64 `json:"fee_amount"`
-	ProviderFee   float64 `json:"provider_fee"`
-	ValidUntil    int64   `json:"valid_until"`
+	FeeAmount      float64 `json:"fee_amount"`
+	ProviderFee    float64 `json:"provider_fee"`
+	ValidUntil     int64   `json:"valid_until"`
 }
 
 type CreateOrderRequest struct {
 	UserID         string  `json:"user_id"`
 	FiatAmount     float64 `json:"fiat_amount"`
-	FiatCurrency  string  `json:"fiat_currency"`
-	CryptoCurrency string `json:"crypto_currency"`
-	Chain         string  `json:"chain"`
-	CryptoAddress string  `json:"crypto_address"`
-	WalletAddress string  `json:"wallet_address"`
-	ReturnURL     string  `json:"return_url"`
-	CallbackURL   string  `json:"callback_url"`
-	Provider      string  `json:"provider"`
-	IPAddress     string  `json:"-"`
-	UserAgent     string  `json:"-"`
+	FiatCurrency   string  `json:"fiat_currency"`
+	CryptoCurrency string  `json:"crypto_currency"`
+	Chain          string  `json:"chain"`
+	CryptoAddress  string  `json:"crypto_address"`
+	WalletAddress  string  `json:"wallet_address"`
+	ReturnURL      string  `json:"return_url"`
+	CallbackURL    string  `json:"callback_url"`
+	Provider       string  `json:"provider"`
+	IPAddress      string  `json:"-"`
+	UserAgent      string  `json:"-"`
 }
 
 type CreateOrderResponse struct {
@@ -147,13 +150,13 @@ type CreateOrderResponse struct {
 // ============================================================================
 
 type FiatService struct {
-	redis          *redis.Client
-	config         *FiatConfig
+	redis           *redis.Client
+	config          *FiatConfig
 	providerClients map[string]ProviderClient
-	orderCache     map[string]*Order
-	mu             sync.RWMutex
-	exchangeRates  map[string]float64
-	rateMu         sync.RWMutex
+	orderCache      map[string]*Order
+	mu              sync.RWMutex
+	exchangeRates   map[string]float64
+	rateMu          sync.RWMutex
 }
 
 type ProviderClient interface {
@@ -172,7 +175,7 @@ func NewFiatService(config *FiatConfig) *FiatService {
 		config:          config,
 		providerClients: make(map[string]ProviderClient),
 		orderCache:      make(map[string]*Order),
-		exchangeRates:  make(map[string]float64),
+		exchangeRates:   make(map[string]float64),
 	}
 }
 
@@ -223,8 +226,8 @@ func (s *FiatService) GetBestQuote(ctx context.Context, req *QuoteRequest) (*Quo
 
 	type qr struct {
 		provider string
-		quote   *QuoteResponse
-		err     error
+		quote    *QuoteResponse
+		err      error
 	}
 
 	results := make(chan qr, len(s.providerClients))
@@ -350,7 +353,7 @@ func (s *FiatService) CreateOrder(ctx context.Context, req *CreateOrderRequest) 
 		FiatEquivalent: quote.FiatEquivalent,
 		ExchangeRate:   quote.ExchangeRate,
 		FeeAmount:      quote.FeeAmount,
-		ProviderFee:     quote.ProviderFee,
+		ProviderFee:    quote.ProviderFee,
 	}
 
 	createReq := &CreateOrderRequest{
@@ -604,9 +607,9 @@ func (s *FiatService) GetExchangeRatesEndpoint(c *gin.Context) {
 func (s *FiatService) GetSupportedCurrenciesEndpoint(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"fiat":   s.config.SupportedFiat,
-		"crypto": s.config.SupportedCrypto,
-		"chains": s.config.SupportedChains,
+		"fiat":    s.config.SupportedFiat,
+		"crypto":  s.config.SupportedCrypto,
+		"chains":  s.config.SupportedChains,
 	})
 }
 
@@ -621,12 +624,12 @@ func NewMoonPayClient(cfg ProviderConfig) *MoonPayClient { return &MoonPayClient
 func (c *MoonPayClient) GetQuote(ctx context.Context, req *QuoteRequest) (*QuoteResponse, error) {
 	rate := 1.0 / 2500.0
 	return &QuoteResponse{
-		CryptoAmount:  req.FiatAmount * rate * 0.975,
-		ExchangeRate:  rate,
+		CryptoAmount:   req.FiatAmount * rate * 0.975,
+		ExchangeRate:   rate,
 		FiatEquivalent: req.FiatAmount,
-		FeeAmount:    req.FiatAmount * 0.025,
-		ProviderFee:  req.FiatAmount * 0.025,
-		ValidUntil:  time.Now().Add(5 * time.Minute).Unix(),
+		FeeAmount:      req.FiatAmount * 0.025,
+		ProviderFee:    req.FiatAmount * 0.025,
+		ValidUntil:     time.Now().Add(5 * time.Minute).Unix(),
 	}, nil
 }
 
@@ -654,12 +657,12 @@ func NewTransakClient(cfg ProviderConfig) *TransakClient { return &TransakClient
 func (c *TransakClient) GetQuote(ctx context.Context, req *QuoteRequest) (*QuoteResponse, error) {
 	rate := 1.0 / 2500.0
 	return &QuoteResponse{
-		CryptoAmount:  req.FiatAmount * rate * 0.98,
-		ExchangeRate:  rate,
+		CryptoAmount:   req.FiatAmount * rate * 0.98,
+		ExchangeRate:   rate,
 		FiatEquivalent: req.FiatAmount,
-		FeeAmount:    req.FiatAmount * 0.02,
-		ProviderFee:  req.FiatAmount * 0.02,
-		ValidUntil:  time.Now().Add(5 * time.Minute).Unix(),
+		FeeAmount:      req.FiatAmount * 0.02,
+		ProviderFee:    req.FiatAmount * 0.02,
+		ValidUntil:     time.Now().Add(5 * time.Minute).Unix(),
 	}, nil
 }
 
@@ -687,12 +690,12 @@ func NewStripeClient(cfg ProviderConfig) *StripeClient { return &StripeClient{co
 func (c *StripeClient) GetQuote(ctx context.Context, req *QuoteRequest) (*QuoteResponse, error) {
 	rate := 1.0 / 2500.0
 	return &QuoteResponse{
-		CryptoAmount:  req.FiatAmount * rate * 0.985,
-		ExchangeRate:  rate,
+		CryptoAmount:   req.FiatAmount * rate * 0.985,
+		ExchangeRate:   rate,
 		FiatEquivalent: req.FiatAmount,
-		FeeAmount:    req.FiatAmount * 0.015,
-		ProviderFee:  req.FiatAmount * 0.015,
-		ValidUntil:  time.Now().Add(10 * time.Minute).Unix(),
+		FeeAmount:      req.FiatAmount * 0.015,
+		ProviderFee:    req.FiatAmount * 0.015,
+		ValidUntil:     time.Now().Add(10 * time.Minute).Unix(),
 	}, nil
 }
 
@@ -720,12 +723,12 @@ func NewWyreClient(cfg ProviderConfig) *WyreClient { return &WyreClient{config: 
 func (c *WyreClient) GetQuote(ctx context.Context, req *QuoteRequest) (*QuoteResponse, error) {
 	rate := 1.0 / 2500.0
 	return &QuoteResponse{
-		CryptoAmount:  req.FiatAmount * rate * 0.982,
-		ExchangeRate:  rate,
+		CryptoAmount:   req.FiatAmount * rate * 0.982,
+		ExchangeRate:   rate,
 		FiatEquivalent: req.FiatAmount,
-		FeeAmount:    req.FiatAmount * 0.018,
-		ProviderFee:  req.FiatAmount * 0.018,
-		ValidUntil:  time.Now().Add(5 * time.Minute).Unix(),
+		FeeAmount:      req.FiatAmount * 0.018,
+		ProviderFee:    req.FiatAmount * 0.018,
+		ValidUntil:     time.Now().Add(5 * time.Minute).Unix(),
 	}, nil
 }
 

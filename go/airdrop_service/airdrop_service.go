@@ -1,6 +1,6 @@
 /**
  * TigerWallet Airdrop Service
- * 
+ *
  * Airdrop campaign management and claim tracking.
  * Built with Go for high-load distributed operations.
  */
@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
@@ -19,34 +20,34 @@ import (
 
 // AirdropCampaign represents an airdrop campaign
 type AirdropCampaign struct {
-	ID              string    `json:"id"`
-	Name            string    `json:"name"`
-	Description     string    `json:"description"`
-	TokenAddress    string    `json:"token_address"`
-	ChainID         uint64    `json:"chain_id"`
-	TotalAmount     string    `json:"total_amount"`
-	ClaimedAmount   string    `json:"claimed_amount"`
-	StartTime       int64     `json:"start_time"`
-	EndTime         int64     `json:"end_time"`
-	Status          string    `json:"status"`
-	ClaimType       string    `json:"claim_type"` // snapshot, merkle, manual
-	MerkleRoot      string    `json:"merkle_root"`
-	Rules           string    `json:"rules"`
-	CreatedAt       int64     `json:"created_at"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Description   string `json:"description"`
+	TokenAddress  string `json:"token_address"`
+	ChainID       uint64 `json:"chain_id"`
+	TotalAmount   string `json:"total_amount"`
+	ClaimedAmount string `json:"claimed_amount"`
+	StartTime     int64  `json:"start_time"`
+	EndTime       int64  `json:"end_time"`
+	Status        string `json:"status"`
+	ClaimType     string `json:"claim_type"` // snapshot, merkle, manual
+	MerkleRoot    string `json:"merkle_root"`
+	Rules         string `json:"rules"`
+	CreatedAt     int64  `json:"created_at"`
 }
 
 // AirdropClaim represents an airdrop claim
 type AirdropClaim struct {
-	ID            string    `json:"id"`
-	CampaignID    string    `json:"campaign_id"`
-	UserID        string    `json:"user_id"`
-	Address       string    `json:"address"`
-	Amount        string    `json:"amount"`
-	ClaimedAmount string    `json:"claimed_amount"`
-	Status        string    `json:"status"`
-	ClaimTxHash   string    `json:"claim_tx_hash"`
-	ClaimedAt     int64     `json:"claimed_at"`
-	CreatedAt     int64     `json:"created_at"`
+	ID            string `json:"id"`
+	CampaignID    string `json:"campaign_id"`
+	UserID        string `json:"user_id"`
+	Address       string `json:"address"`
+	Amount        string `json:"amount"`
+	ClaimedAmount string `json:"claimed_amount"`
+	Status        string `json:"status"`
+	ClaimTxHash   string `json:"claim_tx_hash"`
+	ClaimedAt     int64  `json:"claimed_at"`
+	CreatedAt     int64  `json:"created_at"`
 }
 
 // AirdropService manages airdrop operations
@@ -114,8 +115,14 @@ func (s *AirdropService) CreateClaim(ctx context.Context, claim *AirdropClaim) (
 	if !exists {
 		return nil, fmt.Errorf("campaign not found")
 	}
+	if campaign.Status != "active" {
+		return nil, fmt.Errorf("campaign is not active")
+	}
 
 	claim.ID = "claim_" + uuid.New().String()
+	if claim.Amount == "" {
+		claim.Amount = campaign.TotalAmount
+	}
 	claim.ClaimedAmount = "0"
 	claim.Status = "pending"
 	claim.CreatedAt = time.Now().Unix()

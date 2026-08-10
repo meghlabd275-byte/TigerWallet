@@ -15,24 +15,24 @@ import (
 )
 
 type Task struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Schedule  string    `json:"schedule"` // cron
-	Endpoint  string    `json:"endpoint"`
-	LastRun   int64     `json:"last_run"`
-	NextRun   int64     `json:"next_run"`
-	Status    string    `json:"status"`
-	Retries   int       `json:"retries"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Schedule string `json:"schedule"` // cron
+	Endpoint string `json:"endpoint"`
+	LastRun  int64  `json:"last_run"`
+	NextRun  int64  `json:"next_run"`
+	Status   string `json:"status"`
+	Retries  int    `json:"retries"`
 }
 
 type Execution struct {
-	ID        string    `json:"id"`
-	TaskID    string    `json:"task_id"`
-	StartedAt int64     `json:"started_at"`
-	EndedAt   int64     `json:"ended_at"`
-	Status    string    `json:"status"`
-	Output    string    `json:"output"`
-	Error     string    `json:"error"`
+	ID        string `json:"id"`
+	TaskID    string `json:"task_id"`
+	StartedAt int64  `json:"started_at"`
+	EndedAt   int64  `json:"ended_at"`
+	Status    string `json:"status"`
+	Output    string `json:"output"`
+	Error     string `json:"error"`
 }
 
 type Scheduler struct {
@@ -66,7 +66,7 @@ func (s *Scheduler) runScheduler() {
 
 	for range ticker.C {
 		now := time.Now().UnixMilli()
-		
+
 		s.mu.Lock()
 		for _, task := range s.tasks {
 			if task.Status == "active" && now >= task.NextRun {
@@ -114,11 +114,11 @@ func (s *Scheduler) handleTasks(w http.ResponseWriter, r *http.Request) {
 		task.ID = fmt.Sprintf("task_%d", time.Now().UnixNano())
 		task.Status = "active"
 		task.NextRun = time.Now().UnixMilli()
-		
+
 		s.mu.Lock()
 		s.tasks[task.ID] = &task
 		s.mu.Unlock()
-		
+
 		json.NewEncoder(w).Encode(task)
 		return
 	}
@@ -137,10 +137,10 @@ func (s *Scheduler) handleExecutions(w http.ResponseWriter, r *http.Request) {
 func (s *Scheduler) handleHealth(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status": "healthy",
-		"tasks": len(s.tasks),
+		"status":     "healthy",
+		"tasks":      len(s.tasks),
 		"executions": len(s.executions),
 	})
 }

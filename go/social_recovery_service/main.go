@@ -53,42 +53,42 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type Wallet struct {
-	ID              string   `json:"id"`
-	Owner           string   `json:"owner"`
-	Address         string   `json:"address"`
-	EncryptedKey    string   `json:"encrypted_key"`
-	Threshold       uint     `json:"threshold"`
-	Guardians       []Guardian `json:"guardians"`
-	IsActive        bool     `json:"is_active"`
-	RecoveryInProgress bool  `json:"recovery_in_progress"`
-	CreatedAt       int64    `json:"created_at"`
-	UpdatedAt       int64    `json:"updated_at"`
+	ID                 string     `json:"id"`
+	Owner              string     `json:"owner"`
+	Address            string     `json:"address"`
+	EncryptedKey       string     `json:"encrypted_key"`
+	Threshold          uint       `json:"threshold"`
+	Guardians          []Guardian `json:"guardians"`
+	IsActive           bool       `json:"is_active"`
+	RecoveryInProgress bool       `json:"recovery_in_progress"`
+	CreatedAt          int64      `json:"created_at"`
+	UpdatedAt          int64      `json:"updated_at"`
 }
 
 type Guardian struct {
-	Address    string `json:"address"`
-	Weight     uint   `json:"weight"`
-	IsConfirmed bool `json:"is_confirmed"`
-	ConfirmedAt int64 `json:"confirmed_at"`
+	Address     string `json:"address"`
+	Weight      uint   `json:"weight"`
+	IsConfirmed bool   `json:"is_confirmed"`
+	ConfirmedAt int64  `json:"confirmed_at"`
 }
 
 type RecoveryRequest struct {
-	ID             string          `json:"id"`
-	WalletID       string          `json:"wallet_id"`
-	NewOwner       string          `json:"new_owner"`
-	EncryptedShare string          `json:"encrypted_share"`
+	ID             string                 `json:"id"`
+	WalletID       string                 `json:"wallet_id"`
+	NewOwner       string                 `json:"new_owner"`
+	EncryptedShare string                 `json:"encrypted_share"`
 	Confirmations  []GuardianConfirmation `json:"confirmations"`
-	Status         RecoveryStatus  `json:"status"`
-	ExpiresAt      int64           `json:"expires_at"`
-	CompletedAt    int64           `json:"completed_at"`
-	CreatedAt      int64           `json:"created_at"`
+	Status         RecoveryStatus         `json:"status"`
+	ExpiresAt      int64                  `json:"expires_at"`
+	CompletedAt    int64                  `json:"completed_at"`
+	CreatedAt      int64                  `json:"created_at"`
 }
 
 type GuardianConfirmation struct {
-	Guardian string `json:"guardian"`
-	Share    string `json:"share"`
-	Signature string `json:"signature"`
-	ConfirmedAt int64 `json:"confirmed_at"`
+	Guardian    string `json:"guardian"`
+	Share       string `json:"share"`
+	Signature   string `json:"signature"`
+	ConfirmedAt int64  `json:"confirmed_at"`
 }
 
 type RecoveryStatus string
@@ -290,10 +290,10 @@ func DecryptAESGCM(ciphertextB64, key string) (string, error) {
 // ============================================================================
 
 type SocialRecoveryService struct {
-	config       *Config
-	redis        *redis.Client
-	wallets      map[string]*Wallet
-	recoveries   map[string]*RecoveryRequest
+	config        *Config
+	redis         *redis.Client
+	wallets       map[string]*Wallet
+	recoveries    map[string]*RecoveryRequest
 	encryptionKey string
 }
 
@@ -343,16 +343,16 @@ func (s *SocialRecoveryService) RegisterWallet(owner, address string, guardians 
 	}
 
 	wallet := &Wallet{
-		ID:              generateID(),
-		Owner:           owner,
-		Address:         address,
-		EncryptedKey:    encryptedKey,
-		Threshold:       threshold,
-		Guardians:       make([]Guardian, len(guardians)),
-		IsActive:        true,
+		ID:                 generateID(),
+		Owner:              owner,
+		Address:            address,
+		EncryptedKey:       encryptedKey,
+		Threshold:          threshold,
+		Guardians:          make([]Guardian, len(guardians)),
+		IsActive:           true,
 		RecoveryInProgress: false,
-		CreatedAt:       time.Now().Unix(),
-		UpdatedAt:       time.Now().Unix(),
+		CreatedAt:          time.Now().Unix(),
+		UpdatedAt:          time.Now().Unix(),
 	}
 
 	for i, g := range guardians {
@@ -493,14 +493,14 @@ func (s *SocialRecoveryService) InitiateRecovery(walletID, newOwner string) (*Re
 	encryptedSharesJSON, _ := json.Marshal(encryptedShares)
 
 	request := &RecoveryRequest{
-		ID:              generateID(),
-		WalletID:        walletID,
-		NewOwner:        newOwner,
-		EncryptedShare:  base64.StdEncoding.EncodeToString(encryptedSharesJSON),
-		Confirmations:   make([]GuardianConfirmation, 0),
-		Status:          RecoveryPending,
-		ExpiresAt:       time.Now().Add(7 * 24 * time.Hour).Unix(),
-		CreatedAt:       time.Now().Unix(),
+		ID:             generateID(),
+		WalletID:       walletID,
+		NewOwner:       newOwner,
+		EncryptedShare: base64.StdEncoding.EncodeToString(encryptedSharesJSON),
+		Confirmations:  make([]GuardianConfirmation, 0),
+		Status:         RecoveryPending,
+		ExpiresAt:      time.Now().Add(7 * 24 * time.Hour).Unix(),
+		CreatedAt:      time.Now().Unix(),
 	}
 
 	s.recoveries[request.ID] = request

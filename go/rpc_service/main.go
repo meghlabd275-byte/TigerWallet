@@ -31,7 +31,7 @@ type JSONRPCRequest struct {
 type JSONRPCResponse struct {
 	JSONRPC string          `json:"jsonrpc"`
 	Result  json.RawMessage `json:"result,omitempty"`
-	Error   *RPCError      `json:"error,omitempty"`
+	Error   *RPCError       `json:"error,omitempty"`
 	ID      interface{}     `json:"id"`
 }
 
@@ -59,13 +59,13 @@ type TransactionByHashResult struct {
 }
 
 type TransactionReceipt struct {
-	TransactionHash   string   `json:"transactionHash"`
-	BlockHash         string   `json:"blockHash"`
-	BlockNumber       string   `json:"blockNumber"`
-	CumulativeGasUsed string   `json:"cumulativeGasUsed"`
-	GasUsed           string   `json:"gasUsed"`
-	Logs              []Log    `json:"logs"`
-	Status            string   `json:"status"`
+	TransactionHash   string `json:"transactionHash"`
+	BlockHash         string `json:"blockHash"`
+	BlockNumber       string `json:"blockNumber"`
+	CumulativeGasUsed string `json:"cumulativeGasUsed"`
+	GasUsed           string `json:"gasUsed"`
+	Logs              []Log  `json:"logs"`
+	Status            string `json:"status"`
 }
 
 type Log struct {
@@ -79,22 +79,22 @@ type Log struct {
 // ============================================================================
 
 type ChainConfig struct {
-	ChainID      uint64            `json:"chainId"`
-	Name         string            `json:"name"`
-	Symbol       string            `json:"symbol"`
-	Decimals     uint8             `json:"decimals"`
-	RPCEndpoints []string          `json:"rpcEndpoints"`
-	WSEndpoints  []string          `json:"wsEndpoints"`
-	ExplorerURL string            `json:"explorerUrl"`
-	Features     map[string]bool   `json:"features"`
+	ChainID      uint64          `json:"chainId"`
+	Name         string          `json:"name"`
+	Symbol       string          `json:"symbol"`
+	Decimals     uint8           `json:"decimals"`
+	RPCEndpoints []string        `json:"rpcEndpoints"`
+	WSEndpoints  []string        `json:"wsEndpoints"`
+	ExplorerURL  string          `json:"explorerUrl"`
+	Features     map[string]bool `json:"features"`
 }
 
 var ChainConfigs = map[string]ChainConfig{
 	"1": {
-		ChainID:      1,
-		Name:         "Ethereum",
-		Symbol:       "ETH",
-		Decimals:     18,
+		ChainID:  1,
+		Name:     "Ethereum",
+		Symbol:   "ETH",
+		Decimals: 18,
 		RPCEndpoints: []string{
 			"https://eth.llamarpc.com",
 			"https://eth-mainnet.g.alchemy.com/v2/demo",
@@ -105,10 +105,10 @@ var ChainConfigs = map[string]ChainConfig{
 		Features:    map[string]bool{"eip1559": true},
 	},
 	"56": {
-		ChainID:      56,
-		Name:         "BNB Smart Chain",
-		Symbol:       "BNB",
-		Decimals:     18,
+		ChainID:  56,
+		Name:     "BNB Smart Chain",
+		Symbol:   "BNB",
+		Decimals: 18,
 		RPCEndpoints: []string{
 			"https://bsc-dataseed.binance.org",
 			"https://bsc-rpc.gateway.pokt.network",
@@ -117,10 +117,10 @@ var ChainConfigs = map[string]ChainConfig{
 		ExplorerURL: "https://bscscan.com",
 	},
 	"137": {
-		ChainID:      137,
-		Name:         "Polygon",
-		Symbol:       "MATIC",
-		Decimals:     18,
+		ChainID:  137,
+		Name:     "Polygon",
+		Symbol:   "MATIC",
+		Decimals: 18,
 		RPCEndpoints: []string{
 			"https://polygon-rpc.com",
 			"https://1rpc.io/polygon",
@@ -130,10 +130,10 @@ var ChainConfigs = map[string]ChainConfig{
 		Features:    map[string]bool{"eip1559": true},
 	},
 	"42161": {
-		ChainID:      42161,
-		Name:         "Arbitrum One",
-		Symbol:       "ETH",
-		Decimals:     18,
+		ChainID:  42161,
+		Name:     "Arbitrum One",
+		Symbol:   "ETH",
+		Decimals: 18,
 		RPCEndpoints: []string{
 			"https://arb1.arbitrum.io/rpc",
 			"https://1rpc.io/arb",
@@ -142,10 +142,10 @@ var ChainConfigs = map[string]ChainConfig{
 		Features:    map[string]bool{"eip1559": true},
 	},
 	"10": {
-		ChainID:      10,
-		Name:         "Optimism",
-		Symbol:       "ETH",
-		Decimals:     18,
+		ChainID:  10,
+		Name:     "Optimism",
+		Symbol:   "ETH",
+		Decimals: 18,
 		RPCEndpoints: []string{
 			"https://mainnet.optimism.io",
 			"https://1rpc.io/op",
@@ -154,10 +154,10 @@ var ChainConfigs = map[string]ChainConfig{
 		Features:    map[string]bool{"eip1559": true},
 	},
 	"8453": {
-		ChainID:      8453,
-		Name:         "Base",
-		Symbol:       "ETH",
-		Decimals:     18,
+		ChainID:  8453,
+		Name:     "Base",
+		Symbol:   "ETH",
+		Decimals: 18,
 		RPCEndpoints: []string{
 			"https://mainnet.base.org",
 			"https://1rpc.io/base",
@@ -166,10 +166,10 @@ var ChainConfigs = map[string]ChainConfig{
 		Features:    map[string]bool{"eip1559": true},
 	},
 	"43114": {
-		ChainID:      43114,
-		Name:         "Avalanche C-Chain",
-		Symbol:       "AVAX",
-		Decimals:     18,
+		ChainID:  43114,
+		Name:     "Avalanche C-Chain",
+		Symbol:   "AVAX",
+		Decimals: 18,
 		RPCEndpoints: []string{
 			"https://api.avax.network/ext/bc/C/rpc",
 			"https://1rpc.io/avax",
@@ -178,10 +178,10 @@ var ChainConfigs = map[string]ChainConfig{
 		Features:    map[string]bool{"eip1559": true},
 	},
 	"101": {
-		ChainID:      101,
-		Name:         "Solana",
-		Symbol:       "SOL",
-		Decimals:     9,
+		ChainID:  101,
+		Name:     "Solana",
+		Symbol:   "SOL",
+		Decimals: 9,
 		RPCEndpoints: []string{
 			"https://api.mainnet-beta.solana.com",
 			"https://1rpc.io/sol",
@@ -189,10 +189,10 @@ var ChainConfigs = map[string]ChainConfig{
 		ExplorerURL: "https://solscan.io",
 	},
 	"0": {
-		ChainID:      0,
-		Name:         "Bitcoin",
-		Symbol:       "BTC",
-		Decimals:     8,
+		ChainID:  0,
+		Name:     "Bitcoin",
+		Symbol:   "BTC",
+		Decimals: 8,
 		RPCEndpoints: []string{
 			"https://blockstream.info/api",
 		},
@@ -205,15 +205,15 @@ var ChainConfigs = map[string]ChainConfig{
 // ============================================================================
 
 type RPCManager struct {
-	chains         map[string]ChainConfig
-	clients        map[string]*ChainClient
-	healthStatus   map[string]*HealthStatus
-	mu             sync.RWMutex
-	requestCount   uint64
-	failureCount   uint64
+	chains          map[string]ChainConfig
+	clients         map[string]*ChainClient
+	healthStatus    map[string]*HealthStatus
+	mu              sync.RWMutex
+	requestCount    uint64
+	failureCount    uint64
 	lastHealthCheck time.Time
-	redisClient    *redis.Client
-	httpClient     *http.Client
+	redisClient     *redis.Client
+	httpClient      *http.Client
 }
 
 type ChainClient struct {
@@ -224,12 +224,12 @@ type ChainClient struct {
 }
 
 type HealthStatus struct {
-	ChainID       string
-	IsHealthy     bool
-	AvgLatencyMs  float64
-	SuccessRate   float64
-	LastCheck     time.Time
-	LastError     string
+	ChainID      string
+	IsHealthy    bool
+	AvgLatencyMs float64
+	SuccessRate  float64
+	LastCheck    time.Time
+	LastError    string
 }
 
 func NewRPCManager(redisAddr string) *RPCManager {
@@ -558,10 +558,10 @@ func (m *RPCManager) GetCode(chainID, address, block string) (string, error) {
 // ============================================================================
 
 type FeeHistoryResult struct {
-	BaseFeePerGas        []string `json:"baseFeePerGas"`
-	GasUsedRatio         []float64 `json:"gasUsedRatio"`
-	OldestBlock          string    `json:"oldestBlock"`
-	Reward               []string  `json:"reward"`
+	BaseFeePerGas []string  `json:"baseFeePerGas"`
+	GasUsedRatio  []float64 `json:"gasUsedRatio"`
+	OldestBlock   string    `json:"oldestBlock"`
+	Reward        []string  `json:"reward"`
 }
 
 func (m *RPCManager) GetFeeHistory(chainID string, blockCount uint64) (*FeeHistoryResult, error) {
@@ -601,11 +601,11 @@ func (m *RPCManager) GetMaxPriorityFeePerGas(chainID string) (string, error) {
 // ============================================================================
 
 type WSClient struct {
-	conn      *websocket.Conn
-	chainID   string
-	subs      map[string]bool
-	mu        sync.RWMutex
-	handler   func(string, json.RawMessage)
+	conn    *websocket.Conn
+	chainID string
+	subs    map[string]bool
+	mu      sync.RWMutex
+	handler func(string, json.RawMessage)
 }
 
 func NewWSClient(url, chainID string, handler func(string, json.RawMessage)) (*WSClient, error) {
@@ -696,7 +696,7 @@ func NewRPCServer(manager *RPCManager) *RPCServer {
 
 func (s *RPCServer) health(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"status":   "healthy",
+		"status":    "healthy",
 		"timestamp": time.Now().Unix(),
 	})
 }
@@ -706,12 +706,12 @@ func (s *RPCServer) listChains(c *gin.Context) {
 	for id, config := range s.manager.chains {
 		status := s.manager.healthStatus[id]
 		chains = append(chains, map[string]interface{}{
-			"id":           id,
-			"name":         config.Name,
-			"symbol":       config.Symbol,
-			"isHealthy":    status.IsHealthy,
-			"avgLatency":   status.AvgLatencyMs,
-			"successRate":  status.SuccessRate,
+			"id":          id,
+			"name":        config.Name,
+			"symbol":      config.Symbol,
+			"isHealthy":   status.IsHealthy,
+			"avgLatency":  status.AvgLatencyMs,
+			"successRate": status.SuccessRate,
 		})
 	}
 	c.JSON(http.StatusOK, chains)
@@ -727,8 +727,8 @@ func (s *RPCServer) getChain(c *gin.Context) {
 
 	status := s.manager.healthStatus[chainID]
 	c.JSON(http.StatusOK, gin.H{
-		"config":  config,
-		"status":  status,
+		"config": config,
+		"status": status,
 	})
 }
 
@@ -737,10 +737,10 @@ func (s *RPCServer) metrics(c *gin.Context) {
 	failed := atomic.LoadUint64(&s.manager.failureCount)
 
 	c.JSON(http.StatusOK, gin.H{
-		"totalRequests":    total,
-		"failedRequests":   failed,
-		"successRate":     float64(total-failed) / float64(total) * 100,
-		"uptimeSeconds":   time.Since(time.Now()).Seconds(),
+		"totalRequests":  total,
+		"failedRequests": failed,
+		"successRate":    float64(total-failed) / float64(total) * 100,
+		"uptimeSeconds":  time.Since(time.Now()).Seconds(),
 	})
 }
 

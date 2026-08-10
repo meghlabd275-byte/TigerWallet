@@ -210,11 +210,11 @@ func ethCall(to string, data string) (string, error) {
 // selectors maps the Aave V3 function signatures to their precomputed 4-byte
 // keccak256 selectors so we don't need a keccak dependency here.
 var selectors = map[string]string{
-	"getReserveData(address)":                          "35ea5d83",
-	"getReserveConfigurationData(address)":             "cd4b5b6b",
-	"getUserAccountData(address)":                      "bf92857c",
-	"supply(address,uint256,address,uint16)":           "617ba037",
-	"borrow(address,uint256,uint256,uint16,address)":   "a415bcad",
+	"getReserveData(address)":                        "35ea5d83",
+	"getReserveConfigurationData(address)":           "cd4b5b6b",
+	"getUserAccountData(address)":                    "bf92857c",
+	"supply(address,uint256,address,uint16)":         "617ba037",
+	"borrow(address,uint256,uint256,uint16,address)": "a415bcad",
 }
 
 func ethCallSelector(sig string) string {

@@ -1,7 +1,7 @@
 /**
  * TigerWallet Liquidity Aggregator Service
  * High-Load Distributed Go Implementation
- * 
+ *
  * Features:
  * - Multi-DEX aggregation
  * - Best price finding
@@ -16,7 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
+	"math/rand/v2"
 	"net/http"
 	"sort"
 	"sync"
@@ -26,71 +26,71 @@ import (
 // ============== Data Structures ==============
 
 type DEXPool struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Chain       string  `json:"chain"`
-	TokenA      string  `json:"token_a"`
-	TokenB      string  `json:"token_b"`
-	ReserveA    float64 `json:"reserve_a"`
-	ReserveB    float64 `json:"reserve_b"`
-	Liquidity   float64 `json:"liquidity"`
-	Volume24h   float64 `json:"volume_24h"`
-	Fee         float64 `json:"fee"` // in percent
-	APY         float64 `json:"apy"`
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Chain     string  `json:"chain"`
+	TokenA    string  `json:"token_a"`
+	TokenB    string  `json:"token_b"`
+	ReserveA  float64 `json:"reserve_a"`
+	ReserveB  float64 `json:"reserve_b"`
+	Liquidity float64 `json:"liquidity"`
+	Volume24h float64 `json:"volume_24h"`
+	Fee       float64 `json:"fee"` // in percent
+	APY       float64 `json:"apy"`
 }
 
 type SwapQuote struct {
-	FromToken   string   `json:"from_token"`
-	ToToken     string   `json:"to_token"`
-	FromAmount  float64  `json:"from_amount"`
-	ToAmount    float64  `json:"to_amount"`
-	PriceImpact float64  `json:"price_impact"`
-	Slippage    float64  `json:"slippage"`
+	FromToken   string      `json:"from_token"`
+	ToToken     string      `json:"to_token"`
+	FromAmount  float64     `json:"from_amount"`
+	ToAmount    float64     `json:"to_amount"`
+	PriceImpact float64     `json:"price_impact"`
+	Slippage    float64     `json:"slippage"`
 	Route       []RouteStep `json:"route"`
-	DEX         string   `json:"dex"`
-	GasEstimate float64  `json:"gas_estimate"`
-	ValidUntil  int64    `json:"valid_until"`
+	DEX         string      `json:"dex"`
+	GasEstimate float64     `json:"gas_estimate"`
+	ValidUntil  int64       `json:"valid_until"`
 }
 
 type RouteStep struct {
-	DEX       string  `json:"dex"`
-	Pool      string  `json:"pool"`
-	FromToken string  `json:"from_token"`
-	ToToken   string  `json:"to_token"`
+	DEX       string `json:"dex"`
+	Pool      string `json:"pool"`
+	FromToken string `json:"from_token"`
+	ToToken   string `json:"to_token"`
 }
 
 type LiquidityDepth struct {
-	TokenA     string     `json:"token_a"`
-	TokenB     string     `json:"token_b"`
-	Chain      string     `json:"chain"`
-	TotalDepth float64    `json:"total_depth"`
+	TokenA     string      `json:"token_a"`
+	TokenB     string      `json:"token_b"`
+	Chain      string      `json:"chain"`
+	TotalDepth float64     `json:"total_depth"`
 	Pools      []PoolDepth `json:"pools"`
 }
 
 type PoolDepth struct {
-	DEX       string  `json:"dex"`
-	ReserveA  float64 `json:"reserve_a"`
-	ReserveB  float64 `json:"reserve_b"`
-	ValueUSD  float64 `json:"value_usd"`
-	Share     float64 `json:"share"`
+	DEX      string  `json:"dex"`
+	ReserveA float64 `json:"reserve_a"`
+	ReserveB float64 `json:"reserve_b"`
+	ValueUSD float64 `json:"value_usd"`
+	Share    float64 `json:"share"`
 }
 
 // ============== Service ==============
 
 type LiquidityService struct {
-	pools map[string][]*DEXPool // token pair -> pools
+	pools  map[string][]*DEXPool // token pair -> pools
 	tokens map[string]*TokenInfo
 
-	mu         sync.RWMutex
-	server     *http.Server
+	mu     sync.RWMutex
+	server *http.Server
 }
 
 type TokenInfo struct {
-	Symbol    string  `json:"symbol"`
-	Name      string  `json:"name"`
-	Decimals  int     `json:"decimals"`
-	PriceUSD  float64 `json:"price_usd"`
-	Chain     string  `json:"chain"`
+	Symbol   string  `json:"symbol"`
+	Name     string  `json:"name"`
+	Decimals int     `json:"decimals"`
+	PriceUSD float64 `json:"price_usd"`
+	Chain    string  `json:"chain"`
 }
 
 func NewLiquidityService() *LiquidityService {
@@ -106,40 +106,40 @@ func NewLiquidityService() *LiquidityService {
 func (s *LiquidityService) initData() {
 	// Initialize tokens
 	tokens := []*TokenInfo{
-		{symbol: "ETH", name: "Ethereum", decimals: 18, price_usd: 3500, chain: "ethereum"},
-		{symbol: "USDT", name: "Tether", decimals: 6, price_usd: 1.0, chain: "ethereum"},
-		{symbol: "USDC", name: "USD Coin", decimals: 6, price_usd: 1.0, chain: "ethereum"},
-		{symbol: "WBTC", name: "Wrapped Bitcoin", decimals: 8, price_usd: 65000, chain: "ethereum"},
-		{symbol: "BNB", name: "BNB", decimals: 18, price_usd: 600, chain: "bsc"},
-		{symbol: "SOL", name: "Solana", decimals: 9, price_usd: 145, chain: "solana"},
-		{symbol: "MATIC", name: "Polygon", decimals: 18, price_usd: 0.8, chain: "polygon"},
+		{Symbol: "ETH", Name: "Ethereum", Decimals: 18, PriceUSD: 3500, Chain: "ethereum"},
+		{Symbol: "USDT", Name: "Tether", Decimals: 6, PriceUSD: 1.0, Chain: "ethereum"},
+		{Symbol: "USDC", Name: "USD Coin", Decimals: 6, PriceUSD: 1.0, Chain: "ethereum"},
+		{Symbol: "WBTC", Name: "Wrapped Bitcoin", Decimals: 8, PriceUSD: 65000, Chain: "ethereum"},
+		{Symbol: "BNB", Name: "BNB", Decimals: 18, PriceUSD: 600, Chain: "bsc"},
+		{Symbol: "SOL", Name: "Solana", Decimals: 9, PriceUSD: 145, Chain: "solana"},
+		{Symbol: "MATIC", Name: "Polygon", Decimals: 18, PriceUSD: 0.8, Chain: "polygon"},
 	}
 
 	for _, t := range tokens {
-		s.tokens[t.symbol] = t
+		s.tokens[t.Symbol] = t
 	}
 
 	// Initialize pools
 	pools := []*DEXPool{
 		// ETH pairs
-		{id: "uni_eth_usdt", name: "Uniswap V3", chain: "ethereum", token_a: "ETH", token_b: "USDT", reserve_a: 50000, reserve_b: 175000000, fee: 0.3, apy: 15.5},
-		{id: "sushi_eth_usdt", name: "SushiSwap", chain: "ethereum", token_a: "ETH", token_b: "USDT", reserve_a: 25000, reserve_b: 87500000, fee: 0.3, apy: 12.0},
-		{id: "curve_eth_usdt", name: "Curve", chain: "ethereum", token_a: "ETH", token_b: "USDT", reserve_a: 100000, reserve_b: 350000000, fee: 0.04, apy: 8.5},
+		{ID: "uni_eth_usdt", Name: "Uniswap V3", Chain: "ethereum", TokenA: "ETH", TokenB: "USDT", ReserveA: 50000, ReserveB: 175000000, Fee: 0.3, APY: 15.5},
+		{ID: "sushi_eth_usdt", Name: "SushiSwap", Chain: "ethereum", TokenA: "ETH", TokenB: "USDT", ReserveA: 25000, ReserveB: 87500000, Fee: 0.3, APY: 12.0},
+		{ID: "curve_eth_usdt", Name: "Curve", Chain: "ethereum", TokenA: "ETH", TokenB: "USDT", ReserveA: 100000, ReserveB: 350000000, Fee: 0.04, APY: 8.5},
 
 		// BSC pairs
-		{id: "pcs_bnb_usdt", name: "PancakeSwap", chain: "bsc", token_a: "BNB", token_b: "USDT", reserve_a: 50000, reserve_b: 30000000, fee: 0.25, apy: 18.0},
-		{id: "biswap_bnb_usdt", name: "BiSwap", chain: "bsc", token_a: "BNB", token_b: "USDT", reserve_a: 20000, reserve_b: 12000000, fee: 0.2, apy: 22.0},
+		{ID: "pcs_bnb_usdt", Name: "PancakeSwap", Chain: "bsc", TokenA: "BNB", TokenB: "USDT", ReserveA: 50000, ReserveB: 30000000, Fee: 0.25, APY: 18.0},
+		{ID: "biswap_bnb_usdt", Name: "BiSwap", Chain: "bsc", TokenA: "BNB", TokenB: "USDT", ReserveA: 20000, ReserveB: 12000000, Fee: 0.2, APY: 22.0},
 
 		// WBTC
-		{id: "uni_wbtc_eth", name: "Uniswap V3", chain: "ethereum", token_a: "WBTC", token_b: "ETH", reserve_a: 500, reserve_b: 15000, fee: 0.3, apy: 5.0},
+		{ID: "uni_wbtc_eth", Name: "Uniswap V3", Chain: "ethereum", TokenA: "WBTC", TokenB: "ETH", ReserveA: 500, ReserveB: 15000, Fee: 0.3, APY: 5.0},
 
 		// MATIC
-		{id: "quickswap_matic_usdt", name: "QuickSwap", chain: "polygon", token_a: "MATIC", token_b: "USDT", reserve_a: 5000000, reserve_b: 4000000, fee: 0.3, apy: 25.0},
+		{ID: "quickswap_matic_usdt", Name: "QuickSwap", Chain: "polygon", TokenA: "MATIC", TokenB: "USDT", ReserveA: 5000000, ReserveB: 4000000, Fee: 0.3, APY: 25.0},
 	}
 
 	for _, p := range pools {
 		p.Liquidity = s.calculatePoolLiquidity(p)
-		p.Volume24h = p.Liquidity * 0.1 * (0.5 + math.random())
+		p.Volume24h = p.Liquidity * 0.1 * (0.5 + rand.Float64())
 		key := p.TokenA + "_" + p.TokenB
 		s.pools[key] = append(s.pools[key], p)
 	}
@@ -182,7 +182,7 @@ func (s *LiquidityService) Run() error {
 func (s *LiquidityService) handleQuote(w http.ResponseWriter, r *http.Request) {
 	fromToken := r.URL.Query().Get("from")
 	toToken := r.URL.Query().Get("to")
-	amountStr := r.URL.QueryGet("amount")
+	amountStr := r.URL.Query().Get("amount")
 
 	var amount float64
 	if amountStr != "" {
@@ -349,10 +349,10 @@ func (s *LiquidityService) handleHealth(w http.ResponseWriter, r *http.Request) 
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":         "healthy",
-		"total_pools":    poolCount,
+		"status":          "healthy",
+		"total_pools":     poolCount,
 		"total_liquidity": totalLiquidity,
-		"timestamp":      time.Now().Unix(),
+		"timestamp":       time.Now().Unix(),
 	})
 }
 

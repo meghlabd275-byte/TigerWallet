@@ -20,25 +20,25 @@ type Config struct {
 var cfg = Config{Port: 8011}
 
 type Notification struct {
-	ID         string    `json:"id"`
-	UserID     string    `json:"user_id"`
-	Type       string    `json:"type"` // push, email, sms
-	Title      string    `json:"title"`
-	Body       string    `json:"body"`
-	Data       map[string]interface{} `json:"data"`
-	Status     string    `json:"status"` // pending, sent, failed
-	Channel    string    `json:"channel"`
-	Priority   string    `json:"priority"` // low, normal, high, urgent
-	CreatedAt  time.Time `json:"created_at"`
-	SentAt     *time.Time `json:"sent_at"`
+	ID        string                 `json:"id"`
+	UserID    string                 `json:"user_id"`
+	Type      string                 `json:"type"` // push, email, sms
+	Title     string                 `json:"title"`
+	Body      string                 `json:"body"`
+	Data      map[string]interface{} `json:"data"`
+	Status    string                 `json:"status"` // pending, sent, failed
+	Channel   string                 `json:"channel"`
+	Priority  string                 `json:"priority"` // low, normal, high, urgent
+	CreatedAt time.Time              `json:"created_at"`
+	SentAt    *time.Time             `json:"sent_at"`
 }
 
 type Subscription struct {
-	ID        string   `json:"id"`
-	UserID    string   `json:"user_id"`
-	Channels  []string `json:"channels"` // push, email, sms
-	Events    []string `json:"events"` // transaction, swap, staking, etc
-	Enabled   bool     `json:"enabled"`
+	ID        string    `json:"id"`
+	UserID    string    `json:"user_id"`
+	Channels  []string  `json:"channels"` // push, email, sms
+	Events    []string  `json:"events"`   // transaction, swap, staking, etc
+	Enabled   bool      `json:"enabled"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -84,9 +84,9 @@ func (ns *NotificationService) SendNotification(c *gin.Context) {
 	ns.notifications = append(ns.notifications, notif)
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":      true,
+		"success":         true,
 		"notification_id": notif.ID,
-		"status":      "sent",
+		"status":          "sent",
 	})
 }
 
@@ -101,16 +101,16 @@ func (ns *NotificationService) GetNotifications(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":      true,
+		"success":       true,
 		"notifications": notifs,
 	})
 }
 
 func (ns *NotificationService) Subscribe(c *gin.Context) {
 	var req struct {
-		UserID  string   `json:"user_id" binding:"required"`
+		UserID   string   `json:"user_id" binding:"required"`
 		Channels []string `json:"channels" binding:"required"`
-		Events  []string `json:"events" binding:"required"`
+		Events   []string `json:"events" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -129,7 +129,7 @@ func (ns *NotificationService) Subscribe(c *gin.Context) {
 	ns.subscriptions[sub.ID] = sub
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":     true,
+		"success":      true,
 		"subscription": sub,
 	})
 }
@@ -146,7 +146,7 @@ func (ns *NotificationService) Unsubscribe(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"status": "unsubscribed",
+		"status":  "unsubscribed",
 	})
 }
 
@@ -178,9 +178,9 @@ func (ns *NotificationService) SendBatch(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":    true,
-		"sent":       sent,
-		"total":      len(req.UserIDs),
+		"success": true,
+		"sent":    sent,
+		"total":   len(req.UserIDs),
 	})
 }
 

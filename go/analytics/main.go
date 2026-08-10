@@ -1,7 +1,7 @@
 /**
  * TigerWallet Analytics Service
  * High-Load Distributed Go Implementation
- * 
+ *
  * Features:
  * - User analytics
  * - Trading analytics
@@ -24,21 +24,21 @@ import (
 // ============== Data Structures ==============
 
 type UserEvent struct {
-	ID        string                 `json:"id"`
-	UserID    string                 `json:"user_id"`
-	Event     string                 `json:"event"`
+	ID         string                 `json:"id"`
+	UserID     string                 `json:"user_id"`
+	Event      string                 `json:"event"`
 	Properties map[string]interface{} `json:"properties"`
-	Timestamp int64                  `json:"timestamp"`
+	Timestamp  int64                  `json:"timestamp"`
 }
 
 type AnalyticsSummary struct {
-	TotalUsers      int64   `json:"total_users"`
-	ActiveUsers    int64   `json:"active_users_24h"`
-	NewUsers       int64   `json:"new_users_24h"`
-	TotalVolume    float64 `json:"total_volume"`
-	Volume24h      float64 `json:"volume_24h"`
-	TotalRevenue   float64 `json:"total_revenue"`
-	Revenue24h     float64 `json:"revenue_24h"`
+	TotalUsers   int64   `json:"total_users"`
+	ActiveUsers  int64   `json:"active_users_24h"`
+	NewUsers     int64   `json:"new_users_24h"`
+	TotalVolume  float64 `json:"total_volume"`
+	Volume24h    float64 `json:"volume_24h"`
+	TotalRevenue float64 `json:"total_revenue"`
+	Revenue24h   float64 `json:"revenue_24h"`
 }
 
 type RevenueMetric struct {
@@ -56,11 +56,11 @@ type UserMetrics struct {
 }
 
 type DashboardData struct {
-	Summary     AnalyticsSummary    `json:"summary"`
-	TopTokens   []TokenVolume     `json:"top_tokens"`
-	TopChains   []ChainVolume     `json:"top_chains"`
-	Revenue     []RevenueMetric   `json:"revenue"`
-	UserGrowth  []UserGrowthPoint `json:"user_growth"`
+	Summary    AnalyticsSummary  `json:"summary"`
+	TopTokens  []TokenVolume     `json:"top_tokens"`
+	TopChains  []ChainVolume     `json:"top_chains"`
+	Revenue    []RevenueMetric   `json:"revenue"`
+	UserGrowth []UserGrowthPoint `json:"user_growth"`
 }
 
 // ============== Service ==============
@@ -69,10 +69,10 @@ type AnalyticsService struct {
 	events      []UserEvent
 	revenue     []RevenueMetric
 	userMetrics map[string]*UserMetrics
-	
-	mu         sync.RWMutex
-	startTime   time.Time
-	server     *http.Server
+
+	mu        sync.RWMutex
+	startTime time.Time
+	server    *http.Server
 }
 
 func NewAnalyticsService() *AnalyticsService {
@@ -86,7 +86,7 @@ func NewAnalyticsService() *AnalyticsService {
 
 func (s *AnalyticsService) Run() error {
 	mux := http.NewServeMux()
-	
+
 	mux.HandleFunc("/api/events", s.handleTrackEvent)
 	mux.HandleFunc("/api/analytics/summary", s.handleSummary)
 	mux.HandleFunc("/api/analytics/dashboard", s.handleDashboard)
@@ -94,12 +94,12 @@ func (s *AnalyticsService) Run() error {
 	mux.HandleFunc("/api/analytics/revenue", s.handleRevenue)
 	mux.HandleFunc("/api/analytics/export", s.handleExport)
 	mux.HandleFunc("/health", s.handleHealth)
-	
+
 	s.server = &http.Server{
 		Addr:    ":8088",
 		Handler: mux,
 	}
-	
+
 	log.Println("Analytics service starting on :8088")
 	return s.server.ListenAndServe()
 }
@@ -111,19 +111,19 @@ func (s *AnalyticsService) handleTrackEvent(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	var event UserEvent
 	if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	
+
 	event.ID = fmt.Sprintf("evt_%d", time.Now().UnixNano())
 	event.Timestamp = time.Now().UnixMilli()
-	
+
 	s.mu.Lock()
 	s.events = append(s.events, event)
-	
+
 	// Update user metrics
 	if metrics, ok := s.userMetrics[event.UserID]; ok {
 		metrics.LastActive = event.Timestamp
@@ -134,7 +134,7 @@ func (s *AnalyticsService) handleTrackEvent(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	s.mu.Unlock()
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "tracked"})
 }
@@ -142,17 +142,17 @@ func (s *AnalyticsService) handleTrackEvent(w http.ResponseWriter, r *http.Reque
 func (s *AnalyticsService) handleSummary(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	now := time.Now().UnixMilli()
 	dayAgo := now - 86400000
-	
+
 	var activeUsers int64
 	var newUsers int64
 	var volume24h float64
 	var revenue24h float64
-	
+
 	users := make(map[string]bool)
-	
+
 	for _, event := range s.events {
 		if event.Timestamp >= dayAgo {
 			activeUsers++
@@ -162,18 +162,18 @@ func (s *AnalyticsService) handleSummary(w http.ResponseWriter, r *http.Request)
 			}
 		}
 	}
-	
+
 	for _, rev := range s.revenue {
 		if rev.Timestamp >= dayAgo {
 			revenue24h += rev.Amount
 		}
 	}
-	
+
 	totalVolume := 0.0
 	for _, m := range s.userMetrics {
 		totalVolume += m.TotalVolume
 	}
-	
+
 	summary := AnalyticsSummary{
 		TotalUsers:   int64(len(s.userMetrics)),
 		ActiveUsers:  activeUsers,
@@ -183,11 +183,11 @@ func (s *AnalyticsService) handleSummary(w http.ResponseWriter, r *http.Request)
 		TotalRevenue: 0,
 		Revenue24h:   revenue24h,
 	}
-	
+
 	for _, rev := range s.revenue {
 		summary.TotalRevenue += rev.Amount
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(summary)
 }
@@ -195,10 +195,10 @@ func (s *AnalyticsService) handleSummary(w http.ResponseWriter, r *http.Request)
 func (s *AnalyticsService) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	// Get summary
 	summary := s.calculateSummary()
-	
+
 	// Get top tokens
 	topTokens := []TokenVolume{
 		{Symbol: "ETH", Volume: 150000000, Change: 2.5},
@@ -207,7 +207,7 @@ func (s *AnalyticsService) handleDashboard(w http.ResponseWriter, r *http.Reques
 		{Symbol: "BNB", Volume: 45000000, Change: -1.5},
 		{Symbol: "SOL", Volume: 35000000, Change: 5.8},
 	}
-	
+
 	// Get top chains
 	topChains := []ChainVolume{
 		{Chain: "Ethereum", Volume: 80000000, Txs: 150000},
@@ -216,7 +216,7 @@ func (s *AnalyticsService) handleDashboard(w http.ResponseWriter, r *http.Reques
 		{Chain: "Arbitrum", Volume: 25000000, Txs: 120000},
 		{Chain: "Optimism", Volume: 15000000, Txs: 80000},
 	}
-	
+
 	// Revenue by source
 	revenue := []RevenueMetric{
 		{Source: "Swap Fees", Amount: 450000, Timestamp: time.Now().UnixMilli()},
@@ -224,7 +224,7 @@ func (s *AnalyticsService) handleDashboard(w http.ResponseWriter, r *http.Reques
 		{Source: "Bridge Fees", Amount: 120000, Timestamp: time.Now().UnixMilli()},
 		{Source: "NFT Fees", Amount: 85000, Timestamp: time.Now().UnixMilli()},
 	}
-	
+
 	// User growth
 	userGrowth := make([]UserGrowthPoint, 30)
 	now := time.Now()
@@ -234,7 +234,7 @@ func (s *AnalyticsService) handleDashboard(w http.ResponseWriter, r *http.Reques
 			Count: int64(1000 + i*50 + (i*i)/2),
 		}
 	}
-	
+
 	dashboard := DashboardData{
 		Summary:    summary,
 		TopTokens:  topTokens,
@@ -242,7 +242,7 @@ func (s *AnalyticsService) handleDashboard(w http.ResponseWriter, r *http.Reques
 		Revenue:    revenue,
 		UserGrowth: userGrowth,
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(dashboard)
 }
@@ -250,14 +250,14 @@ func (s *AnalyticsService) handleDashboard(w http.ResponseWriter, r *http.Reques
 func (s *AnalyticsService) handleUserMetrics(w http.ResponseWriter, r *http.Request) {
 	userID := r.URL.Query().Get("user_id")
 	limit := 50
-	
+
 	if l := r.URL.Query().Get("limit"); l != "" {
 		fmt.Sscanf(l, "%d", &limit)
 	}
-	
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if userID != "" {
 		if metrics, ok := s.userMetrics[userID]; ok {
 			w.Header().Set("Content-Type", "application/json")
@@ -267,18 +267,18 @@ func (s *AnalyticsService) handleUserMetrics(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
-	
+
 	// Return all users sorted by volume
 	allMetrics := make([]*UserMetrics, 0, len(s.userMetrics))
 	for _, m := range s.userMetrics {
 		allMetrics = append(allMetrics, m)
 	}
-	
+
 	// Sort by total volume (simplified)
 	if len(allMetrics) > limit {
 		allMetrics = allMetrics[:limit]
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(allMetrics)
 }
@@ -286,28 +286,28 @@ func (s *AnalyticsService) handleUserMetrics(w http.ResponseWriter, r *http.Requ
 func (s *AnalyticsService) handleRevenue(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	// Group by source
 	revenueBySource := make(map[string]float64)
 	for _, rev := range s.revenue {
 		revenueBySource[rev.Source] += rev.Amount
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(revenueBySource)
 }
 
 func (s *AnalyticsService) handleExport(w http.ResponseWriter, r *http.Request) {
 	format := r.URL.Query().Get("format")
-	
+
 	s.mu.RLock()
 	data := map[string]interface{}{
-		"events":      s.events,
-		"revenue":     s.revenue,
+		"events":       s.events,
+		"revenue":      s.revenue,
 		"user_metrics": s.userMetrics,
 	}
 	s.mu.RUnlock()
-	
+
 	switch format {
 	case "csv":
 		w.Header().Set("Content-Type", "text/csv")
@@ -325,12 +325,12 @@ func (s *AnalyticsService) handleExport(w http.ResponseWriter, r *http.Request) 
 func (s *AnalyticsService) handleHealth(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":   "healthy",
-		"events":   len(s.events),
-		"users":    len(s.userMetrics),
-		"uptime":   time.Since(s.startTime).Seconds(),
+		"status": "healthy",
+		"events": len(s.events),
+		"users":  len(s.userMetrics),
+		"uptime": time.Since(s.startTime).Seconds(),
 	})
 }
 
@@ -339,25 +339,25 @@ func (s *AnalyticsService) handleHealth(w http.ResponseWriter, r *http.Request) 
 func (s *AnalyticsService) calculateSummary() AnalyticsSummary {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	summary := AnalyticsSummary{
 		TotalUsers: int64(len(s.userMetrics)),
 	}
-	
+
 	for _, m := range s.userMetrics {
 		summary.TotalVolume += m.TotalVolume
 		summary.TotalRevenue += m.TotalFees
 	}
-	
+
 	return summary
 }
 
 // ============== Types ==============
 
 type TokenVolume struct {
-	Symbol  string  `json:"symbol"`
-	Volume  float64 `json:"volume"`
-	Change  float64 `json:"change_24h"`
+	Symbol string  `json:"symbol"`
+	Volume float64 `json:"volume"`
+	Change float64 `json:"change_24h"`
 }
 
 type ChainVolume struct {
@@ -375,7 +375,7 @@ type UserGrowthPoint struct {
 
 func main() {
 	log.Println("Starting TigerWallet Analytics Service...")
-	
+
 	service := NewAnalyticsService()
 	if err := service.Run(); err != nil {
 		log.Fatalf("Server error: %v", err)

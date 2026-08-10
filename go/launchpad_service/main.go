@@ -91,9 +91,9 @@ func loadCfg() config {
 }
 
 type service struct {
-	pg     *pgxpool.Pool
-	redis  *redis.Client
-	jwt    string
+	pg      *pgxpool.Pool
+	redis   *redis.Client
+	jwt     string
 	adminID string
 }
 
@@ -190,7 +190,11 @@ func (s *service) listProjects(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var p struct{ ID, Name, Sym, Desc, Chain, Addr, Supply, Alloc, Price, Soft, Hard, Max, Raised, Status string; Parts int; Start, End int64 }
+		var p struct {
+			ID, Name, Sym, Desc, Chain, Addr, Supply, Alloc, Price, Soft, Hard, Max, Raised, Status string
+			Parts                                                                                   int
+			Start, End                                                                              int64
+		}
 		if err := rows.Scan(&p.ID, &p.Name, &p.Sym, &p.Desc, &p.Chain, &p.Addr, &p.Supply, &p.Alloc, &p.Price, &p.Soft, &p.Hard, &p.Max, &p.Raised, &p.Parts, &p.Start, &p.End, &p.Status); err != nil {
 			continue
 		}
@@ -206,7 +210,11 @@ func (s *service) listProjects(c *gin.Context) {
 
 func (s *service) getProject(c *gin.Context) {
 	id := c.Param("id")
-	var p struct{ ID, Name, Sym, Desc, Chain, Addr, Supply, Alloc, Price, Soft, Hard, Max, Raised, Status string; Parts int; Start, End int64 }
+	var p struct {
+		ID, Name, Sym, Desc, Chain, Addr, Supply, Alloc, Price, Soft, Hard, Max, Raised, Status string
+		Parts                                                                                   int
+		Start, End                                                                              int64
+	}
 	err := s.pg.QueryRow(c, `SELECT id,name,symbol,description,chain,token_address,total_supply::text,ido_allocation::text,price::text,soft_cap::text,hard_cap::text,max_per_user::text,raised_amount::text,participants,extract(epoch from start_time)::bigint,extract(epoch from end_time)::bigint,status FROM launchpad_projects WHERE id=$1`, id).
 		Scan(&p.ID, &p.Name, &p.Sym, &p.Desc, &p.Chain, &p.Addr, &p.Supply, &p.Alloc, &p.Price, &p.Soft, &p.Hard, &p.Max, &p.Raised, &p.Parts, &p.Start, &p.End, &p.Status)
 	if err != nil {
@@ -222,19 +230,19 @@ func (s *service) getProject(c *gin.Context) {
 }
 
 type createProjectReq struct {
-	Name         string `json:"name" binding:"required"`
-	Symbol       string `json:"symbol" binding:"required"`
-	Description  string `json:"description"`
-	Chain        string `json:"chain"`
-	TokenAddress string `json:"token_address"`
-	TotalSupply  string `json:"total_supply" binding:"required"`
+	Name          string `json:"name" binding:"required"`
+	Symbol        string `json:"symbol" binding:"required"`
+	Description   string `json:"description"`
+	Chain         string `json:"chain"`
+	TokenAddress  string `json:"token_address"`
+	TotalSupply   string `json:"total_supply" binding:"required"`
 	IDOAllocation string `json:"ido_allocation" binding:"required"`
-	Price        string `json:"price" binding:"required"`
-	SoftCap      string `json:"soft_cap"`
-	HardCap      string `json:"hard_cap"`
-	MaxPerUser   string `json:"max_per_user"`
-	StartEpoch   int64  `json:"start_time" binding:"required"`
-	EndEpoch     int64  `json:"end_time" binding:"required"`
+	Price         string `json:"price" binding:"required"`
+	SoftCap       string `json:"soft_cap"`
+	HardCap       string `json:"hard_cap"`
+	MaxPerUser    string `json:"max_per_user"`
+	StartEpoch    int64  `json:"start_time" binding:"required"`
+	EndEpoch      int64  `json:"end_time" binding:"required"`
 }
 
 func (s *service) createProject(c *gin.Context) {
@@ -416,7 +424,10 @@ func (s *service) listAllocations(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var a struct{ ID, PID, Amt, Tokens, Status string; Ts int64 }
+		var a struct {
+			ID, PID, Amt, Tokens, Status string
+			Ts                           int64
+		}
 		if err := rows.Scan(&a.ID, &a.PID, &a.Amt, &a.Tokens, &a.Status, &a.Ts); err != nil {
 			continue
 		}

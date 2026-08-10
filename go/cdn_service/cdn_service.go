@@ -54,8 +54,8 @@ type CDNConfig struct {
 	StoragePath   string
 	MaxFileSize   int64
 	AllowedTypes []string
-	CacheTTL      int64
-	Enable gzip   bool
+	CacheTTL     int64
+	EnableGzip   bool
 }
 
 // UploadRequest represents an upload request
@@ -100,7 +100,7 @@ func GetCDNService(config *CDNConfig) *CDNService {
 				StoragePath: "./cdn-storage",
 				MaxFileSize: 100 * 1024 * 1024, // 100MB
 				CacheTTL:    86400, // 24 hours
-				Enabled:    true,
+				EnableGzip: true,
 			}
 		}
 		

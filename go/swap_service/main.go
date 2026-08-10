@@ -22,12 +22,12 @@ import (
 // ============================================================================
 
 type Config struct {
-	Port     int    `json:"port"`
+	Port      int    `json:"port"`
 	RedisAddr string `json:"redis_addr"`
 }
 
 var cfg = Config{
-	Port:     8005,
+	Port:      8005,
 	RedisAddr: "localhost:6379",
 }
 
@@ -36,74 +36,74 @@ var cfg = Config{
 // ============================================================================
 
 type Token struct {
-	ID            string `json:"id" bson:"_id"`
-	Symbol        string `json:"symbol" bson:"symbol"`
-	Name          string `json:"name" bson:"name"`
-	Chain         string `json:"chain" bson:"chain"`
-	Contract      string `json:"contract" bson:"contract"`
-	Decimals     int    `json:"decimals" bson:"decimals"`
-	PriceUSD     string `json:"price_usd" bson:"price_usd"`
-	MarketCap    string `json:"market_cap" bson:"market_cap"`
-	Volume24h    string `json:"volume_24h" bson:"volume_24h"`
+	ID                string `json:"id" bson:"_id"`
+	Symbol            string `json:"symbol" bson:"symbol"`
+	Name              string `json:"name" bson:"name"`
+	Chain             string `json:"chain" bson:"chain"`
+	Contract          string `json:"contract" bson:"contract"`
+	Decimals          int    `json:"decimals" bson:"decimals"`
+	PriceUSD          string `json:"price_usd" bson:"price_usd"`
+	MarketCap         string `json:"market_cap" bson:"market_cap"`
+	Volume24h         string `json:"volume_24h" bson:"volume_24h"`
 	CirculatingSupply string `json:"circulating_supply" bson:"circulating_supply"`
-	TotalSupply  string `json:"total_supply" bson:"total_supply"`
-	IsVerified   bool   `json:"is_verified" bson:"is_verified"`
-	IsActive     bool   `json:"is_active" bson:"is_active"`
+	TotalSupply       string `json:"total_supply" bson:"total_supply"`
+	IsVerified        bool   `json:"is_verified" bson:"is_verified"`
+	IsActive          bool   `json:"is_active" bson:"is_active"`
 }
 
 type TradingPair struct {
-	ID            string   `json:"id" bson:"_id"`
-	BaseToken    string   `json:"base_token" bson:"base_token"`
-	QuoteToken   string   `json:"quote_token" bson:"quote_token"`
-	PairAddress  string   `json:"pair_address" bson:"pair_address"`
-	Chain        string   `json:"chain" bson:"chain"`
-	 DEX         string   `json:"dex" bson:"dex"` // uniswap, sushi, pancakeswap
-	ReserveA     string   `json:"reserve_a" bson:"reserve_a"`
-	ReserveB     string   `json:"reserve_b" bson:"reserve_b"`
-	Liquidity    string   `json:"liquidity" bson:"liquidity"`
-	Volume24h    string   `json:"volume_24h" bson:"volume_24h"`
-	Fees24h      string   `json:"fees_24h" bson:"fees_24h"`
-	Price        string   `json:"price" bson:"price"`
+	ID             string `json:"id" bson:"_id"`
+	BaseToken      string `json:"base_token" bson:"base_token"`
+	QuoteToken     string `json:"quote_token" bson:"quote_token"`
+	PairAddress    string `json:"pair_address" bson:"pair_address"`
+	Chain          string `json:"chain" bson:"chain"`
+	DEX            string `json:"dex" bson:"dex"` // uniswap, sushi, pancakeswap
+	ReserveA       string `json:"reserve_a" bson:"reserve_a"`
+	ReserveB       string `json:"reserve_b" bson:"reserve_b"`
+	Liquidity      string `json:"liquidity" bson:"liquidity"`
+	Volume24h      string `json:"volume_24h" bson:"volume_24h"`
+	Fees24h        string `json:"fees_24h" bson:"fees_24h"`
+	Price          string `json:"price" bson:"price"`
 	PriceChange24h string `json:"price_change_24h" bson:"price_change_24h"`
-	High24h      string   `json:"high_24h" bson:"high_24h"`
-	Low24h       string   `json:"low_24h" bson:"low_24h"`
-	IsActive     bool     `json:"is_active" bson:"is_active"`
+	High24h        string `json:"high_24h" bson:"high_24h"`
+	Low24h         string `json:"low_24h" bson:"low_24h"`
+	IsActive       bool   `json:"is_active" bson:"is_active"`
 }
 
 type LiquidityPool struct {
-	ID           string `json:"id" bson:"_id"`
-	PairID       string `json:"pair_id" bson:"pair_id"`
-	Provider     string `json:"provider" bson:"provider"`
-	TokenA       string `json:"token_a" bson:"token_a"`
-	TokenB       string `json:"token_b" bson:"token_b"`
-	AmountA      string `json:"amount_a" bson:"amount_a"`
-	AmountB      string `json:"amount_b" bson:"amount_b"`
-	LpTokens     string `json:"lp_tokens" bson:"lp_tokens"`
-	Share        string `json:"share" bson:"share"` // percentage
-	Chain        string `json:"chain" bson:"chain"`
-	Staked       bool   `json:"staked" bson:"staked"`
-	StakedAmount string `json:"staked_amount" bson:"staked_amount"`
-	RewardEarned string `json:"reward_earned" bson:"reward_earned"`
+	ID           string    `json:"id" bson:"_id"`
+	PairID       string    `json:"pair_id" bson:"pair_id"`
+	Provider     string    `json:"provider" bson:"provider"`
+	TokenA       string    `json:"token_a" bson:"token_a"`
+	TokenB       string    `json:"token_b" bson:"token_b"`
+	AmountA      string    `json:"amount_a" bson:"amount_a"`
+	AmountB      string    `json:"amount_b" bson:"amount_b"`
+	LpTokens     string    `json:"lp_tokens" bson:"lp_tokens"`
+	Share        string    `json:"share" bson:"share"` // percentage
+	Chain        string    `json:"chain" bson:"chain"`
+	Staked       bool      `json:"staked" bson:"staked"`
+	StakedAmount string    `json:"staked_amount" bson:"staked_amount"`
+	RewardEarned string    `json:"reward_earned" bson:"reward_earned"`
 	CreatedAt    time.Time `json:"created_at" bson:"created_at"`
 }
 
 type SwapTransaction struct {
-	ID            string    `json:"id" bson:"_id"`
-	UserID        string    `json:"user_id" bson:"user_id"`
-	FromToken    string    `json:"from_token" bson:"from_token"`
-	ToToken      string    `json:"to_token" bson:"to_token"`
-	FromAmount   string    `json:"from_amount" bson:"from_amount"`
-	ToAmount     string    `json:"to_amount" bson:"to_amount"`
-	PriceImpact  string    `json:"price_impact" bson:"price_impact"`
-	Slippage     string    `json:"slippage" bson:"slippage"`
-	Route        []string `json:"route" bson:"route"`
-	Chain        string   `json:"chain" bson:"chain"`
-	 DEX         string   `json:"dex" bson:"dex"`
-	Status       string   `json:"status" bson:"status"` // pending, completed, failed
-	TxHash       string   `json:"tx_hash" bson:"tx_hash"`
-	GasUsed      string   `json:"gas_used" bson:"gas_used"`
-	Fee          string   `json:"fee" bson:"fee"`
-	Timestamp    time.Time `json:"timestamp" bson:"timestamp"`
+	ID          string    `json:"id" bson:"_id"`
+	UserID      string    `json:"user_id" bson:"user_id"`
+	FromToken   string    `json:"from_token" bson:"from_token"`
+	ToToken     string    `json:"to_token" bson:"to_token"`
+	FromAmount  string    `json:"from_amount" bson:"from_amount"`
+	ToAmount    string    `json:"to_amount" bson:"to_amount"`
+	PriceImpact string    `json:"price_impact" bson:"price_impact"`
+	Slippage    string    `json:"slippage" bson:"slippage"`
+	Route       []string  `json:"route" bson:"route"`
+	Chain       string    `json:"chain" bson:"chain"`
+	DEX         string    `json:"dex" bson:"dex"`
+	Status      string    `json:"status" bson:"status"` // pending, completed, failed
+	TxHash      string    `json:"tx_hash" bson:"tx_hash"`
+	GasUsed     string    `json:"gas_used" bson:"gas_used"`
+	Fee         string    `json:"fee" bson:"fee"`
+	Timestamp   time.Time `json:"timestamp" bson:"timestamp"`
 }
 
 // ============================================================================
@@ -111,12 +111,12 @@ type SwapTransaction struct {
 // ============================================================================
 
 type SwapService struct {
-	redis       *redis.Client
-	mu          sync.RWMutex
-	tokens      map[string]*Token
-	pairs       map[string]*TradingPair
-	pools       map[string]*LiquidityPool
-	swaps       map[string]*SwapTransaction
+	redis  *redis.Client
+	mu     sync.RWMutex
+	tokens map[string]*Token
+	pairs  map[string]*TradingPair
+	pools  map[string]*LiquidityPool
+	swaps  map[string]*SwapTransaction
 }
 
 func NewSwapService() *SwapService {
@@ -125,7 +125,7 @@ func NewSwapService() *SwapService {
 	})
 
 	ss := &SwapService{
-		redis: rdb,
+		redis:  rdb,
 		tokens: make(map[string]*Token),
 		pairs:  make(map[string]*TradingPair),
 		pools:  make(map[string]*LiquidityPool),
@@ -220,7 +220,7 @@ func (ss *SwapService) GetToken(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"token":    token,
+		"token":   token,
 	})
 }
 
@@ -259,7 +259,7 @@ func (ss *SwapService) GetPair(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"pair":     pair,
+		"pair":    pair,
 	})
 }
 
@@ -333,31 +333,31 @@ func (ss *SwapService) GetQuote(c *gin.Context) {
 	priceImpact.Mul(priceImpact, big.NewFloat(100))
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":       true,
-		"from_token":    req.FromToken,
-		"to_token":      req.ToToken,
-		"from_amount":   req.Amount,
-		"to_amount":     fmt.Sprintf("%.6f", outputAmount),
-		"min_received":  fmt.Sprintf("%.6f", minOutput),
-		"price_impact":  fmt.Sprintf("%.4f%%", priceImpact),
-		"slippage":      fmt.Sprintf("%.1f%%", slippage),
-		"route":         []string{req.FromToken, req.ToToken},
-		"pair":          pair.ID,
-		"dex":           pair.DEX,
-		"gas_estimate":  "150000",
+		"success":      true,
+		"from_token":   req.FromToken,
+		"to_token":     req.ToToken,
+		"from_amount":  req.Amount,
+		"to_amount":    fmt.Sprintf("%.6f", outputAmount),
+		"min_received": fmt.Sprintf("%.6f", minOutput),
+		"price_impact": fmt.Sprintf("%.4f%%", priceImpact),
+		"slippage":     fmt.Sprintf("%.1f%%", slippage),
+		"route":        []string{req.FromToken, req.ToToken},
+		"pair":         pair.ID,
+		"dex":          pair.DEX,
+		"gas_estimate": "150000",
 	})
 }
 
 // Execute swap
 type SwapRequest struct {
-	UserID    string   `json:"user_id" binding:"required"`
-	FromToken string   `json:"from_token" binding:"required"`
-	ToToken   string   `json:"to_token" binding:"required"`
-	FromAmount string  `json:"from_amount" binding:"required"`
-	MinOutput  string  `json:"min_output" binding:"required"`
-	Slippage   string  `json:"slippage"`
-	Route     []string `json:"route"`
-	Chain     string   `json:"chain" binding:"required"`
+	UserID     string   `json:"user_id" binding:"required"`
+	FromToken  string   `json:"from_token" binding:"required"`
+	ToToken    string   `json:"to_token" binding:"required"`
+	FromAmount string   `json:"from_amount" binding:"required"`
+	MinOutput  string   `json:"min_output" binding:"required"`
+	Slippage   string   `json:"slippage"`
+	Route      []string `json:"route"`
+	Chain      string   `json:"chain" binding:"required"`
 }
 
 func (ss *SwapService) ExecuteSwap(c *gin.Context) {
@@ -457,11 +457,11 @@ func (ss *SwapService) ExecuteSwap(c *gin.Context) {
 		"gas_estimate": tx.GasUsed,
 		"fee":          tx.Fee,
 		"action_required": gin.H{
-			"endpoint":     "POST /api/v1/send (wallet_api)",
-			"description":  "Submit the on-chain swap through the signing backend (wallet_api) which holds the encrypted seed.",
-			"chain":        req.Chain,
-			"to":           "DEX router contract",
-			"value":        req.FromAmount,
+			"endpoint":               "POST /api/v1/send (wallet_api)",
+			"description":            "Submit the on-chain swap through the signing backend (wallet_api) which holds the encrypted seed.",
+			"chain":                  req.Chain,
+			"to":                     "DEX router contract",
+			"value":                  req.FromAmount,
 			"requires_erc20_approve": req.FromToken != "",
 		},
 	})
@@ -469,12 +469,12 @@ func (ss *SwapService) ExecuteSwap(c *gin.Context) {
 
 // Add liquidity
 type AddLiquidityRequest struct {
-	Provider   string `json:"provider" binding:"required"`
-	TokenA    string `json:"token_a" binding:"required"`
-	TokenB    string `json:"token_b" binding:"required"`
-	AmountA   string `json:"amount_a" binding:"required"`
-	AmountB   string `json:"amount_b" binding:"required"`
-	Chain     string `json:"chain" binding:"required"`
+	Provider string `json:"provider" binding:"required"`
+	TokenA   string `json:"token_a" binding:"required"`
+	TokenB   string `json:"token_b" binding:"required"`
+	AmountA  string `json:"amount_a" binding:"required"`
+	AmountB  string `json:"amount_b" binding:"required"`
+	Chain    string `json:"chain" binding:"required"`
 }
 
 func (ss *SwapService) AddLiquidity(c *gin.Context) {
@@ -489,7 +489,7 @@ func (ss *SwapService) AddLiquidity(c *gin.Context) {
 	pair, exists := ss.pairs[pairID]
 	if !exists {
 		pair = &TradingPair{
-			ID:           pairID,
+			ID:          pairID,
 			BaseToken:   req.TokenA,
 			QuoteToken:  req.TokenB,
 			PairAddress: "", // pair address requires on-chain contract deployment
@@ -522,19 +522,19 @@ func (ss *SwapService) AddLiquidity(c *gin.Context) {
 	// Create liquidity position
 	poolID := uuid.New().String()
 	pool := &LiquidityPool{
-		ID:         poolID,
-		PairID:     pairID,
-		Provider:   req.Provider,
-		TokenA:     req.TokenA,
-		TokenB:     req.TokenB,
-		AmountA:    req.AmountA,
-		AmountB:    req.AmountB,
-		LpTokens:   fmt.Sprintf("%.6f", lpTokens),
-		Share:      "1.0",
-		Chain:      req.Chain,
-		Staked:     false,
+		ID:           poolID,
+		PairID:       pairID,
+		Provider:     req.Provider,
+		TokenA:       req.TokenA,
+		TokenB:       req.TokenB,
+		AmountA:      req.AmountA,
+		AmountB:      req.AmountB,
+		LpTokens:     fmt.Sprintf("%.6f", lpTokens),
+		Share:        "1.0",
+		Chain:        req.Chain,
+		Staked:       false,
 		RewardEarned: "0",
-		CreatedAt:  time.Now(),
+		CreatedAt:    time.Now(),
 	}
 
 	ss.pools[poolID] = pool
@@ -545,9 +545,9 @@ func (ss *SwapService) AddLiquidity(c *gin.Context) {
 	pair.Liquidity = addStrings(pair.Liquidity, fmt.Sprintf("%.6f", lpTokens))
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":    true,
+		"success":   true,
 		"pool_id":   poolID,
-		"lp_tokens":  pool.LpTokens,
+		"lp_tokens": pool.LpTokens,
 		"token_a":   req.TokenA,
 		"token_b":   req.TokenB,
 		"amount_a":  req.AmountA,
@@ -568,8 +568,8 @@ func (ss *SwapService) GetUserPools(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"pools":  pools,
-		"total":  len(pools),
+		"pools":   pools,
+		"total":   len(pools),
 	})
 }
 
@@ -586,8 +586,8 @@ func (ss *SwapService) GetUserSwaps(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"swaps":  swaps,
-		"total":  len(swaps),
+		"swaps":   swaps,
+		"total":   len(swaps),
 	})
 }
 

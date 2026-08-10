@@ -34,8 +34,8 @@ func (s *service) listUserPositions(c *gin.Context) {
 	for rows.Next() {
 		var p struct {
 			ID, PID, Size, Entry, Lev, Margin, Status, PnL, Liq string
-			Side int
-			Ts   int64
+			Side                                                int
+			Ts                                                  int64
 		}
 		if err := rows.Scan(&p.ID, &p.PID, &p.Side, &p.Size, &p.Entry, &p.Lev, &p.Margin, &p.Status, &p.PnL, &p.Liq, &p.Ts); err != nil {
 			continue

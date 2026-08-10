@@ -14,46 +14,45 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
 
 // Bybit Connector
 type BybitConnector struct {
-	apiKey     string
-	apiSecret  string
-	baseURL    string
-	httpClient *http.Client
-	symbols    map[string]*BybitSymbol
-	orderCache map[string]*Order
-	mu         sync.RWMutex
+	apiKey      string
+	apiSecret   string
+	baseURL     string
+	httpClient  *http.Client
+	symbols     map[string]*BybitSymbol
+	orderCache  map[string]*Order
+	mu          sync.RWMutex
 	rateLimiter *RateLimiter
 }
 
 func NewBybitConnector(apiKey, apiSecret string) *BybitConnector {
 	return &BybitConnector{
-		apiKey:     apiKey,
-		apiSecret:  apiSecret,
-		baseURL:    "https://api.bybit.com",
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		symbols:    make(map[string]*BybitSymbol),
-		orderCache: make(map[string]*Order),
+		apiKey:      apiKey,
+		apiSecret:   apiSecret,
+		baseURL:     "https://api.bybit.com",
+		httpClient:  &http.Client{Timeout: 30 * time.Second},
+		symbols:     make(map[string]*BybitSymbol),
+		orderCache:  make(map[string]*Order),
 		rateLimiter: NewRateLimiter(10, time.Second),
 	}
 }
 
 type BybitSymbol struct {
-	Name             string `json:"name"`
-	Alias           string `json:"alias"`
-	BaseCurrency    string `json:"baseCurrency"`
-	QuoteCurrency   string `json:"quoteCurrency"`
-	QuotePrecision  int    `json:"quotePrecision"`
-	Turnover        string `json:"turnover"`
-	MinOrderQty     string `json:"minOrderQty"`
-	MaxOrderQty     string `json:"maxOrderQty"`
-	MinPrice        string `json:"minPrice"`
-	MaxPrice        string `json:"maxPrice"`
+	Name           string `json:"name"`
+	Alias          string `json:"alias"`
+	BaseCurrency   string `json:"baseCurrency"`
+	QuoteCurrency  string `json:"quoteCurrency"`
+	QuotePrecision int    `json:"quotePrecision"`
+	Turnover       string `json:"turnover"`
+	MinOrderQty    string `json:"minOrderQty"`
+	MaxOrderQty    string `json:"maxOrderQty"`
+	MinPrice       string `json:"minPrice"`
+	MaxPrice       string `json:"maxPrice"`
 }
 
 func (b *BybitConnector) Connect() error {
@@ -104,13 +103,13 @@ func (b *BybitConnector) GetSymbols() ([]Symbol, error) {
 }
 
 type BybitTicker struct {
-	Symbol     string `json:"symbol"`
-	LastPrice  string `json:"lastPrice"`
-	Bid1Price  string `json:"bid1Price"`
-	Ask1Price  string `json:"ask1Price"`
-	Volume24h  string `json:"volume24h"`
+	Symbol      string `json:"symbol"`
+	LastPrice   string `json:"lastPrice"`
+	Bid1Price   string `json:"bid1Price"`
+	Ask1Price   string `json:"ask1Price"`
+	Volume24h   string `json:"volume24h"`
 	Turnover24h string `json:"turnover24h"`
-	Time       int64  `json:"time,string"`
+	Time        int64  `json:"time,string"`
 }
 
 func (b *BybitConnector) GetTicker(symbol string) (*BybitTicker, error) {
@@ -156,12 +155,12 @@ func (b *BybitConnector) CreateOrder(order *Order) (*Order, error) {
 	}
 
 	params := map[string]interface{}{
-		"category":      "spot",
-		"symbol":         order.Symbol,
-		"side":           side,
-		"orderType":      orderType,
-		"qty":            strconv.FormatFloat(order.OriginalQty, 'f', -1, 64),
-		"orderLinkId":    order.OrderID,
+		"category":    "spot",
+		"symbol":      order.Symbol,
+		"side":        side,
+		"orderType":   orderType,
+		"qty":         strconv.FormatFloat(order.OriginalQty, 'f', -1, 64),
+		"orderLinkId": order.OrderID,
 	}
 
 	if order.Type == LIMIT && order.Price > 0 {

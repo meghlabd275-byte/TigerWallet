@@ -1,23 +1,20 @@
 /**
  * TigerWallet Bug Bounty Service
- * 
+ *
  * Production-ready bug bounty infrastructure with:
  * - Program management
  * - Report submission and tracking
  * - Reward calculation and distribution
  * - Leaderboard and rankings
  * - Integration with security platforms
- * 
+ *
  * This is a REAL PRODUCTION implementation, NOT a stub
  */
 
 package main
 
 import (
-	"context"
 	"crypto/rand"
-	"crypto/sha256"
-	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -40,15 +37,15 @@ import (
 // ============================================================================
 
 type Config struct {
-	Port                int           `json:"port"`
-	DBConnection        string        `json:"db_connection"`
-	RedisAddr           string        `json:"redis_addr"`
-	JWTSecret           string        `json:"jwt_secret"`
-	InitialRewardPool   string        `json:"initial_reward_pool"`
-	MinReward           string        `json:"min_reward"`
-	MaxReward           string        `json:"max_reward"`
-	EscrowContract      string        `json:"escrow_contract"`
-	HunterAPI           string        `json:"hunter_api"`
+	Port              int    `json:"port"`
+	DBConnection      string `json:"db_connection"`
+	RedisAddr         string `json:"redis_addr"`
+	JWTSecret         string `json:"jwt_secret"`
+	InitialRewardPool string `json:"initial_reward_pool"`
+	MinReward         string `json:"min_reward"`
+	MaxReward         string `json:"max_reward"`
+	EscrowContract    string `json:"escrow_contract"`
+	HunterAPI         string `json:"hunter_api"`
 }
 
 var cfg = Config{
@@ -57,7 +54,7 @@ var cfg = Config{
 	RedisAddr:         "localhost:6379",
 	JWTSecret:         getRequiredEnv("JWT_SECRET"),
 	InitialRewardPool: "100000000000000000000000", // 100,000 ETH
-	MinReward:         "100000000000000000",        // 0.1 ETH
+	MinReward:         "100000000000000000",       // 0.1 ETH
 	MaxReward:         "100000000000000000000000", // 100 ETH
 	EscrowContract:    "0x0000000000000000000000000000000000000001",
 }
@@ -101,50 +98,50 @@ func getDBConnection() string {
 
 // BugBountyProgram represents a bug bounty program
 type BugBountyProgram struct {
-	ID              string    `json:"id" db:"id"`
-	Name            string    `json:"name" db:"name"`
-	Description     string    `json:"description" db:"description"`
-	Website         string    `json:"website" db:"website"`
-	LogoURL         string    `json:"logo_url" db:"logo_url"`
-	OwnerID         string    `json:"owner_id" db:"owner_id"`
-	Status          string    `json:"status" db:"status"` // active, paused, closed
-	SeverityLevels  string    `json:"severity_levels" db:"severity_levels"` // JSON
-	Scope           string    `json:"scope" db:"scope"` // JSON array of scopes
-	Rules           string    `json:"rules" db:"rules"`
-	Rewards         string    `json:"rewards" db:"rewards"` // JSON
-	HackerRewards   string    `json:"hacker_rewards" db:"hacker_rewards"` // JSON
-	StartDate       time.Time `json:"start_date" db:"start_date"`
-	EndDate         *time.Time `json:"end_date" db:"end_date"`
-	TotalPool       string    `json:"total_pool" db:"total_pool"`
-	PaidOut         string    `json:"paid_out" db:"paid_out"`
-	CreatedAt       time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at" db:"updated_at"`
+	ID             string     `json:"id" db:"id"`
+	Name           string     `json:"name" db:"name"`
+	Description    string     `json:"description" db:"description"`
+	Website        string     `json:"website" db:"website"`
+	LogoURL        string     `json:"logo_url" db:"logo_url"`
+	OwnerID        string     `json:"owner_id" db:"owner_id"`
+	Status         string     `json:"status" db:"status"`                   // active, paused, closed
+	SeverityLevels string     `json:"severity_levels" db:"severity_levels"` // JSON
+	Scope          string     `json:"scope" db:"scope"`                     // JSON array of scopes
+	Rules          string     `json:"rules" db:"rules"`
+	Rewards        string     `json:"rewards" db:"rewards"`               // JSON
+	HackerRewards  string     `json:"hacker_rewards" db:"hacker_rewards"` // JSON
+	StartDate      time.Time  `json:"start_date" db:"start_date"`
+	EndDate        *time.Time `json:"end_date" db:"end_date"`
+	TotalPool      string     `json:"total_pool" db:"total_pool"`
+	PaidOut        string     `json:"paid_out" db:"paid_out"`
+	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at" db:"updated_at"`
 }
 
 // BugReport represents a submitted bug report
 type BugReport struct {
-	ID             string    `json:"id" db:"id"`
-	ProgramID      string    `json:"program_id" db:"program_id"`
-	ReporterID     string    `json:"reporter_id" db:"reporter_id"`
-	Title          string    `json:"title" db:"title"`
-	Description    string    `json:"description" db:"description"`
-	Severity       string    `json:"severity" db:"severity"` // critical, high, medium, low, info
-	Status         string    `json:"status" db:"status"` // submitted, triaged, accepted, rejected, fixed, rewarded
-	CVSSScore      float64   `json:"cvss_score" db:"cvss_score"`
-	CVEID          string    `json:"cve_id" db:"cve_id"`
-	AttackVector   string    `json:"attack_vector" db:"attack_vector"`
-	Impact         string    `json:"impact" db:"impact"`
-	Reproduction   string    `json:"reproduction" db:"reproduction"`
-	PoCURL         string    `json:"poc_url" db:"poc_url"`
-	PoCHash        string    `json:"poc_hash" db:"poc_hash"`
-	FixSuggested   string    `json:"fix_suggested" db:"fix_suggested"`
-	RewardAmount   string    `json:"reward_amount" db:"reward_amount"`
-	RewardCurrency string    `json:"reward_currency" db:"reward_currency"`
-	TxHash         string    `json:"tx_hash" db:"tx_hash"`
-	AssignedTo     string    `json:"assigned_to" db:"assigned_to"`
-	Comments       string    `json:"comments" db:"comments"` // JSON array
-	CreatedAt      time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
+	ID             string     `json:"id" db:"id"`
+	ProgramID      string     `json:"program_id" db:"program_id"`
+	ReporterID     string     `json:"reporter_id" db:"reporter_id"`
+	Title          string     `json:"title" db:"title"`
+	Description    string     `json:"description" db:"description"`
+	Severity       string     `json:"severity" db:"severity"` // critical, high, medium, low, info
+	Status         string     `json:"status" db:"status"`     // submitted, triaged, accepted, rejected, fixed, rewarded
+	CVSSScore      float64    `json:"cvss_score" db:"cvss_score"`
+	CVEID          string     `json:"cve_id" db:"cve_id"`
+	AttackVector   string     `json:"attack_vector" db:"attack_vector"`
+	Impact         string     `json:"impact" db:"impact"`
+	Reproduction   string     `json:"reproduction" db:"reproduction"`
+	PoCURL         string     `json:"poc_url" db:"poc_url"`
+	PoCHash        string     `json:"poc_hash" db:"poc_hash"`
+	FixSuggested   string     `json:"fix_suggested" db:"fix_suggested"`
+	RewardAmount   string     `json:"reward_amount" db:"reward_amount"`
+	RewardCurrency string     `json:"reward_currency" db:"reward_currency"`
+	TxHash         string     `json:"tx_hash" db:"tx_hash"`
+	AssignedTo     string     `json:"assigned_to" db:"assigned_to"`
+	Comments       string     `json:"comments" db:"comments"` // JSON array
+	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at" db:"updated_at"`
 	ResolvedAt     *time.Time `json:"resolved_at" db:"resolved_at"`
 }
 
@@ -177,12 +174,12 @@ type ProgramScope struct {
 
 // SeverityReward defines rewards for each severity level
 type SeverityReward struct {
-	Severity   string `json:"severity"`
-	MinReward  string `json:"min_reward"`
-	MaxReward  string `json:"max_reward"`
-	CVSSMin    int    `json:"cvss_min"`
-	CVSSMax    int    `json:"cvss_max"`
-	Locked     bool   `json:"locked"`
+	Severity  string `json:"severity"`
+	MinReward string `json:"min_reward"`
+	MaxReward string `json:"max_reward"`
+	CVSSMin   int    `json:"cvss_min"`
+	CVSSMax   int    `json:"cvss_max"`
+	Locked    bool   `json:"locked"`
 }
 
 // RewardTier represents a reward tier
@@ -198,14 +195,14 @@ type RewardTier struct {
 // ============================================================================
 
 type BugBountyService struct {
-	db          *sql.DB
-	redis       *redis.Client
-	programs    map[string]*BugBountyProgram
-	reports     map[string]*BugReport
-	hackers     map[string]*Hacker
-	mu          sync.RWMutex
-	escrowAddr  string
-	rewardPool  *big.Int
+	db         *sql.DB
+	redis      *redis.Client
+	programs   map[string]*BugBountyProgram
+	reports    map[string]*BugReport
+	hackers    map[string]*Hacker
+	mu         sync.RWMutex
+	escrowAddr string
+	rewardPool *big.Int
 }
 
 // NewBugBountyService creates a new bug bounty service
@@ -368,11 +365,11 @@ func (s *BugBountyService) initDefaultPrograms() error {
 			{"tier": "quality", "bonus": "1000"},
 			{"tier": "consistency", "bonus": "500"}
 		]`,
-		StartDate:   time.Now(),
-		TotalPool:   cfg.InitialRewardPool,
-		PaidOut:    "0",
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		StartDate: time.Now(),
+		TotalPool: cfg.InitialRewardPool,
+		PaidOut:   "0",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 
 	s.programs[defaultProgram.ID] = defaultProgram
@@ -432,14 +429,14 @@ func (s *BugBountyService) GetProgram(c *gin.Context) {
 // SubmitReport submits a new bug report
 func (s *BugBountyService) SubmitReport(c *gin.Context) {
 	var req struct {
-		ProgramID   string `json:"program_id" binding:"required"`
-		Title       string `json:"title" binding:"required"`
-		Description string `json:"description" binding:"required"`
-		Severity    string `json:"severity" binding:"required"`
-		Impact      string `json:"impact"`
+		ProgramID    string `json:"program_id" binding:"required"`
+		Title        string `json:"title" binding:"required"`
+		Description  string `json:"description" binding:"required"`
+		Severity     string `json:"severity" binding:"required"`
+		Impact       string `json:"impact"`
 		Reproduction string `json:"reproduction"`
-		PoCURL      string `json:"poc_url"`
-		CVEID       string `json:"cve_id"`
+		PoCURL       string `json:"poc_url"`
+		CVEID        string `json:"cve_id"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -569,7 +566,7 @@ func (s *BugBountyService) UpdateReportStatus(c *gin.Context) {
 	reportID := c.Param("id")
 
 	var req struct {
-		Status      string `json:"status" binding:"required"`
+		Status       string `json:"status" binding:"required"`
 		RewardAmount string `json:"reward_amount"`
 		Comments     string `json:"comments"`
 	}
@@ -652,18 +649,18 @@ func (s *BugBountyService) GetLeaderboard(c *gin.Context) {
 
 	// Sort hackers by reputation
 	type LeaderboardEntry struct {
-		Hacker         *Hacker `json:"hacker"`
-		AcceptedBugs   int     `json:"accepted_bugs"`
-		TotalEarnings  string   `json:"total_earnings"`
+		Hacker        *Hacker `json:"hacker"`
+		AcceptedBugs  int     `json:"accepted_bugs"`
+		TotalEarnings string  `json:"total_earnings"`
 	}
 
 	entries := make([]LeaderboardEntry, 0, len(s.hackers))
 	for _, h := range s.hackers {
 		if h.Status == "active" {
 			entries = append(entries, LeaderboardEntry{
-				Hacker:         h,
-				AcceptedBugs:   h.AcceptedCount,
-				TotalEarnings:  h.TotalEarnings,
+				Hacker:        h,
+				AcceptedBugs:  h.AcceptedCount,
+				TotalEarnings: h.TotalEarnings,
 			})
 		}
 	}
@@ -735,9 +732,10 @@ func (s *BugBountyService) GetStats(c *gin.Context) {
 
 	for _, r := range s.reports {
 		switch r.Status {
-		case "accepted", "rewarded":
+		case "accepted":
 			accepted++
 		case "rewarded":
+			accepted++
 			rewarded++
 			if r.RewardAmount != "" {
 				amt := new(big.Int)
@@ -752,14 +750,14 @@ func (s *BugBountyService) GetStats(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"success": true,
 		"data": gin.H{
-			"total_programs":      len(s.programs),
-			"total_reports":       totalReports,
-			"accepted_reports":    accepted,
-			"rewarded_reports":    rewarded,
-			"pending_reports":     pending,
-			"total_paid_out":      totalPaidOut.String(),
-			"remaining_pool":      s.rewardPool.String(),
-			"active_hackers":      len(s.hackers),
+			"total_programs":   len(s.programs),
+			"total_reports":    totalReports,
+			"accepted_reports": accepted,
+			"rewarded_reports": rewarded,
+			"pending_reports":  pending,
+			"total_paid_out":   totalPaidOut.String(),
+			"remaining_pool":   s.rewardPool.String(),
+			"active_hackers":   len(s.hackers),
 		},
 	})
 }

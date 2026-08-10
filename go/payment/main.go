@@ -33,24 +33,24 @@ import (
 // ============================================================================
 
 type Config struct {
-	Port                int      `json:"port"`
-	RedisAddr           string   `json:"redis_addr"`
-	MongoURI            string   `json:"mongo_uri"`
-	EthRPCURL           string   `json:"eth_rpc_url"`
-	BSCRPCURL           string   `json:"bsc_rpc_url"`
-	PolygonRPCURL       string   `json:"polygon_rpc_url"`
-	ArbitrumRPCURL      string   `json:"arbitrum_rpc_url"`
-	OptimismRPCURL      string   `json:"optimism_rpc_url"`
-	AvalancheRPCURL     string   `json:"avalanche_rpc_url"`
-	PrivateKey          string   `json:"private_key"`
-	WebhookURL          string   `json:"webhook_url"`
-	ConfirmationBlocks int64    `json:"confirmation_blocks"`
+	Port               int    `json:"port"`
+	RedisAddr          string `json:"redis_addr"`
+	MongoURI           string `json:"mongo_uri"`
+	EthRPCURL          string `json:"eth_rpc_url"`
+	BSCRPCURL          string `json:"bsc_rpc_url"`
+	PolygonRPCURL      string `json:"polygon_rpc_url"`
+	ArbitrumRPCURL     string `json:"arbitrum_rpc_url"`
+	OptimismRPCURL     string `json:"optimism_rpc_url"`
+	AvalancheRPCURL    string `json:"avalanche_rpc_url"`
+	PrivateKey         string `json:"private_key"`
+	WebhookURL         string `json:"webhook_url"`
+	ConfirmationBlocks int64  `json:"confirmation_blocks"`
 }
 
 var cfg = Config{
-	Port:                8096,
-	RedisAddr:           "localhost:6379",
-	ConfirmationBlocks:  12,
+	Port:               8096,
+	RedisAddr:          "localhost:6379",
+	ConfirmationBlocks: 12,
 }
 
 // ============================================================================
@@ -95,12 +95,12 @@ var StablecoinContracts = map[string]map[string]common.Address{
 
 // Chain IDs
 var ChainIDs = map[string]int64{
-	"ethereum":   1,
-	"bsc":        56,
-	"polygon":    137,
-	"arbitrum":   42161,
-	"optimism":   10,
-	"avalanche":  43114,
+	"ethereum":  1,
+	"bsc":       56,
+	"polygon":   137,
+	"arbitrum":  42161,
+	"optimism":  10,
+	"avalanche": 43114,
 }
 
 // ============================================================================
@@ -108,48 +108,48 @@ var ChainIDs = map[string]int64{
 // ============================================================================
 
 type Payment struct {
-	ID            string    `json:"id" bson:"_id"`
-	UserID        string    `json:"user_id" bson:"user_id"`
-	OrderID       string    `json:"order_id" bson:"order_id"`
-	Amount        string    `json:"amount" bson:"amount"`
-	AmountUSD     string    `json:"amount_usd" bson:"amount_usd"`
-	Currency      string    `json:"currency" bson:"currency"`
-	Status        string    `json:"status" bson:"status"`
-	Chain         string    `json:"chain" bson:"chain"`
-	Token         string    `json:"token" bson:"token"`
-	FromAddress   string    `json:"from_address" bson:"from_address"`
-	ToAddress     string    `json:"to_address" bson:"to_address"`
-	TxHash        string    `json:"tx_hash" bson:"tx_hash"`
-	Confirmations int64     `json:"confirmations" bson:"confirmations"`
-	BlockNumber   uint64    `json:"block_number" bson:"block_number"`
-	CreatedAt     time.Time `json:"created_at" bson:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at" bson:"updated_at"`
+	ID            string     `json:"id" bson:"_id"`
+	UserID        string     `json:"user_id" bson:"user_id"`
+	OrderID       string     `json:"order_id" bson:"order_id"`
+	Amount        string     `json:"amount" bson:"amount"`
+	AmountUSD     string     `json:"amount_usd" bson:"amount_usd"`
+	Currency      string     `json:"currency" bson:"currency"`
+	Status        string     `json:"status" bson:"status"`
+	Chain         string     `json:"chain" bson:"chain"`
+	Token         string     `json:"token" bson:"token"`
+	FromAddress   string     `json:"from_address" bson:"from_address"`
+	ToAddress     string     `json:"to_address" bson:"to_address"`
+	TxHash        string     `json:"tx_hash" bson:"tx_hash"`
+	Confirmations int64      `json:"confirmations" bson:"confirmations"`
+	BlockNumber   uint64     `json:"block_number" bson:"block_number"`
+	CreatedAt     time.Time  `json:"created_at" bson:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at" bson:"updated_at"`
 	CompletedAt   *time.Time `json:"completed_at" bson:"completed_at"`
-	WebhookSent   bool      `json:"webhook_sent" bson:"webhook_sent"`
-	WebhookURL    string    `json:"webhook_url" bson:"webhook_url"`
+	WebhookSent   bool       `json:"webhook_sent" bson:"webhook_sent"`
+	WebhookURL    string     `json:"webhook_url" bson:"webhook_url"`
 }
 
 type PaymentAddress struct {
-	ID           string    `json:"id" bson:"_id"`
-	Address      string    `json:"address" bson:"address"`
-	Chain        string    `json:"chain" bson:"chain"`
-	Token        string    `json:"token" bson:"token"`
-	UserID       string    `json:"user_id" bson:"user_id"`
-	OrderID      string    `json:"order_id" bson:"order_id"`
-	IsActive     bool      `json:"is_active" bson:"is_active"`
-	ExpiresAt    time.Time `json:"expires_at" bson:"expires_at"`
-	CreatedAt    time.Time `json:"created_at" bson:"created_at"`
+	ID        string    `json:"id" bson:"_id"`
+	Address   string    `json:"address" bson:"address"`
+	Chain     string    `json:"chain" bson:"chain"`
+	Token     string    `json:"token" bson:"token"`
+	UserID    string    `json:"user_id" bson:"user_id"`
+	OrderID   string    `json:"order_id" bson:"order_id"`
+	IsActive  bool      `json:"is_active" bson:"is_active"`
+	ExpiresAt time.Time `json:"expires_at" bson:"expires_at"`
+	CreatedAt time.Time `json:"created_at" bson:"created_at"`
 }
 
 type FeeConfig struct {
-	ID             string    `json:"id" bson:"_id"`
-	FeeType        string    `json:"fee_type" bson:"fee_type"` // listing, trading, withdrawal
-	Token          string    `json:"token" bson:"token"`
-	Amount         string    `json:"amount" bson:"amount"`
-	AmountUSD      string    `json:"amount_usd" bson:"amount_usd"`
-	IsActive       bool      `json:"is_active" bson:"is_active"`
-	UpdatedBy      string    `json:"updated_by" bson:"updated_by"`
-	UpdatedAt      time.Time `json:"updated_at" bson:"updated_at"`
+	ID        string    `json:"id" bson:"_id"`
+	FeeType   string    `json:"fee_type" bson:"fee_type"` // listing, trading, withdrawal
+	Token     string    `json:"token" bson:"token"`
+	Amount    string    `json:"amount" bson:"amount"`
+	AmountUSD string    `json:"amount_usd" bson:"amount_usd"`
+	IsActive  bool      `json:"is_active" bson:"is_active"`
+	UpdatedBy string    `json:"updated_by" bson:"updated_by"`
+	UpdatedAt time.Time `json:"updated_at" bson:"updated_at"`
 }
 
 // ============================================================================
@@ -199,12 +199,12 @@ func NewPaymentService() *PaymentService {
 
 func (s *PaymentService) initBlockchainClients() error {
 	clients := map[string]string{
-		"ethereum":   cfg.EthRPCURL,
-		"bsc":        cfg.BSCRPCURL,
-		"polygon":    cfg.PolygonRPCURL,
-		"arbitrum":   cfg.ArbitrumRPCURL,
-		"optimism":   cfg.OptimismRPCURL,
-		"avalanche":  cfg.AvalancheRPCURL,
+		"ethereum":  cfg.EthRPCURL,
+		"bsc":       cfg.BSCRPCURL,
+		"polygon":   cfg.PolygonRPCURL,
+		"arbitrum":  cfg.ArbitrumRPCURL,
+		"optimism":  cfg.OptimismRPCURL,
+		"avalanche": cfg.AvalancheRPCURL,
 	}
 
 	for chain, rpcURL := range clients {
@@ -287,11 +287,11 @@ func (s *PaymentService) SetupRoutes(r *gin.Engine) {
 // Generate payment address for user to send tokens
 func (s *PaymentService) GeneratePaymentAddress(c *gin.Context) {
 	var req struct {
-		UserID   string `json:"user_id" binding:"required"`
-		Chain    string `json:"chain" binding:"required"`
-		Token    string `json:"token" binding:"required"`
-		OrderID  string `json:"order_id"`
-		Amount   string `json:"amount"`
+		UserID     string `json:"user_id" binding:"required"`
+		Chain      string `json:"chain" binding:"required"`
+		Token      string `json:"token" binding:"required"`
+		OrderID    string `json:"order_id"`
+		Amount     string `json:"amount"`
 		WebhookURL string `json:"webhook_url"`
 	}
 
@@ -332,18 +332,18 @@ func (s *PaymentService) GeneratePaymentAddress(c *gin.Context) {
 	var payment *Payment
 	if req.Amount != "" && req.OrderID != "" {
 		payment = &Payment{
-			ID:          uuid.New().String(),
-			UserID:      req.UserID,
-			OrderID:     req.OrderID,
-			Amount:      req.Amount,
-			Currency:    req.Token,
-			Status:      "pending",
-			Chain:       req.Chain,
-			Token:       req.Token,
-			ToAddress:   paymentAddr.Address,
-			WebhookURL:  req.WebhookURL,
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			ID:         uuid.New().String(),
+			UserID:     req.UserID,
+			OrderID:    req.OrderID,
+			Amount:     req.Amount,
+			Currency:   req.Token,
+			Status:     "pending",
+			Chain:      req.Chain,
+			Token:      req.Token,
+			ToAddress:  paymentAddr.Address,
+			WebhookURL: req.WebhookURL,
+			CreatedAt:  time.Now(),
+			UpdatedAt:  time.Now(),
 		}
 
 		s.mu.Lock()
@@ -354,11 +354,11 @@ func (s *PaymentService) GeneratePaymentAddress(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"payment_address": map[string]interface{}{
-			"address":      paymentAddr.Address,
-			"chain":        paymentAddr.Chain,
-			"token":        paymentAddr.Token,
-			"expires_at":   paymentAddr.ExpiresAt,
-			"qr_code":      fmt.Sprintf("%s:%s?token=%s", paymentAddr.Chain, paymentAddr.Address, paymentAddr.Token),
+			"address":    paymentAddr.Address,
+			"chain":      paymentAddr.Chain,
+			"token":      paymentAddr.Token,
+			"expires_at": paymentAddr.ExpiresAt,
+			"qr_code":    fmt.Sprintf("%s:%s?token=%s", paymentAddr.Chain, paymentAddr.Address, paymentAddr.Token),
 		},
 		"payment": payment,
 	})
@@ -403,8 +403,8 @@ func (s *PaymentService) GetPaymentStatus(c *gin.Context) {
 			if p.ToAddress == address || p.OrderID == paymentAddr.OrderID {
 				s.mu.RUnlock()
 				c.JSON(http.StatusOK, gin.H{
-					"success":      true,
-					"payment":      p,
+					"success":       true,
+					"payment":       p,
 					"confirmations": p.Confirmations,
 				})
 				return
@@ -431,8 +431,8 @@ func (s *PaymentService) GetPaymentStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":      true,
-		"payment":      payment,
+		"success":       true,
+		"payment":       payment,
 		"confirmations": payment.Confirmations,
 	})
 }
@@ -440,13 +440,13 @@ func (s *PaymentService) GetPaymentStatus(c *gin.Context) {
 // Create deposit payment
 func (s *PaymentService) CreateDeposit(c *gin.Context) {
 	var req struct {
-		UserID      string `json:"user_id" binding:"required"`
-		OrderID     string `json:"order_id" binding:"required"`
-		Amount      string `json:"amount" binding:"required"`
-		AmountUSD   string `json:"amount_usd"`
-		Chain       string `json:"chain" binding:"required"`
-		Token       string `json:"token" binding:"required"`
-		WebhookURL  string `json:"webhook_url"`
+		UserID     string `json:"user_id" binding:"required"`
+		OrderID    string `json:"order_id" binding:"required"`
+		Amount     string `json:"amount" binding:"required"`
+		AmountUSD  string `json:"amount_usd"`
+		Chain      string `json:"chain" binding:"required"`
+		Token      string `json:"token" binding:"required"`
+		WebhookURL string `json:"webhook_url"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -479,19 +479,19 @@ func (s *PaymentService) CreateDeposit(c *gin.Context) {
 	}
 
 	payment := &Payment{
-		ID:          uuid.New().String(),
-		UserID:      req.UserID,
-		OrderID:     req.OrderID,
-		Amount:      req.Amount,
-		AmountUSD:   req.AmountUSD,
-		Currency:    req.Token,
-		Status:      "pending",
-		Chain:       req.Chain,
-		Token:       req.Token,
-		ToAddress:   paymentAddr.Address,
-		WebhookURL:  req.WebhookURL,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		ID:         uuid.New().String(),
+		UserID:     req.UserID,
+		OrderID:    req.OrderID,
+		Amount:     req.Amount,
+		AmountUSD:  req.AmountUSD,
+		Currency:   req.Token,
+		Status:     "pending",
+		Chain:      req.Chain,
+		Token:      req.Token,
+		ToAddress:  paymentAddr.Address,
+		WebhookURL: req.WebhookURL,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
 	}
 
 	s.mu.Lock()
@@ -502,16 +502,16 @@ func (s *PaymentService) CreateDeposit(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"payment": map[string]interface{}{
-			"id":                  payment.ID,
-			"order_id":            payment.OrderID,
-			"amount":              payment.Amount,
-			"amount_usd":          payment.AmountUSD,
-			"chain":               payment.Chain,
-			"token":               payment.Token,
-			"payment_address":     paymentAddr.Address,
-			"qr_code":             fmt.Sprintf("ethereum:%s?value=%s", paymentAddr.Address, payment.Amount),
-			"expires_at":          paymentAddr.ExpiresAt,
-			"status":              payment.Status,
+			"id":              payment.ID,
+			"order_id":        payment.OrderID,
+			"amount":          payment.Amount,
+			"amount_usd":      payment.AmountUSD,
+			"chain":           payment.Chain,
+			"token":           payment.Token,
+			"payment_address": paymentAddr.Address,
+			"qr_code":         fmt.Sprintf("ethereum:%s?value=%s", paymentAddr.Address, payment.Amount),
+			"expires_at":      paymentAddr.ExpiresAt,
+			"status":          payment.Status,
 		},
 	})
 }
@@ -519,13 +519,13 @@ func (s *PaymentService) CreateDeposit(c *gin.Context) {
 // Create withdrawal
 func (s *PaymentService) CreateWithdrawal(c *gin.Context) {
 	var req struct {
-		UserID     string  `json:"user_id" binding:"required"`
-		ToAddress  string  `json:"to_address" binding:"required"`
-		Amount     string  `json:"amount" binding:"required"`
-		Chain      string  `json:"chain" binding:"required"`
-		Token      string  `json:"token" binding:"required"`
-		Fee        string  `json:"fee"`
-		WebhookURL string  `json:"webhook_url"`
+		UserID     string `json:"user_id" binding:"required"`
+		ToAddress  string `json:"to_address" binding:"required"`
+		Amount     string `json:"amount" binding:"required"`
+		Chain      string `json:"chain" binding:"required"`
+		Token      string `json:"token" binding:"required"`
+		Fee        string `json:"fee"`
+		WebhookURL string `json:"webhook_url"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -615,8 +615,8 @@ func (s *PaymentService) processWithdrawal(payment *Payment) {
 	// selector = keccak256("transfer(address,uint256)")[:4] = 0xa9059cbb
 	data := make([]byte, 4+32+32)
 	data[0], data[1], data[2], data[3] = 0xa9, 0x05, 0x9c, 0xbb
-	copy(data[4+12:], toAddr.Bytes())     // address right-padded to 32
-	amount.FillBytes(data[36:68])          // uint256 big-endian, left-padded to 32
+	copy(data[4+12:], toAddr.Bytes()) // address right-padded to 32
+	amount.FillBytes(data[36:68])     // uint256 big-endian, left-padded to 32
 
 	nonce, err := client.PendingNonceAt(context.Background(), crypto.PubkeyToAddress(s.privateKey.PublicKey))
 	if err != nil {
@@ -710,10 +710,10 @@ func (s *PaymentService) GetFeeConfigs(c *gin.Context) {
 // Update fee configuration (SuperAdmin only)
 func (s *PaymentService) UpdateFeeConfig(c *gin.Context) {
 	var req struct {
-		FeeID    string `json:"fee_id" binding:"required"`
-		Amount   string `json:"amount" binding:"required"`
+		FeeID     string `json:"fee_id" binding:"required"`
+		Amount    string `json:"amount" binding:"required"`
 		AmountUSD string `json:"amount_usd"`
-		Token    string `json:"token"`
+		Token     string `json:"token"`
 		UpdatedBy string `json:"updated_by" binding:"required"`
 	}
 
@@ -768,10 +768,10 @@ func (s *PaymentService) GetSupportedChains(c *gin.Context) {
 			tokenList = append(tokenList, token)
 		}
 		chains = append(chains, map[string]interface{}{
-			"id":      chain,
-			"name":    strings.Title(chain),
+			"id":       chain,
+			"name":     strings.Title(chain),
 			"chain_id": ChainIDs[chain],
-			"tokens":  tokenList,
+			"tokens":   tokenList,
 		})
 	}
 
@@ -784,13 +784,13 @@ func (s *PaymentService) GetSupportedChains(c *gin.Context) {
 // Handle payment webhook from blockchain listener
 func (s *PaymentService) HandlePaymentWebhook(c *gin.Context) {
 	var payload struct {
-		TxHash    string `json:"tx_hash"`
-		Address   string `json:"address"`
-		Chain     string `json:"chain"`
-		Token     string `json:"token"`
-		Amount    string `json:"amount"`
-		BlockNum  uint64 `json:"block_number"`
-		Confirmations int64 `json:"confirmations"`
+		TxHash        string `json:"tx_hash"`
+		Address       string `json:"address"`
+		Chain         string `json:"chain"`
+		Token         string `json:"token"`
+		Amount        string `json:"amount"`
+		BlockNum      uint64 `json:"block_number"`
+		Confirmations int64  `json:"confirmations"`
 	}
 
 	if err := c.ShouldBindJSON(&payload); err != nil {
@@ -845,15 +845,15 @@ func (s *PaymentService) sendWebhook(payment *Payment) {
 	}
 
 	payload, _ := json.Marshal(map[string]interface{}{
-		"event":       "payment.completed",
-		"payment_id":  payment.ID,
-		"order_id":    payment.OrderID,
-		"amount":      payment.Amount,
-		"currency":    payment.Currency,
-		"chain":       payment.Chain,
-		"token":       payment.Token,
-		"tx_hash":     payment.TxHash,
-		"status":      payment.Status,
+		"event":        "payment.completed",
+		"payment_id":   payment.ID,
+		"order_id":     payment.OrderID,
+		"amount":       payment.Amount,
+		"currency":     payment.Currency,
+		"chain":        payment.Chain,
+		"token":        payment.Token,
+		"tx_hash":      payment.TxHash,
+		"status":       payment.Status,
 		"completed_at": payment.CompletedAt,
 	})
 
@@ -871,12 +871,12 @@ func (s *PaymentService) HealthCheck(c *gin.Context) {
 	defer s.mu.RUnlock()
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":            "healthy",
-		"service":           "payment-service",
+		"status":           "healthy",
+		"service":          "payment-service",
 		"timestamp":        time.Now().Unix(),
-		"active_payments":   len(s.payments),
-		"active_addresses":  len(s.paymentAddrs),
-		"connected_chains":  len(s.ethClients),
+		"active_payments":  len(s.payments),
+		"active_addresses": len(s.paymentAddrs),
+		"connected_chains": len(s.ethClients),
 	})
 }
 

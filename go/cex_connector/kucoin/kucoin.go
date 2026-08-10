@@ -15,7 +15,6 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -47,16 +46,16 @@ func NewKuCoinConnector(apiKey, apiSecret, apiPassphrase string) *KuCoinConnecto
 }
 
 type KuCoinPair struct {
-	Symbol       string `json:"symbol"`
-	Name         string `json:"name"`
-	BaseCurrency string `json:"baseCurrency"`
+	Symbol        string `json:"symbol"`
+	Name          string `json:"name"`
+	BaseCurrency  string `json:"baseCurrency"`
 	QuoteCurrency string `json:"quoteCurrency"`
-	BaseMinSize  string `json:"baseMinSize"`
-	BaseMaxSize  string `json:"baseMaxSize"`
-	QuoteMinSize string `json:"quoteMinSize"`
-	QuoteMaxSize string `json:"quoteMaxSize"`
-	MinPrice     string `json:"minPrice"`
-	MaxPrice     string `json:"maxPrice"`
+	BaseMinSize   string `json:"baseMinSize"`
+	BaseMaxSize   string `json:"baseMaxSize"`
+	QuoteMinSize  string `json:"quoteMinSize"`
+	QuoteMaxSize  string `json:"quoteMaxSize"`
+	MinPrice      string `json:"minPrice"`
+	MaxPrice      string `json:"maxPrice"`
 }
 
 func (k *KuCoinConnector) Connect() error {
@@ -103,13 +102,13 @@ func (k *KuCoinConnector) GetSymbols() ([]Symbol, error) {
 }
 
 type KuCoinTicker struct {
-	Symbol     string `json:"symbol"`
-	Buy        string `json:"buy"`
-	Sell       string `json:"sell"`
-	Last       string `json:"last"`
-	Volume     string `json:"vol"`
+	Symbol      string `json:"symbol"`
+	Buy         string `json:"buy"`
+	Sell        string `json:"sell"`
+	Last        string `json:"last"`
+	Volume      string `json:"vol"`
 	VolumeValue string `json:"volValue"`
-	Time       int64  `json:"time,string"`
+	Time        int64  `json:"time,string"`
 }
 
 func (k *KuCoinConnector) GetTicker(symbol string) (*KuCoinTicker, error) {
@@ -149,11 +148,11 @@ func (k *KuCoinConnector) CreateOrder(order *Order) (*Order, error) {
 	}
 
 	params := map[string]string{
-		"clientOid":   order.OrderID,
-		"type":        side,
-		"side":        orderType,
-		"symbol":      order.Symbol,
-		"size":        strconv.FormatFloat(order.OriginalQty, 'f', -1, 64),
+		"clientOid": order.OrderID,
+		"type":      side,
+		"side":      orderType,
+		"symbol":    order.Symbol,
+		"size":      strconv.FormatFloat(order.OriginalQty, 'f', -1, 64),
 	}
 
 	if order.Type == LIMIT && order.Price > 0 {

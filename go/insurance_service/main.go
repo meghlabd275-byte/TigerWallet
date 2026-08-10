@@ -200,7 +200,10 @@ func (s *service) listProducts(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var p struct{ ID, Name, Proto, Cov, Rate, Status string; Dur int }
+		var p struct {
+			ID, Name, Proto, Cov, Rate, Status string
+			Dur                                int
+		}
 		if err := rows.Scan(&p.ID, &p.Name, &p.Proto, &p.Cov, &p.Rate, &p.Dur, &p.Status); err != nil {
 			continue
 		}
@@ -210,11 +213,11 @@ func (s *service) listProducts(c *gin.Context) {
 }
 
 type createProductReq struct {
-	Name string `json:"name" binding:"required"`
-	Protocol string `json:"protocol" binding:"required"`
-	CoverageMax string `json:"coverage_max" binding:"required"`
-	PremiumRate string `json:"premium_rate" binding:"required"`
-	DurationDays int `json:"duration_days"`
+	Name         string `json:"name" binding:"required"`
+	Protocol     string `json:"protocol" binding:"required"`
+	CoverageMax  string `json:"coverage_max" binding:"required"`
+	PremiumRate  string `json:"premium_rate" binding:"required"`
+	DurationDays int    `json:"duration_days"`
 }
 
 func (s *service) createProduct(c *gin.Context) {
@@ -288,7 +291,10 @@ func (s *service) listPositions(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var p struct{ ID, PID, Cov, Prem, Status string; End int64 }
+		var p struct {
+			ID, PID, Cov, Prem, Status string
+			End                        int64
+		}
 		if err := rows.Scan(&p.ID, &p.PID, &p.Cov, &p.Prem, &p.Status, &p.End); err != nil {
 			continue
 		}
@@ -341,7 +347,10 @@ func (s *service) listClaims(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var cl struct{ ID, PID, Amt, Reason, Status string; Ts int64 }
+		var cl struct {
+			ID, PID, Amt, Reason, Status string
+			Ts                           int64
+		}
 		if err := rows.Scan(&cl.ID, &cl.PID, &cl.Amt, &cl.Reason, &cl.Status, &cl.Ts); err != nil {
 			continue
 		}

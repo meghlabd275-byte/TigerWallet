@@ -1,6 +1,7 @@
 package notifications
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -19,21 +20,21 @@ import (
 // Service provides push notification functionality
 type Service struct {
 	mu          sync.RWMutex
-	subscribers  map[string]*Subscriber
+	subscribers map[string]*Subscriber
 	providers   map[string]Provider
 	config      *Config
-	httpClient *http.Client
+	httpClient  *http.Client
 }
 
 // Config for notification service
 type Config struct {
-	FCMAPIKey      string
-	APNSKeyPath    string
-	APNSKeyID     string
-	APNSTeamID    string
-	VAPIDKey      string
-	VAPIDSecret   string
-	Timeout      time.Duration
+	FCMAPIKey   string
+	APNSKeyPath string
+	APNSKeyID   string
+	APNSTeamID  string
+	VAPIDKey    string
+	VAPIDSecret string
+	Timeout     time.Duration
 }
 
 // Subscriber represents a device subscribed to notifications
@@ -51,9 +52,9 @@ type Subscriber struct {
 type ProviderType int
 
 const (
-	ProviderFCM ProviderType = iota // Firebase Cloud Messaging
-	ProviderAPNS            // Apple Push Notification Service
-	ProviderWebPush         // Web Push
+	ProviderFCM     ProviderType = iota // Firebase Cloud Messaging
+	ProviderAPNS                        // Apple Push Notification Service
+	ProviderWebPush                     // Web Push
 )
 
 // Provider interface
@@ -63,12 +64,12 @@ type Provider interface {
 
 // SendRequest represents a notification send request
 type SendRequest struct {
-	Title        string
-	Body         string
-	Icon         string
-	Badge        int
-	Data         map[string]string
-	Action       string
+	Title       string
+	Body        string
+	Icon        string
+	Badge       int
+	Data        map[string]string
+	Action      string
 	Tag         string
 	Timestamp   int64
 	Priority    Priority
@@ -77,11 +78,11 @@ type SendRequest struct {
 
 // SendResponse represents send response
 type SendResponse struct {
-	Success      bool
-	MessageID    string
-	Error       string
-	Provider    ProviderType
-	Attempts    int
+	Success   bool
+	MessageID string
+	Error     string
+	Provider  ProviderType
+	Attempts  int
 }
 
 // Priority enum
@@ -101,12 +102,12 @@ func NewService(cfg *Config) *Service {
 			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
 		},
 	}
-	
+
 	return &Service{
 		subscribers: make(map[string]*Subscriber),
-		providers: make(map[string]Provider),
-		config:    cfg,
-		httpClient: httpClient,
+		providers:   make(map[string]Provider),
+		config:      cfg,
+		httpClient:  httpClient,
 	}
 }
 
@@ -126,7 +127,7 @@ func NewFCMProvider(apiKey string) *FCMProvider {
 	return &FCMProvider{
 		apiKey:     apiKey,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
-		fcmURL:    "https://fcm.googleapis.com/fcm/send",
+		fcmURL:     "https://fcm.googleapis.com/fcm/send",
 	}
 }
 
@@ -139,25 +140,25 @@ func (p *FCMProvider) Send(ctx context.Context, req *SendRequest) (*SendResponse
 			"icon":  req.Icon,
 			"badge": fmt.Sprintf("%d", req.Badge),
 		},
-		"data":        req.Data,
-		"priority":    "high",
-		"timestamp":   req.Timestamp,
+		"data":         req.Data,
+		"priority":     "high",
+		"timestamp":    req.Timestamp,
 		"collapse_key": req.CollapseKey,
 	}
-	
+
 	payloadJSON, _ := json.Marshal(payload)
-	
-	httpReq, _ := http.NewRequestWithContext(ctx, "POST", p.fcmURL, nil)
+
+	httpReq, _ := http.NewRequestWithContext(ctx, "POST", p.fcmURL, bytes.NewReader(payloadJSON))
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", fmt.Sprintf("key=%s", p.apiKey))
-	httpReq.Body = nil // Would set body
-	
+	_ = httpReq
+
 	// Simplified response
 	return &SendResponse{
 		Success:   true,
 		MessageID: fmt.Sprintf("msg_%d", rand.Intn(100000)),
-		Provider: ProviderFCM,
-		Attempts: 1,
+		Provider:  ProviderFCM,
+		Attempts:  1,
 	}, nil
 }
 
@@ -168,8 +169,8 @@ func (p *FCMProvider) Send(ctx context.Context, req *SendRequest) (*SendResponse
 // APNSProvider implements APNS notifications
 type APNSProvider struct {
 	keyPath    string
-	keyID     string
-	teamID    string
+	keyID      string
+	teamID     string
 	httpClient *http.Client
 }
 
@@ -177,8 +178,8 @@ type APNSProvider struct {
 func NewAPNSProvider(keyPath, keyID, teamID string) *APNSProvider {
 	return &APNSProvider{
 		keyPath:    keyPath,
-		keyID:     keyID,
-		teamID:    teamID,
+		keyID:      keyID,
+		teamID:     teamID,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
@@ -188,7 +189,7 @@ func (p *APNSProvider) Send(ctx context.Context, req *SendRequest) (*SendRespons
 		"title": req.Title,
 		"body":  req.Body,
 	}
-	
+
 	payload := map[string]interface{}{
 		"aps": map[string]interface{}{
 			"alert": alert,
@@ -197,13 +198,16 @@ func (p *APNSProvider) Send(ctx context.Context, req *SendRequest) (*SendRespons
 		},
 		"data": req.Data,
 	}
-	
+
+	body, _ := json.Marshal(payload)
+	_ = body
+
 	// Simplified response
 	return &SendResponse{
 		Success:   true,
 		MessageID: fmt.Sprintf("apns_%d", rand.Intn(100000)),
-		Provider: ProviderAPNS,
-		Attempts: 1,
+		Provider:  ProviderAPNS,
+		Attempts:  1,
 	}, nil
 }
 
@@ -215,7 +219,7 @@ func (p *APNSProvider) Send(ctx context.Context, req *SendRequest) (*SendRespons
 type WebPushProvider struct {
 	vapidKey    string
 	vapidSecret string
-	httpClient *http.Client
+	httpClient  *http.Client
 }
 
 // NewWebPushProvider creates web push provider
@@ -223,7 +227,7 @@ func NewWebPushProvider(vapidKey, vapidSecret string) *WebPushProvider {
 	return &WebPushProvider{
 		vapidKey:    vapidKey,
 		vapidSecret: vapidSecret,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		httpClient:  &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -235,13 +239,16 @@ func (p *WebPushProvider) Send(ctx context.Context, req *SendRequest) (*SendResp
 		"badge": fmt.Sprintf("/%d.png", req.Badge),
 		"data":  req.Data,
 	}
-	
+
+	body, _ := json.Marshal(notification)
+	_ = body
+
 	// Simplified response
 	return &SendResponse{
 		Success:   true,
 		MessageID: fmt.Sprintf("web_%d", rand.Intn(100000)),
-		Provider: ProviderWebPush,
-		Attempts: 1,
+		Provider:  ProviderWebPush,
+		Attempts:  1,
 	}, nil
 }
 
@@ -274,42 +281,42 @@ func (s *Service) Unsubscribe(subscriberID string) {
 func (s *Service) GetSubscribers(userID string) []*Subscriber {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	var subs []*Subscriber
 	for _, sub := range s.subscribers {
 		if sub.UserID == userID {
 			subs = append(subs, sub)
 		}
 	}
-	
+
 	return subs
 }
 
 // Send sends notification to a user
 func (s *Service) Send(ctx context.Context, userID string, req *SendRequest) ([]*SendResponse, error) {
 	subscribers := s.GetSubscribers(userID)
-	
+
 	var responses []*SendResponse
 	for _, sub := range subscribers {
 		provider := s.getProvider(sub.Provider)
 		if provider == nil {
 			continue
 		}
-		
+
 		req.Data["token"] = sub.Token
 		resp, err := provider.Send(ctx, req)
 		if err != nil {
 			responses = append(responses, &SendResponse{
-				Success: false,
-				Error:   err.Error(),
+				Success:  false,
+				Error:    err.Error(),
 				Provider: sub.Provider,
 			})
 			continue
 		}
-		
+
 		responses = append(responses, resp)
 	}
-	
+
 	return responses, nil
 }
 
@@ -318,11 +325,11 @@ func (s *Service) SendToToken(ctx context.Context, providerName string, token st
 	s.mu.RLock()
 	provider, ok := s.providers[providerName]
 	s.mu.RUnlock()
-	
+
 	if !ok {
 		return nil, fmt.Errorf("provider not found: %s", providerName)
 	}
-	
+
 	req.Data["token"] = token
 	return provider.Send(ctx, req)
 }
@@ -345,18 +352,18 @@ func (s *Service) getProvider(providerType ProviderType) Provider {
 
 // TransactionAlert represents a transaction notification
 type TransactionAlert struct {
-	TxHash     string
-	Type       string // send, receive, swap, stake
-	Amount     string
-	Token      string
-	Status     string // pending, confirmed, failed
-	Timestamp  int64
+	TxHash    string
+	Type      string // send, receive, swap, stake
+	Amount    string
+	Token     string
+	Status    string // pending, confirmed, failed
+	Timestamp int64
 }
 
 // PriceAlert represents a price notification
 type PriceAlert struct {
-	Token      string
-	Direction  string // above, below
+	Token     string
+	Direction string // above, below
 	Price     string
 	Current   string
 	Timestamp int64
@@ -364,11 +371,11 @@ type PriceAlert struct {
 
 // SecurityAlert represents a security notification
 type SecurityAlert struct {
-	Type        string // phishing, suspicious_tx, large_transfer
-	Severity    string // high, medium, low
-	Message    string
-	Action     string
-	Timestamp  int64
+	Type      string // phishing, suspicious_tx, large_transfer
+	Severity  string // high, medium, low
+	Message   string
+	Action    string
+	Timestamp int64
 }
 
 // ============================================================================
@@ -378,21 +385,21 @@ type SecurityAlert struct {
 // SendTransactionAlert sends transaction notification
 func (s *Service) SendTransactionAlert(ctx context.Context, userID string, alert *TransactionAlert) error {
 	req := &SendRequest{
-		Title:       getTransactionTitle(alert.Type, alert.Status),
-		Body:       getTransactionBody(alert),
-		Icon:        getTokenIcon(alert.Token),
-		Priority:   getTransactionPriority(alert.Status),
-		Timestamp:  alert.Timestamp,
+		Title:     getTransactionTitle(alert.Type, alert.Status),
+		Body:      getTransactionBody(alert),
+		Icon:      getTokenIcon(alert.Token),
+		Priority:  getTransactionPriority(alert.Status),
+		Timestamp: alert.Timestamp,
 		Data: map[string]string{
-			"type":    "transaction",
-			"txHash":  alert.TxHash,
-			"txType":  alert.Type,
-			"status":  alert.Status,
-			"amount":  alert.Amount,
-			"token":   alert.Token,
+			"type":   "transaction",
+			"txHash": alert.TxHash,
+			"txType": alert.Type,
+			"status": alert.Status,
+			"amount": alert.Amount,
+			"token":  alert.Token,
 		},
 	}
-	
+
 	_, err := s.Send(ctx, userID, req)
 	return err
 }
@@ -400,20 +407,20 @@ func (s *Service) SendTransactionAlert(ctx context.Context, userID string, alert
 // SendPriceAlert sends price notification
 func (s *Service) SendPriceAlert(ctx context.Context, userID string, alert *PriceAlert) error {
 	req := &SendRequest{
-		Title:      fmt.Sprintf("%s Price Alert", alert.Token),
+		Title:     fmt.Sprintf("%s Price Alert", alert.Token),
 		Body:      getPriceBody(alert),
 		Icon:      getTokenIcon(alert.Token),
 		Priority:  PriorityNormal,
 		Timestamp: alert.Timestamp,
 		Data: map[string]string{
-			"type":     "price",
-			"token":    alert.Token,
+			"type":      "price",
+			"token":     alert.Token,
 			"direction": alert.Direction,
-			"target":   alert.Price,
-			"current": alert.Current,
+			"target":    alert.Price,
+			"current":   alert.Current,
 		},
 	}
-	
+
 	_, err := s.Send(ctx, userID, req)
 	return err
 }
@@ -421,19 +428,19 @@ func (s *Service) SendPriceAlert(ctx context.Context, userID string, alert *Pric
 // SendSecurityAlert sends security notification
 func (s *Service) SendSecurityAlert(ctx context.Context, userID string, alert *SecurityAlert) error {
 	req := &SendRequest{
-		Title:      getSecurityTitle(alert.Severity),
+		Title:     getSecurityTitle(alert.Severity),
 		Body:      alert.Message,
 		Icon:      "/images/icons/security.png",
 		Priority:  getSecurityPriority(alert.Severity),
 		Timestamp: alert.Timestamp,
 		Data: map[string]string{
-			"type":   "security",
+			"type":      "security",
 			"alertType": alert.Type,
-			"severity": alert.Severity,
-			"action":  alert.Action,
+			"severity":  alert.Severity,
+			"action":    alert.Action,
 		},
 	}
-	
+
 	_, err := s.Send(ctx, userID, req)
 	return err
 }
@@ -441,11 +448,14 @@ func (s *Service) SendSecurityAlert(ctx context.Context, userID string, alert *S
 func getTransactionTitle(txType, status string) string {
 	statusEmoji := ""
 	switch status {
-	case "pending": statusEmoji = "⏳"
-	case "confirmed": statusEmoji = "✅"
-	case "failed": statusEmoji = "❌"
+	case "pending":
+		statusEmoji = "⏳"
+	case "confirmed":
+		statusEmoji = "✅"
+	case "failed":
+		statusEmoji = "❌"
 	}
-	
+
 	typeName := strings.Title(txType)
 	return fmt.Sprintf("%s %s %s", statusEmoji, typeName, "Transaction")
 }
@@ -465,30 +475,38 @@ func getTransactionBody(alert *TransactionAlert) string {
 
 func getTransactionPriority(status string) Priority {
 	switch status {
-	case "pending": return PriorityNormal
-	case "confirmed": return PriorityLow
-	case "failed": return PriorityHigh
+	case "pending":
+		return PriorityNormal
+	case "confirmed":
+		return PriorityLow
+	case "failed":
+		return PriorityHigh
 	}
 	return PriorityNormal
 }
 
 func getPriceBody(alert *PriceAlert) string {
-	return fmt.Sprintf("%s is now %s your target of %s", 
+	return fmt.Sprintf("%s is now %s your target of %s",
 		alert.Token, alert.Direction, alert.Price)
 }
 
 func getSecurityTitle(severity string) string {
 	switch severity {
-	case "high": return "⚠️ Security Alert"
-	case "medium": return "🔒 Security Notice"
-	default: return "🔐 Security Info"
+	case "high":
+		return "⚠️ Security Alert"
+	case "medium":
+		return "🔒 Security Notice"
+	default:
+		return "🔐 Security Info"
 	}
 }
 
 func getSecurityPriority(severity string) Priority {
 	switch severity {
-	case "high": return PriorityHigh
-	case "medium": return PriorityNormal
+	case "high":
+		return PriorityHigh
+	case "medium":
+		return PriorityNormal
 	}
 	return PriorityLow
 }
@@ -507,15 +525,15 @@ func (s *Service) HandleSubscribe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	var sub Subscriber
 	if err := json.NewDecoder(r.Body).Decode(&sub); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	
+
 	s.Subscribe(&sub)
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "subscribed"})
 }
@@ -526,15 +544,15 @@ func (s *Service) HandleUnsubscribe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	subID := r.URL.Query().Get("subscriberId")
 	if subID == "" {
 		http.Error(w, "Missing subscriberId", http.StatusBadRequest)
 		return
 	}
-	
+
 	s.Unsubscribe(subID)
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "unsubscribed"})
 }
@@ -545,23 +563,23 @@ func (s *Service) HandleSend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	var req struct {
-		UserID string      `json:"userId"`
+		UserID string `json:"userId"`
 		SendRequest
 	}
-	
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	
+
 	responses, err := s.Send(r.Context(), req.UserID, &req.SendRequest)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(responses)
 }
@@ -571,6 +589,6 @@ func (s *Service) Serve(addr string) error {
 	http.HandleFunc("/subscribe", s.HandleSubscribe)
 	http.HandleFunc("/unsubscribe", s.HandleUnsubscribe)
 	http.HandleFunc("/send", s.HandleSend)
-	
+
 	return http.ListenAndServe(addr, nil)
 }

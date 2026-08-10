@@ -14,13 +14,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/go-redis/redis/v8"
-	"github.com/google/uuid"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis/v8"
+	"github.com/google/uuid"
 )
 
 // ============================================================================
@@ -45,9 +45,9 @@ type RedisConfig struct {
 }
 
 type SecurityConfig struct {
-	RequireApproval bool
+	RequireApproval      bool
 	MaxSignaturesPerHour int
-	AllowedChains   []uint64
+	AllowedChains        []uint64
 }
 
 func LoadConfig() *Config {
@@ -62,7 +62,7 @@ func LoadConfig() *Config {
 			DB:       0,
 		},
 		Security: SecurityConfig{
-			RequireApproval:     getEnv("REQUIRE_APPROVAL", "false") == "true",
+			RequireApproval:      getEnv("REQUIRE_APPROVAL", "false") == "true",
 			MaxSignaturesPerHour: 1000,
 			AllowedChains:        []uint64{1, 5, 137, 42161, 10, 43114, 56, 8453},
 		},
@@ -81,54 +81,54 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type SignatureRequest struct {
-	ID              string    `json:"id"`
-	UserID         string    `json:"userId"`
-	WalletAddress  string    `json:"walletAddress"`
-	ChainID        uint64    `json:"chainId"`
-	Message        string    `json:"message"`
-	MessageHash    string    `json:"messageHash"`
-	Signature      string    `json:"signature,omitempty"`
-	Status         string    `json:"status"` // pending, signed, failed, cancelled
-	SignatureType  string    `json:"signatureType"` // personal_sign, eth_sign, typed_data
-	IPAddress      string    `json:"ipAddress"`
-	UserAgent      string    `json:"userAgent"`
-	ApprovedBy     string    `json:"approvedBy,omitempty"`
-	ApprovedAt     *time.Time `json:"approvedAt,omitempty"`
-	CreatedAt      time.Time `json:"createdAt"`
-	CompletedAt    *time.Time `json:"completedAt,omitempty"`
+	ID            string     `json:"id"`
+	UserID        string     `json:"userId"`
+	WalletAddress string     `json:"walletAddress"`
+	ChainID       uint64     `json:"chainId"`
+	Message       string     `json:"message"`
+	MessageHash   string     `json:"messageHash"`
+	Signature     string     `json:"signature,omitempty"`
+	Status        string     `json:"status"`        // pending, signed, failed, cancelled
+	SignatureType string     `json:"signatureType"` // personal_sign, eth_sign, typed_data
+	IPAddress     string     `json:"ipAddress"`
+	UserAgent     string     `json:"userAgent"`
+	ApprovedBy    string     `json:"approvedBy,omitempty"`
+	ApprovedAt    *time.Time `json:"approvedAt,omitempty"`
+	CreatedAt     time.Time  `json:"createdAt"`
+	CompletedAt   *time.Time `json:"completedAt,omitempty"`
 }
 
 type SignatureApproval struct {
-	ID              string    `json:"id"`
-	RequestID       string    `json:"requestId"`
-	ApproverID      string    `json:"approverId"`
-	ApproverEmail   string    `json:"approverEmail"`
-	Status          string    `json:"status"` // approved, rejected
-	Notes           string    `json:"notes"`
-	CreatedAt       time.Time `json:"createdAt"`
+	ID            string    `json:"id"`
+	RequestID     string    `json:"requestId"`
+	ApproverID    string    `json:"approverId"`
+	ApproverEmail string    `json:"approverEmail"`
+	Status        string    `json:"status"` // approved, rejected
+	Notes         string    `json:"notes"`
+	CreatedAt     time.Time `json:"createdAt"`
 }
 
 type KeyRotation struct {
-	ID              string    `json:"id"`
-	UserID          string    `json:"userId"`
-	OldPublicKey    string    `json:"oldPublicKey"`
-	NewPublicKey    string    `json:"newPublicKey"`
-	Status          string    `json:"status"` // pending, completed, failed
-	RotationType    string    `json:"rotationType"` // scheduled, emergency, compromised
-	CreatedAt       time.Time `json:"createdAt"`
-	CompletedAt     *time.Time `json:"completedAt,omitempty"`
+	ID           string     `json:"id"`
+	UserID       string     `json:"userId"`
+	OldPublicKey string     `json:"oldPublicKey"`
+	NewPublicKey string     `json:"newPublicKey"`
+	Status       string     `json:"status"`       // pending, completed, failed
+	RotationType string     `json:"rotationType"` // scheduled, emergency, compromised
+	CreatedAt    time.Time  `json:"createdAt"`
+	CompletedAt  *time.Time `json:"completedAt,omitempty"`
 }
 
 type AuditLog struct {
-	ID          string    `json:"id"`
-	UserID      string    `json:"userId"`
-	Action      string    `json:"action"`
-	Resource    string    `json:"resource"`
-	ResourceID  string    `json:"resourceId"`
-	Details     string    `json:"details"`
-	IPAddress   string    `json:"ipAddress"`
-	UserAgent   string    `json:"userAgent"`
-	CreatedAt   time.Time `json:"createdAt"`
+	ID         string    `json:"id"`
+	UserID     string    `json:"userId"`
+	Action     string    `json:"action"`
+	Resource   string    `json:"resource"`
+	ResourceID string    `json:"resourceId"`
+	Details    string    `json:"details"`
+	IPAddress  string    `json:"ipAddress"`
+	UserAgent  string    `json:"userAgent"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
 
 // ============================================================================
@@ -233,17 +233,17 @@ func (s *SignatureService) CreateSignatureRequest(
 	messageHash := calculateMessageHash(message)
 
 	request := &SignatureRequest{
-		ID:             uuid.New().String(),
-		UserID:         userID,
-		WalletAddress:  walletAddress,
-		ChainID:        chainID,
-		Message:        message,
-		MessageHash:    messageHash,
-		Status:         "pending",
-		SignatureType:  signatureType,
-		IPAddress:      ipAddress,
-		UserAgent:      userAgent,
-		CreatedAt:      time.Now(),
+		ID:            uuid.New().String(),
+		UserID:        userID,
+		WalletAddress: walletAddress,
+		ChainID:       chainID,
+		Message:       message,
+		MessageHash:   messageHash,
+		Status:        "pending",
+		SignatureType: signatureType,
+		IPAddress:     ipAddress,
+		UserAgent:     userAgent,
+		CreatedAt:     time.Now(),
 	}
 
 	s.mu.Lock()
@@ -804,9 +804,9 @@ func (s *SignatureService) handleApproveRequest(c *gin.Context) {
 	id := c.Param("id")
 
 	var req struct {
-		ApproverID   string `json:"approverId" binding:"required"`
+		ApproverID    string `json:"approverId" binding:"required"`
 		ApproverEmail string `json:"approverEmail" binding:"required"`
-		Notes        string `json:"notes"`
+		Notes         string `json:"notes"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -827,9 +827,9 @@ func (s *SignatureService) handleRejectRequest(c *gin.Context) {
 	id := c.Param("id")
 
 	var req struct {
-		ApproverID   string `json:"approverId" binding:"required"`
+		ApproverID    string `json:"approverId" binding:"required"`
 		ApproverEmail string `json:"approverEmail" binding:"required"`
-		Notes        string `json:"notes"`
+		Notes         string `json:"notes"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {

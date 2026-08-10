@@ -1,13 +1,13 @@
 package sdk
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"math/big"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 )
@@ -18,21 +18,21 @@ import (
 
 // Client provides TigerWallet SDK functionality
 type Client struct {
-	mu          sync.RWMutex
-	config      *Config
+	mu         sync.RWMutex
+	config     *Config
 	httpClient *http.Client
-	auth      *Auth
-	wallets   map[string]*WalletClient
+	auth       *Auth
+	wallets    map[string]*WalletClient
 }
 
 // Config for SDK client
 type Config struct {
-	APIKey        string
-	APISecret     string
-	BaseURL      string
-	Timeout      time.Duration
-	RetryCount   int
-	RetryDelay   time.Duration
+	APIKey     string
+	APISecret  string
+	BaseURL    string
+	Timeout    time.Duration
+	RetryCount int
+	RetryDelay time.Duration
 }
 
 // NewClient creates new SDK client
@@ -40,19 +40,19 @@ func NewClient(config *Config) *Client {
 	if config.Timeout == 0 {
 		config.Timeout = 30 * time.Second
 	}
-	
+
 	httpClient := &http.Client{
 		Timeout: config.Timeout,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
 		},
 	}
-	
+
 	return &Client{
 		config:     config,
 		httpClient: httpClient,
-		auth:      NewAuth(config.APIKey, config.APISecret),
-		wallets:   make(map[string]*WalletClient),
+		auth:       NewAuth(config.APIKey, config.APISecret),
+		wallets:    make(map[string]*WalletClient),
 	}
 }
 
@@ -64,9 +64,9 @@ func NewClient(config *Config) *Client {
 type Auth struct {
 	APIKey    string
 	APISecret string
-	token    string
-	expires  time.Time
-	mu       sync.RWMutex
+	token     string
+	expires   time.Time
+	mu        sync.RWMutex
 }
 
 func NewAuth(apiKey, apiSecret string) *Auth {
@@ -79,15 +79,15 @@ func NewAuth(apiKey, apiSecret string) *Auth {
 func (a *Auth) Token() (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	
+
 	if a.token != "" && time.Now().Before(a.expires) {
 		return a.token, nil
 	}
-	
+
 	// In production, would call auth API
 	a.token = fmt.Sprintf("token_%d", time.Now().UnixNano())
 	a.expires = time.Now().Add(1 * time.Hour)
-	
+
 	return a.token, nil
 }
 
@@ -97,8 +97,8 @@ func (a *Auth) Token() (string, error) {
 
 // WalletClient provides wallet functionality
 type WalletClient struct {
-	mu        sync.RWMutex
-	client    *Client
+	mu       sync.RWMutex
+	client   *Client
 	address  string
 	chainID  uint64
 	balances map[string]*Balance
@@ -106,7 +106,7 @@ type WalletClient struct {
 
 // Balance represents token balance
 type Balance struct {
-	Symbol    string
+	Symbol   string
 	Amount   *big.Int
 	Decimals uint8
 	ValueUSD *big.Rat
@@ -134,11 +134,11 @@ func (w *WalletClient) GetBalance(ctx context.Context, token string) (*Balance, 
 		"token":   token,
 		"chainId": w.chainID,
 	})
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var balance Balance
 	if data, ok := result.(map[string]interface{}); ok {
 		if amount, ok := data["amount"].(string); ok {
@@ -146,32 +146,32 @@ func (w *WalletClient) GetBalance(ctx context.Context, token string) (*Balance, 
 			balance.Amount.SetString(amount, 10)
 		}
 	}
-	
+
 	w.mu.Lock()
 	w.balances[token] = &balance
 	w.mu.Unlock()
-	
+
 	return &balance, nil
 }
 
 // Transfer sends tokens
 func (w *WalletClient) Transfer(ctx context.Context, to string, amount *big.Int, token string) (string, error) {
 	result, err := w.client.Request(ctx, "transfer", map[string]interface{}{
-		"from":   w.address,
-		"to":     to,
-		"amount": amount.String(),
-		"token":  token,
+		"from":    w.address,
+		"to":      to,
+		"amount":  amount.String(),
+		"token":   token,
 		"chainId": w.chainID,
 	})
-	
+
 	if err != nil {
 		return "", err
 	}
-	
+
 	if txHash, ok := result.(string); ok {
 		return txHash, nil
 	}
-	
+
 	return "", fmt.Errorf("transfer failed")
 }
 
@@ -180,19 +180,19 @@ func (w *WalletClient) Swap(ctx context.Context, fromToken, toToken string, amou
 	result, err := w.client.Request(ctx, "swap", map[string]interface{}{
 		"address":   w.address,
 		"fromToken": fromToken,
-		"toToken":  toToken,
-		"amount":   amount.String(),
-		"chainId":  w.chainID,
+		"toToken":   toToken,
+		"amount":    amount.String(),
+		"chainId":   w.chainID,
 	})
-	
+
 	if err != nil {
 		return "", err
 	}
-	
+
 	if txHash, ok := result.(string); ok {
 		return txHash, nil
 	}
-	
+
 	return "", fmt.Errorf("swap failed")
 }
 
@@ -207,27 +207,34 @@ func (c *Client) Request(ctx context.Context, method string, params map[string]i
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Build request
 	reqBody := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"method":  method,
-		"params": params,
-		"id":     time.Now().UnixNano(),
+		"params":  params,
+		"id":      time.Now().UnixNano(),
 	}
-	
+
 	reqBodyJSON, _ := json.Marshal(reqBody)
-	
+
 	// Make request
-	httpReq, _ := http.NewRequestWithContext(ctx, "POST", c.config.BaseURL+"/v1/rpc", nil)
+	httpReq, _ := http.NewRequestWithContext(ctx, "POST", c.config.BaseURL+"/v1/rpc", bytes.NewReader(reqBodyJSON))
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-	httpReq.Body = nil // Would set body
-	
-	// Simplified response
-	return map[string]interface{}{
-		"result": "0x0",
-	}, nil
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
 
 // ============================================================================
@@ -239,18 +246,18 @@ func (c *Client) GetPortfolio(ctx context.Context, address string) (*Portfolio, 
 	result, err := c.Request(ctx, "getPortfolio", map[string]interface{}{
 		"address": address,
 	})
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var portfolio Portfolio
 	if data, ok := result.(map[string]interface{}); ok {
 		if value, ok := data["totalValueUSD"].(string); ok {
 			portfolio.TotalValueUSD = value
 		}
 	}
-	
+
 	return &portfolio, nil
 }
 
@@ -258,13 +265,13 @@ func (c *Client) GetPortfolio(ctx context.Context, address string) (*Portfolio, 
 func (c *Client) GetTransactions(ctx context.Context, address string, limit int) ([]Transaction, error) {
 	result, err := c.Request(ctx, "getTransactions", map[string]interface{}{
 		"address": address,
-		"limit":  limit,
+		"limit":   limit,
 	})
-	
+	_ = result
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Simplified
 	return []Transaction{}, nil
 }
@@ -274,11 +281,11 @@ func (c *Client) GetNFTs(ctx context.Context, address string) ([]NFT, error) {
 	result, err := c.Request(ctx, "getNFTs", map[string]interface{}{
 		"address": address,
 	})
-	
+	_ = result
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Simplified
 	return []NFT{}, nil
 }
@@ -288,11 +295,11 @@ func (c *Client) GetStaking(ctx context.Context, address string) (*StakingInfo, 
 	result, err := c.Request(ctx, "getStaking", map[string]interface{}{
 		"address": address,
 	})
-	
+	_ = result
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var staking StakingInfo
 	return &staking, nil
 }
@@ -320,13 +327,13 @@ type TokenBalance struct {
 type NFTBalance struct {
 	Collection string
 	TokenID    string
-	Name      string
-	Image     string
+	Name       string
+	Image      string
 }
 
 // Transaction represents transaction
 type Transaction struct {
-	TxHash     string
+	TxHash    string
 	Type      string
 	Status    string
 	From      string
@@ -338,7 +345,7 @@ type Transaction struct {
 
 // NFT represents NFT
 type NFT struct {
-	TokenID     string
+	TokenID    string
 	Collection string
 	Name       string
 	Image      string
@@ -347,10 +354,10 @@ type NFT struct {
 
 // StakingInfo represents staking info
 type StakingInfo struct {
-	TotalStaked   string
-	Rewards      string
-	APY          string
-	UnlocksAt    int64
+	TotalStaked string
+	Rewards     string
+	APY         string
+	UnlocksAt   int64
 }
 
 // ============================================================================
@@ -359,12 +366,12 @@ type StakingInfo struct {
 
 // WidgetConfig for embedding
 type WidgetConfig struct {
-	Type      string // "send", "swap", "buy", "stake"
-	Theme     string // "light", "dark"
-	ChainID   uint64
-	Token     string
-	Amount    string
-	Callback  string
+	Type     string // "send", "swap", "buy", "stake"
+	Theme    string // "light", "dark"
+	ChainID  uint64
+	Token    string
+	Amount   string
+	Callback string
 	Width    string
 	Height   string
 }
@@ -510,29 +517,29 @@ func (c *Client) HandleBalance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	var req struct {
 		Address string `json:"address"`
 		Token   string `json:"token"`
 		ChainID uint64 `json:"chainId"`
 	}
-	
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	
+
 	result, err := c.Request(r.Context(), "getBalance", map[string]interface{}{
 		"address": req.Address,
 		"token":   req.Token,
 		"chainId": req.ChainID,
 	})
-	
+
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
@@ -543,33 +550,33 @@ func (c *Client) HandleTransfer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	var req struct {
-		From   string `json:"from"`
-		To     string `json:"to"`
-		Amount string `json:"amount"`
-		Token  string `json:"token"`
+		From    string `json:"from"`
+		To      string `json:"to"`
+		Amount  string `json:"amount"`
+		Token   string `json:"token"`
 		ChainID uint64 `json:"chainId"`
 	}
-	
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	
+
 	result, err := c.Request(r.Context(), "transfer", map[string]interface{}{
-		"from":   req.From,
-		"to":     req.To,
-		"amount": req.Amount,
-		"token":  req.Token,
+		"from":    req.From,
+		"to":      req.To,
+		"amount":  req.Amount,
+		"token":   req.Token,
 		"chainId": req.ChainID,
 	})
-	
+
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
@@ -581,13 +588,13 @@ func (c *Client) HandlePortfolio(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Missing address", http.StatusBadRequest)
 		return
 	}
-	
+
 	portfolio, err := c.GetPortfolio(r.Context(), address)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(portfolio)
 }
@@ -596,13 +603,13 @@ func (c *Client) HandlePortfolio(w http.ResponseWriter, r *http.Request) {
 func (c *Client) HandleTransactions(w http.ResponseWriter, r *http.Request) {
 	address := r.URL.Query().Get("address")
 	limit := 50
-	
+
 	txs, err := c.GetTransactions(r.Context(), address, limit)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(txs)
 }
@@ -621,6 +628,6 @@ func (c *Client) Serve(addr string) error {
 	http.HandleFunc("/v1/portfolio", c.HandlePortfolio)
 	http.HandleFunc("/v1/transactions", c.HandleTransactions)
 	http.HandleFunc("/sdk.js", c.HandleSDK)
-	
+
 	return http.ListenAndServe(addr, nil)
 }

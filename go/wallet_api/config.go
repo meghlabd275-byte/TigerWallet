@@ -9,12 +9,12 @@ import (
 // AppConfig holds runtime configuration sourced from environment with sane
 // defaults so the service is runnable without an env file.
 type AppConfig struct {
-	Port             string
-	DatabaseURL      string
-	RedisAddr        string
-	JWTSecret        string
-	CoinGeckoAPIKey  string
-	EtherscanAPIKey  string
+	Port            string
+	DatabaseURL     string
+	RedisAddr       string
+	JWTSecret       string
+	CoinGeckoAPIKey string
+	EtherscanAPIKey string
 }
 
 // LoadConfig reads configuration from environment variables. Every secret has

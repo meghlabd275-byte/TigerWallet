@@ -1,12 +1,12 @@
 /**
  * TigerWallet Enterprise MPC & Account Abstraction - Go Distributed Implementation
- * 
+ *
  * Implements:
  * - Account Abstraction (EIP-7702, Session Keys, Paymaster)
  * - Privacy Features (ZK, Address Rotation, CoinJoin)
  * - Enterprise MPC Wallet
  * - Self-Hosted Infrastructure
- * 
+ *
  * @author TigerWallet Team
  */
 
@@ -45,52 +45,52 @@ type UserOperation struct {
 	CallGasLimit         uint64  `json:"callGasLimit"`
 	VerificationGasLimit uint64  `json:"verificationGasLimit"`
 	PreVerificationGas   uint64  `json:"preVerificationGas"`
-	MaxFeePerGas        uint64  `json:"maxFeePerGas"`
+	MaxFeePerGas         uint64  `json:"maxFeePerGas"`
 	MaxPriorityFeePerGas uint64  `json:"maxPriorityFeePerGas"`
-	Paymaster           Address `json:"paymaster"`
-	PaymasterData       Bytes   `json:"paymasterData"`
-	Signature           Bytes   `json:"signature"`
+	Paymaster            Address `json:"paymaster"`
+	PaymasterData        Bytes   `json:"paymasterData"`
+	Signature            Bytes   `json:"signature"`
 }
 
 // Session Key
 type SessionKey struct {
-	Key                 Address   `json:"key"`
-	WalletAddress       Address   `json:"walletAddress"`
-	AllowedMethods      []string  `json:"allowedMethods"`
-	AllowedContracts    []Address `json:"allowedContracts"`
-	MaxAmount           uint64    `json:"maxAmount"`
-	ValidUntil          Timestamp `json:"validUntil"`
-	CreatedAt           Timestamp `json:"createdAt"`
+	Key              Address   `json:"key"`
+	WalletAddress    Address   `json:"walletAddress"`
+	AllowedMethods   []string  `json:"allowedMethods"`
+	AllowedContracts []Address `json:"allowedContracts"`
+	MaxAmount        uint64    `json:"maxAmount"`
+	ValidUntil       Timestamp `json:"validUntil"`
+	CreatedAt        Timestamp `json:"createdAt"`
 }
 
 // Paymaster Config
 type PaymasterConfig struct {
-	Address        Address `json:"address"`
-	StakingToken  Address `json:"stakingToken"`
-	MinStake      uint64  `json:"minStake"`
-	MinUnstakeDelay uint64 `json:"minUnstakeDelay"`
-	IsActive      bool    `json:"isActive"`
-	Deposit       uint64  `json:"deposit"`
+	Address         Address `json:"address"`
+	StakingToken    Address `json:"stakingToken"`
+	MinStake        uint64  `json:"minStake"`
+	MinUnstakeDelay uint64  `json:"minUnstakeDelay"`
+	IsActive        bool    `json:"isActive"`
+	Deposit         uint64  `json:"deposit"`
 }
 
 // Privacy Types
 type Commitment struct {
-	Commitment Bytes `json:"commitment"`
-	Secret    Bytes `json:"secret"`
-	LeafIndex uint64 `json:"leafIndex"`
+	Commitment Bytes  `json:"commitment"`
+	Secret     Bytes  `json:"secret"`
+	LeafIndex  uint64 `json:"leafIndex"`
 }
 
 type Nullifier struct {
-	Hash         Bytes   `json:"hash"`
-	Used         bool    `json:"used"`
-	BlockNumber  uint64  `json:"blockNumber"`
+	Hash        Bytes  `json:"hash"`
+	Used        bool   `json:"used"`
+	BlockNumber uint64 `json:"blockNumber"`
 }
 
 type ZKProof struct {
-	PIA           Bytes   `json:"pi_a"`
-	PIB           Bytes   `json:"pi_b"`
-	PIC           Bytes   `json:"pi_c"`
-	PublicSignals Bytes   `json:"publicSignals"`
+	PIA           Bytes `json:"pi_a"`
+	PIB           Bytes `json:"pi_b"`
+	PIC           Bytes `json:"pi_c"`
+	PublicSignals Bytes `json:"publicSignals"`
 }
 
 // Privacy Transaction
@@ -107,34 +107,34 @@ type PrivacyTransaction struct {
 
 // MPC Types
 type KeyShare struct {
-	PartyID      uint32 `json:"partyId"`
-	Share        Bytes  `json:"share"`
-	PublicShare  Bytes  `json:"publicShare"`
-	CreatedAt    Timestamp `json:"createdAt"`
-	IsActive     bool    `json:"isActive"`
+	PartyID     uint32    `json:"partyId"`
+	Share       Bytes     `json:"share"`
+	PublicShare Bytes     `json:"publicShare"`
+	CreatedAt   Timestamp `json:"createdAt"`
+	IsActive    bool      `json:"isActive"`
 }
 
 type SignatureShare struct {
-	PartyID    uint32    `json:"partyId"`
-	Share      Bytes     `json:"share"`
-	Timestamp  Timestamp `json:"timestamp"`
-	SessionID  string    `json:"sessionId"`
+	PartyID   uint32    `json:"partyId"`
+	Share     Bytes     `json:"share"`
+	Timestamp Timestamp `json:"timestamp"`
+	SessionID string    `json:"sessionId"`
 }
 
 type MPCSignature struct {
-	Signature     Bytes           `json:"signature"`
+	Signature     Bytes            `json:"signature"`
 	Shares        []SignatureShare `json:"shares"`
-	WalletAddress Address        `json:"walletAddress"`
-	MessageHash   Bytes           `json:"messageHash"`
-	SignedAt      Timestamp       `json:"signedAt"`
+	WalletAddress Address          `json:"walletAddress"`
+	MessageHash   Bytes            `json:"messageHash"`
+	SignedAt      Timestamp        `json:"signedAt"`
 }
 
 // Policy
 type Policy struct {
 	ID        string       `json:"id"`
-	Name     string       `json:"name"`
-	Rules    []PolicyRule `json:"rules"`
-	IsActive bool         `json:"isActive"`
+	Name      string       `json:"name"`
+	Rules     []PolicyRule `json:"rules"`
+	IsActive  bool         `json:"isActive"`
 	CreatedAt Timestamp    `json:"createdAt"`
 }
 
@@ -146,31 +146,31 @@ type PolicyRule struct {
 
 // Audit Entry
 type AuditEntry struct {
-	ID            string   `json:"id"`
-	WalletAddress Address  `json:"walletAddress"`
-	Action        string   `json:"action"`
-	Details       string   `json:"details"`
-	Actor         Address  `json:"actor"`
-	IPAddress     string   `json:"ipAddress"`
+	ID            string    `json:"id"`
+	WalletAddress Address   `json:"walletAddress"`
+	Action        string    `json:"action"`
+	Details       string    `json:"details"`
+	Actor         Address   `json:"actor"`
+	IPAddress     string    `json:"ipAddress"`
 	Timestamp     Timestamp `json:"timestamp"`
-	Metadata      Bytes    `json:"metadata"`
+	Metadata      Bytes     `json:"metadata"`
 }
 
 // Transaction Request
 type TransactionRequest struct {
-	ID          string           `json:"id"`
-	From        Address          `json:"from"`
-	To          Address          `json:"to"`
-	Value       uint64           `json:"value"`
-	Data        Bytes            `json:"data"`
-	GasLimit    uint64           `json:"gasLimit"`
-	GasPrice    uint64           `json:"gasPrice"`
-	Nonce       uint64           `json:"nonce"`
-	ChainID     ChainID          `json:"chainId"`
-	Status      string           `json:"status"` // pending, approved, rejected, executed
-	Approvals   []Approval       `json:"approvals"`
-	CreatedAt   Timestamp        `json:"createdAt"`
-	ExpiresAt   Timestamp        `json:"expiresAt"`
+	ID        string     `json:"id"`
+	From      Address    `json:"from"`
+	To        Address    `json:"to"`
+	Value     uint64     `json:"value"`
+	Data      Bytes      `json:"data"`
+	GasLimit  uint64     `json:"gasLimit"`
+	GasPrice  uint64     `json:"gasPrice"`
+	Nonce     uint64     `json:"nonce"`
+	ChainID   ChainID    `json:"chainId"`
+	Status    string     `json:"status"` // pending, approved, rejected, executed
+	Approvals []Approval `json:"approvals"`
+	CreatedAt Timestamp  `json:"createdAt"`
+	ExpiresAt Timestamp  `json:"expiresAt"`
 }
 
 type Approval struct {
@@ -281,13 +281,13 @@ func (m *SessionKeyManager) CreateSessionKey(
 	validitySeconds int64,
 ) SessionKey {
 	key := SessionKey{
-		Key:               sessionKey,
-		WalletAddress:     wallet,
-		AllowedMethods:    methods,
-		AllowedContracts:  contracts,
-		MaxAmount:         maxAmount,
-		ValidUntil:        currentTimestamp() + Timestamp(validitySeconds*1000),
-		CreatedAt:         currentTimestamp(),
+		Key:              sessionKey,
+		WalletAddress:    wallet,
+		AllowedMethods:   methods,
+		AllowedContracts: contracts,
+		MaxAmount:        maxAmount,
+		ValidUntil:       currentTimestamp() + Timestamp(validitySeconds*1000),
+		CreatedAt:        currentTimestamp(),
 	}
 
 	m.mu.Lock()
@@ -375,12 +375,12 @@ func (m *PaymasterManager) Configure(paymaster Address, stakingToken Address, mi
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.paymasters[paymaster] = PaymasterConfig{
-		Address:          paymaster,
-		StakingToken:     stakingToken,
-		MinStake:         minStake,
+		Address:         paymaster,
+		StakingToken:    stakingToken,
+		MinStake:        minStake,
 		MinUnstakeDelay: minUnstakeDelay,
-		IsActive:         true,
-		Deposit:          0,
+		IsActive:        true,
+		Deposit:         0,
 	}
 }
 
@@ -464,10 +464,10 @@ func (p *ZKProver) Prove(commitment Commitment, nullifier Nullifier, recipient A
 	}
 	pub := ethcrypto.FromECDSAPub(&priv.PublicKey)
 	return ZKProof{
-		PIA:           sig,                 // 65-byte ECDSA signature (r||s||v)
-		PIB:           message,             // signed digest
-		PIC:           pub,                 // signer public key (65-byte uncompressed)
-		PublicSignals: nullifier.Hash,      // nullifier being proven unspent
+		PIA:           sig,            // 65-byte ECDSA signature (r||s||v)
+		PIB:           message,        // signed digest
+		PIC:           pub,            // signer public key (65-byte uncompressed)
+		PublicSignals: nullifier.Hash, // nullifier being proven unspent
 	}
 }
 
@@ -516,9 +516,9 @@ func equalBytes(a, b []byte) bool {
 
 // Address Rotation
 type AddressRotation struct {
-	history      map[Address][]Address
-	rotationSeq  uint64
-	mu           sync.Mutex
+	history     map[Address][]Address
+	rotationSeq uint64
+	mu          sync.Mutex
 }
 
 func NewAddressRotation() *AddressRotation {
@@ -558,14 +558,14 @@ func (r *AddressRotation) GetHistory(start Address) []Address {
 
 // Privacy Pool
 type PrivacyPool struct {
-	deposits       map[string]PrivacyTransaction
-	nullifiers     map[string]Nullifier
-	mu             sync.RWMutex
+	deposits   map[string]PrivacyTransaction
+	nullifiers map[string]Nullifier
+	mu         sync.RWMutex
 }
 
 func NewPrivacyPool() *PrivacyPool {
 	return &PrivacyPool{
-		deposits: make(map[string]PrivacyTransaction),
+		deposits:   make(map[string]PrivacyTransaction),
 		nullifiers: make(map[string]Nullifier),
 	}
 }
@@ -658,8 +658,8 @@ func (p *PrivacyPool) GetMerkleRoot() Bytes {
 type TSSEngine struct {
 	threshold    uint32
 	totalParties uint32
-	publicKey    []byte          // 65-byte uncompressed group public key
-	secret       *big.Int        // master private scalar (kept for signing after combine)
+	publicKey    []byte              // 65-byte uncompressed group public key
+	secret       *big.Int            // master private scalar (kept for signing after combine)
 	shares       map[uint32]*big.Int // partyID -> Shamir share scalar
 	mu           sync.Mutex
 }
@@ -929,14 +929,14 @@ func (e *TSSEngine) GetPublicKey() []byte {
 
 // Policy Engine
 type PolicyEngine struct {
-	policies      map[string]Policy
+	policies       map[string]Policy
 	walletPolicies map[Address][]string
-	mu            sync.RWMutex
+	mu             sync.RWMutex
 }
 
 func NewPolicyEngine() *PolicyEngine {
 	return &PolicyEngine{
-		policies:        make(map[string]Policy),
+		policies:       make(map[string]Policy),
 		walletPolicies: make(map[Address][]string),
 	}
 }
@@ -1022,7 +1022,7 @@ func (l *AuditLogger) Log(wallet Address, action, details, actor, ipAddress stri
 		WalletAddress: wallet,
 		Action:        action,
 		Details:       details,
-					Actor:         Address(actor),
+		Actor:         Address(actor),
 		IPAddress:     ipAddress,
 		Timestamp:     currentTimestamp(),
 	}
@@ -1083,7 +1083,7 @@ func (m *TxRequestManager) Approve(requestID string, approverID uint32, signatur
 		ApproverID: approverID,
 		Approved:   true,
 		Signature:  signature,
-		Timestamp: currentTimestamp(),
+		Timestamp:  currentTimestamp(),
 	})
 
 	// Check threshold
@@ -1115,9 +1115,9 @@ func (m *TxRequestManager) Get(requestID string) (TransactionRequest, bool) {
 
 type EnterpriseMPCManager struct {
 	walletAddress  Address
-	tssEngine     *TSSEngine
+	tssEngine      *TSSEngine
 	sessionManager *SessionKeyManager
-	paymasterMgr  *PaymasterManager
+	paymasterMgr   *PaymasterManager
 	privacyPool    *PrivacyPool
 	addressRotator *AddressRotation
 	policyEngine   *PolicyEngine
@@ -1136,7 +1136,7 @@ func NewEnterpriseMPCManager(threshold, totalParties uint32) *EnterpriseMPCManag
 		policyEngine:   NewPolicyEngine(),
 		auditLogger:    NewAuditLogger(),
 		txManager:      NewTxRequestManager(threshold),
-		threshold:     threshold,
+		threshold:      threshold,
 	}
 }
 
@@ -1167,7 +1167,7 @@ func (m *EnterpriseMPCManager) Initialize(name string) Address {
 	m.policyEngine.AssignPolicy(m.walletAddress, policyID)
 
 	// Log initialization
-	m.auditLogger.Log(m.walletAddress, "initialize", 
+	m.auditLogger.Log(m.walletAddress, "initialize",
 		fmt.Sprintf("Wallet %s initialized with %d-of-%d threshold", name, m.threshold, len(shares)),
 		"system", "127.0.0.1")
 
@@ -1182,9 +1182,9 @@ func (m *EnterpriseMPCManager) CreateTransaction(to Address, value uint64, data 
 	tx := TransactionRequest{
 		From:    m.walletAddress,
 		To:      to,
-		Value:    value,
-		Data:     data,
-		ChainID:  1,
+		Value:   value,
+		Data:    data,
+		ChainID: 1,
 	}
 
 	// Check policies
@@ -1314,4 +1314,3 @@ func (m *EnterpriseMPCManager) ValidateSessionKey(sessionKey Address, method str
 func currentTimestamp() Timestamp {
 	return Timestamp(time.Now().UnixMilli())
 }
-

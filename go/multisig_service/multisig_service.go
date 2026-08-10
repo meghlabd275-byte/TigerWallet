@@ -1,6 +1,6 @@
 /**
  * TigerWallet Multisig Service
- * 
+ *
  * Multi-signature transaction support.
  * Built with Go for high-load distributed operations.
  */
@@ -42,16 +42,16 @@ type MultisigWallet struct {
 
 // MultisigTransaction represents a multisig transaction
 type MultisigTransaction struct {
-	ID          string   `json:"id"`
-	WalletID    string   `json:"wallet_id"`
-	To          string   `json:"to"`
-	Value       string   `json:"value"`
-	Data        string   `json:"data"`
-	Signatures  []string `json:"signatures"`
-	SignedBy    []string `json:"signed_by"`
-	Status      string   `json:"status"`
-	ExecutedAt  int64    `json:"executed_at"`
-	CreatedAt   int64    `json:"created_at"`
+	ID         string   `json:"id"`
+	WalletID   string   `json:"wallet_id"`
+	To         string   `json:"to"`
+	Value      string   `json:"value"`
+	Data       string   `json:"data"`
+	Signatures []string `json:"signatures"`
+	SignedBy   []string `json:"signed_by"`
+	Status     string   `json:"status"`
+	ExecutedAt int64    `json:"executed_at"`
+	CreatedAt  int64    `json:"created_at"`
 }
 
 // MultisigService manages multisig operations

@@ -59,12 +59,12 @@ func parseJWT(tokenStr string) (string, error) {
 // ============================================================================
 
 type Config struct {
-	Port     int    `json:"port"`
+	Port      int    `json:"port"`
 	RedisAddr string `json:"redis_addr"`
 }
 
 var cfg = Config{
-	Port:     8004,
+	Port:      8004,
 	RedisAddr: "localhost:6379",
 }
 
@@ -73,56 +73,56 @@ var cfg = Config{
 // ============================================================================
 
 type NFTCollection struct {
-	ID             string            `json:"id" bson:"_id"`
-	Name           string            `json:"name" bson:"name"`
-	Symbol         string            `json:"symbol" bson:"symbol"`
-	Chain          string            `json:"chain" bson:"chain"`
-	ContractAddress string           `json:"contract_address" bson:"contract_address"`
-	Owner          string            `json:"owner" bson:"owner"`
-	Creator        string            `json:"creator" bson:"creator"`
-	Description    string            `json:"description" bson:"description"`
-	ImageURL       string            `json:"image_url" bson:"image_url"`
-	ExternalURL    string            `json:"external_url" bson:"external_url"`
-	Category       string            `json:"category" bson:"category"`
-	Standard       string            `json:"standard" bson:"standard"` // erc721, erc1155, spl
-	TotalSupply    string            `json:"total_supply" bson:"total_supply"`
-	FloorPrice     string            `json:"floor_price" bson:"floor_price"`
-	Volume24h      string            `json:"volume_24h" bson:"volume_24h"`
-	Sales24h       int               `json:"sales_24h" bson:"sales_24h"`
-	Owners         int               `json:"owners" bson:"owners"`
-	Verified       bool              `json:"verified" bson:"verified"`
-	Featured       bool              `json:"featured" bson:"featured"`
-	RoyaltyFee     string            `json:"royalty_fee" bson:"royalty_fee"` // percentage
-	Status         string            `json:"status" bson:"status"` // active, paused, sold_out
-	CreatedAt      time.Time         `json:"created_at" bson:"created_at"`
-	UpdatedAt      time.Time         `json:"updated_at" bson:"updatedAt"`
+	ID              string    `json:"id" bson:"_id"`
+	Name            string    `json:"name" bson:"name"`
+	Symbol          string    `json:"symbol" bson:"symbol"`
+	Chain           string    `json:"chain" bson:"chain"`
+	ContractAddress string    `json:"contract_address" bson:"contract_address"`
+	Owner           string    `json:"owner" bson:"owner"`
+	Creator         string    `json:"creator" bson:"creator"`
+	Description     string    `json:"description" bson:"description"`
+	ImageURL        string    `json:"image_url" bson:"image_url"`
+	ExternalURL     string    `json:"external_url" bson:"external_url"`
+	Category        string    `json:"category" bson:"category"`
+	Standard        string    `json:"standard" bson:"standard"` // erc721, erc1155, spl
+	TotalSupply     string    `json:"total_supply" bson:"total_supply"`
+	FloorPrice      string    `json:"floor_price" bson:"floor_price"`
+	Volume24h       string    `json:"volume_24h" bson:"volume_24h"`
+	Sales24h        int       `json:"sales_24h" bson:"sales_24h"`
+	Owners          int       `json:"owners" bson:"owners"`
+	Verified        bool      `json:"verified" bson:"verified"`
+	Featured        bool      `json:"featured" bson:"featured"`
+	RoyaltyFee      string    `json:"royalty_fee" bson:"royalty_fee"` // percentage
+	Status          string    `json:"status" bson:"status"`           // active, paused, sold_out
+	CreatedAt       time.Time `json:"created_at" bson:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at" bson:"updatedAt"`
 }
 
 type NFT struct {
-	ID              string            `json:"id" bson:"_id"`
-	CollectionID    string            `json:"collection_id" bson:"collection_id"`
-	TokenID         string            `json:"token_id" bson:"token_id"`
-	Chain           string            `json:"chain" bson:"chain"`
-	ContractAddress string            `json:"contract_address" bson:"contract_address"`
-	Owner           string            `json:"owner" bson:"owner"`
-	Creator         string            `json:"creator" bson:"creator"`
-	Name            string            `json:"name" bson:"name"`
-	Description     string            `json:"description" bson:"description"`
-	ImageURL        string            `json:"image_url" bson:"image_url"`
-	AnimationURL    string            `json:"animation_url" bson:"animation_url"`
-	ExternalURL     string            `json:"external_url" bson:"external_url"`
-	Attributes      []NFTAttribute    `json:"attributes" bson:"attributes"`
-	Edition         int               `json:"edition" bson:"edition"` // for 1155
-	Quantity        int               `json:"quantity" bson:"quantity"` // for 1155
-	TokenURI        string            `json:"token_uri" bson:"token_uri"`
-	IsForSale       bool              `json:"is_for_sale" bson:"is_for_sale"`
-	Price           string            `json:"price" bson:"price"`
-	PriceToken      string            `json:"price_token" bson:"price_token"` // ETH, USDC, etc
-	ListingFee      string            `json:"listing_fee" bson:"listing_fee"`
-	LastSalePrice   string            `json:"last_sale_price" bson:"last_sale_price"`
-	LastSaleTime    *time.Time       `json:"last_sale_time" bson:"last_sale_time"`
-	CreatedAt       time.Time        `json:"created_at" bson:"created_at"`
-	UpdatedAt       time.Time        `json:"updated_at" bson:"updated_at"`
+	ID              string         `json:"id" bson:"_id"`
+	CollectionID    string         `json:"collection_id" bson:"collection_id"`
+	TokenID         string         `json:"token_id" bson:"token_id"`
+	Chain           string         `json:"chain" bson:"chain"`
+	ContractAddress string         `json:"contract_address" bson:"contract_address"`
+	Owner           string         `json:"owner" bson:"owner"`
+	Creator         string         `json:"creator" bson:"creator"`
+	Name            string         `json:"name" bson:"name"`
+	Description     string         `json:"description" bson:"description"`
+	ImageURL        string         `json:"image_url" bson:"image_url"`
+	AnimationURL    string         `json:"animation_url" bson:"animation_url"`
+	ExternalURL     string         `json:"external_url" bson:"external_url"`
+	Attributes      []NFTAttribute `json:"attributes" bson:"attributes"`
+	Edition         int            `json:"edition" bson:"edition"`   // for 1155
+	Quantity        int            `json:"quantity" bson:"quantity"` // for 1155
+	TokenURI        string         `json:"token_uri" bson:"token_uri"`
+	IsForSale       bool           `json:"is_for_sale" bson:"is_for_sale"`
+	Price           string         `json:"price" bson:"price"`
+	PriceToken      string         `json:"price_token" bson:"price_token"` // ETH, USDC, etc
+	ListingFee      string         `json:"listing_fee" bson:"listing_fee"`
+	LastSalePrice   string         `json:"last_sale_price" bson:"last_sale_price"`
+	LastSaleTime    *time.Time     `json:"last_sale_time" bson:"last_sale_time"`
+	CreatedAt       time.Time      `json:"created_at" bson:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at" bson:"updated_at"`
 }
 
 type NFTAttribute struct {
@@ -133,58 +133,58 @@ type NFTAttribute struct {
 }
 
 type NFTListing struct {
-	ID              string    `json:"id" bson:"_id"`
-	NFTID          string    `json:"nft_id" bson:"nft_id"`
-	Seller          string    `json:"seller" bson:"seller"`
-	Price           string    `json:"price" bson:"price"`
-	PriceToken      string    `json:"price_token" bson:"price_token"`
-	Quantity        int       `json:"quantity" bson:"quantity"`
-	Status          string    `json:"status" bson:"status"` // active, sold, cancelled, expired
-	StartTime       time.Time `json:"start_time" bson:"start_time"`
-	EndTime         *time.Time `json:"end_time" bson:"end_time"`
-	CreatedAt       time.Time `json:"created_at" bson:"created_at"`
+	ID         string     `json:"id" bson:"_id"`
+	NFTID      string     `json:"nft_id" bson:"nft_id"`
+	Seller     string     `json:"seller" bson:"seller"`
+	Price      string     `json:"price" bson:"price"`
+	PriceToken string     `json:"price_token" bson:"price_token"`
+	Quantity   int        `json:"quantity" bson:"quantity"`
+	Status     string     `json:"status" bson:"status"` // active, sold, cancelled, expired
+	StartTime  time.Time  `json:"start_time" bson:"start_time"`
+	EndTime    *time.Time `json:"end_time" bson:"end_time"`
+	CreatedAt  time.Time  `json:"created_at" bson:"created_at"`
 }
 
 type NFTOffer struct {
-	ID          string    `json:"id" bson:"_id"`
-	NFTID       string    `json:"nft_id" bson:"nft_id"`
-	Buyer       string    `json:"buyer" bson:"buyer"`
-	Price       string    `json:"price" bson:"price"`
-	PriceToken  string    `json:"price_token" bson:"price_token"`
-	Quantity    int       `json:"quantity" bson:"quantity"`
-	Status      string    `json:"status" bson:"status"` // pending, accepted, rejected, expired
-	ExpiredAt   *time.Time `json:"expired_at" bson:"expired_at"`
-	CreatedAt   time.Time `json:"created_at" bson:"created_at"`
+	ID         string     `json:"id" bson:"_id"`
+	NFTID      string     `json:"nft_id" bson:"nft_id"`
+	Buyer      string     `json:"buyer" bson:"buyer"`
+	Price      string     `json:"price" bson:"price"`
+	PriceToken string     `json:"price_token" bson:"price_token"`
+	Quantity   int        `json:"quantity" bson:"quantity"`
+	Status     string     `json:"status" bson:"status"` // pending, accepted, rejected, expired
+	ExpiredAt  *time.Time `json:"expired_at" bson:"expired_at"`
+	CreatedAt  time.Time  `json:"created_at" bson:"created_at"`
 }
 
 type NFTTransaction struct {
-	ID          string    `json:"id" bson:"_id"`
-	NFTID      string    `json:"nft_id" bson:"nft_id"`
-	CollectionID string `json:"collection_id" bson:"collection_id"`
-	Chain       string   `json:"chain" bson:"chain"`
-	Seller      string   `json:"seller" bson:"seller"`
-	Buyer       string   `json:"buyer" bson:"buyer"`
-	Price       string   `json:"price" bson:"price"`
-	PriceToken  string   `json:"price_token" bson:"price_token"`
-	Fee         string   `json:"fee" bson:"fee"`
-	Royalty     string   `json:"royalty" bson:"royalty"`
-	TxHash      string   `json:"tx_hash" bson:"tx_hash"`
-	Timestamp   time.Time `json:"timestamp" bson:"timestamp"`
+	ID           string    `json:"id" bson:"_id"`
+	NFTID        string    `json:"nft_id" bson:"nft_id"`
+	CollectionID string    `json:"collection_id" bson:"collection_id"`
+	Chain        string    `json:"chain" bson:"chain"`
+	Seller       string    `json:"seller" bson:"seller"`
+	Buyer        string    `json:"buyer" bson:"buyer"`
+	Price        string    `json:"price" bson:"price"`
+	PriceToken   string    `json:"price_token" bson:"price_token"`
+	Fee          string    `json:"fee" bson:"fee"`
+	Royalty      string    `json:"royalty" bson:"royalty"`
+	TxHash       string    `json:"tx_hash" bson:"tx_hash"`
+	Timestamp    time.Time `json:"timestamp" bson:"timestamp"`
 }
 
 type NFTAuction struct {
-	ID          string    `json:"id" bson:"_id"`
-	NFTID       string    `json:"nft_id" bson:"nft_id"`
-	Seller      string    `json:"seller" bson:"seller"`
-	StartPrice  string    `json:"start_price" bson:"start_price"`
-	EndPrice    string    `json:"end_price" bson:"end_price"`
-	CurrentBid  string    `json:"current_bid" bson:"current_bid"`
-	Bidder      string    `json:"bidder" bson:"bidder"`
-	Quantity    int       `json:"quantity" bson:"quantity"`
-	Status      string    `json:"status" bson:"status"` // active, ended, cancelled
-	StartTime   time.Time `json:"start_time" bson:"start_time"`
-	EndTime     time.Time `json:"end_time" bson:"end_time"`
-	CreatedAt   time.Time `json:"created_at" bson:"created_at"`
+	ID         string    `json:"id" bson:"_id"`
+	NFTID      string    `json:"nft_id" bson:"nft_id"`
+	Seller     string    `json:"seller" bson:"seller"`
+	StartPrice string    `json:"start_price" bson:"start_price"`
+	EndPrice   string    `json:"end_price" bson:"end_price"`
+	CurrentBid string    `json:"current_bid" bson:"current_bid"`
+	Bidder     string    `json:"bidder" bson:"bidder"`
+	Quantity   int       `json:"quantity" bson:"quantity"`
+	Status     string    `json:"status" bson:"status"` // active, ended, cancelled
+	StartTime  time.Time `json:"start_time" bson:"start_time"`
+	EndTime    time.Time `json:"end_time" bson:"end_time"`
+	CreatedAt  time.Time `json:"created_at" bson:"created_at"`
 }
 
 // ============================================================================
@@ -192,14 +192,14 @@ type NFTAuction struct {
 // ============================================================================
 
 type NFTService struct {
-	redis       *redis.Client
-	mu          sync.RWMutex
-	collections map[string]*NFTCollection
-	nfts        map[string]*NFT
-	listings    map[string]*NFTListing
-	offers      map[string]*NFTOffer
+	redis        *redis.Client
+	mu           sync.RWMutex
+	collections  map[string]*NFTCollection
+	nfts         map[string]*NFT
+	listings     map[string]*NFTListing
+	offers       map[string]*NFTOffer
 	transactions map[string]*NFTTransaction
-	auctions    map[string]*NFTAuction
+	auctions     map[string]*NFTAuction
 }
 
 func NewNFTService() *NFTService {
@@ -208,13 +208,13 @@ func NewNFTService() *NFTService {
 	})
 
 	ns := &NFTService{
-		redis:       rdb,
-		collections: make(map[string]*NFTCollection),
-		nfts:        make(map[string]*NFT),
-		listings:    make(map[string]*NFTListing),
-		offers:      make(map[string]*NFTOffer),
+		redis:        rdb,
+		collections:  make(map[string]*NFTCollection),
+		nfts:         make(map[string]*NFT),
+		listings:     make(map[string]*NFTListing),
+		offers:       make(map[string]*NFTOffer),
 		transactions: make(map[string]*NFTTransaction),
-		auctions:    make(map[string]*NFTAuction),
+		auctions:     make(map[string]*NFTAuction),
 	}
 
 	ns.initializeDefaultData()
@@ -228,7 +228,7 @@ func (ns *NFTService) initializeDefaultData() {
 		{
 			ID: "bored-ape", Name: "Bored Ape Yacht Club", Symbol: "BAYC", Chain: "ethereum",
 			ContractAddress: "0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D",
-			Owner: "0x000", Creator: "0x000", Description: "The Bored Ape Yacht Club is a collection of 10,000 unique Bored Ape NFTs.",
+			Owner:           "0x000", Creator: "0x000", Description: "The Bored Ape Yacht Club is a collection of 10,000 unique Bored Ape NFTs.",
 			ImageURL: "https://ipfs.io/ipfs/QmRRPWG96cmgTn2qSzjwr2qvfNEuhunv6FNeMFGa9bx6mQ",
 			Category: "PFP", Standard: "erc721", TotalSupply: "10000", FloorPrice: "15.5",
 			Volume24h: "2500", Sales24h: 50, Owners: 6500, Verified: true, Featured: true,
@@ -237,7 +237,7 @@ func (ns *NFTService) initializeDefaultData() {
 		{
 			ID: "crypto-punk", Name: "CryptoPunks", Symbol: "PUNK", Chain: "ethereum",
 			ContractAddress: "0xb47e3cd837dDF8e4c57F05d70Ab865de6e193BBB",
-			Owner: "0x000", Creator: "0x000", Description: "CryptoPunks launched as a fixed set of 10,000 unique collectible characters with proof of ownership stored on the Ethereum blockchain.",
+			Owner:           "0x000", Creator: "0x000", Description: "CryptoPunks launched as a fixed set of 10,000 unique collectible characters with proof of ownership stored on the Ethereum blockchain.",
 			ImageURL: "https://cryptopunks.app/cryptopunks/cryptopunk001.png",
 			Category: "PFP", Standard: "erc721", TotalSupply: "10000", FloorPrice: "45.0",
 			Volume24h: "5000", Sales24h: 25, Owners: 4000, Verified: true, Featured: true,
@@ -246,7 +246,7 @@ func (ns *NFTService) initializeDefaultData() {
 		{
 			ID: "azuki", Name: "Azuki", Symbol: "AZUKI", Chain: "ethereum",
 			ContractAddress: "0xED5AF388653567Af2F388E6224dC7C4b3241C544",
-			Owner: "0x000", Creator: "0x000", Description: "Azuki starts with a collection of 10,000 avatars that give you membership access to The Garden.",
+			Owner:           "0x000", Creator: "0x000", Description: "Azuki starts with a collection of 10,000 avatars that give you membership access to The Garden.",
 			ImageURL: "https://ipfs.io/ipfs/QmYDnL5T3q7k1K7J3KZJ5J5J5J5J5J5J5J5J5J5J5J",
 			Category: "PFP", Standard: "erc721", TotalSupply: "10000", FloorPrice: "8.5",
 			Volume24h: "1200", Sales24h: 35, Owners: 5500, Verified: true, Featured: true,
@@ -286,11 +286,11 @@ func (ns *NFTService) initializeDefaultData() {
 					{TraitType: "Background", Value: "Blue", Rarity: "Common"},
 					{TraitType: "Eyes", Value: "Laser", Rarity: "Legendary"},
 				},
-				IsForSale:   i%2 == 0,
-				Price:       col.FloorPrice,
-				PriceToken:  "ETH",
-				CreatedAt:   time.Now(),
-				UpdatedAt:   time.Now(),
+				IsForSale:  i%2 == 0,
+				Price:      col.FloorPrice,
+				PriceToken: "ETH",
+				CreatedAt:  time.Now(),
+				UpdatedAt:  time.Now(),
 			}
 			ns.nfts[nftID] = nft
 		}
@@ -324,7 +324,7 @@ func (ns *NFTService) GetCollections(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success":     true,
 		"collections": collections,
-		"total":      len(collections),
+		"total":       len(collections),
 	})
 }
 
@@ -357,8 +357,8 @@ func (ns *NFTService) GetCollectionNFTs(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"nfts":   nfts,
-		"total":  len(nfts),
+		"nfts":    nfts,
+		"total":   len(nfts),
 	})
 }
 
@@ -380,14 +380,14 @@ func (ns *NFTService) GetNFT(c *gin.Context) {
 
 // Create collection
 type CreateCollectionRequest struct {
-	Name           string `json:"name" binding:"required"`
-	Symbol         string `json:"symbol" binding:"required"`
-	Chain          string `json:"chain" binding:"required"`
+	Name            string `json:"name" binding:"required"`
+	Symbol          string `json:"symbol" binding:"required"`
+	Chain           string `json:"chain" binding:"required"`
 	ContractAddress string `json:"contract_address" binding:"required"`
-	Description    string `json:"description"`
-	Category       string `json:"category"`
-	Standard       string `json:"standard" binding:"required"`
-	RoyaltyFee     string `json:"royalty_fee"`
+	Description     string `json:"description"`
+	Category        string `json:"category"`
+	Standard        string `json:"standard" binding:"required"`
+	RoyaltyFee      string `json:"royalty_fee"`
 }
 
 func (ns *NFTService) CreateCollection(c *gin.Context) {
@@ -418,7 +418,7 @@ func (ns *NFTService) CreateCollection(c *gin.Context) {
 	ns.collections[collectionID] = collection
 
 	c.JSON(http.StatusCreated, gin.H{
-		"success":      true,
+		"success":       true,
 		"collection_id": collectionID,
 		"collection":    collection,
 	})
@@ -426,15 +426,15 @@ func (ns *NFTService) CreateCollection(c *gin.Context) {
 
 // Mint NFT
 type MintNFTRequest struct {
-	CollectionID string   `json:"collection_id" binding:"required"`
-	Name         string   `json:"name" binding:"required"`
-	Description  string   `json:"description"`
-	ImageURL     string   `json:"image_url" binding:"required"`
+	CollectionID string         `json:"collection_id" binding:"required"`
+	Name         string         `json:"name" binding:"required"`
+	Description  string         `json:"description"`
+	ImageURL     string         `json:"image_url" binding:"required"`
 	Attributes   []NFTAttribute `json:"attributes"`
-	Quantity     int      `json:"quantity"`
-	IsForSale    bool     `json:"is_for_sale"`
-	Price        string   `json:"price"`
-	PriceToken   string   `json:"price_token"`
+	Quantity     int            `json:"quantity"`
+	IsForSale    bool           `json:"is_for_sale"`
+	Price        string         `json:"price"`
+	PriceToken   string         `json:"price_token"`
 }
 
 func (ns *NFTService) MintNFT(c *gin.Context) {
@@ -492,10 +492,10 @@ func (ns *NFTService) MintNFT(c *gin.Context) {
 
 // List NFT for sale
 type ListNFTRequest struct {
-	NFTID     string `json:"nft_id" binding:"required"`
-	Price     string `json:"price" binding:"required"`
+	NFTID      string `json:"nft_id" binding:"required"`
+	Price      string `json:"price" binding:"required"`
 	PriceToken string `json:"price_token" binding:"required"`
-	Quantity  int    `json:"quantity"`
+	Quantity   int    `json:"quantity"`
 }
 
 func (ns *NFTService) ListNFT(c *gin.Context) {
@@ -544,9 +544,9 @@ func (ns *NFTService) ListNFT(c *gin.Context) {
 	nft.PriceToken = req.PriceToken
 
 	c.JSON(http.StatusCreated, gin.H{
-		"success":    true,
-		"listing_id": listingID,
-		"price":      req.Price,
+		"success":     true,
+		"listing_id":  listingID,
+		"price":       req.Price,
 		"price_token": req.PriceToken,
 	})
 }
@@ -582,18 +582,18 @@ func (ns *NFTService) BuyNFT(c *gin.Context) {
 	// Create transaction
 	txID := uuid.New().String()
 	tx := &NFTTransaction{
-		ID:            txID,
-		NFTID:         listing.NFTID,
-		CollectionID:  nft.CollectionID,
-		Chain:         nft.Chain,
-		Seller:        listing.Seller,
-		Buyer:         c.GetString("user_id"),
-		Price:         listing.Price,
-		PriceToken:    listing.PriceToken,
-		Fee:           "2.5", // platform fee
-		Royalty:       collection.RoyaltyFee,
-		TxHash:        "", // not broadcast via RPC; real hash requires on-chain broadcast
-		Timestamp:     time.Now(),
+		ID:           txID,
+		NFTID:        listing.NFTID,
+		CollectionID: nft.CollectionID,
+		Chain:        nft.Chain,
+		Seller:       listing.Seller,
+		Buyer:        c.GetString("user_id"),
+		Price:        listing.Price,
+		PriceToken:   listing.PriceToken,
+		Fee:          "2.5", // platform fee
+		Royalty:      collection.RoyaltyFee,
+		TxHash:       "", // not broadcast via RPC; real hash requires on-chain broadcast
+		Timestamp:    time.Now(),
 	}
 
 	ns.transactions[txID] = tx
@@ -608,7 +608,7 @@ func (ns *NFTService) BuyNFT(c *gin.Context) {
 	nft.LastSaleTime = &tx.Timestamp
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":      true,
+		"success":     true,
 		"tx_id":       txID,
 		"nft_id":      listing.NFTID,
 		"buyer":       c.GetString("user_id"),
@@ -666,7 +666,7 @@ func (ns *NFTService) MakeOffer(c *gin.Context) {
 	ns.offers[offerID] = offer
 
 	c.JSON(http.StatusCreated, gin.H{
-		"success":   true,
+		"success":  true,
 		"offer_id": offerID,
 		"price":    req.Price,
 		"expires":  expiredAt.Unix(),
@@ -678,11 +678,11 @@ func (ns *NFTService) MakeOffer(c *gin.Context) {
 // ============================================================================
 
 type CreateAuctionRequest struct {
-	NFTID     string `json:"nft_id" binding:"required"`
+	NFTID      string `json:"nft_id" binding:"required"`
 	StartPrice string `json:"start_price" binding:"required"`
-	EndPrice  string `json:"end_price"`
-	Quantity  int    `json:"quantity"`
-	Duration  int    `json:"duration"` // hours
+	EndPrice   string `json:"end_price"`
+	Quantity   int    `json:"quantity"`
+	Duration   int    `json:"duration"` // hours
 }
 
 // CreateAuction lists an NFT for English-auction style bidding.
@@ -727,7 +727,7 @@ func (ns *NFTService) CreateAuction(c *gin.Context) {
 		Status:     "active",
 		StartTime:  now,
 		EndTime:    now.Add(duration),
-		CreatedAt:   now,
+		CreatedAt:  now,
 	}
 
 	ns.mu.Lock()
@@ -736,15 +736,15 @@ func (ns *NFTService) CreateAuction(c *gin.Context) {
 	ns.mu.Unlock()
 
 	c.JSON(http.StatusCreated, gin.H{
-		"success":   true,
+		"success":    true,
 		"auction_id": auction.ID,
-		"end_time":  auction.EndTime.Unix(),
+		"end_time":   auction.EndTime.Unix(),
 	})
 }
 
 type PlaceBidRequest struct {
 	AuctionID string `json:"auction_id" binding:"required"`
-	Amount   string `json:"amount" binding:"required"`
+	Amount    string `json:"amount" binding:"required"`
 }
 
 // PlaceBid records a bid on an active auction. Bids must exceed the current
@@ -911,8 +911,8 @@ func (ns *NFTService) GetUserNFTs(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"nfts":   nfts,
-		"total":  len(nfts),
+		"nfts":    nfts,
+		"total":   len(nfts),
 	})
 }
 
@@ -928,9 +928,9 @@ func (ns *NFTService) GetNFTHistory(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":    true,
+		"success":      true,
 		"transactions": txs,
-		"total":     len(txs),
+		"total":        len(txs),
 	})
 }
 
@@ -951,9 +951,9 @@ func (ns *NFTService) GetListings(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
+		"success":  true,
 		"listings": listings,
-		"total":  len(listings),
+		"total":    len(listings),
 	})
 }
 
@@ -989,8 +989,8 @@ func (ns *NFTService) SearchNFTs(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"nfts":   nfts,
-		"total":  len(nfts),
+		"nfts":    nfts,
+		"total":   len(nfts),
 	})
 }
 

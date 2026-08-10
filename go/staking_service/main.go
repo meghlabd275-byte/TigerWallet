@@ -48,60 +48,60 @@ func getEnvOrDefault(key, def string) string {
 // ============================================================================
 
 type StakingPool struct {
-	ID              string         `json:"id" bson:"_id"`
-	Name            string         `json:"name" bson:"name"`
-	Chain           string         `json:"chain" bson:"chain"`
-	Token           string         `json:"token" bson:"token"`
-	RewardToken     string         `json:"reward_token" bson:"reward_token"`
-	ContractAddress string         `json:"contract_address" bson:"contract_address"`
-	TotalStaked    string         `json:"total_staked" bson:"total_staked"`
-	RewardRate     string         `json:"reward_rate" bson:"reward_rate"`
-	MinStake       string         `json:"min_stake" bson:"min_stake"`
-	LockPeriod     int            `json:"lock_period" bson:"lock_period"` // seconds
-	Status         string         `json:"status" bson:"status"` // active, paused, halted
-	APY            string         `json:"apy" bson:"apy"`
-	Delegators     int            `json:"delegators" bson:"delegators"`
-	CreatedAt      time.Time      `json:"created_at" bson:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at" bson:"updated_at"`
+	ID              string    `json:"id" bson:"_id"`
+	Name            string    `json:"name" bson:"name"`
+	Chain           string    `json:"chain" bson:"chain"`
+	Token           string    `json:"token" bson:"token"`
+	RewardToken     string    `json:"reward_token" bson:"reward_token"`
+	ContractAddress string    `json:"contract_address" bson:"contract_address"`
+	TotalStaked     string    `json:"total_staked" bson:"total_staked"`
+	RewardRate      string    `json:"reward_rate" bson:"reward_rate"`
+	MinStake        string    `json:"min_stake" bson:"min_stake"`
+	LockPeriod      int       `json:"lock_period" bson:"lock_period"` // seconds
+	Status          string    `json:"status" bson:"status"`           // active, paused, halted
+	APY             string    `json:"apy" bson:"apy"`
+	Delegators      int       `json:"delegators" bson:"delegators"`
+	CreatedAt       time.Time `json:"created_at" bson:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at" bson:"updated_at"`
 }
 
 type StakingPosition struct {
-	ID           string    `json:"id" bson:"_id"`
-	UserID       string    `json:"user_id" bson:"user_id"`
-	PoolID       string    `json:"pool_id" bson:"pool_id"`
-	Chain        string    `json:"chain" bson:"chain"`
-	Amount       string    `json:"amount" bson:"amount"`
-	RewardPending string   `json:"reward_pending" bson:"reward_pending"`
-	RewardClaimed string   `json:"reward_claimed" bson:"reward_claimed"`
-	StakeTime    time.Time `json:"stake_time" bson:"stake_time"`
-	UnlockTime   *time.Time `json:"unlock_time" bson:"unlock_time"`
-	Status       string    `json:"status" bson:"status"` // staked, unstaking, claimed
+	ID            string     `json:"id" bson:"_id"`
+	UserID        string     `json:"user_id" bson:"user_id"`
+	PoolID        string     `json:"pool_id" bson:"pool_id"`
+	Chain         string     `json:"chain" bson:"chain"`
+	Amount        string     `json:"amount" bson:"amount"`
+	RewardPending string     `json:"reward_pending" bson:"reward_pending"`
+	RewardClaimed string     `json:"reward_claimed" bson:"reward_claimed"`
+	StakeTime     time.Time  `json:"stake_time" bson:"stake_time"`
+	UnlockTime    *time.Time `json:"unlock_time" bson:"unlock_time"`
+	Status        string     `json:"status" bson:"status"` // staked, unstaking, claimed
 }
 
 type UnstakeRequest struct {
-	ID          string    `json:"id" bson:"_id"`
-	UserID      string    `json:"user_id" bson:"user_id"`
-	PoolID      string    `json:"pool_id" bson:"pool_id"`
-	PositionID  string    `json:"position_id" bson:"position_id"`
-	Amount      string    `json:"amount" bson:"amount"`
-	Status      string    `json:"status" bson:"status"` // pending, processing, completed, failed
-	RequestTime time.Time `json:"request_time" bson:"request_time"`
+	ID          string     `json:"id" bson:"_id"`
+	UserID      string     `json:"user_id" bson:"user_id"`
+	PoolID      string     `json:"pool_id" bson:"pool_id"`
+	PositionID  string     `json:"position_id" bson:"position_id"`
+	Amount      string     `json:"amount" bson:"amount"`
+	Status      string     `json:"status" bson:"status"` // pending, processing, completed, failed
+	RequestTime time.Time  `json:"request_time" bson:"request_time"`
 	ProcessTime *time.Time `json:"process_time" bson:"process_time"`
-	TxHash      string    `json:"tx_hash" bson:"tx_hash"`
+	TxHash      string     `json:"tx_hash" bson:"tx_hash"`
 }
 
 type Validator struct {
-	ID          string `json:"id" bson:"_id"`
-	Name        string `json:"name" bson:"name"`
-	Chain       string `json:"chain" bson:"chain"`
-	Address     string `json:"address" bson:"address"`
-	Commission  string `json:"commission" bson:"commission"`
-	Uptime      string `json:"uptime" bson:"uptime"`
-	Delegators  int    `json:"delegators" bson:"delegators"`
-	TotalStake  string `json:"total_stake" bson:"total_stake"`
-	RewardRate  string `json:"reward_rate" bson:"reward_rate"`
-	Status      string `json:"status" bson:"status"`   // active, inactive, jailed
-	Verified    bool   `json:"verified" bson:"verified"` // true only for on-chain verified validators
+	ID         string `json:"id" bson:"_id"`
+	Name       string `json:"name" bson:"name"`
+	Chain      string `json:"chain" bson:"chain"`
+	Address    string `json:"address" bson:"address"`
+	Commission string `json:"commission" bson:"commission"`
+	Uptime     string `json:"uptime" bson:"uptime"`
+	Delegators int    `json:"delegators" bson:"delegators"`
+	TotalStake string `json:"total_stake" bson:"total_stake"`
+	RewardRate string `json:"reward_rate" bson:"reward_rate"`
+	Status     string `json:"status" bson:"status"`     // active, inactive, jailed
+	Verified   bool   `json:"verified" bson:"verified"` // true only for on-chain verified validators
 }
 
 type LiquidStakingToken struct {
@@ -122,13 +122,13 @@ type LiquidStakingToken struct {
 // ============================================================================
 
 type StakingService struct {
-	redis          *redis.Client
-	mu             sync.RWMutex
-	pools          map[string]*StakingPool
-	positions      map[string]*StakingPosition
+	redis           *redis.Client
+	mu              sync.RWMutex
+	pools           map[string]*StakingPool
+	positions       map[string]*StakingPosition
 	unstakeRequests map[string]*UnstakeRequest
-	validators     map[string]*Validator
-	liquidTokens   map[string]*LiquidStakingToken
+	validators      map[string]*Validator
+	liquidTokens    map[string]*LiquidStakingToken
 }
 
 func NewStakingService() *StakingService {
@@ -142,7 +142,7 @@ func NewStakingService() *StakingService {
 		positions:       make(map[string]*StakingPosition),
 		unstakeRequests: make(map[string]*UnstakeRequest),
 		validators:      make(map[string]*Validator),
-		liquidTokens:   make(map[string]*LiquidStakingToken),
+		liquidTokens:    make(map[string]*LiquidStakingToken),
 	}
 
 	ss.initializeDefaultData()
@@ -383,9 +383,9 @@ func (ss *StakingService) Unstake(c *gin.Context) {
 		// Still locked
 		lockRemaining := position.UnlockTime.Sub(now)
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":           "tokens still locked",
+			"error":          "tokens still locked",
 			"unlock_time":    position.UnlockTime.Unix(),
-			"remaining_secs":  int(lockRemaining.Seconds()),
+			"remaining_secs": int(lockRemaining.Seconds()),
 		})
 		return
 	}
@@ -414,7 +414,7 @@ func (ss *StakingService) Unstake(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusAccepted, gin.H{
-		"success":       true,
+		"success":      true,
 		"unstake_id":   unstakeID,
 		"position_id":  req.PositionID,
 		"amount":       req.Amount,
@@ -468,7 +468,7 @@ func (ss *StakingService) Claim(c *gin.Context) {
 	position.RewardClaimed = addStrings(position.RewardClaimed, rewardStr)
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":       true,
+		"success":      true,
 		"position_id":  req.PositionID,
 		"claimed":      rewardStr,
 		"reward_token": pool.RewardToken,
@@ -507,9 +507,9 @@ func (ss *StakingService) GetValidators(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":   true,
+		"success":    true,
 		"validators": validators,
-		"total":     len(validators),
+		"total":      len(validators),
 	})
 }
 
@@ -556,7 +556,7 @@ func (ss *StakingService) Delegate(c *gin.Context) {
 	validator.TotalStake = addStrings(validator.TotalStake, req.Amount)
 
 	c.JSON(http.StatusCreated, gin.H{
-		"success":        true,
+		"success":       true,
 		"delegation_id": delegationID,
 		"validator":     validator.Name,
 		"amount":        req.Amount,
@@ -605,11 +605,11 @@ func (ss *StakingService) Convert(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success":       true,
 		"convert_id":    convertID,
-		"token":        token.Symbol,
-		"amount":       req.Amount,
+		"token":         token.Symbol,
+		"amount":        req.Amount,
 		"output_amount": req.Amount, // 1:1 for simplicity
-		"tx_hash":      "",
-		"status":       "pending",
+		"tx_hash":       "",
+		"status":        "pending",
 	})
 }
 
@@ -628,7 +628,7 @@ func (ss *StakingService) GetRewards(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":       true,
+		"success":        true,
 		"reward_pending": totalPending,
 		"reward_claimed": totalClaimed,
 	})

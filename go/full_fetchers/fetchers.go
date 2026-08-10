@@ -1,12 +1,12 @@
 /**
  * TigerWallet Full Fetchers - Go Distributed/High-Load Implementation
- * 
+ *
  * This package implements all 20 fetchers in Go for distributed systems:
  * - 6 Standard Fetchers
  * - 14 Advanced Fetchers
- * 
+ *
  * Built with Go for high load and distributed systems
- * 
+ *
  * @author TigerWallet Team
  * @version 1.0.0
  */
@@ -16,7 +16,6 @@ package main
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"math/rand"
 	"sync"
@@ -60,47 +59,47 @@ type PriceData struct {
 
 // Gas data
 type GasData struct {
-	ChainID               ChainID  `json:"chainId"`
-	GasPriceGwei          GasPrice `json:"gasPriceGwei"`
-	GasLimit              uint64   `json:"gasLimit"`
-	EstimatedGas          uint64   `json:"estimatedGas"`
-	MaxFeePerGas          uint64   `json:"maxFeePerGas"`
-	MaxPriorityFeePerGas  uint64   `json:"maxPriorityFeePerGas"`
-	NetworkCongestion     string   `json:"networkCongestion"`
-	Timestamp             Timestamp `json:"timestamp"`
+	ChainID              ChainID   `json:"chainId"`
+	GasPriceGwei         GasPrice  `json:"gasPriceGwei"`
+	GasLimit             uint64    `json:"gasLimit"`
+	EstimatedGas         uint64    `json:"estimatedGas"`
+	MaxFeePerGas         uint64    `json:"maxFeePerGas"`
+	MaxPriorityFeePerGas uint64    `json:"maxPriorityFeePerGas"`
+	NetworkCongestion    string    `json:"networkCongestion"`
+	Timestamp            Timestamp `json:"timestamp"`
 }
 
 // Network data
 type NetworkData struct {
-	ChainID      ChainID  `json:"chainId"`
-	Name         string   `json:"name"`
-	Symbol       string   `json:"symbol"`
-	RPCURL       string   `json:"rpcUrl"`
-	BlockNumber  uint64   `json:"blockNumber"`
-	BlockTimeMs  uint64   `json:"blockTimeMs"`
-	GasLimit     uint64   `json:"gasLimit"`
-	NetworkStatus string   `json:"networkStatus"`
-	LastSynced   Timestamp `json:"lastSynced"`
+	ChainID       ChainID   `json:"chainId"`
+	Name          string    `json:"name"`
+	Symbol        string    `json:"symbol"`
+	RPCURL        string    `json:"rpcUrl"`
+	BlockNumber   uint64    `json:"blockNumber"`
+	BlockTimeMs   uint64    `json:"blockTimeMs"`
+	GasLimit      uint64    `json:"gasLimit"`
+	NetworkStatus string    `json:"networkStatus"`
+	LastSynced    Timestamp `json:"lastSynced"`
 }
 
 // Swap quote
 type SwapQuote struct {
-	FromToken    Address      `json:"fromToken"`
-	ToToken      Address      `json:"toToken"`
-	FromAmount   TokenAmount  `json:"fromAmount"`
-	ToAmount     TokenAmount  `json:"toAmount"`
-	PriceImpact  float64      `json:"priceImpact"`
-	GasLimit     uint64       `json:"gasLimit"`
-	EstimatedGas uint64       `json:"estimatedGas"`
-	Route        []SwapRoute  `json:"route"`
-	ExpiresAt    Timestamp    `json:"expiresAt"`
+	FromToken    Address     `json:"fromToken"`
+	ToToken      Address     `json:"toToken"`
+	FromAmount   TokenAmount `json:"fromAmount"`
+	ToAmount     TokenAmount `json:"toAmount"`
+	PriceImpact  float64     `json:"priceImpact"`
+	GasLimit     uint64      `json:"gasLimit"`
+	EstimatedGas uint64      `json:"estimatedGas"`
+	Route        []SwapRoute `json:"route"`
+	ExpiresAt    Timestamp   `json:"expiresAt"`
 }
 
 // Swap route
 type SwapRoute struct {
-	Protocol       string     `json:"protocol"`
-	FromToken     Address    `json:"fromToken"`
-	ToToken       Address    `json:"toToken"`
+	Protocol      string      `json:"protocol"`
+	FromToken     Address     `json:"fromToken"`
+	ToToken       Address     `json:"toToken"`
 	FromAmount    TokenAmount `json:"fromAmount"`
 	ToAmount      TokenAmount `json:"toAmount"`
 	FeePercentage float64     `json:"feePercentage"`
@@ -108,14 +107,14 @@ type SwapRoute struct {
 
 // MEV opportunity
 type MEVOpportunity struct {
-	Type                string    `json:"type"`
-	FrontRunTx          string    `json:"frontRunTx"`
-	BackRunTx           string    `json:"backRunTx"`
-	EstimatedProfitETH  float64   `json:"estimatedProfitEth"`
-	EstimatedProfitUSD  float64   `json:"estimatedProfitUsd"`
-	AffectedAddresses   []Address `json:"affectedAddresses"`
-	BlockNumber         uint64    `json:"blockNumber"`
-	DetectedAt          Timestamp `json:"detectedAt"`
+	Type               string    `json:"type"`
+	FrontRunTx         string    `json:"frontRunTx"`
+	BackRunTx          string    `json:"backRunTx"`
+	EstimatedProfitETH float64   `json:"estimatedProfitEth"`
+	EstimatedProfitUSD float64   `json:"estimatedProfitUsd"`
+	AffectedAddresses  []Address `json:"affectedAddresses"`
+	BlockNumber        uint64    `json:"blockNumber"`
+	DetectedAt         Timestamp `json:"detectedAt"`
 }
 
 // Liquidity data
@@ -133,66 +132,66 @@ type LiquidityData struct {
 
 // Arbitrage opportunity
 type ArbitrageOpportunity struct {
-	DEXA               string `json:"dexA"`
-	DEXB               string `json:"dexB"`
-	TokenA             Address `json:"tokenA"`
-	TokenB             Address `json:"tokenB"`
+	DEXA                string  `json:"dexA"`
+	DEXB                string  `json:"dexB"`
+	TokenA              Address `json:"tokenA"`
+	TokenB              Address `json:"tokenB"`
 	PriceDiffPercentage float64 `json:"priceDiffPercentage"`
-	MaxTradeAmount     float64 `json:"maxTradeAmount"`
-	EstimatedProfit    float64 `json:"estimatedProfit"`
-	ProfitableBlock    uint64  `json:"profitableBlock"`
+	MaxTradeAmount      float64 `json:"maxTradeAmount"`
+	EstimatedProfit     float64 `json:"estimatedProfit"`
+	ProfitableBlock     uint64  `json:"profitableBlock"`
 }
 
 // Token risk data
 type TokenRiskData struct {
-	TokenAddress      Address   `json:"tokenAddress"`
-	RiskScore         uint8     `json:"riskScore"`
-	RiskLevel         string    `json:"riskLevel"`
-	IsVerified        bool      `json:"isVerified"`
-	IsHoneypot        bool      `json:"isHoneypot"`
-	IsPausable        bool      `json:"isPausable"`
-	IsMintable        bool      `json:"isMintable"`
-	HasBlacklist      bool      `json:"hasBlacklist"`
-	HolderCount       float64   `json:"holderCount"`
-	TransferCount24h  float64   `json:"transferCount24h"`
-	Flags             []string  `json:"flags"`
-	AnalyzedAt        Timestamp `json:"analyzedAt"`
+	TokenAddress     Address   `json:"tokenAddress"`
+	RiskScore        uint8     `json:"riskScore"`
+	RiskLevel        string    `json:"riskLevel"`
+	IsVerified       bool      `json:"isVerified"`
+	IsHoneypot       bool      `json:"isHoneypot"`
+	IsPausable       bool      `json:"isPausable"`
+	IsMintable       bool      `json:"isMintable"`
+	HasBlacklist     bool      `json:"hasBlacklist"`
+	HolderCount      float64   `json:"holderCount"`
+	TransferCount24h float64   `json:"transferCount24h"`
+	Flags            []string  `json:"flags"`
+	AnalyzedAt       Timestamp `json:"analyzedAt"`
 }
 
 // Smart contract info
 type ContractInfo struct {
-	ContractAddress  Address            `json:"contractAddress"`
-	ContractType     string             `json:"contractType"`
-	SourceCode       string             `json:"sourceCode"`
-	IsVerified       bool               `json:"isVerified"`
-	CompilerVersion  string             `json:"compilerVersion"`
-	Functions        []string           `json:"functions"`
-	ABI              map[string]string  `json:"abi"`
-	LastVerified     Timestamp          `json:"lastVerified"`
+	ContractAddress Address           `json:"contractAddress"`
+	ContractType    string            `json:"contractType"`
+	SourceCode      string            `json:"sourceCode"`
+	IsVerified      bool              `json:"isVerified"`
+	CompilerVersion string            `json:"compilerVersion"`
+	Functions       []string          `json:"functions"`
+	ABI             map[string]string `json:"abi"`
+	LastVerified    Timestamp         `json:"lastVerified"`
 }
 
 // DeFi yield data
 type YieldData struct {
-	Protocol     string   `json:"protocol"`
+	Protocol    string    `json:"protocol"`
 	PoolAddress Address   `json:"poolAddress"`
 	RewardToken Address   `json:"rewardToken"`
-	APY          float64  `json:"apy"`
-	TVL          float64  `json:"tvl"`
-	RewardRate   float64  `json:"rewardRate"`
-	LockPeriod   uint64   `json:"lockPeriod"`
-	RiskLevel    string   `json:"riskLevel"`
-	LastUpdated  Timestamp `json:"lastUpdated"`
+	APY         float64   `json:"apy"`
+	TVL         float64   `json:"tvl"`
+	RewardRate  float64   `json:"rewardRate"`
+	LockPeriod  uint64    `json:"lockPeriod"`
+	RiskLevel   string    `json:"riskLevel"`
+	LastUpdated Timestamp `json:"lastUpdated"`
 }
 
 // Staking data
 type StakingData struct {
-	Validator         Address `json:"validator"`
-	Network           string  `json:"network"`
-	TotalStaked       float64 `json:"totalStaked"`
-	RewardsEarned     float64 `json:"rewardsEarned"`
-	Commission        float64 `json:"commission"`
-	UptimePercentage  float64 `json:"uptimePercentage"`
-	LastRewardBlock   uint64  `json:"lastRewardBlock"`
+	Validator        Address `json:"validator"`
+	Network          string  `json:"network"`
+	TotalStaked      float64 `json:"totalStaked"`
+	RewardsEarned    float64 `json:"rewardsEarned"`
+	Commission       float64 `json:"commission"`
+	UptimePercentage float64 `json:"uptimePercentage"`
+	LastRewardBlock  uint64  `json:"lastRewardBlock"`
 }
 
 // NFT floor price
@@ -209,79 +208,79 @@ type NFTFloorPrice struct {
 
 // Whale transaction
 type WhaleTransaction struct {
-	TxHash      string     `json:"txHash"`
-	From        Address    `json:"from"`
-	To          Address    `json:"to"`
+	TxHash      string      `json:"txHash"`
+	From        Address     `json:"from"`
+	To          Address     `json:"to"`
 	Amount      TokenAmount `json:"amount"`
-	AmountUSD   float64    `json:"amountUsd"`
-	TokenSymbol string     `json:"tokenSymbol"`
-	Timestamp   Timestamp  `json:"timestamp"`
-	BlockNumber uint64     `json:"blockNumber"`
+	AmountUSD   float64     `json:"amountUsd"`
+	TokenSymbol string      `json:"tokenSymbol"`
+	Timestamp   Timestamp   `json:"timestamp"`
+	BlockNumber uint64      `json:"blockNumber"`
 }
 
 // On-chain analytics
 type OnChainAnalytics struct {
-	ChainID             ChainID  `json:"chainId"`
-	TotalValueLocked    float64  `json:"totalValueLocked"`
-	TotalVolume24h      float64  `json:"totalVolume24h"`
-	TotalTransactions24h float64  `json:"totalTransactions24h"`
-	AverageGasPrice     float64  `json:"averageGasPrice"`
-	ActiveAddresses     uint64   `json:"activeAddresses"`
-	DeFiTVL             float64  `json:"defiTvl"`
-	NFTVolume           float64  `json:"nftVolume"`
-	Timestamp           Timestamp `json:"timestamp"`
+	ChainID              ChainID   `json:"chainId"`
+	TotalValueLocked     float64   `json:"totalValueLocked"`
+	TotalVolume24h       float64   `json:"totalVolume24h"`
+	TotalTransactions24h float64   `json:"totalTransactions24h"`
+	AverageGasPrice      float64   `json:"averageGasPrice"`
+	ActiveAddresses      uint64    `json:"activeAddresses"`
+	DeFiTVL              float64   `json:"defiTvl"`
+	NFTVolume            float64   `json:"nftVolume"`
+	Timestamp            Timestamp `json:"timestamp"`
 }
 
 // Transaction simulation result
 type SimulationResult struct {
-	TxHash          string       `json:"txHash"`
-	Success         bool         `json:"success"`
-	RevertReason    string       `json:"revertReason"`
-	GasUsed         uint64       `json:"gasUsed"`
-	StateChanges    string       `json:"stateChanges"`
-	EstimatedValue  float64      `json:"estimatedValue"`
-	Logs            []LogEvent   `json:"logs"`
-	SimulatedAt     Timestamp    `json:"simulatedAt"`
+	TxHash         string     `json:"txHash"`
+	Success        bool       `json:"success"`
+	RevertReason   string     `json:"revertReason"`
+	GasUsed        uint64     `json:"gasUsed"`
+	StateChanges   string     `json:"stateChanges"`
+	EstimatedValue float64    `json:"estimatedValue"`
+	Logs           []LogEvent `json:"logs"`
+	SimulatedAt    Timestamp  `json:"simulatedAt"`
 }
 
 // Log event
 type LogEvent struct {
-	Address   Address   `json:"address"`
-	Topics    []string  `json:"topics"`
-	Data      string    `json:"data"`
-	LogIndex  uint64    `json:"logIndex"`
+	Address  Address  `json:"address"`
+	Topics   []string `json:"topics"`
+	Data     string   `json:"data"`
+	LogIndex uint64   `json:"logIndex"`
 }
 
 // Cross-chain route
 type CrossChainRoute struct {
-	FromChain             string        `json:"fromChain"`
-	ToChain               string        `json:"toChain"`
-	FromToken             Address       `json:"fromToken"`
-	ToToken               Address       `json:"toToken"`
-	FromAmount            TokenAmount   `json:"fromAmount"`
-	ToAmount              TokenAmount   `json:"toAmount"`
-	PriceImpact           float64       `json:"priceImpact"`
-	EstimatedTimeMinutes  uint64        `json:"estimatedTimeMinutes"`
-	TotalFeeUSD           float64       `json:"totalFeeUsd"`
-	Steps                 []BridgeStep  `json:"steps"`
+	FromChain            string       `json:"fromChain"`
+	ToChain              string       `json:"toChain"`
+	FromToken            Address      `json:"fromToken"`
+	ToToken              Address      `json:"toToken"`
+	FromAmount           TokenAmount  `json:"fromAmount"`
+	ToAmount             TokenAmount  `json:"toAmount"`
+	PriceImpact          float64      `json:"priceImpact"`
+	EstimatedTimeMinutes uint64       `json:"estimatedTimeMinutes"`
+	TotalFeeUSD          float64      `json:"totalFeeUsd"`
+	Steps                []BridgeStep `json:"steps"`
 }
 
 // Bridge step
 type BridgeStep struct {
-	Protocol   string  `json:"protocol"`
-	FromChain  string  `json:"fromChain"`
-	ToChain    string  `json:"toChain"`
-	FromToken  Address `json:"fromToken"`
-	ToToken    Address `json:"toToken"`
+	Protocol  string  `json:"protocol"`
+	FromChain string  `json:"fromChain"`
+	ToChain   string  `json:"toChain"`
+	FromToken Address `json:"fromToken"`
+	ToToken   Address `json:"toToken"`
 }
 
 // Fetcher statistics
 type FetcherStats struct {
-	Name              string  `json:"name"`
-	LastLatencyNs     uint64  `json:"lastLatencyNs"`
-	TotalRequests     uint64  `json:"totalRequests"`
+	Name               string  `json:"name"`
+	LastLatencyNs      uint64  `json:"lastLatencyNs"`
+	TotalRequests      uint64  `json:"totalRequests"`
 	SuccessfulRequests uint64  `json:"successfulRequests"`
-	SuccessRate       float64 `json:"successRate"`
+	SuccessRate        float64 `json:"successRate"`
 }
 
 // =============================================================================
@@ -324,16 +323,16 @@ func (f *BaseFetcher) RecordRequest(success bool) {
 func (f *BaseFetcher) GetStats() FetcherStats {
 	total := f.TotalRequests.Load()
 	success := f.SuccessfulRequests.Load()
-	
+
 	var rate float64
 	if total > 0 {
 		rate = float64(success) / float64(total) * 100.0
 	}
-	
+
 	return FetcherStats{
-		Name:                f.Name,
-		LastLatencyNs:       f.LastLatencyNs.Load(),
-		TotalRequests:       total,
+		Name:               f.Name,
+		LastLatencyNs:      f.LastLatencyNs.Load(),
+		TotalRequests:      total,
 		SuccessfulRequests: success,
 		SuccessRate:        rate,
 	}
@@ -357,7 +356,7 @@ func NewERC20TokenFetcher() *ERC20TokenFetcher {
 
 func (f *ERC20TokenFetcher) Initialize() error {
 	fmt.Println("Initializing ERC20 Token Fetcher...")
-	
+
 	// Add default tokens
 	defaultTokens := []TokenMetadata{
 		{
@@ -393,24 +392,24 @@ func (f *ERC20TokenFetcher) Initialize() error {
 			LastUpdated: currentTimestamp(),
 		},
 	}
-	
+
 	for _, token := range defaultTokens {
 		f.Tokens.Store(token.Address, token)
 	}
-	
+
 	f.SetRunning(true)
 	return nil
 }
 
 func (f *ERC20TokenFetcher) Fetch() error {
 	start := time.Now()
-	
+
 	// Fetch token data
 	// In production, query blockchain
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
@@ -451,57 +450,57 @@ func NewGasEstimatorFetcher() *GasEstimatorFetcher {
 
 func (f *GasEstimatorFetcher) Initialize() error {
 	fmt.Println("Initializing Gas Estimator Fetcher...")
-	
+
 	// Add default chains
 	networks := map[ChainID]GasData{
 		1: {
-			ChainID:               1,
-			GasPriceGwei:          20,
-			GasLimit:              30000000,
-			EstimatedGas:          21000,
+			ChainID:              1,
+			GasPriceGwei:         20,
+			GasLimit:             30000000,
+			EstimatedGas:         21000,
 			MaxFeePerGas:         50,
 			MaxPriorityFeePerGas: 2,
-			NetworkCongestion:     "normal",
-			Timestamp:             currentTimestamp(),
+			NetworkCongestion:    "normal",
+			Timestamp:            currentTimestamp(),
 		},
 		56: {
-			ChainID:               56,
-			GasPriceGwei:          5,
-			GasLimit:              30000000,
-			EstimatedGas:          21000,
+			ChainID:              56,
+			GasPriceGwei:         5,
+			GasLimit:             30000000,
+			EstimatedGas:         21000,
 			MaxFeePerGas:         10,
 			MaxPriorityFeePerGas: 1,
-			NetworkCongestion:     "normal",
-			Timestamp:             currentTimestamp(),
+			NetworkCongestion:    "normal",
+			Timestamp:            currentTimestamp(),
 		},
 		137: {
-			ChainID:               137,
-			GasPriceGwei:          50,
-			GasLimit:              30000000,
-			EstimatedGas:          21000,
+			ChainID:              137,
+			GasPriceGwei:         50,
+			GasLimit:             30000000,
+			EstimatedGas:         21000,
 			MaxFeePerGas:         100,
 			MaxPriorityFeePerGas: 5,
-			NetworkCongestion:     "normal",
-			Timestamp:             currentTimestamp(),
+			NetworkCongestion:    "normal",
+			Timestamp:            currentTimestamp(),
 		},
 	}
-	
+
 	for chainID, data := range networks {
 		f.GasData.Store(chainID, data)
 	}
-	
+
 	f.SetRunning(true)
 	return nil
 }
 
 func (f *GasEstimatorFetcher) Fetch() error {
 	start := time.Now()
-	
+
 	// Update gas prices
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
@@ -540,7 +539,7 @@ func NewPriceFeedFetcher() *PriceFeedFetcher {
 
 func (f *PriceFeedFetcher) Initialize() error {
 	fmt.Println("Initializing Price Feed Fetcher...")
-	
+
 	// Add default prices
 	defaultPrices := map[string]PriceData{
 		"ETH/USD": {
@@ -564,23 +563,23 @@ func (f *PriceFeedFetcher) Initialize() error {
 			Confidence:   95,
 		},
 	}
-	
+
 	for pair, data := range defaultPrices {
 		f.Prices.Store(pair, data)
 	}
-	
+
 	f.SetRunning(true)
 	return nil
 }
 
 func (f *PriceFeedFetcher) Fetch() error {
 	start := time.Now()
-	
+
 	// Update prices from aggregators
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
@@ -615,8 +614,8 @@ type DAppConnectionFetcher struct {
 }
 
 type WCSession struct {
-	Topic        string    `json:"topic"`
-	WalletAddress Address  `json:"walletAddress"`
+	Topic         string    `json:"topic"`
+	WalletAddress Address   `json:"walletAddress"`
 	PeerMetadata  string    `json:"peerMetadata"`
 	ChainID       string    `json:"chainId"`
 	CreatedAt     Timestamp `json:"createdAt"`
@@ -638,7 +637,7 @@ func (f *DAppConnectionFetcher) Initialize() error {
 
 func (f *DAppConnectionFetcher) Fetch() error {
 	start := time.Now()
-	
+
 	// Clean up expired sessions
 	now := currentTimestamp()
 	f.Sessions.Range(func(key, value interface{}) bool {
@@ -648,18 +647,18 @@ func (f *DAppConnectionFetcher) Fetch() error {
 		}
 		return true
 	})
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
 func (f *DAppConnectionFetcher) CreateSession(walletAddress Address, peerMetadata string) string {
 	topic := "0x" + generateHex(32)
-	
+
 	session := WCSession{
-		Topic:        topic,
+		Topic:         topic,
 		WalletAddress: walletAddress,
 		PeerMetadata:  peerMetadata,
 		ChainID:       "1",
@@ -667,9 +666,9 @@ func (f *DAppConnectionFetcher) CreateSession(walletAddress Address, peerMetadat
 		UpdatedAt:     currentTimestamp(),
 		ExpiresAt:     currentTimestamp() + 600000, // 10 minutes
 	}
-	
+
 	f.Sessions.Store(topic, session)
-	
+
 	return topic
 }
 
@@ -700,7 +699,7 @@ func NewNetworkFetcher() *NetworkFetcher {
 
 func (f *NetworkFetcher) Initialize() error {
 	fmt.Println("Initializing Network Fetcher...")
-	
+
 	networks := map[ChainID]NetworkData{
 		1: {
 			ChainID:       1,
@@ -736,23 +735,23 @@ func (f *NetworkFetcher) Initialize() error {
 			LastSynced:    currentTimestamp(),
 		},
 	}
-	
+
 	for chainID, data := range networks {
 		f.Networks.Store(chainID, data)
 	}
-	
+
 	f.SetRunning(true)
 	return nil
 }
 
 func (f *NetworkFetcher) Fetch() error {
 	start := time.Now()
-	
+
 	// Update network data
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
@@ -793,25 +792,25 @@ func (f *SwapQuoteFetcher) Initialize() error {
 
 func (f *SwapQuoteFetcher) Fetch() error {
 	start := time.Now()
-	
+
 	// Quotes are fetched on-demand
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
 func (f *SwapQuoteFetcher) GetQuote(fromToken, toToken, fromAmount TokenAmount, chainID ChainID) SwapQuote {
 	fromAmountFloat := 0.0
 	fmt.Sscanf(string(fromAmount), "%f", &fromAmountFloat)
-	
+
 	rate := 0.998
 	toAmountFloat := fromAmountFloat * rate
-	
+
 	return SwapQuote{
-		FromToken:    fromToken,
-		ToToken:      toToken,
+		FromToken:    Address(fromToken),
+		ToToken:      Address(toToken),
 		FromAmount:   fromAmount,
 		ToAmount:     TokenAmount(fmt.Sprintf("%.0f", toAmountFloat)),
 		PriceImpact:  0.1,
@@ -838,11 +837,11 @@ type AIPricePredictorFetcher struct {
 }
 
 type PricePrediction struct {
-	Token         Address           `json:"token"`
-	CurrentPrice  float64           `json:"currentPrice"`
-	Predictions   map[uint64]float64 `json:"predictions"`
-	Confidence    float64           `json:"confidence"`
-	PredictedAt   Timestamp         `json:"predictedAt"`
+	Token        Address            `json:"token"`
+	CurrentPrice float64            `json:"currentPrice"`
+	Predictions  map[uint64]float64 `json:"predictions"`
+	Confidence   float64            `json:"confidence"`
+	PredictedAt  Timestamp          `json:"predictedAt"`
 }
 
 func NewAIPricePredictorFetcher() *AIPricePredictorFetcher {
@@ -859,12 +858,12 @@ func (f *AIPricePredictorFetcher) Initialize() error {
 
 func (f *AIPricePredictorFetcher) Fetch() error {
 	start := time.Now()
-	
+
 	// Generate predictions
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
@@ -902,12 +901,12 @@ func (f *MEVOpportunityFetcher) Initialize() error {
 
 func (f *MEVOpportunityFetcher) Fetch() error {
 	start := time.Now()
-	
+
 	// Detect MEV opportunities
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
@@ -942,12 +941,12 @@ func (f *LiquidityFetcher) Initialize() error {
 
 func (f *LiquidityFetcher) Fetch() error {
 	start := time.Now()
-	
+
 	// Fetch liquidity data
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
@@ -986,19 +985,19 @@ func (f *ArbitrageFetcher) Initialize() error {
 
 func (f *ArbitrageFetcher) Fetch() error {
 	start := time.Now()
-	
+
 	// Detect arbitrage opportunities
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
 func (f *ArbitrageFetcher) GetProfitable() []ArbitrageOpportunity {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	
+
 	var result []ArbitrageOpportunity
 	for _, opp := range f.Opportunities {
 		if opp.EstimatedProfit >= 50.0 {
@@ -1033,12 +1032,12 @@ func (f *TokenRiskFetcher) Initialize() error {
 
 func (f *TokenRiskFetcher) Fetch() error {
 	start := time.Now()
-	
+
 	// Analyze token risks
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
@@ -1075,12 +1074,12 @@ func (f *SmartContractFetcher) Initialize() error {
 
 func (f *SmartContractFetcher) Fetch() error {
 	start := time.Now()
-	
+
 	// Fetch contract info
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
@@ -1116,12 +1115,12 @@ func (f *GasMarketFetcher) Initialize() error {
 
 func (f *GasMarketFetcher) Fetch() error {
 	start := time.Now()
-	
+
 	// Fetch gas market data
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
@@ -1144,55 +1143,55 @@ func NewDeFiYieldFetcher() *DeFiYieldFetcher {
 
 func (f *DeFiYieldFetcher) Initialize() error {
 	fmt.Println("Initializing DeFi Yield Fetcher...")
-	
+
 	// Add default yields
 	defaultYields := map[string]YieldData{
 		"aave": {
-			Protocol:     "Aave",
-			PoolAddress:  "0x0000000000000000000000000000000000000000",
-			RewardToken:  "0x0000000000000000000000000000000000000000",
-			APY:          5.0,
-			TVL:          15000000000.0,
-			RewardRate:   0.05,
-			LockPeriod:   0,
-			RiskLevel:    "low",
-			LastUpdated:  currentTimestamp(),
+			Protocol:    "Aave",
+			PoolAddress: "0x0000000000000000000000000000000000000000",
+			RewardToken: "0x0000000000000000000000000000000000000000",
+			APY:         5.0,
+			TVL:         15000000000.0,
+			RewardRate:  0.05,
+			LockPeriod:  0,
+			RiskLevel:   "low",
+			LastUpdated: currentTimestamp(),
 		},
 		"compound": {
-			Protocol:     "Compound",
-			PoolAddress:  "0x0000000000000000000000000000000000000000",
-			RewardToken:  "0x0000000000000000000000000000000000000000",
-			APY:          4.5,
-			TVL:          8000000000.0,
-			RewardRate:   0.045,
-			LockPeriod:   0,
-			RiskLevel:    "low",
-			LastUpdated:  currentTimestamp(),
+			Protocol:    "Compound",
+			PoolAddress: "0x0000000000000000000000000000000000000000",
+			RewardToken: "0x0000000000000000000000000000000000000000",
+			APY:         4.5,
+			TVL:         8000000000.0,
+			RewardRate:  0.045,
+			LockPeriod:  0,
+			RiskLevel:   "low",
+			LastUpdated: currentTimestamp(),
 		},
 	}
-	
+
 	for protocol, data := range defaultYields {
 		f.Yields.Store(protocol, data)
 	}
-	
+
 	f.SetRunning(true)
 	return nil
 }
 
 func (f *DeFiYieldFetcher) Fetch() error {
 	start := time.Now()
-	
+
 	// Fetch yield data
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
 func (f *DeFiYieldFetcher) GetBestYields(minTVL float64) []YieldData {
 	var result []YieldData
-	
+
 	f.Yields.Range(func(key, value interface{}) bool {
 		yield := value.(YieldData)
 		if yield.TVL >= minTVL {
@@ -1200,7 +1199,7 @@ func (f *DeFiYieldFetcher) GetBestYields(minTVL float64) []YieldData {
 		}
 		return true
 	})
-	
+
 	return result
 }
 
@@ -1229,12 +1228,12 @@ func (f *StakingOptimizerFetcher) Initialize() error {
 
 func (f *StakingOptimizerFetcher) Fetch() error {
 	start := time.Now()
-	
+
 	// Fetch staking data
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
@@ -1271,12 +1270,12 @@ func (f *NFTFloorPriceFetcher) Initialize() error {
 
 func (f *NFTFloorPriceFetcher) Fetch() error {
 	start := time.Now()
-	
+
 	// Fetch floor prices
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
@@ -1314,19 +1313,19 @@ func (f *WhaleTransactionFetcher) Initialize() error {
 
 func (f *WhaleTransactionFetcher) Fetch() error {
 	start := time.Now()
-	
+
 	// Monitor for whale transactions
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
 func (f *WhaleTransactionFetcher) GetRecent(limit int) []WhaleTransaction {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	
+
 	if limit > len(f.Transactions) {
 		limit = len(f.Transactions)
 	}
@@ -1358,12 +1357,12 @@ func (f *OnChainAnalyticsFetcher) Initialize() error {
 
 func (f *OnChainAnalyticsFetcher) Fetch() error {
 	start := time.Now()
-	
+
 	// Fetch analytics
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
@@ -1399,25 +1398,25 @@ func (f *TransactionSimulatorFetcher) Initialize() error {
 
 func (f *TransactionSimulatorFetcher) Fetch() error {
 	start := time.Now()
-	
+
 	// Simulations are done on-demand
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
 func (f *TransactionSimulatorFetcher) Simulate(from, to Address, value TokenAmount, data string, chainID ChainID) SimulationResult {
 	return SimulationResult{
-		TxHash:          "0x" + generateHex(32),
-		Success:         true,
-		RevertReason:    "",
-		GasUsed:         21000,
-		StateChanges:    "{}",
-		EstimatedValue:  0,
-		Logs:            []LogEvent{},
-		SimulatedAt:     currentTimestamp(),
+		TxHash:         "0x" + generateHex(32),
+		Success:        true,
+		RevertReason:   "",
+		GasUsed:        21000,
+		StateChanges:   "{}",
+		EstimatedValue: 0,
+		Logs:           []LogEvent{},
+		SimulatedAt:    currentTimestamp(),
 	}
 }
 
@@ -1445,39 +1444,39 @@ func (f *CrossChainRouteOptimizer) Initialize() error {
 
 func (f *CrossChainRouteOptimizer) Fetch() error {
 	start := time.Now()
-	
+
 	// Fetch routes
-	
+
 	f.UpdateLatency(uint64(time.Since(start).Nanoseconds()))
 	f.RecordRequest(true)
-	
+
 	return nil
 }
 
 func (f *CrossChainRouteOptimizer) FindBestRoute(fromChain, toChain string, fromToken, toToken Address, amount TokenAmount) CrossChainRoute {
 	var amountFloat float64
 	fmt.Sscanf(string(amount), "%f", &amountFloat)
-	
+
 	toAmountFloat := amountFloat * 0.9995
 	feeUSD := amountFloat * 0.005
-	
+
 	return CrossChainRoute{
 		FromChain:            fromChain,
 		ToChain:              toChain,
-		FromToken:           fromToken,
-		ToToken:             toToken,
-		FromAmount:          amount,
-		ToAmount:            TokenAmount(fmt.Sprintf("%.0f", toAmountFloat)),
-		PriceImpact:         0.05,
+		FromToken:            fromToken,
+		ToToken:              toToken,
+		FromAmount:           amount,
+		ToAmount:             TokenAmount(fmt.Sprintf("%.0f", toAmountFloat)),
+		PriceImpact:          0.05,
 		EstimatedTimeMinutes: 15,
 		TotalFeeUSD:          feeUSD,
 		Steps: []BridgeStep{
 			{
-				Protocol:   "layerzero",
-				FromChain:  fromChain,
-				ToChain:    toChain,
-				FromToken:  fromToken,
-				ToToken:    toToken,
+				Protocol:  "layerzero",
+				FromChain: fromChain,
+				ToChain:   toChain,
+				FromToken: fromToken,
+				ToToken:   toToken,
 			},
 		},
 	}
@@ -1507,7 +1506,7 @@ type FullFetcherManager struct {
 
 func NewFullFetcherManager() *FullFetcherManager {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	return &FullFetcherManager{
 		fetchers: make(map[string]interface {
 			Initialize() error
@@ -1531,20 +1530,20 @@ func (m *FullFetcherManager) AddFetcher(name string, fetcher interface {
 
 func (m *FullFetcherManager) InitializeAll() error {
 	fmt.Println("Initializing all fetchers...")
-	
+
 	for name, fetcher := range m.fetchers {
 		if err := fetcher.Initialize(); err != nil {
 			return fmt.Errorf("failed to initialize %s: %w", name, err)
 		}
 	}
-	
+
 	fmt.Println("All fetchers initialized successfully!")
 	return nil
 }
 
 func (m *FullFetcherManager) StartAll() {
 	m.running.Store(true)
-	
+
 	for name, fetcher := range m.fetchers {
 		m.wg.Add(1)
 		go func(name string, fetcher interface {
@@ -1553,10 +1552,10 @@ func (m *FullFetcherManager) StartAll() {
 			GetStats() FetcherStats
 		}) {
 			defer m.wg.Done()
-			
+
 			ticker := time.NewTicker(1 * time.Second)
 			defer ticker.Stop()
-			
+
 			for m.running.Load() {
 				select {
 				case <-m.ctx.Done():
@@ -1576,7 +1575,7 @@ func (m *FullFetcherManager) StopAll() {
 	m.running.Store(false)
 	m.cancel()
 	m.wg.Wait()
-	
+
 	for _, fetcher := range m.fetchers {
 		fetcher.Shutdown()
 	}
@@ -1584,17 +1583,17 @@ func (m *FullFetcherManager) StopAll() {
 
 func (m *FullFetcherManager) GetStats() map[string]FetcherStats {
 	stats := make(map[string]FetcherStats)
-	
+
 	for name, fetcher := range m.fetchers {
 		stats[name] = fetcher.GetStats()
 	}
-	
+
 	return stats
 }
 
 func (m *FullFetcherManager) PrintStats() {
 	fmt.Println("\n=== Fetcher Statistics (Go) ===")
-	
+
 	for name, stats := range m.GetStats() {
 		fmt.Printf("%s: latency=%dns, requests=%d, success_rate=%.2f%%\n",
 			name, stats.LastLatencyNs, stats.TotalRequests, stats.SuccessRate)
@@ -1622,10 +1621,10 @@ func generateHex(length int) string {
 func main() {
 	fmt.Println("TigerWallet Full Fetchers - Go Distributed System")
 	fmt.Println("==================================================")
-	
+
 	// Create manager
 	manager := NewFullFetcherManager()
-	
+
 	// Add standard fetchers
 	manager.AddFetcher("erc20", NewERC20TokenFetcher())
 	manager.AddFetcher("gas", NewGasEstimatorFetcher())
@@ -1633,7 +1632,7 @@ func main() {
 	manager.AddFetcher("dapp", NewDAppConnectionFetcher())
 	manager.AddFetcher("network", NewNetworkFetcher())
 	manager.AddFetcher("swap", NewSwapQuoteFetcher())
-	
+
 	// Add advanced fetchers
 	manager.AddFetcher("ai_price", NewAIPricePredictorFetcher())
 	manager.AddFetcher("mev", NewMEVOpportunityFetcher())
@@ -1649,24 +1648,24 @@ func main() {
 	manager.AddFetcher("analytics", NewOnChainAnalyticsFetcher())
 	manager.AddFetcher("simulator", NewTransactionSimulatorFetcher())
 	manager.AddFetcher("cross_chain", NewCrossChainRouteOptimizer())
-	
+
 	// Initialize
 	if err := manager.InitializeAll(); err != nil {
 		fmt.Printf("Failed to initialize: %v\n", err)
 		return
 	}
-	
+
 	// Start
 	manager.StartAll()
-	
+
 	// Run for a bit then print stats
 	for i := 0; i < 5; i++ {
 		time.Sleep(2 * time.Second)
 		manager.PrintStats()
 	}
-	
+
 	// Stop
 	manager.StopAll()
-	
+
 	fmt.Println("All fetchers stopped.")
 }

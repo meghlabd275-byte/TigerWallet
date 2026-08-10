@@ -1,7 +1,7 @@
 /**
  * TigerWallet API Gateway
  * High-Load Distributed Go Implementation
- * 
+ *
  * Features:
  * - Rate limiting (token bucket)
  * - Request routing
@@ -14,9 +14,9 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -27,82 +27,82 @@ import (
 // ============== Data Structures ==============
 
 type Route struct {
-	Path        string            `json:"path"`
-	Method      string            `json:"method"`
-	Backend     string            `json:"backend"`
-	Auth        bool              `json:"auth"`
-	RateLimit   RateLimitConfig   `json:"rate_limit"`
-	Timeout     time.Duration     `json:"timeout"`
-	CacheTTL    time.Duration     `json:"cache_ttl"`
+	Path      string          `json:"path"`
+	Method    string          `json:"method"`
+	Backend   string          `json:"backend"`
+	Auth      bool            `json:"auth"`
+	RateLimit RateLimitConfig `json:"rate_limit"`
+	Timeout   time.Duration   `json:"timeout"`
+	CacheTTL  time.Duration   `json:"cache_ttl"`
 }
 
 type RateLimitConfig struct {
-	RequestsPerSecond float64   `json:"requests_per_second"`
-	Burst             int       `json:"burst"`
+	RequestsPerSecond float64 `json:"requests_per_second"`
+	Burst             int     `json:"burst"`
 }
 
 type APIKey struct {
-	ID        string    `json:"id"`
-	Key       string    `json:"key"`
-	UserID    string    `json:"user_id"`
-	Name      string    `json:"name"`
-	RateLimit float64   `json:"rate_limit"`
-	ExpiresAt int64     `json:"expires_at"`
-	CreatedAt int64     `json:"created_at"`
-	Active    bool      `json:"active"`
+	ID        string  `json:"id"`
+	Key       string  `json:"key"`
+	UserID    string  `json:"user_id"`
+	Name      string  `json:"name"`
+	RateLimit float64 `json:"rate_limit"`
+	ExpiresAt int64   `json:"expires_at"`
+	CreatedAt int64   `json:"created_at"`
+	Active    bool    `json:"active"`
 }
 
 type RequestLog struct {
-	ID          string    `json:"id"`
-	Timestamp   int64     `json:"timestamp"`
-	Method      string    `json:"method"`
-	Path        string    `json:"path"`
-	StatusCode  int       `json:"status_code"`
-	LatencyMs   int64     `json:"latency_ms"`
-	UserID      string    `json:"user_id"`
-	IP          string    `json:"ip"`
-	Error       string    `json:"error,omitempty"`
+	ID         string `json:"id"`
+	Timestamp  int64  `json:"timestamp"`
+	Method     string `json:"method"`
+	Path       string `json:"path"`
+	StatusCode int    `json:"status_code"`
+	LatencyMs  int64  `json:"latency_ms"`
+	UserID     string `json:"user_id"`
+	IP         string `json:"ip"`
+	Error      string `json:"error,omitempty"`
 }
 
 type CircuitBreaker struct {
-	Failures      int
-	Successes     int
-	State         string // closed, open, half-open
-	LastFailure   time.Time
-	Threshold     int
-	Timeout       time.Duration
-	mu            sync.RWMutex
+	Failures    int
+	Successes   int
+	State       string // closed, open, half-open
+	LastFailure time.Time
+	Threshold   int
+	Timeout     time.Duration
+	mu          sync.RWMutex
 }
 
 type RateLimiter struct {
-	tokens    float64
-	maxTokens float64
+	tokens     float64
+	maxTokens  float64
 	refillRate float64
-	mu        sync.Mutex
+	mu         sync.Mutex
 	lastRefill time.Time
 }
 
 type HealthStatus struct {
-	Status      string            `json:"status"`
-	Uptime      time.Duration     `json:"uptime"`
-	Requests    uint64           `json:"requests"`
-	Errors      uint64           `json:"errors"`
-	RateLimited uint64           `json:"rate_limited"`
-	Services    map[string]bool  `json:"services"`
+	Status      string          `json:"status"`
+	Uptime      time.Duration   `json:"uptime"`
+	Requests    uint64          `json:"requests"`
+	Errors      uint64          `json:"errors"`
+	RateLimited uint64          `json:"rate_limited"`
+	Services    map[string]bool `json:"services"`
 }
 
 // ============== Gateway ==============
 
 type APIGateway struct {
-	routes      map[string]*Route
-	apiKeys     map[string]*APIKey
+	routes          map[string]*Route
+	apiKeys         map[string]*APIKey
 	circuitBreakers map[string]*CircuitBreaker
-	rateLimiters map[string]*RateLimiter
-	requestLogs []RequestLog
+	rateLimiters    map[string]*RateLimiter
+	requestLogs     []RequestLog
 
-	mu          sync.RWMutex
-	startTime   time.Time
-	stats       struct {
+	mu        sync.RWMutex
+	startTime time.Time
+	stats     struct {
 		requests    uint64
 		errors      uint64
 		rateLimited uint64
@@ -113,12 +113,12 @@ type APIGateway struct {
 
 func NewAPIGateway() *APIGateway {
 	g := &APIGateway{
-		routes:           make(map[string]*Route),
-		apiKeys:          make(map[string]*APIKey),
-		circuitBreakers:  make(map[string]*CircuitBreaker),
-		rateLimiters:     make(map[string]*RateLimiter),
-		requestLogs:      make([]RequestLog, 0, 10000),
-		startTime:        time.Now(),
+		routes:          make(map[string]*Route),
+		apiKeys:         make(map[string]*APIKey),
+		circuitBreakers: make(map[string]*CircuitBreaker),
+		rateLimiters:    make(map[string]*RateLimiter),
+		requestLogs:     make([]RequestLog, 0, 10000),
+		startTime:       time.Now(),
 	}
 
 	g.initRoutes()
@@ -219,16 +219,16 @@ func (g *APIGateway) initCircuitBreakers() {
 
 func (g *APIGateway) Run() error {
 	mux := http.NewServeMux()
-	
+
 	// Main handler
 	mux.HandleFunc("/", g.handleRequest)
-	
+
 	// Admin endpoints
 	mux.HandleFunc("/admin/routes", g.handleAdminRoutes)
 	mux.HandleFunc("/admin/keys", g.handleAdminKeys)
 	mux.HandleFunc("/admin/stats", g.handleAdminStats)
 	mux.HandleFunc("/admin/circuit", g.handleAdminCircuit)
-	
+
 	// Health
 	mux.HandleFunc("/health", g.handleHealth)
 	mux.HandleFunc("/ready", g.handleReady)
@@ -326,7 +326,8 @@ func (g *APIGateway) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	g.logRequest(requestID, r, resp.StatusCode, latency, "", "")
 	w.WriteHeader(resp.StatusCode)
-	w.Write(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
+	w.Write(body)
 }
 
 func (g *APIGateway) handleAdminRoutes(w http.ResponseWriter, r *http.Request) {
@@ -424,17 +425,17 @@ func (g *APIGateway) validateAuth(r *http.Request) bool {
 
 func (g *APIGateway) checkRateLimit(r *http.Request, route *Route, ip string) bool {
 	limiterKey := ip + ":" + route.Path
-	
+
 	g.mu.RLock()
 	limiter, exists := g.rateLimiters[limiterKey]
 	g.mu.RUnlock()
 
 	if !exists {
 		limiter = &RateLimiter{
-			tokens:       float64(route.RateLimit.Burst),
-			maxTokens:    float64(route.RateLimit.Burst),
-			refillRate:   route.RateLimit.RequestsPerSecond,
-			lastRefill:   time.Now(),
+			tokens:     float64(route.RateLimit.Burst),
+			maxTokens:  float64(route.RateLimit.Burst),
+			refillRate: route.RateLimit.RequestsPerSecond,
+			lastRefill: time.Now(),
 		}
 		g.mu.Lock()
 		g.rateLimiters[limiterKey] = limiter

@@ -1,7 +1,7 @@
 /**
  * TigerWallet NFT Floor Price Service
  * High-Load Distributed Go Implementation
- * 
+ *
  * Features:
  * - Real-time floor price tracking
  * - Multi-marketplace aggregation
@@ -16,7 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
+	"math/rand/v2"
 	"net/http"
 	"sync"
 	"time"
@@ -29,11 +29,11 @@ type Collection struct {
 	Name        string  `json:"name"`
 	Symbol      string  `json:"symbol"`
 	Blockchain  string  `json:"blockchain"`
-	FloorPrice float64 `json:"floor_price"`
-	Volume24h  float64 `json:"volume_24h"`
-	Sales24h   int     `json:"sales_24h"`
-	Owners     int     `json:"owners"`
-	TotalSupply int    `json:"total_supply"`
+	FloorPrice  float64 `json:"floor_price"`
+	Volume24h   float64 `json:"volume_24h"`
+	Sales24h    int     `json:"sales_24h"`
+	Owners      int     `json:"owners"`
+	TotalSupply int     `json:"total_supply"`
 	MarketCap   float64 `json:"market_cap"`
 	Change24h   float64 `json:"change_24h"`
 	ImageURL    string  `json:"image_url"`
@@ -41,21 +41,21 @@ type Collection struct {
 }
 
 type NFTToken struct {
-	ID           string  `json:"id"`
-	CollectionID string  `json:"collection_id"`
-	TokenID     string  `json:"token_id"`
-	Name        string  `json:"name"`
-	ImageURL    string  `json:"image_url"`
-	Owner        string  `json:"owner"`
-	Price        float64 `json:"price"`
-	LastSale    float64 `json:"last_sale"`
+	ID           string      `json:"id"`
+	CollectionID string      `json:"collection_id"`
+	TokenID      string      `json:"token_id"`
+	Name         string      `json:"name"`
+	ImageURL     string      `json:"image_url"`
+	Owner        string      `json:"owner"`
+	Price        float64     `json:"price"`
+	LastSale     float64     `json:"last_sale"`
 	Attributes   []Attribute `json:"attributes"`
-	Listed      bool    `json:"listed"`
+	Listed       bool        `json:"listed"`
 }
 
 type Attribute struct {
-	TraitType string `json:"trait_type"`
-	Value     string `json:"value"`
+	TraitType string  `json:"trait_type"`
+	Value     string  `json:"value"`
 	Rarity    float64 `json:"rarity"`
 }
 
@@ -66,22 +66,22 @@ type FloorPriceAlert struct {
 	TargetPrice  float64 `json:"target_price"`
 	Direction    string  `json:"direction"` // above, below
 	Triggered    bool    `json:"triggered"`
-	CreatedAt   int64   `json:"created_at"`
+	CreatedAt    int64   `json:"created_at"`
 }
 
 type PortfolioValue struct {
-	UserID       string  `json:"user_id"`
-	TotalValue   float64 `json:"total_value"`
-	Collections  []CollectionValue `json:"collections"`
-	UpdatedAt    int64   `json:"updated_at"`
+	UserID      string            `json:"user_id"`
+	TotalValue  float64           `json:"total_value"`
+	Collections []CollectionValue `json:"collections"`
+	UpdatedAt   int64             `json:"updated_at"`
 }
 
 type CollectionValue struct {
 	CollectionID string  `json:"collection_id"`
-	Name        string  `json:"name"`
-	Count       int     `json:"count"`
-	Value       float64 `json:"value"`
-	FloorPrice  float64 `json:"floor_price"`
+	Name         string  `json:"name"`
+	Count        int     `json:"count"`
+	Value        float64 `json:"value"`
+	FloorPrice   float64 `json:"floor_price"`
 }
 
 // ============== Service ==============
@@ -92,16 +92,16 @@ type NFTPriceService struct {
 	alerts      []FloorPriceAlert
 	holdings    map[string]map[string]int // user -> collection -> count
 
-	mu         sync.RWMutex
-	server     *http.Server
+	mu     sync.RWMutex
+	server *http.Server
 }
 
 func NewNFTPriceService() *NFTPriceService {
 	return &NFTPriceService{
 		collections: make(map[string]*Collection),
-		tokens:     make(map[string][]*NFTToken),
-		alerts:    make([]FloorPriceAlert, 0),
-		holdings:   make(map[string]map[string]int),
+		tokens:      make(map[string][]*NFTToken),
+		alerts:      make([]FloorPriceAlert, 0),
+		holdings:    make(map[string]map[string]int),
 	}
 }
 
@@ -113,7 +113,7 @@ func (s *NFTPriceService) Run() error {
 	go s.updatePrices()
 
 	mux := http.NewServeMux()
-	
+
 	mux.HandleFunc("/api/collections", s.handleCollections)
 	mux.HandleFunc("/api/collection", s.handleCollection)
 	mux.HandleFunc("/api/tokens", s.handleTokens)
@@ -133,16 +133,16 @@ func (s *NFTPriceService) Run() error {
 
 func (s *NFTPriceService) initDemoData() {
 	collections := []*Collection{
-		{id: "bored_ape", name: "Bored Ape Yacht Club", symbol: "BAYC", blockchain: "ethereum", floor_price: 25.5, volume_24h: 1500000, sales_24h: 45, owners: 6500, total_supply: 10000, market_cap: 255000, change_24h: 3.2, image_url: "https://i.sea.cc"},
-		{id: "pudgy", name: "Pudgy Penguins", symbol: "PENGU", blockchain: "ethereum", floor_price: 3.2, volume_24h: 450000, sales_24h: 120, owners: 5200, total_supply: 8888, market_cap: 28416, change_24h: -1.5, image_url: "https://i.sea.cc"},
-		{id: "azuki", name: "Azuki", symbol: "AZUKI", blockchain: "ethereum", floor_price: 8.5, volume_24h: 680000, sales_24h: 38, owners: 5800, total_supply: 10000, market_cap: 85000, change_24h: 5.8, image_url: "https://i.sea.cc"},
-		{id: "degen", name: "Degen", symbol: "DEGEN", blockchain: "base", floor_price: 0.8, volume_24h: 120000, sales_24h: 180, owners: 8500, total_supply: 10000000, market_cap: 8000000, change_24h: 12.5, image_url: "https://i.sea.cc"},
-		{id: "freak", name: "Freak", symbol: "FREAK", blockchain: "solana", floor_price: 45.0, volume_24h: 250000, sales_24h: 8, owners: 4200, total_supply: 5000, market_cap: 225000, change_24h: -3.2, image_url: "https://i.sea.cc"},
-		{id: "blur", name: "Blur", symbol: "BLUR", blockchain: "ethereum", floor_price: 0.35, volume_24h: 350000, sales_24h: 520, owners: 15000, total_supply: 300000000, market_cap: 105000000, change_24h: 8.5, image_url: "https://i.sea.cc"},
+		{ID: "bored_ape", Name: "Bored Ape Yacht Club", Symbol: "BAYC", Blockchain: "ethereum", FloorPrice: 25.5, Volume24h: 1500000, Sales24h: 45, Owners: 6500, TotalSupply: 10000, MarketCap: 255000, Change24h: 3.2, ImageURL: "https://i.sea.cc"},
+		{ID: "pudgy", Name: "Pudgy Penguins", Symbol: "PENGU", Blockchain: "ethereum", FloorPrice: 3.2, Volume24h: 450000, Sales24h: 120, Owners: 5200, TotalSupply: 8888, MarketCap: 28416, Change24h: -1.5, ImageURL: "https://i.sea.cc"},
+		{ID: "azuki", Name: "Azuki", Symbol: "AZUKI", Blockchain: "ethereum", FloorPrice: 8.5, Volume24h: 680000, Sales24h: 38, Owners: 5800, TotalSupply: 10000, MarketCap: 85000, Change24h: 5.8, ImageURL: "https://i.sea.cc"},
+		{ID: "degen", Name: "Degen", Symbol: "DEGEN", Blockchain: "base", FloorPrice: 0.8, Volume24h: 120000, Sales24h: 180, Owners: 8500, TotalSupply: 10000000, MarketCap: 8000000, Change24h: 12.5, ImageURL: "https://i.sea.cc"},
+		{ID: "freak", Name: "Freak", Symbol: "FREAK", Blockchain: "solana", FloorPrice: 45.0, Volume24h: 250000, Sales24h: 8, Owners: 4200, TotalSupply: 5000, MarketCap: 225000, Change24h: -3.2, ImageURL: "https://i.sea.cc"},
+		{ID: "blur", Name: "Blur", Symbol: "BLUR", Blockchain: "ethereum", FloorPrice: 0.35, Volume24h: 350000, Sales24h: 520, Owners: 15000, TotalSupply: 300000000, MarketCap: 105000000, Change24h: 8.5, ImageURL: "https://i.sea.cc"},
 	}
 
 	for _, c := range collections {
-		s.collections[c.id] = c
+		s.collections[c.ID] = c
 	}
 }
 
@@ -154,10 +154,10 @@ func (s *NFTPriceService) updatePrices() {
 		s.mu.Lock()
 		for _, c := range s.collections {
 			// Simulate price changes
-			change := (math.random() - 0.5) * 0.1 * c.FloorPrice
+			change := (rand.Float64() - 0.5) * 0.1 * c.FloorPrice
 			c.FloorPrice += change
-			c.Change24h += (math.random() - 0.5) * 2
-			c.Volume24h *= 1 + (math.random() - 0.5) * 0.05
+			c.Change24h += (rand.Float64() - 0.5) * 2
+			c.Volume24h *= 1 + (rand.Float64()-0.5)*0.05
 			c.UpdatedAt = time.Now().UnixMilli()
 		}
 		s.mu.Unlock()
@@ -287,10 +287,10 @@ func (s *NFTPriceService) handlePortfolio(w http.ResponseWriter, r *http.Request
 			totalValue += value
 			collections = append(collections, CollectionValue{
 				CollectionID: collID,
-				Name:        c.Name,
-				Count:       count,
-				Value:       value,
-				FloorPrice: c.FloorPrice,
+				Name:         c.Name,
+				Count:        count,
+				Value:        value,
+				FloorPrice:   c.FloorPrice,
 			})
 		}
 	}
@@ -373,10 +373,10 @@ func (s *NFTPriceService) handleHealth(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.RUnlock()
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":       "healthy",
-		"collections":  len(s.collections),
+		"status":      "healthy",
+		"collections": len(s.collections),
 		"alerts":      len(s.alerts),
-		"timestamp":    time.Now().Unix(),
+		"timestamp":   time.Now().Unix(),
 	})
 }
 
