@@ -132,12 +132,27 @@ mostly in-memory/config with hardcoded blockchain/token lists.
 
 ### 3D. Android (`android/.../com/tigermaster/`)
 `MasterWalletService.kt`: **ETH balance REAL RPC** via web3j
-`ethGetBalance(...)` on `Dispatchers.IO` (:208-214); **Token balance STUB**
-(`"0"`, *"In production, call token contract"*, :224-233).
+`ethGetBalance(...)` on `Dispatchers.IO` (:208-214); **sendTransaction REAL**
+(`ethGetTransactionCount` + `ethGasPrice` + sign + `ethSendRawTransaction`,
+:245-283); **Token balance STUB** (`"0"`, *"In production, call token
+contract"*, :224-233). Real chain RPC URLs (:59-118).
 `AccountAbstractionService.kt` — smart-account address placeholder `0x` +
-`"0".repeat(40)` (:432), `"0"` default balance (:214).
-`MasterWalletViewModel.kt:20` → `api.tigerwallet.io/master`;
-`MasterWalletApiService.kt` (OkHttp) CRUD client complete.
+`"0".repeat(40)` (:432), `"0"` default balance (:214). ⚠️ `sendUserOperation`
+does a **real** HTTP POST to `api.tigerwallet.com/api/aa/submit` (:588-617), but
+`signUserOperation` (:440) is **fake** — SHA-256 + 130 zeros, not ECDSA.
+`MasterWalletViewModel.kt:20` → `api.tigerwallet.io/master`; REAL loaders for
+wallet/subwallets/transactions/auto-sign/users/networks/tokens/volume/whitelist.
+`MasterWalletApiService.kt` (OkHttp) CRUD client complete — located at
+`android/.../com/tigermasterwallet/api/` (591 LOC): master-wallet CRUD,
+`getWalletBalance`, `sendTransaction`, `getTransactions`, `cancelTransaction`,
+`getGasPrice` `/master/gas/:chain`, `setGasStrategy`, multisig (create/sign/
+execute), whitelabels (create/list), `getAnalytics`.
+`SuperAdminService.kt`, `PaymasterService.kt`, `BiometricService.kt`,
+`PasskeyService.kt`, `PrivacyService.kt`, `PushNotificationService.kt`,
+`WebSocketService.kt` — see §5 status row. `SuperAdminService` issues **real**
+POSTs to `api.tigerwallet.com/api/super-admin/*`; `WebSocketService` connects
+REAL OkHttp WS to `wss://master-ws.tigerwallet.com/ws`; Paymaster `getGasPrices`
+& Biometric `verifyPin` & Push `sendTokenToServer` are **stubbed**.
 
 ### 3E. iOS (`ios/.../Sources/Services/`)
 `MasterAPIService.swift` → `api.tigerwallet.io/master` (matches `go/services/main.go`
@@ -146,16 +161,33 @@ routes: auth, `/api/v1/master`, approve/reject/tx).
 actual…"* → **STUB**.
 
 ### 3F. Extensions (chrome / firefox / brave / edge) — four virtual copies
-`*/services/masterWalletService.js` — `API_BASE = https://master-api.tigerwallet.com/api/v1` (:6).
-`background.js` handlers **mostly simulated** (activate/approve/rejectTransaction,
-createSubWallet return canned in-memory results).
+All four extension trees are **byte-identical** (confirmed identical md5 across
+`services/*.js`).
+
+- `*/services/masterWalletService.js` — `API_BASE = https://master-api.tigerwallet.com/api/v1` (:6).
+  `generateWallet`/`importWallet`/`getBalance`/`sendTransaction` issue **real
+  `fetch()`** calls, persisted via `chrome.storage.local`.
+- `background.js` handlers **mostly simulated** (activate/approve/rejectTransaction,
+  createSubWallet return canned in-memory results).
+- ⚠️ **CRITICAL BUG — zero working network fetchers.** `manifest.json`
+  `host_permissions` = `*://*.tigerwallet.io/*`, but every API call targets
+  **`.com`** domains (`master-api.tigerwallet.com`, `api.tigerwallet.com`).
+  Those domains are **not permitted**, so **all** extension `fetch()` calls are
+  blocked by the permission model. Non-functional until host_permissions is fixed.
+- ⚠️ `AccountAbstractionService.js` fakes keccak (`(hash<<5)-hash` hash loop);
+  `submitUserOperation` uses a **relative** `/api/aa/submit` (blocked/404).
+  `SuperAdminService.js`, `PrivacyService.js` also use relative `/api/...` paths.
+- `injected.js` defines a fake `window.ethereum` provider (no real signing/RPC).
 
 ### 3G. Rust (`rust/src/lib.rs`) — **pure in-memory, zero network/RPC**
 Fetchers are local-only: `create_master_wallet(seed_phrase)` (:110),
 `derive_address` (:124), `set_fees` (:210), user management
 (add/register/get/suspend/block/activate, :225-284), blockchain/token
 add/remove (:294-312), `sign_user_transaction` (:330), `transfer_from_user`
-(:347), `get_master_info` (:384). **No on-chain balance fetcher.**
+(:347), `get_master_info` (:384). **No on-chain balance fetcher.** ⚠️
+`sign_user_transaction` returns a **SHA-256 digest (ring), not a real
+signature**; `derive_address` is in-memory string derivation with **no
+secp256k1**. Not usable as a live wallet.
 
 ---
 
@@ -178,13 +210,24 @@ MasterWallet/FeeConfig/BlockchainConfig/SupportedToken/RevenueRecord/WhiteLabel.
 
 | Fetcher | `go/services` | external `master_wallet_service` | Web | Flutter | Android | iOS | Desktop cpp | Rust |
 |---------|---------------|----------------------------------|-----|---------|---------|-----|-------------|------|
-| Native ETH balance | **STUB** `"0"` | ❌ (SQL only) | **REAL RPC** | **REAL RPC** | **REAL** (web3j) | **STUB** | **STUB** `"0"` | ❌ |
-| Token balance | ❌ | ❌ | REAL RPC | REAL RPC | **STUB** | STUB | STUB | ❌ |
-| Tx broadcast / sign | **REAL RPC** | ❌ | REAL RPC | REAL RPC | partial | STUB | **STUB** (`RAND_bytes`) | signs locally |
-| Gas / estimate | ❌ | `CalculateFee` (SQL) | — | — | ❌ | ❌ | **STUB** simulated | fee config |
-| Treasury balances | ❌ | **STUB** (empty/0) | — | — | — | — | — | ❌ |
-| Treasury transfer / sweep | ❌ | **STUB** (canned) | — | — | — | — | — | ❌ |
-| Revenue stats / report | ✅ `/analytics/*` (SQL) | SQL `GetRevenueStats` | — | — | — | — | — | ❌ |
+| Native ETH balance | **STUB** `"0"` | ❌ (SQL only) | **REAL RPC** | **STUB** `"0"` | **REAL** (web3j) | **STUB** | **STUB** `"0"` | ❌ |
+| Token balance | ❌ | ❌ | **STUB** | **STUB** | **STUB** | STUB | STUB | ❌ |
+| Tx broadcast / sign | **REAL RPC** | ❌ | **STUB** (fake hash) | **STUB** (fake hash) | **REAL** (web3j) | **STUB** (fake `0x`+UUID) | **STUB** (`RAND_bytes`) | SHA-256 digest |
+| Gas / estimate | ❌ | `CalculateFee` (SQL) | — | — | **STUB** (hardcoded) | **STUB** (hardcoded) | **STUB** simulated | fee config |
+| Treasury balances | ❌ | **STUB** (empty/0) | — | Flutter feature↔️ REAL REST | — | — | — | ❌ |
+| Treasury transfer / sweep | ❌ | **STUB** (canned) | — | Flutter feature **REAL REST** | — | — | — | ❌ |
+| Revenue stats / report | ✅ `/analytics/*` (SQL) | SQL `GetRevenueStats` | — | Flutter audit **REAL REST** | — | — | — | ❌ |
+| Multi-sig / approval | ⚠️ routes only | ❌ | — | Flutter feature **REAL REST** | Android **REAL REST** | — | — | ❌ |
+| Policy / spend-limit | ⚠️ routes | **STUB** (hardcoded) | — | Flutter feature **REAL REST** | — | — | — | ❌ |
+| AA userOp submit | ❌ | ❌ | **STUB** (simulated) | **STUB** | **REAL POST** (+fake sign) | **REAL POST** (+fake sign) | **STUB** (fake hash) | ❌ |
+| Super-admin REST | ❌ | ❌ | **STUB** | **STUB** | **REAL POST** | **REAL POST** | local | ❌ |
+| WebSocket | `HandleWebSocket` :1626 | ❌ | **REAL** ws | **REAL** ws | **REAL** ws | **REAL** ws | **STUB** loopback | ❌ |
+
+> **Corrections to earlier drafts:** web/Flutter `getBalance`+`sendTransaction`
+> are **stubs**, not live RPC — only Android (web3j) actually broadcasts
+> client-side, and only web/Android read balance via RPC. Flutter's treasury/
+> multisig/policy/batch/audit **feature services** carry real REST fetchers, but
+> no UI entrypoint invokes them.
 
 ---
 
@@ -212,6 +255,37 @@ MasterWallet/FeeConfig/BlockchainConfig/SupportedToken/RevenueRecord/WhiteLabel.
    guaranteed to reach a real backend today**.
 7. **No persistence in client HD wallets** — web/flutter wallets live in in-memory
    `Map`s and are lost on restart.
+8. **Extensions have zero working network fetchers** — `manifest.json`
+   `host_permissions` = `*://*.tigerwallet.io/*` but every call targets
+   `*.tigerwallet.com` → all extension fetches blocked. Fix host_permissions and
+   the already-written `fetch` calls work; most other extension services use
+   **relative** `/api/...` paths (also blocked).
+9. **No token-price / market-data fetcher** — `token_registry.go` has
+   **hardcoded fake prices** (some invalid hex addresses); no CoinGecko/oracle/RPC
+   price integration anywhere.
+10. **No live on-chain transaction history fetcher** — `api.ts`/Android/iOS
+    `getTransactions` return DB rows, not Etherscan/RPC chain history; no client
+    fetches live history.
+11. **AA signing is fake on every platform** — Android/iOS `signUserOperation` =
+    SHA-256 + zeros (not ECDSA); extensions fake keccak. Session keys / social
+    recovery are in-memory everywhere.
+12. **Privacy/zero-knowledge is placeholder crypto** — web/flutter/privacy
+    services use XOR "ECDH", `RAND_bytes` proofs, verify-returns-true; no real
+    ZK/stealth on any platform.
+13. **WebSocket ticker/orderbook data never parsed** — web & flutter WS clients
+    subscribe but `_handleMessage` only handles `balance` & `transactions`;
+    ticker/orderbook messages are ignored.
+14. **Hardcoded/plaintext super-admin credentials** — web `SuperAdminService`
+    (env default empty), Flutter literal `'SuperAdmin@2024!'`; password checks are
+    length-only / plaintext equality. Security risk.
+15. **UI dashboards not wired to live data** — web `App.tsx` imports
+    `masterWalletAPI` but never calls it; desktop & iOS dashboard stats are mock.
+16. **Flutter feature services exist but are unhooked** — treasury/policy/multisig/
+    batch/audit services have real REST fetchers (`master-api.tigerwallet.com`)
+    but no UI entrypoint invokes them.
+17. **Schema is largely unwired** — `schema.sql` tables (`token_balances`,
+    `approval_requests`, `policies`, `audit_logs`, `webhooks`) are not read/written
+    by any running service; `go/services/main.go` uses its own tables.
 
 ---
 
