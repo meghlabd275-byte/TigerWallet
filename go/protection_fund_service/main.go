@@ -15,14 +15,18 @@ package main
 
 import (
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/big"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -42,18 +46,28 @@ type Config struct {
 	CoveragePercentage  int    `json:"coverage_percentage"`  // 100 = 100%
 	GovernanceThreshold int    `json:"governance_threshold"` // signatures required
 	MonitoringInterval  int    `json:"monitoring_interval"`  // seconds
+	FundContractAddress string `json:"fund_contract_address"` // deployed fund contract
+	FundTokenAddress    string `json:"fund_token_address"`    // payout token (0x0 = native)
+	GovernanceMultisig  string `json:"governance_multisig"`   // real multisig address
+	GovernanceSigners   []string `json:"governance_signers"`  // authorized signer addresses
+	WalletAPIURL        string `json:"wallet_api_url"`        // for real payout tx broadcast
 }
 
 var cfg = Config{
-	Port:                8081,
-	DBConnection:        "postgres://tigerwallet:password@localhost:5432/protection_fund",
-	RedisAddr:           "localhost:6379",
-	InitialFundSize:     "1000000000000000000000000", // 1000 ETH
-	MinClaimAmount:      "100000000000000000",        // 0.1 ETH
-	MaxClaimAmount:      "100000000000000000000000",  // 100 ETH
-	CoveragePercentage:  100,
-	GovernanceThreshold: 3,
-	MonitoringInterval:  60,
+	Port:                getEnvInt("PORT", 8081),
+	DBConnection:        getEnv("DB_CONNECTION", "postgres://tigerwallet:password@localhost:5432/protection_fund"),
+	RedisAddr:           getEnv("REDIS_ADDR", "localhost:6379"),
+	InitialFundSize:     getEnv("INITIAL_FUND_SIZE", "1000000000000000000000000"),
+	MinClaimAmount:      getEnv("MIN_CLAIM_AMOUNT", "100000000000000000"),
+	MaxClaimAmount:      getEnv("MAX_CLAIM_AMOUNT", "100000000000000000000000"),
+	CoveragePercentage:  getEnvInt("COVERAGE_PERCENTAGE", 100),
+	GovernanceThreshold: getEnvInt("GOVERNANCE_THRESHOLD", 3),
+	MonitoringInterval:  getEnvInt("MONITORING_INTERVAL", 60),
+	FundContractAddress: getEnv("FUND_CONTRACT_ADDRESS", ""),
+	FundTokenAddress:    getEnv("FUND_TOKEN_ADDRESS", ""),
+	GovernanceMultisig:  getEnv("GOVERNANCE_MULTISIG", ""),
+	GovernanceSigners:   parseSigners(getEnv("GOVERNANCE_SIGNERS", "")),
+	WalletAPIURL:        getEnv("WALLET_API_URL", "http://localhost:8443"),
 }
 
 // ============================================================================
@@ -313,17 +327,29 @@ func (s *ProtectionFundService) createTables() error {
 }
 
 func (s *ProtectionFundService) initDefaultFund() error {
+	// Do not fabricate contract/multisig addresses. A default fund is only
+	// created when a real deployed fund contract + governance multisig are
+	// configured via env. Otherwise the service starts with no fund and the
+	// admin must register one with real on-chain addresses.
+	if cfg.FundContractAddress == "" || cfg.GovernanceMultisig == "" {
+		log.Println("[protection_fund] no FUND_CONTRACT_ADDRESS/GOVERNANCE_MULTISIG configured; skipping default fund")
+		return nil
+	}
+	tokenAddr := cfg.FundTokenAddress
+	if tokenAddr == "" {
+		tokenAddr = "0x0000000000000000000000000000000000000000" // native ETH
+	}
 	fund := &ProtectionFund{
 		ID:                 uuid.New().String(),
 		Name:               "TigerWallet Protection Fund",
-		ContractAddress:    "0x0000000000000000000000000000000000001001",
+		ContractAddress:    cfg.FundContractAddress,
 		TotalBalance:       cfg.InitialFundSize,
 		AvailableBalance:   cfg.InitialFundSize,
 		ReservedBalance:    "0",
 		TotalPaidOut:       "0",
 		CoveragePercent:    cfg.CoveragePercentage,
-		TokenAddress:       "0x0000000000000000000000000000000000000000", // ETH
-		GovernanceMultisig: "0x" + strings.Repeat("a", 40),
+		TokenAddress:       tokenAddr,
+		GovernanceMultisig: cfg.GovernanceMultisig,
 		Status:             "active",
 		CreatedAt:          time.Now(),
 		UpdatedAt:          time.Now(),
@@ -703,7 +729,32 @@ func (s *ProtectionFundService) ApproveClaim(c *gin.Context) {
 		return
 	}
 
-	// Add signature (simplified - in production verify signature)
+	// Verify the governance signature. Recover the secp256k1 signer address
+	// from req.Signature over a deterministic claim hash and check it is in
+	// the configured governance signer set. We never trust an unsigned
+	// approver_id.
+	if len(cfg.GovernanceSigners) == 0 {
+		c.JSON(503, gin.H{"success": false, "error": "governance signers not configured (GOVERNANCE_SIGNERS)"})
+		return
+	}
+	signerAddr, err := recoverClaimSigner(claimID, req.Signature)
+	if err != nil {
+		c.JSON(400, gin.H{"success": false, "error": "invalid signature: " + err.Error()})
+		return
+	}
+	authorized := false
+	for _, a := range cfg.GovernanceSigners {
+		if strings.EqualFold(a, signerAddr) {
+			authorized = true
+			break
+		}
+	}
+	if !authorized {
+		c.JSON(403, gin.H{"success": false, "error": "signer " + signerAddr + " is not an authorized governance signer"})
+		return
+	}
+
+	// Add the verified signer (not the self-attested approver_id).
 	if claim.ApproverIDs == "" {
 		claim.ApproverIDs = "[]"
 	}
@@ -711,22 +762,20 @@ func (s *ProtectionFundService) ApproveClaim(c *gin.Context) {
 	var approvers []string
 	json.Unmarshal([]byte(claim.ApproverIDs), &approvers)
 
-	// Check if already approved by this approver
 	for _, a := range approvers {
-		if a == req.ApproverID {
+		if strings.EqualFold(a, signerAddr) {
 			c.JSON(400, gin.H{"success": false, "error": "Already approved"})
 			return
 		}
 	}
 
-	approvers = append(approvers, req.ApproverID)
+	approvers = append(approvers, signerAddr)
 	approversJSON, _ := json.Marshal(approvers)
 	claim.ApproverIDs = string(approversJSON)
 
 	// Check if we have enough approvals
 	if len(approvers) >= cfg.GovernanceThreshold {
 		claim.Status = "approved"
-		// Process payment would happen here
 	}
 
 	c.JSON(200, gin.H{
@@ -755,34 +804,30 @@ func (s *ProtectionFundService) ProcessClaimPayment(c *gin.Context) {
 		return
 	}
 
-	// Process payment (in production, this would call the blockchain)
+	// Do not fabricate a transaction hash. The fund service holds no signing
+	// key; the real payout must be signed+broadcast by the canonical
+	// wallet_api. Mark the claim payment_pending and return an action_required
+	// block so the operator (or an automated payout job) drives the real
+	// on-chain transfer via wallet_api /api/v1/send, then calls back with the
+	// real tx hash (which is persisted via a separate SetClaimTxHash route).
+	claim.Status = "payment_pending"
 	now := time.Now()
-	claim.Status = "paid"
 	claim.ProcessedAt = &now
-	claim.TxHash = "0x" + hex.EncodeToString([]byte(claim.ID))
 
-	// Update fund balances
-	fund := s.funds[claim.FundID]
-	if fund != nil {
-		paidOut, _ := new(big.Int).SetString(fund.TotalPaidOut, 10)
-		covered, _ := new(big.Int).SetString(claim.CoveredAmount, 10)
-		paidOut.Add(paidOut, covered)
-		fund.TotalPaidOut = paidOut.String()
-
-		reserved, _ := new(big.Int).SetString(fund.ReservedBalance, 10)
-		reserved.Sub(reserved, covered)
-		fund.ReservedBalance = reserved.String()
-
-		available, _ := new(big.Int).SetString(fund.AvailableBalance, 10)
-		available.Sub(available, covered)
-		fund.AvailableBalance = available.String()
-	}
-
-	c.JSON(200, gin.H{
-		"success": true,
-		"data":    claim,
-		"tx_hash": claim.TxHash,
-		"message": "Payment processed successfully",
+	c.JSON(202, gin.H{
+		"success": false,
+		"status":  "payment_pending",
+		"message": "Claim approved; payout must be broadcast via wallet_api",
+		"action_required": gin.H{
+			"endpoint":  strings.TrimRight(cfg.WalletAPIURL, "/") + "/api/v1/send",
+			"method":    "POST",
+			"user_id":   claim.UserID,
+			"amount":    claim.CoveredAmount,
+			"token":     s.fundToken(claim.FundID),
+			"claim_id":  claim.ID,
+			"callback":  "/api/v1/claims/" + claim.ID + "/tx-hash",
+		},
+		"data": claim,
 	})
 }
 
@@ -951,6 +996,7 @@ func main() {
 		protected.PATCH("/claims/:id/review", service.ReviewClaim)
 		protected.POST("/claims/:id/approve", service.ApproveClaim)
 		protected.POST("/claims/:id/pay", service.ProcessClaimPayment)
+		protected.POST("/claims/:id/tx-hash", service.SetClaimTxHash)
 		protected.GET("/users/:user_id/coverage", service.GetUserCoverage)
 		protected.POST("/users/enroll", service.EnrollUser)
 	}
@@ -961,4 +1007,128 @@ func main() {
 	if err := r.Run(addr); err != nil {
 		fmt.Printf("Failed to start server: %v\n", err)
 	}
+}
+
+// SetClaimTxHash records the real on-chain tx hash returned by wallet_api
+// after a payout is broadcast, then marks the claim paid and adjusts fund
+// balances. It replaces the previous behavior of synthesizing a fake tx hash.
+func (s *ProtectionFundService) SetClaimTxHash(c *gin.Context) {
+	claimID := c.Param("id")
+	var req struct {
+		TxHash string `json:"tx_hash" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+	if !strings.HasPrefix(req.TxHash, "0x") || len(req.TxHash) != 66 {
+		c.JSON(400, gin.H{"success": false, "error": "invalid tx_hash"})
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	claim, ok := s.claims[claimID]
+	if !ok {
+		c.JSON(404, gin.H{"success": false, "error": "Claim not found"})
+		return
+	}
+	if claim.Status != "payment_pending" && claim.Status != "approved" {
+		c.JSON(400, gin.H{"success": false, "error": "Claim is not in a payable state"})
+		return
+	}
+
+	claim.TxHash = req.TxHash
+	claim.Status = "paid"
+	now := time.Now()
+	claim.ProcessedAt = &now
+
+	// Adjust fund balances now that a real payout is confirmed.
+	if fund := s.funds[claim.FundID]; fund != nil {
+		paidOut, _ := new(big.Int).SetString(fund.TotalPaidOut, 10)
+		covered, _ := new(big.Int).SetString(claim.CoveredAmount, 10)
+		paidOut.Add(paidOut, covered)
+		fund.TotalPaidOut = paidOut.String()
+
+		reserved, _ := new(big.Int).SetString(fund.ReservedBalance, 10)
+		reserved.Sub(reserved, covered)
+		fund.ReservedBalance = reserved.String()
+
+		available, _ := new(big.Int).SetString(fund.AvailableBalance, 10)
+		available.Sub(available, covered)
+		fund.AvailableBalance = available.String()
+	}
+
+	c.JSON(200, gin.H{"success": true, "data": claim})
+}
+
+// fundToken returns the payout token address for a fund, or native-ETH zero
+// address when the fund is unknown.
+func (s *ProtectionFundService) fundToken(fundID string) string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if f, ok := s.funds[fundID]; ok && f.TokenAddress != "" {
+		return f.TokenAddress
+	}
+	return "0x0000000000000000000000000000000000000000"
+}
+
+// recoverClaimSigner recovers the Ethereum address that produced signature
+// over the EIP-191 prefixed hash of the claim ID. signature is a 0x-prefixed
+// 65-byte secp256k1 signature with recovery id 27/28.
+func recoverClaimSigner(claimID, signature string) (string, error) {
+	sigBytes, err := hexutil.Decode(signature)
+	if err != nil {
+		return "", fmt.Errorf("decode signature: %w", err)
+	}
+	if len(sigBytes) != 65 {
+		return "", fmt.Errorf("signature must be 65 bytes, got %d", len(sigBytes))
+	}
+	// Ethereum personal_sign convention: recovery byte 27/28.
+	if sigBytes[64] >= 27 {
+		sigBytes[64] -= 27
+	}
+	// EIP-191 personal message hash: keccak256("\x19Ethereum Signed Message:\n" + len + msg)
+	msg := fmt.Sprintf("approve-claim:%s", claimID)
+	prefixed := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(msg), msg)
+	digest := crypto.Keccak256([]byte(prefixed))
+	pub, err := crypto.SigToPub(digest, sigBytes)
+	if err != nil {
+		return "", err
+	}
+	return crypto.PubkeyToAddress(*pub).Hex(), nil
+}
+
+// parseSigners splits a comma-separated list of addresses into a slice.
+func parseSigners(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+func getEnv(key, defaultValue string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultValue
+}
+
+func getEnvInt(key string, defaultValue int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return defaultValue
 }

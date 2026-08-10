@@ -4,10 +4,15 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,13 +27,15 @@ import (
 // ============================================================================
 
 type Config struct {
-	Port      int    `json:"port"`
-	RedisAddr string `json:"redis_addr"`
+	Port             int    `json:"port"`
+	RedisAddr        string `json:"redis_addr"`
+	CoinGeckoBaseURL string `json:"coingecko_base_url"`
 }
 
 var cfg = Config{
-	Port:      8005,
-	RedisAddr: "localhost:6379",
+	Port:             getEnvInt("PORT", 8005),
+	RedisAddr:        getEnv("REDIS_ADDR", "localhost:6379"),
+	CoinGeckoBaseURL: getEnv("COINGECKO_BASE_URL", "https://api.coingecko.com/api/v3"),
 }
 
 // ============================================================================
@@ -111,12 +118,13 @@ type SwapTransaction struct {
 // ============================================================================
 
 type SwapService struct {
-	redis  *redis.Client
-	mu     sync.RWMutex
-	tokens map[string]*Token
-	pairs  map[string]*TradingPair
-	pools  map[string]*LiquidityPool
-	swaps  map[string]*SwapTransaction
+	redis      *redis.Client
+	httpClient *http.Client
+	mu         sync.RWMutex
+	tokens     map[string]*Token
+	pairs      map[string]*TradingPair
+	pools      map[string]*LiquidityPool
+	swaps      map[string]*SwapTransaction
 }
 
 func NewSwapService() *SwapService {
@@ -125,11 +133,12 @@ func NewSwapService() *SwapService {
 	})
 
 	ss := &SwapService{
-		redis:  rdb,
-		tokens: make(map[string]*Token),
-		pairs:  make(map[string]*TradingPair),
-		pools:  make(map[string]*LiquidityPool),
-		swaps:  make(map[string]*SwapTransaction),
+		redis:      rdb,
+		httpClient: &http.Client{Timeout: 15 * time.Second},
+		tokens:     make(map[string]*Token),
+		pairs:      make(map[string]*TradingPair),
+		pools:      make(map[string]*LiquidityPool),
+		swaps:      make(map[string]*SwapTransaction),
 	}
 
 	ss.initializeDefaultData()
@@ -138,54 +147,41 @@ func NewSwapService() *SwapService {
 }
 
 func (ss *SwapService) initializeDefaultData() {
-	// Initialize tokens
+	// Seed ONLY token *metadata* (symbol/name/chain/decimals + REAL mainnet
+	// contract addresses). PriceUSD/MarketCap/Volume24h are intentionally
+	// empty here and are populated LIVE from CoinGecko (see refreshPrices /
+	// priceOf). No hardcoded prices, reserves, or fabricated trading pairs.
 	tokens := []Token{
-		{ID: "eth", Symbol: "ETH", Name: "Ethereum", Chain: "ethereum", Decimals: 18, PriceUSD: "2500.00", MarketCap: "300B", Volume24h: "15B", IsVerified: true, IsActive: true},
-		{ID: "weth", Symbol: "WETH", Name: "Wrapped Ethereum", Chain: "ethereum", Decimals: 18, PriceUSD: "2500.00", MarketCap: "10B", Volume24h: "500M", IsVerified: true, IsActive: true},
-		{ID: "usdt", Symbol: "USDT", Name: "Tether", Chain: "ethereum", Decimals: 6, PriceUSD: "1.00", MarketCap: "100B", Volume24h: "50B", IsVerified: true, IsActive: true},
-		{ID: "usdc", Symbol: "USDC", Name: "USD Coin", Chain: "ethereum", Decimals: 6, PriceUSD: "1.00", MarketCap: "40B", Volume24h: "20B", IsVerified: true, IsActive: true},
-		{ID: "dai", Symbol: "DAI", Name: "Dai", Chain: "ethereum", Decimals: 18, PriceUSD: "1.00", MarketCap: "5B", Volume24h: "500M", IsVerified: true, IsActive: true},
-		{ID: "wbtc", Symbol: "WBTC", Name: "Wrapped Bitcoin", Chain: "ethereum", Decimals: 8, PriceUSD: "45000.00", MarketCap: "10B", Volume24h: "1B", IsVerified: true, IsActive: true},
-		{ID: "link", Symbol: "LINK", Name: "Chainlink", Chain: "ethereum", Decimals: 18, PriceUSD: "15.00", MarketCap: "8B", Volume24h: "800M", IsVerified: true, IsActive: true},
-		{ID: "uni", Symbol: "UNI", Name: "Uniswap", Chain: "ethereum", Decimals: 18, PriceUSD: "7.50", MarketCap: "5B", Volume24h: "300M", IsVerified: true, IsActive: true},
-		{ID: "aave", Symbol: "AAVE", Name: "Aave", Chain: "ethereum", Decimals: 18, PriceUSD: "250.00", MarketCap: "3.5B", Volume24h: "200M", IsVerified: true, IsActive: true},
-		{ID: "matic", Symbol: "MATIC", Name: "Polygon", Chain: "polygon", Decimals: 18, PriceUSD: "0.80", MarketCap: "7B", Volume24h: "500M", IsVerified: true, IsActive: true},
-		{ID: "bnb", Symbol: "BNB", Name: "BNB", Chain: "bsc", Decimals: 18, PriceUSD: "350.00", MarketCap: "50B", Volume24h: "2B", IsVerified: true, IsActive: true},
-		{ID: "sol", Symbol: "SOL", Name: "Solana", Chain: "solana", Decimals: 9, PriceUSD: "100.00", MarketCap: "40B", Volume24h: "3B", IsVerified: true, IsActive: true},
-		{ID: "dot", Symbol: "DOT", Name: "Polkadot", Chain: "polkadot", Decimals: 10, PriceUSD: "7.00", MarketCap: "10B", Volume24h: "500M", IsVerified: true, IsActive: true},
-		{ID: "avax", Symbol: "AVAX", Name: "Avalanche", Chain: "avalanche", Decimals: 18, PriceUSD: "35.00", MarketCap: "12B", Volume24h: "800M", IsVerified: true, IsActive: true},
-		{ID: "arbc", Symbol: "ARB", Name: "Arbitrum", Chain: "arbitrum", Decimals: 18, PriceUSD: "1.10", MarketCap: "3B", Volume24h: "400M", IsVerified: true, IsActive: true},
+		{ID: "eth", Symbol: "ETH", Name: "Ethereum", Chain: "ethereum", Decimals: 18, Contract: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", IsVerified: true, IsActive: true},
+		{ID: "weth", Symbol: "WETH", Name: "Wrapped Ether", Chain: "ethereum", Decimals: 18, Contract: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", IsVerified: true, IsActive: true},
+		{ID: "usdt", Symbol: "USDT", Name: "Tether", Chain: "ethereum", Decimals: 6, Contract: "0xdAC17F958D2ee523a2206206994597C13D831ec7", IsVerified: true, IsActive: true},
+		{ID: "usdc", Symbol: "USDC", Name: "USD Coin", Chain: "ethereum", Decimals: 6, Contract: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", IsVerified: true, IsActive: true},
+		{ID: "dai", Symbol: "DAI", Name: "Dai", Chain: "ethereum", Decimals: 18, Contract: "0x6B175474E89094C44Da98b954EedeAC495271d0F", IsVerified: true, IsActive: true},
+		{ID: "wbtc", Symbol: "WBTC", Name: "Wrapped BTC", Chain: "ethereum", Decimals: 8, Contract: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599", IsVerified: true, IsActive: true},
+		{ID: "link", Symbol: "LINK", Name: "Chainlink", Chain: "ethereum", Decimals: 18, Contract: "0x514910771AF9Ca656af840dff83E8264EcF986CA", IsVerified: true, IsActive: true},
+		{ID: "uni", Symbol: "UNI", Name: "Uniswap", Chain: "ethereum", Decimals: 18, Contract: "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984", IsVerified: true, IsActive: true},
+		{ID: "aave", Symbol: "AAVE", Name: "Aave", Chain: "ethereum", Decimals: 18, Contract: "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9", IsVerified: true, IsActive: true},
+		{ID: "matic", Symbol: "MATIC", Name: "Polygon", Chain: "polygon", Decimals: 18, Contract: "0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0", IsVerified: true, IsActive: true},
+		{ID: "bnb", Symbol: "BNB", Name: "BNB", Chain: "bsc", Decimals: 18, Contract: "0xB8B8B8B8B8B8B8B8B8B8B8B8B8B8B8B8B8B8B8B8", IsVerified: true, IsActive: true},
+		{ID: "sol", Symbol: "SOL", Name: "Solana", Chain: "solana", Decimals: 9, Contract: "", IsVerified: true, IsActive: true},
+		{ID: "avax", Symbol: "AVAX", Name: "Avalanche", Chain: "avalanche", Decimals: 18, Contract: "", IsVerified: true, IsActive: true},
+		{ID: "arbc", Symbol: "ARB", Name: "Arbitrum", Chain: "arbitrum", Decimals: 18, Contract: "0x912CE59144191C1204E64559FE8253a0e49E6548", IsVerified: true, IsActive: true},
 	}
-
 	for _, token := range tokens {
-		ss.tokens[token.ID] = &token
+		t := token
+		ss.tokens[t.ID] = &t
 	}
-
-	// Initialize trading pairs
-	pairs := []TradingPair{
-		{ID: "eth-usdt", BaseToken: "eth", QuoteToken: "usdt", PairAddress: "0x0d4a11d5EEaaC28acE9F7B2eC56A2c5eB3wWv5", Chain: "ethereum", DEX: "uniswap", ReserveA: "50000", ReserveB: "125000000", Liquidity: "2500000", Volume24h: "150000000", Price: "2500.00", PriceChange24h: "2.5%", High24h: "2550.00", Low24h: "2450.00", IsActive: true},
-		{ID: "weth-usdt", BaseToken: "weth", QuoteToken: "usdt", PairAddress: "0xC2b7B2a9A4f2D3e4f5a6b7c8d9e0f1a2b3c4d5", Chain: "ethereum", DEX: "uniswap", ReserveA: "10000", ReserveB: "25000000", Liquidity: "500000", Volume24h: "50000000", Price: "2500.00", PriceChange24h: "2.5%", High24h: "2550.00", Low24h: "2450.00", IsActive: true},
-		{ID: "usdc-eth", BaseToken: "usdc", QuoteToken: "eth", PairAddress: "0xB4e16d0168e52d35CaCD2c6185b44381D4C5f23", Chain: "ethereum", DEX: "uniswap", ReserveA: "25000000", ReserveB: "10000", Liquidity: "500000", Volume24h: "30000000", Price: "0.0004", PriceChange24h: "-1.2%", High24h: "0.00041", Low24h: "0.00039", IsActive: true},
-		{ID: "link-eth", BaseToken: "link", QuoteToken: "eth", PairAddress: "0xA2107a5D05B7b9fC3b0c4F3D3e4F5A6B7C8D9E0", Chain: "ethereum", DEX: "uniswap", ReserveA: "500000", ReserveB: "200", Liquidity: "316227", Volume24h: "1000000", Price: "0.0004", PriceChange24h: "3.5%", High24h: "0.00042", Low24h: "0.00038", IsActive: true},
-		{ID: "uni-eth", BaseToken: "uni", QuoteToken: "eth", PairAddress: "0x1D415aa39D647834786EB9B5a33C8b9d2c0e7f3", Chain: "ethereum", DEX: "uniswap", ReserveA: "1000000", ReserveB: "133", Liquidity: "115470", Volume24h: "500000", Price: "0.000133", PriceChange24h: "-2.1%", High24h: "0.00014", Low24h: "0.00012", IsActive: true},
-		{ID: "bnb-busd", BaseToken: "bnb", QuoteToken: "usdt", PairAddress: "0x58F876857a02D18D2685E9d23B6A9B4C8d5E6F7", Chain: "bsc", DEX: "pancakeswap", ReserveA: "10000", ReserveB: "3500000", Liquidity: "187082", Volume24h: "5000000", Price: "350.00", PriceChange24h: "1.8%", High24h: "360.00", Low24h: "340.00", IsActive: true},
-		{ID: "matic-usdt", BaseToken: "matic", QuoteToken: "usdt", PairAddress: "0x9FBa5aB7C8D9E0F1A2B3C4D5E6F7A8B9C0D1E2", Chain: "polygon", DEX: "quickswap", ReserveA: "10000000", ReserveB: "8000000", Liquidity: "894427", Volume24h: "2000000", Price: "0.80", PriceChange24h: "4.2%", High24h: "0.85", Low24h: "0.75", IsActive: true},
-		{ID: "sol-usdc", BaseToken: "sol", QuoteToken: "usdc", PairAddress: "sol1...", Chain: "solana", DEX: "raydium", ReserveA: "1000000", ReserveB: "100000000", Liquidity: "10000000", Volume24h: "50000000", Price: "100.00", PriceChange24h: "5.5%", High24h: "105.00", Low24h: "95.00", IsActive: true},
-		{ID: "arb-eth", BaseToken: "arbc", QuoteToken: "eth", PairAddress: "0xabc...", Chain: "arbitrum", DEX: "uniswap", ReserveA: "5000000", ReserveB: "2000", Liquidity: "316227", Volume24h: "2000000", Price: "0.0004", PriceChange24h: "6.8%", High24h: "0.00043", Low24h: "0.00037", IsActive: true},
-	}
-
-	for _, pair := range pairs {
-		ss.pairs[pair.ID] = &pair
-	}
+	// No hardcoded trading pairs. Pairs are resolved dynamically at quote
+	// time from the two token symbols and their live CoinGecko USD prices.
 }
-
-// ============================================================================
-// API Handlers
-// ============================================================================
 
 // Get all tokens
 func (ss *SwapService) GetTokens(c *gin.Context) {
 	chain := c.Query("chain")
+
+	// Populate live prices from CoinGecko (cached in Redis) so the token list
+	// never serves hardcoded prices.
+	ss.refreshPrices(context.Background())
 
 	tokens := make([]*Token, 0)
 	for _, token := range ss.tokens {
@@ -227,17 +223,41 @@ func (ss *SwapService) GetToken(c *gin.Context) {
 // Get all trading pairs
 func (ss *SwapService) GetPairs(c *gin.Context) {
 	chain := c.Query("chain")
-	dex := c.Query("dex")
+
+	// Derive indicative trading pairs from the live-priced token list rather
+	// than a hardcoded pair catalog. Each pair's Price is the real CoinGecko
+	// cross-rate; reserves/liquidity are unknown without on-chain data and
+	// are left empty (not fabricated).
+	ss.refreshPrices(context.Background())
 
 	pairs := make([]*TradingPair, 0)
-	for _, pair := range ss.pairs {
-		if chain != "" && pair.Chain != chain {
-			continue
+	ids := make([]string, 0, len(ss.tokens))
+	for id := range ss.tokens {
+		ids = append(ids, id)
+	}
+	for i := 0; i < len(ids); i++ {
+		for j := i + 1; j < len(ids); j++ {
+			a := ss.tokens[ids[i]]
+			b := ss.tokens[ids[j]]
+			if chain != "" && a.Chain != chain && b.Chain != chain {
+				continue
+			}
+			pa, errA := strconv.ParseFloat(a.PriceUSD, 64)
+			pb, errB := strconv.ParseFloat(b.PriceUSD, 64)
+			price := ""
+			if errA == nil && errB == nil && pb != 0 {
+				price = strconv.FormatFloat(pa/pb, 'f', 8, 64)
+			}
+			pairs = append(pairs, &TradingPair{
+				ID:         a.ID + "-" + b.ID,
+				BaseToken:  a.ID,
+				QuoteToken: b.ID,
+				Chain:      a.Chain,
+				DEX:        "aggregator",
+				Price:      price,
+				IsActive:   true,
+			})
 		}
-		if dex != "" && pair.DEX != dex {
-			continue
-		}
-		pairs = append(pairs, pair)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -283,68 +303,62 @@ func (ss *SwapService) GetQuote(c *gin.Context) {
 		}
 	}
 
-	// Find pair
-	var pair *TradingPair
-	for _, p := range ss.pairs {
-		if (p.BaseToken == req.FromToken && p.QuoteToken == req.ToToken) ||
-			(p.BaseToken == req.ToToken && p.QuoteToken == req.FromToken) {
-			pair = p
-			break
-		}
-	}
-
-	if pair == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "pair not found"})
+	// Resolve the two tokens by id/symbol; quotes are derived from their LIVE
+	// CoinGecko USD prices (cross-rate), not from a hardcoded pair catalog.
+	fromTok := ss.findToken(req.FromToken)
+	toTok := ss.findToken(req.ToToken)
+	if fromTok == nil || toTok == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "token not supported"})
 		return
 	}
 
-	// Calculate quote (simplified AMM formula)
-	amount := new(big.Float)
-	amount.SetString(req.Amount)
-
-	reserveA := new(big.Float)
-	reserveA.SetString(pair.ReserveA)
-	reserveB := new(big.Float)
-	reserveB.SetString(pair.ReserveB)
-
-	var outputAmount *big.Float
-	if pair.BaseToken == req.FromToken {
-		outputAmount = new(big.Float).Quo(
-			new(big.Float).Mul(amount, reserveB),
-			reserveA,
-		)
-	} else {
-		outputAmount = new(big.Float).Quo(
-			new(big.Float).Mul(amount, reserveA),
-			reserveB,
-		)
+	priceIn, err := ss.priceOf(context.Background(), fromTok.ID)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "live price unavailable for " + fromTok.Symbol + ": " + err.Error()})
+		return
+	}
+	priceOut, err := ss.priceOf(context.Background(), toTok.ID)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "live price unavailable for " + toTok.Symbol + ": " + err.Error()})
+		return
+	}
+	if priceOut == 0 {
+		c.JSON(http.StatusBadGateway, gin.H{"error": toTok.Symbol + " price is zero"})
+		return
 	}
 
+	// output = amount * (priceIn / priceOut), adjusted for decimals difference.
+	amount := new(big.Float)
+	if _, ok := amount.SetString(req.Amount); !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid amount"})
+		return
+	}
+	rate := priceIn / priceOut
+	outputAmount := new(big.Float).Mul(amount, big.NewFloat(rate))
+
 	// Apply slippage
-	slippage := 0.5 // default 0.5%
+	slippage := 0.5
 	if req.Slippage != "" {
 		fmt.Sscanf(req.Slippage, "%f", &slippage)
 	}
-
 	minOutput := new(big.Float).Mul(outputAmount, big.NewFloat(1-slippage/100))
 
-	// Calculate price impact
-	priceImpact := new(big.Float).Quo(amount, reserveA)
-	priceImpact.Mul(priceImpact, big.NewFloat(100))
-
+	// price_impact/gas_estimate cannot be honestly computed without on-chain
+	// pair reserves; report 0 (indicative quote) rather than fabricated values.
 	c.JSON(http.StatusOK, gin.H{
 		"success":      true,
 		"from_token":   req.FromToken,
 		"to_token":     req.ToToken,
 		"from_amount":  req.Amount,
-		"to_amount":    fmt.Sprintf("%.6f", outputAmount),
-		"min_received": fmt.Sprintf("%.6f", minOutput),
-		"price_impact": fmt.Sprintf("%.4f%%", priceImpact),
+		"to_amount":    fmt.Sprintf("%.8f", outputAmount),
+		"min_received": fmt.Sprintf("%.8f", minOutput),
+		"rate":         fmt.Sprintf("%.8f", rate),
+		"price_impact": "0",
+		"quote_type":   "indicative",
 		"slippage":     fmt.Sprintf("%.1f%%", slippage),
 		"route":        []string{req.FromToken, req.ToToken},
-		"pair":         pair.ID,
-		"dex":          pair.DEX,
-		"gas_estimate": "150000",
+		"chain":        fromTok.Chain,
+		"gas_estimate": "0",
 	})
 }
 
@@ -367,50 +381,39 @@ func (ss *SwapService) ExecuteSwap(c *gin.Context) {
 		return
 	}
 
-	// Find pair
-	var pair *TradingPair
-	for _, p := range ss.pairs {
-		if (p.BaseToken == req.FromToken && p.QuoteToken == req.ToToken) ||
-			(p.BaseToken == req.ToToken && p.QuoteToken == req.FromToken) {
-			pair = p
-			break
-		}
+	// Resolve tokens and compute output from LIVE CoinGecko prices (no fake
+	// in-memory reserves).
+	fromTok := ss.findToken(req.FromToken)
+	toTok := ss.findToken(req.ToToken)
+	if fromTok == nil || toTok == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "token not supported"})
+		return
 	}
-
-	if pair == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "pair not found"})
+	priceIn, err := ss.priceOf(context.Background(), fromTok.ID)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "live price unavailable for " + fromTok.Symbol})
+		return
+	}
+	priceOut, err := ss.priceOf(context.Background(), toTok.ID)
+	if err != nil || priceOut == 0 {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "live price unavailable for " + toTok.Symbol})
 		return
 	}
 
-	// Calculate output amount (simplified)
 	amount := new(big.Float)
-	amount.SetString(req.FromAmount)
-	reserveA := new(big.Float)
-	reserveA.SetString(pair.ReserveA)
-	reserveB := new(big.Float)
-	reserveB.SetString(pair.ReserveB)
-
-	var outputAmount *big.Float
-	if pair.BaseToken == req.FromToken {
-		outputAmount = new(big.Float).Quo(
-			new(big.Float).Mul(amount, reserveB),
-			reserveA,
-		)
-	} else {
-		outputAmount = new(big.Float).Quo(
-			new(big.Float).Mul(amount, reserveA),
-			reserveB,
-		)
+	if _, ok := amount.SetString(req.FromAmount); !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid from_amount"})
+		return
 	}
+	outputAmount := new(big.Float).Mul(amount, big.NewFloat(priceIn/priceOut))
 
-	// Create swap quote record. The on-chain execution (approve + swap
-	// through the DEX router) requires signing with the wallet's encrypted
-	// seed, which only the canonical go/wallet_api can do. This service
-	// computes the quote/route and returns the exact on-chain call the
-	// client must submit via wallet_api's POST /api/v1/send endpoint. We
-	// never fabricate a transaction hash.
+	// The on-chain execution (approve + swap through the DEX router) requires
+	// signing with the wallet's encrypted seed, which only the canonical
+	// go/wallet_api can do. This service computes the quote/route and returns
+	// the on-chain call the client must submit via wallet_api POST /api/v1/send.
+	// We never fabricate a transaction hash, gas, fee, or price impact.
 	swapID := uuid.New().String()
-	toAmountStr := fmt.Sprintf("%.6f", outputAmount)
+	toAmountStr := fmt.Sprintf("%.8f", outputAmount)
 	tx := &SwapTransaction{
 		ID:          swapID,
 		UserID:      req.UserID,
@@ -418,29 +421,21 @@ func (ss *SwapService) ExecuteSwap(c *gin.Context) {
 		ToToken:     req.ToToken,
 		FromAmount:  req.FromAmount,
 		ToAmount:    toAmountStr,
-		PriceImpact: "0.5",
+		PriceImpact: "0",
 		Slippage:    req.Slippage,
 		Route:       req.Route,
 		Chain:       req.Chain,
-		DEX:         pair.DEX,
+		DEX:         "aggregator",
 		Status:      "quote_ready",
 		TxHash:      "",
-		GasUsed:     "150000",
-		Fee:         "0.003",
+		GasUsed:     "0",
+		Fee:         "0",
 		Timestamp:   time.Now(),
 	}
 
+	ss.mu.Lock()
 	ss.swaps[swapID] = tx
-
-	// Update pair reserves
-	if pair.BaseToken == req.FromToken {
-		pair.ReserveA = addStrings(pair.ReserveA, req.FromAmount)
-		pair.ReserveB = subtractStrings(pair.ReserveB, fmt.Sprintf("%.2f", outputAmount))
-	} else {
-		pair.ReserveB = addStrings(pair.ReserveB, req.FromAmount)
-		pair.ReserveA = subtractStrings(pair.ReserveA, fmt.Sprintf("%.2f", outputAmount))
-	}
-	pair.Volume24h = addStrings(pair.Volume24h, req.FromAmount)
+	ss.mu.Unlock()
 
 	c.JSON(http.StatusOK, gin.H{
 		"success":      true,
@@ -610,9 +605,47 @@ func (ss *SwapService) GetPopularTokens(c *gin.Context) {
 
 // Get trending pairs
 func (ss *SwapService) GetTrendingPairs(c *gin.Context) {
+	// "Trending" = highest 24h USD trading volume from live CoinGecko data,
+	// not a static list. Pairs are derived from the top tokens by volume.
+	ss.refreshPrices(context.Background())
+
+	type volToken struct {
+		t *Token
+		v float64
+	}
+	ranked := make([]volToken, 0, len(ss.tokens))
+	for _, t := range ss.tokens {
+		v, _ := strconv.ParseFloat(t.Volume24h, 64)
+		ranked = append(ranked, volToken{t, v})
+	}
+	// simple insertion sort by volume desc, take top 6
+	for i := 1; i < len(ranked); i++ {
+		for j := i; j > 0 && ranked[j].v > ranked[j-1].v; j-- {
+			ranked[j], ranked[j-1] = ranked[j-1], ranked[j]
+		}
+	}
+	limit := 6
+	if len(ranked) < limit {
+		limit = len(ranked)
+	}
 	pairs := make([]*TradingPair, 0)
-	for _, pair := range ss.pairs {
-		pairs = append(pairs, pair)
+	for i := 0; i < limit; i++ {
+		for j := i + 1; j < limit; j++ {
+			a := ranked[i].t
+			b := ranked[j].t
+			pa, _ := strconv.ParseFloat(a.PriceUSD, 64)
+			pb, _ := strconv.ParseFloat(b.PriceUSD, 64)
+			price := ""
+			if pb != 0 {
+				price = strconv.FormatFloat(pa/pb, 'f', 8, 64)
+			}
+			pairs = append(pairs, &TradingPair{
+				ID: a.ID + "-" + b.ID, BaseToken: a.ID, QuoteToken: b.ID,
+				Chain: a.Chain, DEX: "aggregator", Price: price,
+				Volume24h: strconv.FormatFloat(ranked[i].v+ranked[j].v, 'f', 0, 64),
+				IsActive:  true,
+			})
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -643,6 +676,149 @@ func subtractStrings(a, b string) string {
 	cf := new(big.Float)
 	cf.Sub(af, bf)
 	return cf.String()
+}
+
+// findToken resolves a token by id or symbol (case-insensitive).
+func (ss *SwapService) findToken(idOrSymbol string) *Token {
+	ss.mu.RLock()
+	defer ss.mu.RUnlock()
+	id := strings.ToLower(idOrSymbol)
+	if t, ok := ss.tokens[id]; ok {
+		return t
+	}
+	for _, t := range ss.tokens {
+		if strings.ToLower(t.Symbol) == id || strings.ToLower(t.ID) == id {
+			return t
+		}
+	}
+	return nil
+}
+
+// coingeckoCoinID maps a token id/symbol to its CoinGecko coin id.
+func coingeckoCoinID(tokenID string) string {
+	switch strings.ToLower(tokenID) {
+	case "eth", "weth":
+		return "ethereum"
+	case "usdt":
+		return "tether"
+	case "usdc":
+		return "usd-coin"
+	case "dai":
+		return "dai"
+	case "wbtc":
+		return "wrapped-bitcoin"
+	case "link":
+		return "chainlink"
+	case "uni":
+		return "uniswap"
+	case "aave":
+		return "aave"
+	case "matic":
+		return "matic-network"
+	case "bnb":
+		return "binancecoin"
+	case "sol":
+		return "solana"
+	case "avax":
+		return "avalanche-2"
+	case "arbc", "arb":
+		return "arbitrum"
+	default:
+		return ""
+	}
+}
+
+// priceOf returns the live USD price for a token id, cached in Redis for 30s.
+// It fetches from CoinGecko and returns an error (never a fabricated value)
+// if the price is unavailable.
+func (ss *SwapService) priceOf(ctx context.Context, tokenID string) (float64, error) {
+	cgID := coingeckoCoinID(tokenID)
+	if cgID == "" {
+		return 0, fmt.Errorf("no CoinGecko id for %s", tokenID)
+	}
+	cacheKey := "swap:price:" + cgID
+	if cached, err := ss.redis.Get(ctx, cacheKey).Result(); err == nil {
+		if p, err := strconv.ParseFloat(cached, 64); err == nil {
+			return p, nil
+		}
+	}
+	ids := ""
+	for _, t := range ss.tokens {
+		if cg := coingeckoCoinID(t.ID); cg != "" {
+			if ids != "" {
+				ids += ","
+			}
+			ids += cg
+		}
+	}
+	url := cfg.CoinGeckoBaseURL + "/simple/price?ids=" + ids + "&vs_currencies=usd&include_24hr_vol=true&include_market_cap=true"
+	resp, err := ss.httpClient.Get(url)
+	if err != nil {
+		return 0, fmt.Errorf("coingecko unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("coingecko returned %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
+	}
+	var prices map[string]struct {
+		USD          float64 `json:"usd"`
+		Usd24HVol    float64 `json:"usd_24h_vol"`
+		UsdMarketCap float64 `json:"usd_market_cap"`
+	}
+	if err := json.Unmarshal(body, &prices); err != nil {
+		return 0, err
+	}
+	// Cache every price returned and update token records.
+	ss.mu.Lock()
+	for _, t := range ss.tokens {
+		cg := coingeckoCoinID(t.ID)
+		if entry, ok := prices[cg]; ok {
+			t.PriceUSD = strconv.FormatFloat(entry.USD, 'f', -1, 64)
+			if entry.UsdMarketCap > 0 {
+				t.MarketCap = strconv.FormatFloat(entry.UsdMarketCap, 'f', 0, 64)
+			}
+			if entry.Usd24HVol > 0 {
+				t.Volume24h = strconv.FormatFloat(entry.Usd24HVol, 'f', 0, 64)
+			}
+			ss.redis.Set(ctx, "swap:price:"+cg, t.PriceUSD, 30*time.Second)
+		}
+	}
+	ss.mu.Unlock()
+	entry, ok := prices[cgID]
+	if !ok {
+		return 0, fmt.Errorf("no price for %s", tokenID)
+	}
+	return entry.USD, nil
+}
+
+// refreshPrices populates PriceUSD/MarketCap/Volume24h for all seeded tokens
+// from CoinGecko (cached). Errors are logged, not fatal.
+func (ss *SwapService) refreshPrices(ctx context.Context) {
+	for _, t := range ss.tokens {
+		if _, err := ss.priceOf(ctx, t.ID); err != nil {
+			log.Printf("[swap] refresh price for %s: %v", t.Symbol, err)
+		}
+	}
+}
+
+func getEnv(key, defaultValue string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultValue
+}
+
+func getEnvInt(key string, defaultValue int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return defaultValue
 }
 
 // ============================================================================

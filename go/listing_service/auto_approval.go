@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -455,16 +457,31 @@ func (s *AutoApprovalService) evaluateRule(fieldValue, operator, ruleValue strin
 	case "equals":
 		return fieldValue == ruleValue
 	case "contains":
-		return len(fieldValue) > 0 && len(ruleValue) > 0 &&
-			(len(fieldValue) >= len(ruleValue))
+		return strings.Contains(fieldValue, ruleValue)
 	case "gt":
-		// For numeric comparisons
-		return false // Simplified
+		// Numeric greater-than: parse both operands as floats.
+		f, err1 := strconv.ParseFloat(fieldValue, 64)
+		r, err2 := strconv.ParseFloat(ruleValue, 64)
+		if err1 != nil || err2 != nil {
+			return false
+		}
+		return f > r
 	case "lt":
-		return false // Simplified
+		f, err1 := strconv.ParseFloat(fieldValue, 64)
+		r, err2 := strconv.ParseFloat(ruleValue, 64)
+		if err1 != nil || err2 != nil {
+			return false
+		}
+		return f < r
 	case "in":
-		// Check if value is in comma-separated list
-		return false // Simplified
+		// Membership: fieldValue must equal one of the comma-separated
+		// entries in ruleValue.
+		for _, item := range strings.Split(ruleValue, ",") {
+			if strings.TrimSpace(item) == fieldValue {
+				return true
+			}
+		}
+		return false
 	default:
 		return false
 	}

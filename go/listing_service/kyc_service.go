@@ -421,37 +421,32 @@ func (s *KYCService) processVerification(userID string) {
 	}
 }
 
-// runAMLCheck runs AML screening
+// runAMLCheck runs AML screening. It never fabricates a "clear" result:
+// when AML is enabled but no screening provider is configured (no API key),
+// the user is marked pending/unverified and routed to manual review. Only a
+// real provider call (against s.config.Provider + APIKey) can set "clear".
 func (s *KYCService) runAMLCheck(userID string) {
 	ctx := context.Background()
-
 	user, err := s.GetUserByID(ctx, userID)
 	if err != nil {
 		return
 	}
 
-	// Simulate AML check
-	amlCheck := &AMLCheckResult{
+	if !s.config.AMLEnabled {
+		return
+	}
+
+	// No real provider configured -> honest pending state (NOT "clear").
+	pending := &AMLCheckResult{
 		CheckedAt:          time.Now(),
-		Status:             "clear",
-		RiskLevel:          "low",
-		PEPStatus:          "no",
-		SanctionsStatus:    "clear",
-		AdverseMediaStatus: "clear",
+		Status:             "pending",
+		RiskLevel:          "unverified",
+		PEPStatus:          "unknown",
+		SanctionsStatus:    "pending",
+		AdverseMediaStatus: "pending",
 	}
-
-	// Update risk score based on AML
-	if amlCheck.RiskLevel == "low" {
-		user.RiskScore = 10
-	} else if amlCheck.RiskLevel == "medium" {
-		user.RiskScore = 30
-	} else if amlCheck.RiskLevel == "high" {
-		user.RiskScore = 60
-	} else {
-		user.RiskScore = 90
-	}
-
-	user.AMLCheck = amlCheck
+	user.AMLCheck = pending
+	user.RiskScore = 90 // unverified -> maximum prudential risk until cleared
 	s.saveUser(ctx, user)
 }
 
