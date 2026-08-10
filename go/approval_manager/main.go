@@ -14,6 +14,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // ============================================================================
@@ -256,16 +258,35 @@ func (s *ApprovalManager) assessRisk(tokenSymbol string) string {
 // Revocation
 // ============================================================================
 
+// buildRevokeTxData encodes an ERC-20 approve(spender, 0) call so the caller
+// (the canonical wallet_api, which holds the signing key) can sign and
+// broadcast it. We do NOT fabricate a tx hash here -- only the wallet_api
+// can produce a real on-chain hash after broadcast.
+func buildRevokeTxData(tokenAddress, spender string, chainID uint64) ([]byte, error) {
+	if !common.IsHexAddress(tokenAddress) {
+		return nil, fmt.Errorf("invalid token address")
+	}
+	if !common.IsHexAddress(spender) {
+		return nil, fmt.Errorf("invalid spender address")
+	}
+	// approve(address spender, uint256 amount) selector = 0x095ea7b3
+	selector := crypto.Keccak256([]byte("approve(address,uint256)"))[:4]
+	spenderAddr := common.HexToAddress(spender)
+	var spenderArg [32]byte
+	copy(spenderArg[12:], spenderAddr.Bytes())
+	var amountArg [32]byte // amount = 0 to revoke
+	data := append(append(selector, spenderArg[:]...), amountArg[:]...)
+	_ = chainID
+	return data, nil
+}
+
 func (s *ApprovalManager) RevokeApproval(req RevokeRequest) (string, error) {
-	// In production, this would:
-	// 1. Build a transaction to set allowance to 0
-	// 2. Sign it with MPC or private key
-	// 3. Broadcast to network
-
-	// For now, return a mock tx hash
-	txHash := fmt.Sprintf("0x%x", time.Now().UnixNano())
-
-	return txHash, nil
+	// This service scans approvals but does NOT hold any signing key, so it
+	// cannot sign or broadcast. Return a clear error instead of fabricating a
+	// tx hash. The caller should pass the encoded revoke calldata to the
+	// canonical wallet_api /send endpoint (with the owner's password) to sign
+	// and broadcast, which returns the real on-chain tx hash.
+	return "", fmt.Errorf("revoke requires signed broadcast via wallet_api; this service has no signing key")
 }
 
 func (s *ApprovalManager) RevokeAllApprovals(address string, chainID uint64) ([]string, error) {

@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
+	"golang.org/x/crypto/pbkdf2"
 )
 
 // ============================================================================
@@ -88,80 +90,84 @@ type BackupRequest struct {
 // Encryption
 // ============================================================================
 
+// EncryptBackup encrypts `data` with an AES-256-GCM key derived from
+// `password` via PBKDF2-HMAC-SHA256. The output blob is base64(salt ||
+// nonce || ciphertext) so DecryptBackup can recover the salt and nonce and
+// re-derive the same key. A SHA-256 checksum of the full blob is returned
+// for transport integrity.
 func EncryptBackup(data, password string) (string, string, error) {
-	// Generate salt
 	salt := make([]byte, 32)
-	rand.Read(salt)
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+		return "", "", err
+	}
 
-	// Derive key using PBKDF2
 	key := deriveKey(password, salt)
 
-	// Generate IV
-	iv := make([]byte, 16)
-	rand.Read(iv)
-
-	// Encrypt
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", "", err
 	}
-
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return "", "", err
 	}
 
-	ciphertext := gcm.Seal(iv, iv, []byte(data), nil)
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", "", err
+	}
 
-	// Calculate checksum
-	checksum := sha256.Sum256(ciphertext)
+	ciphertext := gcm.Seal(nil, nonce, []byte(data), nil)
+	blob := append(append(salt, nonce...), ciphertext...)
+	checksum := sha256.Sum256(blob)
 
-	return base64.StdEncoding.EncodeToString(ciphertext),
+	return base64.StdEncoding.EncodeToString(blob),
 		hex.EncodeToString(checksum[:]),
 		nil
 }
 
+// DecryptBackup reverses EncryptBackup: extract salt(32) + nonce + ciphertext
+// from the base64 blob, re-derive the PBKDF2 key from the password + salt,
+// and AES-256-GCM decrypt. A wrong password fails the GCM auth tag.
 func DecryptBackup(encryptedData, password string) (string, error) {
-	// For demo, simplified decryption
-	// In production, would extract salt and properly decrypt
-	ciphertext, err := base64.StdEncoding.DecodeString(encryptedData)
+	blob, err := base64.StdEncoding.DecodeString(encryptedData)
 	if err != nil {
 		return "", err
 	}
 
-	// Simplified - would use proper key derivation
-	key := sha256.Sum256([]byte(password))
+	if len(blob) < 32 {
+		return "", fmt.Errorf("ciphertext too short")
+	}
+	salt := blob[:32]
+	rest := blob[32:]
 
-	block, err := aes.NewCipher(key[:])
+	key := deriveKey(password, salt)
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err
 	}
-
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return "", err
 	}
 
 	nonceSize := gcm.NonceSize()
-	if len(ciphertext) < nonceSize {
+	if len(rest) < nonceSize {
 		return "", fmt.Errorf("ciphertext too short")
 	}
-
-	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	nonce, ciphertext := rest[:nonceSize], rest[nonceSize:]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
 		return "", err
 	}
-
 	return string(plaintext), nil
 }
 
 func deriveKey(password string, salt []byte) []byte {
-	// Simplified key derivation
-	// In production, would use proper PBKDF2
-	combined := append([]byte(password), salt...)
-	hash := sha256.Sum256(combined)
-	return hash[:]
+	// PBKDF2-HMAC-SHA256, 600k iterations (OWASP 2023 recommendation for
+	// password-based key derivation). Replaces the previous single sha256
+	// (no work factor) which was trivially brute-forceable.
+	return pbkdf2.Key([]byte(password), salt, 600000, 32, sha256.New)
 }
 
 // ============================================================================

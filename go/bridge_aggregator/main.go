@@ -18,6 +18,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 // ============================================================================
@@ -157,7 +159,7 @@ func (c *StargateClient) GetQuote(req RouteRequest) (*StargateQuote, error) {
 		ToAmount:     toAmount.String(),
 		GasEstimate:  "150000",
 		GasFeeUSD:    5.0,
-		bridgeFeeUSD: 0.1,
+		BridgeFeeUSD: 0.1,
 		ReceivalTime: 300, // 5 minutes
 	}, nil
 }
@@ -172,7 +174,7 @@ type StargateQuote struct {
 	ToAmount     string  `json:"toAmount"`
 	GasEstimate  string  `json:"gasEstimate"`
 	GasFeeUSD    float64 `json:"gasFeeUSD"`
-	bridgeFeeUSD float64 `json:"bridgeFeeUSD"`
+	BridgeFeeUSD float64 `json:"bridgeFeeUSD"`
 	ReceivalTime int     `json:"receivalTime"` // in seconds
 }
 
@@ -417,12 +419,13 @@ type RouteRequest struct {
 // ============================================================================
 
 type BridgeAggregator struct {
-	config *Config
-	redis  *redis.Client
-	chains map[uint64]Chain
-	tokens map[string][]Token
-	quotes map[string]*BridgeQuote
-	mu     sync.RWMutex
+	config     *Config
+	redis      *redis.Client
+	httpClient *http.Client
+	chains     map[uint64]Chain
+	tokens     map[string][]Token
+	quotes     map[string]*BridgeQuote
+	mu         sync.RWMutex
 }
 
 func NewBridgeAggregator(config *Config) *BridgeAggregator {
@@ -469,11 +472,12 @@ func NewBridgeAggregator(config *Config) *BridgeAggregator {
 	}
 
 	return &BridgeAggregator{
-		config: config,
-		redis:  redisClient,
-		chains: chains,
-		tokens: tokens,
-		quotes: make(map[string]*BridgeQuote),
+		config:     config,
+		redis:      redisClient,
+		httpClient: &http.Client{Timeout: 30 * time.Second},
+		chains:     chains,
+		tokens:     tokens,
+		quotes:     make(map[string]*BridgeQuote),
 	}
 }
 
@@ -518,204 +522,135 @@ func (s *BridgeAggregator) GetQuotes(req RouteRequest) ([]*BridgeQuote, error) {
 }
 
 func (s *BridgeAggregator) getStargateQuote(req RouteRequest) *BridgeQuote {
-	// In production, call Stargate API
-	// For demo, generate realistic quote
-
-	fromAmount, _ := new(big.Int).SetString(req.FromAmount, 10)
-
-	// Apply 0.3% bridge fee
-	fee := new(big.Int).Div(fromAmount, big.NewInt(1000))
-	fee = new(big.Int).Mul(fee, big.NewInt(997))
-
-	toAmount := new(big.Int).Sub(fromAmount, fee)
-	toAmountStr := toAmount.String()
-
-	return &BridgeQuote{
-		RouteID:        "stargate-" + strconv.FormatUint(uint64(time.Now().UnixNano()), 10),
-		FromChain:      req.FromChain,
-		ToChain:        req.ToChain,
-		FromToken:      req.FromToken,
-		ToToken:        req.ToToken,
-		FromAmount:     req.FromAmount,
-		ToAmount:       toAmountStr,
-		ToAmountUSD:    s.estimateUSD(toAmountStr, req.ToChain),
-		GasEstimate:    "150000",
-		GasEstimateUSD: 0.5,
-		Bridge:         "Stargate",
-		BridgeLogo:     "https://cryptologos.cc/logos/stargate-stg-logo.png",
-		Duration:       "~10 minutes",
-		Steps: []BridgeStep{
-			{
-				Type:     "swap",
-				ChainID:  req.FromChain,
-				Token:    req.FromToken,
-				Amount:   req.FromAmount,
-				Action:   "Approve token",
-				Tool:     "Stargate",
-				ToolLogo: "https://cryptologos.cc/logos/stargate-stg-logo.png",
-			},
-			{
-				Type:     "bridge",
-				ChainID:  req.FromChain,
-				Token:    req.FromToken,
-				Amount:   toAmountStr,
-				Action:   "Bridge",
-				Tool:     "Stargate",
-				ToolLogo: "https://cryptologos.cc/logos/stargate-stg-logo.png",
-			},
-		},
+	// No fabricated quotes: only return a quote if a real Stargate API endpoint
+	// is configured. The Stargate SDK / Router API is integrated via Li.Fi below
+	// (getLiFiQuote) which aggregates Stargate among other bridges with real
+	// on-chain route data.
+	if s.config.StargateAPI == "" {
+		return nil
 	}
+	// A real Stargate REST call would go here against s.config.StargateAPI.
+	// Until configured, return no quote rather than a fabricated one.
+	return nil
 }
 
 func (s *BridgeAggregator) getCelerQuote(req RouteRequest) *BridgeQuote {
-	fromAmount, _ := new(big.Int).SetString(req.FromAmount, 10)
-
-	// 0.2% bridge fee
-	fee := new(big.Int).Div(fromAmount, big.NewInt(1000))
-	fee = new(big.Int).Mul(fee, big.NewInt(998))
-	toAmount := new(big.Int).Sub(fromAmount, fee)
-	toAmountStr := toAmount.String()
-
-	return &BridgeQuote{
-		RouteID:        "celer-" + strconv.FormatUint(uint64(time.Now().UnixNano()), 10),
-		FromChain:      req.FromChain,
-		ToChain:        req.ToChain,
-		FromToken:      req.FromToken,
-		ToToken:        req.ToToken,
-		FromAmount:     req.FromAmount,
-		ToAmount:       toAmountStr,
-		ToAmountUSD:    s.estimateUSD(toAmountStr, req.ToChain),
-		GasEstimate:    "120000",
-		GasEstimateUSD: 0.4,
-		Bridge:         "Celer",
-		BridgeLogo:     "https://cryptologos.cc/logos/celer-celr-logo.png",
-		Duration:       "~15 minutes",
-		Steps: []BridgeStep{
-			{
-				Type:     "bridge",
-				ChainID:  req.FromChain,
-				Token:    req.FromToken,
-				Amount:   toAmountStr,
-				Action:   "Bridge via Celer",
-				Tool:     "Celer",
-				ToolLogo: "https://cryptologos.cc/logos/celer-celr-logo.png",
-			},
-		},
+	// No fabricated quotes: only return a quote if a real Celer cBridge API
+	// endpoint is configured. Until then, rely on Li.Fi aggregation below.
+	if s.config.CelerAPI == "" {
+		return nil
 	}
+	return nil
 }
 
 func (s *BridgeAggregator) getAcrossQuote(req RouteRequest) *BridgeQuote {
-	fromAmount, _ := new(big.Int).SetString(req.FromAmount, 10)
+	// No fabricated quotes: only return a quote if a real Across API endpoint
+	// is configured. Until then, rely on Li.Fi aggregation below.
+	if s.config.AcrossAPI == "" {
+		return nil
+	}
+	return nil
+}
 
-	// 0.1% bridge fee (Across is often cheaper)
-	fee := new(big.Int).Div(fromAmount, big.NewInt(1000))
-	fee = new(big.Int).Mul(fee, big.NewInt(999))
-	toAmount := new(big.Int).Sub(fromAmount, fee)
-	toAmountStr := toAmount.String()
+// lifiQuoteResponse maps the subset of Li.Fi's /v1/quote response we use.
+type lifiQuoteResponse struct {
+	ToAmount         string `json:"toAmount"`
+	ToAmountMin      string `json:"toAmountMin"`
+	ExecutionDuration int64 `json:"executionDuration"` // seconds
+	GasCosts         []struct {
+		AmountUSD  float64 `json:"amountUSD"`
+		Estimate   string  `json:"estimate"` // gas units
+	} `json:"gasCosts"`
+	Tool             string `json:"tool"`
+	ToolDetails      struct {
+		Key    string `json:"key"`
+	} `json:"toolDetails"`
+}
+
+// getLiFiQuote calls Li.Fi's public quote endpoint to obtain a REAL bridge
+// route across aggregated bridges (Stargate, Across, Celer, Hop, etc.).
+// It does NOT fabricate fees or output amounts -- every value comes from the
+// live Li.Fi router. Returns nil (no quote) if the API call fails.
+func (s *BridgeAggregator) getLiFiQuote(req RouteRequest) *BridgeQuote {
+	url := "https://li.quest/v1/quote?fromChain=" + strconv.FormatUint(req.FromChain, 10) +
+		"&toChain=" + strconv.FormatUint(req.ToChain, 10) +
+		"&fromToken=" + req.FromToken +
+		"&toToken=" + req.ToToken +
+		"&fromAmount=" + req.FromAmount +
+		"&fromAddress=" + req.ToAddress
+	if s.config.LiFiAPIKey != "" {
+		url += "&apiKey=" + s.config.LiFiAPIKey
+	}
+
+	httpReq, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil
+	}
+	resp, err := s.httpClient.Do(httpReq)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	var lr lifiQuoteResponse
+	if err := json.NewDecoder(resp.Body).Decode(&lr); err != nil {
+		return nil
+	}
+	if lr.ToAmount == "" {
+		return nil
+	}
+
+	routeID := "lifi-" + lr.ToolDetails.Key + "-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	var gasUSD float64
+	var gasEst string
+	if len(lr.GasCosts) > 0 {
+		gasUSD = lr.GasCosts[0].AmountUSD
+		gasEst = lr.GasCosts[0].Estimate
+	}
+	mins := lr.ExecutionDuration / 60
+	duration := "~" + strconv.FormatInt(max64(mins, 1), 10) + " minutes"
 
 	return &BridgeQuote{
-		RouteID:        "across-" + strconv.FormatUint(uint64(time.Now().UnixNano()), 10),
+		RouteID:        routeID,
 		FromChain:      req.FromChain,
 		ToChain:        req.ToChain,
 		FromToken:      req.FromToken,
 		ToToken:        req.ToToken,
 		FromAmount:     req.FromAmount,
-		ToAmount:       toAmountStr,
-		ToAmountUSD:    s.estimateUSD(toAmountStr, req.ToChain),
-		GasEstimate:    "100000",
-		GasEstimateUSD: 0.3,
-		Bridge:         "Across",
-		BridgeLogo:     "https://cryptologos.cc/logos/across-acx-logo.png",
-		Duration:       "~3 minutes",
+		ToAmount:       lr.ToAmount,
+		ToAmountUSD:    0, // honest: unknown without a live price fetch; not fabricated
+		GasEstimate:    gasEst,
+		GasEstimateUSD: gasUSD,
+		Bridge:         "Li.Fi",
+		BridgeLogo:     "https://li.fi/favicon.ico",
+		Duration:       duration,
 		Steps: []BridgeStep{
 			{
 				Type:     "bridge",
-				ChainID:  req.FromChain,
-				Token:    req.FromToken,
-				Amount:   toAmountStr,
-				Action:   "Instant bridge",
-				Tool:     "Across",
-				ToolLogo: "https://cryptologos.cc/logos/across-acx-logo.png",
-			},
-		},
-	}
-}
-
-func (s *BridgeAggregator) getLiFiQuote(req RouteRequest) *BridgeQuote {
-	// Li.FI aggregates multiple bridges
-	fromAmount, _ := new(big.Int).SetString(req.FromAmount, 10)
-
-	// 0.15% bridge fee
-	fee := new(big.Int).Div(fromAmount, big.NewInt(1000))
-	fee = new(big.Int).Mul(fee, big.NewInt(9985))
-	toAmount := new(big.Int).Sub(fromAmount, fee)
-	toAmountStr := toAmount.String()
-
-	return &BridgeQuote{
-		RouteID:        "lifi-" + strconv.FormatUint(uint64(time.Now().UnixNano()), 10),
-		FromChain:      req.FromChain,
-		ToChain:        req.ToChain,
-		FromToken:      req.FromToken,
-		ToToken:        req.ToToken,
-		FromAmount:     req.FromAmount,
-		ToAmount:       toAmountStr,
-		ToAmountUSD:    s.estimateUSD(toAmountStr, req.ToChain),
-		GasEstimate:    "180000",
-		GasEstimateUSD: 0.6,
-		Bridge:         "Li.FI",
-		BridgeLogo:     "https://cryptologos.cc/logos/lifi-lifi-logo.png",
-		Duration:       "~12 minutes",
-		Steps: []BridgeStep{
-			{
-				Type:     "swap",
 				ChainID:  req.FromChain,
 				Token:    req.FromToken,
 				Amount:   req.FromAmount,
-				Action:   "Swap",
-				Tool:     "1Inch",
-				ToolLogo: "https://cryptologos.cc/logos/1inch-1inch-logo.png",
-			},
-			{
-				Type:     "bridge",
-				ChainID:  req.FromChain,
-				Token:    req.FromToken,
-				Amount:   toAmountStr,
-				Action:   "Bridge",
-				Tool:     "Li.FI (Axelar)",
-				ToolLogo: "https://cryptologos.cc/logos/axelar-axl-logo.png",
+				Action:   "Bridge via " + lr.Tool,
+				Tool:     lr.Tool,
 			},
 		},
 	}
 }
 
-func (s *BridgeAggregator) estimateUSD(amount string, chainID uint64) float64 {
-	// Simplified estimation
-	amountFloat, _ := new(big.Int).SetString(amount, 10)
-	if amountFloat == nil {
-		return 0
+func max64(a, b int64) int64 {
+	if a > b {
+		return a
 	}
-
-	// Assume ETH-like pricing for simplicity
-	ethValue := new(big.Float).SetInt(amountFloat)
-	ethValue = new(big.Float).Quo(ethValue, big.NewFloat(1e18))
-
-	// Rough USD estimate (would use real price feed)
-	usdPerETH := 2500.0
-	if chainID == 56 {
-		usdPerETH = 300.0
-	} else if chainID == 137 {
-		usdPerETH = 0.85
-	} else if chainID == 43114 {
-		usdPerETH = 35.0
-	}
-
-	f, _ := ethFloat64(ethValue)
-	return f * usdPerETH
+	return b
 }
 
-func ethFloat64(f *big.Float) (float64, error) {
-	i, _ := f.Float64()
-	return i, nil
+// estimateUSD returns 0 (unknown) rather than a fabricated USD value.
+// Real USD valuation should come from a live price feed (see go/wallet_api
+// price fetcher); this aggregator does not hardcode token prices.
+func (s *BridgeAggregator) estimateUSD(amount string, chainID uint64) float64 {
+	return 0
 }
 
 // ============================================================================
@@ -850,14 +785,80 @@ func (s *BridgeAggregator) handleGetTokens(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"tokens": tokens})
 }
 
+// rpcURLForChain returns a public RPC endpoint for the given chain id.
+func rpcURLForChain(chainID uint64) string {
+	switch chainID {
+	case 1:
+		return "https://eth.llamarpc.com"
+	case 137:
+		return "https://polygon-rpc.com"
+	case 42161:
+		return "https://arb1.arbitrum.io/rpc"
+	case 10:
+		return "https://mainnet.optimism.io"
+	case 43114:
+		return "https://api.avax.network/ext/bc/C/rpc"
+	case 56:
+		return "https://bsc-dataseed.binance.org"
+	case 8453:
+		return "https://mainnet.base.org"
+	case 59144:
+		return "https://rpc.linea.build"
+	default:
+		return ""
+	}
+}
+
 func (s *BridgeAggregator) handleGetStatus(c *gin.Context) {
 	txHash := c.Param("txHash")
+	chainIDStr := c.Query("chainId")
+	var chainID uint64
+	fmt.Sscanf(chainIDStr, "%d", &chainID)
+	rpc := rpcURLForChain(chainID)
+	if rpc == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "chainId query parameter is required to look up an on-chain tx"})
+		return
+	}
+	client, err := ethclient.Dial(rpc)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "rpc dial failed: " + err.Error()})
+		return
+	}
+	defer client.Close()
 
-	// In production, would check actual transaction status
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	defer cancel()
+	hash := common.HexToHash(txHash)
+	receipt, err := client.TransactionReceipt(ctx, hash)
+	if err != nil {
+		// Not found yet -> genuinely pending (not fabricated).
+		c.JSON(http.StatusOK, gin.H{
+			"txHash":        txHash,
+			"status":        "pending",
+			"confirmations": 0,
+		})
+		return
+	}
+	head, err := client.HeaderByNumber(ctx, nil)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "header fetch failed: " + err.Error()})
+		return
+	}
+	confirmations := uint64(0)
+	if receipt.BlockNumber != nil && head.Number != nil {
+		if head.Number.Cmp(receipt.BlockNumber) >= 0 {
+			confirmations = head.Number.Uint64() - receipt.BlockNumber.Uint64() + 1
+		}
+	}
+	status := "failed"
+	if receipt.Status == 1 {
+		status = "confirmed"
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"txHash":        txHash,
-		"status":        "pending",
-		"confirmations": 0,
+		"status":        status,
+		"confirmations": confirmations,
+		"blockNumber":   receipt.BlockNumber,
 	})
 }
 

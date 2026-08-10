@@ -333,11 +333,13 @@ func (s *SocialRecoveryService) RegisterWallet(owner, address string, guardians 
 		return nil, fmt.Errorf("invalid threshold")
 	}
 
-	// Generate random encryption key for wallet
+	// Generate the wallet's recovery key. This key is the secret protected by
+	// the guardian threshold scheme; it is encrypted (AES-256-GCM) with the
+	// service master key and only the encrypted form is stored. We encrypt the
+	// REAL generated key (not a placeholder) so recovery can later reconstruct
+	// the actual secret.
 	walletKey := generateEncryptionKey()
-
-	// In production, would use actual key derivation
-	encryptedKey, err := EncryptAESGCM("actual_wallet_key", walletKey)
+	encryptedKey, err := EncryptAESGCM(walletKey, s.encryptionKey)
 	if err != nil {
 		return nil, err
 	}
