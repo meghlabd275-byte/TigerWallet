@@ -177,10 +177,14 @@ const generateAddressFromSeed = (mnemonic: string, chain: Blockchain): string =>
 // Generate backup code
 const generateBackupCode = (): string => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  // Use the Web Crypto API for an unpredictable backup code (Math.random()
+  // is not cryptographically secure).
+  const rand = new Uint8Array(16);
+  crypto.getRandomValues(rand);
   let code = '';
   for (let i = 0; i < 16; i++) {
     if (i > 0 && i % 4 === 0) code += '-';
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
+    code += chars.charAt(rand[i] % chars.length);
   }
   return code;
 };

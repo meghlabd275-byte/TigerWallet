@@ -314,7 +314,11 @@ let csrfToken: string = '';
  * Generate CSRF token
  */
 export const generateCSRFToken = async (): Promise<string> => {
-  const random = Math.random().toString(36).substring(2);
+  // Use the Web Crypto API for cryptographically-secure randomness instead of
+  // Math.random() (which is NOT suitable for security-sensitive tokens).
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const random = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
   const timestamp = Date.now().toString(36);
   csrfToken = await hash(random + timestamp);
   return csrfToken;

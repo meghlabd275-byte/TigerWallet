@@ -18,6 +18,56 @@ export const LISTING_SERVICE_URL = process.env.LISTING_SERVICE_URL || process.en
 // The lending service (go/lending_service) runs on port 8009.
 export const LENDING_SERVICE_URL = process.env.LENDING_SERVICE_URL || process.env.NEXT_PUBLIC_LENDING_URL || 'http://localhost:8009';
 
+// The copy-trading service (go/copy_trading_service) runs on port 8006.
+export const COPY_TRADING_SERVICE_URL = process.env.COPY_TRADING_SERVICE_URL || process.env.NEXT_PUBLIC_COPY_TRADING_URL || 'http://localhost:8006';
+
+// Fetch a path from a specific service base URL (for services that do NOT run
+// on the wallet_api). Falls back gracefully with a 502 on connection error.
+export async function proxyGetFrom(req: NextRequest, baseUrl: string, path: string): Promise<NextResponse> {
+  const url = new URL(req.url);
+  const search = url.searchParams.toString();
+  try {
+    const res = await fetch(`${baseUrl}${path}${search ? `?${search}` : ''}`, {
+      headers: authHeaders(req),
+      cache: 'no-store',
+    });
+    const data = await res.json();
+    return NextResponse.json(data, { status: res.status });
+  } catch {
+    return NextResponse.json(
+      { success: false, error: `Failed to fetch ${path} from backend` },
+      { status: 502 }
+    );
+  }
+}
+
+export async function proxyMutationFrom(
+  req: NextRequest,
+  baseUrl: string,
+  path: string,
+  method: 'POST' | 'PUT' | 'DELETE'
+): Promise<NextResponse> {
+  try {
+    let body: string | undefined;
+    if (method !== 'DELETE') {
+      body = await req.text();
+    }
+    const res = await fetch(`${baseUrl}${path}`, {
+      method,
+      headers: authHeaders(req),
+      body,
+      cache: 'no-store',
+    });
+    const data = await res.json().catch(() => ({}));
+    return NextResponse.json(data, { status: res.status });
+  } catch {
+    return NextResponse.json(
+      { success: false, error: `Failed to mutate ${path} on backend` },
+      { status: 502 }
+    );
+  }
+}
+
 export function authHeaders(req: NextRequest): Record<string, string> {
   const auth = req.headers.get('authorization');
   return auth ? { Authorization: auth, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { proxyGet, proxyMutation } from '../../_proxy';
+import { proxyGetFrom, proxyMutationFrom, COPY_TRADING_SERVICE_URL } from '../../_proxy';
 
 export async function GET(req: NextRequest) {
-  return proxyGet(req, '/copy-trading/traders');
+  return proxyGetFrom(req, COPY_TRADING_SERVICE_URL, '/api/v1/copytrading/traders');
 }
 
 export async function POST(req: NextRequest) {
-  return proxyMutation(req, '/copy-trading/start', 'POST');
+  return proxyMutationFrom(req, COPY_TRADING_SERVICE_URL, '/api/v1/copytrading/follow', 'POST');
 }

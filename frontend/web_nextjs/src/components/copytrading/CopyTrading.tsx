@@ -58,35 +58,40 @@ export function CopyTradingDashboard() {
     closeOnPause: true,
   });
 
-  // Load traders
+  // Load traders from the real copy-trading service (go/copy_trading_service).
   useEffect(() => {
-    // Mock data
-    setTraders([
-      {
-        id: '1',
-        address: '0x1234567890abcdef1234567890abcdef12345678',
-        name: 'CryptoMaster',
-        totalTrades: 1250,
-        winRate: 72,
-        profitShare: 10,
-        aum: 2500000,
-        followers: 5420,
-        status: 'active',
-        performance: { monthly: 15.5 },
-      },
-      {
-        id: '2',
-        address: '0xabcdef1234567890abcdef1234567890abcdef12',
-        name: 'DeFiWhale',
-        totalTrades: 890,
-        winRate: 65,
-        profitShare: 8,
-        aum: 1800000,
-        followers: 3200,
-        status: 'active',
-        performance: { monthly: 8.2 },
-      },
-    ]);
+    (async () => {
+      try {
+        const res = await fetch('/api/v1/copy-trading/traders');
+        if (!res.ok) return;
+        const data = await res.json();
+        const list: any[] = data?.traders ?? [];
+        const mapped: Trader[] = list.map((t) => {
+          // winRate may arrive as "72%" or 72.
+          const wr = typeof t.WinRate === 'string'
+            ? parseFloat(t.WinRate) || 0
+            : Number(t.WinRate || 0);
+          const aum = typeof t.CopyVolume === 'string'
+            ? parseFloat(t.CopyVolume) || 0
+            : Number(t.Aum || t.CopyVolume || 0);
+          return {
+            id: t.ID || t.Id || t.id || '',
+            address: t.Address || t.address || '',
+            name: t.Username || t.Name || t.name || 'Unknown',
+            totalTrades: Number(t.Trades || 0),
+            winRate: wr,
+            profitShare: Number(t.Rating || 0), // rating used as profit share proxy
+            aum,
+            followers: Number(t.Followers || 0),
+            status: (t.Status || 'active') as TraderStatus,
+            performance: { monthly: Number(t.TotalPnl || 0) },
+          };
+        });
+        setTraders(mapped);
+      } catch {
+        /* backend unavailable; leave traders empty */
+      }
+    })();
   }, []);
 
   const totalPnl = positions.reduce((sum, p) => sum + p.pnl, 0);
@@ -114,8 +119,8 @@ export function CopyTradingDashboard() {
         <button
           onClick={() => setActiveTab('traders')}
           className={`pb-3 px-4 font-medium ${
-            activeTab === 'traders' 
-              ? 'border-b-2 border-blue-600 text-blue-600' 
+            activeTab === 'traders'
+              ? 'border-b-2 border-blue-600 text-blue-600'
               : 'text-gray-500'
           }`}
         >
@@ -124,8 +129,8 @@ export function CopyTradingDashboard() {
         <button
           onClick={() => setActiveTab('positions')}
           className={`pb-3 px-4 font-medium ${
-            activeTab === 'positions' 
-              ? 'border-b-2 border-blue-600 text-blue-600' 
+            activeTab === 'positions'
+              ? 'border-b-2 border-blue-600 text-blue-600'
               : 'text-gray-500'
           }`}
         >
@@ -134,8 +139,8 @@ export function CopyTradingDashboard() {
         <button
           onClick={() => setActiveTab('settings')}
           className={`pb-3 px-4 font-medium ${
-            activeTab === 'settings' 
-              ? 'border-b-2 border-blue-600 text-blue-600' 
+            activeTab === 'settings'
+              ? 'border-b-2 border-blue-600 text-blue-600'
               : 'text-gray-500'
           }`}
         >
@@ -196,7 +201,7 @@ export function CopyTradingDashboard() {
       {activeTab === 'settings' && (
         <div className="bg-white rounded-lg shadow-md p-6 max-w-lg">
           <h3 className="text-lg font-semibold mb-4">Copy Settings</h3>
-          
+
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">

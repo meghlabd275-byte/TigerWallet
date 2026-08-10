@@ -59,6 +59,7 @@ func main() {
 	r.GET("/api/v1/chains", handleSupportedChains)
 	r.GET("/api/v1/price", handlePrice)
 	r.GET("/api/v1/gas", handleGasPrice)
+	r.GET("/api/v1/chart/history", handleChartHistory)
 
 	// ---- Auth routes ----
 	auth := r.Group("/api/v1/auth")

@@ -21,42 +21,6 @@ interface PriceChartProps {
   showOrderBook?: boolean;
 }
 
-// Generate realistic candlestick data
-function generateCandlestickData(
-  basePrice: number,
-  days: number,
-  volatility: number = 0.02
-): CandlestickData[] {
-  const data: CandlestickData[] = [];
-  let currentPrice = basePrice;
-  const now = new Date();
-  
-  for (let i = days; i >= 0; i--) {
-    const date = new Date(now);
-    date.setDate(date.getDate() - i);
-    
-    // Random OHLC with realistic movement
-    const change = (Math.random() - 0.5) * 2 * volatility * currentPrice;
-    const open = currentPrice;
-    const close = currentPrice + change;
-    const high = Math.max(open, close) + Math.random() * volatility * currentPrice * 0.5;
-    const low = Math.min(open, close) - Math.random() * volatility * currentPrice * 0.5;
-    
-    data.push({
-      time: date.toISOString().split('T')[0],
-      open,
-      high,
-      low,
-      close,
-      volume: Math.random() * 1000000 + 100000
-    });
-    
-    currentPrice = close;
-  }
-  
-  return data;
-}
-
 export default function PriceChart({
   tokenPair = 'ETH_USDC',
   tokenIn,
@@ -143,26 +107,36 @@ export default function PriceChart({
           volumeSeriesRef.current = volumeSeries;
         }
         
-        // Determine base price from token pair
-        let basePrice = 2450.0;
-        if (tokenPair.includes('BTC') || tokenPair.includes('WBTC')) {
-          basePrice = 62500.0;
-        } else if (tokenPair.includes('LINK')) {
-          basePrice = 18.5;
-        } else if (tokenPair.includes('UNI')) {
-          basePrice = 12.5;
-        } else if (tokenPair.includes('AAVE')) {
-          basePrice = 285.0;
+        // Resolve the CoinGecko coin id from the token pair / props.
+        const coin = tokenIn && tokenIn !== 'ETH'
+          ? tokenIn.toLowerCase()
+          : (tokenPair.includes('BTC') ? 'bitcoin'
+            : tokenPair.includes('LINK') ? 'chainlink'
+            : tokenPair.includes('UNI') ? 'uniswap'
+            : tokenPair.includes('AAVE') ? 'aave'
+            : 'ethereum');
+        const dayParam = timeframe === '1H' ? '1' : timeframe === '4H' ? '7' : timeframe === '1D' ? '30' : '90';
+
+        // Fetch REAL OHLC candles from the backend (CoinGecko). Fall back to an
+        // empty chart rather than fabricated Math.random() data on failure.
+        let candleData: CandlestickData[] = [];
+        try {
+          const res = await fetch(`/api/v1/chart/history?coin=${encodeURIComponent(coin)}&days=${dayParam}`);
+          if (res.ok) {
+            const d = await res.json();
+            const candles: any[] = d?.candles ?? [];
+            candleData = candles.map((c) => ({
+              time: new Date((c.time || 0) * 1000).toISOString().split('T')[0],
+              open: c.open,
+              high: c.high,
+              low: c.low,
+              close: c.close,
+              volume: 0,
+            }));
+          }
+        } catch {
+          candleData = [];
         }
-        
-        // Generate data based on timeframe
-        let days = 30;
-        if (timeframe === '1H') days = 1;
-        else if (timeframe === '4H') days = 7;
-        else if (timeframe === '1D') days = 30;
-        else if (timeframe === '1W') days = 90;
-        
-        const candleData = generateCandlestickData(basePrice, days);
         
         candlestickSeries.setData(candleData);
         
