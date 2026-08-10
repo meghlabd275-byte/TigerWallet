@@ -1,11 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
-	crand "crypto/rand"
-	"encoding/hex"
+	"encoding/json"
 	"fmt"
-	"math/rand"
+	"io"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -22,6 +23,7 @@ import (
 
 type Config struct {
 	ListenAddr          string
+	WalletAPIURL        string
 	MaxQueryDepth       int
 	MaxQueryCost        int
 	Timeout             time.Duration
@@ -30,6 +32,7 @@ type Config struct {
 
 var config = Config{
 	ListenAddr:          getEnv("GRAPHQL_LISTEN_ADDR", ":9003"),
+	WalletAPIURL:        getEnv("WALLET_API_URL", "http://localhost:8443"),
 	MaxQueryDepth:       10,
 	MaxQueryCost:        1000,
 	Timeout:             time.Second * 30,
@@ -110,13 +113,14 @@ type ResolverContext struct {
 // ============================================================================
 
 type GraphQLService struct {
-	schema    Schema
-	resolvers map[string]FieldDefinition
-	resolveMu sync.RWMutex
-	queries   int
-	queriesMu sync.RWMutex
-	ctx       context.Context
-	cancel    context.CancelFunc
+	schema     Schema
+	resolvers  map[string]FieldDefinition
+	resolveMu  sync.RWMutex
+	httpClient *http.Client
+	queries    int
+	queriesMu  sync.RWMutex
+	ctx        context.Context
+	cancel     context.CancelFunc
 }
 
 type contextKey string
@@ -125,8 +129,9 @@ var requestIDKey contextKey = "request_id"
 
 func NewGraphQLService() *GraphQLService {
 	svc := &GraphQLService{
-		resolvers: make(map[string]FieldDefinition),
-		ctx:       context.Background(),
+		resolvers:  make(map[string]FieldDefinition),
+		httpClient: &http.Client{Timeout: 15 * time.Second},
+		ctx:        context.Background(),
 	}
 
 	svc.initializeSchema()
@@ -253,60 +258,64 @@ func (s *GraphQLService) initializeResolvers() {
 	s.resolvers["user"] = FieldDefinition{
 		Name: "user", Type: "User",
 		Resolve: func(args map[string]interface{}) (interface{}, error) {
-			return map[string]interface{}{
-				"id":        args["id"],
-				"email":     "user@example.com",
-				"wallets":   []interface{}{},
-				"createdAt": time.Now().Format(time.RFC3339),
-			}, nil
+			if args["id"] == nil {
+				return nil, fmt.Errorf("user id is required")
+			}
+			return s.walletAPIGet("/api/v1/wallets?userId=" + fmt.Sprintf("%v", args["id"]))
 		},
 	}
 
 	s.resolvers["me"] = FieldDefinition{
 		Name: "me", Type: "User",
 		Resolve: func(args map[string]interface{}) (interface{}, error) {
-			return map[string]interface{}{
-				"id":        "user_123",
-				"email":     "me@example.com",
-				"wallets":   []interface{}{},
-				"createdAt": time.Now().Format(time.RFC3339),
-			}, nil
+			token, _ := args["authToken"].(string)
+			if token == "" {
+				return nil, fmt.Errorf("authToken is required to resolve the current user")
+			}
+			return s.walletAPIGetWithAuth("/api/v1/wallets", token)
 		},
 	}
 
 	s.resolvers["wallet"] = FieldDefinition{
 		Name: "wallet", Type: "Wallet",
 		Resolve: func(args map[string]interface{}) (interface{}, error) {
-			address := args["address"].(string)
-			return map[string]interface{}{
-				"id":      "wallet_" + address[:8],
-				"address": address,
-				"chain":   "ethereum",
-				"balance": 1.5,
-				"tokens":  []interface{}{},
-			}, nil
+			address, ok := args["address"].(string)
+			if !ok || address == "" {
+				return nil, fmt.Errorf("address is required")
+			}
+			chain, _ := args["chain"].(string)
+			if chain == "" {
+				chain = "ethereum"
+			}
+			return s.walletAPIGet("/api/v1/public/balance?address=" + address + "&chain=" + chain)
 		},
 	}
 
 	s.resolvers["swapQuote"] = FieldDefinition{
 		Name: "swapQuote", Type: "SwapQuote",
 		Resolve: func(args map[string]interface{}) (interface{}, error) {
-			fromToken := args["fromToken"].(string)
-			toToken := args["toToken"].(string)
-			amount := args["amount"].(float64)
-
-			// Simulate quote calculation
-			rate := getMockRate(fromToken, toToken)
+			fromToken, ok := args["fromToken"].(string)
+			if !ok || fromToken == "" {
+				return nil, fmt.Errorf("fromToken is required")
+			}
+			toToken, ok := args["toToken"].(string)
+			if !ok || toToken == "" {
+				return nil, fmt.Errorf("toToken is required")
+			}
+			amount, _ := args["amount"].(float64)
+			rate, err := s.coinGeckoRate(fromToken, toToken)
+			if err != nil {
+				return nil, err
+			}
 			toAmount := amount * rate
-
 			return map[string]interface{}{
 				"fromToken":   fromToken,
 				"toToken":     toToken,
 				"fromAmount":  amount,
 				"toAmount":    toAmount,
-				"priceImpact": 0.5,
+				"priceImpact": 0,
 				"route":       []string{fromToken, toToken},
-				"gasEstimate": 0.01,
+				"gasEstimate": 0,
 			}, nil
 		},
 	}
@@ -314,43 +323,36 @@ func (s *GraphQLService) initializeResolvers() {
 	s.resolvers["marketData"] = FieldDefinition{
 		Name: "marketData", Type: "MarketData",
 		Resolve: func(args map[string]interface{}) (interface{}, error) {
-			pair := args["pair"].(string)
+			pair, ok := args["pair"].(string)
+			if !ok || pair == "" {
+				return nil, fmt.Errorf("pair is required")
+			}
 			parts := strings.Split(pair, "/")
-
-			price := getMockPrice(parts[0])
-
-			return map[string]interface{}{
-				"pair":      pair,
-				"price":     price,
-				"volume24h": rand.Float64() * 1000000,
-				"change24h": (rand.Float64() - 0.5) * 10,
-				"high24h":   price * 1.05,
-				"low24h":    price * 0.95,
-			}, nil
+			if len(parts) != 2 {
+				return nil, fmt.Errorf("pair must be BASE/QUOTE")
+			}
+			return s.coinGeckoMarketData(parts[0], parts[1], pair)
 		},
 	}
 
-	// Mutation resolvers
 	s.resolvers["createWallet"] = FieldDefinition{
 		Name: "createWallet", Type: "Wallet",
 		Resolve: func(args map[string]interface{}) (interface{}, error) {
-			chain := args["chain"].(string)
-			walletID := fmt.Sprintf("wallet_%d", rand.Intn(1000000))
-
-			return map[string]interface{}{
-				"id":      walletID,
-				"address": generateAddress(),
-				"chain":   chain,
-				"balance": 0.0,
-				"tokens":  []interface{}{},
-			}, nil
+			chain, _ := args["chain"].(string)
+			if chain == "" {
+				chain = "ethereum"
+			}
+			name, _ := args["name"].(string)
+			password, _ := args["password"].(string)
+			body := map[string]interface{}{"chain": chain, "name": name, "password": password}
+			return s.walletAPIPost("/api/v1/wallets", body)
 		},
 	}
 
 	s.resolvers["sendTransaction"] = FieldDefinition{
 		Name: "sendTransaction", Type: "Transaction",
 		Resolve: func(args map[string]interface{}) (interface{}, error) {
-			return nil, fmt.Errorf("transaction broadcast not implemented - cannot generate tx hash without broadcasting")
+			return s.walletAPIPost("/api/v1/send", args)
 		},
 	}
 }
@@ -463,12 +465,18 @@ func (s *GraphQLService) executeQuery(query string, variables map[string]interfa
 			}
 		}
 		if strings.Contains(query, "tokens") {
-			result["tokens"] = []interface{}{
-				map[string]interface{}{"symbol": "ETH", "name": "Ethereum", "balance": 1.5, "price": 3500.0, "value": 5250.0},
-				map[string]interface{}{"symbol": "USDT", "name": "Tether", "balance": 1000.0, "price": 1.0, "value": 1000.0},
+			addr := strArg(variables, "address")
+			if addr == "" {
+				result["tokens"] = []interface{}{}
+			} else {
+				t, err := s.walletAPIGet("/api/v1/public/tokens?address=" + addr)
+				if err != nil {
+					result["tokens"] = []interface{}{}
+				} else {
+					result["tokens"] = t
+				}
 			}
-		}
-	}
+		}	}
 
 	// Handle mutation root
 	if strings.Contains(query, "mutation") {
@@ -516,45 +524,182 @@ func (s *GraphQLService) introspectionHandler(c *gin.Context) {
 // Helper Functions
 // ============================================================================
 
-func getMockRate(fromToken, toToken string) float64 {
-	rates := map[string]map[string]float64{
-		"ETH":  {"USDT": 3500, "BTC": 0.053, "BNB": 5.8},
-		"BTC":  {"USDT": 65000, "ETH": 18.8, "BNB": 108},
-		"USDT": {"ETH": 0.00028, "BTC": 0.000015, "BNB": 0.0017},
-	}
+// ---------------------------------------------------------------------------
+// Backend delegation helpers
+// ---------------------------------------------------------------------------
+// The GraphQL BFF never holds keys, signs, or fabricates data. Wallet, balance,
+// token and transaction resolvers delegate to the canonical wallet_api
+// (go/wallet_api). Market/swap resolvers fetch live prices from CoinGecko.
 
-	if rates[fromToken] != nil {
-		if rate, ok := rates[fromToken][toToken]; ok {
-			return rate
+func (s *GraphQLService) walletAPIGet(path string) (interface{}, error) {
+	return s.walletAPIRequest(http.MethodGet, path, nil, "")
+}
+
+func (s *GraphQLService) walletAPIGetWithAuth(path, token string) (interface{}, error) {
+	return s.walletAPIRequest(http.MethodGet, path, nil, token)
+}
+
+func (s *GraphQLService) walletAPIPost(path string, body interface{}) (interface{}, error) {
+	return s.walletAPIRequest(http.MethodPost, path, body, "")
+}
+
+func (s *GraphQLService) walletAPIRequest(method, path string, body interface{}, authToken string) (interface{}, error) {
+	url := strings.TrimRight(config.WalletAPIURL, "/") + path
+	var reqBody io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request: %w", err)
+		}
+		reqBody = bytes.NewReader(b)
+	}
+	req, err := http.NewRequest(method, url, reqBody)
+	if err != nil {
+		return nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+authToken)
+	}
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("wallet_api unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("wallet_api %s %s: %s", method, path, string(raw))
+	}
+	var out interface{}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return string(raw), nil
+	}
+	return out, nil
+}
+
+func (s *GraphQLService) coinGeckoRate(fromToken, toToken string) (float64, error) {
+	fromID := coinGeckoID(fromToken)
+	toID := coinGeckoID(toToken)
+	if fromID == "" || toID == "" {
+		return 0, fmt.Errorf("unknown CoinGecko id for %s/%s", fromToken, toToken)
+	}
+	url := "https://api.coingecko.com/api/v3/simple/price?ids=" + fromID + "," + toID + "&vs_currencies=usd"
+	resp, err := s.httpClient.Get(url)
+	if err != nil {
+		return 0, fmt.Errorf("coingecko unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("coingecko returned %d", resp.StatusCode)
+	}
+	var pr map[string]map[string]float64
+	if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {
+		return 0, err
+	}
+	from, ok := pr[fromID]["usd"]
+	if !ok {
+		return 0, fmt.Errorf("no price for %s", fromToken)
+	}
+	to, ok := pr[toID]["usd"]
+	if !ok || to == 0 {
+		return 0, fmt.Errorf("no price for %s", toToken)
+	}
+	return from / to, nil
+}
+
+func (s *GraphQLService) coinGeckoMarketData(base, quote, pair string) (interface{}, error) {
+	id := coinGeckoID(base)
+	if id == "" {
+		return nil, fmt.Errorf("unknown CoinGecko id for %s", base)
+	}
+	url := "https://api.coingecko.com/api/v3/coins/" + id + "/market_chart?vs_currency=usd&days=1"
+	resp, err := s.httpClient.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("coingecko unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("coingecko returned %d", resp.StatusCode)
+	}
+	var mc struct {
+		Prices [][]float64 `json:"prices"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&mc); err != nil {
+		return nil, err
+	}
+	if len(mc.Prices) == 0 {
+		return nil, fmt.Errorf("no market data for %s", base)
+	}
+	var high, low, last float64
+	last = mc.Prices[len(mc.Prices)-1][1]
+	high = last
+	low = last
+	for _, p := range mc.Prices {
+		v := p[1]
+		if v > high {
+			high = v
+		}
+		if v < low {
+			low = v
 		}
 	}
-
-	return 1.0
+	first := mc.Prices[0][1]
+	change := 0.0
+	if first != 0 {
+		change = (last - first) / first * 100
+	}
+	return map[string]interface{}{
+		"pair":      pair,
+		"price":     last,
+		"change24h": change,
+		"high24h":   high,
+		"low24h":    low,
+		"volume24h": 0,
+	}, nil
 }
 
-func getMockPrice(token string) float64 {
-	prices := map[string]float64{
-		"ETH":  3500.0,
-		"BTC":  65000.0,
-		"BNB":  600.0,
-		"SOL":  100.0,
-		"USDT": 1.0,
-		"USDC": 1.0,
+func coinGeckoID(symbol string) string {
+	switch strings.ToUpper(symbol) {
+	case "ETH":
+		return "ethereum"
+	case "BTC":
+		return "bitcoin"
+	case "BNB":
+		return "binancecoin"
+	case "SOL":
+		return "solana"
+	case "USDT":
+		return "tether"
+	case "USDC":
+		return "usd-coin"
+	case "MATIC", "POL":
+		return "matic-network"
+	case "AVAX":
+		return "avalanche-2"
+	case "ADA":
+		return "cardano"
+	case "XRP":
+		return "ripple"
+	case "DOT":
+		return "polkadot"
+	case "LINK":
+		return "chainlink"
+	default:
+		return ""
 	}
-
-	if price, ok := prices[token]; ok {
-		return price
-	}
-
-	return 100.0
 }
 
-func generateAddress() string {
-	b := make([]byte, 20)
-	if _, err := crand.Read(b); err != nil {
-		panic("failed to generate random address: " + err.Error())
+func strArg(m map[string]interface{}, key string) string {
+	v, ok := m[key].(string)
+	if !ok {
+		return ""
 	}
-	return "0x" + hex.EncodeToString(b)
+	return v
 }
 
 func getEnv(key, defaultValue string) string {
@@ -569,8 +714,6 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 func main() {
-	rand.Seed(time.Now().UnixNano())
-
 	fmt.Println("============================================")
 	fmt.Println("TigerWallet GraphQL Service")
 	fmt.Println("============================================")
