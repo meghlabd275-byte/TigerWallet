@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -24,6 +26,10 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/crypto/scrypt"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 // ============================================================================
@@ -704,9 +710,11 @@ func NewWalletService(db *sql.DB, redis *redis.Client) *WalletService {
 	return &WalletService{db: db, redis: redis}
 }
 
-func (s *WalletService) CreateWallet(userID, whiteLabelID, walletType string, chainID uint64) (*Wallet, error) {
-	// Generate address (in practice, would derive from HD wallet)
-	address := generateAddress()
+func (s *WalletService) CreateWallet(userID, whiteLabelID, walletType string, chainID uint64, password string) (*Wallet, error) {
+	address, encryptedKey, err := generateKeyPair(password)
+	if err != nil {
+		return nil, fmt.Errorf("wallet key generation failed: %w", err)
+	}
 
 	wallet := &Wallet{
 		ID:           uuid.New().String(),
@@ -715,16 +723,17 @@ func (s *WalletService) CreateWallet(userID, whiteLabelID, walletType string, ch
 		WalletType:   walletType,
 		Address:      address,
 		ChainID:      chainID,
+		EncryptedKey: encryptedKey,
 		IsActive:     true,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
 
-	_, err := s.db.Exec(`
-		INSERT INTO wallets (id, user_id, white_label_id, wallet_type, address, chain_id, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+	_, err = s.db.Exec(`
+		INSERT INTO wallets (id, user_id, white_label_id, wallet_type, address, chain_id, encrypted_key, is_active, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		wallet.ID, wallet.UserID, wallet.WhiteLabelID, wallet.WalletType,
-		wallet.Address, wallet.ChainID, wallet.IsActive, wallet.CreatedAt, wallet.UpdatedAt)
+		wallet.Address, wallet.ChainID, wallet.EncryptedKey, wallet.IsActive, wallet.CreatedAt, wallet.UpdatedAt)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create wallet: %w", err)
@@ -755,10 +764,42 @@ func (s *WalletService) GetUserWallets(userID string) ([]Wallet, error) {
 	return wallets, nil
 }
 
+// rpcURLForChain returns a public RPC endpoint for the given chain id.
+func rpcURLForChain(chainID uint64) string {
+	switch chainID {
+	case 1:
+		return "https://eth.llamarpc.com"
+	case 137:
+		return "https://polygon-rpc.com"
+	case 42161:
+		return "https://arb1.arbitrum.io/rpc"
+	case 10:
+		return "https://mainnet.optimism.io"
+	case 43114:
+		return "https://api.avax.network/ext/bc/C/rpc"
+	case 56:
+		return "https://bsc-dataseed.binance.org"
+	default:
+		return ""
+	}
+}
+
 func (s *WalletService) GetBalance(address string, chainID uint64) (string, error) {
-	// In practice, would query blockchain node or indexer
-	// For now, return mock data
-	return "0", nil
+	rpc := rpcURLForChain(chainID)
+	if rpc == "" {
+		return "", fmt.Errorf("unsupported chain id %d", chainID)
+	}
+	client, err := ethclient.Dial(rpc)
+	if err != nil {
+		return "", fmt.Errorf("rpc dial failed: %w", err)
+	}
+	defer client.Close()
+	addr := common.HexToAddress(address)
+	bal, err := client.BalanceAt(context.Background(), addr, nil)
+	if err != nil {
+		return "", fmt.Errorf("balance fetch failed: %w", err)
+	}
+	return bal.String(), nil
 }
 
 // ============================================================================
@@ -1063,9 +1104,45 @@ func (h *WebSocketHub) Broadcast(message []byte) {
 // Helper Functions
 // ============================================================================
 
-func generateAddress() string {
-	// In practice, would generate from HD wallet
-	return "0x" + hex.EncodeToString(generateRandomBytes(20))
+// generateKeyPair creates a REAL secp256k1 keypair, derives the EIP-55
+// checksummed address from the public key, and AES-256-GCM-encrypts the
+// private key with a key scrypt-derived from the password. Returns the
+// address and the base64 ciphertext blob ("v|salt|iv|ciphertext"). No
+// fabricated addresses, no all-zero keys.
+func generateKeyPair(password string) (address string, encryptedKey string, err error) {
+	if password == "" {
+		return "", "", fmt.Errorf("password required to encrypt wallet key")
+	}
+	priv, err := crypto.GenerateKey()
+	if err != nil {
+		return "", "", fmt.Errorf("key generation failed: %w", err)
+	}
+	addr := crypto.PubkeyToAddress(priv.PublicKey).Hex()
+	privBytes := crypto.FromECDSA(priv)
+
+	salt := make([]byte, 32)
+	if _, err := rand.Read(salt); err != nil {
+		return "", "", fmt.Errorf("salt generation failed: %w", err)
+	}
+	key, err := scrypt.Key([]byte(password), salt, 32768, 8, 1, 32)
+	if err != nil {
+		return "", "", fmt.Errorf("kdf failed: %w", err)
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", "", fmt.Errorf("cipher init failed: %w", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", "", fmt.Errorf("gcm init failed: %w", err)
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", "", fmt.Errorf("nonce generation failed: %w", err)
+	}
+	ct := gcm.Seal(nil, nonce, privBytes, nil)
+	blob := "v1|" + hex.EncodeToString(salt) + "|" + hex.EncodeToString(nonce) + "|" + hex.EncodeToString(ct)
+	return addr, blob, nil
 }
 
 func generateAPIKey() string {
@@ -1259,6 +1336,7 @@ func (s *EnterpriseService) handleCreateWallet(c *gin.Context) {
 	var req struct {
 		WalletType string `json:"walletType" binding:"required"`
 		ChainID    uint64 `json:"chainId" binding:"required"`
+		Password   string `json:"password" binding:"required,min=8"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1266,7 +1344,7 @@ func (s *EnterpriseService) handleCreateWallet(c *gin.Context) {
 		return
 	}
 
-	wallet, err := s.walletSvc.CreateWallet(userID, "", req.WalletType, req.ChainID)
+	wallet, err := s.walletSvc.CreateWallet(userID, "", req.WalletType, req.ChainID, req.Password)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
