@@ -3,9 +3,9 @@
 //! This is a COMPLETE, PRODUCTION-READY implementation with real cryptographic operations
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 
-use k256::ecdsa::{Signature, SigningKey, VerifyingKey};
+use k256::ecdsa::{signature::Signer, Signature, SigningKey};
 use sha2::{Sha256, Digest};
 
 /// Multi-sig wallet manager
@@ -95,7 +95,8 @@ impl MultiSigWallet {
         }
 
         // Check if threshold reached
-        if tx.confirmations >= self.threshold {
+        let threshold_reached = tx.confirmations >= self.threshold;
+        if threshold_reached {
             tx.status = TransactionStatus::Confirmed;
         }
 
@@ -104,7 +105,7 @@ impl MultiSigWallet {
             .map_err(|_| MultiSigError::LockError)?
             .insert(tx_id.to_string(), tx);
 
-        Ok(tx.confirmations >= self.threshold)
+        Ok(threshold_reached)
     }
 
     /// Execute a confirmed transaction
@@ -126,8 +127,9 @@ impl MultiSigWallet {
         let exec_tx_hash = self.generate_execution_hash(&tx);
 
         // Update status
-        let mut tx = self.transactions.write()
-            .map_err(|_| MultiSigError::LockError)?
+        let mut guard = self.transactions.write()
+            .map_err(|_| MultiSigError::LockError)?;
+        let tx = guard
             .get_mut(tx_id)
             .ok_or(MultiSigError::TransactionNotFound)?;
         
@@ -305,7 +307,7 @@ impl ThresholdSigner {
         let mut result = vec![0u8; 32];
         
         for (i, coeff) in coefficients.iter().enumerate() {
-            let x_pow = self.pow_u8(x, i as u8);
+            let x_pow = Self::pow_u8(x, i as u8);
             for (j, byte) in coeff.iter().enumerate() {
                 result[j] = result[j].wrapping_add(byte.wrapping_mul(x_pow));
             }
@@ -316,7 +318,7 @@ impl ThresholdSigner {
 
     /// Power calculation for u8
     fn pow_u8(mut base: u8, mut exp: u8) -> u8 {
-        let mut result = 1;
+        let mut result: u8 = 1;
         while exp > 0 {
             if exp % 2 == 1 {
                 result = result.wrapping_mul(base);

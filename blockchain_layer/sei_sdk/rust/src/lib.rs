@@ -112,26 +112,25 @@ impl PrivateKey {
     }
     
     pub fn public_key(&self) -> PublicKey {
-        let mut hasher = Sha512::new();
-        hasher.update(&self.key);
-        let hash = hasher.finalize();
-        let mut pk = [0u8; 32];
-        pk.copy_from_slice(&hash[32..64]);
-        PublicKey(pk)
+        use ed25519_dalek::SigningKey;
+        let signing_key = SigningKey::from_bytes(&self.key);
+        let pk = signing_key.verifying_key();
+        let mut bytes = [0u8; 32];
+        bytes.copy_from_slice(pk.as_bytes());
+        PublicKey(bytes)
     }
     
     pub fn sign(&self, msg: &[u8]) -> Signature {
-        let mut hasher = Sha512::new();
-        hasher.update(&self.key);
-        hasher.update(msg);
-        let hash = hasher.finalize();
+        use ed25519_dalek::{SigningKey, Signer};
+        let signing_key = SigningKey::from_bytes(&self.key);
+        let signature = signing_key.sign(msg);
         let mut sig = [0u8; 64];
-        sig.copy_from_slice(&hash[..64]);
+        sig.copy_from_slice(&signature.to_bytes());
         Signature(sig)
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PublicKey(pub [u8; 32]);
 
 impl PublicKey {
@@ -143,10 +142,43 @@ impl PublicKey {
         addr.copy_from_slice(&hash[12..32]);
         Address(addr)
     }
+
+    /// Verify a real Ed25519 signature.
+    pub fn verify(&self, msg: &[u8], signature: &Signature) -> bool {
+        use ed25519_dalek::{VerifyingKey, Signature as EdSig, Verifier};
+        let vk = match VerifyingKey::from_bytes(&self.0) {
+            Ok(k) => k,
+            Err(_) => return false,
+        };
+        let sig = match EdSig::from_slice(&signature.0) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        vk.verify(msg, &sig).is_ok()
+    }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct Signature(pub [u8; 64]);
+
+impl Serialize for Signature {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        hex::encode(self.0).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Signature {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        let bytes = hex::decode(&s).map_err(serde::de::Error::custom)?;
+        if bytes.len() != 64 {
+            return Err(serde::de::Error::custom("Signature must be 64 bytes"));
+        }
+        let mut sig = [0u8; 64];
+        sig.copy_from_slice(&bytes);
+        Ok(Signature(sig))
+    }
+}
 
 // ============================================================================
 // Transaction Types

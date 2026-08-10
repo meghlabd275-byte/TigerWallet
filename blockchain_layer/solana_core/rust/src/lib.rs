@@ -144,9 +144,10 @@ impl Pubkey {
     
     /// Find program address using bump seed - PRODUCTION READY
     pub fn find_program_address(seeds: &[&[u8]], program_id: &Pubkey) -> (Self, u8) {
-        for bump in 0..=255 {
+        for bump in 0..=255u8 {
+            let bump_bytes = [bump];
             let mut all_seeds = seeds.to_vec();
-            all_seeds.push(&[bump]);
+            all_seeds.push(&bump_bytes);
             
             if let Ok(addr) = Self::create_program_address(&all_seeds, program_id) {
                 return (addr, bump);
@@ -233,16 +234,14 @@ impl Keypair {
     /// Verify a signature using REAL Ed25519
     pub fn verify(&self, message: &[u8], signature_bytes: &[u8; 64]) -> bool {
         use ed25519_dalek::{VerifyingKey, Signature, Verifier};
-        
-        if signature_bytes.len() != 64 {
-            return false;
-        }
-        
-        let verifying_key = VerifyingKey::from_bytes(&self.public)
-            .map_err(|_| ());
-            
+
+        let verifying_key = match VerifyingKey::from_bytes(&self.public) {
+            Ok(k) => k,
+            Err(_) => return false,
+        };
+
         let signature = Signature::from_bytes(signature_bytes);
-        
+
         verifying_key.verify(message, &signature).is_ok()
     }
     
@@ -638,10 +637,12 @@ impl BridgeInstruction {
     
     /// Generate a deterministic bridge address
     pub fn derive_bridge_address(&self, bridge_program: &Pubkey) -> Pubkey {
-        let seeds = [
+        let source_bytes = self.source_chain.to_le_bytes();
+        let target_bytes = self.target_chain.to_le_bytes();
+        let seeds: &[&[u8]] = &[
             b"bridge",
-            &self.source_chain.to_le_bytes(),
-            &self.target_chain.to_le_bytes(),
+            &source_bytes,
+            &target_bytes,
             self.token_address.as_bytes(),
         ];
         

@@ -9,11 +9,10 @@ description = "TigerSwap MPC Network - Production-Ready Distributed Key Manageme
 secp256k1 = "0.28"
 sha2 = "0.10"
 ed25519-dalek = { version = "2.0", features = ["rand_core"] }
-x25519-dalek = "1.2"
 aes-gcm = "0.10"
 chacha20poly1305 = "0.10"
 rand = "0.8"
-zeroize = { version = "1.6", features = ["derive"] }
+zeroize = { version = "1.7", features = ["derive"] }
 
 # Networking
 tokio = { version = "1.32", features = ["full"] }

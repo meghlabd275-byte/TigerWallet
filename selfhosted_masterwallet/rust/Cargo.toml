@@ -16,7 +16,7 @@ thiserror = "1.0"
 uuid = { version = "1.6", features = ["v4", "serde"] }
 
 [features]
-default = ["postgres"]
+default = []
 
 [profile.release]
 opt-level = 3

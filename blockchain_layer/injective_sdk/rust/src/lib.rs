@@ -12,7 +12,7 @@
 
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Sha512, Digest};
+use sha2::{Sha256, Digest};
 use thiserror::Error;
 
 // ============================================================================
@@ -100,37 +100,36 @@ impl PrivateKey {
     }
     
     pub fn public_key(&self) -> PublicKey {
-        // Derive uncompressed public key (65 bytes: 0x04 + 64 bytes)
-        let mut pk = [0u8; 65];
-        pk[0] = 0x04;
-        
-        // Simplified public key derivation (in production use proper secp256k1)
-        let mut hasher = Sha512::new();
-        hasher.update(&self.key);
-        let hash = hasher.finalize();
-        pk[1..65].copy_from_slice(&hash[..64]);
-        
-        PublicKey(pk)
+        use secp256k1::{Secp256k1, SecretKey, PublicKey as SecPubKey};
+        let secp = Secp256k1::new();
+        let sk = SecretKey::from_slice(&self.key).expect("valid secp256k1 secret");
+        let pk = SecPubKey::from_secret_key(&secp, &sk);
+        // serialize_uncompressed returns 65 bytes (0x04 || X || Y)
+        let bytes = pk.serialize_uncompressed();
+        let mut pk_bytes = [0u8; 65];
+        pk_bytes.copy_from_slice(&bytes);
+        PublicKey(pk_bytes)
     }
-    
+
     pub fn sign(&self, msg: &[u8]) -> Signature {
-        // Simplified signature (in production use proper ECDSA)
-        let mut hasher = Sha512::new();
-        hasher.update(&self.key);
-        hasher.update(msg);
-        let hash = hasher.finalize();
-        
-        let mut sig = [0u8; 64];
-        sig.copy_from_slice(&hash[..64]);
-        Signature(sig)
+        use secp256k1::{Secp256k1, SecretKey, Message};
+        let secp = Secp256k1::new();
+        let sk = SecretKey::from_slice(&self.key).expect("valid secp256k1 secret");
+        // ECDSA over SHA-256 of the message (Cosmos sign mode)
+        let digest = Sha256::digest(msg);
+        let message = Message::from_slice(&digest).expect("32-byte digest");
+        let sig = secp.sign_ecdsa(&message, &sk);
+        let mut sig_bytes = [0u8; 64];
+        sig_bytes.copy_from_slice(&sig.serialize_compact());
+        Signature(sig_bytes)
     }
-    
+
     pub fn sign_typed_hash(&self, hash: &[u8]) -> Signature {
         self.sign(hash)
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 pub struct PublicKey(pub [u8; 65]);
 
 impl PublicKey {
@@ -142,18 +141,85 @@ impl PublicKey {
         addr.copy_from_slice(&hash[12..32]);
         Address(addr)
     }
-    
+
     pub fn to_hex(&self) -> String {
         hex::encode(self.0)
     }
+
+    /// Verify a real ECDSA signature over SHA-256(msg).
+    pub fn verify(&self, msg: &[u8], signature: &Signature) -> bool {
+        use secp256k1::{Secp256k1, PublicKey as SecPubKey, Message, ecdsa::Signature as SecSig};
+        let secp = Secp256k1::verification_only();
+        let pk = match SecPubKey::from_slice(&self.0) {
+            Ok(p) => p,
+            Err(_) => return false,
+        };
+        let sig = match SecSig::from_compact(&signature.0) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        let digest = Sha256::digest(msg);
+        let message = Message::from_slice(&digest).expect("32-byte digest");
+        secp.verify_ecdsa(&message, &sig, &pk).is_ok()
+    }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+impl std::fmt::Debug for PublicKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PublicKey({})", hex::encode(self.0))
+    }
+}
+
+impl Serialize for PublicKey {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&hex::encode(self.0))
+    }
+}
+
+impl<'de> Deserialize<'de> for PublicKey {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        let bytes = hex::decode(&s).map_err(serde::de::Error::custom)?;
+        if bytes.len() != 65 {
+            return Err(serde::de::Error::custom("PublicKey must be 65 bytes"));
+        }
+        let mut pk = [0u8; 65];
+        pk.copy_from_slice(&bytes);
+        Ok(PublicKey(pk))
+    }
+}
+
+#[derive(Clone)]
 pub struct Signature(pub [u8; 64]);
 
 impl Signature {
     pub fn to_hex(&self) -> String {
         hex::encode(self.0)
+    }
+}
+
+impl std::fmt::Debug for Signature {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Signature({})", hex::encode(self.0))
+    }
+}
+
+impl Serialize for Signature {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&hex::encode(self.0))
+    }
+}
+
+impl<'de> Deserialize<'de> for Signature {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        let bytes = hex::decode(&s).map_err(serde::de::Error::custom)?;
+        if bytes.len() != 64 {
+            return Err(serde::de::Error::custom("Signature must be 64 bytes"));
+        }
+        let mut sig = [0u8; 64];
+        sig.copy_from_slice(&bytes);
+        Ok(Signature(sig))
     }
 }
 
@@ -463,10 +529,11 @@ impl TransactionBuilder {
     }
     
     pub fn create_spot_order(mut self, sender: Address, market_id: &str, price: f64, quantity: f64, direction: &str) -> Self {
+        let subaccount_id = format!("{}000000000000000000000000", sender.to_hex());
         self.msgs.push(Message::CreateSpotMarketOrder(CreateSpotOrderMsg {
             sender,
             market_id: market_id.to_string(),
-            subaccount_id: format!("{}000000000000000000000000", sender.to_hex()),
+            subaccount_id,
             order_type: "BUY".to_string(),
             price,
             quantity,

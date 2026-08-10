@@ -19,9 +19,6 @@ metrics = "0.22"
 parking_lot = "0.12"
 rust_decimal = { version = "1.33", features = ["serde"] }
 
-# Raft consensus
-raft = "0.10"
-
 # Networking
 tonic = "0.10"
 prost = "0.12"

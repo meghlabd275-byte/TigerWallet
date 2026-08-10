@@ -23,7 +23,3 @@ log = "0.4"
 [lib]
 name = "tiger_aptos"
 path = "src/lib.rs"
-
-[[bin]]
-name = "aptos-cli"
-path = "src/cli.rs"

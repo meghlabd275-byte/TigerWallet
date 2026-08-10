@@ -21,8 +21,6 @@ tauri = { version = "1.6", features = [
     "os-all",
     "process-all",
     "http-all",
-    "crypto-all",
-    "storage-all"
 ] }
 
 # Serialization
@@ -58,12 +56,7 @@ thiserror = "1.0"
 ed25519-dalek = { version = "2.0", features = ["serde"] }
 secp256k1 = { version = "0.27", features = ["recovery", "serde"] }
 
-# BIP39/BIP32
-bip39 = "0.2"
-bip32 = "0.4"
-
 # Hardware wallet support
-usb = { version = "1.8", features = ["serde"] }
 hidapi = "1.4"
 
 # Windows-specific

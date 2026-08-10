@@ -22,10 +22,6 @@ lazy_static = "1.4"
 [dev-dependencies]
 criterion = "0.5"
 
-[[bench]]
-name = "routing_benchmark"
-harness = false
-
 [profile.release]
 opt-level = 3
 lto = true

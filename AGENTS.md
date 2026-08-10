@@ -375,3 +375,47 @@
 - Go MPC backend (go/mpc) default port is 9099 (env MPC_PORT), not 8085; wallet_api runs on 8443. Backend JSON uses base64 for publicKey/signature, ms-epoch ints for createdAt/signedAt, and 0x-hex 32-byte messageHash.
 - mobile/android/.../services/mpc/MPCWalletService.java now calls only the 3 real MPC endpoints (/create, /sign, /wallet/{keyId}). keyId cached by address at create time; sign/getWalletInfo error if address unknown. SHA-256 used for messageHash with a keccak-256 TODO (real signature still from backend).
 - trading/{MarginTrading,P2P,CryptoCard,Futures}Service.java: no real backend exists, so data-fabricating methods throw UnsupportedOperationException; pure-math helpers kept. Removed Math.random/Random card-PAN/CVV generators and hardcoded price arrays.
+
+
+## Rust crate compile audit (2026-08-10)
+
+- Toolchain: rustc 1.97.1 stable (minimal profile). libssl-dev / pkg-config are NOT
+  installed — every crate depending on openssl-sys fails its build script.
+  Installing libssl-dev + pkg-config is a precondition, not a code fix.
+- 88 Rust crates total (no workspaces; each Cargo.toml is standalone). cargo check
+  (offline first, online fallback), per-crate timeout ~240s: 23 clean, 65 fail (exit 101).
+- Failure categories: (1) nonexistent dep names in Cargo.toml [timeout, msgpack, cbor,
+  sha256, raft, usb, cryptography, apple-api, technical-analysis]; (2) openssl-sys build
+  failures [ai_agent, starknet_sdk, substrate_sdk, zksync_sdk, fetcher_gateway,
+  master_admin_management, rust/crypto, security/rust/mev_protection, services/rust/oracle,
+  super_admin, white_label_admin]; (3) sqlx/zeroize/tower-http resolution failures;
+  (4) manifest parse errors [missing benches, bad feature refs]; (5) missing bin targets
+  [aptos_sdk, liquid_staking, rust/masterwallet_fetchers]; (6) genuine compile errors.
+- Stub crate: blockchain_layer/zksync_sdk declares pub mod address/crypto/provider/
+  transaction/types but those files do not exist.
+- lib.rs < 25 lines: master_admin_management(8), services(8), super_admin(8),
+  white_label_admin(8), ai_platform(10), api_gateway(10), backend_services(10),
+  dapp_browser(10), fiat_ramp(10), security_platform(10), staking_hub(10), admin(13),
+  core/rust/trading_engine(19), white_level_sdk(20), perpetuals_engine(22).
+- Raw audit log: /tmp/crate_audit_results.txt (ephemeral).
+
+## Compile-fix round (security-critical crates, real crypto only)
+All 10 target crates now `cargo check` (lib) exit 0. No stubs/fakes/mocks; real
+crypto crates only.
+- multisig/rust: k256 0.13 (`SigningKey`/`Signer`) for threshold signing.
+- security_engine/rust: serde/parking_lot/hex deps added.
+- social_recovery/rust: ring 0.17 (`Ed25519KeyPair`/`ED25519`) + `InvalidAddress`
+  variant; borrow/move fixes.
+- blockchain_layer/solana_core/rust: real ed25519-dalek 2 verify.
+- blockchain_layer/injective_sdk/rust: real secp256k1 0.24 ECDSA
+  (sign_ecdsa/verify_ecdsa, `Message::from_slice`).
+- blockchain_layer/sei_sdk/rust: real ed25519-dalek 2 sign/public_key/verify
+  (ed25519-dalek already a dep; structs are [u8;32]/[u8;64]).
+  NOTE: native Sei (Cosmos) keys are secp256k1; if strict secp256k1 is required,
+  PublicKey must become 33 bytes (compressed) + custom serde. Ed25519 here is
+  real & verifiable, not a fake SHA-512 hash.
+- blockchain_layer/algorand_sdk/rust: real ed25519-dalek 2 sign/public_key/verify;
+  from_seed keeps SHA-512/256 key derivation.
+- blockchain_layer/aptos_sdk/rust: real ed25519-dalek 2 sign/verify.
+- blockchain_layer/cardano_sdk/rust: real ed25519-zebra + blake2b-224 + bech32.
+- blockchain_layer/near_sdk/rust: real ed25519-dalek 2 + BorshSerialize.

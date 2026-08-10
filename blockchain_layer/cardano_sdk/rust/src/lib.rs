@@ -15,10 +15,8 @@
 #![allow(dead_code)]
 
 use std::collections::HashMap;
-use std::str::FromStr;
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Sha512, Digest};
+use sha2::{Sha512, Digest};
 use thiserror::Error;
 
 // ============================================================================
@@ -57,7 +55,7 @@ pub enum CardanoError {
 // ============================================================================
 
 /// Cardano address types
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AddressType {
     /// Payment key hash
     PaymentKeyHash,
@@ -103,7 +101,7 @@ impl AddressType {
 }
 
 /// Network ID
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum NetworkId {
     Mainnet = 1,
     Testnet = 0,
@@ -131,14 +129,15 @@ impl Address {
             .map_err(|e| CardanoError::InvalidAddress(e.to_string()))?;
         
         // Validate HRP
-        if hrp != "addr" && hrp != "addr_test" && hrp != "stake" && hrp != "stake_test" {
+        let hrp_str = hrp.as_str();
+        if hrp_str != "addr" && hrp_str != "addr_test" && hrp_str != "stake" && hrp_str != "stake_test" {
             return Err(CardanoError::InvalidAddress(
-                format!("Invalid HRP: {}", hrp)
+                format!("Invalid HRP: {}", hrp_str)
             ));
         }
         
         // Determine network
-        let network = if hrp.contains("test") {
+        let network = if hrp_str.contains("test") {
             NetworkId::Testnet
         } else {
             NetworkId::Mainnet
@@ -231,7 +230,7 @@ impl Address {
             (NetworkId::Testnet, _) => "addr_test",
         };
         
-        bech32::encode(hrp, &self.bytes, bech32::Variant::Bech32)
+        bech32::encode::<bech32::Bech32>(bech32::Hrp::parse_unchecked(hrp), &self.bytes)
             .unwrap_or_default()
     }
     
@@ -276,8 +275,8 @@ impl std::fmt::Display for Address {
 // ============================================================================
 
 /// Ed25519 public key
-#[derive(Clone, Serialize, Deserialize)]
-pub struct PublicKey(pub [u8; 32]);
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicKey(#[serde(with = "serde_bytes")] pub [u8; 32]);
 
 impl PublicKey {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, CardanoError> {
@@ -288,27 +287,43 @@ impl PublicKey {
         key.copy_from_slice(bytes);
         Ok(PublicKey(key))
     }
-    
+
     pub fn to_hex(&self) -> String {
         hex::encode(self.0)
     }
-    
-    /// Get key hash (Blake2b-224)
+
+    /// Get key hash (Blake2b-224, as used by Cardano address payloads)
     pub fn to_hash(&self) -> [u8; 28] {
-        use sha2::Sha512_256;
-        let mut hasher = Sha512_256::new();
+        use blake2::{Blake2b, Digest};
+        use blake2::digest::consts::U28;
+        type Blake2b224 = Blake2b<U28>;
+        let mut hasher = Blake2b224::new();
         hasher.update(&self.0);
         let hash = hasher.finalize();
-        
+
         let mut result = [0u8; 28];
         result.copy_from_slice(&hash[..28]);
         result
     }
+
+    /// Verify an Ed25519 signature over `data` (real ed25519-zebra verification).
+    pub fn verify(&self, data: &[u8], signature: &Signature) -> bool {
+        use ed25519_zebra::{VerificationKey, Signature as ZebraSig};
+        let vk = match VerificationKey::try_from(&self.0[..]) {
+            Ok(v) => v,
+            Err(_) => return false,
+        };
+        let sig = match ZebraSig::try_from(&signature.0[..]) {
+            Ok(sig) => sig,
+            Err(_) => return false,
+        };
+        vk.verify(&sig, data).is_ok()
+    }
 }
 
 /// Ed25519 signature
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Signature(pub [u8; 64]);
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Signature(#[serde(with = "serde_bytes")] pub [u8; 64]);
 
 impl Signature {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, CardanoError> {
@@ -319,14 +334,14 @@ impl Signature {
         sig.copy_from_slice(bytes);
         Ok(Signature(sig))
     }
-    
+
     pub fn to_hex(&self) -> String {
         hex::encode(self.0)
     }
 }
 
 /// Private key
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct PrivateKey {
     pub key: [u8; 32],
 }
@@ -339,48 +354,36 @@ impl PrivateKey {
         rand::thread_rng().fill_bytes(&mut key);
         PrivateKey { key }
     }
-    
+
     /// Create from seed
     pub fn from_seed(seed: &[u8]) -> Self {
         let mut hasher = Sha512::new();
         hasher.update(seed);
         let hash = hasher.finalize();
-        
+
         let mut key = [0u8; 32];
         key.copy_from_slice(&hash[..32]);
-        
+
         // Clear the parity bit
         key[31] &= 0x7F;
-        
+
         PrivateKey { key }
     }
-    
-    /// Get public key
+
+    /// Get public key (real Ed25519 public-key derivation via ed25519-zebra).
     pub fn public_key(&self) -> PublicKey {
-        // Derive public key using ed25519
-        // In production, use proper ed25519 library
-        let mut hasher = Sha512::new();
-        hasher.update(&self.key);
-        hasher.update(b"ed25519");
-        let hash = hasher.finalize();
-        
-        let mut pk = [0u8; 32];
-        pk.copy_from_slice(&hash[32..64]);
-        
-        PublicKey(pk)
+        use ed25519_zebra::{SigningKey, VerificationKey};
+        let sk = SigningKey::from(self.key);
+        let vk = VerificationKey::from(&sk);
+        let bytes: [u8; 32] = vk.into();
+        PublicKey(bytes)
     }
-    
-    /// Sign data
+
+    /// Sign data (real Ed25519 signing via ed25519-zebra).
     pub fn sign(&self, data: &[u8]) -> Signature {
-        // In production, use proper ed25519 signing
-        let mut hasher = Sha512::new();
-        hasher.update(&self.key);
-        hasher.update(data);
-        let hash = hasher.finalize();
-        
-        let mut sig = [0u8; 64];
-        sig.copy_from_slice(&hash[..64]);
-        
+        use ed25519_zebra::SigningKey;
+        let sk = SigningKey::from(self.key);
+        let sig: [u8; 64] = sk.sign(data).into();
         Signature(sig)
     }
 }
@@ -411,7 +414,7 @@ pub struct Value {
 }
 
 /// Asset name (policy ID + asset name)
-#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AssetName {
     pub policy_id: [u8; 32],
     pub name: Vec<u8>,
@@ -645,9 +648,9 @@ pub struct Metadata {
     pub data: MetadataValue,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum MetadataValue {
-    Map(HashMap<MetadataValue, MetadataValue>),
+    Map(Vec<(MetadataValue, MetadataValue)>),
     List(Vec<MetadataValue>),
     Int(i128),
     Text(String),
@@ -961,9 +964,10 @@ impl CardanoClient {
             .map_err(|e| CardanoError::RpcError(e.to_string()))?;
         
         if !response.status().is_success() {
+            let status = response.status();
             let error = response.text().await.unwrap_or_default();
             return Err(CardanoError::RpcError(
-                format!("Submit failed: {} - {}", response.status(), error)
+                format!("Submit failed: {} - {}", status, error)
             ));
         }
         
@@ -1025,14 +1029,8 @@ impl CardanoClient {
             for input in inputs_arr {
                 if let Some(tx_id) = input.get("tx_id").and_then(|v| v.as_str()) {
                     if let Some(index) = input.get("index").and_then(|v| v.as_u64()) {
-                        let tx_hash = hex::decode(tx_id)
-                            .map_err(|e| CardanoError::InvalidTransaction(format!("Invalid tx hash: {}", e)))?;
                         inputs.push(TxInput {
-                            tx_hash: {
-                                let mut hash = [0u8; 32];
-                                hash.copy_from_slice(&tx_hash[..32.min(tx_hash.len())]);
-                                hash
-                            },
+                            tx_id: tx_id.to_string(),
                             index: index as u32,
                         });
                     }
@@ -1049,31 +1047,37 @@ impl CardanoClient {
                 
                 let address_obj = Address::from_bech32(address)?;
                 
-                let mut assets = HashMap::new();
+                let mut ada: u64 = 0;
+                let mut multi_assets: HashMap<AssetName, u64> = HashMap::new();
                 if let Some(amount_obj) = output.get("amount") {
                     // Parse ADA amount
                     if let Some(lovelace) = amount_obj.get("lovelace").and_then(|v| v.as_u64()) {
-                        assets.insert("ADA".to_string(), lovelace);
+                        ada = lovelace;
                     }
-                    
+
                     // Parse multi-assets
-                    if let Some(multi_assets) = amount_obj.get("multiasset").and_then(|v| v.as_object()) {
-                        for (policy_id, assets_obj) in multi_assets {
+                    if let Some(multiasset) = amount_obj.get("multiasset").and_then(|v| v.as_object()) {
+                        for (policy_id_str, assets_obj) in multiasset {
+                            let policy_id_bytes = hex::decode(policy_id_str).unwrap_or_default();
+                            let mut policy_id = [0u8; 32];
+                            if policy_id_bytes.len() == 32 {
+                                policy_id.copy_from_slice(&policy_id_bytes);
+                            }
                             if let Some(assets_map) = assets_obj.as_object() {
                                 for (asset_name, quantity) in assets_map {
-                                    let key = format!("{}.{}", policy_id, asset_name);
+                                    let asset = AssetName::new(policy_id, asset_name);
                                     if let Some(q) = quantity.as_u64() {
-                                        assets.insert(key, q);
+                                        multi_assets.insert(asset, q);
                                     }
                                 }
                             }
                         }
                     }
                 }
-                
+
                 outputs.push(TxOutput {
                     address: address_obj,
-                    amount: assets,
+                    value: Value { ada, multi_assets },
                 });
             }
         }
@@ -1175,8 +1179,8 @@ impl CardanoClient {
                             sig.copy_from_slice(&sig_bytes[..64.min(sig_bytes.len())]);
                             
                             vkey_witnesses.push(VKeyWitness {
-                                vkey,
-                                signature: sig,
+                                vkey: PublicKey(vk),
+                                signature: Signature(sig),
                             });
                         }
                     }
@@ -1207,7 +1211,13 @@ impl CardanoClient {
             }
             
             if !metadata.is_empty() {
-                return Ok(Some(AuxiliaryData { metadata }));
+                return Ok(Some(AuxiliaryData {
+                    metadata: Some(Metadata {
+                        label: 0,
+                        data: MetadataValue::Map(metadata.into_iter().map(|(k, v)| (MetadataValue::Text(k), MetadataValue::Text(v))).collect()),
+                    }),
+                    scripts: Vec::new(),
+                }));
             }
         }
         

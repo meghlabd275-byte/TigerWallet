@@ -16,7 +16,7 @@
 use std::collections::HashMap;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
+use sha2::{Sha256, Sha512, Digest};
 use thiserror::Error;
 
 // ============================================================================
@@ -134,11 +134,44 @@ impl PublicKey {
     pub fn to_address(&self) -> Result<Address, AlgorandError> {
         Address::from_public_key(&self.0)
     }
+
+    /// Verify a real Ed25519 signature.
+    pub fn verify(&self, data: &[u8], signature: &Signature) -> bool {
+        use ed25519_dalek::{VerifyingKey, Signature as EdSig, Verifier};
+        let vk = match VerifyingKey::from_bytes(&self.0) {
+            Ok(k) => k,
+            Err(_) => return false,
+        };
+        let sig = match EdSig::from_slice(&signature.0) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        vk.verify(data, &sig).is_ok()
+    }
 }
 
 /// Ed25519 signature
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct Signature(pub [u8; 64]);
+
+impl Serialize for Signature {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        hex::encode(self.0).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Signature {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        let bytes = hex::decode(&s).map_err(serde::de::Error::custom)?;
+        if bytes.len() != 64 {
+            return Err(serde::de::Error::custom("Signature must be 64 bytes"));
+        }
+        let mut sig = [0u8; 64];
+        sig.copy_from_slice(&bytes);
+        Ok(Signature(sig))
+    }
+}
 
 impl Signature {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, AlgorandError> {
@@ -185,26 +218,19 @@ impl PrivateKey {
     }
     
     pub fn public_key(&self) -> PublicKey {
-        let mut hasher = Sha512::new();
-        hasher.update(&self.key);
-        hasher.update(b"ID");
-        let hash = hasher.finalize();
-        
+        use ed25519_dalek::SigningKey;
+        let signing_key = SigningKey::from_bytes(&self.key);
         let mut pk = [0u8; 32];
-        pk.copy_from_slice(&hash[32..64]);
-        
+        pk.copy_from_slice(signing_key.verifying_key().as_bytes());
         PublicKey(pk)
     }
-    
+
     pub fn sign(&self, data: &[u8]) -> Signature {
-        let mut hasher = Sha512::new();
-        hasher.update(&self.key);
-        hasher.update(data);
-        let hash = hasher.finalize();
-        
+        use ed25519_dalek::{SigningKey, Signer};
+        let signing_key = SigningKey::from_bytes(&self.key);
+        let ed_sig = signing_key.sign(data);
         let mut sig = [0u8; 64];
-        sig.copy_from_slice(&hash[..64]);
-        
+        sig.copy_from_slice(&ed_sig.to_bytes());
         Signature(sig)
     }
 }
@@ -582,8 +608,9 @@ impl AlgorandClient {
             .map_err(|e| AlgorandError::RpcError(e.to_string()))?;
         
         if !response.status().is_success() {
+            let status = response.status();
             let error = response.text().await.unwrap_or_default();
-            return Err(AlgorandError::RpcError(format!("Submit failed: {} - {}", response.status(), error)));
+            return Err(AlgorandError::RpcError(format!("Submit failed: {} - {}", status, error)));
         }
         
         let data: serde_json::Value = response.json()

@@ -46,6 +46,7 @@ pub enum NearError {
 // ============================================================================
 
 /// Near account ID
+#[derive(borsh::BorshSerialize)]
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AccountId(String);
 
@@ -128,7 +129,8 @@ impl std::fmt::Display for AccountId {
 // ============================================================================
 
 /// Public key type
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(borsh::BorshSerialize)]
+#[derive(Debug, Clone)]
 pub enum PublicKey {
     /// Ed25519 key
     Ed25519([u8; 32]),
@@ -172,7 +174,8 @@ impl PublicKey {
 }
 
 /// Signature type
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(borsh::BorshSerialize)]
+#[derive(Debug, Clone)]
 pub enum Signature {
     Ed25519([u8; 64]),
     Secp256k1([u8; 65]),
@@ -187,11 +190,62 @@ impl Signature {
     }
 }
 
+impl Serialize for PublicKey {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.to_hex().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for PublicKey {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        PublicKey::from_hex(&s).map_err(serde::de::Error::custom)
+    }
+}
+
+impl Serialize for Signature {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.to_hex().serialize(serializer)
+    }
+}
+
+impl Signature {
+    pub fn from_hex(hex: &str) -> Result<Self, NearError> {
+        if let Some(s) = hex.strip_prefix("ed25519:") {
+            let bytes = hex::decode(s).map_err(|e| NearError::InvalidAddress(e.to_string()))?;
+            if bytes.len() != 64 {
+                return Err(NearError::InvalidAddress("Invalid signature length".to_string()));
+            }
+            let mut sig = [0u8; 64];
+            sig.copy_from_slice(&bytes);
+            Ok(Signature::Ed25519(sig))
+        } else if let Some(s) = hex.strip_prefix("secp256k1:") {
+            let bytes = hex::decode(s).map_err(|e| NearError::InvalidAddress(e.to_string()))?;
+            if bytes.len() != 65 {
+                return Err(NearError::InvalidAddress("Invalid signature length".to_string()));
+            }
+            let mut sig = [0u8; 65];
+            sig.copy_from_slice(&bytes);
+            Ok(Signature::Secp256k1(sig))
+        } else {
+            Err(NearError::InvalidAddress("Unknown signature type".to_string()))
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Signature {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        Signature::from_hex(&s).map_err(serde::de::Error::custom)
+    }
+}
+
 // ============================================================================
 // Transaction Types
 // ============================================================================
 
 /// Action types
+#[derive(borsh::BorshSerialize)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Action {
     /// Transfer NEAR tokens
@@ -241,6 +295,7 @@ pub enum Action {
 }
 
 /// Access key
+#[derive(borsh::BorshSerialize)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccessKey {
     pub nonce: u64,
@@ -248,6 +303,7 @@ pub struct AccessKey {
 }
 
 /// Access key permission
+#[derive(borsh::BorshSerialize)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AccessKeyPermission {
     /// Full access
@@ -261,6 +317,7 @@ pub enum AccessKeyPermission {
 }
 
 /// Transaction
+#[derive(borsh::BorshSerialize)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transaction {
     pub signer_id: AccountId,
@@ -272,6 +329,7 @@ pub struct Transaction {
 }
 
 /// Signed transaction
+#[derive(borsh::BorshSerialize)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignedTransaction {
     pub transaction: Transaction,
@@ -392,7 +450,7 @@ impl NearClient {
             request: QueryRequest::ViewAccount {
                 account_id: account_id.as_str().to_string(),
             },
-            block_id: BlockId::Final,
+            block_id: Some(BlockId::Final),
         };
         
         let response = self.call("query", &request).await?;
@@ -420,7 +478,7 @@ impl NearClient {
             request: QueryRequest::ViewAccessKeyList {
                 account_id: account_id.as_str().to_string(),
             },
-            block_id: BlockId::Final,
+            block_id: Some(BlockId::Final),
         };
         
         let response = self.call("query", &request).await?;
@@ -494,7 +552,7 @@ impl NearClient {
                 method_name: method.to_string(),
                 args_base64: base64::encode(&args),
             },
-            block_id: BlockId::Final,
+            block_id: Some(BlockId::Final),
         };
         
         let response = self.call("query", &request).await?;
@@ -524,7 +582,7 @@ impl NearClient {
                 jsonrpc: "2.0".to_string(),
                 id: 1,
                 method: method.to_string(),
-                params: params,
+                params: serde_json::to_value(params).unwrap_or(serde_json::Value::Null),
             })
             .send()
             .await
@@ -773,6 +831,7 @@ impl NearWallet {
     
     /// Sign data
     pub fn sign(&self, data: &[u8]) -> Signature {
+        use ed25519_dalek::Signer;
         let signature = self.private_key.sign(data);
         Signature::Ed25519(signature.to_bytes())
     }

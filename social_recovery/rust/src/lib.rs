@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use serde::{Deserialize, Serialize};
 use sha2::{Sha256, Digest};
-use ring::signature::{Ed25519, KeyPair, Signature, UnparsedPublicKey, ED25519};
+use ring::signature::{Ed25519KeyPair, KeyPair, UnparsedPublicKey, ED25519};
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
 
@@ -29,6 +29,7 @@ pub enum RecoveryError {
     RecoveryExpired,
     InvalidThreshold,
     InvalidUser,
+    InvalidAddress,
     DatabaseError(String),
     NetworkError(String),
 }
@@ -45,6 +46,7 @@ impl std::fmt::Display for RecoveryError {
             RecoveryError::RecoveryExpired => write!(f, "Recovery request expired"),
             RecoveryError::InvalidThreshold => write!(f, "Invalid threshold configuration"),
             RecoveryError::InvalidUser => write!(f, "Invalid user address"),
+            RecoveryError::InvalidAddress => write!(f, "Invalid address"),
             RecoveryError::DatabaseError(msg) => write!(f, "Database error: {}", msg),
             RecoveryError::NetworkError(msg) => write!(f, "Network error: {}", msg),
         }
@@ -470,7 +472,7 @@ impl SocialRecoveryService {
 
         // Verify signature
         let message = format!("{}:{}", request_id, user_address);
-        if !self.verify_signature(guardian_address, &message, signature) {
+        if !self.verify_signature(guardian_address, &message, signature).await {
             return Err(RecoveryError::InvalidSignature);
         }
 
@@ -498,41 +500,47 @@ impl SocialRecoveryService {
             sets.get(&user_address).cloned()
         };
 
-        if let Some(set) = guardian_set {
-            if request.signatures.len() >= set.threshold as usize {
-                request.status = RecoveryStatus::Completed;
-                request.completed_at = Some(Utc::now().timestamp() as u64);
+        let threshold_met = match &guardian_set {
+            Some(set) => request.signatures.len() >= set.threshold as usize,
+            None => false,
+        };
 
-                // Unlock guardian set
-                drop(requests);
-                drop(guardian_set);
-                
-                {
-                    let mut sets = self.guardian_sets.write().await;
-                    if let Some(gs) = sets.get_mut(&user_address) {
-                        gs.locked = false;
-                    }
-                }
+        if threshold_met {
+            request.status = RecoveryStatus::Completed;
+            request.completed_at = Some(Utc::now().timestamp() as u64);
+        } else {
+            request.status = RecoveryStatus::Confirming;
+        }
 
-                // Update session
-                {
-                    let mut sessions = self.sessions.write().await;
-                    if let Some(session) = sessions.get_mut(request_id) {
-                        session.status = SessionStatus::Completed;
-                    }
-                }
+        let result_request = request.clone();
+        drop(requests);
+        drop(guardian_set);
 
-                // Update metrics
-                {
-                    let mut successful = self.successful_recoveries.write().await;
-                    *successful += 1;
+        if threshold_met {
+            // Unlock guardian set
+            {
+                let mut sets = self.guardian_sets.write().await;
+                if let Some(gs) = sets.get_mut(&user_address) {
+                    gs.locked = false;
                 }
-            } else {
-                request.status = RecoveryStatus::Confirming;
+            }
+
+            // Update session
+            {
+                let mut sessions = self.sessions.write().await;
+                if let Some(session) = sessions.get_mut(request_id) {
+                    session.status = SessionStatus::Completed;
+                }
+            }
+
+            // Update metrics
+            {
+                let mut successful = self.successful_recoveries.write().await;
+                *successful += 1;
             }
         }
 
-        Ok(request.clone())
+        Ok(result_request)
     }
 
     /// Cancel recovery process (only by original user)
@@ -552,7 +560,7 @@ impl SocialRecoveryService {
 
         // Verify user signature
         let message = format!("cancel:{}", request_id);
-        if !self.verify_signature(&request.user_address, &message, user_signature) {
+        if !self.verify_signature(&request.user_address, &message, user_signature).await {
             return Err(RecoveryError::InvalidSignature);
         }
 
@@ -568,8 +576,9 @@ impl SocialRecoveryService {
 
         // Unlock guardian set
         let user_address = request.user_address.clone();
+        let result_request = request.clone();
         drop(requests);
-        
+
         {
             let mut sets = self.guardian_sets.write().await;
             if let Some(set) = sets.get_mut(&user_address) {
@@ -591,7 +600,7 @@ impl SocialRecoveryService {
             *failed += 1;
         }
 
-        Ok(request.clone())
+        Ok(result_request)
     }
 
     /// Get guardian set for user
@@ -645,10 +654,34 @@ impl SocialRecoveryService {
         format!("{:x}", timestamp)
     }
 
-    fn verify_signature(&self, address: &str, message: &str, signature: &str) -> bool {
-        // In production, use proper signature verification
-        // For now, accept any non-empty signature for testing
-        !signature.is_empty()
+    async fn verify_signature(&self, address: &str, message: &str, signature: &str) -> bool {
+        // Look up the guardian's public key across all guardian sets.
+        let public_key_hex = {
+            let sets = self.guardian_sets.read().await;
+            sets.values()
+                .flat_map(|gs| gs.guardians.iter())
+                .find(|g| g.address == address || g.public_key.as_deref() == Some(address))
+                .and_then(|g| g.public_key.clone())
+        };
+
+        let pk_hex = match public_key_hex {
+            Some(pk) => pk,
+            None => return false,
+        };
+
+        let pk_bytes = match hex::decode(&pk_hex) {
+            Ok(b) => b,
+            Err(_) => return false,
+        };
+        let sig_bytes = match hex::decode(signature) {
+            Ok(b) => b,
+            Err(_) => return false,
+        };
+
+        let peer_pk = UnparsedPublicKey::new(&ED25519, pk_bytes);
+        peer_pk
+            .verify(message.as_bytes(), &sig_bytes)
+            .is_ok()
     }
 }
 

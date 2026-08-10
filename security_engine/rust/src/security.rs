@@ -239,26 +239,44 @@ pub fn analyze_transaction(
 // Address Risk Check
 // ============================================================================
 
-/// Check if address is known malicious
+/// Check if address is known malicious.
+///
+/// NOTE: this WASM/cdylib does not bundle a malicious-address blocklist, so it
+/// CANNOT truthfully return a "safe" or "malicious" verdict — doing so would
+/// be a fabricated security result. Instead it performs a REAL EVM address
+/// format validation and reports `is_safe = "unverified"` /
+/// `risk_type = "not_screened"` so the caller knows no blocklist screening
+/// was performed. The previous implementation flagged any address starting
+/// with "0x0000" as "suspicious", which was a fabricated heuristic with no
+/// security basis — removed.
 pub fn check_address_risk(address: &str) -> HashMap<String, String> {
     let mut result = HashMap::new();
     result.insert("address".to_string(), address.to_string());
-    result.insert("is_safe".to_string(), "true".to_string());
-    result.insert("risk_type".to_string(), "none".to_string());
+    result.insert("is_safe".to_string(), "unverified".to_string());
+    result.insert("risk_type".to_string(), "not_screened".to_string());
     result.insert("reported_times".to_string(), "0".to_string());
-    
-    // Known phishing addresses (in production, use a real database)
-    let _known_phishing = [
-        "0x1234567890abcdef1234567890abcdef12345678",
-    ];
-    
-    // Check against known malicious (simplified)
-    if address.starts_with("0x0000") || address.starts_with("0x000") {
-        result.insert("risk_type".to_string(), "suspicious".to_string());
+
+    // Real EVM address format validation (no fabricated risk verdict).
+    let valid = is_valid_evm_address(address);
+    result.insert("address_valid".to_string(), valid.to_string());
+    if !valid {
+        result.insert("risk_type".to_string(), "invalid_format".to_string());
         result.insert("is_safe".to_string(), "false".to_string());
     }
-    
+
     result
+}
+
+/// is_valid_evm_address validates an EVM address: must be 0x + 40 hex chars.
+/// (Full EIP-55 checksum validation requires keccak256; we do a real hex
+/// format check here. A checksummed verdict is delegated to the wallet_api
+/// backend which has the keccak implementation.)
+pub fn is_valid_evm_address(address: &str) -> bool {
+    let a = address.strip_prefix("0x").or_else(|| address.strip_prefix("0X"));
+    match a {
+        Some(hex_part) if hex_part.len() == 40 => hex_part.chars().all(|c| c.is_ascii_hexdigit()),
+        _ => false,
+    }
 }
 
 // ============================================================================
@@ -273,20 +291,17 @@ pub fn sha256(data: &[u8]) -> String {
     hex::encode(result)
 }
 
-/// Generate secure random hex
+/// Generate cryptographically secure random hex from the OS RNG (getrandom).
+/// The previous implementation hashed the system clock, which is predictable
+/// and unsuitable for any security-sensitive use.
 pub fn generate_random_hex(length: usize) -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    
-    let mut hasher = Sha256::new();
-    hasher.update(timestamp.to_le_bytes());
-    let result = hasher.finalize();
-    
-    let hex_str = hex::encode(result);
+    let byte_len = (length + 1) / 2;
+    let mut buf = vec![0u8; byte_len];
+    if getrandom::getrandom(&mut buf).is_err() {
+        // Never fall back to a predictable value on RNG failure.
+        return String::new();
+    }
+    let hex_str = hex::encode(buf);
     hex_str[..length.min(hex_str.len())].to_string()
 }
 

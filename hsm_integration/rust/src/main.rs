@@ -20,7 +20,6 @@ use aes_gcm::{
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use chrono::{DateTime, Utc};
-use cryptography::types::{PrivateKey, PublicKey};
 use elliptic_curve::ecdh::diffie_hellman;
 use elliptic_curve::secp256k1::{PublicKey as Secp256k1PublicKey, SecretKey as Secp256k1SecretKey};
 use k256::ecdsa::{SigningKey as EcdsaSigningKey, VerifyingKey as EcdsaVerifyingKey};

@@ -17,6 +17,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use sha2::{Sha256, Digest};
 use thiserror::Error;
+use ed25519_dalek::{Signer, Verifier};
 
 // ============================================================================
 // Error Types
@@ -116,7 +117,7 @@ impl std::fmt::Display for AccountAddress {
 // ============================================================================
 
 /// Ed25519 public key
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Ed25519PublicKey(pub [u8; 32]);
 
 impl Ed25519PublicKey {
@@ -135,8 +136,27 @@ impl Ed25519PublicKey {
 }
 
 /// Ed25519 signature
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct Ed25519Signature(pub [u8; 64]);
+
+impl Serialize for Ed25519Signature {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        hex::encode(self.0).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Ed25519Signature {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        let bytes = hex::decode(&s).map_err(serde::de::Error::custom)?;
+        if bytes.len() != 64 {
+            return Err(serde::de::Error::custom("Ed25519Signature must be 64 bytes"));
+        }
+        let mut sig = [0u8; 64];
+        sig.copy_from_slice(&bytes);
+        Ok(Ed25519Signature(sig))
+    }
+}
 
 impl Ed25519Signature {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, AptosError> {
@@ -641,9 +661,10 @@ impl AptosClient {
             .map_err(|e| AptosError::RpcError(e.to_string()))?;
         
         if !response.status().is_success() {
+            let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
             return Err(AptosError::RpcError(
-                format!("Submit failed: {} - {}", response.status(), error_text)
+                format!("Submit failed: {} - {}", status, error_text)
             ));
         }
         
@@ -990,7 +1011,8 @@ pub fn verify_signature(
     }
     
     let vk = VerifyingKey::from_bytes(&public_key.0).unwrap();
-    vk.verify(message, &ed25519_dalek::Signature::from_bytes(&signature.0).unwrap()).is_ok()
+    let sig = ed25519_dalek::Signature::from_bytes(&signature.0);
+    vk.verify(message, &sig).is_ok()
 }
 
 #[cfg(test)]

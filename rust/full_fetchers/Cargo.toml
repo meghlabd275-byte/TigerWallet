@@ -59,7 +59,7 @@ mockito = "1.2"
 
 [features]
 default = ["full"]
-full = ["runtime"]
+full = []
 
 [profile.release]
 opt-level = 3

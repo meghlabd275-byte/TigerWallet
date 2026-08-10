@@ -9,7 +9,7 @@ description = "TigerWallet RBAC Admin Backend - High-speed Rust implementation"
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
 tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace", "add_authority"] }
+tower-http = { version = "0.5", features = ["cors", "trace"] }
 
 # Database
 sqlx = { version = "0.8", features = ["runtime-tokio-native-tls", "postgres", "uuid", "chrono", "json"] }
@@ -46,6 +46,3 @@ tokio-test = "0.4"
 name = "rbac_admin"
 path = "src/lib.rs"
 
-[[bin]]
-name = "rbac-admin-server"
-path = "src/main.rs"

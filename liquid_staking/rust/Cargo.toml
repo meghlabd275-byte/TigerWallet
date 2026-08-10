@@ -32,7 +32,3 @@ tempfile = "3.8"
 [lib]
 name = "liquid_staking"
 path = "src/lib.rs"
-
-[[bin]]
-name = "liquid-staking-cli"
-path = "src/main.rs"

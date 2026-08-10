@@ -19,7 +19,6 @@ hex = "0.4"
 rand = "0.8"
 async-trait = "0.1"
 log = "0.4"
-msgpack = "0.2"
 
 [lib]
 name = "tiger_algorand"
