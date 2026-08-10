@@ -61,6 +61,15 @@ func main() {
 	r.GET("/api/v1/gas", handleGasPrice)
 	r.GET("/api/v1/chart/history", handleChartHistory)
 
+	// ---- Security / scam-scan routes (read-only public) ----
+	r.GET("/api/v1/security/check-url", handleCheckURL)
+	r.GET("/api/v1/security/check-address", handleCheckAddress)
+	r.POST("/api/v1/security/scan", handleSecurityScan)
+
+	// ---- Trading-terminal market data (read-only public) ----
+	r.GET("/api/v1/terminal/kline/:symbol", handleTerminalKline)
+	r.GET("/api/v1/terminal/ticker/:symbol", handleTerminalTicker)
+
 	// ---- Auth routes ----
 	auth := r.Group("/api/v1/auth")
 	{
@@ -81,6 +90,12 @@ func main() {
 		wallet.POST("/send", handleSendTransaction)
 		wallet.POST("/sign", handleSignMessage)
 
+		// ---- Address book (per-user contacts) ----
+		wallet.GET("/address-book/contacts", handleListContacts)
+		wallet.POST("/address-book/contacts", handleCreateContact)
+		wallet.PUT("/address-book/contacts/:id", handleUpdateContact)
+		wallet.DELETE("/address-book/contacts/:id", handleDeleteContact)
+
 		// ---- Admin / dashboard routes (authenticated) ----
 		// Back the master-wallet dashboard with real PostgreSQL aggregates.
 		admin := wallet.Group("/admin")
@@ -88,6 +103,31 @@ func main() {
 			admin.GET("/stats", handleAdminStats)
 			admin.GET("/wallets", handleAdminWallets)
 			admin.GET("/transactions", handleAdminTransactions)
+
+			admin.GET("/wallets/:id", handleAdminWalletDetail)
+			admin.PUT("/wallets/:id", handleAdminUpdateWallet)
+			admin.DELETE("/wallets/:id", handleAdminDeleteWallet)
+			admin.GET("/wallets/transactions", handleAdminWalletTransactions)
+
+			// ---- Admin chain configuration ----
+			admin.GET("/chains", handleAdminListChains)
+			admin.POST("/chains", handleAdminCreateChain)
+			admin.PUT("/chains/:id", handleAdminUpdateChain)
+			admin.DELETE("/chains/:id", handleAdminDeleteChain)
+			admin.GET("/chains/bridges", handleAdminListBridges)
+			admin.POST("/chains/bridges", handleAdminCreateBridge)
+			admin.GET("/chains/validators", handleAdminListValidators)
+			admin.POST("/chains/validators", handleAdminCreateValidator)
+			admin.GET("/chains/metrics", handleAdminChainMetrics)
+			admin.GET("/chains/token-deployments", handleAdminTokenDeployments)
+
+			// ---- Admin fee configuration ----
+			admin.GET("/fees", handleAdminListFees)
+			admin.POST("/fees", handleAdminCreateFee)
+			admin.PUT("/fees/:id", handleAdminUpdateFee)
+			admin.DELETE("/fees/:id", handleAdminDeleteFee)
+			admin.GET("/fees/transactions", handleAdminFeeTransactions)
+			admin.GET("/fees/revenue", handleAdminFeeRevenue)
 		}
 	}
 

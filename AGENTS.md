@@ -261,7 +261,7 @@
 
 
 ## Go services (multisig_service, mpc) - crypto/build notes
-- Go binary: /home/openhands/.local/go/bin/go (add to PATH). System go not installed.
+- Go binary: /home/openhands/go/bin/go (add to PATH via `export PATH="/home/openhands/go/bin:$PATH"`). System go not installed. NOTE: /home/openhands/.local/go/bin does NOT contain go — use /home/openhands/go/bin.
 - Two modules: go/multisig_service (github.com/tigerwallet/multisig-service), go/mpc (github.com/tigerwallet/mpc).
 - All signing uses github.com/ethereum/go-ethereum/crypto (real ECDSA secp256k1, low-s). No sha256/sha3 fakes.
 - multisig_service: broadcastTransaction (main.go) and broadcastRawTransaction (multisig_service.go) use ethclient.Dial + types.NewTx(DynamicFeeTx) + types.SignTx + client.SendTransaction. RPC from ETH_RPC_URL env.

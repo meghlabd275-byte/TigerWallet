@@ -105,6 +105,70 @@ CREATE INDEX IF NOT EXISTS idx_wallets_user ON wallets(user_id);
 CREATE INDEX IF NOT EXISTS idx_wallets_address ON wallets(address);
 CREATE INDEX IF NOT EXISTS idx_txlog_user ON transaction_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_txlog_hash ON transaction_log(tx_hash);
+
+-- Admin-managed chain configuration (extends the static SupportedChains registry
+-- with admin-set status, bridges, validators, token-deployment records).
+CREATE TABLE IF NOT EXISTS admin_chain_config (
+    id UUID PRIMARY KEY,
+    chain_id BIGINT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    rpc_url TEXT NOT NULL,
+    explorer_url TEXT NOT NULL,
+    status TEXT DEFAULT 'active',           -- active | inactive | maintenance
+    is_default BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS admin_chain_bridge (
+    id UUID PRIMARY KEY,
+    from_chain_id BIGINT NOT NULL,
+    to_chain_id BIGINT NOT NULL,
+    bridge_name TEXT NOT NULL,
+    contract_address TEXT NOT NULL,
+    status TEXT DEFAULT 'active',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS admin_chain_validator (
+    id UUID PRIMARY KEY,
+    chain_id BIGINT NOT NULL,
+    validator_address TEXT NOT NULL,
+    name TEXT,
+    status TEXT DEFAULT 'active',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Fee tiers configured by admins and per-transaction fee revenue ledger.
+CREATE TABLE IF NOT EXISTS fee_tier (
+    id UUID PRIMARY KEY,
+    tier_name TEXT UNIQUE NOT NULL,
+    fee_type TEXT NOT NULL,                 -- trading | withdrawal | deposit | nft
+    rate_basis_points NUMERIC(10,4) NOT NULL DEFAULT 0,
+    min_amount TEXT DEFAULT '0',
+    max_amount TEXT,
+    chain_id BIGINT,
+    status TEXT DEFAULT 'active',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS fee_transaction (
+    id UUID PRIMARY KEY,
+    user_id UUID,
+    fee_type TEXT NOT NULL,
+    amount TEXT NOT NULL,
+    currency TEXT NOT NULL,
+    chain_id BIGINT,
+    tx_hash TEXT,
+    status TEXT DEFAULT 'settled',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_fee_tier_type ON fee_tier(fee_type);
+CREATE INDEX IF NOT EXISTS idx_fee_tx_type ON fee_transaction(fee_type);
+CREATE INDEX IF NOT EXISTS idx_fee_tx_created ON fee_transaction(created_at);
 `
 
 // ---- User operations ----
