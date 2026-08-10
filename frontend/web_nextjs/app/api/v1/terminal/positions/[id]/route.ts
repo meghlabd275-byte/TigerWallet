@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
-import { proxyMutation } from '../../../_proxy';
+import { proxyMutationFrom, PERPETUAL_SERVICE_URL } from '../../../_proxy';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  return proxyMutation(req, `/terminal/positions/${params.id}/close`, 'POST');
+  return proxyMutationFrom(req, PERPETUAL_SERVICE_URL, `/api/v1/perpetual/position/${params.id}/close`, 'POST');
 }

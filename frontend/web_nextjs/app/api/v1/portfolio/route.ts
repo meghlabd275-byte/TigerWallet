@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { proxyGet } from '../_proxy';
+import { NextRequest } from 'next/server';
+import { proxyGetFrom, PORTFOLIO_TRACKER_URL } from '../_proxy';
 
 export async function GET(req: NextRequest) {
-  return proxyGet(req, '/portfolio');
+  return proxyGetFrom(req, PORTFOLIO_TRACKER_URL, '/api/portfolio');
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { proxyGet } from '../../_proxy';
+import { proxyGetFrom, GOVERNANCE_SERVICE_URL } from '../../_proxy';
 
 export async function GET(req: NextRequest) {
-  return proxyGet(req, '/governance/voting-power');
+  const user = new URL(req.url).searchParams.get('user') || '';
+  return proxyGetFrom(req, GOVERNANCE_SERVICE_URL, `/api/v1/governance/voting-power/${encodeURIComponent(user)}`);
 }

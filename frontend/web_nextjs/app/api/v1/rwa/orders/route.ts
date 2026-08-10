@@ -1,32 +1,12 @@
-// RWA Orders API Route
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server';
+import { proxyGetFrom, proxyMutationFrom, RWA_SERVICE_URL } from '../../_proxy';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8443'
-
-export async function GET() {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/rwa/orders`)
-    const data = await response.json()
-    return NextResponse.json(data)
-  } catch {
-    return NextResponse.json({ orders: [] })
-  }
+// List the caller's RWA orders (auth required). No empty-list fallback.
+export async function GET(req: NextRequest) {
+  return proxyGetFrom(req, RWA_SERVICE_URL, '/api/v1/rwa/orders');
 }
 
-export async function POST(request: NextRequest) {
-  const body = await request.json()
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/rwa/orders`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    const data = await response.json()
-    return NextResponse.json(data, { status: response.status })
-  } catch {
-    return NextResponse.json({ 
-      success: true, 
-      order_id: `order_${Date.now()}` 
-    })
-  }
+// Place a buy/sell order for a tokenized RWA (auth required). No fake order_id.
+export async function POST(req: NextRequest) {
+  return proxyMutationFrom(req, RWA_SERVICE_URL, '/api/v1/rwa/orders', 'POST');
 }

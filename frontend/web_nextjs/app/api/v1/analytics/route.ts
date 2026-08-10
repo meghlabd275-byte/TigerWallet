@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
-import { proxyGet } from '../_proxy';
+import { proxyGetFrom, ANALYTICS_SERVICE_ALT_URL } from '../_proxy';
 
 export async function GET(req: NextRequest) {
-  return proxyGet(req, '/analytics');
+  return proxyGetFrom(req, ANALYTICS_SERVICE_ALT_URL, '/api/v1/analytics/overview');
 }

@@ -110,4 +110,10 @@ go/staking_service/staking-service
 go/wallet_service/wallet-service
 go/wallet_api/wallet-api
 go/mpc/mpc
+go/governance_service/governance_service
+go/prediction_service/prediction_service
+go/rwa_service/rwa_service
+go/card_service/card_service
+go/nft_service/nft-service
+go/listing_service/listing_service
 *.test

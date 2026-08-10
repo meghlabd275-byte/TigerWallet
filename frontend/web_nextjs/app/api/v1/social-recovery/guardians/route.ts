@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { proxyGet, proxyMutation } from '../../_proxy';
+import { proxyGetFrom, proxyMutationFrom, SOCIAL_RECOVERY_SERVICE_URL } from '../../_proxy';
 
 export async function GET(req: NextRequest) {
-  return proxyGet(req, '/social-recovery/guardians');
+  return proxyGetFrom(req, SOCIAL_RECOVERY_SERVICE_URL, '/api/v1/social-recovery/wallets');
 }
 
 export async function POST(req: NextRequest) {
-  return proxyMutation(req, '/social-recovery/guardians', 'POST');
+  return proxyMutationFrom(req, SOCIAL_RECOVERY_SERVICE_URL, '/api/v1/social-recovery/wallets', 'POST');
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { proxyMutation } from '../../../../_proxy';
+import { proxyMutationFrom, GOVERNANCE_SERVICE_URL } from '../../../../_proxy';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  return proxyMutation(req, `/governance/proposals/${params.id}/vote`, 'POST');
+  return proxyMutationFrom(req, GOVERNANCE_SERVICE_URL, `/api/v1/governance/proposals/${encodeURIComponent(params.id)}/vote`, 'POST');
 }

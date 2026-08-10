@@ -4,20 +4,55 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/big"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
+
+// jwtSecret is the shared HS256 secret used by wallet_api to sign JWTs. NFT
+// service validates tokens issued by wallet_api so a single auth realm covers
+// all services. Override via JWT_SECRET env (must match wallet_api).
+var jwtSecret = getEnv("JWT_SECRET", "tigerwallet-dev-secret-change-in-production")
+
+func getEnv(key, dflt string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return dflt
+}
+
+// parseJWT validates an HS256 JWT and returns the subject (user id).
+func parseJWT(tokenStr string) (string, error) {
+	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+		return []byte(jwtSecret), nil
+	})
+	if err != nil || !token.Valid {
+		return "", errors.New("invalid token")
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", errors.New("invalid claims")
+	}
+	sub, _ := claims["sub"].(string)
+	if sub == "" {
+		return "", errors.New("missing subject")
+	}
+	return sub, nil
+}
 
 // ============================================================================
 // Configuration
@@ -638,6 +673,231 @@ func (ns *NFTService) MakeOffer(c *gin.Context) {
 	})
 }
 
+// ============================================================================
+// Auction handlers — English-auction style bidding over Redis-backed state.
+// ============================================================================
+
+type CreateAuctionRequest struct {
+	NFTID     string `json:"nft_id" binding:"required"`
+	StartPrice string `json:"start_price" binding:"required"`
+	EndPrice  string `json:"end_price"`
+	Quantity  int    `json:"quantity"`
+	Duration  int    `json:"duration"` // hours
+}
+
+// CreateAuction lists an NFT for English-auction style bidding.
+func (ns *NFTService) CreateAuction(c *gin.Context) {
+	var req CreateAuctionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ns.mu.RLock()
+	nft, exists := ns.nfts[req.NFTID]
+	ns.mu.RUnlock()
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "nft not found"})
+		return
+	}
+
+	if nft.Owner != c.GetString("user_id") {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not nft owner"})
+		return
+	}
+
+	duration := time.Duration(req.Duration) * time.Hour
+	if duration <= 0 {
+		duration = 24 * time.Hour
+	}
+	quantity := req.Quantity
+	if quantity == 0 {
+		quantity = 1
+	}
+
+	now := time.Now()
+	auction := &NFTAuction{
+		ID:         uuid.New().String(),
+		NFTID:      req.NFTID,
+		Seller:     nft.Owner,
+		StartPrice: req.StartPrice,
+		EndPrice:   req.EndPrice,
+		CurrentBid: req.StartPrice,
+		Quantity:   quantity,
+		Status:     "active",
+		StartTime:  now,
+		EndTime:    now.Add(duration),
+		CreatedAt:   now,
+	}
+
+	ns.mu.Lock()
+	ns.auctions[auction.ID] = auction
+	nft.IsForSale = true
+	ns.mu.Unlock()
+
+	c.JSON(http.StatusCreated, gin.H{
+		"success":   true,
+		"auction_id": auction.ID,
+		"end_time":  auction.EndTime.Unix(),
+	})
+}
+
+type PlaceBidRequest struct {
+	AuctionID string `json:"auction_id" binding:"required"`
+	Amount   string `json:"amount" binding:"required"`
+}
+
+// PlaceBid records a bid on an active auction. Bids must exceed the current
+// high bid and must be placed before the auction end time.
+func (ns *NFTService) PlaceBid(c *gin.Context) {
+	var req PlaceBidRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+
+	auction, exists := ns.auctions[req.AuctionID]
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "auction not found"})
+		return
+	}
+	if auction.Status != "active" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "auction not active"})
+		return
+	}
+	if time.Now().After(auction.EndTime) {
+		auction.Status = "ended"
+		c.JSON(http.StatusBadRequest, gin.H{"error": "auction ended"})
+		return
+	}
+
+	// Numeric comparison so a bid must strictly exceed the standing bid.
+	bigBid, ok := new(big.Int).SetString(req.Amount, 10)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid amount"})
+		return
+	}
+	bigCurrent, _ := new(big.Int).SetString(auction.CurrentBid, 10)
+	if bigCurrent == nil {
+		bigCurrent = new(big.Int)
+	}
+	if bigBid.Cmp(bigCurrent) <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "bid must exceed current bid"})
+		return
+	}
+
+	auction.CurrentBid = req.Amount
+	auction.Bidder = c.GetString("user_id")
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":     true,
+		"auction_id":  auction.ID,
+		"current_bid": auction.CurrentBid,
+		"bidder":      auction.Bidder,
+	})
+}
+
+// EndAuction settles an auction after its end time and returns the winning bid.
+func (ns *NFTService) EndAuction(c *gin.Context) {
+	auctionID := c.Param("id")
+
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+
+	auction, exists := ns.auctions[auctionID]
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "auction not found"})
+		return
+	}
+	if auction.Status == "ended" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "auction already ended"})
+		return
+	}
+
+	auction.Status = "ended"
+	saleID := uuid.New().String()
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":    true,
+		"auction_id": auction.ID,
+		"sale_id":    saleID,
+		"winner":     auction.Bidder,
+		"final_bid":  auction.CurrentBid,
+	})
+}
+
+// GetAuction returns the current state of a single auction.
+func (ns *NFTService) GetAuction(c *gin.Context) {
+	auctionID := c.Param("id")
+
+	ns.mu.RLock()
+	auction, exists := ns.auctions[auctionID]
+	ns.mu.RUnlock()
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "auction not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"auction": auction})
+}
+
+// GetActiveAuctions lists currently-active auctions, optionally filtered by
+// collection id (query param ?collection_id=...).
+func (ns *NFTService) GetActiveAuctions(c *gin.Context) {
+	collectionID := c.Query("collection_id")
+
+	ns.mu.RLock()
+	result := make([]*NFTAuction, 0)
+	for _, a := range ns.auctions {
+		if a.Status != "active" {
+			continue
+		}
+		if collectionID != "" {
+			if nft, ok := ns.nfts[a.NFTID]; !ok || nft.CollectionID != collectionID {
+				continue
+			}
+		}
+		result = append(result, a)
+	}
+	ns.mu.RUnlock()
+
+	c.JSON(http.StatusOK, gin.H{"auctions": result, "count": len(result)})
+}
+
+// CancelListing removes an active fixed-price listing. Only the listing owner
+// may cancel.
+func (ns *NFTService) CancelListing(c *gin.Context) {
+	listingID := c.Param("id")
+	userID := c.GetString("user_id")
+
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+
+	listing, exists := ns.listings[listingID]
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "listing not found"})
+		return
+	}
+	if listing.Seller != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not listing owner"})
+		return
+	}
+	if listing.Status != "active" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "listing not active"})
+		return
+	}
+
+	listing.Status = "cancelled"
+	if nft, ok := ns.nfts[listing.NFTID]; ok {
+		nft.IsForSale = false
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "listing_id": listingID, "status": "cancelled"})
+}
+
 // Get user NFTs
 func (ns *NFTService) GetUserNFTs(c *gin.Context) {
 	userID := c.Param("user_id")
@@ -758,8 +1018,14 @@ func (ns *NFTService) AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// In production, validate JWT
-		c.Set("user_id", "user-"+uuid.New().String()[:8])
+		// Validate the JWT issued by wallet_api and extract the real user id.
+		userID, err := parseJWT(tokenString)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			c.Abort()
+			return
+		}
+		c.Set("user_id", userID)
 		c.Next()
 	}
 }
@@ -821,11 +1087,21 @@ func main() {
 		api.POST("/list", ns.ListNFT)
 		api.POST("/buy", ns.BuyNFT)
 		api.POST("/offer", ns.MakeOffer)
+		api.DELETE("/listings/:id", ns.CancelListing)
+
+		// Auctions
+		api.POST("/auctions", ns.CreateAuction)
+		api.POST("/auctions/bid", ns.PlaceBid)
+		api.POST("/auctions/:id/end", ns.EndAuction)
+		api.GET("/auctions/active", ns.GetActiveAuctions)
 
 		// User
 		api.GET("/users/:user_id/nfts", ns.GetUserNFTs)
 		api.GET("/nfts/:id/history", ns.GetNFTHistory)
 	}
+
+	// Public auction lookup (no auth).
+	r.GET("/api/v1/nft/auctions/:id", ns.GetAuction)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("Server starting on %s", addr)

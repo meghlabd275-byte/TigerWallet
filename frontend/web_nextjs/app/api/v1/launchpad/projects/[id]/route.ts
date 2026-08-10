@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { proxyGet } from '../../../_proxy';
+import { proxyGetFrom, LAUNCHPAD_SERVICE_URL } from '../../../_proxy';
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  return proxyGet(req, `/launchpad/projects/${params.id}`);
+  return proxyGetFrom(req, LAUNCHPAD_SERVICE_URL, `/api/v1/launchpad/projects/${params.id}`);
 }

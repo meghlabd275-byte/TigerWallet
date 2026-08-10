@@ -9,9 +9,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -19,9 +21,47 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
+
+// jwtSecret is the shared HS256 secret used by wallet_api to sign JWTs. The
+// listing service validates tokens issued by wallet_api so admins are
+// authenticated through the same realm as regular users. Override via
+// JWT_SECRET env (must match wallet_api).
+var jwtSecret = getEnv("JWT_SECRET", "tigerwallet-dev-secret-change-in-production")
+
+func getEnv(key, dflt string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return dflt
+}
+
+// parseAdminJWT validates an HS256 JWT and returns the subject. The subject
+// is expected to be the admin's email (wallet_api issues sub = user id, but
+// for admins the listing service maps sub->email via adminUsers).
+func parseAdminJWT(tokenStr string) (string, error) {
+	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+		return []byte(jwtSecret), nil
+	})
+	if err != nil || !token.Valid {
+		return "", errors.New("invalid token")
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", errors.New("invalid claims")
+	}
+	sub, _ := claims["sub"].(string)
+	if sub == "" {
+		return "", errors.New("missing subject")
+	}
+	return sub, nil
+}
 
 // ============================================================================
 // Configuration
@@ -553,9 +593,15 @@ func (s *ListingService) AdminAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// In production, validate JWT and check admin role
-		email := strings.TrimPrefix(authHeader, "Bearer ")
-		
+		// Validate the JWT issued by wallet_api; the subject is the admin email.
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		email, err := parseAdminJWT(tokenString)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			c.Abort()
+			return
+		}
+
 		s.mu.RLock()
 		admin, ok := s.adminUsers[email]
 		s.mu.RUnlock()
@@ -575,7 +621,19 @@ func (s *ListingService) AdminAuthMiddleware() gin.HandlerFunc {
 func (s *ListingService) SuperAdminMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
-		email := strings.TrimPrefix(authHeader, "Bearer ")
+		if authHeader == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "no authorization"})
+			c.Abort()
+			return
+		}
+
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		email, err := parseAdminJWT(tokenString)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			c.Abort()
+			return
+		}
 
 		s.mu.RLock()
 		admin, ok := s.adminUsers[email]

@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -342,12 +343,33 @@ func (s *KYCService) SubmitDocument(ctx context.Context, sessionID string, docTy
 		return nil, fmt.Errorf("document type not required for this level")
 	}
 
-	// In production, upload to cloud storage and get URL
-	// For now, simulate the upload
+	// Persist the uploaded document. With no external cloud storage
+	// configured the raw bytes are stored in Redis under a document key and
+	// the storage URL references that key. A real deployment would stream to
+	// S3/GCS and store the object URL, but this keeps the document genuinely
+	// retrievable (not discarded) with the same interface.
 	doc := &KYCDocument{
 		ID:     uuid.New().String(),
 		Type:   docType,
 		Status: "pending",
+	}
+	if file != nil {
+		src, err := file.Open()
+		if err != nil {
+			return nil, fmt.Errorf("cannot open document: %w", err)
+		}
+		data, err := io.ReadAll(src)
+		src.Close()
+		if err != nil {
+			return nil, fmt.Errorf("cannot read document: %w", err)
+		}
+		docKey := fmt.Sprintf("kyc:document:%s", doc.ID)
+		encoded := base64.StdEncoding.EncodeToString(data)
+		if err := s.redis.Set(ctx, docKey, encoded, s.config.SessionTimeout*4).Err(); err != nil {
+			return nil, fmt.Errorf("cannot store document: %w", err)
+		}
+		doc.FrontURL = fmt.Sprintf("tigerwallet://kyc/document/%s", doc.ID)
+		doc.Number = fmt.Sprintf("%x", sha256.Sum256(data))[:16]
 	}
 
 	// Update step status
@@ -375,26 +397,21 @@ func (s *KYCService) SubmitDocument(ctx context.Context, sessionID string, docTy
 	return doc, nil
 }
 
-// processVerification processes the KYC verification (async)
+// processVerification marks the submission as pending manual review. KYC
+// verification requires human/external-provider review; it is never auto-
+// approved here (auto-approval would be a security vulnerability allowing
+// unverified users to claim elevated trust scores).
 func (s *KYCService) processVerification(userID string) {
 	ctx := context.Background()
-	time.Sleep(2 * time.Second) // Simulate processing
 
 	user, err := s.GetUserByID(ctx, userID)
 	if err != nil {
 		return
 	}
 
-	// Simulate verification result
-	user.Status = "verified"
-	user.TrustScore = s.config.RequiredLevels[user.Level].TrustScoreBoost
-	now := time.Now()
-	user.VerifiedAt = &now
+	// Mark as pending external/manual review, NOT verified.
+	user.Status = "pending_review"
 	user.UpdatedAt = time.Now()
-
-	// Set expiry (1 year)
-	expiresAt := now.AddDate(1, 0, 0)
-	user.ExpiresAt = &expiresAt
 
 	s.saveUser(ctx, user)
 
