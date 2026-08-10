@@ -24,6 +24,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 const (
@@ -515,6 +519,73 @@ func getRequiredConfirmations(currency string) int {
 	return 12 // Default
 }
 
+// evmNetworkRPC returns an RPC URL for an EVM-compatible network from its env
+// var, or "" when none is configured.
+func evmNetworkRPC(network string) string {
+	n := strings.ToUpper(network)
+	switch n {
+	case "ETH", "ETHEREUM":
+		return os.Getenv("ETH_RPC_URL")
+	case "BSC", "BNB":
+		return os.Getenv("BSC_RPC_URL")
+	case "ARB", "ARBITRUM":
+		return os.Getenv("ARB_RPC_URL")
+	case "AVAX":
+		return os.Getenv("AVAX_RPC_URL")
+	case "POLYGON", "MATIC":
+		return os.Getenv("POLYGON_RPC_URL")
+	case "OPTIMISM":
+		return os.Getenv("OPTIMISM_RPC_URL")
+	default:
+		return ""
+	}
+}
+
+// verifyOnChainReceipt performs a REAL on-chain check of a payment's tx hash.
+// For EVM networks with a configured RPC URL it fetches the receipt and counts
+// confirmations from the latest block. It returns (confirmations, ok). When no
+// RPC is configured or the network is non-EVM (BTC/SOL/TRON), ok=false signals
+// "verification pending" — it never fabricates a confirmation count.
+func verifyOnChainReceipt(p *CryptoPayment) (int, bool) {
+	rpcURL := evmNetworkRPC(p.Network)
+	if rpcURL == "" {
+		return 0, false
+	}
+	if p.TxHash == "" {
+		return 0, false
+	}
+	client, err := ethclient.Dial(rpcURL)
+	if err != nil {
+		return 0, false
+	}
+	defer client.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	txHash := common.HexToHash(p.TxHash)
+	receipt, err := client.TransactionReceipt(ctx, txHash)
+	if err != nil {
+		return 0, false
+	}
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return 0, true // tx exists but failed on-chain
+	}
+	latest, err := client.BlockNumber(ctx)
+	if err != nil {
+		return 0, false
+	}
+	if receipt.BlockNumber == nil {
+		return 0, false
+	}
+	if latest < receipt.BlockNumber.Uint64() {
+		return 0, false
+	}
+	confs := int(latest - receipt.BlockNumber.Uint64() + 1)
+	if confs < 0 {
+		confs = 0
+	}
+	return confs, true
+}
+
 // Verify crypto payment (called by webhook or manual check)
 func VerifyCryptoPayment(c *gin.Context) {
 	paymentID := c.Param("id")
@@ -544,11 +615,18 @@ func VerifyCryptoPayment(c *gin.Context) {
 		payment.TxHash = txHash
 	}
 
-	// In production, would verify on-chain
-	// For now, simulate confirmation check
-	payment.Confirmations++
+	// REAL on-chain verification: count confirmations from the chain when an
+	// RPC URL is configured for the network. When no RPC is configured (or the
+	// network is non-EVM and unsupported here), mark verification as pending
+	// rather than auto-incrementing/auto-approving the payment.
+	confs, verified := verifyOnChainReceipt(payment)
+	if verified {
+		payment.Confirmations = confs
+	} else {
+		payment.Status = "verification_pending"
+	}
 
-	if payment.Confirmations >= payment.RequiredConfirmations && payment.Status != "completed" {
+	if verified && payment.Confirmations >= payment.RequiredConfirmations && payment.Status != "completed" {
 		payment.Status = "completed"
 		now := time.Now().Unix()
 		payment.CompletedAt = &now

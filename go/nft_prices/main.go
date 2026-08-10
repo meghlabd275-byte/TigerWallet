@@ -15,9 +15,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
-	"math/rand/v2"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -106,7 +108,8 @@ func NewNFTPriceService() *NFTPriceService {
 }
 
 func (s *NFTPriceService) Run() error {
-	// Initialize demo data
+	// Seed tracked collection metadata. Floor prices start at 0 (pending) and
+	// are populated from the real OpenSea stats endpoint; no prices are seeded.
 	s.initDemoData()
 
 	// Start price updates
@@ -132,13 +135,15 @@ func (s *NFTPriceService) Run() error {
 }
 
 func (s *NFTPriceService) initDemoData() {
+	// Tracked collection metadata only. FloorPrice starts at 0 (pending) and is
+	// filled from the real OpenSea stats endpoint in updatePrices; never fabricated.
 	collections := []*Collection{
-		{ID: "bored_ape", Name: "Bored Ape Yacht Club", Symbol: "BAYC", Blockchain: "ethereum", FloorPrice: 25.5, Volume24h: 1500000, Sales24h: 45, Owners: 6500, TotalSupply: 10000, MarketCap: 255000, Change24h: 3.2, ImageURL: "https://i.sea.cc"},
-		{ID: "pudgy", Name: "Pudgy Penguins", Symbol: "PENGU", Blockchain: "ethereum", FloorPrice: 3.2, Volume24h: 450000, Sales24h: 120, Owners: 5200, TotalSupply: 8888, MarketCap: 28416, Change24h: -1.5, ImageURL: "https://i.sea.cc"},
-		{ID: "azuki", Name: "Azuki", Symbol: "AZUKI", Blockchain: "ethereum", FloorPrice: 8.5, Volume24h: 680000, Sales24h: 38, Owners: 5800, TotalSupply: 10000, MarketCap: 85000, Change24h: 5.8, ImageURL: "https://i.sea.cc"},
-		{ID: "degen", Name: "Degen", Symbol: "DEGEN", Blockchain: "base", FloorPrice: 0.8, Volume24h: 120000, Sales24h: 180, Owners: 8500, TotalSupply: 10000000, MarketCap: 8000000, Change24h: 12.5, ImageURL: "https://i.sea.cc"},
-		{ID: "freak", Name: "Freak", Symbol: "FREAK", Blockchain: "solana", FloorPrice: 45.0, Volume24h: 250000, Sales24h: 8, Owners: 4200, TotalSupply: 5000, MarketCap: 225000, Change24h: -3.2, ImageURL: "https://i.sea.cc"},
-		{ID: "blur", Name: "Blur", Symbol: "BLUR", Blockchain: "ethereum", FloorPrice: 0.35, Volume24h: 350000, Sales24h: 520, Owners: 15000, TotalSupply: 300000000, MarketCap: 105000000, Change24h: 8.5, ImageURL: "https://i.sea.cc"},
+		{ID: "bored_ape", Name: "Bored Ape Yacht Club", Symbol: "BAYC", Blockchain: "ethereum", TotalSupply: 10000, ImageURL: "https://i.sea.cc"},
+		{ID: "pudgy", Name: "Pudgy Penguins", Symbol: "PENGU", Blockchain: "ethereum", TotalSupply: 8888, ImageURL: "https://i.sea.cc"},
+		{ID: "azuki", Name: "Azuki", Symbol: "AZUKI", Blockchain: "ethereum", TotalSupply: 10000, ImageURL: "https://i.sea.cc"},
+		{ID: "degen", Name: "Degen", Symbol: "DEGEN", Blockchain: "base", TotalSupply: 10000000, ImageURL: "https://i.sea.cc"},
+		{ID: "freak", Name: "Freak", Symbol: "FREAK", Blockchain: "solana", TotalSupply: 5000, ImageURL: "https://i.sea.cc"},
+		{ID: "blur", Name: "Blur", Symbol: "BLUR", Blockchain: "ethereum", TotalSupply: 300000000, ImageURL: "https://i.sea.cc"},
 	}
 
 	for _, c := range collections {
@@ -146,18 +151,107 @@ func (s *NFTPriceService) initDemoData() {
 	}
 }
 
+// openSeaSlug maps a tracked collection id to its OpenSea collection slug and
+// the chain identifier OpenSea v2 expects.
+func openSeaSlug(collectionID string) (slug, chain string) {
+	switch collectionID {
+	case "bored_ape":
+		return "bored-ape-yacht-club", "ethereum"
+	case "pudgy":
+		return "pudgypenguins", "ethereum"
+	case "azuki":
+		return "azuki", "ethereum"
+	case "degen":
+		return "degen", "base"
+	case "freak":
+		return "freak", "solana"
+	case "blur":
+		return "blur", "ethereum"
+	default:
+		return "", ""
+	}
+}
+
+var nftHTTPClient = &http.Client{Timeout: 10 * time.Second}
+
+// openSeaStats fetches the real floor price / 24h volume / change for a
+// collection from OpenSea's v2 stats endpoint. Returns ok=false when the
+// collection is unconfigured or the feed is unreachable.
+func openSeaStats(collectionID string) (floor, vol24h, change24h float64, ok bool) {
+	slug, chain := openSeaSlug(collectionID)
+	if slug == "" {
+		return 0, 0, 0, false
+	}
+	base := os.Getenv("OPENSEA_BASE")
+	if base == "" {
+		base = "https://api.opensea.io"
+	}
+	url := fmt.Sprintf("%s/api/v2/collections/%s/stats", strings.TrimRight(base, "/"), slug)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return 0, 0, 0, false
+	}
+	if key := os.Getenv("OPENSEA_API_KEY"); key != "" {
+		req.Header.Set("X-API-KEY", key)
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := nftHTTPClient.Do(req)
+	if err != nil {
+		log.Printf("opensea stats fetch failed %s: %v", collectionID, err)
+		return 0, 0, 0, false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("opensea stats %s returned %d", collectionID, resp.StatusCode)
+		return 0, 0, 0, false
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, 0, 0, false
+	}
+	var parsed struct {
+		FloorPrice float64 `json:"floor_price"`
+		Total      struct {
+			Volume float64 `json:"volume"`
+		} `json:"total"`
+		Intervals []struct {
+			Volume float64 `json:"volume"`
+		} `json:"intervals"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return 0, 0, 0, false
+	}
+	floor = parsed.FloorPrice
+	vol24h = parsed.Total.Volume
+	if len(parsed.Intervals) > 0 && parsed.Intervals[0].Volume > 0 {
+		vol24h = parsed.Intervals[0].Volume
+	}
+	_ = chain
+	return floor, vol24h, 0, true
+}
+
 func (s *NFTPriceService) updatePrices() {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		s.mu.Lock()
 		for _, c := range s.collections {
-			// Simulate price changes
-			change := (rand.Float64() - 0.5) * 0.1 * c.FloorPrice
-			c.FloorPrice += change
-			c.Change24h += (rand.Float64() - 0.5) * 2
-			c.Volume24h *= 1 + (rand.Float64()-0.5)*0.05
+			// Real floor-price data from OpenSea. When the feed is
+			// unreachable/unconfigured, leave the existing (or zero/pending)
+			// value untouched rather than fabricating a price with rand.
+			floor, vol24h, _, ok := openSeaStats(c.ID)
+			if !ok {
+				continue
+			}
+			prev := c.FloorPrice
+			c.FloorPrice = floor
+			if prev > 0 {
+				c.Change24h = (floor - prev) / prev * 100
+			}
+			if vol24h > 0 {
+				c.Volume24h = vol24h
+			}
 			c.UpdatedAt = time.Now().UnixMilli()
 		}
 		s.mu.Unlock()

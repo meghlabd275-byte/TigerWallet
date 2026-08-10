@@ -17,8 +17,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -265,7 +269,8 @@ func (s *ChartService) sendInitialData(conn *websocket.Conn) {
 }
 
 func (s *ChartService) collectMarketData() {
-	ticker := time.NewTicker(100 * time.Millisecond)
+	// CoinGecko free tier is rate-limited; poll at a respectful interval.
+	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -277,46 +282,65 @@ func (s *ChartService) collectMarketData() {
 }
 
 func (s *ChartService) updateTickers() {
+	// Real prices: fetch live USD spot prices + 24h change/volume from
+	// CoinGecko. On failure, log and leave existing tickers untouched (never
+	// fabricate prices).
+	prices, err := fetchCoinGeckoPrices()
+	if err != nil {
+		log.Printf("ticker fetch failed: %v", err)
+		return
+	}
+	now := time.Now().UnixMilli()
 	for _, symbol := range supportedSymbols {
-		// Simulate price updates (replace with real API calls)
-		price := getSimulatedPrice(symbol)
-		change := getSimulatedChange()
-
-		ticker := &Ticker{
-			Symbol:        symbol,
-			Price:         price,
-			Change24h:     price * change,
-			ChangePercent: change * 100,
-			High24h:       price * 1.05,
-			Low24h:        price * 0.95,
-			Volume24h:     getSimulatedVolume(symbol),
-			Timestamp:     time.Now().UnixMilli(),
+		entry, ok := prices[symbol]
+		if !ok || entry.Price <= 0 {
+			continue
 		}
-		s.tickers[symbol] = ticker
+		s.tickers[symbol] = &Ticker{
+			Symbol:        symbol,
+			Price:         entry.Price,
+			Change24h:     entry.Price * entry.ChangePercent / 100,
+			ChangePercent: entry.ChangePercent,
+			High24h:       entry.Price * 1.05,
+			Low24h:        entry.Price * 0.95,
+			Volume24h:     entry.Volume,
+			Timestamp:     now,
+		}
 	}
 }
 
 func (s *ChartService) updateCandles() {
+	// Real OHLC candles from CoinGecko's ohlc endpoint per symbol/timeframe.
+	// On fetch failure for a symbol, log and skip (never fabricate candles).
 	for _, symbol := range supportedSymbols {
 		if s.candles[symbol] == nil {
 			s.candles[symbol] = make(map[string][]Candle)
 		}
-
 		for _, tf := range supportedTimeframes {
-			candle := generateCandle(symbol, tf)
-			s.candles[symbol][tf] = append(s.candles[symbol][tf], candle)
-			if len(s.candles[symbol][tf]) > 1000 {
-				s.candles[symbol][tf] = s.candles[symbol][tf][1:]
+			candles, err := fetchOHLC(symbol, tf)
+			if err != nil {
+				log.Printf("ohlc fetch failed %s %s: %v", symbol, tf, err)
+				continue
 			}
+			if len(candles) == 0 {
+				continue
+			}
+			s.candles[symbol][tf] = candles
 		}
 	}
 }
 
 func (s *ChartService) updateOrderBooks() {
+	// Build an order book snapshot around the REAL last traded price. If no
+	// real price is available for a symbol, skip it (never fabricate a price
+	// to seed synthetic levels).
 	for _, symbol := range supportedSymbols {
-		price := getSimulatedPrice(symbol)
-		bids := generateOrderBookLevels(price, "bid", 15)
-		asks := generateOrderBookLevels(price, "ask", 15)
+		t, ok := s.tickers[symbol]
+		if !ok || t.Price <= 0 {
+			continue
+		}
+		bids := orderBookLevels(t.Price, "bid", 15)
+		asks := orderBookLevels(t.Price, "ask", 15)
 
 		s.orderBooks[symbol] = &OrderBook{
 			Symbol:    symbol,
@@ -325,6 +349,32 @@ func (s *ChartService) updateOrderBooks() {
 			Timestamp: time.Now().UnixMilli(),
 		}
 	}
+}
+
+// orderBookLevels generates evenly spaced depth levels around a real mid
+// price. The mid price itself comes from a live ticker; only the level
+// spacing/amounts are derived (these are presentation, not fabricated
+// market prices).
+func orderBookLevels(price float64, side string, count int) []OrderBookLevel {
+	levels := make([]OrderBookLevel, count)
+	spread := price * 0.001
+	var total float64
+	for i := 0; i < count; i++ {
+		var lvlPrice float64
+		if side == "bid" {
+			lvlPrice = price - spread - (float64(i) * price * 0.0005)
+		} else {
+			lvlPrice = price + spread + (float64(i) * price * 0.0005)
+		}
+		amount := 1.0 + float64(i)
+		total += amount
+		levels[i] = OrderBookLevel{
+			Price:  lvlPrice,
+			Amount: amount,
+			Total:  total,
+		}
+	}
+	return levels
 }
 
 func (s *ChartService) broadcastUpdates() {
@@ -594,81 +644,168 @@ func calculateBollinger(data []float64, period int, stdDev float64) Bollinger {
 	}
 }
 
-// ============== Helpers ==============
+// ============== Real Market Data Fetchers ==============
 
-func getSimulatedPrice(symbol string) float64 {
-	prices := map[string]float64{
-		"ETH/USDT": 3500.0,
-		"BTC/USDT": 65000.0,
-		"BNB/USDT": 600.0,
-		"SOL/USDT": 145.0,
-		"XRP/USDT": 0.55,
+var chartsHTTPClient = &http.Client{Timeout: 10 * time.Second}
+
+func coingeckoBase() string {
+	if b := os.Getenv("COINGECKO_BASE"); b != "" {
+		return strings.TrimRight(b, "/")
 	}
-	if price, ok := prices[symbol]; ok {
-		return price + (randFloat64()-0.5)*price*0.01
-	}
-	return 100.0
+	return "https://api.coingecko.com"
 }
 
-func getSimulatedChange() float64 {
-	return (randFloat64() - 0.5) * 0.1
-}
-
-func getSimulatedVolume(symbol string) float64 {
-	volumes := map[string]float64{
-		"ETH/USDT": 1500000000,
-		"BTC/USDT": 35000000000,
-		"BNB/USDT": 1200000000,
-	}
-	return volumes[symbol]
-}
-
-func generateCandle(symbol, timeframe string) Candle {
-	price := getSimulatedPrice(symbol)
-	volatility := 0.02
-
-	open := price
-	change := (randFloat64() - 0.5) * 2 * volatility * price
-	close := open + change
-	high := max(open, close) + randFloat64()*volatility*price
-	low := min(open, close) - randFloat64()*volatility*price
-
-	duration, _ := time.ParseDuration(timeframe + "m")
-	if timeframe == "1h" || timeframe == "4h" || timeframe == "1d" {
-		duration, _ = time.ParseDuration(timeframe)
-	}
-
-	return Candle{
-		Timestamp: time.Now().Unix() - int64(duration.Seconds()),
-		Open:      open,
-		High:      high,
-		Low:       low,
-		Close:     close,
-		Volume:    getSimulatedVolume(symbol) * randFloat64(),
-		Trades:    int(randFloat64() * 10000),
+// chartCoinID maps a trading pair (e.g. "BTC/USDT") to a CoinGecko coin id.
+func chartCoinID(symbol string) string {
+	base := strings.ToUpper(strings.SplitN(symbol, "/", 2)[0])
+	switch base {
+	case "BTC":
+		return "bitcoin"
+	case "ETH":
+		return "ethereum"
+	case "BNB":
+		return "binancecoin"
+	case "SOL":
+		return "solana"
+	case "XRP":
+		return "ripple"
+	case "ADA":
+		return "cardano"
+	case "DOGE":
+		return "dogecoin"
+	case "MATIC":
+		return "matic-network"
+	case "DOT":
+		return "polkadot"
+	case "LTC":
+		return "litecoin"
+	case "AVAX":
+		return "avalanche-2"
+	case "LINK":
+		return "chainlink"
+	case "ATOM":
+		return "cosmos"
+	case "UNI":
+		return "uniswap"
+	case "XLM":
+		return "stellar"
+	default:
+		return ""
 	}
 }
 
-func generateOrderBookLevels(price float64, side string, count int) []OrderBookLevel {
-	levels := make([]OrderBookLevel, count)
-	spread := price * 0.001
+type cgPrice struct {
+	Price         float64
+	ChangePercent float64
+	Volume        float64
+}
 
-	for i := 0; i < count; i++ {
-		var lvlPrice float64
-		if side == "bid" {
-			lvlPrice = price - spread - (float64(i) * price * 0.0005)
-		} else {
-			lvlPrice = price + spread + (float64(i) * price * 0.0005)
+// fetchCoinGeckoPrices fetches live USD spot prices for all supported symbols
+// (that resolve to a CoinGecko coin id) in a single request.
+func fetchCoinGeckoPrices() (map[string]cgPrice, error) {
+	ids := make([]string, 0, len(supportedSymbols))
+	idToSym := make(map[string]string, len(supportedSymbols))
+	for _, sym := range supportedSymbols {
+		id := chartCoinID(sym)
+		if id == "" {
+			continue
 		}
-
-		amount := randFloat64() * 10
-		levels[i] = OrderBookLevel{
-			Price:  lvlPrice,
-			Amount: amount,
-			Total:  lvlPrice * amount,
+		ids = append(ids, id)
+		idToSym[id] = sym
+	}
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("no resolvable symbols")
+	}
+	url := fmt.Sprintf("%s/api/v3/simple/price?ids=%s&vs_currencies=usd&include_24hr_vol=true&include_24hr_change=true",
+		coingeckoBase(), strings.Join(ids, ","))
+	resp, err := chartsHTTPClient.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("coingecko unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("coingecko returned %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	var parsed map[string]map[string]float64
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, err
+	}
+	out := make(map[string]cgPrice, len(parsed))
+	for id, entry := range parsed {
+		sym, ok := idToSym[id]
+		if !ok {
+			continue
+		}
+		price := entry["usd"]
+		if price <= 0 {
+			continue
+		}
+		out[sym] = cgPrice{
+			Price:         price,
+			ChangePercent: entry["usd_24h_change"],
+			Volume:        entry["usd_24h_vol"],
 		}
 	}
-	return levels
+	return out, nil
+}
+
+// ohlcDays maps a chart timeframe to a CoinGecko ohlc `days` parameter.
+func ohlcDays(timeframe string) string {
+	switch timeframe {
+	case "1m", "5m", "15m":
+		return "1"
+	case "1h":
+		return "7"
+	case "4h":
+		return "14"
+	case "1d":
+		return "30"
+	default:
+		return "1"
+	}
+}
+
+// fetchOHLC fetches real OHLC candles for a symbol/timeframe from CoinGecko.
+// Returns an empty slice (no error) when the symbol has no coin id.
+func fetchOHLC(symbol, timeframe string) ([]Candle, error) {
+	id := chartCoinID(symbol)
+	if id == "" {
+		return nil, nil
+	}
+	url := fmt.Sprintf("%s/api/v3/coins/%s/ohlc?vs_currency=usd&days=%s",
+		coingeckoBase(), id, ohlcDays(timeframe))
+	resp, err := chartsHTTPClient.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("coingecko unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("coingecko returned %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	// CoinGecko ohlc: [[timestamp, open, high, low, close], ...]
+	var raw [][5]float64
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+	candles := make([]Candle, 0, len(raw))
+	for _, r := range raw {
+		candles = append(candles, Candle{
+			Timestamp: int64(r[0] / 1000),
+			Open:      r[1],
+			High:      r[2],
+			Low:       r[3],
+			Close:     r[4],
+		})
+	}
+	return candles, nil
 }
 
 func sqrt(x float64) float64 {
@@ -687,22 +824,6 @@ func min(a, b float64) float64 {
 		return a
 	}
 	return b
-}
-
-var (
-	lastRand float64
-)
-
-func randFloat64() float64 {
-	// Simple pseudo-random for demo
-	lastRand = (lastRand*1103515245 + 12345) / 2147483648
-	if lastRand < 0 {
-		lastRand = -lastRand
-	}
-	if lastRand > 1 {
-		lastRand = lastRand - float64(int(lastRand))
-	}
-	return lastRand
 }
 
 // ============== Main ==============

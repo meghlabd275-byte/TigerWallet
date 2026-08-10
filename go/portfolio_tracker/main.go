@@ -18,10 +18,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
-	"math"
-	"math/rand/v2"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -141,6 +142,8 @@ type PortfolioService struct {
 	// Transaction history
 	transactions map[string][]Transaction
 
+	httpClient *http.Client
+
 	// HTTP server
 	server *http.Server
 }
@@ -150,7 +153,22 @@ func NewPortfolioService() *PortfolioService {
 		portfolios:   make(map[string]*Portfolio),
 		prices:       make(map[string]float64),
 		transactions: make(map[string][]Transaction),
+		httpClient:   &http.Client{Timeout: 10 * time.Second},
 	}
+}
+
+func walletAPIBase() string {
+	if u := os.Getenv("WALLET_API_URL"); u != "" {
+		return strings.TrimRight(u, "/")
+	}
+	return "http://localhost:8443"
+}
+
+func coingeckoBase() string {
+	if b := os.Getenv("COINGECKO_BASE"); b != "" {
+		return strings.TrimRight(b, "/")
+	}
+	return "https://api.coingecko.com"
 }
 
 func (s *PortfolioService) Run() error {
@@ -181,40 +199,107 @@ func (s *PortfolioService) Run() error {
 	return s.server.ListenAndServe()
 }
 
+// coinGeckoID maps a token symbol to a CoinGecko coin id for price lookups.
+func coinGeckoID(symbol string) string {
+	switch strings.ToUpper(symbol) {
+	case "ETH":
+		return "ethereum"
+	case "BTC":
+		return "bitcoin"
+	case "BNB":
+		return "binancecoin"
+	case "SOL":
+		return "solana"
+	case "USDT":
+		return "tether"
+	case "USDC":
+		return "usd-coin"
+	case "DAI":
+		return "dai"
+	case "MATIC":
+		return "matic-network"
+	case "ARB":
+		return "arbitrum"
+	case "OP":
+		return "optimism"
+	case "AVAX":
+		return "avalanche-2"
+	case "LINK":
+		return "chainlink"
+	case "UNI":
+		return "uniswap"
+	case "AAVE":
+		return "aave"
+	case "ATOM":
+		return "cosmos"
+	case "DOT":
+		return "polkadot"
+	case "ADA":
+		return "cardano"
+	case "XRP":
+		return "ripple"
+	case "DOGE":
+		return "dogecoin"
+	case "SHIB":
+		return "shiba-inu"
+	default:
+		return ""
+	}
+}
+
+var priceTokens = []string{"ETH", "BTC", "BNB", "SOL", "USDT", "USDC", "DAI", "MATIC", "ARB", "OP", "AVAX", "LINK", "UNI", "AAVE", "ATOM", "DOT", "ADA", "XRP", "DOGE", "SHIB"}
+
 func (s *PortfolioService) updatePrices() {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		// Update prices from multiple sources
-		newPrices := map[string]float64{
-			"ETH":   3500.0,
-			"BTC":   65000.0,
-			"BNB":   600.0,
-			"SOL":   145.0,
-			"USDT":  1.0,
-			"USDC":  1.0,
-			"DAI":   1.0,
-			"MATIC": 0.8,
-			"ARB":   1.2,
-			"OP":    2.5,
-			"AVAX":  35.0,
-			"LINK":  18.0,
-			"UNI":   10.0,
-			"AAVE":  280.0,
-			"ATOM":  9.0,
-			"DOT":   7.0,
-			"ADA":   0.45,
-			"XRP":   0.55,
-			"DOGE":  0.12,
-			"SHIB":  0.000025,
+		// Real USD prices from CoinGecko. On failure, leave the existing
+		// cached prices untouched rather than fabricating values with rand.
+		ids := make([]string, 0, len(priceTokens))
+		idToSym := make(map[string]string, len(priceTokens))
+		for _, sym := range priceTokens {
+			id := coinGeckoID(sym)
+			if id == "" {
+				continue
+			}
+			ids = append(ids, id)
+			idToSym[id] = sym
 		}
-
+		if len(ids) == 0 {
+			continue
+		}
+		url := fmt.Sprintf("%s/api/v3/simple/price?ids=%s&vs_currencies=usd",
+			coingeckoBase(), strings.Join(ids, ","))
+		resp, err := s.httpClient.Get(url)
+		if err != nil {
+			log.Printf("price fetch failed: %v", err)
+			continue
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			log.Printf("price read failed: %v", err)
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("price fetch returned %d", resp.StatusCode)
+			continue
+		}
+		var parsed map[string]map[string]float64
+		if err := json.Unmarshal(body, &parsed); err != nil {
+			log.Printf("price parse failed: %v", err)
+			continue
+		}
 		s.pricesMu.Lock()
-		for token, price := range newPrices {
-			// Add some randomness
-			variance := (rand.Float64() - 0.5) * 0.02 * price
-			s.prices[token] = price + variance
+		for id, entry := range parsed {
+			sym := idToSym[id]
+			if sym == "" {
+				continue
+			}
+			if price := entry["usd"]; price > 0 {
+				s.prices[sym] = price
+			}
 		}
 		s.pricesMu.Unlock()
 	}
@@ -244,8 +329,10 @@ func (s *PortfolioService) updatePortfolios() {
 				portfolio.TotalValueUSD += pos.ValueUSD
 			}
 
-			portfolio.Change24h = portfolio.TotalValueUSD * 0.02 * (rand.Float64() - 0.5)
-			portfolio.ChangePercent24h = (portfolio.Change24h / portfolio.TotalValueUSD) * 100
+			// We do not have a real 24h-ago snapshot, so report 0 change
+			// rather than fabricating one with rand.
+			portfolio.Change24h = 0
+			portfolio.ChangePercent24h = 0
 			portfolio.UpdatedAt = time.Now().UnixMilli()
 
 			// Update chains summary
@@ -303,8 +390,13 @@ func (s *PortfolioService) handleGetPortfolio(w http.ResponseWriter, r *http.Req
 	s.mu.RUnlock()
 
 	if !exists {
-		// Create demo portfolio
-		portfolio = s.createDemoPortfolio(userID)
+		// No positions until the user supplies addresses via the update
+		// endpoint; never fabricate a demo portfolio.
+		portfolio = &Portfolio{
+			UserID:    userID,
+			Positions: []Position{},
+			UpdatedAt: time.Now().UnixMilli(),
+		}
 		s.mu.Lock()
 		s.portfolios[userID] = portfolio
 		s.mu.Unlock()
@@ -469,77 +561,117 @@ func (s *PortfolioService) calculatePerformance(portfolio *Portfolio, period str
 	days := 30
 	fmt.Sscanf(period, "%dd", &days)
 
-	startValue := portfolio.TotalValueUSD * 0.85
-	endValue := portfolio.TotalValueUSD
-	change := endValue - startValue
-	changePercent := (change / startValue) * 100
-
+	// We have no real trade/performance history source wired here. Report the
+	// current value only and zero change rather than fabricating trades, win
+	// rates, or a random-walk history.
 	return PerformanceReport{
-		Period:        period,
-		StartValue:    startValue,
-		EndValue:      endValue,
-		Change:        change,
-		ChangePercent: changePercent,
-		BestTrade: TradeSummary{
-			Token:         "ETH",
-			Change:        500,
-			ChangePercent: 15.0,
-		},
-		WorstTrade: TradeSummary{
-			Token:         "SOL",
-			Change:        -100,
-			ChangePercent: -5.0,
-		},
-		TotalTrades:   45,
-		WinningTrades: 30,
-		LosingTrades:  15,
-		WinRate:       66.7,
-		Historical:    s.generateHistory(portfolio.UserID, period),
+		Period:     period,
+		StartValue: portfolio.TotalValueUSD,
+		EndValue:   portfolio.TotalValueUSD,
+		Change:     0,
+		ChangePercent: 0,
+		Historical: s.generateHistory(portfolio.UserID, period),
 	}
 }
 
 func (s *PortfolioService) generateHistory(userID, period string) []HistoricalPoint {
-	days := 30
-	fmt.Sscanf(period, "%dd", &days)
-
-	history := make([]HistoricalPoint, days)
-	now := time.Now().UnixMilli()
-	dayMs := int64(86400000)
-
-	value := 10000.0
-	for i := days - 1; i >= 0; i-- {
-		// Random walk
-		change := (rand.Float64() - 0.48) * 0.05 * value
-		value += change
-
-		history[days-1-i] = HistoricalPoint{
-			Timestamp: now - int64(i)*dayMs,
-			Value:     value,
-		}
-	}
-
-	return history
+	// No real historical series available; return an empty slice (pending)
+	// rather than synthesizing a random-walk chart.
+	return []HistoricalPoint{}
 }
 
-// ============== Demo Data ==============
+// ============== Real Data Loading ==============
 
-func (s *PortfolioService) createDemoPortfolio(userID string) *Portfolio {
-	return &Portfolio{
-		UserID:           userID,
-		TotalValueUSD:    125000.0,
-		Change24h:        2500.0,
-		ChangePercent24h: 2.0,
-		Positions: []Position{
-			{ID: "1", Type: "wallet", Chain: "ETH", Protocol: "Ethereum", Balance: 10.5, ValueUSD: 36750, OpenTime: time.Now().AddDate(0, -6, 0).UnixMilli()},
-			{ID: "2", Type: "wallet", Chain: "BTC", Protocol: "Bitcoin", Balance: 0.5, ValueUSD: 32500, OpenTime: time.Now().AddDate(0, -3, 0).UnixMilli()},
-			{ID: "3", Type: "staking", Chain: "ETH", Protocol: "Lido", Balance: 5.2, ValueUSD: 18200, APY: 4.2, RewardUSD: 180, OpenTime: time.Now().AddDate(0, -2, 0).UnixMilli()},
-			{ID: "4", Type: "staking", Chain: "SOL", Protocol: "Marinade", Balance: 150, ValueUSD: 21750, APY: 6.5, RewardUSD: 45, OpenTime: time.Now().AddDate(0, -1, 0).UnixMilli()},
-			{ID: "5", Type: "lp", Chain: "ETH", Protocol: "Uniswap", TokenA: "ETH", TokenB: "USDT", Balance: 5000, ValueUSD: 5000, APY: 25.0, RewardUSD: 125, OpenTime: time.Now().AddDate(0, 0, -15).UnixMilli()},
-			{ID: "6", Type: "lending", Chain: "ETH", Protocol: "Aave", Balance: 3500, ValueUSD: 3500, APY: 3.5, RewardUSD: 42, OpenTime: time.Now().AddDate(0, 0, -20).UnixMilli()},
-			{ID: "7", Type: "farm", Chain: "BSC", Protocol: "PancakeSwap", TokenA: "CAKE", TokenB: "BNB", Balance: 2500, ValueUSD: 2500, APY: 45.0, RewardUSD: 112, OpenTime: time.Now().AddDate(0, 0, -10).UnixMilli()},
-		},
-		UpdatedAt: time.Now().UnixMilli(),
+// walletAPIGet performs a GET against the wallet_api public endpoints and
+// decodes the JSON response. Returns an error when the backend is
+// unreachable, so callers can return empty/pending rather than fabricate.
+func (s *PortfolioService) walletAPIGet(path string, out interface{}) error {
+	url := walletAPIBase() + path
+	resp, err := s.httpClient.Get(url)
+	if err != nil {
+		return fmt.Errorf("wallet_api unreachable: %w", err)
 	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("wallet_api returned %d", resp.StatusCode)
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// fetchWalletPositions delegates to wallet_api /api/v1/public/balance and
+// /api/v1/public/tokens for each address+chain, building REAL wallet positions.
+// On any error (backend down, no address), the affected chain is skipped — no
+// positions are fabricated.
+func (s *PortfolioService) fetchWalletPositions(addresses []string, chains []string) []Position {
+	var positions []Position
+	for _, address := range addresses {
+		if address == "" {
+			continue
+		}
+		for _, chain := range chains {
+			if chain == "" {
+				continue
+			}
+			var bal struct {
+				Address string  `json:"address"`
+				Chain   string  `json:"chain"`
+				Balance float64 `json:"balance"`
+				Symbol  string  `json:"symbol"`
+			}
+			path := fmt.Sprintf("/api/v1/public/balance?address=%s&chain=%s", address, chain)
+			if err := s.walletAPIGet(path, &bal); err != nil {
+				log.Printf("wallet balance %s %s: %v", chain, address, err)
+				continue
+			}
+			if bal.Balance > 0 {
+				symbol := bal.Symbol
+				if symbol == "" {
+					symbol = strings.ToUpper(chain)
+				}
+				s.pricesMu.RLock()
+				price := s.prices[symbol]
+				s.pricesMu.RUnlock()
+				positions = append(positions, Position{
+					ID:       fmt.Sprintf("wallet_%s_%s", chain, address),
+					Type:     "wallet",
+					Chain:    chain,
+					Protocol: chain,
+					Balance:  bal.Balance,
+					ValueUSD: bal.Balance * price,
+				})
+			}
+
+			var tokens struct {
+				Tokens []struct {
+					Symbol string  `json:"symbol"`
+					Balance float64 `json:"balance"`
+				} `json:"tokens"`
+			}
+			tokPath := fmt.Sprintf("/api/v1/public/tokens?address=%s&chain=%s", address, chain)
+			if err := s.walletAPIGet(tokPath, &tokens); err != nil {
+				continue
+			}
+			for _, t := range tokens.Tokens {
+				if t.Balance <= 0 {
+					continue
+				}
+				symbol := strings.ToUpper(t.Symbol)
+				s.pricesMu.RLock()
+				price := s.prices[symbol]
+				s.pricesMu.RUnlock()
+				positions = append(positions, Position{
+					ID:       fmt.Sprintf("token_%s_%s_%s", chain, symbol, address),
+					Type:     "wallet",
+					Chain:    chain,
+					Protocol: chain,
+					TokenA:   symbol,
+					Balance:  t.Balance,
+					ValueUSD: t.Balance * price,
+				})
+			}
+		}
+	}
+	return positions
 }
 
 func (s *PortfolioService) buildPortfolio(userID string, addresses []string, chains []string) *Portfolio {
@@ -549,24 +681,9 @@ func (s *PortfolioService) buildPortfolio(userID string, addresses []string, cha
 		UpdatedAt: time.Now().UnixMilli(),
 	}
 
-	// Simulate fetching positions from blockchain
-	s.pricesMu.RLock()
-	for _, chain := range chains {
-		price := s.prices[chain]
-		if price == 0 {
-			price = 1000.0
-		}
-
-		portfolio.Positions = append(portfolio.Positions, Position{
-			ID:       fmt.Sprintf("pos_%s", chain),
-			Type:     "wallet",
-			Chain:    chain,
-			Protocol: chain,
-			Balance:  10.0,
-			ValueUSD: 10.0 * price,
-		})
-	}
-	s.pricesMu.RUnlock()
+	// Real positions fetched from wallet_api. When no addresses/backend are
+	// configured, the portfolio stays empty (pending) — never fabricated.
+	portfolio.Positions = s.fetchWalletPositions(addresses, chains)
 
 	for i := range portfolio.Positions {
 		portfolio.TotalValueUSD += portfolio.Positions[i].ValueUSD
@@ -576,19 +693,6 @@ func (s *PortfolioService) buildPortfolio(userID string, addresses []string, cha
 	s.updateAssetSummary(portfolio)
 
 	return portfolio
-}
-
-// ============== Math Helpers ==============
-
-var globalRand float64
-
-func init() {
-	globalRand = float64(time.Now().UnixNano())
-}
-
-func random() float64 {
-	globalRand = math.Mod(globalRand*1103515245+12345, 2147483648)
-	return globalRand / 2147483648
 }
 
 // ============== Main ==============

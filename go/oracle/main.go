@@ -12,11 +12,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
-	"math/rand/v2"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -56,6 +59,40 @@ type OracleService struct {
 	alerts  []PriceAlert
 	config  OracleConfig
 	mu      sync.RWMutex
+	cgBase  string
+	http    *http.Client
+}
+
+// coinGeckoID maps an oracle symbol to its CoinGecko coin id.
+// Stablecoins and listed assets resolve to real ids; unknown symbols
+// resolve to "" and will not be fetched (no fabricated price).
+func coinGeckoID(symbol string) string {
+	switch strings.ToUpper(symbol) {
+	case "BTC":
+		return "bitcoin"
+	case "ETH":
+		return "ethereum"
+	case "BNB":
+		return "binancecoin"
+	case "SOL":
+		return "solana"
+	case "MATIC":
+		return "matic-network"
+	case "AVAX":
+		return "avalanche-2"
+	case "LINK":
+		return "chainlink"
+	case "UNI":
+		return "uniswap"
+	case "AAVE":
+		return "aave"
+	case "USDT":
+		return "tether"
+	case "USDC":
+		return "usd-coin"
+	default:
+		return ""
+	}
 }
 
 func NewOracleService() *OracleService {
@@ -68,7 +105,16 @@ func NewOracleService() *OracleService {
 			Deviation: 5.0,
 			Staleness: 60,
 		},
+		cgBase: strings.TrimRight(getEnv("COINGECKO_BASE", "https://api.coingecko.com"), "/"),
+		http:   &http.Client{Timeout: 5 * time.Second},
 	}
+}
+
+func getEnv(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
 
 func (o *OracleService) Run() error {
@@ -96,6 +142,11 @@ func (o *OracleService) updatePrices() {
 		o.mu.Lock()
 		for _, sym := range symbols {
 			prices := o.fetchFromSources(sym)
+			if len(prices) == 0 {
+				// No real price available this cycle; keep prior price if any
+				// but never fabricate one.
+				continue
+			}
 			o.sources[sym] = prices
 
 			// Calculate weighted average
@@ -118,11 +169,17 @@ func (o *OracleService) updatePrices() {
 				change = ((avgPrice - prevPrice) / prevPrice) * 100
 			}
 
+			// Use real 24h change/volume when available; otherwise 0 (never fabricated).
+			mktChange, mktVolume := o.fetchMarket(sym)
+			if mktChange != 0 {
+				change = mktChange
+			}
+
 			o.prices[sym] = &Price{
 				Symbol:    sym,
 				Price:     avgPrice,
 				Change24h: change,
-				Volume24h: o.getVolume(sym),
+				Volume24h: mktVolume,
 				Sources:   len(prices),
 				UpdatedAt: time.Now().UnixMilli(),
 			}
@@ -135,35 +192,83 @@ func (o *OracleService) updatePrices() {
 }
 
 func (o *OracleService) fetchFromSources(symbol string) []PriceSource {
-	// Simulate fetching from multiple sources
-	basePrice := o.getBasePrice(symbol)
-
-	return []PriceSource{
-		{Name: "binance", Price: basePrice * (1 + (rand.Float64()-0.5)*0.002), Weight: 0.4},
-		{Name: "coinbase", Price: basePrice * (1 + (rand.Float64()-0.5)*0.002), Weight: 0.3},
-		{Name: "kraken", Price: basePrice * (1 + (rand.Float64()-0.5)*0.003), Weight: 0.2},
-		{Name: "gemini", Price: basePrice * (1 + (rand.Float64()-0.5)*0.003), Weight: 0.1},
+	coinID := coinGeckoID(symbol)
+	if coinID == "" {
+		// Unknown symbol: no real source available. Return nothing rather
+		// than fabricating a price; callers skip symbols with no sources.
+		return nil
 	}
+
+	url := fmt.Sprintf("%s/api/v3/simple/price?ids=%s&vs_currencies=usd&include_24hr_vol=true&include_24hr_change=true", o.cgBase, coinID)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req.Header.Set("Accept", "application/json")
+	resp, err := o.http.Do(req)
+	if err != nil {
+		log.Printf("oracle: coingecko fetch failed for %s: %v", symbol, err)
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("oracle: coingecko returned %d for %s", resp.StatusCode, symbol)
+		return nil
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("oracle: read coingecko body for %s: %v", symbol, err)
+		return nil
+	}
+	var parsed map[string]map[string]float64
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		log.Printf("oracle: parse coingecko body for %s: %v", symbol, err)
+		return nil
+	}
+	entry, ok := parsed[coinID]
+	if !ok {
+		return nil
+	}
+	price := entry["usd"]
+	if price <= 0 {
+		return nil
+	}
+	// Single authoritative source (CoinGecko). Weighted to 1.0 so the
+	// aggregator uses the real value directly.
+	return []PriceSource{{Name: "coingecko", Price: price, Weight: 1.0}}
 }
 
-func (o *OracleService) getBasePrice(symbol string) float64 {
-	prices := map[string]float64{
-		"ETH": 3500, "BTC": 65000, "BNB": 600, "SOL": 145,
-		"MATIC": 0.8, "AVAX": 35, "LINK": 18, "UNI": 10,
-		"AAVE": 280, "USDT": 1, "USDC": 1,
+// fetchMarket pulls 24h change and volume for a symbol from CoinGecko.
+func (o *OracleService) fetchMarket(symbol string) (change, volume float64) {
+	coinID := coinGeckoID(symbol)
+	if coinID == "" {
+		return 0, 0
 	}
-	if p, ok := prices[symbol]; ok {
-		return p
+	url := fmt.Sprintf("%s/api/v3/simple/price?ids=%s&vs_currencies=usd&include_24hr_vol=true&include_24hr_change=true", o.cgBase, coinID)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req.Header.Set("Accept", "application/json")
+	resp, err := o.http.Do(req)
+	if err != nil {
+		return 0, 0
 	}
-	return 100.0
-}
-
-func (o *OracleService) getVolume(symbol string) float64 {
-	volumes := map[string]float64{
-		"ETH": 1500000000, "BTC": 35000000000, "BNB": 1200000000,
-		"SOL": 850000000, "MATIC": 450000000, "AVAX": 380000000,
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, 0
 	}
-	return volumes[symbol]
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, 0
+	}
+	var parsed map[string]map[string]float64
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return 0, 0
+	}
+	entry, ok := parsed[coinID]
+	if !ok {
+		return 0, 0
+	}
+	return entry["usd_24h_change"], entry["usd_24h_vol"]
 }
 
 func (o *OracleService) checkAlerts(symbol string, price float64) {

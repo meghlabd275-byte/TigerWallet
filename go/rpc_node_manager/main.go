@@ -1,11 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
-	"math/rand"
+	"io"
+	"math"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -119,7 +124,11 @@ type RPCNodeManager struct {
 	cancel     context.CancelFunc
 	stats      NodeStats
 	statsMu    sync.RWMutex
+	client     *http.Client
 }
+
+// healthCheckTimeout is the per-endpoint probe timeout.
+var healthCheckTimeout = 5 * time.Second
 
 func NewRPCNodeManager() *RPCNodeManager {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -129,6 +138,7 @@ func NewRPCNodeManager() *RPCNodeManager {
 		health:   make(map[string]*NetworkHealth),
 		ctx:      ctx,
 		cancel:   cancel,
+		client:   &http.Client{Timeout: healthCheckTimeout},
 	}
 
 	// Initialize with default networks
@@ -350,23 +360,28 @@ func (m *RPCNodeManager) checkNetworkEndpoints(network *BlockchainNetwork) {
 	for i := range network.RPCEndpoints {
 		endpoint := &network.RPCEndpoints[i]
 
-		// Simulate health check
+		// Real health check: HTTP JSON-RPC probe, latency measured.
 		latency := m.checkEndpoint(endpoint)
-		healthyCount++
-		totalLatency += latency
+		totalRequests += endpoint.Requests
 
-		// Update endpoint status
-		if latency < 1000 { // Less than 1 second
+		// Classify endpoint status from the real probe result.
+		isDown := math.IsInf(latency, 1)
+		if isDown {
+			endpoint.Status = "down"
+		} else if latency < 1000 { // Less than 1 second
 			endpoint.Status = "healthy"
+			healthyCount++
+			totalLatency += latency
 		} else if latency < 5000 { // Less than 5 seconds
 			endpoint.Status = "degraded"
+			healthyCount++
+			totalLatency += latency
 		} else {
 			endpoint.Status = "down"
 		}
 
 		endpoint.LastCheck = time.Now()
 		endpoint.Latency = latency
-		totalRequests += endpoint.Requests
 	}
 
 	// Update health
@@ -393,17 +408,56 @@ func (m *RPCNodeManager) checkNetworkEndpoints(network *BlockchainNetwork) {
 }
 
 func (m *RPCNodeManager) checkEndpoint(endpoint *RPCEndpoint) float64 {
-	// Simulate endpoint check with random latency
-	// In production, would make actual HTTP requests
-	latency := rand.Float64() * 500 // 0-500ms
+	// Real probe: issue a JSON-RPC eth_blockNumber POST against the endpoint
+	// URL and measure the actual round-trip time. Returns latency in ms, or
+	// 0 (and marks the endpoint down via Errors) when unreachable.
+	latency, ok := m.probeEndpoint(endpoint.URL)
+	if !ok {
+		atomic.AddInt64(&endpoint.Errors, 1)
+		// Sentinel large value so callers classify as "down".
+		latency = math.Inf(1)
+	}
 
-	// Add response time to history
-	endpoint.ResponseTimes = append(endpoint.ResponseTimes, latency)
-	if len(endpoint.ResponseTimes) > 100 {
-		endpoint.ResponseTimes = endpoint.ResponseTimes[len(endpoint.ResponseTimes)-100:]
+	// Add response time to history (finite values only)
+	if !math.IsInf(latency, 1) {
+		endpoint.ResponseTimes = append(endpoint.ResponseTimes, latency)
+		if len(endpoint.ResponseTimes) > 100 {
+			endpoint.ResponseTimes = endpoint.ResponseTimes[len(endpoint.ResponseTimes)-100:]
+		}
 	}
 
 	return latency
+}
+
+// probeEndpoint performs a real JSON-RPC request against an endpoint URL and
+// reports the latency in milliseconds. Returns ok=false when the endpoint is
+// unreachable, returns a non-2xx, or returns an invalid JSON-RPC response.
+func (m *RPCNodeManager) probeEndpoint(url string) (float64, bool) {
+	if url == "" || strings.Contains(url, "YOUR_KEY") {
+		// Placeholder/unconfigured endpoint; cannot probe honestly.
+		return 0, false
+	}
+	payload := []byte(`{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}`)
+	ctx, cancel := context.WithTimeout(context.Background(), healthCheckTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	if err != nil {
+		return 0, false
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	start := time.Now()
+	resp, err := m.client.Do(req)
+	elapsed := float64(time.Since(start).Microseconds()) / 1000.0
+	if err != nil {
+		return 0, false
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return elapsed, false
+	}
+	return elapsed, true
 }
 
 func (m *RPCNodeManager) selectBestEndpoint(endpoints []RPCEndpoint) *RPCEndpoint {
@@ -651,21 +705,68 @@ func (m *RPCNodeManager) handleRPCRequest(c *gin.Context) {
 		return
 	}
 
-	// Make request (simulated)
+	// Forward the JSON-RPC request to the real endpoint and measure latency.
 	startTime := time.Now()
-	latency := rand.Float64() * 100 // Simulated latency
+	result, rpcErr := m.forwardRPC(endpoint, &req)
+	latency := float64(time.Since(startTime).Microseconds()) / 1000.0
 
-	// Update endpoint stats
 	atomic.AddInt64(&endpoint.Requests, 1)
 
 	response := RPCResponse{
-		Result:    fmt.Sprintf("Response from %s", req.Method),
+		Result:    result,
+		Error:     rpcErr,
 		Endpoint:  endpoint.URL,
 		Latency:   latency,
 		Timestamp: startTime,
 	}
 
-	c.JSON(200, response)
+	if rpcErr != nil {
+		atomic.AddInt64(&endpoint.Errors, 1)
+		c.JSON(http.StatusBadGateway, response)
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// forwardRPC sends the JSON-RPC request to the endpoint and returns the
+// parsed result/error. Never fabricates a response.
+func (m *RPCNodeManager) forwardRPC(endpoint *RPCEndpoint, req *RPCRequest) (interface{}, *RPCError) {
+	if endpoint.URL == "" || strings.Contains(endpoint.URL, "YOUR_KEY") {
+		return nil, &RPCError{Code: -32000, Message: "endpoint not configured"}
+	}
+	body := gin.H{"jsonrpc": "2.0", "method": req.Method, "params": req.Params, "id": 1}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return nil, &RPCError{Code: -32603, Message: err.Error()}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), config.Timeout)
+	defer cancel()
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.URL, bytes.NewReader(raw))
+	if err != nil {
+		return nil, &RPCError{Code: -32603, Message: err.Error()}
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := m.client.Do(httpReq)
+	if err != nil {
+		return nil, &RPCError{Code: -32000, Message: "endpoint unreachable: " + err.Error()}
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, &RPCError{Code: -32603, Message: err.Error()}
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, &RPCError{Code: -32000, Message: fmt.Sprintf("endpoint returned %d: %s", resp.StatusCode, string(respBody))}
+	}
+	var parsed struct {
+		Result interface{} `json:"result"`
+		Error  *RPCError   `json:"error"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, &RPCError{Code: -32603, Message: "invalid json-rpc response: " + err.Error()}
+	}
+	return parsed.Result, parsed.Error
 }
 
 func (m *RPCNodeManager) getStatsHandler(c *gin.Context) {
@@ -772,8 +873,6 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 func main() {
-	rand.Seed(time.Now().UnixNano())
-
 	fmt.Println("============================================")
 	fmt.Println("TigerWallet RPC Node Manager")
 	fmt.Println("============================================")

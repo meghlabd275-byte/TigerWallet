@@ -8,9 +8,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -421,27 +424,117 @@ type TickerUpdate struct {
 }
 
 func StartTickerStream(exchanges []string) {
-	// Simulate ticker updates (in production would connect to exchanges)
+	// Real ticker updates: fetch live USD prices from CoinGecko for the
+	// tracked symbols. If the feed is unreachable, broadcast an error event
+	// rather than fabricated prices.
 	go func() {
-		ticker := time.NewTicker(1 * time.Second)
+		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 
 		symbols := []string{"BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"}
 
 		for range ticker.C {
-			for _, symbol := range symbols {
-				update := TickerUpdate{
-					Symbol:    symbol,
-					Price:     40000 + float64(time.Now().Unix()%1000),
-					Change24h: float64(time.Now().Unix()%10) - 5,
-					Volume24h: 1000000,
-					Timestamp: time.Now().UnixMilli(),
-				}
-
-				BroadcastToChannel(ChannelTicker, update)
+			updates, err := fetchTickers(symbols)
+			if err != nil {
+				BroadcastToChannel(ChannelTicker, gin.H{
+					"type":    "error",
+					"message": "price feed unavailable: " + err.Error(),
+					"status":  "pending",
+				})
+				continue
+			}
+			for _, u := range updates {
+				BroadcastToChannel(ChannelTicker, u)
 			}
 		}
 	}()
+}
+
+var tickerHTTPClient = &http.Client{Timeout: 5 * time.Second}
+
+// tickerCoinID maps a trading symbol (e.g. BTCUSDT) to a CoinGecko coin id.
+func tickerCoinID(symbol string) string {
+	base := symbol
+	for _, suf := range []string{"USDT", "USD"} {
+		base = strings.TrimSuffix(base, suf)
+	}
+	switch strings.ToUpper(base) {
+	case "BTC":
+		return "bitcoin"
+	case "ETH":
+		return "ethereum"
+	case "BNB":
+		return "binancecoin"
+	case "SOL":
+		return "solana"
+	default:
+		return ""
+	}
+}
+
+// fetchTickers fetches live prices/24h change/volume for the given symbols
+// from CoinGecko's simple/price endpoint.
+func fetchTickers(symbols []string) ([]TickerUpdate, error) {
+	ids := make([]string, 0, len(symbols))
+	symByID := make(map[string]string, len(symbols))
+	for _, s := range symbols {
+		id := tickerCoinID(s)
+		if id == "" {
+			continue
+		}
+		ids = append(ids, id)
+		symByID[id] = s
+	}
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("no tracked symbols resolve to a price feed")
+	}
+	base := os.Getenv("COINGECKO_BASE")
+	if base == "" {
+		base = "https://api.coingecko.com"
+	}
+	url := fmt.Sprintf("%s/api/v3/simple/price?ids=%s&vs_currencies=usd&include_24hr_vol=true&include_24hr_change=true",
+		strings.TrimRight(base, "/"), strings.Join(ids, ","))
+	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	req.Header.Set("Accept", "application/json")
+	resp, err := tickerHTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("coingecko unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("coingecko returned %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	var parsed map[string]map[string]float64
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, err
+	}
+	now := time.Now().UnixMilli()
+	out := make([]TickerUpdate, 0, len(ids))
+	for _, id := range ids {
+		entry, ok := parsed[id]
+		if !ok {
+			continue
+		}
+		price := entry["usd"]
+		if price <= 0 {
+			continue
+		}
+		out = append(out, TickerUpdate{
+			Symbol:    symByID[id],
+			Price:     price,
+			Change24h: entry["usd_24h_change"],
+			Volume24h: entry["usd_24h_vol"],
+			Timestamp: now,
+		})
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no prices returned by feed")
+	}
+	return out, nil
 }
 
 // ============================================================================

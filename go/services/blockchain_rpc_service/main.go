@@ -4,20 +4,19 @@
 package main
 
 import (
-	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"math/big"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -39,6 +38,7 @@ type Config struct {
 	DBName    string `json:"db_name"`
 	RedisHost  string `json:"redis_host"`
 	RedisPort  string `json:"redis_port"`
+	ETHRPCURL  string `json:"eth_rpc_url"`
 }
 
 func LoadConfig() *Config {
@@ -51,6 +51,7 @@ func LoadConfig() *Config {
 		DBName:    getEnv("DB_NAME", "tigerwallet_rpc"),
 		RedisHost: getEnv("REDIS_HOST", "localhost"),
 		RedisPort: getEnv("REDIS_PORT", "6379"),
+		ETHRPCURL: getEnv("ETH_RPC_URL", ""),
 	}
 }
 
@@ -130,6 +131,7 @@ type RPCService struct {
 	nodeHealth  map[int64][]*BlockchainNode
 	mu          sync.RWMutex
 	chainCache  map[int64]*ChainConfig
+	eth         *ethclient.Client // nil when ETH_RPC_URL is not configured
 }
 
 func NewRPCService(config *Config) (*RPCService, error) {
@@ -158,6 +160,17 @@ func NewRPCService(config *Config) (*RPCService, error) {
 		config:     config,
 		nodeHealth: make(map[int64][]*BlockchainNode),
 		chainCache: make(map[int64]*ChainConfig),
+	}
+
+	// Connect an Ethereum RPC client if a URL is configured. Real on-chain
+	// data (blocks, transactions, balances) requires this; without it the
+	// handlers return errors instead of fabricated values.
+	if config.ETHRPCURL != "" {
+		ethClient, err := ethclient.Dial(config.ETHRPCURL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to ETH_RPC_URL: %w", err)
+		}
+		service.eth = ethClient
 	}
 
 	service.initDefaultChains()
@@ -235,7 +248,7 @@ func (s *RPCService) checkAllNodes() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for chainID, nodes := range s.nodeHealth {
+	for _, nodes := range s.nodeHealth {
 		for _, node := range nodes {
 			if node.Status != "active" {
 				continue
@@ -327,31 +340,86 @@ func (s *RPCService) GetTokens(ctx *gin.Context) {
 
 func (s *RPCService) GetGasPrice(ctx *gin.Context) {
 	chainID, _ := strconv.ParseInt(ctx.Param("chain_id"), 10, 64)
-	gasPrices := map[int64]map[string]string{
-		1:   {"slow": "20", "standard": "30", "fast": "50", "unit": "gwei"},
-		56:  {"slow": "3", "standard": "5", "fast": "8", "unit": "gwei"},
-		137: {"slow": "50", "standard": "80", "fast": "150", "unit": "gwei"},
-		42161: {"slow": "0.1", "standard": "0.15", "fast": "0.25", "unit": "gwei"},
-	}
 
-	if prices, ok := gasPrices[chainID]; ok {
-		ctx.JSON(200, gin.H{"chain_id": chainID, "gas": prices})
+	// Real gas prices come from the Ethereum RPC client. Never return hardcoded
+	// gas values as if they were live data.
+	if s.eth == nil || chainID != 1 {
+		ctx.JSON(http.StatusBadGateway, gin.H{
+			"error": "real RPC not configured for this chain: set ETH_RPC_URL to fetch live gas prices",
+		})
 		return
 	}
 
-	ctx.JSON(200, gin.H{"chain_id": chainID, "gas": map[string]string{"slow": "10", "standard": "20", "fast": "50", "unit": "gwei"}})
+	cctx := ctx.Request.Context()
+	head, err := s.eth.HeaderByNumber(cctx, nil)
+	if err != nil {
+		ctx.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("failed to fetch head: %v", err)})
+		return
+	}
+	baseFee := new(big.Int)
+	if head.BaseFee != nil {
+		baseFee.Set(head.BaseFee)
+	}
+
+	tip, err := s.eth.SuggestGasTipCap(cctx)
+	if err != nil {
+		ctx.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("failed to fetch gas tip: %v", err)})
+		return
+	}
+
+	slow := new(big.Int).Add(baseFee, new(big.Int).Div(tip, big.NewInt(2)))
+	standard := new(big.Int).Add(baseFee, tip)
+	fast := new(big.Int).Add(baseFee, new(big.Int).Mul(tip, big.NewInt(2)))
+
+	gwei := big.NewInt(1_000_000_000)
+	toGwei := func(v *big.Int) string {
+		return new(big.Int).Div(v, gwei).String()
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"chain_id": chainID,
+		"gas": gin.H{
+			"slow":     toGwei(slow),
+			"standard": toGwei(standard),
+			"fast":     toGwei(fast),
+			"base_fee": toGwei(baseFee),
+			"unit":     "gwei",
+		},
+	})
 }
 
 func (s *RPCService) GetBlock(ctx *gin.Context) {
 	chainID, _ := strconv.ParseInt(ctx.Param("chain_id"), 10, 64)
 	blockNum, _ := strconv.ParseUint(ctx.Param("block"), 10, 64)
 
-	ctx.JSON(200, gin.H{
+	// Real block data requires an Ethereum RPC client. Only Ethereum-mainnet
+	// (chain_id 1) is resolvable via the configured ETH_RPC_URL; other chains
+	// and an unconfigured RPC return an error rather than a fabricated hash.
+	if s.eth == nil || chainID != 1 {
+		ctx.JSON(http.StatusBadGateway, gin.H{
+			"error": "real RPC not configured for this chain: set ETH_RPC_URL to fetch live block data",
+		})
+		return
+	}
+
+	var block *types.Block
+	var err error
+	if blockNum == 0 {
+		block, err = s.eth.BlockByNumber(ctx.Request.Context(), nil)
+	} else {
+		block, err = s.eth.BlockByNumber(ctx.Request.Context(), big.NewInt(int64(blockNum)))
+	}
+	if err != nil || block == nil {
+		ctx.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("failed to fetch block %d: %v", blockNum, err)})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
 		"chain_id":     chainID,
-		"block_number": blockNum,
-		"block_hash":   fmt.Sprintf("0x%x", sha256.Sum256([]byte(fmt.Sprintf("%d-%d", chainID, blockNum)))[0:32]),
-		"timestamp":    time.Now().Unix(),
-		"transactions": 0,
+		"block_number": block.Number().Uint64(),
+		"block_hash":   block.Hash().Hex(),
+		"timestamp":    block.Time,
+		"transactions": len(block.Transactions()),
 	})
 }
 
@@ -359,23 +427,85 @@ func (s *RPCService) GetTransaction(ctx *gin.Context) {
 	txHash := ctx.Param("tx_hash")
 	chainID, _ := strconv.ParseInt(ctx.Query("chain_id"), 10, 64)
 
-	ctx.JSON(200, gin.H{
+	// Real transaction lookup requires an Ethereum RPC client. Never return a
+	// fabricated tx (from/to/value/status).
+	if s.eth == nil || chainID != 1 {
+		ctx.JSON(http.StatusBadGateway, gin.H{
+			"error": "real RPC not configured for this chain: set ETH_RPC_URL to fetch live transaction data",
+		})
+		return
+	}
+
+	tx, isPending, err := s.eth.TransactionByHash(ctx.Request.Context(), common.HexToHash(txHash))
+	if err != nil {
+		ctx.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("failed to fetch transaction: %v", err)})
+		return
+	}
+
+	receipt, _ := s.eth.TransactionReceipt(ctx.Request.Context(), common.HexToHash(txHash))
+	status := "pending"
+	if !isPending && receipt != nil {
+		if receipt.Status == 1 {
+			status = "confirmed"
+		} else {
+			status = "failed"
+		}
+	}
+
+	var fromAddr string
+	if signer := types.LatestSignerForChainID(tx.ChainId()); signer != nil {
+		if sender, err := types.Sender(signer, tx); err == nil {
+			fromAddr = sender.Hex()
+		}
+	}
+
+	toAddr := ""
+	if tx.To() != nil {
+		toAddr = tx.To().Hex()
+	}
+
+	resp := gin.H{
 		"tx_hash":      txHash,
 		"chain_id":     chainID,
-		"block_number": 12345678,
-		"from":         "0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E",
-		"to":           "0x8ba1f109551bD432803012645Ac136ddd64DBA28",
-		"value":        "1000000000000000000",
-		"status":       "confirmed",
-	})
+		"value":        tx.Value().String(),
+		"status":       status,
+	}
+	if fromAddr != "" {
+		resp["from"] = fromAddr
+	}
+	if toAddr != "" {
+		resp["to"] = toAddr
+	}
+	if receipt != nil {
+		resp["block_number"] = receipt.BlockNumber.Uint64()
+	}
+	ctx.JSON(http.StatusOK, resp)
 }
 
 func (s *RPCService) GetBalance(ctx *gin.Context) {
 	address := ctx.Param("address")
 	chainID, _ := strconv.ParseInt(ctx.Query("chain_id"), 10, 64)
-	_ = address
 
-	ctx.JSON(200, gin.H{"address": address, "chain_id": chainID, "balance": "1000000000000000000"})
+	// Real balance requires an Ethereum RPC client. Never return a fabricated
+	// balance.
+	if s.eth == nil || chainID != 1 {
+		ctx.JSON(http.StatusBadGateway, gin.H{
+			"error": "real RPC not configured for this chain: set ETH_RPC_URL to fetch live balance",
+		})
+		return
+	}
+
+	if !common.IsHexAddress(address) {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid address"})
+		return
+	}
+	balance, err := s.eth.BalanceAt(ctx.Request.Context(), common.HexToAddress(address), nil)
+	if err != nil {
+		ctx.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("failed to fetch balance: %v", err)})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"address": address, "chain_id": chainID, "balance": balance.String()})
 }
 
 func (s *RPCService) AddChain(ctx *gin.Context) {

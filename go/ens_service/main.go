@@ -409,8 +409,8 @@ func (s *ENSService) BatchResolve(names []string) ([]*ENSRecord, error) {
 // ============================================================================
 
 func (s *ENSService) GetDomains(owner string) ([]*ENSRecord, error) {
-	// Simplified - would query ENS subgraph
-	// For now, return empty list
+	// No ENS subgraph source is configured. Return an empty result (pending)
+	// rather than fabricating domain records for the owner.
 	return []*ENSRecord{}, nil
 }
 
