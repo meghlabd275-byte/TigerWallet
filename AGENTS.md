@@ -354,3 +354,13 @@
   accountsChanged/chainChanged; silent reconnect on mount via eth_accounts.
   The canonical `window.ethereum` (Eip1193Provider) global type lives here;
   TigerWalletKit.tsx's duplicate declaration was removed.
+
+
+## Go services audit (go/ directory)
+
+- The Go toolchain is at /home/openhands/go/bin/go (NOT /home/openhands/.local/go/bin/go as some prompts suggest). Set `export PATH=$PATH:/home/openhands/go/bin` and `export GOPATH=/home/openhands/.gopath` (the latter avoids the "GOPATH set to GOROOT has no effect" warning).
+- ~90 immediate subdirs of go/ contain .go files; 27 have a go.mod.
+- Many "service" dirs are orphans: they have .go files but NO go.mod, so `go build ./...` fails with "directory prefix . does not contain main module or its selected dependencies".
+- 5 dirs have a package-name conflict (two distinct package declarations, one main + one named): copy_trading_service, fiat, monitoring_service, perpetual_service, rpc_service. These also lack a go.mod, so the conflict only surfaces after a go.mod is added.
+- admin_service and super_admin_service HAVE go.mod but fail to build: both have config.MinConns (uint32) assigned to an int32 field (database/db.go); super_admin_service also has unused imports in main.go (encoding/base64, encoding/json, golang-jwt/jwt/v5).
+- Clean builds (has go.mod, ec=0): blockchain_rpc, ens_service, lending_service, payment, staking_service, swap_service, wallet_service, walletconnect.

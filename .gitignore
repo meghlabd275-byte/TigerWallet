@@ -123,4 +123,12 @@ go/bots_service/bots_service
 go/twap_service/twap_service
 go/pool_service/pool_service
 go/launchpad_service/launchpad_service
+
+# Compiled Go service binaries (additional)
+go/blockchain_rpc/blockchain-rpc
+go/copy_trading_service/copy_trading_service
+go/fiat/fiat_service
+go/monitoring_service/monitoring_service
+go/perpetual_service/perpetual_service
+go/rpc_service/rpc_service
 *.test

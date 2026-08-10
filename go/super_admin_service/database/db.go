@@ -20,7 +20,7 @@ type DatabaseConfig struct {
 	Username        string
 	Password        string
 	MaxConns        int32
-	MinConns        uint32
+	MinConns        int32
 	MaxConnLifetime time.Duration
 	MaxConnIdleTime time.Duration
 }

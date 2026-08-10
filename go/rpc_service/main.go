@@ -1,11 +1,7 @@
 package main
 
 import (
-	"context"
 	"crypto/tls"
-	"crypto/x509"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,7 +15,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
-	"golang.org/x/net/proxy"
 )
 
 // ============================================================================
@@ -341,6 +336,9 @@ func (m *RPCManager) doRequest(endpoint string, method string, params interface{
 	defer resp.Body.Close()
 
 	latency := time.Since(start)
+	if latency > 5*time.Second {
+		fmt.Printf("rpc slow request to %s: %s\n", endpoint, latency)
+	}
 
 	// Read response
 	respBody, err := io.ReadAll(resp.Body)

@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { proxyGet } from '../../_proxy';
+import { NextRequest } from 'next/server';
+import { proxyGetFrom, COPY_TRADING_SERVICE_URL } from '../../_proxy';
 
 export async function GET(req: NextRequest) {
-  return proxyGet(req, '/copy-trading/positions');
+  return proxyGetFrom(req, COPY_TRADING_SERVICE_URL, '/api/v1/copytrading/copiers');
 }
