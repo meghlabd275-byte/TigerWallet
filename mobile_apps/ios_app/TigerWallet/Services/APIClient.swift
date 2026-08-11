@@ -10,7 +10,8 @@ import Foundation
 // MARK: - API Configuration
 
 struct APIConfig {
-    static let baseURL = "https://api.tigerwallet.com"
+    static let baseURL = "http://localhost:8443"
+    static let multisigBaseURL = "http://localhost:8450"
     static let timeout: TimeInterval = 30
     static let maxRetries = 3
 }

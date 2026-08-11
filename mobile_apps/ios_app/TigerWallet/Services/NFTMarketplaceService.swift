@@ -81,7 +81,7 @@ class NFTMarketplaceService {
     
     /// Get collection by address
     func getCollection(address: String, chain: String = "ethereum") async throws -> NFTCollection? {
-        let url = URL(string: "https://api.tigerwallet.com/v1/nft/collections/\(address)?chain=\(chain)")!
+        let url = URL(string: "http://localhost:8443/api/v1/nft/collections/\(address)?chain=\(chain)")!
         
         let (data, response) = try await session.data(from: url)
         
@@ -96,7 +96,7 @@ class NFTMarketplaceService {
     
     /// Search collections
     func searchCollections(query: String, chain: String = "ethereum", limit: Int = 20) async throws -> [NFTCollection] {
-        var components = URLComponents(string: "https://api.tigerwallet.com/v1/nft/collections/search")!
+        var components = URLComponents(string: "http://localhost:8443/api/v1/nft/collections/search")!
         components.queryItems = [
             URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "chain", value: chain),
@@ -118,7 +118,7 @@ class NFTMarketplaceService {
     
     /// Get NFTs for a collection
     func getNFTs(collectionAddress: String, chain: String = "ethereum", limit: Int = 50, offset: Int = 0) async throws -> [NFTItem] {
-        var components = URLComponents(string: "https://api.tigerwallet.com/v1/nft/assets")!
+        var components = URLComponents(string: "http://localhost:8443/api/v1/nft/assets")!
         components.queryItems = [
             URLQueryItem(name: "collection", value: collectionAddress),
             URLQueryItem(name: "chain", value: chain),
@@ -139,7 +139,7 @@ class NFTMarketplaceService {
     
     /// Get NFTs for a wallet
     func getUserNFTs(walletAddress: String, chain: String = "ethereum") async throws -> [NFTItem] {
-        let url = URL(string: "https://api.tigerwallet.com/v1/nft/owners/\(walletAddress)?chain=\(chain)")!
+        let url = URL(string: "http://localhost:8443/api/v1/nft/owners/\(walletAddress)?chain=\(chain)")!
         
         let (data, response) = try await session.data(from: url)
         
@@ -156,7 +156,7 @@ class NFTMarketplaceService {
     
     /// Get listings for a collection
     func getListings(collectionAddress: String, chain: String = "ethereum", limit: Int = 50) async throws -> [NFTListing] {
-        var components = URLComponents(string: "https://api.tigerwallet.com/v1/nft/listings")!
+        var components = URLComponents(string: "http://localhost:8443/api/v1/nft/listings")!
         components.queryItems = [
             URLQueryItem(name: "collection", value: collectionAddress),
             URLQueryItem(name: "chain", value: chain),
@@ -176,7 +176,7 @@ class NFTMarketplaceService {
     
     /// Get user's listings
     func getUserListings(walletAddress: String, chain: String = "ethereum") async throws -> [NFTListing] {
-        let url = URL(string: "https://api.tigerwallet.com/v1/nft/listings/\(walletAddress)?chain=\(chain)")!
+        let url = URL(string: "http://localhost:8443/api/v1/nft/listings/\(walletAddress)?chain=\(chain)")!
         
         let (data, response) = try await session.data(from: url)
         
@@ -200,7 +200,7 @@ class NFTMarketplaceService {
         priceToken: String = "ETH",
         chain: String = "ethereum"
     ) async throws -> String {
-        let url = URL(string: "https://api.tigerwallet.com/v1/nft/listings")!
+        let url = URL(string: "http://localhost:8443/api/v1/nft/listings")!
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -230,7 +230,7 @@ class NFTMarketplaceService {
     
     /// Cancel a listing
     func cancelListing(walletAddress: String, listingId: String, chain: String = "ethereum") async throws -> Bool {
-        let url = URL(string: "https://api.tigerwallet.com/v1/nft/listings/\(listingId)")!
+        let url = URL(string: "http://localhost:8443/api/v1/nft/listings/\(listingId)")!
         
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
@@ -255,7 +255,7 @@ class NFTMarketplaceService {
     
     /// Buy NFT (fulfill listing)
     func buyNFT(buyerAddress: String, listingId: String, chain: String = "ethereum") async throws -> String {
-        let url = URL(string: "https://api.tigerwallet.com/v1/nft/purchase")!
+        let url = URL(string: "http://localhost:8443/api/v1/nft/purchase")!
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -292,7 +292,7 @@ class NFTMarketplaceService {
         expirationTime: Int,
         chain: String = "ethereum"
     ) async throws -> String {
-        let url = URL(string: "https://api.tigerwallet.com/v1/nft/offers")!
+        let url = URL(string: "http://localhost:8443/api/v1/nft/offers")!
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -323,7 +323,7 @@ class NFTMarketplaceService {
     
     /// Accept an offer
     func acceptOffer(sellerAddress: String, offerId: String, chain: String = "ethereum") async throws -> String {
-        let url = URL(string: "https://api.tigerwallet.com/v1/nft/offers/\(offerId)/accept")!
+        let url = URL(string: "http://localhost:8443/api/v1/nft/offers/\(offerId)/accept")!
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -351,7 +351,7 @@ class NFTMarketplaceService {
     
     /// Get trade history for a collection
     func getCollectionTrades(collectionAddress: String, chain: String = "ethereum", limit: Int = 50) async throws -> [NFTTrade] {
-        var components = URLComponents(string: "https://api.tigerwallet.com/v1/nft/trades")!
+        var components = URLComponents(string: "http://localhost:8443/api/v1/nft/trades")!
         components.queryItems = [
             URLQueryItem(name: "collection", value: collectionAddress),
             URLQueryItem(name: "chain", value: chain),

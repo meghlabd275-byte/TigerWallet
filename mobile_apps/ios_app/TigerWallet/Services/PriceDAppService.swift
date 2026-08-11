@@ -23,7 +23,7 @@ class PriceService {
     private init() {}
     
     func getPrices(tokens: [String] = ["BTC", "ETH", "SOL", "BNB", "MATIC", "AVAX"]) async throws -> [String: PriceData] {
-        let url = URL(string: "https://api.tigerwallet.com/v1/prices")!
+        let url = URL(string: "http://localhost:8443/api/v1/prices")!
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -37,47 +37,46 @@ class PriceService {
     }
     
     func getHistoricalPrices(token: String, timeframe: String = "24h") async throws -> [PricePoint] {
-        let url = URL(string: "https://api.tigerwallet.com/v1/prices/\(token)/history?timeframe=\(timeframe)")!
+        let url = URL(string: "http://localhost:8443/api/v1/prices/\(token)/history?timeframe=\(timeframe)")!
         let (data, _) = try await URLSession.shared.data(from: url)
         return try JSONDecoder().decode([PricePoint].self, from: data)
     }
     
     func connectWebSocket() {
-        guard webSocket == nil else { return }
-        
-        let url = URL(string: "wss://api.tigerwallet.com/ws/prices")!
-        webSocket = URLSession.shared.webSocketTask(with: url)
-        
-        webSocket?.resume()
-        receiveMessage()
-        
-        webSocket?.resume()
-    }
-    
-    private func receiveMessage() {
-        webSocket?.receive { [weak self] result in
-            switch result {
-            case .success(let message):
-                switch message {
-                case .string(let text):
-                    if let data = text.data(using: .utf8),
-                       let priceUpdate = try? JSONDecoder().decode(PriceUpdate.self, from: data) {
-                        self?.priceSubject.send(priceUpdate)
+        guard pollTimer == nil else { return }
+        let interval: TimeInterval = 15
+        func poll() {
+            Task { [weak self] in
+                guard let self = self else { return }
+                do {
+                    let url = URL(string: "http://localhost:8443/api/v1/prices")!
+                    let (data, _) = try await URLSession.shared.data(from: url)
+                    if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let prices = object["prices"] as? [String: Any] ?? object as? [String: Any] {
+                        for (token, info) in prices {
+                            let price: Double; let change: Double
+                            if let n = info as? Double { price = n; change = 0 }
+                            else if let d = info as? [String: Any] {
+                                price = (d["price"] as? Double) ?? 0
+                                change = (d["change_24h"] as? Double) ?? (d["change24h"] as? Double) ?? 0
+                            } else { continue }
+                            self.priceSubject.send(PriceUpdate(token: token, price: price, change24h: change))
+                        }
+                        self.reconnectAttempts = 0
                     }
-                case .data(let data):
-                    if let priceUpdate = try? JSONDecoder().decode(PriceUpdate.self, from: data) {
-                        self?.priceSubject.send(priceUpdate)
-                    }
-                @unknown default:
-                    break
-                }
-                self?.receiveMessage()
-                
-            case .failure(let error):
-                print("WebSocket error: \(error)")
-                self?.reconnect()
+                } catch { print("Price poll failed: \(error)"); self.reconnect() }
             }
         }
+        poll()
+        let timer = DispatchSource.timer(flags: [])
+        timer.schedule(deadline: .now() + interval, repeating: interval)
+        timer.setEventHandler(handler: poll)
+        timer.resume()
+        pollTimer = timer
+    }
+    private var pollTimer: DispatchSourceTimer?
+    private func receiveMessage() {
+        // no-op: polling replaces WebSocket
     }
     
     private func reconnect() {
@@ -107,7 +106,7 @@ class PriceService {
 // DApp Browser Service
 class DAppBrowserService {
     static let shared = DAppBrowserService()
-    private let baseURL = "https://api.tigerwallet.com/v1/dapps"
+    private let baseURL = "http://localhost:8443/api/v1/dapps"
     
     private init() {}
     

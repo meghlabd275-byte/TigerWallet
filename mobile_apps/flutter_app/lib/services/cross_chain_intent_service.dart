@@ -8,7 +8,7 @@ class CrossChainIntentService {
   factory CrossChainIntentService() => _instance;
   CrossChainIntentService._internal();
 
-  final String _baseUrl = 'https://api.tigerwallet.com/v1/intents';
+  final String _baseUrl = 'http://localhost:8443/api/v1/intents';
   
   /// Get quotes for cross-chain intent
   Future<List<IntentQuote>> getQuotes({

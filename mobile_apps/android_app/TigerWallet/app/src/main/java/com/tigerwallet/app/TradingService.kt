@@ -48,7 +48,7 @@ class TradingService private constructor() {
         return withContext(Dispatchers.IO) {
             try {
                 val request = Request.Builder()
-                    .url("https://api.tigerwallet.com/v1/trading/orderbook?symbol=$symbol&limit=$limit")
+                    .url("http://localhost:8443/api/v1/trading/orderbook?symbol=$symbol&limit=$limit")
                     .build()
 
                 val response = client.newCall(request).execute()
@@ -116,7 +116,7 @@ class TradingService private constructor() {
         return withContext(Dispatchers.IO) {
             try {
                 val request = Request.Builder()
-                    .url("https://api.tigerwallet.com/v1/trading/klines?symbol=$symbol&interval=$interval&limit=$limit")
+                    .url("http://localhost:8443/api/v1/trading/klines?symbol=$symbol&interval=$interval&limit=$limit")
                     .build()
 
                 val response = client.newCall(request).execute()
@@ -160,7 +160,7 @@ class TradingService private constructor() {
         return withContext(Dispatchers.IO) {
             try {
                 val request = Request.Builder()
-                    .url("https://api.tigerwallet.com/v1/trading/history?symbol=$symbol&resolution=$resolution&from=$from&to=$to")
+                    .url("http://localhost:8443/api/v1/trading/history?symbol=$symbol&resolution=$resolution&from=$from&to=$to")
                     .build()
 
                 val response = client.newCall(request).execute()
@@ -198,7 +198,7 @@ class TradingService private constructor() {
         return withContext(Dispatchers.IO) {
             try {
                 val request = Request.Builder()
-                    .url("https://api.tigerwallet.com/v1/trading/positions/$walletAddress")
+                    .url("http://localhost:8443/api/v1/trading/positions/$walletAddress")
                     .build()
 
                 val response = client.newCall(request).execute()
@@ -253,7 +253,7 @@ class TradingService private constructor() {
         return withContext(Dispatchers.IO) {
             try {
                 val request = Request.Builder()
-                    .url("https://api.tigerwallet.com/v1/trading/orders/$walletAddress?status=open")
+                    .url("http://localhost:8443/api/v1/trading/orders/$walletAddress?status=open")
                     .build()
 
                 val response = client.newCall(request).execute()

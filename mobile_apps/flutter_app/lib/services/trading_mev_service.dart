@@ -8,7 +8,7 @@ class TradingService {
   factory TradingService() => _instance;
   TradingService._internal();
 
-  final String _baseUrl = 'https://api.tigerwallet.com/v1/trading';
+  final String _baseUrl = 'http://localhost:8443/api/v1/trading';
 
   // Order Book
   Future<OrderBook?> getOrderBook(String symbol, {int limit = 50}) async {
@@ -236,7 +236,7 @@ class MEVProtectionService {
 
   Future<SandwichDetection?> detectSandwichAttack(String txHash) async {
     final response = await http.get(
-      Uri.parse('https://api.tigerwallet.com/v1/mev/detect-sandwich?tx=$txHash'),
+      Uri.parse('http://localhost:8443/api/v1/mev/detect-sandwich?tx=$txHash'),
       headers: {'Content-Type': 'application/json'},
     );
     if (response.statusCode == 200) {
@@ -247,7 +247,7 @@ class MEVProtectionService {
 
   Future<SimulationResult?> simulateTransaction(String from, String to, String data, String value) async {
     final response = await http.post(
-      Uri.parse('https://api.tigerwallet.com/v1/mev/simulate'),
+      Uri.parse('http://localhost:8443/api/v1/mev/simulate'),
       headers: {'Content-Type': 'application/json'},
       body: json.encode({'from': from, 'to': to, 'data': data, 'value': value}),
     );
@@ -259,7 +259,7 @@ class MEVProtectionService {
 
   Future<String> submitWithProtection(String signedTx, {String protectionLevel = 'medium'}) async {
     final response = await http.post(
-      Uri.parse('https://api.tigerwallet.com/v1/mev/submit'),
+      Uri.parse('http://localhost:8443/api/v1/mev/submit'),
       headers: {'Content-Type': 'application/json'},
       body: json.encode({'signed_tx': signedTx, 'protection_level': protectionLevel}),
     );
@@ -315,7 +315,7 @@ class SessionKeysService {
 
   Future<SessionKey?> generateSessionKey(String walletAddress, String dappUrl, List<String> permissions, {int expiresIn = 86400}) async {
     final response = await http.post(
-      Uri.parse('https://api.tigerwallet.com/v1/session-keys'),
+      Uri.parse('http://localhost:8443/api/v1/session-keys'),
       headers: {'Content-Type': 'application/json'},
       body: json.encode({
         'wallet_address': walletAddress,
@@ -332,7 +332,7 @@ class SessionKeysService {
 
   Future<List<SessionKey>> getSessionKeys(String walletAddress) async {
     final response = await http.get(
-      Uri.parse('https://api.tigerwallet.com/v1/session-keys/$walletAddress'),
+      Uri.parse('http://localhost:8443/api/v1/session-keys/$walletAddress'),
       headers: {'Content-Type': 'application/json'},
     );
     if (response.statusCode == 200) {
@@ -344,7 +344,7 @@ class SessionKeysService {
 
   Future<bool> revokeSessionKey(String walletAddress, String sessionKeyId) async {
     final response = await http.delete(
-      Uri.parse('https://api.tigerwallet.com/v1/session-keys/$sessionKeyId'),
+      Uri.parse('http://localhost:8443/api/v1/session-keys/$sessionKeyId'),
       headers: {'Content-Type': 'application/json'},
       body: json.encode({'wallet_address': walletAddress}),
     );
@@ -382,7 +382,7 @@ class GasOptimizationService {
 
   Future<GasPrice?> getGasPrices({String chain = 'ethereum'}) async {
     final response = await http.get(
-      Uri.parse('https://api.tigerwallet.com/v1/gas/prices?chain=$chain'),
+      Uri.parse('http://localhost:8443/api/v1/gas/prices?chain=$chain'),
       headers: {'Content-Type': 'application/json'},
     );
     if (response.statusCode == 200) {
@@ -393,7 +393,7 @@ class GasOptimizationService {
 
   Future<List<OptimizationSuggestion>> getOptimizationSuggestions(String from, String to, String data) async {
     final response = await http.post(
-      Uri.parse('https://api.tigerwallet.com/v1/gas/optimize'),
+      Uri.parse('http://localhost:8443/api/v1/gas/optimize'),
       headers: {'Content-Type': 'application/json'},
       body: json.encode({'from': from, 'to': to, 'data': data}),
     );

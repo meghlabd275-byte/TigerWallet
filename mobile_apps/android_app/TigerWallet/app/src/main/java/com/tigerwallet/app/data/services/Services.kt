@@ -248,7 +248,11 @@ class BlockchainService {
 // Swap Service
 class SwapService {
 
-    /** Fetch a real swap quote from the backend (constant-product AMM math). */
+    /**
+     * Fetch a real on-chain AMM quote. GET /api/v1/amm/quote runs a Uniswap-V2
+     * getAmountsOut eth_call on the per-chain router. 503 on RPC failure -
+     * never fabricates a number.
+     */
     suspend fun getQuote(
         fromToken: String,
         toToken: String,
@@ -256,29 +260,44 @@ class SwapService {
         chainId: Long
     ): SwapQuote = withContext(Dispatchers.IO) {
         val resp = httpGet(
-            "/api/v1/swap/quote?from=$fromToken&to=$toToken&amount=${amount.toJson()}&chain_id=$chainId",
+            "/api/v1/amm/quote?chain_id=$chainId&token_in=$fromToken" +
+                "&token_out=$toToken&amount_in=${amount.toJson()}",
             ServiceLocator.authToken)
-        val toAmount = Json.field(resp, "to_amount")?.toDoubleOrNull()
-            ?: throw RuntimeException("Backend did not return a swap quote")
+        val toAmount = Json.field(resp, "amount_out")?.toDoubleOrNull()
+            ?: throw RuntimeException("Backend did not return an AMM quote")
         SwapQuote(
             fromToken = fromToken,
             toToken = toToken,
             fromAmount = amount,
             toAmount = toAmount,
-            priceImpact = Json.field(resp, "price_impact")?.toDoubleOrNull() ?: 0.0,
+            priceImpact = 0.0,
             route = listOf(fromToken, toToken),
-            gasEstimate = Json.field(resp, "gas_estimate")?.toDoubleOrNull() ?: 0.0
+            gasEstimate = 0.0
         )
     }
 
-    /** Execute a swap by submitting the on-chain action via the backend. */
+    /**
+     * Execute a swap via the real two-step flow:
+     *   1) POST /api/v1/amm/swap -> builds swapExactTokensForTokens calldata
+     *   2) POST /api/v1/send      -> signs + broadcasts via eth_sendRawTransaction
+     * Returns the REAL tx hash, or throws on failure. Never fabricated.
+     */
     suspend fun executeSwap(quote: SwapQuote, from: String, chainId: Long): String =
         withContext(Dispatchers.IO) {
-            val body = "{\"from\":\"$from\",\"from_token\":\"${quote.fromToken}\"," +
-                "\"to_token\":\"${quote.toToken}\",\"amount\":${quote.fromAmount.toJson()}," +
-                "\"chain_id\":$chainId}"
-            val resp = httpPost("/api/v1/swap/execute", ServiceLocator.authToken, body)
-            Json.field(resp, "tx_hash")
+            val swapBody = "{\"from\":\"$from\",\"chain_id\":$chainId," +
+                "\"token_in\":\"${quote.fromToken}\",\"token_out\":\"${quote.toToken}\"," +
+                "\"amount_in\":${quote.fromAmount.toJson()}}"
+            val swapResp = httpPost("/api/v1/amm/swap", ServiceLocator.authToken, swapBody)
+            val tx = Json.field(swapResp, "tx") ?: swapResp
+            val txTo = Json.field(tx, "to")
+            val txData = Json.field(tx, "data")
+            if (txTo.isNullOrEmpty() || txData.isNullOrEmpty()) {
+                throw RuntimeException("Backend did not return swap calldata")
+            }
+            val sendBody = "{\"walletId\":\"$from\",\"to\":\"$txTo\",\"data\":\"$txData\"," +
+                "\"value\":\"0\",\"type\":\"swap\"}"
+            val sendResp = httpPost("/api/v1/send", ServiceLocator.authToken, sendBody)
+            Json.field(sendResp, "tx_hash") ?: Json.field(sendResp, "txHash")
                 ?: throw RuntimeException("Backend did not return a swap tx hash")
         }
 }

@@ -8,7 +8,7 @@ class NFTMarketplaceService {
   factory NFTMarketplaceService() => _instance;
   NFTMarketplaceService._internal();
 
-  final String _baseUrl = 'https://api.tigerwallet.com/v1/nft';
+  final String _baseUrl = 'http://localhost:8443/api/v1/nft';
   
   // Collection Methods
   

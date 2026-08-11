@@ -9,7 +9,7 @@ import Foundation
 
 class TradingService {
     static let shared = TradingService()
-    private let baseURL = "https://api.tigerwallet.com/v1/trading"
+    private let baseURL = "http://localhost:8443/api/v1/trading"
     
     private init() {}
     
@@ -155,7 +155,7 @@ class MEVProtectionService {
     }
     
     func detectSandwichAttack(txHash: String) async throws -> SandwichDetection {
-        let url = URL(string: "https://api.tigerwallet.com/v1/mev/detect-sandwich?tx=\(txHash)")!
+        let url = URL(string: "http://localhost:8443/api/v1/mev/detect-sandwich?tx=\(txHash)")!
         let (data, _) = try await URLSession.shared.data(from: url)
         return try JSONDecoder().decode(SandwichDetection.self, from: data)
     }
@@ -167,7 +167,7 @@ class MEVProtectionService {
     }
     
     func simulateTransaction(from: String, to: String, data: String, value: String) async throws -> SimulationResult {
-        var request = URLRequest(url: URL(string: "https://api.tigerwallet.com/v1/mev/simulate")!)
+        var request = URLRequest(url: URL(string: "http://localhost:8443/api/v1/mev/simulate")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
@@ -179,7 +179,7 @@ class MEVProtectionService {
     }
     
     func submitWithProtection(signedTx: String, protectionLevel: String = "medium") async throws -> String {
-        var request = URLRequest(url: URL(string: "https://api.tigerwallet.com/v1/mev/submit")!)
+        var request = URLRequest(url: URL(string: "http://localhost:8443/api/v1/mev/submit")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
@@ -206,7 +206,7 @@ class SessionKeysService {
     }
     
     func generateSessionKey(walletAddress: String, dappUrl: String, permissions: [String], expiresIn: Int64 = 86400) async throws -> SessionKey {
-        var request = URLRequest(url: URL(string: "https://api.tigerwallet.com/v1/session-keys")!)
+        var request = URLRequest(url: URL(string: "http://localhost:8443/api/v1/session-keys")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
@@ -223,13 +223,13 @@ class SessionKeysService {
     }
     
     func getSessionKeys(walletAddress: String) async throws -> [SessionKey] {
-        let url = URL(string: "https://api.tigerwallet.com/v1/session-keys/\(walletAddress)")!
+        let url = URL(string: "http://localhost:8443/api/v1/session-keys/\(walletAddress)")!
         let (data, _) = try await URLSession.shared.data(from: url)
         return try JSONDecoder().decode([SessionKey].self, from: data)
     }
     
     func revokeSessionKey(walletAddress: String, sessionKeyId: String) async throws -> Bool {
-        var request = URLRequest(url: URL(string: "https://api.tigerwallet.com/v1/session-keys/\(sessionKeyId)")!
+        var request = URLRequest(url: URL(string: "http://localhost:8443/api/v1/session-keys/\(sessionKeyId)")!
         request.httpMethod = "DELETE"
         
         let (_, response) = try await URLSession.shared.data(for: request)
@@ -249,7 +249,7 @@ class GasOptimizationService {
     }
     
     func getGasPrices(chain: String = "ethereum") async throws -> GasPrice? {
-        let url = URL(string: "https://api.tigerwallet.com/v1/gas/prices?chain=\(chain)")!
+        let url = URL(string: "http://localhost:8443/api/v1/gas/prices?chain=\(chain)")!
         let (data, _) = try await URLSession.shared.data(from: url)
         return try JSONDecoder().decode(GasPrice.self, from: data)
     }
@@ -261,7 +261,7 @@ class GasOptimizationService {
     }
     
     func getOptimizationSuggestions(from: String, to: String, data: String) async throws -> [OptimizationSuggestion] {
-        var request = URLRequest(url: URL(string: "https://api.tigerwallet.com/v1/gas/optimize")!)
+        var request = URLRequest(url: URL(string: "http://localhost:8443/api/v1/gas/optimize")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         

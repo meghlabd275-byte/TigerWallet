@@ -44,7 +44,11 @@ class WebSocketService extends EventEmitter {
   private constructor() {
     super();
     this.config = {
-      url: process.env.REACT_APP_WS_URL || 'wss://api.tigerwallet.com/ws',
+      // The wallet_api backend is REST-only (no live WebSocket endpoint).
+      // Default to empty so connect() fails honestly rather than opening a
+      // connection to a nonexistent host. Set REACT_APP_WS_URL to enable a
+      // real WS feed when one exists.
+      url: process.env.REACT_APP_WS_URL || '',
       reconnectInterval: 3000,
       maxReconnectAttempts: 10,
     };

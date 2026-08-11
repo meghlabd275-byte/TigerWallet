@@ -8,7 +8,7 @@ class DeFiService {
   factory DeFiService() => _instance;
   DeFiService._internal();
 
-  final String _baseUrl = 'https://api.tigerwallet.com/v1/defi';
+  final String _baseUrl = 'http://localhost:8443/api/v1/defi';
   
   // Aave Methods
   
@@ -83,27 +83,44 @@ class DeFiService {
   }
   
   // Uniswap Methods
-  
-  /// Get swap quote
+
+  /// Get swap quote via the real on-chain AMM router.
+  /// GET /api/v1/amm/quote runs a Uniswap-V2 getAmountsOut eth_call.
+  /// 503 on RPC failure - never fabricates a number.
   Future<SwapQuote> getSwapQuote({
     required String tokenIn,
     required String tokenOut,
     required String amount,
     String chain = 'ethereum',
   }) async {
+    final chainId = _chainToId(chain);
     final response = await http.get(
-      Uri.parse('$_baseUrl/uniswap/quote?tokenIn=$tokenIn&tokenOut=$tokenOut&amount=$amount&chain=$chain'),
+      Uri.parse('http://localhost:8443/api/v1/amm/quote'
+          '?chain_id=$chainId&token_in=$tokenIn&token_out=$tokenOut&amount_in=$amount'),
       headers: {'Content-Type': 'application/json'},
     );
-    
+
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
-      return SwapQuote.fromJson(data);
+      return SwapQuote(
+        fromToken: TokenInfo(address: tokenIn, symbol: '', name: '', decimals: 18, logoUrl: ''),
+        toToken: TokenInfo(address: tokenOut, symbol: '', name: '', decimals: 18, logoUrl: ''),
+        fromAmount: double.tryParse(data['amount_in']?.toString() ?? '') ?? 0,
+        toAmount: double.tryParse(data['amount_out']?.toString() ?? '') ?? 0,
+        toAmountMin: double.tryParse(data['amount_out_wei']?.toString() ?? '') ?? 0,
+        priceImpact: 0.0,
+        route: (data['path'] as List<dynamic>?)?.cast<String>() ?? [tokenIn, tokenOut],
+        gasCostUsd: 0.0,
+        protocol: 'AMM',
+      );
     }
-    throw Exception('Failed to get quote');
+    throw Exception('Failed to get AMM quote');
   }
-  
-  /// Execute swap
+
+  /// Execute a swap via the real two-step flow:
+  ///   1) POST /api/v1/amm/swap -> builds swapExactTokensForTokens calldata
+  ///   2) POST /api/v1/send      -> signs + broadcasts via eth_sendRawTransaction
+  /// Returns the REAL tx hash, or throws on failure. Never fabricated.
   Future<String> executeSwap({
     required String walletAddress,
     required String tokenIn,
@@ -112,26 +129,58 @@ class DeFiService {
     required String minOutput,
     required String chain,
   }) async {
-    final response = await http.post(
-      Uri.parse('$_baseUrl/uniswap/swap'),
+    final chainId = _chainToId(chain);
+    final swapResp = await http.post(
+      Uri.parse('http://localhost:8443/api/v1/amm/swap'),
       headers: {'Content-Type': 'application/json'},
       body: json.encode({
-        'wallet_address': walletAddress,
+        'from': walletAddress,
+        'chain_id': chainId,
         'token_in': tokenIn,
         'token_out': tokenOut,
-        'amount': amount,
-        'min_output': minOutput,
-        'chain': chain,
+        'amount_in': amount,
       }),
     );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return data['txHash'];
+    if (swapResp.statusCode != 200) {
+      throw Exception('AMM swap calldata failed');
     }
-    throw Exception('Swap failed');
+    final swapData = json.decode(swapResp.body);
+    final tx = swapData['tx'] ?? swapData;
+    final txTo = tx['to'];
+    final txData = tx['data'];
+    if (txTo == null || txData == null || txTo.toString().isEmpty || txData.toString().isEmpty) {
+      throw Exception('Backend did not return swap calldata');
+    }
+    final sendResp = await http.post(
+      Uri.parse('http://localhost:8443/api/v1/send'),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({
+        'walletId': walletAddress,
+        'to': txTo,
+        'data': txData,
+        'value': '0',
+        'type': 'swap',
+      }),
+    );
+    if (sendResp.statusCode == 200) {
+      final data = json.decode(sendResp.body);
+      return data['tx_hash'] ?? data['txHash'] ?? '';
+    }
+    throw Exception('Swap broadcast failed');
   }
-  
+
+  int _chainToId(String chain) {
+    const ids = {
+      'ethereum': 1, 'mainnet': 1,
+      'bsc': 56, 'binance': 56,
+      'polygon': 137,
+      'arbitrum': 42161,
+      'optimism': 10,
+      'base': 8453,
+    };
+    return ids[chain.toLowerCase()] ?? 1;
+  }
+
   // Compound Methods
   
   /// Get Compound pools

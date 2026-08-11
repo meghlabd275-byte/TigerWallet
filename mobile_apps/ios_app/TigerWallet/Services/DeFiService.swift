@@ -75,7 +75,7 @@ class DeFiService {
     
     /// Get Aave pools
     func getAavePools(chain: String = "ethereum") async throws -> [DeFiPool] {
-        let url = URL(string: "https://api.tigerwallet.com/v1/defi/aave/pools?chain=\(chain)")!
+        let url = URL(string: "http://localhost:8443/api/v1/defi/aave/pools?chain=\(chain)")!
         
         let (data, response) = try await session.data(from: url)
         
@@ -96,7 +96,7 @@ class DeFiService {
         amount: String,
         chain: String
     ) async throws -> String {
-        let url = URL(string: "https://api.tigerwallet.com/v1/defi/aave/supply")!
+        let url = URL(string: "http://localhost:8443/api/v1/defi/aave/supply")!
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -132,7 +132,7 @@ class DeFiService {
         interestRateMode: Int,
         chain: String
     ) async throws -> String {
-        let url = URL(string: "https://api.tigerwallet.com/v1/defi/aave/borrow")!
+        let url = URL(string: "http://localhost:8443/api/v1/defi/aave/borrow")!
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -169,7 +169,7 @@ class DeFiService {
         amount: String,
         chain: String = "ethereum"
     ) async throws -> SwapQuote {
-        let url = URL(string: "https://api.tigerwallet.com/v1/defi/uniswap/quote")!
+        let url = URL(string: "http://localhost:8443/api/v1/defi/uniswap/quote")!
         
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
         components.queryItems = [
@@ -199,7 +199,7 @@ class DeFiService {
         minOutput: String,
         chain: String
     ) async throws -> String {
-        let url = URL(string: "https://api.tigerwallet.com/v1/defi/uniswap/swap")!
+        let url = URL(string: "http://localhost:8443/api/v1/defi/uniswap/swap")!
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -231,7 +231,7 @@ class DeFiService {
     
     /// Get Compound pools
     func getCompoundPools() async throws -> [DeFiPool] {
-        let url = URL(string: "https://api.tigerwallet.com/v1/defi/compound/pools")!
+        let url = URL(string: "http://localhost:8443/api/v1/defi/compound/pools")!
         
         let (data, response) = try await session.data(from: url)
         
@@ -248,7 +248,7 @@ class DeFiService {
     
     /// Get Yearn vaults
     func getYearnVaults() async throws -> [DeFiPool] {
-        let url = URL(string: "https://api.tigerwallet.com/v1/defi/yearn/vaults")!
+        let url = URL(string: "http://localhost:8443/api/v1/defi/yearn/vaults")!
         
         let (data, response) = try await session.data(from: url)
         
@@ -265,7 +265,7 @@ class DeFiService {
     
     /// Get all positions for a wallet
     func getAllPositions(walletAddress: String) async throws -> [DeFiPosition] {
-        let url = URL(string: "https://api.tigerwallet.com/v1/defi/positions/\(walletAddress)")!
+        let url = URL(string: "http://localhost:8443/api/v1/defi/positions/\(walletAddress)")!
         
         let (data, response) = try await session.data(from: url)
         

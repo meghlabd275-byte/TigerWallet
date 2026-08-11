@@ -42,7 +42,7 @@ class MEVProtectionService private constructor() {
         return withContext(Dispatchers.IO) {
             try {
                 val request = Request.Builder()
-                    .url("https://api.tigerwallet.com/v1/mev/detect-sandwich?tx=$txHash")
+                    .url("http://localhost:8443/api/v1/mev/detect-sandwich?tx=$txHash")
                     .build()
 
                 val response = client.newCall(request).execute()
@@ -90,7 +90,7 @@ class MEVProtectionService private constructor() {
         return withContext(Dispatchers.IO) {
             try {
                 val request = Request.Builder()
-                    .url("https://api.tigerwallet.com/v1/mev/simulate")
+                    .url("http://localhost:8443/api/v1/mev/simulate")
                     .post(okhttp3.RequestBody.create(
                         "application/json".toMediaTypeOrNull(),
                         JSONObject().apply {
@@ -217,7 +217,7 @@ class SessionKeysService private constructor() {
         return withContext(Dispatchers.IO) {
             try {
                 val request = Request.Builder()
-                    .url("https://api.tigerwallet.com/v1/session-keys/$walletAddress")
+                    .url("http://localhost:8443/api/v1/session-keys/$walletAddress")
                     .build()
 
                 val response = client.newCall(request).execute()
@@ -281,7 +281,7 @@ class GasOptimizationService private constructor() {
         return withContext(Dispatchers.IO) {
             try {
                 val request = Request.Builder()
-                    .url("https://api.tigerwallet.com/v1/gas/prices?chain=$chain")
+                    .url("http://localhost:8443/api/v1/gas/prices?chain=$chain")
                     .build()
 
                 val response = client.newCall(request).execute()
@@ -323,7 +323,7 @@ class GasOptimizationService private constructor() {
         return withContext(Dispatchers.IO) {
             try {
                 val request = Request.Builder()
-                    .url("https://api.tigerwallet.com/v1/gas/optimize")
+                    .url("http://localhost:8443/api/v1/gas/optimize")
                     .post(okhttp3.RequestBody.create(
                         "application/json".toMediaTypeOrNull(),
                         JSONObject().apply {
@@ -368,7 +368,7 @@ class GasOptimizationService private constructor() {
         return withContext(Dispatchers.IO) {
             try {
                 val request = Request.Builder()
-                    .url("https://api.tigerwallet.com/v1/gas/estimate?chain=$chain")
+                    .url("http://localhost:8443/api/v1/gas/estimate?chain=$chain")
                     .post(okhttp3.RequestBody.create(
                         "application/json".toMediaTypeOrNull(),
                         JSONObject().put("data", txData).toString()
