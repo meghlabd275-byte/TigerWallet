@@ -1,7 +1,7 @@
 import Foundation
 
 class SwapService {
-    static let API_BASE = "https://api.tigerwallet.com/api/v1"
+    static let API_BASE = "http://localhost:8443/api/v1"
     var authToken: String?
     
     init(token: String?) { self.authToken = token }
@@ -75,7 +75,7 @@ struct Token { let symbol: String; let name: String; let price: Double }
 struct SwapQuote { let fromAmount: Double; let toAmount: Double; let priceImpact: Double; let gasFee: Double }
 
 class StakingService {
-    static let API_BASE = "https://api.tigerwallet.com/api/v1"
+    static let API_BASE = "http://localhost:8443/api/v1"
     var authToken: String?
     
     init(token: String?) { self.authToken = token }
@@ -123,7 +123,7 @@ class StakingService {
 struct StakingPool { let id: String; let token: String; let apy: Double; let totalStaked: Double }
 
 class NFTService {
-    static let API_BASE = "https://api.tigerwallet.com/api/v1"
+    static let API_BASE = "http://localhost:8443/api/v1"
     var authToken: String?
     
     init(token: String?) { self.authToken = token }

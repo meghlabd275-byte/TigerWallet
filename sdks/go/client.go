@@ -51,7 +51,7 @@ func WithRateLimiter(requestsPerSecond int) Option {
 // NewClient creates a new TigerWallet API client
 func NewClient(apiKey, apiSecret string, opts ...Option) *Client {
 	c := &Client{
-		baseURL:    "https://api.tigerwallet.com",
+		baseURL:    "http://localhost:8443",
 		apiKey:     apiKey,
 		apiSecret:  apiSecret,
 		httpClient: &http.Client{Timeout: 30 * time.Second},

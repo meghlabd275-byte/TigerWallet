@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class LiquidStakingService {
-  static const String API_BASE = 'https://api.tigerwallet.com/api/v1';
+  static const String API_BASE = 'http://localhost:8443/api/v1';
   String? _token;
   
   LiquidStakingService({String? token}) : _token = token;

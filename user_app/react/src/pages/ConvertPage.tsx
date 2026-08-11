@@ -61,7 +61,7 @@ const ConvertPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/convert/pairs');
+      const response = await fetch('http://localhost:8443/api/v1/convert/pairs');
       const data = await response.json();
       
       if (data.pairs && Array.isArray(data.pairs)) {
@@ -111,7 +111,7 @@ const ConvertPage: React.FC = () => {
       const token = localStorage.getItem('user_token');
       if (!token) return;
       
-      const response = await fetch('https://api.tigerwallet.com/v1/wallets/balance', {
+      const response = await fetch('http://localhost:8443/api/v1/wallets/balance', {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await response.json();
@@ -141,7 +141,7 @@ const ConvertPage: React.FC = () => {
   useEffect(() => {
     const fetchPrices = async () => {
       try {
-        const response = await fetch('https://api.tigerwallet.com/v1/prices');
+        const response = await fetch('http://localhost:8443/api/v1/prices');
         const data = await response.json();
         if (data.prices) {
           const tokensWithValues = tokens.map(t => ({
@@ -170,7 +170,7 @@ const ConvertPage: React.FC = () => {
     const fetchRate = async () => {
       try {
         const response = await fetch(
-          `https://api.tigerwallet.com/v1/convert/rate?from=${fromToken.symbol}&to=${toToken.symbol}&amount=${fromAmount}`
+          `http://localhost:8443/api/v1/convert/rate?from=${fromToken.symbol}&to=${toToken.symbol}&amount=${fromAmount}`
         );
         const data = await response.json();
         
@@ -210,7 +210,7 @@ const ConvertPage: React.FC = () => {
     
     try {
       const token = localStorage.getItem('user_token');
-      const response = await fetch('https://api.tigerwallet.com/v1/convert', {
+      const response = await fetch('http://localhost:8443/api/v1/convert', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -18,7 +18,7 @@ import java.net.URL
 class TaxAnalyticsService(private val context: Context) {
     
     companion object {
-        private const val BASE_URL = "https://api.tigerwallet.com"
+        private const val BASE_URL = "http://localhost:8443"
         private const val PREFS_NAME = "tax_analytics_prefs"
     }
     

@@ -8,7 +8,7 @@ import Alamofire
 class APIClient {
     static let shared = APIClient()
     
-    private let baseURL = "https://api.tigerwallet.com/admin/v1"
+    private let baseURL = "http://localhost:8443/admin/v1"
     private let session: Session
     
     private init() {

@@ -31,7 +31,7 @@ class _MarginTradingScreenState extends State<MarginTradingScreen> {
     setState(() => _loading = true);
     try {
       final response = await http.get(
-        Uri.parse('https://api.tigerwallet.com/admin/v1/margin/positions'),
+        Uri.parse('http://localhost:8444/api/v1/admin/margin/positions'),
         headers: {'Authorization': 'Bearer ${await _getToken()}'},
       );
       if (response.statusCode == 200) {
@@ -41,7 +41,7 @@ class _MarginTradingScreenState extends State<MarginTradingScreen> {
       }
       
       final statsResponse = await http.get(
-        Uri.parse('https://api.tigerwallet.com/admin/v1/margin/liquidation-stats'),
+        Uri.parse('http://localhost:8444/api/v1/admin/margin/liquidation-stats'),
         headers: {'Authorization': 'Bearer ${await _getToken()}'},
       );
       if (statsResponse.statusCode == 200) {
@@ -115,7 +115,7 @@ class _MarginTradingScreenState extends State<MarginTradingScreen> {
     if (confirmed == true) {
       try {
         await http.post(
-          Uri.parse('https://api.tigerwallet.com/admin/v1/margin/positions/$positionId/liquidate'),
+          Uri.parse('http://localhost:8444/api/v1/admin/margin/positions/$positionId/liquidate'),
           headers: {'Authorization': 'Bearer ${await _getToken()}'},
         );
         _loadData();

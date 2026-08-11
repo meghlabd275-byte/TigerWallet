@@ -46,7 +46,7 @@ const ClaimPage: React.FC = () => {
     setError(null);
     try {
       const token = localStorage.getItem('user_token');
-      const response = await fetch('https://api.tigerwallet.com/v1/claims/available', {
+      const response = await fetch('http://localhost:8443/api/v1/claims/available', {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
       
@@ -78,7 +78,7 @@ const ClaimPage: React.FC = () => {
   const loadClaimHistory = useCallback(async () => {
     try {
       const token = localStorage.getItem('user_token');
-      const response = await fetch('https://api.tigerwallet.com/v1/claims/history', {
+      const response = await fetch('http://localhost:8443/api/v1/claims/history', {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
       
@@ -108,7 +108,7 @@ const ClaimPage: React.FC = () => {
     
     try {
       const token = localStorage.getItem('user_token');
-      const response = await fetch(`https://api.tigerwallet.com/v1/claims/${rewardId}/claim`, {
+      const response = await fetch(`http://localhost:8443/api/v1/claims/${rewardId}/claim`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

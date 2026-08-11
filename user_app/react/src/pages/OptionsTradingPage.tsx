@@ -69,7 +69,7 @@ const TOP_PAIRS: OptionPair[] = [
 ];
 
 // Backend API URL for options trading
-const API_BASE_URL = 'https://api.tigerwallet.com/v1/options';
+const API_BASE_URL = 'http://localhost:8443/api/v1/options';
 
 const EXPIRIES = [
   { value: '1h', label: '1 Hour' },
@@ -130,7 +130,7 @@ const OptionsTradingPage: React.FC = () => {
         }
         
         // Load balance
-        const balRes = await fetch('https://api.tigerwallet.com/v1/wallets/balance', {
+        const balRes = await fetch('http://localhost:8443/api/v1/wallets/balance', {
           headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
         if (balRes.ok) {

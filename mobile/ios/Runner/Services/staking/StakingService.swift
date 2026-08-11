@@ -9,7 +9,7 @@ import Foundation
 
 class StakingService {
     static let shared = StakingService()
-    private let baseURL = "https://api.tigerwallet.com/v1/staking"
+    private let baseURL = "http://localhost:8443/api/v1/staking"
     
     private init() {}
     

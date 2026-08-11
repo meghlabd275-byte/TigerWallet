@@ -30,7 +30,7 @@ class _P2PMerchantScreenState extends State<P2PMerchantScreen> {
     setState(() => _loading = true);
     try {
       final response = await http.get(
-        Uri.parse('https://api.tigerwallet.com/admin/v1/p2p/merchants?status=$_filter'),
+        Uri.parse('http://localhost:8444/api/v1/admin/p2p/merchants?status=$_filter'),
         headers: {'Authorization': 'Bearer ${await _getToken()}'},
       );
       if (response.statusCode == 200) {
@@ -73,7 +73,7 @@ class _P2PMerchantScreenState extends State<P2PMerchantScreen> {
   Future<void> _approveMerchant(String id) async {
     try {
       await http.post(
-        Uri.parse('https://api.tigerwallet.com/admin/v1/p2p/merchants/$id/approve'),
+        Uri.parse('http://localhost:8444/api/v1/admin/p2p/merchants/$id/approve'),
         headers: {'Authorization': 'Bearer ${await _getToken()}'},
       );
       _loadMerchants();
@@ -100,7 +100,7 @@ class _P2PMerchantScreenState extends State<P2PMerchantScreen> {
     if (reason != null && reason.isNotEmpty) {
       try {
         await http.post(
-          Uri.parse('https://api.tigerwallet.com/admin/v1/p2p/merchants/$id/reject'),
+          Uri.parse('http://localhost:8444/api/v1/admin/p2p/merchants/$id/reject'),
           headers: {'Authorization': 'Bearer ${await _getToken()}'},
           body: json.encode({'reason': reason}),
         );

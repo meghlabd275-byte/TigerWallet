@@ -8,8 +8,8 @@ class AppConstants {
   static const String appVersion = '1.0.0';
   
   // API
-  static const String baseUrl = 'https://api.tigerwallet.com/v1';
-  static const String wsUrl = 'wss://ws.tigerwallet.com';
+  static const String baseUrl = 'http://localhost:8443/api/v1';
+  static const String wsUrl = '';
   static const int apiTimeout = 30000;
   static const int wsTimeout = 5000;
   

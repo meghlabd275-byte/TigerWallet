@@ -52,8 +52,8 @@ type KYCLevel struct {
 
 var DefaultKYCConfig = &KYCConfig{
 	Provider:    "internal",
-	BaseURL:     "https://api.tigerwallet.com",
-	CallbackURL: "https://api.tigerwallet.com/kyc/callback",
+	BaseURL:     "http://localhost:8443",
+	CallbackURL: "http://localhost:8443/kyc/callback",
 	RequiredLevels: map[int]KYCLevel{
 		1: {
 			Name:             "Email Verification",

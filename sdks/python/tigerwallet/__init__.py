@@ -17,7 +17,7 @@ class TigerWalletClient:
         self,
         api_key: str,
         api_secret: str,
-        base_url: str = "https://api.tigerwallet.com",
+        base_url: str = "http://localhost:8443",
         tenant_id: Optional[str] = None,
         timeout: int = 30
     ):

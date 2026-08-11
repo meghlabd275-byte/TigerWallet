@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class PredictionMarketsService {
-  static const String API_BASE = 'https://api.tigerwallet.com/api/v1';
+  static const String API_BASE = 'http://localhost:8443/api/v1';
   String? _token;
   
   PredictionMarketsService({String? token}) : _token = token;
@@ -141,7 +141,7 @@ class Bet {
 
 // RWA Trading Service
 class RWATradingService {
-  static const String API_BASE = 'https://api.tigerwallet.com/api/v1';
+  static const String API_BASE = 'http://localhost:8443/api/v1';
   String? _token;
   
   RWATradingService({String? token}) : _token = token;
@@ -302,7 +302,7 @@ class RWAHolding {
 
 // Gas Tracker Service
 class GasTrackerService {
-  static const String API_BASE = 'https://api.tigerwallet.com/api/v1';
+  static const String API_BASE = 'http://localhost:8443/api/v1';
   
   Future<GasPrice> getGasPrice(String chain) async {
     final response = await http.get(
@@ -379,7 +379,7 @@ class GasEstimate {
 
 // Orderbook Service
 class OrderbookService {
-  static const String API_BASE = 'https://api.tigerwallet.com/api/v1';
+  static const String API_BASE = 'http://localhost:8443/api/v1';
   
   Future<Orderbook> getOrderbook(String symbol) async {
     final response = await http.get(
@@ -438,7 +438,7 @@ class OrderLevel {
 
 // TWAP Service
 class TWAPService {
-  static const String API_BASE = 'https://api.tigerwallet.com/api/v1';
+  static const String API_BASE = 'http://localhost:8443/api/v1';
   String? _token;
   
   TWAPService({String? token}) : _token = token;
@@ -542,7 +542,7 @@ class TWAPExecution {
 
 // Intent Routing Service
 class IntentRoutingService {
-  static const String API_BASE = 'https://api.tigerwallet.com/api/v1';
+  static const String API_BASE = 'http://localhost:8443/api/v1';
   
   Future<IntentRoute> findBestRoute(String intent) async {
     final response = await http.post(
@@ -581,7 +581,7 @@ class IntentRoute {
 
 // Security Scanner Service
 class SecurityScannerService {
-  static const String API_BASE = 'https://api.tigerwallet.com/api/v1';
+  static const String API_BASE = 'http://localhost:8443/api/v1';
   
   Future<SecurityReport> scanContract(String address, String chain) async {
     final response = await http.get(

@@ -30,7 +30,7 @@ class WebSocketService {
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   
-  private static readonly WS_URL = 'wss://master-ws.tigerwallet.com/ws';
+  private static readonly WS_URL = '';
   private static readonly MAX_RECONNECT_ATTEMPTS = 10;
   private static readonly RECONNECT_DELAY = 5000;
   

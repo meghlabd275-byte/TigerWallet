@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class P2PApiClient {
-  static const String baseUrl = 'https://api.tigerwallet.com/api/v1';
+  static const String baseUrl = 'http://localhost:8443/api/v1';
   String? _token;
   
   P2PApiClient({String? token}) : _token = token;

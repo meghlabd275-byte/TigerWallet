@@ -75,7 +75,7 @@ impl TradingService {
     pub fn new() -> Self {
         Self {
             client: reqwest::Client::new(),
-            base_url: "https://api.tigerwallet.com/v1/trading".to_string(),
+            base_url: "http://localhost:8443/api/v1/trading".to_string(),
         }
     }
 
@@ -219,7 +219,7 @@ impl MEVProtectionService {
     }
 
     pub async fn detect_sandwich_attack(&self, tx_hash: &str) -> Result<serde_json::Value, String> {
-        let url = format!("https://api.tigerwallet.com/v1/mev/detect-sandwich?tx={}", tx_hash);
+        let url = format!("http://localhost:8443/api/v1/mev/detect-sandwich?tx={}", tx_hash);
         
         let response = self.client
             .get(&url)
@@ -236,7 +236,7 @@ impl MEVProtectionService {
     }
 
     pub async fn simulate_transaction(&self, from: &str, to: &str, data: &str, value: &str) -> Result<serde_json::Value, String> {
-        let url = "https://api.tigerwallet.com/v1/mev/simulate".to_string();
+        let url = "http://localhost:8443/api/v1/mev/simulate".to_string();
         
         let body = serde_json::json!({
             "from": from,
@@ -261,7 +261,7 @@ impl MEVProtectionService {
     }
 
     pub async fn submit_with_protection(&self, signed_tx: &str, protection_level: &str) -> Result<String, String> {
-        let url = "https://api.tigerwallet.com/v1/mev/submit".to_string();
+        let url = "http://localhost:8443/api/v1/mev/submit".to_string();
         
         let body = serde_json::json!({
             "signed_tx": signed_tx,
@@ -300,7 +300,7 @@ impl SessionKeysService {
     }
 
     pub async fn generate(&self, wallet_address: &str, dapp_url: &str, permissions: Vec<String>, expires_in: i64) -> Result<serde_json::Value, String> {
-        let url = "https://api.tigerwallet.com/v1/session-keys".to_string();
+        let url = "http://localhost:8443/api/v1/session-keys".to_string();
         
         let body = serde_json::json!({
             "wallet_address": wallet_address,
@@ -325,7 +325,7 @@ impl SessionKeysService {
     }
 
     pub async fn list(&self, wallet_address: &str) -> Result<Vec<serde_json::Value>, String> {
-        let url = format!("https://api.tigerwallet.com/v1/session-keys/{}", wallet_address);
+        let url = format!("http://localhost:8443/api/v1/session-keys/{}", wallet_address);
         
         let response = self.client
             .get(&url)
@@ -342,7 +342,7 @@ impl SessionKeysService {
     }
 
     pub async fn revoke(&self, wallet_address: &str, session_key_id: &str) -> Result<bool, String> {
-        let url = format!("https://api.tigerwallet.com/v1/session-keys/{}", session_key_id);
+        let url = format!("http://localhost:8443/api/v1/session-keys/{}", session_key_id);
         
         let body = serde_json::json!({
             "wallet_address": wallet_address
@@ -375,7 +375,7 @@ impl GasOptimizationService {
     }
 
     pub async fn get_prices(&self, chain: &str) -> Result<serde_json::Value, String> {
-        let url = format!("https://api.tigerwallet.com/v1/gas/prices?chain={}", chain);
+        let url = format!("http://localhost:8443/api/v1/gas/prices?chain={}", chain);
         
         let response = self.client
             .get(&url)
@@ -392,7 +392,7 @@ impl GasOptimizationService {
     }
 
     pub async fn get_suggestions(&self, from: &str, to: &str, data: &str) -> Result<Vec<serde_json::Value>, String> {
-        let url = "https://api.tigerwallet.com/v1/gas/optimize".to_string();
+        let url = "http://localhost:8443/api/v1/gas/optimize".to_string();
         
         let body = serde_json::json!({
             "from": from,
@@ -434,7 +434,7 @@ impl WidgetSDKService {
             widget_type: "balance".to_string(),
             data: serde_json::json!({
                 "wallet_address": wallet_address,
-                "update_url": format!("https://api.tigerwallet.com/v1/wallet/{}/balance", wallet_address)
+                "update_url": format!("http://localhost:8443/api/v1/wallet/{}/balance", wallet_address)
             }),
         }
     }
@@ -444,7 +444,7 @@ impl WidgetSDKService {
             widget_type: "price".to_string(),
             data: serde_json::json!({
                 "token": token,
-                "update_url": format!("https://api.tigerwallet.com/v1/prices/{}", token)
+                "update_url": format!("http://localhost:8443/api/v1/prices/{}", token)
             }),
         }
     }
@@ -454,7 +454,7 @@ impl WidgetSDKService {
             widget_type: "portfolio".to_string(),
             data: serde_json::json!({
                 "wallet_address": wallet_address,
-                "update_url": format!("https://api.tigerwallet.com/v1/wallet/{}/portfolio", wallet_address)
+                "update_url": format!("http://localhost:8443/api/v1/wallet/{}/portfolio", wallet_address)
             }),
         }
     }

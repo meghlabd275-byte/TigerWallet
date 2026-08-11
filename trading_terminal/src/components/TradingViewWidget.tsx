@@ -251,7 +251,7 @@ export const MarketOverview: React.FC = () => {
     const fetchMarketData = async () => {
       try {
         // Fetch from price API
-        const response = await fetch('https://api.tigerwallet.com/v1/prices');
+        const response = await fetch('http://localhost:8443/api/v1/prices');
         if (response.ok) {
           const data = await response.json();
           setMarkets(data);

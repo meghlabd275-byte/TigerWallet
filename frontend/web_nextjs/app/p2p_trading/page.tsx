@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../components/ThemeProvider'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.tigerwallet.com/api/v1';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8443/api/v1';
 
 // Types
 interface P2PAdvert {

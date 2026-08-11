@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class MultiSigService {
-  static const String API_BASE = 'https://master-api.tigerwallet.com/api/v1';
+  static const String API_BASE = 'http://localhost:8443/api/v1';
   String? _token;
   
   MultiSigService({String? token}) : _token = token;

@@ -1,7 +1,7 @@
 import Foundation
 
 class OptionsTradingService {
-    static let API_BASE = "https://api.tigerwallet.com/api/v1"
+    static let API_BASE = "http://localhost:8443/api/v1"
     var authToken: String?
     
     init(token: String?) { self.authToken = token }
@@ -55,7 +55,7 @@ struct OptionContract {
 }
 
 class CopyTradingService {
-    static let API_BASE = "https://api.tigerwallet.com/api/v1"
+    static let API_BASE = "http://localhost:8443/api/v1"
     var authToken: String?
     
     init(token: String?) { self.authToken = token }

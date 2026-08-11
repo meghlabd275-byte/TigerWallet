@@ -6,7 +6,7 @@ import Foundation
 
 class SuperAdminService {
     
-    private let baseURL = "https://api.tigerwallet.com"
+    private let baseURL = "http://localhost:8443"
     private var adminId: String?
     private var role: String?
     private var isAuthenticated: Bool = false

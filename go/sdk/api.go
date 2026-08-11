@@ -405,7 +405,7 @@ func JavaScriptSDK() string {
   
   var TigerWallet = function(config) {
     this.config = config || {};
-    this.baseURL = this.config.baseURL || 'https://api.tigerwallet.com';
+    this.baseURL = this.config.baseURL || 'http://localhost:8443';
     this.chainId = this.config.chainId || 1;
   };
   

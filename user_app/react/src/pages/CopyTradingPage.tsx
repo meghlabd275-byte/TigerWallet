@@ -273,7 +273,7 @@ const CopyTradingPage: React.FC = () => {
   const [traders, setTraders] = useState<Trader[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const API_BASE_URL = 'https://api.tigerwallet.com/v1/copytrading';
+  const API_BASE_URL = 'http://localhost:8443/api/v1/copytrading';
   const [selectedTrader, setSelectedTrader] = useState<Trader | null>(null);
   const [copyPositions, setCopyPositions] = useState<CopyPosition[]>([]);
   const [activeTab, setActiveTab] = useState<'traders' | 'positions' | 'my-copies'>('traders');

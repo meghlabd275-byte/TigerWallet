@@ -66,7 +66,7 @@ const TOP_PAIRS: TradingPair[] = [
 ];
 
 // Backend API URL for perpetual trading
-const API_BASE_URL = 'https://api.tigerwallet.com/v1/perpetual';
+const API_BASE_URL = 'http://localhost:8443/api/v1/perpetual';
 
 const FuturesTradingPage: React.FC = () => {
   const [selectedPair, setSelectedPair] = useState<TradingPair | null>(null);
@@ -129,7 +129,7 @@ const FuturesTradingPage: React.FC = () => {
         }
         
         // Load balance
-        const balRes = await fetch('https://api.tigerwallet.com/v1/wallets/balance', {
+        const balRes = await fetch('http://localhost:8443/api/v1/wallets/balance', {
           headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
         if (balRes.ok) {

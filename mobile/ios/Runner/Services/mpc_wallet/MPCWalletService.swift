@@ -9,7 +9,7 @@ import Foundation
 
 class MPCWalletService {
     static let shared = MPCWalletService()
-    private let baseURL = "https://api.tigerwallet.com/v1/mpc"
+    private let baseURL = "http://localhost:8443/api/v1/mpc"
     
     private init() {}
     

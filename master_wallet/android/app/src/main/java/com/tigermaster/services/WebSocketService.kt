@@ -46,7 +46,7 @@ class WebSocketService {
     
     companion object {
         private const val TAG = "WebSocketService"
-        private const val WS_URL = "wss://master-ws.tigerwallet.com/ws"
+        private const val WS_URL = ""
         private const val RECONNECT_DELAY = 5000L
         private const val MAX_RECONNECT_ATTEMPTS = 10
     }

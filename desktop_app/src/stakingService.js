@@ -5,7 +5,7 @@
 
 class StakingService {
     constructor() {
-        this.apiBaseUrl = 'https://api.tigerwallet.com/v1';
+        this.apiBaseUrl = 'http://localhost:8443/api/v1';
         this.stakingChains = ['ethereum', 'polygon', 'solana', 'cosmos', 'polkadot', 'near'];
         this.validators = {};
     }

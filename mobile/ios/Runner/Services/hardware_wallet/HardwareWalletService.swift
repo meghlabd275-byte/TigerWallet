@@ -9,7 +9,7 @@ import Foundation
 
 class HardwareWalletService {
     static let shared = HardwareWalletService()
-    private let baseURL = "https://api.tigerwallet.com/v1/hardware"
+    private let baseURL = "http://localhost:8443/api/v1/hardware"
     
     private init() {}
     

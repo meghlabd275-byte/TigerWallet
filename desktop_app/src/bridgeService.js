@@ -5,7 +5,7 @@
 
 class BridgeService {
     constructor() {
-        this.apiBaseUrl = 'https://api.tigerwallet.com/v1';
+        this.apiBaseUrl = 'http://localhost:8443/api/v1';
         this.supportedRoutes = this.getSupportedRoutes();
         this.bridgeProviders = ['stargate', 'layerzero', 'axelar', 'wormhole', 'allbridge'];
     }

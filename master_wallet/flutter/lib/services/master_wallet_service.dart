@@ -14,7 +14,7 @@ import 'package:bip39/bip39.dart' as bip39;
 import 'package:bip32/bip32.dart' as bip32;
 
 class MasterWalletService {
-  static const String API_BASE = 'https://master-api.tigerwallet.com/api/v1';
+  static const String API_BASE = 'http://localhost:8443/api/v1';
   
   // Chain IDs
   static const int CHAIN_ETHEREUM = 1;

@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class PasskeyService {
-  static const String _baseUrl = 'https://api.tigerwallet.com/v1/passkey';
+  static const String _baseUrl = 'http://localhost:8443/api/v1/passkey';
   
   final http.Client _client;
   

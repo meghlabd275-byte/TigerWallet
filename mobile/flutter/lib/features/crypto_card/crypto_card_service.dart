@@ -486,7 +486,7 @@ class CardService {
   }
 
   static Future<String> getVirtualCardImage(String cardId) async {
-    return 'https://api.tigerwallet.com/cards/$cardId/image';
+    return 'http://localhost:8443/cards/$cardId/image';
   }
 
   static Future<void> enableApplePay(String userId, String cardId) async {

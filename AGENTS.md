@@ -308,6 +308,23 @@
   build && cd build && cmake .. && make -j4` now succeeds with exit 0, building
   `tigerwallet_core` (static lib) + `tigerwallet_test` targets. p2p_trading
   service + theme code compile clean.
+- BUILD PREREQS (2026-08-11): cmake was NOT installed in a fresh env. Install
+  with `sudo apt-get update && sudo apt-get install -y cmake libcurl4-openssl-dev
+  libssl-dev` first (CURL + OpenSSL dev headers are required by the FindCURL
+  / FindOpenSSL CMake modules). g++ 14.x is preinstalled. After install, the
+  standard build command above works.
+- NEW (2026-08-11): `src/services/swap_service.cpp` now calls the real on-chain
+  AMM router (`GET /api/v1/amm/quote` for `getAmountsOut`, then the two-step
+  `POST /api/v1/amm/swap` + `POST /api/v1/send` for real tx broadcast) — same
+  backend path as the web frontend. NEW `include/services/multisig_service.h`
+  + `src/services/multisig_service.cpp`: C++ service calling the
+  `go/multisig_service` REST API (port 8450) for threshold multisig
+  (createWallet/listWallets/addOwner/createTransaction/signTransaction/
+  executeTransaction/revokeTransaction/pendingTransactions). Uses a dedicated
+  `APIClient` instance (NOT the wallet_api singleton) pointed at the multisig
+  port. Added to `CMakeLists.txt`. Singleton ctor moved to public (copy ctor
+  stays deleted in private) so `std::make_shared` works — same fix pattern as
+  the other desktop services.
 - SINGLETON PATTERN FIX: service headers (`include/services/*` +
   `include/services/master/master_wallet_service.h`) used the singleton pattern
   with `private:` ctor/dtor, which breaks `std::make_shared`/`std::construct_at`

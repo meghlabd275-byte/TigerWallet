@@ -9,7 +9,7 @@ import Foundation
 
 class AccountAbstractionService {
     static let shared = AccountAbstractionService()
-    private let baseURL = "https://api.tigerwallet.com/v1/aa"
+    private let baseURL = "http://localhost:8443/api/v1/aa"
     
     private init() {}
     

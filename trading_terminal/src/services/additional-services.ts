@@ -12,7 +12,7 @@ import React, { useState, useEffect } from 'react';
 const SwapService = {
   async getTokens(chain = 'ethereum') {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/swap/tokens?chain=${chain}`);
+      const response = await fetch(`http://localhost:8443/api/v1/swap/tokens?chain=${chain}`);
       return await response.json();
     } catch (error) {
       console.error('Failed to get tokens:', error);
@@ -22,7 +22,7 @@ const SwapService = {
 
   async getQuote(fromToken, toToken, amount, slippage = 0.5) {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/swap/quote', {
+      const response = await fetch('http://localhost:8443/api/v1/swap/quote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fromToken, toToken, amount, slippage })
@@ -36,7 +36,7 @@ const SwapService = {
 
   async executeSwap(walletId, fromToken, toToken, amount, minReceived, route) {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/swap/execute', {
+      const response = await fetch('http://localhost:8443/api/v1/swap/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ walletId, fromToken, toToken, amount, minReceived, route })
@@ -56,7 +56,7 @@ const SwapService = {
 const NFTSwapService = {
   async getCollections(chain = 'ethereum') {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/nft/collections?chain=${chain}`);
+      const response = await fetch(`http://localhost:8443/api/v1/nft/collections?chain=${chain}`);
       return await response.json();
     } catch (error) {
       console.error('Failed to get collections:', error);
@@ -66,7 +66,7 @@ const NFTSwapService = {
 
   async getUserNFTs(ownerAddress, chain = 'ethereum') {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/nft/owners/${ownerAddress}?chain=${chain}`);
+      const response = await fetch(`http://localhost:8443/api/v1/nft/owners/${ownerAddress}?chain=${chain}`);
       return await response.json();
     } catch (error) {
       console.error('Failed to get NFTs:', error);
@@ -76,7 +76,7 @@ const NFTSwapService = {
 
   async buyNFT(buyerAddress, listingId, chain = 'ethereum') {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/nft/purchase', {
+      const response = await fetch('http://localhost:8443/api/v1/nft/purchase', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ buyer_address: buyerAddress, listing_id: listingId, chain })
@@ -90,7 +90,7 @@ const NFTSwapService = {
 
   async createListing(walletAddress, collectionAddress, tokenId, price, chain = 'ethereum') {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/nft/listings', {
+      const response = await fetch('http://localhost:8443/api/v1/nft/listings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ wallet_address: walletAddress, collection_address: collectionAddress, token_id: tokenId, price, chain })
@@ -110,7 +110,7 @@ const NFTSwapService = {
 const StakingSwapService = {
   async getValidators(chain = 'ethereum') {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/staking/validators?chain=${chain}`);
+      const response = await fetch(`http://localhost:8443/api/v1/staking/validators?chain=${chain}`);
       return await response.json();
     } catch (error) {
       console.error('Failed to get validators:', error);
@@ -120,7 +120,7 @@ const StakingSwapService = {
 
   async delegate(walletAddress, validatorAddress, amount, chain = 'ethereum') {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/staking/delegate', {
+      const response = await fetch('http://localhost:8443/api/v1/staking/delegate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ wallet_address: walletAddress, validator_address: validatorAddress, amount, chain })
@@ -134,7 +134,7 @@ const StakingSwapService = {
 
   async undelegate(walletAddress, amount, chain = 'ethereum') {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/staking/undelegate', {
+      const response = await fetch('http://localhost:8443/api/v1/staking/undelegate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ wallet_address: walletAddress, amount, chain })
@@ -148,7 +148,7 @@ const StakingSwapService = {
 
   async getRewards(walletAddress, chain = 'ethereum') {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/staking/rewards/${walletAddress}?chain=${chain}`);
+      const response = await fetch(`http://localhost:8443/api/v1/staking/rewards/${walletAddress}?chain=${chain}`);
       return await response.json();
     } catch (error) {
       console.error('Failed to get rewards:', error);
@@ -164,7 +164,7 @@ const StakingSwapService = {
 const BridgeSwapService = {
   async getQuotes(fromChain, toChain, fromToken, toToken, amount) {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/bridge/quotes', {
+      const response = await fetch('http://localhost:8443/api/v1/bridge/quotes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ from_chain: fromChain, to_chain: toChain, from_token: fromToken, to_token: toToken, amount })
@@ -178,7 +178,7 @@ const BridgeSwapService = {
 
   async executeBridge(walletId, fromChain, toChain, fromToken, toToken, amount, bridgeRoute) {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/bridge/execute', {
+      const response = await fetch('http://localhost:8443/api/v1/bridge/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ wallet_id: walletId, from_chain: fromChain, to_chain: toChain, from_token: fromToken, to_token: toToken, amount, bridge_route: bridgeRoute })
@@ -192,7 +192,7 @@ const BridgeSwapService = {
 
   async getSupportedChains() {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/bridge/chains');
+      const response = await fetch('http://localhost:8443/api/v1/bridge/chains');
       return await response.json();
     } catch (error) {
       console.error('Failed to get chains:', error);
@@ -208,7 +208,7 @@ const BridgeSwapService = {
 const HardwareWalletService = {
   async connect(deviceType) {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/hardware/connect', {
+      const response = await fetch('http://localhost:8443/api/v1/hardware/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ device_type: deviceType })
@@ -222,7 +222,7 @@ const HardwareWalletService = {
 
   async getAddress(derivationPath) {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/hardware/address?path=${derivationPath}`);
+      const response = await fetch(`http://localhost:8443/api/v1/hardware/address?path=${derivationPath}`);
       return await response.json();
     } catch (error) {
       console.error('Failed to get address:', error);
@@ -232,7 +232,7 @@ const HardwareWalletService = {
 
   async signTransaction(derivationPath, transaction) {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/hardware/sign', {
+      const response = await fetch('http://localhost:8443/api/v1/hardware/sign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ derivation_path: derivationPath, transaction })

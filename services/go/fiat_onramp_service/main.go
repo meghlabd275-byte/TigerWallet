@@ -792,10 +792,10 @@ func main() {
 	config := &Config{
 		MoonPayAPIKey:      getRequiredEnv("MOONPAY_API_KEY"),
 		MoonPaySecretKey:   getRequiredEnv("MOONPAY_API_SECRET"),
-		MoonPayCallbackURL: getEnv("MOONPAY_CALLBACK_URL", "https://api.tigerwallet.com/v1/onramp/webhook"),
+		MoonPayCallbackURL: getEnv("MOONPAY_CALLBACK_URL", "http://localhost:8443/api/v1/onramp/webhook"),
 		RampAPIKey:         getRequiredEnv("RAMP_API_KEY"),
 		RampSecretKey:      getRequiredEnv("RAMP_API_SECRET"),
-		RampCallbackURL:    getEnv("RAMP_CALLBACK_URL", "https://api.tigerwallet.com/v1/onramp/webhook"),
+		RampCallbackURL:    getEnv("RAMP_CALLBACK_URL", "http://localhost:8443/api/v1/onramp/webhook"),
 		Port:               getEnv("PORT", "8087"),
 		RedisAddr:          getEnv("REDIS_ADDR", "localhost:6379"),
 	}

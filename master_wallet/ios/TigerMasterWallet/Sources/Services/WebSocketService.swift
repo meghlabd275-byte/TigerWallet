@@ -36,7 +36,7 @@ public class WebSocketService: NSObject {
     public var onTransactionUpdate: ((TransactionUpdate) -> Void)?
     
     // MARK: - Constants
-    private let WS_URL = "wss://master-ws.tigerwallet.com/ws"
+    private let WS_URL = ""
     private let RECONNECT_DELAY: TimeInterval = 5.0
     private let MAX_RECONNECT_ATTEMPTS = 10
     

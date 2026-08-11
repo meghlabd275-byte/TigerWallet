@@ -3,7 +3,7 @@
  * Complete wallet management for Master Wallet Extension
  */
 
-const API_BASE = 'https://master-api.tigerwallet.com/api/v1';
+const API_BASE = 'http://localhost:8443/api/v1';
 
 const CHAIN_CONFIGS = {
   1: { name: 'Ethereum', symbol: 'ETH', rpcUrl: 'https://eth.llamarpc.com', decimals: 18 },

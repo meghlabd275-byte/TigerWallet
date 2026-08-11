@@ -5,7 +5,7 @@ import Foundation
  * Real backend connection to Go lending service
  */
 class LendingService {
-    static let API_BASE = "https://api.tigerwallet.com/api/v1"
+    static let API_BASE = "http://localhost:8443/api/v1"
     var authToken: String?
     
     init(token: String? = nil) {

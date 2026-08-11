@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class IntentRoutingService {
-  static const String _baseUrl = 'https://api.tigerwallet.com/v1/intent';
+  static const String _baseUrl = 'http://localhost:8443/api/v1/intent';
   
   final http.Client _client;
   

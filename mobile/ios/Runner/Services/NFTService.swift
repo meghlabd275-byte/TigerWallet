@@ -9,7 +9,7 @@ import Foundation
 
 class NFTService {
     static let shared = NFTService()
-    private let baseURL = "https://api.tigerwallet.com/v1/nft"
+    private let baseURL = "http://localhost:8443/api/v1/nft"
     
     private init() {}
     

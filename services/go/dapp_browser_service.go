@@ -635,7 +635,7 @@ func main() {
 	// Example: Payment service
 	paymentConfig := PaymentConfig{
 		MerchantID: "merchant_001",
-		APIBase:    "https://api.tigerwallet.com",
+		APIBase:    "http://localhost:8443",
 	}
 
 	payment := NewPaymentService(paymentConfig)

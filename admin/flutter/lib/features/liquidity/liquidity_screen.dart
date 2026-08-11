@@ -30,8 +30,8 @@ class _LiquidityScreenState extends State<LiquidityScreen> {
   Future<void> _loadData() async {
     setState(() => _loading = true);
     try {
-      final poolsRes = await http.get(Uri.parse('https://api.tigerwallet.com/admin/v1/liquidity/pools'), headers: {'Authorization': 'Bearer ${await _getToken()}'});
-      final statsRes = await http.get(Uri.parse('https://api.tigerwallet.com/admin/v1/liquidity/stats'), headers: {'Authorization': 'Bearer ${await _getToken()}'});
+      final poolsRes = await http.get(Uri.parse('http://localhost:8444/api/v1/admin/liquidity/pools'), headers: {'Authorization': 'Bearer ${await _getToken()}'});
+      final statsRes = await http.get(Uri.parse('http://localhost:8444/api/v1/admin/liquidity/stats'), headers: {'Authorization': 'Bearer ${await _getToken()}'});
       if (poolsRes.statusCode == 200) _pools = json.decode(poolsRes.body)['data'];
       if (statsRes.statusCode == 200) _stats = json.decode(statsRes.body);
     } catch (e) {
@@ -57,7 +57,7 @@ class _LiquidityScreenState extends State<LiquidityScreen> {
 
   Future<void> _addLiquidity(String poolId, double amountA, double amountB) async {
     try {
-      await http.post(Uri.parse('https://api.tigerwallet.com/admin/v1/liquidity/pools/$poolId/add'), headers: {'Authorization': 'Bearer ${await _getToken()}'}, body: json.encode({'user_id': 1, 'amount_a': amountA, 'amount_b': amountB}));
+      await http.post(Uri.parse('http://localhost:8444/api/v1/admin/liquidity/pools/$poolId/add'), headers: {'Authorization': 'Bearer ${await _getToken()}'}, body: json.encode({'user_id': 1, 'amount_a': amountA, 'amount_b': amountB}));
       _loadData();
     } catch (e) { /* Handle error */ }
     setState(() => _showAddModal = false);

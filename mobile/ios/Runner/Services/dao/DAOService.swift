@@ -1,7 +1,7 @@
 import Foundation
 
 class DAOService {
-    static let API_BASE = "https://api.tigerwallet.com/api/v1"
+    static let API_BASE = "http://localhost:8443/api/v1"
     var authToken: String?
     
     init(token: String?) { self.authToken = token }
@@ -49,7 +49,7 @@ class DAOService {
 struct DAO { let id: String; let name: String; let description: String; let memberCount: Int }
 
 class LaunchpadService {
-    static let API_BASE = "https://api.tigerwallet.com/api/v1"
+    static let API_BASE = "http://localhost:8443/api/v1"
     var authToken: String?
     
     init(token: String?) { self.authToken = token }
@@ -97,7 +97,7 @@ class LaunchpadService {
 struct Launch { let id: String; let name: String; let price: Double; let hardCap: Double; let raised: Double }
 
 class PredictionMarketsService {
-    static let API_BASE = "https://api.tigerwallet.com/api/v1"
+    static let API_BASE = "http://localhost:8443/api/v1"
     var authToken: String?
     
     init(token: String?) { self.authToken = token }
@@ -145,7 +145,7 @@ class PredictionMarketsService {
 struct PredictionMarket { let id: String; let question: String; let volume: Double; let status: String }
 
 class RWATradingService {
-    static let API_BASE = "https://api.tigerwallet.com/api/v1"
+    static let API_BASE = "http://localhost:8443/api/v1"
     var authToken: String?
     
     init(token: String?) { self.authToken = token }
@@ -193,7 +193,7 @@ class RWATradingService {
 struct RWA { let id: String; let name: String; let price: Double; let marketCap: Double }
 
 class GasTrackerService {
-    static let API_BASE = "https://api.tigerwallet.com/api/v1"
+    static let API_BASE = "http://localhost:8443/api/v1"
     
     func getGasPrice(chain: String, completion: @escaping (GasPrice?) -> Void) {
         guard let url = URL(string: "\(Self.API_BASE)/gas/price?chain=\(chain)") else { return }
@@ -213,7 +213,7 @@ class GasTrackerService {
 struct GasPrice { let slow: Double; let standard: Double; let fast: Double }
 
 class OrderbookService {
-    static let API_BASE = "https://api.tigerwallet.com/api/v1"
+    static let API_BASE = "http://localhost:8443/api/v1"
     var authToken: String?
     
     init(token: String?) { self.authToken = token }
@@ -236,7 +236,7 @@ class OrderbookService {
 struct Orderbook { let symbol: String }
 
 class TWAPService {
-    static let API_BASE = "https://api.tigerwallet.com/api/v1"
+    static let API_BASE = "http://localhost:8443/api/v1"
     var authToken: String?
     
     init(token: String?) { self.authToken = token }

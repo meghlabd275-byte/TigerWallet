@@ -206,15 +206,15 @@ export interface WhiteLabelClient {
 // API Configuration - Production Backend
 // ============================================================================
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.tigerwallet.com/v1';
-const WS_URL = import.meta.env.VITE_WS_URL || 'wss://ws.tigerwallet.com';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8443/api/v1';
+const WS_URL = import.meta.env.VITE_WS_URL || '';
 
 // C++ High-Performance Endpoints (Ultra-Low Latency)
-const TRADING_ENGINE_URL = import.meta.env.VITE_TRADING_ENGINE_URL || 'https://trading.tigerwallet.com';
-const PRICE_FEED_URL = import.meta.env.VITE_PRICE_FEED_URL || 'https://prices.tigerwallet.com';
+const TRADING_ENGINE_URL = import.meta.env.VITE_TRADING_ENGINE_URL || '';
+const PRICE_FEED_URL = import.meta.env.VITE_PRICE_FEED_URL || '';
 
 // Rust Security Endpoints
-const SECURITY_URL = import.meta.env.VITE_SECURITY_URL || 'https://security.tigerwallet.com';
+const SECURITY_URL = import.meta.env.VITE_SECURITY_URL || '';
 
 // ============================================================================
 // API Client

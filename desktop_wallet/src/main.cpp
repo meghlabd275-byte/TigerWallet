@@ -164,11 +164,11 @@ void testAPIClient() {
     printHeader("Testing APIClient");
     
     auto client = APIClient::getInstance();
-    client->initialize("https://api.tigerwallet.com");
+    client->initialize("http://localhost:8443");
     client->setAuthToken("test-auth-token");
     
     std::cout << "API Client initialized successfully\n";
-    std::cout << "Base URL: https://api.tigerwallet.com\n";
+    std::cout << "Base URL: http://localhost:8443\n";
     
     client->shutdown();
 }

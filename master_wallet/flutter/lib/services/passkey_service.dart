@@ -110,7 +110,7 @@ class PasskeyAuthResult {
 /// Provides WebAuthn/FIDO2 passkey authentication for MasterWallet operations
 class MasterPasskeyService {
   static const String _storageKey = 'master_passkey_credentials';
-  static const String _baseUrl = 'https://api.tigerwallet.com';
+  static const String _baseUrl = 'http://localhost:8443';
   
   final String _masterWalletId;
   final String _encryptionKey;

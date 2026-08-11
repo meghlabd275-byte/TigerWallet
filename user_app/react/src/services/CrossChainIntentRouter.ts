@@ -106,7 +106,7 @@ export class CrossChainIntentRouter {
   constructor(
     rpcUrl: string,
     solverContractAddress: string,
-    apiEndpoint: string = 'https://api.tigerwallet.com/v1/intents'
+    apiEndpoint: string = 'http://localhost:8443/api/v1/intents'
   ) {
     this.provider = new ethers.providers.JsonRpcProvider(rpcUrl);
     this.apiEndpoint = apiEndpoint;

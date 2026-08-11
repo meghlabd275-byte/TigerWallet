@@ -30,7 +30,7 @@ class _FeatureFlagsScreenState extends State<FeatureFlagsScreen> {
   Future<void> _loadFeatures() async {
     setState(() => _loading = true);
     try {
-      final response = await http.get(Uri.parse('https://api.tigerwallet.com/admin/v1/features'), headers: {'Authorization': 'Bearer ${await _getToken()}'});
+      final response = await http.get(Uri.parse('http://localhost:8444/api/v1/admin/features'), headers: {'Authorization': 'Bearer ${await _getToken()}'});
       if (response.statusCode == 200) setState(() => _features = json.decode(response.body)['data']);
     } catch (e) {
       _features = _getMockFeatures();
@@ -52,7 +52,7 @@ class _FeatureFlagsScreenState extends State<FeatureFlagsScreen> {
 
   Future<void> _toggleFeature(String id) async {
     try {
-      await http.post(Uri.parse('https://api.tigerwallet.com/admin/v1/features/$id/toggle'), headers: {'Authorization': 'Bearer ${await _getToken()}'});
+      await http.post(Uri.parse('http://localhost:8444/api/v1/admin/features/$id/toggle'), headers: {'Authorization': 'Bearer ${await _getToken()}'});
       _loadFeatures();
     } catch (e) {
       setState(() {
@@ -64,7 +64,7 @@ class _FeatureFlagsScreenState extends State<FeatureFlagsScreen> {
 
   Future<void> _createFeature(String name, String description, String category, int rollout) async {
     try {
-      await http.post(Uri.parse('https://api.tigerwallet.com/admin/v1/features'), headers: {'Authorization': 'Bearer ${await _getToken()}'}, body: json.encode({'name': name, 'description': description, 'category': category, 'rollout_percentage': rollout}));
+      await http.post(Uri.parse('http://localhost:8444/api/v1/admin/features'), headers: {'Authorization': 'Bearer ${await _getToken()}'}, body: json.encode({'name': name, 'description': description, 'category': category, 'rollout_percentage': rollout}));
       _loadFeatures();
     } catch (e) { /* Handle error */ }
     setState(() => _showAddModal = false);

@@ -308,7 +308,7 @@ func getHealthChecksHandler(c *gin.Context) {
 		{
 			"id":     uuid.New().String(),
 			"name":   "API Health",
-			"url":    "https://api.tigerwallet.com/health",
+			"url":    "http://localhost:8443/health",
 			"type":   "http",
 			"status": "up",
 		},

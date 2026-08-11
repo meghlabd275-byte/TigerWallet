@@ -20,7 +20,7 @@ import java.security.MessageDigest
 class AccountAbstractionService(private val context: Context) {
     
     companion object {
-        private const val BASE_URL = "https://api.tigerwallet.com"
+        private const val BASE_URL = "http://localhost:8443"
         private const val PREFS_NAME = "account_abstraction_prefs"
         private const val DEFAULT_ENTRY_POINT = "0x5FF137D4a0ADd64d12757d1f85d2dC51Bf7d7fE3"
     }

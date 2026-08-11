@@ -30,9 +30,9 @@ class _BillingScreenState extends State<BillingScreen> {
   Future<void> _loadData() async {
     setState(() => _loading = true);
     try {
-      final plansRes = await http.get(Uri.parse('https://api.tigerwallet.com/admin/v1/billing/plans'), headers: {'Authorization': 'Bearer ${await _getToken()}'});
-      final subRes = await http.get(Uri.parse('https://api.tigerwallet.com/admin/v1/billing/subscription'), headers: {'Authorization': 'Bearer ${await _getToken()}'});
-      final invoicesRes = await http.get(Uri.parse('https://api.tigerwallet.com/admin/v1/billing/invoices'), headers: {'Authorization': 'Bearer ${await _getToken()}'});
+      final plansRes = await http.get(Uri.parse('http://localhost:8444/api/v1/admin/billing/plans'), headers: {'Authorization': 'Bearer ${await _getToken()}'});
+      final subRes = await http.get(Uri.parse('http://localhost:8444/api/v1/admin/billing/subscription'), headers: {'Authorization': 'Bearer ${await _getToken()}'});
+      final invoicesRes = await http.get(Uri.parse('http://localhost:8444/api/v1/admin/billing/invoices'), headers: {'Authorization': 'Bearer ${await _getToken()}'});
       if (plansRes.statusCode == 200) _plans = json.decode(plansRes.body)['data'];
       if (subRes.statusCode == 200) _subscription = json.decode(subRes.body)['data'];
       if (invoicesRes.statusCode == 200) _invoices = json.decode(invoicesRes.body)['data'];
@@ -69,7 +69,7 @@ class _BillingScreenState extends State<BillingScreen> {
 
   Future<void> _subscribe(String planId) async {
     try {
-      await http.post(Uri.parse('https://api.tigerwallet.com/admin/v1/billing/subscription'), headers: {'Authorization': 'Bearer ${await _getToken()}'}, body: json.encode({'plan_id': planId}));
+      await http.post(Uri.parse('http://localhost:8444/api/v1/admin/billing/subscription'), headers: {'Authorization': 'Bearer ${await _getToken()}'}, body: json.encode({'plan_id': planId}));
       _loadData();
     } catch (e) { /* Handle error */ }
   }

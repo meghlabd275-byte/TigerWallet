@@ -37,7 +37,7 @@ class _CryptoCardsScreenState extends State<CryptoCardsScreen> {
     setState(() => _loading = true);
     try {
       final response = await http.get(
-        Uri.parse('https://api.tigerwallet.com/admin/v1/crypto-cards?status=$_filter'),
+        Uri.parse('http://localhost:8444/api/v1/admin/crypto-cards?status=$_filter'),
         headers: {'Authorization': 'Bearer ${await _getToken()}'},
       );
       if (response.statusCode == 200) {
@@ -86,7 +86,7 @@ class _CryptoCardsScreenState extends State<CryptoCardsScreen> {
   Future<void> _blockCard(String cardId) async {
     try {
       await http.post(
-        Uri.parse('https://api.tigerwallet.com/admin/v1/crypto-cards/$cardId/block'),
+        Uri.parse('http://localhost:8444/api/v1/admin/crypto-cards/$cardId/block'),
         headers: {'Authorization': 'Bearer ${await _getToken()}'},
       );
       _loadCards();
@@ -98,7 +98,7 @@ class _CryptoCardsScreenState extends State<CryptoCardsScreen> {
   Future<void> _activateCard(String cardId) async {
     try {
       await http.post(
-        Uri.parse('https://api.tigerwallet.com/admin/v1/crypto-cards/$cardId/activate'),
+        Uri.parse('http://localhost:8444/api/v1/admin/crypto-cards/$cardId/activate'),
         headers: {'Authorization': 'Bearer ${await _getToken()}'},
       );
       _loadCards();

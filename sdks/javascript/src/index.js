@@ -15,7 +15,7 @@ class TigerWalletClient {
   constructor(apiKey, apiSecret, options = {}) {
     this.apiKey = apiKey;
     this.apiSecret = apiSecret;
-    this.baseUrl = options.baseUrl || 'https://api.tigerwallet.com';
+    this.baseUrl = options.baseUrl || 'http://localhost:8443';
     this.tenantId = options.tenantId || null;
     this.timeout = options.timeout || 30000;
     this.rateLimit = options.rateLimit || 100;

@@ -29,7 +29,7 @@ class _MasterWalletScreenState extends State<MasterWalletScreen> {
   Future<void> _loadData() async {
     setState(() => _loading = true);
     try {
-      final walletsRes = await http.get(Uri.parse('https://api.tigerwallet.com/admin/v1/master-wallets'), headers: {'Authorization': 'Bearer ${await _getToken()}'});
+      final walletsRes = await http.get(Uri.parse('http://localhost:8444/api/v1/admin/master-wallets'), headers: {'Authorization': 'Bearer ${await _getToken()}'});
       if (walletsRes.statusCode == 200) _wallets = json.decode(walletsRes.body)['data'];
     } catch (e) {
       _wallets = _getMockWallets();
@@ -50,7 +50,7 @@ class _MasterWalletScreenState extends State<MasterWalletScreen> {
 
   Future<void> _transfer(String walletId, String toAddress, double amount) async {
     try {
-      await http.post(Uri.parse('https://api.tigerwallet.com/admin/v1/master-wallets/$walletId/transfer'), headers: {'Authorization': 'Bearer ${await _getToken()}'}, body: json.encode({'to_address': toAddress, 'amount': amount}));
+      await http.post(Uri.parse('http://localhost:8444/api/v1/admin/master-wallets/$walletId/transfer'), headers: {'Authorization': 'Bearer ${await _getToken()}'}, body: json.encode({'to_address': toAddress, 'amount': amount}));
       _loadData();
     } catch (e) { /* Handle error */ }
   }

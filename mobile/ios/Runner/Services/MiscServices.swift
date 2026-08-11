@@ -4,7 +4,7 @@ import Foundation
  * Hardware Wallet Service - iOS Native Implementation
  */
 class HardwareWalletService {
-    static let API_BASE = "https://api.tigerwallet.com/api/v1"
+    static let API_BASE = "http://localhost:8443/api/v1"
     static let SUPPORTED_DEVICES = ["LEDGER_NANO_X", "LEDGER_NANO_S", "TREZOR_MODEL_T", "TREZOR_ONE", "KEYSTONE", "COLDCAED"]
     var authToken: String?
     
@@ -85,7 +85,7 @@ enum HWError: Error { case invalidRequest, invalidResponse }
  * MPC Wallet Service - iOS Native Implementation
  */
 class MPCWalletService {
-    static let API_BASE = "https://api.tigerwallet.com/api/v1"
+    static let API_BASE = "http://localhost:8443/api/v1"
     var authToken: String?
     
     init(token: String? = nil) { self.authToken = token }
@@ -154,7 +154,7 @@ enum MPCError: Error { case invalidRequest, invalidResponse }
  * Social Recovery Service - iOS Native Implementation
  */
 class SocialRecoveryService {
-    static let API_BASE = "https://api.tigerwallet.com/api/v1"
+    static let API_BASE = "http://localhost:8443/api/v1"
     var authToken: String?
     
     init(token: String? = nil) { self.authToken = token }
@@ -209,7 +209,7 @@ enum RecoveryError: Error { case invalidRequest, invalidResponse }
  * Account Abstraction Service - iOS Native Implementation
  */
 class AccountAbstractionService {
-    static let API_BASE = "https://api.tigerwallet.com/api/v1"
+    static let API_BASE = "http://localhost:8443/api/v1"
     var authToken: String?
     
     init(token: String? = nil) { self.authToken = token }

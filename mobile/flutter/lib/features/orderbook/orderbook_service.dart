@@ -6,7 +6,7 @@ import 'dart:async';
 import 'package:http/http.dart' as http;
 
 class OrderbookService {
-  static const String _baseUrl = 'https://api.tigerwallet.com/v1/orderbook';
+  static const String _baseUrl = 'http://localhost:8443/api/v1/orderbook';
   
   final http.Client _client;
   Timer? _pollTimer;

@@ -7,7 +7,7 @@ import CryptoKit
 
 class AccountAbstractionService {
     
-    private let baseURL = "https://api.tigerwallet.com"
+    private let baseURL = "http://localhost:8443"
     private let defaultEntryPoint = "0x5FF137D4a0ADd64d12757d1f85d2dC51Bf7d7fE3"
     private var entryPoint: String
     private var factoryAddress: String = ""

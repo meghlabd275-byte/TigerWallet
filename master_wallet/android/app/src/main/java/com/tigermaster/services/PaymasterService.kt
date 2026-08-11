@@ -19,7 +19,7 @@ import java.net.URL
 class PaymasterService(private val context: Context) {
     
     companion object {
-        private const val BASE_URL = "https://api.tigerwallet.com"
+        private const val BASE_URL = "http://localhost:8443"
         private const val PREFS_NAME = "paymaster_prefs"
         private const val DEFAULT_ENTRY_POINT = "0x5FF137D4a0ADd64d12757d1f85d2dC51Bf7d7fE3"
     }

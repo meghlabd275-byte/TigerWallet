@@ -29,7 +29,7 @@ class WebSocketService {
   String? _authToken;
   int _reconnectAttempts = 0;
   
-  static const String WS_URL = 'wss://master-ws.tigerwallet.com/ws';
+  static const String WS_URL = '';
   static const int MAX_RECONNECT_ATTEMPTS = 10;
   static const Duration RECONNECT_DELAY = Duration(seconds: 5);
   
