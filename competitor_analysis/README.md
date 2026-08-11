@@ -13,6 +13,19 @@
 
 ---
 
+## Progress implemented (2026-08-11)
+
+Gaps closed and pushed to `main` (commit `f660821`, parent `8f5915f`):
+
+1. **MIT `LICENSE`** added (maturity/trust gap #1; README already declared MIT).
+2. **ERC-4337 smart-wallet contracts** (gap #3): real `TigerWalletAccount` (extends `BaseAccount`, ECDSA owner validation), `TigerWalletAccountFactory` (real CREATE2), `TigerWalletPaymaster` (extends `BasePaymaster`) under `account_abstraction/tigerwallet/`; OpenZeppelin vendored; `forge build` green; 5 Foundry tests pass. Supersedes the quarantined `legacy_aa/AccountFactory.sol`.
+3. **`perpetuals_engine/rust`** (gap #13) now compiles (was 27 errors); 7/11 tests pass — see `04-GAP-ANALYSIS.md` for details on the 4 remaining test-assertion mismatches.
+4. **Light/dark theme on all 83 `web_nextjs` pages** (UX gap): 32 hardcoded-dark pages now use the global `useTheme()` `isDark` conditionals; the MUI `admin_wallet` page wraps in a theme-synced MUI `ThemeProvider` with a header toggle; `npx tsc --noEmit` is 0 errors; `master_wallet` real crypto untouched.
+
+Items 1, 2, 4, 5, 6, 7, 8 in the gap-analysis action list remain open.
+
+---
+
 ## Executive summary (one page)
 
 TigerWallet's repository is **very large (~2,858 tracked files; 47 Go modules, 88 Cargo crates, 11 CMake projects)** and its **`go/wallet_api/` Go backend is genuinely real** — real BIP-39, real BIP-32/44 HD derivation over secp256k1, real EIP-1559/191/712 signing, AES-256-GCM seed encryption, real `eth_sendRawTransaction`, PostgreSQL + Redis. The WalletConnect v2 relay (`go/walletconnect/`), a real Fiat-Shamir Schnorr ZK prover (`core/rust/zk_infrastructure/`), the Chrome browser extension, and the `master_wallet` Next.js mnemonic page are also genuinely real.

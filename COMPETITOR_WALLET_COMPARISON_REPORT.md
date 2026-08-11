@@ -8,6 +8,8 @@
 
 ## Executive Summary
 
+> **Update 2026-08-11 (commit `f660821`):** Closed several documented gaps and pushed to `main`: (1) MIT `LICENSE` added; (2) real ERC-4337 smart-wallet contracts (`TigerWalletAccount`/`Factory`/`Paymaster` extending the canonical `BaseAccount`/`BasePaymaster`, compiling vs `PackedUserOperation`, `forge build` green, 5 Foundry tests pass) — superseding the quarantined `legacy_aa/AccountFactory.sol`; (3) `perpetuals_engine/rust` now compiles (was 27 errors), 7/11 tests pass; (4) light/dark theme switching now works on all 83 `web_nextjs` pages (`npx tsc --noEmit` 0 errors; real crypto in `master_wallet` untouched). Details in `competitor_analysis/README.md` and `competitor_analysis/04-GAP-ANALYSIS.md`.
+
 This document provides a detailed feature-by-feature comparison between TigerWallet and 10 major competitor wallets (Trust Wallet, MetaMask, Bitget Wallet, OKX Wallet, Phantom, Coinbase Wallet, Atomic Wallet, TokenPocket, CoinEx Wallet, Math Wallet). It identifies what is **actually implemented** in TigerWallet, what remains as **stubs/mocks**, and what **critical gaps** exist relative to competitors.
 
 **Critical Finding:** TigerWallet's core wallet engine (`go/wallet_api`) implements real cryptography with no mocks, but the frontend DeFi features (swap, staking, lending, bridge, NFT marketplace) are predominantly stubs that display "unavailable until X is configured" messages rather than functional integrations.
