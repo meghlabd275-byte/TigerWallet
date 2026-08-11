@@ -222,12 +222,11 @@ class MPCKeyGenerationService {
   }
 
   private async clientSideSign(transaction: any, shares: MPCKeyShare[]): Promise<string> {
-    // Reconstruct private key from shares (simplified)
-    // In production, use proper MPC signing protocol
-    const signature = "0x" + Array(130).fill(0)
-      .map(() => Math.floor(Math.random() * 16).toString(16))
-      .join('');
-    return signature;
+    // Honest: client-side MPC signature reconstruction is NOT possible without
+    // the real TSS protocol (which requires interactive rounds with the
+    // backend co-signers). Fabricating a signature would be a security
+    // vulnerability. Reject instead — signing MUST go through the MPC backend.
+    throw new Error('MPC signing requires the backend TSS service; client-side signing is disabled for security.');
   }
 
   // Recover wallet from backup share
@@ -365,7 +364,9 @@ export default function MPCWalletPage() {
     const contact: RecoveryContact = {
       id: "contact-" + Date.now(),
       name: newContactName,
-      publicKey: "0x" + Array(64).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join(""),
+      // Public key must be supplied by the guardian from their real wallet -
+      // never fabricated. Empty until the guardian registers their key.
+      publicKey: "",
       addedAt: Date.now(),
     };
     

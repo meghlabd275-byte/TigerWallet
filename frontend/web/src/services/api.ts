@@ -22,7 +22,7 @@ import {
   PaginatedResponse,
 } from '@/types/wallet';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.tigerwallet.io';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8443';
 
 class TigerWalletAPI {
   private client: AxiosInstance;
@@ -224,15 +224,23 @@ class TigerWalletAPI {
   
   async createWallet(blockchainId: string, type: 'user' | 'master' | 'whitelabel'): Promise<ApiResponse<Wallet>> {
     try {
-      const wallet: Wallet = {
-        id: `wallet-${Date.now()}`,
-        userId: 'current-user',
+      // Real wallet creation: POST /api/v1/wallets to the wallet_api backend
+      // (real BIP-39/BIP-32/44 HD derivation + AES-GCM seed encryption).
+      const response = await this.client.post('/api/v1/wallets', {
+        label: type === 'user' ? 'Main Wallet' : 'Master Wallet',
         type,
-        address: '0x' + Array(40).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join(''),
+        chain_id: Number(blockchainId) || 1,
+      });
+      const data = response.data?.wallet ?? response.data;
+      const wallet: Wallet = {
+        id: data.id ?? data.wallet_id ?? `wallet-${Date.now()}`,
+        userId: data.user_id ?? 'current-user',
+        type,
+        address: data.address ?? '',
         blockchainId,
-        publicKey: '0x04' + Array(128).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join(''),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        publicKey: data.public_key ?? '',
+        createdAt: data.created_at ?? new Date().toISOString(),
+        updatedAt: data.updated_at ?? new Date().toISOString(),
         isActive: true,
         label: type === 'user' ? 'Main Wallet' : 'Master Wallet'
       };
@@ -286,13 +294,24 @@ class TigerWalletAPI {
   
   async createTransaction(request: TransactionRequest): Promise<ApiResponse<TransactionResponse>> {
     try {
+      // Real tx broadcast: POST /api/v1/send signs + broadcasts via
+      // eth_sendRawTransaction. Returns the REAL tx hash (never fabricated).
+      const response = await this.client.post('/api/v1/send', {
+        walletId: request.walletId,
+        to: request.to,
+        value: request.amount,
+        tokenAddress: request.tokenAddress,
+        tokenSymbol: request.tokenSymbol,
+        type: 'send',
+      });
+      const data = response.data ?? {};
       const tx: Transaction = {
         id: `tx-${Date.now()}`,
-        walletId: 'wallet-1',
+        walletId: request.walletId ?? 'wallet-1',
         blockchainId: request.blockchainId,
         type: 'send',
         status: 'pending',
-        from: '0x0000000000000000000000000000000000000000',
+        from: data.from ?? '',
         to: request.to,
         tokenSymbol: request.tokenSymbol,
         tokenAddress: request.tokenAddress,
@@ -300,10 +319,10 @@ class TigerWalletAPI {
         amountUSD: 0,
         fee: '0',
         feeUSD: 0,
-        hash: '0x' + Array(64).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join(''),
+        hash: data.tx_hash ?? data.txHash ?? '',
         timestamp: new Date().toISOString()
       };
-      return { success: true, data: { transaction: tx, estimatedGas: '21000', estimatedFee: '0.001', estimatedTime: 15 } };
+      return { success: true, data: { transaction: tx, estimatedGas: String(data.gas ?? '21000'), estimatedFee: String(data.fee ?? '0'), estimatedTime: data.time ?? 15 } };
     } catch (error) {
       return { success: false, error: { code: 'UNKNOWN', message: String(error) } };
     }
