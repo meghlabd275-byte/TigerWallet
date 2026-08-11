@@ -4,6 +4,23 @@
 > iOS, Rust) across every platform: their fetchers, functionality, what is real vs
 > stubbed, what is missing, and separation from MasterWallet / Admin apps.
 
+> **⚠️ STATUS UPDATE (2026-08-11):** The "broken/stub/orphan" state documented in
+> the body of this file (the `:8105`/`:8080` split, dead `user_wallet_handler.go`,
+> desktop route mismatch, Android not compiling, iOS placeholders, Rust fetchers
+> dead, Math.random fake crypto) has been **resolved**. Current verified state:
+> - All `user_wallet/*` clients target the canonical `go/wallet_api` (:8443) with
+>   correct routes. No `:8105`/`:8080` split remains.
+> - 0 actual `Math.random()` calls in any client (fake mnemonics/hashes/sigs/data
+>   replaced with real backend calls or fail-closed throws).
+> - `rust/userwallet_fetchers` builds clean and delegates all fetchers to wallet_api
+>   (no stubs; fail-closed Err for absent endpoints).
+> - `frontend/web_nextjs/app/wallet/lib/transactions.ts` EVM path fully wired via
+>   proxy routes; dynamic `/api/v1/transactions/[txHash]` route created.
+> - Light/dark theme: 0 `dark:` variants in web_nextjs; mobile has theme managers.
+> - `permission_service`/`connection_api`/`monitoring_dashboard` build + vet clean;
+>   permission_service uses bcrypt (was SHA-256). PostgreSQL + Redis (no SQLite).
+> The body below is retained as the historical pre-fix record.
+
 ---
 
 ## Isolation Guarantee

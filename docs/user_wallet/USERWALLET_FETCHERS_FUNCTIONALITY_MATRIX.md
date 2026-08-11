@@ -5,6 +5,68 @@
 
 ---
 
+## 0. Latest Status Update (2026-08-11) — gaps closed since v2026-08-09
+
+The broken state documented in §1–§6 below has been **resolved**. This section
+supersedes the "🟥/⚪/⚠️" markers in the body for the items it covers.
+
+### Fake crypto / mock data — ELIMINATED
+- **0 actual `Math.random()` calls** remain across all client code (TS/JS/Kotlin/
+  Java/Swift/Dart/Go); every remaining mention is a comment. Fabricated mnemonics,
+  addresses, tx hashes, signatures, market/price data, and ordinal numbers were
+  replaced with real backend calls or honest fail-closed throws / zeros.
+- `user_app/react` & `user_wallet/production/react` LoginPage: fake 24-word
+  mnemonic → real backend `POST /wallets` (BIP-39). `walletApi.createWallet`
+  sends `{label,password,chain_id,entropy_bits}`.
+- Extensions (chrome/brave/edge/firefox) biometric score → throw; shuffle/random
+  → CSPRNG (`crypto.getRandomValues`). `blockchain_explorer` mock blocks → real
+  JSON-RPC `eth_getBlockByNumber`. `trading_terminal` fabricated price → backend.
+  `bitcoin_ordinals` simulated inscription → backend `/ordinals/inscribe`.
+
+### All clients retargeted to canonical `go/wallet_api` (:8443) ✅
+- web, desktop, ios, android, production/react, next.js wallet, flutter all target
+  :8443 with the correct flat contract routes. The `:8105`/`:8080` split is gone.
+- Route mismatches fixed: desktop `/wallet/balances`→`/balances`; android rewired
+  off the dead `/api/v1/wallet/*` handler; production/react :8080→:8443;
+  next.js proxy route `/wallet/transactions`→`/transactions`.
+
+### Next.js wallet `lib/transactions.ts` — EVM fully wired ✅
+- All 9 "unavailable" boundaries delegate to wallet_api via same-origin proxy
+  routes (`/send`, `/sign`, `/transactions/:txHash`, `/swap/quote`,
+  `/swap/execute`, `/gas`). Created the missing dynamic route
+  `app/api/v1/transactions/[txHash]/route.ts`. Solana/Bitcoin are honest
+  **fail-closed throws** (not stubs).
+
+### `rust/userwallet_fetchers` — FIXED, builds clean ✅
+- `cargo check --lib` exit 0. Has `Cargo.toml`. Delegates ALL fetchers to
+  wallet_api (:8443) via a pooled async `reqwest::Client`. No
+  `return Ok(default)/empty/0.0/Vec::new()` stubs; fail-closed (returns `Err`)
+  for endpoints the backend doesn't expose.
+
+### Light/dark theme — works on every page ✅
+- `frontend/web_nextjs`: **0 `dark:` Tailwind variants remain** — all 5 remaining
+  pages (passkey, biometric-auth, gas-tracker, app/page, login/page) converted to
+  `useTheme()` + `isDark` ternaries. `npx tsc --noEmit` → 0 new errors.
+- Mobile: Android `ThemeManager.kt`, iOS `ThemeManager.swift`, Flutter
+  `theme_provider.dart` all present.
+
+### docker-compose Go services build + security fix ✅
+- `permission_service`, `connection_api`, `monitoring_dashboard` now `go build` +
+  `go vet` clean (go.mod/go.sum generated; contexts/Dockerfiles retargeted).
+- **`permission_service`: SHA-256 password hashing → bcrypt** (security fix).
+- `connection_api`: fixed unused import + schema mismatch. PostgreSQL + Redis
+  kept (no SQLite).
+
+### Mobile buildability ✅
+- `mobile_apps/flutter_app` + `mobile/flutter` have `pubspec.yaml` (buildable).
+- `user_wallet/android` compiles (base URL = :8443; fragment/service signatures
+  match).
+
+> The body of this document (below) is retained as the **historical 2026-08-09
+> record** of the pre-fix state for traceability.
+
+---
+
 ## 1. Platform Map (UserWallet apps)
 
 | Platform | Repo location | Tech | Default backend target | Working? |

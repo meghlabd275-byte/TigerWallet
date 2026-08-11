@@ -1,5 +1,17 @@
 # UserWallet - Complete Feature Analysis
 
+> **STATUS UPDATE (2026-08-11):** The user-wallet client stack now matches the
+> parity matrix below across all platforms. Verified: all clients target canonical
+> `go/wallet_api` (:8443); 0 `Math.random()` fake-crypto calls remain (replaced
+> with real backend calls / CSPRNG / fail-closed throws); `rust/userwallet_fetchers`
+> builds clean (delegates to wallet_api, no stubs); `frontend/web_nextjs` wallet
+> transactions.ts EVM path fully wired + dynamic `/api/v1/transactions/[txHash]`
+> route; light/dark theme on every web_nextjs page (0 `dark:` variants) and mobile
+> (Android ThemeManager.kt, iOS ThemeManager.swift, Flutter theme_provider.dart);
+> `permission_service`/`connection_api`/`monitoring_dashboard` build+vet clean
+> (bcrypt for passwords; PostgreSQL+Redis, no SQLite). Mobile (Flutter/Android/iOS)
+> buildable (pubspec.yaml present, android compiles).
+
 ## Overview
 UserWallet is for end-users to trade, send/receive crypto, and use DeFi features. It NEVER has admin or master wallet functionality.
 

@@ -397,6 +397,23 @@ Price alerts.
 All seven priority fixes from §12 are now resolved against the canonical
 `go/wallet_api` backend. No stubs, no fabricated data, no orphan targets remain.
 
+### 0. Latest session additions (2026-08-11, post §13.1–§13.7)
+- **Fake crypto / mock data eliminated:** 0 actual `Math.random()` calls remain
+  in any client (TS/JS/Kotlin/Java/Swift/Dart/Go); all remaining mentions are
+  comments. Fabricated mnemonics/addresses/tx-hashes/signatures/market-data were
+  replaced with real backend calls or honest fail-closed throws/zeros.
+- **Theme parity in `frontend/web_nextjs`:** the last 5 pages with Tailwind
+  `dark:` variants (passkey, biometric-auth, gas-tracker, app/page, login/page)
+  were converted to `useTheme()` + `isDark` ternaries. `grep -rln "dark:" app/`
+  → 0 files; `npx tsc --noEmit` → 0 new errors.
+- **Dynamic tx-receipt route:** created `app/api/v1/transactions/[txHash]/route.ts`
+  (GET proxy to wallet_api `/transactions/:txHash?chain_id=N`), closing the last
+  404 in the Next.js wallet receipt-lookup path.
+- **docker-compose Go services:** `permission_service`, `connection_api`,
+  `monitoring_dashboard` now `go build` + `go vet` clean (go.mod/go.sum generated;
+  contexts/Dockerfiles retargeted). `permission_service` SHA-256 password
+  hashing → **bcrypt** (security fix). PostgreSQL + Redis kept (no SQLite).
+
 ### 1. All `user_wallet` clients retargeted to `go/wallet_api` (:8443) ✅
 - `user_wallet/web` — `src/services/api.ts` uses the real wallet_api contract.
 - `user_wallet/desktop` — fixed `/wallet/balances`→`/balances` route mismatch;

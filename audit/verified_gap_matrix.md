@@ -1,5 +1,28 @@
 # TigerWallet Verified Gap Matrix
 
+> **PROGRESS UPDATE (2026-08-11):** The following rows have advanced since this
+> matrix was written:
+> - **Secure key derivation and signing** — fake-crypto sweep complete: 0 actual
+>   `Math.random()` calls remain in any client; fabricated mnemonics/addresses/
+>   hashes/signatures replaced with real backend calls (BIP-39/32/44 via
+>   `go/wallet_api`), CSPRNG, or fail-closed throws. `permission_service` password
+>   hashing migrated SHA-256 -> bcrypt.
+> - **Market/portfolio data / Fetcher contracts** — `rust/userwallet_fetchers`
+>   now builds clean and delegates ALL fetchers to canonical `go/wallet_api`
+>   (:8443) via pooled async reqwest; no stubs; fail-closed Err for absent
+>   endpoints. `frontend/web_nextjs/app/wallet/lib/transactions.ts` EVM path
+>   fully wired through same-origin proxy routes + dynamic
+>   `/api/v1/transactions/[txHash]` route.
+> - **Backend persistence** — `permission_service`/`connection_api`/
+>   `monitoring_dashboard` build+vet clean against PostgreSQL (pgx/v5) + Redis;
+>   no SQLite in any UserWallet execution path. (Note: SQLite references remain
+>   in some non-UserWallet Cargo manifests / legacy audit notes, out of session scope.)
+> - **Frontend parity and themes** — 0 `dark:` Tailwind variants remain in
+>   `frontend/web_nextjs`; all pages use `useTheme()` isDark ternaries; mobile has
+>   theme managers (Android/iOS/Flutter).
+> The remaining rows (shared wallet-core consolidation, full chain SDK conformance,
+> dApp provider conformance, smart-account wiring) are still open.
+
 ## Scope and evidence standard
 
 This matrix compares the current `main` branch implementation with capabilities documented by major wallet platforms. A feature is marked **implemented** only when source code exists, its contract is connected to a client or service, and an automated build or test can exercise it. Repository claims and README checkmarks are not evidence by themselves.
