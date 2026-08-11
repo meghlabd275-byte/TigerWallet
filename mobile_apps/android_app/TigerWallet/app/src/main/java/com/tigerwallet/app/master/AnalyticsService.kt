@@ -161,9 +161,9 @@ class AnalyticsService private constructor() {
             
             var current = start
             while (current <= end) {
-                val value = totalPortfolioValue.multiply(
-                    BigInteger.valueOf((100 + (Math.random() * 20 - 10)).toLong())
-                ).divide(BigInteger.valueOf(100))
+                // No fabricated random variation: use the real portfolio value.
+                // Real historical data must come from the backend/indexer.
+                val value = totalPortfolioValue
                 
                 points.add(HistoryPoint(
                     timestamp = current,
@@ -213,8 +213,9 @@ class AnalyticsService private constructor() {
     }
 
     private fun calculateReturns(timeframe: String): Double {
-        // Simplified return calculation
-        return (Math.random() * 30 - 10)
+        // Real returns are computed from backend historical data; until wired,
+        // return 0.0 rather than a fabricated Math.random() value.
+        return 0.0
     }
 
     private fun calculateVolatility(returns: Double): Double {
@@ -222,7 +223,9 @@ class AnalyticsService private constructor() {
     }
 
     private fun calculateMaxDrawdown(): Double {
-        return Math.random() * 20
+        // Real max drawdown is computed from backend historical data; until
+        // wired, return 0.0 rather than a fabricated Math.random() value.
+        return 0.0
     }
 
     private fun getAnnualizationFactor(timeframe: String): Double {

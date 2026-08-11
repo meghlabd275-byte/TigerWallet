@@ -25,7 +25,7 @@ namespace tigerwallet {
 
 // Default Super Admin credentials
 const std::string DEFAULT_SUPER_ADMIN_EMAIL = "superadmin@tigerwallet.com";
-const std::string DEFAULT_SUPER_ADMIN_WALLET = "0x742d35Cc6634C0532925a3b844Bc9e7595f1234";
+const std::string DEFAULT_SUPER_ADMIN_WALLET = ""; // Provisioned by backend, not hardcoded.
 
 // Profit sharing percentage
 const double DEFAULT_PROFIT_SHARE_PERCENT = 20.0;

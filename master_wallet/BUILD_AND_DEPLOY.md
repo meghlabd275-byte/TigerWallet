@@ -90,7 +90,7 @@ export JWT_SECRET=your_jwt_secret_32_bytes
 export ENCRYPTION_KEY=your_encryption_key_32_bytes
 export MASTER_WALLET_PORT=9095
 export PLATFORM_FEE_PERCENT=0.3
-export FEE_WALLET=0x742d35Cc6634C0532925a3b844Bc9e7595f1234
+export FEE_WALLET=0xYourFeeWalletAddress
 ```
 
 ### 2. Rust Fetchers Service

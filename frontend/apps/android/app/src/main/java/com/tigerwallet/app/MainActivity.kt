@@ -20,7 +20,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            val viewModel: WalletViewModel = androidx.lifecycle.viewModel.compose rememberViewModel()
+            val viewModel: WalletViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
             val isDarkMode by viewModel.isDarkMode.collectAsState()
             
             TigerWalletTheme(darkTheme = isDarkMode) {

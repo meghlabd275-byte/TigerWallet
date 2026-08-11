@@ -6,6 +6,7 @@
 
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -25,8 +26,16 @@ class SuperAdminService {
 
   // Configuration
   static const String _superAdminEmail = 'superadmin@tigerwallet.com';
-  static const String _superAdminPassword = 'SuperAdmin@2024!';
-  static const String _superAdminWallet = '0x742d35Cc6634C0532925a3b844Bc9e7595f1234';
+  // Super-admin password is NOT hardcoded in source. It is provided at
+  // provisioning time via the SUPER_ADMIN_PASSWORD environment / build flag
+  // (String.fromEnvironment) and stored only as a PBKDF2 hash. If unset, the
+  // super-admin account is created disabled and must be provisioned via the
+  // backend (super_admin_api) before first login.
+  static const String _superAdminPassword =
+      String.fromEnvironment('SUPER_ADMIN_PASSWORD', defaultValue: '');
+  // The platform super-admin treasury wallet is provisioned by the backend
+  // (a real created wallet); it is NOT a hardcoded address.
+  static const String _superAdminWallet = '';
   static const double _profitSharePercentage = 20.0;
 
   // Feature flags
@@ -289,8 +298,11 @@ class SuperAdminService {
       return {'success': false, 'error': 'Account locked. Try again later.'};
     }
 
-    // Verify password
-    if (password != _superAdminPassword) {
+    // Verify password against the PBKDF2 hash. The super-admin password is
+    // never stored or compared in plaintext. If no provisioning password was
+    // supplied (env SUPER_ADMIN_PASSWORD unset), login is refused until the
+    // account is provisioned via the backend.
+    if (_superAdminPasswordHash.isEmpty || !_verifyPassword(password, _superAdminPasswordHash)) {
       admin.failedAttempts++;
       if (admin.failedAttempts >= 5) {
         admin.lockedUntil = DateTime.now().add(const Duration(minutes: 15));
@@ -659,5 +671,71 @@ class SuperAdminService {
   String _generateRandomHex(int length) {
     final random = Random.secure();
     return List.generate(length, (_) => random.nextInt(16).toRadixString(16)).join();
+  }
+
+  // PBKDF2-HMAC-SHA256 password hashing (real KDF; replaces plaintext compare).
+  static final String _superAdminPasswordHash =
+      _superAdminPassword.isEmpty ? '' : _hashPassword(_superAdminPassword);
+
+  static String _hashPassword(String password) {
+    const iterations = 100000;
+    final secure = Random.secure();
+    final salt =
+        Uint8List.fromList(List<int>.generate(16, (_) => secure.nextInt(256)));
+    final derived = _pbkdf2(Uint8List.fromList(utf8.encode(password)),
+        salt, iterations, 32);
+    return 'pbkdf2:$iterations:${_toHex(salt)}:${_toHex(derived)}';
+  }
+
+  static bool _verifyPassword(String password, String stored) {
+    final parts = stored.split(':');
+    if (parts.length != 4 || parts[0] != 'pbkdf2') return false;
+    final iterations = int.tryParse(parts[1]) ?? 0;
+    final salt = _fromHex(parts[2]);
+    final expected = _fromHex(parts[3]);
+    final derived = _pbkdf2(Uint8List.fromList(utf8.encode(password)), salt,
+        iterations, expected.length);
+    var diff = derived.length ^ expected.length;
+    for (var i = 0; i < derived.length && i < expected.length; i++) {
+      diff |= derived[i] ^ expected[i];
+    }
+    return diff == 0;
+  }
+
+  static Uint8List _pbkdf2(
+      Uint8List password, Uint8List salt, int iterations, int keyLength) {
+    const hmacLength = 32;
+    final blocks = (keyLength + hmacLength - 1) ~/ hmacLength;
+    final out = BytesBuilder();
+    for (var blockNum = 1; blockNum <= blocks; blockNum++) {
+      final u = Uint8List.fromList([
+        ...salt,
+        (blockNum >> 24) & 0xff,
+        (blockNum >> 16) & 0xff,
+        (blockNum >> 8) & 0xff,
+        blockNum & 0xff
+      ]);
+      var t = Hmac(sha256, password).convert(u).bytes;
+      final result = Uint8List.fromList(t);
+      for (var i = 1; i < iterations; i++) {
+        t = Hmac(sha256, password).convert(t).bytes;
+        for (var j = 0; j < hmacLength; j++) {
+          result[j] ^= t[j];
+        }
+      }
+      out.add(result);
+    }
+    return out.toBytes().sublist(0, keyLength);
+  }
+
+  static String _toHex(Uint8List bytes) =>
+      bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+
+  static Uint8List _fromHex(String hex) {
+    final out = <int>[];
+    for (var i = 0; i < hex.length; i += 2) {
+      out.add(int.parse(hex.substring(i, i + 2), radix: 16));
+    }
+    return Uint8List.fromList(out);
   }
 }

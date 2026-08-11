@@ -69,7 +69,7 @@ SuperAdminService::SuperAdminService()
     profitConfig.superAdminPercentage = DEFAULT_SUPER_ADMIN_PERCENTAGE;
     profitConfig.masterAdminPercentage = 80.0;
     profitConfig.whiteLabelPercentage = 0.0;
-    profitConfig.superAdminWallet = "0x742d35Cc6634C0532925a3b844Bc9e7595f1234";
+    profitConfig.superAdminWallet = ""; // Provisioned by backend (super_admin_api), not hardcoded.
     profitConfig.autoDistribution = true;
     profitConfig.distributionIntervalHours = 24;
     profitConfig.isActive = true;

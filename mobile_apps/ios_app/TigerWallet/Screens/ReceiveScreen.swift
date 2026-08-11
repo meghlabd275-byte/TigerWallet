@@ -3,7 +3,7 @@ import SwiftUI
 // Receive Screen - Displays QR Code for receiving crypto
 struct ReceiveScreen: View {
     @State private var selectedChain: String = "Ethereum"
-    @State private var walletAddress: String = "0x742d35Cc6634C0532925a3b844Bc9e7595f1234"
+    @State private var walletAddress: String = ""
     @State private var showCopied: Bool = false
     
     let chains = ["Ethereum", "BNB Chain", "Polygon", "Arbitrum", "Optimism", "Avalanche", "Solana", "TRON"]

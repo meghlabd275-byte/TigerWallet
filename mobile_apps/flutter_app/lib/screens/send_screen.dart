@@ -26,12 +26,9 @@ class _SendScreenState extends State<SendScreen> {
   String? _transactionHash;
   String? _errorMessage;
   
-  // QR Scanner demo addresses
-  final List<String> _recentAddresses = [
-    '0x742d35Cc6634C0532925a3b844Bc9e7595f1234',
-    '0x1234567890abcdef1234567890abcdef12345678',
-    'TNPeeaaFB7K9cmo4uQpcU32zGK8G1NYqeL',
-  ];
+  // Recent addresses are loaded from the backend (transaction history) —
+  // no hardcoded demo addresses.
+  final List<String> _recentAddresses = [];
 
   final List<Map<String, dynamic>> _chains = [
     {'id': 'ethereum', 'name': 'Ethereum', 'symbol': 'ETH', 'icon': '🔷'},

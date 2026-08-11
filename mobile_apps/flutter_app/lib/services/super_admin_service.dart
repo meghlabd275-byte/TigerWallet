@@ -5,6 +5,8 @@
 
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
+import 'package:crypto/crypto.dart' as crypto;
 
 // Enums
 enum UserRole { superAdmin, masterAdmin, whiteLabelAdmin, user }
@@ -240,7 +242,7 @@ class SuperAdminService {
     final superAdmin = _superAdmins[email] as SuperAdmin?;
     if (superAdmin == null || !superAdmin.isActive) return null;
     
-    if (_hashPassword(password) != superAdmin.passwordHash) {
+    if (!_verifyPassword(password, superAdmin.passwordHash)) {
       _logAudit(superAdmin.id, UserRole.superAdmin, 'LOGIN_FAILED', 'Invalid password');
       return null;
     }
@@ -321,7 +323,7 @@ class SuperAdminService {
     if (masterAdmin.status != AdminStatus.active) return null;
     if (masterAdmin.lockedUntil > DateTime.now().millisecondsSinceEpoch) return null;
     
-    if (_hashPassword(password) != masterAdmin.passwordHash) {
+    if (!_verifyPassword(password, masterAdmin.passwordHash)) {
       _logAudit(masterAdmin.id, UserRole.masterAdmin, 'LOGIN_FAILED', 'Invalid password');
       return null;
     }
@@ -340,7 +342,7 @@ class SuperAdminService {
         (_masterAdmins.values.firstWhere((e) => e is MasterAdmin && e.email == adminId, orElse: () => null) as MasterAdmin?);
     if (masterAdmin == null) return false;
     
-    if (_hashPassword(oldPassword) != masterAdmin.passwordHash) return false;
+    if (!_verifyPassword(oldPassword, masterAdmin.passwordHash)) return false;
     if (newPassword.length < 8) return false;
     
     masterAdmin.passwordHash = _hashPassword(newPassword);
@@ -444,9 +446,126 @@ class SuperAdminService {
   }
 
   // Helpers
-  String _generateId() => 'id_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(999999)}';
-  String _generateSecretKey() => List.generate(32, (_) => Random().nextInt(256).toRadixString(16).padLeft(2, '0')).join();
-  String _generateTempPassword() => List.generate(16, (_) => 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[Random().nextInt(62)]).join();
-  String _hashPassword(String password) => utf8.encode(password).fold(0, (prev, e) => (prev * 31 + e) % 0xFFFFFFFF).toRadixString(16);
-  bool _verifyTwoFactor(String secret, String code) => code.length == 6 && int.tryParse(code) != null;
+  // Cryptographically-secure randomness for IDs / secrets / passwords.
+  // The previous implementation used dart:math Random() (a non-secure PRNG)
+  // to generate secret keys and temporary passwords — a security flaw.
+  String _generateId() =>
+      'id_${DateTime.now().millisecondsSinceEpoch}_${Random.secure().nextInt(999999)}';
+
+  String _generateSecretKey() =>
+      List.generate(32, (_) => Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+
+  String _generateTempPassword() {
+    const chars =
+        'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    return List.generate(16, (_) => chars[Random.secure().nextInt(chars.length)]).join();
+  }
+
+  /// Real PBKDF2-HMAC-SHA256 password hashing with a per-hash salt.
+  /// Replaces the previous toy hash (fold *31+e mod 2^32) which is NOT a
+  /// password KDF and is trivially invertible. Output: "pbkdf2:iterations:saltHex:hashHex".
+  String _hashPassword(String password) {
+    final iterations = 100000;
+    final salt = Uint8List.fromList(
+        List<int>.generate(16, (_) => Random.secure().nextInt(256)));
+    final pwBytes = Uint8List.fromList(utf8.encode(password));
+    final derived = _pbkdf2(pwBytes, salt, iterations, 32);
+    return 'pbkdf2:$iterations:${_toHex(salt)}:${_toHex(derived)}';
+  }
+
+  bool _verifyPassword(String password, String stored) {
+    final parts = stored.split(':');
+    if (parts.length != 4 || parts[0] != 'pbkdf2') return false;
+    final iterations = int.tryParse(parts[1]) ?? 0;
+    final salt = _fromHex(parts[2]);
+    final expected = _fromHex(parts[3]);
+    final derived = _pbkdf2(Uint8List.fromList(utf8.encode(password)), salt, iterations, expected.length);
+    // Constant-time comparison.
+    var diff = derived.length ^ expected.length;
+    for (var i = 0; i < derived.length && i < expected.length; i++) {
+      diff |= derived[i] ^ expected[i];
+    }
+    return diff == 0;
+  }
+
+  Uint8List _pbkdf2(Uint8List password, Uint8List salt, int iterations, int keyLength) {
+    // RFC 2898 PBKDF2 with HMAC-SHA256.
+    final hmacLength = 32;
+    final blocks = (keyLength + hmacLength - 1) ~/ hmacLength;
+    final out = BytesBuilder();
+    for (var blockNum = 1; blockNum <= blocks; blockNum++) {
+      final u = Uint8List.fromList([...salt, (blockNum >> 24) & 0xff, (blockNum >> 16) & 0xff, (blockNum >> 8) & 0xff, blockNum & 0xff]);
+      var t = crypto.Hmac(crypto.sha256, password).convert(u).bytes;
+      var result = Uint8List.fromList(t);
+      for (var i = 1; i < iterations; i++) {
+        t = crypto.Hmac(crypto.sha256, password).convert(t).bytes;
+        for (var j = 0; j < hmacLength; j++) {
+          result[j] ^= t[j];
+        }
+      }
+      out.add(result);
+    }
+    return out.toBytes().sublist(0, keyLength);
+  }
+
+  String _toHex(Uint8List bytes) =>
+      bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+
+  Uint8List _fromHex(String hex) {
+    final out = <int>[];
+    for (var i = 0; i < hex.length; i += 2) {
+      out.add(int.parse(hex.substring(i, i + 2), radix: 16));
+    }
+    return Uint8List.fromList(out);
+  }
+
+  /// Real RFC 6238 TOTP verification (HMAC-SHA1, 30s step, 6 digits).
+  /// Replaces the previous check that only validated length==6 & numeric
+  /// (which accepted ANY 6-digit code — a 2FA bypass).
+  bool _verifyTwoFactor(String secret, String code) {
+    if (code.length != 6) return false;
+    final timeStep = DateTime.now().millisecondsSinceEpoch ~/ 1000 ~/ 30;
+    final keyBytes = _base32Decode(secret.toUpperCase());
+    // Allow a +/-1 window to tolerate clock drift.
+    for (var offset = -1; offset <= 1; offset++) {
+      final counter = timeStep + offset;
+      final msg = ByteData(8)..setInt64(0, counter);
+      final hmac = crypto.Hmac(crypto.sha1, keyBytes).convert(msg.buffer.asUint8List()).bytes;
+      final offsetIdx = hmac[hmac.length - 1] & 0x0f;
+      final binary = ((hmac[offsetIdx] & 0x7f) << 24) |
+          ((hmac[offsetIdx + 1] & 0xff) << 16) |
+          ((hmac[offsetIdx + 2] & 0xff) << 8) |
+          (hmac[offsetIdx + 3] & 0xff);
+      final expected = (binary % 1000000).toString().padLeft(6, '0');
+      if (_constantTimeEquals(code, expected)) return true;
+    }
+    return false;
+  }
+
+  bool _constantTimeEquals(String a, String b) {
+    if (a.length != b.length) return false;
+    var diff = 0;
+    for (var i = 0; i < a.length; i++) {
+      diff |= a.codeUnitAt(i) ^ b.codeUnitAt(i);
+    }
+    return diff == 0;
+  }
+
+  Uint8List _base32Decode(String input) {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    final cleaned = input.replaceAll('=', '');
+    var bits = 0, value = 0;
+    final out = <int>[];
+    for (final ch in cleaned.split('')) {
+      final idx = alphabet.indexOf(ch.toUpperCase());
+      if (idx < 0) continue;
+      value = (value << 5) | idx;
+      bits += 5;
+      if (bits >= 8) {
+        out.add((value >> (bits - 8)) & 0xff);
+        bits -= 8;
+      }
+    }
+    return Uint8List.fromList(out);
+  }
 }

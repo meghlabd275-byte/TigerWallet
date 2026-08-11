@@ -34,7 +34,7 @@ fun ReceiveScreenContent() {
     var selectedChain by remember { mutableStateOf("Ethereum") }
     var showCopied by remember { mutableStateOf(false) }
     
-    val walletAddress = "0x742d35Cc6634C0532925a3b844Bc9e7595f1234"
+    var walletAddress by remember { mutableStateOf("") }
     val chains = listOf("Ethereum", "BNB Chain", "Polygon", "Arbitrum", "Optimism", "Avalanche", "Solana", "TRON")
     val context = LocalContext.current
 

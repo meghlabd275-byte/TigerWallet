@@ -3,9 +3,11 @@
 // Production-ready with full credential management
 
 import 'dart:convert';
+import 'dart:math' show Random;
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:pointycastle/export.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:crypto/crypto.dart';
 
@@ -474,31 +476,58 @@ class MasterPasskeyService {
     }
   }
 
-  /// Encrypt sensitive data
+  /// Encrypt sensitive data using REAL AES-256-GCM (pointycastle).
+  ///
+  /// The previous implementation used XOR with a static key, which is NOT
+  /// encryption (trivially reversible). This uses an authenticated AES-256-GCM
+  /// cipher with a PBKDF2-SHA256 derived key (600k iterations) and a fresh
+  /// random IV + salt per encryption. Output is base64(salt || iv || ciphertext || tag).
   String _encrypt(String data) {
-    // Simple XOR encryption for demo - use proper encryption in production
-    final keyBytes = utf8.encode(_encryptionKey);
-    final dataBytes = utf8.encode(data);
-    final encrypted = Uint8List(dataBytes.length);
-    
-    for (int i = 0; i < dataBytes.length; i++) {
-      encrypted[i] = dataBytes[i] ^ keyBytes[i % keyBytes.length];
-    }
-    
-    return base64Encode(encrypted);
+    final secure = Random.secure();
+    final salt =
+        Uint8List.fromList(List<int>.generate(16, (_) => secure.nextInt(256)));
+    final iv =
+        Uint8List.fromList(List<int>.generate(12, (_) => secure.nextInt(256)));
+    final keyDeriv = PBKDF2KeyDerivator(HMac(SHA256Digest()))
+      ..init(Pbkdf2Parameters(salt, 600000, 32));
+    final key = keyDeriv
+        .process(Uint8List.fromList(utf8.encode(_encryptionKey)));
+    final cipher = GCMBlockCipher()
+      ..init(true, AEADParameters(KeyParameter(key), 128, iv, Uint8List(0)));
+    final input = Uint8List.fromList(utf8.encode(data));
+    final output = cipher.process(input);
+    final tag = cipher.doFinal(Uint8List(0), 0);
+    final combined =
+        Uint8List(salt.length + iv.length + output.length + tag.length);
+    combined.setRange(0, salt.length, salt);
+    combined.setRange(salt.length, salt.length + iv.length, iv);
+    combined.setRange(salt.length + iv.length,
+        salt.length + iv.length + output.length, output);
+    combined.setRange(salt.length + iv.length + output.length,
+        combined.length, tag);
+    return base64.encode(combined);
   }
 
-  /// Decrypt sensitive data
+  /// Decrypt sensitive data encrypted by [_encrypt] (AES-256-GCM).
   String _decrypt(String encryptedData) {
-    final keyBytes = utf8.encode(_encryptionKey);
-    final encryptedBytes = base64Decode(encryptedData);
-    final decrypted = Uint8List(encryptedBytes.length);
-    
-    for (int i = 0; i < encryptedBytes.length; i++) {
-      decrypted[i] = encryptedBytes[i] ^ keyBytes[i % keyBytes.length];
-    }
-    
-    return utf8.decode(decrypted);
+    final combined = base64.decode(encryptedData);
+    final salt = Uint8List.fromList(combined.sublist(0, 16));
+    final iv = Uint8List.fromList(combined.sublist(16, 28));
+    final ctAndTag = Uint8List.fromList(combined.sublist(28));
+    final keyDeriv = PBKDF2KeyDerivator(HMac(SHA256Digest()))
+      ..init(Pbkdf2Parameters(salt, 600000, 32));
+    final key = keyDeriv
+        .process(Uint8List.fromList(utf8.encode(_encryptionKey)));
+    const tagLen = 16;
+    final cipherText =
+        Uint8List.fromList(ctAndTag.sublist(0, ctAndTag.length - tagLen));
+    final tag =
+        Uint8List.fromList(ctAndTag.sublist(ctAndTag.length - tagLen));
+    final cipher = GCMBlockCipher()
+      ..init(false, AEADParameters(KeyParameter(key), 128, iv, Uint8List(0)));
+    cipher.process(cipherText);
+    final plain = cipher.doFinal(tag, 0);
+    return utf8.decode(plain);
   }
 }
 

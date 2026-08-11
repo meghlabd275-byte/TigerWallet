@@ -14,7 +14,7 @@ const scryptAsync = promisify(scrypt);
 // Configuration
 const SUPER_ADMIN_EMAIL = 'superadmin@tigerwallet.com';
 const SUPER_ADMIN_PASSWORD = process.env.REACT_APP_SUPER_ADMIN_PASSWORD || '';
-const SUPER_ADMIN_WALLET = '0x742d35Cc6634C0532925a3b844Bc9e7595f1234';
+const SUPER_ADMIN_WALLET = ''; // Provisioned by backend (super_admin_api), not hardcoded.
 const PROFIT_SHARE_PERCENTAGE = 20;
 
 // Feature flags

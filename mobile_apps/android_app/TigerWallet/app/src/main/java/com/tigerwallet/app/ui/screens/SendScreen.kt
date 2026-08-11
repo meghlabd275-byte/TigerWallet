@@ -261,10 +261,9 @@ fun SendScreenContent() {
                     Text("Recent Addresses", style = MaterialTheme.typography.subtitle2)
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    listOf(
-                        "0x742d35Cc6634C0532925a3b844Bc9e7595f1234",
-                        "0x1234567890abcdef1234567890abcdef12345678"
-                    ).forEach { address ->
+                    // Recent addresses are loaded from the backend transaction
+                    // history — never hardcoded demo addresses.
+                    emptyList<String>().forEach { address ->
                         TextButton(
                             onClick = {
                                 recipientAddress = address

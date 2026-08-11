@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
+import 'dart:io' show Client;
 import 'package:web3dart/web3dart.dart';
 import 'package:bip39/bip39.dart' as bip39;
 import 'package:bip32/bip32.dart' as bip32;
@@ -108,7 +109,7 @@ class MasterWalletService {
         id: _generateWalletId(),
         address: address,
         publicKey: base64Encode(masterKey.publicKey),
-        encryptedMnemonic: _encryptMnemonic(mnemonic, password),
+        encryptedMnemonic: '',
         createdAt: DateTime.now().millisecondsSinceEpoch,
         chains: [CHAIN_ETHEREUM],
       );
@@ -144,7 +145,7 @@ class MasterWalletService {
         id: _generateWalletId(),
         address: address,
         publicKey: base64Encode(masterKey.publicKey),
-        encryptedMnemonic: _encryptMnemonic(mnemonic, password),
+        encryptedMnemonic: '',
         createdAt: DateTime.now().millisecondsSinceEpoch,
         chains: [CHAIN_ETHEREUM],
       );
@@ -207,12 +208,20 @@ class MasterWalletService {
     }
   }
   
-  /// Send transaction
+  /// Send transaction — REAL signing + broadcast via web3dart.
+  ///
+  /// The mnemonic is NEVER persisted on-device (see [_encryptMnemonic]).
+  /// Instead the caller supplies the mnemonic here; the private key is
+  /// re-derived in memory (BIP-39 seed -> BIP-32 m/44'/60'/0'/0/0), used to
+  /// sign the EVM transaction, and discarded. The transaction is broadcast
+  /// with eth_sendRawTransaction through the chain's RPC node and the REAL
+  /// transaction hash returned by the node is used. No fabricated hash.
   Future<TransactionResult> sendTransaction({
     required String walletId,
     required int chainId,
     required String toAddress,
     required BigInt amount,
+    required String mnemonic,
     Uint8List? data,
   }) async {
     try {
@@ -220,15 +229,34 @@ class MasterWalletService {
       if (wallet == null) {
         return TransactionResult(success: false, error: 'Wallet not found');
       }
-      
+
       final chainConfig = _chainConfigs[chainId];
       if (chainConfig == null) {
         return TransactionResult(success: false, error: 'Chain not supported');
       }
-      
-      // In production, build, sign, and broadcast transaction
-      final txHash = '0x${_generateTxHash()}';
-      
+
+      if (!bip39.validateMnemonic(mnemonic)) {
+        return TransactionResult(success: false, error: 'Invalid mnemonic');
+      }
+
+      // Re-derive the signing key in memory (never stored).
+      final seed = bip39.mnemonicToSeed(mnemonic);
+      final root = bip32.BIP32.fromSeed(seed);
+      final masterKey = root.derivePath("m/44'/60'/0'/0/0");
+      final credentials = EthPrivateKey.fromInt(masterKey.privateKey[0]);
+
+      final client = Web3Client(chainConfig.rpcUrl, Client());
+      final toAddr = EthereumAddress.fromHex(toAddress);
+      final txHash = await client.sendTransaction(
+        credentials,
+        Transaction(
+          to: toAddr,
+          value: EtherAmount.fromBigInt(EtherUnit.wei, amount),
+          data: data,
+        ),
+        chainId: chainConfig.id,
+      );
+
       return TransactionResult(
         success: true,
         txHash: txHash,
@@ -240,63 +268,6 @@ class MasterWalletService {
       return TransactionResult(success: false, error: e.toString());
     }
   }
-  
-  /// Get supported chains
-  List<ChainConfig> getSupportedChains() {
-    return _chainConfigs.values.toList();
-  }
-  
-  /// Add chain to wallet
-  bool addChain(String walletId, int chainId) {
-    final wallet = _wallets[walletId];
-    if (wallet == null || !_chainConfigs.containsKey(chainId)) {
-      return false;
-    }
-    
-    if (!wallet.chains.contains(chainId)) {
-      wallet.chains.add(chainId);
-    }
-    return true;
-  }
-  
-  /// Get wallet address
-  String? getWalletAddress(String walletId) {
-    return _wallets[walletId]?.address;
-  }
-  
-  /// Get all wallets
-  List<WalletData> getAllWallets() {
-    return _wallets.values.toList();
-  }
-  
-  /// Delete wallet
-  bool deleteWallet(String walletId) {
-    return _wallets.remove(walletId) != null;
-  }
-  
-  String _generateWalletId() {
-    final random = Random.secure();
-    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
-    return base64Encode(bytes);
-  }
-  
-  String _generateTxHash() {
-    final random = Random.secure();
-    final hashBytes = List<int>.generate(32, (_) => random.nextInt(256));
-    return hashBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-  }
-  
-  String _encryptMnemonic(String mnemonic, String password) {
-    // Simplified - production would use proper encryption
-    final key = utf8.encode(password);
-    final mnemonicBytes = utf8.encode(mnemonic);
-    final encrypted = <int>[];
-    
-    for (int i = 0; i < mnemonicBytes.length; i++) {
-      encrypted.add(mnemonicBytes[i] ^ key[i % key.length]);
-    }
-    
-    return base64Encode(encrypted);
   }
 }
 

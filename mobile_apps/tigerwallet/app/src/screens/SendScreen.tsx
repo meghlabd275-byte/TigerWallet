@@ -159,7 +159,6 @@ const SendScreen: React.FC = () => {
                   'QR Scanner',
                   'Camera QR scanning would open here.\n\nSupported chains:\n• Ethereum\n• Bitcoin\n• Solana\n• TRON\n• And more...',
                   [
-                    { text: 'Demo: Paste Sample Address', onPress: () => setRecipient('0x742d35Cc6634C0532925a3b844Bc9e7595f1234') },
                     { text: 'Cancel', style: 'cancel' }
                   ]
                 );

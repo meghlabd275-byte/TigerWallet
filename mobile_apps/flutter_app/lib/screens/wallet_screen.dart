@@ -41,68 +41,18 @@ class _WalletScreenState extends State<WalletScreen> {
         setState(() {
           _wallets = List<Map<String, dynamic>>.from(data['wallets'] ?? []);
         });
+      } else {
+        // Honest empty state on backend failure — never show fabricated
+        // demo wallets with fake balances/addresses.
+        setState(() => _wallets = []);
       }
     } catch (e) {
-      // Load demo wallets on error
-      _loadDemoWallets();
+      // Honest empty state on network error — no demo wallets.
+      setState(() => _wallets = []);
     }
     setState(() => _isLoading = false);
   }
 
-  void _loadDemoWallets() {
-    setState(() {
-      _wallets = [
-        {
-          'chain': 'Ethereum',
-          'chain_id': 1,
-          'symbol': 'ETH',
-          'address': '0x742d35Cc6634C0532925a3b844Bc9e7595f1234',
-          'balance': '1.5432',
-          'balance_usd': '2847.23'
-        },
-        {
-          'chain': 'BNB Chain',
-          'chain_id': 56,
-          'symbol': 'BNB',
-          'address': '0x1234567890abcdef1234567890abcdef12345678',
-          'balance': '5.2341',
-          'balance_usd': '1523.45'
-        },
-        {
-          'chain': 'Polygon',
-          'chain_id': 137,
-          'symbol': 'MATIC',
-          'address': '0xabcdef1234567890abcdef1234567890abcdef12',
-          'balance': '2500.0',
-          'balance_usd': '1875.00'
-        },
-        {
-          'chain': 'Solana',
-          'chain_id': 101,
-          'symbol': 'SOL',
-          'address': '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU',
-          'balance': '45.67',
-          'balance_usd': '4567.00'
-        },
-        {
-          'chain': 'Avalanche',
-          'chain_id': 43114,
-          'symbol': 'AVAX',
-          'address': '0xdef1234567890abcdef1234567890abcdef123456',
-          'balance': '25.5',
-          'balance_usd': '765.00'
-        },
-        {
-          'chain': 'Arbitrum',
-          'chain_id': 42161,
-          'symbol': 'ETH',
-          'address': '0x9876543210fedcba9876543210fedcba98765432',
-          'balance': '0.8923',
-          'balance_usd': '1645.23'
-        },
-      ];
-    });
-  }
 
   void _copyToClipboard(String text) {
     Clipboard.setData(ClipboardData(text: text));
