@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 
 interface GasPrice {
   chainId: number;
@@ -72,11 +73,14 @@ function formatUSD(usd: number): string {
 }
 
 function ChainCard({ chain, gasPrice, onSelect, isSelected }: any) {
+  const { isDark } = useTheme();
   return (
     <div
       onClick={onSelect}
       className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-        isSelected ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20' : 'border-slate-200 dark:border-slate-700 hover:border-orange-300'
+        isSelected
+          ? (isDark ? 'border-orange-500 bg-orange-900/20' : 'border-orange-500 bg-orange-50')
+          : (isDark ? 'border-slate-700 hover:border-orange-300' : 'border-slate-200 hover:border-orange-300')
       }`}
     >
       <div className="flex items-center gap-3 mb-3">
@@ -84,28 +88,28 @@ function ChainCard({ chain, gasPrice, onSelect, isSelected }: any) {
           {chain.symbol[0]}
         </div>
         <div>
-          <div className="font-semibold text-slate-900 dark:text-white">{chain.name}</div>
-          <div className="text-sm text-slate-500 dark:text-slate-400">{chain.symbol}</div>
+          <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{chain.name}</div>
+          <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{chain.symbol}</div>
         </div>
       </div>
       {gasPrice ? (
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
-            <span className="text-slate-500 dark:text-slate-400">Fast</span>
-            <span className="font-medium text-slate-900 dark:text-white">{formatGwei(gasPrice.fast)}</span>
+            <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Fast</span>
+            <span className={`font-medium ${isDark ? 'text-white' : 'text-slate-900'}`}>{formatGwei(gasPrice.fast)}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-slate-500 dark:text-slate-400">Standard</span>
-            <span className="font-medium text-slate-900 dark:text-white">{formatGwei(gasPrice.standard)}</span>
+            <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Standard</span>
+            <span className={`font-medium ${isDark ? 'text-white' : 'text-slate-900'}`}>{formatGwei(gasPrice.standard)}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-slate-500 dark:text-slate-400">Slow</span>
-            <span className="font-medium text-slate-900 dark:text-white">{formatGwei(gasPrice.slow)}</span>
+            <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Slow</span>
+            <span className={`font-medium ${isDark ? 'text-white' : 'text-slate-900'}`}>{formatGwei(gasPrice.slow)}</span>
           </div>
-          <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+          <div className={`pt-2 border-t ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
             <div className="flex justify-between text-sm">
-              <span className="text-slate-500 dark:text-slate-400">Est. Cost</span>
-              <span className="font-semibold text-orange-600 dark:text-orange-400">{formatUSD(gasPrice.standardUsd)}</span>
+              <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Est. Cost</span>
+              <span className={`font-semibold ${isDark ? 'text-orange-400' : 'text-orange-600'}`}>{formatUSD(gasPrice.standardUsd)}</span>
             </div>
           </div>
         </div>
@@ -117,6 +121,7 @@ function ChainCard({ chain, gasPrice, onSelect, isSelected }: any) {
 }
 
 function CostEstimator({ selectedChain }: { selectedChain: number | null }) {
+  const { isDark } = useTheme();
   const [operation, setOperation] = useState('transfer');
   const [estimate, setEstimate] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -135,14 +140,14 @@ function CostEstimator({ selectedChain }: { selectedChain: number | null }) {
   if (!selectedChain) return null;
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
-      <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Cost Estimator</h3>
+    <div className={`rounded-xl p-6 border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+      <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-slate-900'}`}>Cost Estimator</h3>
       <div className="mb-4">
-        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Operation Type</label>
+        <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Operation Type</label>
         <select
           value={operation}
           onChange={(e) => setOperation(e.target.value)}
-          className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+          className={`w-full px-4 py-2 rounded-lg border ${isDark ? 'border-slate-600 bg-slate-700 text-white' : 'border-slate-300 bg-white text-slate-900'}`}
         >
           <option value="transfer">Token Transfer</option>
           <option value="swap">DEX Swap</option>
@@ -157,17 +162,17 @@ function CostEstimator({ selectedChain }: { selectedChain: number | null }) {
       ) : estimate ? (
         <div className="space-y-3">
           <div className="flex justify-between">
-            <span className="text-slate-500 dark:text-slate-400">Gas Limit</span>
-            <span className="font-medium text-slate-900 dark:text-white">{estimate.gasLimit?.toLocaleString()}</span>
+            <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Gas Limit</span>
+            <span className={`font-medium ${isDark ? 'text-white' : 'text-slate-900'}`}>{estimate.gasLimit?.toLocaleString()}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-500 dark:text-slate-400">Gas Price</span>
-            <span className="font-medium text-slate-900 dark:text-white">{formatGwei(estimate.gasPrice)}</span>
+            <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Gas Price</span>
+            <span className={`font-medium ${isDark ? 'text-white' : 'text-slate-900'}`}>{formatGwei(estimate.gasPrice)}</span>
           </div>
-          <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
+          <div className={`pt-3 border-t ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
             <div className="flex justify-between">
-              <span className="text-slate-700 dark:text-slate-300 font-medium">Total Cost</span>
-              <span className="text-xl font-bold text-orange-600 dark:text-orange-400">{formatUSD(estimate.totalCostUsd)}</span>
+              <span className={`font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Total Cost</span>
+              <span className={`text-xl font-bold ${isDark ? 'text-orange-400' : 'text-orange-600'}`}>{formatUSD(estimate.totalCostUsd)}</span>
             </div>
           </div>
         </div>
@@ -179,6 +184,7 @@ function CostEstimator({ selectedChain }: { selectedChain: number | null }) {
 }
 
 export default function GasTrackerPage() {
+  const { isDark } = useTheme();
   const [prices, setPrices] = useState<Record<string, GasPrice>>({});
   const [selectedChain, setSelectedChain] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -199,19 +205,19 @@ export default function GasTrackerPage() {
   }, [loadPrices]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10">
+    <div className={`min-h-screen bg-gradient-to-br ${isDark ? 'from-slate-900 to-slate-800' : 'from-slate-50 to-slate-100'}`}>
+      <header className={`border-b sticky top-0 z-10 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
               <a href="/wallet" className="text-2xl">🐯</a>
               <div>
-                <h1 className="text-xl font-bold text-slate-900 dark:text-white">Gas Tracker</h1>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Real-time gas prices across all chains</p>
+                <h1 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Gas Tracker</h1>
+                <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Real-time gas prices across all chains</p>
               </div>
             </div>
             <div className="flex items-center gap-4">
-              {lastUpdate && <span className="text-sm text-slate-500 dark:text-slate-400">Updated: {lastUpdate.toLocaleTimeString()}</span>}
+              {lastUpdate && <span className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Updated: {lastUpdate.toLocaleTimeString()}</span>}
               <button onClick={loadPrices} disabled={loading} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium disabled:opacity-50">
                 {loading ? 'Refreshing...' : 'Refresh'}
               </button>
@@ -221,22 +227,22 @@ export default function GasTrackerPage() {
       </header>
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
-            <div className="text-3xl font-bold text-slate-900 dark:text-white">{CHAIN_CONFIG.length}</div>
-            <div className="text-sm text-slate-500 dark:text-slate-400">Supported Chains</div>
+          <div className={`rounded-xl p-6 border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+            <div className={`text-3xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{CHAIN_CONFIG.length}</div>
+            <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Supported Chains</div>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
+          <div className={`rounded-xl p-6 border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
             <div className="text-3xl font-bold text-green-500">{Object.keys(prices).length}</div>
-            <div className="text-sm text-slate-500 dark:text-slate-400">Active Networks</div>
+            <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Active Networks</div>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
+          <div className={`rounded-xl p-6 border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
             <div className="text-3xl font-bold text-orange-500">{lastUpdate ? '30s' : '--'}</div>
-            <div className="text-sm text-slate-500 dark:text-slate-400">Update Interval</div>
+            <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Update Interval</div>
           </div>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Gas Prices by Chain</h2>
+            <h2 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-slate-900'}`}>Gas Prices by Chain</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {CHAIN_CONFIG.map((chain) => (
                 <ChainCard key={chain.id} chain={chain} gasPrice={prices[chain.name] || null} onSelect={() => setSelectedChain(chain.id)} isSelected={selectedChain === chain.id} />
@@ -245,9 +251,9 @@ export default function GasTrackerPage() {
           </div>
           <div>
             <CostEstimator selectedChain={selectedChain} />
-            <div className="mt-6 bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Gas Saving Tips</h3>
-              <ul className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
+            <div className={`mt-6 rounded-xl p-6 border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+              <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-slate-900'}`}>Gas Saving Tips</h3>
+              <ul className={`space-y-3 text-sm ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                 <li className="flex items-start gap-2"><span className="text-green-500">✓</span><span>Set appropriate slippage to avoid failed transactions</span></li>
                 <li className="flex items-start gap-2"><span className="text-green-500">✓</span><span>Avoid peak hours (9am-5pm EST) for lower fees</span></li>
                 <li className="flex items-start gap-2"><span className="text-green-500">✓</span><span>Use Layer 2 networks for cheaper transactions</span></li>

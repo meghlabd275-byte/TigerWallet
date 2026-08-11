@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 
 interface WebAuthnCredential {
   credentialId: string;
@@ -28,6 +29,8 @@ export default function BiometricAuthPage() {
       loadCredentials();
     }
   }, []);
+
+  const { isDark } = useTheme();
 
   async function loadCredentials() {
     try {
@@ -188,21 +191,21 @@ export default function BiometricAuthPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+    <div className={`min-h-screen bg-gradient-to-br ${isDark ? 'from-slate-900 to-slate-800' : 'from-slate-50 to-slate-100'}`}>
       {/* Header */}
-      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10">
+      <header className={`border-b sticky top-0 z-10 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
               <a href="/wallet" className="text-2xl">🐯</a>
               <div>
-                <h1 className="text-xl font-bold text-slate-900 dark:text-white">Biometric Authentication</h1>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
+                <h1 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Biometric Authentication</h1>
+                <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                   Secure your wallet with biometrics
                 </p>
               </div>
             </div>
-            <a href="/security" className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:text-orange-500">
+            <a href="/security" className={`hover:text-orange-500 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
               ← Back to Security
             </a>
           </div>
@@ -212,12 +215,12 @@ export default function BiometricAuthPage() {
       <main className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Status */}
         {!isSupported && (
-          <div className="mb-6 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4">
+          <div className={`mb-6 border rounded-xl p-4 ${isDark ? 'bg-yellow-900/20 border-yellow-800' : 'bg-yellow-50 border-yellow-200'}`}>
             <div className="flex items-center gap-3">
               <span className="text-2xl">⚠️</span>
               <div>
-                <div className="font-medium text-yellow-800 dark:text-yellow-200">WebAuthn Not Supported</div>
-                <div className="text-sm text-yellow-700 dark:text-yellow-300">
+                <div className={`font-medium ${isDark ? 'text-yellow-200' : 'text-yellow-800'}`}>WebAuthn Not Supported</div>
+                <div className={`text-sm ${isDark ? 'text-yellow-300' : 'text-yellow-700'}`}>
                   Your browser doesn't support WebAuthn. Please use a modern browser.
                 </div>
               </div>
@@ -226,12 +229,12 @@ export default function BiometricAuthPage() {
         )}
 
         {isAuthenticated && (
-          <div className="mb-6 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4">
+          <div className={`mb-6 border rounded-xl p-4 ${isDark ? 'bg-green-900/20 border-green-800' : 'bg-green-50 border-green-200'}`}>
             <div className="flex items-center gap-3">
               <span className="text-2xl">✅</span>
               <div>
-                <div className="font-medium text-green-800 dark:text-green-200">Authenticated</div>
-                <div className="text-sm text-green-700 dark:text-green-300">
+                <div className={`font-medium ${isDark ? 'text-green-200' : 'text-green-800'}`}>Authenticated</div>
+                <div className={`text-sm ${isDark ? 'text-green-300' : 'text-green-700'}`}>
                   Biometric authentication successful!
                 </div>
               </div>
@@ -240,17 +243,17 @@ export default function BiometricAuthPage() {
         )}
 
         {error && (
-          <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4">
+          <div className={`mb-6 border rounded-xl p-4 ${isDark ? 'bg-red-900/20 border-red-800' : 'bg-red-50 border-red-200'}`}>
             <div className="flex items-center gap-3">
               <span className="text-2xl">❌</span>
-              <div className="text-red-700 dark:text-red-300">{error}</div>
+              <div className={isDark ? 'text-red-300' : 'text-red-700'}>{error}</div>
             </div>
           </div>
         )}
 
         {/* Authenticate Section */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6 mb-6">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
+        <div className={`rounded-xl border p-6 mb-6 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+          <h2 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-slate-900'}`}>
             🔐 Authenticate
           </h2>
           
@@ -269,20 +272,20 @@ export default function BiometricAuthPage() {
             )}
           </button>
 
-          <p className="mt-4 text-sm text-slate-500 dark:text-slate-400 text-center">
+          <p className={`mt-4 text-sm text-center ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
             Use fingerprint, face recognition, or device PIN to authenticate
           </p>
         </div>
 
         {/* Register New Device */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6 mb-6">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
+        <div className={`rounded-xl border p-6 mb-6 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+          <h2 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-slate-900'}`}>
             ➕ Add New Device
           </h2>
           
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+              <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                 Device Name
               </label>
               <input
@@ -290,14 +293,14 @@ export default function BiometricAuthPage() {
                 value={deviceName}
                 onChange={(e) => setDeviceName(e.target.value)}
                 placeholder="e.g., iPhone 15 Pro, MacBook Pro"
-                className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                className={`w-full px-4 py-3 rounded-lg border ${isDark ? 'border-slate-600 bg-slate-700 text-white' : 'border-slate-300 bg-white text-slate-900'}`}
               />
             </div>
 
             <button
               onClick={registerCredential}
               disabled={loading || !isSupported || !deviceName}
-              className="w-full py-3 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-900 dark:text-white rounded-lg font-medium disabled:opacity-50"
+              className={`w-full py-3 rounded-lg font-medium disabled:opacity-50 ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-900'}`}
             >
               {loading ? 'Registering...' : 'Register This Device'}
             </button>
@@ -305,13 +308,13 @@ export default function BiometricAuthPage() {
         </div>
 
         {/* Registered Devices */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
+        <div className={`rounded-xl border p-6 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+          <h2 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-slate-900'}`}>
             📱 Registered Devices
           </h2>
           
           {credentials.length === 0 ? (
-            <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+            <div className={`text-center py-8 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
               <div className="text-4xl mb-3">📵</div>
               <p>No devices registered yet</p>
             </div>
@@ -320,15 +323,15 @@ export default function BiometricAuthPage() {
               {credentials.map((cred) => (
                 <div
                   key={cred.credentialId}
-                  className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg"
+                  className={`flex items-center justify-between p-4 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-50'}`}
                 >
                   <div className="flex items-center gap-3">
                     <span className="text-2xl">📱</span>
                     <div>
-                      <div className="font-medium text-slate-900 dark:text-white">
+                      <div className={`font-medium ${isDark ? 'text-white' : 'text-slate-900'}`}>
                         {cred.deviceName}
                       </div>
-                      <div className="text-xs text-slate-500">
+                      <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                         Added: {new Date(cred.createdAt).toLocaleDateString()}
                       </div>
                     </div>
@@ -346,12 +349,12 @@ export default function BiometricAuthPage() {
         </div>
 
         {/* Security Info */}
-        <div className="mt-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
+        <div className={`mt-6 border rounded-xl p-4 ${isDark ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-200'}`}>
           <div className="flex items-start gap-3">
             <span className="text-2xl">🔒</span>
             <div>
-              <div className="font-medium text-blue-800 dark:text-blue-200">Security Information</div>
-              <ul className="mt-2 text-sm text-blue-700 dark:text-blue-300 space-y-1">
+              <div className={`font-medium ${isDark ? 'text-blue-200' : 'text-blue-800'}`}>Security Information</div>
+              <ul className={`mt-2 text-sm space-y-1 ${isDark ? 'text-blue-300' : 'text-blue-700'}`}>
                 <li>• Biometric data never leaves your device</li>
                 <li>• Credentials are stored securely in hardware</li>
                 <li>• Each device requires separate registration</li>

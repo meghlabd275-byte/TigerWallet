@@ -286,7 +286,7 @@ const sessionManager = {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { theme } = useTheme();
+  const { isDark } = useTheme();
 
   // State
   const [mode, setMode] = useState<'login' | 'register' | 'verify' | '2fa'>('login');
@@ -544,7 +544,7 @@ export default function LoginPage() {
   // ============================================================================
 
   return (
-    <div className="min-h-screen bg-slate-950 dark:bg-slate-950">
+    <div className={`min-h-screen ${isDark ? 'bg-slate-950' : 'bg-gray-50'}`}>
       <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10">
         <div className="logo text-2xl font-bold text-orange-500">🐯 TigerWallet</div>
         <ThemeToggle />
@@ -566,27 +566,27 @@ export default function LoginPage() {
 
           {/* Login Form */}
           {mode === 'login' && (
-            <div className="bg-slate-900/80 dark:bg-slate-900/80 bg-white/50 rounded-2xl p-8 backdrop-blur-xl border border-slate-800">
-              <h1 className="text-3xl font-bold text-white dark:text-white text-slate-900 mb-2">Welcome Back</h1>
-              <p className="text-slate-400 dark:text-slate-500 mb-8">Sign in to your TigerWallet account</p>
+            <div className={`rounded-2xl p-8 backdrop-blur-xl border ${isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white/50 border-slate-200'}`}>
+              <h1 className={`text-3xl font-bold mb-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>Welcome Back</h1>
+              <p className={`mb-8 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Sign in to your TigerWallet account</p>
 
               <form onSubmit={handleLogin}>
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-slate-300 dark:text-slate-400 text-slate-700 mb-2">
+                  <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
                     Email Address
                   </label>
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-800/50 dark:bg-slate-800/50 bg-white/50 border border-slate-700 rounded-lg text-white dark:text-white text-slate-900 focus:outline-none focus:border-orange-500"
+                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-orange-500 ${isDark ? 'bg-slate-800/50 border-slate-700 text-white' : 'bg-white/50 border-slate-200 text-slate-900'}`}
                     placeholder="admin@tigerwallet.com"
                     required
                   />
                 </div>
 
                 <div className="mb-6">
-                  <label className="block text-sm font-medium text-slate-300 dark:text-slate-400 text-slate-700 mb-2">
+                  <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
                     Password
                   </label>
                   <div className="relative">
@@ -594,7 +594,7 @@ export default function LoginPage() {
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-800/50 dark:bg-slate-800/50 bg-white/50 border border-slate-700 rounded-lg text-white dark:text-white text-slate-900 focus:outline-none focus:border-orange-500 pr-12"
+                      className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-orange-500 pr-12 ${isDark ? 'bg-slate-800/50 border-slate-700 text-white' : 'bg-white/50 border-slate-200 text-slate-900'}`}
                       placeholder="••••••••••••"
                       required
                     />
@@ -618,7 +618,7 @@ export default function LoginPage() {
               </form>
 
               <div className="mt-6 text-center">
-                <p className="text-slate-400 dark:text-slate-500 text-slate-600">
+                <p className={isDark ? 'text-slate-500' : 'text-slate-600'}>
                   Don't have an account?{' '}
                   <button
                     onClick={() => {
@@ -642,41 +642,41 @@ export default function LoginPage() {
 
           {/* Register Form */}
           {mode === 'register' && (
-            <div className="bg-slate-900/80 dark:bg-slate-900/80 bg-white/50 rounded-2xl p-8 backdrop-blur-xl border border-slate-800">
-              <h1 className="text-3xl font-bold text-white dark:text-white text-slate-900 mb-2">Create Account</h1>
-              <p className="text-slate-400 dark:text-slate-500 mb-8">Join TigerWallet - The most secure Web3 wallet</p>
+            <div className={`rounded-2xl p-8 backdrop-blur-xl border ${isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white/50 border-slate-200'}`}>
+              <h1 className={`text-3xl font-bold mb-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>Create Account</h1>
+              <p className={`mb-8 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Join TigerWallet - The most secure Web3 wallet</p>
 
               <form onSubmit={handleRegister}>
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-slate-300 dark:text-slate-400 text-slate-700 mb-2">
+                  <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
                     Email Address
                   </label>
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-800/50 dark:bg-slate-800/50 bg-white/50 border border-slate-700 rounded-lg text-white dark:text-white text-slate-900 focus:outline-none focus:border-orange-500"
+                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-orange-500 ${isDark ? 'bg-slate-800/50 border-slate-700 text-white' : 'bg-white/50 border-slate-200 text-slate-900'}`}
                     placeholder="you@example.com"
                     required
                   />
                 </div>
 
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-slate-300 dark:text-slate-400 text-slate-700 mb-2">
+                  <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
                     Username
                   </label>
                   <input
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-800/50 dark:bg-slate-800/50 bg-white/50 border border-slate-700 rounded-lg text-white dark:text-white text-slate-900 focus:outline-none focus:border-orange-500"
+                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-orange-500 ${isDark ? 'bg-slate-800/50 border-slate-700 text-white' : 'bg-white/50 border-slate-200 text-slate-900'}`}
                     placeholder="tiger_user"
                     required
                   />
                 </div>
 
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-slate-300 dark:text-slate-400 text-slate-700 mb-2">
+                  <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
                     Password
                   </label>
                   <div className="relative">
@@ -684,7 +684,7 @@ export default function LoginPage() {
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => handlePasswordChange(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-800/50 dark:bg-slate-800/50 bg-white/50 border border-slate-700 rounded-lg text-white dark:text-white text-slate-900 focus:outline-none focus:border-orange-500 pr-12"
+                      className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-orange-500 pr-12 ${isDark ? 'bg-slate-800/50 border-slate-700 text-white' : 'bg-white/50 border-slate-200 text-slate-900'}`}
                       placeholder="••••••••••••"
                       required
                     />
@@ -706,14 +706,14 @@ export default function LoginPage() {
                 </div>
 
                 <div className="mb-6">
-                  <label className="block text-sm font-medium text-slate-300 dark:text-slate-400 text-slate-700 mb-2">
+                  <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
                     Confirm Password
                   </label>
                   <input
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-800/50 dark:bg-slate-800/50 bg-white/50 border border-slate-700 rounded-lg text-white dark:text-white text-slate-900 focus:outline-none focus:border-orange-500"
+                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-orange-500 ${isDark ? 'bg-slate-800/50 border-slate-700 text-white' : 'bg-white/50 border-slate-200 text-slate-900'}`}
                     placeholder="••••••••••••"
                     required
                   />
@@ -729,7 +729,7 @@ export default function LoginPage() {
               </form>
 
               <div className="mt-6 text-center">
-                <p className="text-slate-400 dark:text-slate-500 text-slate-600">
+                <p className={isDark ? 'text-slate-500' : 'text-slate-600'}>
                   Already have an account?{' '}
                   <button
                     onClick={() => {
@@ -747,20 +747,20 @@ export default function LoginPage() {
 
           {/* Verification Form */}
           {mode === 'verify' && (
-            <div className="bg-slate-900/80 dark:bg-slate-900/80 bg-white/50 rounded-2xl p-8 backdrop-blur-xl border border-slate-800">
-              <h1 className="text-3xl font-bold text-white dark:text-white text-slate-900 mb-2">Verify Email</h1>
-              <p className="text-slate-400 dark:text-slate-500 mb-8">Enter the verification code sent to your email</p>
+            <div className={`rounded-2xl p-8 backdrop-blur-xl border ${isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white/50 border-slate-200'}`}>
+              <h1 className={`text-3xl font-bold mb-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>Verify Email</h1>
+              <p className={`mb-8 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Enter the verification code sent to your email</p>
 
               <form onSubmit={handleVerify}>
                 <div className="mb-6">
-                  <label className="block text-sm font-medium text-slate-300 dark:text-slate-400 text-slate-700 mb-2">
+                  <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
                     Verification Code
                   </label>
                   <input
                     type="text"
                     value={verificationCode}
                     onChange={(e) => setVerificationCode(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-800/50 dark:bg-slate-800/50 bg-white/50 border border-slate-700 rounded-lg text-white dark:text-white text-slate-900 focus:outline-none focus:border-orange-500 text-center text-2xl tracking-widest"
+                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-orange-500 text-center text-2xl tracking-widest ${isDark ? 'bg-slate-800/50 border-slate-700 text-white' : 'bg-white/50 border-slate-200 text-slate-900'}`}
                     placeholder="000000"
                     maxLength={6}
                     required
@@ -780,9 +780,9 @@ export default function LoginPage() {
 
           {/* 2FA Setup Form */}
           {mode === '2fa' && (
-            <div className="bg-slate-900/80 dark:bg-slate-900/80 bg-white/50 rounded-2xl p-8 backdrop-blur-xl border border-slate-800">
-              <h1 className="text-3xl font-bold text-white dark:text-white text-slate-900 mb-2">Enable 2FA</h1>
-              <p className="text-slate-400 dark:text-slate-500 mb-8">Scan the QR code with your authenticator app</p>
+            <div className={`rounded-2xl p-8 backdrop-blur-xl border ${isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white/50 border-slate-200'}`}>
+              <h1 className={`text-3xl font-bold mb-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>Enable 2FA</h1>
+              <p className={`mb-8 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Scan the QR code with your authenticator app</p>
 
               <div className="text-center mb-6">
                 <img src={twoFactorQR} alt="2FA QR Code" className="mx-auto" />
@@ -794,14 +794,14 @@ export default function LoginPage() {
 
               <form onSubmit={handleVerify2FA}>
                 <div className="mb-6">
-                  <label className="block text-sm font-medium text-slate-300 dark:text-slate-400 text-slate-700 mb-2">
+                  <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
                     Enter 2FA Code
                   </label>
                   <input
                     type="text"
                     value={code2FA}
                     onChange={(e) => setCode2FA(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-800/50 dark:bg-slate-800/50 bg-white/50 border border-slate-700 rounded-lg text-white dark:text-white text-slate-900 focus:outline-none focus:border-orange-500 text-center text-2xl tracking-widest"
+                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-orange-500 text-center text-2xl tracking-widest ${isDark ? 'bg-slate-800/50 border-slate-700 text-white' : 'bg-white/50 border-slate-200 text-slate-900'}`}
                     placeholder="000000"
                     maxLength={6}
                     required

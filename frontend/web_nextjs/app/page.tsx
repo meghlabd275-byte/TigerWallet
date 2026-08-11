@@ -8,7 +8,7 @@ export default function Home() {
   const [swapFrom, setSwapFrom] = useState({ token: 'ETH', amount: '' })
   const [swapTo, setSwapTo] = useState({ token: 'USDT', amount: '' })
   const [slippage, setSlippage] = useState(0.5)
-  const { theme } = useTheme()
+  const { isDark } = useTheme()
 
   const popularTokens = ['ETH', 'USDT', 'USDC', 'BNB', 'MATIC', 'ARB', 'WBTC', 'DAI']
   const supportedChains = ['Ethereum', 'BNB Chain', 'Polygon', 'Arbitrum', 'Optimism', 'Base', 'Avalanche']
@@ -35,7 +35,7 @@ export default function Home() {
       <main className="flex-1 p-8 max-w-6xl mx-auto w-full">
         <div className="text-center py-12">
           <h1 className="text-5xl font-bold gradient-text mb-4">Multichain DEX Aggregator</h1>
-          <p className="text-xl text-slate-400 dark:text-slate-500">Swap across 19 chains, 20+ DEXs, with the best rates</p>
+          <p className={`text-xl ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Swap across 19 chains, 20+ DEXs, with the best rates</p>
         </div>
 
         <div className="swap-card">
@@ -47,15 +47,15 @@ export default function Home() {
             </select>
           </div>
 
-          <div className="bg-slate-900/60 dark:bg-slate-900/60 bg-white/50 rounded-xl p-6 mb-4">
+          <div className={`${isDark ? 'bg-slate-900/60 text-slate-50' : 'bg-white/50 text-slate-900'} rounded-xl p-6 mb-4`}>
             <div className="flex items-center gap-4 flex-wrap">
-              <span className="text-slate-400 dark:text-slate-500 min-w-[60px]">From</span>
+              <span className={`min-w-[60px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>From</span>
               <input 
                 type="number" 
                 placeholder="0.0" 
                 value={swapFrom.amount}
                 onChange={(e) => setSwapFrom({...swapFrom, amount: e.target.value})}
-                className="flex-1 bg-transparent border-none text-slate-50 dark:text-slate-50 text-slate-900 text-xl outline-none min-w-[100px]"
+                className={`flex-1 bg-transparent border-none text-xl outline-none min-w-[100px] ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
               />
               <div className="bg-orange-500/20 px-4 py-2 rounded-lg cursor-pointer">
                 <span>{swapFrom.token}</span>
@@ -65,13 +65,13 @@ export default function Home() {
             <button className="block mx-auto my-4 bg-orange-500/20 border-none text-orange-500 text-xl px-4 py-2 rounded-full cursor-pointer">↓</button>
 
             <div className="flex items-center gap-4 flex-wrap">
-              <span className="text-slate-400 dark:text-slate-500 min-w-[60px]">To</span>
+              <span className={`min-w-[60px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>To</span>
               <input 
                 type="number" 
                 placeholder="0.0" 
                 value={swapTo.amount}
                 onChange={(e) => setSwapTo({...swapTo, amount: e.target.value})}
-                className="flex-1 bg-transparent border-none text-slate-50 dark:text-slate-50 text-slate-900 text-xl outline-none min-w-[100px]"
+                className={`flex-1 bg-transparent border-none text-xl outline-none min-w-[100px] ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
               />
               <div className="bg-orange-500/20 px-4 py-2 rounded-lg cursor-pointer">
                 <span>{swapTo.token}</span>
@@ -80,7 +80,7 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-4 my-4">
-            <label className="text-slate-400 dark:text-slate-500">Slippage Tolerance: {slippage}%</label>
+            <label className={isDark ? 'text-slate-500' : 'text-slate-400'}>Slippage Tolerance: {slippage}%</label>
             <input 
               type="range" 
               min="0.1" 
@@ -125,7 +125,7 @@ export default function Home() {
         </div>
       </main>
 
-      <footer className="text-center p-8 border-t border-white/10 dark:border-white/10 border-black/10 text-slate-600 dark:text-slate-500">
+      <footer className={`text-center p-8 border-t ${isDark ? 'border-white/10 text-slate-500' : 'border-black/10 text-slate-600'}`}>
         <p>© 2026 TigerSwap - Enterprise DEX</p>
       </footer>
     </div>
