@@ -11,7 +11,15 @@ class AppConstants {
   // API Endpoints
   static const String baseURL = 'https://api.tigerwallet.io';
   static const String wsURL = 'wss://ws.tigerwallet.io';
-  
+}
+
+// Backend base URL for the canonical Go wallet_api (real key management &
+// signing). Override at build time via --dart-define=API_BASE_URL=... for
+// staging/production. Defaults to the local docker-compose service.
+const String API_BASE_URL =
+    String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:8443');
+
+class ApiConstants {
   // API Paths
   static const String apiV1 = '/api/v1';
   static const String authPath = '$apiV1/auth';

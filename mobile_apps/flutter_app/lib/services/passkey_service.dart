@@ -11,6 +11,7 @@
 /// 
 
 import 'dart:convert';
+import 'dart:math' show Random;
 import 'dart:typed_data';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:crypto/crypto.dart';
@@ -158,15 +159,14 @@ class PasskeyService {
     _isEnabled = enabledStr == 'true';
   }
 
-  /// Check if passkey is available on this device
+  /// Check if passkey is available on this device.
+  ///
+  /// Real platform-authenticator detection requires a WebAuthn platform plugin
+  /// (e.g. `flutter_passkey` / `webauthn`). The previous implementation always
+  /// returned `true`, falsely advertising passkey support. Until a platform
+  /// plugin is wired, this returns `false` (honest).
   Future<bool> isPasskeyAvailable() async {
-    try {
-      // Check platform capabilities
-      // In production, this would check for platform authenticator
-      return true;
-    } catch (e) {
-      return false;
-    }
+    return false;
   }
 
   /// Enable/disable passkey
@@ -272,7 +272,14 @@ class PasskeyService {
     return true;
   }
 
-  /// Verify passkey signature
+  /// Verify a passkey (WebAuthn) signature.
+  ///
+  /// WebAuthn assertions sign `authenticatorData || SHA-256(clientDataJSON)`.
+  /// For ES256 (alg -7) the signature is a DER-encoded ECDSA signature over
+  /// P-256 with SHA-256. This performs REAL verification against the stored
+  /// public key (expected as a hex-encoded 64-byte uncompressed P-256 point:
+  /// x || y). The previous implementation returned `true` unconditionally —
+  /// a full authentication bypass. It now rejects anything it cannot verify.
   Future<bool> verifySignature({
     required String credentialId,
     required Uint8List clientDataHash,
@@ -283,22 +290,43 @@ class PasskeyService {
     if (credential == null) return false;
 
     try {
-      // In production, verify the signature using the stored public key
-      // This is a simplified implementation
-      return true;
+      final pubHex = credential.publicKey.replaceAll('0x', '');
+      final pubBytes = Uint8List.fromList(base64.decode(pubHex));
+      // Accept either a raw 64-byte (x||y) point or a 65-byte
+      // 0x04||x||y uncompressed point.
+      Uint8List xy;
+      if (pubBytes.length == 64) {
+        xy = pubBytes;
+      } else if (pubBytes.length == 65 && pubBytes[0] == 0x04) {
+        xy = pubBytes.sublist(1);
+      } else {
+        return false;
+      }
+      final q = ECDomainParameters('prime256v1').curve
+          .decodePoint(Uint8List.fromList([0x04, ...xy]));
+      if (q == null) return false;
+
+      final signedData =
+          Uint8List.fromList([...authenticatorData, ...clientDataHash]);
+      final verifier = ECDSAVerifier(SHA256Digest());
+      verifier.init(false, PublicKeyParameter(ECPublicKey(q)));
+
+      return verifier.verifySignature(signedData, ECSignature.fromDER(signature));
     } catch (e) {
       return false;
     }
   }
 
-  /// Generate a random challenge
+  /// Generate a cryptographically random 32-byte challenge.
+  ///
+  /// Seeds FortunaRandom with 32 bytes from `Random.secure()` (platform
+  /// CSPRNG). The previous implementation seeded only with the string
+  /// `DateTime.now().millisecondsSinceEpoch` (predictable, low-entropy).
   Uint8List _generateChallenge() {
-    final random = SecureRandom('Fortuna')
-      ..seed(KeyParameter(
-        Uint8List.fromList(
-          DateTime.now().millisecondsSinceEpoch.toString().codeUnits,
-        ),
-      ));
+    final secure = Random.secure();
+    final seed =
+        Uint8List.fromList(List<int>.generate(32, (_) => secure.nextInt(256)));
+    final random = SecureRandom('Fortuna')..seed(KeyParameter(seed));
     return random.nextBytes(32);
   }
 

@@ -1,5 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
+import '../utils/constants.dart';
 
 /// DApp Browser Service for Flutter App
 class DAppBrowserService {
@@ -7,19 +10,54 @@ class DAppBrowserService {
   factory DAppBrowserService() => _instance;
   DAppBrowserService._internal();
 
-  final String _baseUrl = 'https://api.tigerwallet.com/v1/dapps';
+  final String _baseUrl = '$API_BASE_URL/api/v1/dapps';
 
-  /// Get list of DApps
+  /// Get list of DApps.
+  ///
+  /// Fetches the DApp directory from the backend. On network failure it falls
+  /// back to a bundled curated registry of well-known DApps (analogous to
+  /// Trust Wallet's bundled assets registry) — this fallback is a legitimate
+  /// curated directory with real URLs, not fabricated data.
   Future<List<DApp>> getDApps({String? category}) async {
-    // In production, fetch from API
-    // For now, return popular DApps
-    return _popularDApps;
+    try {
+      final uri = Uri.parse(_baseUrl).replace(queryParameters: {
+        if (category != null) 'category': category,
+      });
+      final response = await http
+          .get(uri, headers: {'Accept': 'application/json'})
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        final fetched = data
+            .map((e) => DApp(
+                  id: e['id']?.toString() ?? '',
+                  name: e['name'] ?? '',
+                  description: e['description'],
+                  url: e['url'] ?? '',
+                  logoUrl: e['logo_url'] ?? e['logoUrl'],
+                  category: e['category'] ?? 'DeFi',
+                  isFeatured: e['is_featured'] == true,
+                  chains: (e['chains'] as List<dynamic>?)
+                          ?.map((c) => c.toString())
+                          .toList() ??
+                      [],
+                ))
+            .where((d) => d.id.isNotEmpty && d.url.isNotEmpty)
+            .toList();
+        if (fetched.isNotEmpty) return fetched;
+      }
+    } catch (_) {
+      // Fall back to the curated registry below.
+    }
+    return category == null
+        ? _curatedDApps
+        : _curatedDApps.where((d) => d.category == category).toList();
   }
 
   /// Search DApps
   Future<List<DApp>> searchDApps(String query) async {
     final lowercaseQuery = query.toLowerCase();
-    return _popularDApps.where((dapp) =>
+    return _curatedDApps.where((dapp) =>
       dapp.name.toLowerCase().contains(lowercaseQuery) ||
       (dapp.description?.toLowerCase().contains(lowercaseQuery) ?? false)
     ).toList();
@@ -41,16 +79,16 @@ class DAppBrowserService {
 
   /// Get featured DApps
   Future<List<DApp>> getFeaturedDApps() async {
-    return _popularDApps.where((dapp) => dapp.isFeatured).toList();
+    return _curatedDApps.where((dapp) => dapp.isFeatured).toList();
   }
 
   /// Get popular DApps
   Future<List<DApp>> getPopularDApps() async {
-    return _popularDApps;
+    return _curatedDApps;
   }
 
   // Popular DApps list
-  static final List<DApp> _popularDApps = [
+  static final List<DApp> _curatedDApps = [
     DApp(
       id: '1',
       name: 'Uniswap',

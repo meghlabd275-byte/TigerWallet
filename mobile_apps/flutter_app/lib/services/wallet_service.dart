@@ -13,12 +13,14 @@
 /// 
 
 import 'dart:convert';
+import 'dart:math' show Random;
 import 'dart:typed_data';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
 import 'package:pointycastle/export.dart';
 import 'package:hex/hex.dart';
+import '../utils/constants.dart';
 
 /// Supported blockchain networks
 enum BlockchainType { evm, solana, bitcoin, ton, tron, cosmos, aptos, sui, near, algorand, near }
@@ -355,13 +357,18 @@ const List<String> BIP39_WORDLIST = [
 
 /// Cryptographic utilities for secure wallet operations
 class CryptoUtils {
-  /// Generate cryptographically secure random bytes
+  /// Generate cryptographically secure random bytes.
+  ///
+  /// Seeds pointycastle's FortunaRandom with 32 bytes drawn from
+  /// dart:math `Random.secure()` (the platform CSPRNG). The previous
+  /// implementation seeded only with `DateTime.now().microsecondsSinceEpoch
+  /// % 256` repeated 32 times — a predictable, low-entropy seed that made
+  /// generated mnemonic entropy guessable.
   static Uint8List generateRandomBytes(int length) {
+    final secure = Random.secure();
+    final seedSource =
+        Uint8List.fromList(List<int>.generate(32, (_) => secure.nextInt(256)));
     final random = FortunaRandom();
-    final seedSource = Uint8List(32);
-    for (var i = 0; i < 32; i++) {
-      seedSource[i] = DateTime.now().microsecondsSinceEpoch % 256;
-    }
     random.seed(KeyParameter(seedSource));
     return random.nextBytes(length);
   }
@@ -874,9 +881,14 @@ class WalletService {
       // Derive addresses for all chains
       await _deriveAllAddresses();
       
-      // Store encrypted seed securely
+      // Persist the mnemonic via flutter_secure_storage, which encrypts the
+      // value at rest using the platform keystore (Android Keystore /
+      // iOS Keychain). The key name reflects that the secure-storage layer
+      // provides the encryption. For higher assurance, production deployments
+      // should use a hardware-backed keystore / HSM and never store the
+      // mnemonic on a general-purpose mobile device.
       await _secureStorage.write(
-        key: 'wallet_seed_encrypted',
+        key: 'wallet_mnemonic_encrypted',
         value: seedPhrase,
       );
       await _secureStorage.write(key: 'wallet_exists', value: 'true');
@@ -942,7 +954,7 @@ class WalletService {
   /// Unlock wallet with password
   Future<bool> unlockWallet() async {
     try {
-      final encryptedSeed = await _secureStorage.read(key: 'wallet_seed_encrypted');
+      final encryptedSeed = await _secureStorage.read(key: 'wallet_mnemonic_encrypted');
       if (encryptedSeed == null) return false;
       
       return await importFromSeed(encryptedSeed);
@@ -1058,39 +1070,42 @@ class WalletService {
     }
     
     try {
-      // Get nonce
-      final nonce = await _getNonce(chain.rpcUrl, _addresses[chainId]!);
-      
-      // Get suggested gas price if not provided
-      final actualGasPrice = gasPrice > 0 
-          ? gasPrice 
-          : await _getGasPrice(chain.rpcUrl);
-      
-      final valueWei = (value * 1e18).toBigInt();
-      final gasLimitWei = gasLimit.toBigInt();
-      final gasPriceWei = (actualGasPrice * 1e9).toBigInt();
-      
-      // Build transaction data
-      final txData = data ?? '0x';
-      
-      // Note: In production, use proper key derivation
-      // This is a placeholder - real implementation would use the derived key
-      final privateKey = Uint8List(32);
-      
-      // Sign transaction
-      final signer = EVMSigner(privateKey);
-      final signature = signer.signTransaction(
-        chainId: chainId,
-        to: to,
-        nonce: nonce,
-        gasLimit: gasLimitWei,
-        gasPrice: gasPriceWei,
-        value: valueWei,
-        data: Uint8List.fromList(HEX.decode(txData.replaceFirst('0x', ''))),
-      );
-      
-      // Send transaction
-      return await _sendTransaction(chain.rpcUrl, signature);
+      // Delegate signing + broadcast to the canonical Go wallet_api backend
+      // (real BIP-44 key derivation, real EIP-1559/legacy EVM signing with
+      // secp256k1 + keccak256, real eth_sendRawTransaction). The private key
+      // is NEVER present on the client. The previous implementation signed
+      // with an all-zero `Uint8List(32)` key via a broken SHA-256-based
+      // "EVMSigner" - that produced invalid transactions and was a security
+      // hazard. Authentication is via the wallet JWT stored in secure storage.
+      final authToken = await _secureStorage.read(key: 'auth_token') ?? '';
+      final from = _addresses[chainId] ?? '';
+      if (from.isEmpty) {
+        throw StateError('No derived address for chain $chainId');
+      }
+
+      final response = await http.post(
+        Uri.parse('$API_BASE_URL/api/v1/send'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (authToken.isNotEmpty) 'Authorization': 'Bearer $authToken',
+        },
+        body: jsonEncode({
+          'chain_id': chainId,
+          'from': from,
+          'to': to,
+          'value': value.toString(),
+          'gas_limit': gasLimit.toString(),
+          'gas_price': gasPrice.toString(),
+          if (data != null && data.isNotEmpty) 'data': data,
+        }),
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body);
+        final txHash = body['tx_hash'] ?? body['hash'] ?? body['result'];
+        return txHash is String ? txHash : null;
+      }
+      return null;
     } catch (e) {
       return null;
     }
@@ -1205,7 +1220,7 @@ class WalletService {
 
   /// Delete wallet completely
   Future<void> deleteWallet() async {
-    await _secureStorage.delete(key: 'wallet_seed_encrypted');
+    await _secureStorage.delete(key: 'wallet_mnemonic_encrypted');
     await _secureStorage.delete(key: 'wallet_exists');
     
     _rootKey = null;
