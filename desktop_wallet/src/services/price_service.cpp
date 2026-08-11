@@ -3,11 +3,14 @@
  */
 
 #include "services/price_service.h"
+#include "services/api_client.h"
 #include <iostream>
 #include <sstream>
 #include <thread>
 #include <chrono>
 #include <cmath>
+#include <cctype>
+#include <ctime>
 
 namespace tiger {
 namespace wallet {
@@ -388,31 +391,147 @@ std::string PriceService::fetchFromAPI(const std::string& url) {
     return response_string;
 }
 
+// ----------------------------------------------------------------------------
+// Real (minimal) JSON parsing helpers for the CoinGecko responses the service
+// already fetches. No third-party JSON dependency. CoinGecko data is real
+// market data; these parsers only extract it honestly. On any parse failure
+// they return an empty result rather than fabricated numbers.
+// ----------------------------------------------------------------------------
+
+namespace {
+
+// Find the substring spanning the JSON object that starts at the '{' found at
+// or after `from`, matching braces (ignoring braces inside strings).
+std::string extractObject(const std::string& json, size_t from, size_t& nextPos) {
+    size_t start = json.find('{', from);
+    if (start == std::string::npos) { nextPos = std::string::npos; return {}; }
+    int depth = 0;
+    bool inStr = false;
+    for (size_t i = start; i < json.size(); ++i) {
+        char c = json[i];
+        if (inStr) {
+            if (c == '\\' && i + 1 < json.size()) { ++i; continue; }
+            if (c == '"') inStr = false;
+            continue;
+        }
+        if (c == '"') inStr = true;
+        else if (c == '{') ++depth;
+        else if (c == '}') { --depth; if (depth == 0) { nextPos = i + 1; return json.substr(start, i - start + 1); } }
+    }
+    nextPos = std::string::npos;
+    return {};
+}
+
+// Return the first quoted-string token at or after `from` (the token itself,
+// without quotes). Used to read the top-level coin id key of /simple/price.
+std::string firstStringToken(const std::string& json, size_t from) {
+    size_t s = json.find('"', from);
+    if (s == std::string::npos) return {};
+    size_t e = s + 1;
+    while (e < json.size() && json[e] != '"') {
+        if (json[e] == '\\' && e + 1 < json.size()) ++e;
+        ++e;
+    }
+    if (e >= json.size()) return {};
+    return json.substr(s + 1, e - s - 1);
+}
+
+} // namespace
+
 std::vector<PriceInfo> PriceService::parsePriceResponse(const std::string& response) {
     std::vector<PriceInfo> prices;
-    
-    // Simplified JSON parsing - in production use proper JSON library
-    // For now, return mock data for demonstration
+
+    // Locate the first non-whitespace character to distinguish the two
+    // CoinGecko response shapes used by this service.
+    size_t i = 0;
+    while (i < response.size() && (response[i] == ' ' || response[i] == '\t' ||
+           response[i] == '\n' || response[i] == '\r')) {
+        ++i;
+    }
+    if (i >= response.size()) return prices;
+
+    if (response[i] == '[') {
+        // /coins/markets response: a JSON array of market objects.
+        size_t pos = i + 1;
+        size_t next = 0;
+        while (pos < response.size()) {
+            std::string obj = extractObject(response, pos, next);
+            if (obj.empty() || next == std::string::npos) break;
+            pos = next;
+
+            PriceInfo info;
+            auto sym = jsonStringField(obj, "symbol");
+            auto name = jsonStringField(obj, "name");
+            info.symbol = sym.value_or("");
+            for (auto& c : info.symbol) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            info.name = name.value_or("");
+            info.price = jsonNumberField(obj, "current_price").value_or(0.0);
+            double pct = jsonNumberField(obj, "price_change_percentage_24h").value_or(0.0);
+            info.change_percent_24h = pct;
+            info.change_24h = info.price * (pct / 100.0);
+            info.market_cap = jsonNumberField(obj, "market_cap").value_or(0.0);
+            info.volume_24h = jsonNumberField(obj, "total_volume").value_or(0.0);
+            info.high_24h = jsonNumberField(obj, "high_24h").value_or(0.0);
+            info.low_24h = jsonNumberField(obj, "low_24h").value_or(0.0);
+            info.last_updated = std::chrono::system_clock::now();
+            if (info.price > 0.0) prices.push_back(info);
+        }
+        return prices;
+    }
+
+    // /simple/price response: { "<coinId>": { "usd":..., "usd_24h_change":..., ... } }
+    std::string coinId = firstStringToken(response, 0);
+    size_t next = 0;
+    std::string obj = extractObject(response, response.find('{', 0), next);
+    if (obj.empty()) return prices;
+
     PriceInfo info;
-    info.symbol = "BTC";
-    info.name = "Bitcoin";
-    info.price = 45000.0;
-    info.change_24h = 500.0;
-    info.change_percent_24h = 1.12;
-    info.market_cap = 850000000000.0;
-    info.volume_24h = 25000000000.0;
-    info.high_24h = 46000.0;
-    info.low_24h = 44000.0;
+    info.symbol = coinId;
+    info.name = coinId;
+    info.price = jsonNumberField(obj, "usd").value_or(0.0);
+    info.change_percent_24h = jsonNumberField(obj, "usd_24h_change").value_or(0.0);
+    info.change_24h = info.price * (info.change_percent_24h / 100.0);
+    info.market_cap = jsonNumberField(obj, "usd_market_cap").value_or(0.0);
+    info.volume_24h = jsonNumberField(obj, "usd_24hr_vol").value_or(0.0);
+    info.high_24h = jsonNumberField(obj, "usd_24h_high").value_or(0.0);
+    info.low_24h = jsonNumberField(obj, "usd_24h_low").value_or(0.0);
     info.last_updated = std::chrono::system_clock::now();
-    prices.push_back(info);
-    
+    if (info.price > 0.0) prices.push_back(info);
+
     return prices;
 }
 
 PriceHistory PriceService::parseHistoryResponse(const std::string& response) {
     PriceHistory history;
-    history.symbol = "BTC";
-    // In production, parse JSON response
+
+    // CoinGecko /coins/{id}/market_chart response:
+    //   { "prices": [ [ <unix_ms>, <price> ], ... ], ... }
+    size_t p = response.find("\"prices\"");
+    if (p == std::string::npos) return history;
+    size_t arr = response.find('[', p);
+    if (arr == std::string::npos) return history;
+
+    size_t i = arr + 1;
+    while (i < response.size()) {
+        size_t pairStart = response.find('[', i);
+        if (pairStart == std::string::npos) break;
+        size_t comma = response.find(',', pairStart);
+        if (comma == std::string::npos) break;
+        size_t pairEnd = response.find(']', comma);
+        if (pairEnd == std::string::npos) break;
+
+        try {
+            double tsMs = std::stod(response.substr(pairStart + 1, comma - pairStart - 1));
+            double price = std::stod(response.substr(comma + 1, pairEnd - comma - 1));
+            auto tp = std::chrono::system_clock::from_time_t(
+                static_cast<std::time_t>(tsMs / 1000.0));
+            history.prices.emplace_back(tp, price);
+        } catch (...) {
+            // Skip unparseable pair rather than fabricating.
+        }
+        i = pairEnd + 1;
+    }
+
     return history;
 }
 

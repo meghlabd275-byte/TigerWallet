@@ -374,12 +374,11 @@ public:
         signature.derivation_path = derivation_path;
         signature.signed_at = getCurrentTimestamp();
         
-        // Generate a mock signature (in production, this comes from the device)
-        signature.signature = "0x";
-        for (int i = 0; i < 130; i++) {
-            signature.signation += "0123456789abcdef"[i % 16];
-        }
-        
+        // Real hardware signing requires a device transport (HID/USB APDU
+        // exchange with a Ledger/Trezor). No transport is wired into this
+        // build, so we must NOT fabricate a signature. Return an empty
+        // signature to signal "not signed - device transport unavailable".
+        signature.signature = "";
         device.status = HardwareWalletStatus::UNLOCKED;
         
         return signature;
@@ -401,12 +400,8 @@ public:
         signature.derivation_path = derivation_path;
         signature.signed_at = getCurrentTimestamp();
         
-        // Generate mock signature
-        signature.signature = "0x";
-        for (size_t i = 0; i < message.length() && i < 130; i++) {
-            signature.signature += "0123456789abcdef"[message[i] % 16];
-        }
-        
+        // Real hardware signing requires a device transport; do not fabricate.
+        signature.signature = "";
         return signature;
     }
     
@@ -430,8 +425,10 @@ public:
             return "";
         }
         
-        // Return mock public key
-        return "0x04" + std::string(128, 'a');
+        // Real public key must come from the device (APDU exchange). No
+        // transport is wired into this build; return empty rather than a
+        // fabricated key.
+        return "";
     }
     
     // Check if device is connected

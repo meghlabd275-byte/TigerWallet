@@ -3,6 +3,7 @@
  */
 
 #include "services/nft_service.h"
+#include "services/api_client.h"
 #include "services/blockchain_service.h"
 #include <iostream>
 #include <sstream>
@@ -103,16 +104,26 @@ std::future<std::string> NFTService::transferNFT(
     const std::string& chainId
 ) {
     return std::async(std::launch::async, [this, walletId, contractAddress, tokenId, toAddress, chainId]() -> std::string {
-        // In production, send NFT transfer transaction
-        auto blockchain = BlockchainService::getInstance();
-        
-        // Generate mock tx hash
-        std::string txHash = "0x";
-        for (int i = 0; i < 64; i++) {
-            txHash += "0";
+        // Real NFT transfer through the wallet_api backend. Honest result:
+        // on any failure, return an empty string rather than a fabricated hash.
+        try {
+            std::ostringstream body;
+            body << "{"
+                 << "\"walletId\":\"" << walletId << "\","
+                 << "\"contractAddress\":\"" << contractAddress << "\","
+                 << "\"tokenId\":\"" << tokenId << "\","
+                 << "\"toAddress\":\"" << toAddress << "\","
+                 << "\"chain\":\"" << chainId << "\""
+                 << "}";
+            std::string resp = backendPost("/api/v1/nft/transfer", body.str());
+            auto hash = jsonStringField(resp, "txHash");
+            if (hash && !hash->empty()) {
+                return *hash;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[NFTService] transferNFT backend call failed: " << e.what() << std::endl;
         }
-        
-        return txHash;
+        return "";
     });
 }
 
@@ -123,12 +134,25 @@ std::future<std::string> NFTService::mintNFT(
     const std::string& chainId
 ) {
     return std::async(std::launch::async, [this, walletId, contractAddress, metadataUrl, chainId]() -> std::string {
-        // In production, mint NFT via contract call
-        std::string txHash = "0x";
-        for (int i = 0; i < 64; i++) {
-            txHash += "0";
+        // Real NFT mint through the wallet_api backend. Honest result:
+        // on any failure, return an empty string rather than a fabricated hash.
+        try {
+            std::ostringstream body;
+            body << "{"
+                 << "\"walletId\":\"" << walletId << "\","
+                 << "\"contractAddress\":\"" << contractAddress << "\","
+                 << "\"metadataUrl\":\"" << metadataUrl << "\","
+                 << "\"chain\":\"" << chainId << "\""
+                 << "}";
+            std::string resp = backendPost("/api/v1/nft/mint", body.str());
+            auto hash = jsonStringField(resp, "txHash");
+            if (hash && !hash->empty()) {
+                return *hash;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[NFTService] mintNFT backend call failed: " << e.what() << std::endl;
         }
-        return txHash;
+        return "";
     });
 }
 

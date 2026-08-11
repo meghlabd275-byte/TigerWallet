@@ -3,6 +3,7 @@
  */
 
 #include "services/staking_service.h"
+#include "services/api_client.h"
 #include "services/blockchain_service.h"
 #include <iostream>
 #include <sstream>
@@ -117,20 +118,34 @@ std::future<StakeResponse> StakingService::stake(
     const std::optional<std::string>& validator
 ) {
     return std::async(std::launch::async, [this, walletId, token, amount, validator]() -> StakeResponse {
-        // In production, send staking transaction to chain
-        auto blockchain = BlockchainService::getInstance();
-        
-        // Generate mock tx hash
-        std::string txHash = "0x";
-        for (int i = 0; i < 64; i++) {
-            txHash += "0";
-        }
-        
+        // Real staking through the wallet_api backend. Honest result: on any
+        // failure, return an empty tx_hash rather than a fabricated one.
         StakeResponse response;
-        response.tx_hash = txHash;
+        response.tx_hash.clear();
         response.staked_amount = std::stod(amount);
         response.position_id = generateUUID();
-        
+
+        try {
+            std::ostringstream body;
+            body << "{"
+                 << "\"walletId\":\"" << walletId << "\","
+                 << "\"token\":\"" << token << "\","
+                 << "\"amount\":\"" << amount << "\","
+                 << "\"validator\":\"" << validator.value_or("") << "\""
+                 << "}";
+            std::string resp = backendPost("/api/v1/staking/stake", body.str());
+            auto hash = jsonStringField(resp, "txHash");
+            if (hash && !hash->empty()) {
+                response.tx_hash = *hash;
+            }
+            auto posId = jsonStringField(resp, "positionId");
+            if (posId && !posId->empty()) {
+                response.position_id = *posId;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[StakingService] stake backend call failed: " << e.what() << std::endl;
+        }
+
         return response;
     });
 }
@@ -141,12 +156,24 @@ std::future<std::string> StakingService::unstake(
     const std::string& amount
 ) {
     return std::async(std::launch::async, [this, walletId, positionId, amount]() -> std::string {
-        // In production, send unstake transaction
-        std::string txHash = "0x";
-        for (int i = 0; i < 64; i++) {
-            txHash += "0";
+        // Real unstake through the wallet_api backend. Honest result: on any
+        // failure, return an empty string rather than a fabricated hash.
+        try {
+            std::ostringstream body;
+            body << "{"
+                 << "\"walletId\":\"" << walletId << "\","
+                 << "\"positionId\":\"" << positionId << "\","
+                 << "\"amount\":\"" << amount << "\""
+                 << "}";
+            std::string resp = backendPost("/api/v1/staking/unstake", body.str());
+            auto hash = jsonStringField(resp, "txHash");
+            if (hash && !hash->empty()) {
+                return *hash;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[StakingService] unstake backend call failed: " << e.what() << std::endl;
         }
-        return txHash;
+        return "";
     });
 }
 
@@ -155,12 +182,23 @@ std::future<std::string> StakingService::claimRewards(
     const std::string& positionId
 ) {
     return std::async(std::launch::async, [this, walletId, positionId]() -> std::string {
-        // In production, send claim rewards transaction
-        std::string txHash = "0x";
-        for (int i = 0; i < 64; i++) {
-            txHash += "0";
+        // Real claim-rewards through the wallet_api backend. Honest result: on
+        // any failure, return an empty string rather than a fabricated hash.
+        try {
+            std::ostringstream body;
+            body << "{"
+                 << "\"walletId\":\"" << walletId << "\","
+                 << "\"positionId\":\"" << positionId << "\""
+                 << "}";
+            std::string resp = backendPost("/api/v1/staking/claim", body.str());
+            auto hash = jsonStringField(resp, "txHash");
+            if (hash && !hash->empty()) {
+                return *hash;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[StakingService] claimRewards backend call failed: " << e.what() << std::endl;
         }
-        return txHash;
+        return "";
     });
 }
 

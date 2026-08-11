@@ -88,14 +88,24 @@ MixingResult PrivacyService::executeMixing(const std::string& sessionId,
 }
 
 std::string PrivacyService::generatePrivacyAddress(const std::string& seedPhrase, int index) {
-    std::string input = seedPhrase + "_privacy_" + std::to_string(index);
-    std::string hashResult = hash(input);
-    return "0x" + hashResult.substr(0, 40);
+    // A real Ethereum address is keccak256(secp256k1 public key)[12:32]. It
+    // cannot be derived by hashing an arbitrary string. The previous code
+    // returned "0x" + hash(seed+index).substr(0,40), which produced a
+    // syntactically-valid-looking address UNRELATED to any key (funds sent
+    // there would be irrecoverable). Real derivation must go through the
+    // wallet_api backend (BIP-39/32/44 + secp256k1). Return empty to signal
+    // "not derivable locally — delegate to backend".
+    (void)seedPhrase;
+    (void)index;
+    return "";
 }
 
 std::string PrivacyService::derivePrivacyAddress(const std::string& address) {
-    std::string hashResult = hash(address);
-    return "0x" + hashResult.substr(0, 40);
+    // Deriving a "privacy address" from an existing address by re-hashing it
+    // is not a valid cryptographic derivation. Return empty rather than a
+    // fabricated address.
+    (void)address;
+    return "";
 }
 
 ConfidentialTransfer PrivacyService::createConfidentialTransfer(const std::string& fromAddress,

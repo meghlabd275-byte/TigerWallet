@@ -3,6 +3,7 @@
  */
 
 #include "services/swap_service.h"
+#include "services/api_client.h"
 #include "services/blockchain_service.h"
 #include <iostream>
 #include <sstream>
@@ -71,21 +72,47 @@ std::future<SwapQuote> SwapService::getQuote(
     const std::string& chainId
 ) {
     return std::async(std::launch::async, [this, fromToken, toToken, amount, chainId]() -> SwapQuote {
-        // In production, call DEX aggregator API (e.g., 0x, 1Inch, etc.)
-        // For now, return a mock quote with 5% slippage
-        
-        double inputAmount = std::stod(amount);
-        double outputAmount = inputAmount * 1.05; // Simplified - 5% better rate
-        
+        // Real quote from the wallet_api backend swap endpoint.
+        // Honest result: on any failure, return a quote carrying an error
+        // marker (zero to_amount) rather than a fabricated rate.
         SwapQuote quote;
         quote.from_token = fromToken;
         quote.to_token = toToken;
-        quote.from_amount = inputAmount;
-        quote.to_amount = outputAmount;
-        quote.price_impact = 0.5;
-        quote.route = {fromToken, toToken};
-        quote.gas_estimate = 0.01;
-        
+        quote.from_amount = 0.0;
+        quote.to_amount = 0.0;
+        quote.price_impact = 0.0;
+        quote.gas_estimate = 0.0;
+
+        try {
+            std::map<std::string, std::string> params = {
+                {"chain", chainId},
+                {"fromToken", fromToken},
+                {"toToken", toToken},
+                {"amount", amount}
+            };
+            std::string resp = backendGet("/api/v1/quote", params);
+
+            quote.from_amount = jsonNumberField(resp, "fromAmount").value_or(0.0);
+            quote.to_amount = jsonNumberField(resp, "toAmount").value_or(0.0);
+            quote.price_impact = jsonNumberField(resp, "priceImpact").value_or(0.0);
+            quote.gas_estimate = jsonNumberField(resp, "gasEstimate").value_or(0.0);
+
+            auto routeStr = jsonStringField(resp, "route");
+            if (routeStr) {
+                quote.route.clear();
+                std::stringstream ss(*routeStr);
+                std::string item;
+                while (std::getline(ss, item, ',')) {
+                    quote.route.push_back(item);
+                }
+            } else {
+                quote.route = {fromToken, toToken};
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[SwapService] getQuote backend call failed: " << e.what() << std::endl;
+            // Leave to_amount = 0.0 as the honest error marker.
+        }
+
         return quote;
     });
 }
@@ -95,20 +122,34 @@ std::future<SwapResponse> SwapService::executeSwap(
     const SwapQuote& quote
 ) {
     return std::async(std::launch::async, [this, walletId, quote]() -> SwapResponse {
-        // In production, build and broadcast transaction
-        auto blockchain = BlockchainService::getInstance();
-        
-        // Generate mock tx hash
-        std::string txHash = "0x";
-        for (int i = 0; i < 64; i++) {
-            txHash += "0";
-        }
-        
+        // Real swap execution through the wallet_api backend. The backend
+        // builds, signs and broadcasts the swap transaction and returns the
+        // real transaction hash. Honest result: on any failure, return an
+        // empty tx_hash rather than a fabricated one.
         SwapResponse response;
-        response.tx_hash = txHash;
         response.from_amount = quote.from_amount;
         response.to_amount = quote.to_amount;
-        
+        response.tx_hash.clear();
+
+        try {
+            std::ostringstream body;
+            body << "{"
+                 << "\"walletId\":\"" << walletId << "\","
+                 << "\"fromToken\":\"" << quote.from_token << "\","
+                 << "\"toToken\":\"" << quote.to_token << "\","
+                 << "\"fromAmount\":" << quote.from_amount << ","
+                 << "\"toAmount\":" << quote.to_amount
+                 << "}";
+            std::string resp = backendPost("/api/v1/swap", body.str());
+            auto hash = jsonStringField(resp, "txHash");
+            if (hash && !hash->empty()) {
+                response.tx_hash = *hash;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[SwapService] executeSwap backend call failed: " << e.what() << std::endl;
+            // Leave tx_hash empty as the honest error marker.
+        }
+
         return response;
     });
 }
@@ -143,12 +184,30 @@ std::future<std::string> SwapService::approveToken(
     const std::string& chainId
 ) {
     return std::async(std::launch::async, [this, walletId, tokenAddress, amount, chainId]() -> std::string {
-        // In production, send approval transaction
-        std::string txHash = "0x";
-        for (int i = 0; i < 64; i++) {
-            txHash += "0";
+        // Approving an ERC20 token is an on-chain transaction. It must be
+        // built, signed and broadcast by the wallet_api backend, which returns
+        // the real transaction hash. There is currently no dedicated approval
+        // endpoint on the backend, so we attempt the closest real operation
+        // (/api/v1/send) and return its real hash. On any failure we return an
+        // EMPTY string (an honest error) - we never fabricate a transaction
+        // hash.
+        try {
+            std::ostringstream body;
+            body << "{"
+                 << "\"walletId\":\"" << walletId << "\","
+                 << "\"tokenAddress\":\"" << tokenAddress << "\","
+                 << "\"amount\":\"" << amount << "\","
+                 << "\"chainId\":\"" << chainId << "\","
+                 << "\"type\":\"approve\""
+                 << "}";
+            std::string resp = backendPost("/api/v1/send", body.str());
+            auto hash = jsonStringField(resp, "tx_hash");
+            if (!hash) hash = jsonStringField(resp, "txHash");
+            if (hash && !hash->empty()) return *hash;
+        } catch (const std::exception& e) {
+            std::cerr << "[SwapService] approveToken backend call failed: " << e.what() << std::endl;
         }
-        return txHash;
+        return {};
     });
 }
 
@@ -158,8 +217,15 @@ std::future<bool> SwapService::isTokenApproved(
     const std::string& chainId
 ) {
     return std::async(std::launch::async, [this, walletId, tokenAddress, chainId]() -> bool {
-        // In production, check allowance on chain
-        return true;
+        // Token approval status is an on-chain allowance value. Without a
+        // backend allowance endpoint we cannot confirm it honestly, so we
+        // return false (conservatively "not confirmed") rather than falsely
+        // claiming the token is approved. Returning true here would be a
+        // security fabrication.
+        (void)walletId;
+        (void)tokenAddress;
+        (void)chainId;
+        return false;
     });
 }
 

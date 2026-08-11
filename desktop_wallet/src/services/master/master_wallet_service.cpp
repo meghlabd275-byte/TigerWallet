@@ -4,10 +4,12 @@
  */
 
 #include "services/master/master_wallet_service.h"
+#include <cstdlib>
 #include <iostream>
 #include <sstream>
 #include <thread>
 #include <random>
+#include <utility>
 #include <curl/curl.h>
 
 namespace tiger {
@@ -111,8 +113,15 @@ std::future<MasterWallet> MasterWalletService::createMasterWallet(const std::str
         wallet.name = name;
         wallet.type = type;
         wallet.blockchain = blockchain;
-        wallet.address = generateAddress();
-        wallet.public_key = generatePublicKey();
+        // Real address/public key are derived by the wallet_api backend
+        // (real BIP-39/32/44 + secp256k1). The desktop client delegates wallet
+        // creation to the backend and uses the returned address. If the backend
+        // is unavailable (not connected / not authenticated), the address is
+        // left EMPTY rather than fabricated as all-zeros (which previously
+        // risked funds being sent to 0x0000...0000).
+        auto derived = createWalletViaBackend(name, blockchain);
+        wallet.address = derived.first;
+        wallet.public_key = derived.second; // backend does not expose pubkey; left empty
         wallet.balance = 0.0;
         wallet.is_active = true;
         wallet.auto_refill = false;
@@ -130,8 +139,65 @@ double MasterWalletService::getBalance(const std::string& walletId) { return 0.0
 double MasterWalletService::fetchBalanceFromChain(const std::string& address, const std::string& blockchain) { return 0.0; }
 std::string MasterWalletService::getRPCUrl(const std::string& blockchainId) { return "https://eth.llamarpc.com"; }
 
-std::string MasterWalletService::generateAddress() { return "0x" + std::string(40, '0'); }
-std::string MasterWalletService::generatePublicKey() { return "0x" + std::string(130, '0'); }
+// createWalletViaBackend delegates real wallet creation (BIP-39/32/44 +
+// secp256k1 key derivation) to the wallet_api backend at
+// POST <baseUrl>/api/v1/wallets. It performs a REAL HTTP request via libcurl
+// and parses the returned "address" JSON field. On ANY failure (backend not
+// running, not authenticated, HTTP error, malformed response) it returns an
+// EMPTY address — it NEVER fabricates an address. Callers must ensure the
+// backend is connected/authenticated to obtain a real address.
+std::pair<std::string, std::string>
+MasterWalletService::createWalletViaBackend(const std::string& name, const std::string& blockchain) {
+    const char* base = std::getenv("WALLET_API_URL");
+    std::string baseUrl = base && base[0] ? std::string(base) : std::string("http://localhost:8443");
+    std::string url = baseUrl + "/api/v1/wallets";
+
+    std::string json = std::string("{\"label\":\"") + name + "\",\"chain_id\":1}";
+    std::string response;
+
+    CURL* curl = curl_easy_init();
+    if (!curl) return {"", ""};
+
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+
+    auto writeCb = +[](char* ptr, size_t size, size_t nmemb, std::string* data) -> size_t {
+        data->append(ptr, size * nmemb);
+        return size * nmemb;
+    };
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json.c_str());
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+
+    CURLcode res = curl_easy_perform(curl);
+    long httpCode = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+
+    if (res != CURLE_OK || httpCode < 200 || httpCode >= 300) return {"", ""};
+
+    // Extract the "address" field from the JSON response (minimal parse).
+    const std::string key = "\"address\":\"";
+    auto pos = response.find(key);
+    if (pos == std::string::npos) return {"", ""};
+    auto start = pos + key.size();
+    auto end = response.find('"', start);
+    if (end == std::string::npos) return {"", ""};
+    return {response.substr(start, end - start), ""};
+}
+
+std::string MasterWalletService::generateAddress() {
+    // Kept for API compatibility but never fabricates an address. Real
+    // addresses come from createWalletViaBackend(); returning empty signals
+    // "not derived locally — connect to the backend".
+    return "";
+}
+std::string MasterWalletService::generatePublicKey() { return ""; }
 
 } // namespace wallet
 } // namespace tiger

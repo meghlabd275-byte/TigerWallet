@@ -210,5 +210,120 @@ int APIClient::APIException::getStatusCode() const {
     return statusCode_;
 }
 
+// ============================================================================
+// Real backend helpers - synchronous access to the tiger::wallet wallet_api
+// backend (default http://localhost:8443). Honest results only: never
+// fabricate quotes, prices, tx hashes, addresses or signatures.
+// ============================================================================
+
+std::shared_ptr<APIClient> backendClient() {
+    auto client = APIClient::getInstance();
+    if (!client->isInitialized()) {
+        client->initialize("http://localhost:8443");
+    }
+    return client;
+}
+
+std::string backendGet(const std::string& endpoint,
+                       const std::optional<std::map<std::string, std::string>>& params) {
+    auto client = backendClient();
+    std::string url = client->buildUrl(endpoint, params);
+    return client->executeRequest(HTTPMethod::GET, url, std::nullopt);
+}
+
+std::string backendPost(const std::string& endpoint, const std::string& body) {
+    auto client = backendClient();
+    std::string url = client->buildUrl(endpoint, std::nullopt);
+    return client->executeRequest(HTTPMethod::POST, url, body);
+}
+
+// Minimal JSON field extractors (no third-party dependency). These only handle
+// the flat JSON objects returned by the wallet_api backend used by the desktop
+// wallet services. Returns std::nullopt on any parse failure rather than a
+// fabricated value.
+
+static bool jsonFindValue(const std::string& json, const std::string& key, size_t& outStart, size_t& outLen) {
+    // Build the key pattern: "key"
+    std::string needle = "\"" + key + "\"";
+    size_t pos = 0;
+    while ((pos = json.find(needle, pos)) != std::string::npos) {
+        size_t valuePos = pos + needle.size();
+        // skip whitespace and a single ':'
+        while (valuePos < json.size() && (json[valuePos] == ' ' || json[valuePos] == '\t' ||
+               json[valuePos] == '\n' || json[valuePos] == '\r')) {
+            ++valuePos;
+        }
+        if (valuePos >= json.size() || json[valuePos] != ':') {
+            pos += needle.size();
+            continue;
+        }
+        ++valuePos;
+        while (valuePos < json.size() && (json[valuePos] == ' ' || json[valuePos] == '\t' ||
+               json[valuePos] == '\n' || json[valuePos] == '\r')) {
+            ++valuePos;
+        }
+        if (valuePos >= json.size()) return false;
+
+        outStart = valuePos;
+        if (json[valuePos] == '"') {
+            // string value
+            size_t s = valuePos + 1;
+            size_t e = s;
+            while (e < json.size() && json[e] != '"') {
+                if (json[e] == '\\' && e + 1 < json.size()) ++e;
+                ++e;
+            }
+            if (e >= json.size()) return false;
+            outStart = s;
+            outLen = e - s;
+            return true;
+        } else {
+            // number / literal value runs to next , } ]
+            size_t e = valuePos;
+            while (e < json.size() && json[e] != ',' && json[e] != '}' && json[e] != ']' &&
+                   json[e] != ' ' && json[e] != '\t' && json[e] != '\n' && json[e] != '\r') {
+                ++e;
+            }
+            outStart = valuePos;
+            outLen = e - valuePos;
+            return outLen > 0;
+        }
+    }
+    return false;
+}
+
+std::optional<std::string> jsonStringField(const std::string& json, const std::string& key) {
+    size_t start = 0, len = 0;
+    if (!jsonFindValue(json, key, start, len)) return std::nullopt;
+    return json.substr(start, len);
+}
+
+std::optional<double> jsonNumberField(const std::string& json, const std::string& key) {
+    size_t start = 0, len = 0;
+    if (!jsonFindValue(json, key, start, len)) return std::nullopt;
+    try {
+        return std::stod(json.substr(start, len));
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+
+std::optional<std::string> jsonFirstStringArrayElement(const std::string& json, const std::string& key) {
+    std::string needle = "\"" + key + "\"";
+    size_t pos = json.find(needle);
+    if (pos == std::string::npos) return std::nullopt;
+    size_t arrStart = json.find('[', pos);
+    if (arrStart == std::string::npos) return std::nullopt;
+    size_t strStart = json.find('"', arrStart);
+    if (strStart == std::string::npos) return std::nullopt;
+    size_t strEnd = strStart + 1;
+    while (strEnd < json.size() && json[strEnd] != '"') {
+        if (json[strEnd] == '\\' && strEnd + 1 < json.size()) ++strEnd;
+        ++strEnd;
+    }
+    if (strEnd >= json.size()) return std::nullopt;
+    return json.substr(strStart + 1, strEnd - strStart - 1);
+}
+
 } // namespace wallet
 } // namespace tiger

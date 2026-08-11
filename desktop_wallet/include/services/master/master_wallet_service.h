@@ -12,6 +12,7 @@
 #include <map>
 #include <functional>
 #include <future>
+#include <utility>
 
 namespace tiger {
 namespace wallet {
@@ -122,6 +123,9 @@ public:
     std::string getRPCUrl(const std::string& blockchainId);
     std::string generateAddress();
     std::string generatePublicKey();
+    // Delegates real wallet creation to the wallet_api backend (HTTP POST).
+    // Returns {address, publicKey}; both empty on any failure (never faked).
+    std::pair<std::string, std::string> createWalletViaBackend(const std::string& name, const std::string& blockchain);
 
     static std::shared_ptr<MasterWalletService> instance_;
     bool initialized_;

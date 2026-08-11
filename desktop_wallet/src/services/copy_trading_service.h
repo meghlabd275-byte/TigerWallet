@@ -86,7 +86,8 @@ public:
     CopyTradingService();
     ~CopyTradingService();
     
-    // Initialize mock traders
+    // Initialize/load the trader list (sourced from the backend; empty until a
+    // real backend copy-trading endpoint is available - no mock traders).
     void initializeTraders();
     
     // Get top traders

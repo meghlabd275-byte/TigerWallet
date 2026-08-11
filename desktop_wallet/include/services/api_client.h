@@ -47,6 +47,7 @@ public:
     void setAuthToken(const std::string& token);
     void clearAuthToken();
     void setTimeout(int seconds);
+    bool isInitialized() const { return initialized_; }
 
     // Requests
     template<typename T>
@@ -176,6 +177,33 @@ T APIClient::parseResponse(const std::string& response) {
     T result;
     return result;
 }
+
+// ===========================================================================
+// Real backend helpers (tiger::wallet wallet_api, default http://localhost:8443)
+//
+// These perform synchronous HTTP against the real backend and return honest
+// results: the parsed value on success, std::nullopt / empty on failure.
+// They NEVER fabricate quotes, prices, tx hashes, addresses or signatures.
+// ===========================================================================
+
+// Get the singleton APIClient, initializing it to the default backend URL if
+// it has not been initialized yet.
+std::shared_ptr<APIClient> backendClient();
+
+// Synchronous GET/POST against the configured backend. Returns the raw
+// response body on success and throws APIException on network/HTTP errors.
+// Body for post() is sent as-is (JSON string).
+std::string backendGet(const std::string& endpoint,
+                       const std::optional<std::map<std::string, std::string>>& params = std::nullopt);
+std::string backendPost(const std::string& endpoint, const std::string& body = "{}");
+
+// Minimal, allocation-free JSON value extractors. They find the value
+// associated with a top-level (or first-occurrence) key in a JSON object and
+// return std::nullopt if absent/unparseable. Intended only for the small,
+// well-known backend responses used by the wallet services.
+std::optional<std::string> jsonStringField(const std::string& json, const std::string& key);
+std::optional<double> jsonNumberField(const std::string& json, const std::string& key);
+std::optional<std::string> jsonFirstStringArrayElement(const std::string& json, const std::string& key);
 
 } // namespace wallet
 } // namespace tiger

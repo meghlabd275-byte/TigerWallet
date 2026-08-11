@@ -16,6 +16,7 @@
 
 // Forward declaration for curl
 struct Curl;
+#include <curl/curl.h>
 
 // =============================================================================
 // GAS PRICE STRUCTURES
@@ -254,31 +255,67 @@ private:
             std::chrono::system_clock::now().time_since_epoch()
         ).count();
         
-        // For demo/stub purposes, calculate realistic gas prices based on chain config
-        // In production, this would make actual RPC calls
-        uint64_t base_gas = config.min_gas_price;
-        
-        price.slow_gas_price = base_gas;
-        price.standard_gas_price = static_cast<uint64_t>(base_gas * 1.2);
-        price.fast_gas_price = static_cast<uint64_t>(base_gas * 1.5);
-        
-        if (config.supports_eip1559) {
-            price.is_eip1559 = true;
-            price.base_fee = base_gas * 1000000000;
-            price.priority_fee = (base_gas / 10) * 1000000000;
+        // Fetch REAL gas prices from the wallet_api backend (which calls
+        // eth_feeHistory / eth_gasPrice over RPC). The previous implementation
+        // fabricated "realistic" prices from the static chain config
+        // (base*1.2, base*1.5) - that was a fake. On any failure we throw
+        // rather than return fabricated values.
+        const char* baseEnv = std::getenv("WALLET_API_URL");
+        std::string baseUrl = baseEnv && baseEnv[0] ? std::string(baseEnv) : std::string("http://localhost:8443");
+        std::string url = baseUrl + "/api/v1/gas?chain_id=" + config.chain_id;
+        std::string response;
+        CURL* curl = curl_easy_init();
+        if (!curl) throw std::runtime_error("gas: curl init failed");
+        auto writeCb = +[](char* ptr, size_t size, size_t nmemb, std::string* data) -> size_t {
+            data->append(ptr, size * nmemb);
+            return size * nmemb;
+        };
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 8L);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCb);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+        CURLcode res = curl_easy_perform(curl);
+        long httpCode = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+        curl_easy_cleanup(curl);
+        if (res != CURLE_OK || httpCode < 200 || httpCode >= 300) {
+            throw std::runtime_error("gas: backend unavailable for chain " + chain);
         }
-        
-        // Cap at max gas price
+        auto extractStr = [&](const std::string& key) -> std::string {
+            std::string k = "\"" + key + "\":";
+            auto pos = response.find(k);
+            if (pos == std::string::npos) return "";
+            auto st = pos + k.size();
+            while (st < response.size() && (response[st] == ' ' || response[st] == '"')) st++;
+            auto en = st;
+            while (en < response.size() && response[en] != ',' && response[en] != '}' && response[en] != '"') en++;
+            return response.substr(st, en - st);
+        };
+        auto extractDbl = [&](const std::string& key) -> double {
+            std::string v = extractStr(key);
+            return v.empty() ? 0.0 : std::stod(v);
+        };
+        double gwei = extractDbl("gas_price_gwei");
+        double maxFeeGwei = extractDbl("max_fee_per_gas") / 1e9;
+        double prioGwei = extractDbl("max_priority_fee") / 1e9;
+        if (gwei <= 0 && maxFeeGwei <= 0) {
+            throw std::runtime_error("gas: no price returned for chain " + chain);
+        }
+        double baseGwei = (gwei > 0 ? gwei : maxFeeGwei);
+        price.slow_gas_price = static_cast<uint64_t>(baseGwei * 0.9);
+        price.standard_gas_price = static_cast<uint64_t>(baseGwei);
+        price.fast_gas_price = static_cast<uint64_t>(baseGwei * 1.2);
+        if (config.supports_eip1559 && maxFeeGwei > 0) {
+            price.is_eip1559 = true;
+            price.base_fee = static_cast<uint64_t>(maxFeeGwei);
+            price.priority_fee = static_cast<uint64_t>(prioGwei > 0 ? prioGwei : baseGwei * 0.1);
+        }
         price.slow_gas_price = std::min(price.slow_gas_price, config.max_gas_price);
         price.standard_gas_price = std::min(price.standard_gas_price, config.max_gas_price);
         price.fast_gas_price = std::min(price.fast_gas_price, config.max_gas_price);
-        
-        // Calculate USD price
         price.usd_per_gwei = config.usd_price / 1e9;
-        
         return price;
     }
-    
 public:
     GasService() : initialized(false) {
         chain_configs = ChainGasConfig::getDefaultConfigs();

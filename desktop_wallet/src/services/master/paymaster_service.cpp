@@ -224,20 +224,16 @@ std::string PaymasterService::generatePaymasterData(const UserOperation& op) {
 }
 
 std::string PaymasterService::signUserOperation(const UserOperation& op) {
-    // In production, sign the user operation hash with the paymaster's private key
-    // This is a placeholder - real implementation would use proper ECDSA
-    
-    std::stringstream ss;
-    ss << op.sender << op.nonce << op.callData;
-    
-    // Generate a mock signature (in production, use proper ECDSA)
-    std::string data = ss.str();
-    size_t hash = std::hash<std::string>{}(data);
-    
-    ss.str("");
-    ss << "0x" << std::hex << std::setfill('0') << std::setw(64) << hash;
-    
-    return ss.str();
+    // Real paymaster signing requires the paymaster ECDSA private key and must
+    // sign the EIP-4337 UserOperation hash (keccak256 of packed fields). The
+    // desktop client does not hold the paymaster key and must delegate signing
+    // to the wallet_api backend (POST /api/v1/sign with wallet_id + password,
+    // which performs real EIP-191 secp256k1 signing). We MUST NOT fabricate a
+    // signature. The previous code hashed op fields with std::hash (NOT a
+    // cryptographic signature) and returned "0x"+that - a fake signature.
+    // Return empty to signal "not signed - delegate to backend".
+    (void)op;
+    return "";
 }
 
 } // namespace tigerwallet
