@@ -1,57 +1,55 @@
 /**
  * TigerWallet Chrome Extension - Multi-Sig Service
- * Production-ready multi-signature wallet functionality
+ *
+ * Wired to the REAL go/multisig_service backend (http://localhost:8450),
+ * which assembles threshold owner signatures off-chain and broadcasts the
+ * on-chain MultisigWallet.executeTransaction call via eth_sendRawTransaction.
+ * Same backend as the web + desktop clients. Honest results only: never
+ * fabricates a wallet address, tx id, or transaction hash.
  */
+
+const MULTISIG_API_BASE = 'http://localhost:8450';
 
 class MultiSigService {
     constructor() {
-        this.wallets = new Map();
-        this.transactions = new Map();
         this.initialized = false;
     }
 
     async initialize() {
         if (this.initialized) return true;
-        await this.loadWallets();
         this.initialized = true;
-        console.log('[MultiSig] Service initialized');
+        console.log('[MultiSig] Service initialized (backend:', MULTISIG_API_BASE + ')');
         return true;
     }
 
-    async loadWallets() {
-        try {
-            const result = await chrome.storage.local.get('multisig_wallets');
-            if (result.multisig_wallets) {
-                for (const wallet of result.multisig_wallets) {
-                    this.wallets.set(wallet.id, wallet);
-                }
-            }
-        } catch (error) {
-            console.error('[MultiSig] Load wallets failed:', error);
+    async _fetch(path, opts = {}) {
+        const resp = await fetch(`${MULTISIG_API_BASE}${path}`, {
+            headers: { 'Content-Type': 'application/json' },
+            ...opts
+        });
+        if (!resp.ok) {
+            throw new Error(`multisig backend ${opts.method || 'GET'} ${path} -> ${resp.status}`);
         }
-    }
-
-    async saveWallets() {
-        try {
-            const wallets = Array.from(this.wallets.values());
-            await chrome.storage.local.set({ multisig_wallets: wallets });
-        } catch (error) {
-            console.error('[MultiSig] Save wallets failed:', error);
-        }
+        return resp.json();
     }
 
     async createWallet(name, threshold, signers, blockchain = 'ethereum') {
-        const wallet = {
-            id: this.generateId(),
+        const owners = signers.map(s => s.address);
+        const data = await this._fetch('/api/v1/multisig/wallets', {
+            method: 'POST',
+            body: JSON.stringify({ name, threshold, owners, blockchain })
+        });
+        return {
+            id: data.id || data.wallet_id || '',
             name,
-            address: this.deriveMultiSigAddress(blockchain, signers),
+            address: data.address || '',
             blockchain,
             threshold,
-            signers: signers.map((signer, index) => ({
-                id: this.generateId(),
-                address: signer.address,
-                name: signer.name,
-                role: index === 0 ? 'admin' : 'signer',
+            signers: owners.map((addr, i) => ({
+                id: addr,
+                address: addr,
+                name: signers[i].name || '',
+                role: i === 0 ? 'admin' : 'signer',
                 status: 'active',
                 approved: false
             })),
@@ -62,249 +60,122 @@ class MultiSigService {
             isActive: true,
             createdAt: Date.now()
         };
-
-        this.wallets.set(wallet.id, wallet);
-        await this.saveWallets();
-        return wallet;
     }
 
-    getWallet(walletId) {
-        return this.wallets.get(walletId);
+    async getWallet(walletId) {
+        try {
+            return await this._fetch('/api/v1/multisig/wallets/' + encodeURIComponent(walletId));
+        } catch (e) {
+            return null;
+        }
     }
 
-    getAllWallets() {
-        return Array.from(this.wallets.values());
+    async getAllWallets() {
+        try {
+            return await this._fetch('/api/v1/multisig/wallets');
+        } catch (e) {
+            return [];
+        }
     }
 
     getUserWallets(userId) {
-        return Array.from(this.wallets.values()).filter(
-            wallet => wallet.signers.some(s => s.address === userId)
-        );
+        // Defer to getAllWallets() and filter on the caller's side; the backend
+        // returns all wallets accessible to the authenticated user.
+        return this.getAllWallets();
     }
 
     async createTransaction(walletId, to, amount, symbol, data = {}) {
-        const wallet = this.wallets.get(walletId);
-        if (!wallet) throw new Error('Wallet not found');
-
-        const tx = {
-            id: this.generateId(),
+        const resp = await this._fetch('/api/v1/multisig/transactions', {
+            method: 'POST',
+            body: JSON.stringify({
+                wallet_id: walletId,
+                to,
+                value: String(amount),
+                data: typeof data === 'string' ? data : JSON.stringify(data)
+            })
+        });
+        return {
+            id: resp.id || resp.tx_id || '',
             walletId,
-            from: wallet.address,
             to,
             amount,
             symbol,
-            fee: await this.estimateFee(wallet.blockchain),
+            data,
             status: 'pending',
-            approvals: [],
-            requiredApprovals: wallet.threshold,
-            currentApprovals: 0,
-            description: data.description || '',
-            createdAt: Date.now(),
-            expiresAt: Date.now() + (24 * 60 * 60 * 1000),
-            executedAt: null
+            confirmations: 0,
+            threshold: resp.threshold || 1,
+            txHash: '' // populated after executeTransaction
         };
-
-        wallet.pendingTransactions.push(tx);
-        this.transactions.set(tx.id, tx);
-        await this.saveWallets();
-        return tx;
     }
 
     getTransaction(txId) {
-        return this.transactions.get(txId);
-    }
-
-    getPendingTransactions(walletId) {
-        const wallet = this.wallets.get(walletId);
-        return wallet?.pendingTransactions || [];
-    }
-
-    getTransactionHistory(walletId, limit = 50) {
-        const wallet = this.wallets.get(walletId);
-        if (!wallet) return [];
-
-        const allTransactions = [
-            ...(wallet.pendingTransactions || []),
-            ...(wallet.confirmedTransactions || [])
-        ];
-
-        return allTransactions
-            .sort((a, b) => b.createdAt - a.createdAt)
-            .slice(0, limit);
+        return this._fetch('/api/v1/multisig/transactions/' + encodeURIComponent(txId));
     }
 
     async approveTransaction(txId, signerId, signature) {
-        const tx = this.transactions.get(txId);
-        if (!tx) throw new Error('Transaction not found');
-
-        const wallet = this.wallets.get(tx.walletId);
-        if (!wallet) throw new Error('Wallet not found');
-
-        const signer = wallet.signers.find(s => s.id === signerId);
-        if (!signer) throw new Error('Invalid signer');
-
-        tx.approvals.push({
-            signerId,
-            signerName: signer.name,
-            signature,
-            status: 'approved',
-            timestamp: Date.now()
+        await this._fetch('/api/v1/multisig/transactions/' + encodeURIComponent(txId) + '/sign', {
+            method: 'POST',
+            body: JSON.stringify({ signer: signerId, signature })
         });
-
-        tx.currentApprovals++;
-
-        if (tx.currentApprovals >= tx.requiredApprovals) {
-            tx.status = 'approved';
-        }
-
-        await this.saveWallets();
-        return tx;
+        return true;
     }
 
     async rejectTransaction(txId, signerId, reason) {
-        const tx = this.transactions.get(txId);
-        if (!tx) throw new Error('Transaction not found');
-
-        const wallet = this.wallets.get(tx.walletId);
-        const signer = wallet?.signers.find(s => s.id === signerId);
-        if (!signer) throw new Error('Invalid signer');
-
-        tx.approvals.push({
-            signerId,
-            signerName: signer.name,
-            reason,
-            status: 'rejected',
-            timestamp: Date.now()
+        await this._fetch('/api/v1/multisig/transactions/' + encodeURIComponent(txId) + '/revoke', {
+            method: 'POST',
+            body: JSON.stringify({ signer: signerId, reason })
         });
-
-        tx.status = 'rejected';
-        await this.saveWallets();
-        return tx;
+        return true;
     }
 
     async executeTransaction(txId) {
-        const tx = this.transactions.get(txId);
-        if (!tx) throw new Error('Transaction not found');
-        if (tx.status !== 'approved') throw new Error('Transaction not approved');
-
-        const wallet = this.wallets.get(tx.walletId);
-        tx.status = 'executed';
-        tx.executedAt = Date.now();
-        tx.txHash = '0x' + this.generateId();
-
-        const pendingIndex = wallet?.pendingTransactions?.findIndex(t => t.id === txId);
-        if (pendingIndex !== -1 && wallet) {
-            wallet.pendingTransactions.splice(pendingIndex, 1);
+        // The backend collects the threshold owner signatures off-chain,
+        // assembles the on-chain MultisigWallet.executeTransaction call,
+        // signs + broadcasts it via eth_sendRawTransaction, and returns the
+        // REAL transaction hash. Empty string on failure — never fabricated.
+        try {
+            const resp = await this._fetch('/api/v1/multisig/transactions/' + encodeURIComponent(txId) + '/execute', {
+                method: 'POST',
+                body: JSON.stringify({})
+            });
+            return { txHash: resp.tx_hash || resp.txHash || '', executed: resp.executed !== false };
+        } catch (e) {
+            console.error('[MultiSig] executeTransaction failed:', e);
+            return { txHash: '', executed: false };
         }
-
-        wallet.confirmedTransactions = wallet.confirmedTransactions || [];
-        wallet.confirmedTransactions.unshift(tx);
-
-        await this.saveWallets();
-        return tx;
     }
 
     async cancelTransaction(txId) {
-        const tx = this.transactions.get(txId);
-        if (!tx) throw new Error('Transaction not found');
-
-        tx.status = 'cancelled';
-        const wallet = this.wallets.get(tx.walletId);
-        const pendingIndex = wallet?.pendingTransactions?.findIndex(t => t.id === txId);
-        if (pendingIndex !== -1 && wallet) {
-            wallet.pendingTransactions.splice(pendingIndex, 1);
-        }
-
-        await this.saveWallets();
-        return tx;
+        await this._fetch('/api/v1/multisig/transactions/' + encodeURIComponent(txId) + '/revoke', {
+            method: 'POST',
+            body: JSON.stringify({})
+        });
+        return true;
     }
 
     async addSigner(walletId, signer) {
-        const wallet = this.wallets.get(walletId);
-        if (!wallet) throw new Error('Wallet not found');
-
-        wallet.signers.push({
-            id: this.generateId(),
-            address: signer.address,
-            name: signer.name,
-            role: signer.role || 'signer',
-            status: 'pending',
-            approved: false
+        await this._fetch('/api/v1/multisig/wallets/' + encodeURIComponent(walletId) + '/owners', {
+            method: 'POST',
+            body: JSON.stringify({ owner: signer.address })
         });
-
-        await this.saveWallets();
-        return wallet;
+        return true;
     }
 
     async removeSigner(walletId, signerId) {
-        const wallet = this.wallets.get(walletId);
-        if (!wallet) throw new Error('Wallet not found');
-
-        const signerIndex = wallet.signers.findIndex(s => s.id === signerId);
-        if (signerIndex !== -1) {
-            wallet.signers.splice(signerIndex, 1);
-        }
-
-        await this.saveWallets();
-        return wallet;
-    }
-
-    getPendingApprovals(signerId) {
-        const pending = [];
-        for (const wallet of this.wallets.values()) {
-            const signer = wallet.signers.find(s => s.id === signerId);
-            if (!signer) continue;
-            
-            for (const tx of (wallet.pendingTransactions || [])) {
-                if (tx.status === 'pending' && !tx.approvals.some(a => a.signerId === signerId)) {
-                    pending.push({ ...tx, walletName: wallet.name });
-                }
-            }
-        }
-        return pending;
+        // Backend owner-removal is routed through the wallet's own execute path
+        // (on-chain governance). We surface a clear error rather than silently
+        // mutating local state.
+        throw new Error('Owner removal must be submitted as a multisig transaction on-chain');
     }
 
     async estimateFee(blockchain) {
-        const feeEstimates = {
-            ethereum: '0.005',
-            polygon: '0.01',
-            bsc: '0.005',
-            avalanche: '0.025',
-            arbitrum: '0.001',
-            optimism: '0.001'
-        };
-        return feeEstimates[blockchain.toLowerCase()] || '0.01';
-    }
-
-    deriveMultiSigAddress(blockchain, signers) {
-        const data = signers.map(s => s.address).sort().join('-');
-        const hash = this.simpleHash(data);
-        return '0x' + hash.slice(0, 40);
-    }
-
-    simpleHash(data) {
-        let hash = 0;
-        for (let i = 0; i < data.length; i++) {
-            const char = data.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash;
-        }
-        return Math.abs(hash).toString(16).padStart(40, '0');
-    }
-
-    generateId() {
-        return '0x' + Array.from(crypto.getRandomValues(new Uint8Array(16)))
-            .map(b => b.toString(16).padStart(2, '0'))
-            .join('');
+        // No fabricated fee. Returns null; the real gas estimate comes from
+        // the wallet_api /api/v1/gas endpoint.
+        return null;
     }
 
     async deleteWallet(walletId) {
-        if (this.wallets.has(walletId)) {
-            this.wallets.delete(walletId);
-            await this.saveWallets();
-            return true;
-        }
-        return false;
+        throw new Error('Multisig wallets are on-chain contracts and cannot be deleted from the extension');
     }
 }
 

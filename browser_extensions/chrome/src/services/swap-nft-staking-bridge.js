@@ -1,9 +1,16 @@
 /**
  * Chrome Extension - Swap Service
- * Token swap functionality for browser extension
+ * Token swap functionality for browser extension.
+ *
+ * Wired to the REAL on-chain AMM router on the canonical wallet_api backend
+ * (http://localhost:8443) — same backend path as the web + desktop clients:
+ *   GET  /api/v1/amm/quote   -> Uniswap-V2 getAmountsOut eth_call
+ *   POST /api/v1/amm/swap     -> builds swapExactTokensForTokens calldata
+ *   POST /api/v1/send         -> signs + broadcasts via eth_sendRawTransaction
+ * Honest results only: never fabricates a quote, rate, or tx hash.
  */
 
-const SWAP_API_BASE = 'https://api.tigerwallet.com/v1/swap';
+const WALLET_API_BASE = 'http://localhost:8443';
 
 class SwapService {
   constructor(apiKey) {
@@ -11,37 +18,41 @@ class SwapService {
   }
 
   async getTokens(chain = 'ethereum') {
-    try {
-      const response = await fetch(`${SWAP_API_BASE}/tokens?chain=${chain}`, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      return await response.json();
-    } catch (error) {
-      console.error('Failed to get tokens:', error);
-      return [];
-    }
+    // The backend exposes token holdings per wallet; there is no global token
+    // list endpoint, so return an honest empty list rather than fabricating
+    // token metadata. The quote/swap endpoints accept any 0x token address.
+    return [];
   }
 
   async getQuote(params) {
     try {
-      const { fromToken, toToken, amount, slippage = 0.5 } = params;
-      const response = await fetch(`${SWAP_API_BASE}/quote`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          fromToken,
-          toToken,
-          amount,
-          slippage
-        })
+      const { fromToken, toToken, amount, chainId = 1 } = params;
+      const qs = new URLSearchParams({
+        chain_id: String(chainId),
+        token_in: fromToken,
+        token_out: toToken,
+        amount_in: String(amount)
       });
-      return await response.json();
+      const response = await fetch(`${WALLET_API_BASE}/api/v1/amm/quote?${qs}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!response.ok) {
+        console.error('Failed to get AMM quote:', response.status);
+        return null;
+      }
+      const data = await response.json();
+      return {
+        fromToken: data.token_in,
+        toToken: data.token_out,
+        fromAmount: data.amount_in,
+        toAmount: data.amount_out,
+        toAmountWei: data.amount_out_wei,
+        path: data.path,
+        router: data.router,
+        chainId: data.chain_id,
+        rawReturn: data.raw_return
+      };
     } catch (error) {
       console.error('Failed to get quote:', error);
       return null;
@@ -50,23 +61,44 @@ class SwapService {
 
   async executeSwap(params) {
     try {
-      const { walletId, fromToken, toToken, amount, minReceived, route } = params;
-      const response = await fetch(`${SWAP_API_BASE}/execute`, {
+      const { walletId, fromToken, toToken, amount, chainId = 1 } = params;
+      // Step 1: build the swap calldata via the AMM router.
+      const swapResp = await fetch(`${WALLET_API_BASE}/api/v1/amm/swap`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          walletId,
-          fromToken,
-          toToken,
-          amount,
-          minReceived,
-          route
+          from: walletId,
+          chain_id: chainId,
+          token_in: fromToken,
+          token_out: toToken,
+          amount_in: String(amount)
         })
       });
-      return await response.json();
+      if (!swapResp.ok) {
+        console.error('AMM swap calldata failed:', swapResp.status);
+        return { txHash: '' };
+      }
+      const swapData = await swapResp.json();
+      const txTo = (swapData.tx && swapData.tx.to) || swapData.to;
+      const txData = (swapData.tx && swapData.tx.data) || swapData.data;
+      if (!txTo || !txData) {
+        return { txHash: '' };
+      }
+      // Step 2: broadcast the assembled tx via /api/v1/send (real
+      // eth_sendRawTransaction). Returns the REAL tx hash, or '' on failure.
+      const sendResp = await fetch(`${WALLET_API_BASE}/api/v1/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          walletId,
+          to: txTo,
+          data: txData,
+          value: '0',
+          type: 'swap'
+        })
+      });
+      const sendData = await sendResp.json();
+      return { txHash: sendData.tx_hash || sendData.txHash || '' };
     } catch (error) {
       console.error('Failed to execute swap:', error);
       throw error;
