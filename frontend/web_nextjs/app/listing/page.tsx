@@ -58,7 +58,7 @@ export default function TokenListingPage() {
   const bgSecondary = isDark ? '#1e293b' : '#e2e8f0'
   const bgCard = isDark ? 'rgba(30, 41, 59, 0.8)' : 'rgba(255, 255, 255, 0.9)'
   const textPrimary = isDark ? '#f8fafc' : '#0f172a'
-  const textSecondary = isDark ? '#94a3b8' : '#64748b'
+  const textSecondary = isDark ? 'var(--text-secondary)' : '#64748b'
   const borderColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
   const accentColor = '#f97316'
   
@@ -215,7 +215,7 @@ export default function TokenListingPage() {
               <div style={{ width: 40, height: 40, borderRadius: '50%', background: step >= s ? '#f97316' : 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
                 {step > s ? '✓' : s}
               </div>
-              <span style={{ color: step >= s ? 'white' : '#94a3b8' }}>{s === 1 ? 'Token' : s === 2 ? 'Tier' : 'Review'}</span>
+              <span style={{ color: step >= s ? 'white' : 'var(--text-secondary)' }}>{s === 1 ? 'Token' : s === 2 ? 'Tier' : 'Review'}</span>
             </div>
           ))}
         </div>
@@ -226,7 +226,7 @@ export default function TokenListingPage() {
             <h2>Token Information</h2>
             
             <div style={{ marginBottom: 24 }}>
-              <label style={{ display: 'block', marginBottom: 8, color: '#94a3b8' }}>Chain</label>
+              <label style={{ display: 'block', marginBottom: 8, color: 'var(--text-secondary)' }}>Chain</label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {(chains.length > 0 ? chains : defaultChains).map((chain: any) => (
                   <div key={chain.id} onClick={() => setToken({...token, chainId: chain.id})} style={{ padding: '12px 24px', borderRadius: 8, border: `1px solid ${token.chainId === chain.id ? '#f97316' : 'rgba(255,255,255,0.2)'}`, background: token.chainId === chain.id ? 'rgba(249,115,22,0.2)' : 'transparent', cursor: 'pointer' }}>
@@ -237,23 +237,23 @@ export default function TokenListingPage() {
             </div>
 
             <div style={{ marginBottom: 24 }}>
-              <label style={{ display: 'block', marginBottom: 8, color: '#94a3b8' }}>Token Contract Address</label>
+              <label style={{ display: 'block', marginBottom: 8, color: 'var(--text-secondary)' }}>Token Contract Address</label>
               <input type="text" placeholder="0x..." value={token.address} onChange={(e) => setToken({...token, address: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', fontSize: 16 }} />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
               <div>
-                <label style={{ display: 'block', marginBottom: 8, color: '#94a3b8' }}>Symbol</label>
+                <label style={{ display: 'block', marginBottom: 8, color: 'var(--text-secondary)' }}>Symbol</label>
                 <input type="text" placeholder="e.g., BTC" value={token.symbol} onChange={(e) => setToken({...token, symbol: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', fontSize: 16 }} />
               </div>
               <div>
-                <label style={{ display: 'block', marginBottom: 8, color: '#94a3b8' }}>Name</label>
+                <label style={{ display: 'block', marginBottom: 8, color: 'var(--text-secondary)' }}>Name</label>
                 <input type="text" placeholder="e.g., Bitcoin" value={token.name} onChange={(e) => setToken({...token, name: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', fontSize: 16 }} />
               </div>
             </div>
 
             <div style={{ marginBottom: 24 }}>
-              <label style={{ display: 'block', marginBottom: 8, color: '#94a3b8' }}>Token Logo</label>
+              <label style={{ display: 'block', marginBottom: 8, color: 'var(--text-secondary)' }}>Token Logo</label>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                 <label style={{ cursor: 'pointer', padding: '12px 24px', background: 'rgba(249,115,22,0.2)', border: '1px solid #f97316', borderRadius: 8, color: '#f97316' }}>
                   {uploadingLogo ? 'Uploading...' : '📁 Upload Logo'}
@@ -267,7 +267,7 @@ export default function TokenListingPage() {
                 {logoPreview && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <img src={logoPreview} alt="Logo preview" style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover' }} />
-                    <span style={{ color: '#94a3b8', fontSize: 12 }}>Preview</span>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Preview</span>
                   </div>
                 )}
               </div>
@@ -275,7 +275,7 @@ export default function TokenListingPage() {
             </div>
 
             <div style={{ marginBottom: 24 }}>
-              <label style={{ display: 'block', marginBottom: 8, color: '#94a3b8' }}>Quote Token (Pair)</label>
+              <label style={{ display: 'block', marginBottom: 8, color: 'var(--text-secondary)' }}>Quote Token (Pair)</label>
               <div style={{ display: 'flex', gap: 8 }}>
                 {quoteTokens.map(qt => (
                   <div key={qt} onClick={() => setQuoteToken(qt)} style={{ padding: '12px 24px', borderRadius: 8, border: `1px solid ${quoteToken === qt ? '#f97316' : 'rgba(255,255,255,0.2)'}`, background: quoteToken === qt ? 'rgba(249,115,22,0.2)' : 'transparent', cursor: 'pointer' }}>
@@ -295,7 +295,7 @@ export default function TokenListingPage() {
         {step === 2 && (
           <div style={{ background: 'rgba(30,41,59,0.8)', borderRadius: 16, padding: 32 }}>
             <h2>Select Listing Tier</h2>
-            <p style={{ color: '#94a3b8', marginBottom: 24 }}>Choose the tier that best fits your token.</p>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: 24 }}>Choose the tier that best fits your token.</p>
 
             <div style={{ display: 'grid', gap: 16 }}>
               {(tiers.length > 0 ? tiers : defaultTiers).map((tier: any) => (
@@ -304,12 +304,12 @@ export default function TokenListingPage() {
                     <div>
                       <h3 style={{ margin: 0 }}>{tier.name}</h3>
                       {tier.features && tier.features.map((f: string, i: number) => (
-                        <p key={i} style={{ fontSize: 12, color: '#94a3b8', margin: '4px 0' }}>• {f}</p>
+                        <p key={i} style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '4px 0' }}>• {f}</p>
                       ))}
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: 24, fontWeight: 'bold', color: '#f97316' }}>{tier.fee}</div>
-                      <div style={{ color: '#94a3b8' }}>USDT ≈ ${tier.feeUsd}</div>
+                      <div style={{ color: 'var(--text-secondary)' }}>USDT ≈ ${tier.feeUsd}</div>
                     </div>
                   </div>
                 </div>
@@ -330,11 +330,11 @@ export default function TokenListingPage() {
             
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
               <div>
-                <label style={{ display: 'block', marginBottom: 8, color: '#94a3b8' }}>Email</label>
+                <label style={{ display: 'block', marginBottom: 8, color: 'var(--text-secondary)' }}>Email</label>
                 <input type="email" placeholder="your@email.com" value={applicantEmail} onChange={(e) => setApplicantEmail(e.target.value)} style={{ width: '100%', padding: 12, borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', fontSize: 16 }} />
               </div>
               <div>
-                <label style={{ display: 'block', marginBottom: 8, color: '#94a3b8' }}>Name/Company</label>
+                <label style={{ display: 'block', marginBottom: 8, color: 'var(--text-secondary)' }}>Name/Company</label>
                 <input type="text" placeholder="Your name or company" value={applicantName} onChange={(e) => setApplicantName(e.target.value)} style={{ width: '100%', padding: 12, borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', fontSize: 16 }} />
               </div>
             </div>
@@ -392,19 +392,19 @@ export default function TokenListingPage() {
           <div style={{ background: 'rgba(30,41,59,0.8)', borderRadius: 16, padding: 32, textAlign: 'center' }}>
             <div style={{ fontSize: 64 }}>✅</div>
             <h2>Application Submitted!</h2>
-            <p style={{ color: '#94a3b8' }}>Your listing application has been submitted successfully.</p>
+            <p style={{ color: 'var(--text-secondary)' }}>Your listing application has been submitted successfully.</p>
             
             {paymentInfo && (
               <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 12, padding: 24, margin: '24px 0', textAlign: 'left' }}>
                 <h3>Payment Required</h3>
                 <p>Please send <strong style={{ color: '#f97316' }}>{(tiers.length > 0 ? tiers : defaultTiers).find((t: any) => t.id === selectedTier)?.fee} USDT</strong> to:</p>
                 <code style={{ display: 'block', background: 'rgba(0,0,0,0.5)', padding: 12, borderRadius: 8, wordBreak: 'break-all', margin: '12px 0' }}>{paymentInfo.payment_address}</code>
-                <p style={{ fontSize: 12, color: '#94a3b8' }}>Network: Ethereum (ERC20)</p>
-                <p style={{ fontSize: 12, color: '#94a3b8' }}>Expires: {paymentInfo.expires_at}</p>
+                <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Network: Ethereum (ERC20)</p>
+                <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Expires: {paymentInfo.expires_at}</p>
               </div>
             )}
 
-            <p style={{ color: '#94a3b8' }}>Application ID: {listingId}</p>
+            <p style={{ color: 'var(--text-secondary)' }}>Application ID: {listingId}</p>
             <button onClick={() => window.location.reload()} style={{ padding: '12px 24px', background: '#f97316', border: 'none', borderRadius: 8, color: 'white', cursor: 'pointer' }}>Submit Another</button>
           </div>
         )}

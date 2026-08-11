@@ -678,7 +678,7 @@ export default function AdvancedTradingInterface() {
                   <TableBody>
                     {asks.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={3} align="center" sx={{ py: 3, color: '#9ca3af' }}>No asks</TableCell>
+                        <TableCell colSpan={3} align="center" sx={{ py: 3, color: 'var(--text-secondary)' }}>No asks</TableCell>
                       </TableRow>
                     ) : asks.slice(0, 10).map((ask, i) => (
                       <TableRow key={i} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
@@ -716,7 +716,7 @@ export default function AdvancedTradingInterface() {
                   <TableBody>
                     {bids.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={3} align="center" sx={{ py: 3, color: '#9ca3af' }}>No bids</TableCell>
+                        <TableCell colSpan={3} align="center" sx={{ py: 3, color: 'var(--text-secondary)' }}>No bids</TableCell>
                       </TableRow>
                     ) : bids.slice(0, 10).map((bid, i) => (
                       <TableRow key={i} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>

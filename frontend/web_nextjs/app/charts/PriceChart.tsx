@@ -56,12 +56,12 @@ export default function PriceChart({
         
         const chart = createChart(chartContainerRef.current, {
           layout: {
-            background: { type: ColorType.Solid, color: '#1a1a2e' },
-            textColor: '#9ca3af',
+            background: { type: ColorType.Solid, color: 'var(--bg-primary)' },
+            textColor: 'var(--text-secondary)',
           },
           grid: {
-            vertLines: { color: '#2a2a3e' },
-            horzLines: { color: '#2a2a3e' },
+            vertLines: { color: 'var(--bg-secondary)' },
+            horzLines: { color: 'var(--bg-secondary)' },
           },
           width: chartContainerRef.current.clientWidth,
           height: height,
@@ -69,11 +69,11 @@ export default function PriceChart({
             mode: CrosshairMode.Normal,
           },
           timeScale: {
-            borderColor: '#2a2a3e',
+            borderColor: 'var(--bg-secondary)',
             timeVisible: true,
           },
           rightPriceScale: {
-            borderColor: '#2a2a3e',
+            borderColor: 'var(--bg-secondary)',
           },
         });
         
@@ -224,7 +224,7 @@ export default function PriceChart({
   };
 
   return (
-    <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+    <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
       <CardContent>
         {/* Header */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -254,8 +254,8 @@ export default function PriceChart({
             size="small"
             sx={{
               '& .MuiToggleButton-root': {
-                color: '#9ca3af',
-                borderColor: '#2a2a3e',
+                color: 'var(--text-secondary)',
+                borderColor: 'var(--bg-secondary)',
                 '&.Mui-selected': {
                   bgcolor: '#00d4ff',
                   color: 'black',

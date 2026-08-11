@@ -231,7 +231,7 @@ export default function FarmingPage() {
   // ============================================================================
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a14', p: 3 }}>
+    <Box sx={{ minHeight: '100vh', bgcolor: 'var(--bg-primary)', p: 3 }}>
       <Box sx={{ maxWidth: 1600, mx: 'auto' }}>
         {/* Header */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -239,7 +239,7 @@ export default function FarmingPage() {
             <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
               🌾 Yield Farming
             </Typography>
-            <Typography variant="body2" sx={{ color: '#9ca3af', mt: 1 }}>
+            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mt: 1 }}>
               Stake LP tokens and earn rewards from multiple protocols
             </Typography>
           </Box>
@@ -247,7 +247,7 @@ export default function FarmingPage() {
             variant="outlined"
             startIcon={<Refresh />}
             onClick={loadPools}
-            sx={{ borderColor: '#3a3a4e', color: 'white' }}
+            sx={{ borderColor: 'var(--bg-tertiary)', color: 'white' }}
           >
             Refresh
           </Button>
@@ -255,33 +255,33 @@ export default function FarmingPage() {
 
         {/* User Stats */}
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, mb: 4 }}>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
-              <Typography variant="caption" sx={{ color: '#9ca3af' }}>Your Staked Value</Typography>
+              <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Your Staked Value</Typography>
               <Typography variant="h5" sx={{ color: '#00d4aa', fontWeight: 'bold' }}>
                 {formatUSD(userTvl)}
               </Typography>
             </CardContent>
           </Card>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
-              <Typography variant="caption" sx={{ color: '#9ca3af' }}>Pending Rewards</Typography>
+              <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Pending Rewards</Typography>
               <Typography variant="h5" sx={{ color: '#ff9800', fontWeight: 'bold' }}>
                 {userPendingRewards.toFixed(4)} TIGER
               </Typography>
             </CardContent>
           </Card>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
-              <Typography variant="caption" sx={{ color: '#9ca3af' }}>Total Value Locked</Typography>
+              <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total Value Locked</Typography>
               <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
                 {formatUSD(pools.reduce((sum, p) => sum + p.tvl, 0))}
               </Typography>
             </CardContent>
           </Card>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
-              <Typography variant="caption" sx={{ color: '#9ca3af' }}>Active Farms</Typography>
+              <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Active Farms</Typography>
               <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
                 {pools.filter(p => p.isActive).length}
               </Typography>
@@ -290,13 +290,13 @@ export default function FarmingPage() {
         </Box>
 
         {/* Tabs */}
-        <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3, mb: 3 }}>
+        <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3, mb: 3 }}>
           <Tabs
             value={activeTab}
             onChange={(_, v) => setActiveTab(v)}
             sx={{
               borderBottom: '1px solid #2a2a3e',
-              '& .MuiTab-root': { color: '#9ca3af' },
+              '& .MuiTab-root': { color: 'var(--text-secondary)' },
               '& .Mui-selected': { color: '#00d4aa' },
             }}
           >
@@ -312,7 +312,7 @@ export default function FarmingPage() {
                 <Select
                   value={filterChain}
                   onChange={(e) => setFilterChain(e.target.value as number)}
-                  sx={{ color: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#3a3a4e' } }}
+                  sx={{ color: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
                 >
                   <MenuItem value={0}>All Chains</MenuItem>
                   {Object.entries(CHAIN_CONFIG).map(([id, config]) => (
@@ -324,7 +324,7 @@ export default function FarmingPage() {
                 <Select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
-                  sx={{ color: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#3a3a4e' } }}
+                  sx={{ color: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
                 >
                   <MenuItem value="apr">Sort by APR</MenuItem>
                   <MenuItem value="tvl">Sort by TVL</MenuItem>
@@ -343,26 +343,26 @@ export default function FarmingPage() {
                 <Table>
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ color: '#9ca3af' }}>Pool</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }}>Protocol</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">TVL</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">APR</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">APY</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Daily</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Actions</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }}>Pool</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }}>Protocol</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">TVL</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">APR</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">APY</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Daily</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Actions</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {filteredPools.map((pool) => {
                       const userStake = userStakes.find(s => s.poolId === pool.id);
                       return (
-                        <TableRow key={pool.id} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
+                        <TableRow key={pool.id} sx={{ '&:hover': { bgcolor: 'var(--bg-secondary)' } }}>
                           <TableCell>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <Typography sx={{ fontSize: 24 }}>{pool.pairIcon}</Typography>
                               <Box>
                                 <Typography sx={{ color: '#00d4aa', fontWeight: 'bold' }}>{pool.pair}</Typography>
-                                <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                                <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                                   {pool.chainName}
                                 </Typography>
                               </Box>
@@ -372,7 +372,7 @@ export default function FarmingPage() {
                             <Chip
                               label={pool.protocol}
                               size="small"
-                              sx={{ bgcolor: '#2a2a3e', color: '#9ca3af' }}
+                              sx={{ bgcolor: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}
                             />
                           </TableCell>
                           <TableCell align="right">
@@ -387,7 +387,7 @@ export default function FarmingPage() {
                             <Typography sx={{ color: 'white' }}>{formatPercent(pool.apy)}</Typography>
                           </TableCell>
                           <TableCell align="right">
-                            <Typography sx={{ color: '#9ca3af' }}>
+                            <Typography sx={{ color: 'var(--text-secondary)' }}>
                               {pool.rewardPerDay.toFixed(4)} {pool.rewardToken}
                             </Typography>
                           </TableCell>
@@ -409,7 +409,7 @@ export default function FarmingPage() {
                                     variant="outlined"
                                     startIcon={<Remove />}
                                     onClick={() => { setSelectedPool(pool); setShowUnstakeDialog(true); }}
-                                    sx={{ borderColor: '#3a3a4e', color: 'white', minWidth: 0, px: 1 }}
+                                    sx={{ borderColor: 'var(--bg-tertiary)', color: 'white', minWidth: 0, px: 1 }}
                                   >
                                     Unstake
                                   </Button>
@@ -438,7 +438,7 @@ export default function FarmingPage() {
               <Box>
                 {userStakes.length === 0 ? (
                   <Box sx={{ textAlign: 'center', py: 5 }}>
-                    <Typography sx={{ color: '#9ca3af', mb: 2 }}>No active staking positions</Typography>
+                    <Typography sx={{ color: 'var(--text-secondary)', mb: 2 }}>No active staking positions</Typography>
                     <Button
                       variant="contained"
                       startIcon={<Add />}
@@ -453,11 +453,11 @@ export default function FarmingPage() {
                     <Table>
                       <TableHead>
                         <TableRow>
-                          <TableCell sx={{ color: '#9ca3af' }}>Pool</TableCell>
-                          <TableCell sx={{ color: '#9ca3af' }} align="right">Staked</TableCell>
-                          <TableCell sx={{ color: '#9ca3af' }} align="right">Pending Rewards</TableCell>
-                          <TableCell sx={{ color: '#9ca3af' }} align="right">Lock Status</TableCell>
-                          <TableCell sx={{ color: '#9ca3af' }} align="right">Actions</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }}>Pool</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Staked</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Pending Rewards</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Lock Status</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Actions</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -465,7 +465,7 @@ export default function FarmingPage() {
                           const pool = pools.find(p => p.id === stake.poolId);
                           if (!pool) return null;
                           return (
-                            <TableRow key={stake.poolId} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
+                            <TableRow key={stake.poolId} sx={{ '&:hover': { bgcolor: 'var(--bg-secondary)' } }}>
                               <TableCell>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                   <Typography sx={{ fontSize: 24 }}>{pool.pairIcon}</Typography>
@@ -476,7 +476,7 @@ export default function FarmingPage() {
                                 <Typography sx={{ color: 'white' }}>
                                   {parseFloat(stake.amount).toFixed(4)} LP
                                 </Typography>
-                                <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                                <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                                   ≈ {formatUSD(parseFloat(stake.amount) * pool.tvl / pool.totalStaked)}
                                 </Typography>
                               </TableCell>
@@ -518,7 +518,7 @@ export default function FarmingPage() {
                                     variant="outlined"
                                     disabled={stake.isLocked}
                                     onClick={() => { setSelectedPool(pool); setShowUnstakeDialog(true); }}
-                                    sx={{ borderColor: '#3a3a4e', color: 'white' }}
+                                    sx={{ borderColor: 'var(--bg-tertiary)', color: 'white' }}
                                   >
                                     Unstake
                                   </Button>
@@ -536,27 +536,27 @@ export default function FarmingPage() {
               /* Best APR - Top 5 */
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 3 }}>
                 {filteredPools.slice(0, 5).map((pool) => (
-                  <Card key={pool.id} sx={{ bgcolor: '#2a2a3e', borderRadius: 3, border: '1px solid #00d4aa30' }}>
+                  <Card key={pool.id} sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 3, border: '1px solid #00d4aa30' }}>
                     <CardContent>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <Typography sx={{ fontSize: 32 }}>{pool.pairIcon}</Typography>
                           <Box>
                             <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{pool.pair}</Typography>
-                            <Typography variant="caption" sx={{ color: '#9ca3af' }}>{pool.chainName}</Typography>
+                            <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>{pool.chainName}</Typography>
                           </Box>
                         </Box>
-                        <Chip label={pool.protocol} size="small" sx={{ bgcolor: '#1a1a2e' }} />
+                        <Chip label={pool.protocol} size="small" sx={{ bgcolor: 'var(--bg-primary)' }} />
                       </Box>
                       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
                         <Box>
-                          <Typography variant="caption" sx={{ color: '#9ca3af' }}>APR</Typography>
+                          <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>APR</Typography>
                           <Typography sx={{ color: '#00d4aa', fontWeight: 'bold', fontSize: 24 }}>
                             {formatPercent(pool.apr)}
                           </Typography>
                         </Box>
                         <Box>
-                          <Typography variant="caption" sx={{ color: '#9ca3af' }}>TVL</Typography>
+                          <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>TVL</Typography>
                           <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
                             {formatUSD(pool.tvl)}
                           </Typography>
@@ -586,7 +586,7 @@ export default function FarmingPage() {
         onClose={() => setShowStakeDialog(false)}
         maxWidth="sm"
         fullWidth
-        PaperProps={{ sx: { bgcolor: '#1a1a2e', backgroundImage: 'none' } }}
+        PaperProps={{ sx: { bgcolor: 'var(--bg-primary)', backgroundImage: 'none' } }}
       >
         <DialogTitle sx={{ color: 'white', display: 'flex', justifyContent: 'space-between' }}>
           Stake {selectedPool?.pair}
@@ -597,17 +597,17 @@ export default function FarmingPage() {
         <DialogContent>
           {selectedPool && (
             <Box sx={{ mt: 2 }}>
-              <Box sx={{ bgcolor: '#2a2a3e', p: 2, borderRadius: 2, mb: 3 }}>
+              <Box sx={{ bgcolor: 'var(--bg-secondary)', p: 2, borderRadius: 2, mb: 3 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography sx={{ color: '#9ca3af' }}>APR</Typography>
+                  <Typography sx={{ color: 'var(--text-secondary)' }}>APR</Typography>
                   <Typography sx={{ color: '#00d4aa', fontWeight: 'bold' }}>{formatPercent(selectedPool.apr)}</Typography>
                 </Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography sx={{ color: '#9ca3af' }}>Daily Rewards</Typography>
+                  <Typography sx={{ color: 'var(--text-secondary)' }}>Daily Rewards</Typography>
                   <Typography sx={{ color: 'white' }}>{selectedPool.rewardPerDay} {selectedPool.rewardToken}</Typography>
                 </Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography sx={{ color: '#9ca3af' }}>Min Stake</Typography>
+                  <Typography sx={{ color: 'var(--text-secondary)' }}>Min Stake</Typography>
                   <Typography sx={{ color: 'white' }}>{selectedPool.minStake} LP</Typography>
                 </Box>
               </Box>
@@ -619,19 +619,19 @@ export default function FarmingPage() {
                 value={stakeAmount}
                 onChange={(e) => setStakeAmount(e.target.value)}
                 InputProps={{
-                  endAdornment: <InputAdornment position="end" sx={{ color: "#9ca3af" }}>LP</InputAdornment>,
+                  endAdornment: <InputAdornment position="end" sx={{ color: "var(--text-secondary)" }}>LP</InputAdornment>,
                 }}
                 sx={{
                   mb: 3,
-                  '& .MuiInputLabel-root': { color: '#9ca3af' },
+                  '& .MuiInputLabel-root': { color: 'var(--text-secondary)' },
                   '& input': { color: 'white' },
-                  '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#3a3a4e' } },
+                  '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } },
                 }}
               />
 
               {selectedPool.lockPeriod > 0 && (
                 <Box sx={{ mb: 3 }}>
-                  <Typography sx={{ color: '#9ca3af', mb: 2 }}>Lock Period (Higher multiplier)</Typography>
+                  <Typography sx={{ color: 'var(--text-secondary)', mb: 2 }}>Lock Period (Higher multiplier)</Typography>
                   <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                     {LOCK_PERIODS.map(period => (
                       <Chip
@@ -639,7 +639,7 @@ export default function FarmingPage() {
                         label={`${period.label} (${period.multiplier}x)`}
                         onClick={() => setSelectedLockPeriod(period.days)}
                         sx={{
-                          bgcolor: selectedLockPeriod === period.days ? '#00d4aa' : '#2a2a3e',
+                          bgcolor: selectedLockPeriod === period.days ? '#00d4aa' : 'var(--bg-secondary)',
                           color: selectedLockPeriod === period.days ? 'black' : 'white',
                           cursor: 'pointer',
                         }}
@@ -649,8 +649,8 @@ export default function FarmingPage() {
                 </Box>
               )}
 
-              <Box sx={{ bgcolor: '#2a2a3e', p: 2, borderRadius: 2 }}>
-                <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+              <Box sx={{ bgcolor: 'var(--bg-secondary)', p: 2, borderRadius: 2 }}>
+                <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                   Your stake will earn {selectedLockPeriod > 0 ? LOCK_PERIODS.find(p => p.days === selectedLockPeriod)?.multiplier : 1}x rewards.
                   {selectedLockPeriod > 0 && ' You cannot unstake until the lock period ends.'}
                 </Typography>
@@ -659,7 +659,7 @@ export default function FarmingPage() {
           )}
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
-          <Button onClick={() => setShowStakeDialog(false)} sx={{ color: '#9ca3af' }}>Cancel</Button>
+          <Button onClick={() => setShowStakeDialog(false)} sx={{ color: 'var(--text-secondary)' }}>Cancel</Button>
           <Button
             variant="contained"
             onClick={handleStake}
@@ -677,7 +677,7 @@ export default function FarmingPage() {
         onClose={() => setShowUnstakeDialog(false)}
         maxWidth="sm"
         fullWidth
-        PaperProps={{ sx: { bgcolor: '#1a1a2e', backgroundImage: 'none' } }}
+        PaperProps={{ sx: { bgcolor: 'var(--bg-primary)', backgroundImage: 'none' } }}
       >
         <DialogTitle sx={{ color: 'white', display: 'flex', justifyContent: 'space-between' }}>
           Unstake {selectedPool?.pair}
@@ -686,7 +686,7 @@ export default function FarmingPage() {
         <DialogContent>
           {selectedPool && (
             <Box sx={{ mt: 2 }}>
-              <Typography sx={{ color: '#9ca3af', mb: 3 }}>
+              <Typography sx={{ color: 'var(--text-secondary)', mb: 3 }}>
                 Enter the amount of LP tokens to unstake. You will also claim any pending rewards.
               </Typography>
 
@@ -697,13 +697,13 @@ export default function FarmingPage() {
                 value={unstakeAmount}
                 onChange={(e) => setUnstakeAmount(e.target.value)}
                 InputProps={{
-                  endAdornment: <InputAdornment position="end" sx={{ color: "#9ca3af" }}>LP</InputAdornment>,
+                  endAdornment: <InputAdornment position="end" sx={{ color: "var(--text-secondary)" }}>LP</InputAdornment>,
                 }}
                 sx={{
                   mb: 3,
-                  '& .MuiInputLabel-root': { color: '#9ca3af' },
+                  '& .MuiInputLabel-root': { color: 'var(--text-secondary)' },
                   '& input': { color: 'white' },
-                  '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#3a3a4e' } },
+                  '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } },
                 }}
               />
 
@@ -714,7 +714,7 @@ export default function FarmingPage() {
           )}
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
-          <Button onClick={() => setShowUnstakeDialog(false)} sx={{ color: '#9ca3af' }}>Cancel</Button>
+          <Button onClick={() => setShowUnstakeDialog(false)} sx={{ color: 'var(--text-secondary)' }}>Cancel</Button>
           <Button
             variant="contained"
             onClick={handleUnstake}

@@ -238,18 +238,18 @@ export default function AnalyticsPage() {
     icon?: React.ReactNode,
     subtitle?: string
   ) => (
-    <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+    <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
       <CardContent>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-          <Typography variant="caption" sx={{ color: '#9ca3af' }}>{title}</Typography>
-          {icon && <Box sx={{ color: '#9ca3af' }}>{icon}</Box>}
+          <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>{title}</Typography>
+          {icon && <Box sx={{ color: 'var(--text-secondary)' }}>{icon}</Box>}
         </Box>
         <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold', mb: 0.5 }}>
           {value}
         </Typography>
         {change !== undefined && renderChangeIndicator(change)}
         {subtitle && (
-          <Typography variant="caption" sx={{ color: '#9ca3af', display: 'block', mt: 0.5 }}>
+          <Typography variant="caption" sx={{ color: 'var(--text-secondary)', display: 'block', mt: 0.5 }}>
             {subtitle}
           </Typography>
         )}
@@ -270,7 +270,7 @@ export default function AnalyticsPage() {
             <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
               📊 Analytics Dashboard
             </Typography>
-            <Typography variant="body2" sx={{ color: '#9ca3af', mt: 1 }}>
+            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mt: 1 }}>
               Real-time protocol metrics and performance insights
             </Typography>
           </Box>
@@ -282,8 +282,8 @@ export default function AnalyticsPage() {
               size="small"
               sx={{
                 '& .MuiToggleButton-root': {
-                  color: '#9ca3af',
-                  borderColor: '#3a3a4e',
+                  color: 'var(--text-secondary)',
+                  borderColor: 'var(--bg-tertiary)',
                   '&.Mui-selected': { bgcolor: '#00d4aa', color: 'black' },
                 },
               }}
@@ -296,7 +296,7 @@ export default function AnalyticsPage() {
             <Button
               variant="outlined"
               startIcon={<Download />}
-              sx={{ borderColor: '#3a3a4e', color: 'white' }}
+              sx={{ borderColor: 'var(--bg-tertiary)', color: 'white' }}
             >
               Export
             </Button>
@@ -304,7 +304,7 @@ export default function AnalyticsPage() {
               variant="outlined"
               startIcon={<Refresh />}
               onClick={loadAnalytics}
-              sx={{ borderColor: '#3a3a4e', color: 'white' }}
+              sx={{ borderColor: 'var(--bg-tertiary)', color: 'white' }}
             >
               Refresh
             </Button>
@@ -352,13 +352,13 @@ export default function AnalyticsPage() {
         )}
 
         {/* Tabs */}
-        <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3, mb: 3 }}>
+        <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3, mb: 3 }}>
           <Tabs
             value={activeTab}
             onChange={(_, v) => setActiveTab(v)}
             sx={{
               borderBottom: '1px solid #2a2a3e',
-              '& .MuiTab-root': { color: '#9ca3af' },
+              '& .MuiTab-root': { color: 'var(--text-secondary)' },
               '& .Mui-selected': { color: '#00d4aa' },
             }}
           >
@@ -374,7 +374,7 @@ export default function AnalyticsPage() {
                 <CircularProgress sx={{ color: '#00d4aa' }} />
               </Box>
             ) : error ? (
-              <Alert severity="error" sx={{ bgcolor: '#2a2a3e', color: '#ff4757' }} action={
+              <Alert severity="error" sx={{ bgcolor: 'var(--bg-secondary)', color: '#ff4757' }} action={
                 <Button color="inherit" size="small" onClick={loadAnalytics}>Retry</Button>
               }>
                 {error}
@@ -394,7 +394,7 @@ export default function AnalyticsPage() {
                 </Box>
 
                 {/* Volume Chart */}
-                <Card sx={{ bgcolor: '#2a2a3e', borderRadius: 3, mb: 3 }}>
+                <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 3, mb: 3 }}>
                   <CardContent>
                     <Typography variant="h6" sx={{ color: 'white', mb: 2 }}>Volume History</Typography>
                     <Box sx={{ height: 300, display: 'flex', alignItems: 'flex-end', gap: 1, px: 2 }}>
@@ -420,10 +420,10 @@ export default function AnalyticsPage() {
                       })}
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2, px: 2 }}>
-                      <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                      <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                         {formatDate(volumeData[volumeData.length - 14]?.timestamp || Date.now())}
                       </Typography>
-                      <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                      <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                         {formatDate(volumeData[volumeData.length - 1]?.timestamp || Date.now())}
                       </Typography>
                     </Box>
@@ -432,7 +432,7 @@ export default function AnalyticsPage() {
 
                 {/* Key Metrics */}
                 <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 3 }}>
-                  <Card sx={{ bgcolor: '#2a2a3e', borderRadius: 3 }}>
+                  <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 3 }}>
                     <CardContent>
                       <Typography variant="h6" sx={{ color: 'white', mb: 2 }}>Fee Distribution</Typography>
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -440,11 +440,11 @@ export default function AnalyticsPage() {
                           { label: 'Swap Fees', value: 65, color: '#00d4aa' },
                           { label: 'Protocol Fees', value: 20, color: '#00d4ff' },
                           { label: 'Gas Refunds', value: 10, color: '#ff9800' },
-                          { label: 'Other', value: 5, color: '#9ca3af' },
+                          { label: 'Other', value: 5, color: 'var(--text-secondary)' },
                         ].map(item => (
                           <Box key={item.label}>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                              <Typography variant="body2" sx={{ color: '#9ca3af' }}>{item.label}</Typography>
+                              <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>{item.label}</Typography>
                               <Typography variant="body2" sx={{ color: 'white' }}>{item.value}%</Typography>
                             </Box>
                             <LinearProgress
@@ -453,7 +453,7 @@ export default function AnalyticsPage() {
                               sx={{
                                 height: 8,
                                 borderRadius: 4,
-                                bgcolor: '#1a1a2e',
+                                bgcolor: 'var(--bg-primary)',
                                 '& .MuiLinearProgress-bar': { bgcolor: item.color, borderRadius: 4 },
                               }}
                             />
@@ -463,18 +463,18 @@ export default function AnalyticsPage() {
                     </CardContent>
                   </Card>
 
-                  <Card sx={{ bgcolor: '#2a2a3e', borderRadius: 3 }}>
+                  <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 3 }}>
                     <CardContent>
                       <Typography variant="h6" sx={{ color: 'white', mb: 2 }}>Top Performing Pools</Typography>
                       {poolAnalytics.slice(0, 5).map((pool, idx) => (
                         <Box key={pool.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography variant="body2" sx={{ color: '#9ca3af', width: 20 }}>{idx + 1}</Typography>
+                            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', width: 20 }}>{idx + 1}</Typography>
                             <Typography variant="body2" sx={{ color: 'white' }}>{pool.name}</Typography>
                           </Box>
                           <Box sx={{ textAlign: 'right' }}>
                             <Typography variant="body2" sx={{ color: '#00d4aa' }}>{formatPercent(pool.apr)}</Typography>
-                            <Typography variant="caption" sx={{ color: '#9ca3af' }}>APR</Typography>
+                            <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>APR</Typography>
                           </Box>
                         </Box>
                       ))}
@@ -486,25 +486,25 @@ export default function AnalyticsPage() {
               /* Pools Tab */
               poolAnalytics.length === 0 ? (
                 <Box sx={{ textAlign: 'center', py: 5 }}>
-                  <BarChart sx={{ fontSize: 48, color: '#9ca3af', mb: 1 }} />
-                  <Typography sx={{ color: '#9ca3af' }}>No pool analytics data available</Typography>
+                  <BarChart sx={{ fontSize: 48, color: 'var(--text-secondary)', mb: 1 }} />
+                  <Typography sx={{ color: 'var(--text-secondary)' }}>No pool analytics data available</Typography>
                 </Box>
               ) : (
               <TableContainer>
                 <Table>
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ color: '#9ca3af' }}>Pool</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">TVL</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Volume (24h)</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Fees (24h)</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">APR</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Utilization</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }}>Pool</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">TVL</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Volume (24h)</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Fees (24h)</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">APR</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Utilization</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {poolAnalytics.map((pool) => (
-                      <TableRow key={pool.id} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
+                      <TableRow key={pool.id} sx={{ '&:hover': { bgcolor: 'var(--bg-secondary)' } }}>
                         <TableCell>
                           <Typography sx={{ color: '#00d4aa', fontWeight: 'bold' }}>{pool.name}</Typography>
                         </TableCell>
@@ -524,7 +524,7 @@ export default function AnalyticsPage() {
                         </TableCell>
                         <TableCell align="right">
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'flex-end' }}>
-                            <Box sx={{ width: 60, bgcolor: '#1a1a2e', borderRadius: 1, height: 6 }}>
+                            <Box sx={{ width: 60, bgcolor: 'var(--bg-primary)', borderRadius: 1, height: 6 }}>
                               <Box sx={{ width: `${pool.utilization}%`, bgcolor: pool.utilization > 70 ? '#00d4aa' : pool.utilization > 40 ? '#ff9800' : '#ff4757', height: '100%', borderRadius: 1 }} />
                             </Box>
                             <Typography sx={{ color: 'white' }}>{pool.utilization.toFixed(0)}%</Typography>
@@ -540,28 +540,28 @@ export default function AnalyticsPage() {
               /* Tokens Tab */
               tokenAnalytics.length === 0 ? (
                 <Box sx={{ textAlign: 'center', py: 5 }}>
-                  <PieChart sx={{ fontSize: 48, color: '#9ca3af', mb: 1 }} />
-                  <Typography sx={{ color: '#9ca3af' }}>No token analytics data available</Typography>
+                  <PieChart sx={{ fontSize: 48, color: 'var(--text-secondary)', mb: 1 }} />
+                  <Typography sx={{ color: 'var(--text-secondary)' }}>No token analytics data available</Typography>
                 </Box>
               ) : (
               <TableContainer>
                 <Table>
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ color: '#9ca3af' }}>Token</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Price</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">24h Change</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">24h Volume</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Market Cap</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }}>Token</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Price</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">24h Change</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">24h Volume</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Market Cap</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {tokenAnalytics.map((token) => (
-                      <TableRow key={token.symbol} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
+                      <TableRow key={token.symbol} sx={{ '&:hover': { bgcolor: 'var(--bg-secondary)' } }}>
                         <TableCell>
                           <Box>
                             <Typography sx={{ color: '#00d4aa', fontWeight: 'bold' }}>{token.symbol}</Typography>
-                            <Typography variant="caption" sx={{ color: '#9ca3af' }}>{token.name}</Typography>
+                            <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>{token.name}</Typography>
                           </Box>
                         </TableCell>
                         <TableCell align="right">
@@ -588,23 +588,23 @@ export default function AnalyticsPage() {
               /* Chains Tab */
               chainAnalytics.length === 0 ? (
                 <Box sx={{ textAlign: 'center', py: 5 }}>
-                  <ShowChart sx={{ fontSize: 48, color: '#9ca3af', mb: 1 }} />
-                  <Typography sx={{ color: '#9ca3af' }}>No chain analytics data available</Typography>
+                  <ShowChart sx={{ fontSize: 48, color: 'var(--text-secondary)', mb: 1 }} />
+                  <Typography sx={{ color: 'var(--text-secondary)' }}>No chain analytics data available</Typography>
                 </Box>
               ) : (
               <Box>
                 <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, mb: 4 }}>
                   {chainAnalytics.slice(0, 4).map((chain) => (
-                    <Card key={chain.chainId} sx={{ bgcolor: '#2a2a3e', borderRadius: 3 }}>
+                    <Card key={chain.chainId} sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 3 }}>
                       <CardContent>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                          <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: CHAIN_CONFIG[chain.chainId]?.color || '#666' }} />
+                          <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: CHAIN_CONFIG[chain.chainId]?.color || 'var(--text-secondary)' }} />
                           <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{chain.chainName}</Typography>
                         </Box>
                         <Typography variant="h6" sx={{ color: '#00d4aa' }}>{formatUSD(chain.volume24h)}</Typography>
-                        <Typography variant="caption" sx={{ color: '#9ca3af' }}>24h Volume</Typography>
+                        <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>24h Volume</Typography>
                         <Box sx={{ mt: 1 }}>
-                          <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                          <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                             Share: {chain.sharePercent}%
                           </Typography>
                         </Box>
@@ -617,20 +617,20 @@ export default function AnalyticsPage() {
                   <Table>
                     <TableHead>
                       <TableRow>
-                        <TableCell sx={{ color: '#9ca3af' }}>Chain</TableCell>
-                        <TableCell sx={{ color: '#9ca3af' }} align="right">Volume (24h)</TableCell>
-                        <TableCell sx={{ color: '#9ca3af' }} align="right">TVL</TableCell>
-                        <TableCell sx={{ color: '#9ca3af' }} align="right">Transactions</TableCell>
-                        <TableCell sx={{ color: '#9ca3af' }} align="right">Avg Gas</TableCell>
-                        <TableCell sx={{ color: '#9ca3af' }} align="right">Market Share</TableCell>
+                        <TableCell sx={{ color: 'var(--text-secondary)' }}>Chain</TableCell>
+                        <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Volume (24h)</TableCell>
+                        <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">TVL</TableCell>
+                        <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Transactions</TableCell>
+                        <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Avg Gas</TableCell>
+                        <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Market Share</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {chainAnalytics.map((chain) => (
-                        <TableRow key={chain.chainId} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
+                        <TableRow key={chain.chainId} sx={{ '&:hover': { bgcolor: 'var(--bg-secondary)' } }}>
                           <TableCell>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: CHAIN_CONFIG[chain.chainId]?.color || '#666' }} />
+                              <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: CHAIN_CONFIG[chain.chainId]?.color || 'var(--text-secondary)' }} />
                               <Typography sx={{ color: 'white' }}>{chain.chainName}</Typography>
                             </Box>
                           </TableCell>
@@ -644,11 +644,11 @@ export default function AnalyticsPage() {
                             <Typography sx={{ color: 'white' }}>{formatNumber(chain.transactions)}</Typography>
                           </TableCell>
                           <TableCell align="right">
-                            <Typography sx={{ color: '#9ca3af' }}>{chain.avgGasPrice.toFixed(1)} gwei</Typography>
+                            <Typography sx={{ color: 'var(--text-secondary)' }}>{chain.avgGasPrice.toFixed(1)} gwei</Typography>
                           </TableCell>
                           <TableCell align="right">
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'flex-end' }}>
-                              <Box sx={{ width: 60, bgcolor: '#1a1a2e', borderRadius: 1, height: 6 }}>
+                              <Box sx={{ width: 60, bgcolor: 'var(--bg-primary)', borderRadius: 1, height: 6 }}>
                                 <Box sx={{ width: `${chain.sharePercent * 3}%`, bgcolor: '#00d4aa', height: '100%', borderRadius: 1 }} />
                               </Box>
                               <Typography sx={{ color: 'white' }}>{chain.sharePercent}%</Typography>

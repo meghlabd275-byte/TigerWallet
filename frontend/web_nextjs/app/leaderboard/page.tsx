@@ -174,7 +174,7 @@ export default function LeaderboardPage() {
     if (rank === 1) return <Whatshot sx={{ color: '#FFD700', fontSize: 28 }} />;
     if (rank === 2) return <Whatshot sx={{ color: '#C0C0C0', fontSize: 24 }} />;
     if (rank === 3) return <Whatshot sx={{ color: '#CD7F32', fontSize: 22 }} />;
-    return <Typography sx={{ color: '#9ca3af', fontWeight: 'bold' }}>{rank}</Typography>;
+    return <Typography sx={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}>{rank}</Typography>;
   };
 
   const renderPnL = (pnl: number) => (
@@ -202,7 +202,7 @@ export default function LeaderboardPage() {
             <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
               🏆 ContentCopy Trading Leaderboard
             </Typography>
-            <Typography variant="body2" sx={{ color: '#9ca3af', mt: 1 }}>
+            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mt: 1 }}>
               Follow top traders and automatically copy their trades
             </Typography>
           </Box>
@@ -210,7 +210,7 @@ export default function LeaderboardPage() {
             variant="outlined"
             startIcon={<Refresh />}
             onClick={loadData}
-            sx={{ borderColor: '#3a3a4e', color: 'white' }}
+            sx={{ borderColor: 'var(--bg-tertiary)', color: 'white' }}
           >
             Refresh
           </Button>
@@ -220,20 +220,20 @@ export default function LeaderboardPage() {
         {topTraders.length >= 3 && (
           <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: 2, mb: 4 }}>
             {/* 2nd Place */}
-            <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3, width: 200, border: '2px solid #C0C0C0' }}>
+            <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3, width: 200, border: '2px solid #C0C0C0' }}>
               <CardContent sx={{ textAlign: 'center', pb: 2 }}>
                 <Avatar sx={{ width: 60, height: 60, mx: 'auto', mb: 1, bgcolor: '#C0C0C0', fontSize: 24 }}>
                   {formatAddress(topTraders[1].trader.address, 2)}
                 </Avatar>
-                <Typography sx={{ color: '#9ca3af', fontSize: '0.85rem' }}>{topTraders[1].trader.ensName || formatAddress(topTraders[1].trader.address)}</Typography>
+                <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{topTraders[1].trader.ensName || formatAddress(topTraders[1].trader.address)}</Typography>
                 <Typography variant="h5" sx={{ color: '#C0C0C0', fontWeight: 'bold', my: 1 }}>#2</Typography>
                 {renderReturn(topTraders[1].monthlyReturn)}
-                <Typography variant="caption" sx={{ color: '#9ca3af', display: 'block' }}>Monthly</Typography>
+                <Typography variant="caption" sx={{ color: 'var(--text-secondary)', display: 'block' }}>Monthly</Typography>
               </CardContent>
             </Card>
 
             {/* 1st Place */}
-            <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3, width: 250, border: '2px solid #FFD700' }}>
+            <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3, width: 250, border: '2px solid #FFD700' }}>
               <CardContent sx={{ textAlign: 'center', pb: 2 }}>
                 <Box sx={{ position: 'relative', mb: 1 }}>
                   <Avatar sx={{ width: 80, height: 80, mx: 'auto', bgcolor: '#FFD700', fontSize: 32 }}>
@@ -245,33 +245,33 @@ export default function LeaderboardPage() {
                 {topTraders[0].trader.isVerified && <Verified sx={{ color: '#00d4aa', fontSize: 16, ml: 0.5 }} />}
                 <Typography variant="h4" sx={{ color: '#FFD700', fontWeight: 'bold', my: 1 }}>#1</Typography>
                 {renderReturn(topTraders[0].monthlyReturn)}
-                <Typography variant="caption" sx={{ color: '#9ca3af', display: 'block' }}>Monthly Return</Typography>
+                <Typography variant="caption" sx={{ color: 'var(--text-secondary)', display: 'block' }}>Monthly Return</Typography>
               </CardContent>
             </Card>
 
             {/* 3rd Place */}
-            <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3, width: 200, border: '2px solid #CD7F32' }}>
+            <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3, width: 200, border: '2px solid #CD7F32' }}>
               <CardContent sx={{ textAlign: 'center', pb: 2 }}>
                 <Avatar sx={{ width: 60, height: 60, mx: 'auto', mb: 1, bgcolor: '#CD7F32', fontSize: 24 }}>
                   {formatAddress(topTraders[2].trader.address, 2)}
                 </Avatar>
-                <Typography sx={{ color: '#9ca3af', fontSize: '0.85rem' }}>{topTraders[2].trader.ensName || formatAddress(topTraders[2].trader.address)}</Typography>
+                <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{topTraders[2].trader.ensName || formatAddress(topTraders[2].trader.address)}</Typography>
                 <Typography variant="h5" sx={{ color: '#CD7F32', fontWeight: 'bold', my: 1 }}>#3</Typography>
                 {renderReturn(topTraders[2].monthlyReturn)}
-                <Typography variant="caption" sx={{ color: '#9ca3af', display: 'block' }}>Monthly</Typography>
+                <Typography variant="caption" sx={{ color: 'var(--text-secondary)', display: 'block' }}>Monthly</Typography>
               </CardContent>
             </Card>
           </Box>
         )}
 
         {/* Tabs */}
-        <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3, mb: 3 }}>
+        <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3, mb: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, borderBottom: '1px solid #2a2a3e' }}>
             <Tabs
               value={activeTab}
               onChange={(_, v) => setActiveTab(v)}
               sx={{
-                '& .MuiTab-root': { color: '#9ca3af' },
+                '& .MuiTab-root': { color: 'var(--text-secondary)' },
                 '& .Mui-selected': { color: '#00d4aa' },
               }}
             >
@@ -283,7 +283,7 @@ export default function LeaderboardPage() {
               <Select
                 value={filterPair}
                 onChange={(e) => setFilterPair(e.target.value)}
-                sx={{ color: 'white', bgcolor: '#2a2a3e', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#3a3a4e' } }}
+                sx={{ color: 'white', bgcolor: 'var(--bg-secondary)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
               >
                 <MenuItem value="all">All Pairs</MenuItem>
                 <MenuItem value="ETH/USDC">ETH/USDC</MenuItem>
@@ -303,22 +303,22 @@ export default function LeaderboardPage() {
                 <Table>
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ color: '#9ca3af' }}>Rank</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }}>Trader</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Monthly</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Total P&L</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Win Rate</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Followers</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Avg Hold</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Pair</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Actions</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }}>Rank</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }}>Trader</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Monthly</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Total P&L</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Win Rate</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Followers</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Avg Hold</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Pair</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Actions</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {filteredLeaderboard.map((entry) => (
                       <TableRow 
                         key={entry.trader.id} 
-                        sx={{ '&:hover': { bgcolor: '#2a2a3e', cursor: 'pointer' } }}
+                        sx={{ '&:hover': { bgcolor: 'var(--bg-secondary)', cursor: 'pointer' } }}
                         onClick={() => { setSelectedTrader(entry.trader); setShowTraderDetail(true); }}
                       >
                         <TableCell>
@@ -328,7 +328,7 @@ export default function LeaderboardPage() {
                         </TableCell>
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                            <Avatar sx={{ bgcolor: '#2a2a3e', width: 36, height: 36 }}>
+                            <Avatar sx={{ bgcolor: 'var(--bg-secondary)', width: 36, height: 36 }}>
                               {formatAddress(entry.trader.address, 2)}
                             </Avatar>
                             <Box>
@@ -338,7 +338,7 @@ export default function LeaderboardPage() {
                                 </Typography>
                                 {entry.trader.isVerified && <Verified sx={{ color: '#00d4aa', fontSize: 16 }} />}
                               </Box>
-                              <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                              <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                                 {formatAddress(entry.trader.address, 6)}
                               </Typography>
                             </Box>
@@ -352,13 +352,13 @@ export default function LeaderboardPage() {
                           </Typography>
                         </TableCell>
                         <TableCell align="right">
-                          <Typography sx={{ color: '#9ca3af' }}>{formatNumber(entry.trader.followers)}</Typography>
+                          <Typography sx={{ color: 'var(--text-secondary)' }}>{formatNumber(entry.trader.followers)}</Typography>
                         </TableCell>
                         <TableCell align="right">
-                          <Typography sx={{ color: '#9ca3af' }}>{entry.trader.avgHoldingTime}</Typography>
+                          <Typography sx={{ color: 'var(--text-secondary)' }}>{entry.trader.avgHoldingTime}</Typography>
                         </TableCell>
                         <TableCell align="right">
-                          <Chip label={entry.trader.tradingPair} size="small" sx={{ bgcolor: '#2a2a3e' }} />
+                          <Chip label={entry.trader.tradingPair} size="small" sx={{ bgcolor: 'var(--bg-secondary)' }} />
                         </TableCell>
                         <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                           <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
@@ -370,7 +370,7 @@ export default function LeaderboardPage() {
                               sx={{ 
                                 bgcolor: entry.trader.isCopiable ? '#00d4aa' : 'transparent', 
                                 color: entry.trader.isCopiable ? 'black' : 'white',
-                                borderColor: '#3a3a4e',
+                                borderColor: 'var(--bg-tertiary)',
                                 minWidth: 0, px: 1
                               }}
                             >
@@ -379,7 +379,7 @@ export default function LeaderboardPage() {
                             <IconButton
                               size="small"
                               onClick={() => handleFollowTrader(entry.trader)}
-                              sx={{ color: entry.trader.isFollowing ? '#00d4aa' : '#9ca3af' }}
+                              sx={{ color: entry.trader.isFollowing ? '#00d4aa' : 'var(--text-secondary)' }}
                             >
                               {entry.trader.isFollowing ? <Star /> : <Star />}
                             </IconButton>
@@ -396,27 +396,27 @@ export default function LeaderboardPage() {
 
         {/* Stats */}
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2 }}>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
-              <Typography variant="caption" sx={{ color: '#9ca3af' }}>Total Traders</Typography>
+              <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total Traders</Typography>
               <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>{traders.length}</Typography>
             </CardContent>
           </Card>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
-              <Typography variant="caption" sx={{ color: '#9ca3af' }}>Active Copiers</Typography>
+              <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Active Copiers</Typography>
               <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>{formatNumber(traders.reduce((sum, t) => sum + t.followers, 0))}</Typography>
             </CardContent>
           </Card>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
-              <Typography variant="caption" sx={{ color: '#9ca3af' }}>Avg Win Rate</Typography>
+              <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Avg Win Rate</Typography>
               <Typography variant="h5" sx={{ color: '#00d4aa', fontWeight: 'bold' }}>{(traders.reduce((sum, t) => sum + t.winRate, 0) / traders.length).toFixed(1)}%</Typography>
             </CardContent>
           </Card>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
-              <Typography variant="caption" sx={{ color: '#9ca3af' }}>Total Volume</Typography>
+              <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total Volume</Typography>
               <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>{formatUSD(traders.reduce((sum, t) => sum + t.totalVolume, 0))}</Typography>
             </CardContent>
           </Card>
@@ -429,13 +429,13 @@ export default function LeaderboardPage() {
         onClose={() => setShowTraderDetail(false)}
         maxWidth="md"
         fullWidth
-        PaperProps={{ sx: { bgcolor: '#1a1a2e', backgroundImage: 'none' } }}
+        PaperProps={{ sx: { bgcolor: 'var(--bg-primary)', backgroundImage: 'none' } }}
       >
         {selectedTrader && (
           <>
             <DialogTitle sx={{ color: 'white', display: 'flex', justifyContent: 'space-between' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Avatar sx={{ width: 56, height: 56, bgcolor: '#2a2a3e' }}>
+                <Avatar sx={{ width: 56, height: 56, bgcolor: 'var(--bg-secondary)' }}>
                   {formatAddress(selectedTrader.address, 2)}
                 </Avatar>
                 <Box>
@@ -443,7 +443,7 @@ export default function LeaderboardPage() {
                     <Typography>{selectedTrader.ensName || formatAddress(selectedTrader.address)}</Typography>
                     {selectedTrader.isVerified && <Verified sx={{ color: '#00d4aa' }} />}
                   </Box>
-                  <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                  <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                     {selectedTrader.tradingPair} Trader • Last trade {timeAgo(selectedTrader.lastTradeTime)}
                   </Typography>
                 </Box>
@@ -452,33 +452,33 @@ export default function LeaderboardPage() {
             </DialogTitle>
             <DialogContent>
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, mb: 3 }}>
-                <Card sx={{ bgcolor: '#2a2a3e', borderRadius: 2 }}>
+                <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 2 }}>
                   <CardContent>
-                    <Typography variant="caption" sx={{ color: '#9ca3af' }}>Total P&L</Typography>
+                    <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total P&L</Typography>
                     <Typography variant="h6" sx={{ color: selectedTrader.totalPnL >= 0 ? '#00d4aa' : '#ff5722', fontWeight: 'bold' }}>
                       {formatUSD(selectedTrader.totalPnL)}
                     </Typography>
                   </CardContent>
                 </Card>
-                <Card sx={{ bgcolor: '#2a2a3e', borderRadius: 2 }}>
+                <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 2 }}>
                   <CardContent>
-                    <Typography variant="caption" sx={{ color: '#9ca3af' }}>Win Rate</Typography>
+                    <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Win Rate</Typography>
                     <Typography variant="h6" sx={{ color: '#00d4aa', fontWeight: 'bold' }}>
                       {selectedTrader.winRate.toFixed(1)}%
                     </Typography>
                   </CardContent>
                 </Card>
-                <Card sx={{ bgcolor: '#2a2a3e', borderRadius: 2 }}>
+                <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 2 }}>
                   <CardContent>
-                    <Typography variant="caption" sx={{ color: '#9ca3af' }}>Profit Factor</Typography>
+                    <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Profit Factor</Typography>
                     <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
                       {selectedTrader.profitFactor.toFixed(2)}
                     </Typography>
                   </CardContent>
                 </Card>
-                <Card sx={{ bgcolor: '#2a2a3e', borderRadius: 2 }}>
+                <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 2 }}>
                   <CardContent>
-                    <Typography variant="caption" sx={{ color: '#9ca3af' }}>Sharpe Ratio</Typography>
+                    <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Sharpe Ratio</Typography>
                     <Typography variant="h6" sx={{ color: selectedTrader.sharpeRatio > 1.5 ? '#00d4aa' : 'white', fontWeight: 'bold' }}>
                       {selectedTrader.sharpeRatio.toFixed(2)}
                     </Typography>
@@ -487,33 +487,33 @@ export default function LeaderboardPage() {
               </Box>
 
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, mb: 3 }}>
-                <Card sx={{ bgcolor: '#2a2a3e', borderRadius: 2 }}>
+                <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 2 }}>
                   <CardContent>
-                    <Typography variant="caption" sx={{ color: '#9ca3af' }}>Monthly Return</Typography>
+                    <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Monthly Return</Typography>
                     <Typography variant="h6" sx={{ color: selectedTrader.monthlyReturn >= 0 ? '#00d4aa' : '#ff5722', fontWeight: 'bold' }}>
                       {formatPercent(selectedTrader.monthlyReturn)}
                     </Typography>
                   </CardContent>
                 </Card>
-                <Card sx={{ bgcolor: '#2a2a3e', borderRadius: 2 }}>
+                <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 2 }}>
                   <CardContent>
-                    <Typography variant="caption" sx={{ color: '#9ca3af' }}>Max Drawdown</Typography>
+                    <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Max Drawdown</Typography>
                     <Typography variant="h6" sx={{ color: '#ff5722', fontWeight: 'bold' }}>
                       {selectedTrader.maxDrawdown.toFixed(1)}%
                     </Typography>
                   </CardContent>
                 </Card>
-                <Card sx={{ bgcolor: '#2a2a3e', borderRadius: 2 }}>
+                <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 2 }}>
                   <CardContent>
-                    <Typography variant="caption" sx={{ color: '#9ca3af' }}>Total Trades</Typography>
+                    <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total Trades</Typography>
                     <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
                       {formatNumber(selectedTrader.totalTrades)}
                     </Typography>
                   </CardContent>
                 </Card>
-                <Card sx={{ bgcolor: '#2a2a3e', borderRadius: 2 }}>
+                <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 2 }}>
                   <CardContent>
-                    <Typography variant="caption" sx={{ color: '#9ca3af' }}>Followers</Typography>
+                    <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Followers</Typography>
                     <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
                       {formatNumber(selectedTrader.followers)}
                     </Typography>
@@ -521,7 +521,7 @@ export default function LeaderboardPage() {
                 </Card>
               </Box>
 
-              <Typography sx={{ color: '#9ca3af', mb: 2 }}>Start ContentCopying</Typography>
+              <Typography sx={{ color: 'var(--text-secondary)', mb: 2 }}>Start ContentCopying</Typography>
               <Box sx={{ display: 'flex', gap: 2 }}>
                 <TextField
                   fullWidth
@@ -530,11 +530,11 @@ export default function LeaderboardPage() {
                   value={copyAmount}
                   onChange={(e) => setContentCopyAmount(e.target.value)}
                   InputProps={{
-                    startAdornment: <Typography sx={{ color: '#9ca3af', mr: 1 }}>$</Typography>,
+                    startAdornment: <Typography sx={{ color: 'var(--text-secondary)', mr: 1 }}>$</Typography>,
                   }}
                   sx={{
                     '& .MuiInputBase-input': { color: 'white' },
-                    '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#3a3a4e' } },
+                    '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } },
                   }}
                 />
                 <Button
@@ -557,7 +557,7 @@ export default function LeaderboardPage() {
               <Button onClick={() => handleFollowTrader(selectedTrader)} sx={{ color: '#00d4aa' }}>
                 {selectedTrader.isFollowing ? 'Unfollow' : 'Follow'}
               </Button>
-              <Button onClick={() => setShowTraderDetail(false)} sx={{ color: '#9ca3af' }}>Close</Button>
+              <Button onClick={() => setShowTraderDetail(false)} sx={{ color: 'var(--text-secondary)' }}>Close</Button>
             </DialogActions>
           </>
         )}

@@ -84,7 +84,7 @@ export default function PortfolioPage() {
 
   const EmptyRow = ({ colSpan, label }: { colSpan: number; label: string }) => (
     <TableRow>
-      <TableCell colSpan={colSpan} align="center" sx={{ color: '#9ca3af', py: 4 }}>{label}</TableCell>
+      <TableCell colSpan={colSpan} align="center" sx={{ color: 'var(--text-secondary)', py: 4 }}>{label}</TableCell>
     </TableRow>
   );
 
@@ -105,7 +105,7 @@ export default function PortfolioPage() {
             <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
               💼 Portfolio
             </Typography>
-            <Typography variant="body2" sx={{ color: '#9ca3af', mt: 1 }}>
+            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mt: 1 }}>
               Track your assets, positions, and transaction history
             </Typography>
           </Box>
@@ -124,44 +124,44 @@ export default function PortfolioPage() {
 
         {/* Overview Cards */}
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, mb: 4 }}>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                 <Wallet sx={{ color: '#00d4aa' }} />
-                <Typography variant="caption" sx={{ color: '#9ca3af' }}>Total Value</Typography>
+                <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total Value</Typography>
               </Box>
               <Typography variant="h5" sx={{ color: '#00d4aa', fontWeight: 'bold' }}>
                 {formatUSD(totalValue)}
               </Typography>
             </CardContent>
           </Card>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                 <ShowChart sx={{ color: '#00d4aa' }} />
-                <Typography variant="caption" sx={{ color: '#9ca3af' }}>24h Change</Typography>
+                <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>24h Change</Typography>
               </Box>
               <Typography variant="h5" sx={{ color: change24h >= 0 ? '#00d4aa' : '#ff5722', fontWeight: 'bold' }}>
                 {change24h >= 0 ? '+' : ''}{formatUSD(change24h)}
               </Typography>
             </CardContent>
           </Card>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                 <Pool sx={{ color: '#ff9800' }} />
-                <Typography variant="caption" sx={{ color: '#9ca3af' }}>Positions Value</Typography>
+                <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Positions Value</Typography>
               </Box>
               <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
                 {formatUSD(positions.reduce((s, p) => s + (p.value || 0), 0))}
               </Typography>
             </CardContent>
           </Card>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                 <TrendingUp sx={{ color: '#00d4aa' }} />
-                <Typography variant="caption" sx={{ color: '#9ca3af' }}>Total P&L</Typography>
+                <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total P&L</Typography>
               </Box>
               <Typography variant="h5" sx={{ color: totalPnL >= 0 ? '#00d4aa' : '#ff5722', fontWeight: 'bold' }}>
                 {totalPnL >= 0 ? '+' : ''}{formatUSD(totalPnL)}
@@ -171,11 +171,11 @@ export default function PortfolioPage() {
         </Box>
 
         {/* Tabs */}
-        <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3, mb: 3 }}>
+        <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3, mb: 3 }}>
           <Tabs
             value={activeTab}
             onChange={(_, v) => setActiveTab(v)}
-            sx={{ borderBottom: '1px solid #2a2a3e', '& .MuiTab-root': { color: '#9ca3af' }, '& .Mui-selected': { color: '#00d4aa' } }}
+            sx={{ borderBottom: '1px solid #2a2a3e', '& .MuiTab-root': { color: 'var(--text-secondary)' }, '& .Mui-selected': { color: '#00d4aa' } }}
           >
             <Tab label="Assets" />
             <Tab label="Positions" />
@@ -188,10 +188,10 @@ export default function PortfolioPage() {
                 <Table>
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ color: '#9ca3af' }}>Asset</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Balance</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Value</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">24h Change</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }}>Asset</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Balance</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Value</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">24h Change</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -199,13 +199,13 @@ export default function PortfolioPage() {
                       <EmptyRow colSpan={4} label="No assets found" />
                     ) : (
                       assets.map(asset => (
-                        <TableRow key={asset.symbol} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
+                        <TableRow key={asset.symbol} sx={{ '&:hover': { bgcolor: 'var(--bg-secondary)' } }}>
                           <TableCell>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                               <Typography sx={{ fontSize: 24 }}>{asset.icon || '🪙'}</Typography>
                               <Box>
                                 <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{asset.symbol}</Typography>
-                                <Typography variant="caption" sx={{ color: '#9ca3af' }}>{asset.name}</Typography>
+                                <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>{asset.name}</Typography>
                               </Box>
                             </Box>
                           </TableCell>
@@ -233,10 +233,10 @@ export default function PortfolioPage() {
                 <Table>
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ color: '#9ca3af' }}>Position</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Value</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">APR</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">P&L</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }}>Position</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Value</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">APR</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">P&L</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -244,13 +244,13 @@ export default function PortfolioPage() {
                       <EmptyRow colSpan={4} label="No positions found" />
                     ) : (
                       positions.map((pos, i) => (
-                        <TableRow key={i} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
+                        <TableRow key={i} sx={{ '&:hover': { bgcolor: 'var(--bg-secondary)' } }}>
                           <TableCell>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                               <Typography sx={{ fontSize: 24 }}>{pos.icon || '🧩'}</Typography>
                               <Box>
                                 <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{pos.pair}</Typography>
-                                <Typography variant="caption" sx={{ color: '#9ca3af' }}>{pos.protocol}</Typography>
+                                <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>{pos.protocol}</Typography>
                               </Box>
                             </Box>
                           </TableCell>
@@ -278,11 +278,11 @@ export default function PortfolioPage() {
                 <Table>
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ color: '#9ca3af' }}>Type</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }}>Details</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Value</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Status</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Time</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }}>Type</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }}>Details</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Value</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Status</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Time</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -290,9 +290,9 @@ export default function PortfolioPage() {
                       <EmptyRow colSpan={5} label="No transactions found" />
                     ) : (
                       transactions.map(tx => (
-                        <TableRow key={tx.hash || tx.id} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
+                        <TableRow key={tx.hash || tx.id} sx={{ '&:hover': { bgcolor: 'var(--bg-secondary)' } }}>
                           <TableCell>
-                            <Chip label="Transaction" size="small" sx={{ bgcolor: '#2a2a3e' }} />
+                            <Chip label="Transaction" size="small" sx={{ bgcolor: 'var(--bg-secondary)' }} />
                           </TableCell>
                           <TableCell>
                             <Typography sx={{ color: 'white' }}>{tx.value} {tx.from ? `from ${formatAddress(tx.from)}` : ''} → {tx.to ? formatAddress(tx.to) : ''}</Typography>
@@ -311,7 +311,7 @@ export default function PortfolioPage() {
                             />
                           </TableCell>
                           <TableCell align="right">
-                            <Typography sx={{ color: '#9ca3af' }}>{timeAgo(tx.timestamp)}</Typography>
+                            <Typography sx={{ color: 'var(--text-secondary)' }}>{timeAgo(tx.timestamp)}</Typography>
                           </TableCell>
                         </TableRow>
                       ))

@@ -299,7 +299,7 @@ export default function GovernancePage() {
             <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
               🏛️ Governance
             </Typography>
-            <Typography variant="body2" sx={{ color: '#9ca3af', mt: 1 }}>
+            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mt: 1 }}>
               Participate in protocol decisions and shape the future of TigerSwap
             </Typography>
           </Box>
@@ -307,33 +307,33 @@ export default function GovernancePage() {
 
         {/* Stats */}
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, mb: 4 }}>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
-              <Typography variant="caption" sx={{ color: '#9ca3af' }}>Your Voting Power</Typography>
+              <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Your Voting Power</Typography>
               <Typography variant="h5" sx={{ color: '#00d4aa', fontWeight: 'bold' }}>
                 {votingPower.toLocaleString()}
               </Typography>
             </CardContent>
           </Card>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
-              <Typography variant="caption" sx={{ color: '#9ca3af' }}>Active Proposals</Typography>
+              <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Active Proposals</Typography>
               <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
                 {activeProposals}
               </Typography>
             </CardContent>
           </Card>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
-              <Typography variant="caption" sx={{ color: '#9ca3af' }}>Total Votes Cast</Typography>
+              <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total Votes Cast</Typography>
               <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
                 {formatNumber(totalVotes)}
               </Typography>
             </CardContent>
           </Card>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
-              <Typography variant="caption" sx={{ color: '#9ca3af' }}>Proposals Passed</Typography>
+              <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Proposals Passed</Typography>
               <Typography variant="h5" sx={{ color: '#00d4aa', fontWeight: 'bold' }}>
                 {passedProposals}
               </Typography>
@@ -342,14 +342,14 @@ export default function GovernancePage() {
         </Box>
 
         {/* Delegate Card */}
-        <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3, mb: 4, border: '1px solid #00d4aa30' }}>
+        <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3, mb: 4, border: '1px solid #00d4aa30' }}>
           <CardContent sx={{ p: 3 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
               <Box>
                 <Typography variant="h6" sx={{ color: 'white', mb: 1 }}>
                   Delegate Your Voting Power
                 </Typography>
-                <Typography variant="body2" sx={{ color: '#9ca3af' }}>
+                <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
                   Delegate your TIGER votes to another address to participate in governance without spending gas.
                 </Typography>
               </Box>
@@ -362,7 +362,7 @@ export default function GovernancePage() {
                   sx={{
                     width: 250,
                     '& input': { color: 'white' },
-                    '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#3a3a4e' } },
+                    '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } },
                   }}
                 />
                 <Button
@@ -379,13 +379,13 @@ export default function GovernancePage() {
         </Card>
 
         {/* Tabs */}
-        <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3, mb: 3 }}>
+        <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3, mb: 3 }}>
           <Tabs
             value={activeTab}
             onChange={(_, v) => setActiveTab(v)}
             sx={{
               borderBottom: '1px solid #2a2a3e',
-              '& .MuiTab-root': { color: '#9ca3af' },
+              '& .MuiTab-root': { color: 'var(--text-secondary)' },
               '& .Mui-selected': { color: '#00d4aa' },
             }}
           >
@@ -409,7 +409,7 @@ export default function GovernancePage() {
               </Box>
             ) : proposals.length === 0 && topHolders.length === 0 ? (
               <Box sx={{ textAlign: 'center', py: 5 }}>
-                <Typography sx={{ color: '#9ca3af' }}>No governance data available yet.</Typography>
+                <Typography sx={{ color: 'var(--text-secondary)' }}>No governance data available yet.</Typography>
               </Box>
             ) : (
               <Box>
@@ -419,22 +419,22 @@ export default function GovernancePage() {
                     <Table>
                       <TableHead>
                         <TableRow>
-                          <TableCell sx={{ color: '#9ca3af' }}>Proposal</TableCell>
-                          <TableCell sx={{ color: '#9ca3af' }}>Type</TableCell>
-                          <TableCell sx={{ color: '#9ca3af' }}>Status</TableCell>
-                          <TableCell sx={{ color: '#9ca3af' }}>Votes</TableCell>
-                          <TableCell sx={{ color: '#9ca3af' }}>Time Remaining</TableCell>
-                          <TableCell sx={{ color: '#9ca3af' }} align="right">Action</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }}>Proposal</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }}>Type</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }}>Status</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }}>Votes</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }}>Time Remaining</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Action</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {proposals.map(proposal => (
-                          <TableRow key={proposal.id} sx={{ '&:hover': { bgcolor: '#2a2a3e', cursor: 'pointer' } }}
+                          <TableRow key={proposal.id} sx={{ '&:hover': { bgcolor: 'var(--bg-secondary)', cursor: 'pointer' } }}
                             onClick={() => { setSelectedProposal(proposal); setShowProposalDetail(true); }}>
                             <TableCell>
                               <Box>
                                 <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{proposal.title}</Typography>
-                                <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                                <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                                   by {formatAddress(proposal.proposer)} • {timeAgo(proposal.createdAt)}
                                 </Typography>
                               </Box>
@@ -447,7 +447,7 @@ export default function GovernancePage() {
                               </Box>
                             </TableCell>
                             <TableCell>
-                              <Typography sx={{ color: proposal.status === 'active' ? '#00d4aa' : '#9ca3af', fontSize: '0.85rem' }}>
+                              <Typography sx={{ color: proposal.status === 'active' ? '#00d4aa' : 'var(--text-secondary)', fontSize: '0.85rem' }}>
                                 {proposal.status === 'active' ? timeRemaining(proposal.endTime) : STATUS_CONFIG[proposal.status].label}
                               </Typography>
                             </TableCell>
@@ -486,15 +486,15 @@ export default function GovernancePage() {
                     <Table>
                       <TableHead>
                         <TableRow>
-                          <TableCell sx={{ color: '#9ca3af' }}>Proposal</TableCell>
-                          <TableCell sx={{ color: '#9ca3af' }}>Votes</TableCell>
-                          <TableCell sx={{ color: '#9ca3af' }}>Time Remaining</TableCell>
-                          <TableCell sx={{ color: '#9ca3af' }} align="right">Action</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }}>Proposal</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }}>Votes</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }}>Time Remaining</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Action</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {proposals.filter(p => p.status === 'active').map(proposal => (
-                          <TableRow key={proposal.id} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
+                          <TableRow key={proposal.id} sx={{ '&:hover': { bgcolor: 'var(--bg-secondary)' } }}>
                             <TableCell>
                               <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{proposal.title}</Typography>
                             </TableCell>
@@ -540,22 +540,22 @@ export default function GovernancePage() {
                   <Box>
                     {proposals.filter(p => p.myVote !== undefined).length === 0 ? (
                       <Box sx={{ textAlign: 'center', py: 5 }}>
-                        <Typography sx={{ color: '#9ca3af' }}>You haven't voted on any proposals yet.</Typography>
+                        <Typography sx={{ color: 'var(--text-secondary)' }}>You haven't voted on any proposals yet.</Typography>
                       </Box>
                     ) : (
                       <TableContainer>
                         <Table>
                           <TableHead>
                             <TableRow>
-                              <TableCell sx={{ color: '#9ca3af' }}>Proposal</TableCell>
-                              <TableCell sx={{ color: '#9ca3af' }}>My Vote</TableCell>
-                              <TableCell sx={{ color: '#9ca3af' }}>Current Results</TableCell>
-                              <TableCell sx={{ color: '#9ca3af' }}>Status</TableCell>
+                              <TableCell sx={{ color: 'var(--text-secondary)' }}>Proposal</TableCell>
+                              <TableCell sx={{ color: 'var(--text-secondary)' }}>My Vote</TableCell>
+                              <TableCell sx={{ color: 'var(--text-secondary)' }}>Current Results</TableCell>
+                              <TableCell sx={{ color: 'var(--text-secondary)' }}>Status</TableCell>
                             </TableRow>
                           </TableHead>
                           <TableBody>
                             {proposals.filter(p => p.myVote !== undefined).map(proposal => (
-                              <TableRow key={proposal.id} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
+                              <TableRow key={proposal.id} sx={{ '&:hover': { bgcolor: 'var(--bg-secondary)' } }}>
                                 <TableCell>
                                   <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{proposal.title}</Typography>
                                 </TableCell>
@@ -586,39 +586,39 @@ export default function GovernancePage() {
                 {/* Top Holders Tab */}
                 {activeTab === 3 && (
                   <Box>
-                    <Typography variant="body2" sx={{ color: '#9ca3af', mb: 3 }}>
+                    <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 3 }}>
                       Top token holders by voting power
                     </Typography>
                     <TableContainer>
                       <Table>
                         <TableHead>
                           <TableRow>
-                            <TableCell sx={{ color: '#9ca3af' }}>Address</TableCell>
-                            <TableCell sx={{ color: '#9ca3af' }} align="right">Voting Power</TableCell>
-                            <TableCell sx={{ color: '#9ca3af' }} align="right">Delegated</TableCell>
-                            <TableCell sx={{ color: '#9ca3af' }} align="right">Proposals</TableCell>
-                            <TableCell sx={{ color: '#9ca3af' }} align="right">Votes Cast</TableCell>
-                            <TableCell sx={{ color: '#9ca3af' }} align="right">Since</TableCell>
+                            <TableCell sx={{ color: 'var(--text-secondary)' }}>Address</TableCell>
+                            <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Voting Power</TableCell>
+                            <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Delegated</TableCell>
+                            <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Proposals</TableCell>
+                            <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Votes Cast</TableCell>
+                            <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Since</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
                           {topHolders.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={6} sx={{ color: '#9ca3af', textAlign: 'center', py: 4 }}>
+                              <TableCell colSpan={6} sx={{ color: 'var(--text-secondary)', textAlign: 'center', py: 4 }}>
                                 No top holders data available.
                               </TableCell>
                             </TableRow>
                           ) : topHolders.map((holder, idx) => (
-                            <TableRow key={holder.address} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
+                            <TableRow key={holder.address} sx={{ '&:hover': { bgcolor: 'var(--bg-secondary)' } }}>
                               <TableCell>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                  <Typography sx={{ color: '#9ca3af', width: 20 }}>{idx + 1}</Typography>
-                                  <Avatar sx={{ width: 24, height: 24, bgcolor: '#2a2a3e', fontSize: '0.75rem' }}>
+                                  <Typography sx={{ color: 'var(--text-secondary)', width: 20 }}>{idx + 1}</Typography>
+                                  <Avatar sx={{ width: 24, height: 24, bgcolor: 'var(--bg-secondary)', fontSize: '0.75rem' }}>
                                     {formatAddress(holder.address, 2)}
                                   </Avatar>
                                   <Box>
                                     <Typography sx={{ color: 'white' }}>{holder.name || formatAddress(holder.address)}</Typography>
-                                    <Typography variant="caption" sx={{ color: '#9ca3af' }}>{formatAddress(holder.address)}</Typography>
+                                    <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>{formatAddress(holder.address)}</Typography>
                                   </Box>
                                 </Box>
                               </TableCell>
@@ -626,7 +626,7 @@ export default function GovernancePage() {
                                 <Typography sx={{ color: '#00d4aa', fontWeight: 'bold' }}>{formatNumber(holder.votingPower)}</Typography>
                               </TableCell>
                               <TableCell align="right">
-                                <Typography sx={{ color: '#9ca3af' }}>{formatNumber(holder.delegatedPower)}</Typography>
+                                <Typography sx={{ color: 'var(--text-secondary)' }}>{formatNumber(holder.delegatedPower)}</Typography>
                               </TableCell>
                               <TableCell align="right">
                                 <Typography sx={{ color: 'white' }}>{holder.proposalsCreated}</Typography>
@@ -635,7 +635,7 @@ export default function GovernancePage() {
                                 <Typography sx={{ color: 'white' }}>{holder.votesCast}</Typography>
                               </TableCell>
                               <TableCell align="right">
-                                <Typography sx={{ color: '#9ca3af' }}>{timeAgo(holder.since)}</Typography>
+                                <Typography sx={{ color: 'var(--text-secondary)' }}>{timeAgo(holder.since)}</Typography>
                               </TableCell>
                             </TableRow>
                           ))}
@@ -655,7 +655,7 @@ export default function GovernancePage() {
           onClose={() => setShowProposalDetail(false)}
           maxWidth="md"
           fullWidth
-          PaperProps={{ sx: { bgcolor: '#1a1a2e', backgroundImage: 'none' } }}
+          PaperProps={{ sx: { bgcolor: 'var(--bg-primary)', backgroundImage: 'none' } }}
         >
           {selectedProposal && (
             <>
@@ -672,7 +672,7 @@ export default function GovernancePage() {
                 </IconButton>
               </DialogTitle>
               <DialogContent>
-                <Typography sx={{ color: '#9ca3af', mb: 3 }}>
+                <Typography sx={{ color: 'var(--text-secondary)', mb: 3 }}>
                   Proposed by {formatAddress(selectedProposal.proposer)} • {timeAgo(selectedProposal.createdAt)}
                 </Typography>
 
@@ -680,10 +680,10 @@ export default function GovernancePage() {
                   {selectedProposal.description}
                 </Typography>
 
-                <Divider sx={{ borderColor: '#3a3a4e', my: 3 }} />
+                <Divider sx={{ borderColor: 'var(--bg-tertiary)', my: 3 }} />
 
                 <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, mb: 3 }}>
-                  <Card sx={{ bgcolor: '#2a2a3e', borderRadius: 2 }}>
+                  <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 2 }}>
                     <CardContent>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                         <ThumbUp sx={{ color: '#00d4aa', fontSize: 20 }} />
@@ -692,12 +692,12 @@ export default function GovernancePage() {
                       <Typography variant="h5" sx={{ color: '#00d4aa', fontWeight: 'bold' }}>
                         {formatNumber(selectedProposal.forVotes)}
                       </Typography>
-                      <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                      <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                         {formatPercent(selectedProposal.forPercentage)}
                       </Typography>
                     </CardContent>
                   </Card>
-                  <Card sx={{ bgcolor: '#2a2a3e', borderRadius: 2 }}>
+                  <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 2 }}>
                     <CardContent>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                         <ThumbDown sx={{ color: '#ff5722', fontSize: 20 }} />
@@ -706,7 +706,7 @@ export default function GovernancePage() {
                       <Typography variant="h5" sx={{ color: '#ff5722', fontWeight: 'bold' }}>
                         {formatNumber(selectedProposal.againstVotes)}
                       </Typography>
-                      <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                      <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                         {formatPercent(selectedProposal.againstPercentage)}
                       </Typography>
                     </CardContent>
@@ -714,7 +714,7 @@ export default function GovernancePage() {
                 </Box>
 
                 <Box sx={{ mb: 3 }}>
-                  <Typography variant="caption" sx={{ color: '#9ca3af', mb: 1, display: 'block' }}>
+                  <Typography variant="caption" sx={{ color: 'var(--text-secondary)', mb: 1, display: 'block' }}>
                     Quorum: {selectedProposal.quorumPercentage}% (required: {formatPercent((selectedProposal.quorumRequired / (selectedProposal.forVotes + selectedProposal.againstVotes + 1) * 100))})
                   </Typography>
                   {renderVoteBar(selectedProposal)}

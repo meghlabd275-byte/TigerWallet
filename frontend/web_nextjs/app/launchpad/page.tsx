@@ -150,7 +150,7 @@ export default function LaunchpadPage() {
     const configs = {
       upcoming: { color: '#00d4ff', label: 'Upcoming', icon: AccessTime },
       live: { color: '#00d4aa', label: 'Live Now', icon: Timer },
-      completed: { color: '#9ca3af', label: 'Completed', icon: CheckCircle },
+      completed: { color: 'var(--text-secondary)', label: 'Completed', icon: CheckCircle },
       cancelled: { color: '#ff5722', label: 'Cancelled', icon: Cancel },
     };
     const config = configs[status];
@@ -176,7 +176,7 @@ export default function LaunchpadPage() {
           <Typography variant="caption" sx={{ color: '#00d4aa' }}>
             {formatUSD(raised)} raised
           </Typography>
-          <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+          <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
             {formatUSD(hardCap)} hard cap
           </Typography>
         </Box>
@@ -186,7 +186,7 @@ export default function LaunchpadPage() {
           sx={{
             height: 8,
             borderRadius: 4,
-            bgcolor: '#2a2a3e',
+            bgcolor: 'var(--bg-secondary)',
             '& .MuiLinearProgress-bar': {
               bgcolor: percent >= 90 ? '#ff9800' : '#00d4aa',
               borderRadius: 4,
@@ -201,7 +201,7 @@ export default function LaunchpadPage() {
     <Card
       key={project.id}
       sx={{
-        bgcolor: '#2a2a3e',
+        bgcolor: 'var(--bg-secondary)',
         borderRadius: 3,
         cursor: 'pointer',
         transition: 'transform 0.2s, border-color 0.2s',
@@ -221,7 +221,7 @@ export default function LaunchpadPage() {
               <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
                 {project.name}
               </Typography>
-              <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+              <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                 {project.symbol} • {project.chainIcon} {project.chain}
               </Typography>
             </Box>
@@ -229,7 +229,7 @@ export default function LaunchpadPage() {
           {renderStatusChip(project.status)}
         </Box>
 
-        <Typography variant="body2" sx={{ color: '#9ca3af', mb: 2, minHeight: 40, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 2, minHeight: 40, overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {project.description}
         </Typography>
 
@@ -241,13 +241,13 @@ export default function LaunchpadPage() {
 
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, mb: 2 }}>
           <Box>
-            <Typography variant="caption" sx={{ color: '#9ca3af' }}>Token Price</Typography>
+            <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Token Price</Typography>
             <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
               ${project.tokenPrice}
             </Typography>
           </Box>
           <Box>
-            <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+            <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
               {project.status === 'upcoming' ? 'Starts In' : 'Time Left'}
             </Typography>
             <Typography sx={{ color: project.status === 'live' ? '#00d4aa' : 'white', fontWeight: 'bold' }}>
@@ -255,7 +255,7 @@ export default function LaunchpadPage() {
             </Typography>
           </Box>
           <Box>
-            <Typography variant="caption" sx={{ color: '#9ca3af' }}>Participants</Typography>
+            <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Participants</Typography>
             <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
               {formatNumber(project.participants)}
             </Typography>
@@ -317,57 +317,57 @@ export default function LaunchpadPage() {
           <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold', mb: 1 }}>
             🚀 TigerSwap Launchpad
           </Typography>
-          <Typography variant="body1" sx={{ color: '#9ca3af', maxWidth: 600, mx: 'auto' }}>
+          <Typography variant="body1" sx={{ color: 'var(--text-secondary)', maxWidth: 600, mx: 'auto' }}>
             Discover and participate in the next generation of Web3 projects. Fair launch, transparent allocation, secure investing.
           </Typography>
         </Box>
 
         {/* Stats */}
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, mb: 4 }}>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent sx={{ textAlign: 'center' }}>
               <RocketLaunch sx={{ color: '#00d4aa', fontSize: 32, mb: 1 }} />
               <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>{projects.length}</Typography>
-              <Typography variant="caption" sx={{ color: '#9ca3af' }}>Total Projects</Typography>
+              <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total Projects</Typography>
             </CardContent>
           </Card>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent sx={{ textAlign: 'center' }}>
               <People sx={{ color: '#00d4aa', fontSize: 32, mb: 1 }} />
               <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
                 {formatNumber(projects.reduce((s, p) => s + p.participants, 0))}
               </Typography>
-              <Typography variant="caption" sx={{ color: '#9ca3af' }}>Total Participants</Typography>
+              <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total Participants</Typography>
             </CardContent>
           </Card>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent sx={{ textAlign: 'center' }}>
               <TrendingUp sx={{ color: '#00d4aa', fontSize: 32, mb: 1 }} />
               <Typography variant="h4" sx={{ color: '#00d4aa', fontWeight: 'bold' }}>
                 {formatUSD(projects.reduce((s, p) => s + p.totalRaised, 0))}
               </Typography>
-              <Typography variant="caption" sx={{ color: '#9ca3af' }}>Total Raised</Typography>
+              <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total Raised</Typography>
             </CardContent>
           </Card>
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent sx={{ textAlign: 'center' }}>
               <Ballot sx={{ color: '#00d4aa', fontSize: 32, mb: 1 }} />
               <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
                 {upcomingProjects.length}
               </Typography>
-              <Typography variant="caption" sx={{ color: '#9ca3af' }}>Upcoming</Typography>
+              <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Upcoming</Typography>
             </CardContent>
           </Card>
         </Box>
 
         {/* Tabs */}
-        <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+        <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
           <Tabs
             value={activeTab}
             onChange={(_, v) => setActiveTab(v)}
             sx={{
               borderBottom: '1px solid #2a2a3e',
-              '& .MuiTab-root': { color: '#9ca3af' },
+              '& .MuiTab-root': { color: 'var(--text-secondary)' },
               '& .Mui-selected': { color: '#00d4aa' }
             }}
           >
@@ -397,7 +397,7 @@ export default function LaunchpadPage() {
                   (activeTab === 1 && upcomingProjects.length === 0) ||
                   (activeTab === 2 && completedProjects.length === 0)) && (
                   <Box sx={{ gridColumn: '1 / -1', textAlign: 'center', py: 8 }}>
-                    <Typography sx={{ color: '#9ca3af' }}>
+                    <Typography sx={{ color: 'var(--text-secondary)' }}>
                       No projects found in this category
                     </Typography>
                   </Box>
@@ -425,7 +425,7 @@ export default function LaunchpadPage() {
         >
           <Card
             sx={{
-              bgcolor: '#1a1a2e',
+              bgcolor: 'var(--bg-primary)',
               borderRadius: 3,
               maxWidth: 600,
               width: '100%',
@@ -444,7 +444,7 @@ export default function LaunchpadPage() {
                       <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
                         {selectedProject.name}
                       </Typography>
-                      <Typography sx={{ color: '#9ca3af' }}>
+                      <Typography sx={{ color: 'var(--text-secondary)' }}>
                         {selectedProject.symbol} • {selectedProject.chainIcon} {selectedProject.chain}
                       </Typography>
                     </Box>
@@ -453,34 +453,34 @@ export default function LaunchpadPage() {
                 </Box>
               </Box>
 
-              <Typography sx={{ color: '#9ca3af', mb: 3, lineHeight: 1.7 }}>
+              <Typography sx={{ color: 'var(--text-secondary)', mb: 3, lineHeight: 1.7 }}>
                 {selectedProject.description}
               </Typography>
 
               {/* Stats Grid */}
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2, mb: 3 }}>
-                <Box sx={{ bgcolor: '#2a2a3e', p: 2, borderRadius: 2 }}>
-                  <Typography variant="caption" sx={{ color: '#9ca3af' }}>Token Price</Typography>
+                <Box sx={{ bgcolor: 'var(--bg-secondary)', p: 2, borderRadius: 2 }}>
+                  <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Token Price</Typography>
                   <Typography sx={{ color: 'white', fontWeight: 'bold', fontSize: 20 }}>
                     ${selectedProject.tokenPrice}
                   </Typography>
                 </Box>
-                <Box sx={{ bgcolor: '#2a2a3e', p: 2, borderRadius: 2 }}>
-                  <Typography variant="caption" sx={{ color: '#9ca3af' }}>Total Raise</Typography>
+                <Box sx={{ bgcolor: 'var(--bg-secondary)', p: 2, borderRadius: 2 }}>
+                  <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total Raise</Typography>
                   <Typography sx={{ color: '#00d4aa', fontWeight: 'bold', fontSize: 20 }}>
                     {formatUSD(selectedProject.totalRaise)}
                   </Typography>
                 </Box>
-                <Box sx={{ bgcolor: '#2a2a3e', p: 2, borderRadius: 2 }}>
-                  <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                <Box sx={{ bgcolor: 'var(--bg-secondary)', p: 2, borderRadius: 2 }}>
+                  <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                     {selectedProject.status === 'upcoming' ? 'Starts' : 'Ends'}
                   </Typography>
                   <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
                     {formatDateTime(selectedProject.status === 'upcoming' ? selectedProject.startTime : selectedProject.endTime)}
                   </Typography>
                 </Box>
-                <Box sx={{ bgcolor: '#2a2a3e', p: 2, borderRadius: 2 }}>
-                  <Typography variant="caption" sx={{ color: '#9ca3af' }}>Participants</Typography>
+                <Box sx={{ bgcolor: 'var(--bg-secondary)', p: 2, borderRadius: 2 }}>
+                  <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Participants</Typography>
                   <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
                     {formatNumber(selectedProject.participants)}
                   </Typography>
@@ -495,22 +495,22 @@ export default function LaunchpadPage() {
               )}
 
               {/* Allocation Info */}
-              <Box sx={{ bgcolor: '#2a2a3e', p: 2, borderRadius: 2, mb: 3 }}>
-                <Typography variant="caption" sx={{ color: '#9ca3af', mb: 1, display: 'block' }}>
+              <Box sx={{ bgcolor: 'var(--bg-secondary)', p: 2, borderRadius: 2, mb: 3 }}>
+                <Typography variant="caption" sx={{ color: 'var(--text-secondary)', mb: 1, display: 'block' }}>
                   Allocation Range
                 </Typography>
                 <Typography sx={{ color: 'white' }}>
                   {formatUSD(selectedProject.minAllocation)} - {formatUSD(selectedProject.maxAllocation)}
                 </Typography>
-                <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                   Accepted: {selectedProject.acceptedTokens.join(', ')}
                 </Typography>
               </Box>
 
               {/* Vesting */}
               {((selectedProject.vestingPercent ?? 0) > 0) && (
-                <Box sx={{ bgcolor: '#2a2a3e', p: 2, borderRadius: 2, mb: 3 }}>
-                  <Typography variant="caption" sx={{ color: '#9ca3af', mb: 1, display: 'block' }}>
+                <Box sx={{ bgcolor: 'var(--bg-secondary)', p: 2, borderRadius: 2, mb: 3 }}>
+                  <Typography variant="caption" sx={{ color: 'var(--text-secondary)', mb: 1, display: 'block' }}>
                     Vesting Schedule
                   </Typography>
                   <Typography sx={{ color: '#00d4aa', fontWeight: 'bold' }}>
@@ -532,9 +532,9 @@ export default function LaunchpadPage() {
                     onChange={(e) => setAllocationAmount(e.target.value)}
                     sx={{
                       mb: 2,
-                      '& .MuiInputLabel-root': { color: '#9ca3af' },
+                      '& .MuiInputLabel-root': { color: 'var(--text-secondary)' },
                       '& input': { color: 'white' },
-                      '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#3a3a4e' } }
+                      '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } }
                     }}
                   />
                   <Button

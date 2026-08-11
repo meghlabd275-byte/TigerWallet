@@ -340,7 +340,7 @@ export default function BridgePage() {
           <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
             🌉 Cross-Chain Bridge
           </Typography>
-          <Typography variant="body2" sx={{ color: '#9ca3af', mt: 1 }}>
+          <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mt: 1 }}>
             Transfer assets across 7+ chains with the best rates and fastest routes
           </Typography>
         </Box>
@@ -349,19 +349,19 @@ export default function BridgePage() {
         <Box sx={{ display: 'flex', gap: 3, mb: 4, flexWrap: 'wrap' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Speed sx={{ color: '#00d4aa', fontSize: 20 }} />
-            <Typography variant="caption" sx={{ color: '#9ca3af' }}>Fast Transfers</Typography>
+            <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Fast Transfers</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Security sx={{ color: '#00d4aa', fontSize: 20 }} />
-            <Typography variant="caption" sx={{ color: '#9ca3af' }}>Secure</Typography>
+            <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Secure</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <SwapHoriz sx={{ color: '#00d4aa', fontSize: 20 }} />
-            <Typography variant="caption" sx={{ color: '#9ca3af' }}>7+ Chains</Typography>
+            <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>7+ Chains</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <CheckCircle sx={{ color: '#00d4aa', fontSize: 20 }} />
-            <Typography variant="caption" sx={{ color: '#9ca3af' }}>Best Routes</Typography>
+            <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Best Routes</Typography>
           </Box>
         </Box>
 
@@ -370,14 +370,14 @@ export default function BridgePage() {
           <Button
             variant={activeTab === 0 ? 'contained' : 'outlined'}
             onClick={() => setActiveTab(0)}
-            sx={{ bgcolor: activeTab === 0 ? '#00d4aa' : 'transparent', color: activeTab === 0 ? 'black' : 'white', borderColor: '#3a3a4e' }}
+            sx={{ bgcolor: activeTab === 0 ? '#00d4aa' : 'transparent', color: activeTab === 0 ? 'black' : 'white', borderColor: 'var(--bg-tertiary)' }}
           >
             Bridge
           </Button>
           <Button
             variant={activeTab === 1 ? 'contained' : 'outlined'}
             onClick={() => setActiveTab(1)}
-            sx={{ bgcolor: activeTab === 1 ? '#00d4aa' : 'transparent', color: activeTab === 1 ? 'black' : 'white', borderColor: '#3a3a4e' }}
+            sx={{ bgcolor: activeTab === 1 ? '#00d4aa' : 'transparent', color: activeTab === 1 ? 'black' : 'white', borderColor: 'var(--bg-tertiary)' }}
           >
             History
           </Button>
@@ -387,7 +387,7 @@ export default function BridgePage() {
           /* Bridge Tab */
           <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 3 }}>
             {/* Main Bridge Card */}
-            <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+            <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
               <CardContent sx={{ p: 4 }}>
                 {/* Stepper */}
                 <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
@@ -398,13 +398,13 @@ export default function BridgePage() {
 
                 {/* From Chain */}
                 <Box sx={{ mb: 3 }}>
-                  <Typography sx={{ color: '#9ca3af', mb: 1 }}>From</Typography>
+                  <Typography sx={{ color: 'var(--text-secondary)', mb: 1 }}>From</Typography>
                   <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                     <FormControl fullWidth size="small">
                       <Select
                         value={fromChain}
                         onChange={(e) => setFromChain(e.target.value as number)}
-                        sx={{ color: 'white', bgcolor: '#2a2a3e', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#3a3a4e' } }}
+                        sx={{ color: 'white', bgcolor: 'var(--bg-secondary)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
                       >
                         {CHAINS.map(chain => (
                           <MenuItem key={chain.id} value={chain.id}>
@@ -431,7 +431,7 @@ export default function BridgePage() {
                           </InputAdornment>
                         ),
                       }}
-                      sx={{ flex: 1, '& input': { color: 'white' }, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#3a3a4e' } } }}
+                      sx={{ flex: 1, '& input': { color: 'white' }, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } } }}
                     />
                   </Box>
                 </Box>
@@ -441,9 +441,9 @@ export default function BridgePage() {
                   <IconButton
                     onClick={handleSwitchChains}
                     sx={{
-                      bgcolor: '#2a2a3e',
+                      bgcolor: 'var(--bg-secondary)',
                       border: '4px solid #1a1a2e',
-                      '&:hover': { bgcolor: '#3a3a4e' },
+                      '&:hover': { bgcolor: 'var(--bg-tertiary)' },
                     }}
                   >
                     <SwapHoriz sx={{ color: '#00d4aa' }} />
@@ -452,12 +452,12 @@ export default function BridgePage() {
 
                 {/* To Chain */}
                 <Box sx={{ mb: 3 }}>
-                  <Typography sx={{ color: '#9ca3af', mb: 1 }}>To</Typography>
+                  <Typography sx={{ color: 'var(--text-secondary)', mb: 1 }}>To</Typography>
                   <FormControl fullWidth size="small">
                     <Select
                       value={toChain}
                       onChange={(e) => setToChain(e.target.value as number)}
-                      sx={{ color: 'white', bgcolor: '#2a2a3e', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#3a3a4e' } }}
+                      sx={{ color: 'white', bgcolor: 'var(--bg-secondary)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
                     >
                       {CHAINS.filter(c => c.id !== fromChain).map(chain => (
                         <MenuItem key={chain.id} value={chain.id}>
@@ -473,7 +473,7 @@ export default function BridgePage() {
 
                 {/* Token Selection */}
                 <Box sx={{ mb: 3 }}>
-                  <Typography sx={{ color: '#9ca3af', mb: 1 }}>Token</Typography>
+                  <Typography sx={{ color: 'var(--text-secondary)', mb: 1 }}>Token</Typography>
                   <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                     {TOKENS.map(t => (
                       <Chip
@@ -486,7 +486,7 @@ export default function BridgePage() {
                         }
                         onClick={() => setToken(t.symbol)}
                         sx={{
-                          bgcolor: token === t.symbol ? '#00d4aa20' : '#2a2a3e',
+                          bgcolor: token === t.symbol ? '#00d4aa20' : 'var(--bg-secondary)',
                           color: token === t.symbol ? '#00d4aa' : 'white',
                           cursor: 'pointer',
                         }}
@@ -495,10 +495,10 @@ export default function BridgePage() {
                   </Box>
                 </Box>
 
-                <Divider sx={{ borderColor: '#3a3a4e', my: 3 }} />
+                <Divider sx={{ borderColor: 'var(--bg-tertiary)', my: 3 }} />
 
                 {/* Route Selection */}
-                <Typography sx={{ color: '#9ca3af', mb: 2 }}>Select Route</Typography>
+                <Typography sx={{ color: 'var(--text-secondary)', mb: 2 }}>Select Route</Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 3 }}>
                   {quote?.availableRoutes.slice(0, 3).map(route => (
                     <Box
@@ -507,25 +507,25 @@ export default function BridgePage() {
                       sx={{
                         p: 2,
                         borderRadius: 2,
-                        bgcolor: selectedRoute === route.id ? '#00d4aa10' : '#2a2a3e',
+                        bgcolor: selectedRoute === route.id ? '#00d4aa10' : 'var(--bg-secondary)',
                         border: `1px solid ${selectedRoute === route.id ? '#00d4aa' : 'transparent'}`,
                         cursor: 'pointer',
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
-                        '&:hover': { bgcolor: '#3a3a4e' },
+                        '&:hover': { bgcolor: 'var(--bg-tertiary)' },
                       }}
                     >
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                         <Typography sx={{ fontSize: 20 }}>{route.logo}</Typography>
                         <Box>
                           <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{route.name}</Typography>
-                          <Typography variant="caption" sx={{ color: '#9ca3af' }}>{route.time}</Typography>
+                          <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>{route.time}</Typography>
                         </Box>
                       </Box>
                       <Box sx={{ textAlign: 'right' }}>
                         <Typography sx={{ color: '#00d4aa' }}>{(route.fee * 100).toFixed(2)}% fee</Typography>
-                        <Typography variant="caption" sx={{ color: '#9ca3af' }}>{route.reliability}% success</Typography>
+                        <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>{route.reliability}% success</Typography>
                       </Box>
                     </Box>
                   ))}
@@ -544,7 +544,7 @@ export default function BridgePage() {
                     color: 'black',
                     py: 1.5,
                     '&:hover': { bgcolor: '#00b894' },
-                    '&:disabled': { bgcolor: '#3a3a4e', color: '#666' },
+                    '&:disabled': { bgcolor: 'var(--bg-tertiary)', color: 'var(--text-secondary)' },
                   }}
                 >
                   {loading ? 'Processing...' : amount && quote ? `Bridge ${amount} ${token}` : 'Enter Amount'}
@@ -553,40 +553,40 @@ export default function BridgePage() {
             </Card>
 
             {/* Quote Card */}
-            <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3, height: 'fit-content' }}>
+            <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3, height: 'fit-content' }}>
               <CardContent sx={{ p: 3 }}>
                 <Typography variant="h6" sx={{ color: 'white', mb: 3 }}>Transfer Details</Typography>
 
                 {quote ? (
                   <Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                      <Typography sx={{ color: '#9ca3af' }}>You Send</Typography>
+                      <Typography sx={{ color: 'var(--text-secondary)' }}>You Send</Typography>
                       <Typography sx={{ color: 'white' }}>{formatAmount(amount)} {token}</Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                      <Typography sx={{ color: '#9ca3af' }}>Bridge Fee</Typography>
+                      <Typography sx={{ color: 'var(--text-secondary)' }}>Bridge Fee</Typography>
                       <Typography sx={{ color: '#ff9800' }}>{formatUSD(quote.bridgeFee)}</Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                      <Typography sx={{ color: '#9ca3af' }}>Network Fee</Typography>
+                      <Typography sx={{ color: 'var(--text-secondary)' }}>Network Fee</Typography>
                       <Typography sx={{ color: '#ff9800' }}>{formatUSD(quote.networkFee)}</Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                      <Typography sx={{ color: '#9ca3af' }}>Estimated Time</Typography>
+                      <Typography sx={{ color: 'var(--text-secondary)' }}>Estimated Time</Typography>
                       <Typography sx={{ color: 'white' }}>{quote.estimatedTime}</Typography>
                     </Box>
-                    <Divider sx={{ borderColor: '#3a3a4e', my: 2 }} />
+                    <Divider sx={{ borderColor: 'var(--bg-tertiary)', my: 2 }} />
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                      <Typography sx={{ color: '#9ca3af' }}>You Receive</Typography>
+                      <Typography sx={{ color: 'var(--text-secondary)' }}>You Receive</Typography>
                       <Typography sx={{ color: '#00d4aa', fontWeight: 'bold', fontSize: 18 }}>
                         {formatAmount(quote.receivedAmount)} {token}
                       </Typography>
                     </Box>
 
-                    <Box sx={{ bgcolor: '#2a2a3e', p: 2, borderRadius: 2, mt: 3 }}>
+                    <Box sx={{ bgcolor: 'var(--bg-secondary)', p: 2, borderRadius: 2, mt: 3 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                         <Speed sx={{ color: '#00d4aa', fontSize: 16 }} />
-                        <Typography variant="caption" sx={{ color: '#9ca3af' }}>Fastest Route</Typography>
+                        <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Fastest Route</Typography>
                       </Box>
                       <Typography sx={{ color: 'white' }}>
                         {CHAINS.find(c => c.id === fromChain)?.icon} {CHAINS.find(c => c.id === fromChain)?.name}
@@ -597,7 +597,7 @@ export default function BridgePage() {
                   </Box>
                 ) : (
                   <Box sx={{ textAlign: 'center', py: 4 }}>
-                    <Typography sx={{ color: '#9ca3af' }}>Enter an amount to see quote</Typography>
+                    <Typography sx={{ color: 'var(--text-secondary)' }}>Enter an amount to see quote</Typography>
                   </Box>
                 )}
               </CardContent>
@@ -605,7 +605,7 @@ export default function BridgePage() {
           </Box>
         ) : (
           /* History Tab */
-          <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+          <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent sx={{ p: 3 }}>
               <Typography variant="h6" sx={{ color: 'white', mb: 3 }}>Transfer History</Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -614,7 +614,7 @@ export default function BridgePage() {
                     key={tx.id}
                     sx={{
                       p: 3,
-                      bgcolor: '#2a2a3e',
+                      bgcolor: 'var(--bg-secondary)',
                       borderRadius: 2,
                       display: 'flex',
                       justifyContent: 'space-between',
@@ -624,14 +624,14 @@ export default function BridgePage() {
                     <Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                         {CHAINS.find(c => c.id === tx.fromChain)?.icon}
-                        <ArrowForward sx={{ color: '#9ca3af', fontSize: 16 }} />
+                        <ArrowForward sx={{ color: 'var(--text-secondary)', fontSize: 16 }} />
                         {CHAINS.find(c => c.id === tx.toChain)?.icon}
                         <Typography sx={{ color: 'white', ml: 1 }}>
                           {tx.amount} {tx.token}
                         </Typography>
                         {getStatusChip(tx.status)}
                       </Box>
-                      <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                      <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                         {timeAgo(tx.timestamp)}
                         {tx.sourceTxHash && (
                           <> • Source: <a href={`${CHAINS.find(c => c.id === tx.fromChain)?.explorerUrl}/tx/${tx.sourceTxHash}`} target="_blank" rel="noopener" style={{ color: '#00d4aa' }}>{formatAddress(tx.sourceTxHash)}</a></>
@@ -667,16 +667,16 @@ export default function BridgePage() {
           <Typography variant="h6" sx={{ color: 'white', mb: 2 }}>Supported Chains</Typography>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             {CHAINS.map(chain => (
-              <Card key={chain.id} sx={{ bgcolor: '#1a1a2e', borderRadius: 2, minWidth: 150 }}>
+              <Card key={chain.id} sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 2, minWidth: 150 }}>
                 <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                     <Typography sx={{ fontSize: 24 }}>{chain.icon}</Typography>
                     <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{chain.name}</Typography>
                   </Box>
-                  <Typography variant="caption" sx={{ color: '#9ca3af', display: 'block' }}>
+                  <Typography variant="caption" sx={{ color: 'var(--text-secondary)', display: 'block' }}>
                     Avg Time: {chain.avgBridgeTime}
                   </Typography>
-                  <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                  <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                     Gas: {chain.gasCost}
                   </Typography>
                 </CardContent>

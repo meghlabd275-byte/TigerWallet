@@ -290,7 +290,7 @@ export default function PoolPage() {
       <Typography sx={{ color: '#00d4aa', fontWeight: 'bold' }}>
         {pool.token0.symbol}
       </Typography>
-      <Typography sx={{ color: '#9ca3af' }}>/</Typography>
+      <Typography sx={{ color: 'var(--text-secondary)' }}>/</Typography>
       <Typography sx={{ color: '#00d4aa', fontWeight: 'bold' }}>
         {pool.token1.symbol}
       </Typography>
@@ -329,7 +329,7 @@ export default function PoolPage() {
   // ============================================================================
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a14', p: 3 }}>
+    <Box sx={{ minHeight: '100vh', bgcolor: 'var(--bg-primary)', p: 3 }}>
       <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
         {/* Header */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -337,7 +337,7 @@ export default function PoolPage() {
             <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
               🏊 Liquidity Pools
             </Typography>
-            <Typography variant="body2" sx={{ color: '#9ca3af', mt: 1 }}>
+            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mt: 1 }}>
               Provide liquidity and earn fees from trades
             </Typography>
           </Box>
@@ -346,7 +346,7 @@ export default function PoolPage() {
               <Select
                 value={chainId}
                 onChange={(e) => setChainId(e.target.value as number)}
-                sx={{ color: 'white', bgcolor: '#1a1a2e', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#3a3a4e' } }}
+                sx={{ color: 'white', bgcolor: 'var(--bg-primary)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
               >
                 {Object.entries(CHAIN_CONFIG).map(([id, config]) => (
                   <MenuItem key={id} value={parseInt(id)}>{config.name}</MenuItem>
@@ -357,7 +357,7 @@ export default function PoolPage() {
               variant="outlined"
               startIcon={<Refresh />}
               onClick={loadPools}
-              sx={{ borderColor: '#3a3a4e', color: 'white' }}
+              sx={{ borderColor: 'var(--bg-tertiary)', color: 'white' }}
             >
               Refresh
             </Button>
@@ -375,41 +375,41 @@ export default function PoolPage() {
         {/* Stats Cards */}
         {stats && (
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 2, mb: 4 }}>
-            <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+            <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
               <CardContent>
-                <Typography variant="caption" sx={{ color: '#9ca3af' }}>Total TVL</Typography>
+                <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total TVL</Typography>
                 <Typography variant="h5" sx={{ color: '#00d4aa', fontWeight: 'bold' }}>
                   {formatUSD(stats.totalTVL)}
                 </Typography>
               </CardContent>
             </Card>
-            <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+            <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
               <CardContent>
-                <Typography variant="caption" sx={{ color: '#9ca3af' }}>24h Volume</Typography>
+                <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>24h Volume</Typography>
                 <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
                   {formatUSD(stats.totalVolume24h)}
                 </Typography>
               </CardContent>
             </Card>
-            <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+            <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
               <CardContent>
-                <Typography variant="caption" sx={{ color: '#9ca3af' }}>7d Volume</Typography>
+                <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>7d Volume</Typography>
                 <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
                   {formatUSD(stats.totalVolume7d)}
                 </Typography>
               </CardContent>
             </Card>
-            <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+            <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
               <CardContent>
-                <Typography variant="caption" sx={{ color: '#9ca3af' }}>24h Fees</Typography>
+                <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>24h Fees</Typography>
                 <Typography variant="h5" sx={{ color: '#ff9800', fontWeight: 'bold' }}>
                   {formatUSD(stats.totalFees24h)}
                 </Typography>
               </CardContent>
             </Card>
-            <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3 }}>
+            <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
               <CardContent>
-                <Typography variant="caption" sx={{ color: '#9ca3af' }}>Total Pools</Typography>
+                <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total Pools</Typography>
                 <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
                   {stats.totalPools}
                 </Typography>
@@ -419,13 +419,13 @@ export default function PoolPage() {
         )}
 
         {/* Tabs */}
-        <Card sx={{ bgcolor: '#1a1a2e', borderRadius: 3, mb: 3 }}>
+        <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3, mb: 3 }}>
           <Tabs
             value={activeTab}
             onChange={(_, v) => setActiveTab(v)}
             sx={{
               borderBottom: '1px solid #2a2a3e',
-              '& .MuiTab-root': { color: '#9ca3af' },
+              '& .MuiTab-root': { color: 'var(--text-secondary)' },
               '& .Mui-selected': { color: '#00d4aa' },
             }}
           >
@@ -446,7 +446,7 @@ export default function PoolPage() {
                   minWidth: 250,
                   '& input': { color: 'white' },
                   '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#3a3a4e' },
+                    '& fieldset': { borderColor: 'var(--bg-tertiary)' },
                   },
                 }}
               />
@@ -454,7 +454,7 @@ export default function PoolPage() {
                 <Select
                   value={filterDEX}
                   onChange={(e) => setFilterDEX(e.target.value)}
-                  sx={{ color: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#3a3a4e' } }}
+                  sx={{ color: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
                 >
                   <MenuItem value="all">All DEXs</MenuItem>
                   {Object.entries(DEX_INFO).map(([key, info]) => (
@@ -466,7 +466,7 @@ export default function PoolPage() {
                 <Select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
-                  sx={{ color: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#3a3a4e' } }}
+                  sx={{ color: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
                 >
                   <MenuItem value="tvl">Sort by TVL</MenuItem>
                   <MenuItem value="volume">Sort by Volume</MenuItem>
@@ -487,7 +487,7 @@ export default function PoolPage() {
                   variant="outlined"
                   startIcon={<Refresh />}
                   onClick={loadPools}
-                  sx={{ borderColor: '#3a3a4e', color: 'white' }}
+                  sx={{ borderColor: 'var(--bg-tertiary)', color: 'white' }}
                 >
                   Retry
                 </Button>
@@ -497,24 +497,24 @@ export default function PoolPage() {
                 <Table>
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ color: '#9ca3af' }}>Pool</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }}>DEX</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }}>Fee</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">TVL</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Volume (24h)</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">APR</TableCell>
-                      <TableCell sx={{ color: '#9ca3af' }} align="right">Actions</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }}>Pool</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }}>DEX</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }}>Fee</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">TVL</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Volume (24h)</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">APR</TableCell>
+                      <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Actions</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {filteredPools.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} sx={{ textAlign: 'center', color: '#9ca3af', py: 5 }}>
+                        <TableCell colSpan={7} sx={{ textAlign: 'center', color: 'var(--text-secondary)', py: 5 }}>
                           No pools found. Try adjusting your filters or create a new pool.
                         </TableCell>
                       </TableRow>
                     ) : filteredPools.map((pool) => (
-                      <TableRow key={pool.id} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
+                      <TableRow key={pool.id} sx={{ '&:hover': { bgcolor: 'var(--bg-secondary)' } }}>
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             {renderPoolChip(pool)}
@@ -537,7 +537,7 @@ export default function PoolPage() {
                           <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
                             <Tooltip title="View Details">
                               <IconButton size="small" onClick={() => { setSelectedPool(pool); setShowPoolDetails(true); }}>
-                                <Visibility sx={{ color: '#9ca3af', fontSize: 18 }} />
+                                <Visibility sx={{ color: 'var(--text-secondary)', fontSize: 18 }} />
                               </IconButton>
                             </Tooltip>
                             <Tooltip title="Add Liquidity">
@@ -556,7 +556,7 @@ export default function PoolPage() {
               <Box>
                 {positions.length === 0 ? (
                   <Box sx={{ textAlign: 'center', py: 5 }}>
-                    <Typography sx={{ color: '#9ca3af', mb: 2 }}>No liquidity positions</Typography>
+                    <Typography sx={{ color: 'var(--text-secondary)', mb: 2 }}>No liquidity positions</Typography>
                     <Button
                       variant="contained"
                       startIcon={<Add />}
@@ -571,18 +571,18 @@ export default function PoolPage() {
                     <Table>
                       <TableHead>
                         <TableRow>
-                          <TableCell sx={{ color: '#9ca3af' }}>Pool</TableCell>
-                          <TableCell sx={{ color: '#9ca3af' }} align="right">Token 0 Amount</TableCell>
-                          <TableCell sx={{ color: '#9ca3af' }} align="right">Token 1 Amount</TableCell>
-                          <TableCell sx={{ color: '#9ca3af' }} align="right">Total Value</TableCell>
-                          <TableCell sx={{ color: '#9ca3af' }} align="right">Share</TableCell>
-                          <TableCell sx={{ color: '#9ca3af' }} align="right">Fees Earned</TableCell>
-                          <TableCell sx={{ color: '#9ca3af' }} align="right">Status</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }}>Pool</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Token 0 Amount</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Token 1 Amount</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Total Value</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Share</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Fees Earned</TableCell>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }} align="right">Status</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {positions.map((pos) => (
-                          <TableRow key={pos.id} sx={{ '&:hover': { bgcolor: '#2a2a3e' } }}>
+                          <TableRow key={pos.id} sx={{ '&:hover': { bgcolor: 'var(--bg-secondary)' } }}>
                             <TableCell>{renderPoolChip(pos.pool)}</TableCell>
                             <TableCell align="right">
                               <Typography sx={{ color: 'white' }}>
@@ -624,7 +624,7 @@ export default function PoolPage() {
               </Box>
             ) : (
               <Box sx={{ py: 3 }}>
-                <Typography sx={{ color: '#9ca3af', textAlign: 'center' }}>
+                <Typography sx={{ color: 'var(--text-secondary)', textAlign: 'center' }}>
                   📊 Analytics Dashboard - Coming Soon
                 </Typography>
               </Box>
@@ -639,7 +639,7 @@ export default function PoolPage() {
         onClose={() => setShowCreatePool(false)}
         maxWidth="md"
         fullWidth
-        PaperProps={{ sx: { bgcolor: '#1a1a2e', backgroundImage: 'none' } }}
+        PaperProps={{ sx: { bgcolor: 'var(--bg-primary)', backgroundImage: 'none' } }}
       >
         <DialogTitle sx={{ color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           Create New Pool
@@ -650,7 +650,7 @@ export default function PoolPage() {
         <DialogContent>
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, mt: 2 }}>
             <Box>
-              <Typography variant="body2" sx={{ color: '#9ca3af', mb: 1 }}>Token 0</Typography>
+              <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 1 }}>Token 0</Typography>
               <TextField
                 fullWidth
                 size="small"
@@ -659,12 +659,12 @@ export default function PoolPage() {
                 onChange={(e) => setToken0(e.target.value.toUpperCase())}
                 sx={{
                   '& input': { color: 'white' },
-                  '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#3a3a4e' } },
+                  '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } },
                 }}
               />
             </Box>
             <Box>
-              <Typography variant="body2" sx={{ color: '#9ca3af', mb: 1 }}>Token 1</Typography>
+              <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 1 }}>Token 1</Typography>
               <TextField
                 fullWidth
                 size="small"
@@ -673,12 +673,12 @@ export default function PoolPage() {
                 onChange={(e) => setToken1(e.target.value.toUpperCase())}
                 sx={{
                   '& input': { color: 'white' },
-                  '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#3a3a4e' } },
+                  '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } },
                 }}
               />
             </Box>
             <Box>
-              <Typography variant="body2" sx={{ color: '#9ca3af', mb: 1 }}>Amount Token 0</Typography>
+              <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 1 }}>Amount Token 0</Typography>
               <TextField
                 fullWidth
                 size="small"
@@ -687,16 +687,16 @@ export default function PoolPage() {
                 value={amount0}
                 onChange={(e) => setAmount0(e.target.value)}
                 InputProps={{
-                  endAdornment: token0 ? <InputAdornment position="end" sx={{ color: "#9ca3af" }}>{token0}</InputAdornment> : null,
+                  endAdornment: token0 ? <InputAdornment position="end" sx={{ color: "var(--text-secondary)" }}>{token0}</InputAdornment> : null,
                 }}
                 sx={{
                   '& input': { color: 'white' },
-                  '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#3a3a4e' } },
+                  '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } },
                 }}
               />
             </Box>
             <Box>
-              <Typography variant="body2" sx={{ color: '#9ca3af', mb: 1 }}>Amount Token 1</Typography>
+              <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 1 }}>Amount Token 1</Typography>
               <TextField
                 fullWidth
                 size="small"
@@ -705,18 +705,18 @@ export default function PoolPage() {
                 value={amount1}
                 onChange={(e) => setAmount1(e.target.value)}
                 InputProps={{
-                  endAdornment: token1 ? <InputAdornment position="end" sx={{ color: "#9ca3af" }}>{token1}</InputAdornment> : null,
+                  endAdornment: token1 ? <InputAdornment position="end" sx={{ color: "var(--text-secondary)" }}>{token1}</InputAdornment> : null,
                 }}
                 sx={{
                   '& input': { color: 'white' },
-                  '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#3a3a4e' } },
+                  '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } },
                 }}
               />
             </Box>
           </Box>
 
           <Box sx={{ mt: 3 }}>
-            <Typography variant="body2" sx={{ color: '#9ca3af', mb: 2 }}>Fee Tier</Typography>
+            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 2 }}>Fee Tier</Typography>
             <Box sx={{ display: 'flex', gap: 2 }}>
               {FEE_TIERS.map((tier) => (
                 <Card
@@ -724,16 +724,16 @@ export default function PoolPage() {
                   sx={{
                     flex: 1,
                     cursor: 'pointer',
-                    bgcolor: feeTier === tier.value ? '#00d4aa20' : '#2a2a3e',
+                    bgcolor: feeTier === tier.value ? '#00d4aa20' : 'var(--bg-secondary)',
                     borderColor: feeTier === tier.value ? '#00d4aa' : 'transparent',
                     border: '1px solid',
-                    '&:hover': { bgcolor: '#3a3a4e' },
+                    '&:hover': { bgcolor: 'var(--bg-tertiary)' },
                   }}
                   onClick={() => setFeeTier(tier.value)}
                 >
                   <CardContent sx={{ textAlign: 'center', py: 2 }}>
                     <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{tier.label}</Typography>
-                    <Typography variant="caption" sx={{ color: '#9ca3af' }}>{tier.description}</Typography>
+                    <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>{tier.description}</Typography>
                   </CardContent>
                 </Card>
               ))}
@@ -742,7 +742,7 @@ export default function PoolPage() {
 
           {feeTier > 0.1 && (
             <Box sx={{ mt: 3 }}>
-              <Typography variant="body2" sx={{ color: '#9ca3af', mb: 2 }}>Price Range (Concentrated Liquidity)</Typography>
+              <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 2 }}>Price Range (Concentrated Liquidity)</Typography>
               <Box sx={{ display: 'flex', gap: 2 }}>
                 <TextField
                   fullWidth
@@ -753,8 +753,8 @@ export default function PoolPage() {
                   onChange={(e) => setPriceRangeLow(parseFloat(e.target.value) || 0)}
                   sx={{
                     '& input': { color: 'white' },
-                    '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#3a3a4e' } },
-                    '& .MuiInputLabel-root': { color: '#9ca3af' },
+                    '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } },
+                    '& .MuiInputLabel-root': { color: 'var(--text-secondary)' },
                   }}
                 />
                 <TextField
@@ -766,8 +766,8 @@ export default function PoolPage() {
                   onChange={(e) => setPriceRangeHigh(parseFloat(e.target.value) || 0)}
                   sx={{
                     '& input': { color: 'white' },
-                    '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#3a3a4e' } },
-                    '& .MuiInputLabel-root': { color: '#9ca3af' },
+                    '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } },
+                    '& .MuiInputLabel-root': { color: 'var(--text-secondary)' },
                   }}
                 />
               </Box>
@@ -775,7 +775,7 @@ export default function PoolPage() {
           )}
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
-          <Button onClick={() => setShowCreatePool(false)} sx={{ color: '#9ca3af' }}>
+          <Button onClick={() => setShowCreatePool(false)} sx={{ color: 'var(--text-secondary)' }}>
             Cancel
           </Button>
           <Button
@@ -795,7 +795,7 @@ export default function PoolPage() {
         onClose={() => setShowPoolDetails(false)}
         maxWidth="sm"
         fullWidth
-        PaperProps={{ sx: { bgcolor: '#1a1a2e', backgroundImage: 'none' } }}
+        PaperProps={{ sx: { bgcolor: 'var(--bg-primary)', backgroundImage: 'none' } }}
       >
         <DialogTitle sx={{ color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           Pool Details
@@ -812,39 +812,39 @@ export default function PoolPage() {
               </Box>
 
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 3 }}>
-                <Box sx={{ bgcolor: '#2a2a3e', p: 2, borderRadius: 2 }}>
-                  <Typography variant="caption" sx={{ color: '#9ca3af' }}>TVL</Typography>
+                <Box sx={{ bgcolor: 'var(--bg-secondary)', p: 2, borderRadius: 2 }}>
+                  <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>TVL</Typography>
                   <Typography sx={{ color: '#00d4aa', fontWeight: 'bold' }}>{formatUSD(selectedPool.tvlUSD)}</Typography>
                 </Box>
-                <Box sx={{ bgcolor: '#2a2a3e', p: 2, borderRadius: 2 }}>
-                  <Typography variant="caption" sx={{ color: '#9ca3af' }}>24h Volume</Typography>
+                <Box sx={{ bgcolor: 'var(--bg-secondary)', p: 2, borderRadius: 2 }}>
+                  <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>24h Volume</Typography>
                   <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{formatUSD(selectedPool.volume24h)}</Typography>
                 </Box>
-                <Box sx={{ bgcolor: '#2a2a3e', p: 2, borderRadius: 2 }}>
-                  <Typography variant="caption" sx={{ color: '#9ca3af' }}>APR</Typography>
+                <Box sx={{ bgcolor: 'var(--bg-secondary)', p: 2, borderRadius: 2 }}>
+                  <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>APR</Typography>
                   <Typography sx={{ color: '#00d4aa', fontWeight: 'bold' }}>{formatPercent(selectedPool.apr)}</Typography>
                 </Box>
-                <Box sx={{ bgcolor: '#2a2a3e', p: 2, borderRadius: 2 }}>
-                  <Typography variant="caption" sx={{ color: '#9ca3af' }}>Fee Tier</Typography>
+                <Box sx={{ bgcolor: 'var(--bg-secondary)', p: 2, borderRadius: 2 }}>
+                  <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Fee Tier</Typography>
                   <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{selectedPool.feeTier}%</Typography>
                 </Box>
               </Box>
 
               <Box sx={{ mb: 2 }}>
-                <Typography variant="caption" sx={{ color: '#9ca3af' }}>Pool Address</Typography>
+                <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Pool Address</Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Typography sx={{ color: 'white', wordBreak: 'break-all', fontSize: '0.85rem' }}>
                     {selectedPool.address}
                   </Typography>
                   <IconButton size="small" onClick={() => copyToClipboard(selectedPool.address)}>
-                    <ContentCopy sx={{ color: '#9ca3af', fontSize: 16 }} />
+                    <ContentCopy sx={{ color: 'var(--text-secondary)', fontSize: 16 }} />
                   </IconButton>
                 </Box>
               </Box>
 
-              <Divider sx={{ borderColor: '#3a3a4e', my: 2 }} />
+              <Divider sx={{ borderColor: 'var(--bg-tertiary)', my: 2 }} />
 
-              <Typography variant="body2" sx={{ color: '#9ca3af', mb: 2 }}>Add Liquidity</Typography>
+              <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 2 }}>Add Liquidity</Typography>
               <TextField
                 fullWidth
                 size="small"
@@ -855,7 +855,7 @@ export default function PoolPage() {
                 sx={{
                   mb: 2,
                   '& input': { color: 'white' },
-                  '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#3a3a4e' } },
+                  '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } },
                 }}
               />
               <TextField
@@ -868,14 +868,14 @@ export default function PoolPage() {
                 sx={{
                   mb: 2,
                   '& input': { color: 'white' },
-                  '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#3a3a4e' } },
+                  '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } },
                 }}
               />
             </Box>
           )}
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
-          <Button onClick={() => setShowPoolDetails(false)} sx={{ color: '#9ca3af' }}>
+          <Button onClick={() => setShowPoolDetails(false)} sx={{ color: 'var(--text-secondary)' }}>
             Cancel
           </Button>
           <Button
