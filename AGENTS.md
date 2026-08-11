@@ -115,9 +115,14 @@
   prices via CoinGecko, gas via `eth_feeHistory`/`eth_gasPrice`.
 - REST API (gin, port 8443): `/api/v1/auth/{register,login}`,
   `/api/v1/wallets` (POST create, GET list), `/api/v1/{balance,tokens,transactions,nfts}`,
-  `/api/v1/send`, `/api/v1/sign`, `/api/v1/gas`, `/api/v1/price`, `/api/v1/chains`.
-  Public read endpoints at `/api/v1/public/{balance,tokens,transactions,nfts}`.
-  JWT (HS256, 24h) auth middleware on protected routes.
+  `/api/v1/send`, `/api/v1/sign`, `/api/v1/gas`, `/api/v1/price`, `/api/v1/chains`,
+  `/api/v1/swap/{quote,execute}`, `/api/v1/staking/{quote,stake,unstake,claim}`,
+  `/api/v1/transactions/:txHash`. Public read endpoints at
+  `/api/v1/public/{balance,tokens,transactions,nfts}`. JWT (HS256, 24h) auth
+  middleware on protected routes. The swap/quote uses a real CoinGecko
+  cross-rate; swap/execute + staking stake/unstake/claim return the on-chain
+  action to submit via the real `/api/v1/send` (no fabricated tx hashes);
+  staking/quote returns supported native assets with APY 0 (no invented yield).
 - Build: `cd go/wallet_api && go build ./...` (exit 0). Tests: `go test ./...`
   (11 tests pass, including BIP-44 test vector). `go vet` clean.
 - Docker: `go/wallet_api/Dockerfile` (multi-stage, golang:1.23-alpine → alpine).
@@ -261,7 +266,12 @@
 
 
 ## Go services (multisig_service, mpc) - crypto/build notes
-- Go binary: /home/openhands/go/bin/go (add to PATH via `export PATH="/home/openhands/go/bin:$PATH"`). System go not installed. NOTE: /home/openhands/.local/go/bin does NOT contain go — use /home/openhands/go/bin.
+- Go toolchain: install on demand from go.dev (system Go is NOT installed).
+  In this env: `cd /tmp && curl -sSfL https://go.dev/dl/go1.23.12.linux-amd64.tar.gz -o go.tar.gz && mkdir -p $HOME/.go-sdk && tar -C $HOME/.go-sdk -xzf go.tar.gz`,
+  then `export PATH="$HOME/.go-sdk/go/bin:$PATH" && export GOPATH="$HOME/go" && export GOTOOLCHAIN=local`.
+  Verify: `go version` → `go1.23.12 linux/amd64`. Build any `go/<svc>` with
+  `cd go/<svc> && go build ./...`. NOTE: `/usr/local` is read-only — install
+  into `$HOME`.
 - Two modules: go/multisig_service (github.com/tigerwallet/multisig-service), go/mpc (github.com/tigerwallet/mpc).
 - All signing uses github.com/ethereum/go-ethereum/crypto (real ECDSA secp256k1, low-s). No sha256/sha3 fakes.
 - multisig_service: broadcastTransaction (main.go) and broadcastRawTransaction (multisig_service.go) use ethclient.Dial + types.NewTx(DynamicFeeTx) + types.SignTx + client.SendTransaction. RPC from ETH_RPC_URL env.

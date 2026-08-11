@@ -90,6 +90,15 @@ func main() {
 		wallet.POST("/send", handleSendTransaction)
 		wallet.POST("/sign", handleSignMessage)
 
+		// ---- DeFi: swap & staking (real CoinGecko quotes + on-chain action) ----
+		wallet.GET("/swap/quote", handleSwapQuote)
+		wallet.POST("/swap/execute", handleSwapExecute)
+		wallet.GET("/staking/quote", handleStakingQuote)
+		wallet.POST("/staking/stake", handleStakingAction("stake"))
+		wallet.POST("/staking/unstake", handleStakingAction("unstake"))
+		wallet.POST("/staking/claim", handleStakingAction("claim"))
+		wallet.GET("/transactions/:txHash", handleTransactionReceipt)
+
 		// ---- Address book (per-user contacts) ----
 		wallet.GET("/address-book/contacts", handleListContacts)
 		wallet.POST("/address-book/contacts", handleCreateContact)
