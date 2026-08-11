@@ -176,11 +176,12 @@ class WalletService {
      * The previous implementation returned a hardcoded 12-word list
      * ("abandon ability ... accident") - identical for every wallet and the
      * well-known test vector. The backend generates a real 256-bit-entropy
-     * mnemonic with checksum.
+     * mnemonic with checksum. The backend requires a `password` (min 8 chars)
+     * to AES-256-GCM-encrypt the seed at rest; the client never stores raw seeds.
      */
-    suspend fun generateMnemonic(): List<String> = withContext(Dispatchers.IO) {
+    suspend fun generateMnemonic(password: String): List<String> = withContext(Dispatchers.IO) {
         val resp = httpPost("/api/v1/wallets", ServiceLocator.authToken,
-            "{\"name\":\"android-wallet\"}")
+            "{\"label\":\"android-wallet\",\"password\":\"$password\"}")
         val phrase = Json.field(resp, "mnemonic")
             ?: throw RuntimeException("Backend did not return a mnemonic")
         phrase.trim().split(Regex("\\s+"))

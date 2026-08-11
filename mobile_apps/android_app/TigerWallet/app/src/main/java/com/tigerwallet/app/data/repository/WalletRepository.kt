@@ -85,9 +85,9 @@ class WalletRepository(private val context: Context) {
         }
     }
     
-    fun createWallet(name: String, mnemonic: List<String>? = null): Wallet {
+    suspend fun createWallet(name: String, password: String, mnemonic: List<String>? = null): Wallet {
         val walletService = ServiceLocator.walletService
-        val words = mnemonic ?: walletService.generateMnemonic()
+        val words = mnemonic ?: walletService.generateMnemonic(password)
         val (address, publicKey) = walletService.deriveWalletAddress(words)
         
         val wallet = Wallet(
@@ -110,9 +110,9 @@ class WalletRepository(private val context: Context) {
         return wallet
     }
     
-    fun importWallet(mnemonic: List<String>, name: String): Wallet? {
+    suspend fun importWallet(mnemonic: List<String>, name: String, password: String): Wallet? {
         if (!validateMnemonic(mnemonic)) return null
-        return createWallet(name, mnemonic)
+        return createWallet(name, password, mnemonic)
     }
     
     fun deleteWallet(wallet: Wallet) {

@@ -127,9 +127,13 @@ class WalletStore: ObservableObject {
     
     // MARK: - Wallet Operations
     
-    func createWallet(name: String, seedPhrase: [String]? = nil) -> Wallet? {
-        // Generate or use provided seed phrase
-        let mnemonic = seedPhrase ?? generateMnemonic()
+    func createWallet(name: String, password: String, seedPhrase: [String]? = nil) -> Wallet? {
+        // Generate or use provided seed phrase (backend validates BIP-39 checksum)
+        let mnemonic = seedPhrase ?? generateMnemonic(password: password)
+        if mnemonic.isEmpty {
+            error = "Failed to create wallet: backend rejected the request (check auth token + password)"
+            return nil
+        }
         
         // Derive wallet address from seed
         guard let walletData = deriveWalletFromSeed(mnemonic) else {
@@ -163,12 +167,12 @@ class WalletStore: ObservableObject {
         return updatedWallet
     }
     
-    func importWallet(seedPhrase: [String], name: String) -> Wallet? {
+    func importWallet(seedPhrase: [String], name: String, password: String) -> Wallet? {
         guard validateMnemonic(seedPhrase) else {
             error = "Invalid seed phrase"
             return nil
         }
-        return createWallet(name: name, seedPhrase: seedPhrase)
+        return createWallet(name: name, password: password, seedPhrase: seedPhrase)
     }
     
     func deleteWallet(_ wallet: Wallet) {
@@ -299,8 +303,8 @@ class WalletStore: ObservableObject {
     /// Generate a real BIP-39 mnemonic by creating a wallet on the backend.
     /// The previous implementation returned a hardcoded 12-word list
     /// ("abandon ability ... accident") - identical for every wallet.
-    private func generateMnemonic() -> [String] {
-        guard let phrase = backendCreateWalletMnemonic() else { return [] }
+    private func generateMnemonic(password: String) -> [String] {
+        guard let phrase = backendCreateWalletMnemonic(password: password) else { return [] }
         return phrase.split(separator: " ").map(String.init)
     }
 
@@ -341,7 +345,7 @@ class WalletStore: ObservableObject {
 
     // MARK: - Backend HTTP helpers
 
-    private func backendCreateWalletMnemonic() -> String? {
+    private func backendCreateWalletMnemonic(password: String) -> String? {
         guard let url = URL(string: Self.apiBaseURL + "/api/v1/wallets") else { return nil }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -350,7 +354,11 @@ class WalletStore: ObservableObject {
         if let token = authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        request.httpBody = "{\"name\":\"ios-wallet\"}".data(using: .utf8)
+        // Backend createWalletReq requires password (min 8) to AES-256-GCM-encrypt
+        // the seed at rest; label is the wallet name. Sending the correct field
+        // names avoids a 400 and ensures the seed is encrypted server-side.
+        let safePw = password.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        request.httpBody = "{\"label\":\"ios-wallet\",\"password\":\"\(safePw)\"}".data(using: .utf8)
         request.timeoutInterval = 15
         guard let data = try? URLSession.shared.sync(request),
               let body = String(data: data, encoding: .utf8) else { return nil }
