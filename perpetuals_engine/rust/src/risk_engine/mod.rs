@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use parking_lot::RwLock;
 
 /// Risk limit type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum RiskLimitType {
     PositionSize,
     OpenInterest,
@@ -16,6 +16,19 @@ pub enum RiskLimitType {
     Leverage,
     DailyVolume,
     Drawdown,
+}
+
+impl std::fmt::Display for RiskLimitType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RiskLimitType::PositionSize => write!(f, "PositionSize"),
+            RiskLimitType::OpenInterest => write!(f, "OpenInterest"),
+            RiskLimitType::OrderSize => write!(f, "OrderSize"),
+            RiskLimitType::Leverage => write!(f, "Leverage"),
+            RiskLimitType::DailyVolume => write!(f, "DailyVolume"),
+            RiskLimitType::Drawdown => write!(f, "Drawdown"),
+        }
+    }
 }
 
 /// Risk limit

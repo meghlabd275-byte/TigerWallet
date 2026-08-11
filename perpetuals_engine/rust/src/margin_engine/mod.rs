@@ -460,12 +460,12 @@ impl MarginEngine {
     pub fn update_positions(&self, user_id: &str, prices: HashMap<String, Decimal>) {
         let mut accounts = self.margin_accounts.write();
         if let Some(account) = accounts.get_mut(user_id) {
-            for (symbol, mark_price) in prices {
-                if let Some(position) = account.positions.get_mut(&symbol) {
-                    position.update_mark_price(mark_price);
+            for (symbol, mark_price) in &prices {
+                if let Some(position) = account.positions.get_mut(symbol) {
+                    position.update_mark_price(*mark_price);
                 }
             }
-            
+
             let mut isolated = self.isolated_positions.write();
             for position in isolated.values_mut() {
                 if position.user_id == user_id {
@@ -474,7 +474,7 @@ impl MarginEngine {
                     }
                 }
             }
-            
+
             account.update();
         }
     }
@@ -542,7 +542,7 @@ mod tests {
     
     #[test]
     fn test_margin_calculation() {
-        let account = MarginAccount::new("user1");
+        let mut account = MarginAccount::new("user1");
         account.available_margin = dec!(1000);
         
         let calc = MarginCalc::calculate(&account, dec!(5000), dec!(10));

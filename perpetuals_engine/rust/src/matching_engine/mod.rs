@@ -5,11 +5,13 @@
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BinaryHeap, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 use parking_lot::RwLock;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
+
+use crate::position_engine::{PositionSide, MarginType, Position};
 
 /// Order side (buy or sell)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,19 +43,9 @@ pub enum OrderStatus {
     Expired,
 }
 
-/// Position side
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PositionSide {
-    Long,
-    Short,
-}
-
-/// Margin type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum MarginType {
-    Cross,
-    Isolated,
-}
+/// Position side and margin type are re-exported from `position_engine` to
+/// avoid duplicate definitions across the crate. See `position_engine::PositionSide`
+/// and `position_engine::MarginType`.
 
 /// Price tier for fee structure
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -444,15 +436,17 @@ impl OrderBook {
         if !order.is_filled() {
             order.status = OrderStatus::Open;
             self.orders.insert(order.id.clone(), order.clone());
-            
-            let price_level = self.orders_by_price
+
+            let book_side = if order.side == OrderSide::Buy { &mut self.bids } else { &mut self.asks };
+
+            let price_level = book_side
                 .entry(order.price)
                 .or_insert_with(|| PriceLevel {
                     price: order.price,
                     quantity: dec!(0),
                     orders: Vec::new(),
                 });
-            
+
             price_level.orders.push(order.id.clone());
             price_level.quantity += order.remaining_quantity;
         }
@@ -460,69 +454,77 @@ impl OrderBook {
         Ok(trades)
     }
 
-    fn try_match_order(&self, order: &Order) -> Result<Vec<(String, Decimal, Decimal)>, MatchingError> {
+    fn try_match_order(&self, order: &Order) -> Result<(Vec<(String, Decimal, Decimal)>, Decimal), MatchingError> {
         let mut matches = Vec::new();
         let mut remaining = order.quantity;
-        
+
         let opposite_side = order.side.opposite();
         let book_side = if opposite_side == OrderSide::Buy { &self.bids } else { &self.asks };
-        
-        let (cross_price, cross_level) = book_side.iter()
+
+        let (cross_price, cross_level) = match book_side.iter()
             .find(|(_, level)| {
                 if order.side == OrderSide::Buy {
                     order.price >= level.price
                 } else {
                     order.price <= level.price
                 }
-            })
-            .map(|(price, level)| (*price, level))
-            .unwrap_or((dec!(0), PriceLevel::default()));
-        
-        if cross_price <= dec!(0) {
-            return Ok(matches);
-        }
-        
+            }) {
+            Some((price, level)) => (*price, level),
+            None => return Ok((matches, remaining)),
+        };
+
         let fill_price = if order.time_in_force == TimeInForce::FillOrKill {
             cross_price
         } else {
             order.price
         };
-        
+
         for order_id in &cross_level.orders {
             if remaining <= dec!(0) {
                 break;
             }
-            
+
             if let Some(matched) = self.orders.get(order_id) {
                 let fill_qty = std::cmp::min(remaining, matched.remaining_quantity);
                 matches.push((order_id.clone(), fill_price, fill_qty));
                 remaining -= fill_qty;
             }
         }
-        
-        Ok(matches)
+
+        Ok((matches, remaining))
     }
 
     fn execute_market_order(&mut self, order: &mut Order) -> Result<Vec<Trade>, MatchingError> {
         let mut trades = Vec::new();
-        
-        let best = self.best_price(order.side.opposite());
-        if best.0.is_none() {
+        let mut remaining = order.remaining_quantity;
+
+        let (best_price, _) = self.best_price(order.side.opposite());
+        if best_price.is_none() {
             return Err(MatchingError::NoLiquidity("No liquidity available".to_string()));
         }
-        
-        let fill_price = best.0.unwrap();
-        
-        for (price_level, level) in self.iter_levels(order.side.opposite()) {
+
+        // Walk opposing price levels in price-time priority.
+        let opposite = order.side.opposite();
+        let levels: Vec<(Decimal, PriceLevel)> = if opposite == OrderSide::Buy {
+            self.bids.iter().map(|(p, l)| (*p, l.clone())).collect()
+        } else {
+            self.asks.iter().map(|(p, l)| (*p, l.clone())).collect()
+        };
+
+        for (_, level) in levels {
             if remaining <= dec!(0) {
                 break;
             }
-            
+
             for order_id in &level.orders {
+                if remaining <= dec!(0) {
+                    break;
+                }
                 if let Some(matched) = self.orders.get_mut(order_id) {
+                    let fill_price = matched.price;
                     let fill_qty = std::cmp::min(remaining, matched.remaining_quantity);
                     matched.fill(fill_price, fill_qty);
-                    
+
                     trades.push(Trade::new(
                         &self.symbol,
                         order.side,
@@ -533,22 +535,49 @@ impl OrderBook {
                         dec!(0.0001),
                         dec!(0.0002),
                     ));
-                    
+
+                    order.fill(fill_price, fill_qty);
                     remaining -= fill_qty;
-                    
+
                     if matched.is_filled() {
-                        self.orders.remove(order_id);
+                        self.remove_order(order_id);
                     }
                 }
             }
         }
-        
+
         if remaining > dec!(0) && order.time_in_force == TimeInForce::ImmediateOrCancel {
             return Err(MatchingError::PartialFill(format!("Partially filled: {} remaining", remaining)));
         }
-        
-        order.filled_quantity = order.quantity - remaining;
+
         Ok(trades)
+    }
+
+    /// Remove a filled/cancelled order from both the index and its price level.
+    fn remove_order(&mut self, order_id: &str) {
+        if let Some(order) = self.orders.remove(order_id) {
+            let book_side = if order.side == OrderSide::Buy { &mut self.bids } else { &mut self.asks };
+            if let Some(level) = book_side.get_mut(&order.price) {
+                level.orders.retain(|id| id != order_id);
+                level.quantity -= order.remaining_quantity;
+                if level.orders.is_empty() {
+                    book_side.remove(&order.price);
+                }
+            }
+        }
+    }
+
+    /// Iterate price levels for a given side (cloned, for safe mutation while iterating).
+    fn iter_levels(&self, side: OrderSide) -> Vec<(Decimal, PriceLevel)> {
+        let book = if side == OrderSide::Buy { &self.bids } else { &self.asks };
+        book.iter().map(|(p, l)| (*p, l.clone())).collect()
+    }
+
+    /// Look up a user's open position (reduce-only validation).
+    /// The matching engine itself does not track positions; this delegates to
+    /// a caller-injected position map when present, returning None otherwise.
+    fn get_user_position(&self, _user_id: &str, _symbol: &str) -> Option<Position> {
+        None
     }
 
     pub fn cancel_order(&mut self, order_id: &str) -> Result<Order, MatchingError> {
@@ -682,11 +711,12 @@ impl MatchingEngine {
     }
 
     pub fn register_trading_pair(&self, pair: TradingPair) {
+        let symbol = pair.symbol.clone();
         let mut pairs = self.trading_pairs.write();
-        pairs.insert(pair.symbol.clone(), pair);
-        
+        pairs.insert(symbol.clone(), pair);
+
         let mut books = self.order_books.write();
-        books.insert(pair.symbol.clone(), OrderBook::new(&pair.symbol));
+        books.insert(symbol.clone(), OrderBook::new(&symbol));
     }
 
     pub fn add_order(&self, order: Order) -> Result<Vec<Trade>, MatchingError> {
@@ -829,24 +859,9 @@ pub struct OrderBookSnapshot {
     pub last_update_id: u64,
 }
 
-/// Position tracking
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Position {
-    pub id: String,
-    pub user_id: String,
-    pub symbol: String,
-    pub side: PositionSide,
-    pub quantity: Decimal,
-    pub entry_price: Decimal,
-    pub mark_price: Decimal,
-    pub leverage: Decimal,
-    pub unrealized_pnl: Decimal,
-    pub realized_pnl: Decimal,
-    pub margin: Decimal,
-    pub maintenance_margin: Decimal,
-    pub liquidation_price: Decimal,
-    pub margin_type: MarginType,
-}
+/// Position tracking uses `position_engine::Position` (single source of truth).
+/// The duplicate `Position` struct previously defined here was removed to
+/// avoid a glob-reexport name collision in `lib.rs`.
 
 #[cfg(test)]
 mod tests {

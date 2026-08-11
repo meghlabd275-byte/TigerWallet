@@ -9,6 +9,8 @@ use parking_lot::RwLock;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use crate::position_engine::{PositionSide, MarginType};
+
 /// Liquidation type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LiquidationType {
@@ -169,7 +171,7 @@ impl LiquidationEngine {
                 should_liquidate: true,
                 liquidation_type: LiquidationType::Bankrupt,
                 reason: LiquidationReason::Bankrupt,
-                liquidation_price: position.liquidation_price(mark_price),
+                liquidation_price: Some(position.liquidation_price(mark_price)),
                 partial_liquidate_quantity: None,
                 priority_score: dec!(0),
             }
@@ -180,7 +182,7 @@ impl LiquidationEngine {
                 should_liquidate: true,
                 liquidation_type: LiquidationType::Partial,
                 reason: LiquidationReason::MaintenanceMarginBreach,
-                liquidation_price: position.liquidation_price(mark_price),
+                liquidation_price: Some(position.liquidation_price(mark_price)),
                 partial_liquidate_quantity: Some(partial_qty),
                 priority_score: dec!(1.1) - margin_ratio,
             }
@@ -190,7 +192,7 @@ impl LiquidationEngine {
                 should_liquidate: false,
                 liquidation_type: LiquidationType::MarginCall,
                 reason: LiquidationReason::MarginCallExpired,
-                liquidation_price: position.liquidation_price(mark_price),
+                liquidation_price: Some(position.liquidation_price(mark_price)),
                 partial_liquidate_quantity: None,
                 priority_score: dec!(1.25) - margin_ratio,
             }
@@ -199,7 +201,7 @@ impl LiquidationEngine {
                 should_liquidate: false,
                 liquidation_type: LiquidationType::MarginCall,
                 reason: LiquidationReason::MarginCallExpired,
-                liquidation_price: position.liquidation_price(mark_price),
+                liquidation_price: Some(position.liquidation_price(mark_price)),
                 partial_liquidate_quantity: None,
                 priority_score: dec!(10), // Low priority
             }
