@@ -575,6 +575,18 @@ Notes:
   (returns on-chain action for /send, no fabricated hash), GET /api/v1/staking/quote
   (supported assets, APY=0 honestly), POST /api/v1/staking/{stake,unstake,claim}
   (route to /send), GET /api/v1/transactions/:txHash (real explorer proxy).
+- go/wallet_api/amm_router.go (NEW, on-chain AMM): REAL `getAmountsOut` via
+  `eth_call` to per-chain Uniswap-V2-compatible routers (Ethereum
+  `0x7a250d56…`, PancakeSwap BSC, QuickSwap Polygon, SushiSwap
+  Arbitrum/Optimism, Base). REAL `swapExactTokensForTokens` calldata
+  construction (selector `0x18cbafe5`, exact ABI encoding). Real on-chain
+  `decimals()` per token for human<->wei. 0.5% slippage default from the
+  live `getAmountsOut`. `GET /api/v1/amm/quote` + `POST /api/v1/amm/swap`
+  (constructs calldata; client broadcasts via real `/api/v1/send`). 503 on
+  RPC failure — never fabricates. 8 Go tests (byte-exact selector + encoding,
+  decode roundtrip, short-return reject, router resolution, humanToWei +
+  zero/negative reject). `go build` + `go vet` clean. Frontend parity:
+  `app/api/v1/amm/{quote,swap}/route.ts` (wallet_api auth group), `tsc` clean.
 
 ## Mobile wallet-creation password contract (2026-08-09)
 - The wallet backend requires a `password` (min 8) + `label` to create a wallet.
