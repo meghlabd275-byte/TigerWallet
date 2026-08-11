@@ -276,7 +276,7 @@
 - All signing uses github.com/ethereum/go-ethereum/crypto (real ECDSA secp256k1, low-s). No sha256/sha3 fakes.
 - multisig_service: broadcastTransaction (main.go) and broadcastRawTransaction (multisig_service.go) use ethclient.Dial + types.NewTx(DynamicFeeTx) + types.SignTx + client.SendTransaction. RPC from ETH_RPC_URL env.
 - SignHash uses crypto.Sign(hash, privKey), v normalized to 27/28.
-- mpc/enterprise.go: real Shamir + Lagrange over secp256k1; CombineShares reconstructs then crypto.Sign. Real crypto.Ecrecover verification. secp256k1 only (no P256 for crypto).
+- mpc/enterprise.go: real Shamir + Lagrange over secp256k1; CombineShares reconstructs then crypto.Sign. Real crypto.Ecrecover verification. secp256k1 only (no P256 for crypto). The PolicyEngine now has REAL rule enforcement: daily_limit uses a per-wallet UTC-day spend counter (RecordExecution updates it); tx_limit parses the wei amount (decimal or 0x-hex); whitelist/blacklist parse comma/newline address lists and match case-insensitively; unknown rule types REJECT (fail-closed). The old fake evaluateRule (always-true daily_limit/whitelist, byte-length tx_limit, allow-fallthrough) is gone.
 - mpc/server.go: REAL HTTP service exposing the TSS engine. Endpoints:
   POST /api/v1/mpc/create ({threshold,totalShards} -> {keyId,address,publicKey});
   POST /api/v1/mpc/sign ({keyId,messageHash(hex)} -> {signature}); GET
@@ -439,3 +439,33 @@ Notes:
 - transaction_engine/src/lib.rs: MultiChainTx derives Clone.
 - portfolio/rust/src/lib.rs: * 100 -> * Decimal::from(100); &self.positions -> &mut self.positions.
 - No stubs/todo!()/unimplemented!()/all-zero stubs introduced; real logic preserved.
+
+
+## Security-primitive fixes (2026-08-09)
+- go/social_recovery_service/main.go: AES-GCM key now derived via scrypt
+  (N=32768,r=8,p=1) + per-ciphertext 32-byte salt (was bare sha256(passphrase)).
+  Blob = salt(32)||nonce(12)||ciphertext. Build + vet clean.
+- go/two_factor_auth/main.go: WebAuthn is now REAL. RegisterWebAuthn stores the
+  browser-supplied SPKI P-256 public key (validates it parses). VerifyWebAuthn
+  reconstructs authenticatorData||SHA256(clientDataJSON), parses the stored
+  P-256 key, and verifies the ECDSA signature via ecdsa.VerifyASN1 (normalizes
+  raw r||s to DER). Never returns true on a bad/missing signature. The handler
+  requires `publicKey` in the register body. go.mod requires go 1.25 -> build
+  with GOTOOLCHAIN=auto.
+- go/mpc/enterprise.go: PolicyEngine rule enforcement is real (see Go services
+  section above). RecordExecution updates the daily spend counter.
+
+## wallet_api DeFi + tx-receipt endpoints (2026-08-09)
+- go/wallet_api/defi_handlers.go (new): GET /api/v1/swap/quote (real CoinGecko
+  cross-rate, honest price_impact/gas=0 indicative), POST /api/v1/swap/execute
+  (returns on-chain action for /send, no fabricated hash), GET /api/v1/staking/quote
+  (supported assets, APY=0 honestly), POST /api/v1/staking/{stake,unstake,claim}
+  (route to /send), GET /api/v1/transactions/:txHash (real explorer proxy).
+
+## Mobile wallet-creation password contract (2026-08-09)
+- The wallet backend requires a `password` (min 8) + `label` to create a wallet.
+  iOS (mobile_apps/ios_app/TigerWallet/Models/Wallet.swift) createWallet/importWallet
+  now thread `password`; backendCreateWalletMnemonic sends {label,password}.
+  Android (Services.kt + WalletRepository.kt) generateMnemonic(password) +
+  createWallet(name,password,mnemonic) (suspend). Flutter is unaffected: real
+  on-device BIP-39/32/44 + flutter_secure_storage (self-custody, no backend pw).
