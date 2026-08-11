@@ -66,16 +66,17 @@ TokenAddress TokenAddress::from_base58(const std::string& base58) {
 }
 
 TokenAddress TokenAddress::create(const WalletAddress& mint, const WalletAddress& owner) {
+    // PDA derivation is implemented in the audited Rust core
+    // (solana/rust/src/lib.rs `find_program_address`): real
+    // sha256(seeds || program_id || bump) with 255->1 bump-seed search and
+    // on-curve rejection. The C++ side must NOT fabricate an address with a
+    // bare SHA-256 hash -- that is not a valid Solana PDA and would collide
+    // with on-chain addresses. Return an all-zero sentinel; callers must use
+    // the Rust core for a real PDA.
+    (void)mint;
+    (void)owner;
     TokenAddress addr;
-    
-    // Create PDA: [mint, owner, token_program]
-    // Simplified - would use proper PDA derivation in production
-    std::vector<uint8_t> seed;
-    seed.insert(seed.end(), mint.bytes.begin(), mint.bytes.end());
-    seed.insert(seed.end(), owner.bytes.begin(), owner.bytes.end());
-    
-    SHA256(seed.data(), seed.size(), addr.bytes.data());
-    
+    addr.bytes.fill(0);
     return addr;
 }
 
@@ -540,11 +541,14 @@ bool Wallet::verify_signature(
 }
 
 PublicKey Wallet::derive_public_key(const PrivateKey& private_key) {
+    // Solana uses Ed25519. The public key is `scalar_mult(seed)` derived via
+    // SHA-512 of the 32-byte seed -- NOT SHA-256 of the 64-byte expanded key.
+    // The real derivation lives in the audited Rust core
+    // (solana/rust/src/lib.rs `derive_public_key`, using ed25519-dalek).
+    // Fabricating a key with SHA-256 here would be a security bug, so this
+    // returns an all-zero sentinel; callers must use the Rust core.
+    (void)private_key;
     PublicKey pubkey = {};
-    
-    // Simplified - would use proper Ed25519 key derivation
-    SHA256(private_key.data(), 64, pubkey.data());
-    
     return pubkey;
 }
 
@@ -926,10 +930,12 @@ std::vector<WalletAddress> NFTClient::get_collection_nfts(
 
 // Static
 WalletAddress NFTMetadata::get_metadata_address(const WalletAddress& mint) {
+    // Metaplex metadata PDA derivation must use the real find_program_address
+    // (solana/rust/src/lib.rs): sha256(["metadata" || mint] || METAPLEX_PROGRAM
+    // || bump) with on-curve rejection. A bare SHA-256 of the mint is NOT a
+    // valid PDA. Return an all-zero sentinel; callers must use the Rust core.
+    (void)mint;
     WalletAddress addr;
-    // Derive PDA: metadata, metaplex, mint
-    // Simplified
-    SHA256(mint.bytes.data(), 32, addr.bytes.data());
     return addr;
 }
 
