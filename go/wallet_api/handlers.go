@@ -555,6 +555,31 @@ func handleSignMessage(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"signature": "0x" + common.Bytes2Hex(sig)})
 }
 
+// ---- dApp directory (public read) ----
+
+func handleListDApps(c *gin.Context) {
+	category := c.Query("category")
+	chain := c.Query("chain")
+	c.JSON(http.StatusOK, gin.H{
+		"dapps":  listDApps(category, chain),
+		"count":  len(listDApps(category, chain)),
+	})
+}
+
+func handleGetDApp(c *gin.Context) {
+	id := c.Param("id")
+	d := getDApp(id)
+	if d == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "dapp not found"})
+		return
+	}
+	c.JSON(http.StatusOK, d)
+}
+
+func handleDAppCategories(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"categories": dAppCategories()})
+}
+
 // handleExportKeystore exports a wallet's private key as a standard Web3 Secret
 // Storage V3 (scrypt variant) keystore JSON, interoperable with geth/MetaMask.
 // The wallet seed is decrypted with the user's password, the private key is

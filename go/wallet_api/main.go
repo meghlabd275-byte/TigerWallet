@@ -70,6 +70,11 @@ func main() {
 	r.GET("/api/v1/terminal/kline/:symbol", handleTerminalKline)
 	r.GET("/api/v1/terminal/ticker/:symbol", handleTerminalTicker)
 
+	// ---- dApp directory (read-only public) ----
+	r.GET("/api/v1/dapps", handleListDApps)
+	r.GET("/api/v1/dapps/categories", handleDAppCategories)
+	r.GET("/api/v1/dapps/:id", handleGetDApp)
+
 	// ---- Auth routes ----
 	auth := r.Group("/api/v1/auth")
 	{

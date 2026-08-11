@@ -28,17 +28,6 @@ interface Connection {
   lastUsed: number
 }
 
-const POPULAR_DAPPS: DApp[] = [
-  { id: '1', name: 'Uniswap', url: 'https://app.uniswap.org', category: 'DEX', logo: '🦄', description: 'Decentralized trading protocol' },
-  { id: '2', name: 'OpenSea', url: 'https://opensea.io', category: 'NFT', logo: '🌊', description: 'NFT Marketplace' },
-  { id: '3', name: 'Aave', url: 'https://app.aave.com', category: 'Lending', logo: '👻', description: 'Lending Protocol' },
-  { id: '4', name: 'Compound', url: 'https://app.compound.finance', category: 'Lending', logo: '📈', description: 'Lending Platform' },
-  { id: '5', name: 'Curve', url: 'https://curve.fi', category: 'DEX', logo: '🔵', description: 'Stablecoin DEX' },
-  { id: '6', name: '1inch', url: 'https://app.1inch.io', category: 'DEX', logo: '1️⃣', description: 'DEX Aggregator' },
-  { id: '7', name: 'Lens Protocol', url: 'https://lens.xyz', category: 'Social', logo: '🌿', description: 'Social Graph' },
-  { id: '8', name: 'ENS', url: 'https://app.ens.domains', category: 'Domain', logo: '🔷', description: 'Ethereum Name Service' },
-]
-
 export default function DAppBrowserPage() {
   const { theme } = useTheme()
   const [url, setUrl] = useState('')
@@ -51,7 +40,17 @@ export default function DAppBrowserPage() {
   const [connections, setConnections] = useState<Connection[]>([])
   const [activeTab, setActiveTab] = useState<'discover' | 'bookmarks' | 'history'>('discover')
   const [searchQuery, setSearchQuery] = useState('')
+  const [popularDApps, setPopularDApps] = useState<DApp[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    fetch('/api/v1/dapps', { cache: 'no-store' })
+      .then(res => res.ok ? res.json() : Promise.reject())
+      .then(data => setPopularDApps((data.dapps || []).map((d: { id: string; name: string; url: string; category: string; logo: string; description: string }) => ({
+        id: d.id, name: d.name, url: d.url, category: d.category, logo: d.logo, description: d.description,
+      }))))
+      .catch(() => setPopularDApps([]))
+  }, [])
 
   useEffect(() => {
     const savedBookmarks = localStorage.getItem('dapp_bookmarks')
@@ -112,7 +111,7 @@ export default function DAppBrowserPage() {
     localStorage.setItem('dapp_bookmarks', JSON.stringify(updatedBookmarks))
   }
 
-  const filteredDApps = POPULAR_DAPPS.filter(dapp => 
+  const filteredDApps = popularDApps.filter(dapp => 
     dapp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     dapp.category.toLowerCase().includes(searchQuery.toLowerCase())
   )
@@ -350,7 +349,7 @@ export default function DAppBrowserPage() {
                 Browse decentralized applications securely
               </p>
               <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
-                {POPULAR_DAPPS.slice(0, 4).map(dapp => (
+                {popularDApps.slice(0, 4).map(dapp => (
                   <button
                     key={dapp.id}
                     onClick={() => handleNavigate(dapp.url)}
