@@ -20,6 +20,16 @@
 - The old duplicate custom contracts under `account_abstraction/smart_contracts/`
   were removed; that dir now only has a `README.md` pointing to the canonical
   location. Do NOT re-add custom EntryPoint/SmartAccount/Paymaster there.
+- **PORT COMPLETE (2026-08-11):** `account_abstraction/SimpleAccount.sol` now
+  extends the canonical `BaseAccount` and implements `_validateSignature` with
+  REAL ECDSA (OZ v5 `ECDSA.recover` + `MessageHashUtils.toEthSignedMessageHash`
+  over the EntryPoint `userOpHash`). The legacy accept-any-64-byte-sig
+  `validateUserOp` is replaced; non-65-byte/wrong-signer sigs return
+  `SIG_VALIDATION_FAILED (1)`. `account_abstraction/AccountFactory.sol` deploys
+  deterministic EIP-1167 clones via `Clones.cloneDeterministic` +
+  `predictDeterministicAddress` (counterfactual address matches create output).
+  `test_aa/AccountFactory.t.sol`: 5 passing Foundry tests (real `vm.sign`, no
+  mocks). `legacy_aa/AccountFactory.sol` kept as historical reference only.
 - TigerWallet's pre-existing custom `AccountFactory.sol` (which used the old
   unpacked `UserOperation` + an on-chain `Bundler`) was relocated to
   `smart_contracts/evm_contracts/legacy_aa/` because it does not compile against
@@ -28,6 +38,10 @@
 
 ## Foundry setup
 
+- Foundry is NOT preinstalled. Install on demand:
+  `curl -L https://foundry.paradigm.xyz | bash` then `~/.foundry/bin/foundryup`.
+  Binary lands at `~/.foundry/bin/forge` (v1.7.1). Add `$HOME/.foundry/bin`
+  to PATH for the session.
 - `smart_contracts/evm_contracts/foundry.toml`: `src = "account_abstraction"`,
   `solc_version = "0.8.28"`, `evm_version = "cancun"`, `libs = ["lib"]`.
   `test`/`script` are pointed at nonexistent `test_aa`/`script_aa` so `forge
@@ -113,6 +127,17 @@
 - Real fetchers (`fetchers.go`): native balance via `eth_getBalance`, ERC-20
   via `balanceOf` eth_call, tx history via Etherscan API, NFTs via Etherscan,
   prices via CoinGecko, gas via `eth_feeHistory`/`eth_gasPrice`.
+- Curated dApp directory (`dapp_directory.go`): ~20 real protocol entries
+  (Uniswap, Aave, OpenSea, Curve, 1inch, Jupiter, Stargate, Lido, ENS, Lens,
+  Farcaster, etc.) with categories/chains/verified flag — NO fabricated metrics
+  (no invented user counts/ratings). Public REST `GET /api/v1/dapps`
+  (`?category=&chain=`), `/dapps/categories`, `/dapps/:id`. Frontend
+  `dapp-store` + `dapp-browser` pages fetch this instead of hardcoding.
+- Token asset registry (`token_registry.go` + `handleTokenRegistry`): real
+  per-chain token lists (mainnet contract addresses/decimals/symbols for
+  Ethereum/BSC/Polygon/Arbitrum/Optimism/Base). Public REST
+  `GET /api/v1/tokens/registry` (full registry grouped by chain, or
+  `?chain_id=N`; 404 for unknown chain — never fabricated).
 - REST API (gin, port 8443): `/api/v1/auth/{register,login}`,
   `/api/v1/wallets` (POST create, GET list), `/api/v1/{balance,tokens,transactions,nfts}`,
   `/api/v1/send`, `/api/v1/sign`, `/api/v1/gas`, `/api/v1/price`, `/api/v1/chains`,
