@@ -24,6 +24,7 @@ This document provides a detailed feature-by-feature comparison between TigerWal
 > 5. **`go/staking_service`** — fake `0x1234...` validators → unverified samples; no-op JWT → real `golang-jwt/v5` HMAC validation. Package conflict + `SetString` + missing field fixed.
 > 6. **`go/payment`** — `processWithdrawal` now does a REAL ERC-20 `transfer` via `types.SignTx` + `ethclient.SendTransaction`; `generatePaymentAddress` returns the real hot-wallet address (no fabricated `sha256` deposit address).
 > 7. **`go/ens_service`** — `nameHash`/`labelHash` now use **keccak256** EIP-137 (was SHA-256); `Resolve`/`ReverseResolve` do real on-chain `CallContract` against the ENS registry (was hardcoded placeholders). Added `go.mod`.
+> 8. **On-chain multisig wallet** — `account_abstraction/tigerwallet/MultisigWallet.sol` is a real Gnosis Safe-style threshold contract (EIP-712 typed-data hash, OpenZeppelin v5 `ECDSA.recover`, low-s, sorted-sig dedup, ReentrancyGuard, nonce replay protection, self-governed owner mgmt). 13 Foundry tests; full AA suite 31/31.
 >
 > The remaining stubs (frontend swap/staking/lending/bridge/NFT pages, `go/services/*` duplicates, mobile Flutter/Android) are still tracked in the gap analysis below.
 

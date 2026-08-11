@@ -38,7 +38,20 @@
   Fail-closed sender whitelist, `validUntil`/`validAfter` time-range bounds,
   owner-gated signer rotation, inherited stake/deposit/withdraw via
   `Stakeable`/`BasePaymaster`. `test_aa/VerifyingPaymaster.t.sol`: 8 passing
-  Foundry tests (real `vm.sign`, no mocks). Full AA suite: 18/18 pass.
+  Foundry tests (real `vm.sign`, no mocks).
+- **MultisigWallet (2026-08-11):** `account_abstraction/tigerwallet/MultisigWallet.sol`
+  is a deployable Gnosis Safe-style on-chain threshold multisig (NOT an ERC-4337
+  account). A tx executes only after `threshold` owner ECDSA signatures over an
+  EIP-712 typed-data hash (`domain(chainId,verifyingContract) ||
+  Transaction(to,value,dataHash,nonce)`) are collected. Verification uses OZ v5
+  `ECDSA.recover` (real secp256k1, low-s) — NOT length checks. Sorted-sig
+  convention (`recovered > lastOwner`) dedups without storage. `ReentrancyGuard`,
+  nonce replay protection, threshold clamped to `[1, ownerCount]`, self-governed
+  owner mgmt (add/remove/changeThreshold) via the wallet's own execute path,
+  constructor rejects duplicate/zero owners + bad threshold. Pairs with the
+  off-chain `go/multisig_service` relayer (already real secp256k1 + ethclient).
+  `test_aa/MultisigWallet.t.sol`: 13 Foundry tests (real `vm.sign`). Full AA
+  suite now 31/31 pass.
 - `paymasterAndData` layout for the VerifyingPaymaster: `address(20) ||
   verificationGasLimit(16) || postOpGasLimit(16) || sponsorSignature(65) ||
   validUntil(6) || validAfter(6)` (the slice after the fixed 52-byte head is
