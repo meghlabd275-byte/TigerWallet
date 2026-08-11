@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 import api, { FiatRate, FiatProvider } from '../../src/lib/api/client';
 
 // Types
@@ -63,6 +64,7 @@ const PAYMENT_METHODS = [
 ];
 
 export default function FiatOnRamp() {
+  const { isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<'buy' | 'sell'>('buy');
   const [fiatCurrency, setFiatCurrency] = useState<FiatCurrency>(FIAT_CURRENCIES[0]);
   const [cryptoCurrency, setCryptoCurrency] = useState<CryptoCurrency>(CRYPTO_CURRENCIES[0]);
@@ -264,22 +266,22 @@ export default function FiatOnRamp() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed':
-        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+        return isDark ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-800';
       case 'processing':
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+        return isDark ? 'bg-blue-900 text-blue-200' : 'bg-blue-100 text-blue-800';
       case 'pending':
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+        return isDark ? 'bg-yellow-900 text-yellow-200' : 'bg-yellow-100 text-yellow-800';
       case 'failed':
-        return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+        return isDark ? 'bg-red-900 text-red-200' : 'bg-red-100 text-red-800';
       default:
         return 'bg-slate-100 text-slate-800';
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-50">
+    <div className={`min-h-screen ${isDark ? 'bg-slate-900 text-slate-50' : 'bg-slate-50 text-slate-900'}`}>
       {/* Header */}
-      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+      <header className={`${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} border-b`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
@@ -287,8 +289,8 @@ export default function FiatOnRamp() {
               <h1 className="text-xl font-bold">Fiat On-Ramp</h1>
             </div>
             <nav className="flex gap-4">
-              <a href="/wallet" className="text-slate-600 dark:text-slate-400 hover:text-orange-500">Wallet</a>
-              <a href="/swap" className="text-slate-600 dark:text-slate-400 hover:text-orange-500">Swap</a>
+              <a href="/wallet" className={`${isDark ? 'text-slate-400' : 'text-slate-600'} hover:text-orange-500`}>Wallet</a>
+              <a href="/swap" className={`${isDark ? 'text-slate-400' : 'text-slate-600'} hover:text-orange-500`}>Swap</a>
             </nav>
           </div>
         </div>
@@ -297,7 +299,7 @@ export default function FiatOnRamp() {
       {/* Message */}
       {message && (
         <div className="max-w-7xl mx-auto px-4 pt-4">
-          <div className={`p-3 rounded-lg ${message.type === 'success' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'}`}>
+          <div className={`p-3 rounded-lg ${message.type === 'success' ? (isDark ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-800') : (isDark ? 'bg-red-900 text-red-200' : 'bg-red-100 text-red-800')}`}>
             {message.text}
           </div>
         </div>
@@ -308,17 +310,17 @@ export default function FiatOnRamp() {
           {/* Main Form */}
           <div className="lg:col-span-2 space-y-6">
             {/* Buy/Sell Tabs */}
-            <div className="bg-white dark:bg-slate-800 rounded-lg p-6 shadow-sm">
-              <div className="flex border-b border-slate-200 dark:border-slate-700 mb-6">
+            <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-6 shadow-sm`}>
+              <div className={`flex border-b mb-6 ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
                 <button
                   onClick={() => setActiveTab('buy')}
-                  className={`px-6 py-3 font-semibold ${activeTab === 'buy' ? 'border-b-2 border-orange-500 text-orange-500' : 'text-slate-500 dark:text-slate-400'}`}
+                  className={`px-6 py-3 font-semibold ${activeTab === 'buy' ? 'border-b-2 border-orange-500 text-orange-500' : isDark ? 'text-slate-400' : 'text-slate-500'}`}
                 >
                   Buy Crypto
                 </button>
                 <button
                   onClick={() => setActiveTab('sell')}
-                  className={`px-6 py-3 font-semibold ${activeTab === 'sell' ? 'border-b-2 border-orange-500 text-orange-500' : 'text-slate-500 dark:text-slate-400'}`}
+                  className={`px-6 py-3 font-semibold ${activeTab === 'sell' ? 'border-b-2 border-orange-500 text-orange-500' : isDark ? 'text-slate-400' : 'text-slate-500'}`}
                 >
                   Sell Crypto
                 </button>
@@ -327,11 +329,11 @@ export default function FiatOnRamp() {
               {/* Currency Selection */}
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
-                  <label className="block text-sm text-slate-500 dark:text-slate-400 mb-2">You Pay</label>
+                  <label className={`block text-sm mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>You Pay</label>
                   <select
                     value={fiatCurrency.code}
                     onChange={(e) => setFiatCurrency(FIAT_CURRENCIES.find(c => c.code === e.target.value) || FIAT_CURRENCIES[0])}
-                    className="w-full bg-slate-100 dark:bg-slate-700 border-0 rounded-lg px-4 py-3"
+                    className={`w-full border-0 rounded-lg px-4 py-3 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}
                   >
                     {FIAT_CURRENCIES.map(c => (
                       <option key={c.code} value={c.code}>{c.icon} {c.code} - {c.name}</option>
@@ -339,11 +341,11 @@ export default function FiatOnRamp() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-500 dark:text-slate-400 mb-2">You Receive</label>
+                  <label className={`block text-sm mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>You Receive</label>
                   <select
                     value={cryptoCurrency.symbol}
                     onChange={(e) => setCryptoCurrency(CRYPTO_CURRENCIES.find(c => c.symbol === e.target.value) || CRYPTO_CURRENCIES[0])}
-                    className="w-full bg-slate-100 dark:bg-slate-700 border-0 rounded-lg px-4 py-3"
+                    className={`w-full border-0 rounded-lg px-4 py-3 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}
                   >
                     {CRYPTO_CURRENCIES.map(c => (
                       <option key={c.symbol} value={c.symbol}>{c.symbol} - {c.name} ({c.network})</option>
@@ -355,23 +357,23 @@ export default function FiatOnRamp() {
               {/* Amount Input */}
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
-                  <label className="block text-sm text-slate-500 dark:text-slate-400 mb-2">Amount ({fiatCurrency.code})</label>
+                  <label className={`block text-sm mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Amount ({fiatCurrency.code})</label>
                   <input
                     type="number"
                     value={fiatAmount}
                     onChange={(e) => handleFiatAmountChange(e.target.value)}
                     placeholder="0.00"
-                    className="w-full bg-slate-100 dark:bg-slate-700 border-0 rounded-lg px-4 py-3 text-2xl font-semibold"
+                    className={`w-full border-0 rounded-lg px-4 py-3 text-2xl font-semibold ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-500 dark:text-slate-400 mb-2">Amount ({cryptoCurrency.symbol})</label>
+                  <label className={`block text-sm mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Amount ({cryptoCurrency.symbol})</label>
                   <input
                     type="number"
                     value={cryptoAmount}
                     onChange={(e) => handleCryptoAmountChange(e.target.value)}
                     placeholder="0.000000"
-                    className="w-full bg-slate-100 dark:bg-slate-700 border-0 rounded-lg px-4 py-3 text-2xl font-semibold"
+                    className={`w-full border-0 rounded-lg px-4 py-3 text-2xl font-semibold ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}
                   />
                 </div>
               </div>
@@ -382,7 +384,7 @@ export default function FiatOnRamp() {
                   <button
                     key={amount}
                     onClick={() => setFiatAmount(amount.toString())}
-                    className="flex-1 py-2 px-3 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                    className={`flex-1 py-2 px-3 rounded-lg text-sm transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-100 hover:bg-slate-200'}`}
                   >
                     ${amount}
                   </button>
@@ -391,7 +393,7 @@ export default function FiatOnRamp() {
 
               {/* Payment Method */}
               <div className="mb-6">
-                <label className="block text-sm text-slate-500 dark:text-slate-400 mb-2">Payment Method</label>
+                <label className={`block text-sm mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Payment Method</label>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   {PAYMENT_METHODS.map((method) => (
                     <button
@@ -399,8 +401,8 @@ export default function FiatOnRamp() {
                       onClick={() => setSelectedPaymentMethod(method.id)}
                       className={`p-3 rounded-lg text-center transition-colors ${
                         selectedPaymentMethod === method.id
-                          ? 'bg-orange-100 dark:bg-orange-900 border-2 border-orange-500'
-                          : 'bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600'
+                          ? (isDark ? 'bg-orange-900 border-2 border-orange-500' : 'bg-orange-100 border-2 border-orange-500')
+                          : (isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-100 hover:bg-slate-200')
                       }`}
                     >
                       <div className="text-2xl mb-1">{method.icon}</div>
@@ -413,21 +415,21 @@ export default function FiatOnRamp() {
               {/* Wallet Address (for buy) */}
               {activeTab === 'buy' && (
                 <div className="mb-6">
-                  <label className="block text-sm text-slate-500 dark:text-slate-400 mb-2">Your {cryptoCurrency.network} Address</label>
+                  <label className={`block text-sm mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Your {cryptoCurrency.network} Address</label>
                   <input
                     type="text"
                     value={walletAddress}
                     onChange={(e) => setWalletAddress(e.target.value)}
                     placeholder="0x..."
-                    className="w-full bg-slate-100 dark:bg-slate-700 border-0 rounded-lg px-4 py-3 font-mono"
+                    className={`w-full border-0 rounded-lg px-4 py-3 font-mono ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}
                   />
                 </div>
               )}
 
               {/* Exchange Rate Info */}
-              <div className="bg-slate-100 dark:bg-slate-700 rounded-lg p-4 mb-6">
+              <div className={`rounded-lg p-4 mb-6 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}>
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-500 dark:text-slate-400">Exchange Rate</span>
+                  <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Exchange Rate</span>
                   <span className="font-semibold">
                     {ratesLoading
                       ? 'Loading...'
@@ -437,11 +439,11 @@ export default function FiatOnRamp() {
                   </span>
                 </div>
                 <div className="flex justify-between text-sm mt-2">
-                  <span className="text-slate-500 dark:text-slate-400">Network Fee</span>
+                  <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Network Fee</span>
                   <span className="font-semibold">~{fiatCurrency.symbol}1.00</span>
                 </div>
                 <div className="flex justify-between text-sm mt-2">
-                  <span className="text-slate-500 dark:text-slate-400">Processing Time</span>
+                  <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Processing Time</span>
                   <span className="font-semibold">{selectedPaymentMethod.includes('apple') || selectedPaymentMethod.includes('google') ? 'Instant' : '1-5 minutes'}</span>
                 </div>
               </div>
@@ -460,20 +462,20 @@ export default function FiatOnRamp() {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Recent Orders */}
-            <div className="bg-white dark:bg-slate-800 rounded-lg p-6 shadow-sm">
+            <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-6 shadow-sm`}>
               <h3 className="font-semibold mb-4">Recent Orders</h3>
               {orders.length === 0 ? (
-                <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                <div className={`text-center py-8 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                   <div className="text-4xl mb-2">📋</div>
                   <p>No orders yet</p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {orders.slice(0, 5).map((order) => (
-                    <div key={order.id} className="flex items-center justify-between p-3 bg-slate-100 dark:bg-slate-700 rounded-lg">
+                    <div key={order.id} className={`flex items-center justify-between p-3 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}>
                       <div>
                         <div className="font-semibold">{order.cryptoSymbol}</div>
-                        <div className="text-sm text-slate-500 dark:text-slate-400">
+                        <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                           {fiatCurrency.symbol}{order.fiatAmount.toFixed(2)}
                         </div>
                       </div>
@@ -487,23 +489,23 @@ export default function FiatOnRamp() {
             </div>
 
             {/* Supported Currencies */}
-            <div className="bg-white dark:bg-slate-800 rounded-lg p-6 shadow-sm">
+            <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-6 shadow-sm`}>
               <h3 className="font-semibold mb-4">Supported Currencies</h3>
               <div className="space-y-2">
-                <div className="text-sm text-slate-500 dark:text-slate-400">Fiat</div>
+                <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Fiat</div>
                 <div className="flex flex-wrap gap-1">
                   {FIAT_CURRENCIES.map(c => (
-                    <span key={c.code} className="px-2 py-1 bg-slate-100 dark:bg-slate-700 rounded text-xs">
+                    <span key={c.code} className={`px-2 py-1 rounded text-xs ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}>
                       {c.icon} {c.code}
                     </span>
                   ))}
                 </div>
               </div>
               <div className="mt-4 space-y-2">
-                <div className="text-sm text-slate-500 dark:text-slate-400">Crypto</div>
+                <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Crypto</div>
                 <div className="flex flex-wrap gap-1">
                   {CRYPTO_CURRENCIES.map(c => (
-                    <span key={c.symbol} className="px-2 py-1 bg-slate-100 dark:bg-slate-700 rounded text-xs">
+                    <span key={c.symbol} className={`px-2 py-1 rounded text-xs ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}>
                       {c.symbol}
                     </span>
                   ))}
@@ -512,19 +514,19 @@ export default function FiatOnRamp() {
             </div>
 
             {/* Limits */}
-            <div className="bg-white dark:bg-slate-800 rounded-lg p-6 shadow-sm">
+            <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-6 shadow-sm`}>
               <h3 className="font-semibold mb-4">Limits</h3>
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-slate-500 dark:text-slate-400">Min. Purchase</span>
+                  <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Min. Purchase</span>
                   <span className="font-semibold">{fiatCurrency.symbol}50</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500 dark:text-slate-400">Max. Purchase (Daily)</span>
+                  <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Max. Purchase (Daily)</span>
                   <span className="font-semibold">{fiatCurrency.symbol}20,000</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500 dark:text-slate-400">Max. Purchase (Monthly)</span>
+                  <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Max. Purchase (Monthly)</span>
                   <span className="font-semibold">{fiatCurrency.symbol}50,000</span>
                 </div>
               </div>

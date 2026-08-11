@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 
 interface LaunchpoolProject {
   id: string;
@@ -113,6 +114,7 @@ const FALLBACK_LAUNCHPOOLS: LaunchpoolProject[] = [
 ];
 
 export default function LaunchpoolPage() {
+  const { isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<'active' | 'upcoming' | 'completed'>('active');
   const [pools, setPools] = useState<LaunchpoolProject[]>(FALLBACK_LAUNCHPOOLS);
   const [userStakes, setUserStakes] = useState<UserStake[]>([]);
@@ -212,7 +214,7 @@ export default function LaunchpoolPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
+    <div className={`min-h-screen ${isDark ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-900'}`}>
       <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex items-center gap-4">
@@ -231,7 +233,7 @@ export default function LaunchpoolPage() {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-6 py-2 rounded-lg font-medium ${activeTab === tab ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-800'}`}
+              className={`px-6 py-2 rounded-lg font-medium ${activeTab === tab ? 'bg-blue-600 text-white' : `${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}`}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
@@ -240,22 +242,22 @@ export default function LaunchpoolPage() {
 
         <div className="grid grid-cols-2 gap-4">
           {filteredPools.map(project => (
-            <div key={project.id} className="bg-white dark:bg-slate-800 rounded-xl p-6 border">
+            <div key={project.id} className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-xl p-6`}>
               <div className="flex items-center gap-3 mb-3">
                 <span className="text-4xl">{project.logo}</span>
                 <div>
                   <h3 className="font-bold text-lg">{project.name}</h3>
-                  <p className="text-sm text-slate-500">{project.chain}</p>
+                  <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{project.chain}</p>
                 </div>
               </div>
-              <p className="text-sm text-slate-500 mb-4">{project.description}</p>
+              <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'} mb-4`}>{project.description}</p>
               <div className="flex justify-between mb-4">
                 <div>
-                  <p className="text-xs text-slate-500">APY</p>
+                  <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>APY</p>
                   <p className="text-xl font-bold text-green-600">{project.apy}%</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500">Pool</p>
+                  <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Pool</p>
                   <p className="font-semibold">{project.rewardAmount.toLocaleString()} {project.rewardToken}</p>
                 </div>
               </div>
@@ -271,7 +273,7 @@ export default function LaunchpoolPage() {
 
       {selectedProject && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 max-w-md">
+          <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-xl p-6 max-w-md`}>
             <h3 className="text-xl font-bold mb-4">Stake in {selectedProject.name}</h3>
             <input
               type="number"

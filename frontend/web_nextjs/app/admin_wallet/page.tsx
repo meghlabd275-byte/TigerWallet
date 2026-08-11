@@ -7,7 +7,8 @@ import {
   Paper, IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   Alert, Select, MenuItem, FormControl, InputLabel, Switch,
   FormControlLabel, Slider, Grid, Avatar, Divider, List, ListItem,
-  ListItemText, ListItemIcon, LinearProgress, Tooltip, Badge
+  ListItemText, ListItemIcon, LinearProgress, Tooltip, Badge,
+  createTheme, ThemeProvider as MuiThemeProvider, CssBaseline
 } from '@mui/material';
 import {
   AccountBalanceWallet, Add, Edit, Delete, Refresh, Visibility,
@@ -16,39 +17,11 @@ import {
   AccountTree, Hexagon
 } from '@mui/icons-material';
 import { api } from '@/lib/api/client';
+import { useTheme } from '../components/ThemeProvider';
 
 // ============================================================================
 // Types & Interfaces
 // ============================================================================
-
-// Theme Context
-const AdminThemeContext = React.createContext({
-  isDarkMode: true,
-  toggleTheme: () => {}
-});
-
-export function AdminWalletThemeProvider({ children }: { children: React.ReactNode }) {
-  const [isDarkMode, setIsDarkMode] = useState(true);
-  
-  useEffect(() => {
-    const stored = localStorage.getItem('admin_wallet_theme');
-    if (stored) setIsDarkMode(stored === 'dark');
-  }, []);
-  
-  const toggleTheme = () => {
-    const newMode = !isDarkMode;
-    setIsDarkMode(newMode);
-    localStorage.setItem('admin_wallet_theme', newMode ? 'dark' : 'light');
-  };
-  
-  return (
-    <AdminThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
-      {children}
-    </AdminThemeContext.Provider>
-  );
-}
-
-export { AdminThemeContext };
 
 interface Wallet {
   id: string;
@@ -97,6 +70,12 @@ interface WalletStats {
 // ============================================================================
 
 export default function AdminWalletPage() {
+  // Theme
+  const { isDark, toggleTheme } = useTheme();
+  const muiTheme = React.useMemo(() => createTheme({
+    palette: { mode: isDark ? 'dark' : 'light' },
+  }), [isDark]);
+
   // State
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -302,7 +281,9 @@ export default function AdminWalletPage() {
   // ============================================================================
   
   return (
-    <Box sx={{ p: 3 }}>
+    <MuiThemeProvider theme={muiTheme}>
+      <CssBaseline />
+      <Box sx={{ p: 3 }}>
       {/* Header */}
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>
@@ -311,7 +292,12 @@ export default function AdminWalletPage() {
             Manage protocol wallets, multi-sig, and treasury
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 2 }}>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          <Tooltip title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
+            <IconButton onClick={toggleTheme} color="inherit" aria-label="toggle theme">
+              {isDark ? '☀️' : '🌙'}
+            </IconButton>
+          </Tooltip>
           <Button variant="outlined" startIcon={<Refresh />} onClick={loadData}>Refresh</Button>
           <Button variant="contained" startIcon={<Add />} onClick={() => setCreateDialogOpen(true)}>
             Create Wallet
@@ -382,7 +368,7 @@ export default function AdminWalletPage() {
       {/* Wallets Tab */}
       {activeTab === 0 && (
         wallets.length === 0 ? (
-          <Box sx={{ textAlign: 'center', py: 6, color: '#9ca3af' }}>
+          <Box sx={{ textAlign: 'center', py: 6, color: 'text.secondary' }}>
             No wallets found
           </Box>
         ) : (
@@ -408,7 +394,7 @@ export default function AdminWalletPage() {
                     />
                   </Box>
                   
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, p: 1, bgcolor: 'grey.100', borderRadius: 1 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
                     <Typography variant="body2" sx={{ fontFamily: 'monospace', flex: 1 }}>
                       {wallet.address.slice(0, 10)}...{wallet.address.slice(-8)}
                     </Typography>
@@ -478,7 +464,7 @@ export default function AdminWalletPage() {
             <TableBody>
               {transactions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} align="center" sx={{ py: 5, color: '#9ca3af' }}>
+                  <TableCell colSpan={8} align="center" sx={{ py: 5, color: 'text.secondary' }}>
                     No transactions found
                   </TableCell>
                 </TableRow>
@@ -680,7 +666,7 @@ export default function AdminWalletPage() {
           {selectedWallet && (
             <Box sx={{ pt: 2 }}>
               <Typography variant="h5" gutterBottom>{selectedWallet.name}</Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
                 <Typography variant="body1" sx={{ fontFamily: 'monospace', flex: 1 }}>
                   {selectedWallet.address}
                 </Typography>
@@ -721,6 +707,7 @@ export default function AdminWalletPage() {
           <Button onClick={() => setDetailDialogOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
-    </Box>
+      </Box>
+    </MuiThemeProvider>
   );
 }

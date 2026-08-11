@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 
 interface KYCStatus {
   level: number;
@@ -39,6 +40,7 @@ export default function KYCPage() {
   const [showModal, setShowModal] = useState(false);
   const [uploadStep, setUploadStep] = useState(0);
   const [loading, setLoading] = useState(false);
+  const { isDark } = useTheme();
 
   const handleUpload = async (docType: string) => {
     setLoading(true);
@@ -75,14 +77,14 @@ export default function KYCPage() {
   const currentLimits = getLevelBenefits(kycStatus.level);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+    <div className={`min-h-screen ${isDark ? 'bg-slate-900' : 'bg-slate-50'}`}>
+      <header className={`border-b ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
         <div className="max-w-4xl mx-auto px-4 py-6">
           <div className="flex items-center gap-4">
             <a href="/" className="text-2xl">🐯</a>
             <div>
               <h1 className="text-xl font-bold">Identity Verification (KYC)</h1>
-              <p className="text-slate-500 text-sm">Verify your identity to unlock higher limits</p>
+              <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Verify your identity to unlock higher limits</p>
             </div>
           </div>
         </div>
@@ -90,11 +92,11 @@ export default function KYCPage() {
 
       <div className="max-w-4xl mx-auto px-4 py-8">
         {/* Status Card */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 mb-6 border border-slate-200 dark:border-slate-700">
+        <div className={`rounded-xl p-6 mb-6 border ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-lg font-semibold">Verification Status</h2>
-              <p className="text-slate-500">Your current verification level</p>
+              <p className={isDark ? 'text-gray-400' : 'text-gray-500'}>Your current verification level</p>
             </div>
             <span className={`px-4 py-2 rounded-full text-sm font-medium ${
               kycStatus.status === 'approved' ? 'bg-green-100 text-green-800' :
@@ -111,24 +113,24 @@ export default function KYCPage() {
             </div>
             <div>
               <p className="text-2xl font-bold">{getLevelBenefits(kycStatus.level).name}</p>
-              <p className="text-slate-500">
+              <p className={isDark ? 'text-gray-400' : 'text-gray-500'}>
                 {kycStatus.verifiedAt ? `Verified ${new Date(kycStatus.verifiedAt).toLocaleDateString()}` : 'Verification pending'}
               </p>
             </div>
           </div>
 
           {/* Limits */}
-          <div className="grid grid-cols-3 gap-4 p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+          <div className={`grid grid-cols-3 gap-4 p-4 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-50'}`}>
             <div className="text-center">
-              <p className="text-sm text-slate-500">Deposit Limit</p>
+              <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Deposit Limit</p>
               <p className="text-xl font-bold">{currentLimits.deposit === -1 ? 'Unlimited' : `$${currentLimits.deposit.toLocaleString()}`}</p>
             </div>
             <div className="text-center">
-              <p className="text-sm text-slate-500">Withdraw Limit</p>
+              <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Withdraw Limit</p>
               <p className="text-xl font-bold">{currentLimits.withdraw === -1 ? 'Unlimited' : `$${currentLimits.withdraw.toLocaleString()}`}</p>
             </div>
             <div className="text-center">
-              <p className="text-sm text-slate-500">Trading Limit</p>
+              <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Trading Limit</p>
               <p className="text-xl font-bold">{currentLimits.trading === -1 ? 'Unlimited' : `$${currentLimits.trading.toLocaleString()}`}</p>
             </div>
           </div>
@@ -153,18 +155,18 @@ export default function KYCPage() {
         )}
 
         {/* Submitted Documents */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
+        <div className={`rounded-xl p-6 border ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
           <h3 className="text-lg font-semibold mb-4">Submitted Documents</h3>
           
           {kycStatus.documents.length === 0 ? (
-            <p className="text-slate-500 text-center py-8">No documents submitted yet</p>
+            <p className={`text-center py-8 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>No documents submitted yet</p>
           ) : (
             <div className="space-y-3">
               {kycStatus.documents.map(doc => (
-                <div key={doc.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                <div key={doc.id} className={`flex items-center justify-between p-4 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-50'}`}>
                   <div>
                     <p className="font-medium">{doc.type}</p>
-                    <p className="text-sm text-slate-500">Submitted {new Date(doc.submittedAt).toLocaleDateString()}</p>
+                    <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Submitted {new Date(doc.submittedAt).toLocaleDateString()}</p>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-sm ${
                     doc.status === 'verified' ? 'bg-green-100 text-green-800' :
@@ -180,7 +182,7 @@ export default function KYCPage() {
         </div>
 
         {/* KYC Levels Info */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700 mt-6">
+        <div className={`rounded-xl p-6 border mt-6 ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
           <h3 className="text-lg font-semibold mb-4">Verification Levels</h3>
           
           <div className="space-y-4">
@@ -191,19 +193,19 @@ export default function KYCPage() {
               { level: 3, name: 'Advanced', requirements: 'Video verification', limits: '$1,000,000' },
               { level: 4, name: 'Ultimate', requirements: 'Business verification', limits: 'Unlimited' },
             ].map(level => (
-              <div key={level.level} className={`flex items-center justify-between p-4 rounded-lg ${kycStatus.level === level.level ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800' : 'bg-slate-50 dark:bg-slate-700'}`}>
+              <div key={level.level} className={`flex items-center justify-between p-4 rounded-lg ${kycStatus.level === level.level ? (isDark ? 'bg-blue-900/20 border border-blue-800' : 'bg-blue-50 border border-blue-200') : (isDark ? 'bg-slate-700' : 'bg-slate-50')}`}>
                 <div className="flex items-center gap-4">
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${kycStatus.level >= level.level ? 'bg-blue-600 text-white' : 'bg-slate-300'}`}>
                     {level.level + 1}
                   </div>
                   <div>
                     <p className="font-semibold">{level.name}</p>
-                    <p className="text-sm text-slate-500">{level.requirements}</p>
+                    <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{level.requirements}</p>
                   </div>
                 </div>
                 <div className="text-right">
                   <p className="font-bold">{level.limits}</p>
-                  <p className="text-xs text-slate-500">Limits</p>
+                  <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Limits</p>
                 </div>
               </div>
             ))}
@@ -214,7 +216,7 @@ export default function KYCPage() {
       {/* Upload Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 max-w-md w-full mx-4">
+          <div className={`rounded-xl p-6 max-w-md w-full mx-4 ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}>
             <h3 className="text-xl font-bold mb-4">Submit Documents</h3>
             
             {uploadStep === 0 && (
@@ -224,21 +226,21 @@ export default function KYCPage() {
                   className="w-full p-4 border-2 border-dashed border-slate-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors text-left"
                 >
                   <p className="font-medium">Government ID</p>
-                  <p className="text-sm text-slate-500">Passport, Driver's License, or National ID</p>
+                  <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Passport, Driver's License, or National ID</p>
                 </button>
                 <button
                   onClick={() => { setUploadStep(2); }}
                   className="w-full p-4 border-2 border-dashed border-slate-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors text-left"
                 >
                   <p className="font-medium">Proof of Address</p>
-                  <p className="text-sm text-slate-500">Bank Statement or Utility Bill (within 3 months)</p>
+                  <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Bank Statement or Utility Bill (within 3 months)</p>
                 </button>
                 <button
                   onClick={() => { setUploadStep(3); }}
                   className="w-full p-4 border-2 border-dashed border-slate-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors text-left"
                 >
                   <p className="font-medium">Selfie with ID</p>
-                  <p className="text-sm text-slate-500">Take a photo holding your ID</p>
+                  <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Take a photo holding your ID</p>
                 </button>
               </div>
             )}
@@ -247,7 +249,7 @@ export default function KYCPage() {
               <div className="text-center">
                 <div className="w-20 h-20 mx-auto mb-4 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                 <p className="text-lg font-medium mb-2">Uploading Document...</p>
-                <p className="text-slate-500">Please wait while we process your document</p>
+                <p className={isDark ? 'text-gray-400' : 'text-gray-500'}>Please wait while we process your document</p>
                 {loading && (
                   <div className="mt-4">
                     <button
@@ -263,7 +265,7 @@ export default function KYCPage() {
 
             <button
               onClick={() => { setShowModal(false); setUploadStep(0); }}
-              className="w-full mt-4 py-2 bg-slate-200 dark:bg-slate-700 rounded-lg"
+              className={`w-full mt-4 py-2 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`}
             >
               Cancel
             </button>

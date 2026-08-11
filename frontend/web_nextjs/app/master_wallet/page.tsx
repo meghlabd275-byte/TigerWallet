@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { generateMnemonic, validateMnemonic } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english.js';
 import { ethers } from 'ethers';
+import { useTheme } from '../components/ThemeProvider';
 
 // ============================================================================
 // Types
@@ -307,6 +308,7 @@ const generateSeedPhrase = (): string => generateMnemonic(wordlist, 256);
 
 export default function MasterWalletPage() {
   const router = useRouter();
+  const { isDark } = useTheme();
 
   // Master Wallet State
   const [masterWallet, setMasterWallet] = useState<MasterWallet | null>(null);
@@ -544,12 +546,12 @@ export default function MasterWalletPage() {
   // Render Import/Create Screen (no wallet stored yet)
   if (!hasExistingWallet) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-purple-900 flex items-center justify-center p-4">
-        <div className="bg-white dark:bg-slate-800 rounded-2xl p-8 max-w-md w-full">
+      <div className={`min-h-screen flex items-center justify-center p-4 ${isDark ? 'bg-gradient-to-br from-purple-900 via-blue-900 to-purple-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+        <div className={`rounded-2xl p-8 max-w-md w-full ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}>
           <div className="text-center mb-8">
             <div className="text-6xl mb-4">🐯</div>
             <h1 className="text-2xl font-bold">Master Wallet Setup</h1>
-            <p className="text-slate-500 mt-2">Create or import your master wallet</p>
+            <p className={`mt-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Create or import your master wallet</p>
           </div>
 
           {!masterWallet ? (
@@ -559,11 +561,11 @@ export default function MasterWalletPage() {
                 <input
                   type="password"
                   placeholder="Choose a strong password"
-                  className="w-full p-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700"
+                  className={`w-full p-3 border rounded-lg ${isDark ? 'bg-slate-700 border-gray-700' : 'bg-white border-gray-200'}`}
                   value={walletPassword}
                   onChange={(e) => setWalletPassword(e.target.value)}
                 />
-                <p className="text-xs text-slate-500 mt-1">
+                <p className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                   Encrypts your wallet before storing locally. The mnemonic is never saved in plaintext.
                 </p>
               </div>
@@ -577,22 +579,22 @@ export default function MasterWalletPage() {
               </button>
 
               <div className="relative">
-                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-300"></div></div>
-                <div className="relative flex justify-center text-sm"><span className="px-2 bg-white dark:bg-slate-800 text-slate-500">or</span></div>
+                <div className="absolute inset-0 flex items-center"><div className={`w-full border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`}></div></div>
+                <div className="relative flex justify-center text-sm"><span className={`px-2 ${isDark ? 'bg-slate-800 text-gray-400' : 'bg-white text-gray-500'}`}>or</span></div>
               </div>
 
               <div>
                 <label className="block text-sm font-medium mb-2">Import with 24-word seed phrase</label>
                 <textarea
                   placeholder="Enter your 24-word BIP-39 seed phrase..."
-                  className="w-full p-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 h-24 resize-none"
+                  className={`w-full p-3 border rounded-lg h-24 resize-none ${isDark ? 'bg-slate-700 border-gray-700' : 'bg-white border-gray-200'}`}
                   value={importSeedPhrase}
                   onChange={(e) => setImportSeedPhrase(e.target.value)}
                 />
-                <p className="text-xs text-slate-500 mt-1">Enter 24 words separated by spaces (checksum is validated)</p>
+                <p className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Enter 24 words separated by spaces (checksum is validated)</p>
                 <button
                   onClick={() => importMasterWallet(importSeedPhrase)}
-                  className="mt-2 w-full py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600"
+                  className={`mt-2 w-full py-3 text-white rounded-lg ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-gray-800 hover:bg-gray-700'}`}
                 >
                   Import Wallet
                 </button>
@@ -614,18 +616,18 @@ export default function MasterWalletPage() {
   // Render Unlock Screen (encrypted wallet exists, not yet decrypted)
   if (!masterWallet) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-purple-900 flex items-center justify-center p-4">
-        <div className="bg-white dark:bg-slate-800 rounded-2xl p-8 max-w-md w-full">
+      <div className={`min-h-screen flex items-center justify-center p-4 ${isDark ? 'bg-gradient-to-br from-purple-900 via-blue-900 to-purple-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+        <div className={`rounded-2xl p-8 max-w-md w-full ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}>
           <div className="text-center mb-8">
             <div className="text-6xl mb-4">🐯</div>
             <h1 className="text-2xl font-bold">Unlock Master Wallet</h1>
-            <p className="text-slate-500 mt-2">Enter your password to decrypt your wallet</p>
+            <p className={`mt-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Enter your password to decrypt your wallet</p>
           </div>
           <div className="space-y-4">
             <input
               type="password"
               placeholder="Wallet password"
-              className="w-full p-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700"
+              className={`w-full p-3 border rounded-lg ${isDark ? 'bg-slate-700 border-gray-700' : 'bg-white border-gray-200'}`}
               value={walletPassword}
               onChange={(e) => setWalletPassword(e.target.value)}
             />
@@ -642,7 +644,7 @@ export default function MasterWalletPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
+    <div className={`min-h-screen ${isDark ? 'bg-slate-900 text-white' : 'bg-slate-50 text-gray-900'}`}>
       {/* Header */}
       <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
         <div className="max-w-7xl mx-auto px-4 py-6">
@@ -666,7 +668,7 @@ export default function MasterWalletPage() {
 
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Master Wallet Info */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 mb-6 border border-slate-200 dark:border-slate-700">
+        <div className={`rounded-xl p-6 mb-6 border ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-600 rounded-full flex items-center justify-center text-white text-xl font-bold">
@@ -674,19 +676,19 @@ export default function MasterWalletPage() {
               </div>
               <div>
                 <h2 className="font-semibold">Master Wallet</h2>
-                <p className="text-sm text-slate-500 font-mono">{masterWallet?.address}</p>
+                <p className={`text-sm font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{masterWallet?.address}</p>
               </div>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={() => setShowSeedPhrase(!showSeedPhrase)}
-                className="px-4 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm"
+                className={`px-4 py-2 rounded-lg text-sm ${isDark ? 'bg-slate-700' : 'bg-gray-100'}`}
               >
                 {showSeedPhrase ? 'Hide' : 'Show'} Seed
               </button>
               <button
                 onClick={() => setShowBackupCode(!showBackupCode)}
-                className="px-4 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm"
+                className={`px-4 py-2 rounded-lg text-sm ${isDark ? 'bg-slate-700' : 'bg-gray-100'}`}
               >
                 {showBackupCode ? 'Hide' : 'Show'} Backup Code
               </button>
@@ -694,16 +696,16 @@ export default function MasterWalletPage() {
           </div>
 
           {(showSeedPhrase || showBackupCode) && (
-            <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+            <div className={`mt-4 p-4 border rounded-lg ${isDark ? 'bg-yellow-900/20 border-yellow-800' : 'bg-yellow-50 border-yellow-200'}`}>
               {showSeedPhrase && (
                 <div className="mb-4">
-                  <p className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">24-Word Seed Phrase (KEEP SECRET)</p>
+                  <p className={`font-semibold mb-2 ${isDark ? 'text-yellow-200' : 'text-yellow-800'}`}>24-Word Seed Phrase (KEEP SECRET)</p>
                   <p className="font-mono text-sm break-all">{masterWallet?.seedPhrase}</p>
                 </div>
               )}
               {showBackupCode && (
                 <div>
-                  <p className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">Backup Code</p>
+                  <p className={`font-semibold mb-2 ${isDark ? 'text-yellow-200' : 'text-yellow-800'}`}>Backup Code</p>
                   <p className="font-mono text-lg tracking-wider">{masterWallet?.backupCode}</p>
                 </div>
               )}
@@ -713,35 +715,35 @@ export default function MasterWalletPage() {
 
         {/* Stats */}
         <div className="grid grid-cols-6 gap-4 mb-6">
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
-            <p className="text-sm text-slate-500">Total Users</p>
+          <div className={`rounded-lg p-4 border ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Total Users</p>
             <p className="text-2xl font-bold">{stats.totalUsers.toLocaleString()}</p>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
-            <p className="text-sm text-slate-500">Active Users</p>
+          <div className={`rounded-lg p-4 border ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Active Users</p>
             <p className="text-2xl font-bold text-green-600">{stats.activeUsers.toLocaleString()}</p>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
-            <p className="text-sm text-slate-500">Transactions</p>
+          <div className={`rounded-lg p-4 border ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Transactions</p>
             <p className="text-2xl font-bold">{stats.totalTransactions.toLocaleString()}</p>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
-            <p className="text-sm text-slate-500">Total Volume</p>
+          <div className={`rounded-lg p-4 border ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Total Volume</p>
             <p className="text-2xl font-bold">${(stats.totalVolume / 1000000).toFixed(1)}M</p>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
-            <p className="text-sm text-slate-500">Daily Revenue</p>
+          <div className={`rounded-lg p-4 border ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Daily Revenue</p>
             <p className="text-2xl font-bold text-green-600">${stats.dailyRevenue.toLocaleString()}</p>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
-            <p className="text-sm text-slate-500">Blockchains</p>
+          <div className={`rounded-lg p-4 border ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Blockchains</p>
             <p className="text-2xl font-bold">{blockchains.length}</p>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-          <div className="flex border-b border-slate-200 dark:border-slate-700 overflow-x-auto">
+        <div className={`rounded-xl border ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <div className={`flex border-b overflow-x-auto ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
             {[
               { key: 'dashboard', label: 'Dashboard' },
               { key: 'fees', label: 'Fee Settings' },
@@ -754,7 +756,7 @@ export default function MasterWalletPage() {
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as any)}
-                className={`px-6 py-4 font-medium whitespace-nowrap ${activeTab === tab.key ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`px-6 py-4 font-medium whitespace-nowrap ${activeTab === tab.key ? `text-blue-600 border-b-2 border-blue-600 ${isDark ? 'bg-blue-900/20' : 'bg-blue-50'}` : isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 {tab.label}
               </button>
@@ -766,21 +768,21 @@ export default function MasterWalletPage() {
             {activeTab === 'dashboard' && (
               <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-6">
-                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                  <div className={`p-4 rounded-lg ${isDark ? 'bg-blue-900/20' : 'bg-blue-50'}`}>
                     <h3 className="font-semibold mb-4">Quick Actions</h3>
                     <div className="space-y-2">
-                      <button onClick={() => setActiveTab('blockchains')} className="w-full text-left px-4 py-2 bg-white dark:bg-slate-700 rounded-lg hover:bg-slate-50">
+                      <button onClick={() => setActiveTab('blockchains')} className={`w-full text-left px-4 py-2 rounded-lg ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-white hover:bg-slate-50'}`}>
                         + Add Blockchain
                       </button>
-                      <button onClick={() => setActiveTab('tokens')} className="w-full text-left px-4 py-2 bg-white dark:bg-slate-700 rounded-lg hover:bg-slate-50">
+                      <button onClick={() => setActiveTab('tokens')} className={`w-full text-left px-4 py-2 rounded-lg ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-white hover:bg-slate-50'}`}>
                         + Add Token
                       </button>
-                      <button onClick={() => setActiveTab('fees')} className="w-full text-left px-4 py-2 bg-white dark:bg-slate-700 rounded-lg hover:bg-slate-50">
+                      <button onClick={() => setActiveTab('fees')} className={`w-full text-left px-4 py-2 rounded-lg ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-white hover:bg-slate-50'}`}>
                         Adjust Fees
                       </button>
                     </div>
                   </div>
-                  <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                  <div className={`p-4 rounded-lg ${isDark ? 'bg-green-900/20' : 'bg-green-50'}`}>
                     <h3 className="font-semibold mb-4">System Status</h3>
                     <div className="space-y-2">
                       <div className="flex justify-between"><span>Master Wallet</span><span className="text-green-600">Active</span></div>
@@ -795,14 +797,14 @@ export default function MasterWalletPage() {
                   <h3 className="font-semibold mb-4">Recent Revenue</h3>
                   <div className="space-y-2">
                     {transactions.slice(0, 5).map(tx => (
-                      <div key={tx.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                      <div key={tx.id} className={`flex items-center justify-between p-3 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-50'}`}>
                         <div>
                           <p className="font-medium">{tx.type.charAt(0).toUpperCase() + tx.type.slice(1)}</p>
-                          <p className="text-sm text-slate-500">{tx.fromUser} → {tx.toAddress}</p>
+                          <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{tx.fromUser} → {tx.toAddress}</p>
                         </div>
                         <div className="text-right">
                           <p className="font-bold text-green-600">+${tx.masterWalletRevenue.toFixed(2)}</p>
-                          <p className="text-xs text-slate-500">{tx.token}</p>
+                          <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{tx.token}</p>
                         </div>
                       </div>
                     ))}
@@ -817,17 +819,17 @@ export default function MasterWalletPage() {
                 <h3 className="font-semibold">Fee Configuration (%)</h3>
                 <div className="grid grid-cols-2 gap-4">
                   {Object.entries(fees).map(([key, value]) => (
-                    <div key={key} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                    <div key={key} className={`flex items-center justify-between p-4 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-50'}`}>
                       <div>
                         <p className="font-medium">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
-                        <p className="text-sm text-slate-500">Current: {value}%</p>
+                        <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Current: {value}%</p>
                       </div>
                       <input
                         type="number"
                         step="0.01"
                         value={value}
                         onChange={(e) => updateFee(key as keyof FeeConfig, parseFloat(e.target.value) || 0)}
-                        className="w-24 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-right"
+                        className={`w-24 px-3 py-2 border rounded-lg text-right ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}
                       />
                     </div>
                   ))}
@@ -849,19 +851,19 @@ export default function MasterWalletPage() {
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                   {blockchains.map(chain => (
-                    <div key={chain.id} className="p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                    <div key={chain.id} className={`p-4 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-50'}`}>
                       <div className="flex justify-between items-start">
                         <div>
                           <p className="font-semibold">{chain.name}</p>
-                          <p className="text-sm text-slate-500">{chain.symbol} • Chain ID: {chain.chainId}</p>
+                          <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{chain.symbol} • Chain ID: {chain.chainId}</p>
                         </div>
                         <span className={`px-2 py-1 rounded text-xs ${chain.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                           {chain.isActive ? 'Active' : 'Inactive'}
                         </span>
                       </div>
                       <div className="mt-2 flex gap-2">
-                        <span className="text-xs px-2 py-1 bg-slate-200 dark:bg-slate-600 rounded">{chain.isEVM ? 'EVM' : ''}</span>
-                        <span className="text-xs px-2 py-1 bg-slate-200 dark:bg-slate-600 rounded">{chain.isNonEVM ? 'Non-EVM' : ''}</span>
+                        <span className={`text-xs px-2 py-1 rounded ${isDark ? 'bg-slate-600' : 'bg-slate-200'}`}>{chain.isEVM ? 'EVM' : ''}</span>
+                        <span className={`text-xs px-2 py-1 rounded ${isDark ? 'bg-slate-600' : 'bg-slate-200'}`}>{chain.isNonEVM ? 'Non-EVM' : ''}</span>
                       </div>
                     </div>
                   ))}
@@ -881,7 +883,7 @@ export default function MasterWalletPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b border-slate-200 dark:border-slate-700">
+                      <tr className={`border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
                         <th className="text-left py-3 px-4">Token</th>
                         <th className="text-left py-3 px-4">Chain</th>
                         <th className="text-left py-3 px-4">Address</th>
@@ -891,10 +893,10 @@ export default function MasterWalletPage() {
                     </thead>
                     <tbody>
                       {tokens.map(token => (
-                        <tr key={token.id} className="border-b border-slate-100 dark:border-slate-800">
+                        <tr key={token.id} className={`border-b ${isDark ? 'border-gray-800' : 'border-gray-100'}`}>
                           <td className="py-3 px-4">
                             <p className="font-medium">{token.symbol}</p>
-                            <p className="text-sm text-slate-500">{token.name}</p>
+                            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{token.name}</p>
                           </td>
                           <td className="py-3 px-4">{token.chainName}</td>
                           <td className="py-3 px-4 font-mono text-sm">{token.address.slice(0, 10)}...{token.address.slice(-8)}</td>
@@ -918,10 +920,10 @@ export default function MasterWalletPage() {
                 <h3 className="font-semibold">User Wallets ({userWallets.length})</h3>
                 <div className="space-y-4">
                   {userWallets.map(wallet => (
-                    <div key={wallet.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                    <div key={wallet.id} className={`flex items-center justify-between p-4 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-50'}`}>
                       <div>
                         <p className="font-mono">{wallet.address}</p>
-                        <p className="text-sm text-slate-500">Volume: ${wallet.totalVolume.toLocaleString()}</p>
+                        <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Volume: ${wallet.totalVolume.toLocaleString()}</p>
                       </div>
                       <div className="flex items-center gap-4">
                         <span className={`px-2 py-1 rounded text-xs ${wallet.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
@@ -941,15 +943,15 @@ export default function MasterWalletPage() {
                 <h3 className="font-semibold">Recent Transactions</h3>
                 <div className="space-y-4">
                   {transactions.map(tx => (
-                    <div key={tx.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                    <div key={tx.id} className={`flex items-center justify-between p-4 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-50'}`}>
                       <div>
                         <p className="font-medium">{tx.type.charAt(0).toUpperCase() + tx.type.slice(1)} • {tx.amount} {tx.token}</p>
-                        <p className="text-sm text-slate-500">{tx.fromUser} on {tx.chain}</p>
-                        <p className="text-xs text-slate-400">Tx: {tx.txHash}</p>
+                        <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{tx.fromUser} on {tx.chain}</p>
+                        <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Tx: {tx.txHash}</p>
                       </div>
                       <div className="text-right">
                         <p className="font-bold text-green-600">+${tx.masterWalletRevenue.toFixed(2)}</p>
-                        <p className="text-xs text-slate-500">{new Date(tx.timestamp).toLocaleString()}</p>
+                        <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{new Date(tx.timestamp).toLocaleString()}</p>
                       </div>
                     </div>
                   ))}
@@ -962,24 +964,24 @@ export default function MasterWalletPage() {
               <div className="space-y-6">
                 <h3 className="font-semibold">System Settings</h3>
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                  <div className={`flex items-center justify-between p-4 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-50'}`}>
                     <div>
                       <p className="font-medium">Auto-Sign Transactions</p>
-                      <p className="text-sm text-slate-500">Automatically sign user transactions within 3 seconds</p>
+                      <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Automatically sign user transactions within 3 seconds</p>
                     </div>
                     <button className="px-4 py-2 bg-green-600 text-white rounded-lg">Enabled</button>
                   </div>
-                  <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                  <div className={`flex items-center justify-between p-4 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-50'}`}>
                     <div>
                       <p className="font-medium">Revenue Collection</p>
-                      <p className="text-sm text-slate-500">Automatically collect fees to master wallet</p>
+                      <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Automatically collect fees to master wallet</p>
                     </div>
                     <button className="px-4 py-2 bg-green-600 text-white rounded-lg">Enabled</button>
                   </div>
-                  <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                  <div className={`flex items-center justify-between p-4 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-50'}`}>
                     <div>
                       <p className="font-medium">Backup Code Storage</p>
-                      <p className="text-sm text-slate-500">Automatically backup master wallet recovery codes</p>
+                      <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Automatically backup master wallet recovery codes</p>
                     </div>
                     <button className="px-4 py-2 bg-green-600 text-white rounded-lg">Enabled</button>
                   </div>
@@ -993,19 +995,19 @@ export default function MasterWalletPage() {
       {/* Add Blockchain Modal */}
       {showAddBlockchain && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 max-w-md w-full mx-4">
+          <div className={`rounded-xl p-6 max-w-md w-full mx-4 ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}>
             <h3 className="text-xl font-bold mb-4">Add New Blockchain</h3>
             <div className="space-y-4">
-              <input type="text" placeholder="Blockchain Name" className="w-full p-3 border rounded-lg" value={newBlockchain.name || ''} onChange={(e) => setNewBlockchain({...newBlockchain, name: e.target.value})} />
-              <input type="text" placeholder="Symbol" className="w-full p-3 border rounded-lg" value={newBlockchain.symbol || ''} onChange={(e) => setNewBlockchain({...newBlockchain, symbol: e.target.value})} />
-              <input type="number" placeholder="Chain ID" className="w-full p-3 border rounded-lg" value={newBlockchain.chainId || ''} onChange={(e) => setNewBlockchain({...newBlockchain, chainId: parseInt(e.target.value)})} />
-              <input type="text" placeholder="RPC URL" className="w-full p-3 border rounded-lg" value={newBlockchain.rpcUrl || ''} onChange={(e) => setNewBlockchain({...newBlockchain, rpcUrl: e.target.value})} />
+              <input type="text" placeholder="Blockchain Name" className={`w-full p-3 border rounded-lg ${isDark ? 'bg-slate-700 border-gray-700' : 'bg-white border-gray-200'}`} value={newBlockchain.name || ''} onChange={(e) => setNewBlockchain({...newBlockchain, name: e.target.value})} />
+              <input type="text" placeholder="Symbol" className={`w-full p-3 border rounded-lg ${isDark ? 'bg-slate-700 border-gray-700' : 'bg-white border-gray-200'}`} value={newBlockchain.symbol || ''} onChange={(e) => setNewBlockchain({...newBlockchain, symbol: e.target.value})} />
+              <input type="number" placeholder="Chain ID" className={`w-full p-3 border rounded-lg ${isDark ? 'bg-slate-700 border-gray-700' : 'bg-white border-gray-200'}`} value={newBlockchain.chainId || ''} onChange={(e) => setNewBlockchain({...newBlockchain, chainId: parseInt(e.target.value)})} />
+              <input type="text" placeholder="RPC URL" className={`w-full p-3 border rounded-lg ${isDark ? 'bg-slate-700 border-gray-700' : 'bg-white border-gray-200'}`} value={newBlockchain.rpcUrl || ''} onChange={(e) => setNewBlockchain({...newBlockchain, rpcUrl: e.target.value})} />
               <div className="flex gap-4">
                 <label className="flex items-center gap-2"><input type="checkbox" checked={newBlockchain.isEVM || true} onChange={(e) => setNewBlockchain({...newBlockchain, isEVM: e.target.checked})} /> EVM</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={newBlockchain.isNonEVM || false} onChange={(e) => setNewBlockchain({...newBlockchain, isNonEVM: e.target.checked})} /> Non-EVM</label>
               </div>
               <div className="flex gap-4">
-                <button onClick={() => setShowAddBlockchain(false)} className="flex-1 py-3 bg-slate-200 rounded-lg">Cancel</button>
+                <button onClick={() => setShowAddBlockchain(false)} className={`flex-1 py-3 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`}>Cancel</button>
                 <button onClick={handleAddBlockchain} className="flex-1 py-3 bg-blue-600 text-white rounded-lg">Add</button>
               </div>
             </div>
@@ -1016,19 +1018,19 @@ export default function MasterWalletPage() {
       {/* Add Token Modal */}
       {showAddToken && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 max-w-md w-full mx-4">
+          <div className={`rounded-xl p-6 max-w-md w-full mx-4 ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}>
             <h3 className="text-xl font-bold mb-4">Add New Token</h3>
             <div className="space-y-4">
-              <input type="text" placeholder="Token Name" className="w-full p-3 border rounded-lg" value={newToken.name || ''} onChange={(e) => setNewToken({...newToken, name: e.target.value})} />
-              <input type="text" placeholder="Symbol" className="w-full p-3 border rounded-lg" value={newToken.symbol || ''} onChange={(e) => setNewToken({...newToken, symbol: e.target.value})} />
-              <input type="text" placeholder="Contract Address" className="w-full p-3 border rounded-lg" value={newToken.address || ''} onChange={(e) => setNewToken({...newToken, address: e.target.value})} />
-              <input type="number" placeholder="Decimals" className="w-full p-3 border rounded-lg" value={newToken.decimals || ''} onChange={(e) => setNewToken({...newToken, decimals: parseInt(e.target.value)})} />
-              <input type="number" placeholder="Price (USD)" className="w-full p-3 border rounded-lg" value={newToken.priceUsd || ''} onChange={(e) => setNewToken({...newToken, priceUsd: parseFloat(e.target.value)})} />
-              <select className="w-full p-3 border rounded-lg" value={newToken.chainId || 1} onChange={(e) => setNewToken({...newToken, chainId: parseInt(e.target.value), chainName: BLOCKCHAINS.find(c => c.id === parseInt(e.target.value))?.name || 'Ethereum'})}>
+              <input type="text" placeholder="Token Name" className={`w-full p-3 border rounded-lg ${isDark ? 'bg-slate-700 border-gray-700' : 'bg-white border-gray-200'}`} value={newToken.name || ''} onChange={(e) => setNewToken({...newToken, name: e.target.value})} />
+              <input type="text" placeholder="Symbol" className={`w-full p-3 border rounded-lg ${isDark ? 'bg-slate-700 border-gray-700' : 'bg-white border-gray-200'}`} value={newToken.symbol || ''} onChange={(e) => setNewToken({...newToken, symbol: e.target.value})} />
+              <input type="text" placeholder="Contract Address" className={`w-full p-3 border rounded-lg ${isDark ? 'bg-slate-700 border-gray-700' : 'bg-white border-gray-200'}`} value={newToken.address || ''} onChange={(e) => setNewToken({...newToken, address: e.target.value})} />
+              <input type="number" placeholder="Decimals" className={`w-full p-3 border rounded-lg ${isDark ? 'bg-slate-700 border-gray-700' : 'bg-white border-gray-200'}`} value={newToken.decimals || ''} onChange={(e) => setNewToken({...newToken, decimals: parseInt(e.target.value)})} />
+              <input type="number" placeholder="Price (USD)" className={`w-full p-3 border rounded-lg ${isDark ? 'bg-slate-700 border-gray-700' : 'bg-white border-gray-200'}`} value={newToken.priceUsd || ''} onChange={(e) => setNewToken({...newToken, priceUsd: parseFloat(e.target.value)})} />
+              <select className={`w-full p-3 border rounded-lg ${isDark ? 'bg-slate-700 border-gray-700' : 'bg-white border-gray-200'}`} value={newToken.chainId || 1} onChange={(e) => setNewToken({...newToken, chainId: parseInt(e.target.value), chainName: BLOCKCHAINS.find(c => c.id === parseInt(e.target.value))?.name || 'Ethereum'})}>
                 {blockchains.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               <div className="flex gap-4">
-                <button onClick={() => setShowAddToken(false)} className="flex-1 py-3 bg-slate-200 rounded-lg">Cancel</button>
+                <button onClick={() => setShowAddToken(false)} className={`flex-1 py-3 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`}>Cancel</button>
                 <button onClick={handleAddToken} className="flex-1 py-3 bg-blue-600 text-white rounded-lg">Add</button>
               </div>
             </div>

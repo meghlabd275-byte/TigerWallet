@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import api, { Guardian, RecoveryRequest } from '../../src/lib/api/client';
+import { useTheme } from '../components/ThemeProvider';
 
 export default function SocialRecovery() {
   const [guardians, setGuardians] = useState<Guardian[]>([]);
@@ -36,6 +37,8 @@ export default function SocialRecovery() {
   useEffect(() => {
     fetchGuardians();
   }, [fetchGuardians]);
+
+  const { isDark } = useTheme();
 
   // Threshold derived from an active recovery request, if any; otherwise falls back
   // to a simple majority of the current guardian set (min 1).
@@ -166,9 +169,9 @@ export default function SocialRecovery() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-50">
+    <div className={`min-h-screen ${isDark ? 'bg-slate-900 text-slate-50' : 'bg-slate-50 text-slate-900'}`}>
       {/* Header */}
-      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+      <header className={`border-b ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
@@ -176,7 +179,7 @@ export default function SocialRecovery() {
               <h1 className="text-xl font-bold">Social Recovery</h1>
             </div>
             <nav className="flex gap-4">
-              <a href="/wallet" className="text-slate-600 dark:text-slate-400 hover:text-orange-500">Wallet</a>
+              <a href="/wallet" className={`${isDark ? 'text-slate-400' : 'text-slate-600'} hover:text-orange-500`}>Wallet</a>
             </nav>
           </div>
         </div>
@@ -185,7 +188,7 @@ export default function SocialRecovery() {
       {/* Message */}
       {message && (
         <div className="max-w-4xl mx-auto px-4 pt-4">
-          <div className={`p-3 rounded-lg ${message.type === 'success' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'}`}>
+          <div className={`p-3 rounded-lg ${message.type === 'success' ? (isDark ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-800') : (isDark ? 'bg-red-900 text-red-200' : 'bg-red-100 text-red-800')}`}>
             {message.text}
           </div>
         </div>
@@ -193,9 +196,9 @@ export default function SocialRecovery() {
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Info Card */}
-        <div className="bg-blue-50 dark:bg-blue-900 rounded-lg p-6 mb-8">
-          <h3 className="font-semibold text-blue-800 dark:text-blue-200 mb-2">🔐 How Social Recovery Works</h3>
-          <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+        <div className={`rounded-lg p-6 mb-8 ${isDark ? 'bg-blue-900' : 'bg-blue-50'}`}>
+          <h3 className={`font-semibold mb-2 ${isDark ? 'text-blue-200' : 'text-blue-800'}`}>🔐 How Social Recovery Works</h3>
+          <ul className={`text-sm space-y-1 ${isDark ? 'text-blue-300' : 'text-blue-700'}`}>
             <li>• Add guardians (friends, family, or devices) who can help recover your wallet</li>
             <li>• Set a threshold - minimum number of guardians needed to recover</li>
             <li>• If you lose access, guardians can sign a message to restore your wallet</li>
@@ -203,69 +206,68 @@ export default function SocialRecovery() {
           </ul>
         </div>
 
-        {/* Guardian Status */}
-        <div className="bg-white dark:bg-slate-800 rounded-lg p-6 shadow-sm mb-8">
+        {/* Guardians Section */}
+        <div className={`rounded-lg p-6 shadow-sm mb-8 ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}>
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold">Your Guardians</h2>
             <button
               onClick={() => setShowAddGuardian(!showAddGuardian)}
-              className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg transition-colors"
+              className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition-colors"
             >
-              + Add Guardian
+              {showAddGuardian ? 'Cancel' : '+ Add Guardian'}
             </button>
           </div>
 
           {/* Add Guardian Form */}
           {showAddGuardian && (
-            <div className="bg-slate-100 dark:bg-slate-700 rounded-lg p-4 mb-6">
-              <h3 className="font-semibold mb-4">Add New Guardian</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm text-slate-500 dark:text-slate-400 mb-1">Guardian Name</label>
+            <div className={`rounded-lg p-4 mb-6 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}>
+              <div className="flex gap-2 mb-3">
+                <div className="flex-1">
+                  <label className={`block text-sm mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Guardian Name</label>
                   <input
                     type="text"
                     value={newGuardianName}
                     onChange={(e) => setNewGuardianName(e.target.value)}
-                    placeholder="e.g., Mom, Best Friend"
-                    className="w-full bg-white dark:bg-slate-600 border-0 rounded-lg px-4 py-2"
+                    placeholder="e.g., Alice"
+                    className={`w-full border-0 rounded-lg px-4 py-2 ${isDark ? 'bg-slate-600' : 'bg-white'}`}
                   />
                 </div>
-                <div>
-                  <label className="block text-sm text-slate-500 dark:text-slate-400 mb-1">Guardian Address</label>
+                <div className="flex-1">
+                  <label className={`block text-sm mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Guardian Address</label>
                   <input
                     type="text"
                     value={newGuardianAddress}
                     onChange={(e) => setNewGuardianAddress(e.target.value)}
                     placeholder="0x..."
-                    className="w-full bg-white dark:bg-slate-600 border-0 rounded-lg px-4 py-2 font-mono"
+                    className={`w-full border-0 rounded-lg px-4 py-2 font-mono ${isDark ? 'bg-slate-600' : 'bg-white'}`}
                   />
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleAddGuardian}
-                    disabled={submitting}
-                    className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg transition-colors disabled:opacity-50"
-                  >
-                    {submitting ? 'Adding...' : 'Add Guardian'}
-                  </button>
-                  <button
-                    onClick={() => setShowAddGuardian(false)}
-                    className="px-4 py-2 bg-slate-300 dark:bg-slate-600 rounded-lg transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleAddGuardian}
+                  disabled={submitting}
+                  className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {submitting ? 'Adding...' : 'Add Guardian'}
+                </button>
+                <button
+                  onClick={() => setShowAddGuardian(false)}
+                  className={`px-4 py-2 rounded-lg transition-colors ${isDark ? 'bg-slate-600' : 'bg-slate-300'}`}
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           )}
 
           {/* Threshold Info */}
-          <div className="bg-slate-100 dark:bg-slate-700 rounded-lg p-4 mb-6">
+          <div className={`rounded-lg p-4 mb-6 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}>
             <div className="flex justify-between items-center">
-              <span className="text-slate-600 dark:text-slate-400">Recovery Threshold</span>
+              <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Recovery Threshold</span>
               <span className="font-semibold">{confirmations} / {threshold} guardians confirmed</span>
             </div>
-            <div className="mt-2 h-2 bg-slate-300 dark:bg-slate-600 rounded-full overflow-hidden">
+            <div className={`mt-2 h-2 rounded-full overflow-hidden ${isDark ? 'bg-slate-600' : 'bg-slate-300'}`}>
               <div
                 className="h-full bg-orange-500 transition-all"
                 style={{ width: `${(confirmations / threshold) * 100}%` }}
@@ -276,14 +278,14 @@ export default function SocialRecovery() {
           {/* Guardian List */}
           <div className="space-y-3">
             {loadingGuardians ? (
-              <div className="text-center py-8 text-slate-500 dark:text-slate-400">Loading guardians...</div>
+              <div className={`text-center py-8 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Loading guardians...</div>
             ) : guardians.length === 0 ? (
-              <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+              <div className={`text-center py-8 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 No guardians yet. Add trusted contacts to enable wallet recovery.
               </div>
             ) : (
               guardians.map((guardian) => (
-                <div key={guardian.address} className="flex items-center justify-between p-4 bg-slate-100 dark:bg-slate-700 rounded-lg">
+                <div key={guardian.address} className={`flex items-center justify-between p-4 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}>
                   <div className="flex items-center gap-4">
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
                       guardian.confirmed ? 'bg-green-500' : 'bg-slate-400'
@@ -292,17 +294,17 @@ export default function SocialRecovery() {
                     </div>
                     <div>
                       <div className="font-semibold">{guardian.name}</div>
-                      <div className="text-sm text-slate-500 dark:text-slate-400 font-mono">
+                      <div className={`text-sm font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                         {formatAddress(guardian.address)}
                       </div>
-                      <div className="text-xs text-slate-400">Added {formatTime(guardian.addedAt)}</div>
+                      <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Added {formatTime(guardian.addedAt)}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
                     <span className={`px-2 py-1 rounded text-xs ${
-                      guardian.confirmed 
-                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                        : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                      guardian.confirmed
+                        ? (isDark ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-800')
+                        : (isDark ? 'bg-yellow-900 text-yellow-200' : 'bg-yellow-100 text-yellow-800')
                     }`}>
                       {guardian.confirmed ? 'Confirmed' : 'Pending'}
                     </span>
@@ -321,12 +323,12 @@ export default function SocialRecovery() {
         </div>
 
         {/* Recovery Section */}
-        <div className="bg-white dark:bg-slate-800 rounded-lg p-6 shadow-sm">
+        <div className={`rounded-lg p-6 shadow-sm ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}>
           <h2 className="text-xl font-semibold mb-6">Wallet Recovery</h2>
           
           {!recoveryRequest ? (
             <div>
-              <p className="text-slate-500 dark:text-slate-400 mb-4">
+              <p className={`mb-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 If you've lost access to your wallet, you can initiate a recovery request.
                 Your guardians will need to confirm to restore access.
               </p>
@@ -340,19 +342,19 @@ export default function SocialRecovery() {
             </div>
           ) : (
             <div>
-              <div className="bg-yellow-50 dark:bg-yellow-900 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4 mb-4">
+              <div className={`border rounded-lg p-4 mb-4 ${isDark ? 'bg-yellow-900 border-yellow-700' : 'bg-yellow-50 border-yellow-200'}`}>
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-yellow-600 dark:text-yellow-400 text-xl">⚠️</span>
-                  <span className="font-semibold text-yellow-800 dark:text-yellow-200">Recovery in Progress</span>
+                  <span className={`text-xl ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>⚠️</span>
+                  <span className={`font-semibold ${isDark ? 'text-yellow-200' : 'text-yellow-800'}`}>Recovery in Progress</span>
                 </div>
-                <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                <p className={`text-sm ${isDark ? 'text-yellow-300' : 'text-yellow-700'}`}>
                   New owner address: {formatAddress(recoveryRequest.newOwner)}
                 </p>
               </div>
 
               <div className="space-y-3 mb-4">
                 {guardians.map((guardian) => (
-                  <div key={guardian.address} className="flex items-center justify-between p-3 bg-slate-100 dark:bg-slate-700 rounded-lg">
+                  <div key={guardian.address} className={`flex items-center justify-between p-3 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}>
                     <div className="font-mono text-sm">{formatAddress(guardian.address)}</div>
                     {guardian.confirmed ? (
                       <span className="text-green-500">✓ Confirmed</span>
@@ -372,7 +374,7 @@ export default function SocialRecovery() {
               <button
                 onClick={handleCancelRecovery}
                 disabled={submitting}
-                className="w-full bg-slate-300 dark:bg-slate-600 hover:bg-slate-400 dark:hover:bg-slate-500 py-2 rounded-lg transition-colors disabled:opacity-50"
+                className={`w-full py-2 rounded-lg transition-colors disabled:opacity-50 ${isDark ? 'bg-slate-600 hover:bg-slate-500' : 'bg-slate-300 hover:bg-slate-400'}`}
               >
                 {submitting ? 'Cancelling...' : 'Cancel Recovery'}
               </button>
@@ -381,9 +383,9 @@ export default function SocialRecovery() {
         </div>
 
         {/* Security Tips */}
-        <div className="mt-8 bg-slate-100 dark:bg-slate-800 rounded-lg p-6">
+        <div className={`mt-8 rounded-lg p-6 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
           <h3 className="font-semibold mb-4">🛡️ Security Tips</h3>
-          <ul className="text-sm text-slate-600 dark:text-slate-400 space-y-2">
+          <ul className={`text-sm space-y-2 ${isDark ? 'text-gray-400' : 'text-slate-600'}`}>
             <li>• Choose guardians you trust - they can help recover your wallet</li>
             <li>• Keep at least 3-5 guardians for redundancy</li>
             <li>• Don't give all guardians to the same person</li>
@@ -395,3 +397,4 @@ export default function SocialRecovery() {
     </div>
   );
 }
+

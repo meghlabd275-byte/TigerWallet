@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 import api, { InsuranceStats, InsurancePosition, InsuranceClaim, InsuranceProduct } from '../../src/lib/api/client';
 
 export default function InsuranceFundPage() {
+  const { isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<'coverage' | 'claims' | 'positions'>('coverage');
   const [stats, setStats] = useState<InsuranceStats | null>(null);
   const [products, setProducts] = useState<InsuranceProduct[]>([]);
@@ -73,7 +75,7 @@ export default function InsuranceFundPage() {
   const totalPremium = positions.reduce((sum, p) => sum + p.premium, 0);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
+    <div className={`min-h-screen ${isDark ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-900'}`}>
       <header className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white">
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
@@ -96,12 +98,12 @@ export default function InsuranceFundPage() {
 
       <div className="max-w-7xl mx-auto px-4 py-6">
         {error && (
-          <div className="mb-4 p-3 rounded-lg bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+          <div className={`mb-4 p-3 rounded-lg ${isDark ? 'bg-red-900 text-red-200' : 'bg-red-100 text-red-800'}`}>
             {error}
           </div>
         )}
         {success && (
-          <div className="mb-4 p-3 rounded-lg bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+          <div className={`mb-4 p-3 rounded-lg ${isDark ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-800'}`}>
             {success}
           </div>
         )}
@@ -139,27 +141,27 @@ export default function InsuranceFundPage() {
         </div>
 
         {/* Your Coverage */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 mb-6 border">
+        <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-xl p-6 mb-6`}>
           <h3 className="text-lg font-bold mb-4">Your Active Coverage</h3>
           {positions.length === 0 ? (
-            <p className="text-slate-500 text-center py-8">No active coverage</p>
+            <p className={`text-center py-8 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>No active coverage</p>
           ) : (
             <div className="space-y-3">
               {positions.map(pos => (
-                <div key={pos.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                <div key={pos.id} className={`flex items-center justify-between p-4 ${isDark ? 'bg-slate-700' : 'bg-slate-50'} rounded-lg`}>
                   <div>
                     <p className="font-semibold">{pos.pool}</p>
-                    <p className="text-sm text-slate-500">Premium: ${pos.premium}/year</p>
+                    <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Premium: ${pos.premium}/year</p>
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-green-600">${pos.coverage.toLocaleString()} covered</p>
-                    <p className="text-xs text-slate-500">Expires: {new Date(pos.expiryTime).toLocaleDateString()}</p>
+                    <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Expires: {new Date(pos.expiryTime).toLocaleDateString()}</p>
                   </div>
                 </div>
               ))}
             </div>
           )}
-          <div className="mt-4 p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg flex justify-between">
+          <div className={`mt-4 p-4 ${isDark ? 'bg-emerald-900/20' : 'bg-emerald-50'} rounded-lg flex justify-between`}>
             <div>
               <p className="text-sm text-emerald-600">Total Coverage</p>
               <p className="text-xl font-bold">${totalCoverage.toLocaleString()}</p>
@@ -172,13 +174,13 @@ export default function InsuranceFundPage() {
         </div>
 
         {/* Tabs */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl border">
+        <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-xl`}>
           <div className="flex border-b">
             {(['coverage', 'claims', 'positions'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-6 py-4 font-medium ${activeTab === tab ? 'text-emerald-600 border-b-2 border-emerald-600' : 'text-slate-500'}`}
+                className={`px-6 py-4 font-medium ${activeTab === tab ? 'text-emerald-600 border-b-2 border-emerald-600' : isDark ? 'text-slate-400' : 'text-slate-500'}`}
               >
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
@@ -189,16 +191,16 @@ export default function InsuranceFundPage() {
             {activeTab === 'coverage' && (
               <div className="grid grid-cols-3 gap-4">
                 {loading && products.length === 0 ? (
-                  <div className="col-span-3 text-center py-8 text-slate-500">Loading coverage products...</div>
+                  <div className={`col-span-3 text-center py-8 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Loading coverage products...</div>
                 ) : products.length === 0 ? (
-                  <div className="col-span-3 text-center py-8 text-slate-500">No coverage products available.</div>
+                  <div className={`col-span-3 text-center py-8 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>No coverage products available.</div>
                 ) : (
                   products.map(item => (
-                    <div key={item.name} className="p-4 border rounded-lg hover:border-emerald-500 transition-colors">
+                    <div key={item.name} className={`p-4 border ${isDark ? 'border-slate-700' : 'border-gray-200'} rounded-lg hover:border-emerald-500 transition-colors`}>
                       <h4 className="font-bold mb-2">{item.name}</h4>
                       <p className="text-emerald-600 font-semibold">{item.coverage}</p>
-                      <p className="text-sm text-slate-500">{item.premium} premium</p>
-                      <p className="text-xs text-slate-400 mt-2">{item.desc}</p>
+                      <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{item.premium} premium</p>
+                      <p className={`text-xs mt-2 ${isDark ? 'text-slate-400' : 'text-slate-400'}`}>{item.desc}</p>
                       <button
                         onClick={() => { setSelectedPool(item.name); setShowBuyModal(true); }}
                         className="w-full mt-4 py-2 bg-emerald-600 text-white rounded-lg text-sm"
@@ -214,15 +216,15 @@ export default function InsuranceFundPage() {
             {activeTab === 'claims' && (
               <div className="space-y-4">
                 {loading && claims.length === 0 ? (
-                  <div className="text-center py-8 text-slate-500">Loading claims...</div>
+                  <div className={`text-center py-8 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Loading claims...</div>
                 ) : claims.length === 0 ? (
-                  <div className="text-center py-8 text-slate-500">No claims filed.</div>
+                  <div className={`text-center py-8 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>No claims filed.</div>
                 ) : (
                   claims.map(claim => (
-                    <div key={claim.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                    <div key={claim.id} className={`flex items-center justify-between p-4 ${isDark ? 'bg-slate-700' : 'bg-slate-50'} rounded-lg`}>
                       <div>
                         <p className="font-medium">{claim.pool}</p>
-                        <p className="text-sm text-slate-500">{claim.reason}</p>
+                        <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{claim.reason}</p>
                       </div>
                       <div className="flex items-center gap-4">
                         <span className={`px-3 py-1 rounded-full text-xs ${
@@ -244,12 +246,12 @@ export default function InsuranceFundPage() {
             {activeTab === 'positions' && (
               <div className="space-y-4">
                 {loading && positions.length === 0 ? (
-                  <div className="text-center py-8 text-slate-500">Loading positions...</div>
+                  <div className={`text-center py-8 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Loading positions...</div>
                 ) : positions.length === 0 ? (
-                  <div className="text-center py-8 text-slate-500">No insurance positions.</div>
+                  <div className={`text-center py-8 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>No insurance positions.</div>
                 ) : (
                   positions.map(pos => (
-                    <div key={pos.id} className="p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                    <div key={pos.id} className={`p-4 ${isDark ? 'bg-slate-700' : 'bg-slate-50'} rounded-lg`}>
                       <div className="flex justify-between mb-2">
                         <span className="font-medium">{pos.pool}</span>
                         <span className={`px-2 py-1 rounded text-xs ${
@@ -260,15 +262,15 @@ export default function InsuranceFundPage() {
                       </div>
                       <div className="grid grid-cols-3 gap-4 text-sm">
                         <div>
-                          <p className="text-slate-500">Covered Amount</p>
+                          <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>Covered Amount</p>
                           <p className="font-bold">${pos.coverage.toLocaleString()}</p>
                         </div>
                         <div>
-                          <p className="text-slate-500">Premium</p>
+                          <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>Premium</p>
                           <p className="font-bold">${pos.premium}/year</p>
                         </div>
                         <div>
-                          <p className="text-slate-500">Expires</p>
+                          <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>Expires</p>
                           <p className="font-bold">{new Date(pos.expiryTime).toLocaleDateString()}</p>
                         </div>
                       </div>
@@ -284,7 +286,7 @@ export default function InsuranceFundPage() {
       {/* Buy Coverage Modal */}
       {showBuyModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 max-w-md">
+          <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-xl p-6 max-w-md`}>
             <h3 className="text-xl font-bold mb-4">Buy Coverage</h3>
             <div className="space-y-4">
               <div>

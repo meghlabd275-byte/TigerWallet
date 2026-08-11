@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api/client';
 import type { Transaction as APITransaction } from '@/lib/api/client';
+import { useTheme } from '../components/ThemeProvider';
 
 interface Transaction {
   id: string;
@@ -73,6 +74,7 @@ export default function TransactionHistory() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const { isDark } = useTheme();
 
   // Load transactions from the backend API client.
   useEffect(() => {
@@ -134,75 +136,86 @@ export default function TransactionHistory() {
   const formatCurrency = (value: number): string => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
   const getCurrentPrice = (symbol: string): number => ({ 'ETH': 3500, 'BTC': 65000, 'SOL': 150, 'BNB': 600, 'MATIC': 0.8 }[symbol] || 0);
   const getTypeIcon = (type: string): string => ({ send: '📤', receive: '📥', swap: '🔄', approve: '✅', contract: '📝', stake: '🎯', unStake: '🎯', claim: '🎁', bridge: '🌉', nft_transfer: '🖼️' }[type] || '💰');
-  const getStatusColor = (status: string): string => ({ confirmed: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200', pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200', failed: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' }[status] || 'bg-slate-100 text-slate-800');
+  const getStatusColor = (status: string): string => {
+    switch (status) {
+      case 'confirmed':
+        return isDark ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-800';
+      case 'pending':
+        return isDark ? 'bg-yellow-900 text-yellow-200' : 'bg-yellow-100 text-yellow-800';
+      case 'failed':
+        return isDark ? 'bg-red-900 text-red-200' : 'bg-red-100 text-red-800';
+      default:
+        return isDark ? 'bg-slate-700 text-slate-200' : 'bg-slate-100 text-slate-800';
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-50">
-      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+    <div className={`min-h-screen ${isDark ? 'bg-slate-900 text-slate-50' : 'bg-slate-50 text-slate-900'}`}>
+      <header className={`border-b ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4"><a href="/" className="text-2xl">🐯</a><h1 className="text-xl font-bold">Transaction History</h1></div>
-            <nav className="flex gap-4"><a href="/wallet" className="text-slate-600 dark:text-slate-400 hover:text-orange-500">Wallet</a><a href="/portfolio" className="text-slate-600 dark:text-slate-400 hover:text-orange-500">Portfolio</a></nav>
+            <nav className="flex gap-4"><a href="/wallet" className={`${isDark ? 'text-slate-400' : 'text-slate-600'} hover:text-orange-500`}>Wallet</a><a href="/portfolio" className={`${isDark ? 'text-slate-400' : 'text-slate-600'} hover:text-orange-500`}>Portfolio</a></nav>
           </div>
         </div>
       </header>
       {message && <div className="fixed top-20 right-4 z-50"><div className={`px-6 py-3 rounded-lg shadow-lg ${message.type === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white`}>{message.text}</div></div>}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex border-b border-slate-200 dark:border-slate-700 mb-6">
-          <button onClick={() => setActiveTab('transactions')} className={`px-6 py-3 ${activeTab === 'transactions' ? 'border-b-2 border-orange-500 text-orange-500' : 'text-slate-500 dark:text-slate-400'}`}>Transactions ({filteredTransactions().length})</button>
-          <button onClick={() => setActiveTab('alerts')} className={`px-6 py-3 ${activeTab === 'alerts' ? 'border-b-2 border-orange-500 text-orange-500' : 'text-slate-500 dark:text-slate-400'}`}>Price Alerts ({alerts.length})</button>
+        <div className={`flex border-b mb-6 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+          <button onClick={() => setActiveTab('transactions')} className={`px-6 py-3 ${activeTab === 'transactions' ? 'border-b-2 border-orange-500 text-orange-500' : (isDark ? 'text-gray-400' : 'text-gray-500')}`}>Transactions ({filteredTransactions().length})</button>
+          <button onClick={() => setActiveTab('alerts')} className={`px-6 py-3 ${activeTab === 'alerts' ? 'border-b-2 border-orange-500 text-orange-500' : (isDark ? 'text-gray-400' : 'text-gray-500')}`}>Price Alerts ({alerts.length})</button>
         </div>
         {activeTab === 'transactions' && (
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 mb-6">
+          <div className={`rounded-lg p-4 mb-6 ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}>
             <div className="flex flex-wrap items-center gap-4">
-              <div className="flex-1 min-w-[200px]"><input type="text" placeholder="Search by address, hash, or token..." value={filters.searchQuery} onChange={(e) => setFilters(prev => ({ ...prev, searchQuery: e.target.value }))} className="w-full bg-slate-100 dark:bg-slate-700 border-0 rounded-lg px-4 py-2" /></div>
-              <select value={filters.chainId || ''} onChange={(e) => setFilters(prev => ({ ...prev, chainId: e.target.value ? Number(e.target.value) : null }))} className="bg-slate-100 dark:bg-slate-700 border-0 rounded-lg px-4 py-2"><option value="">All Chains</option><option value="1">Ethereum</option><option value="56">BNB Chain</option><option value="137">Polygon</option></select>
-              <select value={filters.type.length > 0 ? filters.type[0] : ''} onChange={(e) => setFilters(prev => ({ ...prev, type: e.target.value ? [e.target.value] : [] }))} className="bg-slate-100 dark:bg-slate-700 border-0 rounded-lg px-4 py-2"><option value="">All Types</option><option value="send">Send</option><option value="receive">Receive</option><option value="swap">Swap</option><option value="stake">Stake</option><option value="bridge">Bridge</option></select>
-              <select value={filters.status.length > 0 ? filters.status[0] : ''} onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value ? [e.target.value] : [] }))} className="bg-slate-100 dark:bg-slate-700 border-0 rounded-lg px-4 py-2"><option value="">All Status</option><option value="confirmed">Confirmed</option><option value="pending">Pending</option><option value="failed">Failed</option></select>
+              <div className="flex-1 min-w-[200px]"><input type="text" placeholder="Search by address, hash, or token..." value={filters.searchQuery} onChange={(e) => setFilters(prev => ({ ...prev, searchQuery: e.target.value }))} className={`w-full border-0 rounded-lg px-4 py-2 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`} /></div>
+              <select value={filters.chainId || ''} onChange={(e) => setFilters(prev => ({ ...prev, chainId: e.target.value ? Number(e.target.value) : null }))} className={`border-0 rounded-lg px-4 py-2 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}><option value="">All Chains</option><option value="1">Ethereum</option><option value="56">BNB Chain</option><option value="137">Polygon</option></select>
+              <select value={filters.type.length > 0 ? filters.type[0] : ''} onChange={(e) => setFilters(prev => ({ ...prev, type: e.target.value ? [e.target.value] : [] }))} className={`border-0 rounded-lg px-4 py-2 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}><option value="">All Types</option><option value="send">Send</option><option value="receive">Receive</option><option value="swap">Swap</option><option value="stake">Stake</option><option value="bridge">Bridge</option></select>
+              <select value={filters.status.length > 0 ? filters.status[0] : ''} onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value ? [e.target.value] : [] }))} className={`border-0 rounded-lg px-4 py-2 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}><option value="">All Status</option><option value="confirmed">Confirmed</option><option value="pending">Pending</option><option value="failed">Failed</option></select>
             </div>
           </div>
         )}
         {activeTab === 'alerts' && (
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-6 mb-6">
+          <div className={`rounded-lg p-6 mb-6 ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}>
             <h3 className="font-semibold mb-4">Create New Alert</h3>
             <div className="flex flex-wrap gap-4">
-              <select id="alertSymbol" className="bg-slate-100 dark:bg-slate-700 border-0 rounded-lg px-4 py-2"><option value="ETH">ETH</option><option value="BTC">BTC</option><option value="SOL">SOL</option><option value="BNB">BNB</option></select>
-              <select id="alertCondition" className="bg-slate-100 dark:bg-slate-700 border-0 rounded-lg px-4 py-2"><option value="above">Goes Above</option><option value="below">Goes Below</option></select>
-              <input type="number" id="alertPrice" placeholder="Target Price ($)" className="bg-slate-100 dark:bg-slate-700 border-0 rounded-lg px-4 py-2 w-48" />
+              <select id="alertSymbol" className={`border-0 rounded-lg px-4 py-2 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}><option value="ETH">ETH</option><option value="BTC">BTC</option><option value="SOL">SOL</option><option value="BNB">BNB</option></select>
+              <select id="alertCondition" className={`border-0 rounded-lg px-4 py-2 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}><option value="above">Goes Above</option><option value="below">Goes Below</option></select>
+              <input type="number" id="alertPrice" placeholder="Target Price ($)" className={`border-0 rounded-lg px-4 py-2 w-48 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`} />
               <button onClick={() => { const symbol = (document.getElementById('alertSymbol') as HTMLSelectElement).value; const condition = (document.getElementById('alertCondition') as HTMLSelectElement).value as 'above' | 'below'; const targetPrice = parseFloat((document.getElementById('alertPrice') as HTMLInputElement).value); if (targetPrice > 0) handleAddAlert(symbol, targetPrice, condition); }} disabled={loading} className="bg-orange-500 hover:bg-orange-600 disabled:bg-slate-400 text-white px-6 py-2 rounded-lg">Create Alert</button>
             </div>
           </div>
         )}
         {activeTab === 'transactions' && (
           <div className="space-y-4">
-            {loading && <div className="bg-white dark:bg-slate-800 rounded-lg p-12 text-center"><div className="text-xl font-semibold mb-2">Loading transactions…</div></div>}
-            {error && !loading && <div className="bg-red-100 dark:bg-red-900 rounded-lg p-12 text-center text-red-700 dark:text-red-200"><div className="text-xl font-semibold mb-2">{error}</div></div>}
-            {!loading && !error && filteredTransactions().length === 0 && <div className="bg-white dark:bg-slate-800 rounded-lg p-12 text-center"><div className="text-6xl mb-4">📋</div><h3 className="text-xl font-semibold mb-2">No Transactions Found</h3></div>}
+            {loading && <div className={`rounded-lg p-12 text-center ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}><div className="text-xl font-semibold mb-2">Loading transactions…</div></div>}
+            {error && !loading && <div className={`rounded-lg p-12 text-center ${isDark ? 'bg-red-900 text-red-200' : 'bg-red-100 text-red-700'}`}><div className="text-xl font-semibold mb-2">{error}</div></div>}
+            {!loading && !error && filteredTransactions().length === 0 && <div className={`rounded-lg p-12 text-center ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}><div className="text-6xl mb-4">📋</div><h3 className="text-xl font-semibold mb-2">No Transactions Found</h3></div>}
             {!loading && !error && filteredTransactions().map((tx) => (
-              <div key={tx.id} className="bg-white dark:bg-slate-800 rounded-lg p-4 shadow-sm">
+              <div key={tx.id} className={`rounded-lg p-4 shadow-sm ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}>
                 <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-4"><div className="text-2xl">{getTypeIcon(tx.type)}</div><div><div className="flex items-center gap-2"><span className="font-semibold capitalize">{tx.type}</span><span className="text-slate-500 dark:text-slate-400">{tx.token}</span></div><div className="text-sm text-slate-500 mt-1">{tx.type !== 'swap' && tx.type !== 'stake' && <span className="font-mono">{formatAddress(tx.type === 'send' ? tx.to : tx.from)}</span>}{tx.type === 'swap' && <span>{tx.metadata?.outputToken}</span>}{tx.type === 'stake' && <span>{tx.metadata?.validator}</span>}</div><div className="text-xs text-slate-400 mt-1">{tx.chainName} • Block #{tx.blockNumber} • {formatTime(tx.timestamp)}</div></div></div>
-                  <div className="text-right"><div className="font-semibold">{tx.type === 'receive' ? '+' : tx.type === 'send' ? '-' : ''}{tx.amount} {tx.token}</div><div className="text-sm text-slate-500">≈ {formatCurrency(parseFloat(tx.amount) * getCurrentPrice(tx.token))}</div><span className={`px-2 py-0.5 rounded text-xs ${getStatusColor(tx.status)}`}>{tx.status}</span></div>
+                  <div className="flex items-start gap-4"><div className="text-2xl">{getTypeIcon(tx.type)}</div><div><div className="flex items-center gap-2"><span className="font-semibold capitalize">{tx.type}</span><span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{tx.token}</span></div><div className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{tx.type !== 'swap' && tx.type !== 'stake' && <span className="font-mono">{formatAddress(tx.type === 'send' ? tx.to : tx.from)}</span>}{tx.type === 'swap' && <span>{tx.metadata?.outputToken}</span>}{tx.type === 'stake' && <span>{tx.metadata?.validator}</span>}</div><div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{tx.chainName} • Block #{tx.blockNumber} • {formatTime(tx.timestamp)}</div></div></div>
+                  <div className="text-right"><div className="font-semibold">{tx.type === 'receive' ? '+' : tx.type === 'send' ? '-' : ''}{tx.amount} {tx.token}</div><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>≈ {formatCurrency(parseFloat(tx.amount) * getCurrentPrice(tx.token))}</div><span className={`px-2 py-0.5 rounded text-xs ${getStatusColor(tx.status)}`}>{tx.status}</span></div>
                 </div>
-                <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700"><div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs"><div><span className="text-slate-500">Hash: </span><span className="font-mono">{formatAddress(tx.hash)}</span></div><div><span className="text-slate-500">Fee: </span><span>{tx.fee} {tx.token}</span></div>{tx.gasUsed && <div><span className="text-slate-500">Gas: </span><span>{tx.gasUsed}</span></div>}{tx.nonce !== undefined && <div><span className="text-slate-500">Nonce: </span><span>{tx.nonce}</span></div>}</div></div>
+                <div className={`mt-3 pt-3 border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`}><div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs"><div><span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Hash: </span><span className="font-mono">{formatAddress(tx.hash)}</span></div><div><span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Fee: </span><span>{tx.fee} {tx.token}</span></div>{tx.gasUsed && <div><span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Gas: </span><span>{tx.gasUsed}</span></div>}{tx.nonce !== undefined && <div><span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Nonce: </span><span>{tx.nonce}</span></div>}</div></div>
               </div>
             ))}
           </div>
         )}
         {activeTab === 'alerts' && (
           <div className="space-y-4">
-            {alerts.length === 0 ? <div className="bg-white dark:bg-slate-800 rounded-lg p-12 text-center"><div className="text-6xl mb-4">🔔</div><h3 className="text-xl font-semibold mb-2">No Price Alerts</h3></div> : alerts.map((alert) => (
-              <div key={alert.id} className="bg-white dark:bg-slate-800 rounded-lg p-4 shadow-sm">
-                <div className="flex items-center justify-between"><div className="flex items-center gap-4"><div className={`w-10 h-10 rounded-full flex items-center justify-center ${alert.condition === 'above' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>{alert.condition === 'above' ? '↑' : '↓'}</div><div><div className="font-semibold">{alert.symbol}</div><div className="text-sm text-slate-500">{alert.condition === 'above' ? 'Above' : 'Below'} ${alert.targetPrice.toLocaleString()}</div></div></div><div className="flex items-center gap-4"><div className="text-right"><div className="text-sm text-slate-500">Current</div><div className="font-semibold">${alert.currentPrice.toLocaleString()}</div></div><button onClick={() => handleToggleAlert(alert.id)} className={`px-3 py-1 rounded text-sm ${alert.isActive ? 'bg-green-100 text-green-800' : 'bg-slate-100'}`}>{alert.isActive ? 'Active' : 'Paused'}</button><button onClick={() => handleDeleteAlert(alert.id)} className="text-red-500">Delete</button></div></div>
+            {alerts.length === 0 ? <div className={`rounded-lg p-12 text-center ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}><div className="text-6xl mb-4">🔔</div><h3 className="text-xl font-semibold mb-2">No Price Alerts</h3></div> : alerts.map((alert) => (
+              <div key={alert.id} className={`rounded-lg p-4 shadow-sm ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}>
+                <div className="flex items-center justify-between"><div className="flex items-center gap-4"><div className={`w-10 h-10 rounded-full flex items-center justify-center ${alert.condition === 'above' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>{alert.condition === 'above' ? '↑' : '↓'}</div><div><div className="font-semibold">{alert.symbol}</div><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{alert.condition === 'above' ? 'Above' : 'Below'} ${alert.targetPrice.toLocaleString()}</div></div></div><div className="flex items-center gap-4"><div className="text-right"><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Current</div><div className="font-semibold">${alert.currentPrice.toLocaleString()}</div></div><button onClick={() => handleToggleAlert(alert.id)} className={`px-3 py-1 rounded text-sm ${alert.isActive ? 'bg-green-100 text-green-800' : 'bg-slate-100'}`}>{alert.isActive ? 'Active' : 'Paused'}</button><button onClick={() => handleDeleteAlert(alert.id)} className="text-red-500">Delete</button></div></div>
               </div>
             ))}
           </div>
         )}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4"><div className="text-slate-500 text-sm">Total Transactions</div><div className="text-2xl font-bold">{transactions.length}</div></div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4"><div className="text-slate-500 text-sm">Confirmed</div><div className="text-2xl font-bold text-green-500">{transactions.filter(t => t.status === 'confirmed').length}</div></div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4"><div className="text-slate-500 text-sm">Pending</div><div className="text-2xl font-bold text-yellow-500">{transactions.filter(t => t.status === 'pending').length}</div></div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4"><div className="text-slate-500 text-sm">Failed</div><div className="text-2xl font-bold text-red-500">{transactions.filter(t => t.status === 'failed').length}</div></div>
+          <div className={`rounded-lg p-4 ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Total Transactions</div><div className="text-2xl font-bold">{transactions.length}</div></div>
+          <div className={`rounded-lg p-4 ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Confirmed</div><div className="text-2xl font-bold text-green-500">{transactions.filter(t => t.status === 'confirmed').length}</div></div>
+          <div className={`rounded-lg p-4 ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Pending</div><div className="text-2xl font-bold text-yellow-500">{transactions.filter(t => t.status === 'pending').length}</div></div>
+          <div className={`rounded-lg p-4 ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Failed</div><div className="text-2xl font-bold text-red-500">{transactions.filter(t => t.status === 'failed').length}</div></div>
         </div>
       </div>
     </div>

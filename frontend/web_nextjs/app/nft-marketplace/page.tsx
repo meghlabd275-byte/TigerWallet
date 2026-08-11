@@ -10,6 +10,7 @@ import {
   Search, FilterList, ShoppingCart, Visibility, Favorite,
   Refresh, Close, Verified, Collections, Hexagon
 } from '@mui/icons-material';
+import { useTheme } from '../components/ThemeProvider';
 
 // Same-origin API base: the Next.js app proxies /api/v1/nft/* to the
 // go/nft_service backend (see app/api/v1/nft/ routes).
@@ -64,6 +65,7 @@ export default function NFTMarketplace() {
   const [selectedNFT, setSelectedNFT] = useState<NFT | null>(null);
   const [walletAddress, setWalletAddress] = useState<string>('');
   const [buyDialogOpen, setBuyDialogOpen] = useState(false);
+  const { isDark } = useTheme();
 
   useEffect(() => {
     const savedWallet = localStorage.getItem('tigerwallet_address');
@@ -191,7 +193,7 @@ export default function NFTMarketplace() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-50 p-6">
+    <div className={`min-h-screen ${isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'} p-6`}>
       <header className="mb-8">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -201,7 +203,7 @@ export default function NFTMarketplace() {
           {walletAddress ? (
             <Chip 
               label={`${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`}
-              className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200"
+              className={isDark ? 'bg-blue-900 text-blue-200' : 'bg-blue-100 text-blue-800'}
             />
           ) : (
             <Button 
@@ -261,7 +263,7 @@ export default function NFTMarketplace() {
           {filteredNFTs.map(nft => (
             <Grid item xs={12} sm={6} md={4} lg={3} key={nft.id}>
               <Card 
-                className="bg-white dark:bg-slate-800 hover:shadow-xl transition-shadow cursor-pointer"
+                className={`${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200'} hover:shadow-xl transition-shadow cursor-pointer`}
                 onClick={() => { setSelectedNFT(nft); setBuyDialogOpen(true); }}
               >
                 <Box className="h-48 bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center text-6xl">
@@ -269,7 +271,7 @@ export default function NFTMarketplace() {
                 </Box>
                 <CardContent>
                   <Box className="flex items-center gap-1 mb-1">
-                    <Typography variant="caption" className="text-slate-500 dark:text-slate-400">
+                    <Typography variant="caption" className={isDark ? 'text-gray-400' : 'text-gray-500'}>
                       {nft.symbol}
                     </Typography>
                     <Verified fontSize="small" className="text-blue-500" />
@@ -277,14 +279,14 @@ export default function NFTMarketplace() {
                   <Typography variant="subtitle1" className="font-semibold mb-1">
                     {nft.name}
                   </Typography>
-                  <Typography variant="body2" className="mb-2 text-slate-500 dark:text-slate-400" noWrap>
+                  <Typography variant="body2" className={`mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`} noWrap>
                     {nft.description?.substring(0, 50)}...
                   </Typography>
                   <Box className="flex justify-between items-center">
                     <Chip 
                       label={CHAIN_NAMES[nft.chain_id] || `Chain ${nft.chain_id}`} 
                       size="small"
-                      className="bg-slate-200 dark:bg-slate-700"
+                      className={isDark ? 'bg-gray-700' : 'bg-gray-200'}
                     />
                     <Typography variant="subtitle2" className="text-orange-500">
                       {nft.price} {nft.price_token}
@@ -300,7 +302,7 @@ export default function NFTMarketplace() {
       {filteredNFTs.length === 0 && !isLoading && (
         <Box className="text-center py-12">
           <Collections className="text-6xl text-slate-400 mb-4" />
-          <Typography variant="h6" className="text-slate-500 dark:text-slate-400">
+          <Typography variant="h6" className={isDark ? 'text-gray-400' : 'text-gray-500'}>
             No NFTs found
           </Typography>
         </Box>
@@ -322,7 +324,7 @@ export default function NFTMarketplace() {
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <Typography variant="h6" className="mb-2">{selectedNFT.name}</Typography>
-                  <Typography variant="body2" className="mb-4 text-slate-500 dark:text-slate-400">
+                  <Typography variant="body2" className={`mb-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                     {selectedNFT.description}
                   </Typography>
                   
@@ -344,11 +346,11 @@ export default function NFTMarketplace() {
                   
                   <Box className="flex justify-between items-center mb-4">
                     <Box>
-                      <Typography variant="caption" className="text-slate-500">Owner</Typography>
+                      <Typography variant="caption" className={isDark ? 'text-gray-400' : 'text-gray-500'}>Owner</Typography>
                       <Typography variant="body2">{selectedNFT.owner.slice(0, 8)}...{selectedNFT.owner.slice(-6)}</Typography>
                     </Box>
                     <Box className="text-right">
-                      <Typography variant="caption" className="text-slate-500">Price</Typography>
+                      <Typography variant="caption" className={isDark ? 'text-gray-400' : 'text-gray-500'}>Price</Typography>
                       <Typography variant="h5" className="text-orange-500">{selectedNFT.price} {selectedNFT.price_token}</Typography>
                     </Box>
                   </Box>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 
 interface GiftCard {
   id: string;
@@ -42,6 +43,7 @@ const MY_CARDS: MyGiftCard[] = [
 ];
 
 export default function GiftCardsPage() {
+  const { isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<'buy' | 'my_cards'>('buy');
   const [selectedCard, setSelectedCard] = useState<GiftCard | null>(null);
   const [buyAmount, setBuyAmount] = useState(25);
@@ -63,7 +65,7 @@ export default function GiftCardsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
+    <div className={`min-h-screen ${isDark ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-900'}`}>
       <header className="bg-gradient-to-r from-pink-600 to-purple-600 text-white">
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
@@ -81,16 +83,16 @@ export default function GiftCardsPage() {
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border">
-            <p className="text-sm text-slate-500">Total Saved</p>
+          <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-4`}>
+            <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Total Saved</p>
             <p className="text-2xl font-bold text-green-600">${stats.totalSaved}</p>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border">
-            <p className="text-sm text-slate-500">Cards Owned</p>
+          <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-4`}>
+            <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Cards Owned</p>
             <p className="text-2xl font-bold">{stats.cardsOwned}</p>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border">
-            <p className="text-sm text-slate-500">Total Value</p>
+          <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-4`}>
+            <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Total Value</p>
             <p className="text-2xl font-bold">${stats.totalValue}</p>
           </div>
         </div>
@@ -99,13 +101,13 @@ export default function GiftCardsPage() {
         <div className="flex gap-2 mb-6">
           <button
             onClick={() => setActiveTab('buy')}
-            className={`px-6 py-2 rounded-lg font-medium ${activeTab === 'buy' ? 'bg-pink-600 text-white' : 'bg-white dark:bg-slate-800'}`}
+            className={`px-6 py-2 rounded-lg font-medium ${activeTab === 'buy' ? 'bg-pink-600 text-white' : `${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}`}
           >
             Buy Gift Cards
           </button>
           <button
             onClick={() => setActiveTab('my_cards')}
-            className={`px-6 py-2 rounded-lg font-medium ${activeTab === 'my_cards' ? 'bg-pink-600 text-white' : 'bg-white dark:bg-slate-800'}`}
+            className={`px-6 py-2 rounded-lg font-medium ${activeTab === 'my_cards' ? 'bg-pink-600 text-white' : `${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}`}
           >
             My Cards
           </button>
@@ -117,18 +119,18 @@ export default function GiftCardsPage() {
               <div
                 key={card.id}
                 onClick={() => setSelectedCard(card)}
-                className="bg-white dark:bg-slate-800 rounded-xl p-4 border hover:border-pink-500 transition-colors cursor-pointer"
+                className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-xl p-4 hover:border-pink-500 transition-colors cursor-pointer`}
               >
                 <div className="text-4xl mb-3">{card.logo}</div>
                 <h3 className="font-bold mb-2">{card.brand}</h3>
                 <div className="flex justify-between items-end">
                   <div>
-                    <p className="text-sm text-slate-500">From</p>
+                    <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>From</p>
                     <p className="text-xl font-bold">${card.value}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-green-600">Save {card.discount}%</p>
-                    <p className="text-sm text-slate-400">${card.amount} value</p>
+                    <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>${card.amount} value</p>
                   </div>
                 </div>
               </div>
@@ -139,25 +141,25 @@ export default function GiftCardsPage() {
         {activeTab === 'my_cards' && (
           <div className="space-y-4">
             {MY_CARDS.map(card => (
-              <div key={card.id} className="bg-white dark:bg-slate-800 rounded-xl p-6 border">
+              <div key={card.id} className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-xl p-6`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <span className="text-4xl">🎁</span>
                     <div>
                       <h3 className="font-bold text-lg">{card.brand}</h3>
-                      <p className="font-mono text-sm text-slate-500">{card.code}</p>
+                      <p className={`font-mono text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{card.code}</p>
                     </div>
                   </div>
                   <div className="text-right">
                     <p className="text-2xl font-bold">${card.amount}</p>
-                    <p className="text-sm text-slate-500">Expires: {new Date(card.expiresAt).toLocaleDateString()}</p>
+                    <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Expires: {new Date(card.expiresAt).toLocaleDateString()}</p>
                   </div>
                 </div>
                 <div className="flex gap-2 mt-4">
                   <button className="flex-1 py-2 bg-pink-600 text-white rounded-lg hover:bg-pink-700">
                     View Code
                   </button>
-                  <button className="px-4 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg">
+                  <button className={`px-4 py-2 ${isDark ? 'bg-slate-700' : 'bg-slate-100'} rounded-lg`}>
                     Share
                   </button>
                 </div>
@@ -170,7 +172,7 @@ export default function GiftCardsPage() {
       {/* Buy Modal */}
       {selectedCard && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 max-w-md w-full mx-4">
+          <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-xl p-6 max-w-md w-full mx-4`}>
             <div className="flex items-center gap-4 mb-4">
               <span className="text-4xl">{selectedCard.logo}</span>
               <div>
@@ -186,7 +188,7 @@ export default function GiftCardsPage() {
                   <button
                     key={amt}
                     onClick={() => setBuyAmount(amt)}
-                    className={`py-2 rounded-lg border ${buyAmount === amt ? 'bg-pink-600 text-white border-pink-600' : 'border-slate-300'}`}
+                    className={`py-2 rounded-lg border ${buyAmount === amt ? 'bg-pink-600 text-white border-pink-600' : `${isDark ? 'border-slate-600' : 'border-slate-300'}`}`}
                   >
                     ${amt}
                   </button>
@@ -194,17 +196,17 @@ export default function GiftCardsPage() {
               </div>
             </div>
 
-            <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-lg mb-4">
+            <div className={`p-4 ${isDark ? 'bg-slate-700' : 'bg-slate-50'} rounded-lg mb-4`}>
               <div className="flex justify-between mb-2">
-                <span className="text-slate-500">Gift Card Value</span>
+                <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Gift Card Value</span>
                 <span>${selectedCard.value * (buyAmount / selectedCard.amount)}</span>
               </div>
               <div className="flex justify-between mb-2">
-                <span className="text-slate-500">You Pay</span>
+                <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>You Pay</span>
                 <span className="font-bold">${buyAmount}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">You Save</span>
+                <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>You Save</span>
                 <span className="text-green-600">${buyAmount - (selectedCard.value * (buyAmount / selectedCard.amount))}</span>
               </div>
             </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 
 // Base64url helpers for WebAuthn credential encoding/decoding.
 function bufferToBase64url(buf: ArrayBuffer): string {
@@ -11,6 +12,7 @@ function bufferToBase64url(buf: ArrayBuffer): string {
 }
 
 export default function BiometricAuth() {
+  const { isDark } = useTheme();
   const [biometricType, setBiometricType] = useState<string | null>(null);
   const [webauthnSupported, setWebauthnSupported] = useState(false);
   const [credentialId, setCredentialId] = useState<string | null>(null);
@@ -94,11 +96,11 @@ export default function BiometricAuth() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
-      <header className="bg-white dark:bg-slate-800 border-b p-4"><div className="flex items-center gap-4"><a href="/wallet" className="text-2xl">🐯</a><h1 className="text-xl font-bold">Biometric Security</h1></div></header>
+    <div className={`min-h-screen ${isDark ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-900'}`}>
+      <header className={`${isDark ? 'bg-slate-800' : 'bg-white'} border-b p-4`}><div className="flex items-center gap-4"><a href="/wallet" className="text-2xl">🐯</a><h1 className="text-xl font-bold">Biometric Security</h1></div></header>
       <div className="max-w-md mx-auto p-8">
-        <div className="bg-white dark:bg-slate-800 rounded-lg p-6">
-          <div className="text-center mb-6"><div className="text-6xl mb-4">🔐</div><h2 className="text-xl font-semibold">Biometric Authentication</h2><p className="text-slate-500 mt-2">Use {biometricType || 'biometric'} to secure your wallet via WebAuthn.</p></div>
+        <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-6`}>
+          <div className="text-center mb-6"><div className="text-6xl mb-4">🔐</div><h2 className="text-xl font-semibold">Biometric Authentication</h2><p className={`${isDark ? 'text-slate-400' : 'text-slate-500'} mt-2`}>Use {biometricType || 'biometric'} to secure your wallet via WebAuthn.</p></div>
           {!webauthnSupported && <div className="bg-amber-100 text-amber-700 p-3 rounded-lg mb-4 text-center text-sm">WebAuthn is not supported in this browser.</div>}
           {error && <div className="bg-red-100 text-red-600 p-3 rounded-lg mb-4 text-center text-sm">{error}</div>}
           {message && <div className="bg-green-100 text-green-600 p-3 rounded-lg mb-4 text-center text-sm">{message}</div>}

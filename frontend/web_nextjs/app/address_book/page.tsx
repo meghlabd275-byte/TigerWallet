@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 import { api, AddressBookEntry } from '@/lib/api/client';
 
 export default function AddressBookPage() {
@@ -18,6 +19,7 @@ export default function AddressBookPage() {
     notes: '',
     isFavorite: false,
   });
+  const { isDark } = useTheme();
 
   const fetchContacts = useCallback(async () => {
     try {
@@ -125,15 +127,15 @@ export default function AddressBookPage() {
     address && address.length > 18 ? `${address.slice(0, 10)}...${address.slice(-8)}` : address;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+    <div className={`min-h-screen ${isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+      <header className={`${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200'} border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
         <div className="max-w-4xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <a href="/" className="text-2xl">🐯</a>
               <div>
                 <h1 className="text-xl font-bold">Address Book</h1>
-                <p className="text-slate-500 text-sm">Manage your saved addresses</p>
+                <p className={`${isDark ? 'text-gray-400' : 'text-gray-500'} text-sm`}>Manage your saved addresses</p>
               </div>
             </div>
             <button
@@ -154,33 +156,33 @@ export default function AddressBookPage() {
             placeholder="Search by name, address, or chain..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800"
+            className={`w-full px-4 py-3 border ${isDark ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'} rounded-lg`}
           />
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border">
-            <p className="text-sm text-slate-500">Total Contacts</p>
+          <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} rounded-lg p-4 border ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Total Contacts</p>
             <p className="text-2xl font-bold">{contacts.length}</p>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border">
-            <p className="text-sm text-slate-500">Favorites</p>
+          <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} rounded-lg p-4 border ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Favorites</p>
             <p className="text-2xl font-bold text-yellow-500">{favorites.length}</p>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border">
-            <p className="text-sm text-slate-500">Chains Used</p>
+          <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} rounded-lg p-4 border ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Chains Used</p>
             <p className="text-2xl font-bold">{new Set(contacts.map(c => c.chain)).size}</p>
           </div>
         </div>
 
         {loading && (
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-12 text-center mb-6">
+          <div className={`${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200'} rounded-lg p-12 text-center mb-6`}>
             <p className="text-xl font-semibold">Loading contacts…</p>
           </div>
         )}
         {error && !loading && (
-          <div className="bg-red-100 dark:bg-red-900 rounded-lg p-6 text-center mb-6 text-red-700 dark:text-red-200">
+          <div className={`${isDark ? 'bg-red-900 text-red-200' : 'bg-red-100 text-red-700'} rounded-lg p-6 text-center mb-6`}>
             <p className="font-semibold">{error}</p>
             <button onClick={fetchContacts} className="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg">Retry</button>
           </div>
@@ -194,38 +196,38 @@ export default function AddressBookPage() {
             </h3>
             <div className="space-y-3">
               {favorites.map(contact => (
-                <div key={contact.id} className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-yellow-200 dark:border-yellow-800">
+                <div key={contact.id} className={`${isDark ? 'bg-gray-800' : 'bg-white'} rounded-lg p-4 border ${isDark ? 'border-yellow-800' : 'border-yellow-200'}`}>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <h4 className="font-semibold">{contact.name}</h4>
                         <button onClick={() => toggleFavorite(contact)} className="text-yellow-500">⭐</button>
                       </div>
-                      <p className="font-mono text-sm text-slate-500 mb-2">{formatAddr(contact.address)}</p>
+                      <p className={`font-mono text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'} mb-2`}>{formatAddr(contact.address)}</p>
                       <div className="flex items-center gap-3">
                         <span className={`px-2 py-1 rounded text-xs text-white ${getChainColor(contact.chain)}`}>
                           {contact.chain}
                         </span>
-                        <span className="text-sm text-slate-500">{contact.symbol}</span>
+                        <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{contact.symbol}</span>
                       </div>
-                      {contact.notes && <p className="text-sm text-slate-400 mt-2">{contact.notes}</p>}
+                      {contact.notes && <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'} mt-2`}>{contact.notes}</p>}
                     </div>
                     <div className="flex flex-col gap-2">
                       <button
                         onClick={() => copyAddress(contact.address)}
-                        className="px-3 py-1 bg-slate-100 dark:bg-slate-700 rounded text-sm"
+                        className={`px-3 py-1 ${isDark ? 'bg-gray-700' : 'bg-gray-100'} rounded text-sm`}
                       >
                         Copy
                       </button>
                       <button
                         onClick={() => setEditingContact(contact)}
-                        className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded text-sm"
+                        className={`px-3 py-1 ${isDark ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-100 text-blue-600'} rounded text-sm`}
                       >
                         Edit
                       </button>
                       <button
                         onClick={() => handleDelete(contact.id)}
-                        className="px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-600 rounded text-sm"
+                        className={`px-3 py-1 ${isDark ? 'bg-red-900/30 text-red-400' : 'bg-red-100 text-red-600'} rounded text-sm`}
                       >
                         Delete
                       </button>
@@ -243,32 +245,32 @@ export default function AddressBookPage() {
             <h3 className="text-lg font-semibold mb-4">All Contacts</h3>
             <div className="space-y-3">
               {regular.map(contact => (
-                <div key={contact.id} className="bg-white dark:bg-slate-800 rounded-lg p-4 border">
+                <div key={contact.id} className={`${isDark ? 'bg-gray-800' : 'bg-white'} rounded-lg p-4 border ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <h4 className="font-semibold">{contact.name}</h4>
-                        <button onClick={() => toggleFavorite(contact)} className="text-slate-400 hover:text-yellow-500">☆</button>
+                        <button onClick={() => toggleFavorite(contact)} className={`${isDark ? 'text-gray-400' : 'text-gray-400'} hover:text-yellow-500`}>☆</button>
                       </div>
-                      <p className="font-mono text-sm text-slate-500 mb-2">{formatAddr(contact.address)}</p>
+                      <p className={`font-mono text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'} mb-2`}>{formatAddr(contact.address)}</p>
                       <div className="flex items-center gap-3">
                         <span className={`px-2 py-1 rounded text-xs text-white ${getChainColor(contact.chain)}`}>
                           {contact.chain}
                         </span>
-                        <span className="text-sm text-slate-500">{contact.symbol}</span>
+                        <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{contact.symbol}</span>
                       </div>
-                      {contact.notes && <p className="text-sm text-slate-400 mt-2">{contact.notes}</p>}
+                      {contact.notes && <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'} mt-2`}>{contact.notes}</p>}
                     </div>
                     <div className="flex flex-col gap-2">
                       <button
                         onClick={() => copyAddress(contact.address)}
-                        className="px-3 py-1 bg-slate-100 dark:bg-slate-700 rounded text-sm"
+                        className={`px-3 py-1 ${isDark ? 'bg-gray-700' : 'bg-gray-100'} rounded text-sm`}
                       >
                         Copy
                       </button>
                       <button
                         onClick={() => handleDelete(contact.id)}
-                        className="px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-600 rounded text-sm"
+                        className={`px-3 py-1 ${isDark ? 'bg-red-900/30 text-red-400' : 'bg-red-100 text-red-600'} rounded text-sm`}
                       >
                         Delete
                       </button>
@@ -281,7 +283,7 @@ export default function AddressBookPage() {
         )}
 
         {!loading && !error && filteredContacts.length === 0 && (
-          <div className="text-center py-12 text-slate-500">
+          <div className={`text-center py-12 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
             <p className="text-lg">No contacts found</p>
             <button onClick={() => setShowAddModal(true)} className="mt-4 text-blue-600 hover:underline">
               Add your first contact
@@ -293,7 +295,7 @@ export default function AddressBookPage() {
       {/* Add Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 max-w-md w-full mx-4">
+          <div className={`${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200'} rounded-xl p-6 max-w-md w-full mx-4`}>
             <h3 className="text-xl font-bold mb-4">Add New Contact</h3>
             <div className="space-y-4">
               <div>

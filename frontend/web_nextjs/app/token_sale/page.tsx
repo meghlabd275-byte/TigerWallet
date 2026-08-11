@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 
 interface TokenSale {
   id: string;
@@ -100,6 +101,7 @@ export default function TokenSalePage() {
   const [buyAmount, setBuyAmount] = useState('');
   const [selectedPhase, setSelectedPhase] = useState(0);
   const [loading, setLoading] = useState(false);
+  const { isDark } = useTheme();
 
   const filteredSales = MOCK_SALES.filter(s => s.status === activeTab);
 
@@ -114,7 +116,7 @@ export default function TokenSalePage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
+    <div className={`min-h-screen ${isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
       <header className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex items-center gap-4">
@@ -133,7 +135,7 @@ export default function TokenSalePage() {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-6 py-2 rounded-lg font-medium ${activeTab === tab ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800'}`}
+              className={`px-6 py-2 rounded-lg font-medium ${activeTab === tab ? 'bg-indigo-600 text-white' : isDark ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
@@ -142,13 +144,13 @@ export default function TokenSalePage() {
 
         <div className="space-y-4">
           {filteredSales.map(sale => (
-            <div key={sale.id} className="bg-white dark:bg-slate-800 rounded-xl p-6 border">
+            <div key={sale.id} className={`${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 border ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-4">
                   <span className="text-5xl">{sale.logo}</span>
                   <div>
                     <h3 className="text-xl font-bold">{sale.name}</h3>
-                    <p className="text-slate-500">{sale.symbol} • {sale.chain}</p>
+                    <p className={isDark ? 'text-gray-400' : 'text-gray-500'}>{sale.symbol} • {sale.chain}</p>
                   </div>
                 </div>
                 <span className={`px-3 py-1 rounded-full text-sm ${
@@ -226,7 +228,7 @@ export default function TokenSalePage() {
 
       {selectedSale && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 max-w-md">
+          <div className={`${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200'} rounded-xl p-6 max-w-md`}>
             <h3 className="text-xl font-bold mb-4">Buy {selectedSale.symbol}</h3>
             <div className="space-y-4">
               <div>

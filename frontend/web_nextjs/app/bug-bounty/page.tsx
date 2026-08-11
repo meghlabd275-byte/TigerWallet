@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 
 // ============================================================================
 // Types
@@ -125,10 +126,11 @@ const REWARD_RANGES = [
 export default function BugBountyPage() {
   const [activeTab, setActiveTab] = useState<'programs' | 'leaderboard' | 'report'>('programs');
   const [showReportForm, setShowReportForm] = useState(false);
+  const { isDark } = useTheme();
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+    <div className={`min-h-screen ${isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+      <header className={`${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200'} border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
@@ -172,37 +174,37 @@ export default function BugBountyPage() {
         </div>
 
         {/* Reward Tiers */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 mb-8 border border-slate-200 dark:border-slate-700">
+        <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 mb-8 border ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
           <h3 className="text-xl font-bold mb-4">Reward Tiers</h3>
           <div className="grid grid-cols-4 gap-4">
             {REWARD_RANGES.map(tier => (
-              <div key={tier.severity} className="p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+              <div key={tier.severity} className={`p-4 ${isDark ? 'bg-gray-700' : 'bg-gray-100'} rounded-lg`}>
                 <p className="font-bold text-lg mb-1">{tier.severity}</p>
                 <p className="text-blue-600 font-bold mb-2">{tier.range}</p>
-                <p className="text-xs text-slate-500">{tier.examples}</p>
+                <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{tier.examples}</p>
               </div>
             ))}
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-          <div className="flex border-b border-slate-200 dark:border-slate-700">
+        <div className={`${isDark ? 'bg-gray-800' : 'bg-white'} rounded-lg border ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+          <div className={`flex border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
             <button
               onClick={() => setActiveTab('programs')}
-              className={`px-6 py-4 font-medium ${activeTab === 'programs' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500'}`}
+              className={`px-6 py-4 font-medium ${activeTab === 'programs' ? 'text-blue-600 border-b-2 border-blue-600' : isDark ? 'text-gray-400' : 'text-gray-500'}`}
             >
               Active Programs
             </button>
             <button
               onClick={() => setActiveTab('leaderboard')}
-              className={`px-6 py-4 font-medium ${activeTab === 'leaderboard' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500'}`}
+              className={`px-6 py-4 font-medium ${activeTab === 'leaderboard' ? 'text-blue-600 border-b-2 border-blue-600' : isDark ? 'text-gray-400' : 'text-gray-500'}`}
             >
               Leaderboard
             </button>
             <button
               onClick={() => setActiveTab('report')}
-              className={`px-6 py-4 font-medium ${activeTab === 'report' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500'}`}
+              className={`px-6 py-4 font-medium ${activeTab === 'report' ? 'text-blue-600 border-b-2 border-blue-600' : isDark ? 'text-gray-400' : 'text-gray-500'}`}
             >
               Rules & Guidelines
             </button>
@@ -212,14 +214,14 @@ export default function BugBountyPage() {
             {activeTab === 'programs' && (
               <div className="space-y-4">
                 {REPORTS.map(report => (
-                  <div key={report.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                  <div key={report.id} className={`flex items-center justify-between p-4 ${isDark ? 'bg-gray-700' : 'bg-gray-100'} rounded-lg`}>
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center text-white font-bold">
                         {report.severity[0].toUpperCase()}
                       </div>
                       <div>
                         <p className="font-medium">{report.title}</p>
-                        <p className="text-sm text-slate-500">Reported by {report.reporter}</p>
+                        <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Reported by {report.reporter}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
@@ -250,20 +252,20 @@ export default function BugBountyPage() {
                   { rank: 4, name: 'web3_bug_hunter', bugs: 3, reward: '$28,000' },
                   { rank: 5, name: 'solidity_dev', bugs: 2, reward: '$15,000' },
                 ].map(user => (
-                  <div key={user.rank} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                  <div key={user.rank} className={`flex items-center justify-between p-4 ${isDark ? 'bg-gray-700' : 'bg-gray-100'} rounded-lg`}>
                     <div className="flex items-center gap-4">
                       <span className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
                         user.rank === 1 ? 'bg-yellow-400 text-yellow-900' :
                         user.rank === 2 ? 'bg-gray-300 text-gray-700' :
                         user.rank === 3 ? 'bg-orange-400 text-orange-900' :
-                        'bg-slate-200 dark:bg-slate-600'
+                        isDark ? 'bg-gray-600' : 'bg-gray-200'
                       }`}>
                         {user.rank}
                       </span>
                       <p className="font-medium">{user.name}</p>
                     </div>
                     <div className="flex items-center gap-6">
-                      <p className="text-slate-500">{user.bugs} bugs</p>
+                      <p className={isDark ? 'text-gray-400' : 'text-gray-500'}>{user.bugs} bugs</p>
                       <p className="font-bold text-green-600">{user.reward}</p>
                     </div>
                   </div>
@@ -273,8 +275,8 @@ export default function BugBountyPage() {
 
             {activeTab === 'report' && (
               <div className="space-y-6">
-                <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                  <h4 className="font-bold text-green-800 dark:text-green-200 mb-2">In Scope</h4>
+                <div className={`p-4 border rounded-lg ${isDark ? 'bg-green-900/20 border-green-800' : 'bg-green-50 border-green-200'}`}>
+                  <h4 className={`font-bold mb-2 ${isDark ? 'text-green-200' : 'text-green-800'}`}>In Scope</h4>
                   <ul className="list-disc list-inside space-y-1 text-sm">
                     <li>Smart contract vulnerabilities</li>
                     <li>Wallet security issues</li>
@@ -285,8 +287,8 @@ export default function BugBountyPage() {
                   </ul>
                 </div>
 
-                <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                  <h4 className="font-bold text-red-800 dark:text-red-200 mb-2">Out of Scope</h4>
+                <div className={`p-4 border rounded-lg ${isDark ? 'bg-red-900/20 border-red-800' : 'bg-red-50 border-red-200'}`}>
+                  <h4 className={`font-bold mb-2 ${isDark ? 'text-red-200' : 'text-red-800'}`}>Out of Scope</h4>
                   <ul className="list-disc list-inside space-y-1 text-sm">
                     <li>Social engineering attacks</li>
                     <li>Physical security</li>
@@ -296,8 +298,8 @@ export default function BugBountyPage() {
                   </ul>
                 </div>
 
-                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                  <h4 className="font-bold text-blue-800 dark:text-blue-200 mb-2">How to Report</h4>
+                <div className={`p-4 border rounded-lg ${isDark ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-200'}`}>
+                  <h4 className={`font-bold mb-2 ${isDark ? 'text-blue-200' : 'text-blue-800'}`}>How to Report</h4>
                   <ol className="list-decimal list-inside space-y-1 text-sm">
                     <li>Email security@tigerwallet.io with details</li>
                     <li>Include steps to reproduce</li>
@@ -315,7 +317,7 @@ export default function BugBountyPage() {
       {/* Report Form Modal */}
       {showReportForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 max-w-lg w-full mx-4">
+          <div className={`${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200'} rounded-xl p-6 max-w-lg w-full mx-4`}>
             <h3 className="text-xl font-bold mb-4">Submit Bug Report</h3>
             <div className="space-y-4">
               <input type="text" placeholder="Vulnerability Title" className="w-full p-3 border rounded-lg" />

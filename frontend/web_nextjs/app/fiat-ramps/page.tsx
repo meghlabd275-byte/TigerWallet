@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 
 interface FiatProvider { 
   id: string; 
@@ -56,6 +57,7 @@ export default function FiatRamps() {
   const [error, setError] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [priceQuote, setPriceQuote] = useState<{ cryptoAmount: string; rate: string } | null>(null);
+  const { isDark } = useTheme();
 
   const loadProviders = useCallback(async () => {
     try {
@@ -129,8 +131,8 @@ export default function FiatRamps() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
-      <header className="bg-white dark:bg-slate-800 border-b p-4">
+    <div className={`min-h-screen ${isDark ? 'bg-slate-900 text-white' : 'bg-slate-50 text-gray-900'}`}>
+      <header className={`border-b p-4 ${isDark ? 'bg-slate-800' : 'bg-white border-gray-200'}`}>
         <div className="flex items-center gap-4 max-w-2xl mx-auto">
           <a href="/wallet" className="text-2xl">🐯</a>
           <h1 className="text-xl font-bold">Buy Crypto</h1>
@@ -139,40 +141,40 @@ export default function FiatRamps() {
       
       <div className="max-w-2xl mx-auto p-8">
         {error && (
-          <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-4 rounded-lg mb-6">
+          <div className={`p-4 rounded-lg mb-6 ${isDark ? 'bg-red-900/20 text-red-400' : 'bg-red-50 text-red-600'}`}>
             {error}
           </div>
         )}
         
         {orderId && (
-          <div className="bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 p-4 rounded-lg mb-6">
+          <div className={`p-4 rounded-lg mb-6 ${isDark ? 'bg-green-900/20 text-green-400' : 'bg-green-50 text-green-600'}`}>
             Order created: {orderId}. Redirecting to payment...
           </div>
         )}
         
-        <div className="bg-white dark:bg-slate-800 rounded-lg p-6 mb-6">
+        <div className={`rounded-lg p-6 mb-6 ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}>
           <h2 className="font-semibold mb-4">Select Provider</h2>
           <div className="grid grid-cols-2 gap-4 mb-6">
             {providers.map(p => (
               <button 
                 key={p.id} 
                 onClick={() => { setProvider(p.id); setMethod(''); }}
-                className={`p-4 rounded-lg border-2 transition-colors ${provider === p.id ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20' : 'border-slate-200 dark:border-slate-700 hover:border-orange-300'}`}
+                className={`p-4 rounded-lg border-2 transition-colors ${provider === p.id ? (isDark ? 'border-orange-500 bg-orange-900/20' : 'border-orange-500 bg-orange-50') : (isDark ? 'border-gray-700 hover:border-orange-300' : 'border-gray-200 hover:border-orange-300')}`}
               >
                 <div className="text-3xl mb-2">{p.logo}</div>
                 <div className="font-semibold">{p.name}</div>
-                <div className="text-xs text-slate-500">Fees: {p.fees}</div>
-                <div className="text-xs text-slate-500">${p.minAmount} - ${p.maxAmount.toLocaleString()}</div>
+                <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Fees: {p.fees}</div>
+                <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>${p.minAmount} - ${p.maxAmount.toLocaleString()}</div>
               </button>
             ))}
           </div>
           
           <div className="mb-4">
-            <label className="block text-sm text-slate-500 dark:text-slate-400 mb-2">Fiat Currency</label>
+            <label className={`block text-sm mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Fiat Currency</label>
             <select 
               value={fiat} 
               onChange={(e) => setFiat(e.target.value)} 
-              className="w-full bg-slate-100 dark:bg-slate-700 rounded-lg px-4 py-3"
+              className={`w-full rounded-lg px-4 py-3 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}
             >
               <option value="USD">USD - US Dollar</option>
               <option value="EUR">EUR - Euro</option>
@@ -183,7 +185,7 @@ export default function FiatRamps() {
           </div>
           
           <div className="mb-4">
-            <label className="block text-sm text-slate-500 dark:text-slate-400 mb-2">Amount ({fiat})</label>
+            <label className={`block text-sm mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Amount ({fiat})</label>
             <input 
               type="number" 
               value={fiatAmount} 
@@ -191,22 +193,22 @@ export default function FiatRamps() {
               placeholder="100"
               min={selectedProvider?.minAmount || 30}
               max={selectedProvider?.maxAmount || 50000}
-              className="w-full bg-slate-100 dark:bg-slate-700 rounded-lg px-4 py-3 text-xl"
+              className={`w-full rounded-lg px-4 py-3 text-xl ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}
             />
             {selectedProvider && (
-              <div className="text-xs text-slate-500 mt-1">
+              <div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 Min: ${selectedProvider.minAmount} - Max: ${selectedProvider.maxAmount.toLocaleString()}
               </div>
             )}
           </div>
           
           <div className="mb-4">
-            <label className="block text-sm text-slate-500 dark:text-slate-400 mb-2">Crypto Currency</label>
+            <label className={`block text-sm mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Crypto Currency</label>
             <div className="flex gap-2">
               <select 
                 value={crypto} 
                 onChange={(e) => setCrypto(e.target.value)} 
-                className="bg-slate-100 dark:bg-slate-700 rounded-lg px-4 py-3"
+                className={`rounded-lg px-4 py-3 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}
               >
                 <option value="ETH">ETH - Ethereum</option>
                 <option value="BTC">BTC - Bitcoin</option>
@@ -219,7 +221,7 @@ export default function FiatRamps() {
                 value={cryptoAmount} 
                 readOnly
                 placeholder="0.0"
-                className="flex-1 bg-slate-100 dark:bg-slate-700 rounded-lg px-4 py-3 text-xl"
+                className={`flex-1 rounded-lg px-4 py-3 text-xl ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}
               />
             </div>
             {priceQuote && (
@@ -231,11 +233,11 @@ export default function FiatRamps() {
           
           {selectedProvider && (
             <div className="mb-6">
-              <label className="block text-sm text-slate-500 dark:text-slate-400 mb-2">Payment Method</label>
+              <label className={`block text-sm mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Payment Method</label>
               <select 
                 value={method} 
                 onChange={(e) => setMethod(e.target.value)} 
-                className="w-full bg-slate-100 dark:bg-slate-700 rounded-lg px-4 py-3"
+                className={`w-full rounded-lg px-4 py-3 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}
               >
                 <option value="">Select payment method</option>
                 {selectedProvider.methods.map(m => (

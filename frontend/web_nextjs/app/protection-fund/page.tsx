@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 
 // Types - matching backend API
 interface FundStats {
@@ -68,6 +69,8 @@ export default function ProtectionFundPage() {
       setDarkMode(document.documentElement.classList.contains('dark'));
     }
   }, []);
+
+  const { isDark } = useTheme();
 
   // Fetch data from backend
   const fetchStats = useCallback(async () => {
@@ -148,22 +151,22 @@ export default function ProtectionFundPage() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'paid':
-        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+        return isDark ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-800';
       case 'approved':
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+        return isDark ? 'bg-blue-900 text-blue-200' : 'bg-blue-100 text-blue-800';
       case 'pending':
       case 'review':
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+        return isDark ? 'bg-yellow-900 text-yellow-200' : 'bg-yellow-100 text-yellow-800';
       case 'rejected':
-        return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+        return isDark ? 'bg-red-900 text-red-200' : 'bg-red-100 text-red-800';
       default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200';
+        return isDark ? 'bg-gray-800 text-gray-200' : 'bg-gray-100 text-gray-800';
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+    <div className={`min-h-screen ${isDark ? 'bg-slate-900' : 'bg-slate-50'}`}>
+      <header className={`border-b ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
@@ -207,41 +210,41 @@ export default function ProtectionFundPage() {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-3 gap-4 mb-8">
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-6 border border-slate-200 dark:border-slate-700">
-            <p className="text-sm text-slate-500 dark:text-slate-400">Current Coverage</p>
+          <div className={`rounded-lg p-6 border ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Current Coverage</p>
             <p className="text-3xl font-bold text-green-600">{loading ? '...' : formatCurrency(stats.currentCoverage)}</p>
-            <p className="text-sm text-slate-500 mt-1">Available for claims</p>
+            <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Available for claims</p>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-6 border border-slate-200 dark:border-slate-700">
-            <p className="text-sm text-slate-500 dark:text-slate-400">Annual Budget</p>
+          <div className={`rounded-lg p-6 border ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Annual Budget</p>
             <p className="text-3xl font-bold">{loading ? '...' : formatCurrency(stats.annualBudget)}</p>
-            <p className="text-sm text-slate-500 mt-1">2026 allocation</p>
+            <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>2026 allocation</p>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-6 border border-slate-200 dark:border-slate-700">
-            <p className="text-sm text-slate-500 dark:text-slate-400">Reserve Ratio</p>
+          <div className={`rounded-lg p-6 border ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Reserve Ratio</p>
             <p className="text-3xl font-bold text-blue-600">{loading ? '...' : `${(stats.reserveRatio * 100).toFixed(0)}%`}</p>
-            <p className="text-sm text-slate-500 mt-1">Of total fund maintained</p>
+            <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Of total fund maintained</p>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-          <div className="flex border-b border-slate-200 dark:border-slate-700">
+        <div className={`rounded-lg border ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <div className={`flex border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
             <button
               onClick={() => setActiveTab('overview')}
-              className={`px-6 py-4 font-medium ${activeTab === 'overview' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500'}`}
+              className={`px-6 py-4 font-medium ${activeTab === 'overview' ? 'text-blue-600 border-b-2 border-blue-600' : (isDark ? 'text-gray-400' : 'text-gray-500')}`}
             >
               Coverage Details
             </button>
             <button
               onClick={() => setActiveTab('claims')}
-              className={`px-6 py-4 font-medium ${activeTab === 'claims' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500'}`}
+              className={`px-6 py-4 font-medium ${activeTab === 'claims' ? 'text-blue-600 border-b-2 border-blue-600' : (isDark ? 'text-gray-400' : 'text-gray-500')}`}
             >
               Recent Claims
             </button>
             <button
               onClick={() => setActiveTab('coverage')}
-              className={`px-6 py-4 font-medium ${activeTab === 'coverage' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500'}`}
+              className={`px-6 py-4 font-medium ${activeTab === 'coverage' ? 'text-blue-600 border-b-2 border-blue-600' : (isDark ? 'text-gray-400' : 'text-gray-500')}`}
             >
               How It Works
             </button>
@@ -251,8 +254,8 @@ export default function ProtectionFundPage() {
             {activeTab === 'overview' && (
               <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-6">
-                  <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                    <h3 className="font-semibold text-green-800 dark:text-green-200 mb-3">Covered Events</h3>
+                  <div className={`p-4 rounded-lg border ${isDark ? 'bg-green-900/20 border-green-800' : 'bg-green-50 border-green-200'}`}>
+                    <h3 className={`font-semibold mb-3 ${isDark ? 'text-green-200' : 'text-green-800'}`}>Covered Events</h3>
                     <ul className="space-y-2 text-sm">
                       <li className="flex items-center gap-2">
                         <span className="text-green-500">✓</span> Smart contract exploits
@@ -271,8 +274,8 @@ export default function ProtectionFundPage() {
                       </li>
                     </ul>
                   </div>
-                  <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
-                    <h3 className="font-semibold text-red-800 dark:text-red-200 mb-3">Not Covered</h3>
+                  <div className={`p-4 rounded-lg border ${isDark ? 'bg-red-900/20 border-red-800' : 'bg-red-50 border-red-200'}`}>
+                    <h3 className={`font-semibold mb-3 ${isDark ? 'text-red-200' : 'text-red-800'}`}>Not Covered</h3>
                     <ul className="space-y-2 text-sm">
                       <li className="flex items-center gap-2">
                         <span className="text-red-500">✗</span> User negligence
@@ -293,23 +296,23 @@ export default function ProtectionFundPage() {
                   </div>
                 </div>
 
-                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                  <h3 className="font-semibold text-blue-800 dark:text-blue-200 mb-3">Coverage Limits</h3>
+                <div className={`p-4 rounded-lg border ${isDark ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-200'}`}>
+                  <h3 className={`font-semibold mb-3 ${isDark ? 'text-blue-200' : 'text-blue-800'}`}>Coverage Limits</h3>
                   <div className="grid grid-cols-3 gap-4 text-sm">
                     <div>
                       <p className="font-medium">Standard Users</p>
                       <p className="text-2xl font-bold">$10,000</p>
-                      <p className="text-slate-500">Max per user</p>
+                      <p className={isDark ? 'text-gray-400' : 'text-gray-500'}>Max per user</p>
                     </div>
                     <div>
                       <p className="font-medium">VIP Users</p>
                       <p className="text-2xl font-bold">$50,000</p>
-                      <p className="text-slate-500">With KYC verification</p>
+                      <p className={isDark ? 'text-gray-400' : 'text-gray-500'}>With KYC verification</p>
                     </div>
                     <div>
                       <p className="font-medium">Institutional</p>
                       <p className="text-2xl font-bold">$500,000</p>
-                      <p className="text-slate-500">Custom coverage</p>
+                      <p className={isDark ? 'text-gray-400' : 'text-gray-500'}>Custom coverage</p>
                     </div>
                   </div>
                 </div>
@@ -319,14 +322,14 @@ export default function ProtectionFundPage() {
             {activeTab === 'claims' && (
               <div className="space-y-4">
                 {claims.map(claim => (
-                  <div key={claim.claimId} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                  <div key={claim.claimId} className={`flex items-center justify-between p-4 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-50'}`}>
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
                         {claim.userAddress.slice(2, 4).toUpperCase()}
                       </div>
                       <div>
                         <p className="font-medium">{claim.userAddress}</p>
-                        <p className="text-sm text-slate-500">{claim.reason}</p>
+                        <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{claim.reason}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
@@ -347,30 +350,30 @@ export default function ProtectionFundPage() {
             {activeTab === 'coverage' && (
               <div className="space-y-6">
                 <div className="flex gap-4">
-                  <div className="flex-1 p-4 bg-slate-50 dark:bg-slate-700 rounded-lg text-center">
+                  <div className={`flex-1 p-4 rounded-lg text-center ${isDark ? 'bg-slate-700' : 'bg-slate-50'}`}>
                     <div className="text-4xl mb-2">1</div>
                     <h3 className="font-semibold mb-2">Report Incident</h3>
-                    <p className="text-sm text-slate-500">Contact support within 7 days of incident</p>
+                    <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Contact support within 7 days of incident</p>
                   </div>
-                  <div className="flex-1 p-4 bg-slate-50 dark:bg-slate-700 rounded-lg text-center">
+                  <div className={`flex-1 p-4 rounded-lg text-center ${isDark ? 'bg-slate-700' : 'bg-slate-50'}`}>
                     <div className="text-4xl mb-2">2</div>
                     <h3 className="font-semibold mb-2">Submit Evidence</h3>
-                    <p className="text-sm text-slate-500">Provide proof of unauthorized transaction</p>
+                    <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Provide proof of unauthorized transaction</p>
                   </div>
-                  <div className="flex-1 p-4 bg-slate-50 dark:bg-slate-700 rounded-lg text-center">
+                  <div className={`flex-1 p-4 rounded-lg text-center ${isDark ? 'bg-slate-700' : 'bg-slate-50'}`}>
                     <div className="text-4xl mb-2">3</div>
                     <h3 className="font-semibold mb-2">Review Process</h3>
-                    <p className="text-sm text-slate-500">Team reviews claim within 5 business days</p>
+                    <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Team reviews claim within 5 business days</p>
                   </div>
-                  <div className="flex-1 p-4 bg-slate-50 dark:bg-slate-700 rounded-lg text-center">
+                  <div className={`flex-1 p-4 rounded-lg text-center ${isDark ? 'bg-slate-700' : 'bg-slate-50'}`}>
                     <div className="text-4xl mb-2">4</div>
                     <h3 className="font-semibold mb-2">Receive Compensation</h3>
-                    <p className="text-sm text-slate-500">Funds transferred to your wallet</p>
+                    <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Funds transferred to your wallet</p>
                   </div>
                 </div>
 
-                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                  <p className="text-yellow-800 dark:text-yellow-200">
+                <div className={`p-4 border rounded-lg ${isDark ? 'bg-yellow-900/20 border-yellow-800' : 'bg-yellow-50 border-yellow-200'}`}>
+                  <p className={isDark ? 'text-yellow-200' : 'text-yellow-800'}>
                     <strong>Note:</strong> Claims must be reported within 7 days of the incident. 
                     Maximum coverage depends on your account level. False claims will result in account termination.
                   </p>

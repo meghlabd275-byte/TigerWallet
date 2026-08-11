@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 
 interface Proposal {
   id: number;
@@ -108,6 +109,7 @@ const MOCK_DELEGATES: Delegate[] = [
 ];
 
 export default function DAOPage() {
+  const { isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<'proposals' | 'delegates' | 'treasury'>('proposals');
   const [voteAmount, setVoteAmount] = useState('');
   const [votingProposal, setVotingProposal] = useState<Proposal | null>(null);
@@ -125,7 +127,7 @@ export default function DAOPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
+    <div className={`min-h-screen ${isDark ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-900'}`}>
       <header className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
@@ -147,20 +149,20 @@ export default function DAOPage() {
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Stats */}
         <div className="grid grid-cols-4 gap-4 mb-6">
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border">
-            <p className="text-sm text-slate-500">Total Proposals</p>
+          <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-4`}>
+            <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Total Proposals</p>
             <p className="text-2xl font-bold">42</p>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border">
-            <p className="text-sm text-slate-500">Active</p>
+          <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-4`}>
+            <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Active</p>
             <p className="text-2xl font-bold text-blue-600">2</p>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border">
-            <p className="text-sm text-slate-500">Total Voters</p>
+          <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-4`}>
+            <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Total Voters</p>
             <p className="text-2xl font-bold">1,250</p>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border">
-            <p className="text-sm text-slate-500">Treasury</p>
+          <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-4`}>
+            <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Treasury</p>
             <p className="text-2xl font-bold">$22.5M</p>
           </div>
         </div>
@@ -171,7 +173,7 @@ export default function DAOPage() {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-6 py-2 rounded-lg font-medium ${activeTab === tab ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800'}`}
+              className={`px-6 py-2 rounded-lg font-medium ${activeTab === tab ? 'bg-indigo-600 text-white' : `${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}`}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
@@ -187,11 +189,11 @@ export default function DAOPage() {
               const quorumPercent = (totalVotes / proposal.quorum) * 100;
               
               return (
-                <div key={proposal.id} className="bg-white dark:bg-slate-800 rounded-xl p-6 border">
+                <div key={proposal.id} className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-xl p-6`}>
                   <div className="flex items-start justify-between mb-4">
                     <div>
                       <div className="flex items-center gap-3 mb-2">
-                        <span className="text-sm text-slate-500">#{proposal.id}</span>
+                        <span className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>#{proposal.id}</span>
                         <span className={`px-2 py-1 rounded text-xs ${
                           proposal.type === 'parameter' ? 'bg-blue-100 text-blue-800' :
                           proposal.type === 'treasury' ? 'bg-purple-100 text-purple-800' :
@@ -210,7 +212,7 @@ export default function DAOPage() {
                         </span>
                       </div>
                       <h3 className="text-lg font-bold">{proposal.title}</h3>
-                      <p className="text-sm text-slate-500 mt-1">by {proposal.proposer}</p>
+                      <p className={`text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>by {proposal.proposer}</p>
                     </div>
                     {proposal.status === 'active' && (
                       <button
@@ -222,7 +224,7 @@ export default function DAOPage() {
                     )}
                   </div>
                   
-                  <p className="text-slate-600 dark:text-slate-300 mb-4">{proposal.description}</p>
+                  <p className={`mb-4 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{proposal.description}</p>
                   
                   {/* Vote Progress */}
                   <div className="mb-4">
@@ -230,7 +232,7 @@ export default function DAOPage() {
                       <span className="text-green-600">{proposal.votesFor.toLocaleString()} votes FOR</span>
                       <span className="text-red-600">{proposal.votesAgainst.toLocaleString()} votes AGAINST</span>
                     </div>
-                    <div className="h-3 bg-slate-200 rounded-full overflow-hidden">
+                    <div className={`h-3 rounded-full overflow-hidden ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`}>
                       <div className="h-full flex">
                         <div className="bg-green-500" style={{ width: `${forPercent}%` }}></div>
                         <div className="bg-red-500" style={{ width: `${100 - forPercent}%` }}></div>
@@ -239,10 +241,10 @@ export default function DAOPage() {
                   </div>
                   
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-500">
+                    <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
                       {Math.floor((proposal.endTime - Date.now()) / 86400000)} days remaining
                     </span>
-                    <span className="text-slate-500">
+                    <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
                       Quorum: {quorumPercent.toFixed(1)}% ({totalVotes.toLocaleString()} / {proposal.quorum.toLocaleString()})
                     </span>
                   </div>
@@ -254,34 +256,34 @@ export default function DAOPage() {
 
         {/* Delegates Tab */}
         {activeTab === 'delegates' && (
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border">
+          <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-xl p-6`}>
             <h3 className="text-lg font-bold mb-4">Top Delegates</h3>
             <div className="space-y-4">
               {MOCK_DELEGATES.map(delegate => (
-                <div key={delegate.rank} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                <div key={delegate.rank} className={`flex items-center justify-between p-4 ${isDark ? 'bg-slate-700' : 'bg-slate-50'} rounded-lg`}>
                   <div className="flex items-center gap-4">
                     <span className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
                       delegate.rank === 1 ? 'bg-yellow-400 text-yellow-900' :
                       delegate.rank === 2 ? 'bg-gray-300 text-gray-700' :
                       delegate.rank === 3 ? 'bg-orange-400 text-orange-900' :
-                      'bg-slate-200 dark:bg-slate-600'
+                      isDark ? 'bg-slate-600' : 'bg-slate-200'
                     }`}>
                       {delegate.rank}
                     </span>
                     <span className="text-2xl">{delegate.avatar}</span>
                     <div>
                       <p className="font-semibold">{delegate.name}</p>
-                      <p className="text-sm text-slate-500">{delegate.address}</p>
+                      <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{delegate.address}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-6">
                     <div className="text-right">
                       <p className="font-bold">{delegate.votes.toLocaleString()}</p>
-                      <p className="text-xs text-slate-500">TGR votes</p>
+                      <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>TGR votes</p>
                     </div>
                     <div className="text-right">
                       <p className="font-bold">{delegate.proposals}</p>
-                      <p className="text-xs text-slate-500">proposals</p>
+                      <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>proposals</p>
                     </div>
                     <button
                       onClick={() => handleDelegate(delegate)}
@@ -299,28 +301,28 @@ export default function DAOPage() {
         {/* Treasury Tab */}
         {activeTab === 'treasury' && (
           <div className="space-y-4">
-            <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border">
+            <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-xl p-6`}>
               <h3 className="text-lg font-bold mb-4">Treasury Holdings</h3>
               <div className="grid grid-cols-3 gap-4">
-                <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
-                  <p className="text-sm text-slate-500">TGR</p>
+                <div className={`p-4 ${isDark ? 'bg-slate-700' : 'bg-slate-50'} rounded-lg`}>
+                  <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>TGR</p>
                   <p className="text-2xl font-bold">15,000,000</p>
                   <p className="text-sm text-green-600">$3,750,000</p>
                 </div>
-                <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
-                  <p className="text-sm text-slate-500">USDT</p>
+                <div className={`p-4 ${isDark ? 'bg-slate-700' : 'bg-slate-50'} rounded-lg`}>
+                  <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>USDT</p>
                   <p className="text-2xl font-bold">8,500,000</p>
                   <p className="text-sm">$8,500,000</p>
                 </div>
-                <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
-                  <p className="text-sm text-slate-500">RUSD</p>
+                <div className={`p-4 ${isDark ? 'bg-slate-700' : 'bg-slate-50'} rounded-lg`}>
+                  <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>RUSD</p>
                   <p className="text-2xl font-bold">5,000,000</p>
                   <p className="text-sm">$5,000,000</p>
                 </div>
               </div>
             </div>
             
-            <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border">
+            <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-xl p-6`}>
               <h3 className="text-lg font-bold mb-4">Recent Treasury Transactions</h3>
               <div className="space-y-3">
                 {[
@@ -329,16 +331,16 @@ export default function DAOPage() {
                   { type: 'Income', amount: '100,000 USDT', from: 'Trading Fees', date: '3 days ago' },
                   { type: 'Expense', amount: '500,000 TGR', from: 'Team Vesting', date: '1 week ago' },
                 ].map((tx, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                  <div key={i} className={`flex items-center justify-between p-3 ${isDark ? 'bg-slate-700' : 'bg-slate-50'} rounded-lg`}>
                     <div>
                       <p className="font-medium">{tx.type}</p>
-                      <p className="text-sm text-slate-500">{tx.from}</p>
+                      <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{tx.from}</p>
                     </div>
                     <div className="text-right">
                       <p className={`font-bold ${tx.type === 'Income' ? 'text-green-600' : 'text-red-600'}`}>
                         {tx.type === 'Income' ? '+' : '-'}{tx.amount}
                       </p>
-                      <p className="text-xs text-slate-500">{tx.date}</p>
+                      <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{tx.date}</p>
                     </div>
                   </div>
                 ))}
@@ -351,19 +353,19 @@ export default function DAOPage() {
       {/* Vote Modal */}
       {votingProposal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 max-w-md">
+          <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-xl p-6 max-w-md`}>
             <h3 className="text-xl font-bold mb-4">Vote on Proposal #{votingProposal.id}</h3>
             
             <div className="flex gap-2 mb-4">
               <button
                 onClick={() => setVoteSide('for')}
-                className={`flex-1 py-3 rounded-lg font-bold ${voteSide === 'for' ? 'bg-green-600 text-white' : 'bg-slate-200 dark:bg-slate-700'}`}
+                className={`flex-1 py-3 rounded-lg font-bold ${voteSide === 'for' ? 'bg-green-600 text-white' : isDark ? 'bg-slate-700' : 'bg-slate-200'}`}
               >
                 Vote FOR
               </button>
               <button
                 onClick={() => setVoteSide('against')}
-                className={`flex-1 py-3 rounded-lg font-bold ${voteSide === 'against' ? 'bg-red-600 text-white' : 'bg-slate-200 dark:bg-slate-700'}`}
+                className={`flex-1 py-3 rounded-lg font-bold ${voteSide === 'against' ? 'bg-red-600 text-white' : isDark ? 'bg-slate-700' : 'bg-slate-200'}`}
               >
                 Vote AGAINST
               </button>
@@ -383,7 +385,7 @@ export default function DAOPage() {
             <div className="flex gap-4">
               <button
                 onClick={() => setVotingProposal(null)}
-                className="flex-1 py-3 bg-slate-200 dark:bg-slate-700 rounded-lg"
+                className={`flex-1 py-3 rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`}
               >
                 Cancel
               </button>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 
 interface ApiResponse<T> {
   success: boolean;
@@ -49,6 +50,7 @@ const LANGUAGES = [
 ];
 
 export default function I18n() {
+  const { isDark } = useTheme();
   const [currentLang, setCurrentLang] = useState('en');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
@@ -97,33 +99,33 @@ export default function I18n() {
     : LANGUAGES;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
-      <header className="bg-white dark:bg-slate-800 border-b p-4"><div className="flex items-center gap-4"><a href="/" className="text-2xl">🐯</a><h1 className="text-xl font-bold">Language Settings</h1></div></header>
+    <div className={`min-h-screen ${isDark ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-900'}`}>
+      <header className={`${isDark ? 'bg-slate-800' : 'bg-white'} border-b p-4`}><div className="flex items-center gap-4"><a href="/" className="text-2xl">🐯</a><h1 className="text-xl font-bold">Language Settings</h1></div></header>
       <div className="max-w-3xl mx-auto p-8">
-        <div className="bg-white dark:bg-slate-800 rounded-lg p-6 mb-6">
-          <div className="text-sm text-slate-500 mb-2">Current Language</div>
-          <div className="flex items-center gap-3 p-3 bg-slate-100 dark:bg-slate-700 rounded-lg">
+        <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-6 mb-6`}>
+          <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'} mb-2`}>Current Language</div>
+          <div className={`flex items-center gap-3 p-3 ${isDark ? 'bg-slate-700' : 'bg-slate-100'} rounded-lg`}>
             <span className="text-2xl">{LANGUAGES.find(l => l.code === currentLang)?.flag}</span>
             <span className="font-semibold">{LANGUAGES.find(l => l.code === currentLang)?.native}</span>
           </div>
         </div>
         {saved && (
-          <div className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-4 py-2 rounded-lg mb-4">
+          <div className={`${isDark ? 'bg-green-900/30 text-green-400' : 'bg-green-100 text-green-700'} px-4 py-2 rounded-lg mb-4`}>
             ✓ Language preference saved!
           </div>
         )}
         
-        <div className="mb-6"><input type="text" placeholder="Search languages..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full bg-white dark:bg-slate-800 border rounded-lg px-4 py-3" /></div>
+        <div className="mb-6"><input type="text" placeholder="Search languages..." value={search} onChange={(e) => setSearch(e.target.value)} className={`w-full ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} border rounded-lg px-4 py-3`} /></div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {filteredLanguages.map(lang => (
             <button 
               key={lang.code} 
               onClick={() => handleLanguageChange(lang.code)}
               disabled={loading}
-              className={`flex items-center gap-3 p-4 rounded-lg border-2 transition-all ${currentLang === lang.code ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20' : 'border-transparent bg-white dark:bg-slate-800 hover:border-slate-300'} ${loading ? 'opacity-50' : ''}`}
+              className={`flex items-center gap-3 p-4 rounded-lg border-2 transition-all ${currentLang === lang.code ? `border-orange-500 ${isDark ? 'bg-orange-900/20' : 'bg-orange-50'}` : `${isDark ? 'border-slate-700 bg-slate-800' : 'border-transparent bg-white hover:border-slate-300'}`} ${loading ? 'opacity-50' : ''}`}
             >
               <span className="text-2xl">{lang.flag}</span>
-              <div className="text-left"><div className="font-semibold">{lang.native}</div><div className="text-xs text-slate-500">{lang.name}</div></div>
+              <div className="text-left"><div className="font-semibold">{lang.native}</div><div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{lang.name}</div></div>
             </button>
           ))}
         </div>

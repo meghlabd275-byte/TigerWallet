@@ -469,3 +469,21 @@ Notes:
   Android (Services.kt + WalletRepository.kt) generateMnemonic(password) +
   createWallet(name,password,mnemonic) (suspend). Flutter is unaffected: real
   on-device BIP-39/32/44 + flutter_secure_storage (self-custody, no backend pw).
+
+## Frontend (web_nextjs) — light/dark theme switching
+
+- `ThemeProvider` at `frontend/web_nextjs/app/components/ThemeProvider.tsx` exposes `useTheme()` returning `{ theme, isDark, colors, ... }`.
+- Reference implementation: `app/convert/page.tsx` (zero `dark:` Tailwind variants; uses `isDark ? '...' : '...'` ternaries).
+- Themed page pattern (all pages under `app/<route>/page.tsx`):
+  1. `import { useTheme } from '../components/ThemeProvider';`
+  2. `const { isDark } = useTheme();` near the top of the component body (after existing `useState`/`useEffect` hooks).
+  3. Root container: `isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'` (keep layout classes like `min-h-screen`, `p-6`).
+  4. Convert `dark:bg-*`/`dark:text-*`/`dark:border-*` Tailwind variants into `isDark ? 'dark-classes' : 'light-classes'` ternaries. Light-mode equivalents: bg → `bg-white border border-gray-200`; text → `text-gray-900`/`text-gray-600`; secondary text → `text-gray-500`; border → `border-gray-200`/`border-slate-200`.
+- Pages already converted (all under `app/<route>/page.tsx`): themes, tx-simulation, gas-estimation, approvals, address_book, nft-marketplace, bug-bounty, defi, staking, token_sale, ieo, master_wallet, copy_trading, swap, walletconnect, fiat-ramps, price-feeds, protection-fund, kyc, history, social_recovery, gift_cards, biometric, insurance_fund, widgets, dao, perpetual, notifications_center, launchpool, fiat_onramp, i18n. Verify with `grep -rn "dark:" app/` (should be 0 in themed pages). Full `npx tsc --noEmit` passes with 0 errors after `npm install`.
+- NOTE: `approvals/page.tsx` `RISK_COLORS` badges are intentionally light-tinted and not theme-dependent.
+
+### Pitfalls observed during conversion
+- A half-converted file may already reference `isDark` in JSX but be **missing the import + hook declaration** → compiles to "isDark is not defined". Always confirm both `import { useTheme }` and `const { isDark } = useTheme();` exist (token_sale and ieo hit this).
+- When converting a static multi-class `className` to a template literal, keep ALL original classes inside the backticks; accidentally leaving trailing classes (e.g. `px-4 py-3`) outside the closing backtick produces an unbalanced template literal (syntax error). Verify backtick count is even after edits (gas-estimation error banner hit this).
+- `master_wallet/page.tsx` contains REAL BIP-39/AES-GCM/PBKDF2/WebCrypto logic — only change its colors, never its crypto code.
+

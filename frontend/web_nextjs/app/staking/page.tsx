@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 
 interface StakingPosition {
   id: string;
@@ -63,6 +64,7 @@ export default function Staking() {
   const [activeTab, setActiveTab] = useState<'stake' | 'pools' | 'positions'>('pools');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const { isDark } = useTheme();
 
   const getUserId = () => {
     if (typeof window === 'undefined') return '';
@@ -253,12 +255,12 @@ export default function Staking() {
   const totalRewards = positions.reduce((acc, p) => acc + parseFloat(p.reward), 0);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-50">
-      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+    <div className={`min-h-screen ${isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+      <header className={`${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200'} border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4"><a href="/" className="text-2xl">🐯</a><h1 className="text-xl font-bold">Staking</h1></div>
-            <nav className="flex gap-4"><a href="/wallet" className="text-slate-600 dark:text-slate-400 hover:text-orange-500">Wallet</a></nav>
+            <nav className="flex gap-4"><a href="/wallet" className={`${isDark ? 'text-gray-400' : 'text-gray-600'} hover:text-orange-500`}>Wallet</a></nav>
           </div>
         </div>
       </header>
@@ -266,23 +268,23 @@ export default function Staking() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4"><div className="text-slate-500 text-sm">Total Staked</div><div className="text-2xl font-bold">{totalStaked.toFixed(2)}</div></div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4"><div className="text-slate-500 text-sm">Total Rewards</div><div className="text-2xl font-bold text-green-500">{totalRewards.toFixed(4)}</div></div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4"><div className="text-slate-500 text-sm">Active Positions</div><div className="text-2xl font-bold">{positions.filter(p => p.status === 'active').length}</div></div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4"><div className="text-slate-500 text-sm">Avg APY</div><div className="text-2xl font-bold text-orange-500">{positions.length > 0 ? (positions.reduce((a, p) => a + p.apy, 0) / positions.length).toFixed(1) : 0}%</div></div>
+          <div className={`${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200'} rounded-lg p-4`}><div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} text-sm`}>Total Staked</div><div className="text-2xl font-bold">{totalStaked.toFixed(2)}</div></div>
+          <div className={`${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200'} rounded-lg p-4`}><div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} text-sm`}>Total Rewards</div><div className="text-2xl font-bold text-green-500">{totalRewards.toFixed(4)}</div></div>
+          <div className={`${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200'} rounded-lg p-4`}><div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} text-sm`}>Active Positions</div><div className="text-2xl font-bold">{positions.filter(p => p.status === 'active').length}</div></div>
+          <div className={`${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200'} rounded-lg p-4`}><div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} text-sm`}>Avg APY</div><div className="text-2xl font-bold text-orange-500">{positions.length > 0 ? (positions.reduce((a, p) => a + p.apy, 0) / positions.length).toFixed(1) : 0}%</div></div>
         </div>
         {/* Tabs */}
-        <div className="flex border-b border-slate-200 dark:border-slate-700 mb-6">
-          <button onClick={() => setActiveTab('pools')} className={`px-6 py-3 ${activeTab === 'pools' ? 'border-b-2 border-orange-500 text-orange-500' : 'text-slate-500'}`}>Staking Pools</button>
-          <button onClick={() => setActiveTab('positions')} className={`px-6 py-3 ${activeTab === 'positions' ? 'border-b-2 border-orange-500 text-orange-500' : 'text-slate-500'}`}>My Positions</button>
+        <div className={`flex border-b ${isDark ? 'border-gray-700' : 'border-gray-200'} mb-6`}>
+          <button onClick={() => setActiveTab('pools')} className={`px-6 py-3 ${activeTab === 'pools' ? 'border-b-2 border-orange-500 text-orange-500' : isDark ? 'text-gray-400' : 'text-gray-500'}`}>Staking Pools</button>
+          <button onClick={() => setActiveTab('positions')} className={`px-6 py-3 ${activeTab === 'positions' ? 'border-b-2 border-orange-500 text-orange-500' : isDark ? 'text-gray-400' : 'text-gray-500'}`}>My Positions</button>
         </div>
         {/* Pools Tab */}
         {activeTab === 'pools' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {STAKING_POOLS.map((pool) => (
-              <div key={pool.id} className="bg-white dark:bg-slate-800 rounded-lg p-4 shadow-sm">
-                <div className="flex items-center justify-between mb-3"><div><div className="font-semibold">{pool.name}</div><div className="text-xs text-slate-500">{pool.chainName}</div></div><span className="bg-orange-100 text-orange-600 px-2 py-1 rounded text-sm font-semibold">{pool.apy}% APY</span></div>
-                <div className="text-sm text-slate-500 mb-3">{pool.description}</div>
+              <div key={pool.id} className={`${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200'} rounded-lg p-4 shadow-sm`}>
+                <div className="flex items-center justify-between mb-3"><div><div className="font-semibold">{pool.name}</div><div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{pool.chainName}</div></div><span className="bg-orange-100 text-orange-600 px-2 py-1 rounded text-sm font-semibold">{pool.apy}% APY</span></div>
+                <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'} mb-3`}>{pool.description}</div>
                 <div className="grid grid-cols-2 gap-2 text-xs mb-3"><div>Min: {pool.minStake} {pool.token}</div><div>Lock: {pool.lockPeriod} days</div><div className="col-span-2">Total: ${pool.totalStaked}</div></div>
                 <button onClick={() => { setSelectedPool(pool); setActiveTab('stake'); }} className="w-full bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg">Stake</button>
               </div>
@@ -291,21 +293,21 @@ export default function Staking() {
         )}
         {/* Stake Tab */}
         {activeTab === 'stake' && selectedPool && (
-          <div className="max-w-md mx-auto bg-white dark:bg-slate-800 rounded-lg p-6">
+          <div className={`max-w-md mx-auto ${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200'} rounded-lg p-6`}>
             <h2 className="text-xl font-semibold mb-4">Stake {selectedPool.token}</h2>
-            <div className="bg-slate-100 dark:bg-slate-700 rounded-lg p-3 mb-4"><div className="text-sm text-slate-500">Pool</div><div className="font-semibold">{selectedPool.name}</div></div>
-            <div className="mb-4"><label className="block text-sm text-slate-500 mb-2">Amount</label><input type="number" value={stakeAmount} onChange={(e) => setStakeAmount(e.target.value)} placeholder={`Min: ${selectedPool.minStake}`} className="w-full bg-slate-100 dark:bg-slate-700 border-0 rounded-lg px-4 py-3 text-xl" /></div>
-            <div className="bg-slate-100 dark:bg-slate-700 rounded-lg p-3 mb-4"><div className="grid grid-cols-2 gap-2 text-sm"><div><span className="text-slate-500">APY</span><div className="font-semibold text-orange-500">{selectedPool.apy}%</div></div><div><span className="text-slate-500">Lock Period</span><div className="font-semibold">{selectedPool.lockPeriod} days</div></div></div></div>
-            <div className="flex gap-4"><button onClick={() => setActiveTab('pools')} className="flex-1 bg-slate-200 dark:bg-slate-700 py-3 rounded-lg">Cancel</button><button onClick={handleStake} disabled={loading} className="flex-1 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-400 text-white py-3 rounded-lg">{loading ? 'Staking...' : 'Stake Now'}</button></div>
+            <div className={`${isDark ? 'bg-gray-700' : 'bg-gray-100'} rounded-lg p-3 mb-4`}><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Pool</div><div className="font-semibold">{selectedPool.name}</div></div>
+            <div className="mb-4"><label className={`block text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'} mb-2`}>Amount</label><input type="number" value={stakeAmount} onChange={(e) => setStakeAmount(e.target.value)} placeholder={`Min: ${selectedPool.minStake}`} className={`w-full ${isDark ? 'bg-gray-700' : 'bg-gray-100'} border-0 rounded-lg px-4 py-3 text-xl`} /></div>
+            <div className={`${isDark ? 'bg-gray-700' : 'bg-gray-100'} rounded-lg p-3 mb-4`}><div className="grid grid-cols-2 gap-2 text-sm"><div><span className={isDark ? 'text-gray-400' : 'text-gray-500'}>APY</span><div className="font-semibold text-orange-500">{selectedPool.apy}%</div></div><div><span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Lock Period</span><div className="font-semibold">{selectedPool.lockPeriod} days</div></div></div></div>
+            <div className="flex gap-4"><button onClick={() => setActiveTab('pools')} className={`flex-1 ${isDark ? 'bg-gray-700' : 'bg-gray-200'} py-3 rounded-lg`}>Cancel</button><button onClick={handleStake} disabled={loading} className="flex-1 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-400 text-white py-3 rounded-lg">{loading ? 'Staking...' : 'Stake Now'}</button></div>
           </div>
         )}
         {/* Positions Tab */}
         {activeTab === 'positions' && (
           <div className="space-y-4">
-            {positions.length === 0 ? <div className="bg-white dark:bg-slate-800 rounded-lg p-12 text-center"><div className="text-6xl mb-4">🎯</div><h3 className="text-xl font-semibold mb-2">No Staking Positions</h3><p className="text-slate-500">Start staking to earn rewards</p><button onClick={() => setActiveTab('pools')} className="mt-4 bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg">View Pools</button></div> : positions.map((pos) => (
-              <div key={pos.id} className="bg-white dark:bg-slate-800 rounded-lg p-4 shadow-sm">
-                <div className="flex items-center justify-between mb-3"><div><div className="font-semibold">{pos.token} Staking</div><div className="text-sm text-slate-500">{pos.validator} • {pos.chainName}</div></div><span className={`px-2 py-1 rounded text-xs ${pos.status === 'active' ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600'}`}>{pos.status.toUpperCase()}</span></div>
-                <div className="grid grid-cols-3 gap-4 mb-3"><div><div className="text-xs text-slate-500">Staked</div><div className="font-semibold">{pos.stakedAmount} {pos.token}</div></div><div><div className="text-xs text-slate-500">Rewards</div><div className="font-semibold text-green-500">{pos.reward} {pos.token}</div></div><div><div className="text-xs text-slate-500">APY</div><div className="font-semibold text-orange-500">{pos.apy}%</div></div></div>
+            {positions.length === 0 ? <div className={`${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200'} rounded-lg p-12 text-center`}><div className="text-6xl mb-4">🎯</div><h3 className="text-xl font-semibold mb-2">No Staking Positions</h3><p className={isDark ? 'text-gray-400' : 'text-gray-500'}>Start staking to earn rewards</p><button onClick={() => setActiveTab('pools')} className="mt-4 bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg">View Pools</button></div> : positions.map((pos) => (
+              <div key={pos.id} className={`${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200'} rounded-lg p-4 shadow-sm`}>
+                <div className="flex items-center justify-between mb-3"><div><div className="font-semibold">{pos.token} Staking</div><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{pos.validator} • {pos.chainName}</div></div><span className={`px-2 py-1 rounded text-xs ${pos.status === 'active' ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600'}`}>{pos.status.toUpperCase()}</span></div>
+                <div className="grid grid-cols-3 gap-4 mb-3"><div><div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Staked</div><div className="font-semibold">{pos.stakedAmount} {pos.token}</div></div><div><div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Rewards</div><div className="font-semibold text-green-500">{pos.reward} {pos.token}</div></div><div><div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>APY</div><div className="font-semibold text-orange-500">{pos.apy}%</div></div></div>
                 <div className="flex gap-2"><button onClick={() => handleClaim(pos.id)} disabled={loading || parseFloat(pos.reward) === 0} className="flex-1 bg-green-500 hover:bg-green-600 disabled:bg-slate-400 text-white py-2 rounded-lg">Claim Rewards</button><button onClick={() => handleUnstake(pos.id)} disabled={loading} className="flex-1 bg-red-500 hover:bg-red-600 disabled:bg-slate-400 text-white py-2 rounded-lg">Unstake</button></div>
               </div>
             ))}

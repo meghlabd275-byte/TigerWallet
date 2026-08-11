@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 
 interface Notification {
   id: string;
@@ -22,6 +23,7 @@ const NOTIFICATION_TYPES = [
 ];
 
 export default function NotificationsCenter() {
+  const { isDark } = useTheme();
   const [notifications] = useState<Notification[]>([]);
   const [filter, setFilter] = useState('all');
   const [settings, setSettings] = useState({
@@ -58,11 +60,11 @@ export default function NotificationsCenter() {
 
   const getTypeColor = (type: string) => {
     switch (type) {
-      case 'transaction': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-      case 'price': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case 'trade': return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200';
-      case 'security': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-      case 'system': return 'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-200';
+      case 'transaction': return isDark ? 'bg-blue-900 text-blue-200' : 'bg-blue-100 text-blue-800';
+      case 'price': return isDark ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-800';
+      case 'trade': return isDark ? 'bg-purple-900 text-purple-200' : 'bg-purple-100 text-purple-800';
+      case 'security': return isDark ? 'bg-red-900 text-red-200' : 'bg-red-100 text-red-800';
+      case 'system': return isDark ? 'bg-slate-700 text-slate-200' : 'bg-slate-100 text-slate-800';
       default: return 'bg-slate-100 text-slate-800';
     }
   };
@@ -90,9 +92,9 @@ export default function NotificationsCenter() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-50">
+    <div className={`min-h-screen ${isDark ? 'bg-slate-900 text-slate-50' : 'bg-slate-50 text-slate-900'}`}>
       {/* Header */}
-      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+      <header className={`${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} border-b`}>
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
@@ -105,18 +107,18 @@ export default function NotificationsCenter() {
               )}
             </div>
             <nav className="flex gap-4">
-              <a href="/wallet" className="text-slate-600 dark:text-slate-400 hover:text-orange-500">Wallet</a>
+              <a href="/wallet" className={`${isDark ? 'text-slate-400' : 'text-slate-600'} hover:text-orange-500`}>Wallet</a>
             </nav>
           </div>
         </div>
       </header>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6 rounded-lg border border-amber-400 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">Live notifications are unavailable until an authenticated notification service is configured.</div>
+        <div className={`mb-6 rounded-lg border px-4 py-3 ${isDark ? 'border-amber-700 bg-amber-900/30 text-amber-200' : 'border-amber-400 bg-amber-50 text-amber-900'}`}>Live notifications are unavailable until an authenticated notification service is configured.</div>
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Sidebar */}
           <div className="lg:col-span-1">
-            <div className="bg-white dark:bg-slate-800 rounded-lg p-4 shadow-sm">
+            <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-4 shadow-sm`}>
               <h3 className="font-semibold mb-4">Filter</h3>
               <div className="space-y-1">
                 {NOTIFICATION_TYPES.map((type) => (
@@ -125,8 +127,8 @@ export default function NotificationsCenter() {
                     onClick={() => setFilter(type.id)}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
                       filter === type.id
-                        ? 'bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-200'
-                        : 'hover:bg-slate-100 dark:hover:bg-slate-700'
+                        ? (isDark ? 'bg-orange-900 text-orange-200' : 'bg-orange-100 text-orange-700')
+                        : (isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-100')
                     }`}
                   >
                     <span className="mr-2">{type.icon}</span>
@@ -135,7 +137,7 @@ export default function NotificationsCenter() {
                 ))}
               </div>
 
-              <hr className="my-4 border-slate-200 dark:border-slate-700" />
+              <hr className={`my-4 ${isDark ? 'border-slate-700' : 'border-slate-200'}`} />
 
               <h3 className="font-semibold mb-4">Settings</h3>
               <div className="space-y-3">
@@ -165,7 +167,7 @@ export default function NotificationsCenter() {
           <div className="lg:col-span-3">
             {/* Actions */}
             <div className="flex items-center justify-between mb-4">
-              <span className="text-slate-500 dark:text-slate-400">
+              <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
                 {filteredNotifications.length} notifications
               </span>
               <div className="flex gap-2">
@@ -187,10 +189,10 @@ export default function NotificationsCenter() {
             {/* Notification List */}
             <div className="space-y-3">
               {filteredNotifications.length === 0 ? (
-                <div className="bg-white dark:bg-slate-800 rounded-lg p-12 text-center">
+                <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-12 text-center`}>
                   <div className="text-6xl mb-4">🔔</div>
                   <h3 className="text-xl font-semibold mb-2">No Notifications</h3>
-                  <p className="text-slate-500 dark:text-slate-400">
+                  <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>
                     You're all caught up!
                   </p>
                 </div>
@@ -198,7 +200,7 @@ export default function NotificationsCenter() {
                 filteredNotifications.map((notification) => (
                   <div
                     key={notification.id}
-                    className={`bg-white dark:bg-slate-800 rounded-lg p-4 shadow-sm transition-colors ${
+                    className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-4 shadow-sm transition-colors ${
                       !notification.read ? 'border-l-4 border-orange-500' : ''
                     }`}
                   >
@@ -212,13 +214,13 @@ export default function NotificationsCenter() {
                               {notification.type}
                             </span>
                           </div>
-                          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                          <p className={`text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                             {notification.message}
                           </p>
                           {notification.data && (
                             <div className="mt-2 flex flex-wrap gap-2">
                               {Object.entries(notification.data).map(([key, value]) => (
-                                <span key={key} className="text-xs bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">
+                                <span key={key} className={`text-xs px-2 py-1 rounded ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}>
                                   {key}: {value}
                                 </span>
                               ))}
@@ -235,7 +237,7 @@ export default function NotificationsCenter() {
                         )}
                         <button
                           onClick={() => handleMarkAsRead(notification.id)}
-                          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                          className={isDark ? 'text-slate-400 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'}
                           title="Mark as read"
                         >
                           ✓

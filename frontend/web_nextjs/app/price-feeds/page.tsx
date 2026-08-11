@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTheme } from '../components/ThemeProvider';
 
 interface PriceData {
   symbol: string;
@@ -50,6 +51,7 @@ export default function PriceFeeds() {
   const [searchQuery, setSearchQuery] = useState('');
   const [marketStats, setMarketStats] = useState<MarketStats | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { isDark } = useTheme();
 
   const loadPrices = useCallback(async () => {
     try {
@@ -88,8 +90,8 @@ export default function PriceFeeds() {
   const formatPrice = (p: number): string => p < 1 ? '$' + p.toFixed(4) : p < 100 ? '$' + p.toFixed(2) : '$' + p.toFixed(2);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-50">
-      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+    <div className={`min-h-screen ${isDark ? 'bg-slate-900 text-slate-50' : 'bg-slate-50 text-slate-900'}`}>
+      <header className={`border-b ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4"><a href="/" className="text-2xl">🐯</a><h1 className="text-xl font-bold">Real-Time Prices</h1></div>
@@ -98,26 +100,26 @@ export default function PriceFeeds() {
         </div>
       </header>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <input type="text" placeholder="Search tokens..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-3 mb-6" />
+        <input type="text" placeholder="Search tokens..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className={`w-full border rounded-lg px-4 py-3 mb-6 ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`} />
         {loading ? <div className="text-center py-12"><div className="animate-spin w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full mx-auto"></div></div> : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filteredPrices.map((token) => (
-              <div key={token.symbol} className="bg-white dark:bg-slate-800 rounded-lg p-4 shadow-sm hover:shadow-md">
+              <div key={token.symbol} className={`rounded-lg p-4 shadow-sm hover:shadow-md ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}>
                 <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2"><div className="w-8 h-8 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full flex items-center justify-center text-white font-bold text-sm">{token.symbol.slice(0,2)}</div><div><div className="font-semibold">{token.symbol}</div><div className="text-xs text-slate-500">USD</div></div></div>
+                  <div className="flex items-center gap-2"><div className="w-8 h-8 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full flex items-center justify-center text-white font-bold text-sm">{token.symbol.slice(0,2)}</div><div><div className="font-semibold">{token.symbol}</div><div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>USD</div></div></div>
                   <div className={`px-2 py-1 rounded text-xs font-medium ${token.change24h >= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>{token.change24h >= 0 ? '+' : ''}{token.change24h.toFixed(2)}%</div>
                 </div>
                 <div className="text-2xl font-bold mb-2">{formatPrice(token.price)}</div>
-                <div className="grid grid-cols-2 gap-2 text-xs text-slate-500"><div>24h High: <span className="text-slate-700">{formatPrice(token.high24h)}</span></div><div>24h Low: <span className="text-slate-700">{formatPrice(token.low24h)}</span></div><div>Volume: <span className="text-slate-700">{formatCurrency(token.volume24h)}</span></div><div>MCap: <span className="text-slate-700">{formatCurrency(token.marketCap)}</span></div></div>
+                <div className={`grid grid-cols-2 gap-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}><div>24h High: <span className={isDark ? 'text-slate-200' : 'text-gray-700'}>{formatPrice(token.high24h)}</span></div><div>24h Low: <span className={isDark ? 'text-slate-200' : 'text-gray-700'}>{formatPrice(token.low24h)}</span></div><div>Volume: <span className={isDark ? 'text-slate-200' : 'text-gray-700'}>{formatCurrency(token.volume24h)}</span></div><div>MCap: <span className={isDark ? 'text-slate-200' : 'text-gray-700'}>{formatCurrency(token.marketCap)}</span></div></div>
               </div>
             ))}
           </div>
         )}
         {marketStats && <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4"><div className="text-slate-500 text-sm">Total Market Cap</div><div className="text-xl font-bold">{marketStats.totalMarketCap}</div></div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4"><div className="text-slate-500 text-sm">24h Volume</div><div className="text-xl font-bold">{marketStats.totalVolume24h}</div></div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4"><div className="text-slate-500 text-sm">BTC Dominance</div><div className="text-xl font-bold">{marketStats.btcDominance.toFixed(2)}%</div></div>
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-4"><div className="text-slate-500 text-sm">Active Tokens</div><div className="text-xl font-bold">{marketStats.activeTokens}</div></div>
+          <div className={`rounded-lg p-4 ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Total Market Cap</div><div className="text-xl font-bold">{marketStats.totalMarketCap}</div></div>
+          <div className={`rounded-lg p-4 ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>24h Volume</div><div className="text-xl font-bold">{marketStats.totalVolume24h}</div></div>
+          <div className={`rounded-lg p-4 ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>BTC Dominance</div><div className="text-xl font-bold">{marketStats.btcDominance.toFixed(2)}%</div></div>
+          <div className={`rounded-lg p-4 ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Active Tokens</div><div className="text-xl font-bold">{marketStats.activeTokens}</div></div>
         </div>}
       </div>
     </div>

@@ -11,6 +11,7 @@ import {
   SwapHoriz, Settings, ArrowDropDown,
   OpenInNew, Shield, Speed, CompareArrows
 } from '@mui/icons-material';
+import { useTheme } from '../components/ThemeProvider';
 
 // Same-origin API base: the Next.js app proxies /api/v1/* to the backend
 // services (see app/api/v1/_proxy.ts). In the browser this resolves to the
@@ -53,6 +54,7 @@ const CHAIN_CONFIG: Record<number, { name: string; explorer: string }> = {
 };
 
 export default function SwapPage() {
+  const { isDark } = useTheme();
   const [chainId, setChainId] = useState(1);
   const [tokenIn, setTokenIn] = useState<SwapToken | null>(null);
   const [tokenOut, setTokenOut] = useState<SwapToken | null>(null);
@@ -247,7 +249,7 @@ export default function SwapPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-50 p-6">
+    <div className={`min-h-screen p-6 ${isDark ? 'bg-slate-900 text-slate-50' : 'bg-slate-50 text-slate-900'}`}>
       <header className="mb-8">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -255,7 +257,7 @@ export default function SwapPage() {
             <h1 className="text-2xl font-bold">Swap</h1>
           </div>
           <div className="flex gap-2">
-            <IconButton onClick={() => setShowSettings(true)} className="text-slate-500">
+            <IconButton onClick={() => setShowSettings(true)} className={isDark ? 'text-gray-400' : 'text-gray-500'}>
               <Settings />
             </IconButton>
           </div>
@@ -267,7 +269,7 @@ export default function SwapPage() {
           <select
             value={chainId}
             onChange={(e) => setChainId(parseInt(e.target.value))}
-            className="w-full p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+            className={`w-full p-3 rounded-lg border ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}
           >
             {Object.entries(CHAIN_CONFIG).map(([id, config]) => (
               <option key={id} value={id}>{config.name}</option>
@@ -277,10 +279,10 @@ export default function SwapPage() {
 
         <Card className="mb-4">
           <CardContent sx={{ p: 3 }}>
-            <div className="bg-slate-100 dark:bg-slate-800 rounded-xl p-4 mb-2">
+            <div className={`rounded-xl p-4 mb-2 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
               <div className="flex justify-between mb-2">
-                <span className="text-slate-500 text-sm">You Pay</span>
-                <span className="text-slate-500 text-sm">Balance: --</span>
+                <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>You Pay</span>
+                <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Balance: --</span>
               </div>
               <div className="flex gap-2">
                 <input
@@ -288,11 +290,11 @@ export default function SwapPage() {
                   value={amountIn}
                   onChange={(e) => setAmountIn(e.target.value)}
                   placeholder="0.00"
-                  className="flex-1 bg-transparent text-2xl font-semibold outline-none text-slate-900 dark:text-white"
+                  className={`flex-1 bg-transparent text-2xl font-semibold outline-none ${isDark ? 'text-white' : 'text-gray-900'}`}
                 />
                 <button
                   onClick={() => setShowTokenSelector('in')}
-                  className="flex items-center gap-2 bg-slate-200 dark:bg-slate-700 px-3 py-2 rounded-lg text-slate-900 dark:text-white"
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg ${isDark ? 'bg-slate-700 text-white' : 'bg-slate-200 text-gray-900'}`}
                 >
                   {tokenIn?.symbol || 'Select'}
                   <ArrowDropDown />
@@ -309,10 +311,10 @@ export default function SwapPage() {
               </IconButton>
             </div>
 
-            <div className="bg-slate-100 dark:bg-slate-800 rounded-xl p-4 mt-2">
+            <div className={`rounded-xl p-4 mt-2 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
               <div className="flex justify-between mb-2">
-                <span className="text-slate-500 text-sm">You Receive</span>
-                <span className="text-slate-500 text-sm">Balance: --</span>
+                <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>You Receive</span>
+                <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Balance: --</span>
               </div>
               <div className="flex gap-2">
                 <input
@@ -320,11 +322,11 @@ export default function SwapPage() {
                   value={amountOut}
                   readOnly
                   placeholder="0.00"
-                  className="flex-1 bg-transparent text-2xl font-semibold outline-none text-slate-900 dark:text-white"
+                  className={`flex-1 bg-transparent text-2xl font-semibold outline-none ${isDark ? 'text-white' : 'text-gray-900'}`}
                 />
                 <button
                   onClick={() => setShowTokenSelector('out')}
-                  className="flex items-center gap-2 bg-slate-200 dark:bg-slate-700 px-3 py-2 rounded-lg text-slate-900 dark:text-white"
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg ${isDark ? 'bg-slate-700 text-white' : 'bg-slate-200 text-gray-900'}`}
                 >
                   {tokenOut?.symbol || 'Select'}
                   <ArrowDropDown />
@@ -333,23 +335,23 @@ export default function SwapPage() {
             </div>
 
             {quote && (
-              <div className="mt-4 bg-slate-100 dark:bg-slate-800 rounded-lg p-3 text-sm">
+              <div className={`mt-4 rounded-lg p-3 text-sm ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
                 <div className="flex justify-between mb-1">
-                  <span className="text-slate-500">Rate</span>
+                  <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Rate</span>
                   <span>1 {tokenIn?.symbol} = {quote.exchangeRate.toFixed(6)} {tokenOut?.symbol}</span>
                 </div>
                 <div className="flex justify-between mb-1">
-                  <span className="text-slate-500">Price Impact</span>
+                  <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Price Impact</span>
                   <span className={quote.priceImpact > 1 ? 'text-red-500' : 'text-green-500'}>
                     {quote.priceImpact.toFixed(2)}%
                   </span>
                 </div>
                 <div className="flex justify-between mb-1">
-                  <span className="text-slate-500">Min. Received</span>
+                  <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Min. Received</span>
                   <span>{quote.minimumOut.toFixed(6)} {tokenOut?.symbol}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Gas Fee</span>
+                  <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Gas Fee</span>
                   <span>~${quote.gasFeeUsd.toFixed(2)}</span>
                 </div>
               </div>
@@ -383,7 +385,7 @@ export default function SwapPage() {
           </CardContent>
         </Card>
 
-        <div className="flex justify-center gap-6 text-sm text-slate-500">
+        <div className={`flex justify-center gap-6 text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
           <div className="flex items-center gap-1"><Shield className="text-green-500" /> MEV Protected</div>
           <div className="flex items-center gap-1"><Speed className="text-green-500" /> Best Route</div>
           <div className="flex items-center gap-1"><CompareArrows className="text-green-500" /> 20+ DEXs</div>
@@ -411,7 +413,7 @@ export default function SwapPage() {
                   primary={token.symbol}
                   secondary={token.name}
                 />
-                {token.priceUsd && <Typography className="text-slate-500">${token.priceUsd}</Typography>}
+                {token.priceUsd && <Typography className={isDark ? 'text-gray-400' : 'text-gray-500'}>${token.priceUsd}</Typography>}
               </ListItemButton>
             ))}
           </List>
@@ -434,7 +436,7 @@ export default function SwapPage() {
               </Button>
             ))}
           </div>
-          <Typography variant="caption" className="text-slate-500">
+          <Typography variant="caption" className={isDark ? 'text-gray-400' : 'text-gray-500'}>
             Your transaction will revert if the price changes unfavorably by more than this percentage.
           </Typography>
         </DialogContent>
