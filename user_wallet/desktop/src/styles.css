@@ -314,3 +314,11 @@ h1 {
   border-radius: 8px;
   margin-bottom: 15px;
 }
+
+/* Added for canonical wallet_api integration */
+.mono { font-family: monospace; font-size: 0.85rem; }
+.status.failed { background: rgba(220, 38, 38, 0.15); color: #dc2626; }
+.toggle-auth { background: transparent !important; color: var(--accent) !important; border: none; margin-top: 16px; cursor: pointer; font-size: 0.875rem; width: 100%; padding: 8px; }
+.mnemonic-warning { background: var(--bg-secondary); border: 1px solid var(--accent); border-radius: 12px; padding: 20px; margin-bottom: 24px; }
+.mnemonic-warning code { display: block; background: var(--bg-primary); padding: 12px; border-radius: 8px; margin: 12px 0; font-family: monospace; word-break: break-word; }
+.mnemonic-warning button { background: var(--accent); color: white; border: none; border-radius: 8px; padding: 8px 16px; cursor: pointer; }

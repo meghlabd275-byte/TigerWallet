@@ -141,3 +141,7 @@ go/rpc_service/rpc_service
 /transaction_simulator/go/transaction-simulator
 /services/go/api_gateway/tigerwallet_test_apigateway
 *_test_api*
+
+# Go binaries
+user_wallet/go/user_wallet
+*.exe

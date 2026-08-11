@@ -15,15 +15,15 @@ import com.tigeruserwallet.api.UserWalletApiService
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
-    private val apiService = UserWalletApiService()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        UserWalletApiService.init(this)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
         setSupportActionBar(binding.toolbar)
-        
+
         if (savedInstanceState == null) {
             loadFragment(DashboardFragment())
         }

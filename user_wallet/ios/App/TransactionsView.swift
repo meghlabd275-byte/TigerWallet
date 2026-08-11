@@ -1,63 +1,83 @@
 import SwiftUI
 
 struct TransactionsView: View {
-    @State private var transactions: [Transaction] = []
-    
+    @State private var transactions: [TransactionRecord] = []
+    @State private var isLoading = true
+    @State private var errorMessage: String?
+
     var body: some View {
         NavigationView {
             Group {
-                if transactions.isEmpty {
+                if isLoading {
+                    ProgressView("Loading transactions...")
+                } else if let errorMessage = errorMessage {
+                    Text(errorMessage).foregroundColor(.red)
+                } else if transactions.isEmpty {
                     Text("No transactions yet")
                         .foregroundColor(.secondary)
                 } else {
-                    List(transactions, id: \.id) { transaction in
-                        TransactionRow(transaction: transaction)
+                    List(transactions) { tx in
+                        TransactionRow(transaction: tx)
                     }
                 }
             }
             .navigationTitle("Transactions")
-            .onAppear {
-                loadTransactions()
-            }
+            .onAppear { loadTransactions() }
         }
     }
-    
-    func loadTransactions() {
-        // API call to fetch transactions
+
+    private func loadTransactions() {
+        isLoading = true
+        errorMessage = nil
+        Task {
+            do {
+                let result = try await UserWalletApiService.shared.getTransactions()
+                await MainActor.run {
+                    self.transactions = result
+                    self.isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = error.localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
     }
 }
 
 struct TransactionRow: View {
-    let transaction: Transaction
-    
+    let transaction: TransactionRecord
+
+    private var success: Bool { transaction.isError == "0" }
+
     var body: some View {
         VStack(alignment: .leading) {
             HStack {
-                Text(transaction.type)
+                Text(String(transaction.hash.prefix(16)) + "...")
                     .font(.headline)
+                    .font(.system(.headline, design: .monospaced))
                 Spacer()
-                Text(transaction.status)
+                Text(success ? "Success" : "Failed")
                     .font(.caption)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(transaction.status == "Completed" ? Color.green : Color.orange)
+                    .background(success ? Color.green : Color.red)
                     .foregroundColor(.white)
                     .cornerRadius(4)
             }
-            Text("\(transaction.amount) \(transaction.token)")
+            Text("Value: \(transaction.value)")
                 .font(.subheadline)
-            Text(transaction.date)
-                .font(.caption)
-                .foregroundColor(.secondary)
+            if let date = date {
+                Text(date, style: .date)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
         }
     }
-}
 
-struct Transaction: Identifiable {
-    let id = UUID()
-    let type: String
-    let status: String
-    let amount: String
-    let token: String
-    let date: String
+    private var date: Date? {
+        guard let ts = TimeInterval(transaction.timeStamp) else { return nil }
+        return Date(timeIntervalSince1970: ts)
+    }
 }

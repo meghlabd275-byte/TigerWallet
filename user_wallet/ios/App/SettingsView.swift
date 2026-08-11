@@ -2,7 +2,8 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var themeManager: ThemeManager
-    
+    @State private var showLogoutAlert = false
+
     var body: some View {
         NavigationView {
             List {
@@ -10,17 +11,21 @@ struct SettingsView: View {
                     Toggle("Dark Mode", isOn: $themeManager.isDarkMode)
                 }
                 Section("Account") {
-                    Button(action: logout) {
+                    Button(role: .destructive, action: { showLogoutAlert = true }) {
                         Text("Logout")
-                            .foregroundColor(.red)
                     }
                 }
             }
             .navigationTitle("Settings")
+            .alert("Logout?", isPresented: $showLogoutAlert) {
+                Button("Cancel", role: .cancel) {}
+                Button("Logout", role: .destructive) { logout() }
+            }
         }
     }
-    
-    func logout() {
-        // Clear user data and navigate to login
+
+    private func logout() {
+        UserWalletApiService.shared.logout()
+        NotificationCenter.default.post(name: .didLogout, object: nil)
     }
 }

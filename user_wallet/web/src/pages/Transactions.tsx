@@ -1,9 +1,9 @@
 // Transactions Page
 import React, { useState, useEffect } from 'react';
-import { api } from '../../services/api';
+import { api, TransactionRecord } from '../services/api';
 
 export default function Transactions() {
-  const [transactions, setTransactions] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState({ network: '', token: '' });
 
@@ -12,7 +12,7 @@ export default function Transactions() {
   }, []);
 
   const loadTransactions = () => {
-    api.getTransactions(filter).then(data => {
+    api.getTransactions({ network: filter.network || undefined }).then((data) => {
       setTransactions(data.transactions || []);
       setLoading(false);
     }).catch(() => setLoading(false));
@@ -23,17 +23,17 @@ export default function Transactions() {
       <header className="page-header">
         <h1>Transactions</h1>
         <div className="filters">
-          <select value={filter.network} onChange={e => setFilter({...filter, network: e.target.value})}>
+          <select value={filter.network} onChange={(e) => setFilter({ ...filter, network: e.target.value })}>
             <option value="">All Networks</option>
             <option value="ethereum">Ethereum</option>
             <option value="bsc">BNB Chain</option>
             <option value="polygon">Polygon</option>
           </select>
-          <select value={filter.token} onChange={e => setFilter({...filter, token: e.target.value})}>
+          <select value={filter.token} onChange={(e) => setFilter({ ...filter, token: e.target.value })}>
             <option value="">All Tokens</option>
             <option value="ETH">ETH</option>
-            <option value="BTC">BTC</option>
             <option value="USDT">USDT</option>
+            <option value="USDC">USDC</option>
           </select>
           <button onClick={loadTransactions}>Apply</button>
         </div>
@@ -45,23 +45,23 @@ export default function Transactions() {
         <table className="transactions-table">
           <thead>
             <tr>
-              <th>Type</th>
-              <th>Token</th>
-              <th>Amount</th>
-              <th>Network</th>
+              <th>Tx Hash</th>
+              <th>From</th>
+              <th>To</th>
+              <th>Value</th>
               <th>Status</th>
               <th>Date</th>
             </tr>
           </thead>
           <tbody>
-            {transactions.map((tx: any) => (
-              <tr key={tx.id}>
-                <td>{tx.type}</td>
-                <td>{tx.token}</td>
-                <td>{tx.amount}</td>
-                <td>{tx.network}</td>
-                <td><span className={`status ${tx.status}`}>{tx.status}</span></td>
-                <td>{new Date(tx.created_at).toLocaleDateString()}</td>
+            {transactions.map((tx) => (
+              <tr key={tx.hash}>
+                <td className="mono">{tx.hash.slice(0, 14)}...</td>
+                <td className="mono">{tx.from.slice(0, 10)}...</td>
+                <td className="mono">{tx.to.slice(0, 10)}...</td>
+                <td>{tx.value}</td>
+                <td><span className={`status ${tx.isError === '0' ? 'confirmed' : 'failed'}`}>{tx.isError === '0' ? 'Success' : 'Failed'}</span></td>
+                <td>{new Date(parseInt(tx.timeStamp, 10) * 1000).toLocaleString()}</td>
               </tr>
             ))}
           </tbody>

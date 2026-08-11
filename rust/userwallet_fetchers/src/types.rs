@@ -1,12 +1,15 @@
-//! TigerWallet UserWallet Fetchers - Types Module
-//! 
-//! This module contains all type definitions for the UserWallet fetcher system
+//! TigerWallet UserWallet Fetchers — Types
+//!
+//! Typed response models for UserWallet data. These mirror the JSON shapes
+//! returned by the canonical TigerWallet Go wallet-api backend
+//! (go/wallet_api, port 8443). Fetchers that delegate to the backend produce
+//! these; fetchers for endpoints the backend does not expose are fail-closed
+//! (return `Err`) and never fabricate data.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
-/// Chain types supported by the wallet
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Chains supported by the canonical wallet-api backend.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Chain {
     Ethereum,
     Bitcoin,
@@ -17,17 +20,68 @@ pub enum Chain {
     Fantom,
     Arbitrum,
     Optimism,
-    Avalanche,
     Cosmos,
     Near,
     Aptos,
     Sui,
     Starknet,
-    #[serde(other)]
-    Unknown,
 }
 
-/// Token information
+impl Chain {
+    pub fn id(&self) -> i64 {
+        match self {
+            Chain::Ethereum => 1,
+            Chain::Bsc => 56,
+            Chain::Polygon => 137,
+            Chain::Avalanche => 43114,
+            Chain::Fantom => 250,
+            Chain::Arbitrum => 42161,
+            Chain::Optimism => 10,
+            Chain::Bitcoin => 0,
+            Chain::Solana => 0,
+            Chain::Cosmos => 0,
+            Chain::Near => 0,
+            Chain::Aptos => 0,
+            Chain::Sui => 0,
+            Chain::Starknet => 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalletRecord {
+    pub id: String,
+    pub label: String,
+    pub chain_id: i64,
+    pub address: String,
+    pub derivation_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mnemonic: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BalanceResult {
+    pub chain_id: i64,
+    pub symbol: String,
+    pub address: String,
+    pub balance: String,
+    pub balance_f: f64,
+    pub usd_value: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransactionRecord {
+    pub hash: String,
+    pub from: String,
+    pub to: String,
+    pub value: String,
+    #[serde(rename = "timeStamp")]
+    pub time_stamp: String,
+    #[serde(rename = "isError")]
+    pub is_error: String,
+}
+
+/// Token asset (ERC-20 metadata + balance).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Token {
     pub address: String,
@@ -35,103 +89,121 @@ pub struct Token {
     pub symbol: String,
     pub name: String,
     pub decimals: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub logo_url: Option<String>,
+    #[serde(default)]
     pub price: f64,
+    #[serde(default)]
     pub price_change_24h: f64,
+    #[serde(default)]
     pub volume_24h: f64,
+    #[serde(default)]
     pub market_cap: f64,
+    #[serde(default)]
     pub supply: f64,
 }
 
-/// NFT information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Nft {
     pub contract_address: String,
     pub token_id: String,
     pub owner: String,
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub image_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub animation_url: Option<String>,
+    #[serde(default)]
     pub attributes: Vec<NftAttribute>,
+    #[serde(default)]
     pub collection: NftCollection,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub last_sale_price: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub listing_price: Option<f64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NftAttribute {
     pub trait_type: String,
     pub value: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub display_type: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NftCollection {
     pub address: String,
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub image_url: Option<String>,
+    #[serde(default)]
     pub floor_price: f64,
+    #[serde(default)]
     pub total_supply: u64,
 }
 
-/// Transaction information
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Transaction {
-    pub hash: String,
+pub struct GasPrice {
     pub chain: String,
-    pub from: String,
-    pub to: String,
-    pub value: String,
-    pub gas_used: u64,
-    pub gas_price: String,
-    pub timestamp: u64,
-    pub status: TransactionStatus,
-    pub block_number: u64,
-    pub logs: Vec<TransactionLog>,
-    pub token_transfers: Vec<TokenTransfer>,
+    #[serde(default)]
+    pub slow_gas_price: String,
+    #[serde(default)]
+    pub standard_gas_price: String,
+    #[serde(default)]
+    pub fast_gas_price: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_fee: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority_fee: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum TransactionStatus {
-    Success,
-    Failed,
-    Pending,
+pub struct PriceInfo {
+    pub symbol: String,
+    #[serde(default)]
+    pub price: f64,
+    #[serde(default)]
+    pub price_change_24h: f64,
+    #[serde(default)]
+    pub price_change_percent_24h: f64,
+    #[serde(default)]
+    pub volume_24h: f64,
+    #[serde(default)]
+    pub market_cap: f64,
+    #[serde(default)]
+    pub high_24h: f64,
+    #[serde(default)]
+    pub low_24h: f64,
+    #[serde(default)]
+    pub last_updated: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TransactionLog {
-    pub address: String,
-    pub topics: Vec<String>,
-    pub data: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TokenTransfer {
-    pub from: String,
-    pub to: String,
-    pub token_address: String,
-    pub value: String,
-    pub token_id: Option<String>,
-}
-
-/// Swap quote
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SwapQuote {
     pub from_token: String,
     pub to_token: String,
     pub from_amount: String,
+    #[serde(default)]
     pub to_amount: String,
+    #[serde(default)]
     pub price_impact: f64,
+    #[serde(default)]
     pub gas_estimate: u64,
+    #[serde(default)]
     pub route: Vec<SwapRoute>,
     pub integrator: String,
+    #[serde(default)]
     pub estimated_gas: u64,
+    #[serde(default)]
     pub estimated_gas_usd: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SwapRoute {
     pub pool_address: String,
     pub token_in: String,
@@ -139,325 +211,49 @@ pub struct SwapRoute {
     pub swap_type: String,
 }
 
-/// Staking position
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StakingPosition {
-    pub validator_address: String,
-    pub chain: String,
-    pub staked_amount: f64,
-    pub rewards_accrued: f64,
-    pub rewards_claimed: f64,
-    pub unbonding_amount: f64,
-    pub unbonding_completion_time: Option<u64>,
-    pub commission: f64,
-    pubapr: f64,
+pub struct StakingQuote {
+    pub asset: String,
+    pub apr: f64,
+    #[serde(default)]
+    pub lock_period_days: u32,
 }
 
-/// Gas price information
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GasPrice {
-    pub chain: String,
-    pub slow_gas_price: String,
-    pub standard_gas_price: String,
-    pub fast_gas_price: String,
-    pub base_fee: Option<String>,
-    pub priority_fee: Option<String>,
-}
-
-/// Price information
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PriceInfo {
-    pub symbol: String,
-    pub price: f64,
-    pub price_change_24h: f64,
-    pub price_change_percent_24h: f64,
-    pub volume_24h: f64,
-    pub market_cap: f64,
-    pub high_24h: f64,
-    pub low_24h: f64,
-    pub last_updated: u64,
-}
-
-/// Bridge information
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BridgeQuote {
-    pub from_chain: String,
-    pub to_chain: String,
-    pub from_token: String,
-    pub to_token: String,
-    pub from_amount: String,
-    pub to_amount: String,
-    pub estimated_time: u64,
-    pub bridge_fee: String,
-    pub route: Vec<BridgeRoute>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BridgeRoute {
-    pub bridge_name: String,
-    pub from_chain: String,
-    pub to_chain: String,
-}
-
-/// Lending market
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LendingMarket {
-    pub pool_address: String,
-    pub token: String,
-    pub total_supply: f64,
-    pub total_borrow: f64,
-    pub supply_apr: f64,
-    pub borrow_apr: f64,
-    pub utilization_rate: f64,
-    pub collateral_factor: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LendingPosition {
-    pub pool_address: String,
-    pub user: String,
-    pub supplied_amount: f64,
-    pub borrowed_amount: f64,
-    pub collateral_value: f64,
-    pub health_factor: f64,
-}
-
-/// Options data
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OptionData {
-    pub contract_address: String,
-    pub underlying: String,
-    pub strike_price: f64,
-    pub expiry: u64,
-    pub option_type: OptionType,
-    pub bid_price: f64,
-    pub ask_price: f64,
-    pub last_price: f64,
-    pub volume_24h: f64,
-    pub open_interest: f64,
-    pub implied_volatility: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum OptionType {
-    Call,
-    Put,
-}
-
-/// Futures data
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FuturesData {
-    pub contract_address: String,
-    pub symbol: String,
-    pub index_price: f64,
-    pub mark_price: f64,
-    pub funding_rate: f64,
-    pub next_funding_time: u64,
-    pub open_interest: f64,
-    pub volume_24h: f64,
-    pub long_ratio: f64,
-    pub predicted_funding: f64,
-}
-
-/// Margin position
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MarginPosition {
-    pub user: String,
-    pub pool_address: String,
-    pub collateral_amount: f64,
-    pub borrowed_amount: f64,
-    pub position_size: f64,
-    pub leverage: f64,
-    pub entry_price: f64,
-    pub mark_price: f64,
-    pub pnl: f64,
-    pub pnl_percent: f64,
-    pub liquidation_price: f64,
-    pub health_factor: f64,
-}
-
-/// P2P Order
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct P2POrder {
-    pub order_id: String,
-    pub maker: String,
-    pub side: P2PSide,
-    pub from_token: String,
-    pub to_token: String,
-    pub from_amount: String,
-    pub to_amount: String,
-    pub price: f64,
-    pub status: P2POrderStatus,
-    pub created_at: u64,
-    pub expires_at: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum P2PSide {
-    Buy,
-    Sell,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum P2POrderStatus {
-    Open,
-    Filled,
-    Cancelled,
-    Expired,
-}
-
-/// Copy trading
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CopyTradingSignal {
-    pub signal_id: String,
-    pub trader: String,
-    pub chain: String,
-    pub action: String,
-    pub token: String,
-    pub amount: f64,
-    pub price: f64,
-    pub timestamp: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CopyTradingPosition {
-    pub position_id: String,
-    pub trader: String,
-    pub follower: String,
-    pub token: String,
-    pub amount: f64,
-    pub entry_price: f64,
-    pub current_price: f64,
-    pub pnl: f64,
-    pub pnl_percent: f64,
-    pub copied_at: u64,
-}
-
-/// DAO Governance
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DAOProposal {
-    pub proposal_id: String,
-    pub dao_address: String,
-    pub title: String,
-    pub description: String,
-    pub proposer: String,
-    pub status: DAOProposalStatus,
-    pub vote_start: u64,
-    pub vote_end: u64,
-    pub for_votes: f64,
-    pub against_votes: f64,
-    pub abstain_votes: f64,
-    pub quorum: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum DAOProposalStatus {
-    Pending,
-    Active,
-    Cancelled,
-    Defeated,
-    Succeeded,
-    Executed,
-}
-
-/// Gift Card
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GiftCard {
-    pub card_id: String,
-    pub code: String,
-    pub balance: f64,
-    pub currency: String,
-    pub issued_by: String,
-    pub redeemed_by: Option<String>,
-    pub expires_at: Option<u64>,
-    pub created_at: u64,
-    pub status: GiftCardStatus,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum GiftCardStatus {
-    Active,
-    Redeemed,
-    Expired,
-    Cancelled,
-}
-
-/// Fiat Ramp
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FiatQuote {
-    pub provider: String,
-    pub from_currency: String,
-    pub to_crypto: String,
-    pub from_amount: f64,
-    pub to_amount: f64,
-    pub rate: f64,
-    pub fee: f64,
-    pub payment_methods: Vec<String>,
-    pub estimated_time: String,
-}
-
-/// DApp Registry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DApp {
-    pub address: String,
+    pub id: String,
     pub name: String,
+    #[serde(default)]
     pub description: String,
+    #[serde(default)]
     pub logo_url: String,
+    #[serde(default)]
     pub website_url: String,
     pub category: String,
+    #[serde(default)]
     pub chains: Vec<String>,
+    #[serde(default)]
     pub contracts: Vec<String>,
     pub verified: bool,
-    pub trust_score: f64,
-    pub volume_24h: f64,
-}
-
-/// Price Alert
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PriceAlert {
-    pub alert_id: String,
-    pub user: String,
-    pub token: String,
-    pub condition: AlertCondition,
-    pub target_price: f64,
-    pub created_at: u64,
-    pub triggered_at: Option<u64>,
-    pub active: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum AlertCondition {
-    Above,
-    Below,
+pub struct TokenRegistryEntry {
+    pub address: String,
+    pub symbol: String,
+    pub name: String,
+    pub decimals: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logo_url: Option<String>,
 }
 
-/// Fetcher configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FetcherConfig {
-    pub rpc_urls: HashMap<String, String>,
-    pub api_keys: HashMap<String, String>,
-    pub cache_ttl: u64,
-    pub rate_limit: u64,
-    pub max_retries: u32,
-}
-
-impl Default for FetcherConfig {
-    fn default() -> Self {
-        let mut rpc_urls = HashMap::new();
-        rpc_urls.insert("ethereum".to_string(), "https://eth-mainnet.g.alchemy.com/v2/demo".to_string());
-        rpc_urls.insert("polygon".to_string(), "https://polygon-mainnet.g.alchemy.com/v2/demo".to_string());
-        rpc_urls.insert("bsc".to_string(), "https://bsc-dataseed.binance.org".to_string());
-        
-        let mut api_keys = HashMap::new();
-        api_keys.insert("coingecko".to_string(), "".to_string());
-        api_keys.insert("alchemy".to_string(), "demo".to_string());
-        
-        Self {
-            rpc_urls,
-            api_keys,
-            cache_ttl: 60,
-            rate_limit: 100,
-            max_retries: 3,
-        }
-    }
+pub struct ChainInfo {
+    pub chain_id: i64,
+    pub name: String,
+    pub symbol: String,
+    #[serde(default)]
+    pub rpc_url: String,
+    #[serde(default)]
+    pub explorer_url: String,
 }

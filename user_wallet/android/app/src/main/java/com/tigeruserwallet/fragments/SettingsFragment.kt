@@ -8,6 +8,7 @@ import android.widget.Button
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.fragment.app.Fragment
 import com.tigeruserwallet.R
+import com.tigeruserwallet.api.UserWalletApiService
 
 class SettingsFragment : Fragment() {
     private lateinit var themeButton: Button
@@ -23,17 +24,10 @@ class SettingsFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        
         themeButton = view.findViewById(R.id.themeButton)
         logoutButton = view.findViewById(R.id.logoutButton)
-        
-        themeButton.setOnClickListener {
-            toggleTheme()
-        }
-        
-        logoutButton.setOnClickListener {
-            logout()
-        }
+        themeButton.setOnClickListener { toggleTheme() }
+        logoutButton.setOnClickListener { logout() }
     }
 
     private fun toggleTheme() {
@@ -47,7 +41,7 @@ class SettingsFragment : Fragment() {
     }
 
     private fun logout() {
-        // Clear tokens and navigate to login
-        requireActivity().finish()
+        UserWalletApiService.logout()
+        activity?.finish()
     }
 }

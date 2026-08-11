@@ -1,7 +1,7 @@
 // Settings Page
 import React from 'react';
-import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function Settings() {
   const { user, logout } = useAuth();

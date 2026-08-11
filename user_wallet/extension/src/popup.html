@@ -1,27 +1,65 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8" />
   <style>
     :root {
       --bg: #ffffff;
-      --text: #333333;
-      --accent: #4CAF50;
+      --bg-card: #f5f5f5;
+      --text: #1f2937;
+      --text-secondary: #6b7280;
+      --accent: #F97316;
+      --accent-hover: #EA580C;
+      --border: #e5e7eb;
+      --error: #dc2626;
+      --success: #16a34a;
     }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #1a1a1a;
-        --text: #ffffff;
-      }
+    [data-theme="dark"] {
+      --bg: #111827;
+      --bg-card: #1f2937;
+      --text: #f9fafb;
+      --text-secondary: #9ca3af;
+      --border: #374151;
+      --accent: #F97316;
+      --accent-hover: #FB923C;
     }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      width: 350px;
-      padding: 20px;
+      width: 340px;
+      padding: 16px;
       background-color: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     }
-    h1 { margin-bottom: 15px; font-size: 18px; }
-    .section { margin-bottom: 15px; }
+    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    h1 { font-size: 18px; color: var(--accent); }
+    .theme-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 10px;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+    input {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
     button {
       width: 100%;
       padding: 10px;
@@ -30,28 +68,65 @@
       background-color: var(--accent);
       color: white;
       cursor: pointer;
-      margin-bottom: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 8px;
     }
-    button:hover { opacity: 0.9; }
-    .balance { font-size: 24px; font-weight: bold; }
-    .theme-toggle { background-color: #666; }
+    button:hover { background-color: var(--accent-hover); }
+    button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+    .toggle-auth { background: transparent !important; color: var(--text-secondary) !important; border: none; font-size: 12px; }
+    .error { color: var(--error); font-size: 12px; margin-bottom: 8px; }
+    .total { font-size: 22px; font-weight: 700; }
+    .total-usd { font-size: 13px; color: var(--text-secondary); }
+    .wallet-item { padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .wallet-item:last-child { border-bottom: none; }
+    .wallet-label { font-weight: 600; font-size: 14px; }
+    .wallet-addr { font-size: 11px; color: var(--text-secondary); font-family: monospace; }
+    .wallet-balance { font-size: 13px; margin-top: 2px; }
+    .hidden { display: none; }
+    .spinner { text-align: center; color: var(--text-secondary); padding: 16px; }
   </style>
 </head>
 <body>
-  <h1>UserWallet</h1>
-  
-  <div class="section">
-    <p>Total Balance</p>
-    <p class="balance">$0.00</p>
+  <header>
+    <h1>TigerWallet</h1>
+    <button class="theme-btn" id="toggleTheme">🌙</button>
+  </header>
+
+  <!-- Auth section -->
+  <div id="authSection">
+    <div class="card">
+      <div id="loginForm">
+        <h2 style="font-size:15px;margin-bottom:10px;" id="authTitle">Login</h2>
+        <div class="error hidden" id="authError"></div>
+        <label for="email">Email</label>
+        <input type="email" id="email" placeholder="you@example.com" />
+        <div id="usernameField" class="hidden">
+          <label for="username">Username</label>
+          <input type="text" id="username" placeholder="username" />
+        </div>
+        <label for="password">Password (min 8 chars)</label>
+        <input type="password" id="password" placeholder="••••••••" />
+        <button id="authSubmit">Login</button>
+        <button class="toggle-auth" id="authToggle">Don't have an account? Register</button>
+      </div>
+    </div>
   </div>
-  
-  <div class="section">
-    <button id="viewDashboard">View Dashboard</button>
-    <button id="viewWallets">My Wallets</button>
-    <button id="viewTransactions">Transactions</button>
-    <button class="theme-toggle" id="toggleTheme">Toggle Theme</button>
+
+  <!-- Wallet section -->
+  <div id="walletSection" class="hidden">
+    <div class="card">
+      <div class="total-usd">Total Balance</div>
+      <div class="total" id="totalUsd">$0.00</div>
+      <button class="secondary" id="refreshBtn">Refresh</button>
+    </div>
+    <div class="card">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">My Wallets</div>
+      <div id="walletList"><div class="spinner">Loading...</div></div>
+    </div>
+    <button id="logoutBtn" class="toggle-auth">Logout</button>
   </div>
-  
+
   <script src="src/popup.js"></script>
 </body>
 </html>

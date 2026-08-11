@@ -12,6 +12,7 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
+  register: (email: string, username: string, password: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
 }
@@ -27,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       api.setToken(token);
       api.getProfile().then(setUser).catch(() => logout());
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const login = async (email: string, password: string) => {
@@ -37,14 +39,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     api.setToken(newToken);
   };
 
+  const register = async (email: string, username: string, password: string) => {
+    const { token: newToken } = await api.register(email, username, password);
+    localStorage.setItem('userwallet-token', newToken);
+    setToken(newToken);
+    api.setToken(newToken);
+    setUser({ id: '', email, username });
+  };
+
   const logout = () => {
     localStorage.removeItem('userwallet-token');
     setToken(null);
     setUser(null);
+    api.setToken('');
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token }}>
+    <AuthContext.Provider value={{ user, token, login, register, logout, isAuthenticated: !!token }}>
       {children}
     </AuthContext.Provider>
   );

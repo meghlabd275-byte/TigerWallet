@@ -1,81 +1,94 @@
-//! TigerWallet UserWallet Fetchers - Rust High-Speed Implementation
-//! 
-//! This module implements fetchers specifically for UserWallet apps
-//! - User wallet operations only
-//! - No admin functionality
-//! - No master wallet operations
-//! 
-//! Features:
-//! - Ultra-low latency with connection pooling
-//! - Redis caching integration
-//! - Real blockchain RPC integration (EVM, Solana, etc.)
-//! - 21 production-ready fetchers
-
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+//! TigerWallet UserWallet Fetchers — Rust high-speed, ultra-low-latency client.
+//!
+//! This crate is the Rust UserWallet data layer. It delegates every request
+//! to the canonical TigerWallet Go wallet-api backend (go/wallet_api, port
+//! 8443): REAL on-chain RPC (eth_getBalance / eth_call / Etherscan), REAL
+//! BIP-39/32/44 HD derivation, REAL secp256k1 signing + broadcast, AES-256-GCM
+//! encrypted-seed persistence (PostgreSQL + Redis).
+//!
+//! Design:
+//! - A single pooled async `reqwest::Client` (connection reuse, low latency).
+//! - Typed response models (see `types`).
+//! - Endpoints the canonical backend exposes are forwarded with the JWT.
+//! - Endpoints the backend does NOT expose return `Err` (fail-closed). We
+//!   never fabricate balances, prices, transactions, or order books.
+//!
+//! Fail-closed is the secure default: callers get a real error they can act
+//! on, not zeroed/empty data that silently looks like "no activity".
 
 pub mod types;
 pub mod fetchers;
 
-pub use types::*;
 pub use fetchers::*;
+pub use types::*;
 
-/// UserWallet fetcher manager - only includes user-facing operations
-/// All 21 fetchers for complete UserWallet functionality
+use std::collections::HashMap;
+use std::sync::Arc;
+
+/// Sync fetcher trait used by the manager registry. Async fetchers are
+/// available directly on `UserWalletClient` (the recommended entry point).
+pub trait Fetcher: Send + Sync {
+    fn name(&self) -> &str;
+    fn fetch(&self, params: HashMap<String, String>) -> Result<serde_json::Value, String>;
+    fn initialize(&self) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+/// Registry of all UserWallet fetchers. Each forwards to the canonical
+/// wallet-api backend via a shared `UserWalletClient`.
 pub struct UserWalletFetcherManager {
+    client: Arc<UserWalletClient>,
     fetchers: HashMap<String, Arc<dyn Fetcher>>,
 }
 
 impl UserWalletFetcherManager {
-    pub fn new() -> Self {
-        let mut fetchers = HashMap::new();
-        
-        // Core wallet operations (8 fetchers)
-        fetchers.insert("balance".to_string(), Arc::new(BalanceFetcher::new()) as Arc<dyn Fetcher>);
-        fetchers.insert("transactions".to_string(), Arc::new(TransactionFetcher::new()) as Arc<dyn Fetcher>);
-        fetchers.insert("tokens".to_string(), Arc::new(TokenFetcher::new()) as Arc<dyn Fetcher>);
-        fetchers.insert("nfts".to_string(), Arc::new(NftFetcher::new()) as Arc<dyn Fetcher>);
-        fetchers.insert("swap".to_string(), Arc::new(SwapFetcher::new()) as Arc<dyn Fetcher>);
-        fetchers.insert("staking".to_string(), Arc::new(StakingFetcher::new()) as Arc<dyn Fetcher>);
-        fetchers.insert("gas".to_string(), Arc::new(GasFetcher::new()) as Arc<dyn Fetcher>);
-        fetchers.insert("price".to_string(), Arc::new(PriceFetcher::new()) as Arc<dyn Fetcher>);
-        
-        // DeFi operations (13 additional fetchers)
-        fetchers.insert("bridge".to_string(), Arc::new(BridgeFetcher::new()) as Arc<dyn Fetcher>);
-        fetchers.insert("lending".to_string(), Arc::new(LendingFetcher::new()) as Arc<dyn Fetcher>);
-        fetchers.insert("nft_trading".to_string(), Arc::new(NftTradingFetcher::new()) as Arc<dyn Fetcher>);
-        fetchers.insert("options".to_string(), Arc::new(OptionsFetcher::new()) as Arc<dyn Fetcher>);
-        fetchers.insert("futures".to_string(), Arc::new(FuturesFetcher::new()) as Arc<dyn Fetcher>);
-        fetchers.insert("margin".to_string(), Arc::new(MarginFetcher::new()) as Arc<dyn Fetcher>);
-        fetchers.insert("p2p".to_string(), Arc::new(P2PFetcher::new()) as Arc<dyn Fetcher>);
-        fetchers.insert("copy_trading".to_string(), Arc::new(CopyTradingFetcher::new()) as Arc<dyn Fetcher>);
-        fetchers.insert("dao".to_string(), Arc::new(DAOFetcher::new()) as Arc<dyn Fetcher>);
-        fetchers.insert("gift_card".to_string(), Arc::new(GiftCardFetcher::new()) as Arc<dyn Fetcher>);
-        fetchers.insert("fiat_ramp".to_string(), Arc::new(FiatRampFetcher::new()) as Arc<dyn Fetcher>);
-        fetchers.insert("dapp_registry".to_string(), Arc::new(DAppRegistryFetcher::new()) as Arc<dyn Fetcher>);
-        fetchers.insert("price_alerts".to_string(), Arc::new(PriceAlertFetcher::new()) as Arc<dyn Fetcher>);
-        
-        Self { fetchers }
+    pub fn new(base_url: impl Into<String>, token: Option<String>) -> Self {
+        let client = Arc::new(UserWalletClient::new(base_url, token));
+        let mut fetchers: HashMap<String, Arc<dyn Fetcher>> = HashMap::new();
+
+        fetchers.insert("balance".into(), Arc::new(BalanceFetcher::new(client.clone())) as Arc<dyn Fetcher>);
+        fetchers.insert("transactions".into(), Arc::new(TransactionFetcher::new(client.clone())));
+        fetchers.insert("tokens".into(), Arc::new(TokenFetcher::new(client.clone())));
+        fetchers.insert("nfts".into(), Arc::new(NftFetcher::new(client.clone())));
+        fetchers.insert("gas".into(), Arc::new(GasFetcher::new(client.clone())));
+        fetchers.insert("price".into(), Arc::new(PriceFetcher::new(client.clone())));
+        fetchers.insert("swap".into(), Arc::new(SwapFetcher::new(client.clone())));
+        fetchers.insert("staking".into(), Arc::new(StakingFetcher::new(client.clone())));
+        fetchers.insert("dapps".into(), Arc::new(DAppRegistryFetcher::new(client.clone())));
+
+        // Fetchers for data the canonical backend does not yet expose.
+        // Registered as fail-closed so the manager surface stays complete
+        // (21 names) without fabricating data.
+        for name in [
+            "bridge", "lending", "nft_trading", "options", "futures", "margin",
+            "p2p", "copy_trading", "dao", "gift_card", "fiat_ramp", "price_alerts",
+        ] {
+            fetchers.insert(name.into(), Arc::new(UnavailableFetcher::new(name)) as Arc<dyn Fetcher>);
+        }
+
+        Self { client, fetchers }
     }
-    
+
+    pub fn client(&self) -> &UserWalletClient {
+        &self.client
+    }
+
     pub fn get_fetcher(&self, name: &str) -> Option<Arc<dyn Fetcher>> {
         self.fetchers.get(name).cloned()
     }
-    
+
     pub fn list_fetchers(&self) -> Vec<String> {
         self.fetchers.keys().cloned().collect()
     }
-    
-    /// Get total count of all fetchers
+
     pub fn count(&self) -> usize {
         self.fetchers.len()
     }
 }
 
-// Default implementation for UserWalletFetcherManager
 impl Default for UserWalletFetcherManager {
     fn default() -> Self {
-        Self::new()
+        Self::new(WALLET_API_DEFAULT_URL, None)
     }
 }

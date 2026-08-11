@@ -2,25 +2,18 @@
   "manifest_version": 3,
   "name": "UserWallet Extension",
   "version": "1.0.0",
-  "description": "UserWallet Browser Extension",
+  "description": "TigerWallet UserWallet — connect to the canonical wallet-api backend.",
   "permissions": [
     "storage",
     "activeTab"
   ],
+  "host_permissions": [
+    "http://localhost:8443/*"
+  ],
   "action": {
-    "default_popup": "src/popup.html",
-    "default_icon": {
-      "16": "assets/icon16.png",
-      "48": "assets/icon48.png",
-      "128": "assets/icon128.png"
-    }
+    "default_popup": "src/popup.html"
   },
   "background": {
     "service_worker": "src/background.js"
-  },
-  "icons": {
-    "16": "assets/icon16.png",
-    "48": "assets/icon48.png",
-    "128": "assets/icon128.png"
   }
 }

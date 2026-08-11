@@ -1,0 +1,243 @@
+/* TigerWallet UserWallet — light/dark theme. The data-theme attribute on
+   <html> (set by ThemeContext) drives the palette via CSS variables. */
+
+:root {
+  --bg: #f5f6fa;
+  --bg-card: #ffffff;
+  --bg-sidebar: #ffffff;
+  --bg-header: #ffffff;
+  --text: #1a1a2e;
+  --text-muted: #6b7280;
+  --border: #e5e7eb;
+  --accent: #f97316;
+  --accent-hover: #ea580c;
+  --success: #16a34a;
+  --error: #dc2626;
+  --error-bg: rgba(220, 38, 38, 0.1);
+  --input-bg: #ffffff;
+  --input-border: #d1d5db;
+}
+
+[data-theme='dark'] {
+  --bg: #0f172a;
+  --bg-card: #1e293b;
+  --bg-sidebar: #1e293b;
+  --bg-header: #1e293b;
+  --text: #f1f5f9;
+  --text-muted: #94a3b8;
+  --border: #334155;
+  --accent: #fb923c;
+  --accent-hover: #f97316;
+  --success: #4ade80;
+  --error: #f87171;
+  --error-bg: rgba(248, 113, 113, 0.15);
+  --input-bg: #0f172a;
+  --input-border: #334155;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.layout { display: flex; min-height: 100vh; }
+
+.sidebar {
+  width: 240px;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  padding: 24px 16px;
+  flex-shrink: 0;
+}
+.sidebar h2 { color: var(--accent); margin-bottom: 20px; font-size: 1.25rem; }
+.sidebar ul { list-style: none; }
+.sidebar li a {
+  display: block;
+  padding: 10px 12px;
+  color: var(--text);
+  text-decoration: none;
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+.sidebar li a:hover { background: var(--border); }
+.sidebar li a.active { background: var(--accent); color: white; }
+
+.main-content { flex: 1; display: flex; flex-direction: column; }
+.top-bar {
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 24px;
+  display: flex;
+  justify-content: flex-end;
+}
+.theme-toggle {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--text);
+}
+.page-content { padding: 24px; flex: 1; }
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+.page-header h1 { font-size: 1.5rem; }
+.page-header button, .wallets-page button, .login-card button, .create-form button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.page-header button:hover, .wallets-page button:hover { background: var(--accent-hover); }
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+.stat-card h3 { color: var(--text-muted); font-size: 0.875rem; margin-bottom: 8px; }
+.stat-value { font-size: 1.5rem; font-weight: 700; }
+
+.balances-list h2 { margin-bottom: 16px; }
+table { width: 100%; border-collapse: collapse; background: var(--bg-card); border-radius: 12px; overflow: hidden; }
+th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+th { color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; }
+.mono { font-family: monospace; font-size: 0.85rem; }
+
+.wallets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.wallet-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+.wallet-card h3 { margin-bottom: 8px; }
+.wallet-type { color: var(--text-muted); font-size: 0.875rem; }
+.wallet-address { font-family: monospace; font-size: 0.8rem; word-break: break-all; margin-top: 8px; }
+
+.create-form, .mnemonic-warning {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+.create-form input, .create-form select {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text);
+}
+.mnemonic-warning { border-color: var(--accent); }
+.mnemonic-warning code {
+  display: block;
+  background: var(--input-bg);
+  padding: 12px;
+  border-radius: 8px;
+  margin: 12px 0;
+  font-family: monospace;
+  word-break: break-word;
+}
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+.login-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 40px;
+  width: 100%;
+  max-width: 400px;
+}
+.login-card h1 { color: var(--accent); margin-bottom: 8px; }
+.login-card h2 { margin-bottom: 24px; font-weight: 500; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; margin-bottom: 6px; font-size: 0.875rem; color: var(--text-muted); }
+.form-group input {
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text);
+}
+.login-card button { width: 100%; margin-top: 8px; }
+.toggle-auth {
+  background: transparent !important;
+  color: var(--accent) !important;
+  border: none;
+  margin-top: 16px;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.error {
+  background: var(--error-bg);
+  color: var(--error);
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 0.875rem;
+}
+
+.settings-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.settings-section h2 { margin-bottom: 16px; font-size: 1.1rem; }
+.setting-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+}
+.setting-item label { color: var(--text-muted); }
+.theme-btn { background: var(--accent); color: white; border: none; border-radius: 8px; padding: 6px 14px; cursor: pointer; }
+.logout-btn { background: var(--error) !important; color: white; border: none; border-radius: 8px; padding: 10px 20px; cursor: pointer; }
+
+.status { padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; }
+.status.confirmed { background: rgba(22, 163, 74, 0.15); color: var(--success); }
+.status.failed { background: var(--error-bg); color: var(--error); }
+
+.filters { display: flex; gap: 8px; align-items: center; }
+.filters select {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text);
+}

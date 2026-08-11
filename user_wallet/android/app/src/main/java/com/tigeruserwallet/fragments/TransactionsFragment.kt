@@ -8,6 +8,7 @@ import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.tigeruserwallet.R
+import com.tigeruserwallet.adapters.TransactionAdapter
 import com.tigeruserwallet.api.UserWalletApiService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,7 +16,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class TransactionsFragment : Fragment() {
-    private val apiService = UserWalletApiService()
     private lateinit var transactionsRecyclerView: RecyclerView
 
     override fun onCreateView(
@@ -36,13 +36,13 @@ class TransactionsFragment : Fragment() {
     private fun loadTransactions() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val transactions = apiService.getTransactions()
+                val transactions = UserWalletApiService.getTransactions()
                 withContext(Dispatchers.Main) {
-                    // Update adapter with transactions
+                    transactionsRecyclerView.adapter = TransactionAdapter(transactions)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    // Show error
+                    transactionsRecyclerView.adapter = TransactionAdapter(emptyList())
                 }
             }
         }

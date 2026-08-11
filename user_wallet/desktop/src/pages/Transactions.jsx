@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from 'react';
-
-const API_URL = 'http://localhost:8105/api/v1';
+import { api } from '../services/api';
 
 function Transactions() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API_URL}/wallet/transactions`)
-      .then(res => res.json())
-      .then(data => {
+    api.getTransactions()
+      .then((data) => {
         setTransactions(data.transactions || []);
         setLoading(false);
       })
@@ -27,9 +25,10 @@ function Transactions() {
         <table className="transactions-table">
           <thead>
             <tr>
-              <th>Type</th>
-              <th>Token</th>
-              <th>Amount</th>
+              <th>Tx Hash</th>
+              <th>From</th>
+              <th>To</th>
+              <th>Value</th>
               <th>Status</th>
               <th>Date</th>
             </tr>
@@ -37,11 +36,16 @@ function Transactions() {
           <tbody>
             {transactions.map((tx, idx) => (
               <tr key={idx}>
-                <td>{tx.type}</td>
-                <td>{tx.token}</td>
-                <td>{tx.amount}</td>
-                <td><span className={`status ${tx.status.toLowerCase()}`}>{tx.status}</span></td>
-                <td>{new Date(tx.created_at).toLocaleDateString()}</td>
+                <td className="mono">{tx.hash.slice(0, 14)}...</td>
+                <td className="mono">{tx.from.slice(0, 10)}...</td>
+                <td className="mono">{tx.to.slice(0, 10)}...</td>
+                <td>{tx.value}</td>
+                <td>
+                  <span className={`status ${tx.isError === '0' ? 'confirmed' : 'failed'}`}>
+                    {tx.isError === '0' ? 'Success' : 'Failed'}
+                  </span>
+                </td>
+                <td>{new Date(parseInt(tx.timeStamp, 10) * 1000).toLocaleString()}</td>
               </tr>
             ))}
           </tbody>

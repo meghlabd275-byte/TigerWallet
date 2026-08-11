@@ -9,6 +9,21 @@
         android:id="@+id/walletNameInput"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Wallet Name" />
+        android:hint="Wallet Name"
+        android:inputType="text" />
+
+    <EditText
+        android:id="@+id/walletPasswordInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Password (min 8 chars)"
+        android:inputType="textPassword"
+        android:layout_marginTop="8dp" />
+
+    <Spinner
+        android:id="@+id/chainSpinner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp" />
 
 </LinearLayout>

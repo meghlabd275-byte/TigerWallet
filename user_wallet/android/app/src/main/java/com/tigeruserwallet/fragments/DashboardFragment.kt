@@ -4,11 +4,10 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.tigeruserwallet.R
+import com.tigeruserwallet.adapters.BalanceAdapter
 import com.tigeruserwallet.api.UserWalletApiService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,8 +15,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class DashboardFragment : Fragment() {
-    private val apiService = UserWalletApiService()
-    private lateinit var balancesRecyclerView: RecyclerView
+    private lateinit var balancesRecyclerView: androidx.recyclerview.widget.RecyclerView
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -37,13 +35,13 @@ class DashboardFragment : Fragment() {
     private fun loadBalances() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val balances = apiService.getBalances()
+                val balances = UserWalletApiService.getBalances()
                 withContext(Dispatchers.Main) {
-                    // Update UI with balances
+                    balancesRecyclerView.adapter = BalanceAdapter(balances)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    // Show error
+                    balancesRecyclerView.adapter = BalanceAdapter(emptyList())
                 }
             }
         }
