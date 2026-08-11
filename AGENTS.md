@@ -217,6 +217,32 @@
 - Production next step: wire `ApduTransport` to a HID/BLE backend (hidapi /
   ledger-rs) — the protocol layer above is unchanged.
 
+## wallet_core (Rust core) — keystore_v3
+
+- `wallet_core/src/keystore_v3.rs` is a REAL Web3 Secret Storage v3
+  implementation (Geth/MetaMask/MyCrypto keystore JSON format —
+  https://github.com/ethereum/wiki/wiki/Web3-Secret-Storage-Definition).
+- Both real KDFs: `scrypt` (default N=131072,r=8,p=1,dklen=32) and
+  `pbkdf2` (HMAC-SHA256, 262144 iters). Power-of-two N validation.
+- Cipher AES-128-CTR (real `aes`+`ctr` crates). MAC =
+  keccak256(derived_key[16:32]‖ciphertext), constant-time compared via
+  `subtle::ConstantTimeEq`. Wrong password / tampered ciphertext →
+  `MacMismatch` (fail-closed). Derived material zeroized.
+- serde structs match the spec field names exactly (`crypto.cipher`,
+  `ciphertext`, `cipherparams.iv`, `kdf`, `kdfparams.{n,r,p,c,prf,dklen,
+  salt}`, `mac`, `id`, `version`, `address`).
+- API: `encrypt_key`/`encrypt_key_scrypt`/`encrypt_key_pbkdf2`/`decrypt_key`/
+  `to_json`/`from_json`. Added deps `ctr = "0.9.2"`,
+  `scrypt = { version = "0.11", default-features = false }`.
+- `cargo test --lib keystore_v3` → 12/12 pass (real crypto, no mocks):
+  scrypt/pbkdf2 roundtrip, wrong-password fails, JSON roundtrip, invalid
+  key length, non-power-of-two N rejected, unsupported cipher/KDF
+  rejected, MAC non-constant (real randomness), both-KDFs cross-JSON
+  interop, tampered-ciphertext MAC break, version-2 rejected.
+- This is the Rust-core counterpart of `go/wallet_api/keystore_v3.go`
+  (Go backend already had the scrypt variant + REST endpoints); both
+  now produce spec-valid keystores importable across wallets.
+
 ## zk_infrastructure / ZK prover
 
 - `zk_infrastructure` uses a REAL Fiat-Shamir Schnorr proof of knowledge of a
