@@ -20,6 +20,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -931,13 +933,19 @@ func (e *TSSEngine) GetPublicKey() []byte {
 type PolicyEngine struct {
 	policies       map[string]Policy
 	walletPolicies map[Address][]string
-	mu             sync.RWMutex
+	// dailySpent tracks cumulative wei spent per wallet in the current UTC day.
+	dailySpent map[Address]uint64
+	// dailyDay is the UTC date (YYYYMMDD) the dailySpent counter applies to.
+	dailyDay   map[Address]string
+	mu         sync.RWMutex
 }
 
 func NewPolicyEngine() *PolicyEngine {
 	return &PolicyEngine{
 		policies:       make(map[string]Policy),
 		walletPolicies: make(map[Address][]string),
+		dailySpent:     make(map[Address]uint64),
+		dailyDay:       make(map[Address]string),
 	}
 }
 
@@ -953,9 +961,17 @@ func (e *PolicyEngine) CreatePolicy(policy Policy) string {
 	return policy.ID
 }
 
+// Evaluate enforces the wallet's assigned policies against a proposed
+// transaction. If no policy is assigned to the wallet the call is allowed
+// (fail-open by design — no policy means no restriction). When one or more
+// policies are assigned, ALL of their rules must pass; any failing rule
+// rejects the transaction. The default rule-type fallthrough REJECTS unknown
+// rule types rather than accepting them.
 func (e *PolicyEngine) Evaluate(tx TransactionRequest, wallet Address) bool {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
+	// Use a full write lock because daily-limit evaluation may reset the
+	// per-day spend counter (mutating state) when the UTC day rolls over.
+	e.mu.Lock()
+	defer e.mu.Unlock()
 
 	policyIDs, ok := e.walletPolicies[wallet]
 	if !ok {
@@ -969,7 +985,7 @@ func (e *PolicyEngine) Evaluate(tx TransactionRequest, wallet Address) bool {
 		}
 
 		for _, rule := range policy.Rules {
-			if !e.evaluateRule(rule, tx) {
+			if !e.evaluateRuleLocked(rule, tx, wallet) {
 				return false
 			}
 		}
@@ -978,21 +994,112 @@ func (e *PolicyEngine) Evaluate(tx TransactionRequest, wallet Address) bool {
 	return true
 }
 
-func (e *PolicyEngine) evaluateRule(rule PolicyRule, tx TransactionRequest) bool {
+// todayKey returns the current UTC date as YYYYMMDD.
+func todayKey() string {
+	return time.Now().UTC().Format("20060102")
+}
+
+// dailySpentLocked returns today's cumulative spend for the wallet, resetting
+// the counter if the UTC day has rolled over. Caller must hold e.mu.
+func (e *PolicyEngine) dailySpentLocked(wallet Address) uint64 {
+	if day, ok := e.dailyDay[wallet]; !ok || day != todayKey() {
+		e.dailyDay[wallet] = todayKey()
+		e.dailySpent[wallet] = 0
+	}
+	return e.dailySpent[wallet]
+}
+
+// parseAmount parses a rule value as a wei amount. Accepts decimal or 0x-prefixed
+// hex. Returns 0 (which makes limit rules reject everything non-zero) on error.
+func parseAmount(v string) uint64 {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0
+	}
+	if strings.HasPrefix(v, "0x") || strings.HasPrefix(v, "0X") {
+		n, err := strconv.ParseUint(v[2:], 16, 64)
+		if err != nil {
+			return 0
+		}
+		return n
+	}
+	n, err := strconv.ParseUint(v, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// parseAddressList splits a comma/space/newline-separated list of addresses.
+func parseAddressList(v string) []Address {
+	parts := strings.FieldsFunc(v, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\n' || r == '\t' || r == ';'
+	})
+	out := make([]Address, 0, len(parts))
+	for _, p := range parts {
+		if p != "" {
+			out = append(out, Address(strings.TrimSpace(p)))
+		}
+	}
+	return out
+}
+
+func addrEqual(a, b Address) bool {
+	// Case-insensitive compare so "0xABC…" and "0xabc…" match.
+	return strings.EqualFold(string(a), string(b))
+}
+
+// evaluateRuleLocked enforces a single rule. Caller must hold e.mu.
+// Unknown rule types REJECT (return false) — never accept-anything.
+func (e *PolicyEngine) evaluateRuleLocked(rule PolicyRule, tx TransactionRequest, wallet Address) bool {
 	switch rule.Type {
 	case "daily_limit":
-		// Check daily limit
-		return true
+		limit := parseAmount(rule.Value)
+		if limit == 0 {
+			return false
+		}
+		spent := e.dailySpentLocked(wallet)
+		// Reject if adding this tx's value would exceed the daily cap.
+		return spent+tx.Value <= limit
 	case "tx_limit":
-		limit, _ := hex.DecodeString(rule.Value)
-		return tx.Value < uint64(len(limit))
+		limit := parseAmount(rule.Value)
+		if limit == 0 {
+			return false
+		}
+		return tx.Value <= limit
 	case "whitelist":
-		// Check whitelist
-		return true
+		list := parseAddressList(rule.Value)
+		if len(list) == 0 {
+			return false
+		}
+		for _, a := range list {
+			if addrEqual(a, tx.To) {
+				return true
+			}
+		}
+		return false
 	case "blacklist":
-		return tx.To != Address(rule.Value)
+		list := parseAddressList(rule.Value)
+		for _, a := range list {
+			if addrEqual(a, tx.To) {
+				return false
+			}
+		}
+		return true
+	default:
+		// Unknown rule type: reject (fail-closed) rather than allow.
+		return false
 	}
-	return true
+}
+
+// RecordExecution increments the daily spend counter for a wallet after a
+// transaction is approved/executed, so daily_limit rules see real cumulative
+// spending. Call this once the tx is broadcast.
+func (e *PolicyEngine) RecordExecution(tx TransactionRequest, wallet Address) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.dailySpentLocked(wallet) // ensures the counter is reset if the day rolled over
+	e.dailySpent[wallet] += tx.Value
 }
 
 func (e *PolicyEngine) AssignPolicy(wallet Address, policyID string) {

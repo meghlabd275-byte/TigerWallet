@@ -2,10 +2,16 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/asn1"
 	"fmt"
 	"log"
+	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
@@ -331,20 +337,47 @@ func (s *TwoFactorService) VerifyPendingCode(userID, code string) bool {
 // WebAuthn (Passkey) Functions
 // ============================================================================
 
-func (s *TwoFactorService) RegisterWebAuthn(userID, deviceName string) (string, error) {
-	// Generate credential ID
-	credentialID := make([]byte, 32)
-	rand.Read(credentialID)
-	credID := base64.URLEncoding.EncodeToString(credentialID)
+// RegisterWebAuthn stores a real WebAuthn credential. The browser creates the
+// credential and sends its SPKI (SubjectPublicKeyInfo) DER public key + the
+// credential id; the server stores them. The server does NOT generate the key
+// pair — the private key never leaves the authenticator.
+func (s *TwoFactorService) RegisterWebAuthn(userID, deviceName, credentialID, spkiPublicKeyB64 string) (string, error) {
+	if spkiPublicKeyB64 == "" {
+		return "", fmt.Errorf("public key is required")
+	}
+	// Validate that the supplied SPKI parses to an ECDSA P-256 public key
+	// (the curve browsers use for WebAuthn ES256). Reject anything that does
+	// not parse — never store an unverifiable credential.
+	spkiDER, err := base64.StdEncoding.DecodeString(spkiPublicKeyB64)
+	if err != nil {
+		// Also accept URL-safe base64 (browser SubtleCrypto often uses it).
+		spkiDER, err = base64.URLEncoding.DecodeString(spkiPublicKeyB64)
+		if err != nil {
+			return "", fmt.Errorf("invalid public key encoding")
+		}
+	}
+	pubAny, err := x509.ParsePKIXPublicKey(spkiDER)
+	if err != nil {
+		return "", fmt.Errorf("invalid public key: %v", err)
+	}
+	pub, ok := pubAny.(*ecdsa.PublicKey)
+	if !ok || pub.Curve != elliptic.P256() {
+		return "", fmt.Errorf("only ES256 (ECDSA P-256) credentials are supported")
+	}
 
-	// Generate a random public key (in production, this would come from the browser)
-	pubKey := make([]byte, 64)
-	rand.Read(pubKey)
-	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey)
+	credID := credentialID
+	if credID == "" {
+		// Fall back to a server-generated id only when the client omits one.
+		rawID := make([]byte, 32)
+		if _, err := rand.Read(rawID); err != nil {
+			return "", err
+		}
+		credID = base64.URLEncoding.EncodeToString(rawID)
+	}
 
 	credential := WebAuthnCredential{
 		CredentialID: credID,
-		PublicKey:    pubKeyB64,
+		PublicKey:    spkiPublicKeyB64,
 		Counter:      0,
 		DeviceName:   deviceName,
 		Transport:    "hybrid",
@@ -358,6 +391,11 @@ func (s *TwoFactorService) RegisterWebAuthn(userID, deviceName string) (string, 
 	return credID, nil
 }
 
+// VerifyWebAuthn performs REAL WebAuthn assertion verification per the W3C
+// WebAuthn spec: the authenticator signs SHA-256(authenticatorData ||
+// SHA-256(clientDataJSON)) with the credential's private key. The server
+// reconstructs that message and verifies the ASN.1 ECDSA signature against the
+// stored P-256 public key. It never returns true without a valid signature.
 func (s *TwoFactorService) VerifyWebAuthn(userID, credentialID, clientDataJSON, authenticatorData, signature string) bool {
 	s.mu.RLock()
 	credentials, ok := s.webAuthn[userID]
@@ -367,15 +405,101 @@ func (s *TwoFactorService) VerifyWebAuthn(userID, credentialID, clientDataJSON, 
 		return false
 	}
 
-	for _, cred := range credentials {
-		if cred.CredentialID == credentialID {
-			// In production, verify the signature properly
-			// For now, just check credential exists
-			return true
+	var cred *WebAuthnCredential
+	for i := range credentials {
+		if credentials[i].CredentialID == credentialID {
+			cred = &credentials[i]
+			break
+		}
+	}
+	if cred == nil {
+		return false
+	}
+
+	// All three assertion fields are mandatory.
+	if clientDataJSON == "" || authenticatorData == "" || signature == "" {
+		return false
+	}
+
+	authData, err := base64.RawURLEncoding.DecodeString(authenticatorData)
+	if err != nil {
+		authData, err = base64.StdEncoding.DecodeString(authenticatorData)
+		if err != nil {
+			return false
+		}
+	}
+	clientData, err := base64.RawURLEncoding.DecodeString(clientDataJSON)
+	if err != nil {
+		clientData, err = base64.StdEncoding.DecodeString(clientDataJSON)
+		if err != nil {
+			return false
+		}
+	}
+	sigBytes, err := base64.RawURLEncoding.DecodeString(signature)
+	if err != nil {
+		sigBytes, err = base64.StdEncoding.DecodeString(signature)
+		if err != nil {
+			return false
 		}
 	}
 
-	return false
+	// Parse the stored SPKI public key.
+	spkiDER, err := base64.StdEncoding.DecodeString(cred.PublicKey)
+	if err != nil {
+		spkiDER, err = base64.URLEncoding.DecodeString(cred.PublicKey)
+		if err != nil {
+			return false
+		}
+	}
+	pubAny, err := x509.ParsePKIXPublicKey(spkiDER)
+	if err != nil {
+		return false
+	}
+	pub, ok := pubAny.(*ecdsa.PublicKey)
+	if !ok || pub.Curve != elliptic.P256() {
+		return false
+	}
+
+	// signedMessage = authenticatorData || SHA-256(clientDataJSON)
+	clientDataHash := sha256.Sum256(clientData)
+	signedMessage := append([]byte{}, authData...)
+	signedMessage = append(signedMessage, clientDataHash[:]...)
+	signedHash := sha256.Sum256(signedMessage)
+
+	// WebAuthn signatures are DER-encoded ASN.1 ECDSA (SEQUENCE of two INTEGERs).
+	// Some authenticators emit raw r||s instead; detect and normalize.
+	sig := sigBytes
+	if !isASN1Sequence(sig) {
+		sig, err = rawECSignatureToDER(sig)
+		if err != nil {
+			return false
+		}
+	}
+
+	if !ecdsa.VerifyASN1(pub, signedHash[:], sig) {
+		return false
+	}
+
+	now := time.Now()
+	cred.LastUsed = &now
+	cred.Counter++
+	return true
+}
+
+// isASN1Sequence reports whether b begins with a DER SEQUENCE tag.
+func isASN1Sequence(b []byte) bool {
+	return len(b) >= 2 && b[0] == 0x30
+}
+
+// rawECSignatureToDER converts a raw r||s signature (each 32 bytes for P-256)
+// into ASN.1 DER so ecdsa.VerifyASN1 can verify it.
+func rawECSignatureToDER(raw []byte) ([]byte, error) {
+	if len(raw) != 64 {
+		return nil, fmt.Errorf("unexpected raw signature length: %d", len(raw))
+	}
+	r := new(big.Int).SetBytes(raw[:32])
+	s := new(big.Int).SetBytes(raw[32:])
+	return asn1.Marshal(struct{ R, S *big.Int }{r, s})
 }
 
 func (s *TwoFactorService) GetWebAuthnCredentials(userID string) []WebAuthnCredential {
@@ -649,8 +773,10 @@ func (s *TwoFactorService) handleVerifyCode(c *gin.Context) {
 
 func (s *TwoFactorService) handleWebAuthnRegister(c *gin.Context) {
 	var req struct {
-		UserID     string `json:"userId" binding:"required"`
-		DeviceName string `json:"deviceName" binding:"required"`
+		UserID       string `json:"userId" binding:"required"`
+		DeviceName   string `json:"deviceName" binding:"required"`
+		CredentialID string `json:"credentialId"`
+		PublicKey    string `json:"publicKey" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -658,9 +784,9 @@ func (s *TwoFactorService) handleWebAuthnRegister(c *gin.Context) {
 		return
 	}
 
-	credID, err := s.RegisterWebAuthn(req.UserID, req.DeviceName)
+	credID, err := s.RegisterWebAuthn(req.UserID, req.DeviceName, req.CredentialID, req.PublicKey)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 

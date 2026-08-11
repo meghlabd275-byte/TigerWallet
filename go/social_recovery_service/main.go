@@ -5,7 +5,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -23,6 +22,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
+	"golang.org/x/crypto/scrypt"
 )
 
 // ============================================================================
@@ -227,13 +227,37 @@ func evaluatePolynomial(coefficients []*big.Int, x *big.Int, prime *big.Int) *bi
 
 // ============================================================================
 // Encryption
+//
+// Keys are derived with scrypt (N=32768, r=8, p=1, keyLen=32) from the
+// passphrase and a per-ciphertext random salt — NOT a bare sha256 hash. A bare
+// sha256(passphrase) is trivially brute-forced with no work factor or salt,
+// which would let an attacker recover the passphrase from a stolen ciphertext.
+// The serialized format is: scryptSalt(32) || nonce(12) || ciphertext.
 // ============================================================================
 
-func EncryptAESGCM(plaintext, key string) (string, error) {
-	keyBytes := sha256.Sum256([]byte(key))
-	key32 := keyBytes[:]
+const (
+	scryptN      = 1 << 15 // 32768
+	scryptR      = 8
+	scryptP      = 1
+	scryptKeyLen = 32
+	saltLen      = 32
+)
 
-	block, err := aes.NewCipher(key32)
+func deriveKeyScrypt(passphrase, salt []byte) ([]byte, error) {
+	return scrypt.Key(passphrase, salt, scryptN, scryptR, scryptP, scryptKeyLen)
+}
+
+func EncryptAESGCM(plaintext, key string) (string, error) {
+	salt := make([]byte, saltLen)
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+		return "", err
+	}
+	keyBytes, err := deriveKeyScrypt([]byte(key), salt)
+	if err != nil {
+		return "", err
+	}
+
+	block, err := aes.NewCipher(keyBytes)
 	if err != nil {
 		return "", err
 	}
@@ -248,20 +272,32 @@ func EncryptAESGCM(plaintext, key string) (string, error) {
 		return "", err
 	}
 
-	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
+	// blob = salt || nonce || ciphertext
+	blob := make([]byte, 0, len(salt)+len(nonce)+len(plaintext)+gcm.Overhead())
+	blob = append(blob, salt...)
+	blob = append(blob, nonce...)
+	ciphertext := gcm.Seal(blob[len(blob):0], nonce, []byte(plaintext), nil)
+	blob = append(blob, ciphertext...)
+	return base64.StdEncoding.EncodeToString(blob), nil
 }
 
 func DecryptAESGCM(ciphertextB64, key string) (string, error) {
-	keyBytes := sha256.Sum256([]byte(key))
-	key32 := keyBytes[:]
+	blob, err := base64.StdEncoding.DecodeString(ciphertextB64)
+	if err != nil {
+		return "", err
+	}
+	if len(blob) < saltLen {
+		return "", fmt.Errorf("ciphertext too short")
+	}
+	salt := blob[:saltLen]
+	rest := blob[saltLen:]
 
-	ciphertext, err := base64.StdEncoding.DecodeString(ciphertextB64)
+	keyBytes, err := deriveKeyScrypt([]byte(key), salt)
 	if err != nil {
 		return "", err
 	}
 
-	block, err := aes.NewCipher(key32)
+	block, err := aes.NewCipher(keyBytes)
 	if err != nil {
 		return "", err
 	}
@@ -272,11 +308,10 @@ func DecryptAESGCM(ciphertextB64, key string) (string, error) {
 	}
 
 	nonceSize := gcm.NonceSize()
-	if len(ciphertext) < nonceSize {
+	if len(rest) < nonceSize {
 		return "", fmt.Errorf("ciphertext too short")
 	}
-
-	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	nonce, ciphertext := rest[:nonceSize], rest[nonceSize:]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
 		return "", err
