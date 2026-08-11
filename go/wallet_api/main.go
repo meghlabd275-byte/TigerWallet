@@ -105,6 +105,9 @@ func main() {
 		// ---- DeFi: swap & staking (real CoinGecko quotes + on-chain action) ----
 		wallet.GET("/swap/quote", handleSwapQuote)
 		wallet.POST("/swap/execute", handleSwapExecute)
+		// ---- On-chain AMM router (real getAmountsOut via eth_call) ----
+		wallet.GET("/amm/quote", handleAmmQuote)
+		wallet.POST("/amm/swap", handleAmmSwap)
 		wallet.GET("/staking/quote", handleStakingQuote)
 		wallet.POST("/staking/stake", handleStakingAction("stake"))
 		wallet.POST("/staking/unstake", handleStakingAction("unstake"))
