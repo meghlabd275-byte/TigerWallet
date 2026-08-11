@@ -79,20 +79,12 @@ impl EllipalWallet {
             return Err(EllipalError::DeviceNotFound);
         }
 
-        Ok(EllipalResponse::PublicKey {
-            public_key: hex::encode(&[0u8; 33]),
-            address: "0x" + &hex::encode(&[0u8; 20]),
-        })
+        // Fail closed: no real Ellipal transport wired. Never return a fake key.
+        Err(EllipalError::DeviceNotFound)
     }
 
-    pub fn sign_transaction(&self, tx: &[u8]) -> Result<EllipalResponse, EllipalError> {
-        if !self.is_connected() {
-            return Err(EllipalError::DeviceNotFound);
-        }
-
-        Ok(EllipalResponse::Signature {
-            signature: hex::encode(tx),
-        })
+    pub fn sign_transaction(&self, _tx: &[u8]) -> Result<EllipalResponse, EllipalError> {
+        Err(EllipalError::DeviceNotFound)
     }
 }
 

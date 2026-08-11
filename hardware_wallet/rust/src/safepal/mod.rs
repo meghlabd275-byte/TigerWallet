@@ -66,24 +66,13 @@ impl SafePalWallet {
         *self.connected.read()
     }
 
-    pub fn get_public_key(&self, path: &str) -> Result<SafePalResponse, SafePalError> {
-        if !self.is_connected() {
-            return Err(SafePalError::DeviceNotFound);
-        }
-
-        Ok(SafePalResponse::PublicKey {
-            public_key: hex::encode(&[0u8; 33]),
-        })
+    pub fn get_public_key(&self, _path: &str) -> Result<SafePalResponse, SafePalError> {
+        // Fail closed: no real SafePal transport wired. Never return a fake key.
+        Err(SafePalError::DeviceNotFound)
     }
 
-    pub fn sign_transaction(&self, tx: &[u8]) -> Result<SafePalResponse, SafePalError> {
-        if !self.is_connected() {
-            return Err(SafePalError::DeviceNotFound);
-        }
-
-        Ok(SafePalResponse::Signature {
-            signature: hex::encode(tx),
-        })
+    pub fn sign_transaction(&self, _tx: &[u8]) -> Result<SafePalResponse, SafePalError> {
+        Err(SafePalError::DeviceNotFound)
     }
 }
 

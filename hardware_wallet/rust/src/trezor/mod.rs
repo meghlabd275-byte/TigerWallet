@@ -68,37 +68,17 @@ impl TrezorWallet {
         *self.connected.read()
     }
 
-    pub fn get_public_key(&self, path: &str) -> Result<TrezorResponse, TrezorError> {
-        if !self.is_connected() {
-            return Err(TrezorError::DeviceNotFound);
-        }
-
-        Ok(TrezorResponse::PublicKey {
-            public_key: "02" + &hex::encode(&[0u8; 64]),
-            chain_code: hex::encode(&[0u8; 32]),
-        })
+    pub fn get_public_key(&self, _path: &str) -> Result<TrezorResponse, TrezorError> {
+        // Fail closed: no real Trezor transport wired. Never return a fake key.
+        Err(TrezorError::DeviceNotFound)
     }
 
-    pub fn sign_transaction(&self, tx: &[u8]) -> Result<TrezorResponse, TrezorError> {
-        if !self.is_connected() {
-            return Err(TrezorError::DeviceNotFound);
-        }
-
-        Ok(TrezorResponse::Signature {
-            signature: vec![0u8; 65],
-            recid: 0,
-        })
+    pub fn sign_transaction(&self, _tx: &[u8]) -> Result<TrezorResponse, TrezorError> {
+        Err(TrezorError::DeviceNotFound)
     }
 
-    pub fn sign_message(&self, message: &[u8], path: &str) -> Result<TrezorResponse, TrezorError> {
-        if !self.is_connected() {
-            return Err(TrezorError::DeviceNotFound);
-        }
-
-        Ok(TrezorResponse::Signature {
-            signature: vec![0u8; 65],
-            recid: 0,
-        })
+    pub fn sign_message(&self, _message: &[u8], _path: &str) -> Result<TrezorResponse, TrezorError> {
+        Err(TrezorError::DeviceNotFound)
     }
 }
 

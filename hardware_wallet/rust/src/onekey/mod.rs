@@ -75,29 +75,17 @@ impl OneKeyWallet {
             return Err(OneKeyError::DeviceNotFound);
         }
 
-        Ok(OneKeyResponse::PublicKey {
-            public_key: hex::encode(&[0u8; 33]),
-            address: "0x" + &hex::encode(&[0u8; 20]),
-        })
+        // Fail closed: no real OneKey transport wired. Never return a fake key.
+        Err(OneKeyError::DeviceNotFound)
     }
 
-    pub fn sign_transaction(&self, tx: &[u8]) -> Result<OneKeyResponse, OneKeyError> {
-        if !self.is_connected() {
-            return Err(OneKeyError::DeviceNotFound);
-        }
-
-        Ok(OneKeyResponse::Signature {
-            signature: hex::encode(&[0u8; 65]),
-        })
+    pub fn sign_transaction(&self, _tx: &[u8]) -> Result<OneKeyResponse, OneKeyError> {
+        Err(OneKeyError::DeviceNotFound)
     }
 
     pub fn verify_biometric(&self) -> Result<bool, OneKeyError> {
-        if !self.is_connected() {
-            return Err(OneKeyError::DeviceNotFound);
-        }
-
-        // In production, this would verify biometric
-        Ok(true)
+        // Fail closed: no real OneKey transport wired.
+        Err(OneKeyError::DeviceNotFound)
     }
 }
 
