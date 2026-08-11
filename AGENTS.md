@@ -30,6 +30,19 @@
   `predictDeterministicAddress` (counterfactual address matches create output).
   `test_aa/AccountFactory.t.sol`: 5 passing Foundry tests (real `vm.sign`, no
   mocks). `legacy_aa/AccountFactory.sol` kept as historical reference only.
+- **VerifyingPaymaster (2026-08-11):** `account_abstraction/VerifyingPaymaster.sol`
+  extends the audited `BasePaymaster` and sponsors gas only when an off-chain
+  sponsor's real ECDSA signature over the EIP-191-prefixed `userOpHash`
+  recovers to the registered `signingSigner` (Pimlico/Stackup
+  verifying-paymaster pattern — the GetGas-equivalent gas-subsidy product).
+  Fail-closed sender whitelist, `validUntil`/`validAfter` time-range bounds,
+  owner-gated signer rotation, inherited stake/deposit/withdraw via
+  `Stakeable`/`BasePaymaster`. `test_aa/VerifyingPaymaster.t.sol`: 8 passing
+  Foundry tests (real `vm.sign`, no mocks). Full AA suite: 18/18 pass.
+- `paymasterAndData` layout for the VerifyingPaymaster: `address(20) ||
+  verificationGasLimit(16) || postOpGasLimit(16) || sponsorSignature(65) ||
+  validUntil(6) || validAfter(6)` (the slice after the fixed 52-byte head is
+  `UserOperationLib.PAYMASTER_DATA_OFFSET`).
 - TigerWallet's pre-existing custom `AccountFactory.sol` (which used the old
   unpacked `UserOperation` + an on-chain `Bundler`) was relocated to
   `smart_contracts/evm_contracts/legacy_aa/` because it does not compile against
