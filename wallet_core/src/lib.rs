@@ -16,6 +16,7 @@ pub mod key_derivation;
 pub mod address;
 pub mod transaction;
 pub mod encryption;
+pub mod keystore_v3;
 pub mod multisig;
 pub mod account_abstraction;
 pub mod evm;
