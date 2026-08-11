@@ -2,8 +2,10 @@ package com.tigerwallet.app
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.math.BigInteger
@@ -11,20 +13,88 @@ import java.util.concurrent.TimeUnit
 
 /**
  * DeFi Integration Service
- * Production-ready DeFi protocol integrations
- * Supports: Aave, Compound, Uniswap, Curve, Yearn, and more
+ *
+ * Fail-closed: every write operation (supply / borrow / swap) is submitted to
+ * the REAL backend (go/wallet_api at BACKEND_BASE_URL) and returns the REAL
+ * `tx_hash` reported by the backend. No fabricated `"0x"+UUID` transaction
+ * hash is ever returned. If the backend is unreachable or rejects the
+ * request, the call throws (fail-closed). Read-only quote/pool queries
+ * remain direct calls to the upstream protocol APIs.
  */
-
 class DeFiService private constructor() {
 
     companion object {
         val instance: DeFiService by lazy { DeFiService() }
+
+        /**
+         * Real backend base URL (go/wallet_api). Write operations are delegated
+         * here so the returned tx_hash is the on-chain hash, never a fabricated
+         * UUID. JWT auth is supplied per-request by the host app.
+         */
+        const val BACKEND_BASE_URL = "http://localhost:8443"
+
+        private val JSON_MEDIA_TYPE = "application/json".toMediaType()
     }
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
+
+    /**
+     * JWT used to authenticate backend write requests. Must be set by the host
+     * app before any write (supply/borrow/swap) is attempted. When empty the
+     * backend call is not attempted and the operation fails closed.
+     */
+    @Volatile
+    var authToken: String = ""
+
+    /**
+     * Submits a write operation to the REAL backend and returns the REAL
+     * on-chain tx_hash reported by the backend. Never fabricates a hash.
+     * Throws on any network/HTTP/logic failure (fail-closed).
+     */
+    private suspend fun postBackendTx(
+        path: String,
+        payload: JSONObject,
+        txHashField: String = "tx_hash"
+    ): String = withContext(Dispatchers.IO) {
+        if (authToken.isEmpty()) {
+            throw IllegalStateException("Backend auth token not configured; cannot submit DeFi transaction.")
+        }
+        val request = Request.Builder()
+            .url(BACKEND_BASE_URL + path)
+            .header("Authorization", "Bearer $authToken")
+            .header("Content-Type", "application/json")
+            .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        val body: String
+        val code: Int
+        try {
+            client.newCall(request).execute().use { resp ->
+                code = resp.code
+                body = resp.body?.string() ?: ""
+            }
+        } catch (e: Exception) {
+            throw IllegalStateException("Backend unreachable: ${e.message}", e)
+        }
+        if (code !in 200..299) {
+            throw IllegalStateException("Backend rejected request (HTTP $code): $body")
+        }
+        val json = try {
+            JSONObject(body)
+        } catch (e: Exception) {
+            throw IllegalStateException("Malformed backend response: $body")
+        }
+        if (json.has("error")) {
+            throw IllegalStateException("Backend error: ${json.optString("error", body)}")
+        }
+        val txHash = json.optString(txHashField, json.optString("txHash", ""))
+        if (txHash.isEmpty() || !txHash.startsWith("0x")) {
+            throw IllegalStateException("Backend did not return a valid tx_hash: $body")
+        }
+        txHash
+    }
 
     // ============================================================================
     // Protocol Types
@@ -146,7 +216,9 @@ class DeFiService private constructor() {
     }
 
     /**
-     * Supply to Aave
+     * Supply to Aave. Submits the supply operation to the REAL backend
+     * (POST /api/v1/send) and returns the REAL on-chain tx_hash. Throws
+     * fail-closed if the backend is unreachable or rejects the request.
      */
     suspend fun supplyToAave(
         walletAddress: String,
@@ -157,13 +229,16 @@ class DeFiService private constructor() {
     ): Result<String> {
         return withContext(Dispatchers.IO) {
             try {
-                // In production, this would:
-                // 1. Get the Aave pool contract
-                // 2. Approve the aToken
-                // 3. Call supply() function
-                // 4. Return transaction hash
-                
-                Result.success("0x" + java.util.UUID.randomUUID().toString().replace("-", ""))
+                val payload = JSONObject().apply {
+                    put("wallet_address", walletAddress)
+                    put("chain", chain)
+                    put("action", "supply")
+                    put("protocol", "aave")
+                    put("pool_address", poolAddress)
+                    put("token_address", tokenAddress)
+                    put("amount", amount.toString())
+                }
+                Result.success(postBackendTx("/api/v1/send", payload))
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -171,7 +246,9 @@ class DeFiService private constructor() {
     }
 
     /**
-     * Borrow from Aave
+     * Borrow from Aave. Submits the borrow operation to the REAL backend
+     * (POST /api/v1/send) and returns the REAL on-chain tx_hash. Throws
+     * fail-closed if the backend is unreachable or rejects the request.
      */
     suspend fun borrowFromAave(
         walletAddress: String,
@@ -183,7 +260,17 @@ class DeFiService private constructor() {
     ): Result<String> {
         return withContext(Dispatchers.IO) {
             try {
-                Result.success("0x" + java.util.UUID.randomUUID().toString().replace("-", ""))
+                val payload = JSONObject().apply {
+                    put("wallet_address", walletAddress)
+                    put("chain", chain)
+                    put("action", "borrow")
+                    put("protocol", "aave")
+                    put("pool_address", poolAddress)
+                    put("token_address", tokenAddress)
+                    put("amount", amount.toString())
+                    put("interest_rate_mode", interestRateMode)
+                }
+                Result.success(postBackendTx("/api/v1/send", payload))
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -235,7 +322,9 @@ class DeFiService private constructor() {
     }
 
     /**
-     * Execute swap on Uniswap
+     * Execute swap on Uniswap. Submits the swap to the REAL backend
+     * (POST /api/v1/swap/execute) and returns the REAL on-chain tx_hash.
+     * Throws fail-closed if the backend is unreachable or rejects the request.
      */
     suspend fun swapOnUniswap(
         walletAddress: String,
@@ -248,12 +337,17 @@ class DeFiService private constructor() {
     ): Result<String> {
         return withContext(Dispatchers.IO) {
             try {
-                // In production:
-                // 1. Approve tokens
-                // 2. Execute swap via router contract
-                // 3. Return transaction hash
-                
-                Result.success("0x" + java.util.UUID.randomUUID().toString().replace("-", ""))
+                val payload = JSONObject().apply {
+                    put("wallet_address", walletAddress)
+                    put("chain", chain)
+                    put("protocol", "uniswap")
+                    put("token_in", tokenIn)
+                    put("token_out", tokenOut)
+                    put("amount_in", amountIn.toString())
+                    put("amount_out_min", amountOutMin.toString())
+                    put("path", JSONArray(path))
+                }
+                Result.success(postBackendTx("/api/v1/swap/execute", payload))
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -367,16 +461,16 @@ class DeFiService private constructor() {
     // ============================================================================
 
     /**
-     * Get all DeFi positions for a wallet
+     * Get all DeFi positions for a wallet. The backend currently exposes no
+     * positions-aggregation endpoint, so this fails closed rather than
+     * returning a fabricated (empty) list. When a real endpoint exists it
+     * should be queried here.
      */
     suspend fun getAllPositions(walletAddress: String): List<Position> {
         return withContext(Dispatchers.IO) {
-            val positions = mutableListOf<Position>()
-
-            // In production, this would aggregate positions from multiple protocols
-            // For now, return empty list (would need proper API integration)
-            
-            positions
+            throw IllegalStateException(
+                "No real DeFi positions endpoint is configured; cannot aggregate positions."
+            )
         }
     }
 

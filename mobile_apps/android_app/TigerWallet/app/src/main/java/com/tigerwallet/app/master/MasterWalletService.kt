@@ -1,6 +1,15 @@
 /**
  * TigerWallet Android - Master Wallet Service
  * Master wallet OWNS and CONTROLS all user wallets
+ *
+ * Fail-closed: wallet `address` and `publicKey` are NEVER fabricated. Wallet
+ * creation delegates to the REAL backend (go/wallet_api at
+ * BACKEND_BASE_URL, POST /api/v1/wallets), which derives a real secp256k1
+ * address from a real BIP-39 mnemonic. The previous implementation returned
+ * `"0x" + UUID.randomUUID().replace("-","").take(40)` as the address and
+ * `take(130)` as the public key — that fabrication is removed. If the backend
+ * is unreachable or rejects the request, or no JWT is configured, creation
+ * throws fail-closed (no wallet with a fake address/key is ever persisted).
  */
 
 package com.tigerwallet.app.master
@@ -12,11 +21,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /**
@@ -26,7 +36,20 @@ class MasterWalletService private constructor() {
 
     companion object {
         val instance: MasterWalletService by lazy { MasterWalletService() }
+
+        /** Real backend base URL (go/wallet_api). Wallet creation is delegated
+         *  here so the returned address is a real secp256k1 address, never a
+         *  fabricated `"0x" + UUID`. */
+        const val BACKEND_BASE_URL = "http://localhost:8443"
+
+        private val JSON_MEDIA_TYPE = "application/json".toMediaType()
     }
+
+    /** JWT used to authenticate backend wallet-creation. Must be set by the
+     *  host app before createMasterWallet/createUserWallet can create a wallet.
+     *  When empty, creation fails closed. */
+    @Volatile
+    var jwt: String = ""
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -67,22 +90,32 @@ class MasterWalletService private constructor() {
         }
     }
 
-    fun createMasterWallet(name: String, type: WalletType, blockchain: String): MasterWallet {
-        val wallet = MasterWallet(
-            id = UUID.randomUUID().toString(),
-            name = name,
-            type = type,
-            blockchain = blockchain,
-            address = generateAddress(blockchain),
-            publicKey = generatePublicKey(),
-            balance = 0.0,
-            isActive = true,
-            createdAt = System.currentTimeMillis()
-        )
-        saveMasterWallet(wallet)
-        _masterWalletsFlow.value = _masterWalletsFlow.value + wallet
-        return wallet
-    }
+    /**
+     * Create a master wallet. The address is derived by the REAL backend
+     * (POST /api/v1/wallets, real secp256k1 from a real BIP-39 mnemonic) and is
+     * never fabricated. `publicKey` is left empty (the backend wallet record
+     * exposes only the address; a full public key must come from a real
+     * secp256k1 derivation path, never a UUID). Throws fail-closed if the
+     * backend is unreachable/rejects the request or no JWT is configured.
+     */
+    suspend fun createMasterWallet(name: String, type: WalletType, blockchain: String): MasterWallet =
+        withContext(Dispatchers.IO) {
+            val backend = createWalletViaBackend(name, blockchain)
+            val wallet = MasterWallet(
+                id = backend.id,
+                name = name,
+                type = type,
+                blockchain = blockchain,
+                address = backend.address,
+                publicKey = "",
+                balance = 0.0,
+                isActive = true,
+                createdAt = System.currentTimeMillis()
+            )
+            saveMasterWallet(wallet)
+            _masterWalletsFlow.value = _masterWalletsFlow.value + wallet
+            wallet
+        }
 
     private fun saveMasterWallet(wallet: MasterWallet) {
         val wallets = _masterWalletsFlow.value.toMutableList()
@@ -109,27 +142,29 @@ class MasterWalletService private constructor() {
     }
 
     // MASTER WALLET creates/owns user wallets
-    fun createUserWallet(masterWalletId: String, userId: String, blockchain: String): UserWallet {
-        val masterWallet = _masterWalletsFlow.value.find { it.id == masterWalletId }
-            ?: throw Exception("Master wallet not found")
+    suspend fun createUserWallet(masterWalletId: String, userId: String, blockchain: String): UserWallet =
+        withContext(Dispatchers.IO) {
+            val masterWallet = _masterWalletsFlow.value.find { it.id == masterWalletId }
+                ?: throw Exception("Master wallet not found")
 
-        val userWallet = UserWallet(
-            id = UUID.randomUUID().toString(),
-            userId = userId,
-            ownerMasterWalletId = masterWalletId,  // OWNERSHIP
-            ownerAddress = masterWallet.address,     // Master wallet address owns this
-            blockchain = blockchain,
-            address = generateAddress(blockchain),
-            publicKey = generatePublicKey(),
-            balance = 0.0,
-            isActive = true,
-            createdAt = System.currentTimeMillis()
-        )
+            val backend = createWalletViaBackend(masterWallet.name, blockchain)
+            val userWallet = UserWallet(
+                id = backend.id,
+                userId = userId,
+                ownerMasterWalletId = masterWalletId,  // OWNERSHIP
+                ownerAddress = masterWallet.address,     // Master wallet address owns this
+                blockchain = blockchain,
+                address = backend.address,
+                publicKey = "",
+                balance = 0.0,
+                isActive = true,
+                createdAt = System.currentTimeMillis()
+            )
 
-        saveUserWallet(userWallet)
-        _userWalletsFlow.value = _userWalletsFlow.value + userWallet
-        return userWallet
-    }
+            saveUserWallet(userWallet)
+            _userWalletsFlow.value = _userWalletsFlow.value + userWallet
+            userWallet
+        }
 
     // MASTER WALLET can control any user wallet
     fun controlUserWallet(masterWalletId: String, userWalletId: String): UserWallet? {
@@ -234,8 +269,79 @@ class MasterWalletService private constructor() {
     fun getNetworks(): List<BlockchainNetwork> = _networksFlow.value
     fun getTokens(): List<CryptoToken> = _tokensFlow.value
 
-    private fun generateAddress(blockchain: String): String = "0x" + UUID.randomUUID().toString().replace("-", "").take(40)
-    private fun generatePublicKey(): String = "0x" + UUID.randomUUID().toString().replace("-", "").take(130)
+    /**
+     * Password used to encrypt the backend wallet seed (backend requires
+     * `password` min 8 chars). Must be set by the host app from user input
+     * before createMasterWallet/createUserWallet can create a wallet. When
+     * empty, creation fails closed.
+     */
+    @Volatile
+    var creationPassword: String = ""
+
+    /** Result of a real backend wallet creation. `address` is a real
+     *  secp256k1 address derived by go/wallet_api from a real BIP-39 mnemonic. */
+    private data class BackendWallet(val id: String, val address: String)
+
+    private fun chainIdFor(blockchain: String): Long =
+        getDefaultNetworks().firstOrNull { it.id == blockchain }?.chainId
+            ?: getDefaultNetworks().firstOrNull { it.id == "ethereum" }?.chainId
+            ?: 1L
+
+    /**
+     * Creates a wallet on the REAL backend (POST /api/v1/wallets) and returns
+     * the real secp256k1 address + wallet id. Never fabricates an address or
+     * public key. Throws fail-closed if no JWT/password is configured, the
+     * backend is unreachable, or it rejects the request.
+     */
+    private fun createWalletViaBackend(label: String, blockchain: String): BackendWallet {
+        if (jwt.isEmpty()) {
+            throw IllegalStateException(
+                "No auth JWT configured; cannot create wallet on backend (fail-closed)."
+            )
+        }
+        if (creationPassword.length < 8) {
+            throw IllegalStateException(
+                "Wallet creation requires a user password (>=8 chars) for backend seed encryption (fail-closed)."
+            )
+        }
+        val body = JSONObject().apply {
+            put("label", label)
+            put("chain_id", chainIdFor(blockchain))
+            put("password", creationPassword)
+            put("entropy_bits", 256)
+        }
+        val request = Request.Builder()
+            .url("$BACKEND_BASE_URL/api/v1/wallets")
+            .header("Authorization", "Bearer $jwt")
+            .header("Content-Type", "application/json")
+            .post(body.toString().toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        val respData: String
+        val statusCode: Int
+        try {
+            client.newCall(request).execute().use { resp ->
+                statusCode = resp.code
+                respData = resp.body?.string() ?: ""
+            }
+        } catch (e: Exception) {
+            throw IllegalStateException("Backend unreachable: ${e.message ?: e.toString()}")
+        }
+        if (statusCode != 201) {
+            throw IllegalStateException("Backend rejected wallet creation (HTTP $statusCode): $respData")
+        }
+        val json: JSONObject
+        try {
+            json = JSONObject(respData)
+        } catch (e: Exception) {
+            throw IllegalStateException("Malformed backend response: $respData")
+        }
+        val id = json.optString("id", "")
+        val address = json.optString("address", "")
+        if (id.isEmpty() || !address.startsWith("0x") || address.length != 42) {
+            throw IllegalStateException("Backend did not return a valid wallet address: $respData")
+        }
+        return BackendWallet(id, address)
+    }
 }
 
 // ============================================================================

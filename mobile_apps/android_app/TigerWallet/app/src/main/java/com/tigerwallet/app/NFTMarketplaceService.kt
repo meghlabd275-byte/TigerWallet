@@ -2,8 +2,10 @@ package com.tigerwallet.app
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.math.BigInteger
@@ -11,20 +13,72 @@ import java.util.concurrent.TimeUnit
 
 /**
  * NFT Marketplace Service
- * Production-ready NFT marketplace functionality
  * Buy, sell, create listings, and trade NFTs
+ *
+ * Fail-closed: every write operation (`createListing`, `cancelListing`,
+ * `buyNFT`, `makeOffer`, `acceptOffer`) that returns a tx hash or order id
+ * either delegates to the REAL backend (POST /api/v1/send for on-chain
+ * actions) or throws. No `"0x"+UUID` tx hash and no `"listing_" + millis`
+ * / `"offer_" + millis` id is ever fabricated. If the backend is unreachable
+ * or rejects the request, the call fails closed.
  */
 
 class NFTMarketplaceService private constructor() {
 
     companion object {
         val instance: NFTMarketplaceService by lazy { NFTMarketplaceService() }
+
+        const val BACKEND_BASE_URL = "http://localhost:8443"
+        private val JSON_MEDIA_TYPE = "application/json".toMediaType()
     }
+
+    /**
+     * JWT auth token supplied by the host app. Required for authenticated
+     * backend writes (POST /api/v1/send). When empty, authenticated writes
+     * throw fail-closed.
+     */
+    @Volatile
+    var authToken: String = ""
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
+
+    /**
+     * POST a JSON payload to a real backend endpoint and return the real
+     * `tx_hash` reported by the backend. Throws fail-closed if the backend is
+     * unreachable, rejects the request, or returns no valid tx hash.
+     */
+    private fun postBackendTx(path: String, payload: JSONObject): String {
+        if (authToken.isEmpty()) {
+            throw IllegalStateException("No auth token configured for backend write.")
+        }
+        val builder = Request.Builder()
+            .url("$BACKEND_BASE_URL$path")
+            .header("Content-Type", "application/json")
+            .header("Authorization", "Bearer $authToken")
+            .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
+        val body: String
+        val code: Int
+        try {
+            client.newCall(builder.build()).execute().use { resp ->
+                code = resp.code
+                body = resp.body?.string() ?: ""
+            }
+        } catch (e: Exception) {
+            throw IllegalStateException("Backend unreachable: ${e.message}", e)
+        }
+        if (code !in 200..299) {
+            throw IllegalStateException("Backend rejected request (HTTP $code): $body")
+        }
+        val json = JSONObject(body)
+        val txHash = json.optString("tx_hash", json.optString("txHash", ""))
+        if (txHash.isEmpty() || !txHash.startsWith("0x")) {
+            throw IllegalStateException("Backend returned no valid tx_hash: $body")
+        }
+        return txHash
+    }
 
     // Supported marketplaces
     enum class Marketplace(val displayName: String, val chainId: Int) {
@@ -270,7 +324,10 @@ class NFTMarketplaceService private constructor() {
     // ============================================================================
 
     /**
-     * Create a listing (sell NFT)
+     * Create a listing (sell NFT). Submits the listing/approval transaction to
+     * the REAL backend (POST /api/v1/send) and returns the REAL on-chain
+     * tx_hash. No `"listing_" + millis` id is fabricated. Throws fail-closed
+     * if the backend is unreachable or rejects the request.
      */
     suspend fun createListing(
         walletAddress: String,
@@ -282,13 +339,16 @@ class NFTMarketplaceService private constructor() {
     ): Result<String> {
         return withContext(Dispatchers.IO) {
             try {
-                // In production, this would:
-                // 1. Create the listing via marketplace API
-                // 2. Sign the order with the wallet
-                // 3. Submit to the marketplace contract
-                
-                // For now, return success with mock listing ID
-                Result.success("listing_${System.currentTimeMillis()}")
+                val payload = JSONObject().apply {
+                    put("wallet_address", walletAddress)
+                    put("chain", chain)
+                    put("action", "nft_list")
+                    put("collection_address", collectionAddress)
+                    put("token_id", tokenId)
+                    put("price", price)
+                    put("price_token", priceToken)
+                }
+                Result.success(postBackendTx("/api/v1/send", payload))
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -296,7 +356,9 @@ class NFTMarketplaceService private constructor() {
     }
 
     /**
-     * Cancel a listing
+     * Cancel a listing. Submits the cancellation transaction to the REAL
+     * backend (POST /api/v1/send). No fake success is returned. Throws
+     * fail-closed if the backend is unreachable or rejects the request.
      */
     suspend fun cancelListing(
         walletAddress: String,
@@ -305,7 +367,13 @@ class NFTMarketplaceService private constructor() {
     ): Result<Boolean> {
         return withContext(Dispatchers.IO) {
             try {
-                // Cancel the listing via marketplace API
+                val payload = JSONObject().apply {
+                    put("wallet_address", walletAddress)
+                    put("chain", chain)
+                    put("action", "nft_cancel_listing")
+                    put("listing_id", listingId)
+                }
+                postBackendTx("/api/v1/send", payload)
                 Result.success(true)
             } catch (e: Exception) {
                 Result.failure(e)
@@ -314,7 +382,10 @@ class NFTMarketplaceService private constructor() {
     }
 
     /**
-     * Buy NFT (fulfill listing)
+     * Buy NFT (fulfill listing). Submits the purchase transaction to the REAL
+     * backend (POST /api/v1/send) and returns the REAL on-chain tx_hash. No
+     * `"0x"+UUID` tx hash is fabricated. Throws fail-closed if the backend is
+     * unreachable or rejects the request.
      */
     suspend fun buyNFT(
         buyerAddress: String,
@@ -323,13 +394,13 @@ class NFTMarketplaceService private constructor() {
     ): Result<String> {
         return withContext(Dispatchers.IO) {
             try {
-                // In production, this would:
-                // 1. Create the purchase transaction
-                // 2. Sign with buyer wallet
-                // 3. Submit transaction to marketplace contract
-                // 4. Return transaction hash
-                
-                Result.success("0x" + java.util.UUID.randomUUID().toString().replace("-", ""))
+                val payload = JSONObject().apply {
+                    put("wallet_address", buyerAddress)
+                    put("chain", chain)
+                    put("action", "nft_buy")
+                    put("listing_id", listingId)
+                }
+                Result.success(postBackendTx("/api/v1/send", payload))
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -341,7 +412,10 @@ class NFTMarketplaceService private constructor() {
     // ============================================================================
 
     /**
-     * Make an offer on NFT
+     * Make an offer on an NFT. Submits the offer transaction to the REAL
+     * backend (POST /api/v1/send) and returns the REAL on-chain tx_hash. No
+     * `"offer_" + millis` id is fabricated. Throws fail-closed if the backend
+     * is unreachable or rejects the request.
      */
     suspend fun makeOffer(
         makerAddress: String,
@@ -354,8 +428,17 @@ class NFTMarketplaceService private constructor() {
     ): Result<String> {
         return withContext(Dispatchers.IO) {
             try {
-                // Create and sign the offer
-                Result.success("offer_${System.currentTimeMillis()}")
+                val payload = JSONObject().apply {
+                    put("wallet_address", makerAddress)
+                    put("chain", chain)
+                    put("action", "nft_make_offer")
+                    put("collection_address", collectionAddress)
+                    put("token_id", tokenId)
+                    put("price", price)
+                    put("price_token", priceToken)
+                    put("expiration_time", expirationTime)
+                }
+                Result.success(postBackendTx("/api/v1/send", payload))
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -363,7 +446,10 @@ class NFTMarketplaceService private constructor() {
     }
 
     /**
-     * Accept an offer
+     * Accept an offer. Submits the acceptance transaction to the REAL backend
+     * (POST /api/v1/send) and returns the REAL on-chain tx_hash. No
+     * `"0x"+UUID` tx hash is fabricated. Throws fail-closed if the backend is
+     * unreachable or rejects the request.
      */
     suspend fun acceptOffer(
         sellerAddress: String,
@@ -372,7 +458,13 @@ class NFTMarketplaceService private constructor() {
     ): Result<String> {
         return withContext(Dispatchers.IO) {
             try {
-                Result.success("0x" + java.util.UUID.randomUUID().toString().replace("-", ""))
+                val payload = JSONObject().apply {
+                    put("wallet_address", sellerAddress)
+                    put("chain", chain)
+                    put("action", "nft_accept_offer")
+                    put("offer_id", offerId)
+                }
+                Result.success(postBackendTx("/api/v1/send", payload))
             } catch (e: Exception) {
                 Result.failure(e)
             }

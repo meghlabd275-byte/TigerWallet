@@ -411,7 +411,55 @@ class SuperAdminService {
         return hash.map { String(format: "%02x", $0) }.joined()
     }
     
+    /// Real TOTP (RFC 6238) verification using HMAC-SHA1 over the shared
+    /// secret and the current 30s time step. Rejects any code that does not
+    /// match the HOTP value (±1 step window for clock skew). Never accepts an
+    /// arbitrary 6-digit code.
     private func verifyTwoFactor(_ secret: String, code: String) -> Bool {
-        return code.count == 6 && code.allSatisfy { $0.isNumber }
+        guard let key = base32Decode(secret) else { return false }
+        let steps = Int(Date().timeIntervalSince1970 / 30)
+        // ±1 time-step window to tolerate minor clock skew.
+        for skew in -1...1 {
+            let counter = UInt64(steps + skew).bigEndian
+            let counterData = withUnsafeBytes(of: counter) { Data($0) }
+            var hmac = [UInt8](repeating: 0, count: Int(CC_SHA1_DIGEST_LENGTH))
+            key.withUnsafeBytes { keyPtr in
+                counterData.withUnsafeBytes { ctrPtr in
+                    CCHmac(
+                        CCHmacAlgorithm(kCCHmacAlgSHA1),
+                        keyPtr.baseAddress, key.count,
+                        ctrPtr.baseAddress, counterData.count,
+                        &hmac
+                    )
+                }
+            }
+            let o = Int(hmac[hmac.count - 1] & 0x0f)
+            let binary: UInt32 =
+                (UInt32(hmac[o] & 0x7f) << 24) |
+                (UInt32(hmac[o + 1]) << 16) |
+                (UInt32(hmac[o + 2]) << 8) |
+                UInt32(hmac[o + 3])
+            let otp = String(format: "%06d", binary % 1_000_000)
+            if otp == code { return true }
+        }
+        return false
+    }
+
+    /// RFC 4648 Base32 decode (uppercase, no padding required).
+    private func base32Decode(_ s: String) -> Data? {
+        let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+        var bits = 0
+        var value = 0
+        var out = Data()
+        for ch in s.uppercased() where ch != "=" {
+            guard let idx = alphabet.firstIndex(of: ch) else { return nil }
+            value = (value << 5) | alphabet.distance(from: alphabet.startIndex, to: idx)
+            bits += 5
+            if bits >= 8 {
+                bits -= 8
+                out.append(UInt8((value >> bits) & 0xff))
+            }
+        }
+        return out.isEmpty ? nil : out
     }
 }

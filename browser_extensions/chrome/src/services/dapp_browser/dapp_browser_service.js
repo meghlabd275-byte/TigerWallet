@@ -1,7 +1,17 @@
 /**
  * TigerWallet Chrome Extension - DApp Browser Service
  * Production-ready decentralized application browser
+ *
+ * Fail-closed: dApp transaction/message signing is delegated to the canonical
+ * go/wallet_api backend (http://localhost:8443). `executeTransaction` POSTs to
+ * `/api/v1/send` and returns the REAL `tx_hash` reported by the backend;
+ * `signMessage` POSTs to `/api/v1/sign` and returns the REAL `signature`. No
+ * fabricated `'0x' + generateId()` placeholders are ever returned. If the
+ * backend is unreachable, the wallet/JWT is unavailable, or the request is
+ * rejected, the methods throw an honest error.
  */
+
+const DAPP_BACKEND_URL = 'http://localhost:8443';
 
 class DAppBrowserService {
     constructor() {
@@ -343,40 +353,155 @@ class DAppBrowserService {
     }
 
     /**
-     * Handle DApp request
+     * Handle DApp request. On approval, the request is delegated to the
+     * canonical wallet-api backend (real signing/broadcast). No fabricated
+     * tx hash or signature is ever returned. Throws if rejected or the
+     * backend call fails.
      */
     async handleDAppRequest(request, approved) {
-        if (approved) {
-            // Execute the request
-            if (request.type === 'transaction') {
-                return await this.executeTransaction(request.params);
-            } else if (request.type === 'sign') {
-                return await this.signMessage(request.message);
-            }
-        } else {
+        if (!approved) {
             throw new Error('Request rejected');
+        }
+        if (request.type === 'transaction') {
+            return await this.executeTransaction(request.params);
+        } else if (request.type === 'sign') {
+            return await this.signMessage(request.message);
+        }
+        throw new Error(`Unsupported dApp request type: ${request.type}`);
+    }
+
+    /**
+     * Execute a dApp transaction via the canonical wallet-api backend
+     * (POST /api/v1/send with the JWT). Returns the REAL `tx_hash` reported by
+     * the backend. Never returns a fabricated `'0x' + generateId()`. Throws
+     * if the backend is unreachable, the JWT/wallet is unavailable, or the
+     * request is rejected.
+     */
+    async executeTransaction(params) {
+        const ctx = await this._getWalletContext();
+        const body = {
+            wallet_id: ctx.wallet.id,
+            password: ctx.password,
+            to: params.to,
+            value: params.value != null ? String(params.value) : '0',
+            chain_id: params.chainId != null ? Number(params.chainId) : 1,
+            data: params.data || '0x'
+        };
+        const json = await this._backendPost('/api/v1/send', body, ctx.token);
+        const txHash = json && json.tx_hash;
+        if (typeof txHash !== 'string' || txHash.length === 0) {
+            throw new Error('Backend did not return a real tx_hash.');
+        }
+        return { txHash, status: 'pending' };
+    }
+
+    /**
+     * Sign a message via the canonical wallet-api backend
+     * (POST /api/v1/sign with the JWT). Returns the REAL `signature` reported
+     * by the backend. Never returns a fabricated `'0x' + generateId()`. Throws
+     * if the backend is unreachable, the JWT/wallet is unavailable, or the
+     * request is rejected.
+     */
+    async signMessage(message) {
+        const ctx = await this._getWalletContext();
+        const body = {
+            wallet_id: ctx.wallet.id,
+            password: ctx.password,
+            message: typeof message === 'string' ? message : JSON.stringify(message)
+        };
+        const json = await this._backendPost('/api/v1/sign', body, ctx.token);
+        const signature = json && json.signature;
+        if (typeof signature !== 'string' || signature.length === 0) {
+            throw new Error('Backend did not return a real signature.');
+        }
+        return { signature };
+    }
+
+    // ========================================================================
+    // Backend helpers (real wallet-api delegation, fail-closed)
+    // ========================================================================
+
+    async _getWalletContext() {
+        const storage = (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local)
+            ? chrome.storage.local
+            : null;
+        if (!storage) {
+            throw new Error('chrome.storage is unavailable; cannot resolve wallet/JWT for backend call.');
+        }
+        const data = await storage.get(['wallet', 'isUnlocked', 'auth_token']);
+        if (!data.isUnlocked || !data.wallet || !data.wallet.id) {
+            throw new Error('Wallet is locked or unavailable; cannot submit dApp request to backend.');
+        }
+        const token = data.auth_token || (await this._readSecureToken());
+        if (!token) {
+            throw new Error('No auth JWT available; cannot authenticate backend dApp request.');
+        }
+        const password = await this._getWalletPassword();
+        return { wallet: data.wallet, token, password };
+    }
+
+    async _readSecureToken() {
+        if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.secure) return null;
+        try {
+            const res = await chrome.storage.secure.get('auth_token');
+            return res && res.auth_token ? res.auth_token : null;
+        } catch {
+            return null;
         }
     }
 
-    /**
-     * Execute transaction (placeholder)
-     */
-    async executeTransaction(params) {
-        // In production, sign and broadcast transaction
-        return {
-            txHash: '0x' + this.generateId(),
-            status: 'pending'
-        };
+    async _getWalletPassword() {
+        return new Promise((resolve, reject) => {
+            if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.windows) {
+                reject(new Error('Cannot prompt for wallet password in this context.'));
+                return;
+            }
+            try {
+                chrome.windows.create({
+                    url: chrome.runtime.getURL('popup/popup.html?action=password'),
+                    type: 'popup',
+                    width: 360,
+                    height: 480
+                }, (win) => {
+                    if (!win) { reject(new Error('Failed to open password prompt.')); return; }
+                    const listener = (msg) => {
+                        if (msg && msg.type === 'WALLET_PASSWORD' && typeof msg.password === 'string') {
+                            chrome.runtime.onMessage.removeListener(listener);
+                            resolve(msg.password);
+                        }
+                    };
+                    chrome.runtime.onMessage.addListener(listener);
+                });
+            } catch (e) {
+                reject(new Error(`Password prompt failed: ${e.message}`));
+            }
+        });
     }
 
-    /**
-     * Sign message (placeholder)
-     */
-    async signMessage(message) {
-        // In production, use wallet to sign
-        return {
-            signature: '0x' + this.generateId()
-        };
+    async _backendPost(path, body, token) {
+        let resp;
+        try {
+            resp = await fetch(`${DAPP_BACKEND_URL}${path}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(body)
+            });
+        } catch (err) {
+            throw new Error(`Backend unreachable: ${err && err.message ? err.message : String(err)}`);
+        }
+        if (!resp.ok) {
+            let detail = '';
+            try { detail = (await resp.text()) || ''; } catch { /* ignore */ }
+            throw new Error(`Backend rejected request (HTTP ${resp.status})${detail ? `: ${detail}` : ''}`);
+        }
+        try {
+            return await resp.json();
+        } catch {
+            throw new Error('Backend returned malformed JSON.');
+        }
     }
 
     /**

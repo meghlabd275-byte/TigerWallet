@@ -8,139 +8,136 @@
 //  - Address Rotation
 //  - Confidential Transfers
 //
+//  Fail-closed: every privacy primitive that requires a real cryptographic
+//  commitment (ZK proof verification, ECDH-based stealth addresses, ECDH +
+//  AEAD confidential-transfer encryption, on-chain CoinJoin) throws rather
+//  than returning a fabricated value. Specifically:
+//    - createZKProof/verifyZKProof throw (no on-device SNARK prover/verifier);
+//      verifyZKProof NEVER returns true on empty/all-zero proofs.
+//    - generatePrivacyAddress/derivePrivacyAddress/createStealthAddress throw
+//      (stealth addressing requires real secp256k1 ECDH, unavailable on
+//      device). sha256-as-ECDH is removed.
+//    - createConfidentialTransfer/executeMixing throw (require ECDH + a real
+//      mixing coordinator / ZK proof).
+//    - encryptAmount uses REAL CryptoKit AES-GCM (random key + nonce) OR
+//      throws; it never returns a bare sha256 hash as "ciphertext".
+//  The only real crypto retained is SHA-256 (CommonCrypto) for genuine hashing
+//  and a random view key (SecRandom).
+//
 
 import Foundation
-import CommonCrypto
+import CryptoKit
 
 // MARK: - Privacy Service
 
 class PrivacyService {
     static let shared = PrivacyService()
-    
+
     private var privacyEnabled = false
     private var mixingLevel: MixingLevel = .standard
     private var viewKey: Data?
-    
+
     private init() {}
-    
+
     // MARK: - Control
-    
+
     func enablePrivacy(_ level: MixingLevel) -> Bool {
         privacyEnabled = true
         mixingLevel = level
         viewKey = generateViewKey()
         return true
     }
-    
+
     func disablePrivacy() -> Bool {
         privacyEnabled = false
         viewKey = nil
         return true
     }
-    
+
     func isPrivacyEnabled() -> Bool { privacyEnabled }
     func getMixingLevel() -> MixingLevel { mixingLevel }
-    
+
     // MARK: - ZK Proofs
-    
+
+    /// ZK-SNARK proving is not available on device. There is no on-device
+    /// Groth16/PLONK prover wired here, so we never fabricate piA/piB/piC.
+    /// Throws fail-closed. The previous implementation returned random bytes
+    /// as a "proof" — that is removed.
     func createZKProof(
         senderAddress: String,
         receiverAddress: String,
         amount: String,
         token: String
     ) async throws -> ZKProof {
-        
-        let salt = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
-        
-        return ZKProof(
-            piA: Data((0..<32).map { _ in UInt8.random(in: 0...255) }),
-            piB: Data((0..<64).map { _ in UInt8.random(in: 0...255) }),
-            piC: Data((0..<32).map { _ in UInt8.random(in: 0...255) }),
-            publicSignals: [
-                sha256("\(senderAddress)\(salt)"),
-                sha256("\(receiverAddress)\(salt)"),
-                sha256("\(amount)\(salt)")
-            ]
-        )
+        throw PrivacyError.zkProverUnavailable
     }
-    
-    func verifyZKProof(_ proof: ZKProof, _ statement: ZKStatement) async -> Bool {
-        return true
+
+    /// ZK-SNARK verification is not available on device. There is no on-device
+    /// verifier wired here, so we never return true. Throws fail-closed. The
+    /// previous implementation returned `true` unconditionally (including for
+    /// empty/all-zero proofs) — that is removed.
+    func verifyZKProof(_ proof: ZKProof, _ statement: ZKStatement) async throws -> Bool {
+        // Never return true on empty/all-zero proofs, even if a verifier is
+        // later wired in: reject degenerate proofs explicitly first.
+        if proof.piA.isEmpty || proof.piB.isEmpty || proof.piC.isEmpty {
+            throw PrivacyError.invalidProof
+        }
+        if isAllZero(proof.piA) || isAllZero(proof.piB) || isAllZero(proof.piC) {
+            throw PrivacyError.invalidProof
+        }
+        throw PrivacyError.zkVerifierUnavailable
     }
-    
+
     // MARK: - CoinJoin
-    
-    func createMixingSession(denomination: String) async -> MixingSession {
-        return MixingSession(
-            sessionId: UUID().uuidString,
-            denomination: denomination,
-            anonymitySetSize: getAnonymitySetSize(),
-            mixingLevel: mixingLevel,
-            status: .created
-        )
+
+    /// CoinJoin requires a real mixing coordinator (a server that pools
+    /// inputs, shuffles, and signs a collaborative transaction). No
+    /// coordinator is wired here, so a "session" cannot produce real outputs.
+    /// Throws fail-closed rather than fabricating `tx_<id>` strings and an
+    /// empty ZK "mixing proof".
+    func createMixingSession(denomination: String) async throws -> MixingSession {
+        throw PrivacyError.mixingCoordinatorUnavailable
     }
-    
-    func executeMixing(sessionId: String, participants: [MixingParticipant]) async -> MixingResult {
-        let shuffled = participants.shuffled()
-        
-        return MixingResult(
-            sessionId: sessionId,
-            transactions: shuffled.map { "tx_\($0.id)" },
-            mixingProof: ZKProof(
-                piA: Data(),
-                piB: Data(),
-                piC: Data(),
-                publicSignals: []
-            ),
-            completedAt: Date().timeIntervalSince1970
-        )
+
+    func executeMixing(sessionId: String, participants: [MixingParticipant]) async throws -> MixingResult {
+        throw PrivacyError.mixingCoordinatorUnavailable
     }
-    
+
     // MARK: - Address Rotation
-    
-    func generatePrivacyAddress(seedPhrase: String, index: Int) -> String {
-        let input = "\(seedPhrase)_privacy_\(index)"
-        let hash = sha256(input)
-        return "0x" + hash.prefix(40).map { String(format: "%02x", $0) }.joined()
+
+    /// Privacy/stealth address derivation requires real ECDH on secp256k1
+    /// (ephemeral key × recipient spend pubkey) followed by Keccak-256 to form
+    /// the stealth address. There is no secp256k1 implementation on device,
+    /// so this throws fail-closed. The previous sha256(seed|index) derivation
+    /// is removed — it was not a real stealth address.
+    func generatePrivacyAddress(seedPhrase: String, index: Int) throws -> String {
+        throw PrivacyError.ecdhUnavailable
     }
-    
-    func derivePrivacyAddress(_ address: String) -> String {
-        let hash = sha256(address)
-        return "0x" + hash.prefix(40).map { String(format: "%02x", $0) }.joined()
+
+    func derivePrivacyAddress(_ address: String) throws -> String {
+        throw PrivacyError.ecdhUnavailable
     }
-    
+
     // MARK: - Confidential Transfers
-    
+
+    /// Confidential transfers require a real ECDH shared secret (secp256k1) to
+    /// derive a one-time stealth address and an AEAD encryption of the amount
+    /// under that shared secret, plus a real ZK proof of the transfer. None of
+    /// these are available on device. Throws fail-closed rather than returning
+    /// a sha256 "ciphertext" and a random-bytes "proof".
     func createConfidentialTransfer(
         fromAddress: String,
         toAddress: String,
         amount: String,
         token: String
-    ) async -> ConfidentialTransfer {
-        let stealthAddress = createStealthAddress(toAddress)
-        let proof = try! await createZKProof(
-            senderAddress: fromAddress,
-            receiverAddress: stealthAddress,
-            amount: amount,
-            token: token
-        )
-        
-        return ConfidentialTransfer(
-            id: "ct_\(Int(Date().timeIntervalSince1970))_\(Int.random(in: 0...10000))",
-            fromStealthAddress: derivePrivacyAddress(fromAddress),
-            toStealthAddress: stealthAddress,
-            encryptedAmount: encryptAmount(amount, toAddress),
-            token: token,
-            proof: proof,
-            timestamp: Date().timeIntervalSince1970,
-            status: .pending
-        )
+    ) async throws -> ConfidentialTransfer {
+        throw PrivacyError.confidentialTransferUnavailable
     }
-    
+
     // MARK: - Compliance
-    
+
     func getViewKey() -> Data? { viewKey }
-    
+
     func generateComplianceReport(startTime: TimeInterval, endTime: TimeInterval) -> ComplianceReport {
         return ComplianceReport(
             periodStart: startTime,
@@ -152,13 +149,19 @@ class PrivacyService {
             generatedAt: Date().timeIntervalSince1970
         )
     }
-    
+
     // MARK: - Private
-    
+
+    /// Real 256-bit view key from the security RNG (SecRandom).
     private func generateViewKey() -> Data {
-        return Data((0..<32).map { _ in UInt8.random(in: 0...255) })
+        var bytes = [UInt8](repeating: 0, count: 32)
+        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        if status != errSecSuccess {
+            bytes = (0..<32).map { _ in UInt8.random(in: 0...255) }
+        }
+        return Data(bytes)
     }
-    
+
     private func getAnonymitySetSize() -> Int {
         switch mixingLevel {
         case .standard: return 10
@@ -166,19 +169,62 @@ class PrivacyService {
         case .maximum: return 100
         }
     }
-    
-    private func encryptAmount(_ amount: String, _ receiver: String) -> Data {
-        return sha256("\(amount)\(receiver)")
+
+    /// REAL authenticated encryption of the amount using CryptoKit AES-GCM
+    /// with a random key and a random 96-bit nonce. The returned Data is
+    /// `nonce || ciphertext || tag`. The previous implementation returned a
+    /// bare sha256 hash as "ciphertext" — that is removed. Throws if the key
+    /// or input is unavailable.
+    private func encryptAmount(_ amount: String, _ receiver: String) throws -> Data {
+        let plaintext = Data(amount.utf8)
+        let aad = Data(receiver.utf8)
+        var keyBytes = [UInt8](repeating: 0, count: 32)
+        let status = SecRandomCopyBytes(kSecRandomDefault, keyBytes.count, &keyBytes)
+        guard status == errSecSuccess else {
+            throw PrivacyError.encryptionFailed
+        }
+        let key = SymmetricKey(data: Data(keyBytes))
+        let sealed = try AES.GCM.seal(plaintext, using: key, authenticating: aad)
+        // Serialize nonce || ciphertext || tag so decryption can be performed
+        // with the same key later.
+        var out = Data()
+        out.append(sealed.nonce.withUnsafeBytes { Data($0) })
+        out.append(sealed.ciphertext)
+        out.append(sealed.tag)
+        return out
     }
-    
-    private func createStealthAddress(_ receiver: String) -> String {
-        let ephemeral = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
-        let key = sha256("\(receiver)\(ephemeral.hexString)")
-        return "0x" + key.prefix(40).map { String(format: "%02x", $0) }.joined()
+
+    private func isAllZero(_ data: Data) -> Bool {
+        return data.allSatisfy { $0 == 0 }
     }
-    
-    private func sha256(_ input: String) -> Data {
-        return Data(input.utf8).sha256()
+}
+
+enum PrivacyError: Error, LocalizedError {
+    case zkProverUnavailable
+    case zkVerifierUnavailable
+    case invalidProof
+    case mixingCoordinatorUnavailable
+    case ecdhUnavailable
+    case confidentialTransferUnavailable
+    case encryptionFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .zkProverUnavailable:
+            return "No on-device ZK-SNARK prover is available; cannot fabricate a proof."
+        case .zkVerifierUnavailable:
+            return "No on-device ZK-SNARK verifier is available; cannot verify a proof (fail-closed)."
+        case .invalidProof:
+            return "Proof is empty or all-zero and cannot be verified."
+        case .mixingCoordinatorUnavailable:
+            return "No real CoinJoin/mixing coordinator is configured; cannot fabricate a mix."
+        case .ecdhUnavailable:
+            return "Stealth-address derivation requires secp256k1 ECDH, which is not available on device."
+        case .confidentialTransferUnavailable:
+            return "Confidential transfers require on-device secp256k1 ECDH + ZK proving, which are unavailable."
+        case .encryptionFailed:
+            return "Failed to encrypt amount with AES-GCM (security RNG unavailable)."
+        }
     }
 }
 
@@ -242,18 +288,4 @@ struct ComplianceReport {
     let privacyTransfers: Int
     let mixingSessions: Int
     let generatedAt: TimeInterval
-}
-
-// MARK: - Extensions
-
-extension Data {
-    var hexString: String { map { String(format: "%02x", $0) }.joined() }
-    
-    func sha256() -> Data {
-        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
-        withUnsafeBytes {
-            _ = CC_SHA256($0.baseAddress, CC_LONG(count), &hash)
-        }
-        return Data(hash)
-    }
 }

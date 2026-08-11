@@ -100,6 +100,13 @@ dependencies {
     // Biometric
     implementation 'androidx.biometric:biometric:1.1.0'
 
+    // Credential Manager (real WebAuthn / passkeys via the platform
+    // authenticator). Used by PasskeyService for real P-256 credential
+    // registration and assertion instead of fabricated credentials.
+    implementation 'androidx.credentials:credentials:1.2.2'
+    implementation 'androidx.credentials:credentials-play-services-auth:1.2.2'
+    implementation 'com.google.android.gms:play-services-auth:20.7.0'
+
     // Security Crypto
     implementation 'androidx.security:security-crypto:1.1.0-alpha06'
 

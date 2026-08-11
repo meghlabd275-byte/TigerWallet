@@ -100,25 +100,80 @@ async function loadWalletData() {
 }
 
 async function loadTokens() {
-  const tokens = [
-    { symbol: 'ETH', name: 'Ethereum', balance: '0', value: 0 },
-    { symbol: 'USDC', name: 'USD Coin', balance: '0', value: 0 },
-    { symbol: 'USDT', name: 'Tether USD', balance: '0', value: 0 },
-  ];
-  
-  elements.tokensList.innerHTML = tokens.map(token => `
-    <div class="token-item">
-      <div class="token-icon">${token.symbol[0]}</div>
-      <div class="token-info">
-        <div class="token-symbol">${token.symbol}</div>
-        <div class="token-name">${token.name}</div>
-      </div>
-      <div class="token-balance">
-        <div class="token-amount">${token.balance}</div>
-        <div class="token-value">$${token.value.toFixed(2)}</div>
-      </div>
-    </div>
-  `).join('');
+  // Fetch the REAL ERC-20 token balances from the canonical wallet-api
+  // backend. Never display fabricated hardcoded token balances. If the fetch
+  // fails, show an honest empty state.
+  if (!wallet || !wallet.address) {
+    elements.tokensList.replaceChildren();
+    return;
+  }
+
+  let tokens = [];
+  try {
+    const res = await fetch(
+      `http://localhost:8443/api/v1/public/tokens?address=${wallet.address}&chain_id=1`
+    );
+    if (res.ok) {
+      const data = await res.json();
+      tokens = Array.isArray(data.tokens) ? data.tokens :
+        (Array.isArray(data.result) ? data.result : []);
+    }
+  } catch (e) {
+    // Leave tokens empty; the list will show an empty state.
+  }
+
+  // Build the list with DOM APIs (createElement + textContent) so backend
+  // values cannot inject markup (XSS-safe).
+  elements.tokensList.replaceChildren();
+
+  if (tokens.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'token-item empty';
+    empty.textContent = 'No token balances';
+    elements.tokensList.appendChild(empty);
+    return;
+  }
+
+  for (const token of tokens) {
+    const symbol = String(token.symbol || '?');
+    const name = String(token.name || symbol);
+    const balance = String(token.balance || '0');
+    const value = Number(token.value || 0);
+
+    const item = document.createElement('div');
+    item.className = 'token-item';
+
+    const icon = document.createElement('div');
+    icon.className = 'token-icon';
+    icon.textContent = symbol.charAt(0);
+    item.appendChild(icon);
+
+    const info = document.createElement('div');
+    info.className = 'token-info';
+    const symEl = document.createElement('div');
+    symEl.className = 'token-symbol';
+    symEl.textContent = symbol;
+    info.appendChild(symEl);
+    const nameEl = document.createElement('div');
+    nameEl.className = 'token-name';
+    nameEl.textContent = name;
+    info.appendChild(nameEl);
+    item.appendChild(info);
+
+    const balWrap = document.createElement('div');
+    balWrap.className = 'token-balance';
+    const amtEl = document.createElement('div');
+    amtEl.className = 'token-amount';
+    amtEl.textContent = balance;
+    balWrap.appendChild(amtEl);
+    const valEl = document.createElement('div');
+    valEl.className = 'token-value';
+    valEl.textContent = '$' + value.toFixed(2);
+    balWrap.appendChild(valEl);
+    item.appendChild(balWrap);
+
+    elements.tokensList.appendChild(item);
+  }
 }
 
 // ========================================

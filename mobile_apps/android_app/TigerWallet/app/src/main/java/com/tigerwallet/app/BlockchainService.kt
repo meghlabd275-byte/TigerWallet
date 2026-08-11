@@ -1,19 +1,39 @@
 package com.tigerwallet.app
 
+import android.content.Context
+import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.web3j.crypto.Bip32ECKeyPair
 import org.web3j.crypto.Credentials
+import org.web3j.crypto.ECKeyPair
 import org.web3j.crypto.Keys
-import org.web3j.protocol.Web3j
-import org.web3j.protocol.http.HttpService
+import org.web3j.crypto.MnemonicUtils
 import java.math.BigInteger
 import java.security.SecureRandom
 import java.util.UUID
 import kotlin.math.pow
+
+/**
+ * BIP-44 derivation path for Ethereum (m/44'/60'/0'/0/0). Hardened indices use
+ * the BIP-32 hardened bit 0x80000000. Used for real HD key derivation from a
+ * BIP-39 seed via web3j Bip32ECKeyPair (real secp256k1).
+ */
+private val BIP44_ETH_PATH = intArrayOf(
+    44 or 0x80000000,
+    60 or 0x80000000,
+    0 or 0x80000000,
+    0,
+    0
+)
 
 /**
  * TigerWallet Android - Production-Ready Blockchain Service
@@ -261,72 +281,70 @@ class BlockchainService private constructor() {
     // ============================================================================
 
     private fun generateKeyPair(blockchain: Blockchain): Pair<String, String> {
-        // Use secure random for key generation
+        // EVM only: generate a real secp256k1 private key (32 random bytes)
+        // and derive the Ethereum address via web3j (real EC point math).
+        if (!blockchain.isEVM) {
+            // No real non-EVM crypto library is available on Android here.
+            // Delegating to the backend (POST /api/v1/wallets) is the supported
+            // path for non-EVM chains; failing closed is safer than fabricating
+            // a public key from the raw private key bytes.
+            throw BlockchainException.UnsupportedBlockchain
+        }
         val random = SecureRandom()
         val privateKey = ByteArray(32)
         random.nextBytes(privateKey)
-
         return deriveKeyPairFromPrivateKey(privateKey, blockchain)
     }
 
     private fun deriveKeyPairFromPrivateKey(privateKey: ByteArray, blockchain: Blockchain): Pair<String, String> {
         return when {
             blockchain.isEVM -> deriveEVMKeyPair(privateKey)
-            blockchain == Blockchain.SOLANA -> deriveSolanaKeyPair(privateKey)
-            blockchain == Blockchain.BITCOIN -> deriveBitcoinKeyPair(privateKey)
+            // No real Ed25519 (Solana) / secp256k1-Bitcoin (BTC) derivation is
+            // available here; never fabricate a public key from the raw private
+            // key bytes. Fail closed instead.
+            blockchain == Blockchain.SOLANA -> throw BlockchainException.UnsupportedBlockchain
+            blockchain == Blockchain.BITCOIN -> throw BlockchainException.UnsupportedBlockchain
             else -> throw BlockchainException.UnsupportedBlockchain
         }
     }
 
     private fun deriveKeyPairFromSeed(seedPhrase: String, blockchain: Blockchain): Pair<String, String> {
-        // BIP39 seed derivation
-        val seed = deriveBIP39Seed(seedPhrase)
-        val privateKey = seed.copyOfRange(0, 32)
-        return deriveKeyPairFromPrivateKey(privateKey, blockchain)
-    }
-
-    private fun deriveBIP39Seed(mnemonic: String): ByteArray {
-        // Simplified BIP39 seed derivation
-        // In production, use proper PBKDF2 with HMAC-SHA512
-        val normalized = mnemonic.lowercase().trim()
-        val seed = ByteArray(64)
-
-        normalized.forEachIndexed { index, char ->
-            seed[index % 64] = (seed[index % 64].toInt() xor char.code).toByte()
+        if (!blockchain.isEVM) {
+            // No real non-EVM HD derivation is available here; fail closed.
+            throw BlockchainException.UnsupportedBlockchain
         }
-
-        return seed
+        // Real BIP-39 -> BIP-32/BIP-44 derivation:
+        //   mnemonic + passphrase -> 64-byte seed (PBKDF2-HMAC-SHA512,
+        //     "mnemonic" salt, 2048 iterations) via MnemonicUtils.generateSeed
+        //   -> Bip32ECKeyPair root (real secp256k1) via generateKeyPair
+        //   -> m/44'/60'/0'/0/0 child via deriveKeyPair
+        //   -> Ethereum address via Keys (real secp256k1 public-key point,
+        //     keccak256, last 20 bytes). No raw-private-key-as-address hack.
+        val seed = MnemonicUtils.generateSeed(seedPhrase, "")
+        val root = Bip32ECKeyPair.generateKeyPair(seed)
+        val derived = Bip32ECKeyPair.deriveKeyPair(root, BIP44_ETH_PATH)
+        val addressHex = Keys.getAddress(derived) // 40-char hex, no prefix
+        val address = Keys.toChecksumAddress("0x$addressHex")
+        val publicKey = derived.publicKey.toString(16)
+        return Pair(address, "0x$publicKey")
     }
 
     private fun deriveEVMKeyPair(privateKey: ByteArray): Pair<String, String> {
-        // Use Web3j for EVM key derivation
-        return try {
-            val credentials = Credentials.create(privateKey)
-            val address = credentials.address
-            val publicKey = credentials.ecKeyPair.publicKey.toString(16)
-            Pair(address, "0x$publicKey")
-        } catch (e: Exception) {
-            // Fallback to manual derivation
-            val publicKeyBytes = privateKey.copyOfRange(0, 32)
-            val addressBytes = publicKeyBytes.copyOfRange(12, 32)
-            val address = "0x" + addressBytes.joinToString("") { String.format("%02x", it) }
-            Pair(address, "0x" + publicKeyBytes.joinToString("") { String.format("%02x", it) })
-        }
+        // Real secp256k1 EVM key derivation via web3j. The address is derived
+        // from the real EC public-key point (keccak256 -> last 20 bytes). The
+        // previous fallback that used the raw private-key bytes as a public
+        // key / address is removed entirely.
+        val credentials = Credentials.create(privateKey)
+        return Pair(credentials.address, "0x" + credentials.ecKeyPair.publicKey.toString(16))
     }
 
-    private fun deriveSolanaKeyPair(privateKey: ByteArray): Pair<String, String> {
-        // Simplified Solana key derivation
-        // In production, use proper Ed25519
-        val publicKey = privateKey.copyOfRange(0, 32)
-        val address = Base58.encode(publicKey)
-        return Pair(address, Base58.encode(publicKey))
-    }
-
-    private fun deriveBitcoinKeyPair(privateKey: ByteArray): Pair<String, String> {
-        // Simplified Bitcoin key derivation
-        val publicKey = privateKey.copyOfRange(0, 32)
-        val address = "bc1" + Base58.encode(publicKey.copyOfRange(0, 20))
-        return Pair(address, Base58.encode(publicKey))
+    private fun deriveEVMCredentials(seedPhrase: String): Credentials {
+        // Re-derive the real BIP-44 keypair from the stored mnemonic for
+        // transaction signing. Never uses seed.copyOfRange(0,32) as a key.
+        val seed = MnemonicUtils.generateSeed(seedPhrase, "")
+        val root = Bip32ECKeyPair.generateKeyPair(seed)
+        val derived = Bip32ECKeyPair.deriveKeyPair(root, BIP44_ETH_PATH)
+        return Credentials.create(ECKeyPair.create(derived.privateKey))
     }
 
     // ============================================================================
@@ -360,18 +378,28 @@ class BlockchainService private constructor() {
     ): Transaction = withContext(Dispatchers.IO) {
         val provider = rpcProviders[fromWallet.blockchain] ?: throw BlockchainException.UnsupportedBlockchain
 
-        // Get seed for signing
+        if (!fromWallet.blockchain.isEVM) {
+            // Non-EVM signing is not supported here; fail closed rather than
+            // signing with a fabricated key.
+            throw BlockchainException.UnsupportedBlockchain
+        }
+
+        // Get the stored mnemonic for signing.
         val encryptedSeed = KeychainManager.load("wallet_seed_${fromWallet.id}")
             ?: throw BlockchainException.WalletLocked
 
-        val seed = decryptSeed(encryptedSeed)
+        val mnemonic = decryptSeed(encryptedSeed)
+
+        // Re-derive the REAL BIP-44 secp256k1 keypair from the mnemonic for
+        // signing. Never uses seed.copyOfRange(0, 32) as a private key.
+        val credentials = deriveEVMCredentials(mnemonic)
 
         // Build and sign transaction
         val signedTx = provider.buildAndSignTransaction(
             from = fromWallet.address,
             to = toAddress,
             amount = amount,
-            privateKey = seed.copyOfRange(0, 32)
+            privateKey = credentials.ecKeyPair.privateKey.toByteArray()
         )
 
         // Broadcast
@@ -407,8 +435,13 @@ class BlockchainService private constructor() {
     // ============================================================================
 
     fun validateSeedPhrase(phrase: String): Boolean {
-        val words = phrase.trim().split("\\s+".toRegex())
-        return words.size == 12 || words.size == 24
+        // Real BIP-39 validation: wordlist membership + checksum via web3j
+        // MnemonicUtils. Never accepts a phrase solely on word count.
+        return try {
+            MnemonicUtils.validateMnemonic(phrase.trim())
+        } catch (e: Exception) {
+            false
+        }
     }
 
     // ============================================================================
@@ -416,13 +449,16 @@ class BlockchainService private constructor() {
     // ============================================================================
 
     private fun saveEncryptedSeed(walletId: String, seed: String) {
-        // In production, encrypt with device-specific key
+        // Stored via the Android Keychain (encrypted at rest by the platform
+        // keystore-backed SharedPreferences). The mnemonic is the secret at
+        // rest; it is re-derived into a real BIP-44 key only at signing time.
         KeychainManager.save("wallet_seed_$walletId", seed.toByteArray())
     }
 
-    private fun decryptSeed(data: ByteArray): ByteArray {
-        // In production, decrypt with device-specific key
-        return data
+    private fun decryptSeed(data: ByteArray): String {
+        // Returns the stored mnemonic string (decrypted at rest by the
+        // platform keychain). Used to re-derive the real BIP-44 signing key.
+        return String(data)
     }
 }
 
@@ -640,9 +676,3 @@ object Base58 {
 
 fun ByteArray.toHexString(): String = joinToString("") { "%02x".format(it) }
 
-import android.content.Context
-import com.google.gson.Gson
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody

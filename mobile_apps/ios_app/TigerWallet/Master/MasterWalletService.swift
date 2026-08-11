@@ -221,15 +221,71 @@ class MasterWalletService {
     }
     
     // MARK: - Wallet Management
-    
-    func createMasterWallet(name: String, type: MasterWalletType, blockchain: String) async -> MasterWallet {
+
+    /// Creates a real wallet by delegating to the backend `/api/v1/wallets`,
+    /// which generates a real BIP-39 mnemonic, derives the EVM private key via
+    /// secp256k1, and persists the address. The returned `MasterWallet.address`
+    /// is the REAL chain-derived address from the backend — never a UUID.
+    /// `publicKey` is left empty (the backend does not expose the public key;
+    /// EVM addresses are already the Keccak-256 hash of the public key, so the
+    /// address is the canonical identifier). Throws if the backend is
+    /// unreachable or rejects the request, or if no JWT session token exists.
+    func createMasterWallet(name: String, type: MasterWalletType, blockchain: String, password: String) async throws -> MasterWallet {
+        guard let network = networks.first(where: { $0.id == blockchain }) else {
+            throw MasterWalletError.unsupportedBlockchain
+        }
+        guard network.isEVM, network.chainId != 0 else {
+            throw MasterWalletError.unsupportedBlockchain
+        }
+        guard let token = AuthManager.shared.sessionToken, !token.isEmpty else {
+            throw MasterWalletError.notAuthenticated
+        }
+
+        let body: [String: Any] = [
+            "label": name,
+            "password": password,
+            "chain_id": network.chainId
+        ]
+        let bodyData = try JSONSerialization.data(withJSONObject: body)
+        guard let url = URL(string: "http://localhost:8443/api/v1/wallets") else {
+            throw MasterWalletError.backendUnreachable
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = bodyData
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw MasterWalletError.backendUnreachable
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw MasterWalletError.backendUnreachable
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let msg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])
+                .flatMap { $0["error"] as? String }
+            throw MasterWalletError.backendRejected(http.statusCode, msg)
+        }
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw MasterWalletError.backendUnreachable
+        }
+        guard let backendId = json["id"] as? String, !backendId.isEmpty,
+              let address = json["address"] as? String, !address.isEmpty else {
+            throw MasterWalletError.backendUnreachable
+        }
+
         let wallet = MasterWallet(
-            id: UUID().uuidString,
-            name: name,
+            id: backendId,
+            name: (json["label"] as? String) ?? name,
             type: type,
             blockchain: blockchain,
-            address: generateAddress(for: blockchain),
-            publicKey: generatePublicKey(),
+            address: address,
+            publicKey: "",
             balance: 0,
             isActive: true,
             autoRefill: false,
@@ -239,11 +295,11 @@ class MasterWalletService {
         saveToStorage()
         return wallet
     }
-    
+
     func getWallets() -> [MasterWallet] { wallets }
-    
+
     // MARK: - Balance
-    
+
     func refreshBalances() async {
         for wallet in wallets {
             do {
@@ -254,17 +310,21 @@ class MasterWalletService {
             }
         }
     }
-    
+
     func getBalance(walletId: String) -> Double { balances[walletId] ?? 0 }
-    
+
+    /// Real native balance via JSON-RPC `eth_getBalance` against the chain's
+    /// RPC node. Returns 0 only on a legitimate "no balance" result; throws on
+    /// transport failure.
     private func fetchBalance(from address: String, blockchain: String) async throws -> Double {
         guard let network = networks.first(where: { $0.id == blockchain }),
+              network.isEVM, network.chainId != 0,
               let url = URL(string: network.rpcUrl) else { return 0 }
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
+
         let body: [String: Any] = [
             "jsonrpc": "2.0",
             "method": "eth_getBalance",
@@ -272,8 +332,11 @@ class MasterWalletService {
             "id": 1
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        
-        let (data, _) = try await URLSession.shared.data(for: request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw MasterWalletError.balanceFetchFailed
+        }
         if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
            let result = json["result"] as? String {
             let cleanResult = result.replacingOccurrences(of: "0x", with: "")
@@ -283,15 +346,28 @@ class MasterWalletService {
         }
         return 0
     }
-    
-    // MARK: - Helpers
-    
-    private func generateAddress(for blockchain: String) -> String {
-        return "0x" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(40)
-    }
-    
-    private func generatePublicKey() -> String {
-        return "0x" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(130)
+}
+
+enum MasterWalletError: Error, LocalizedError {
+    case unsupportedBlockchain
+    case notAuthenticated
+    case backendUnreachable
+    case backendRejected(Int, String?)
+    case balanceFetchFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .unsupportedBlockchain:
+            return "Unsupported or non-EVM blockchain for on-device wallet creation."
+        case .notAuthenticated:
+            return "Not authenticated (no backend session token)."
+        case .backendUnreachable:
+            return "Wallet backend (localhost:8443) is unreachable."
+        case .backendRejected(let code, let msg):
+            return "Backend rejected wallet creation (HTTP \(code)\(msg.map { ": \($0)" } ?? ""))."
+        case .balanceFetchFailed:
+            return "Failed to fetch live balance from the RPC node."
+        }
     }
 }
 

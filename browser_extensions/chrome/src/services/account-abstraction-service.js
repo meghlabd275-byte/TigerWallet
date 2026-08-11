@@ -78,9 +78,15 @@ class AccountAbstractionService {
         return '0x5FF137D4b0FD96D8E563E5b6E3a4D7B7e1d5C8A';
     }
 
-    // Get factory address
+    // Get factory address — the canonical ERC-4337 SimpleAccountFactory
+    // deployed address for EntryPoint v0.7. Throws if not configured so the
+    // caller never silently uses a placeholder 0x1234... address.
     async getFactoryAddress() {
-        return '0x1234567890abcdef1234567890abcdef12345678';
+        const factory = this.config?.accountFactoryAddress;
+        if (!factory || !/^0x[a-fA-F0-9]{40}$/.test(factory)) {
+            throw new Error('Account factory address is not configured; refusing to return a placeholder address.');
+        }
+        return factory;
     }
 
     // Estimate gas for user op

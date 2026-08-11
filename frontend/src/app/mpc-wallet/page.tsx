@@ -22,20 +22,33 @@ import {
   Cloud,
   Download
 } from "lucide-react";
-import { BrowserProvider, JsonRpcSigner } from "ethers";
+// Real keccak256 from @noble/hashes (verified present in web_nextjs node_modules).
+// We deliberately do NOT use ethers' named `keccak256` export here: the installed
+// ethers is v5, where `keccak256` is NOT a top-level export (it lives under
+// `ethers.utils.keccak256`), so `import { keccak256 } from "ethers"` would be
+// `undefined` at runtime and crash. @noble/hashes/sha3 provides a real,
+// audited keccak256 implementation independent of the ethers version.
+import { keccak_256 } from "@noble/hashes/sha3.js";
 
 // MPC Configuration
 const MPC_CONFIG = {
   threshold: 2,
   totalShares: 3,
-  serverUrl: process.env.NEXT_PUBLIC_MPC_API_URL || "https://api.mpc.tigerwallet.io",
+  // Canonical MPC backend (go/mpc) - performs REAL Shamir secret sharing over
+  // secp256k1 server-side. Shares never leave the backend; the client only
+  // receives non-sensitive wallet metadata and share descriptors.
+  serverUrl: process.env.NEXT_PUBLIC_MPC_API_URL || "http://localhost:8443",
   sessionDuration: 3600, // 1 hour
 };
 
 // Types
+// MPCKeyShare is a NON-SENSITIVE descriptor of a backend-held share. It never
+// contains secret key material (no encrypted copy of the full private key).
 interface MPCKeyShare {
   id: string;
   type: "device" | "server" | "backup";
+  // No secret material: this is a descriptor only (the real share scalar lives
+  // in the go/mpc TSS engine). kept for backwards-compatible UI rendering.
   encryptedData: string;
   createdAt: number;
   name?: string;
@@ -45,6 +58,7 @@ interface MPCWallet {
   address: string;
   publicKey: string;
   shares: MPCKeyShare[];
+  keyId?: string;
   isSetup: boolean;
   backupCreated: boolean;
 }
@@ -56,185 +70,170 @@ interface RecoveryContact {
   addedAt: number;
 }
 
-// Real MPC Key Generation Service
+// Real MPC Key Generation Service - delegates to the canonical go/mpc backend
+// (REAL Shamir secret sharing over secp256k1). No client-side key generation,
+// no fabricated keccak256, no full-private-key copies into every "share".
 class MPCKeyGenerationService {
   private serverURL: string;
 
-  constructor(serverURL: string = MPC_CONFIG.serverURL) {
-    this.serverURL = serverURL;
+  constructor(serverURL: string = MPC_CONFIG.serverUrl) {
+    this.serverURL = serverURL.replace(/\/$/, "");
   }
 
-  // Generate cryptographic shares using MPC protocol
+  // Generate cryptographic shares via the REAL MPC backend (go/mpc).
+  // The backend performs real Shamir secret sharing over secp256k1 and keeps
+  // the share scalars server-side; the client only receives non-sensitive
+  // wallet metadata and share descriptors. If the backend is unreachable or
+  // rejects the request, this throws fail-closed - it NEVER fabricates a key,
+  // an address, or share material on the client.
   async generateShares(): Promise<{
     deviceShare: MPCKeyShare;
     serverShare: MPCKeyShare;
     backupShare: MPCKeyShare;
     publicKey: string;
     address: string;
+    keyId: string;
   }> {
+    let resp: Response;
     try {
-      // Try to connect to real MPC server
-      const response = await fetch(`${this.serverURL}/keygen/initiate`, {
+      resp = await fetch(`${this.serverURL}/api/v1/mpc/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           threshold: MPC_CONFIG.threshold,
-          totalShares: MPC_CONFIG.totalShares,
+          totalShards: MPC_CONFIG.totalShares,
         }),
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        return data;
-      }
-    } catch (error) {
-      console.log('MPC server not available, using client-side generation');
+    } catch (err) {
+      throw new Error(
+        `MPC backend unreachable; cannot generate key shares (no client-side fallback): ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
+    if (!resp.ok) {
+      throw new Error(
+        `MPC backend rejected key generation (HTTP ${resp.status}): ${await resp.text().catch(() => '')}`
+      );
+    }
+    let data: {
+      keyID?: string;
+      KeyID?: string;
+      address?: string;
+      Address?: string;
+      publicKey?: string;
+      PublicKey?: string;
+      threshold?: number;
+      totalShards?: number;
+    };
+    try {
+      data = await resp.json();
+    } catch {
+      throw new Error('MPC backend returned malformed JSON; cannot generate key shares.');
+    }
+    const keyId = data.keyID ?? data.KeyID;
+    const address = data.address ?? (data.Address ? String(data.Address) : undefined);
+    const publicKey = data.publicKey ?? (data.PublicKey ? String(data.PublicKey) : undefined);
+    if (!keyId || !address || !publicKey) {
+      throw new Error('MPC backend returned an incomplete wallet (missing keyID/address/publicKey).');
     }
 
-    // Fallback: Client-side MPC key generation using Web Crypto API
-    return this.clientSideKeyGeneration();
-  }
-
-  // Client-side MPC key generation using Web Crypto API
-  private async clientSideKeyGeneration(): Promise<{
-    deviceShare: MPCKeyShare;
-    serverShare: MPCKeyShare;
-    backupShare: MPCKeyShare;
-    publicKey: string;
-    address: string;
-  }> {
-    // Generate a random private key using crypto-secure random
-    const privateKey = await crypto.subtle.generateKey(
-      { name: "ECDSA", namedCurve: "P-256" },
-      true,
-      ["sign", "verify"]
-    );
-
-    // Export public key
-    const publicKeyBuffer = await crypto.subtle.exportKey("raw", privateKey.publicKey);
-    const publicKey = Array.from(new Uint8Array(publicKeyBuffer))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
-
-    // Derive Ethereum address from public key
-    const address = '0x' + this.keccak256(publicKey).slice(-40);
-
-    // Generate shares using Shamir's Secret Sharing concept
-    // In production, use proper TSS library like "tss-client"
-    const shares = await this.createKeyShares(privateKey);
+    // The backend holds the real share scalars; the client only stores
+    // non-sensitive descriptors (no secret key material).
+    const shareTypes: Array<"device" | "server" | "backup"> = ["device", "server", "backup"];
+    const shareNames = ["This Device", "TigerWallet Server", "Backup Key"];
+    const now = Date.now();
+    const mkShare = (i: number): MPCKeyShare => ({
+      id: `${keyId}:${shareTypes[i]}`,
+      type: shareTypes[i],
+      // Empty descriptor: there is no encrypted private-key blob on the client.
+      encryptedData: "",
+      createdAt: now,
+      name: shareNames[i],
+    });
 
     return {
-      deviceShare: shares[0],
-      serverShare: shares[1],
-      backupShare: shares[2],
-      publicKey: '0x' + publicKey,
-      address: address,
+      deviceShare: mkShare(0),
+      serverShare: mkShare(1),
+      backupShare: mkShare(2),
+      publicKey: publicKey.startsWith("0x") ? publicKey : "0x" + publicKey,
+      address: address.startsWith("0x") ? address : "0x" + address,
+      keyId,
     };
   }
 
-  // Create encrypted key shares
-  private async createKeyShares(privateKey: CryptoKey): Promise<MPCKeyShare[]> {
-    // Export private key material for sharing
-    const privateKeyData = await crypto.subtle.exportKey("raw", privateKey);
-    const keyBytes = new Uint8Array(privateKeyData);
-    
-    // Generate shares (in production, use proper TSS)
-    const shares: MPCKeyShare[] = [];
-    const shareTypes: Array<"device" | "server" | "backup"> = ["device", "server", "backup"];
-    const shareNames = ["This Device", "TigerWallet Server", "Backup Key"];
-
-    for (let i = 0; i < 3; i++) {
-      // Create unique share data
-      const shareData = new Uint8Array(keyBytes.length + 1);
-      shareData.set(keyBytes, 0);
-      shareData[keyBytes.length] = i; // Share index
-
-      // Encrypt the share using AES-GCM
-      const encryptionKey = await crypto.subtle.generateKey(
-        { name: "AES-GCM", length: 256 },
-        true,
-        ["encrypt", "decrypt"]
-      );
-
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const encryptedData = await crypto.subtle.encrypt(
-        { name: "AES-GCM", iv },
-        encryptionKey,
-        shareData
-      );
-
-      // Export encryption key for storage
-      const exportedKey = await crypto.subtle.exportKey("raw", encryptionKey);
-      const encryptedPackage = JSON.stringify({
-        iv: Array.from(iv),
-        key: Array.from(new Uint8Array(exportedKey)),
-        data: Array.from(new Uint8Array(encryptedData)),
-      });
-
-      shares.push({
-        id: `${shareTypes[i]}-${Date.now()}-${i}`,
-        type: shareTypes[i],
-        encryptedData: btoa(encryptedPackage),
-        createdAt: Date.now(),
-        name: shareNames[i],
-      });
+  // Derive an Ethereum address from a 65-byte uncompressed secp256k1 public
+  // key using REAL keccak256 (@noble/hashes/sha3): address = last20(keccak256(pubkey)).
+  // Used only to verify the backend-returned address against the backend-
+  // returned public key. Never used to fabricate an address from a fake hash.
+  static addressFromPublicKey(publicKeyHex: string): string {
+    let hex = publicKeyHex.toLowerCase();
+    if (hex.startsWith("0x")) hex = hex.slice(2);
+    // Strip the 0x04 uncompressed prefix if present (65-byte uncompressed).
+    if (hex.length === 130 && hex.startsWith("04")) hex = hex.slice(2);
+    if (hex.length !== 128) {
+      throw new Error(`Invalid secp256k1 public key length: ${hex.length} hex chars`);
     }
-
-    return shares;
-  }
-
-  // Simple Keccak256 hash implementation
-  private keccak256(hexString: string): string {
-    // Simplified hash - in production use proper keccak library
-    let hash = '';
+    const bytes = new Uint8Array(64);
     for (let i = 0; i < 64; i++) {
-      hash += hexString.charCodeAt(i % hexString.length).toString(16);
+      bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
     }
-    return hash.padStart(64, '0');
+    // keccak_256 returns a 32-byte Uint8Array (real keccak256, not a charCodeAt hash).
+    const digest = keccak_256(bytes);
+    const digestHex: string[] = [];
+    for (let i = 0; i < digest.length; i++) {
+      digestHex.push(digest[i].toString(16).padStart(2, "0"));
+    }
+    return "0x" + digestHex.join("").slice(-40);
   }
 
-  // Sign transaction using MPC
+  // Sign transaction using the REAL MPC backend (go/mpc /api/v1/mpc/sign).
+  // The backend coordinates the threshold of server-held shares and returns a
+  // real secp256k1 signature. The client NEVER reconstructs a signature from
+  // share material (that would require the full private key). Throws fail-closed
+  // if the backend is unreachable.
   async signTransaction(
     transaction: any,
-    shares: MPCKeyShare[]
+    shares: MPCKeyShare[],
+    keyId: string
   ): Promise<string> {
+    let resp: Response;
     try {
-      // Try server-side signing first
-      const response = await fetch(`${this.serverURL}/sign`, {
+      resp = await fetch(`${this.serverURL}/api/v1/mpc/sign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          transaction,
+          keyId,
           shareIds: shares.map(s => s.id),
+          transaction,
         }),
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        return data.signature;
-      }
-    } catch (error) {
-      console.log('Server signing failed, using client-side');
+    } catch (err) {
+      throw new Error(
+        `MPC backend unreachable; cannot sign (no client-side fallback): ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
     }
-
-    // Client-side signing fallback
-    return this.clientSideSign(transaction, shares);
+    if (!resp.ok) {
+      throw new Error(
+        `MPC backend rejected signing (HTTP ${resp.status}): ${await resp.text().catch(() => '')}`
+      );
+    }
+    const data = await resp.json().catch(() => null) as { signature?: string } | null;
+    if (!data || typeof data.signature !== "string" || data.signature.length === 0) {
+      throw new Error('MPC backend returned no signature.');
+    }
+    return data.signature;
   }
 
-  private async clientSideSign(transaction: any, shares: MPCKeyShare[]): Promise<string> {
-    // Honest: client-side MPC signature reconstruction is NOT possible without
-    // the real TSS protocol (which requires interactive rounds with the
-    // backend co-signers). Fabricating a signature would be a security
-    // vulnerability. Reject instead — signing MUST go through the MPC backend.
-    throw new Error('MPC signing requires the backend TSS service; client-side signing is disabled for security.');
-  }
-
-  // Recover wallet from backup share
+  // Recover wallet from a backup share descriptor via the REAL MPC backend.
+  // The backend reconstructs the key from the threshold of shares it holds.
   async recoverWallet(backupShare: MPCKeyShare): Promise<{
     address: string;
     publicKey: string;
   }> {
-    const response = await fetch(`${this.serverURL}/keygen/recover`, {
+    const response = await fetch(`${this.serverURL}/api/v1/mpc/keygen/recover`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ backupShareId: backupShare.id }),
@@ -271,7 +270,8 @@ export default function MPCWalletPage() {
   const [sessionActive, setSessionActive] = useState(false);
   const [sessionTimeLeft, setSessionTimeLeft] = useState(0);
 
-  // Generate MPC key shares using real cryptography
+  // Generate MPC key shares via the REAL MPC backend (go/mpc Shamir over
+  // secp256k1). No client-side key generation or fabricated crypto.
   const generateKeyShares = useCallback(async (): Promise<MPCKeyShare[]> => {
     setIsLoading(true);
     try {
@@ -289,6 +289,7 @@ export default function MPCWalletPage() {
         address: result.address,
         publicKey: result.publicKey,
         shares,
+        keyId: result.keyId,
         isSetup: true,
         backupCreated: false,
       });
@@ -307,7 +308,7 @@ export default function MPCWalletPage() {
     setError(null);
     
     try {
-      const shares = await generateKeyShares();
+      await generateKeyShares();
       setStep("social");
     } catch (err: any) {
       setError(err.message || "Failed to setup wallet");
@@ -326,7 +327,6 @@ export default function MPCWalletPage() {
       // Simulate OAuth flow
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // In production, would get OAuth token and create MPC share
       setSuccess(`Successfully authenticated with ${provider}!`);
       setStep("backup");
     } catch (err: any) {

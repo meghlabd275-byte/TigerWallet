@@ -176,17 +176,28 @@ class TigerWalletApp {
     
     async unlockWallet() {
         const password = document.getElementById('master-password').value;
-        
+
         if (!password) {
             alert('Please enter your master password');
             return;
         }
-        
-        // In production, verify password against stored hash
-        // For demo, accept any password
+
+        // Verify the password against the stored PBKDF2-SHA256 hash. Never
+        // accept an arbitrary password. The stored blob is "salt:hash"; if no
+        // wallet exists, prompt to create one.
+        const stored = localStorage.getItem('tigerwallet-master');
+        if (!stored) {
+            alert('No wallet found. Please create a wallet first.');
+            this.showCreateWallet();
+            return;
+        }
+        const ok = await this.verifyPassword(password, stored);
+        if (!ok) {
+            alert('Incorrect password');
+            return;
+        }
+
         this.isLocked = false;
-        localStorage.setItem('tigerwallet-master', 'demo-hash');
-        
         this.showDashboard();
     }
     
@@ -232,7 +243,7 @@ class TigerWalletApp {
                 tokens: []
             });
             localStorage.setItem('tigerwallet-wallets', JSON.stringify(this.wallets));
-            localStorage.setItem('tigerwallet-master', this.hashPassword(password));
+            localStorage.setItem('tigerwallet-master', await this.hashPassword(password));
 
             alert('Wallet created successfully!');
             this.showDashboard();
@@ -283,18 +294,26 @@ class TigerWalletApp {
         }
         
         if (this.wallets.length === 0) {
-            // Demo wallet
-            this.wallets = [{
-                id: 'demo',
-                name: 'Main Wallet',
-                address: '0x742d35Cc6634C0532925a3b844Bc9e7595f0fEb1',
-                balance: '1.5',
-                tokens: [
-                    { symbol: 'ETH', balance: '1.5', usdValue: 5250 },
-                    { symbol: 'USDT', balance: '1000', usdValue: 1000 },
-                    { symbol: 'USDC', balance: '500', usdValue: 500 }
-                ]
-            }];
+            // No demo wallet — show an empty state and prompt the user to
+            // create one. Never fabricate balances/addresses.
+            this.renderWallet();
+            return;
+        }
+
+        // Fetch the REAL native balance for the first wallet from the
+        // canonical backend (GET /api/v1/public/balance?address=&chain_id=).
+        const wallet = this.wallets[0];
+        try {
+            const chainId = this.currentNetwork || 1;
+            const res = await fetch(
+                `http://localhost:8443/api/v1/public/balance?address=${wallet.address}&chain_id=${chainId}`
+            );
+            if (res.ok) {
+                const data = await res.json();
+                wallet.balance = data.balance || '0';
+            }
+        } catch (e) {
+            // Leave stored balance; the UI shows the last known value.
         }
         
         this.renderWallet();
@@ -465,30 +484,33 @@ class TigerWalletApp {
         const list = document.getElementById('transactions-list');
         if (!list) return;
         
+        // Fetch REAL transactions from the canonical backend. Never show
+        // fabricated demo transactions.
+        const wallet = this.wallets[0];
+        if (!wallet || !wallet.address) {
+            list.innerHTML = '<div class="empty-state">No wallet connected</div>';
+            return;
+        }
+        try {
+            const chainId = this.currentNetwork || 1;
+            const res = await fetch(
+                `http://localhost:8443/api/v1/public/transactions?address=${wallet.address}&chain_id=${chainId}`
+            );
+            if (!res.ok) {
+                list.innerHTML = '<div class="empty-state">Failed to load transactions</div>';
+                return;
+            }
+            const data = await res.json();
+            this.transactions = Array.isArray(data.result) ? data.result :
+                (Array.isArray(data.transactions) ? data.transactions : []);
+        } catch (e) {
+            list.innerHTML = '<div class="empty-state">Failed to load transactions</div>';
+            return;
+        }
+
         if (this.transactions.length === 0) {
-            // Demo transactions
-            this.transactions = [
-                {
-                    id: '1',
-                    hash: '0x1234567890abcdef',
-                    from: '0x742d35Cc6634C0532925a3b844Bc9e7595f0fEb1',
-                    to: '0x1234567890123456789012345678901234567890',
-                    value: '0.5',
-                    token: 'ETH',
-                    status: 'confirmed',
-                    timestamp: Date.now() - 86400000
-                },
-                {
-                    id: '2',
-                    hash: '0xabcdef1234567890',
-                    from: '0x9876543210987654321098765432109876543210',
-                    to: '0x742d35Cc6634C0532925a3b844Bc9e7595f0fEb1',
-                    value: '1000',
-                    token: 'USDT',
-                    status: 'confirmed',
-                    timestamp: Date.now() - 172800000
-                }
-            ];
+            list.innerHTML = '<div class="empty-state">No transactions yet</div>';
+            return;
         }
         
         list.innerHTML = this.transactions.map(tx => `
@@ -541,18 +563,42 @@ class TigerWalletApp {
         // (/send). This client never fabricates a hash.
         throw new Error('Transaction hashes are produced by the canonical wallet-api backend (/send); client-side fabrication is disabled');
     }
-        return hash;
-    }
     
-    hashPassword(password) {
-        // Simple hash for demo - use proper crypto in production
-        let hash = 0;
-        for (let i = 0; i < password.length; i++) {
-            const char = password.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash;
+    async hashPassword(password) {
+        // PBKDF2-SHA256, 600k iterations, 16-byte salt + 32-byte hash.
+        // Stored as "saltHex:hashHex". Never use a non-cryptographic hash.
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        const hash = await this.derivePbkdf2(password, salt);
+        const toHex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+        return `${toHex(salt)}:${toHex(hash)}`;
+    }
+
+    async verifyPassword(password, stored) {
+        const [saltHex, hashHex] = stored.split(':');
+        if (!saltHex || !hashHex) return false;
+        const salt = new Uint8Array(saltHex.match(/.{2}/g).map((b) => parseInt(b, 16)));
+        const hash = await this.derivePbkdf2(password, salt);
+        const expected = hashHex;
+        const actual = Array.from(hash, (x) => x.toString(16).padStart(2, '0')).join('');
+        // Constant-time comparison.
+        if (actual.length !== expected.length) return false;
+        let diff = 0;
+        for (let i = 0; i < actual.length; i++) {
+            diff |= actual.charCodeAt(i) ^ expected.charCodeAt(i);
         }
-        return hash.toString(16);
+        return diff === 0;
+    }
+
+    async derivePbkdf2(password, salt) {
+        const enc = new TextEncoder();
+        const keyMaterial = await crypto.subtle.importKey(
+            'raw', enc.encode(password), { name: 'PBKDF2' }, false, ['deriveBits']
+        );
+        const bits = await crypto.subtle.deriveBits(
+            { name: 'PBKDF2', salt, iterations: 600000, hash: 'SHA-256' },
+            keyMaterial, 256
+        );
+        return new Uint8Array(bits);
     }
 }
 

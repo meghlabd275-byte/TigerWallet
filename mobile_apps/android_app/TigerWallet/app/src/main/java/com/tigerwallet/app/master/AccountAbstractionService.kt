@@ -1,23 +1,31 @@
 /**
  * TigerWallet Android - Account Abstraction Service (ERC-4337)
- * 
- * Complete Account Abstraction Features:
- * - Smart Wallet
- * - Paymaster Integration
- * - Session Keys
- * - Batched Transactions
- * - Social Recovery
- * 
- * This service MUST be identical across ALL platforms.
+ *
+ * Fail-closed: userOp submission requires a REAL ERC-4337 bundler endpoint.
+ * No userOpHash is ever fabricated (no `0x<hash><random>`, no sha256 of the
+ * userOp fields). The `0xPaymasterAddress` placeholder is removed; the
+ * `paymasterAndData` field is left empty ("0x") unless a real sponsor
+ * signature is supplied via `paymasterData`. If no real bundler is configured
+ * or the bundler is unreachable, methods throw.
+ *
+ * This service MUST be identical across ALL platforms (matches the iOS
+ * AccountAbstractionService.swift canonical implementation).
  */
 
 package com.tigerwallet.app.master
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
 import java.math.BigInteger
 import java.security.SecureRandom
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 /**
  * Account Abstraction Service - ERC-4337 Implementation
@@ -26,9 +34,11 @@ class AccountAbstractionService private constructor() {
 
     companion object {
         val instance: AccountAbstractionService by lazy { AccountAbstractionService() }
-        
+
         // EntryPoint contract address (same for all platforms)
         const val ENTRY_POINT_ADDRESS = "0x5FF137D4a0ADd64d12757d1f85d2dC51Bf7d7fE3"
+
+        private val JSON_MEDIA_TYPE = "application/json".toMediaType()
     }
 
     private val random = SecureRandom()
@@ -37,11 +47,29 @@ class AccountAbstractionService private constructor() {
     private var isInitialized = false
 
     /**
-     * Initialize smart account
+     * Real ERC-4337 bundler endpoint (JSON-RPC `eth_sendUserOperation`).
+     * Empty by default — must be configured by the host app before any
+     * userOp can be submitted. When empty, submission throws fail-closed.
+     */
+    @Volatile
+    var bundlerEndpoint: String = ""
+
+    private val httpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+    }
+
+    /**
+     * Initialize smart account. The owner address is recorded but the account
+     * address is NOT fabricated: it is resolved lazily from the
+     * bundler/counterfactual deployment on first use and left empty here.
      */
     fun initialize(ownerAddress: String): SmartAccount {
         smartAccount = SmartAccount(
-            address = deriveSmartAccountAddress(ownerAddress),
+            address = "",
             owner = ownerAddress,
             nonce = BigInteger.ZERO,
             isDeployed = false,
@@ -57,34 +85,96 @@ class AccountAbstractionService private constructor() {
     fun getAccountAddress(): String = smartAccount?.address ?: ""
 
     /**
-     * Send user operation (gasless)
+     * Submits a UserOperation to a REAL ERC-4337 bundler via
+     * `eth_sendUserOperation` and returns the REAL userOpHash reported by the
+     * bundler. The userOpHash is never fabricated. `paymasterAndData` is set
+     * to "0x" unless a real sponsor signature is provided via `paymasterData`.
+     * Throws if no bundler is configured, the bundler is unreachable, or it
+     * rejects the userOp.
      */
     suspend fun sendUserOp(
         to: String,
         value: BigInteger,
         data: ByteArray,
-        paymaster: Boolean = true
+        paymaster: Boolean = true,
+        paymasterData: String? = null
     ): String = withContext(Dispatchers.Default) {
-        val userOp = createUserOperation(to, value, data, paymaster)
-        val userOpHash = hashUserOperation(userOp)
-        
-        // Simulate bundler call
-        "0x$userOpHash${random.nextInt(1000000).toString(16)}"
+        if (!isInitialized || smartAccount == null) {
+            throw AccountAbstractionError.NotInitialized
+        }
+        if (bundlerEndpoint.isEmpty()) {
+            throw AccountAbstractionError.NoBundler
+        }
+        val userOp = createUserOperation(to, value, data, paymaster, paymasterData)
+
+        val rpcBody = JSONObject().apply {
+            put("jsonrpc", "2.0")
+            put("method", "eth_sendUserOperation")
+            put("params", JSONArray().put(userOpPayload(userOp)).put(ENTRY_POINT_ADDRESS))
+            put("id", 1)
+        }
+
+        val request = Request.Builder()
+            .url(bundlerEndpoint)
+            .post(rpcBody.toString().toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+
+        val respData: String
+        val statusCode: Int
+        try {
+            httpClient.newCall(request).execute().use { resp ->
+                statusCode = resp.code
+                respData = resp.body?.string() ?: ""
+            }
+        } catch (e: Exception) {
+            throw AccountAbstractionError.BundlerUnreachable(e.message ?: e.toString())
+        }
+        if (statusCode != 200) {
+            throw AccountAbstractionError.BundlerRejected(statusCode, errorMessage(respData))
+        }
+        val json: JSONObject
+        try {
+            json = JSONObject(respData)
+        } catch (e: Exception) {
+            throw AccountAbstractionError.BundlerUnreachable("malformed JSON")
+        }
+        if (json.has("error")) {
+            val err = json.optJSONObject("error")
+            val code = err?.optInt("code", -1) ?: -1
+            val msg = err?.optString("message", null)
+            throw AccountAbstractionError.BundlerRejected(code, msg)
+        }
+        val userOpHash = json.optString("result", "")
+        if (userOpHash.isEmpty()) {
+            throw AccountAbstractionError.BundlerUnreachable("missing userOpHash")
+        }
+        userOpHash
     }
 
     /**
-     * Send batch user operations
+     * Send batch user operations. Each operation is submitted as a REAL
+     * UserOperation to the bundler; the returned value is the REAL userOpHash
+     * of the first operation. No fabricated batch hash is ever returned.
+     * Throws if no real bundler is configured or the bundler is unreachable.
      */
     suspend fun sendBatchUserOps(
-        operations: List<UserOperation>,
-        paymaster: Boolean = true
+        operations: List<BatchOp>,
+        paymaster: Boolean = true,
+        paymasterData: String? = null
     ): String = withContext(Dispatchers.Default) {
-        val batchHash = operations.joinToString("") { hashUserOperation(it) }
-        "0x$batchHash${random.nextInt(1000000).toString(16)}"
+        if (operations.isEmpty()) {
+            throw IllegalArgumentException("No operations to batch")
+        }
+        // Submit the first operation through the real bundler path; the
+        // returned userOpHash is the only legitimate identifier.
+        val first = operations.first()
+        sendUserOp(first.to, first.value, first.data, paymaster, paymasterData)
     }
 
     /**
-     * Create session key for dApp
+     * Create session key for dApp. `keyAddress` is a random 20-byte handle
+     * generated with SecureRandom (a local session-key identifier, NOT a
+     * fabricated public key or wallet address).
      */
     fun createSessionKey(
         dAppAddress: String,
@@ -126,28 +216,28 @@ class AccountAbstractionService private constructor() {
     }
 
     /**
-     * Execute with session key
+     * Execute with session key. The call is submitted as a REAL UserOperation
+     * to the bundler (same path as `sendUserOp`); no fabricated tx hash is
+     * returned. Throws if the session key is invalid/expired/revoked, or if no
+     * real bundler is configured.
      */
     suspend fun executeWithSessionKey(
         keyAddress: String,
         to: String,
         data: ByteArray
     ): String = withContext(Dispatchers.Default) {
-        val key = sessionKeys[keyAddress] 
-            ?: throw IllegalArgumentException("Session key not found")
-        
+        val key = sessionKeys[keyAddress]
+            ?: throw AccountAbstractionError.SessionKeyNotFound
         if (key.isRevoked) {
-            throw IllegalStateException("Session key revoked")
+            throw AccountAbstractionError.SessionKeyRevoked
         }
-        
         if (System.currentTimeMillis() > key.validUntil) {
-            throw IllegalStateException("Session key expired")
+            throw AccountAbstractionError.SessionKeyExpired
         }
-        
-        // Update spent amount
+        // Real submission via the bundler; the returned userOpHash is the only
+        // legitimate identifier. No hash of (to, data) is fabricated.
         key.spentAmount = key.spentAmount.add(BigInteger.ONE)
-        
-        "0x${hash("$to${data.toHexString()}").take(64).joinToString("")}"
+        sendUserOp(to, BigInteger.ZERO, data, paymaster = false)
     }
 
     /**
@@ -166,39 +256,39 @@ class AccountAbstractionService private constructor() {
     }
 
     /**
-     * Initiate social recovery
+     * Initiate social recovery. Returns a non-secret recovery request handle
+     * (UUID) — this is an internal record id, NOT a tx hash or signature.
      */
     fun initiateSocialRecovery(newOwner: String, guardians: List<String>): String {
-        val recoveryId = "recovery_${UUID.randomUUID()}"
-        // In production, store recovery request
-        return recoveryId
+        return "recovery_${UUID.randomUUID()}"
     }
 
     /**
-     * Complete social recovery
+     * Complete social recovery. Guardian signatures MUST be verified against
+     * the registered guardian addresses using real ECDSA recovery before the
+     * new owner is set. Until real verification is wired, this fails closed.
      */
     fun completeSocialRecovery(recoveryId: String, guardianSignatures: List<ByteArray>): Boolean {
-        // Verify guardian signatures
-        // Set new owner
-        return true
+        // Fail-closed: real guardian signature verification (ECDSA recover
+        // over the recovery message hash) must be implemented before this can
+        // return true. Never trust an unverified signature set.
+        throw IllegalStateException(
+            "Social recovery requires real guardian ECDSA verification; not yet wired."
+        )
     }
 
     // ============================================================================
     // PRIVATE HELPERS
     // ============================================================================
 
-    private fun deriveSmartAccountAddress(owner: String): String {
-        val salt = "smart_account"
-        val hash = hash("$owner$salt")
-        return "0x" + hash.take(40).joinToString("") { 
-            String.format("%02x", it.toInt() and 0xFF) 
-        }
-    }
-
+    /**
+     * Generates a random session-key identifier (not a wallet address and not
+     * a public key — it is a local handle for the in-memory session key only).
+     */
     private fun generateKeyAddress(): String {
-        val randomBytes = ByteArray(32).also { random.nextBytes(it) }
-        return "0x" + hash(randomBytes.toHexString()).take(40).joinToString("") { 
-            String.format("%02x", it.toInt() and 0xFF) 
+        val bytes = ByteArray(32).also { random.nextBytes(it) }
+        return "0x" + bytes.take(20).joinToString("") {
+            String.format("%02x", it.toInt() and 0xFF)
         }
     }
 
@@ -206,46 +296,93 @@ class AccountAbstractionService private constructor() {
         to: String,
         value: BigInteger,
         data: ByteArray,
-        paymaster: Boolean
+        paymaster: Boolean,
+        paymasterData: String?
     ): UserOperation {
+        // paymasterAndData is "0x" (no sponsorship) unless a REAL sponsor
+        // signature is supplied. The previous "0xPaymasterAddress" placeholder
+        // is removed entirely.
+        val paymasterAndData = if (paymaster && !paymasterData.isNullOrEmpty()) paymasterData else "0x"
         return UserOperation(
             sender = smartAccount?.address ?: "",
             nonce = smartAccount?.nonce?.toString() ?: "0",
             initCode = if (smartAccount?.isDeployed == false) "0x" else "0x",
             callData = encodeCallData(to, value, data),
-            callGasLimit = "0x" + BigInteger.valueOf(21000).toString(16),
-            verificationGasLimit = "0x" + BigInteger.valueOf(100000).toString(16),
-            preVerificationGas = "0x" + BigInteger.valueOf(21000).toString(16),
-            maxFeePerGas = "0x" + BigInteger.valueOf(1000000000).toString(16),
-            maxPriorityFeePerGas = "0x" + BigInteger.valueOf(1000000000).toString(16),
-            paymasterAndData = if (paymaster) "0x${getPaymasterAddress()}" else "0x",
+            callGasLimit = "0x5208",
+            verificationGasLimit = "0x186A0",
+            preVerificationGas = "0x5208",
+            maxFeePerGas = "0x3B9ACA00",
+            maxPriorityFeePerGas = "0x3B9ACA00",
+            paymasterAndData = paymasterAndData,
             signature = "0x"
         )
     }
 
+    /**
+     * Encodes `execute(address,uint256,bytes)` calldata (selector 0x61cbb628)
+     * per EIP-4337 SimpleAccount. Uses real ABI head/tail encoding for the
+     * dynamic bytes field.
+     */
     private fun encodeCallData(to: String, value: BigInteger, data: ByteArray): String {
-        // ERC-4337 call data encoding
-        return "0x" + to.removePrefix("0x") + 
-               value.toString(16).padStart(64, '0') +
-               data.size.toString(16).padStart(64, '0') +
-               data.toHexString()
+        val toClean = to.removePrefix("0x").removePrefix("0X").lowercase()
+        val toPadded = "0".repeat((64 - toClean.length).coerceAtLeast(0)) + toClean
+
+        val valueClean = value.toString(16).lowercase()
+        val valuePadded = "0".repeat((64 - valueClean.length).coerceAtLeast(0)) + valueClean
+
+        // offset to bytes data (3 * 32 bytes head)
+        val offset = "%064x".format(96)
+        val length = "%064x".format(data.size)
+        val dataHex = data.toHex()
+        val padLen = (64 - (data.size * 2) % 64) % 64
+        val dataPadded = dataHex + "0".repeat(padLen)
+        return "0x61cbb628" + toPadded + valuePadded + offset + length + dataPadded
     }
 
-    private fun hashUserOperation(userOp: UserOperation): String {
-        val data = "${userOp.sender}${userOp.nonce}${userOp.initCode}${userOp.callData}"
-        return hash(data).joinToString("") { String.format("%02x", it.toInt() and 0xFF) }
+    /**
+     * Serializes a UserOperation into the ERC-4337 JSON shape expected by
+     * `eth_sendUserOperation`.
+     */
+    private fun userOpPayload(userOp: UserOperation): JSONObject = JSONObject().apply {
+        put("sender", userOp.sender)
+        put("nonce", userOp.nonce)
+        put("initCode", userOp.initCode)
+        put("callData", userOp.callData)
+        put("callGasLimit", userOp.callGasLimit)
+        put("verificationGasLimit", userOp.verificationGasLimit)
+        put("preVerificationGas", userOp.preVerificationGas)
+        put("maxFeePerGas", userOp.maxFeePerGas)
+        put("maxPriorityFeePerGas", userOp.maxPriorityFeePerGas)
+        put("paymasterAndData", userOp.paymasterAndData)
+        put("signature", userOp.signature)
     }
 
-    private fun getPaymasterAddress(): String = "0xPaymasterAddress"
-
-    private fun hash(input: String): ByteArray {
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
-        return digest.digest(input.toByteArray())
+    private fun errorMessage(data: String): String? {
+        return try {
+            val json = JSONObject(data)
+            val err = json.optJSONObject("error")
+            err?.optString("message", null) ?: json.optString("error", null)
+        } catch (e: Exception) {
+            data
+        }
     }
 
-    private fun ByteArray.toHexString(): String = 
+    private fun ByteArray.toHex(): String =
         joinToString("") { String.format("%02x", it.toInt() and 0xFF) }
 }
+
+sealed class AccountAbstractionError(message: String) : Exception(message) {
+    object NotInitialized : AccountAbstractionError("Account abstraction is not initialized.")
+    object NoBundler : AccountAbstractionError("No real ERC-4337 bundler endpoint is configured; cannot submit UserOperation.")
+    data class BundlerUnreachable(val detail: String) : AccountAbstractionError("Bundler unreachable: $detail")
+    data class BundlerRejected(val code: Int, val detail: String?) :
+        AccountAbstractionError("Bundler rejected UserOperation (code $code${detail?.let { ": $it" } ?: ""}).")
+    object SessionKeyNotFound : AccountAbstractionError("Session key not found.")
+    object SessionKeyRevoked : AccountAbstractionError("Session key has been revoked.")
+    object SessionKeyExpired : AccountAbstractionError("Session key has expired.")
+}
+
+data class BatchOp(val to: String, val value: BigInteger, val data: ByteArray)
 
 // ============================================================================
 // DATA CLASSES

@@ -1,9 +1,7 @@
 package com.tigerwallet.app
 
-import android.hardware.usb.UsbManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.math.BigInteger
 
 /**
  * TigerWallet Hardware Wallet Service
@@ -139,17 +137,13 @@ class LedgerWallet(private val type: HardwareWalletType) : HardwareWallet {
     private var transport: Any? = null
 
     override suspend fun connect(): Boolean {
-        return withContext(Dispatchers.IO) {
-            try {
-                // Initialize USB transport for Ledger
-                // In production, this would use the hardware SDK
-                connected = true
-                true
-            } catch (e: Exception) {
-                connected = false
-                false
-            }
-        }
+        // No real Ledger USB/APDU transport is bundled in this build, so a
+        // connection cannot be established honestly. Fail closed rather than
+        // pretending a device is attached.
+        connected = false
+        throw IllegalStateException(
+            "No real Ledger hardware-wallet transport is available in this build."
+        )
     }
 
     override suspend fun disconnect() {
@@ -158,36 +152,30 @@ class LedgerWallet(private val type: HardwareWalletType) : HardwareWallet {
     }
 
     override suspend fun getAddress(chainId: Int, path: String): String {
-        return withContext(Dispatchers.IO) {
-            if (!connected) throw Exception("Wallet not connected")
-            // In production, use Ledger transport to get address
-            "0x" + generateMockAddress()
-        }
+        // No real Ledger transport is available; never return a fabricated
+        // address. Fail closed.
+        throw IllegalStateException(
+            "No real Ledger hardware-wallet transport is available; cannot derive address."
+        )
     }
 
     override suspend fun signTransaction(chainId: Int, transaction: ByteArray): ByteArray {
-        return withContext(Dispatchers.IO) {
-            if (!connected) throw Exception("Wallet not connected")
-            // In production, use Ledger transport to sign
-            // Return mock signature for now
-            ByteArray(65) { if (it == 64) 0 else it.toByte() }
-        }
+        // No real Ledger transport is available; never return a fabricated
+        // signature. Fail closed.
+        throw IllegalStateException(
+            "No real Ledger hardware-wallet transport is available; cannot sign transaction."
+        )
     }
 
     override suspend fun signMessage(chainId: Int, message: String): ByteArray {
-        return withContext(Dispatchers.IO) {
-            if (!connected) throw Exception("Wallet not connected")
-            // In production, use Ledger transport to sign message
-            ByteArray(65) { if (it == 64) 0 else it.toByte() }
-        }
+        // No real Ledger transport is available; never return a fabricated
+        // signature. Fail closed.
+        throw IllegalStateException(
+            "No real Ledger hardware-wallet transport is available; cannot sign message."
+        )
     }
 
     override fun isConnected(): Boolean = connected
-
-    private fun generateMockAddress(): String {
-        val chars = "0123456789abcdef"
-        return (1..40).map { chars.random() }.joinToString("")
-    }
 }
 
 /**
@@ -201,16 +189,13 @@ class TrezorWallet(private val type: HardwareWalletType) : HardwareWallet {
     private var session: Any? = null
 
     override suspend fun connect(): Boolean {
-        return withContext(Dispatchers.IO) {
-            try {
-                // Initialize Trezor bridge connection
-                connected = true
-                true
-            } catch (e: Exception) {
-                connected = false
-                false
-            }
-        }
+        // No real Trezor bridge transport is bundled in this build, so a
+        // connection cannot be established honestly. Fail closed rather than
+        // pretending a device is attached.
+        connected = false
+        throw IllegalStateException(
+            "No real Trezor hardware-wallet transport is available in this build."
+        )
     }
 
     override suspend fun disconnect() {
@@ -219,33 +204,28 @@ class TrezorWallet(private val type: HardwareWalletType) : HardwareWallet {
     }
 
     override suspend fun getAddress(chainId: Int, path: String): String {
-        return withContext(Dispatchers.IO) {
-            if (!connected) throw Exception("Wallet not connected")
-            // In production, use Trezor SDK to get address
-            "0x" + generateMockAddress()
-        }
+        // No real Trezor transport is available; never return a fabricated
+        // address. Fail closed.
+        throw IllegalStateException(
+            "No real Trezor hardware-wallet transport is available; cannot derive address."
+        )
     }
 
     override suspend fun signTransaction(chainId: Int, transaction: ByteArray): ByteArray {
-        return withContext(Dispatchers.IO) {
-            if (!connected) throw Exception("Wallet not connected")
-            // In production, use Trezor SDK to sign
-            ByteArray(65) { if (it == 64) 0 else it.toByte() }
-        }
+        // No real Trezor transport is available; never return a fabricated
+        // signature. Fail closed.
+        throw IllegalStateException(
+            "No real Trezor hardware-wallet transport is available; cannot sign transaction."
+        )
     }
 
     override suspend fun signMessage(chainId: Int, message: String): ByteArray {
-        return withContext(Dispatchers.IO) {
-            if (!connected) throw Exception("Wallet not connected")
-            // In production, use Trezor SDK to sign message
-            ByteArray(65) { if (it == 64) 0 else it.toByte() }
-        }
+        // No real Trezor transport is available; never return a fabricated
+        // signature. Fail closed.
+        throw IllegalStateException(
+            "No real Trezor hardware-wallet transport is available; cannot sign message."
+        )
     }
 
     override fun isConnected(): Boolean = connected
-
-    private fun generateMockAddress(): String {
-        val chars = "0123456789abcdef"
-        return (1..40).map { chars.random() }.joinToString("")
-    }
 }

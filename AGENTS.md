@@ -842,3 +842,40 @@ Per-page:
   master/* = MasterWallet product; missing Header/Sidebar/LoadingSpinner
   components; NFTsPage/Home/SendPage).
 
+
+
+### mobile_apps/ios_app/TigerWallet Master services (FIXED â fail-closed, no fabricated crypto)
+All 6 target files rewritten to eliminate fabricated crypto/tx hashes/ZK proofs/WebAuthn/wallet
+addresses. No stubs/mocks/fakes. Each crypto path either delegates to the real backend
+(go/wallet_api at http://localhost:8443) or uses real on-device primitives, else throws
+fail-closed.
+- Services/Services.swift: BackendClient (JWT bearer) POSTs to real /swap/quote, /swap/execute,
+  /staking/stake|unstake|claim, then broadcasts via /send (real secp256k1 eth_sendRawTransaction).
+  NFT transfer encodes real ERC-721 transferFrom calldata. No amount*1.05, no all-zero tx hashes,
+  no Swift Hasher as tx hash. uint256 padding helper at line ~525 is legitimate ABI encoding.
+- Master/MasterWalletService.swift: createMasterWallet POSTs {label,password,chain_id} to
+  /api/v1/wallets and uses the backend-returned real BIP-39-derived address; publicKey left
+  empty (EVM address is the Keccak-256 of the pubkey, canonical). Throws if unreachable.
+- Master/AccountAbstractionService.swift: canonical UserOperation struct lives here (all other
+  Master files reuse it). sendUserOp/executeWithSessionKey POST to a real bundler endpoint or
+  throw; removed fabricated 0x<hash><random> and '0xPaymasterAddress'. Data/Int helpers are
+  private file-scope functions (dataToHex/cc_sha256) to avoid extension collisions.
+- Master/PrivacyService.swift: createZKProof/verifyZKProof/stealth/confidential/mixing all
+  throw fail-closed (no on-device Groth16/PLONK prover/verifier). verifyZKProof explicitly
+  rejects empty/all-zero piA/piB/piC before throwing. encryptAmount uses real CryptoKit AES-GCM.
+  Removed CommonCrypto import + duplicate privacySHA256/dataToHex/getAnonymitySetSize.
+- Master/PasskeyService.swift: getCredential/assertion via real ASAuthorizationPlatformPublicKey
+  CredentialRegistrationRequest/AssertionRequest; verifyAssertion uses real CryptoKit
+  P256.Signing.PublicKey.isValidSignature over authenticatorData||clientDataHash. No fabricated
+  credential, no hash(pubkey) as pubkey. import UIKit for ASPresentationAnchor.
+- Master/PaymasterService.swift: removed DUPLICATE UserOperation struct + Data.sha256()
+  extension that collided with AccountAbstractionService. sponsorUserOp POSTs the full userOp
+  to a real sponsorEndpoint (configurable) and uses the returned real secp256k1 signature; if
+  no sponsorEndpoint configured (default), throws PaymasterError.noSponsorConfigured. getBalance
+  throws (was fabricated "1000000000000000000"). Keccak userOpHash computed server-side by the
+  sponsor (CommonCrypto lacks Keccak). Whitelist/payment-token config = in-memory state, not crypto.
+- Duplicate-extension audit: only one struct UserOperation (AccountAbstractionService); no
+  Data.sha256() extensions remain; sha256 funcs in SuperAdminService/PasskeyService are private
+  methods (no signature conflict).
+- swiftc NOT available in this environment (no Swift toolchain) â syntax verified by manual
+  review, not by swiftc -parse.
