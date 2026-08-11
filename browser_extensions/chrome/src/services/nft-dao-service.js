@@ -1,7 +1,7 @@
 // NFT Service - Browser Extension
 // NFT gallery, trading, and minting
 
-const API_BASE = 'https://api.tigerwallet.com/api/v1';
+const API_BASE = 'http://localhost:8443/api/v1';
 
 class NFTService {
   constructor(token) {

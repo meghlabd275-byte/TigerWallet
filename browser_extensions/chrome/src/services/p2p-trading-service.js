@@ -4,7 +4,7 @@
 
 class P2PTradingService {
     constructor() {
-        this.apiBase = 'https://api.tigerwallet.com/v1/p2p';
+        this.apiBase = 'http://localhost:8443/api/v1/p2p';
     }
 
     // Get available orders

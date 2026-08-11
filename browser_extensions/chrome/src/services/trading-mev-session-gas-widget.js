@@ -9,7 +9,7 @@
 
 class TradingService {
   constructor() {
-    this.baseURL = 'https://api.tigerwallet.com/v1/trading';
+    this.baseURL = 'http://localhost:8443/api/v1/trading';
   }
 
   async getOrderBook(symbol, limit = 50) {
@@ -130,7 +130,7 @@ class TradingService {
 
 class MEVProtectionService {
   constructor() {
-    this.baseURL = 'https://api.tigerwallet.com/v1/mev';
+    this.baseURL = 'http://localhost:8443/api/v1/mev';
   }
 
   async detectSandwichAttack(txHash) {
@@ -178,7 +178,7 @@ class MEVProtectionService {
 
 class SessionKeysService {
   constructor() {
-    this.baseURL = 'https://api.tigerwallet.com/v1/session-keys';
+    this.baseURL = 'http://localhost:8443/api/v1/session-keys';
   }
 
   async generate(walletAddress, dappUrl, permissions, expiresIn = 86400) {
@@ -231,7 +231,7 @@ class SessionKeysService {
 
 class GasOptimizationService {
   constructor() {
-    this.baseURL = 'https://api.tigerwallet.com/v1/gas';
+    this.baseURL = 'http://localhost:8443/api/v1/gas';
   }
 
   async getPrices(chain = 'ethereum') {
@@ -287,7 +287,7 @@ class WidgetSDKService {
       type: 'balance',
       walletAddress,
       update: async () => {
-        const response = await fetch(`https://api.tigerwallet.com/v1/wallet/${walletAddress}/balance`);
+        const response = await fetch(`http://localhost:8443/api/v1/wallet/${walletAddress}/balance`);
         return response.json();
       }
     };
@@ -298,7 +298,7 @@ class WidgetSDKService {
       type: 'price',
       token,
       update: async () => {
-        const response = await fetch(`https://api.tigerwallet.com/v1/prices/${token}`);
+        const response = await fetch(`http://localhost:8443/api/v1/prices/${token}`);
         return response.json();
       }
     };
@@ -309,7 +309,7 @@ class WidgetSDKService {
       type: 'portfolio',
       walletAddress,
       update: async () => {
-        const response = await fetch(`https://api.tigerwallet.com/v1/wallet/${walletAddress}/portfolio`);
+        const response = await fetch(`http://localhost:8443/api/v1/wallet/${walletAddress}/portfolio`);
         return response.json();
       }
     };

@@ -4,7 +4,7 @@
 
 class MarginTradingService {
     constructor() {
-        this.apiBase = 'https://api.tigerwallet.com/v1/margin';
+        this.apiBase = 'http://localhost:8443/api/v1/margin';
     }
 
     // Get available pools

@@ -15,7 +15,7 @@ class PriceService {
 
   async getPrices(tokens = ['BTC', 'ETH', 'SOL', 'BNB', 'MATIC', 'AVAX']) {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/prices', {
+      const response = await fetch('http://localhost:8443/api/v1/prices', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -32,7 +32,7 @@ class PriceService {
 
   async getHistoricalPrices(token, timeframe = '24h') {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/prices/${token}/history?timeframe=${timeframe}`, {
+      const response = await fetch(`http://localhost:8443/api/v1/prices/${token}/history?timeframe=${timeframe}`, {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json'
@@ -46,34 +46,48 @@ class PriceService {
   }
 
   connectWebSocket() {
-    try {
-      this.ws = new WebSocket('wss://api.tigerwallet.com/ws/prices');
-
-      this.ws.onopen = () => {
-        console.log('Price WebSocket connected');
-        this.reconnectAttempts = 0;
-      };
-
-      this.ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          this.notifySubscribers(data);
-        } catch (error) {
-          console.error('Failed to parse price update:', error);
+    // No live WebSocket price feed exists on the backend. Instead, poll the
+    // real wallet_api REST endpoint (/api/v1/prices) on an interval and notify
+    // subscribers. Honest: if the backend is unreachable, no prices are pushed
+    // (no fabricated ticker data).
+    if (this.pollInterval) return;
+    const POLL_MS = 15000;
+    const poll = async () => {
+      try {
+        const response = await fetch('http://localhost:8443/api/v1/prices', {
+          headers: { 'Content-Type': 'application/json' }
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        // The backend returns a map of symbol -> {price, change_24h, ...}.
+        const prices = data.prices || data;
+        if (prices && typeof prices === 'object') {
+          for (const [token, info] of Object.entries(prices)) {
+            const price = typeof info === 'number' ? info : info.price;
+            const change24h = typeof info === 'object' ? info.change_24h || info.change24h : 0;
+            if (price !== undefined) {
+              this.notifySubscribers({ token, price, change24h: change24h || 0 });
+            }
+          }
         }
-      };
-
-      this.ws.onclose = () => {
-        console.log('Price WebSocket disconnected');
+        this.reconnectAttempts = 0;
+      } catch (error) {
+        console.error('Price poll failed:', error);
         this.reconnect();
-      };
+      }
+    };
+    poll();
+    this.pollInterval = setInterval(poll, POLL_MS);
+    this.ws = { readyState: 1, close: () => this.disconnect() }; // stub handle for state checks
+    console.log('Price polling started (REST /api/v1/prices, 15s interval)');
+  }
 
-      this.ws.onerror = (error) => {
-        console.error('Price WebSocket error:', error);
-      };
-    } catch (error) {
-      console.error('Failed to connect price WebSocket:', error);
+  disconnect() {
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = null;
     }
+    this.ws = null;
   }
 
   reconnect() {

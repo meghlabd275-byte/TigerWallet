@@ -4,7 +4,7 @@
 
 class AccountAbstractionService {
     constructor() {
-        this.apiBase = 'https://api.tigerwallet.com/v1/aa';
+        this.apiBase = 'http://localhost:8443/api/v1/aa';
         this.エントロピー = null;
     }
 

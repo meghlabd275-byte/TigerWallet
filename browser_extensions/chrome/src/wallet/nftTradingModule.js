@@ -14,7 +14,7 @@ class NFTTradingModule {
    */
   async getNFTs(walletAddress, chain = 'ethereum') {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/nfts?address=${walletAddress}&chain=${chain}`);
+      const response = await fetch(`http://localhost:8443/api/v1/nfts?address=${walletAddress}&chain=${chain}`);
       return await response.json();
     } catch (error) {
       console.error('Failed to get NFTs:', error);
@@ -27,7 +27,7 @@ class NFTTradingModule {
    */
   async getCollection(collectionAddress, chain = 'ethereum') {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/nfts/collection/${collectionAddress}?chain=${chain}`);
+      const response = await fetch(`http://localhost:8443/api/v1/nfts/collection/${collectionAddress}?chain=${chain}`);
       return await response.json();
     } catch (error) {
       console.error('Failed to get collection:', error);
@@ -40,7 +40,7 @@ class NFTTradingModule {
    */
   async getListings(collectionAddress, chain = 'ethereum', page = 1) {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/nfts/marketplace?collection=${collectionAddress}&chain=${chain}&page=${page}`);
+      const response = await fetch(`http://localhost:8443/api/v1/nfts/marketplace?collection=${collectionAddress}&chain=${chain}&page=${page}`);
       return await response.json();
     } catch (error) {
       console.error('Failed to get listings:', error);
@@ -53,7 +53,7 @@ class NFTTradingModule {
    */
   async buyNFT(walletAddress, collectionAddress, tokenId, price, chain = 'ethereum') {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/nfts/buy', {
+      const response = await fetch('http://localhost:8443/api/v1/nfts/buy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -76,7 +76,7 @@ class NFTTradingModule {
    */
   async sellNFT(walletAddress, collectionAddress, tokenId, price, chain = 'ethereum') {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/nfts/sell', {
+      const response = await fetch('http://localhost:8443/api/v1/nfts/sell', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -99,7 +99,7 @@ class NFTTradingModule {
    */
   async transferNFT(walletAddress, toAddress, collectionAddress, tokenId, chain = 'ethereum') {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/nfts/transfer', {
+      const response = await fetch('http://localhost:8443/api/v1/nfts/transfer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -122,7 +122,7 @@ class NFTTradingModule {
    */
   async getPopularCollections(chain = 'ethereum') {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/nfts/collections/popular?chain=${chain}`);
+      const response = await fetch(`http://localhost:8443/api/v1/nfts/collections/popular?chain=${chain}`);
       return await response.json();
     } catch (error) {
       console.error('Failed to get collections:', error);
@@ -144,7 +144,7 @@ class NFTTradingModule {
    */
   async searchNFTs(query, chain = 'ethereum') {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/nfts/search?q=${encodeURIComponent(query)}&chain=${chain}`);
+      const response = await fetch(`http://localhost:8443/api/v1/nfts/search?q=${encodeURIComponent(query)}&chain=${chain}`);
       return await response.json();
     } catch (error) {
       console.error('Search failed:', error);

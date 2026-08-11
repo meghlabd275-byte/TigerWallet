@@ -4,7 +4,7 @@
 
 class FiatRampService {
     constructor() {
-        this.apiBase = 'https://api.tigerwallet.com/v1/fiat';
+        this.apiBase = 'http://localhost:8443/api/v1/fiat';
     }
 
     // Get available providers

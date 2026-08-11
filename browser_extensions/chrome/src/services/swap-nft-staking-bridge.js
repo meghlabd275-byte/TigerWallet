@@ -114,7 +114,7 @@ class NFTExtensionService {
 
   async getCollections(chain = 'ethereum') {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/nft/collections?chain=${chain}`, {
+      const response = await fetch(`http://localhost:8443/api/v1/nft/collections?chain=${chain}`, {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json'
@@ -129,7 +129,7 @@ class NFTExtensionService {
 
   async getNFTs(ownerAddress, chain = 'ethereum') {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/nft/owners/${ownerAddress}?chain=${chain}`, {
+      const response = await fetch(`http://localhost:8443/api/v1/nft/owners/${ownerAddress}?chain=${chain}`, {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json'
@@ -144,7 +144,7 @@ class NFTExtensionService {
 
   async getListings(collectionAddress, chain = 'ethereum') {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/nft/listings?collection=${collectionAddress}&chain=${chain}`, {
+      const response = await fetch(`http://localhost:8443/api/v1/nft/listings?collection=${collectionAddress}&chain=${chain}`, {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json'
@@ -159,7 +159,7 @@ class NFTExtensionService {
 
   async buyNFT(buyerAddress, listingId, chain = 'ethereum') {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/nft/purchase`, {
+      const response = await fetch(`http://localhost:8443/api/v1/nft/purchase`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -180,7 +180,7 @@ class NFTExtensionService {
 
   async createListing(walletAddress, collectionAddress, tokenId, price, chain = 'ethereum') {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/nft/listings`, {
+      const response = await fetch(`http://localhost:8443/api/v1/nft/listings`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -210,7 +210,7 @@ class StakingService {
 
   async getValidators(chain = 'ethereum') {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/staking/validators?chain=${chain}`, {
+      const response = await fetch(`http://localhost:8443/api/v1/staking/validators?chain=${chain}`, {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json'
@@ -225,7 +225,7 @@ class StakingService {
 
   async delegate(walletAddress, validatorAddress, amount, chain = 'ethereum') {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/staking/delegate`, {
+      const response = await fetch(`http://localhost:8443/api/v1/staking/delegate`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -247,7 +247,7 @@ class StakingService {
 
   async undelegate(walletAddress, amount, chain = 'ethereum') {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/staking/undelegate`, {
+      const response = await fetch(`http://localhost:8443/api/v1/staking/undelegate`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -268,7 +268,7 @@ class StakingService {
 
   async getRewards(walletAddress, chain = 'ethereum') {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/staking/rewards/${walletAddress}?chain=${chain}`, {
+      const response = await fetch(`http://localhost:8443/api/v1/staking/rewards/${walletAddress}?chain=${chain}`, {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json'
@@ -291,7 +291,7 @@ class BridgeService {
   async getBridgeQuotes(params) {
     try {
       const { fromChain, toChain, fromToken, toToken, amount } = params;
-      const response = await fetch(`https://api.tigerwallet.com/v1/bridge/quotes`, {
+      const response = await fetch(`http://localhost:8443/api/v1/bridge/quotes`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -315,7 +315,7 @@ class BridgeService {
   async executeBridge(params) {
     try {
       const { walletId, fromChain, toChain, fromToken, toToken, amount, bridgeRoute } = params;
-      const response = await fetch(`https://api.tigerwallet.com/v1/bridge/execute`, {
+      const response = await fetch(`http://localhost:8443/api/v1/bridge/execute`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -340,7 +340,7 @@ class BridgeService {
 
   async getSupportedChains() {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/bridge/chains', {
+      const response = await fetch('http://localhost:8443/api/v1/bridge/chains', {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json'

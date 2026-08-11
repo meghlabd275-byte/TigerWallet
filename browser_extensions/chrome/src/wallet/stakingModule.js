@@ -14,7 +14,7 @@ class StakingModule {
    */
   async getPositions(walletAddress) {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/staking/positions?address=${walletAddress}`);
+      const response = await fetch(`http://localhost:8443/api/v1/staking/positions?address=${walletAddress}`);
       return await response.json();
     } catch (error) {
       console.error('Failed to get positions:', error);
@@ -27,7 +27,7 @@ class StakingModule {
    */
   async getValidators(chain) {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/staking/validators?chain=${chain}`);
+      const response = await fetch(`http://localhost:8443/api/v1/staking/validators?chain=${chain}`);
       return await response.json();
     } catch (error) {
       console.error('Failed to get validators:', error);
@@ -59,7 +59,7 @@ class StakingModule {
    */
   async stake(walletAddress, chain, validatorId, amount) {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/staking/stake', {
+      const response = await fetch('http://localhost:8443/api/v1/staking/stake', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -81,7 +81,7 @@ class StakingModule {
    */
   async unstake(positionId) {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/staking/unstake', {
+      const response = await fetch('http://localhost:8443/api/v1/staking/unstake', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ positionId })
@@ -98,7 +98,7 @@ class StakingModule {
    */
   async claimRewards(positionId) {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/staking/claim', {
+      const response = await fetch('http://localhost:8443/api/v1/staking/claim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ positionId })

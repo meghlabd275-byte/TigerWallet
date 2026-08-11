@@ -33,7 +33,7 @@ class BridgeModule {
    */
   async getQuote(fromChain, toChain, token, amount) {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/bridge/quote', {
+      const response = await fetch('http://localhost:8443/api/v1/bridge/quote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fromChain, toChain, token, amount: amount.toString() })
@@ -61,7 +61,7 @@ class BridgeModule {
    */
   async execute(walletAddress, fromChain, toChain, token, amount, recipient) {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/bridge/execute', {
+      const response = await fetch('http://localhost:8443/api/v1/bridge/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -85,7 +85,7 @@ class BridgeModule {
    */
   async getStatus(bridgeTxId) {
     try {
-      const response = await fetch(`https://api.tigerwallet.com/v1/bridge/status/${bridgeTxId}`);
+      const response = await fetch(`http://localhost:8443/api/v1/bridge/status/${bridgeTxId}`);
       return await response.json();
     } catch (error) {
       console.error('Status check failed:', error);

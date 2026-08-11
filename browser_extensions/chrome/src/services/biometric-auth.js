@@ -95,7 +95,7 @@ class BiometricAuthService {
    */
   async isEnrolled() {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/auth/biometric/status', {
+      const response = await fetch('http://localhost:8443/api/v1/auth/biometric/status', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${this.getToken()}`,
@@ -115,7 +115,7 @@ class BiometricAuthService {
    */
   async enable() {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/auth/biometric/enable', {
+      const response = await fetch('http://localhost:8443/api/v1/auth/biometric/enable', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.getToken()}`,
@@ -134,7 +134,7 @@ class BiometricAuthService {
    */
   async disable() {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/auth/biometric/disable', {
+      const response = await fetch('http://localhost:8443/api/v1/auth/biometric/disable', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.getToken()}`,
@@ -205,7 +205,7 @@ class WebOTPService {
    */
   async requestOTP(phoneNumber) {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/auth/otp/request', {
+      const response = await fetch('http://localhost:8443/api/v1/auth/otp/request', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -227,7 +227,7 @@ class WebOTPService {
    */
   async verifyOTP(phoneNumber, code) {
     try {
-      const response = await fetch('https://api.tigerwallet.com/v1/auth/otp/verify', {
+      const response = await fetch('http://localhost:8443/api/v1/auth/otp/verify', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

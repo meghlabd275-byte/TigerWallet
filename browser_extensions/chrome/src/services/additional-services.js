@@ -1,5 +1,5 @@
 // Swap/DEX Service - Browser Extension
-const API_BASE = 'https://api.tigerwallet.com/api/v1';
+const API_BASE = 'http://localhost:8443/api/v1';
 
 class SwapService {
   constructor(token) {
