@@ -243,6 +243,33 @@
   (Go backend already had the scrypt variant + REST endpoints); both
   now produce spec-valid keystores importable across wallets.
 
+## solana/rust (Solana core — real Ed25519 + PDA)
+
+- New crate `tiger_solana_core` (`solana/rust/src/lib.rs`). Replaces the
+  C++ `solana_core.cpp` fakes (SHA256-as-pubkey, unsalted-SHA256 PDA).
+- `derive_public_key`: REAL Ed25519 via `ed25519-dalek`. Accepts 32-byte
+  seed OR 64-byte expanded key (uses the seed half). The pubkey is
+  `scalar_mult(seed)` via SHA-512 clamping, NOT SHA-256. Validates the
+  result decompresses to a real on-curve point.
+- `find_program_address` / `create_program_address`: the canonical Solana
+  PDA algorithm — `sha256(seeds || program_id || bump)` with
+  `PDA_MARKER = b"ProgramDerivedAddress"`, 255→1 bump-seed search, and
+  curve25519 on-curve REJECTION (a PDA must NOT be a valid Ed25519
+  pubkey). Matches `solana-program`.
+- `sign_message` / `verify_signature`: real Ed25519.
+- `pubkey_to_base58` / `pubkey_from_base58`: real base58, rejects wrong
+  length (must be 32 bytes).
+- `cargo test --lib` → 12/12 pass (no mocks): pubkey derivation (seed +
+  expanded), bad-length reject, sign+verify roundtrip + tamper, PDA is
+  off-curve, PDA deterministic + idempotent bump, create-with-bump ==
+  find, PDAs differ across program ids, long-seed reject, base58
+  roundtrip, base58 wrong-length reject, pubkey non-zero.
+- C++ side: the three fake SHA-256 derivations (`derive_public_key`,
+  `TokenAddress::create`, `NFTMetadata::get_metadata_address`) are now
+  fail-closed (return all-zero sentinel + comment). The legitimate
+  `Message::hash` (SHA-256 of the serialized message — used for signing)
+  is kept; that one is real.
+
 ## zk_infrastructure / ZK prover
 
 - `zk_infrastructure` uses a REAL Fiat-Shamir Schnorr proof of knowledge of a
