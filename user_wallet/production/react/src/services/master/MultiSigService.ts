@@ -3,6 +3,7 @@
  * Production-ready multi-signature wallet functionality
  */
 
+import { ethers } from 'ethers';
 import { MasterWalletService } from './MasterWalletService';
 
 interface SignerInfo {
@@ -64,6 +65,8 @@ export class MultiSigService {
   private transactions: Map<string, TransactionInfo> = new Map();
   private initialized: boolean = false;
   private eventListeners: Map<string, Set<Function>> = new Map();
+  /** On-chain MultiSig factory + init-code hash for CREATE2 address derivation. */
+  public config: { multiSigFactoryAddress?: string; multiSigInitCodeHash?: string } = {};
 
   constructor(masterWalletService: MasterWalletService) {
     this.masterWalletService = masterWalletService;
@@ -435,21 +438,29 @@ export class MultiSigService {
   }
 
   /**
-   * Derive multi-sig address
+   * Derive multi-sig address — the real on-chain MultiSig factory address is
+   * derived via CREATE2 over the sorted signers (keccak256 of the encoded
+   * signer set + the canonical factory/salt). Never fabricate a 0x address from
+   * a DJB2 hash. If the factory address is not configured, throw fail-closed.
    */
   private deriveMultiSigAddress(blockchain: string, signers: { address: string }[]): string {
-    const data = signers.map(s => s.address).sort().join('-');
-    const hash = this.simpleHash(data);
-    return '0x' + hash.slice(0, 40);
-  }
-
-  private simpleHash(data: string): string {
-    let hash = 0;
-    for (let i = 0; i < data.length; i++) {
-      hash = ((hash << 5) - hash) + data.charCodeAt(i);
-      hash = hash & hash;
+    if (!signers.length) {
+      throw new Error('Cannot derive a multi-sig address with no signers.');
     }
-    return Math.abs(hash).toString(16).padStart(40, '0');
+    const factoryAddress = this.config?.multiSigFactoryAddress;
+    if (!factoryAddress || !ethers.isAddress(factoryAddress)) {
+      throw new Error('Multi-sig factory address is not configured; refusing to fabricate an address.');
+    }
+    // CREATE2 salt = keccak256 of the sorted, lowercase signer addresses.
+    const sorted = signers.map(s => ethers.getAddress(s.address).toLowerCase()).sort();
+    const salt = ethers.keccak256(ethers.toUtf8Bytes(sorted.join('-')));
+    // The real deployment bytecode must be supplied by the factory config; use
+    // the configured init code hash. Without it we cannot compute CREATE2.
+    const initCodeHash = this.config?.multiSigInitCodeHash;
+    if (!initCodeHash || !/^0x[0-9a-fA-F]{64}$/.test(initCodeHash)) {
+      throw new Error('Multi-sig init-code hash is not configured; refusing to fabricate an address.');
+    }
+    return ethers.getCreate2Address(factoryAddress, salt, initCodeHash);
   }
 
   private generateId(): string {

@@ -10,6 +10,7 @@
  * - Device management
  */
 
+import { ethers } from 'ethers';
 import { MasterWalletService } from './MasterWalletService';
 
 interface HardwareWalletDevice {
@@ -367,9 +368,12 @@ export class HardwareWalletService {
   }
 
   private deriveMockPublicKey(pathData: number[], deviceType: string): string {
-    const data = pathData.join(',') + deviceType;
-    const hash = this.simpleHash(data);
-    return '04' + hash.padStart(128, '0').slice(0, 128);
+    // Public keys come from the hardware device via its APDU GET_PUBLIC_KEY
+    // command (parse_get_public_key_response). Never fabricate one from a
+    // non-cryptographic hash.
+    throw new Error(
+      'Public key must be returned by the hardware device APDU (INS_GET_PUBLIC_KEY); client-side fabrication is disabled'
+    );
   }
 
   private publicKeyToAddress(publicKey: string, blockchain: string = 'ethereum'): string {
@@ -396,8 +400,9 @@ export class HardwareWalletService {
   }
 
   private hashMessage(message: string): string {
-    const prefix = '\x19Ethereum Signed Message:\n' + message.length;
-    return this.simpleHash(prefix + message);
+    // Real EIP-191 personal_sign prefix + keccak256 (ethers v6). Never use a
+    // non-cryptographic DJB2 hash for Ethereum message hashing.
+    return ethers.hashMessage(message);
   }
 
   private createMockSignature(_data: string, _deviceType: string): Signature {
@@ -407,12 +412,6 @@ export class HardwareWalletService {
     throw new Error(
       'Signature must come from the hardware device or the canonical wallet-api backend (/sign); client-side signature fabrication is disabled'
     );
-  }
-
-  private simpleHash(data: string): string {
-    let hash = 0;
-    for (let i = 0; i < data.length; i++) { hash = ((hash << 5) - hash) + data.charCodeAt(i); hash = hash & hash; }
-    return Math.abs(hash).toString(16).padStart(64, '0');
   }
 }
 
