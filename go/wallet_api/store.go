@@ -1,8 +1,7 @@
 package main
 
-// store.go — PostgreSQL persistence layer (pgx) + Redis cache.
-// Replaces all in-memory / SQLite storage. Stores encrypted wallet seeds,
-// user accounts, and transaction history cache.
+// store.go — PostgreSQL persistence layer (pgx/v5) + Redis cache.
+// Stores encrypted wallet seeds, user accounts, and transaction history cache.
 
 import (
 	"context"

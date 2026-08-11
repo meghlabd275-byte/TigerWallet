@@ -134,3 +134,10 @@ go/rpc_service/rpc_service
 *.test
 /go/social_recovery_service/social_recovery_service
 /go/signature_service/signature_service
+
+# Compiled Go/ELF binaries committed in error - rebuilt from source
+/dapp_browser/go/dapp_browser
+/master_wallet/go/services/services
+/transaction_simulator/go/transaction-simulator
+/services/go/api_gateway/tigerwallet_test_apigateway
+*_test_api*
