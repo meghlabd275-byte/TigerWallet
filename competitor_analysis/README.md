@@ -24,6 +24,8 @@ Gaps closed and pushed to `main` (commit `f660821`, parent `8f5915f`):
 5. **Removed committed ELF build artifacts** (~94 MB of compiled Go binaries) from git + `.gitignore` updated.
 6. **Real on-chain NFT fetcher** (`go/nft_service/fetcher.go`): replaced in-memory mock NFT data with real `eth_call` ERC-721 reads (balanceOf/tokenOfOwnerByIndex/ownerOf/tokenURI/name/symbol/totalSupply) + IPFS metadata + Redis cache; 503 "unavailable" (never mock) when `ETH_RPC_URL` unset. `go build`+`go vet` clean.
 7. **Web3 Secret Storage V3 keystore interop** (`go/wallet_api/keystore_v3.go`): real scrypt+AES-128-CTR+keccak256-MAC V3 keystore export/import (geth/MetaMask-compatible); 2 passing tests; REST routes `POST /api/v1/keystore/{export,import}` + Next.js proxy routes.
+8. **Real curated dApp directory** (`go/wallet_api/dapp_directory.go`): ~20 real protocol entries (Uniswap, Aave, OpenSea, Curve, 1inch, Jupiter, Stargate, Lido, ENS, Lens, Farcaster, …) with categories/chains/verified flag — no fabricated metrics. Public REST `GET /api/v1/dapps` (+`/categories`, `/:id`) + Next.js proxy routes; both `dapp-store` and `dapp-browser` pages now `fetch('/api/v1/dapps')` (removed hardcoded `SAMPLE_DAPPS`/`POPULAR_DAPPS`); 3 backend tests pass.
+9. **Token asset registry endpoint** (`GET /api/v1/tokens/registry`): the curated per-chain token list (real mainnet contract addresses for Ethereum/BSC/Polygon/Arbitrum/Optimism/Base) is now public — the Trust-Wallet-assets-repo equivalent; 404 for unknown chain (never fabricated); Next.js proxy route added.
 
 Items 1, 2, 4, 5, 6, 7, 8 in the gap-analysis action list remain open.
 
