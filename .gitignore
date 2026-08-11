@@ -145,3 +145,8 @@ go/rpc_service/rpc_service
 # Go binaries
 user_wallet/go/user_wallet
 *.exe
+
+# TigerWallet microservice build binaries (go.mod at service root)
+/monitoring_dashboard/cmd
+/permission_service/cmd
+/connection_api/cmd

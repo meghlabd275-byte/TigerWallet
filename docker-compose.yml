@@ -112,8 +112,8 @@ services:
   # Permission Service (has Dockerfile)
   permission-service:
     build:
-      context: ./permission_service/go
-      dockerfile: Dockerfile
+      context: ./permission_service
+      dockerfile: go/Dockerfile
     container_name: tigerwallet-permission-service
     ports:
       - "8085:8085"
@@ -131,8 +131,8 @@ services:
   # Connection API (has Dockerfile)
   connection-api:
     build:
-      context: ./connection_api/go
-      dockerfile: Dockerfile
+      context: ./connection_api
+      dockerfile: go/Dockerfile
     container_name: tigerwallet-connection-api
     ports:
       - "8086:8086"
@@ -168,7 +168,7 @@ services:
   monitoring-dashboard:
     build:
       context: ./monitoring_dashboard
-      dockerfile: Dockerfile
+      dockerfile: go/Dockerfile
     container_name: tigerwallet-monitoring-dashboard
     ports:
       - "9090:9090"

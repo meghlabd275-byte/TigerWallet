@@ -22,10 +22,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
+	redislib "github.com/redis/go-redis/v9"
 )
 
 // Configuration
@@ -107,7 +106,7 @@ type DisconnectRequest struct {
 // Global state
 var (
 	db              *pgxpool.Pool
-	redis           *redis.Client
+	redis           *redislib.Client
 	config          Config
 	logger          *log.Logger
 	jwtSecret       []byte
@@ -225,11 +224,11 @@ func initDatabase() error {
 
 func initRedis() error {
 	redisURL := getEnv("REDIS_URL", "redis://localhost:6379")
-	opt, err := redis.ParseURL(redisURL)
+	opt, err := redislib.ParseURL(redisURL)
 	if err != nil {
 		return err
 	}
-	redis = redis.NewClient(opt)
+	redis = redislib.NewClient(opt)
 	return redis.Ping(context.Background()).Err()
 }
 
@@ -610,11 +609,13 @@ func GetConnections(c *gin.Context) {
 		ClientID      uuid.UUID         `json:"client_id"`
 		Product       WhiteLevelProduct `json:"product"`
 		ConnectionKey string            `json:"connection_key"`
+		SessionToken  string            `json:"session_token"`
 		Status        string            `json:"status"`
 		IPAddress     string            `json:"ip_address"`
 		Region        string            `json:"region"`
 		Latency       int               `json:"latency"`
 		ConnectedAt   time.Time         `json:"connected_at"`
+		ExpiresAt     time.Time        `json:"expires_at"`
 	}
 
 	var sessions []SessionInfo

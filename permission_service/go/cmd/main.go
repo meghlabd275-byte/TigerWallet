@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -22,7 +21,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
+	redislib "github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Configuration
@@ -152,7 +152,7 @@ type APIConnection struct {
 // Global variables
 var (
 	db             *pgxpool.Pool
-	redis          *redis.Client
+	redis           *redislib.Client
 	config         Config
 	logger         *log.Logger
 	permCache      *sync.Map // permission cache
@@ -267,11 +267,11 @@ func initDatabase() error {
 
 func initRedis() error {
 	redisURL := getEnv("REDIS_URL", "redis://localhost:6379")
-	opt, err := redis.ParseURL(redisURL)
+	opt, err := redislib.ParseURL(redisURL)
 	if err != nil {
 		return err
 	}
-	redis = redis.NewClient(opt)
+	redis = redislib.NewClient(opt)
 	return redis.Ping(context.Background()).Err()
 }
 
@@ -354,7 +354,7 @@ func GetAllPermissions(clientID uuid.UUID) ([]ProductPermission, error) {
 
 // ============ AUTHENTICATION ============
 
-func generateAPIKey() (string, string) {
+func generateAPIKey() (string, string, string) {
 	key := uuid.New().String() + uuid.New().String()
 	prefix := "tw_" + key[:8]
 	hash := sha256.Sum256([]byte(key))
@@ -573,16 +573,19 @@ func CreateAdmin(c *gin.Context) {
 		req.Role = "admin"
 	}
 
-	// Hash password
-	hash := sha256.Sum256([]byte(req.Password))
-	passwordHash := hex.EncodeToString(hash[:])
+	// Hash password with bcrypt
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
 	admin := WhiteLevelAdmin{
 		ID:               uuid.New(),
 		ClientID:         req.ClientID,
 		Email:            req.Email,
 		Username:         req.Username,
-		PasswordHash:     passwordHash,
+		PasswordHash:     string(passwordHash),
 		Role:             req.Role,
 		Products:         req.Products,
 		Permissions:      make(map[string]map[PermissionLevel]bool),
@@ -594,7 +597,7 @@ func CreateAdmin(c *gin.Context) {
 	productsJSON, _ := json.Marshal(admin.Products)
 	permsJSON, _ := json.Marshal(admin.Permissions)
 
-	_, err := db.Exec(context.Background(), `
+	_, err = db.Exec(context.Background(), `
 		INSERT INTO white_level_admins (id, client_id, email, username, password_hash, role, products, permissions, is_active, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`, admin.ID, admin.ClientID, admin.Email, admin.Username, admin.PasswordHash, admin.Role, productsJSON, permsJSON, admin.IsActive, admin.CreatedAt, admin.UpdatedAt)
@@ -620,16 +623,21 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	hash := sha256.Sum256([]byte(req.Password))
-	passwordHash := hex.EncodeToString(hash[:])
-
-	var admin WhiteLevelAdmin
+	var (
+		admin         WhiteLevelAdmin
+		storedHash    string
+	)
 	err := db.QueryRow(context.Background(), `
-		SELECT id, client_id, email, username, role, products, permissions, is_active, two_factor_enabled
-		FROM white_level_admins WHERE email = $1 AND password_hash = $2 AND is_active = true
-	`, req.Email, passwordHash).Scan(&admin.ID, &admin.ClientID, &admin.Email, &admin.Username, &admin.Role, &admin.Products, &admin.Permissions, &admin.IsActive, &admin.TwoFactorEnabled)
+		SELECT id, client_id, email, username, role, products, permissions, is_active, two_factor_enabled, password_hash
+		FROM white_level_admins WHERE email = $1 AND is_active = true
+	`, req.Email).Scan(&admin.ID, &admin.ClientID, &admin.Email, &admin.Username, &admin.Role, &admin.Products, &admin.Permissions, &admin.IsActive, &admin.TwoFactorEnabled, &storedHash)
 
 	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(req.Password)); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}

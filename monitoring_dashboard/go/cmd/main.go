@@ -18,7 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
+	redislib "github.com/redis/go-redis/v9"
 )
 
 // Configuration
@@ -103,7 +103,7 @@ type ProductMetrics struct {
 // Global variables
 var (
 	db     *pgxpool.Pool
-	redis *redis.Client
+	redis           *redislib.Client
 	config Config
 	logger *log.Logger
 
@@ -178,11 +178,11 @@ func initDatabase() error {
 
 func initRedis() error {
 	redisURL := getEnv("REDIS_URL", "redis://localhost:6379")
-	opt, err := redis.ParseURL(redisURL)
+	opt, err := redislib.ParseURL(redisURL)
 	if err != nil {
 		return err
 	}
-	redis = redis.NewClient(opt)
+	redis = redislib.NewClient(opt)
 	return redis.Ping(context.Background()).Err()
 }
 
