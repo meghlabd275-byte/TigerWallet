@@ -399,8 +399,7 @@ class BiometricService {
   }
 
   compareBiometric(data1, template2) {
-    // Simplified comparison
-    return Math.floor(Math.random() * 30) + 70;
+    throw new Error('Biometric verification is performed by the platform WebAuthn/hardware; client-side score fabrication is disabled');
   }
 
   analyzeKeystrokeDynamics(dynamics) {
@@ -444,9 +443,11 @@ class BiometricService {
 
   generateRandom(length) {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    const bytes = new Uint8Array(length);
+    crypto.getRandomValues(bytes);
     let result = '';
     for (let i = 0; i < length; i++) {
-      result += chars[Math.floor(Math.random() * chars.length)];
+      result += chars[bytes[i] % chars.length];
     }
     return result;
   }

@@ -86,8 +86,22 @@ class APIService {
   }
 
   private getDeviceId(): string {
-    // Would get from device info
-    return 'device-' + Math.random().toString(36).substring(7);
+    // Real device identifiers come from the platform device-info API.
+    // Until the bridge is wired, return a stable per-install id derived from
+    // a CSPRNG (NOT Math.random), persisted to storage.
+    const KEY = 'TW_DEVICE_ID';
+    try {
+      const existing = localStorage.getItem(KEY);
+      if (existing) return existing;
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      const id = 'device-' + Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+      localStorage.setItem(KEY, id);
+      return id;
+    } catch {
+      // SSR / no storage: throw rather than fabricate
+      throw new Error('Device identifier unavailable (no storage); configure the device-info bridge');
+    }
   }
 
   // ============================================================================

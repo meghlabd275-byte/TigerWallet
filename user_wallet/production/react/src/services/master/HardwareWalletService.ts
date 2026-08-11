@@ -397,9 +397,13 @@ export class HardwareWalletService {
     return this.simpleHash(prefix + message);
   }
 
-  private createMockSignature(data: string, deviceType: string): Signature {
-    const hash = this.simpleHash(data + deviceType);
-    return { v: 27 + (Math.random() > 0.5 ? 1 : 0), r: '0x' + hash.slice(0, 64).padStart(64, '0'), s: '0x' + hash.slice(64, 128).padStart(64, '0') };
+  private createMockSignature(_data: string, _deviceType: string): Signature {
+    // Signatures are produced by the hardware device (real Ledger/Trezor APDU)
+    // or the canonical wallet-api backend (/sign, secp256k1 low-s). This client
+    // never fabricates a signature — fail honestly.
+    throw new Error(
+      'Signature must come from the hardware device or the canonical wallet-api backend (/sign); client-side signature fabrication is disabled'
+    );
   }
 
   private simpleHash(data: string): string {

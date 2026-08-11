@@ -47,7 +47,7 @@ const WalletPage: React.FC = () => {
           symbol: tb.symbol,
           balance: tb.balance,
           value: tb.balanceUSD,
-          change24h: Math.random() * 10 - 5, // Would come from price API
+          change24h: 0,  // real 24h change from backend price feed
           icon: getTokenIcon(tb.symbol),
           contract: tb.address,
         }));
@@ -59,7 +59,7 @@ const WalletPage: React.FC = () => {
           symbol: mainWallet.chain.toUpperCase(),
           balance: mainWallet.balance,
           value: parseFloat(mainWallet.balance) * 1800, // Would use real price
-          change24h: Math.random() * 10 - 5,
+          change24h: 0,  // real 24h change from backend price feed
           icon: getChainIcon(mainWallet.chain),
         };
         

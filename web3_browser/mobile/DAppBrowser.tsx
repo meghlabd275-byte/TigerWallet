@@ -283,8 +283,9 @@ const DAppBrowser: React.FC<DAppBrowserProps> = ({ initialUrl = 'https://app.uni
     setPendingTx(tx);
     setShowTxModal(true);
     
-    // This would be resolved after user confirmation
-    return '0x' + Math.random().toString(16).slice(2);
+    // The real tx hash comes from the backend's signed broadcast
+    // (POST /api/v1/send). This client never fabricates a hash.
+    throw new Error('Transaction hash comes from the backend /send endpoint; client-side fabrication is disabled');
   };
 
   const estimateGas = async (tx: any): Promise<string> => {
@@ -298,13 +299,13 @@ const DAppBrowser: React.FC<DAppBrowserProps> = ({ initialUrl = 'https://app.uni
   };
 
   const personalSign = async (message: string, address: string): Promise<string> => {
-    // Would require user confirmation
-    return '0x' + Math.random().toString(16).slice(2);
+    // Signature is produced by the backend (/sign) or hardware device.
+    throw new Error('Signature comes from the backend /sign endpoint or hardware device; client-side fabrication is disabled');
   };
 
   const signTypedData = async (address: string, data: string): Promise<string> => {
-    // Would require user confirmation
-    return '0x' + Math.random().toString(16).slice(2);
+    // Signature is produced by the backend (/sign) or hardware device.
+    throw new Error('Signature comes from the backend /sign endpoint or hardware device; client-side fabrication is disabled');
   };
 
   // Handle navigation state changes
@@ -388,7 +389,7 @@ const DAppBrowser: React.FC<DAppBrowserProps> = ({ initialUrl = 'https://app.uni
     // Would broadcast transaction to network
     if (pendingTx) {
       dispatch(addTransaction({
-        hash: '0x' + Math.random().toString(16).slice(2),
+        hash: '',  // real hash from backend /send broadcast
         from: pendingTx.from,
         to: pendingTx.to,
         value: pendingTx.value || '0x0',

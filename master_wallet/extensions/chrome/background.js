@@ -95,7 +95,7 @@ function createSubWallet(name, chain, callback) {
       id: 'wallet_' + Date.now(),
       name,
       chain,
-      address: '0x' + Math.random().toString(16).substr(2, 40),
+      address: '',  // address derived by the canonical wallet-api backend
       balance: '0',
       status: 'Active'
     };

@@ -576,7 +576,7 @@ const FuturesTradingPage: React.FC = () => {
             <div className="orderbook-asks">
               {[...Array(10)].map((_, i) => {
                 const price = selectedPair.price * (1 + (i + 1) * 0.001);
-                const size = Math.random() * 10 + 0.1;
+                const size = 0; // real value from backend
                 return (
                   <div key={`ask-${i}`} className="orderbook-row ask">
                     <span className="price">{price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: selectedPair.price < 1 ? 6 : 2 })}</span>
@@ -592,7 +592,7 @@ const FuturesTradingPage: React.FC = () => {
             <div className="orderbook-bids">
               {[...Array(10)].map((_, i) => {
                 const price = selectedPair.price * (1 - (i + 1) * 0.001);
-                const size = Math.random() * 10 + 0.1;
+                const size = 0; // real value from backend
                 return (
                   <div key={`bid-${i}`} className="orderbook-row bid">
                     <span className="price">{price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: selectedPair.price < 1 ? 6 : 2 })}</span>

@@ -3,6 +3,7 @@
 
 import React, { useState } from 'react';
 import './LoginPage.css';
+import { WalletService } from '../services/walletService';
 
 interface LoginPageProps {
   onLogin: () => void;
@@ -15,16 +16,40 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [walletName, setWalletName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [creating, setCreating] = useState(false);
 
-  const generateWallet = () => {
-    const words = [
-      'abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract',
-      'absurd', 'abuse', 'access', 'accident', 'account', 'accuse', 'achieve', 'acid',
-      'acoustic', 'acquire', 'across', 'action', 'actor', 'actress', 'actual', 'adapt',
-    ];
-    const randomMnemonic = Array(24).fill('').map(() => words[Math.floor(Math.random() * words.length)]);
-    setMnemonic(randomMnemonic);
-    setStep(2);
+  const generateWallet = async () => {
+    setError('');
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
+    setCreating(true);
+    try {
+      // The canonical wallet_api backend generates a REAL BIP-39 mnemonic
+      // (CSPRNG entropy + checksum) and returns it once for backup display.
+      // The client NEVER fabricates a mnemonic itself.
+      const result = await WalletService.createWallet({
+        name: walletName || `wallet-${Date.now()}`,
+        chain: 'ethereum',
+        password,
+      });
+      const seed = (result as any).seedPhrase as string | undefined;
+      if (!seed) {
+        throw new Error('Backend did not return a seed phrase');
+      }
+      setMnemonic(seed.split(' '));
+      setStep(2);
+    } catch (e: any) {
+      setError(e.message || 'Failed to create wallet');
+    } finally {
+      setCreating(false);
+    }
   };
 
   const handleCreateWallet = () => {

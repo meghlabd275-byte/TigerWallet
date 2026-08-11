@@ -428,7 +428,10 @@ class NotificationsService {
     }
 
     generateId() {
-        return 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        const bytes = new Uint8Array(8);
+        crypto.getRandomValues(bytes);
+        const rand = Array.from(bytes, (b) => b.toString(36).padStart(2, '0')).join('');
+        return 'notif_' + Date.now() + '_' + rand;
     }
 }
 

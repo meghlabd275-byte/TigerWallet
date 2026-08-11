@@ -78,28 +78,34 @@ class PasskeyService {
 
   // Private
   private generateCredentialId(): string {
-    return Array.from({ length: 32 }, () =>
-      Math.floor(Math.random() * 256).toString(16).padStart(2, '0')
-    ).join('');
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
   }
 
   private generateKeyPair(): { publicKey: string; privateKey: string } {
-    const privateKey = Array.from({ length: 32 }, () =>
-      Math.floor(Math.random() * 256).toString(16).padStart(2, '0')
-    ).join('');
+    // NOTE: this is a placeholder keypair for the in-memory shim only. A real
+    // passkey uses the Web Authentication API (navigator.credentials.create),
+    // which is fail-closed until a real authenticator is available. Never use
+    // this keypair for real signing.
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    const privateKey = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
     const publicKey = this.hash(privateKey);
     return { publicKey, privateKey };
   }
 
   private generateChallenge(): string {
-    return Array.from({ length: 32 }, () =>
-      Math.floor(Math.random() * 256).toString(16).padStart(2, '0')
-    ).join('');
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
   }
 
   private generateAuthenticatorData(relyingPartyId: string): string {
     const flags = 0x41;
-    const counter = Math.floor(Math.random() * 1000000);
+    const counterBytes = new Uint32Array(1);
+    crypto.getRandomValues(counterBytes);
+    const counter = counterBytes[0];
     const rpIdHash = this.hash(relyingPartyId);
 
     return (

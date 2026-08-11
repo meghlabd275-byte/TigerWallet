@@ -44,19 +44,30 @@ function LoginPage() {
 
   const handleCreateWallet = async () => {
     setError('');
-    const generatedMnemonic = generateMnemonic();
-    setMnemonic(generatedMnemonic);
-    setStep(2);
+    // The canonical wallet-api backend generates a REAL BIP-39 mnemonic
+    // (CSPRNG entropy + checksum) when POST /wallets is called without a
+    // mnemonic. The flow below requests creation first, then displays the
+    // backend-generated mnemonic for backup confirmation. The client NEVER
+    // fabricates a mnemonic itself.
+    try {
+      const newWallet = await createWallet(undefined, walletPassword, selectedChain as any);
+      setMnemonic(newWallet.mnemonic || '');
+      setStep(2);
+    } catch (err: any) {
+      setError(err.message || 'Failed to create wallet');
+    }
   };
 
   const handleConfirmCreate = async () => {
     setError('');
+    // The wallet was already created (with a backend-generated mnemonic) in
+    // handleCreateWallet. Here the user has confirmed they backed up the
+    // mnemonic, so we just authenticate and proceed.
     try {
-      await createWallet(mnemonic, walletPassword, selectedChain as any);
       await login({ email, password });
       navigate('/');
     } catch (err: any) {
-      setError(err.message || 'Failed to create wallet');
+      setError(err.message || 'Failed to login');
     }
   };
 
@@ -70,15 +81,6 @@ function LoginPage() {
     } catch (err: any) {
       setError(err.message || 'Failed to import wallet');
     }
-  };
-
-  const generateMnemonic = (): string => {
-    const words = ['abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract', 'absurd', 'abuse', 'access', 'accident', 'account', 'accuse', 'achieve', 'acid', 'acoustic', 'acquire', 'across', 'action'];
-    const mnemonic = [];
-    for (let i = 0; i < 12; i++) {
-      mnemonic.push(words[Math.floor(Math.random() * words.length)]);
-    }
-    return mnemonic.join(' ');
   };
 
   return (

@@ -78,15 +78,32 @@ const api = new APIService(API_BASE);
 
 class WalletService {
   async createWallet(name: string, chain: string): Promise<Wallet> {
-    // Generate random address
-    const address = '0x' + Array(40).fill(0).map(() => 
-      Math.floor(Math.random() * 16).toString(16)
-    ).join('');
-
+    // Create a real wallet on the canonical wallet_api backend (POST /wallets).
+    // The backend derives the address from a real BIP-39 seed (secp256k1 /
+    // BIP-44). This client NEVER fabricates an address.
+    const chainIdMap: Record<string, number> = {
+      ethereum: 1, bsc: 56, polygon: 137, arbitrum: 42161,
+      optimism: 10, base: 8453, avalanche: 43114,
+    };
+    const chainId = chainIdMap[chain.toLowerCase()] ?? 1;
+    const response = await fetch(`${API_BASE}/api/v1/wallets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        label: name,
+        password: '',
+        chain_id: chainId,
+        entropy_bits: 256,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`Wallet creation failed: ${response.status} ${await response.text()}`);
+    }
+    const data = await response.json();
     return {
-      id: Crypto.randomUUID(),
+      id: data.id || Crypto.randomUUID(),
       name,
-      address,
+      address: data.address,
       chain,
       balance: 0,
     };

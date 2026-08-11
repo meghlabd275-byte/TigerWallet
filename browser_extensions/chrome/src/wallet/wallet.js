@@ -575,9 +575,7 @@ class WalletManager {
 
   generateRandomBytes(length) {
     const bytes = new Uint8Array(length);
-    for (let i = 0; i < length; i++) {
-      bytes[i] = Math.floor(Math.random() * 256);
-    }
+    crypto.getRandomValues(bytes);
     return bytes;
   }
 

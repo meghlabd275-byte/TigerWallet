@@ -196,26 +196,48 @@ class TigerWalletApp {
         this.showLoginScreen();
     }
     
-    showCreateWallet() {
+    async showCreateWallet() {
         const name = prompt('Enter wallet name:');
         const password = prompt('Set master password:');
-        
-        if (name && password) {
-            // Create wallet
-            const wallet = {
+
+        if (!name || !password) {
+            return;
+        }
+        if (password.length < 8) {
+            alert('Password must be at least 8 characters');
+            return;
+        }
+
+        try {
+            // Create a real wallet on the canonical wallet_api backend
+            // (POST /api/v1/wallets) — the backend derives the address from a
+            // real BIP-39 seed (secp256k1 / BIP-44). Never fabricate one here.
+            const res = await fetch('http://localhost:8443/api/v1/wallets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ label: name, password })
+            });
+            if (!res.ok) {
+                const err = await res.text();
+                alert('Wallet creation failed: ' + err);
+                return;
+            }
+            const wallet = await res.json();
+
+            this.wallets.push({
                 id: this.generateId(),
                 name: name,
-                address: this.generateAddress(),
+                address: wallet.address,
                 balance: '0',
                 tokens: []
-            };
-            
-            this.wallets.push(wallet);
+            });
             localStorage.setItem('tigerwallet-wallets', JSON.stringify(this.wallets));
             localStorage.setItem('tigerwallet-master', this.hashPassword(password));
-            
+
             alert('Wallet created successfully!');
             this.showDashboard();
+        } catch (e) {
+            alert('Wallet creation error: ' + e.message);
         }
     }
     
@@ -348,41 +370,65 @@ class TigerWalletApp {
     async sendTransaction() {
         const to = document.getElementById('send-to').value;
         const amount = document.getElementById('send-amount').value;
-        
+
         if (!to || !amount) {
             alert('Please fill in recipient and amount');
             return;
         }
-        
+
         if (this.isLocked) {
             alert('Please unlock your wallet first');
             return;
         }
-        
-        // Create transaction
-        const tx = {
-            id: this.generateId(),
-            hash: '0x' + this.generateHash(),
-            from: this.wallets[0].address,
-            to: to,
-            value: amount,
-            token: 'ETH',
-            status: 'confirmed',
-            chain_id: this.currentNetwork,
-            timestamp: Date.now(),
-            gas_used: 21000,
-            gas_price: '20000000000'
-        };
-        
-        this.transactions.push(tx);
-        
-        // Clear form
-        document.getElementById('send-to').value = '';
-        document.getElementById('send-amount').value = '';
-        document.getElementById('simulation-result').classList.remove('show');
-        
-        alert('Transaction sent successfully!');
-        this.navigateTo('transactions');
+        if (!this.wallets.length) {
+            alert('No wallet loaded');
+            return;
+        }
+
+        try {
+            // Broadcast via the canonical wallet_api backend (POST /api/v1/send)
+            // which performs real secp256k1 signing + eth_sendRawTransaction.
+            // This client never fabricates a transaction hash.
+            const res = await fetch('http://localhost:8443/api/v1/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    from_address: this.wallets[0].address,
+                    to_address: to,
+                    amount: amount,
+                    chain_id: this.currentNetwork
+                })
+            });
+            if (!res.ok) {
+                const err = await res.text();
+                alert('Transaction failed: ' + err);
+                return;
+            }
+            const result = await res.json();
+
+            this.transactions.push({
+                id: this.generateId(),
+                hash: result.tx_hash,
+                from: this.wallets[0].address,
+                to: to,
+                value: amount,
+                token: 'ETH',
+                status: 'pending',
+                chain_id: this.currentNetwork,
+                timestamp: Date.now(),
+                gas_used: 21000,
+                gas_price: '0'
+            });
+
+            document.getElementById('send-to').value = '';
+            document.getElementById('send-amount').value = '';
+            document.getElementById('simulation-result')?.classList.remove('show');
+
+            alert('Transaction broadcast: ' + result.tx_hash);
+            this.navigateTo('transactions');
+        } catch (e) {
+            alert('Transaction error: ' + e.message);
+        }
     }
     
     // QR Scanner Functions
@@ -474,28 +520,27 @@ class TigerWalletApp {
     }
     
     generateId() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-            const r = Math.random() * 16 | 0;
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+            return crypto.randomUUID();
+        }
+        const bytes = new Uint8Array(16);
+        crypto.getRandomValues(bytes);
+        bytes[6] = (bytes[6] & 0x0f) | 0x40;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
     }
-    
+
     generateAddress() {
-        const chars = '0123456789abcdef';
-        let address = '0x';
-        for (let i = 0; i < 40; i++) {
-            address += chars[Math.floor(Math.random() * 16)];
-        }
-        return address;
+        // Addresses are derived by the canonical wallet-api backend (/wallets)
+        // from a real BIP-39 seed. This client never fabricates an address.
+        throw new Error('Address derivation is performed by the canonical wallet-api backend (/wallets); client-side fabrication is disabled');
     }
-    
+
     generateHash() {
-        const chars = '0123456789abcdef';
-        let hash = '';
-        for (let i = 0; i < 64; i++) {
-            hash += chars[Math.floor(Math.random() * 16)];
-        }
+        // Transaction hashes are produced by the backend's signed broadcast
+        // (/send). This client never fabricates a hash.
+        throw new Error('Transaction hashes are produced by the canonical wallet-api backend (/send); client-side fabrication is disabled');
+    }
         return hash;
     }
     

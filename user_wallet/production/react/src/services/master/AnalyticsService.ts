@@ -40,18 +40,17 @@ class AnalyticsService {
   }
 
   getPerformance(timeframe: string): PerformanceMetrics {
-    const returns = Math.random() * 40 - 10;
-    const volatility = Math.abs(returns) * 0.5;
-    const sharpe = volatility > 0 ? returns / volatility : 0;
-
+    // Performance metrics must be computed from real on-chain history
+    // (wallet-api /transactions + price feed). Without a real analytics
+    // backend, return honest zeros rather than fabricated random returns.
     return {
       timeframe,
-      totalReturn: returns,
-      annualizedReturn: returns * this.getAnnualizationFactor(timeframe),
-      volatility,
-      sharpeRatio: sharpe,
-      maxDrawdown: Math.random() * 20,
-      riskLevel: volatility < 0.1 ? 'LOW' : volatility < 0.3 ? 'MEDIUM' : 'HIGH',
+      totalReturn: 0,
+      annualizedReturn: 0,
+      volatility: 0,
+      sharpeRatio: 0,
+      maxDrawdown: 0,
+      riskLevel: 'LOW',
     };
   }
 

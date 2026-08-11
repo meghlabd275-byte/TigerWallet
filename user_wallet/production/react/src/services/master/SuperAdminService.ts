@@ -431,10 +431,20 @@ class SuperAdminServiceClass {
     return this.auditLogs.filter(l => l.adminId === adminId).slice(-limit);
   }
 
-  // Helpers
-  private generateId(): string { return `id_${Date.now()}_${Math.floor(Math.random() * 999999)}`; }
-  private generateSecretKey(): string { return Array.from({ length: 32 }, () => Math.floor(Math.random() * 256).toString(16).padStart(2, '0')).join(''); }
-  private generateTempPassword(): string { return Array.from({ length: 16 }, () => 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[Math.floor(Math.random() * 62)]).join(''); }
+  // Helpers — use the Web Crypto API (CSPRNG), never Math.random.
+  private generateId(): string { return `id_${Date.now()}_${this.randomHex(4)}`; }
+  private generateSecretKey(): string { return this.randomHex(32); }
+  private generateTempPassword(): string {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const bytes = new Uint32Array(16);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => chars[b % chars.length]).join('');
+  }
+  private randomHex(byteLength: number): string {
+    const bytes = new Uint8Array(byteLength);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  }
   private hashPassword(password: string): string {
     let hash = 0;
     for (let i = 0; i < password.length; i++) {

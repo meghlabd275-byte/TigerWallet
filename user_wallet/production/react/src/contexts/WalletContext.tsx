@@ -25,7 +25,7 @@ export interface WalletState {
 }
 
 interface WalletContextType extends WalletState {
-  createWallet: (mnemonic: string, password: string, chain: Chain) => Promise<void>;
+  createWallet: (mnemonic: string | undefined, password: string, chain: Chain) => Promise<Wallet>;
   importWallet: (privateKey: string, chain: Chain) => Promise<void>;
   importFromMnemonic: (mnemonic: string, password: string, chain: Chain) => Promise<void>;
   switchChain: (chain: Chain) => Promise<void>;
@@ -70,7 +70,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const createWallet = useCallback(async (mnemonic: string, password: string, chain: Chain) => {
+  const createWallet = useCallback(async (mnemonic: string | undefined, password: string, chain: Chain) => {
     setIsLoading(true);
     setError(null);
     
@@ -78,6 +78,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const newWallet = await walletService.createWallet(mnemonic, password, chain);
       setWallets(prev => [...prev, newWallet]);
       setActiveWallet(newWallet);
+      return newWallet;
     } catch (err: any) {
       setError(err.message || 'Failed to create wallet');
       throw err;

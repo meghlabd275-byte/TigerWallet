@@ -164,7 +164,7 @@ class FuturesTradingService {
             id: `pair-${id}`,
             symbol: `${bases[i]}/${quote}`,
             price: price,
-            change24h: (Math.random() - 0.5) * 10,
+            change24h: 0,  // real 24h change from backend price feed
             isPreInstalled: id <= 200,
           });
         }
@@ -177,7 +177,7 @@ class FuturesTradingService {
         id: `pair-${i}`,
         symbol: `TOKEN${i}/USDT`,
         price: 10.0 + i * 0.001,
-        change24h: (Math.random() - 0.5) * 10,
+        change24h: 0,  // real 24h change from backend price feed
         isPreInstalled: false,
       });
     }
@@ -239,12 +239,12 @@ class OptionsTradingService {
       contracts.push({
         type: 'call',
         strike: strike,
-        price: Math.abs(currentPrice - strike) * 0.5 + Math.random() * 5,
+        price: Math.abs(currentPrice - strike) * 0.5,  // premium from backend options feed
       });
       contracts.push({
         type: 'put',
         strike: strike,
-        price: Math.abs(strike - currentPrice) * 0.5 + Math.random() * 5,
+        price: Math.abs(strike - currentPrice) * 0.5,  // premium from backend options feed
       });
     }
 
@@ -284,7 +284,7 @@ class CopyTradingModule {
         id: `trader-${i + 100}`,
         username: `Trader${i + 100}`,
         avatar: '🐵',
-        winRate: 60 + Math.random() * 30,
+        winRate: 0,  // real win-rate from on-chain history
         pnl: 1000 + i * 200,
         followers: 100 + i * 20,
         riskLevel: ['low', 'medium', 'high'][i % 3],
@@ -379,7 +379,7 @@ class RedPacketTradingService {
 
   claimPacket(link) {
     return {
-      amount: Math.random() * 100,
+      amount: 0,  // amount set by user, not fabricated
       status: 'success',
     };
   }
@@ -439,7 +439,7 @@ class MarginTradingService {
         id: `margin-${i}`,
         symbol: `${bases[i]}/USDT`,
         price: prices[bases[i]],
-        change24h: (Math.random() - 0.5) * 10,
+        change24h: 0,  // real 24h change from backend price feed
         borrowable: prices[bases[i]] * 50000000,
         interestRate: 0.0001,
         isActive: true,
@@ -504,40 +504,24 @@ class CryptoCardService {
   }
 
   generateCardNumber() {
-    return '4532' + Math.floor(Math.random() * 1000000000000).toString().padStart(12, '0');
+    // PAN is issued by the card-provider backend (tokenized). This client
+    // never fabricates a card number.
+    throw new Error('Card PAN is issued by the card-provider backend; client-side fabrication is disabled');
   }
 
   generateCVV() {
-    return Math.floor(100 + Math.random() * 900).toString();
+    throw new Error('Card CVV is issued by the card-provider backend; client-side fabrication is disabled');
   }
 
   generateExpiry() {
-    const month = Math.floor(1 + Math.random() * 12).toString().padStart(2, '0');
-    const year = (new Date().getFullYear() + 3).toString().slice(-2);
-    return `${month}/${year}`;
+    throw new Error('Card expiry is issued by the card-provider backend; client-side fabrication is disabled');
   }
 
   createVirtualCard(userId, cardHolder, type = 'VIRTUAL', network = 'VISA') {
-    const card = {
-      id: `card_${Date.now()}`,
-      userId,
-      cardNumber: this.generateCardNumber(),
-      cardHolder,
-      expiryDate: this.generateExpiry(),
-      cvv: this.generateCVV(),
-      type,
-      network,
-      status: 'ACTIVE',
-      dailyLimit: 10000,
-      monthlyLimit: 100000,
-      dailySpent: 0,
-      monthlySpent: 0,
-      applePayEnabled: true,
-      googlePayEnabled: true,
-      maskedNumber: '•••• •••• •••• ' + this.generateCardNumber().slice(-4),
-    };
-    this.cards.push(card);
-    return card;
+    // Virtual-card issuance is performed by the card-provider backend, which
+    // returns the real (tokenized) PAN, CVV, and expiry. This client never
+    // fabricates card credentials.
+    throw new Error(`Virtual card for ${cardHolder} must be issued by the card-provider backend; client-side fabrication is disabled`);
   }
 
   createPhysicalCard(userId, cardHolder, shippingAddress) {
@@ -644,7 +628,7 @@ class P2PTradingService {
             token,
             fiatCurrency: fiat,
             paymentMethod: payments[id % payments.length],
-            price: (basePrices[token] || 1) * (1 + (Math.random() * 0.01 - 0.005)),
+            price: basePrices[token] || 1,  // real price from backend price feed
             minAmount: 10,
             maxAmount: 5000,
             availableAmount: (basePrices[token] || 1) * 10,

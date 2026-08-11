@@ -61,6 +61,7 @@ export interface Wallet {
   balanceUSD: number;
   tokens: Token[];
   createdAt: string;
+  mnemonic?: string; // returned only on creation, for backup display
 }
 
 export interface Transaction {
@@ -91,6 +92,8 @@ interface WalletRecord {
   label: string;
   chain_id: number;
   address: string;
+  derivation_path?: string;
+  mnemonic?: string; // returned only on creation, for backup display
 }
 interface BalanceResult {
   chain_id: number;
@@ -195,6 +198,7 @@ class WalletService {
       balanceUSD: 0,
       tokens: [],
       createdAt: new Date().toISOString(),
+      mnemonic: w.mnemonic, // backend-generated mnemonic for backup display
     };
   }
 

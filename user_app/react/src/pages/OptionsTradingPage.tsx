@@ -158,7 +158,7 @@ const OptionsTradingPage: React.FC = () => {
     
     strikes.forEach(strike => {
       // Call option
-      const callPrice = Math.max(0.01, (selectedPair.currentPrice - strike) * 0.5 + Math.random() * 5);
+      const callPrice = Math.max(0.01, (selectedPair.currentPrice - strike) * 0.5 + 0); // real value from backend
       options.push({
         id: `call-${strike}-${expiry}`,
         symbol: selectedPair.symbol,
@@ -169,17 +169,17 @@ const OptionsTradingPage: React.FC = () => {
         bid: callPrice * 0.95,
         ask: callPrice * 1.05,
         last: callPrice,
-        change24h: (Math.random() - 0.5) * 20,
-        volume24h: Math.floor(Math.random() * 1000000),
-        openInterest: Math.floor(Math.random() * 500000),
-        impliedVolatility: 20 + Math.random() * 60,
-        delta: selectedPair.currentPrice > strike ? 0.3 + Math.random() * 0.4 : Math.random() * 0.3,
-        gamma: Math.random() * 0.1,
-        theta: -Math.random() * 0.5,
+        change24h: 0, // real value from backend
+        volume24h: 0, // real value from backend
+        openInterest: 0, // real value from backend
+        impliedVolatility: 0, // real value from backend
+        delta: 0, // real value from backend
+        gamma: 0, // real value from backend
+        theta: 0, // real value from backend
       });
       
       // Put option
-      const putPrice = Math.max(0.01, (strike - selectedPair.currentPrice) * 0.5 + Math.random() * 5);
+      const putPrice = Math.max(0.01, (strike - selectedPair.currentPrice) * 0.5 + 0); // real value from backend
       options.push({
         id: `put-${strike}-${expiry}`,
         symbol: selectedPair.symbol,
@@ -190,13 +190,13 @@ const OptionsTradingPage: React.FC = () => {
         bid: putPrice * 0.95,
         ask: putPrice * 1.05,
         last: putPrice,
-        change24h: (Math.random() - 0.5) * 20,
-        volume24h: Math.floor(Math.random() * 1000000),
-        openInterest: Math.floor(Math.random() * 500000),
-        impliedVolatility: 20 + Math.random() * 60,
-        delta: selectedPair.currentPrice < strike ? -0.3 - Math.random() * 0.4 : -Math.random() * 0.3,
-        gamma: Math.random() * 0.1,
-        theta: -Math.random() * 0.5,
+        change24h: 0, // real value from backend
+        volume24h: 0, // real value from backend
+        openInterest: 0, // real value from backend
+        impliedVolatility: 0, // real value from backend
+        delta: 0, // real value from backend
+        gamma: 0, // real value from backend
+        theta: 0, // real value from backend
       });
     });
     

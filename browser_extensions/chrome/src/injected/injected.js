@@ -25,7 +25,9 @@
 
   function sendMessage(message) {
     return new Promise((resolve, reject) => {
-      const id = Date.now() + Math.random();
+      const idBytes = new Uint32Array(1);
+      crypto.getRandomValues(idBytes);
+      const id = `${Date.now()}-${idBytes[0]}`;
       
       // Store callbacks
       const responseCallback = (event) => {

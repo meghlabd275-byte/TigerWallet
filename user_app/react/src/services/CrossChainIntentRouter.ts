@@ -411,7 +411,7 @@ export function useCrossChainSwap() {
     try {
       // This would create and execute the intent
       const result: IntentExecution = {
-        transactionHash: '0x' + Math.random().toString(16).substr(2, 64),
+        transactionHash: '',  // real tx hash comes from the backend swap/execute endpoint
         intentId: selectedQuote.intentId,
         status: 'pending',
       };

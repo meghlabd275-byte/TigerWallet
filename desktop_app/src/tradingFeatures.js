@@ -40,8 +40,8 @@ class FuturesService {
             quote: quote,
             symbol: `${bases[i]}/${quote}`,
             price: price,
-            change24h: (Math.random() - 0.5) * 10,
-            volume24h: Math.random() * 100000000,
+            change24h: 0,  // real 24h change comes from the backend price feed
+            volume24h: 0,  // real volume comes from the backend market feed
             high24h: price * 1.05,
             low24h: price * 0.95,
             status: 'active',
@@ -66,7 +66,7 @@ class FuturesService {
         quote: 'USDT',
         symbol: `${base}/USDT`,
         price: price,
-        change24h: (Math.random() - 0.5) * 10,
+        change24h: 0,  // real 24h change comes from the backend price feed
         volume24h: 1000 + (i % 10000),
         high24h: price * 1.05,
         low24h: price * 0.95,
@@ -185,7 +185,7 @@ class OptionsService {
 
     for (let strike = currentPrice - range; strike <= currentPrice + range; strike += step) {
       // Call
-      const callPrice = Math.abs(currentPrice - strike) * 0.5 + Math.random() * 5;
+      const callPrice = Math.abs(currentPrice - strike) * 0.5  // premium from backend options feed;
       contracts.push({
         id: `call-${strike.toFixed(2)}-${expiry}`,
         type: 'call',
@@ -194,14 +194,14 @@ class OptionsService {
         bid: callPrice * 0.95,
         ask: callPrice * 1.05,
         last: callPrice,
-        change24h: (Math.random() - 0.5) * 20,
-        impliedVolatility: 20 + Math.random() * 60,
-        delta: currentPrice > strike ? 0.3 + Math.random() * 0.4 : Math.random() * 0.3,
-        theta: -Math.random() * 0.5,
+        change24h: 0,  // real 24h change comes from the backend options feed
+        impliedVolatility: 0,  // real IV comes from the backend options feed
+        delta: 0,  // real delta comes from the backend options feed
+        theta: 0,  // real theta comes from the backend options feed
       });
 
       // Put
-      const putPrice = Math.abs(strike - currentPrice) * 0.5 + Math.random() * 5;
+      const putPrice = Math.abs(strike - currentPrice) * 0.5  // premium from backend options feed;
       contracts.push({
         id: `put-${strike.toFixed(2)}-${expiry}`,
         type: 'put',
@@ -210,10 +210,10 @@ class OptionsService {
         bid: putPrice * 0.95,
         ask: putPrice * 1.05,
         last: putPrice,
-        change24h: (Math.random() - 0.5) * 20,
-        impliedVolatility: 20 + Math.random() * 60,
-        delta: currentPrice < strike ? -(0.3 + Math.random() * 0.4) : -Math.random() * 0.3,
-        theta: -Math.random() * 0.5,
+        change24h: 0,  // real 24h change comes from the backend options feed
+        impliedVolatility: 0,  // real IV comes from the backend options feed
+        delta: 0,  // real delta comes from the backend options feed
+        theta: 0,  // real theta comes from the backend options feed
       });
     }
 
@@ -248,14 +248,14 @@ class CopyTradingService {
         avatar: t.avatar,
         winRate: t.winRate,
         totalPnL: t.totalPnL,
-        pnlPercent: 100 + Math.random() * 100,
+        pnlPercent: 0,  // real PnL comes from on-chain history
         followers: 5000 + i * 2000,
         copyCount: 1000 + i * 500,
         tradingPair: t.pair,
-        monthlyPnL: 5 + Math.random() * 20,
-        weeklyPnL: 1 + Math.random() * 5,
-        dailyPnL: (Math.random() - 0.3) * 3,
-        maxDrawdown: -(5 + Math.random() * 15),
+        monthlyPnL: 0,  // real PnL comes from on-chain history
+        weeklyPnL: 0,  // real PnL comes from on-chain history
+        dailyPnL: 0,  // real PnL comes from on-chain history
+        maxDrawdown: 0,  // real drawdown comes from on-chain history
         riskLevel: t.risk,
         isFollowing: false,
         isPreInstalled: true,
@@ -271,16 +271,16 @@ class CopyTradingService {
         id: `trader-${i + 100}`,
         username: `Trader${i + 100}`,
         avatar: avatars[i % avatars.length],
-        winRate: 60 + Math.random() * 30,
+        winRate: 0,  // real win-rate comes from on-chain history
         totalPnL: 1000 + i * 200,
-        pnlPercent: 20 + Math.random() * 200,
+        pnlPercent: 0,  // real PnL comes from on-chain history
         followers: 100 + i * 20,
         copyCount: 50 + i * 10,
         tradingPair: pairs[i % pairs.length],
-        monthlyPnL: (Math.random() - 0.3) * 30,
-        weeklyPnL: (Math.random() - 0.3) * 10,
-        dailyPnL: (Math.random() - 0.3) * 3,
-        maxDrawdown: -(2 + Math.random() * 20),
+        monthlyPnL: 0,  // real PnL comes from on-chain history
+        weeklyPnL: 0,  // real PnL comes from on-chain history
+        dailyPnL: 0,  // real PnL comes from on-chain history
+        maxDrawdown: 0,  // real drawdown comes from on-chain history
         riskLevel: risks[i % 3],
         isFollowing: false,
         isPreInstalled: false,

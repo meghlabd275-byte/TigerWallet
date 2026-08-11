@@ -63,11 +63,11 @@ export class WalletService {
    */
   static async createWallet(request: WalletCreationRequest) {
     try {
-      const wallet = await walletApi.createWallet(request.chain, request.name);
+      const wallet = await walletApi.createWallet(request.chain, request.name, request.password);
       return {
         success: true,
         wallet,
-        seedPhrase: wallet.seedPhrase // Only returned once on creation
+        seedPhrase: (wallet as any).seedPhrase // backend-generated, returned once on creation
       };
     } catch (error) {
       console.error('Failed to create wallet:', error);

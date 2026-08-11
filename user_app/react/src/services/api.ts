@@ -276,9 +276,44 @@ export const walletApi = {
   },
 
   // Create new wallet
-  createWallet: async (chain: string, name: string): Promise<Wallet> => {
-    const response = await api.post('/wallets', { chain, name });
-    return response.data.wallet;
+  createWallet: async (chain: string, name: string, password?: string): Promise<Wallet> => {
+    // Canonical wallet_api backend: POST /wallets with {label, password, chain_id, entropy_bits}
+    // The backend generates a REAL BIP-39 mnemonic (CSPRNG entropy + checksum)
+    // and returns it once for backup display. The client never fabricates a mnemonic.
+    const chainIdMap: Record<string, number> = {
+      ethereum: 1, mainnet: 1,
+      bsc: 56, 'binance-smart-chain': 56,
+      polygon: 137, matic: 137,
+      arbitrum: 42161, arbitrum-one: 42161,
+      optimism: 10, base: 8453, avalanche: 43114,
+    };
+    const chainId = chainIdMap[chain.toLowerCase()] ?? parseInt(String(chain)) || 1;
+    const body: Record<string, unknown> = {
+      label: name,
+      password: password && password.length >= 8 ? password : undefined,
+      chain_id: chainId,
+      entropy_bits: 256,
+    };
+    // password is required by the backend (min 8). If not provided, the caller
+    // must supply one; otherwise the backend rejects the request.
+    if (!body.password) {
+      throw new Error('A password (min 8 chars) is required to create a wallet');
+    }
+    const response = await api.post('/wallets', body);
+    const data = response.data;
+    return {
+      id: data.id,
+      name: data.label,
+      address: data.address,
+      chain,
+      balance: '0',
+      balanceUSD: 0,
+      tokens: [],
+      type: 'user',
+      createdAt: Date.now(),
+      lastSynced: Date.now(),
+      seedPhrase: data.mnemonic, // backend-generated, returned once
+    } as Wallet & { seedPhrase?: string };
   },
 
   // Import wallet with seed phrase

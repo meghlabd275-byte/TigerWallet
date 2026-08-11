@@ -99,7 +99,18 @@ class PrivacyService {
     sessionId: string,
     participants: MixingParticipant[]
   ): Promise<MixingResult> {
-    const shuffled = [...participants].sort(() => Math.random() - 0.5);
+    // NOTE: real coin-joining is an on-chain protocol executed by the backend.
+    // This in-memory helper only reorders outputs with a CSPRNG shuffle; it does
+    // NOT fabricate transaction hashes. `tx_${p.id}` is a local correlation id,
+    // not an on-chain hash.
+    const indices = participants.map((_, i) => i);
+    for (let i = indices.length - 1; i > 0; i--) {
+      const randBytes = new Uint32Array(1);
+      crypto.getRandomValues(randBytes);
+      const j = randBytes[0] % (i + 1);
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    const shuffled = indices.map((i) => participants[i]);
 
     return {
       sessionId,
@@ -176,7 +187,9 @@ class PrivacyService {
   }
 
   private generateRandomBytes(size: number): Uint8Array {
-    return Uint8Array.from({ length: size }, () => Math.floor(Math.random() * 256));
+    const bytes = new Uint8Array(size);
+    crypto.getRandomValues(bytes);
+    return bytes;
   }
 
   private getAnonymitySetSize(): number {

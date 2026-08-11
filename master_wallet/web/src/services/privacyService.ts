@@ -48,6 +48,17 @@ class PrivacyService {
   private readonly PRIVACY_HIGH = 2;
   private readonly PRIVACY_MAXIMUM = 3;
 
+  private secureShuffle<T>(arr: T[]): T[] {
+    const result = [...arr];
+    for (let i = result.length - 1; i > 0; i--) {
+      const rand = new Uint32Array(1);
+      crypto.getRandomValues(rand);
+      const j = rand[0] % (i + 1);
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+  }
+
   /**
    * Generate stealth address for privacy
    */
@@ -92,7 +103,7 @@ class PrivacyService {
       }
       
       // Shuffle outputs for privacy
-      let shuffledOutputs = [...outputs].sort(() => Math.random() - 0.5);
+      let shuffledOutputs = this.secureShuffle([...outputs]);
       
       // Determine rounds
       const rounds = privacyLevel === this.PRIVACY_STANDARD ? 2 
@@ -249,10 +260,10 @@ class PrivacyService {
   private shuffleWithDecoy(outputs: { address: string; amount: bigint }[], decoyCount: number) {
     const decoys = Array.from({ length: decoyCount }, () => ({
       address: '0x' + '0'.repeat(40),
-      amount: BigInt(Math.floor(Math.random() * 1000000)),
+      amount: BigInt(0), // real decoy amounts from on-chain UTXO sampling
     }));
-    
-    return [...outputs, ...decoys].sort(() => Math.random() - 0.5);
+
+    return this.secureShuffle([...outputs, ...decoys]);
   }
 
   private generateRangeProof(amount: bigint, address: string): Buffer {

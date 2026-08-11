@@ -96,9 +96,11 @@ class AccountAbstractionService {
   }
 
   private generateKeyAddress(): string {
-    const bytes = Array.from({ length: 32 }, () => Math.floor(Math.random() * 256));
-    const hash = this.hash(bytes.join());
-    return `0x${hash.substring(0, 40)}`;
+    // Smart-account addresses are derived by the canonical wallet-api backend
+    // (or an ERC-4337 factory on-chain). This client never fabricates one.
+    throw new Error(
+      'Smart-account address is derived by the canonical wallet-api backend / ERC-4337 factory; client-side fabrication is disabled'
+    );
   }
 
   private createUserOperation(

@@ -122,17 +122,12 @@ class HardwareWalletManager {
         // Simulate transaction signing
         console.log('Signing transaction with', this.connectedDevice.name);
         
-        // Generate mock signature
-        const signature = '0x' + Array(65).fill(0).map(() => 
-            Math.floor(Math.random() * 256).toString(16).padStart(2, '0')
-        ).join('');
-
-        return {
-            signature,
-            txHash: '0x' + Array(64).fill(0).map(() => 
-                Math.floor(Math.random() * 16).toString(16)
-            ).join('')
-        };
+        // Signing is performed by the hardware device (real APDU) or the
+        // canonical wallet-api backend (/sign). This client never fabricates
+        // a signature or tx hash.
+        throw new Error(
+          'Transaction signing is performed by the hardware device or the canonical wallet-api backend (/sign); client-side signature/tx-hash fabrication is disabled'
+        );
     }
 
     /**
@@ -143,10 +138,12 @@ class HardwareWalletManager {
             throw new Error('No hardware wallet connected');
         }
 
-        // Simulate message signing
-        const signature = '0x' + Array(64).fill(0).fill(0).map(() => 
-            Math.floor(Math.random() * 256).toString(16).padStart(2, '0')
-        ).join('');
+        // Message signing is performed by the hardware device (real APDU) or
+        // the canonical wallet-api backend (/sign). This client never
+        // fabricates a signature.
+        throw new Error(
+          'Message signing is performed by the hardware device or the canonical wallet-api backend (/sign); client-side signature fabrication is disabled'
+        );
 
         return signature;
     }

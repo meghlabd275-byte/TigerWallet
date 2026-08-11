@@ -110,7 +110,7 @@ const RedPacketPage: React.FC = () => {
     
     // Simulate claiming
     const claimedAmount = packetType === 'random' 
-      ? Math.random() * (parseFloat(amount) / parseInt(totalCount)) * 2
+      ? parseFloat(amount) / parseInt(totalCount)  // equal split; real distribution from contract
       : parseFloat(amount) / parseInt(totalCount);
     
     setClaimResult({

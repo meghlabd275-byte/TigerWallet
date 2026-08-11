@@ -292,22 +292,22 @@ const CopyTradingPage: React.FC = () => {
     const riskLevels: ('low' | 'medium' | 'high')[] = ['low', 'medium', 'high'];
     
     for (let i = 0; i < 500; i++) {
-      const risk = riskLevels[Math.floor(Math.random() * 3)];
+      const risk = riskLevels[0]; // real value from backend
       additionalTraders.push({
         id: `trader-${i + 100}`,
         username: `Trader${i + 100}`,
         avatar: avatars[i % avatars.length],
-        winRate: Math.random() * 30 + 60,
-        totalPnl: Math.random() * 100000 + 1000,
-        pnlPercent: Math.random() * 200 + 20,
-        followers: Math.floor(Math.random() * 10000) + 100,
-        copyCount: Math.floor(Math.random() * 5000) + 50,
+        winRate: 0, // real value from backend
+        totalPnl: 0, // real value from backend
+        pnlPercent: 0, // real value from backend
+        followers: 0, // real value from backend
+        copyCount: 0, // real value from backend
         tradingPair: pairs[i % pairs.length],
-        monthlyPnl: Math.random() * 30 - 5,
-        weeklyPnl: Math.random() * 10 - 2,
-        dailyPnl: Math.random() * 3 - 1,
-        maxDrawdown: -Math.random() * 20 - 2,
-        avgHoldingTime: `${Math.floor(Math.random() * 24)}h ${Math.floor(Math.random() * 60)}m`,
+        monthlyPnl: 0, // real value from backend
+        weeklyPnl: 0, // real value from backend
+        dailyPnl: 0, // real value from backend
+        maxDrawdown: 0, // real value from backend
+        avgHoldingTime: `${0}h ${0}m`, // real value from backend
         riskLevel: risk,
         isFollowing: false,
         isPreInstalled: false
@@ -345,8 +345,8 @@ const CopyTradingPage: React.FC = () => {
       symbol: trader.tradingPair,
       side: trader.dailyPnl >= 0 ? 'long' : 'short',
       size: parseFloat(copyAmount) / 1000,
-      entryPrice: Math.random() * 1000 + 10,
-      currentPrice: Math.random() * 1000 + 10,
+      entryPrice: 0, // real value from backend
+      currentPrice: 0, // real value from backend
       pnl: 0,
       pnlPercent: 0,
       openTime: Date.now()

@@ -22,16 +22,17 @@ interface Network {
   symbol: string;
   chainId: number;
   color: string;
+  rpcUrl: string;
 }
 
 const NETWORKS: Network[] = [
-  { id: 'ethereum', name: 'Ethereum', symbol: 'ETH', chainId: 1, color: '#627EEA' },
-  { id: 'bsc', name: 'BNB Smart Chain', symbol: 'BNB', chainId: 56, color: '#F3BA2F' },
-  { id: 'polygon', name: 'Polygon', symbol: 'MATIC', chainId: 137, color: '#8247E5' },
-  { id: 'arbitrum', name: 'Arbitrum', symbol: 'ETH', chainId: 42161, color: '#28A0F0' },
-  { id: 'optimism', name: 'Optimism', symbol: 'ETH', chainId: 10, color: '#FF0420' },
-  { id: 'base', name: 'Base', symbol: 'ETH', chainId: 8453, color: '#0052FF' },
-  { id: 'avalanche', name: 'Avalanche', symbol: 'AVAX', chainId: 43114, color: '#E84142' },
+  { id: 'ethereum', name: 'Ethereum', symbol: 'ETH', chainId: 1, color: '#627EEA', rpcUrl: 'https://eth.llamarpc.com' },
+  { id: 'bsc', name: 'BNB Smart Chain', symbol: 'BNB', chainId: 56, color: '#F3BA2F', rpcUrl: 'https://bsc-dataseed.binance.org' },
+  { id: 'polygon', name: 'Polygon', symbol: 'MATIC', chainId: 137, color: '#8247E5', rpcUrl: 'https://polygon-rpc.com' },
+  { id: 'arbitrum', name: 'Arbitrum', symbol: 'ETH', chainId: 42161, color: '#28A0F0', rpcUrl: 'https://arb1.arbitrum.io/rpc' },
+  { id: 'optimism', name: 'Optimism', symbol: 'ETH', chainId: 10, color: '#FF0420', rpcUrl: 'https://mainnet.optimism.io' },
+  { id: 'base', name: 'Base', symbol: 'ETH', chainId: 8453, color: '#0052FF', rpcUrl: 'https://mainnet.base.org' },
+  { id: 'avalanche', name: 'Avalanche', symbol: 'AVAX', chainId: 43114, color: '#E84142', rpcUrl: 'https://api.avax.network/ext/bc/C/rpc' },
 ];
 
 function NetworkSelector({ selected, onSelect }: { selected: Network; onSelect: (n: Network) => void }) {
@@ -84,17 +85,58 @@ export default function BlockchainExplorer() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [search, setSearch] = useState('');
 
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
   useEffect(() => {
-    // Mock blocks for demo
-    const mockBlocks: Block[] = Array.from({ length: 20 }, (_, i) => ({
-      number: 19000000 - i,
-      hash: '0x' + Math.random().toString(16).slice(2, 66),
-      timestamp: Math.floor(Date.now() / 1000) - i * 12,
-      transactions: Math.floor(Math.random() * 200),
-      gasUsed: String(Math.floor(Math.random() * 15000000)),
-      miner: '0x' + Math.random().toString(16).slice(2, 42),
-    }));
-    setBlocks(mockBlocks);
+    let cancelled = false;
+    const fetchBlocks = async () => {
+      setLoading(true);
+      setError('');
+      setBlocks([]);
+      try {
+        // Fetch the latest block number via real JSON-RPC, then fetch the
+        // last 20 blocks by number. NO mock/fabricated data.
+        const latestRes = await fetch(network.rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: [] }),
+        });
+        const latestJson = await latestRes.json();
+        const latestNum = parseInt(latestJson.result, 16);
+        if (!Number.isFinite(latestNum)) {
+          throw new Error('Invalid block number from RPC');
+        }
+        const fetched: Block[] = [];
+        for (let i = 0; i < 20; i++) {
+          const blockNum = latestNum - i;
+          if (blockNum < 0) break;
+          const res = await fetch(network.rpcUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', id: i + 2, method: 'eth_getBlockByNumber', params: [`0x${blockNum.toString(16)}`, false] }),
+          });
+          const json = await res.json();
+          const b = json.result;
+          if (!b) continue;
+          fetched.push({
+            number: parseInt(b.number, 16),
+            hash: b.hash,
+            timestamp: parseInt(b.timestamp, 16),
+            transactions: Array.isArray(b.transactions) ? b.transactions.length : 0,
+            gasUsed: b.gasUsed,
+            miner: b.miner,
+          });
+        }
+        if (!cancelled) setBlocks(fetched);
+      } catch (e: any) {
+        if (!cancelled) setError(e.message || 'Failed to fetch blocks');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    fetchBlocks();
+    return () => { cancelled = true; };
   }, [network]);
 
   const handleSearch = () => {

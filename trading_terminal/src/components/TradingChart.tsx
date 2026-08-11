@@ -10,21 +10,30 @@ export const TradingChart: React.FC<TradingChartProps> = ({ symbol, currentPrice
   const [chartData, setChartData] = useState<{ time: number; price: number }[]>([]);
 
   useEffect(() => {
-    // Generate sample chart data
-    const data: { time: number; price: number }[] = [];
-    let price = currentPrice * 0.95;
-    const now = Date.now();
-    
-    for (let i = 100; i >= 0; i--) {
-      data.push({
-        time: now - i * 60000,
-        price: price + (Math.random() - 0.5) * currentPrice * 0.02
-      });
-    }
-    
-    setChartData(data);
+    // Fetch real OHLC/price history from the backend price feed
+    // (GET /api/v1/price?symbol=...). On failure, show an empty chart rather
+    // than fabricated Math.random() data.
+    let cancelled = false;
+    const fetchData = async () => {
+      try {
+        const res = await fetch(`http://localhost:8443/api/v1/price?symbol=${encodeURIComponent(symbol)}`);
+        if (!res.ok) {
+          if (!cancelled) setChartData([]);
+          return;
+        }
+        const json = await res.json();
+        const history: Array<{ time: number; price: number }> =
+          Array.isArray(json.history)
+            ? json.history.map((p: { time: number; price: number }) => ({ time: p.time, price: Number(p.price) }))
+            : [];
+        if (!cancelled) setChartData(history);
+      } catch {
+        if (!cancelled) setChartData([]);
+      }
+    };
+    fetchData();
+    return () => { cancelled = true; };
   }, [symbol, currentPrice]);
-
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || chartData.length === 0) return;

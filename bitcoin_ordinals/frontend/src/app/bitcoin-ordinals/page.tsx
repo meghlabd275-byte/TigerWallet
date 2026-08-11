@@ -251,18 +251,31 @@ export default function BitcoinOrdinalsPage() {
     setSuccess(null);
     
     try {
-      // Simulate inscription
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
+      // Submit the inscription to the backend, which broadcasts the real
+      // Bitcoin inscription transaction and returns the actual ordinal id/number.
+      const res = await fetch('http://localhost:8443/api/v1/ordinals/inscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: inscribeForm.content,
+          content_type: inscribeForm.type === 'text' ? 'text/plain' : 'image/png',
+          recipient: inscribeForm.recipient || address,
+          address,
+        }),
+      });
+      if (!res.ok) {
+        throw new Error(`Inscription failed: ${res.status} ${await res.text()}`);
+      }
+      const data = await res.json();
+
       const newOrdinal: Ordinal = {
-        id: "ord" + Date.now(),
-        number: Math.floor(Math.random() * 100000),
-        collection: "Custom",
-        name: `${inscribeForm.type} #${Date.now()}`,
-        inscription: "ins" + Date.now(),
+        id: data.id || data.ordinal_id || ("ord" + Date.now()),
+        number: data.number ?? 0,  // real inscription number from the backend
+        collection: data.collection || "Custom",
+        name: data.name || `${inscribeForm.type} #${data.number ?? Date.now()}`,
+        inscription: data.inscription_id || ("ins" + Date.now()),
         contentType: inscribeForm.type === "text" ? "text/plain" : "image/png",
-      };
-      
+      };      
       setOrdinals(prev => [newOrdinal, ...prev]);
       setSuccess("Ordinal inscribed successfully!");
       setInscribeForm({ type: "text", content: "", recipient: "" });

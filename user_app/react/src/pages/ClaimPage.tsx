@@ -368,7 +368,7 @@ const ClaimPage: React.FC = () => {
               {claimSuccess.reward?.amount} {claimSuccess.reward?.token}
             </div>
             <p className="tx-hash">
-              Transaction: 0x{Math.random().toString(16).slice(2, 10)}...{Math.random().toString(16).slice(2, 6)}
+              Transaction: {claimSuccess.reward?.txHash || 'pending'}
             </p>
             <button className="done-btn" onClick={() => setClaimSuccess({show: false})}>
               Done

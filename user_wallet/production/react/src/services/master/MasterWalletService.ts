@@ -263,23 +263,13 @@ class MasterWalletService {
   // ============================================================================
 
   private createMasterWalletInternal(name: string, type: MasterWalletType, blockchain: string, brandingId: string, brandingName: string): MasterWallet {
-    const wallet: MasterWallet = {
-      id: this.generateUUID(),
-      brandingId,
-      brandingName,
-      name,
-      type,
-      blockchain,
-      address: this.generateAddress(blockchain),
-      publicKey: this.generatePublicKey(),
-      balance: 0,
-      superadminShareAddress: this.SUPERADMIN_ADDRESS,  // MANDATORY
-      profitSharePercent: this.MANDATORY_SHARE_PERCENT, // 20% MANDATORY
-      isActive: true,
-      createdAt: new Date().toISOString()
-    };
-    this.masterWallets.push(wallet);
-    return wallet;
+    // A real master/branding wallet address is derived by the canonical
+    // wallet-api backend (/wallets) from a BIP-39 seed; this client must NOT
+    // fabricate one. Callers should POST /wallets on the backend and store the
+    // returned address/label here.
+    throw new Error(
+      `Master wallet creation for "${name}" requires a real address from the canonical wallet-api backend (POST /api/v1/wallets); client-side address fabrication is disabled`
+    );
   }
 
   getMasterWallets(): MasterWallet[] { return this.masterWallets; }
@@ -300,23 +290,12 @@ class MasterWalletService {
       throw new Error('Branding must have valid 20% profit sharing to TigerWallet Superadmin');
     }
 
-    const userWallet: UserWallet = {
-      id: this.generateUUID(),
-      userId,
-      brandingId: masterWallet.brandingId,
-      ownerMasterWalletId: masterWalletId,
-      ownerMasterWalletAddress: masterWallet.address,
-      blockchain,
-      address: this.generateAddress(blockchain),
-      publicKey: this.generatePublicKey(),
-      balance: 0,
-      isActive: true,
-      createdAt: new Date().toISOString()
-    };
-
-    this.userWallets.push(userWallet);
-    this.saveToStorage();
-    return userWallet;
+    // A real user-wallet address is derived by the canonical wallet-api
+    // backend (POST /api/v1/wallets). This client never fabricates one —
+    // fail honestly so callers wire the backend.
+    throw new Error(
+      `User wallet creation for "${userId}" requires a real address from the canonical wallet-api backend (POST /api/v1/wallets); client-side address fabrication is disabled`
+    );
   }
 
   controlUserWallet(masterWalletId: string, userWalletId: string): UserWallet | undefined {
@@ -349,18 +328,31 @@ class MasterWalletService {
   // ============================================================================
 
   private generateUUID(): string {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-      const r = Math.random() * 16 | 0;
-      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-    });
+    // Use the Web Crypto API for a real CSPRNG-backed UUID (not Math.random).
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
   }
 
-  private generateAddress(blockchain: string): string {
-    return '0x' + Array(40).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join('');
+  private generateAddress(_blockchain: string): string {
+    // Address derivation is performed by the canonical wallet-api backend
+    // (/wallets) from a real BIP-39 seed. This client never fabricates an
+    // address — fail honestly so callers wire the real backend.
+    throw new Error(
+      'Address derivation is performed by the canonical wallet-api backend (/wallets); never fabricated client-side'
+    );
   }
 
   private generatePublicKey(): string {
-    return '0x' + Array(130).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join('');
+    throw new Error(
+      'Public-key derivation is performed by the canonical wallet-api backend; never fabricated client-side'
+    );
   }
 }
 

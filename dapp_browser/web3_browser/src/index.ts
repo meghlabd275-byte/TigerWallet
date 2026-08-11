@@ -62,12 +62,9 @@ export class DAppBrowserCore {
   }
 
   private generateAddress(): string {
-    const chars = '0123456789abcdef'
-    let address = '0x'
-    for (let i = 0; i < 40; i++) {
-      address += chars[Math.floor(Math.random() * chars.length)]
-    }
-    return address
+    // Addresses are derived by the canonical wallet-api backend from a real
+    // BIP-39 seed (secp256k1 / BIP-44). This client never fabricates an address.
+    throw new Error('Address derivation is performed by the canonical wallet-api backend; client-side fabrication is disabled')
   }
 }
 
