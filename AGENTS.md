@@ -487,3 +487,44 @@ Notes:
 - When converting a static multi-class `className` to a template literal, keep ALL original classes inside the backticks; accidentally leaving trailing classes (e.g. `px-4 py-3`) outside the closing backtick produces an unbalanced template literal (syntax error). Verify backtick count is even after edits (gas-estimation error banner hit this).
 - `master_wallet/page.tsx` contains REAL BIP-39/AES-GCM/PBKDF2/WebCrypto logic — only change its colors, never its crypto code.
 
+
+## Go toolchain + real-NFT-fetcher + keystore V3 (2026-08-11)
+
+- **Go toolchain install location**: The official Go tarball must be installed
+  under `$HOME` (NOT `/usr/local`, which is read-only in this env). Working
+  install: `cd /tmp && curl -sSfL https://go.dev/dl/go1.23.12.linux-amd64.tar.gz
+  -o go.tar.gz && mkdir -p $HOME/.go-sdk && tar -C $HOME/.go-sdk -xzf go.tar.gz`,
+  then `export PATH="$HOME/.go-sdk/go/bin:$PATH" && export GOPATH="$HOME/go" &&
+  export GOTOOLCHAIN=local`. Verify: `go version` → `go1.23.12 linux/amd64`.
+- **go-ethereum version pinning**: go-ethereum v1.17.5 (latest) requires
+  Go >= 1.24.0; with Go 1.23.12 you MUST pin `go-ethereum@v1.13.15` (the same
+  version `go/wallet_api` uses) or `go get`/`go mod tidy` fail with "requires
+  go >= 1.24.0 (running go 1.23.12; GOTOOLCHAIN=local)".
+- **go/nft_service is the canonical NFT service**: it is wired into
+  `docker-compose.yml` (port 8085), unlike the orphan `go/nft/` and
+  `go/nft_prices/` dirs. `go/nft_service/fetcher.go` (new) does REAL on-chain
+  ERC-721 reads via go-ethereum `ethclient` (balanceOf/tokenOfOwnerByIndex/
+  ownerOf/tokenURI/name/symbol/totalSupply via `eth_call`), with HTTP metadata
+  fetch + `ipfs://`→gateway resolution + Redis cache (60s TTL, capped 200
+  tokens/owner). If `ETH_RPC_URL` is unset, `GetUserNFTs?contract=` returns 503
+  "unavailable" — NEVER fabricates data. The old `initializeDefaultData()`
+  (mock BAYC/CryptoPunks/Azuki/DeGods with `Owner:"0x000"`) was REMOVED;
+  service starts empty. `NFT` struct has NO `Standard` field (only
+  `NFTCollection` does) — don't set it in fetcher literals. `cfg.Port` is a
+  string. go build + go vet clean.
+- **go/wallet_api/keystore_v3.go (new)**: real Web3 Secret Storage V3 (scrypt
+  variant) — `ExportKeystoreV3`/`ImportKeystoreV3`. scrypt N=1<<18/r=8/p=1/
+  dklen=32, AES-128-CTR, MAC = keccak256(dk[16:32]‖ciphertext), constant-time
+  MAC compare, v4 UUID. 2 tests pass (round-trip + wrong-password MAC failure).
+  REST: `POST /api/v1/keystore/{export,import}` (AuthMiddleware-protected) +
+  Next.js proxy routes `app/api/v1/keystore/{export,import}/route.ts` (use
+  `../../_proxy` import path, NOT `../_proxy`, because they're one dir deeper
+  than the top-level v1 routes). handlers.go needed `crypto` (go-ethereum)
+  import added. The Wallet persistence struct is `WalletRecord` (not `Wallet`)
+  with `ChainID int64` (not `ChainType`); creation method is `store.SaveWallet`
+  (not `CreateWallet`); `SaveWallet` assigns the UUID itself.
+- **Frontend proxy route depth**: top-level `app/api/v1/<x>/route.ts` uses
+  `../_proxy`; nested `app/api/v1/<a>/<b>/route.ts` uses `../../_proxy`. The
+  `_proxy.ts` lives at `app/api/v1/_proxy.ts`. `proxyMutation(req, path, method)`
+  for POST/PUT/DELETE; `proxyGet(req, path)` for GET.
+
