@@ -51,6 +51,7 @@ set(SERVICE_SOURCES
     src/services/crypto_card_service.cpp
     src/services/p2p_trading_service.cpp
     src/services/fiat_ramp_service.cpp
+    src/services/multisig_service.cpp
 )
 
 set(ALL_SOURCES

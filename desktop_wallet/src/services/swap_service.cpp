@@ -72,9 +72,11 @@ std::future<SwapQuote> SwapService::getQuote(
     const std::string& chainId
 ) {
     return std::async(std::launch::async, [this, fromToken, toToken, amount, chainId]() -> SwapQuote {
-        // Real quote from the wallet_api backend swap endpoint.
-        // Honest result: on any failure, return a quote carrying an error
-        // marker (zero to_amount) rather than a fabricated rate.
+        // Real on-chain AMM quote from the wallet_api backend
+        // (GET /api/v1/amm/quote -> Uniswap-V2 getAmountsOut eth_call). This
+        // matches the web frontend's AMM route. Honest result: on any failure,
+        // return a quote carrying an error marker (zero to_amount) rather than
+        // a fabricated rate.
         SwapQuote quote;
         quote.from_token = fromToken;
         quote.to_token = toToken;
@@ -85,19 +87,21 @@ std::future<SwapQuote> SwapService::getQuote(
 
         try {
             std::map<std::string, std::string> params = {
-                {"chain", chainId},
-                {"fromToken", fromToken},
-                {"toToken", toToken},
-                {"amount", amount}
+                {"chain_id", chainId},
+                {"token_in", fromToken},
+                {"token_out", toToken},
+                {"amount_in", amount}
             };
-            std::string resp = backendGet("/api/v1/quote", params);
+            std::string resp = backendGet("/api/v1/amm/quote", params);
 
-            quote.from_amount = jsonNumberField(resp, "fromAmount").value_or(0.0);
-            quote.to_amount = jsonNumberField(resp, "toAmount").value_or(0.0);
-            quote.price_impact = jsonNumberField(resp, "priceImpact").value_or(0.0);
-            quote.gas_estimate = jsonNumberField(resp, "gasEstimate").value_or(0.0);
+            // AMM quote returns amount_in/amount_out as human-readable strings;
+            // parse to double for the desktop SwapQuote struct.
+            quote.from_amount = jsonNumberField(resp, "amount_in").value_or(0.0);
+            quote.to_amount = jsonNumberField(resp, "amount_out").value_or(0.0);
+            quote.price_impact = 0.0; // indicative; not provided by the raw on-chain quote
+            quote.gas_estimate = 0.0;
 
-            auto routeStr = jsonStringField(resp, "route");
+            auto routeStr = jsonStringField(resp, "path");
             if (routeStr) {
                 quote.route.clear();
                 std::stringstream ss(*routeStr);
@@ -122,26 +126,57 @@ std::future<SwapResponse> SwapService::executeSwap(
     const SwapQuote& quote
 ) {
     return std::async(std::launch::async, [this, walletId, quote]() -> SwapResponse {
-        // Real swap execution through the wallet_api backend. The backend
-        // builds, signs and broadcasts the swap transaction and returns the
-        // real transaction hash. Honest result: on any failure, return an
-        // empty tx_hash rather than a fabricated one.
+        // Real on-chain swap execution through the wallet_api AMM router. This
+        // is a two-step flow matching the web frontend:
+        //   1) POST /api/v1/amm/swap -> builds swapExactTokensForTokens calldata
+        //      (real on-chain getAmountsOut + 0.5% slippage).
+        //   2) POST the returned {to,data,value,chain_id} tx to /api/v1/send,
+        //      which signs + broadcasts via eth_sendRawTransaction and returns
+        //      the real transaction hash.
+        // Honest result: on any failure, return an empty tx_hash rather than a
+        // fabricated one.
         SwapResponse response;
         response.from_amount = quote.from_amount;
         response.to_amount = quote.to_amount;
         response.tx_hash.clear();
 
         try {
+            // Step 1: construct the swap calldata via the AMM router.
             std::ostringstream body;
             body << "{"
-                 << "\"walletId\":\"" << walletId << "\","
-                 << "\"fromToken\":\"" << quote.from_token << "\","
-                 << "\"toToken\":\"" << quote.to_token << "\","
-                 << "\"fromAmount\":" << quote.from_amount << ","
-                 << "\"toAmount\":" << quote.to_amount
+                 << "\"from\":\"" << walletId << "\","
+                 << "\"chain_id\":" << 1 << ","
+                 << "\"token_in\":\"" << quote.from_token << "\","
+                 << "\"token_out\":\"" << quote.to_token << "\","
+                 << "\"amount_in\":" << quote.from_amount
                  << "}";
-            std::string resp = backendPost("/api/v1/swap", body.str());
-            auto hash = jsonStringField(resp, "txHash");
+            std::string swapResp = backendPost("/api/v1/amm/swap", body.str());
+
+            // Extract the tx object {to,data,value,chain_id} to broadcast.
+            auto txTo = jsonStringField(swapResp, "tx_to");
+            auto txData = jsonStringField(swapResp, "tx_data");
+            if (!txTo || !txData) {
+                // Backend may nest under "tx": try the alternate keys.
+                txTo = jsonStringField(swapResp, "to");
+                txData = jsonStringField(swapResp, "data");
+            }
+            if (!txTo || !txData) {
+                std::cerr << "[SwapService] executeSwap: AMM router returned no calldata" << std::endl;
+                return response;
+            }
+
+            // Step 2: broadcast the assembled tx via /api/v1/send.
+            std::ostringstream sendBody;
+            sendBody << "{"
+                    << "\"walletId\":\"" << walletId << "\","
+                    << "\"to\":\"" << *txTo << "\","
+                    << "\"data\":\"" << *txData << "\","
+                    << "\"value\":\"0\","
+                    << "\"type\":\"swap\""
+                    << "}";
+            std::string sendResp = backendPost("/api/v1/send", sendBody.str());
+            auto hash = jsonStringField(sendResp, "tx_hash");
+            if (!hash) hash = jsonStringField(sendResp, "txHash");
             if (hash && !hash->empty()) {
                 response.tx_hash = *hash;
             }
