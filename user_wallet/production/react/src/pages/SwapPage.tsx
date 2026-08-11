@@ -2,27 +2,81 @@
  * Swap Page - DEX Token Swapping
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWallet } from '../contexts/WalletContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { WalletService } from '../services/WalletService';
 
 function SwapPage() {
   const { theme } = useTheme();
+  const { activeWallet } = useWallet();
+  const [walletService] = useState(() => new WalletService());
   const [fromToken, setFromToken] = useState('ETH');
   const [toToken, setToToken] = useState('USDT');
   const [fromAmount, setFromAmount] = useState('');
   const [toAmount, setToAmount] = useState('');
   const [slippage, setSlippage] = useState(0.5);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [quote, setQuote] = useState<{ priceImpact: number; route: string[] } | null>(null);
+  const [password, setPassword] = useState('');
 
   const tokens = ['ETH', 'USDT', 'USDC', 'MATIC', 'BNB', 'AVAX', 'SOL', 'ARB', 'OP'];
+  const chainId = activeWallet?.chain?.chainId ?? 1;
+
+  // Fetch a real quote whenever inputs change.
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchQuote() {
+      if (!fromAmount || parseFloat(fromAmount) <= 0) {
+        setToAmount('');
+        setQuote(null);
+        return;
+      }
+      try {
+        const q = await walletService.getSwapQuote(fromToken, toToken, fromAmount, chainId);
+        if (cancelled) return;
+        setToAmount(q.toAmount);
+        setQuote({ priceImpact: q.priceImpact, route: q.route });
+        setError(null);
+      } catch (err: any) {
+        if (cancelled) return;
+        setToAmount('');
+        setQuote(null);
+        setError(err?.response?.data?.error || err?.message || 'Failed to fetch swap quote');
+      }
+    }
+    fetchQuote();
+    return () => { cancelled = true; };
+  }, [fromToken, toToken, fromAmount, chainId, walletService]);
 
   const handleSwap = async () => {
+    if (!activeWallet) { setError('No active wallet'); return; }
+    if (!password) { setError('Wallet password is required to execute the swap'); return; }
     setIsLoading(true);
-    // Real swap implementation would call backend
-    setTimeout(() => {
+    setError(null);
+    try {
+      const result = await walletService.swap(
+        activeWallet.id,
+        fromToken,
+        toToken,
+        fromAmount,
+        password,
+        chainId,
+      );
+      if (!result.txHash) {
+        setError('Swap executed but no transaction hash was returned by the backend');
+      } else {
+        setPassword('');
+        setFromAmount('');
+        setToAmount('');
+        setQuote(null);
+      }
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || 'Swap failed');
+    } finally {
       setIsLoading(false);
-    }, 2000);
+    }
   };
 
   const swapTokens = () => {
@@ -91,18 +145,39 @@ function SwapPage() {
           />
         </div>
 
-        <button onClick={handleSwap} disabled={isLoading || !fromAmount} className="btn btn-primary w-full">
+        {/* Wallet password (required by backend /swap/execute) */}
+        <div className="mb-6">
+          <label className="label">Wallet Password</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Wallet password"
+            className="input w-full"
+          />
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 rounded-lg bg-red-500/10 text-red-500 text-sm">{error}</div>
+        )}
+
+        <button onClick={handleSwap} disabled={isLoading || !fromAmount || !password} className="btn btn-primary w-full">
           {isLoading ? 'Swapping...' : 'Swap'}
         </button>
       </div>
 
-      {/* Exchange Info */}
+      {/* Exchange Info (real quote data) */}
       <div className={`card mt-4 ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'}`}>
         <h3 className="font-semibold mb-3">Exchange Info</h3>
         <div className="space-y-2 text-sm">
-          <div className="flex justify-between"><span>Price Impact</span><span>0.05%</span></div>
-          <div className="flex justify-between"><span>LP Fee</span><span>0.3%</span></div>
-          <div className="flex justify-between"><span>Route</span><span>{fromToken} → {toToken}</span></div>
+          <div className="flex justify-between">
+            <span>Price Impact</span>
+            <span>{quote ? `${quote.priceImpact}%` : '—'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Route</span>
+            <span>{quote && quote.route.length ? quote.route.join(' → ') : `${fromToken} → ${toToken}`}</span>
+          </div>
         </div>
       </div>
     </div>

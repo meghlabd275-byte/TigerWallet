@@ -1,16 +1,26 @@
 /**
  * Bridge Page - Cross-chain bridging
+ *
+ * The canonical wallet-api backend has no bridge HTTP service (go/bridge is
+ * a library, not a server). WalletService.bridge()/getBridges() throw honest
+ * errors, so this page surfaces those errors instead of fabricating
+ * transactions, fees, or bridge lists.
  */
 
 import React, { useState } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
+import { useWallet } from '../contexts/WalletContext';
+import { WalletService } from '../services/WalletService';
 
 function BridgePage() {
   const { theme } = useTheme();
+  const { activeWallet } = useWallet();
+  const [walletService] = useState(() => new WalletService());
   const [fromChain, setFromChain] = useState('ethereum');
   const [toChain, setToChain] = useState('polygon');
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const chains = [
     { id: 'ethereum', name: 'Ethereum', symbol: 'ETH' },
@@ -21,16 +31,17 @@ function BridgePage() {
     { id: 'bsc', name: 'BNB Chain', symbol: 'BNB' },
   ];
 
-  const bridges = [
-    { name: 'Stargate', supported: true, fee: '0.1%' },
-    { name: 'LayerZero', supported: true, fee: '0.05%' },
-    { name: 'Hop Protocol', supported: true, fee: '0.08%' },
-    { name: 'Across', supported: true, fee: '0.03%' },
-  ];
-
-  const handleBridge = () => {
+  const handleBridge = async () => {
     setIsLoading(true);
-    setTimeout(() => setIsLoading(false), 3000);
+    setError(null);
+    try {
+      if (!activeWallet) throw new Error('No active wallet selected');
+      await walletService.bridge(activeWallet.id, fromChain, toChain, 'native', amount);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || 'Bridge failed');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -62,26 +73,16 @@ function BridgePage() {
         </div>
 
         <div className="mb-4 p-3 bg-gray-700 rounded-lg">
-          <div className="flex justify-between text-sm"><span>Estimated Time</span><span>~5-10 minutes</span></div>
-          <div className="flex justify-between text-sm"><span>Bridge Fee</span><span>~0.1%</span></div>
           <div className="flex justify-between text-sm"><span>You Receive</span><span>{amount || '0'}</span></div>
         </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-900/40 text-red-200 rounded-lg text-sm">{error}</div>
+        )}
 
         <button onClick={handleBridge} disabled={isLoading || !amount} className="btn btn-primary w-full">
           {isLoading ? 'Processing...' : 'Bridge'}
         </button>
-      </div>
-
-      <div className="mt-6">
-        <h3 className="font-semibold mb-3">Supported Bridges</h3>
-        <div className="space-y-2">
-          {bridges.map((b, i) => (
-            <div key={i} className={`flex justify-between items-center p-3 ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'} rounded-lg`}>
-              <span>{b.name}</span>
-              <span className="text-sm opacity-60">Fee: {b.fee}</span>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );

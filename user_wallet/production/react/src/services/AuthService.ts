@@ -85,9 +85,9 @@ class AuthService {
   }
 
   async register(data: RegisterData): Promise<AuthResponse> {
+    // Canonical /auth/register accepts {email, password} only (see route table).
     const response = await this.api.post('/auth/register', {
       email: data.email,
-      username: data.username,
       password: data.password,
     });
     const { token, user } = response.data;

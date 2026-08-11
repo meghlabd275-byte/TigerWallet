@@ -19,7 +19,7 @@
  *   POST   /sign               -> { signature }(body: wallet_id, password, message)
  *   GET    /gas?chain_id=                     -> GasPrice
  *   GET    /price?symbol=                     -> PriceInfo
- *   GET    /swap/quote?from_token=&to_token=&amount=&chain_id=  -> SwapQuote
+ *   GET    /swap/quote?from=&to=&amount=&chain_id=  -> SwapQuote
  *   POST   /swap/execute       -> action for /send
  *   GET    /staking/quote?chain_id=           -> { assets: [...] }
  *   POST   /staking/{stake,unstake,claim}     -> action for /send
@@ -151,7 +151,7 @@ class WalletService {
   }
 
   async getBalance(address: string, chainId: number): Promise<BalanceResult> {
-    const response = await this.api.get('/public/balance', {
+    const response = await this.api.get('/balance', {
       params: { address, chain_id: chainId },
     });
     return response.data as BalanceResult;
@@ -307,6 +307,7 @@ class WalletService {
     return t ? String(t.balance ?? '0') : '0';
   }
 
+  // wallet_api /swap/quote uses ?from=&to=&amount=&chain_id= (see route table).
   async getSwapQuote(
     fromToken: string,
     toToken: string,
@@ -314,7 +315,7 @@ class WalletService {
     chainId?: number
   ): Promise<{ fromAmount: string; toAmount: string; priceImpact: number; route: string[] }> {
     const response = await this.api.get('/swap/quote', {
-      params: { from_token: fromToken, to_token: toToken, amount, chain_id: chainId ?? 1 },
+      params: { from: fromToken, to: toToken, amount, chain_id: chainId ?? 1 },
     });
     const q = response.data as SwapQuote;
     return {
@@ -325,20 +326,31 @@ class WalletService {
     };
   }
 
+  // Execute a swap. The backend /swap/execute returns an on-chain action; the
+  // caller must supply a walletId + password so the action can be signed and
+  // broadcast via /send. Without a password, fail honestly rather than return
+  // a fabricated txHash.
   async swap(
-    _walletId: string,
+    walletId: string,
     fromToken: string,
     toToken: string,
     amount: string,
-    _slippage = 0.5,
+    password: string,
     chainId?: number
   ): Promise<{ txHash: string; fromAmount: string; toAmount: string }> {
+    if (!password) throw new Error('password is required to execute a swap on the backend');
     const q = await this.getSwapQuote(fromToken, toToken, amount, chainId);
-    // The backend returns an on-chain action to submit via /send; the caller
-    // must provide a walletId + password to execute. Without those, surface
-    // the quote honestly.
+    const response = await this.api.post('/swap/execute', {
+      wallet_id: walletId,
+      password,
+      from: fromToken,
+      to: toToken,
+      amount,
+      chain_id: chainId ?? 1,
+    });
+    const txHash = (response.data && (response.data.tx_hash as string)) || '';
     return {
-      txHash: '',
+      txHash,
       fromAmount: q.fromAmount,
       toAmount: q.toAmount,
     };
@@ -392,6 +404,22 @@ class WalletService {
     return response.data.assets ?? [];
   }
 
+  async claimRewards(
+    walletId: string,
+    token: string,
+    password: string,
+    chainId?: number
+  ): Promise<{ txHash: string }> {
+    if (!password) throw new Error('password is required to claim on the backend');
+    const response = await this.api.post('/staking/claim', {
+      wallet_id: walletId,
+      password,
+      token,
+      chain_id: chainId ?? 1,
+    });
+    return { txHash: response.data.tx_hash ?? '' };
+  }
+
   async bridge(
     _walletId: string,
     _fromChain: string,
@@ -433,6 +461,22 @@ class WalletService {
     throw new Error(
       'NFT transfer requires the ERC-721 contract + token id; build the transfer calldata and submit via /send'
     );
+  }
+
+  async getDapps(): Promise<unknown[]> {
+    const response = await this.api.get('/dapps');
+    const data = response.data;
+    if (Array.isArray(data)) return data;
+    if (data?.dapps) return data.dapps as unknown[];
+    return [];
+  }
+
+  async getDappCategories(): Promise<string[]> {
+    const response = await this.api.get('/dapps/categories');
+    const data = response.data;
+    if (Array.isArray(data)) return data.map((c: unknown) => String(c));
+    if (data?.categories) return (data.categories as unknown[]).map((c) => String(c));
+    return [];
   }
 
   async connectDApp(_walletId: string, _dappUrl: string): Promise<string> {

@@ -119,14 +119,14 @@ class ApiService {
     }
   }
 
-  // wallet_api handleRegister -> { user_id, token }
-  async register(email: string, username: string, password: string) {
+  // wallet_api handleRegister accepts {email, password} only (see route table).
+  async register(email: string, _username: string, password: string) {
     try {
-      const { data } = await this.client.post('/auth/register', { email, username, password });
+      const { data } = await this.client.post('/auth/register', { email, password });
       return {
         user_id: data.user_id as string,
         token: data.token as string,
-        user: { id: data.user_id, email, username },
+        user: { id: data.user_id, email, username: _username },
       };
     } catch (err) {
       throw new Error(this.errMsg(err, 'Registration failed'));
@@ -134,8 +134,9 @@ class ApiService {
   }
 
   // No /profile endpoint on wallet_api; the login/register responses already
-  // include the user identity. Decode the JWT payload as a fallback so the
-  // AuthContext can hydrate the user from a stored token on reload.
+  // include the user identity. Decode the JWT payload locally (no network call
+  // to a non-existent route) so the AuthContext can hydrate the user from a
+  // stored token on reload.
   async getProfile() {
     if (!this.token) throw new Error('Not authenticated');
     const payload = this.token.split('.')[1];
@@ -181,15 +182,14 @@ class ApiService {
   }
 
   // ---- Balances ----
-  // Aggregated balances across all of the user's wallets. Uses the public
-  // (no-auth) balance endpoint per wallet address + chain_id, which performs
-  // real eth_getBalance via the backend.
+  // Aggregated balances across all of the user's wallets via the auth
+  // /balance endpoint (real eth_getBalance through the backend).
   async getBalances(): Promise<{ balances: BalanceResult[] }> {
     const { wallets } = await this.getWallets();
     const results = await Promise.allSettled(
       wallets.map((w) =>
         this.client
-          .get<BalanceResult>('/public/balance', { params: { address: w.address, chain_id: w.chain_id } })
+          .get<BalanceResult>('/balance', { params: { address: w.address, chain_id: w.chain_id } })
           .then((r) => r.data),
       ),
     );
@@ -263,9 +263,10 @@ class ApiService {
   }
 
   // ---- Price (real CoinGecko via wallet_api /price) ----
+  // wallet_api accepts ?symbol= (e.g. "eth") or ?ids= (CoinGecko coin id).
   async getTokenPrice(token: string, _network?: string): Promise<{ usd: number; usd_24h_change: number }> {
-    const coin = token.toLowerCase() === 'btc' ? 'bitcoin' : token.toLowerCase();
-    const { data } = await this.client.get('/price', { params: { coin } });
+    const symbol = token.toLowerCase() === 'btc' ? 'btc' : token.toLowerCase();
+    const { data } = await this.client.get('/price', { params: { symbol } });
     return data;
   }
 

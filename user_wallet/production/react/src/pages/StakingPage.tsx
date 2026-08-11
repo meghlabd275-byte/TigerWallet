@@ -1,36 +1,99 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
+import { useWallet } from '../contexts/WalletContext';
+import { WalletService } from '../services/WalletService';
+
+interface StakingAsset {
+  symbol: string;
+  apy?: number;
+  staked?: string;
+  reward?: string;
+}
 
 // Staking Page - Complete
 const StakingPage = () => {
+  const { activeWallet } = useWallet();
+  const [walletService] = useState(() => new WalletService());
   const [selectedTab, setSelectedTab] = useState('stake');
   const [stakeAmount, setStakeAmount] = useState('');
-  const [selectedPool, setSelectedPool] = useState('ETH 2.0');
+  const [selectedPool, setSelectedPool] = useState('');
   const [isStaking, setIsStaking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [password, setPassword] = useState('');
+  const [assets, setAssets] = useState<StakingAsset[]>([]);
+  const [isLoadingAssets, setIsLoadingAssets] = useState(false);
 
-  const pools = [
-    { name: 'ETH 2.0', apy: '4.2%', staked: '1.5 ETH', reward: '0.063 ETH' },
-    { name: 'BNB', apy: '3.8%', staked: '0 BNB', reward: '0 BNB' },
-    { name: 'SOL', apy: '6.5%', staked: '0 SOL', reward: '0 SOL' },
-    { name: 'MATIC', apy: '5.2%', staked: '0 MATIC', reward: '0 MATIC' },
-  ];
+  const chainId = activeWallet?.chain?.chainId ?? 1;
 
-  const handleStake = () => {
+  const loadAssets = useCallback(async () => {
+    setIsLoadingAssets(true);
+    setError(null);
+    try {
+      const data = (await walletService.getStakingPositions(activeWallet?.id ?? '', chainId)) as StakingAsset[];
+      const mapped = (data && data.length ? data : []).map((a) => ({
+        symbol: String(a.symbol ?? ''),
+        apy: typeof a.apy === 'number' ? a.apy : undefined,
+        staked: a.staked ? String(a.staked) : '0',
+        reward: a.reward ? String(a.reward) : '0',
+      }));
+      setAssets(mapped);
+      if (mapped.length > 0 && !selectedPool) setSelectedPool(mapped[0].symbol);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || 'Failed to load staking assets');
+      setAssets([]);
+    } finally {
+      setIsLoadingAssets(false);
+    }
+  }, [walletService, activeWallet?.id, chainId, selectedPool]);
+
+  useEffect(() => {
+    loadAssets();
+  }, [loadAssets]);
+
+  const handleStake = async () => {
     if (!stakeAmount || parseFloat(stakeAmount) <= 0) {
-      alert('Please enter valid amount');
+      setError('Please enter a valid amount');
       return;
     }
+    if (!activeWallet) { setError('No active wallet'); return; }
+    if (!password) { setError('Wallet password is required to stake'); return; }
+    if (!selectedPool) { setError('Select a pool first'); return; }
     setIsStaking(true);
-    setTimeout(() => {
+    setError(null);
+    try {
+      const result = await walletService.stake(
+        activeWallet.id,
+        selectedPool,
+        stakeAmount,
+        undefined,
+        password,
+        chainId,
+      );
+      if (!result.txHash) {
+        setError('Stake submitted but no transaction hash was returned by the backend');
+      } else {
+        setStakeAmount('');
+        setPassword('');
+        await loadAssets();
+      }
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || 'Stake failed');
+    } finally {
       setIsStaking(false);
-      setStakeAmount('');
-      alert('Staked successfully!');
-    }, 2000);
+    }
   };
 
-  const handleClaim = (poolName: string) => {
-    alert(`Claiming rewards from ${poolName}`);
+  const handleClaim = async (poolName: string) => {
+    if (!activeWallet) { setError('No active wallet'); return; }
+    if (!password) { setError('Wallet password is required to claim'); return; }
+    setError(null);
+    try {
+      await walletService.claimRewards(activeWallet.id, poolName, password, chainId);
+      await loadAssets();
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || 'Claim failed');
+    }
   };
 
   return (
@@ -69,16 +132,22 @@ const StakingPage = () => {
               <div className="card">
                 <h3>Select Pool</h3>
                 <div className="pool-grid">
-                  {pools.map((pool) => (
-                    <div
-                      key={pool.name}
-                      className={`pool-card ${selectedPool === pool.name ? 'active' : ''}`}
-                      onClick={() => setSelectedPool(pool.name)}
-                    >
-                      <div className="pool-name">{pool.name}</div>
-                      <div className="pool-apy">APY: {pool.apy}</div>
-                    </div>
-                  ))}
+                  {isLoadingAssets ? (
+                    <div className="pool-name">Loading pools…</div>
+                  ) : assets.length === 0 ? (
+                    <div className="pool-name">No staking assets available</div>
+                  ) : (
+                    assets.map((pool) => (
+                      <div
+                        key={pool.symbol}
+                        className={`pool-card ${selectedPool === pool.symbol ? 'active' : ''}`}
+                        onClick={() => setSelectedPool(pool.symbol)}
+                      >
+                        <div className="pool-name">{pool.symbol}</div>
+                        <div className="pool-apy">APY: {pool.apy !== undefined ? `${pool.apy}%` : '—'}</div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -95,15 +164,32 @@ const StakingPage = () => {
                     value={stakeAmount}
                     onChange={(e) => setStakeAmount(e.target.value)}
                   />
-                  <span className="token">{selectedPool.split(' ')[0]}</span>
+                  <span className="token">{selectedPool}</span>
                 </div>
               </div>
+
+              {/* Wallet password (required by backend /staking/stake) */}
+              <div className="card">
+                <h3>Wallet Password</h3>
+                <div className="amount-input">
+                  <input
+                    type="password"
+                    placeholder="Wallet password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {error && (
+                <div className="card" style={{ color: '#dc2626' }}>{error}</div>
+              )}
 
               {/* Stake Button */}
               <button
                 className={`stake-btn ${isStaking ? 'loading' : ''}`}
                 onClick={handleStake}
-                disabled={isStaking}
+                disabled={isStaking || !selectedPool || !password}
               >
                 {isStaking ? 'Staking...' : 'Stake'}
               </button>
@@ -113,48 +199,60 @@ const StakingPage = () => {
           {/* Earn Tab */}
           {selectedTab === 'earn' && (
             <div className="earn-content">
-              {pools.map((pool) => (
-                <div key={pool.name} className="earn-card">
-                  <div className="earn-header">
-                    <div>
-                      <div className="pool-name">{pool.name}</div>
-                      <div className="pool-apy">APY: {pool.apy}</div>
+              {isLoadingAssets ? (
+                <div className="earn-card"><div className="pool-name">Loading…</div></div>
+              ) : assets.length === 0 ? (
+                <div className="earn-card"><div className="pool-name">No staking positions</div></div>
+              ) : (
+                assets.map((pool) => (
+                  <div key={pool.symbol} className="earn-card">
+                    <div className="earn-header">
+                      <div>
+                        <div className="pool-name">{pool.symbol}</div>
+                        <div className="pool-apy">APY: {pool.apy !== undefined ? `${pool.apy}%` : '—'}</div>
+                      </div>
+                      <div className="earn-right">
+                        <div className="staked-label">Staked</div>
+                        <div className="staked-value">{pool.staked ?? '0'}</div>
+                      </div>
                     </div>
-                    <div className="earn-right">
-                      <div className="staked-label">Staked</div>
-                      <div className="staked-value">{pool.staked}</div>
+                    <div className="earn-footer">
+                      <div>
+                        <div className="reward-label">Pending Reward</div>
+                        <div className="reward-value">{pool.reward ?? '0'}</div>
+                      </div>
+                      <button className="claim-btn" onClick={() => handleClaim(pool.symbol)}>
+                        Claim
+                      </button>
                     </div>
                   </div>
-                  <div className="earn-footer">
-                    <div>
-                      <div className="reward-label">Pending Reward</div>
-                      <div className="reward-value">{pool.reward}</div>
-                    </div>
-                    <button className="claim-btn" onClick={() => handleClaim(pool.name)}>
-                      Claim
-                    </button>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           )}
 
           {/* Pools Tab */}
           {selectedTab === 'pools' && (
             <div className="pools-content">
-              {pools.map((pool) => (
-                <div key={pool.name} className="pool-detail-card">
-                  <div className="pool-detail-header">
-                    <div className="pool-name">{pool.name}</div>
-                    <div className="pool-apy-large">
-                      <span className="apy-value">{pool.apy}</span>
-                      <span className="apy-label">APY</span>
+              {isLoadingAssets ? (
+                <div className="pool-detail-card"><div className="pool-name">Loading…</div></div>
+              ) : assets.length === 0 ? (
+                <div className="pool-detail-card"><div className="pool-name">No pools available</div></div>
+              ) : (
+                assets.map((pool) => (
+                  <div key={pool.symbol} className="pool-detail-card">
+                    <div className="pool-detail-header">
+                      <div className="pool-name">{pool.symbol}</div>
+                      <div className="pool-apy-large">
+                        <span className="apy-value">{pool.apy !== undefined ? `${pool.apy}%` : '—'}</span>
+                        <span className="apy-label">APY</span>
+                      </div>
                     </div>
+                    <div className="total-staked">Total Staked: {pool.staked ?? '0'}</div>
+                    <button className="stake-pool-btn" onClick={() => { setSelectedTab('stake'); setSelectedPool(pool.symbol); }}>Stake</button>
                   </div>
-                  <div className="total-staked">Total Staked: {pool.staked}</div>
-                  <button className="stake-pool-btn">Stake</button>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           )}
         </div>

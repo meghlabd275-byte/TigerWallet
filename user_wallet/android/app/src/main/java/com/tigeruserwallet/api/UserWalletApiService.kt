@@ -110,8 +110,9 @@ object UserWalletApiService {
         return AuthResult(token, json.optString("user_id", null))
     }
 
-    fun register(email: String, username: String, password: String): AuthResult {
-        val body = JSONObject().put("email", email).put("username", username).put("password", password).toString()
+    fun register(email: String, password: String): AuthResult {
+        // Canonical /auth/register accepts {email, password} only (see route table).
+        val body = JSONObject().put("email", email).put("password", password).toString()
         val req = requestBuilder("/auth/register").post(body.toRequestBody(jsonMediaType)).build()
         val json = execute(req)
         val token = json.getString("token")
@@ -190,7 +191,7 @@ object UserWalletApiService {
     }
 
     fun fetchBalance(address: String, chainId: Int): Balance {
-        val path = "/public/balance?address=$address&chain_id=$chainId"
+        val path = "/balance?address=$address&chain_id=$chainId"
         val req = requestBuilder(path).get().build()
         client.newCall(req).execute().use { response ->
             if (!response.isSuccessful) throw httpException(response)

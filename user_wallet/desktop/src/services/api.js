@@ -52,10 +52,11 @@ export const api = {
     return { token: data.token, user: data.user || { email } };
   },
 
-  async register(email, username, password) {
+  async register(email, _username, password) {
+    // Canonical /auth/register accepts {email, password} only (see route table).
     const data = await request('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email, username, password }),
+      body: JSON.stringify({ email, password }),
     });
     return { user_id: data.user_id, token: data.token };
   },
@@ -80,13 +81,12 @@ export const api = {
   },
 
   // ---- Balances ----
+  // Aggregated balances via the auth /balance endpoint (real eth_getBalance).
   async getBalances() {
     const { wallets } = await this.getWallets();
     const results = await Promise.allSettled(
       wallets.map((w) =>
-        fetch(
-          `${API_BASE_URL}/public/balance?address=${w.address}&chain_id=${w.chain_id}`,
-        ).then((r) => r.json()),
+        request(`/balance?address=${w.address}&chain_id=${w.chain_id}`),
       ),
     );
     return {
@@ -142,8 +142,9 @@ export const api = {
   },
 
   // ---- Price / Gas / Chains ----
-  async getPrice(coin = 'ethereum') {
-    return request(`/price?coin=${coin}`);
+  // wallet_api /price accepts ?symbol= (e.g. "eth") or ?ids= (CoinGecko coin id).
+  async getPrice(coin = 'eth') {
+    return request(`/price?symbol=${coin}`);
   },
 
   async getGasPrice(network) {

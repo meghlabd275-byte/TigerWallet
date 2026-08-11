@@ -833,4 +833,12 @@ Per-page:
 - web, desktop, ios, android, production/react all target :8443 with correct
   routes. Route mismatches fixed. mobile_apps/flutter_app + mobile/flutter
   have pubspec.yaml. user_wallet/android compiles.
+- production/react: DAppsPage previously hardcoded a `popularDApps` list (fake
+  data). Replaced with WalletService.getDapps()/getDappCategories() hitting
+  GET /dapps + /dapps/categories. Added those methods to WalletService.ts.
+  SwapPage + StakingPage already used real WalletService calls (getSwapQuote/
+  swap/getStakingPositions/stake/claimRewards) — no fake data. production/
+  react remaining tsc errors are all pre-existing & out-of-scope (services/
+  master/* = MasterWallet product; missing Header/Sidebar/LoadingSpinner
+  components; NFTsPage/Home/SendPage).
 

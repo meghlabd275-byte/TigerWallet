@@ -1,26 +1,58 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
+import { useWallet } from '../contexts/WalletContext';
+import { WalletService } from '../services/WalletService';
+
+interface NFTItem {
+  id: string;
+  name: string;
+  collection: string;
+  image: string;
+  price: string;
+}
 
 // NFT Gallery Page - Complete
 const NFTsPage = () => {
+  const { activeWallet } = useWallet();
+  const [walletService] = useState(() => new WalletService());
   const [selectedTab, setSelectedTab] = useState('collectibles');
   const [searchQuery, setSearchQuery] = useState('');
+  const [nfts, setNfts] = useState<NFTItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const nfts = [
-    { id: 1, name: 'Bored Ape #1234', collection: 'Bored Ape Yacht Club', image: '🦍', price: '45.5 ETH' },
-    { id: 2, name: 'CryptoPunk #5678', collection: 'CryptoPunks', image: '👾', price: '32.0 ETH' },
-    { id: 3, name: 'Azuki #9012', collection: 'Azuki', image: '🥷', price: '15.2 ETH' },
-    { id: 4, name: 'Doodle #3456', collection: 'Doodles', image: '🎨', price: '3.5 ETH' },
-    { id: 5, name: 'Moonbird #7890', collection: 'Moonbirds', image: '🐦', price: '8.1 ETH' },
-    { id: 6, name: 'Pudgy #2345', collection: 'Pudgy Penguins', image: '🐧', price: '2.8 ETH' },
-  ];
+  const loadNFTs = useCallback(async () => {
+    if (!activeWallet) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = (await walletService.getNFTs(activeWallet.id)) as Array<Record<string, unknown>>;
+      const mapped: NFTItem[] = (data ?? []).map((n, i) => ({
+        id: String(n.id ?? n.token_id ?? i),
+        name: String(n.name ?? `NFT #${n.token_id ?? i}`),
+        collection: String(n.collection ?? n.contract ?? ''),
+        image: String(n.image ?? n.image_url ?? '🖼️'),
+        price: n.price ? String(n.price) : '',
+      }));
+      setNfts(mapped);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || 'Failed to load NFTs');
+      setNfts([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [walletService, activeWallet]);
 
-  const activities = [
-    { id: 1, type: 'sent', name: 'Bored Ape #1234', time: '2 hours ago', amount: '-1 NFT' },
-    { id: 2, type: 'received', name: 'CryptoPunk #5678', time: '1 day ago', amount: '+1 NFT' },
-    { id: 3, type: 'listed', name: 'Azuki #9012', time: '2 days ago', amount: '2.5 ETH' },
-  ];
+  useEffect(() => {
+    loadNFTs();
+  }, [loadNFTs]);
+
+  const activities: NFTItem[] = [];
+
+  const filteredNfts = searchQuery
+    ? nfts.filter((n) => n.name.toLowerCase().includes(searchQuery.toLowerCase()) || n.collection.toLowerCase().includes(searchQuery.toLowerCase()))
+    : nfts;
 
   return (
     <div className="app-container">
@@ -65,35 +97,45 @@ const NFTsPage = () => {
           {/* Content */}
           {selectedTab === 'collectibles' && (
             <div className="nft-grid">
-              {nfts.map((nft) => (
-                <div key={nft.id} className="nft-card">
-                  <div className="nft-image">{nft.image}</div>
-                  <div className="nft-info">
-                    <div className="nft-name">{nft.name}</div>
-                    <div className="nft-collection">{nft.collection}</div>
-                    <div className="nft-price">{nft.price}</div>
+              {isLoading ? (
+                <div className="nft-card">Loading NFTs…</div>
+              ) : error ? (
+                <div className="nft-card" style={{ color: '#dc2626' }}>{error}</div>
+              ) : filteredNfts.length === 0 ? (
+                <div className="nft-card">No NFTs found</div>
+              ) : (
+                filteredNfts.map((nft) => (
+                  <div key={nft.id} className="nft-card">
+                    <div className="nft-image">{nft.image}</div>
+                    <div className="nft-info">
+                      <div className="nft-name">{nft.name}</div>
+                      <div className="nft-collection">{nft.collection}</div>
+                      {nft.price && <div className="nft-price">{nft.price}</div>}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           )}
 
           {selectedTab === 'activity' && (
             <div className="activity-list">
-              {activities.map((activity) => (
-                <div key={activity.id} className="activity-item">
-                  <div className="activity-icon">
-                    {activity.type === 'sent' ? '📤' : activity.type === 'received' ? '📥' : '📋'}
-                  </div>
-                  <div className="activity-info">
-                    <div className="activity-name">
-                      {activity.type === 'sent' ? 'Sent' : activity.type === 'received' ? 'Received' : 'Listed'} {activity.name}
+              {activities.length === 0 ? (
+                <div className="activity-item">No recent activity</div>
+              ) : (
+                activities.map((activity) => (
+                  <div key={activity.id} className="activity-item">
+                    <div className="activity-icon">
+                      {activity.id.startsWith('sent') ? '📤' : activity.id.startsWith('received') ? '📥' : '📋'}
                     </div>
-                    <div className="activity-time">{activity.time}</div>
+                    <div className="activity-info">
+                      <div className="activity-name">{activity.name}</div>
+                      <div className="activity-time">{activity.collection}</div>
+                    </div>
+                    <div className="activity-amount">{activity.price}</div>
                   </div>
-                  <div className="activity-amount">{activity.amount}</div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           )}
 

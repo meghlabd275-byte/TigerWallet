@@ -153,7 +153,7 @@ struct LoginView: View {
         Task {
             do {
                 if isRegister {
-                    _ = try await UserWalletApiService.shared.register(email: email, username: username.isEmpty ? email : username, password: password)
+                    _ = try await UserWalletApiService.shared.register(email: email, password: password)
                 } else {
                     _ = try await UserWalletApiService.shared.login(email: email, password: password)
                 }

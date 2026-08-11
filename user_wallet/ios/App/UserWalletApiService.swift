@@ -139,7 +139,7 @@ final class UserWalletApiService {
     // MARK: - Auth
 
     struct LoginBody: Encodable { let email: String; let password: String }
-    struct RegisterBody: Encodable { let email: String; let username: String; let password: String }
+    struct RegisterBody: Encodable { let email: String; let password: String }
 
     @discardableResult
     func login(email: String, password: String) async throws -> AuthResponse {
@@ -150,8 +150,9 @@ final class UserWalletApiService {
     }
 
     @discardableResult
-    func register(email: String, username: String, password: String) async throws -> AuthResponse {
-        let body = try encode(RegisterBody(email: email, username: username, password: password))
+    func register(email: String, password: String) async throws -> AuthResponse {
+        // Canonical /auth/register accepts {email, password} only (see route table).
+        let body = try encode(RegisterBody(email: email, password: password))
         let res: AuthResponse = try await request("/auth/register", method: "POST", body: body, authenticated: false)
         storedToken = res.token
         return res
@@ -198,8 +199,9 @@ final class UserWalletApiService {
     }
 
     func fetchBalance(address: String, chainId: Int) async throws -> BalanceResult {
-        let path = "/public/balance?address=\(address)&chain_id=\(chainId)"
-        return try await request(path, authenticated: false)
+        // Auth /balance endpoint (real eth_getBalance through the backend).
+        let path = "/balance?address=\(address)&chain_id=\(chainId)"
+        return try await request(path)
     }
 
     // MARK: - Transactions (real Etherscan via backend)
