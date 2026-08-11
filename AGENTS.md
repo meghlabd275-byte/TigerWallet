@@ -485,6 +485,61 @@
   OTHER pages like hardware-wallet/launchpad/lending/bridge remain â€” not
   from these changes).
 
+## user_wallet/* retarget + fake-crypto elimination (2026-08-11)
+
+- ALL `user_wallet/*` clients (web, desktop, android, ios, production/react)
+  now target ONLY the canonical `go/wallet_api` (:8443) with correct routes
+  + Bearer JWT auth. The old split (:8105 stub, :8080 orphan) is gone.
+- `user_wallet/go/main.go` is now a deprecation reverse-proxy shim to
+  wallet_api (stdlib net/http/httputil only). The dead
+  `handlers/user_wallet_handler.go`, `wallet_service.go`, `swap_service.go`
+  were removed (they fabricated tx hashes / fake swap quotes and were never
+  wired — Android depended on them = trap). `go build ./...` exit 0.
+- `getProfile()` in clients decodes the local JWT (no fake /profile route).
+- `rust/userwallet_fetchers` now has a `Cargo.toml`, compiles clean
+  (`cargo check` exit 0), and delegates to the backend with fail-closed
+  errors — no stubs. Replaces the 21 dead uncompilable fetcher structs.
+- `frontend/web_nextjs/app/wallet/lib/transactions.ts`: the 9 "unavailable"
+  boundaries are wired to real backend (`/send`, `/gas`, `/swap/quote`).
+  Solana/Bitcoin throw honest fail-closed errors (backend has no Solana/BTC
+  signer — not stubs).
+
+### Security fixes (auth bypass / key leakage / XSS / fake crypto)
+- iOS `SuperAdminService.verifyTwoFactor`: was accepting ANY 6-digit code
+  (2FA bypass). Now real RFC 6238 TOTP (CommonCrypto HMAC-SHA1 over
+  base32-decoded secret, 30s step, ±1 window, dynamic truncation).
+- `desktop_app/src/app.js` unlockWallet: was "for demo, accept any
+  password". Now verifies PBKDF2-SHA256 (600k iter) hash. hashPassword is
+  real PBKDF2 (was DJB2). Demo wallet/transactions removed; real backend
+  fetches.
+- super_admin extension popup (chrome/firefox/safari): removed hardcoded
+  fallback stats (12543/8234/...); honest error on load failure.
+  displayStats uses createElement+textContent (was innerHTML XSS sink).
+- browser_extensions chrome popup loadTokens: removed hardcoded fake
+  ETH/USDC/USDT balances; fetches real `/public/tokens`. innerHTML ->
+  createElement/textContent.
+- browser_extensions account-abstraction-service getFactoryAddress: was
+  `0x1234...` placeholder; now throws unless a real factory is configured.
+- frontend `mpc-wallet/page.tsx`: real keccak256 (`@noble/hashes/sha3`)
+  (was charCodeAt concat) + real Shamir via MPC backend (was full-key
+  copies into every "share").
+- iOS master services (Services.swift, MasterWalletService,
+  AccountAbstractionService, PrivacyService, PasskeyService,
+  PaymasterService): all fake crypto replaced with real backend calls or
+  fail-closed throws. See per-file comments.
+- Android master services (AccountAbstractionService, BlockchainService
+  web3j secp256k1, PasskeyService CredentialManager+ECDSA verify,
+  DeFiService/MEVSessionGasService/NFTMarketplaceService): real backend /
+  SecureRandom / fail-closed. No `0x+UUID` tx hashes.
+- production-react `AccountAbstractionService.sendUserOp`: real bundler
+  `eth_sendUserOperation` (was `0x<hash><Date.now()>` + DJB2).
+- production-react `MultiSigService.deriveMultiSigAddress`: real CREATE2
+  (ethers v6 getCreate2Address + keccak256) (was DJB2-fabricated 0x addr).
+- production-react `HardwareWalletService.hashMessage`: real
+  `ethers.hashMessage` (was DJB2 simpleHash). deriveMockPublicKey throws.
+- `swiftc` is NOT installed in this env — iOS files are syntax-verified by
+  manual review only. `node --check` used for all JS.
+
 ## frontend/web_nextjs fixes 2026-08-09/10 (TS strict + wallet hook)
 - ALL TypeScript errors fixed (48 -> 0 via `npx tsc --noEmit`). Key fixes:
   - ThemeProvider (app/components/ThemeProvider.tsx): added full ThemeColors
