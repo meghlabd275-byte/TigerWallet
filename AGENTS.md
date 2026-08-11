@@ -191,8 +191,31 @@
 - No Rust toolchain is preinstalled in this env. Install on demand with
   `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal`
   then `. "$HOME/.cargo/env"`. Build/check zk_infrastructure with
-  `cargo check` / `cargo test --lib` from
-  `core/rust/zk_infrastructure`.
+  `cargo check` / `cargo test --lib` from `core/rust/zk_infrastructure`.
+  Toolchain installed 2026-08-11: cargo/rustc 1.97.1 (stable, minimal profile).
+
+## hardware_wallet/rust (Ledger APDU layer — real, fail-closed)
+
+- `hardware_wallet/rust/src/ledger/mod.rs` is a REAL Ledger Ethereum-app APDU
+  protocol layer (NOT a fake). Implements: APDU constants (CLA 0xE0,
+  INS_GET_PUBLIC_KEY 0x02 / INS_SIGN 0x04 / INS_GET_APP_CONFIGURATION 0x06,
+  P1_FIRST/P1_MORE, P2_TRANSACTION/P2_TYPED_DATA/P2_MESSAGE, status words
+  0x9000/0x6985/0x6A80/0x6700/0x6A86); real APDU builders
+  (`build_get_public_key_apdu`, `build_sign_apdu`, `build_get_app_configuration_apdu`
+  — BIP-32 path BE-encoded, Lc length); real response parsers
+  (`parse_get_public_key_response` pubKey+address, `parse_sign_response`
+  v||r||s with v normalized 0/1→27/28, `split_status_word`, `check_status`,
+  `parse_app_config_response`); real EIP-191 host-side message prefixing
+  (`eip191_personal_message`). `ApduTransport` trait + fail-closed `NoTransport`
+  default — NO fake signature is ever produced. `derive_bip32_path` accepts
+  `'`/`h`/`H` hardened suffixes, rejects oversized indices + empty paths.
+- The fake `"02"+zeros` public key and `vec![0u8;64]` signature are GONE.
+  `cargo test --lib` → 20/20 pass (19 ledger via a canned-response transport).
+- Trezor/OneKey/Ellipal/SafePal modules are now fail-closed (DeviceNotFound)
+  — removed fake all-zero keys/sigs + the compile-broken `"0x" + &hex::encode()`
+  string concat. AirGap is a legitimate QR-code air-gapped protocol (kept).
+- Production next step: wire `ApduTransport` to a HID/BLE backend (hidapi /
+  ledger-rs) — the protocol layer above is unchanged.
 
 ## zk_infrastructure / ZK prover
 
