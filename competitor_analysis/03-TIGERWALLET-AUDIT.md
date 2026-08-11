@@ -105,8 +105,49 @@ const generateRandomAddress = () =>
 
 </details>
 
-### B2. Mobile — hand-rolled, non-compliant "BIP-39" + fabricated signing ❌ FAKE
-| Surface | Evidence |
+### B2. Mobile — hand-rolled, non-compliant "BIP-39" + fabricated signing ❌ FAKE → ✅ FIXED (2026-08-09)
+
+> **UPDATE (2026-08-09):** The mobile fakes listed below were fixed across
+> all mobile frontends this session (commits `8387aac`, `e04c0c5`). Summary:
+> - **`mobile_apps/flutter_app/lib/services/wallet_service.dart`** —
+>   `CryptoUtils.generateRandomBytes` now seeds FortunaRandom with 32 bytes
+>   from `Random.secure()` (was predictable `DateTime.now().microseconds % 256`).
+>   `sendTransaction` no longer signs with an all-zero `Uint8List(32)` key via
+>   a broken SHA-256 "EVMSigner"; it delegates signing+broadcast to the real
+>   `go/wallet_api` backend `POST /api/v1/send` (private key never on client).
+>   Mnemonic storage key renamed to `wallet_mnemonic_encrypted` (flutter_secure_storage
+>   encrypts at rest via OS keystore/keychain).
+> - **`mobile_apps/flutter_app/lib/services/privacy_service.dart`** —
+>   `createZKProof` no longer fabricates a proof from random bytes (now throws,
+>   pointing to the real Rust backend prover); `verifyZKProof` no longer
+>   returns `true` unconditionally (now rejects until backend verifier wired);
+>   `_hash` toy `*31` fold replaced with real SHA-256.
+> - **`mobile_apps/flutter_app/lib/services/passkey_service.dart`** —
+>   `verifySignature` now performs REAL ES256 (P-256 ECDSA + SHA-256) WebAuthn
+>   verification via pointycastle (was accept-anything); `isPasskeyAvailable`
+>   returns `false` honestly until a WebAuthn plugin is wired (was always `true`);
+>   `_generateChallenge` seeded from `Random.secure()` (was predictable timestamp).
+> - **`mobile_apps/flutter_app/lib/services/dapp_browser_service.dart`** —
+>   `getDApps` now fetches from backend `/api/v1/dapps`; curated registry is a
+>   documented fallback only (no more "In production" stub).
+> - **`master_wallet/flutter`** — `passkey_service.dart` XOR "encryption" →
+>   real AES-256-GCM (pointycastle) + PBKDF2; `master_wallet_service.dart`
+>   mnemonic no longer persisted via XOR (memory-only session, web3dart
+>   broadcast); `super_admin_service.dart` removed hardcoded plaintext
+>   super-admin password + treasury wallet, replaced with PBKDF2 + real TOTP.
+> - **`mobile_apps/android_app`** — `AnalyticsService.kt` removed
+>   `Math.random()` fabrication of portfolio history; `SendScreen.kt` /
+>   `ReceiveScreen.kt` removed hardcoded demo wallet address; `WalletViewModel.kt`
+>   wired to real backend HTTP calls.
+> - **`mobile_apps/ios_app`** — `CopyTradingService.swift` removed hardcoded
+>   mock trader leaderboard; `SendScreen.swift` / `ReceiveScreen.swift` removed
+>   hardcoded demo address.
+> - **`mobile_apps/tigerwallet` (RN)** — `SendScreen.tsx` removed
+>   "Demo: Paste Sample Address" button.
+>
+> The historical evidence below is retained for traceability of what was fixed.
+
+| Surface | Evidence (historical — now FIXED, see above) |
 |---|---|
 | `mobile/flutter` `wallet_service.dart` | Hardcoded English wordlist; entropy via `Random.secure()` then **bit-mask `& 0x1FF`** word selection — NOT BIP-39. `_mnemonicToSeed = sha256(utf8(mnemonic))` — **NOT PBKDF2-HMAC-SHA512**. Chain addresses derived by `sha256('$seed$path')`, `'$seed-solana'`, `'$seed-sui'`… — fabricated. Encryption is **XOR**. `sendTransaction` → `txHash='0x'+sha256('$from$to$amount$token$chainId$millis')` — **no broadcast**. |
 | `mobile_apps/flutter_app` | `_generateSeedPhrase()` uses `words[index % words.length]` — comment *"simplified first 100 words for demo"*. `wallet_service.dart` `sendTransaction` uses `privateKey = Uint8List(32)` — **all-zero placeholder key** signed to a public RPC (would sign garbage). |

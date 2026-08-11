@@ -3,7 +3,7 @@
 // High-Speed Cryptographic Operations with Real BIP-39/44 Implementation
 // ============================================================================
 
-import { ethers, HDNodeWallet, Mnemonic, SigningKey, Wallet, keccak256, toUtf8Bytes } from 'ethers';
+import { ethers, HDNodeWallet, Mnemonic, SigningKey, Wallet, keccak256, toUtf8Bytes, TypedDataDomain, TypedDataField } from 'ethers';
 import { createCipheriv, createDecipheriv, randomBytes, createHash, createHmac } from 'react-native-quick-crypto';
 import CryptoJS from 'crypto-js';
 
@@ -256,7 +256,8 @@ export class CryptoService {
   validateMnemonic(mnemonic: string): boolean {
     try {
       const words = mnemonic.trim().split(/\s+/);
-      if (words.length !== 12 && words.length !== 24) {
+      // BIP-39 allows 12, 15, 18, 21, or 24 words.
+      if (![12, 15, 18, 21, 24].includes(words.length)) {
         return false;
       }
       // Try to create wallet to validate
@@ -485,11 +486,13 @@ export class CryptoService {
   /**
    * Sign typed data (EIP-712)
    */
-  signTypedData(privateKey: string, domain: Record<string, unknown>, types: Record<string, unknown[]>, message: Record<string, unknown>): string {
+  signTypedData(privateKey: string, domain: TypedDataDomain, types: Record<string, TypedDataField[]>, message: Record<string, unknown>): string {
     const wallet = new Wallet(privateKey);
-    // For EIP-712 signing, we'd use a proper library
-    // This is a simplified version
-    return wallet.signMessage(JSON.stringify({ domain, types, message }));
+    // Real EIP-712 typed-data signing: ethers hashes the typed struct per
+    // EIP-712 (domainSeparator || hashStruct) and signs with secp256k1 +
+    // keccak256. The previous implementation called signMessage over a JSON
+    // string, which is personal_sign (EIP-191), not EIP-712.
+    return wallet.signTypedData(domain, types, message);
   }
 
   /**

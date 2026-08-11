@@ -48,14 +48,15 @@ class _LoginScreenState extends State<LoginScreen> {
       final storedPassword = await _secureStorage.read(key: 'wallet_password');
       
       if (storedPassword == null) {
-        // First time - set password
+        // First time - set password and create a REAL BIP-39 wallet.
+        final mnemonic = await WalletService().generateMnemonic();
         await _secureStorage.write(
           key: 'wallet_password',
           value: _passwordController.text,
         );
         await _secureStorage.write(
           key: 'wallet_seed_phrase',
-          value: _generateSeedPhrase(),
+          value: mnemonic,
         );
         
         if (mounted) {
@@ -76,20 +77,21 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   String _generateSeedPhrase() {
-    // Generate a demo 24-word seed phrase
-    final words = [
-      'abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract',
-      'absurd', 'abuse', 'access', 'accident', 'account', 'accuse', 'achieve', 'acid',
-      'acoustic', 'acquire', 'across', 'act', 'action', 'actor', 'actress', 'actual',
-    ];
-    return words.join(' ');
+    // DEPRECATED: returned the first 24 BIP-39 words (a constant, identical
+    // for every wallet). New wallet creation MUST use
+    // WalletService().generateMnemonic() (real BIP-39 entropy + checksum).
+    throw StateError(
+      'Do not use _generateSeedPhrase(). Use WalletService().generateMnemonic().',
+    );
   }
 
   Future<void> _loginWithBiometric() async {
-    // Implement biometric authentication
-    // For demo, just navigate to home
+    // Biometric authentication requires a platform plugin (e.g. local_auth).
+    // The previous implementation just navigated to home ("for demo") without
+    // any biometric check — an authentication bypass. Until local_auth is
+    // wired, biometric login is disabled (no-op).
     if (mounted) {
-      Navigator.pushReplacementNamed(context, '/home');
+      setState(() => _errorMessage = 'Biometric login is not available.');
     }
   }
 

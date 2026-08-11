@@ -113,10 +113,10 @@ class _CreateWalletScreenState extends State<CreateWalletScreen> {
           icon: Icons.add_circle_outline,
           title: 'Create New Wallet',
           description: 'Generate a new 24-word recovery phrase',
-          onTap: () {
-            _seedPhrase = _generateSeedPhrase();
-            setState(() => _currentStep = 1);
-          },
+                      onTap: () async {
+              _seedPhrase = await WalletService().generateMnemonic();
+              setState(() => _currentStep = 1);
+            },
         ),
         const SizedBox(height: 16),
         _buildMethodCard(
@@ -480,24 +480,14 @@ class _CreateWalletScreenState extends State<CreateWalletScreen> {
   }
 
   String _generateSeedPhrase() {
-    // BIP-39 word list (simplified - first 100 words for demo)
-    const words = [
-      'abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract',
-      'absurd', 'abuse', 'access', 'accident', 'account', 'accuse', 'achieve', 'acid',
-      'acoustic', 'acquire', 'across', 'act', 'action', 'actor', 'actress', 'actual',
-      'adapt', 'add', 'addict', 'address', 'adjust', 'admit', 'adult', 'advance',
-      'advice', 'aerobic', 'affair', 'afford', 'afraid', 'again', 'age', 'agent',
-      'agree', 'ahead', 'aim', 'air', 'airport', 'aisle', 'alarm', 'album',
-      'alcohol', 'alert', 'alien', 'all', 'alley', 'allow', 'almost', 'alone',
-      'alpha', 'already', 'also', 'alter', 'always', 'amateur', 'amazing', 'among',
-      'amount', 'amused', 'anchor', 'ancient', 'anger', 'angle', 'angry', 'animal',
-      'ankle', 'announce', 'annual', 'another', 'answer', 'antenna', 'anticipate',
-      'anxiety', 'any', 'apart', 'apology', 'appear', 'apple', 'approve', 'april',
-      'arch', 'arctic', 'area', 'arena', 'argue', 'arm', 'armed', 'armor',
-    ];
-    
-    final random = List.generate(24, (index) => words[index % words.length]);
-    return random.join(' ');
+    // DEPRECATED: the previous implementation returned the first 24 BIP-39
+    // words - a constant identical for every wallet. New wallet creation MUST
+    // use WalletService().generateMnemonic() (real BIP-39 entropy + checksum
+    // seeded from Random.secure()).
+    throw StateError(
+      'Do not use _generateSeedPhrase(). Use WalletService().generateMnemonic() '
+      'which generates a real BIP-39 mnemonic.',
+    );
   }
 
   @override
