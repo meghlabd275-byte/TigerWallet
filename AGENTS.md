@@ -745,3 +745,52 @@ Notes:
   `/api/v1/ramp`). `bridge`/`red_packets_service`/`nft` (the dir, not
   nft_service) have NO main.go — they're libraries.
 
+## Session 2026-08-11: UserWallet fake-crypto removal + theme + service builds
+
+### Fake crypto / Math.random elimination (COMPLETE)
+- **0 actual `Math.random()` calls remain** across all client code. All
+  remaining `Math.random` mentions are comments. Key fixes: user_app/react
+  LoginPage (fake 24-word mnemonic -> backend POST /wallets real BIP-39);
+  walletApi.createWallet sends {label,password,chain_id,entropy_bits};
+  CrossChainIntentRouter fabricated tx hash -> backend /swap/execute;
+  user_wallet/production/react LoginPage dead generateMnemonic removed;
+  mobile/tigerswap-wallet fabricated address -> backend /wallets;
+  mobile_apps/tigerwallet device id -> crypto.getRandomValues + storage;
+  DAppBrowser fake tx hashes/sigs -> honest throws; master_wallet extensions
+  biometric throw + CSPRNG shuffle/random; blockchain_explorer mock blocks
+  -> real JSON-RPC eth_getBlockByNumber; trading_terminal fabricated price
+  -> backend; bitcoin_ordinals simulated inscription -> backend /ordinals/inscribe.
+- Deleted unreferenced stub frontend/extensions/chrome.
+
+### Next.js wallet lib/transactions.ts (EVM fully wired)
+- EVM path (createTransaction, estimateGas, getTransactionReceipt,
+  swap.findBestRoute/executeSwap, masterWallet.autoSign) all delegate to
+  wallet_api via same-origin proxy routes. Solana/Bitcoin are honest
+  fail-closed throws (not stubs).
+- Created dynamic route app/api/v1/transactions/[txHash]/route.ts (import
+  path `../../_proxy`; proxyGet auto-appends search params).
+
+### Light/dark theme (web_nextjs: 0 dark: variants)
+- All 5 remaining pages (passkey, biometric-auth, gas-tracker, app/page,
+  login/page) converted to useTheme() + isDark ternaries. grep -rln "dark:"
+  app/ -> 0 files. Mobile: Android ThemeManager.kt, iOS ThemeManager.swift,
+  Flutter theme_provider.dart all exist.
+
+### docker-compose Go service build-fix (3 services)
+- permission_service, connection_api, monitoring_dashboard build + vet clean.
+  go.mod/go.sum at SERVICE ROOT. docker-compose contexts retargeted to service
+  roots with dockerfile: go/Dockerfile; Dockerfiles build ./go/cmd.
+- permission_service: SHA-256 password hashing -> bcrypt; redis import ->
+  redislib. connection_api: fixed unused jwt + missing SessionInfo fields.
+  go mod tidy -e (transitive test dep needs Go>=1.25; not runtime). fetcher_gateway/rust
+  still fails locally (openssl-sys/pkg-config missing; Docker build works).
+
+### rust/userwallet_fetchers (FIXED, builds clean)
+- cargo check --lib exit 0. Has Cargo.toml. Delegates ALL fetchers to wallet_api
+  (:8443) via pooled async reqwest::Client. No stubs; fail-closed (Err).
+
+### user_wallet/* client wiring (all verified -> :8443)
+- web, desktop, ios, android, production/react all target :8443 with correct
+  routes. Route mismatches fixed. mobile_apps/flutter_app + mobile/flutter
+  have pubspec.yaml. user_wallet/android compiles.
+
