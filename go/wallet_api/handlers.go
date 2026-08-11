@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -578,6 +579,32 @@ func handleGetDApp(c *gin.Context) {
 
 func handleDAppCategories(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"categories": dAppCategories()})
+}
+
+// ---- Token asset registry (public read) ----
+
+func handleTokenRegistry(c *gin.Context) {
+	chainIDStr := c.Query("chain_id")
+	if chainIDStr == "" {
+		// Return the full registry grouped by chain.
+		out := make(map[string]interface{}, len(defaultTokenRegistry))
+		for cid, toks := range defaultTokenRegistry {
+			out[fmt.Sprintf("%d", cid)] = toks
+		}
+		c.JSON(http.StatusOK, gin.H{"tokens": out, "count": len(defaultTokenRegistry)})
+		return
+	}
+	chainID, err := strconv.ParseInt(chainIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chain_id"})
+		return
+	}
+	toks := tokensForChain(chainID)
+	if toks == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no tokens for chain_id"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"chain_id": chainID, "tokens": toks, "count": len(toks)})
 }
 
 // handleExportKeystore exports a wallet's private key as a standard Web3 Secret

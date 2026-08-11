@@ -75,6 +75,9 @@ func main() {
 	r.GET("/api/v1/dapps/categories", handleDAppCategories)
 	r.GET("/api/v1/dapps/:id", handleGetDApp)
 
+	// ---- Token asset registry (read-only public) ----
+	r.GET("/api/v1/tokens/registry", handleTokenRegistry)
+
 	// ---- Auth routes ----
 	auth := r.Group("/api/v1/auth")
 	{
