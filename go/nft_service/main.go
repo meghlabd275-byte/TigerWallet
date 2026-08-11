@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -14,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -59,13 +61,15 @@ func parseJWT(tokenStr string) (string, error) {
 // ============================================================================
 
 type Config struct {
-	Port      int    `json:"port"`
-	RedisAddr string `json:"redis_addr"`
+	Port      string
+	RedisAddr string
+	RPCURL    string // Ethereum JSON-RPC endpoint for real on-chain NFT reads
 }
 
 var cfg = Config{
-	Port:      8004,
-	RedisAddr: "localhost:6379",
+	Port:      getEnv("NFT_PORT", "8004"),
+	RedisAddr: getEnv("REDIS_ADDR", "localhost:6379"),
+	RPCURL:    getEnv("ETH_RPC_URL", ""),
 }
 
 // ============================================================================
@@ -200,6 +204,7 @@ type NFTService struct {
 	offers       map[string]*NFTOffer
 	transactions map[string]*NFTTransaction
 	auctions     map[string]*NFTAuction
+	fetcher      *Fetcher // real on-chain NFT reader (nil if ETH_RPC_URL unset)
 }
 
 func NewNFTService() *NFTService {
@@ -207,8 +212,16 @@ func NewNFTService() *NFTService {
 		Addr: cfg.RedisAddr,
 	})
 
+	fetcher, _ := NewFetcher(cfg.RPCURL, cfg.RedisAddr)
+	if fetcher != nil {
+		log.Println("On-chain NFT fetcher enabled (RPC: " + cfg.RPCURL + ")")
+	} else {
+		log.Println("WARNING: ETH_RPC_URL not set — on-chain NFT reads unavailable (no mock data served)")
+	}
+
 	ns := &NFTService{
 		redis:        rdb,
+		fetcher:      fetcher,
 		collections:  make(map[string]*NFTCollection),
 		nfts:         make(map[string]*NFT),
 		listings:     make(map[string]*NFTListing),
@@ -217,84 +230,22 @@ func NewNFTService() *NFTService {
 		auctions:     make(map[string]*NFTAuction),
 	}
 
-	ns.initializeDefaultData()
-
+	// No seeded/mock data. The service starts empty; collections and NFTs are
+	// created by users via the API or fetched live from chain by the fetcher.
 	return ns
 }
 
-func (ns *NFTService) initializeDefaultData() {
-	// Initialize collections
-	collections := []NFTCollection{
-		{
-			ID: "bored-ape", Name: "Bored Ape Yacht Club", Symbol: "BAYC", Chain: "ethereum",
-			ContractAddress: "0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D",
-			Owner:           "0x000", Creator: "0x000", Description: "The Bored Ape Yacht Club is a collection of 10,000 unique Bored Ape NFTs.",
-			ImageURL: "https://ipfs.io/ipfs/QmRRPWG96cmgTn2qSzjwr2qvfNEuhunv6FNeMFGa9bx6mQ",
-			Category: "PFP", Standard: "erc721", TotalSupply: "10000", FloorPrice: "15.5",
-			Volume24h: "2500", Sales24h: 50, Owners: 6500, Verified: true, Featured: true,
-			RoyaltyFee: "2.5", Status: "active",
-		},
-		{
-			ID: "crypto-punk", Name: "CryptoPunks", Symbol: "PUNK", Chain: "ethereum",
-			ContractAddress: "0xb47e3cd837dDF8e4c57F05d70Ab865de6e193BBB",
-			Owner:           "0x000", Creator: "0x000", Description: "CryptoPunks launched as a fixed set of 10,000 unique collectible characters with proof of ownership stored on the Ethereum blockchain.",
-			ImageURL: "https://cryptopunks.app/cryptopunks/cryptopunk001.png",
-			Category: "PFP", Standard: "erc721", TotalSupply: "10000", FloorPrice: "45.0",
-			Volume24h: "5000", Sales24h: 25, Owners: 4000, Verified: true, Featured: true,
-			RoyaltyFee: "0", Status: "active",
-		},
-		{
-			ID: "azuki", Name: "Azuki", Symbol: "AZUKI", Chain: "ethereum",
-			ContractAddress: "0xED5AF388653567Af2F388E6224dC7C4b3241C544",
-			Owner:           "0x000", Creator: "0x000", Description: "Azuki starts with a collection of 10,000 avatars that give you membership access to The Garden.",
-			ImageURL: "https://ipfs.io/ipfs/QmYDnL5T3q7k1K7J3KZJ5J5J5J5J5J5J5J5J5J5J5J",
-			Category: "PFP", Standard: "erc721", TotalSupply: "10000", FloorPrice: "8.5",
-			Volume24h: "1200", Sales24h: 35, Owners: 5500, Verified: true, Featured: true,
-			RoyaltyFee: "5", Status: "active",
-		},
-		{
-			ID: "deGods", Name: "DeGods", Symbol: "DGOD", Chain: "solana",
-			ContractAddress: "degods1...", Owner: "0x000", Creator: "0x000", Description: "DeGods is a digital art collection of 10,000 utility-enabled NFTs.",
-			ImageURL: "https://arweave.io/de gods.png", Category: "PFP", Standard: "spl",
-			TotalSupply: "10000", FloorPrice: "250", Volume24h: "15000", Sales24h: 100,
-			Owners: 7000, Verified: true, Featured: true, RoyaltyFee: "5", Status: "active",
-		},
+// fetchUserNFTsOnChain returns NFTs owned by an address at a contract by
+// performing real on-chain reads. Returns errFetcherUnavailable when no RPC is
+// configured (callers should surface "unavailable" rather than fabricate data).
+func (ns *NFTService) fetchUserNFTsOnChain(ctx context.Context, contract, owner string) ([]*NFT, error) {
+	if ns.fetcher == nil || !ns.fetcher.Available() {
+		return nil, errFetcherUnavailable
 	}
-
-	for _, col := range collections {
-		col.CreatedAt = time.Now()
-		col.UpdatedAt = time.Now()
-		ns.collections[col.ID] = &col
+	if !common.IsHexAddress(contract) || !common.IsHexAddress(owner) {
+		return nil, errors.New("invalid address")
 	}
-
-	// Initialize sample NFTs
-	for _, col := range collections {
-		for i := 1; i <= 5; i++ {
-			nftID := fmt.Sprintf("%s-%d", col.ID, i)
-			nft := &NFT{
-				ID:              nftID,
-				CollectionID:    col.ID,
-				TokenID:         fmt.Sprintf("%d", i),
-				Chain:           col.Chain,
-				ContractAddress: col.ContractAddress,
-				Owner:           "0xOwner" + fmt.Sprintf("%d", i),
-				Creator:         col.Creator,
-				Name:            fmt.Sprintf("%s #%d", col.Name, i),
-				Description:     col.Description,
-				ImageURL:        col.ImageURL,
-				Attributes: []NFTAttribute{
-					{TraitType: "Background", Value: "Blue", Rarity: "Common"},
-					{TraitType: "Eyes", Value: "Laser", Rarity: "Legendary"},
-				},
-				IsForSale:  i%2 == 0,
-				Price:      col.FloorPrice,
-				PriceToken: "ETH",
-				CreatedAt:  time.Now(),
-				UpdatedAt:  time.Now(),
-			}
-			ns.nfts[nftID] = nft
-		}
-	}
+	return ns.fetcher.FetchUserNFTs(ctx, common.HexToAddress(contract), common.HexToAddress(owner))
 }
 
 // ============================================================================
@@ -902,6 +853,35 @@ func (ns *NFTService) CancelListing(c *gin.Context) {
 func (ns *NFTService) GetUserNFTs(c *gin.Context) {
 	userID := c.Param("user_id")
 
+	// Real on-chain path: when a contract address is supplied, perform live
+	// eth_call reads (balanceOf + tokenOfOwnerByIndex + tokenURI + metadata)
+	// instead of returning seeded mock data.
+	if contract := c.Query("contract"); contract != "" {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+		nfts, err := ns.fetchUserNFTsOnChain(ctx, contract, userID)
+		if err != nil {
+			if errors.Is(err, errFetcherUnavailable) {
+				c.JSON(http.StatusServiceUnavailable, gin.H{
+					"success": false,
+					"error":   "on-chain NFT reads unavailable: ETH_RPC_URL not set",
+				})
+				return
+			}
+			c.JSON(http.StatusBadGateway, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"nfts":    nfts,
+			"total":   len(nfts),
+			"source":  "on-chain",
+		})
+		return
+	}
+
+	// Fallback: return marketplace-tracked NFTs owned by the user (real
+	// application state created via Mint/List), not seeded mock data.
 	nfts := make([]*NFT, 0)
 	for _, nft := range ns.nfts {
 		if nft.Owner == userID {
@@ -913,6 +893,7 @@ func (ns *NFTService) GetUserNFTs(c *gin.Context) {
 		"success": true,
 		"nfts":    nfts,
 		"total":   len(nfts),
+		"source":  "marketplace",
 	})
 }
 
@@ -1037,7 +1018,7 @@ func (ns *NFTService) AuthMiddleware() gin.HandlerFunc {
 func main() {
 	log.Println("TigerWallet NFT Service")
 	log.Println("========================")
-	log.Printf("Starting on port %d", cfg.Port)
+	log.Printf("Starting on port %s", cfg.Port)
 
 	ns := NewNFTService()
 
@@ -1103,7 +1084,7 @@ func main() {
 	// Public auction lookup (no auth).
 	r.GET("/api/v1/nft/auctions/:id", ns.GetAuction)
 
-	addr := fmt.Sprintf(":%d", cfg.Port)
+	addr := ":" + cfg.Port
 	log.Printf("Server starting on %s", addr)
 	if err := r.Run(addr); err != nil {
 		log.Fatalf("Server failed: %v", err)
