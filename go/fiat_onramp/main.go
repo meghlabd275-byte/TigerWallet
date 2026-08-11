@@ -16,6 +16,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -203,16 +204,62 @@ func (s *FiatService) initProviders() {
 }
 
 func (s *FiatService) refreshExchangeRates() {
+	s.refreshFromCoinGecko()
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
-		s.rateMu.Lock()
-		s.exchangeRates = map[string]float64{
-			"USD-USDT": 1.0, "USD-USDC": 1.0, "USD-ETH": 0.0004, "USD-BTC": 0.00002,
-			"USD-MATIC": 0.5, "USD-BNB": 0.004, "USD-SOL": 0.01,
-		}
-		s.rateMu.Unlock()
+		s.refreshFromCoinGecko()
 	}
+}
+
+// refreshFromCoinGecko fetches REAL fiat->crypto exchange rates from
+// CoinGecko's simple/price endpoint. On any error it leaves the existing
+// rates in place (or empty if never set) - never fabricates a rate.
+func (s *FiatService) refreshFromCoinGecko() {
+	coinIDs := map[string]string{
+		"BTC": "bitcoin", "ETH": "ethereum", "USDT": "tether",
+		"USDC": "usd-coin", "MATIC": "matic-network", "BNB": "binancecoin",
+		"SOL": "solana", "AVAX": "avalanche-2", "DOT": "polkadot", "ADA": "cardano",
+	}
+	vsCurrencies := strings.Join(s.config.SupportedFiat, ",")
+	ids := make([]string, 0, len(coinIDs))
+	for _, id := range coinIDs {
+		ids = append(ids, id)
+	}
+	url := "https://api.coingecko.com/api/v3/simple/price?ids=" + strings.Join(ids, ",") +
+		"&vs_currencies=" + vsCurrencies
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return
+	}
+	var data map[string]map[string]float64
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return
+	}
+
+	rates := make(map[string]float64)
+	for symbol, id := range coinIDs {
+		prices, ok := data[id]
+		if !ok {
+			continue
+		}
+		for _, fiat := range s.config.SupportedFiat {
+			if price, ok := prices[strings.ToLower(fiat)]; ok && price > 0 {
+				rates[fiat+"-"+symbol] = 1.0 / price
+			}
+		}
+	}
+
+	s.rateMu.Lock()
+	if len(rates) > 0 {
+		s.exchangeRates = rates
+	}
+	s.rateMu.Unlock()
 }
 
 // ============================================================================
@@ -622,32 +669,114 @@ type MoonPayClient struct{ config ProviderConfig }
 func NewMoonPayClient(cfg ProviderConfig) *MoonPayClient { return &MoonPayClient{config: cfg} }
 
 func (c *MoonPayClient) GetQuote(ctx context.Context, req *QuoteRequest) (*QuoteResponse, error) {
-	rate := 1.0 / 2500.0
+	if c.config.APIKey == "" {
+		return nil, fmt.Errorf("MoonPay API key not configured; cannot fetch a real quote")
+	}
+	// Real MoonPay API: GET /v3/currencies/{currency}/quote?baseCurrencyAmount=...
+	base := c.config.BaseURL
+	if base == "" {
+		base = "https://api.moonpay.com"
+	}
+	url := fmt.Sprintf("%s/v3/currencies/%s/quote?baseCurrencyCode=%s&baseCurrencyAmount=%.2f&areFeesIncluded=true",
+		base, strings.ToLower(req.CryptoCurrency), strings.ToLower(req.FiatCurrency), req.FiatAmount)
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Authorization", "Api-Key "+c.config.APIKey)
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("MoonPay API returned status %d", resp.StatusCode)
+	}
+	var apiResp struct {
+		BaseCurrencyAmount float64 `json:"baseCurrencyAmount"`
+		QuoteCurrencyAmount float64 `json:"quoteCurrencyAmount"`
+		FeeAmount           float64 `json:"feeAmount"`
+		TotalAmount         float64 `json:"totalAmount"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return nil, err
+	}
+	rate := 0.0
+	if apiResp.BaseCurrencyAmount > 0 {
+		rate = apiResp.QuoteCurrencyAmount / apiResp.BaseCurrencyAmount
+	}
 	return &QuoteResponse{
-		CryptoAmount:   req.FiatAmount * rate * 0.975,
+		CryptoAmount:   apiResp.QuoteCurrencyAmount,
 		ExchangeRate:   rate,
 		FiatEquivalent: req.FiatAmount,
-		FeeAmount:      req.FiatAmount * 0.025,
-		ProviderFee:    req.FiatAmount * 0.025,
+		FeeAmount:      apiResp.FeeAmount,
+		ProviderFee:    apiResp.FeeAmount,
 		ValidUntil:     time.Now().Add(5 * time.Minute).Unix(),
 	}, nil
 }
 
 func (c *MoonPayClient) CreateOrder(ctx context.Context, req *CreateOrderRequest) (*CreateOrderResponse, error) {
+	if c.config.APIKey == "" {
+		return nil, fmt.Errorf("MoonPay API key not configured; cannot create a real order")
+	}
+	// Real MoonPay hosted widget URL. The client opens this; MoonPay handles
+	// payment + redirects. We do NOT fabricate an order id / payment URL.
+	base := c.config.BaseURL
+	if base == "" {
+		base = "https://buy.moonpay.com"
+	}
+	params := url.Values{}
+	params.Set("apiKey", c.config.APIKey)
+	params.Set("baseCurrencyCode", strings.ToLower(req.FiatCurrency))
+	params.Set("baseCurrencyAmount", fmt.Sprintf("%.2f", req.FiatAmount))
+	params.Set("currencyCode", strings.ToLower(req.CryptoCurrency))
+	params.Set("walletAddress", req.WalletAddress)
 	return &CreateOrderResponse{
-		OrderID:         uuid.New().String(),
-		PaymentURL:      "https://buy.moonpay.com/" + uuid.New().String(),
-		ProviderOrderID: uuid.New().String(),
-		ExpiresAt:       time.Now().Add(30 * time.Minute).Unix(),
+		OrderID:    uuid.New().String(),
+		PaymentURL: base + "?" + params.Encode(),
+		ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 	}, nil
 }
 
 func (c *MoonPayClient) GetOrderStatus(ctx context.Context, providerOrderID string) (*Order, error) {
-	return &Order{Status: "pending"}, nil
+	if c.config.APIKey == "" {
+		return nil, fmt.Errorf("MoonPay API key not configured")
+	}
+	base := c.config.BaseURL
+	if base == "" {
+		base = "https://api.moonpay.com"
+	}
+	url := base + "/v1/transactions/" + providerOrderID
+	httpReq, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+	httpReq.Header.Set("Authorization", "Api-Key "+c.config.APIKey)
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("MoonPay API returned status %d", resp.StatusCode)
+	}
+	var tx struct {
+		Status string `json:"status"`
+		ID     string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tx); err != nil {
+		return nil, err
+	}
+	return &Order{ProviderOrderID: tx.ID, Status: tx.Status}, nil
 }
 
 func (c *MoonPayClient) HandleWebhook(ctx context.Context, payload []byte) (*Order, error) {
-	return &Order{Status: "completed"}, nil
+	// MoonPay webhooks are signed with a secret in the X-Webhook-Signature
+	// header. Without the secret we CANNOT verify the payload - returning
+	// "completed" would be a payment-confirmation vulnerability.
+	if c.config.WebhookSecret == "" {
+		return nil, fmt.Errorf("MoonPay webhook secret not configured; payload cannot be verified")
+	}
+	// Caller must extract the signature header and pass it; this stub rejects
+	// all webhooks until real signature verification is wired (fail-closed).
+	return nil, fmt.Errorf("webhook signature verification not implemented; rejecting unverified payload")
 }
 
 type TransakClient struct{ config ProviderConfig }
@@ -655,32 +784,102 @@ type TransakClient struct{ config ProviderConfig }
 func NewTransakClient(cfg ProviderConfig) *TransakClient { return &TransakClient{config: cfg} }
 
 func (c *TransakClient) GetQuote(ctx context.Context, req *QuoteRequest) (*QuoteResponse, error) {
-	rate := 1.0 / 2500.0
+	if c.config.APIKey == "" {
+		return nil, fmt.Errorf("Transak API key not configured; cannot fetch a real quote")
+	}
+	base := c.config.BaseURL
+	if base == "" {
+		base = "https://api.transak.com"
+	}
+	u := base + "/api/v1/currencies/price?baseCurrency=" + strings.ToLower(req.FiatCurrency) +
+		"&baseAmount=" + fmt.Sprintf("%.2f", req.FiatAmount) +
+		"&cryptoCurrency=" + strings.ToLower(req.CryptoCurrency)
+	resp, err := http.Get(u)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("Transak API returned status %d", resp.StatusCode)
+	}
+	var apiResp struct {
+		Response struct {
+			TotalAmount float64 `json:"totalAmount"`
+			CryptoAmount float64 `json:"cryptoAmount"`
+			Fee         float64 `json:"fee"`
+		} `json:"response"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return nil, err
+	}
+	rate := 0.0
+	if req.FiatAmount > 0 {
+		rate = apiResp.Response.CryptoAmount / req.FiatAmount
+	}
 	return &QuoteResponse{
-		CryptoAmount:   req.FiatAmount * rate * 0.98,
+		CryptoAmount:   apiResp.Response.CryptoAmount,
 		ExchangeRate:   rate,
 		FiatEquivalent: req.FiatAmount,
-		FeeAmount:      req.FiatAmount * 0.02,
-		ProviderFee:    req.FiatAmount * 0.02,
+		FeeAmount:      apiResp.Response.Fee,
+		ProviderFee:    apiResp.Response.Fee,
 		ValidUntil:     time.Now().Add(5 * time.Minute).Unix(),
 	}, nil
 }
 
 func (c *TransakClient) CreateOrder(ctx context.Context, req *CreateOrderRequest) (*CreateOrderResponse, error) {
+	if c.config.APIKey == "" {
+		return nil, fmt.Errorf("Transak API key not configured; cannot create a real order")
+	}
+	base := c.config.BaseURL
+	if base == "" {
+		base = "https://global.transak.com"
+	}
+	params := url.Values{}
+	params.Set("apiKey", c.config.APIKey)
+	params.Set("defaultFiatCurrency", strings.ToLower(req.FiatCurrency))
+	params.Set("fiatAmount", fmt.Sprintf("%.2f", req.FiatAmount))
+	params.Set("cryptoCurrencyCode", strings.ToLower(req.CryptoCurrency))
+	params.Set("walletAddress", req.WalletAddress)
 	return &CreateOrderResponse{
-		OrderID:         uuid.New().String(),
-		PaymentURL:      "https://global.transak.com/" + uuid.New().String(),
-		ProviderOrderID: uuid.New().String(),
-		ExpiresAt:       time.Now().Add(30 * time.Minute).Unix(),
+		OrderID:    uuid.New().String(),
+		PaymentURL: base + "?" + params.Encode(),
+		ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 	}, nil
 }
 
 func (c *TransakClient) GetOrderStatus(ctx context.Context, providerOrderID string) (*Order, error) {
-	return &Order{Status: "pending"}, nil
+	if c.config.APIKey == "" {
+		return nil, fmt.Errorf("Transak API key not configured")
+	}
+	base := c.config.BaseURL
+	if base == "" {
+		base = "https://api.transak.com"
+	}
+	resp, err := http.Get(base + "/api/v1/partner/order/" + providerOrderID)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("Transak API returned status %d", resp.StatusCode)
+	}
+	var o struct {
+		Response struct {
+			Status string `json:"status"`
+			ID     string `json:"id"`
+		} `json:"response"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&o); err != nil {
+		return nil, err
+	}
+	return &Order{ProviderOrderID: o.Response.ID, Status: o.Response.Status}, nil
 }
 
 func (c *TransakClient) HandleWebhook(ctx context.Context, payload []byte) (*Order, error) {
-	return &Order{Status: "completed"}, nil
+	if c.config.WebhookSecret == "" {
+		return nil, fmt.Errorf("Transak webhook secret not configured; payload cannot be verified")
+	}
+	return nil, fmt.Errorf("webhook signature verification not implemented; rejecting unverified payload")
 }
 
 type StripeClient struct{ config ProviderConfig }
@@ -688,32 +887,89 @@ type StripeClient struct{ config ProviderConfig }
 func NewStripeClient(cfg ProviderConfig) *StripeClient { return &StripeClient{config: cfg} }
 
 func (c *StripeClient) GetQuote(ctx context.Context, req *QuoteRequest) (*QuoteResponse, error) {
-	rate := 1.0 / 2500.0
-	return &QuoteResponse{
-		CryptoAmount:   req.FiatAmount * rate * 0.985,
-		ExchangeRate:   rate,
-		FiatEquivalent: req.FiatAmount,
-		FeeAmount:      req.FiatAmount * 0.015,
-		ProviderFee:    req.FiatAmount * 0.015,
-		ValidUntil:     time.Now().Add(10 * time.Minute).Unix(),
-	}, nil
+	if c.config.APIKey == "" {
+		return nil, fmt.Errorf("Stripe API key not configured; cannot fetch a real quote")
+	}
+	// Stripe does not have a fiat->crypto quote endpoint directly; the
+	// on-ramp partner (Stripe Crypto Onramp) requires the secret key to
+	// create a session. Honest: reject until configured.
+	return nil, fmt.Errorf("Stripe on-ramp requires a configured session; use CreateOrder")
 }
 
 func (c *StripeClient) CreateOrder(ctx context.Context, req *CreateOrderRequest) (*CreateOrderResponse, error) {
+	if c.config.APIKey == "" {
+		return nil, fmt.Errorf("Stripe API key not configured; cannot create a real order")
+	}
+	// Real Stripe Crypto Onramp Session API: POST /v1/crypto_onramp_sessions
+	base := c.config.BaseURL
+	if base == "" {
+		base = "https://api.stripe.com"
+	}
+	body := url.Values{}
+	body.Set("source_currency", strings.ToLower(req.FiatCurrency))
+	body.Set("source_amount", fmt.Sprintf("%.0f", req.FiatAmount))
+	body.Set("destination_currency", strings.ToLower(req.CryptoCurrency))
+	body.Set("destination_network", req.Chain)
+	body.Set("wallet_address", req.WalletAddress)
+	httpReq, _ := http.NewRequestWithContext(ctx, "POST", base+"/v1/crypto_onramp_sessions", strings.NewReader(body.Encode()))
+	httpReq.SetBasicAuth(c.config.APIKey, "")
+	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("Stripe API returned status %d", resp.StatusCode)
+	}
+	var sess struct {
+		ID           string `json:"id"`
+		RedirectURL  string `json:"redirect_url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&sess); err != nil {
+		return nil, err
+	}
 	return &CreateOrderResponse{
-		OrderID:         uuid.New().String(),
-		PaymentURL:      "https://checkout.stripe.com/" + uuid.New().String(),
-		ProviderOrderID: uuid.New().String(),
+		OrderID:         sess.ID,
+		PaymentURL:      sess.RedirectURL,
+		ProviderOrderID: sess.ID,
 		ExpiresAt:       time.Now().Add(30 * time.Minute).Unix(),
 	}, nil
 }
 
 func (c *StripeClient) GetOrderStatus(ctx context.Context, providerOrderID string) (*Order, error) {
-	return &Order{Status: "pending"}, nil
+	if c.config.APIKey == "" {
+		return nil, fmt.Errorf("Stripe API key not configured")
+	}
+	base := c.config.BaseURL
+	if base == "" {
+		base = "https://api.stripe.com"
+	}
+	httpReq, _ := http.NewRequestWithContext(ctx, "GET", base+"/v1/crypto_onramp_sessions/"+providerOrderID, nil)
+	httpReq.SetBasicAuth(c.config.APIKey, "")
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("Stripe API returned status %d", resp.StatusCode)
+	}
+	var sess struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&sess); err != nil {
+		return nil, err
+	}
+	return &Order{ProviderOrderID: sess.ID, Status: sess.Status}, nil
 }
 
 func (c *StripeClient) HandleWebhook(ctx context.Context, payload []byte) (*Order, error) {
-	return &Order{Status: "completed"}, nil
+	if c.config.WebhookSecret == "" {
+		return nil, fmt.Errorf("Stripe webhook secret not configured; payload cannot be verified")
+	}
+	return nil, fmt.Errorf("webhook signature verification not implemented; rejecting unverified payload")
 }
 
 type WyreClient struct{ config ProviderConfig }
@@ -721,32 +977,107 @@ type WyreClient struct{ config ProviderConfig }
 func NewWyreClient(cfg ProviderConfig) *WyreClient { return &WyreClient{config: cfg} }
 
 func (c *WyreClient) GetQuote(ctx context.Context, req *QuoteRequest) (*QuoteResponse, error) {
-	rate := 1.0 / 2500.0
+	if c.config.APIKey == "" {
+		return nil, fmt.Errorf("Wyre API key not configured; cannot fetch a real quote")
+	}
+	base := c.config.BaseURL
+	if base == "" {
+		base = "https://api.sendwyre.com"
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"sourceAmount":    req.FiatAmount,
+		"sourceCurrency":  strings.ToLower(req.FiatCurrency),
+		"destCurrency":    strings.ToLower(req.CryptoCurrency),
+	})
+	httpReq, _ := http.NewRequestWithContext(ctx, "POST", base+"/v3/orders/quote/partner", strings.NewReader(string(body)))
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-Api-Key", c.config.APIKey)
+	httpReq.Header.Set("X-Api-Signature", c.config.APISecret)
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("Wyre API returned status %d", resp.StatusCode)
+	}
+	var q struct {
+		DestAmount float64 `json:"destAmount"`
+		SourceAmount float64 `json:"sourceAmount"`
+		Fee        float64 `json:"fee"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&q); err != nil {
+		return nil, err
+	}
+	rate := 0.0
+	if q.SourceAmount > 0 {
+		rate = q.DestAmount / q.SourceAmount
+	}
 	return &QuoteResponse{
-		CryptoAmount:   req.FiatAmount * rate * 0.982,
+		CryptoAmount:   q.DestAmount,
 		ExchangeRate:   rate,
 		FiatEquivalent: req.FiatAmount,
-		FeeAmount:      req.FiatAmount * 0.018,
-		ProviderFee:    req.FiatAmount * 0.018,
+		FeeAmount:      q.Fee,
+		ProviderFee:    q.Fee,
 		ValidUntil:     time.Now().Add(5 * time.Minute).Unix(),
 	}, nil
 }
 
 func (c *WyreClient) CreateOrder(ctx context.Context, req *CreateOrderRequest) (*CreateOrderResponse, error) {
+	if c.config.APIKey == "" {
+		return nil, fmt.Errorf("Wyre API key not configured; cannot create a real order")
+	}
+	base := c.config.BaseURL
+	if base == "" {
+		base = "https://pay.sendwyre.com"
+	}
+	params := url.Values{}
+	params.Set("dest", req.WalletAddress)
+	params.Set("destCurrency", strings.ToLower(req.CryptoCurrency))
+	params.Set("sourceAmount", fmt.Sprintf("%.2f", req.FiatAmount))
+	params.Set("sourceCurrency", strings.ToLower(req.FiatCurrency))
+	params.Set("accountId", c.config.APIKey)
 	return &CreateOrderResponse{
-		OrderID:         uuid.New().String(),
-		PaymentURL:      "https://pay.sendwyre.com/" + uuid.New().String(),
-		ProviderOrderID: uuid.New().String(),
-		ExpiresAt:       time.Now().Add(30 * time.Minute).Unix(),
+		OrderID:    uuid.New().String(),
+		PaymentURL: base + "/purchase?" + params.Encode(),
+		ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 	}, nil
 }
 
 func (c *WyreClient) GetOrderStatus(ctx context.Context, providerOrderID string) (*Order, error) {
-	return &Order{Status: "pending"}, nil
+	if c.config.APIKey == "" {
+		return nil, fmt.Errorf("Wyre API key not configured")
+	}
+	base := c.config.BaseURL
+	if base == "" {
+		base = "https://api.sendwyre.com"
+	}
+	httpReq, _ := http.NewRequestWithContext(ctx, "GET", base+"/v3/orders/"+providerOrderID, nil)
+	httpReq.Header.Set("X-Api-Key", c.config.APIKey)
+	httpReq.Header.Set("X-Api-Signature", c.config.APISecret)
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("Wyre API returned status %d", resp.StatusCode)
+	}
+	var o struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&o); err != nil {
+		return nil, err
+	}
+	return &Order{ProviderOrderID: o.ID, Status: o.Status}, nil
 }
 
 func (c *WyreClient) HandleWebhook(ctx context.Context, payload []byte) (*Order, error) {
-	return &Order{Status: "completed"}, nil
+	if c.config.WebhookSecret == "" {
+		return nil, fmt.Errorf("Wyre webhook secret not configured; payload cannot be verified")
+	}
+	return nil, fmt.Errorf("webhook signature verification not implemented; rejecting unverified payload")
 }
 
 // ============================================================================
