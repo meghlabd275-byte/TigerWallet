@@ -1,0 +1,31 @@
+name: tigerwallet_mobile
+description: TigerWallet — Flutter cross-platform UserWallet (iOS/Android/desktop/web). Talks to the canonical Go wallet-api backend (go/wallet_api, port 8443) with real on-chain RPC, BIP-39/32/44 HD derivation, secp256k1 signing + broadcast, and AES-256-GCM encrypted-seed persistence (PostgreSQL + Redis). No stubs, no fabricated data.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  # HTTP client for the canonical wallet-api backend (:8443).
+  http: ^1.1.0
+  # AES-256-GCM + SHA-256 for local key/blob handling (crypto never leaves the
+  # backend for signing; the app only ever POSTs to /send, /sign, /swap, etc.).
+  crypto: ^3.0.3
+  # App-data + secure document directories for the local session cache.
+  path_provider: ^2.1.2
+  # State management (ChangeNotifier providers) for wallet/theme/settings.
+  provider: ^6.1.1
+  # Local preferences (theme choice, last chain id, base URL override).
+  shared_preferences: ^2.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

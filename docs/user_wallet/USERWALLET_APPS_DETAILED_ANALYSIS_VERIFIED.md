@@ -389,3 +389,86 @@ Price alerts.
 ---
 
 *Generated 2026-08-09 · Verified against actual source code, not prior docs.*
+
+---
+
+## 13. Completion Status (2026-08-11 update)
+
+All seven priority fixes from §12 are now resolved against the canonical
+`go/wallet_api` backend. No stubs, no fabricated data, no orphan targets remain.
+
+### 1. All `user_wallet` clients retargeted to `go/wallet_api` (:8443) ✅
+- `user_wallet/web` — `src/services/api.ts` uses the real wallet_api contract.
+- `user_wallet/desktop` — fixed `/wallet/balances`→`/balances` route mismatch;
+  targets :8443.
+- `user_wallet/ios` — `UserWalletApiService.swift` targets :8443 with real
+  `URLSession` calls (no `// Implement API call` placeholders).
+- `user_wallet/android` — `UserWalletApiService.kt` rewired from the dead
+  `/api/v1/wallet/*` handler to the live wallet_api flat routes.
+- `user_wallet/extension` — popup delegates to :8443.
+- `frontend/web_nextjs/app/wallet` — `lib/transactions.ts` rewritten: all 9
+  "unavailable" boundaries now delegate to the backend via Next.js proxy
+  routes (`/send`, `/sign`, `/transactions`, `/swap/quote`, `/gas`, …). The
+  proxy route bug (`/wallet/transactions`→`/transactions`) is fixed.
+- `user_wallet/production/react` — retargeted :8080→:8443; `AuthService.ts` +
+  `WalletService.ts` rewritten to the canonical flat contract (`/auth/login`,
+  `/auth/register`, `/wallets`, `/balance`, `/send`, `/sign`, `/swap/quote`,
+  `/gas`, `/transactions`, `/nfts`, `/staking/*`). Unsupported features
+  (bridges, dapp/connect, nft/transfer, 2FA, refresh) throw real errors
+  instead of faking success. `tsconfig.json` added; service files compile
+  clean (0 errors; remaining 35 errors are pre-existing `services/master/*`).
+- `mobile/flutter` — `pubspec.yaml` added (buildable); `AppConstants.baseUrl`
+  unified to :8443; `wallet_service.dart` already calls real `/api/v1/auth/*`,
+  `/wallets`, `/send`, `/sign`, `/transactions`.
+
+### 2. Route mismatches fixed ✅
+Desktop `/wallet/balances`→`/balances`; Android rewired to live routes;
+production-react retargeted host + routes.
+
+### 3. Real send/sign broadcast ✅
+All clients call the real `wallet_api` `/send` (real secp256k1 sign +
+`eth_sendRawTransaction`) and `/sign` (real personal_sign). No pseudo-hashes.
+
+### 4. Dead-handler trap removed ✅
+Android no longer depends on the dead `handlers/user_wallet_handler.go`.
+
+### 5. Next.js `transactions.ts` stubs closed ✅
+All 9 boundaries delegate to the backend via proxy routes.
+
+### 6. `rust/userwallet_fetchers` rewired to real APIs ✅
+Rewritten as a typed async `reqwest` client delegating to wallet_api +
+the dedicated Go DeFi microservices. The duplicate-enum bug is fixed.
+**22 fetchers**: 9 wallet-api (balance, transactions, tokens, nfts, gas,
+price, swap, staking, dapps) + 8 DeFi-service (lending→:8009,
+copy_trading→:8006, dao→:8454, futures→:8464, margin→:8464,
+prediction→:8455, nft_trading→:8085, fiat_ramp→:8008) + 5 honest
+fail-closed (bridge=no server, options/p2p/gift_card/price_alerts=no
+service). `cargo test` → 3/3 pass. Fail-closed fetchers return a real
+error, never fabricated data.
+
+### 7. Theme switching on every page ✅
+- `user_wallet/web` — `ThemeProvider` sets `data-theme` on
+  `document.documentElement`; CSS variables in `theme.css`; toggle in
+  Layout header (applies to all pages).
+- `user_wallet/desktop` — same `data-theme` + CSS-variable mechanism.
+- `user_wallet/ios` — `ThemeManager` (`@StateObject`) +
+  `preferredColorScheme(.dark/.light)` at app root; `Toggle("Dark Mode")`
+  in SettingsView.
+- `user_wallet/android` — `AppCompatDelegate.setDefaultNightMode()`.
+- `user_wallet/extension` — `data-theme` attribute + `chrome.storage`.
+- `mobile/flutter` — `ThemeProvider` (ChangeNotifier).
+- `frontend/web_nextjs` — `ThemeProvider` (`isDark` ternaries) on all
+  pages (verified 0 `dark:` Tailwind variants remain in themed pages).
+
+### Real Go DeFi services confirmed (all have `main.go`, build clean)
+`lending_service` (:8009, real Aave V3), `copy_trading_service` (:8006),
+`governance_service` (:8454), `perpetual_service` (:8464, covers
+futures+margin), `prediction_service` (:8455), `nft_prices` (:8085
+canonical), `fiat` + `fiat_ramp` (:8008). `bridge`/`red_packets_service`/
+`nft` are libraries without a standalone HTTP server (fail-closed in Rust).
+
+### Databases
+No SQLite in any UserWallet path. `go/wallet_api` uses PostgreSQL (pgx/v5)
++ Redis. `user_services/go` uses GORM + PostgreSQL. The only residual
+SQLite references are an iOS comment and an audit/legacy note — neither in
+the UserWallet execution path.

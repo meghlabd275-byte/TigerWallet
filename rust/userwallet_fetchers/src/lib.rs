@@ -57,12 +57,24 @@ impl UserWalletFetcherManager {
         fetchers.insert("staking".into(), Arc::new(StakingFetcher::new(client.clone())));
         fetchers.insert("dapps".into(), Arc::new(DAppRegistryFetcher::new(client.clone())));
 
-        // Fetchers for data the canonical backend does not yet expose.
-        // Registered as fail-closed so the manager surface stays complete
-        // (21 names) without fabricating data.
+        // DeFi service fetchers — each forwards to a REAL running Go
+        // microservice (same service URLs as the Next.js _proxy). See
+        // `UserWalletClient::service_get`.
+        fetchers.insert("lending".into(), Arc::new(LendingFetcher::new(client.clone())) as Arc<dyn Fetcher>);
+        fetchers.insert("copy_trading".into(), Arc::new(CopyTradingFetcher::new(client.clone())));
+        fetchers.insert("dao".into(), Arc::new(DaoFetcher::new(client.clone())));
+        fetchers.insert("futures".into(), Arc::new(FuturesFetcher::new(client.clone())));
+        fetchers.insert("margin".into(), Arc::new(MarginFetcher::new(client.clone())));
+        fetchers.insert("prediction".into(), Arc::new(PredictionFetcher::new(client.clone())));
+        fetchers.insert("nft_trading".into(), Arc::new(NftTradingFetcher::new(client.clone())));
+        fetchers.insert("fiat_ramp".into(), Arc::new(FiatRampFetcher::new(client.clone())));
+
+        // Fetchers for which no standalone HTTP service exists yet. Registered
+        // as fail-closed so the manager surface stays complete (21 names)
+        // without fabricating data. Wire the corresponding Go service before
+        // use.
         for name in [
-            "bridge", "lending", "nft_trading", "options", "futures", "margin",
-            "p2p", "copy_trading", "dao", "gift_card", "fiat_ramp", "price_alerts",
+            "bridge", "options", "p2p", "gift_card", "price_alerts",
         ] {
             fetchers.insert(name.into(), Arc::new(UnavailableFetcher::new(name)) as Arc<dyn Fetcher>);
         }

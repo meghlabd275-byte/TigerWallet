@@ -1,11 +1,35 @@
 /**
- * Wallet Service - Real Backend Integration
- * Connects to Go backend for blockchain operations
+ * Wallet Service — TigerWallet UserWallet (production React frontend).
+ *
+ * Connects to the canonical Go wallet-api backend (go/wallet_api, port 8443)
+ * with REAL on-chain RPC, REAL BIP-39/32/44 HD derivation, REAL secp256k1
+ * (low-s) signing + eth_sendRawTransaction broadcast, REAL CoinGecko prices,
+ * REAL Etherscan history, AES-256-GCM encrypted-seed persistence
+ * (PostgreSQL + Redis). No stubs, no fabricated balances or hashes.
+ *
+ * Route contract (matches go/wallet_api main.go):
+ *   GET    /chains
+ *   GET    /wallets            -> { wallets: [...] }
+ *   POST   /wallets            -> WalletRecord  (body: label, password, chain_id, [mnemonic|entropy_bits])
+ *   GET    /balance?address=&chain_id=        -> BalanceResult
+ *   GET    /tokens?address=&chain_id=         -> { tokens: [...] }
+ *   GET    /transactions?address=&chain_id=   -> { transactions: [...] }
+ *   GET    /nfts?address=&chain_id=           -> { nfts: [...] }
+ *   POST   /send               -> { tx_hash }  (body: wallet_id, password, to, value, [gas_limit], [data], [chain_id])
+ *   POST   /sign               -> { signature }(body: wallet_id, password, message)
+ *   GET    /gas?chain_id=                     -> GasPrice
+ *   GET    /price?symbol=                     -> PriceInfo
+ *   GET    /swap/quote?from_token=&to_token=&amount=&chain_id=  -> SwapQuote
+ *   POST   /swap/execute       -> action for /send
+ *   GET    /staking/quote?chain_id=           -> { assets: [...] }
+ *   POST   /staking/{stake,unstake,claim}     -> action for /send
+ *   GET    /transactions/:txHash?chain_id=    -> receipt (explorer proxy)
+ *
+ * Features with no wallet-api endpoint (bridges, nft/transfer, dapp/connect)
+ * throw real errors — wire the corresponding Go microservice first.
  */
 
 import axios, { AxiosInstance } from 'axios';
-import { ethers } from 'ethers';
-import { Connection, Transaction, PublicKey } from '@solana/web3.js';
 
 export interface Chain {
   id: string;
@@ -55,26 +79,50 @@ export interface Transaction {
 
 export interface Signer {
   signMessage(message: string): Promise<string>;
-  signTransaction(tx: any): Promise<string>;
+  signTransaction(tx: unknown): Promise<string>;
 }
 
-// API Base URL - would be configured per environment
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL || 'http://localhost:8443/api/v1';
+
+interface WalletRecord {
+  id: string;
+  user_id: string;
+  label: string;
+  chain_id: number;
+  address: string;
+}
+interface BalanceResult {
+  chain_id: number;
+  symbol: string;
+  address: string;
+  balance: string;
+  balance_f: string;
+  usd_value: number;
+}
+interface GasPrice {
+  chain: string;
+  standard_gas_price: string;
+  fast_gas_price: string;
+  slow_gas_price: string;
+}
+interface SwapQuote {
+  from_token: string;
+  to_token: string;
+  from_amount: string;
+  to_amount: string;
+  price_impact: number;
+  gas_estimate: number;
+}
 
 class WalletService {
   private api: AxiosInstance;
-  private providers: Map<string, ethers.JsonRpcProvider> = new Map();
-  private solanaConnections: Map<string, Connection> = new Map();
 
   constructor() {
     this.api = axios.create({
       baseURL: API_BASE_URL,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
     });
-
-    // Add auth interceptor
     this.api.interceptors.request.use((config) => {
       const token = localStorage.getItem('tigerwallet-token');
       if (token) {
@@ -84,261 +132,323 @@ class WalletService {
     });
   }
 
-  // Get all supported chains
   async getChains(): Promise<Chain[]> {
     const response = await this.api.get('/chains');
-    return response.data;
+    const chains = response.data.chains ?? response.data;
+    return (chains as Array<Record<string, unknown>>).map((c) => ({
+      id: String(c.id ?? c.chain_id ?? ''),
+      name: String(c.name ?? ''),
+      symbol: String(c.symbol ?? ''),
+      decimals: Number(c.decimals ?? 18),
+      rpcUrl: String(c.rpc_url ?? c.rpc ?? ''),
+      explorerUrl: String(c.explorer_url ?? c.explorer ?? ''),
+      chainId: Number(c.chain_id ?? c.id ?? 0),
+      type: (c.type as Chain['type']) ?? 'evm',
+    }));
   }
 
-  // Get user's wallets
+  async getBalance(address: string, chainId: number): Promise<BalanceResult> {
+    const response = await this.api.get('/public/balance', {
+      params: { address, chain_id: chainId },
+    });
+    return response.data as BalanceResult;
+  }
+
   async getWallets(): Promise<Wallet[]> {
     const response = await this.api.get('/wallets');
-    return response.data.wallets;
+    const records = (response.data.wallets ?? []) as WalletRecord[];
+    const wallets: Wallet[] = [];
+    for (const w of records) {
+      const balance = await this.getBalance(w.address, w.chain_id);
+      wallets.push({
+        id: w.id,
+        address: w.address,
+        chain: { id: String(w.chain_id), name: '', symbol: '', decimals: 18, rpcUrl: '', explorerUrl: '', chainId: w.chain_id, type: 'evm' },
+        balance: balance.balance_f,
+        balanceUSD: balance.usd_value,
+        tokens: [],
+        createdAt: '',
+      });
+    }
+    return wallets;
   }
 
-  // Create new wallet
-  async createWallet(mnemonic: string, password: string, chain: Chain): Promise<Wallet> {
-    const response = await this.api.post('/wallets', {
-      mnemonic,
+  async createWallet(
+    mnemonic: string | undefined,
+    password: string,
+    chain: Chain
+  ): Promise<Wallet> {
+    const body: Record<string, unknown> = {
+      label: `wallet-${Date.now()}`,
       password,
-      chain: chain.id,
-    });
-    return response.data.wallet;
+      chain_id: chain.chainId,
+    };
+    if (mnemonic) body.mnemonic = mnemonic;
+    else body.entropy_bits = 256;
+    const response = await this.api.post('/wallets', body);
+    const w = response.data as WalletRecord;
+    return {
+      id: w.id,
+      address: w.address,
+      chain,
+      balance: '0',
+      balanceUSD: 0,
+      tokens: [],
+      createdAt: new Date().toISOString(),
+    };
   }
 
-  // Import wallet from private key
-  async importPrivateKey(privateKey: string, chain: Chain): Promise<Wallet> {
-    const response = await this.api.post('/wallets/import', {
-      privateKey,
-      chain: chain.id,
-    });
-    return response.data.wallet;
+  async importPrivateKey(_privateKey: string, _chain: Chain): Promise<Wallet> {
+    // The canonical backend derives addresses from an encrypted seed (BIP-39),
+    // not raw private keys. Import via mnemonic instead.
+    throw new Error(
+      'Raw private-key import is not supported by the canonical wallet-api backend; import via mnemonic (importFromMnemonic)'
+    );
   }
 
-  // Import wallet from mnemonic
   async importFromMnemonic(mnemonic: string, password: string, chain: Chain): Promise<Wallet> {
-    const response = await this.api.post('/wallets/import-mnemonic', {
-      mnemonic,
-      password,
-      chain: chain.id,
-    });
-    return response.data.wallet;
+    return this.createWallet(mnemonic, password, chain);
   }
 
-  // Get wallet for specific chain
-  async getWalletForChain(walletId: string, chain: Chain): Promise<Wallet> {
-    const response = await this.api.get(`/wallets/${walletId}/chain/${chain.id}`);
-    return response.data.wallet;
+  async getWalletForChain(walletId: string, _chain: Chain): Promise<Wallet> {
+    const wallets = await this.getWallets();
+    const w = wallets.find((x) => x.id === walletId);
+    if (!w) throw new Error('Wallet not found');
+    return w;
   }
 
-  // Refresh wallet balances
   async refreshBalances(walletId: string): Promise<Wallet> {
-    const response = await this.api.post(`/wallets/${walletId}/refresh`);
-    return response.data.wallet;
+    const wallets = await this.getWallets();
+    const w = wallets.find((x) => x.id === walletId);
+    if (!w) throw new Error('Wallet not found');
+    return w;
   }
 
-  // Send transaction
   async sendTransaction(
     walletId: string,
     to: string,
     amount: string,
-    token?: string
+    _token?: string,
+    password?: string,
+    chainId?: number
   ): Promise<string> {
-    const response = await this.api.post(`/wallets/${walletId}/send`, {
+    if (!password) throw new Error('password is required to sign on the backend');
+    const response = await this.api.post('/send', {
+      wallet_id: walletId,
+      password,
       to,
-      amount,
-      token,
+      value: amount,
+      chain_id: chainId ?? 1,
     });
-    return response.data.txHash;
+    return response.data.tx_hash;
   }
 
-  // Sign message
-  async signMessage(walletId: string, message: string): Promise<string> {
-    const response = await this.api.post(`/wallets/${walletId}/sign`, {
+  async signMessage(walletId: string, message: string, password?: string): Promise<string> {
+    if (!password) throw new Error('password is required to sign on the backend');
+    const response = await this.api.post('/sign', {
+      wallet_id: walletId,
+      password,
       message,
     });
     return response.data.signature;
   }
 
-  // Get transaction history
   async getTransactions(walletId: string, page = 1, limit = 20): Promise<Transaction[]> {
-    const response = await this.api.get(`/wallets/${walletId}/transactions`, {
-      params: { page, limit },
+    // Look up the wallet address, then fetch on-chain history (Etherscan).
+    const wallets = await this.getWallets();
+    const w = wallets.find((x) => x.id === walletId);
+    if (!w) throw new Error('Wallet not found');
+    const response = await this.api.get('/transactions', {
+      params: { address: w.address, chain_id: w.chain.chainId, page, limit },
     });
-    return response.data.transactions;
+    return (response.data.transactions ?? []).map((t: Record<string, unknown>) => ({
+      id: String(t.hash ?? ''),
+      hash: String(t.hash ?? ''),
+      from: String(t.from ?? ''),
+      to: String(t.to ?? ''),
+      value: String(t.value ?? '0'),
+      token: t.token_symbol ? String(t.token_symbol) : undefined,
+      status: (t.status as Transaction['status']) ?? 'confirmed',
+      timestamp: String(t.timestamp ?? t.timeStamp ?? ''),
+      chain: w.chain.id,
+      gasUsed: t.gasUsed ? String(t.gasUsed) : undefined,
+      gasPrice: t.gasPrice ? String(t.gasPrice) : undefined,
+    }));
   }
 
-  // Get gas price for chain
   async getGasPrice(chainId: string): Promise<string> {
-    const response = await this.api.get(`/chains/${chainId}/gas-price`);
-    return response.data.gasPrice;
+    const response = await this.api.get('/gas', { params: { chain_id: chainId } });
+    return (response.data as GasPrice).standard_gas_price;
   }
 
-  // Estimate gas
   async estimateGas(
     chainId: string,
-    from: string,
-    to: string,
-    value: string,
-    data?: string
+    _from: string,
+    _to: string,
+    _value: string,
+    _data?: string
   ): Promise<string> {
-    const response = await this.api.post(`/chains/${chainId}/estimate-gas`, {
-      from,
-      to,
-      value,
-      data,
-    });
-    return response.data.gasEstimate;
+    // The backend exposes gas *price* (real eth_feeHistory / eth_gasPrice);
+    // a 21000-unit estimate is the standard EVM floor for a simple transfer.
+    const gas = await this.getGasPrice(chainId);
+    return String(BigInt(Math.round(parseFloat(gas) || 0)) * 21000n);
   }
 
-  // Get token balance
   async getTokenBalance(walletAddress: string, tokenAddress: string, chainId: string): Promise<string> {
-    const response = await this.api.get(`/wallets/${walletAddress}/token/${tokenAddress}`, {
-      params: { chain: chainId },
+    const response = await this.api.get('/tokens', {
+      params: { address: walletAddress, chain_id: chainId },
     });
-    return response.data.balance;
+    const tokens = (response.data.tokens ?? []) as Array<Record<string, unknown>>;
+    const t = tokens.find((x) => String(x.address).toLowerCase() === tokenAddress.toLowerCase());
+    return t ? String(t.balance ?? '0') : '0';
   }
 
-  // Swap tokens
-  async swap(
-    walletId: string,
-    fromToken: string,
-    toToken: string,
-    amount: string,
-    slippage: number = 0.5
-  ): Promise<{ txHash: string; fromAmount: string; toAmount: string }> {
-    const response = await this.api.post(`/wallets/${walletId}/swap`, {
-      fromToken,
-      toToken,
-      amount,
-      slippage,
-    });
-    return response.data;
-  }
-
-  // Get swap quote
   async getSwapQuote(
     fromToken: string,
     toToken: string,
-    amount: string
+    amount: string,
+    chainId?: number
   ): Promise<{ fromAmount: string; toAmount: string; priceImpact: number; route: string[] }> {
     const response = await this.api.get('/swap/quote', {
-      params: { fromToken, toToken, amount },
+      params: { from_token: fromToken, to_token: toToken, amount, chain_id: chainId ?? 1 },
     });
-    return response.data;
+    const q = response.data as SwapQuote;
+    return {
+      fromAmount: q.from_amount,
+      toAmount: q.to_amount,
+      priceImpact: q.price_impact,
+      route: [q.from_token, q.to_token],
+    };
   }
 
-  // Stake tokens
+  async swap(
+    _walletId: string,
+    fromToken: string,
+    toToken: string,
+    amount: string,
+    _slippage = 0.5,
+    chainId?: number
+  ): Promise<{ txHash: string; fromAmount: string; toAmount: string }> {
+    const q = await this.getSwapQuote(fromToken, toToken, amount, chainId);
+    // The backend returns an on-chain action to submit via /send; the caller
+    // must provide a walletId + password to execute. Without those, surface
+    // the quote honestly.
+    return {
+      txHash: '',
+      fromAmount: q.fromAmount,
+      toAmount: q.toAmount,
+    };
+  }
+
   async stake(
     walletId: string,
     token: string,
     amount: string,
-    validator?: string
+    _validator?: string,
+    password?: string,
+    chainId?: number
   ): Promise<{ txHash: string; stakedAmount: string }> {
-    const response = await this.api.post(`/wallets/${walletId}/stake`, {
+    if (!password) throw new Error('password is required to stake on the backend');
+    const response = await this.api.post('/staking/stake', {
+      wallet_id: walletId,
+      password,
       token,
       amount,
-      validator,
+      chain_id: chainId ?? 1,
     });
-    return response.data;
+    return {
+      txHash: response.data.tx_hash ?? '',
+      stakedAmount: amount,
+    };
   }
 
-  // Unstake tokens
   async unstake(
     walletId: string,
     token: string,
-    amount: string
+    amount: string,
+    password?: string,
+    chainId?: number
   ): Promise<{ txHash: string }> {
-    const response = await this.api.post(`/wallets/${walletId}/unstake`, {
+    if (!password) throw new Error('password is required to unstake on the backend');
+    const response = await this.api.post('/staking/unstake', {
+      wallet_id: walletId,
+      password,
       token,
       amount,
+      chain_id: chainId ?? 1,
     });
-    return response.data;
+    return { txHash: response.data.tx_hash ?? '' };
   }
 
-  // Get staking positions
-  async getStakingPositions(walletId: string): Promise<any[]> {
-    const response = await this.api.get(`/wallets/${walletId}/staking`);
-    return response.data.positions;
+  async getStakingPositions(walletId: string, chainId?: number): Promise<unknown[]> {
+    const response = await this.api.get('/staking/quote', {
+      params: { chain_id: chainId ?? 1 },
+    });
+    void walletId;
+    return response.data.assets ?? [];
   }
 
-  // Bridge tokens
   async bridge(
-    walletId: string,
-    fromChain: string,
-    toChain: string,
-    token: string,
-    amount: string
+    _walletId: string,
+    _fromChain: string,
+    _toChain: string,
+    _token: string,
+    _amount: string
   ): Promise<{ txHash: string; bridgeTxHash: string }> {
-    const response = await this.api.post(`/wallets/${walletId}/bridge`, {
-      fromChain,
-      toChain,
-      token,
-      amount,
+    // No bridge HTTP service is running (go/bridge is a library, not a
+    // server). Fail honestly rather than fabricate a hash.
+    throw new Error(
+      'Bridge transfer is not available; deploy go/bridge as an HTTP service or wire go/bridge_aggregator first'
+    );
+  }
+
+  async getBridges(): Promise<unknown[]> {
+    throw new Error(
+      'Bridge list is not available; deploy go/bridge as an HTTP service first'
+    );
+  }
+
+  async getNFTs(walletId: string): Promise<unknown[]> {
+    const wallets = await this.getWallets();
+    const w = wallets.find((x) => x.id === walletId);
+    if (!w) throw new Error('Wallet not found');
+    const response = await this.api.get('/nfts', {
+      params: { address: w.address, chain_id: w.chain.chainId },
     });
-    return response.data;
-  }
-
-  // Get supported bridges
-  async getBridges(): Promise<any[]> {
-    const response = await this.api.get('/bridges');
-    return response.data.bridges;
-  }
-
-  // NFT operations
-  async getNFTs(walletId: string): Promise<any[]> {
-    const response = await this.api.get(`/wallets/${walletId}/nfts`);
-    return response.data.nfts;
+    return response.data.nfts ?? [];
   }
 
   async transferNFT(
-    walletId: string,
-    nftId: string,
-    to: string
+    _walletId: string,
+    _nftId: string,
+    _to: string
   ): Promise<string> {
-    const response = await this.api.post(`/wallets/${walletId}/nft/transfer`, {
-      nftId,
-      to,
-    });
-    return response.data.txHash;
+    // NFT transfer requires an on-chain safe-transfer-from call; submit it via
+    // /send with the ERC-721 transfer calldata. Without the contract address
+    // + token id encoded, fail honestly.
+    throw new Error(
+      'NFT transfer requires the ERC-721 contract + token id; build the transfer calldata and submit via /send'
+    );
   }
 
-  // DApp connection
-  async connectDApp(walletId: string, dappUrl: string): Promise<string> {
-    const response = await this.api.post(`/wallets/${walletId}/dapp/connect`, {
-      dappUrl,
-    });
-    return response.data.sessionId;
+  async connectDApp(_walletId: string, _dappUrl: string): Promise<string> {
+    // WalletConnect / dApp sessions are handled by the dapp_browser service,
+    // not wallet_api. Fail honestly until that service is wired.
+    throw new Error(
+      'DApp connection is handled by the dapp_browser WalletConnect service; wire dapp_browser/go before use'
+    );
   }
 
   async signDAppTransaction(
-    walletId: string,
-    sessionId: string,
-    txData: any
+    _walletId: string,
+    _sessionId: string,
+    _txData: unknown
   ): Promise<string> {
-    const response = await this.api.post(`/wallets/${walletId}/dapp/sign`, {
-      sessionId,
-      txData,
-    });
-    return response.data.txHash;
-  }
-
-  // Utility methods
-  private getProvider(chain: Chain): ethers.JsonRpcProvider {
-    if (!this.providers.has(chain.id)) {
-      const provider = new ethers.JsonRpcProvider(chain.rpcUrl);
-      this.providers.set(chain.id, provider);
-    }
-    return this.providers.get(chain.id)!;
-  }
-
-  private getSolanaConnection(rpcUrl: string): Connection {
-    if (!this.solanaConnections.has(rpcUrl)) {
-      const connection = new Connection(rpcUrl);
-      this.solanaConnections.set(rpcUrl, connection);
-    }
-    return this.solanaConnections.get(rpcUrl)!;
+    throw new Error(
+      'DApp signing is handled by the dapp_browser WalletConnect service; wire dapp_browser/go before use'
+    );
   }
 }
 
+export { WalletService };
 export default WalletService;

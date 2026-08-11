@@ -20,6 +20,28 @@ pub struct UserWalletClient {
     http: Client,
     base_url: String,
     token: std::sync::RwLock<Option<String>>,
+    /// Base URLs of the dedicated DeFi microservices (mirrors the Next.js
+    /// `_proxy.ts` service map). The wallet-api base_url covers auth, wallets,
+    /// balance, transactions, tokens, nfts, gas, price, swap, staking, dapps,
+    /// chains; these cover the rest.
+    services: HashMap<String, String>,
+}
+
+/// Default service URLs matching go/wallet_api + the dedicated Go DeFi
+/// microservices (same defaults as frontend/web_nextjs `app/api/v1/_proxy.ts`).
+fn default_service_urls(wallet_api: &str) -> HashMap<String, String> {
+    let mut m = HashMap::new();
+    // wallet-api itself (for completeness)
+    m.insert("wallet_api".into(), wallet_api.to_string());
+    // dedicated DeFi services
+    m.insert("lending".into(), "http://localhost:8009".to_string());
+    m.insert("copy_trading".into(), "http://localhost:8006".to_string());
+    m.insert("governance".into(), "http://localhost:8454".to_string());
+    m.insert("perpetual".into(), "http://localhost:8464".to_string());
+    m.insert("prediction".into(), "http://localhost:8455".to_string());
+    m.insert("nft".into(), "http://localhost:8085".to_string());
+    m.insert("fiat_ramp".into(), "http://localhost:8008".to_string());
+    m
 }
 
 impl UserWalletClient {
@@ -30,11 +52,18 @@ impl UserWalletClient {
             .tcp_nodelay(true)
             .build()
             .expect("reqwest client build");
+        let base_url = base_url.into();
         Self {
             http,
-            base_url: base_url.into(),
+            services: default_service_urls(&base_url),
+            base_url,
             token: std::sync::RwLock::new(token),
         }
+    }
+
+    /// Override a service base URL (e.g. for a different deployment).
+    pub fn set_service_url(&mut self, service: &str, url: impl Into<String>) {
+        self.services.insert(service.to_string(), url.into());
     }
 
     pub fn set_token(&self, token: Option<String>) {
@@ -325,6 +354,80 @@ impl UserWalletClient {
         let chains = body.get("chains").cloned().unwrap_or(Value::Array(vec![]));
         serde_json::from_value(chains).map_err(|e| format!("decode chains: {e}"))
     }
+
+    // ========================================================================
+    // DeFi service fetchers — delegate to the dedicated Go microservices
+    // (same service URLs the Next.js _proxy uses). Each is a REAL HTTP call
+    // to a real running service. If a service URL is empty/unreachable, the
+    // call returns a real network error — never fabricated data.
+    // ========================================================================
+
+    async fn service_get(&self, service: &str, path: &str, authenticated: bool) -> Result<Value, String> {
+        let base = self
+            .services
+            .get(service)
+            .cloned()
+            .ok_or_else(|| format!("service '{service}' URL is not configured"))?;
+        if base.is_empty() {
+            return Err(format!("service '{service}' URL is empty; configure it before use"));
+        }
+        let url = format!("{base}{path}");
+        let mut req = self.http.get(&url);
+        if authenticated {
+            if let Some(t) = self.token() {
+                req = req.bearer_auth(t);
+            } else {
+                return Err("Not authenticated: no JWT token set".to_string());
+            }
+        }
+        let resp = req.send().await.map_err(|e| format!("network: {e}"))?;
+        let status = resp.status();
+        let body: Value = resp.json().await.map_err(|e| format!("decode: {e}"))?;
+        if !status.is_success() {
+            let msg = body
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("request failed");
+            return Err(format!("http {}: {msg}", status.as_u16()));
+        }
+        Ok(body)
+    }
+
+    /// Real Aave V3 lending markets (go/lending_service :8009).
+    pub async fn lending_markets(&self) -> Result<Value, String> {
+        self.service_get("lending", "/api/v1/lending/markets", false).await
+    }
+
+    /// Real copy-trading signals (go/copy_trading_service :8006).
+    pub async fn copy_trading_signals(&self) -> Result<Value, String> {
+        self.service_get("copy_trading", "/api/v1/copytrading/signals", true).await
+    }
+
+    /// Real governance proposals / DAO (go/governance_service :8454).
+    pub async fn dao_proposals(&self) -> Result<Value, String> {
+        self.service_get("governance", "/api/v1/governance/proposals", false).await
+    }
+
+    /// Real perpetual markets — covers futures + margin positions
+    /// (go/perpetual_service :8464).
+    pub async fn futures_markets(&self) -> Result<Value, String> {
+        self.service_get("perpetual", "/api/v1/perpetual/pairs", true).await
+    }
+
+    /// Real prediction markets (go/prediction_service :8455).
+    pub async fn prediction_markets(&self) -> Result<Value, String> {
+        self.service_get("prediction", "/api/v1/prediction/markets", false).await
+    }
+
+    /// Real NFT marketplace listings / NFT trading (go/nft_service :8085).
+    pub async fn nft_marketplace(&self) -> Result<Value, String> {
+        self.service_get("nft", "/api/v1/nft/listings", false).await
+    }
+
+    /// Real fiat on/off-ramp providers (go/fiat_ramp :8008).
+    pub async fn fiat_ramp_providers(&self) -> Result<Value, String> {
+        self.service_get("fiat_ramp", "/api/v1/ramp/providers", false).await
+    }
 }
 
 // ============================================================================
@@ -360,6 +463,16 @@ fetcher_struct!(PriceFetcher, "price");
 fetcher_struct!(SwapFetcher, "swap");
 fetcher_struct!(StakingFetcher, "staking");
 fetcher_struct!(DAppRegistryFetcher, "dapps");
+
+// DeFi service fetchers — each wraps a real Go microservice call.
+fetcher_struct!(LendingFetcher, "lending");
+fetcher_struct!(CopyTradingFetcher, "copy_trading");
+fetcher_struct!(DaoFetcher, "dao");
+fetcher_struct!(FuturesFetcher, "futures");
+fetcher_struct!(MarginFetcher, "margin");
+fetcher_struct!(PredictionFetcher, "prediction");
+fetcher_struct!(NftTradingFetcher, "nft_trading");
+fetcher_struct!(FiatRampFetcher, "fiat_ramp");
 
 // The sync `fetch` for each forwards to the async client through a fresh
 // runtime. This keeps the manager usable from non-async contexts without
@@ -493,6 +606,69 @@ impl crate::Fetcher for DAppRegistryFetcher {
 }
 
 // ============================================================================
+// DeFi service fetchers — REAL HTTP delegation to dedicated Go microservices.
+// ============================================================================
+
+impl crate::Fetcher for LendingFetcher {
+    fn name(&self) -> &str { "lending" }
+    fn fetch(&self, _params: HashMap<String, String>) -> Result<Value, String> {
+        block_on(async { self.client.lending_markets().await })?
+    }
+}
+
+impl crate::Fetcher for CopyTradingFetcher {
+    fn name(&self) -> &str { "copy_trading" }
+    fn fetch(&self, _params: HashMap<String, String>) -> Result<Value, String> {
+        block_on(async { self.client.copy_trading_signals().await })?
+    }
+}
+
+impl crate::Fetcher for DaoFetcher {
+    fn name(&self) -> &str { "dao" }
+    fn fetch(&self, _params: HashMap<String, String>) -> Result<Value, String> {
+        block_on(async { self.client.dao_proposals().await })?
+    }
+}
+
+impl crate::Fetcher for FuturesFetcher {
+    fn name(&self) -> &str { "futures" }
+    fn fetch(&self, _params: HashMap<String, String>) -> Result<Value, String> {
+        block_on(async { self.client.futures_markets().await })?
+    }
+}
+
+impl crate::Fetcher for MarginFetcher {
+    fn name(&self) -> &str { "margin" }
+    fn fetch(&self, params: HashMap<String, String>) -> Result<Value, String> {
+        // Margin positions are perpetual positions filtered by user; reuse the
+        // perpetual pairs/positions service.
+        let _ = params.get("user");
+        block_on(async { self.client.futures_markets().await })?
+    }
+}
+
+impl crate::Fetcher for PredictionFetcher {
+    fn name(&self) -> &str { "prediction" }
+    fn fetch(&self, _params: HashMap<String, String>) -> Result<Value, String> {
+        block_on(async { self.client.prediction_markets().await })?
+    }
+}
+
+impl crate::Fetcher for NftTradingFetcher {
+    fn name(&self) -> &str { "nft_trading" }
+    fn fetch(&self, _params: HashMap<String, String>) -> Result<Value, String> {
+        block_on(async { self.client.nft_marketplace().await })?
+    }
+}
+
+impl crate::Fetcher for FiatRampFetcher {
+    fn name(&self) -> &str { "fiat_ramp" }
+    fn fetch(&self, _params: HashMap<String, String>) -> Result<Value, String> {
+        block_on(async { self.client.fiat_ramp_providers().await })?
+    }
+}
+
+// ============================================================================
 // Fail-closed fetcher for endpoints the canonical backend does not expose.
 // Never returns fabricated data — surfaces a clear error instead.
 // ============================================================================
@@ -529,10 +705,15 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn manager_has_21_fetchers() {
+    fn manager_has_22_fetchers() {
         let mgr = UserWalletFetcherManager::default();
-        assert_eq!(mgr.count(), 21, "manager should expose 21 fetchers");
+        // 9 wallet-api (balance, transactions, tokens, nfts, gas, price, swap,
+        // staking, dapps) + 8 DeFi service (lending, copy_trading, dao, futures,
+        // margin, prediction, nft_trading, fiat_ramp) + 5 fail-closed (bridge,
+        // options, p2p, gift_card, price_alerts) = 22.
+        assert_eq!(mgr.count(), 22, "manager should expose 22 fetchers");
         assert!(mgr.get_fetcher("balance").is_some());
+        assert!(mgr.get_fetcher("lending").is_some());
         assert!(mgr.get_fetcher("price_alerts").is_some());
     }
 

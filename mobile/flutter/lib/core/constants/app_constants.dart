@@ -7,9 +7,12 @@ class AppConstants {
   static const String appVersion = '1.0.0';
   static const String appBuildNumber = '1';
   
-  // API Endpoints
-  static const String baseUrl = 'https://api.tigerwallet.io';
-  static const String wsUrl = 'wss://ws.tigerwallet.io';
+  // API Endpoints — canonical Go wallet-api backend (go/wallet_api, port 8443).
+  // Override at build time with --dart-define=API_BASE_URL=... for production.
+  static const String baseUrl =
+      String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:8443');
+  static const String wsUrl =
+      String.fromEnvironment('API_WS_URL', defaultValue: 'ws://localhost:8443/ws');
   
   // Blockchain RPC URLs (100+ chains)
   static const Map<String, String> rpcEndpoints = {
