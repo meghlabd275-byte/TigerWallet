@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { ThemeProvider } from './components/ThemeProvider'
+import { AppShell } from './components/AppShell'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -37,7 +38,9 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <AppShell>{children}</AppShell>
+        </ThemeProvider>
       </body>
     </html>
   )

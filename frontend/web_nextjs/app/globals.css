@@ -250,4 +250,46 @@ body {
   .light .btn-secondary:hover {
     @apply bg-slate-300;
   }
+
+/* ===== Theme-variable base layer (works on every page) =====
+ * The ThemeProvider injects the full palette as CSS custom properties on
+ * :root for the active theme. These rules make base elements follow the theme
+ * so light/dark switching visibly works on pages that don't individually read
+ * the React theme context.
+ */
+:root {
+  color-scheme: light dark;
+}
+
+html, body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+a {
+  color: var(--accent);
+}
+
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Themed scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-tertiary) var(--bg-primary);
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
 }

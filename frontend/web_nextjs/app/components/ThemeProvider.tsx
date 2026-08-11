@@ -105,12 +105,31 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
     
     setThemeState(effectiveTheme)
-    
+
     // Apply to document
     localStorage.setItem(THEME_MODE_KEY, themeMode)
     document.documentElement.classList.remove('light', 'dark')
     document.documentElement.classList.add(effectiveTheme)
     document.documentElement.setAttribute('data-theme', effectiveTheme)
+
+    // Inject the full theme palette as CSS custom properties on :root so that
+    // every page — including ones that use plain CSS `var(--bg-primary)` — gets
+    // the correct tokens for the active theme. This makes light/dark switching
+    // work globally, not just in components that read the React context.
+    const palette = effectiveTheme === 'dark' ? DARK_COLORS : LIGHT_COLORS
+    const root = document.documentElement.style
+    root.setProperty('--bg-primary', palette.bgPrimary)
+    root.setProperty('--bg-secondary', palette.bgSecondary)
+    root.setProperty('--bg-tertiary', palette.bgTertiary)
+    root.setProperty('--bg-card', palette.bgCard)
+    root.setProperty('--text-primary', palette.textPrimary)
+    root.setProperty('--text-secondary', palette.textSecondary)
+    root.setProperty('--border-color', palette.border)
+    root.setProperty('--accent', palette.accent)
+    root.setProperty('--success', palette.success)
+    root.setProperty('--error', palette.error)
+    root.setProperty('--warning', palette.warning)
+    root.setProperty('--overlay', palette.overlay)
   }, [themeMode, systemPreference, mounted])
 
   const setThemeMode = useCallback((mode: ThemeMode) => {
