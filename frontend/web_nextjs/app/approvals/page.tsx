@@ -1,7 +1,24 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../components/ThemeProvider';
+
+const API_BASE_URL = typeof window !== 'undefined' ? '' : (process.env.BACKEND_URL || 'http://localhost:8443');
+
+const fetchAPI = async <T,>(endpoint: string, options?: RequestInit): Promise<T> => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+  const response = await fetch(`${API_BASE_URL}/api/v1${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options?.headers,
+    },
+  });
+  if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+  const data = await response.json();
+  return data.data;
+};
 
 interface Approval {
   id: string;
@@ -19,17 +36,6 @@ interface Approval {
   verified: boolean;
 }
 
-const MOCK_APPROVALS: Approval[] = [
-  { id: '1', token: '0xdac17f958d2ee523a2206206994597c13d831ec7', tokenSymbol: 'USDT', spender: '0x7a250d5630b4cf539739df2c5dacb4c659f2488d', spenderName: 'Uniswap V3', chainId: 1, chainName: 'Ethereum', amount: '10000', allowance: '10000', isUnlimited: false, dateApproved: Date.now() - 86400000 * 30, risk: 'low', verified: true },
-  { id: '2', token: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', tokenSymbol: 'USDC', spender: '0xe592427a0aece92de3edee1f18e0157c05861564', spenderName: 'Uniswap V3', chainId: 1, chainName: 'Ethereum', amount: 'unlimited', allowance: 'unlimited', isUnlimited: true, dateApproved: Date.now() - 86400000 * 60, risk: 'high', verified: true },
-  { id: '3', token: '0x6b175474e89094c44da98b954eedeac495271d0f', tokenSymbol: 'DAI', spender: '0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f', spenderName: 'Uniswap V2', chainId: 1, chainName: 'Ethereum', amount: '5000', allowance: '5000', isUnlimited: false, dateApproved: Date.now() - 86400000 * 15, risk: 'low', verified: true },
-  { id: '4', token: '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599', tokenSymbol: 'WBTC', spender: '0xbb0e17ef65f82ab018d8edd776e8dd940327b28b', spenderName: 'Aave V3', chainId: 1, chainName: 'Ethereum', amount: 'unlimited', allowance: 'unlimited', isUnlimited: true, dateApproved: Date.now() - 86400000 * 90, risk: 'critical', verified: true },
-  { id: '5', token: '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9', tokenSymbol: 'AAVE', spender: '0x87870bca3f3fd6335c3fbd83f7c6bdd4c0d823ce', spenderName: 'Aave V3', chainId: 1, chainName: 'Ethereum', amount: '1000', allowance: '1000', isUnlimited: false, dateApproved: Date.now() - 86400000 * 7, risk: 'medium', verified: true },
-  { id: '6', token: '0x514910771af9ca656af840dff83e8264ecf986ca', tokenSymbol: 'LINK', spender: '0xa6cc7c5ec1e4b7e3e2f5e5d2e5f5e5d2e5f5e5', spenderName: 'Unknown Contract', chainId: 1, chainName: 'Ethereum', amount: 'unlimited', allowance: 'unlimited', isUnlimited: true, dateApproved: Date.now() - 86400000 * 45, risk: 'critical', verified: false },
-  { id: '7', token: '0x1f9840a85d5af5bf1d1762f925bdaddc4201f984', tokenSymbol: 'UNI', spender: '0x1f9840a85d5af5bf1d1762f925bdaddc4201f984', spenderName: 'Uniswap V3', chainId: 137, chainName: 'Polygon', amount: '5000', allowance: '5000', isUnlimited: false, dateApproved: Date.now() - 86400000 * 20, risk: 'low', verified: true },
-  { id: '8', token: '0x2791bca1f2de4661ed88a30c99a7a9449aa84174', tokenSymbol: 'USDC', spender: '0x1b02da8cb01d0e0f526c3887ca6d2ae054c7a14d', spenderName: 'QuickSwap', chainId: 137, chainName: 'Polygon', amount: 'unlimited', allowance: 'unlimited', isUnlimited: true, dateApproved: Date.now() - 86400000 * 10, risk: 'high', verified: true },
-];
-
 const RISK_COLORS = {
   low: 'bg-green-100 text-green-800',
   medium: 'bg-yellow-100 text-yellow-800',
@@ -38,14 +44,34 @@ const RISK_COLORS = {
 };
 
 export default function ApprovalsPage() {
-  const [approvals, setApprovals] = useState<Approval[]>(MOCK_APPROVALS);
+  const [approvals, setApprovals] = useState<Approval[]>([]);
   const [selectedChain, setSelectedChain] = useState<string>('all');
   const [selectedRisk, setSelectedRisk] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [revoking, setRevoking] = useState<string | null>(null);
   const [showRiskWarning, setShowRiskWarning] = useState(false);
   const [selectedApproval, setSelectedApproval] = useState<Approval | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const { isDark } = useTheme();
+
+  const loadApprovals = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchAPI<Approval[]>('/approvals');
+      setApprovals(data || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load approvals');
+      setApprovals([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadApprovals();
+  }, [loadApprovals]);
 
   const filteredApprovals = approvals.filter(approval => {
     if (selectedChain !== 'all' && approval.chainId.toString() !== selectedChain) return false;
@@ -61,26 +87,42 @@ export default function ApprovalsPage() {
       return;
     }
     setRevoking(approval.id);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setApprovals(prev => prev.filter(a => a.id !== approval.id));
-    setRevoking(null);
+    try {
+      await fetchAPI(`/approvals/${approval.id}`, { method: 'DELETE' });
+      setApprovals(prev => prev.filter(a => a.id !== approval.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to revoke approval');
+    } finally {
+      setRevoking(null);
+    }
   };
 
   const confirmRevoke = async () => {
     if (!selectedApproval) return;
     setRevoking(selectedApproval.id);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setApprovals(prev => prev.filter(a => a.id !== selectedApproval.id));
-    setRevoking(null);
-    setShowRiskWarning(false);
-    setSelectedApproval(null);
+    try {
+      await fetchAPI(`/approvals/${selectedApproval.id}`, { method: 'DELETE' });
+      setApprovals(prev => prev.filter(a => a.id !== selectedApproval.id));
+      setShowRiskWarning(false);
+      setSelectedApproval(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to revoke approval');
+    } finally {
+      setRevoking(null);
+    }
   };
 
   const handleRevokeAllUnlimited = async () => {
     setRevoking('all-unlimited');
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    setApprovals(prev => prev.filter(a => !a.isUnlimited));
-    setRevoking(null);
+    try {
+      const unlimited = approvals.filter(a => a.isUnlimited);
+      await Promise.all(unlimited.map(a => fetchAPI(`/approvals/${a.id}`, { method: 'DELETE' })));
+      setApprovals(prev => prev.filter(a => !a.isUnlimited));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to revoke all unlimited approvals');
+    } finally {
+      setRevoking(null);
+    }
   };
 
   const stats = {

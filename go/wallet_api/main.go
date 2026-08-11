@@ -120,6 +120,26 @@ func main() {
 		wallet.PUT("/address-book/contacts/:id", handleUpdateContact)
 		wallet.DELETE("/address-book/contacts/:id", handleDeleteContact)
 
+		// ---- Portfolio features (PostgreSQL-backed, no mock data) ----
+		wallet.GET("/approvals", handleListApprovals)
+		wallet.DELETE("/approvals/:id", handleRevokeApproval)
+		wallet.GET("/perpetual/positions", handleListPerpetualPositions)
+		wallet.POST("/perpetual/positions", handleCreatePerpetualPosition)
+		wallet.POST("/perpetual/positions/:id/close", handleClosePerpetualPosition)
+		wallet.GET("/margin/positions", handleListMarginPositions)
+		wallet.POST("/margin/positions", handleCreateMarginPosition)
+		wallet.POST("/margin/positions/:id/close", handleCloseMarginPosition)
+		wallet.GET("/token-sales", handleListTokenSales)
+		wallet.POST("/token-sales/:id/participate", handleParticipateTokenSale)
+		wallet.GET("/dao/proposals", handleListDAOProposals)
+		wallet.POST("/dao/proposals", handleCreateDAOProposal)
+		wallet.POST("/dao/proposals/:id/vote", handleVoteDAOProposal)
+		wallet.GET("/dao/delegates", handleListDAODelegates)
+		wallet.GET("/launchpool", handleListLaunchpool)
+		wallet.GET("/launchpool/stakes", handleListLaunchpoolStakes)
+		wallet.POST("/launchpool/stake", handleLaunchpoolStake)
+		wallet.POST("/launchpool/unstake", handleLaunchpoolUnstake)
+
 		// ---- Admin / dashboard routes (authenticated) ----
 		// Back the master-wallet dashboard with real PostgreSQL aggregates.
 		admin := wallet.Group("/admin")

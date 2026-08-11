@@ -318,10 +318,12 @@ export class MultiSigService {
     );
     if (!walletActual) throw new Error('Wallet not found');
 
-    // Simulate execution
+    // Mark the multi-sig approval as executed. The actual on-chain broadcast
+    // must be submitted separately via the canonical wallet_api /api/v1/send
+    // endpoint — this service does NOT fabricate a transaction hash.
     tx.status = 'executed';
     tx.executedAt = Date.now();
-    tx.txHash = '0x' + this.generateId();
+    tx.txHash = undefined;
 
     // Move from pending to confirmed
     const pendingIndex = walletActual.pendingTransactions.findIndex(t => t.id === txId);

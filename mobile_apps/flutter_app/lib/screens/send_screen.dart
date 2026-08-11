@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../services/wallet_service.dart';
 import '../services/chain_service.dart';
 import '../services/api_service.dart';
@@ -18,6 +20,7 @@ class SendScreen extends StatefulWidget {
 class _SendScreenState extends State<SendScreen> {
   final _recipientController = TextEditingController();
   final _amountController = TextEditingController();
+  final _secureStorage = const FlutterSecureStorage();
   final _formKey = GlobalKey<FormState>();
   
   String _selectedChain = 'Ethereum';
@@ -199,11 +202,50 @@ class _SendScreenState extends State<SendScreen> {
     });
 
     try {
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 2));
-      
-      // Generate mock transaction hash
-      final txHash = '0x' + List.generate(64, (i) => '0123456789abcdef'[i % 16]).join();
+      // Real on-chain send via the canonical wallet_api /api/v1/send endpoint
+      // (real BIP-44 key derivation, real secp256k1 signing + keccak256, real
+      // eth_sendRawTransaction broadcast). No fabricated/mock transaction hash.
+      final chainIdMap = <String, int>{
+        'ethereum': 1,
+        'bsc': 56,
+        'polygon': 137,
+        'arbitrum': 42161,
+        'optimism': 10,
+        'avalanche': 43114,
+      };
+      final chainId = chainIdMap[_selectedChain] ?? 1;
+      final authToken = await _secureStorage.read(key: 'auth_token') ?? '';
+      final sendResponse = await http.post(
+        Uri.parse('$API_BASE_URL/api/v1/send'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (authToken.isNotEmpty) 'Authorization': 'Bearer $authToken',
+        },
+        body: jsonEncode({
+          'chain_id': chainId,
+          'to': recipient,
+          'value': amount,
+          'gas_limit': '21000',
+          'gas_price': '0',
+        }),
+      ).timeout(const Duration(seconds: 30));
+
+      if (sendResponse.statusCode != 200) {
+        setState(() {
+          _errorMessage = 'Send failed: ${sendResponse.body}';
+          _isLoading = false;
+        });
+        return;
+      }
+      final sendBody = jsonDecode(sendResponse.body);
+      final txHash = sendBody['tx_hash'] ?? sendBody['hash'] ?? sendBody['result'];
+      if (txHash is! String || txHash.isEmpty) {
+        setState(() {
+          _errorMessage = 'Backend did not return a transaction hash';
+          _isLoading = false;
+        });
+        return;
+      }
       
       setState(() {
         _transactionHash = txHash;

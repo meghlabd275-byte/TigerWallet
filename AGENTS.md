@@ -638,6 +638,46 @@ Notes:
 - Pages already converted (all under `app/<route>/page.tsx`): themes, tx-simulation, gas-estimation, approvals, address_book, nft-marketplace, bug-bounty, defi, staking, token_sale, ieo, master_wallet, copy_trading, swap, walletconnect, fiat-ramps, price-feeds, protection-fund, kyc, history, social_recovery, gift_cards, biometric, insurance_fund, widgets, dao, perpetual, notifications_center, launchpool, fiat_onramp, i18n. Verify with `grep -rn "dark:" app/` (should be 0 in themed pages). Full `npx tsc --noEmit` passes with 0 errors after `npm install`.
 - NOTE: `approvals/page.tsx` `RISK_COLORS` badges are intentionally light-tinted and not theme-dependent.
 
+## Frontend (web_nextjs) â€” perpetual/margin_trading/token_sale/dao real backend (2026-08-11)
+
+Converted four `app/<route>/page.tsx` pages from MOCK_* consts to real wallet_api
+(:8443) PostgreSQL-backed fetch calls, following the launchpool/approvals/defi
+`fetchAPI` pattern. All four pass `npx tsc --noEmit` (only pre-existing unrelated
+axios errors in `src/lib/api/client.ts` remain).
+
+Common helper added to each file:
+```ts
+const API_BASE_URL = typeof window !== 'undefined' ? '' : (process.env.BACKEND_URL || 'http://localhost:8443');
+const fetchAPI = async <T,>(endpoint, options?) => { ... returns response.data; Bearer localStorage 'tigerwallet-token'; }
+```
+- `import React, { useState, useEffect, useCallback } from 'react'`.
+- `loading`/`error` state + UI banners; fail-closed empty arrays; useEffect loads
+  on mount via useCallback.
+
+Per-page:
+- **perpetual/page.tsx**: removed `MOCK_POSITIONS`; GET `/perpetual/positions`;
+  POST `/perpetual/positions` (create) + POST `/perpetual/positions/:id/close`
+  replaced `setTimeout` simulators.
+- **margin_trading/page.tsx**: `MOCK_PAIRS` (BTC/USDT, ETH/USDT â€” chain/reference
+  config, NOT user data) renamed to local const `TRADING_PAIRS` (kept, not from
+  backend); positions now come from GET `/margin/positions`; POST create +
+  POST `/margin/positions/:id/close` are real fetchAPI calls.
+- **token_sale/page.tsx**: removed `MOCK_SALES`; GET `/token-sales`; POST
+  `/token-sales/:id/participate` real. Backend snake_case mapped to frontend
+  camelCase interface (token_name/token_symbol/contract_address/chain_id/
+  price_per_token/total_supply/sold_amount/min_allocation/max_allocation/
+  start_time/end_time/status/description/website â†’ existing fields).
+- **dao/page.tsx**: removed `MOCK_PROPOSALS` + `MOCK_DELEGATES`; GET
+  `/dao/proposals` + GET `/dao/delegates`; POST `/dao/proposals` (create) +
+  POST `/dao/proposals/:id/vote` real. Backend snake_case mapped to frontend
+  camelCase (for_votes/against_votes/abstain_votes/start_time/end_time/executed/
+  proposer/proposer_name). Stats block uses real data. Vote modal submit
+  disabled while submitting/empty.
+- JSX gotcha fixed in dao: nested ternary `{loading ? ... : empty ? ... : (
+  arr.map(...) )}` â€” the `.map` branch MUST close with `})` then `)}` (arrow
+  body + map call, then ternary `)` + JSX `}`); a stray extra `)` causes
+  TS1005/TS1381.
+
 ### Pitfalls observed during conversion
 - A half-converted file may already reference `isDark` in JSX but be **missing the import + hook declaration** â†’ compiles to "isDark is not defined". Always confirm both `import { useTheme }` and `const { isDark } = useTheme();` exist (token_sale and ieo hit this).
 - When converting a static multi-class `className` to a template literal, keep ALL original classes inside the backticks; accidentally leaving trailing classes (e.g. `px-4 py-3`) outside the closing backtick produces an unbalanced template literal (syntax error). Verify backtick count is even after edits (gas-estimation error banner hit this).

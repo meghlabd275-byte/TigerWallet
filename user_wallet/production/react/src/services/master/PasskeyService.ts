@@ -55,13 +55,12 @@ class PasskeyService {
 
     credential.lastUsed = Date.now();
 
-    return {
-      credentialId,
-      challenge,
-      authenticatorData: this.generateAuthenticatorData(relyingPartyId),
-      signature: this.sign(challenge, credential.privateKey),
-      userId: credential.userId,
-    };
+    // Assertion (authenticatorData + signature) is produced by the
+    // authenticator via navigator.credentials.get (WebAuthn). This client
+    // must NOT fabricate authenticatorData or a fake signature.
+    throw new Error(
+      'Passkey assertion must be produced by navigator.credentials.get (WebAuthn); client-side fabrication is disabled'
+    );
   }
 
   removeCredential(credentialId: string): boolean {
@@ -73,7 +72,13 @@ class PasskeyService {
   }
 
   verifyAssertion(assertion: PasskeyAssertion): boolean {
-    return assertion.signature.length > 0;
+    // Assertion verification requires the authenticator's public key and a
+    // real ECDSA/P-256 signature check against authenticatorData +
+    // clientDataHash (WebAuthn). This client must NOT return true on any
+    // non-empty signature.
+    throw new Error(
+      'Passkey assertion verification must be performed via the WebAuthn authenticator + server-side P-256 verify; client-side stub verification is disabled'
+    );
   }
 
   // Private

@@ -178,17 +178,8 @@ export default function LaunchpoolPage() {
         setSelectedProject(null);
       }
     } catch (err) {
-      // Fallback to local simulation
-      await new Promise(r => setTimeout(r, 2000));
-      const newStake: UserStake = {
-        projectId: selectedProject.id,
-        amount: parseFloat(stakeAmount),
-        rewards: 0,
-        startTime: Date.now(),
-      };
-      setUserStakes(prev => [...prev, newStake]);
-      setStakeAmount('');
-      setSelectedProject(null);
+      const message = err instanceof Error ? err.message : 'Failed to stake. Please try again.';
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -205,9 +196,8 @@ export default function LaunchpoolPage() {
       });
       setUserStakes(prev => prev.filter(s => s.projectId !== projectId));
     } catch (err) {
-      // Fallback to local simulation
-      await new Promise(r => setTimeout(r, 1500));
-      setUserStakes(prev => prev.filter(s => s.projectId !== projectId));
+      const message = err instanceof Error ? err.message : 'Failed to unstake. Please try again.';
+      setError(message);
     } finally {
       setLoading(false);
     }

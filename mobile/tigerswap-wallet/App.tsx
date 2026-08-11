@@ -60,13 +60,29 @@ class APIService {
   }
 
   async get<T>(endpoint: string): Promise<T> {
-    // Simulated API response
-    return {} as T;
+    const authToken = await SecureStore.getItemAsync('auth_token') ?? '';
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+    });
+    if (!response.ok) throw new Error(`API Error: ${response.status}`);
+    return response.json() as Promise<T>;
   }
 
   async post<T>(endpoint: string, data: any): Promise<T> {
-    // Simulated API response
-    return {} as T;
+    const authToken = await SecureStore.getItemAsync('auth_token') ?? '';
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) throw new Error(`API Error: ${response.status}`);
+    return response.json() as Promise<T>;
   }
 }
 
@@ -187,9 +203,34 @@ class WalletService {
         chainId: '0x1'
       };
 
-      // Return tx data for signing (actual signing requires private key)
-      // For production, integrate with secure wallet signing
-      const txHash = '0x' + await this.computeTxHash(tx);
+      // Build the transaction request and delegate signing + broadcast to the
+      // canonical wallet_api backend (real BIP-44 derivation, real secp256k1
+      // signing with keccak256, real eth_sendRawTransaction). The private key
+      // never leaves the backend. This client must NOT fabricate a tx hash.
+      const authToken = await SecureStore.getItemAsync('auth_token') ?? '';
+      const sendResponse = await fetch(`${API_BASE}/api/v1/send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({
+          chain_id: 1,
+          from: fromAddress,
+          to: to,
+          value: String(amount),
+          gas_limit: '21000',
+          gas_price: '0x' + gasPrice.toString(16),
+        }),
+      });
+      if (!sendResponse.ok) {
+        throw new Error(`Send failed: ${sendResponse.status}`);
+      }
+      const sendBody = await sendResponse.json();
+      const txHash = sendBody.tx_hash ?? sendBody.hash ?? sendBody.result;
+      if (typeof txHash !== 'string' || !txHash) {
+        throw new Error('Backend did not return a transaction hash');
+      }
       return txHash;
     } catch (error) {
       console.error('Failed to send transaction:', error);
@@ -197,25 +238,29 @@ class WalletService {
     }
   }
 
-  private async computeTxHash(tx: any): Promise<string> {
-    // Simple hash computation - in production use proper RLP encoding
-    const crypto = require('expo-crypto');
-    const txString = JSON.stringify(tx);
-    const digest = await crypto.digestStringAsync(
-      crypto.CryptoDigestAlgorithm.SHA256,
-      txString
-    );
-    return digest;
-  }
-
   async signMessage(message: string, privateKey: string): Promise<string> {
-    // In production, use proper ECDSA signing
-    const crypto = require('expo-crypto');
-    const digest = await crypto.digestStringAsync(
-      crypto.CryptoDigestAlgorithm.SHA256,
-      message
-    );
-    return digest;
+    // Delegate to the canonical wallet_api backend (real ECDSA secp256k1
+    // personal_sign with the Ethereum prefix). The private key never leaves
+    // the backend; this client must NOT return a SHA-256 digest as a fake
+    // signature.
+    const authToken = await SecureStore.getItemAsync('auth_token') ?? '';
+    const response = await fetch(`${API_BASE}/api/v1/sign`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+      body: JSON.stringify({ message }),
+    });
+    if (!response.ok) {
+      throw new Error(`Sign failed: ${response.status}`);
+    }
+    const body = await response.json();
+    const sig = body.signature ?? body.result;
+    if (typeof sig !== 'string' || !sig) {
+      throw new Error('Backend did not return a signature');
+    }
+    return sig;
   }
 }
 

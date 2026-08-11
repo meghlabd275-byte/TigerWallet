@@ -1,7 +1,20 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../components/ThemeProvider';
+
+const API_BASE_URL = typeof window !== 'undefined' ? '' : (process.env.BACKEND_URL || 'http://localhost:8443');
+
+const fetchAPI = async <T,>(endpoint: string, options?: RequestInit): Promise<T> => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+  const response = await fetch(`${API_BASE_URL}/api/v1${endpoint}`, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options?.headers },
+  });
+  if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+  const data = await response.json();
+  return data.data;
+};
 
 interface TokenSale {
   id: string;
@@ -29,71 +42,58 @@ interface TokenSale {
   progress: number;
 }
 
-const MOCK_SALES: TokenSale[] = [
-  {
-    id: '1',
-    name: 'TigerChain',
-    symbol: 'TIGC',
-    description: 'Layer 1 blockchain with lightning fast transactions and near-zero fees',
-    salePrice: 0.15,
-    listingPrice: 0.25,
-    totalSupply: 100000000,
-    forSale: 30000000,
-    sold: 18500000,
-    startTime: Date.now() - 86400000 * 3,
-    endTime: Date.now() + 86400000 * 11,
-    status: 'sale',
+interface BackendTokenSale {
+  id: string;
+  token_name: string;
+  token_symbol: string;
+  contract_address: string;
+  chain_id: number;
+  price_per_token: string;
+  total_supply: string;
+  sold_amount: string;
+  min_allocation: string;
+  max_allocation: string;
+  start_time: number;
+  end_time: number;
+  status: string;
+  description?: string;
+  website?: string;
+}
+
+const CHAIN_NAMES: Record<number, string> = { 1: 'Ethereum', 56: 'BNB Chain', 137: 'Polygon', 8453: 'Base', 42161: 'Arbitrum' };
+
+function mapSale(s: BackendTokenSale): TokenSale {
+  const now = Date.now();
+  const startMs = s.start_time * 1000;
+  const endMs = s.end_time * 1000;
+  let status: TokenSale['status'] = 'upcoming';
+  if (now >= startMs && now < endMs) status = 'sale';
+  else if (now >= endMs) status = 'ended';
+  const salePrice = parseFloat(s.price_per_token) || 0;
+  const forSale = parseFloat(s.total_supply) || 0;
+  const sold = parseFloat(s.sold_amount) || 0;
+  const progress = forSale > 0 ? Math.min(100, (sold / forSale) * 100) : 0;
+  return {
+    id: s.id,
+    name: s.token_name,
+    symbol: s.token_symbol,
+    description: s.description || '',
+    salePrice,
+    listingPrice: salePrice * 1.5,
+    totalSupply: forSale,
+    forSale,
+    sold,
+    startTime: startMs,
+    endTime: endMs,
+    status,
     phases: [
-      { name: 'Phase 1', price: 0.10, discount: 33, allocation: 10000000, startTime: Date.now() - 86400000 * 3, endTime: Date.now() },
-      { name: 'Phase 2', price: 0.15, discount: 0, allocation: 20000000, startTime: Date.now(), endTime: Date.now() + 86400000 * 7 },
+      { name: 'Public', price: salePrice, discount: 0, allocation: forSale, startTime: startMs, endTime: endMs },
     ],
-    chain: 'Ethereum',
-    logo: '🐯',
-    progress: 61.7,
-  },
-  {
-    id: '2',
-    name: 'DeFi Pro',
-    symbol: 'DFPRO',
-    description: 'Professional DeFi tools for institutional investors',
-    salePrice: 0.08,
-    listingPrice: 0.15,
-    totalSupply: 50000000,
-    forSale: 15000000,
-    sold: 0,
-    startTime: Date.now() + 86400000 * 5,
-    endTime: Date.now() + 86400000 * 19,
-    status: 'upcoming',
-    phases: [
-      { name: 'Whitelist', price: 0.06, discount: 25, allocation: 5000000, startTime: Date.now() + 86400000 * 5, endTime: Date.now() + 86400000 * 8 },
-      { name: 'Public', price: 0.08, discount: 0, allocation: 10000000, startTime: Date.now() + 86400000 * 8, endTime: Date.now() + 86400000 * 19 },
-    ],
-    chain: 'BNB Chain',
-    logo: '💹',
-    progress: 0,
-  },
-  {
-    id: '3',
-    name: 'NFT Galaxy',
-    symbol: 'NXGX',
-    description: 'Next-generation NFT marketplace with AI curation',
-    salePrice: 0.05,
-    listingPrice: 0.10,
-    totalSupply: 200000000,
-    forSale: 40000000,
-    sold: 40000000,
-    startTime: Date.now() - 86400000 * 20,
-    endTime: Date.now() - 86400000 * 6,
-    status: 'ended',
-    phases: [
-      { name: 'Phase 1', price: 0.03, discount: 40, allocation: 20000000, startTime: Date.now() - 86400000 * 20, endTime: Date.now() - 86400000 * 14 },
-      { name: 'Phase 2', price: 0.05, discount: 0, allocation: 20000000, startTime: Date.now() - 86400000 * 14, endTime: Date.now() - 86400000 * 6 },
-    ],
-    chain: 'Polygon',
-    logo: '🌌',
-    progress: 100,
-  },
-];
+    chain: CHAIN_NAMES[s.chain_id] || `Chain ${s.chain_id}`,
+    logo: '🪙',
+    progress,
+  };
+}
 
 export default function TokenSalePage() {
   const [activeTab, setActiveTab] = useState<'upcoming' | 'sale' | 'ended'>('sale');
@@ -101,18 +101,52 @@ export default function TokenSalePage() {
   const [buyAmount, setBuyAmount] = useState('');
   const [selectedPhase, setSelectedPhase] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loadingSales, setLoadingSales] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [sales, setSales] = useState<TokenSale[]>([]);
   const { isDark } = useTheme();
 
-  const filteredSales = MOCK_SALES.filter(s => s.status === activeTab);
+  const loadSales = useCallback(async () => {
+    setLoadingSales(true);
+    setError(null);
+    try {
+      const data = await fetchAPI<BackendTokenSale[]>('/token-sales');
+      setSales((data || []).map(mapSale));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load token sales');
+      setSales([]);
+    } finally {
+      setLoadingSales(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSales();
+  }, [loadSales]);
+
+  const filteredSales = sales.filter(s => s.status === activeTab);
 
   const handleBuy = async () => {
     if (!selectedSale || !buyAmount) return;
     setLoading(true);
-    await new Promise(r => setTimeout(r, 2000));
-    alert(`Successfully purchased ${(parseFloat(buyAmount) / selectedSale.phases[selectedPhase].price).toFixed(2)} ${selectedSale.symbol}!`);
-    setBuyAmount('');
-    setSelectedSale(null);
-    setLoading(false);
+    setError(null);
+    try {
+      const usd = parseFloat(buyAmount);
+      const price = selectedSale.phases[selectedPhase]?.price || selectedSale.salePrice;
+      const tokenAmount = (usd / price).toString();
+      await fetchAPI(`/token-sales/${selectedSale.id}/participate`, {
+        method: 'POST',
+        body: JSON.stringify({ amount: tokenAmount, cost: buyAmount }),
+      });
+      alert(`Successfully purchased ${parseFloat(tokenAmount).toFixed(2)} ${selectedSale.symbol}!`);
+      setBuyAmount('');
+      setSelectedSale(null);
+      await loadSales();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to participate');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -143,6 +177,15 @@ export default function TokenSalePage() {
         </div>
 
         <div className="space-y-4">
+          {error && (
+            <div className="p-3 rounded-lg bg-red-600 text-white">Error: {error}</div>
+          )}
+          {loadingSales ? (
+            <div className={`text-center py-12 animate-pulse ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Loading token sales…</div>
+          ) : filteredSales.length === 0 ? (
+            <div className={`text-center py-12 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>No {activeTab} sales</div>
+          ) : (
+            <>
           {filteredSales.map(sale => (
             <div key={sale.id} className={`${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 border ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
               <div className="flex items-start justify-between">
@@ -223,6 +266,8 @@ export default function TokenSalePage() {
               )}
             </div>
           ))}
+            </>
+          )}
         </div>
       </div>
 

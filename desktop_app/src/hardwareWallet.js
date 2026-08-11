@@ -97,14 +97,12 @@ class HardwareWalletManager {
     }
 
     deriveLedgerAddress(chain, path) {
-        // Simulate address derivation
-        const chainPrefix = chain.substring(0, 4);
-        const hash = btoa(path + chainPrefix).substring(0, 40);
-        
-        if (chain === 'bitcoin') {
-            return 'bc1' + hash;
-        }
-        return '0x' + hash;
+        // Address derivation is performed by the hardware device (real Ledger/
+        // Trezor APDU parse_get_public_key_response) or the canonical wallet-api
+        // backend. This client must NOT fabricate an address via btoa.
+        throw new Error(
+          'Address derivation is performed by the hardware device APDU or the canonical wallet-api backend; client-side fabrication is disabled'
+        );
     }
 
     deriveTrezorAddress(chain, path) {

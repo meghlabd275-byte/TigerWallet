@@ -373,9 +373,12 @@ export class HardwareWalletService {
   }
 
   private publicKeyToAddress(publicKey: string, blockchain: string = 'ethereum'): string {
-    const key = publicKey.replace(/^04/, '');
-    const hash = this.simpleHash(key);
-    return '0x' + hash.slice(-40);
+    // EVM address derivation requires keccak256(pubkey[1:]) — the hardware
+    // device returns the address directly via its APDU response. This client
+    // must NOT fabricate an address from a non-cryptographic hash.
+    throw new Error(
+      'Address must be returned by the hardware device APDU (parse_get_public_key_response) or the canonical wallet-api backend; client-side fabrication is disabled'
+    );
   }
 
   private buildTransactionData(tx: TransactionRequest): string {

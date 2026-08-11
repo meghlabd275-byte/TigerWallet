@@ -1,24 +1,38 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../components/ThemeProvider';
+
+const API_BASE_URL = typeof window !== 'undefined' ? '' : (process.env.BACKEND_URL || 'http://localhost:8443');
+
+const fetchAPI = async <T,>(endpoint: string, options?: RequestInit): Promise<T> => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+  const response = await fetch(`${API_BASE_URL}/api/v1${endpoint}`, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options?.headers },
+  });
+  if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+  const data = await response.json();
+  return data.data;
+};
 
 // Types
 interface Position {
   id: string;
-  pair: string;
+  symbol: string;
   side: 'LONG' | 'SHORT';
   size: string;
-  collateral: string;
-  leverage: number;
-  entryPrice: string;
-  markPrice: string;
-  pnl: number;
-  pnlPercent: number;
-  liquidationPrice: string;
+  margin: string;
+  leverage: string;
+  entry_price: string;
+  mark_price: string;
+  unrealized_pnl: string;
+  unrealized_pnl_percent?: number;
+  liq_price: string;
   status: 'open' | 'closed' | 'liquidated';
-  openedAt: number;
-  closedAt?: number;
+  chain_id: number;
+  opened_at: number;
+  closed_at?: number;
 }
 
 interface FundingRate {
@@ -26,39 +40,6 @@ interface FundingRate {
   rate: number;
   nextFunding: number;
 }
-
-const MOCK_POSITIONS: Position[] = [
-  {
-    id: 'pos_1',
-    pair: 'ETH/USDT',
-    side: 'LONG',
-    size: '2.5',
-    collateral: '0.5',
-    leverage: 5,
-    entryPrice: '3200.00',
-    markPrice: '3500.00',
-    pnl: 750,
-    pnlPercent: 150,
-    liquidationPrice: '2720.00',
-    status: 'open',
-    openedAt: Date.now() - 86400000 * 3,
-  },
-  {
-    id: 'pos_2',
-    pair: 'BTC/USDT',
-    side: 'SHORT',
-    size: '0.1',
-    collateral: '1.0',
-    leverage: 10,
-    entryPrice: '68000.00',
-    markPrice: '65000.00',
-    pnl: 300,
-    pnlPercent: 30,
-    liquidationPrice: '74800.00',
-    status: 'open',
-    openedAt: Date.now() - 86400000,
-  },
-];
 
 const FUNDING_RATES: FundingRate[] = [
   { pair: 'ETH/USDT', rate: 0.01, nextFunding: Date.now() + 28800000 },
@@ -77,7 +58,7 @@ const TRADING_PAIRS = [
 export default function PerpetualTrading() {
   const { isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<'trade' | 'positions' | 'history'>('trade');
-  const [positions, setPositions] = useState<Position[]>(MOCK_POSITIONS);
+  const [positions, setPositions] = useState<Position[]>([]);
   const [selectedPair, setSelectedPair] = useState(TRADING_PAIRS[0]);
   const [side, setSide] = useState<'LONG' | 'SHORT'>('LONG');
   const [orderType, setOrderType] = useState<'market' | 'limit'>('market');
@@ -85,7 +66,27 @@ export default function PerpetualTrading() {
   const [collateral, setCollateral] = useState('');
   const [limitPrice, setLimitPrice] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingPositions, setLoadingPositions] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const loadPositions = useCallback(async () => {
+    setLoadingPositions(true);
+    setError(null);
+    try {
+      const data = await fetchAPI<Position[]>('/perpetual/positions?status=open');
+      setPositions(data || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load positions');
+      setPositions([]);
+    } finally {
+      setLoadingPositions(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPositions();
+  }, [loadPositions]);
 
   const calculatePositionSize = () => {
     if (!collateral || parseFloat(collateral) <= 0) return '0';
@@ -116,51 +117,48 @@ export default function PerpetualTrading() {
     }
 
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
+    setError(null);
     const entryPrice = orderType === 'limit' && limitPrice ? limitPrice : selectedPair.price.toString();
     const size = calculatePositionSize();
 
-    const newPosition: Position = {
-      id: `pos_${Date.now()}`,
-      pair: selectedPair.symbol,
-      side,
-      size,
-      collateral,
-      leverage,
-      entryPrice,
-      markPrice: selectedPair.price.toString(),
-      pnl: 0,
-      pnlPercent: 0,
-      liquidationPrice: calculateLiquidationPrice(),
-      status: 'open',
-      openedAt: Date.now(),
-    };
-
-    setPositions(prev => [...prev, newPosition]);
-    setMessage({ type: 'success', text: `${side} position opened successfully!` });
-    setCollateral('');
-    setLoading(false);
-    setActiveTab('positions');
+    try {
+      await fetchAPI('/perpetual/positions', {
+        method: 'POST',
+        body: JSON.stringify({
+          symbol: selectedPair.symbol,
+          side,
+          size,
+          entry_price: entryPrice,
+          mark_price: selectedPair.price.toString(),
+          leverage: leverage.toString(),
+          margin: collateral,
+          liq_price: calculateLiquidationPrice(),
+          chain_id: 1,
+        }),
+      });
+      setMessage({ type: 'success', text: `${side} position opened successfully!` });
+      setCollateral('');
+      await loadPositions();
+      setActiveTab('positions');
+    } catch (err) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to open position' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleClosePosition = async (positionId: string) => {
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    setPositions(prev => prev.map(p => {
-      if (p.id === positionId) {
-        return {
-          ...p,
-          status: 'closed' as const,
-          closedAt: Date.now(),
-        };
-      }
-      return p;
-    }));
-
-    setMessage({ type: 'success', text: 'Position closed successfully!' });
-    setLoading(false);
+    setError(null);
+    try {
+      await fetchAPI(`/perpetual/positions/${positionId}/close`, { method: 'POST' });
+      setMessage({ type: 'success', text: 'Position closed successfully!' });
+      await loadPositions();
+    } catch (err) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to close position' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const formatCurrency = (value: number) => {
@@ -176,8 +174,8 @@ export default function PerpetualTrading() {
     return new Date(timestamp).toLocaleString();
   };
 
-  const totalCollateral = positions.filter(p => p.status === 'open').reduce((acc, p) => acc + parseFloat(p.collateral), 0);
-  const totalPnl = positions.filter(p => p.status === 'open').reduce((acc, p) => acc + p.pnl, 0);
+  const totalCollateral = positions.filter(p => p.status === 'open').reduce((acc, p) => acc + parseFloat(p.margin || '0'), 0);
+  const totalPnl = positions.filter(p => p.status === 'open').reduce((acc, p) => acc + parseFloat(p.unrealized_pnl || '0'), 0);
 
   return (
     <div className={`min-h-screen ${isDark ? 'bg-slate-900 text-slate-50' : 'bg-slate-50 text-slate-900'}`}>
@@ -203,6 +201,14 @@ export default function PerpetualTrading() {
         <div className="max-w-7xl mx-auto px-4 pt-4">
           <div className={`p-3 rounded-lg ${message.type === 'success' ? (isDark ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-800') : (isDark ? 'bg-red-900 text-red-200' : 'bg-red-100 text-red-800')}`}>
             {message.text}
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="max-w-7xl mx-auto px-4 pt-4">
+          <div className={`p-3 rounded-lg ${isDark ? 'bg-red-900 text-red-200' : 'bg-red-100 text-red-800'}`}>
+            {error}
           </div>
         </div>
       )}
@@ -471,7 +477,11 @@ export default function PerpetualTrading() {
           {/* Positions Tab */}
           {activeTab === 'positions' && (
             <div className="lg:col-span-3">
-              {positions.filter(p => p.status === 'open').length === 0 ? (
+              {loadingPositions ? (
+                <div className="text-center py-12">
+                  <div className={`animate-pulse ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Loading positions…</div>
+                </div>
+              ) : positions.filter(p => p.status === 'open').length === 0 ? (
                 <div className="text-center py-12">
                   <div className="text-6xl mb-4">📈</div>
                   <h3 className="text-xl font-semibold mb-2">No Open Positions</h3>
@@ -493,18 +503,18 @@ export default function PerpetualTrading() {
                             <span className={`px-2 py-1 rounded text-xs font-semibold ${position.side === 'LONG' ? (isDark ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-800') : (isDark ? 'bg-red-900 text-red-200' : 'bg-red-100 text-red-800')}`}>
                               {position.side}
                             </span>
-                            <span className="font-semibold text-lg">{position.pair}</span>
+                            <span className="font-semibold text-lg">{position.symbol}</span>
                           </div>
                           <div className={`text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                            {position.size} @ {formatCurrency(parseFloat(position.entryPrice))}
+                            {position.size} @ {formatCurrency(parseFloat(position.entry_price))}
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className={`text-xl font-bold ${position.pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                            {position.pnl >= 0 ? '+' : ''}{position.pnlPercent.toFixed(2)}%
+                          <div className={`text-xl font-bold ${parseFloat(position.unrealized_pnl || '0') >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                            {parseFloat(position.unrealized_pnl || '0') >= 0 ? '+' : ''}{(position.unrealized_pnl_percent ?? 0).toFixed(2)}%
                           </div>
                           <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                            {formatCurrency(position.pnl)}
+                            {formatCurrency(parseFloat(position.unrealized_pnl || '0'))}
                           </div>
                         </div>
                       </div>
@@ -512,7 +522,7 @@ export default function PerpetualTrading() {
                       <div className={`grid grid-cols-4 gap-4 mt-4 pt-4 border-t ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
                         <div>
                           <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Collateral</div>
-                          <div className="font-semibold">{position.collateral} USDT</div>
+                          <div className="font-semibold">{position.margin} USDT</div>
                         </div>
                         <div>
                           <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Leverage</div>
@@ -520,11 +530,11 @@ export default function PerpetualTrading() {
                         </div>
                         <div>
                           <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Mark Price</div>
-                          <div className="font-semibold">{formatCurrency(parseFloat(position.markPrice))}</div>
+                          <div className="font-semibold">{formatCurrency(parseFloat(position.mark_price))}</div>
                         </div>
                         <div>
                           <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Liq. Price</div>
-                          <div className="font-semibold text-red-500">{formatCurrency(parseFloat(position.liquidationPrice))}</div>
+                          <div className="font-semibold text-red-500">{formatCurrency(parseFloat(position.liq_price))}</div>
                         </div>
                       </div>
                       
@@ -549,7 +559,9 @@ export default function PerpetualTrading() {
             <div className="lg:col-span-3">
               <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-6 shadow-sm`}>
                 <h3 className="font-semibold mb-4">Position History</h3>
-                {positions.filter(p => p.status !== 'open').length === 0 ? (
+                {loadingPositions ? (
+                  <div className={`text-center py-8 animate-pulse ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Loading history…</div>
+                ) : positions.filter(p => p.status !== 'open').length === 0 ? (
                   <div className={`text-center py-8 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     No closed positions yet
                   </div>
@@ -558,17 +570,17 @@ export default function PerpetualTrading() {
                     {positions.filter(p => p.status !== 'open').map((position) => (
                       <div key={position.id} className={`flex items-center justify-between py-4 border-b ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
                         <div>
-                          <div className="font-semibold">{position.pair}</div>
+                          <div className="font-semibold">{position.symbol}</div>
                           <div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                            {position.side} • {position.size} @ {formatCurrency(parseFloat(position.entryPrice))}
+                            {position.side} • {position.size} @ {formatCurrency(parseFloat(position.entry_price))}
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className={`font-bold ${position.pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                            {position.pnl >= 0 ? '+' : ''}{formatCurrency(position.pnl)}
+                          <div className={`font-bold ${parseFloat(position.unrealized_pnl || '0') >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                            {parseFloat(position.unrealized_pnl || '0') >= 0 ? '+' : ''}{formatCurrency(parseFloat(position.unrealized_pnl || '0'))}
                           </div>
                           <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                            {formatTime(position.closedAt || 0)}
+                            {formatTime(position.closed_at || position.opened_at || 0)}
                           </div>
                         </div>
                       </div>

@@ -86,13 +86,21 @@ class AccountAbstractionService {
     if (key.isRevoked) throw new Error('Session key revoked');
     if (Date.now() > key.validUntil) throw new Error('Session key expired');
 
-    return `0x${this.hash(`${to}${Array.from(data).join('')}`)}`;
+    // Execution is submitted through the ERC-4337 bundler on the canonical
+    // wallet-api backend. This client must NOT fabricate a transaction hash.
+    throw new Error(
+      'executeWithSessionKey requires submission through the ERC-4337 bundler on the canonical wallet-api backend; client-side fabrication is disabled'
+    );
   }
 
   // Private helpers
   private deriveSmartAccountAddress(owner: string): string {
-    const hash = this.hash(`${owner}_smart_account`);
-    return `0x${hash.substring(0, 40)}`;
+    // Smart-account addresses are derived by the canonical wallet-api backend
+    // / ERC-4337 factory (real CREATE2 counterfactual address). This client
+    // must NOT fabricate one from a non-cryptographic hash.
+    throw new Error(
+      'Smart-account address is derived by the canonical wallet-api backend / ERC-4337 factory; client-side fabrication is disabled'
+    );
   }
 
   private generateKeyAddress(): string {

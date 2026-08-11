@@ -1,10 +1,23 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../components/ThemeProvider';
 
+const API_BASE_URL = typeof window !== 'undefined' ? '' : (process.env.BACKEND_URL || 'http://localhost:8443');
+
+const fetchAPI = async <T,>(endpoint: string, options?: RequestInit): Promise<T> => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+  const response = await fetch(`${API_BASE_URL}/api/v1${endpoint}`, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options?.headers },
+  });
+  if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+  const data = await response.json();
+  return data.data;
+};
+
 interface Proposal {
-  id: number;
+  id: string;
   title: string;
   description: string;
   type: 'parameter' | 'treasury' | 'upgrade' | 'governance';
@@ -27,86 +40,66 @@ interface Delegate {
   avatar: string;
 }
 
-const MOCK_PROPOSALS: Proposal[] = [
-  {
-    id: 42,
-    title: 'Increase TGR Staking Rewards to 25%',
-    description: 'Proposal to increase the TGR staking rewards from 20% to 25% APY to encourage more staking participation and network security.',
-    type: 'parameter',
-    status: 'active',
-    votesFor: 2500000,
-    votesAgainst: 800000,
-    totalVoters: 450,
-    startTime: Date.now() - 86400000 * 2,
-    endTime: Date.now() + 86400000 * 5,
-    proposer: '0x7a23...8d4f',
-    quorum: 5000000,
-  },
-  {
-    id: 41,
-    title: 'Add RUSD as Collateral for Loans',
-    description: 'Enable RUSD stablecoin as collateral for the lending protocol to increase liquidity and utility.',
-    type: 'parameter',
-    status: 'active',
-    votesFor: 1800000,
-    votesAgainst: 200000,
-    totalVoters: 280,
-    startTime: Date.now() - 86400000,
-    endTime: Date.now() + 86400000 * 6,
-    proposer: '0x3f8b...2c1e',
-    quorum: 5000000,
-  },
-  {
-    id: 40,
-    title: 'Treasury Diversification - Buy BTC',
-    description: 'Use 10% of treasury (~$2M) to purchase Bitcoin as a reserve asset.',
-    type: 'treasury',
-    status: 'passed',
-    votesFor: 4200000,
-    votesAgainst: 600000,
-    totalVoters: 680,
-    startTime: Date.now() - 86400000 * 10,
-    endTime: Date.now() - 86400000 * 3,
-    proposer: '0x9b2d...5a4c',
-    quorum: 5000000,
-  },
-  {
-    id: 39,
-    title: 'Upgrade DEX Fee Distribution',
-    description: 'Change DEX fee distribution from 50/50 to 70/30 (protocol/stakers).',
-    type: 'parameter',
-    status: 'passed',
-    votesFor: 3800000,
-    votesAgainst: 1200000,
-    totalVoters: 520,
-    startTime: Date.now() - 86400000 * 15,
-    endTime: Date.now() - 86400000 * 8,
-    proposer: '0x1a2b...3c4d',
-    quorum: 5000000,
-  },
-  {
-    id: 38,
-    title: 'Add New Bridge Partner',
-    description: 'Integrate LayerZero as additional bridge partner for cross-chain swaps.',
-    type: 'upgrade',
-    status: 'failed',
-    votesFor: 1500000,
-    votesAgainst: 3800000,
-    totalVoters: 380,
-    startTime: Date.now() - 86400000 * 20,
-    endTime: Date.now() - 86400000 * 13,
-    proposer: '0x5c6d...7e8f',
-    quorum: 5000000,
-  },
-];
+interface BackendProposal {
+  id: string;
+  title: string;
+  description: string;
+  proposer: string;
+  proposer_name: string;
+  for_votes: string;
+  against_votes: string;
+  abstain_votes: string;
+  status: string;
+  start_time: number;
+  end_time: number;
+  executed: boolean;
+}
 
-const MOCK_DELEGATES: Delegate[] = [
-  { address: '0x8a9c...d2e1', name: 'TigerDAO Core', votes: 5200000, proposals: 12, rank: 1, avatar: '🐯' },
-  { address: '0x3b2d...f4a5', name: 'DeFi Whale', votes: 3800000, proposals: 8, rank: 2, avatar: '🐋' },
-  { address: '0x7c4e...b8d9', name: 'Staking King', votes: 2500000, proposals: 5, rank: 3, avatar: '👑' },
-  { address: '0x2f1a...c3e7', name: 'Community Lead', votes: 1800000, proposals: 15, rank: 4, avatar: '🎯' },
-  { address: '0x9d5f...a1b2', name: 'Validator Pro', votes: 1200000, proposals: 3, rank: 5, avatar: '⚡' },
-];
+interface BackendDelegate {
+  id: string;
+  address: string;
+  name: string;
+  voting_power: string;
+  proposals_count: number;
+  delegated_to?: string;
+}
+
+const PROPOSAL_AVATARS = ['🐯', '🐋', '👑', '🎯', '⚡'];
+
+function mapProposal(p: BackendProposal, idx: number): Proposal {
+  const now = Date.now();
+  const endMs = p.end_time * 1000;
+  let status: Proposal['status'] = 'active';
+  if (p.executed) status = 'executed';
+  else if (now >= endMs) status = parseFloat(p.for_votes) >= parseFloat(p.against_votes) ? 'passed' : 'failed';
+  const votesFor = parseFloat(p.for_votes) || 0;
+  const votesAgainst = parseFloat(p.against_votes) || 0;
+  return {
+    id: p.id,
+    title: p.title,
+    description: p.description,
+    type: 'governance',
+    status,
+    votesFor,
+    votesAgainst,
+    totalVoters: 0,
+    startTime: p.start_time * 1000,
+    endTime: endMs,
+    proposer: p.proposer_name || p.proposer,
+    quorum: 5000000,
+  };
+}
+
+function mapDelegate(d: BackendDelegate, idx: number): Delegate {
+  return {
+    address: d.address,
+    name: d.name,
+    votes: parseFloat(d.voting_power) || 0,
+    proposals: d.proposals_count,
+    rank: idx + 1,
+    avatar: PROPOSAL_AVATARS[idx % PROPOSAL_AVATARS.length],
+  };
+}
 
 export default function DAOPage() {
   const { isDark } = useTheme();
@@ -114,12 +107,53 @@ export default function DAOPage() {
   const [voteAmount, setVoteAmount] = useState('');
   const [votingProposal, setVotingProposal] = useState<Proposal | null>(null);
   const [voteSide, setVoteSide] = useState<'for' | 'against'>('for');
+  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [delegates, setDelegates] = useState<Delegate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [props, dels] = await Promise.all([
+        fetchAPI<BackendProposal[]>('/dao/proposals').catch(() => []),
+        fetchAPI<BackendDelegate[]>('/dao/delegates').catch(() => []),
+      ]);
+      setProposals((props || []).map(mapProposal));
+      setDelegates((dels || []).map(mapDelegate));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load DAO data');
+      setProposals([]);
+      setDelegates([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleVote = async () => {
     if (!votingProposal || !voteAmount) return;
-    alert(`Successfully voted with ${voteAmount} TGR!`);
-    setVoteAmount('');
-    setVotingProposal(null);
+    setSubmitting(true);
+    setError(null);
+    try {
+      await fetchAPI(`/dao/proposals/${votingProposal.id}/vote`, {
+        method: 'POST',
+        body: JSON.stringify({ choice: voteSide, voting_power: voteAmount }),
+      });
+      alert(`Successfully voted ${voteSide.toUpperCase()} with ${voteAmount} TGR!`);
+      setVoteAmount('');
+      setVotingProposal(null);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to submit vote');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleDelegate = async (delegate: Delegate) => {
@@ -147,19 +181,22 @@ export default function DAOPage() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
+        {error && (
+          <div className="mb-4 p-3 rounded-lg bg-red-600 text-white">Error: {error}</div>
+        )}
         {/* Stats */}
         <div className="grid grid-cols-4 gap-4 mb-6">
           <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-4`}>
             <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Total Proposals</p>
-            <p className="text-2xl font-bold">42</p>
+            <p className="text-2xl font-bold">{proposals.length}</p>
           </div>
           <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-4`}>
             <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Active</p>
-            <p className="text-2xl font-bold text-blue-600">2</p>
+            <p className="text-2xl font-bold text-blue-600">{proposals.filter(p => p.status === 'active').length}</p>
           </div>
           <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-4`}>
-            <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Total Voters</p>
-            <p className="text-2xl font-bold">1,250</p>
+            <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Total Delegates</p>
+            <p className="text-2xl font-bold">{delegates.length}</p>
           </div>
           <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-4`}>
             <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Treasury</p>
@@ -183,7 +220,12 @@ export default function DAOPage() {
         {/* Proposals Tab */}
         {activeTab === 'proposals' && (
           <div className="space-y-4">
-            {MOCK_PROPOSALS.map(proposal => {
+            {loading ? (
+              <div className={`text-center py-12 animate-pulse ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Loading proposals…</div>
+            ) : proposals.length === 0 ? (
+              <div className={`text-center py-12 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>No proposals yet</div>
+            ) : (
+              proposals.map(proposal => {
               const totalVotes = proposal.votesFor + proposal.votesAgainst;
               const forPercent = totalVotes > 0 ? (proposal.votesFor / totalVotes) * 100 : 0;
               const quorumPercent = (totalVotes / proposal.quorum) * 100;
@@ -250,7 +292,8 @@ export default function DAOPage() {
                   </div>
                 </div>
               );
-            })}
+            })
+          )}
           </div>
         )}
 
@@ -259,7 +302,12 @@ export default function DAOPage() {
           <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-xl p-6`}>
             <h3 className="text-lg font-bold mb-4">Top Delegates</h3>
             <div className="space-y-4">
-              {MOCK_DELEGATES.map(delegate => (
+              {loading ? (
+                <div className={`text-center py-12 animate-pulse ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Loading delegates…</div>
+              ) : delegates.length === 0 ? (
+                <div className={`text-center py-12 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>No delegates yet</div>
+              ) : (
+                delegates.map(delegate => (
                 <div key={delegate.rank} className={`flex items-center justify-between p-4 ${isDark ? 'bg-slate-700' : 'bg-slate-50'} rounded-lg`}>
                   <div className="flex items-center gap-4">
                     <span className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
@@ -293,7 +341,8 @@ export default function DAOPage() {
                     </button>
                   </div>
                 </div>
-              ))}
+                ))
+            )}
             </div>
           </div>
         )}
@@ -391,10 +440,10 @@ export default function DAOPage() {
               </button>
               <button
                 onClick={handleVote}
-                disabled={!voteAmount}
+                disabled={!voteAmount || submitting}
                 className="flex-1 py-3 bg-indigo-600 text-white rounded-lg disabled:opacity-50"
               >
-                Submit Vote
+                {submitting ? 'Submitting…' : 'Submit Vote'}
               </button>
             </div>
           </div>

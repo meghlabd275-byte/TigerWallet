@@ -168,7 +168,7 @@ CREATE TABLE IF NOT EXISTS fee_transaction (
 CREATE INDEX IF NOT EXISTS idx_fee_tier_type ON fee_tier(fee_type);
 CREATE INDEX IF NOT EXISTS idx_fee_tx_type ON fee_transaction(fee_type);
 CREATE INDEX IF NOT EXISTS idx_fee_tx_created ON fee_transaction(created_at);
-`
+` + portfolioSchemaSQL
 
 // ---- User operations ----
 
