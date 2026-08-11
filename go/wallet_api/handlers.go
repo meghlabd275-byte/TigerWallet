@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -552,4 +553,113 @@ func handleSignMessage(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"signature": "0x" + common.Bytes2Hex(sig)})
+}
+
+// handleExportKeystore exports a wallet's private key as a standard Web3 Secret
+// Storage V3 (scrypt variant) keystore JSON, interoperable with geth/MetaMask.
+// The wallet seed is decrypted with the user's password, the private key is
+// re-derived, then re-encrypted with the export password into the V3 format.
+func handleExportKeystore(c *gin.Context) {
+	var req struct {
+		WalletID    string `json:"wallet_id" binding:"required"`
+		Password    string `json:"password" binding:"required"`
+		ExportPassword string `json:"export_password" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	wid, _ := uuid.Parse(req.WalletID)
+	wallet, err := store.GetWalletByID(c.Request.Context(), wid)
+	if err != nil || wallet == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "wallet not found"})
+		return
+	}
+	uid, _ := uuid.Parse(getUserID(c))
+	if wallet.UserID != uid {
+		c.JSON(http.StatusForbidden, gin.H{"error": "wallet does not belong to user"})
+		return
+	}
+	seed, err := DecryptSeed(wallet.EncryptedSeed, req.Password)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "incorrect password"})
+		return
+	}
+	privKey, err := hdDerive(seed, wallet.DerivationPath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "key derivation failed"})
+		return
+	}
+	keystoreJSON, err := ExportKeystoreV3(privKey, req.ExportPassword)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "keystore export failed"})
+		return
+	}
+	c.Data(http.StatusOK, "application/json", keystoreJSON)
+}
+
+// handleImportKeystore imports a standard Web3 Secret Storage V3 keystore JSON
+// (e.g. produced by geth/MetaMask/TigerWallet) and, together with a mnemonic or
+// a new label, persists it as a TigerWallet encrypted-seed wallet. Returns the
+// new wallet id + address.
+func handleImportKeystore(c *gin.Context) {
+	var req struct {
+		KeystoreJSON string `json:"keystore_json" binding:"required"`
+		Password     string `json:"password" binding:"required"`
+		Label        string `json:"label"`
+		ChainID      int64  `json:"chain_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.ChainID == 0 {
+		req.ChainID = 1 // Ethereum mainnet by default for V3 keystore imports
+	}
+	chain := chainByID(req.ChainID)
+	if chain == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported chain_id"})
+		return
+	}
+	key, err := ImportKeystoreV3([]byte(req.KeystoreJSON), req.Password)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "keystore import failed: " + err.Error()})
+		return
+	}
+	addr := crypto.PubkeyToAddress(key.PublicKey)
+
+	// Re-encrypt the 32-byte private key bytes with the TigerWallet AES-GCM/scrypt
+	// seed encryption (wallet_api's canonical at-rest format) and persist.
+	privBytes := make([]byte, 32)
+	key.D.FillBytes(privBytes)
+	encSeed, err := EncryptSeed(privBytes, req.Password)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "seed encryption failed"})
+		return
+	}
+
+	uid, _ := uuid.Parse(getUserID(c))
+	if req.Label == "" {
+		req.Label = "Imported Keystore " + addr.Hex()[:10]
+	}
+	w := &WalletRecord{
+		UserID:         uid,
+		Label:          req.Label,
+		ChainID:        req.ChainID,
+		Address:        addr.Hex(),
+		DerivationPath: chain.DerivationPath,
+		EncryptedSeed:  encSeed,
+		IsPrimary:      false,
+	}
+	if err := store.SaveWallet(c.Request.Context(), w); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "persist wallet failed"})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{
+		"wallet_id": w.ID.String(),
+		"address":   w.Address,
+		"label":     w.Label,
+		"chain_id":  w.ChainID,
+		"source":    "keystore-v3",
+	})
 }

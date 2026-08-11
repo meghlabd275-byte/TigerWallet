@@ -90,6 +90,10 @@ func main() {
 		wallet.POST("/send", handleSendTransaction)
 		wallet.POST("/sign", handleSignMessage)
 
+		// ---- Web3 Secret Storage V3 keystore import/export (geth/MetaMask interop) ----
+		wallet.POST("/keystore/export", handleExportKeystore)
+		wallet.POST("/keystore/import", handleImportKeystore)
+
 		// ---- DeFi: swap & staking (real CoinGecko quotes + on-chain action) ----
 		wallet.GET("/swap/quote", handleSwapQuote)
 		wallet.POST("/swap/execute", handleSwapExecute)
