@@ -129,7 +129,7 @@ func handleCreateWallet(c *gin.Context) {
 	if req.ChainID == 0 {
 		req.ChainID = 1
 	}
-	chain := chainByID(req.ChainID)
+	chain := evmChainByChainID(req.ChainID)
 	if chain == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported chain"})
 		return
@@ -230,7 +230,7 @@ func handleListWallets(c *gin.Context) {
 func handleBalance(c *gin.Context) {
 	address := c.Query("address")
 	chainID := parseChainID(c.Query("chain_id"))
-	chain := chainByID(chainID)
+	chain := evmChainByChainID(chainID)
 	if chain == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chain_id"})
 		return
@@ -274,7 +274,7 @@ func handleBalance(c *gin.Context) {
 func handleTokenBalances(c *gin.Context) {
 	address := c.Query("address")
 	chainID := parseChainID(c.Query("chain_id"))
-	chain := chainByID(chainID)
+	chain := evmChainByChainID(chainID)
 	if chain == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chain_id"})
 		return
@@ -295,7 +295,7 @@ func handleTokenBalances(c *gin.Context) {
 func handleTransactions(c *gin.Context) {
 	address := c.Query("address")
 	chainID := parseChainID(c.Query("chain_id"))
-	chain := chainByID(chainID)
+	chain := evmChainByChainID(chainID)
 	if chain == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chain_id"})
 		return
@@ -314,7 +314,7 @@ func handleTransactions(c *gin.Context) {
 func handleNFTs(c *gin.Context) {
 	address := c.Query("address")
 	chainID := parseChainID(c.Query("chain_id"))
-	chain := chainByID(chainID)
+	chain := evmChainByChainID(chainID)
 	if chain == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chain_id"})
 		return
@@ -351,7 +351,7 @@ func handleSendTransaction(c *gin.Context) {
 	if req.ChainID == 0 {
 		req.ChainID = 1
 	}
-	chain := chainByID(req.ChainID)
+	chain := evmChainByChainID(req.ChainID)
 	if chain == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported chain"})
 		return
@@ -477,7 +477,7 @@ func handleSendTransaction(c *gin.Context) {
 
 func handleGasPrice(c *gin.Context) {
 	chainID := parseChainID(c.Query("chain_id"))
-	chain := chainByID(chainID)
+	chain := evmChainByChainID(chainID)
 	if chain == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chain_id"})
 		return
@@ -680,7 +680,7 @@ func handleImportKeystore(c *gin.Context) {
 	if req.ChainID == 0 {
 		req.ChainID = 1 // Ethereum mainnet by default for V3 keystore imports
 	}
-	chain := chainByID(req.ChainID)
+	chain := evmChainByChainID(req.ChainID)
 	if chain == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported chain_id"})
 		return

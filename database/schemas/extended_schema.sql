@@ -32,7 +32,10 @@ CREATE TABLE blockchains (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Pre-populated EVM Blockchains (20)
+-- Pre-populated EVM Blockchains (20). The full canonical registry (100 EVM
+-- mainnet + 50 non-EVM) lives in go/wallet_api/chains.go (SupportedChains)
+-- and is seeded into admin_chain_config on first admin-chains list; these
+-- rows are a bootstrap subset. ALL mainnet, no testnets.
 INSERT INTO blockchains (chain_id, name, symbol, chain_type, native_currency_name, native_currency_symbol, sort_order) VALUES
 (1, 'Ethereum', 'ETH', 'evm', 'Ether', 'ETH', 1),
 (56, 'BNB Chain', 'BNB', 'evm', 'BNB', 'BNB', 2),
@@ -47,15 +50,15 @@ INSERT INTO blockchains (chain_id, name, symbol, chain_type, native_currency_nam
 (128, 'Huobi ECO Chain', 'HT', 'evm', 'Huobi Token', 'HT', 11),
 (8217, 'Klaytn', 'KLAY', 'evm', 'Klaytn', 'KLAY', 12),
 (42262, 'Oasis Emerald', 'ROSE', 'evm', 'Oasis', 'ROSE', 13),
-(4689, 'IOTA', 'IOTA', 'evm', 'IOTA', 'IOTA', 14),
+(4689, 'IoTeX', 'IOTX', 'evm', 'IoTeX', 'IOTX', 14),
 (1313161554, 'Aurora', 'AURORA', 'evm', 'Aurora', 'ETH', 15),
 (1088, 'Metis', 'METIS', 'evm', 'Metis', 'METIS', 16),
 (288, 'Boba Network', 'BOBA', 'evm', 'Boba', 'ETH', 17),
-(106, ' Velas', 'VLX', 'evm', 'Velas', 'VLX', 18),
+(106, 'Velas', 'VLX', 'evm', 'Velas', 'VLX', 18),
 (1231, 'Ultron', 'ULX', 'evm', 'Ultron', 'ULX', 19),
-(5700, 'Raydium', 'RAY', 'evm', 'Raydium', 'SOL', 20);
+(100, 'Gnosis', 'xDAI', 'evm', 'Gnosis', 'xDAI', 20);
 
--- Pre-populated Non-EVM Blockchains (20)
+-- Pre-populated Non-EVM Blockchains (21, incl. Pi Network)
 INSERT INTO blockchains (chain_id, name, symbol, chain_type, native_currency_name, native_currency_symbol, sort_order) VALUES
 (0, 'Solana', 'SOL', 'solana', 'Solana', 'SOL', 21),
 (100, 'Cosmos', 'ATOM', 'cosmos', 'Cosmos', 'ATOM', 22),
@@ -76,7 +79,8 @@ INSERT INTO blockchains (chain_id, name, symbol, chain_type, native_currency_nam
 (9000, 'Injective', 'INJ', 'injective', 'Injective', 'INJ', 37),
 (10000, 'Sei', 'SEI', 'sei', 'Sei', 'SEI', 38),
 (11000, 'Osmosis', 'OSMO', 'osmosis', 'Osmosis', 'OSMO', 39),
-(12000, 'Dymension', 'DYM', 'dymension', 'Dymension', 'DYM', 40);
+(12000, 'Dymension', 'DYM', 'dymension', 'Dymension', 'DYM', 40),
+(314159, 'Pi Network', 'PI', 'pi', 'Pi', 'PI', 41);
 
 -- Blockchain tokens/coins
 CREATE TABLE blockchain_tokens (

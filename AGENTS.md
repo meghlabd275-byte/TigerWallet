@@ -840,6 +840,48 @@ Per-page:
   `/api/v1/ramp`). `bridge`/`red_packets_service`/`nft` (the dir, not
   nft_service) have NO main.go — they're libraries.
 
+## Session 2026-08-12 #3: Chain registry expanded to 150 (100 EVM + 50 non-EVM)
+
+### Gap found + fixed
+The canonical backend chain registry `go/wallet_api/chains.go` (`SupportedChains`)
+had only **7 chains incl. Sepolia TESTNET** — clients calling `GET /api/v1/chains`
+got only those 7. Expanded to **100 EVM mainnet + 50 non-EVM chains (incl. Pi
+Network)**: all mainnet, zero testnets. Real public RPC endpoints + BIP-44/
+SLIP-0044 derivation paths per chain family.
+- `ChainConfig` gained fields: `Type` (evm/solana/bitcoin/tron/cosmos/near/aptos/
+  sui/pi/etc.), `Decimals`, `CoinGeckoID`, `AddressPrefix`, `ExplorerURL`, `IsEVM`.
+- New `evmChainByChainID(id)` scopes EVM-only operations (balance, signing,
+  broadcast, AMM getAmountsOut/swapExactTokensForTokens, ethGetCode security scan)
+  to EVM chains. All EVM-op call sites in `handlers.go`, `amm_router.go`,
+  `defi_handlers.go`, `security.go` switched from `chainByID` →
+  `evmChainByChainID` so non-EVM chains are discoverable via `/chains` + the
+  admin dashboard but never fed to `eth_call` (which would fail/error).
+- `chainByID` still returns non-EVM configs for discovery/listing.
+- Non-EVM chains use synthetic IDs (1000001+) to avoid colliding with real EVM
+  chain IDs in the `map[int64]ChainConfig`.
+- Frontend `libs/chain_registry/universal_chain_registry.ts` expanded 51→100 EVM
+  (new entries use internal `id` 200-249 to avoid colliding with non-EVM ids 51+).
+  Non-EVM already 55 (incl Pi). tsc exit 0.
+- DB `database/schemas/extended_schema.sql` bootstrap seed: EVM seed fixed
+  (was "IOTA" at chainId 4689 → IoTeX; Raydium placeholder → Gnosis), non-EVM
+  seed gained Pi Network (chainId 314159). Canonical full source is `chains.go`;
+  `admin_ext.go` seeds `admin_chain_config` from `SupportedChains` on first admin
+  list — admins/WL-admins/master-wallet-admins add chains at runtime via the
+  `admin_chain_config` PostgreSQL table (CRUD at `/api/v1/admin/chains`).
+- `go build`+`go vet`+`go test` all exit 0 (BIP-44 vector still passes).
+- Chain generator script: `/tmp/gen_chains.py` (ephemeral; the generated
+  `chains.go` is committed directly).
+
+### Verified (already-correct, NOT re-broken)
+The user's message contained an OLDER analysis describing `user_wallet/*` clients
+as pointing at `:8105`/`:8080`, dead handlers, uncompilable rust fetchers, missing
+flutter pubspec, etc. Verified against current source: ALL already fixed in prior
+sessions (clients on :8443, `user_wallet/go` is a clean shim, dead handlers dir
+removed, `rust/userwallet_fetchers` has Cargo.toml + compiles, `mobile/flutter`
+has pubspec.yaml, Next.js transactions.ts uses real backend delegation / honest
+fail-closed throws). Did NOT re-implement these — only the chain registry gap was
+real and is now closed.
+
 ## Session 2026-08-12: UserWallet backend param-contract parity + dedup
 
 ### Parity audit findings (real bugs, now fixed)

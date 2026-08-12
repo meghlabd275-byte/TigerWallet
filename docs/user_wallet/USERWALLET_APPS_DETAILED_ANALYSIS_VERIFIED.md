@@ -5,6 +5,14 @@
 > fetchers, functionality, real-vs-stub status, gaps, and separation from
 > MasterWallet / Admin apps.
 
+> **✅ STATUS UPDATE (2026-08-12 #3): CHAIN REGISTRY EXPANDED TO 150 (100 EVM + 50 NON-EVM).**
+> `go/wallet_api/chains.go` `SupportedChains` expanded 7→150 chains (100 EVM
+> mainnet + 50 non-EVM incl. Pi Network); removed Sepolia testnet. Real RPC +
+> BIP-44 paths. New `evmChainByChainID()` scopes EVM-only ops to EVM chains.
+> Frontend `universal_chain_registry.ts` expanded 51→100 EVM (tsc exit 0). DB
+> seed includes Pi. `go build`+`vet`+`test` exit 0. Admins can add chains at
+> runtime via `admin_chain_config` (PostgreSQL).
+
 > **✅ STATUS (2026-08-12): FULL CLIENT PARITY + BUILD VERIFICATION COMPLETE.**
 > All four UserWallet native clients (`user_wallet/web`, `user_wallet/desktop`,
 > `user_wallet/android`, `user_wallet/ios`) now expose the **identical fetcher

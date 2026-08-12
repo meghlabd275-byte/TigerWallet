@@ -183,7 +183,7 @@ func handleCheckAddress(c *gin.Context) {
 	// eth_getCode to detect contract accounts.
 	isContract := false
 	codeSize := 0
-	if cfg := chainByID(chainID); cfg != nil {
+	if cfg := evmChainByChainID(chainID); cfg != nil {
 		if code, err := ethGetCode(cfg.RPCEndpoint, addr); err == nil && len(code) > 2 {
 			isContract = true
 			codeSize = (len(code) - 2) / 2 // strip 0x

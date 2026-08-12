@@ -4,6 +4,22 @@
 > iOS, Rust) across every platform: their fetchers, functionality, what is real vs
 > stubbed, what is missing, and separation from MasterWallet / Admin apps.
 
+> **✅ STATUS UPDATE (2026-08-12 #3): CHAIN REGISTRY EXPANDED TO 150 (100 EVM + 50 NON-EVM).**
+> The canonical backend registry `go/wallet_api/chains.go` (`SupportedChains`)
+> was expanded from 7 chains (incl. Sepolia **testnet**) to **100 EVM mainnet +
+> 50 non-EVM chains (incl. Pi Network)** — all mainnet, zero testnets. Real
+> public RPC endpoints + BIP-44/SLIP-0044 derivation paths per chain family.
+> `ChainConfig` gained `Type`/`Decimals`/`CoinGeckoID`/`AddressPrefix`/`IsEVM`
+> fields; new `evmChainByChainID()` scopes EVM-only ops (balance/signing/
+> broadcast/AMM/ethGetCode) to EVM chains so non-EVM chains are discoverable
+> via `GET /api/v1/chains` and the admin dashboard but never fed to `eth_call`.
+> Frontend `libs/chain_registry/universal_chain_registry.ts` expanded 51→100
+> EVM (tsc exit 0). DB `database/schemas/extended_schema.sql` bootstrap seed
+> now includes Pi Network; full canonical source remains `chains.go` (admin
+> `admin_ext.go` seeds `admin_chain_config` from it on first list — admins /
+> WL-admins / master-wallet-admins can add chains at runtime via PostgreSQL).
+> `go build`+`go vet`+`go test` all exit 0.
+
 > **✅ STATUS UPDATE (2026-08-12 #2): PARAM-CONTRACT PARITY + DEDUP COMPLETE.**
 > A fresh parity audit found route coverage complete (no 404s) but **parameter
 > contracts** broken (400s / wrong data). Fixed in `go/wallet_api` (backend made

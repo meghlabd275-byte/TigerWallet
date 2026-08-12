@@ -129,7 +129,7 @@ func handleAmmQuote(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chain_id"})
 		return
 	}
-	chain := chainByID(chainID)
+	chain := evmChainByChainID(chainID)
 	if chain == nil || chain.RPCEndpoint == "" {
 		c.JSON(http.StatusNotFound, gin.H{"error": "unsupported chain_id"})
 		return
@@ -229,7 +229,7 @@ func handleAmmSwap(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "from, chain_id, token_in, token_out, amount_in are required"})
 		return
 	}
-	chain := chainByID(req.ChainID)
+	chain := evmChainByChainID(req.ChainID)
 	if chain == nil || chain.RPCEndpoint == "" {
 		c.JSON(http.StatusNotFound, gin.H{"error": "unsupported chain_id"})
 		return

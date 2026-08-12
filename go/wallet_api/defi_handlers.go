@@ -201,7 +201,7 @@ func handleSwapExecute(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "from, from_token and to_token must be 0x addresses to construct on-chain calldata"})
 		return
 	}
-	chain := chainByID(req.ChainID)
+	chain := evmChainByChainID(req.ChainID)
 	if chain == nil || chain.RPCEndpoint == "" {
 		c.JSON(http.StatusNotFound, gin.H{"error": "unsupported chain_id"})
 		return
@@ -383,7 +383,7 @@ func handleTransactionReceipt(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "txHash and chain_id are required"})
 		return
 	}
-	ch := chainByID(chainID)
+	ch := evmChainByChainID(chainID)
 	if ch == nil || ch.ExplorerAPI == "" {
 		c.JSON(http.StatusNotFound, gin.H{"error": "no explorer configured for chain"})
 		return
