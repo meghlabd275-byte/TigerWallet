@@ -78,10 +78,38 @@ clients to :8443, but per-client parity was incomplete; this closes it:
 `block_number = 0` (no fabricated blocks).
 **Build verification (all green):** `frontend/web_nextjs` tsc → 0 errors;
 `user_wallet/web` tsc → 0 errors (`--legacy-peer-deps`); `go/wallet_api`
-build+tests pass (BIP-44 vector); `desktop_wallet` C++ cmake/make exit 0 +
-tests pass; Foundry `forge build` exit 0, `forge test` **31/31 pass** (real
-ECDSA via `vm.sign`, no mocks). OpenZeppelin v5 installed via
-`forge install` (was absent from the shallow clone).
+build+vet+test pass (BIP-44 vector); 9 DeFi Go services build clean;
+`rust/{userwallet,masterwallet,admin}_fetchers` cargo check pass (userwallet
+3/3 tests); `desktop_wallet` C++ cmake/make exit 0; Foundry `forge build`
+exit 0, `forge test` **31/31 pass** (real ECDSA via `vm.sign`, no mocks).
+OpenZeppelin v5 installed via `forge install` (was absent from the shallow clone).
+
+### Backend param-contract parity + dedup (2026-08-12 update #2) ✅
+A fresh parity audit found the route-level coverage was complete (no 404s) but
+the **parameter contracts** were broken (400s / wrong data). Fixed in
+`go/wallet_api` by making the backend permissive (no client churn):
+- `POST /auth/register` — `username` now optional (derived from email if
+  absent); was required → 5/6 clients got 400.
+- `GET /price` — accepts `coin`/`symbol`/`token` (web sends symbol, android/ios
+  send token, canonical is coin); was silently always pricing ETH.
+- `GET /swap/quote` — accepts `from`/`to`/`amount` AND
+  `from_token`/`to_token`/`from_amount`; was 400 for 4 clients.
+- `POST /swap/execute` — now constructs the swap calldata **server-side** from
+  the chain's V2 router (real on-chain `getAmountsOut` +
+  `swapExactTokensForTokens` ABI, reusing `/amm/swap` logic) when the client
+  omits `dex_router`+`call_data`; honest 404 if no router configured.
+- `POST /staking/{stake,unstake,claim}` — now returns `202 Accepted` with
+  `action_required: provide_staking_contract` (protocol-specific contract
+  cannot be fabricated) instead of 400; accepts react's `wallet_id`/`password`/
+  `token` fields.
+- **Redundant fake-crypto backend removed:** `user_services/go` (:8081) had
+  sha256-mnemonic/deriveAddress (NOT BIP-39/secp256k1) and a length-only
+  `verifyTOTP`. Converted to a stdlib reverse-proxy shim → :8443 (port
+  preserved; old impl retained as `legacy_main.go.txt`, not compiled). `go
+  build` exit 0.
+- **SQLite fully removed:** zero active usage repo-wide (PostgreSQL + Redis
+  only); residuals are 2 doc comments + stale go.sum checksums.
+`go build` + `go vet` + `go test` all pass after these changes.
 
 > The body of this document (below) is retained as the **historical 2026-08-09
 > record** of the pre-fix state for traceability.

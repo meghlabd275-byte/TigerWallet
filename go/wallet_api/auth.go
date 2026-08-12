@@ -34,6 +34,15 @@ func constantTimeEq(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
+// emailLocalPart returns the local part of an email address (before '@'),
+// used to derive a default username when the client omits one.
+func emailLocalPart(email string) string {
+	if i := strings.IndexByte(email, '@'); i > 0 {
+		return email[:i]
+	}
+	return ""
+}
+
 // IssueJWT creates a signed JWT for a user ID.
 func IssueJWT(secret string, userID string) (string, error) {
 	claims := jwt.MapClaims{

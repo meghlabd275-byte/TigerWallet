@@ -33,7 +33,7 @@ func handleHealth(c *gin.Context) {
 
 type registerReq struct {
 	Email    string `json:"email" binding:"required,email"`
-	Username string `json:"username" binding:"required,min=3"`
+	Username string `json:"username"`
 	Password string `json:"password" binding:"required,min=8"`
 }
 
@@ -47,6 +47,16 @@ func handleRegister(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+	// Username is optional: derive a stable handle from the email local-part so
+	// clients that send only {email, password} (web/desktop/android/ios/react)
+	// register successfully, matching the extension which sends a username.
+	username := req.Username
+	if username == "" {
+		username = emailLocalPart(req.Email)
+		if username == "" {
+			username = "user"
+		}
 	}
 	existing, err := store.GetUserByEmail(c.Request.Context(), req.Email)
 	if err != nil {
@@ -62,7 +72,7 @@ func handleRegister(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to hash password"})
 		return
 	}
-	uid, err := store.CreateUser(c.Request.Context(), req.Email, req.Username, hash)
+	uid, err := store.CreateUser(c.Request.Context(), req.Email, username, hash)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
 		return
@@ -490,7 +500,9 @@ func handleGasPrice(c *gin.Context) {
 }
 
 func handlePrice(c *gin.Context) {
-	coinID := c.DefaultQuery("coin", "ethereum")
+	// Accept any of the param names used by the clients: web/desktop send
+	// ?symbol=, android/ios send ?token=, the canonical name is ?coin=.
+	coinID := c.DefaultQuery("coin", c.DefaultQuery("symbol", c.DefaultQuery("token", "ethereum")))
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 

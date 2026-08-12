@@ -1,5 +1,21 @@
 # TigerWallet UserWallet Apps - Detailed Comparison Analysis
 
+> **✅ STATUS UPDATE (2026-08-12 #2): PARAM-CONTRACT PARITY + DEDUP COMPLETE.**
+> A fresh parity audit found route coverage complete (no 404s) but **parameter
+> contracts** broken (400s / wrong data). Fixed in `go/wallet_api` (backend made
+> permissive, no client churn): `/auth/register` `username` now optional (derived
+> from email); `/price` accepts `coin`/`symbol`/`token`; `/swap/quote` accepts
+> both `from`/`to`/`amount` and `from_token`/`to_token`/`from_amount`;
+> `/swap/execute` now constructs swap calldata **server-side** from the chain's
+> V2 router (real on-chain `getAmountsOut` + ABI); `/staking/*` returns `202`
+> `provide_staking_contract` (not 400). **Redundant fake-crypto backend removed:**
+> `user_services/go` (:8081, sha256-mnemonic/deriveAddress) → stdlib reverse-proxy
+> shim to :8443 (port preserved; old impl as `legacy_main.go.txt`, not compiled).
+> **SQLite fully removed** (zero active usage; PostgreSQL + Redis only).
+> `go build`+`go vet`+`go test` pass; 9 DeFi Go services + 3 Rust fetchers
+> (cargo check, userwallet 3/3 tests) + desktop_wallet C++ (cmake/make) + Foundry
+> (31/31 tests) all green.
+
 > **✅ STATUS UPDATE (2026-08-12): FULL CLIENT PARITY + BUILD VERIFICATION COMPLETE.**
 > Building on the 2026-08-11 retarget, all four UserWallet native clients
 > (`user_wallet/web`, `user_wallet/desktop`, `user_wallet/android`,
