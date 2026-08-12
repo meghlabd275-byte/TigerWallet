@@ -32,14 +32,23 @@
 import axios, { AxiosInstance } from 'axios';
 
 export interface Chain {
-  id: string;
+  id: number | string;
   name: string;
   symbol: string;
   decimals: number;
-  rpcUrl: string;
-  explorerUrl: string;
-  chainId: number;
-  type: 'evm' | 'solana' | 'aptos' | 'sui' | 'ton';
+  // Canonical backend field names
+  rpcEndpoint?: string;
+  derivationPath?: string;
+  explorerApi?: string;
+  explorerUrl?: string;
+  chainType?: string;
+  coinType?: number;
+  isTestnet?: boolean;
+  // Legacy aliases (kept for backward compat with existing UI code). These
+  // are populated from the canonical fields in getChains() / createWallet().
+  rpcUrl?: string;
+  chainId?: number;
+  type?: 'evm' | 'solana' | 'aptos' | 'sui' | 'ton' | string;
 }
 
 export interface Token {
@@ -138,16 +147,30 @@ class WalletService {
   async getChains(): Promise<Chain[]> {
     const response = await this.api.get('/chains');
     const chains = response.data.chains ?? response.data;
-    return (chains as Array<Record<string, unknown>>).map((c) => ({
-      id: String(c.id ?? c.chain_id ?? ''),
-      name: String(c.name ?? ''),
-      symbol: String(c.symbol ?? ''),
-      decimals: Number(c.decimals ?? 18),
-      rpcUrl: String(c.rpc_url ?? c.rpc ?? ''),
-      explorerUrl: String(c.explorer_url ?? c.explorer ?? ''),
-      chainId: Number(c.chain_id ?? c.id ?? 0),
-      type: (c.type as Chain['type']) ?? 'evm',
-    }));
+    return (chains as Array<Record<string, unknown>>).map((c) => {
+      const rpcEndpoint = String(c.rpc_endpoint ?? c.rpc_url ?? c.rpc ?? '');
+      const explorerUrl = String(c.explorer_url ?? c.explorer ?? '');
+      const chainType = String(c.chain_type ?? c.type ?? 'evm');
+      const idNum = Number(c.id ?? c.chain_id ?? 0);
+      const decimals = Number(c.decimals ?? 18);
+      return {
+        id: idNum,
+        name: String(c.name ?? ''),
+        symbol: String(c.symbol ?? ''),
+        decimals,
+        rpcEndpoint,
+        derivationPath: c.derivation_path ? String(c.derivation_path) : undefined,
+        explorerApi: c.explorer_api ? String(c.explorer_api) : undefined,
+        explorerUrl,
+        chainType,
+        coinType: c.coin_type ? Number(c.coin_type) : undefined,
+        isTestnet: typeof c.is_testnet === 'boolean' ? c.is_testnet : false,
+        // legacy aliases
+        rpcUrl: rpcEndpoint,
+        chainId: idNum,
+        type: chainType,
+      } as Chain;
+    });
   }
 
   async getBalance(address: string, chainId: number): Promise<BalanceResult> {

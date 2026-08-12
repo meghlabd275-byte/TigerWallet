@@ -146,6 +146,17 @@ public:
     // Validation
     bool validateMnemonic(const std::string& mnemonic);
 
+    // Fetch the live chain registry from the canonical backend
+    // (GET /api/v1/chains) and refresh the in-memory chains_ map. Called by
+    // initialize(). On failure (backend unreachable / parse error) the
+    // preseeded mainnet defaults remain so the wallet is still usable
+    // offline, but no fabricated chains are ever introduced.
+    void refreshChainsFromBackend();
+
+    // Map a backend chain_type string ("evm"/"solana"/...) onto the local
+    // ChainType enum.
+    static ChainType chainTypeFromString(const std::string& s);
+
     // Members
     static std::shared_ptr<BlockchainService> instance_;
     std::map<std::string, Chain> chains_;

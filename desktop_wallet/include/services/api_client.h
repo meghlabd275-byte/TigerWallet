@@ -205,6 +205,11 @@ std::optional<std::string> jsonStringField(const std::string& json, const std::s
 std::optional<double> jsonNumberField(const std::string& json, const std::string& key);
 std::optional<std::string> jsonFirstStringArrayElement(const std::string& json, const std::string& key);
 
+// Parse a top-level JSON array-of-objects value for `key` into a list of raw
+// object substrings (each the text between the matching { } for that element).
+// Used to deserialize the `chains` array returned by GET /api/v1/chains.
+std::vector<std::string> jsonArrayOfObjects(const std::string& json, const std::string& key);
+
 } // namespace wallet
 } // namespace tiger
 

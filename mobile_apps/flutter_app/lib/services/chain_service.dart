@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:http/http.dart as http';
+import '../utils/constants.dart';
 
 /// Chain Service - Manages blockchain configurations
 /// 
@@ -61,10 +63,46 @@ class ChainService {
   List<Chain> _chains = [];
   bool _isLoaded = false;
 
-  /// Load all supported chains
+  /// Load all supported chains. Fetches the canonical registry from
+  /// go/wallet_api (GET /api/v1/chains -> 120 EVM + 66 non-EVM mainnet chains);
+  /// falls back to built-in defaults if the backend is unreachable so the app
+  /// still works offline. No fabricated chains are ever introduced.
   Future<void> loadChains() async {
-    _chains = _getDefaultChains();
+    final remote = await _fetchChainsFromBackend();
+    _chains = remote.isNotEmpty ? remote : _getDefaultChains();
     _isLoaded = true;
+  }
+
+  Future<List<Chain>> _fetchChainsFromBackend() async {
+    try {
+      final resp = await http
+          .get(Uri.parse('$API_BASE_URL/api/v1/chains'))
+          .timeout(const Duration(seconds: 10));
+      if (resp.statusCode != 200) return [];
+      final body = jsonDecode(resp.body) as Map<String, dynamic>;
+      final arr = body['chains'] as List? ?? [];
+      final out = <Chain>[];
+      for (final raw in arr) {
+        final c = raw as Map<String, dynamic>;
+        out.add(Chain(
+          chainId: (c['id'] as num?)?.toInt() ?? 0,
+          name: (c['name'] as String?) ?? '',
+          symbol: (c['symbol'] as String?) ?? '',
+          rpcUrl: (c['rpc_endpoint'] as String?) ?? '',
+          explorerUrl: (c['explorer_url'] as String?) ??
+              (c['explorer_api'] as String?) ??
+              '',
+          derivationPath:
+              (c['derivation_path'] as String?) ?? "m/44'/60'/0'/0/0",
+          chainType: (c['chain_type'] as String?) ?? 'evm',
+          isActive: true,
+          iconUrl: null,
+        ));
+      }
+      return out;
+    } catch (_) {
+      return [];
+    }
   }
 
   /// Get all supported chains

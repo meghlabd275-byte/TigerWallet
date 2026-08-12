@@ -325,5 +325,53 @@ std::optional<std::string> jsonFirstStringArrayElement(const std::string& json, 
     return json.substr(strStart + 1, strEnd - strStart - 1);
 }
 
+// Parse a JSON array-of-objects value (the value following `"key":`) into the
+// individual object substrings. Each element is the balanced text between a
+// top-level '{' and its matching '}'. Strings inside are tracked so braces in
+// string values do not break the scan. Returns an empty vector if the key is
+// absent or the value is not an array of objects.
+std::vector<std::string> jsonArrayOfObjects(const std::string& json, const std::string& key) {
+    std::vector<std::string> out;
+    std::string needle = "\"" + key + "\"";
+    size_t pos = json.find(needle);
+    if (pos == std::string::npos) return out;
+    size_t arr = json.find('[', pos);
+    if (arr == std::string::npos) return out;
+
+    size_t i = arr + 1;
+    while (i < json.size()) {
+        // skip whitespace + commas
+        while (i < json.size() && (json[i] == ' ' || json[i] == '\t' || json[i] == '\n' ||
+               json[i] == '\r' || json[i] == ',')) {
+            ++i;
+        }
+        if (i >= json.size() || json[i] == ']') break;
+        if (json[i] != '{') break; // not an object element
+
+        size_t start = i;
+        int depth = 0;
+        bool inString = false;
+        bool escape = false;
+        for (; i < json.size(); ++i) {
+            char c = json[i];
+            if (inString) {
+                if (escape) { escape = false; }
+                else if (c == '\\') { escape = true; }
+                else if (c == '"') { inString = false; }
+            } else {
+                if (c == '"') { inString = true; }
+                else if (c == '{') { ++depth; }
+                else if (c == '}') {
+                    --depth;
+                    if (depth == 0) { ++i; break; }
+                }
+            }
+        }
+        if (depth != 0) break; // unbalanced; malformed
+        out.push_back(json.substr(start, i - start));
+    }
+    return out;
+}
+
 } // namespace wallet
 } // namespace tiger

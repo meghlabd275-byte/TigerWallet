@@ -65,8 +65,14 @@ export interface ChainInfo {
   id: number;
   name: string;
   symbol: string;
-  explorer: string;
-  rpc: string;
+  rpc_endpoint: string;
+  derivation_path?: string;
+  explorer_api?: string;
+  explorer_url?: string;
+  chain_type?: string;
+  decimals?: number;
+  coin_type?: number;
+  is_testnet?: boolean;
 }
 
 class ApiService {

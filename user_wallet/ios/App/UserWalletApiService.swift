@@ -306,8 +306,14 @@ final class UserWalletApiService {
         let chain_id: Int
         let name: String
         let symbol: String
-        let rpc_url: String
-        let explorer_url: String
+        let rpc_endpoint: String?
+        let derivation_path: String?
+        let explorer_api: String?
+        let explorer_url: String?
+        let chain_type: String?
+        let decimals: Int?
+        let coin_type: Int?
+        let is_testnet: Bool?
     }
     struct ChainListResponse: Codable { let chains: [ChainInfo] }
 

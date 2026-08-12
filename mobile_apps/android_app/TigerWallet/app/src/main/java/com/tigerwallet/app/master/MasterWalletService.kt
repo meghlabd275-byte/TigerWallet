@@ -203,7 +203,53 @@ class MasterWalletService private constructor() {
     // ============================================================================
 
     private fun loadNetworks() {
-        _networksFlow.value = getDefaultNetworks()
+        // Try the canonical backend registry first (120 EVM + 66 non-EVM
+        // mainnet chains). If the backend is unreachable, fall back to the
+        // preseeded mainnet defaults so the app still works offline. No
+        // fabricated chains are ever introduced.
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val remote = fetchNetworksFromAPI()
+                if (remote.isNotEmpty()) {
+                    _networksFlow.value = remote
+                } else {
+                    _networksFlow.value = getDefaultNetworks()
+                }
+            } catch (e: Exception) {
+                _networksFlow.value = getDefaultNetworks()
+            }
+        }
+    }
+
+    /** Fetches the live chain registry from go/wallet_api
+     *  (GET /api/v1/chains -> {chains:[...], count, evm_count, ...}). */
+    private suspend fun fetchNetworksFromAPI(): List<BlockchainNetwork> = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url("$BACKEND_BASE_URL/api/v1/chains")
+                .get().build()
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) return@withContext emptyList()
+            val body = response.body?.string() ?: return@withContext emptyList()
+            val obj = JSONObject(body)
+            val arr = obj.optJSONArray("chains") ?: return@withContext emptyList()
+            val out = mutableListOf<BlockchainNetwork>()
+            for (i in 0 until arr.length()) {
+                val c = arr.getJSONObject(i)
+                val type = c.optString("chain_type", "evm")
+                val isEVM = type == "evm"
+                val id = c.optString("symbol", "").lowercase().ifEmpty { c.opt("id").toString() }
+                out.add(BlockchainNetwork(
+                    id = id,
+                    name = c.optString("name", ""),
+                    symbol = c.optString("symbol", ""),
+                    chainId = c.optLong("id", 0),
+                    rpcUrl = c.optString("rpc_endpoint", ""),
+                    isEVM = isEVM
+                ))
+            }
+            out
+        } catch (e: Exception) { emptyList() }
     }
 
     private fun loadTokens() {

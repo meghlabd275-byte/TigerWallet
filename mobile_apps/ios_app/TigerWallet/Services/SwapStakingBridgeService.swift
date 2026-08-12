@@ -202,9 +202,14 @@ class BridgeService {
     }
     
     func getSupportedChains() async throws -> [ChainInfo] {
-        let url = URL(string: "\(baseURL)/chains")!
+        // Canonical chain registry from go/wallet_api (120 EVM + 66 non-EVM
+        // mainnet chains). The bridge-service /chains sub-endpoint was a
+        // non-canonical stub; the canonical registry lives at /api/v1/chains.
+        let url = URL(string: "http://localhost:8443/api/v1/chains")!
         let (data, _) = try await URLSession.shared.data(from: url)
-        return try JSONDecoder().decode([ChainInfo].self, from: data)
+        // Backend envelope: { chains: [...], count, evm_count, ... }
+        let resp = try JSONDecoder().decode(ChainsResponse.self, from: data)
+        return resp.chains
     }
 }
 
@@ -258,10 +263,42 @@ struct BridgeQuote: Codable {
 }
 
 struct ChainInfo: Codable, Identifiable {
-    let id: String
+    let id: Int
     let name: String
     let symbol: String
-    let chainId: Int
+    let rpcEndpoint: String?
+    let derivationPath: String?
+    let explorerApi: String?
+    let explorerUrl: String?
+    let chainType: String?
+    let decimals: Int?
+    let coinType: Int?
+    let isTestnet: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, symbol, decimals, isTestnet
+        case rpcEndpoint = "rpc_endpoint"
+        case derivationPath = "derivation_path"
+        case explorerApi = "explorer_api"
+        case explorerUrl = "explorer_url"
+        case chainType = "chain_type"
+        case coinType = "coin_type"
+    }
+}
+
+struct ChainsResponse: Codable {
+    let chains: [ChainInfo]
+    let count: Int?
+    let evmCount: Int?
+    let nonEvmCount: Int?
+    let mainnetOnly: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case chains, count
+        case evmCount = "evm_count"
+        case nonEvmCount = "non_evm_count"
+        case mainnetOnly = "mainnet_only"
+    }
 }
 
 struct TransactionResult: Codable {

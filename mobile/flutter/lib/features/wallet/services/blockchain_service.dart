@@ -1,17 +1,87 @@
 // Blockchain Service - Complete Blockchain Network Management
 // Manages 300+ blockchains with RPC infrastructure
 
+import 'dart:convert';
+import 'package:http/http.dart as http;
+import '../../../core/constants/app_constants.dart';
 import '../models/chain_model.dart';
 
 class BlockchainService {
   List<ChainModel> _supportedChains = [];
   final Map<String, String> _customRpcUrls = {};
-  
-  // Initialize with default chains
+
+  // Initialize with chains from the canonical backend registry
+  // (GET /api/v1/chains -> 120 EVM + 66 non-EVM mainnet chains). Falls back
+  // to built-in defaults if the backend is unreachable so the wallet still
+  // works offline. No fabricated chains are ever introduced.
   Future<void> initialize() async {
-    _supportedChains = _getDefaultChains();
+    final remote = await _fetchChainsFromBackend();
+    _supportedChains = remote.isNotEmpty ? remote : _getDefaultChains();
   }
-  
+
+  Future<List<ChainModel>> _fetchChainsFromBackend() async {
+    try {
+      final resp = await http
+          .get(Uri.parse('${AppConstants.baseUrl}/api/v1/chains'))
+          .timeout(const Duration(seconds: 10));
+      if (resp.statusCode != 200) return [];
+      final body = jsonDecode(resp.body) as Map<String, dynamic>;
+      final arr = body['chains'] as List? ?? [];
+      final out = <ChainModel>[];
+      for (final raw in arr) {
+        final c = raw as Map<String, dynamic>;
+        final typeStr = (c['chain_type'] as String?) ?? 'evm';
+        final type = ChainType.values.firstWhere(
+          (e) => e.name == typeStr,
+          orElse: () => ChainType.evm,
+        );
+        final symbol = (c['symbol'] as String?) ?? '';
+        final id = symbol.toLowerCase().isNotEmpty
+            ? symbol.toLowerCase()
+            : (c['id'] ?? 0).toString();
+        final decimals = (c['decimals'] as num?)?.toInt() ?? 18;
+        out.add(ChainModel(
+          id: id,
+          name: (c['name'] as String?) ?? '',
+          symbol: symbol,
+          iconUrl: '',
+          chainId: (c['id'] as num?)?.toInt() ?? 0,
+          rpcUrl: (c['rpc_endpoint'] as String?) ?? '',
+          explorerUrl: (c['explorer_url'] as String?) ??
+              (c['explorer_api'] as String?) ??
+              '',
+          explorerApiUrl: (c['explorer_api'] as String?),
+          type: type,
+          isTestnet: false,
+          isDefault: false,
+          config: ChainConfig(
+            derivationPath:
+                (c['derivation_path'] as String?) ?? "m/44'/60'/0'/0/0",
+            addressPrefix: 0,
+            supportsEIP1559: type == ChainType.evm,
+            supportsTokenTransfers: type == ChainType.evm,
+            supportsNFT: type == ChainType.evm,
+            supportsStaking: type == ChainType.evm,
+            blockTime: BlockTimeConfig(
+              targetTimeSeconds: type == ChainType.evm ? 12 : 6,
+              confirmationBlocks: type == ChainType.evm ? 12 : 32,
+            ),
+            gasConfig: GasConfig(
+              gasToken: symbol,
+              decimals: decimals,
+              minGasPrice: 1,
+              maxGasPrice: 1000,
+              gasLimit: 21000,
+            ),
+          ),
+        ));
+      }
+      return out;
+    } catch (_) {
+      return [];
+    }
+  }
+
   // Get all supported chains
   Future<List<ChainModel>> getSupportedChains() async {
     return _supportedChains;

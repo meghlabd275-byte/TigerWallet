@@ -339,14 +339,22 @@ class BridgeService {
   }
 
   async getSupportedChains() {
+    // Canonical chain registry from go/wallet_api (120 EVM + 66 non-EVM
+    // mainnet chains, admin-extensible). The /bridge/chains sub-endpoint was
+    // a non-canonical stub and is replaced here.
     try {
-      const response = await fetch('http://localhost:8443/api/v1/bridge/chains', {
+      const response = await fetch('http://localhost:8443/api/v1/chains', {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json'
         }
       });
-      return await response.json();
+      if (response.ok) {
+        const data = await response.json();
+        // Backend envelope: { chains: [...], count, evm_count, ... }
+        return data.chains || [];
+      }
+      return [];
     } catch (error) {
       console.error('Failed to get chains:', error);
       return [];

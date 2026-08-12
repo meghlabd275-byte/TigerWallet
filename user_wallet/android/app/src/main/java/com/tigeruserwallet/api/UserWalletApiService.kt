@@ -353,19 +353,31 @@ object UserWalletApiService {
         val chainId: Int,
         val name: String,
         val symbol: String,
-        val rpcUrl: String,
-        val explorerUrl: String
+        val rpcEndpoint: String,
+        val derivationPath: String?,
+        val explorerApi: String?,
+        val explorerUrl: String?,
+        val chainType: String?,
+        val decimals: Int?,
+        val coinType: Int?,
+        val isTestnet: Boolean?
     )
 
     fun getChains(): List<ChainInfo> {
         val req = requestBuilder("/chains").get().build()
         return executeList(req, "chains").map {
             ChainInfo(
-                chainId = it.optInt("chain_id"),
+                chainId = it.optInt("id"),
                 name = it.optString("name"),
                 symbol = it.optString("symbol"),
-                rpcUrl = it.optString("rpc_url"),
-                explorerUrl = it.optString("explorer_url")
+                rpcEndpoint = it.optString("rpc_endpoint"),
+                derivationPath = it.optString("derivation_path").ifEmpty { null },
+                explorerApi = it.optString("explorer_api").ifEmpty { null },
+                explorerUrl = it.optString("explorer_url").ifEmpty { null },
+                chainType = it.optString("chain_type").ifEmpty { null },
+                decimals = if (it.has("decimals")) it.optInt("decimals") else null,
+                coinType = if (it.has("coin_type")) it.optInt("coin_type") else null,
+                isTestnet = if (it.has("is_testnet")) it.optBoolean("is_testnet") else null
             )
         }
     }

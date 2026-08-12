@@ -929,8 +929,45 @@ All 4 commits pushed to `origin/main` (53492cb, 7ec6f6e, b7a73b4, 40fdc73).
   `/tmp/non_evm_mainnet.json`.
 - **Still pending (honest)**: per-non-EVM transaction signing (Solana on-chain
   program + RPC wiring; BTC/Cardano/Cosmos signing), admin chain-management
-  UI panel (CRUD endpoints exist), wiring the registry into
-  mobile/desktop/extension chain selectors.
+  UI panel (CRUD endpoints exist).
+
+## Session 2026-08-12: Chain registry wired across ALL client platforms
+
+Closed the "registry not wired into mobile/desktop/extension" gap — every
+TigerWallet client now fetches the same live `GET /api/v1/chains` registry
+instead of a divergent hardcoded list. No fabricated chains introduced; each
+client keeps its built-in list only as an offline fallback.
+- **Desktop (C++):** `BlockchainService::initialize()` now calls
+  `refreshChainsFromBackend()` (real `backendGet("/api/v1/chains")` + new
+  `jsonArrayOfObjects` JSON array parser in `api_client.cpp`). Replaces the
+  in-memory `chains_` map with live backend data; preseeded mainnet defaults
+  remain only if the backend is unreachable. Added `chainTypeFromString`
+  (backend `chain_type` string → `ChainType` enum). `cmake`+`make -j4` exit 0
+  (cmake 3.31.6 + libcurl4-openssl-dev + libssl-dev installed this session).
+- **Chrome extension:** `BridgeService.getChains()`/`getSupportedChains()`
+  retargeted from non-canonical `/bridge/chains` → `/api/v1/chains`, unwraps
+  the `{chains:[...]}` envelope (was returning raw/bare response). `node --check` clean.
+- **iOS (`mobile_apps/ios_app`):** `SwapStakingBridgeService.getSupported
+  Chains()` → `/api/v1/chains`, decodes full `ChainsResponse` envelope (was
+  bare `[ChainInfo]`); `ChainInfo` now carries all backend fields.
+- **Android (`mobile_apps/android_app`):** `MasterWalletService.loadNetworks()`
+  fetches `/api/v1/chains` via OkHttp, parses `{chains:[...]}` into
+  `BlockchainNetwork` (`chain_type`-derived `isEVM`); fallback to defaults on failure.
+- **Flutter (`mobile/flutter` + `mobile_apps/flutter_app`):** both
+  `BlockchainService.initialize()`/`ChainService.loadChains()` fetch
+  `/api/v1/chains` via `package:http`, map backend array into `ChainModel`/`Chain`.
+- **`user_wallet/*`**: expanded `ChainInfo`/`Chain` models to full backend
+  schema (`rpc_endpoint`, `derivation_path`, `explorer_api`, `explorer_url`,
+  `chain_type`, `decimals`, `coin_type`, `is_testnet`). production-react `Chain`
+  keeps legacy aliases (`rpcUrl`/`chainId`/`type`) for backward compat.
+  `user_wallet/web` tsc 0 errors; `production/react` 0 new tsc errors
+  (all remaining pre-existing in `services/master/*`).
+- Verified: Go build clean, desktop C++ builds clean, web_nextjs tsc 0 errors,
+  user_wallet/web tsc 0 errors, production/react no new errors, extension JS
+  `node --check` clean. iOS/Android/Flutter verified by manual review
+  (no swiftc/kotlinc/flutter SDK in env).
+- **Still pending (honest):** per-non-EVM transaction signing + admin
+  chain-management UI panel (CRUD endpoints exist, no dashboard page yet).
 
 
 ## Session 2026-08-12: UserWallet backend param-contract parity + dedup

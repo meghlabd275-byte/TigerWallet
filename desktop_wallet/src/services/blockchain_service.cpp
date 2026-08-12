@@ -4,6 +4,7 @@
 
 #include "services/blockchain_service.h"
 #include "models/wallet_models.h"
+#include "services/api_client.h"
 #include "crypto/bip39.h"
 #include "crypto/bip32.h"
 #include "crypto/keccak256.h"
@@ -13,6 +14,7 @@
 #include <sstream>
 #include <thread>
 #include <chrono>
+#include <algorithm>
 #include <openssl/sha.h>
 #include <openssl/evp.h>
 #include <openssl/bio.h>
@@ -76,6 +78,12 @@ void BlockchainService::initialize() {
 
     curl_ = curl_easy_init();
     initialized_ = true;
+
+    // Populate the chain registry from the canonical backend (120 EVM +
+    // 66 non-EVM mainnet chains served by go/wallet_api). If the backend is
+    // unavailable, the preseeded mainnet defaults remain.
+    refreshChainsFromBackend();
+
     std::cout << "[BlockchainService] Initialized with " << chains_.size() << " chains" << std::endl;
 }
 
@@ -85,6 +93,75 @@ void BlockchainService::shutdown() {
         curl_ = nullptr;
     }
     initialized_ = false;
+}
+
+// ============================================================================
+// Chain Registry (backend-backed)
+// ============================================================================
+
+ChainType BlockchainService::chainTypeFromString(const std::string& s) {
+    if (s == "evm" || s == "ethereum" || s == "bsc" || s == "polygon" ||
+        s == "arbitrum" || s == "optimism" || s == "avalanche" || s == "base" ||
+        s == "fantom" || s == "tron") {
+        return ChainType::EVM;
+    }
+    if (s == "solana") return ChainType::SOLANA;
+    if (s == "aptos") return ChainType::APTOS;
+    if (s == "sui") return ChainType::SUI;
+    if (s == "ton") return ChainType::TON;
+    if (s == "bitcoin" || s == "bitcoincash" || s == "litecoin" || s == "dogecoin") return ChainType::BITCOIN;
+    if (s == "cosmos" || s == "near" || s == "polkadot" || s == "juno" || s == "stargaze") return ChainType::COSMOS;
+    return ChainType::OTHER;
+}
+
+void BlockchainService::refreshChainsFromBackend() {
+    std::string resp;
+    try {
+        resp = backendGet("/api/v1/chains");
+    } catch (const std::exception& e) {
+        std::cerr << "[BlockchainService] backend /api/v1/chains unavailable: "
+                  << e.what() << " (keeping " << chains_.size() << " preseeded chains)" << std::endl;
+        return;
+    }
+
+    auto elements = jsonArrayOfObjects(resp, "chains");
+    if (elements.empty()) {
+        std::cerr << "[BlockchainService] /api/v1/chains returned no chains array; "
+                     "keeping preseeded chains" << std::endl;
+        return;
+    }
+
+    // Replace the in-memory registry with the live backend data. The backend
+    // is the single source of truth (admin-extensible at runtime).
+    std::map<std::string, Chain> live;
+    for (const auto& obj : elements) {
+        Chain c;
+        c.name = jsonStringField(obj, "name").value_or("");
+        c.symbol = jsonStringField(obj, "symbol").value_or("");
+        c.rpc_url = jsonStringField(obj, "rpc_endpoint").value_or("");
+        c.explorer_url = jsonStringField(obj, "explorer_url").value_or("");
+        if (c.explorer_url.empty()) {
+            c.explorer_url = jsonStringField(obj, "explorer_api").value_or("");
+        }
+        std::string typeStr = jsonStringField(obj, "chain_type").value_or("evm");
+        c.type = chainTypeFromString(typeStr);
+        c.decimals = static_cast<int>(jsonNumberField(obj, "decimals").value_or(18));
+        c.chain_id = static_cast<int>(jsonNumberField(obj, "id").value_or(0));
+        c.is_testnet = false; // registry is mainnet-only
+
+        // Canonical string id: prefer lowercased symbol, fallback to chain_id.
+        c.id = c.symbol;
+        std::transform(c.id.begin(), c.id.end(), c.id.begin(), ::tolower);
+        if (c.id.empty()) c.id = std::to_string(c.chain_id);
+
+        if (!c.name.empty()) {
+            live[c.id] = std::move(c);
+        }
+    }
+
+    if (!live.empty()) {
+        chains_ = std::move(live);
+    }
 }
 
 // ============================================================================
