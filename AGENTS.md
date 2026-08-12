@@ -1212,3 +1212,95 @@ fail-closed.
   methods (no signature conflict).
 - swiftc NOT available in this environment (no Swift toolchain) -- syntax verified by manual
   review, not by swiftc -parse.
+
+## Session 2026-08-12: UserWallet production/react gap closure + chain registry
+
+### Stale-analysis lesson
+A large user-pasted "UserWallet fetchers & gaps" analysis was committed to
+docs as authoritative, but a fresh source re-verification showed it was
+ALMOST ENTIRELY STALE -- prior sessions had already:
+- Retargeted ALL `user_wallet/*` clients (web/desktop/android/ios/extension/
+  production-react) to the canonical `go/wallet_api` (:8443) with correct
+  routes (no more :8105/:8080 split, no `/wallet/` prefix on desktop).
+- Removed the dead `user_wallet/go/handlers/` trap (fake tx-hash handlers
+  the Android app depended on); `user_wallet/go` is now a stdlib reverse-proxy
+  shim to :8443.
+- Made `rust/userwallet_fetchers` compile (Cargo.toml + real reqwest client,
+  22 fail-closed fetchers).
+- Added `mobile/flutter` + `mobile_apps/flutter_app` `pubspec.yaml`.
+- Wired the 9 "unavailable" boundaries in `frontend/web_nextjs/app/wallet/lib/
+  transactions.ts` to backend proxy routes (EVM; Solana/Bitcoin honest throws).
+- Given Android (`com.tigeruserwallet.api.UserWalletApiService`) + iOS
+  (`UserWalletApiService.swift`) the full fetcher set (login/wallets/balances/
+  transactions/send/sign/tokens/NFTs/gas/price/chains/networkStatus/
+  swapQuote/stakingQuote).
+ALWAYS verify pasted analysis against actual source before acting; most
+"missing gaps" in old docs may already be fixed.
+
+### The ONE genuine gap fixed this session
+`user_wallet/production/react` had 34 tsc errors because `App.tsx` and pages
+imported 4 shared UI components that did NOT exist, plus `services/master/*`
+had type errors. Created (real, themed, no mocks):
+- `src/components/Sidebar.tsx` -- full nav rail (Home/Wallet/Send/Receive/Swap/
+  Bridge/Staking/NFTs/History/DApps/Settings), active-route highlight,
+  active-wallet indicator, CSS-var themed (light/dark via ThemeContext).
+- `src/components/Header.tsx` -- page-title prop + theme toggle (works on
+  EVERY page) + user/sign-out (reads AuthContext.User: email/username, NOT
+  name -- User interface has username not name).
+- `src/components/LoadingSpinner.tsx` -- themed spinner (sm/md/lg/xl, label,
+  fullScreen); uses CSS vars not Tailwind dark: variants.
+- `src/pages/HomePage.tsx` -- dashboard: portfolio value (sum wallet.balanceUSD),
+  quick actions, active wallet, recent activity -- all fetched live from :8443
+  via WalletService.getTransactions, no mock data.
+- `src/components/QRScanner.tsx` -- REAL camera QR scan via W3C BarcodeDetector
+  API + manual-paste fallback (replaces a nonexistent `frontend/shared/
+  components/QRScanner` import). Parses bare 0x addresses, `ethereum:` URIs,
+  EIP-681 payment URIs, and Solana base58 addresses.
+- `src/types/webusb.d.ts` -- minimal WebUSB type declarations (USBDevice/USB/
+  navigator.usb incl. configuration/selectConfiguration) so HardwareWalletService
+  type-checks without a WebUSB lib (tsconfig lib is ES2020/DOM/DOM.Iterable).
+
+### services/master/* type-error fixes (34 -> 0)
+- `MasterWalletService.ts`: `class MasterWalletService` was NOT exported but
+  Biometric/Hardware/MultiSig imported it as a type -> `export class`. Also
+  `readonly SUPERADMIN_ADDRESS = "0x742..."` is a literal type so
+  `!== ""` is flagged no-overlap -> annotate `: string` / `: number`.
+- `BiometricService.ts`: `credential.response` is typed `AuthenticatorResponse`
+  (base) but `getPublicKey()` only on `AuthenticatorAttestationResponse` ->
+  cast. WebAuthn descriptor `id` needs `BufferSource` not `Uint8Array` ->
+  `as BufferSource`.
+- `HardwareWalletService.ts`: `value.toString(16)` where value is `string` ->
+  strings take no radix arg (TS2554) -> `BigInt(tx.value).toString(16)`.
+  `SUPPORTED_DEVICES` items had no `model` field but `getDeviceInfo` return
+  type required it -> added `model` to each.
+- `MultiSigService.ts`: `cancelTransaction` sets `status='cancelled'` but the
+  `TransactionInfo.status` union lacked it -> added `'cancelled'`.
+- `PrivacyService.ts`: `hash()` returns `string` but `ZKProof.publicSignals`
+  was `Uint8Array[]` and `ConfidentialTransfer.encryptedAmount` was
+  `Uint8Array` -> widened both to `string` (matches hex output).
+
+### Chain registry (meets 100 EVM + 50 non-EVM requirement)
+The 2 incoming commits on origin/main (rebased onto) added an authoritative
+multi-chain registry across Go + Rust + C++ + frontend:
+- `go/wallet_api/chains_evm_data.go`: **120 EVM mainnet chains**.
+- `go/wallet_api/chains_nonevm_data.go`: **66 non-EVM mainnet chains**
+  (Bitcoin, Litecoin, Dogecoin, ... incl. Pi Network; all `IsTestnet: false`).
+- Mirrored in `rust/blockchain_registry/`, `cpp/chain_registry/`,
+  `libs/chain_registry/universal_chain_registry.ts`, `blockchain_registry/`.
+Exceeds the 100+50 requirement; all mainnet. Admin/WL/Master admins can add
+more via the registry.
+
+### Final build verification (ALL GREEN, post-rebase)
+| Component | Result |
+|-----------|--------|
+| `go/wallet_api` | `go build ./...` exit 0; `go test ./...` pass (BIP-44 vector) |
+| Foundry contracts | `forge build` exit 0; `forge test` 31/31 pass |
+| `rust/{userwallet,masterwallet,admin}_fetchers` | `cargo check --lib` exit 0 (all 3) |
+| `frontend/web_nextjs` | `npx tsc --noEmit` 0 errors |
+| `user_wallet/web` | `npx tsc --noEmit` 0 errors |
+| `user_wallet/production/react` | `npx tsc --noEmit` 0 errors (was 34) |
+
+### Commit on main
+- `dd23092` Close user_wallet/production/react gaps: build missing UI, fix
+  master services (rebased onto 12f4af0 chain-registry commits). Pushed to
+  origin/main.
