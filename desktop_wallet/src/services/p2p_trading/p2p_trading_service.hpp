@@ -92,12 +92,12 @@ struct P2POrder {
     uint64_t updated_at;
     std::string terms;
     bool is_merchant_order;
-    uint32_t限流;
+    uint32_t rate_limit;
     
     P2POrder() : side(P2POrderSide::BUY), amount(0), price(0), filled_amount(0),
                  remaining_amount(0), status(P2POrderStatus::PENDING),
                  min_limit(0), max_limit(0), created_at(0), expires_at(0),
-                 updated_at(0), is_merchant_order(false),限流(0) {}
+                 updated_at(0), is_merchant_order(false), rate_limit(0) {}
     
     std::string toJson() const {
         std::ostringstream oss;
