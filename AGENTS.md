@@ -840,6 +840,91 @@ Per-page:
   `/api/v1/ramp`). `bridge`/`red_packets_service`/`nft` (the dir, not
   nft_service) have NO main.go — they're libraries.
 
+## Session 2026-08-12: UserWallet backend param-contract parity + dedup
+
+### Parity audit findings (real bugs, now fixed)
+A fresh frontend↔backend parity audit confirmed route coverage was complete
+(no 404s — every client call has a matching route), but the **parameter
+contracts** were broken (400s / wrong data). All fixed in `go/wallet_api` by
+making the backend permissive (accept the conventions the clients already
+send), so all 6 clients work without client-side churn:
+- `POST /auth/register` — `username` was `binding:"required,min=3"`; 5/6
+  clients (web/desktop/android/ios/react) omit it → 400. Now optional; derived
+  from email local-part via new `auth.go:emailLocalPart` if absent.
+- `GET /price` — `handlePrice` read only `?coin=`; web/desktop send `?symbol=`,
+  android/ios send `?token=` → silently always priced ETH. Now accepts
+  `coin`/`symbol`/`token` (first non-empty).
+- `GET /swap/quote` — read `from`/`to`/`amount`; 4 clients send
+  `from_token`/`to_token`/`from_amount` → 400. Now accepts both via new
+  `defi_handlers.go:firstNonEmpty` helper.
+- `POST /swap/execute` — required `dex_router`+`call_data`; clients send
+  `from`/`to`/`amount` → 400. Now constructs the swap calldata **server-side**
+  from the chain's V2 router (real on-chain `getAmountsOut` +
+  `swapExactTokensForTokens` ABI, reusing `amm_router.go` logic) when the
+  client omits router+calldata; honest 404 if no router configured for the
+  chain. Added `expectedHumanStr` helper (single-value wrapper around
+  `weiToHuman` which returns `(string, *big.Float)`).
+- `POST /staking/{stake,unstake,claim}` — required `staking_contract`+
+  `call_data` → 400. Now returns `202 Accepted` with
+  `action_required: provide_staking_contract` (protocol-specific contract
+  cannot be fabricated); accepts react's `wallet_id`/`password`/`token` fields.
+- `defi_handlers.go` imports added: `encoding/hex`, `github.com/ethereum/go-ethereum/common`.
+
+### Redundant fake-crypto backend removed (user_services/go)
+- `user_services/go` (:8081) reimplemented the wallet surface with INSECURE
+  DIY crypto: `generateMnemonic` used `entropy[i%len]%len(words)` (NOT
+  BIP-39), `mnemonicToSeed` was SHA-256 concat (NOT BIP-32/44),
+  `deriveAddress` was SHA-256 (NOT secp256k1/Keccak), `verifyTOTP` was a
+  length check. True duplicate of `go/wallet_api`; its "unique" KYC/2FA/profile
+  features were themselves stubs (fake TOTP).
+- Converted `user_services/go/main.go` to a **clean stdlib reverse-proxy shim**
+  to `go/wallet_api` (:8443) — same proven pattern as `user_wallet/go`. No
+  external deps (no go.mod needed; `go build main.go` exit 0). Port :8081
+  preserved for legacy clients; no key handling, no fabricated data.
+- Old fake-crypto impl retained as `user_services/go/legacy_main.go.txt`
+  (NOT compiled/served — reference of non-crypto data models only).
+- `user_wallet/go` was ALREADY a reverse-proxy shim (:8105 → :8443) from
+  a prior session — confirmed still correct.
+
+### SQLite — confirmed fully removed
+Repo-wide audit: ZERO active SQLite usage. No source creates/opens a SQLite
+DB; no go.mod/Cargo.toml/package.json declares a SQLite driver. Residuals
+(non-active): 2 doc comments (`audit/legacy/android_admin/AdminDatabase.kt`,
+`admin/ios/.../AdminManagers.swift`) + stale `mattn/go-sqlite3` checksums in
+3 go.sum files (deps not in go.mod, not imported). All DB = PostgreSQL + Redis.
+
+### Duplicate-file audit (true duplicates vs separate apps)
+TRUE DUPLICATES (consolidated): `user_services/go` (shim, done) + `user_wallet/go`
+(already shim). SEPARATE APPS (kept, not duplicates): `desktop_wallet` (C++ local
+signing) vs `user_wallet/desktop` (Electron backend signing); `mobile/{android,ios}`
++ `mobile_apps/*` (full TigerWallet apps) vs `user_wallet/{android,ios}` (minimal
+UserWallet clients); `rust/{userwallet,masterwallet,admin}_fetchers` (tiered);
+co-located bundles (`frontend/web_nextjs`, `mobile_apps/*`) are NOT duplicates.
+
+### Build verification (clean toolchain, all green)
+| Component | Result |
+|-----------|--------|
+| `go/wallet_api` | build+vet+test exit 0 (BIP-44 vector passes) |
+| 9 DeFi Go services | nft_service, lending, copy_trading, governance, perpetual, prediction, payment, ens — all build exit 0 |
+| `rust/userwallet_fetchers` | cargo check exit 0; 3/3 tests pass |
+| `rust/masterwallet_fetchers` | cargo check exit 0 (warnings only) |
+| `rust/admin_fetchers` | cargo check exit 0 (1 warning) |
+| `user_services/go` (shim) | `go build main.go` exit 0 (stdlib only) |
+| `desktop_wallet` (C++20) | cmake+make exit 0; test run only CoinGecko live 403 (fail-closed, not a code defect) |
+| Foundry contracts | forge build exit 0; forge test 31/31 pass (OZ v5 via `forge install`) |
+
+### Toolchain installs this session (were NOT preinstalled)
+- Go: `$HOME/.go-sdk/go/bin` (go1.23.12; GOTOOLCHAIN=local, GOPATH=$HOME/go).
+- Rust: `~/.cargo/env` (cargo/rustc 1.97.1, minimal profile).
+- cmake 3.31.6 + libcurl4-openssl-dev + libssl-dev (apt).
+- Foundry: `~/.foundry/bin` (forge/cast/anvil/chisel 1.7.1 via foundryup).
+
+### Commits on main
+- `95a13bd` Fix backend param-contract parity + remove redundant fake-crypto backend
+  (10 files: wallet_api auth/defi/handlers + user_services shim + legacy txt + 5 MD docs)
+- `51f9b25` Update all 5 UserWallet analysis docs to reflect 2026-08-12 verified state (prior)
+- `f2bda9b` Fix broken Rust fetchers + full UserWallet client parity (prior session)
+
 ## Session 2026-08-11: UserWallet fake-crypto removal + theme + service builds
 
 ### Fake crypto / Math.random elimination (COMPLETE)
