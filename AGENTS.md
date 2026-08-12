@@ -844,14 +844,15 @@ Per-page:
 
 Scanned all 61 `.md` files repo-wide (excluding node_modules/.git/lib) for
 non-Latin scripts. Found and fixed non-English / mojibake content in 6 files:
-- `security_audit/AUDIT_FRAMEWORK.md`: Chinese "交易所" → "Exchange"
-- `privacy_features/README.md`: Chinese "合规" → "regulatory compliance"
-- `ADMIN_APPS_DETAILED_ANALYSIS.md`: Chinese "更多信息" → "more-info"
-- `TIGERWALLET_WALLET_SYSTEM_SPECIFICATION.md`: Chinese "S链" → "Sui" (chain name)
-- `USERWALLET_FEATURES.md`: corrupted-UTF-8 emoji mojibake (`вњ…`/`вќѕ`/...) →
-  plain English status markers (YES/NO/WARN)
-- `competitor_analysis/04-GAP-ANALYSIS.md`: triple-corrupted emoji mojibake
-  (`—А—Я—Я–О` etc.) → English status markers (REAL/PARTIAL/MISSING/STUB);
+- `security_audit/AUDIT_FRAMEWORK.md`: Chinese word for "Exchange" -> "Exchange"
+- `privacy_features/README.md`: Chinese word for "compliance" -> "regulatory compliance"
+- `ADMIN_APPS_DETAILED_ANALYSIS.md`: Chinese phrase for "more info" -> "more-info"
+- `TIGERWALLET_WALLET_SYSTEM_SPECIFICATION.md`: corrupted chain name ("S" + Chinese
+  word for "chain") -> "Sui" (the correct chain name)
+- `USERWALLET_FEATURES.md`: corrupted-UTF-8 emoji mojibake (broken checkmark/cross
+  glyphs) -> plain English status markers (YES/NO/WARN)
+- `competitor_analysis/04-GAP-ANALYSIS.md`: triple-corrupted emoji mojibake (broken
+  status-circle glyphs) -> English status markers (REAL/PARTIAL/MISSING/STUB);
   fixed title artifact + legend label order.
 Final repo-wide scan: **0 non-Latin script lines remain in any markdown file.**
 The 2 big files had double/triple-encoded emoji (UTF-8 bytes mis-decoded as

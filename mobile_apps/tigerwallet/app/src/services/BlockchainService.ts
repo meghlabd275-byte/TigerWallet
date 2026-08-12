@@ -268,7 +268,7 @@ const COMMON_TOKENS: Record<number, Record<string, { address: string; decimals: 
     'LINK': { address: '0x514910771AF9Ca656af840dff83E8264EcF986CA', decimals: 18 },
     'AAVE': { address: '0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9', decimals: 18 },
     'MKR': { address: '0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2', decimals: 18 },
-    'MATIC': { address: '0x7D1AfA7B718fb893dB30A3aBc0Cfc608弥C6Bbf', decimals: 18 },
+    'MATIC': { address: '0x7D1AfA7B718fb893dB30A3aBc0Cfc608A36CdeD8', decimals: 18 },
   },
   56: {
     'USDT': { address: '0x55d398326f99059fF775485246999027B3197955', decimals: 18 },

@@ -238,7 +238,7 @@ contract TigerSwapPair {
     }
 
     /**
-     * @notice Force balance updates (for emergency清算)
+     * @notice Force balance updates (for emergency liquidation)
      */
     function skim(address to) external onlyWhileUnlocked {
         uint256 balance0 = IERC20(token0).balanceOf(address(this));

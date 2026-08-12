@@ -76,7 +76,7 @@ class AppConstants {
     'thundertoken': 'https://mainnet-rpc.thundertoken.net',
     'heco': 'https://http-mainnet.hecochain.com',
     'okexchain': 'https://exchainrpc.okex.org',
-    'g链': 'https://gchain-explorer.gnode.org',
+    'gchain': 'https://gchain-explorer.gnode.org',
     'bitgert': 'https://pool.bfnetwork.io',
     'bitfinity': 'https://mainnet.bitfinity.network',
     'callisto': 'https://rpc.callisto.network',

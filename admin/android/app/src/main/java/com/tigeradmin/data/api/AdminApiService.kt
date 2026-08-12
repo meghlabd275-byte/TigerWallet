@@ -207,7 +207,7 @@ interface AdminApiService {
         @Body request: RejectKYCRequest
     ): Response<Unit>
     
-    @POST("kyc/{id}/request更多信息")
+    @POST("kyc/{id}/request-more-info")
     suspend fun requestMoreInfo(
         @Path("id") id: Long,
         @Body request: RequestMoreInfoRequest

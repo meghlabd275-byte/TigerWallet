@@ -330,7 +330,7 @@ func (s *FiatService) getTransakQuote(ctx context.Context, req OnRampRequest) (*
 	quoteID   string
 	expiresAt time.Time
 }, error) {
-	url := fmt.Sprintf("%s/v1/c报价", s.config.TransakURL)
+	        url := fmt.Sprintf("%s/v1/currencies", s.config.TransakURL)
 
 	payload := map[string]interface{}{
 		"apiKey":           s.config.TransakAPIKey,

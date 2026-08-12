@@ -408,7 +408,7 @@ func (s *PortfolioService) GetAllocation(ctx context.Context, userID uint64) (ma
 		"ETH":  50.0,
 		"USDT": 30.0,
 		"BNB":  10.0,
-		"其他": 10.0,
+		                "OTHER": 10.0,
 	}, nil
 }
 

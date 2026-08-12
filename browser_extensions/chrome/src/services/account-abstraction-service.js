@@ -5,7 +5,7 @@
 class AccountAbstractionService {
     constructor() {
         this.apiBase = 'http://localhost:8443/api/v1/aa';
-        this.エントロピー = null;
+        this.entropy = null;
     }
 
     // Create smart account

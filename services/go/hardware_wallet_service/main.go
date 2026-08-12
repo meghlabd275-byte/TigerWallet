@@ -175,7 +175,7 @@ func (c *LedgerClient) GetAddress(ctx context.Context, chain string, derivationP
 }
 
 func (c *LedgerClient) SignTransaction(ctx context.Context, tx *TransactionRequest, derivationPath string) (*SignedTransaction, error) {
-	// In production, use ledger人对 transaction signing
+	    // In production, use ledger for transaction signing
 	// This simulates the signing process
 
 	var txData string
