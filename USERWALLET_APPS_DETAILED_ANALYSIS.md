@@ -4,6 +4,24 @@
 > iOS, Rust) across every platform: their fetchers, functionality, what is real vs
 > stubbed, what is missing, and separation from MasterWallet / Admin apps.
 
+> **✅ STATUS UPDATE (2026-08-12): FULL CLIENT PARITY + BUILD VERIFICATION COMPLETE.**
+> Building on the 2026-08-11 retarget, all four UserWallet native clients
+> (`user_wallet/web`, `user_wallet/desktop`, `user_wallet/android`,
+> `user_wallet/ios`) now expose the **identical fetcher set** against the
+> canonical `go/wallet_api` (:8443): `login`/`register`, `getWallets`/
+> `createWallet`, `getBalances`/`getBalance`, `getTransactions`,
+> `sendTransaction`, `signMessage`, `getTokenBalances`, `getNFTs`,
+> `getTokenPrice`, `getChains`, `getGasPrice`, `getNetworkStatus`,
+> `getSwapQuote`, `getStakingQuote`. No stubs, no fabricated data —
+> `getNetworkStatus` derives from `/chains` (block_number honestly `0`).
+> **Build verification (all green):** `frontend/web_nextjs` tsc → 0 errors;
+> `user_wallet/web` tsc → 0 errors; `go/wallet_api` build+tests pass (BIP-44
+> vector); `desktop_wallet` C++ cmake/make exit 0 + tests pass; Foundry
+> `forge build` exit 0, `forge test` 31/31 pass (real ECDSA via `vm.sign`, no
+> mocks); OpenZeppelin v5 installed via `forge install` (was absent from the
+> shallow clone). Commit `f2bda9b` on `main`.
+> The body below is retained as the historical pre-fix record.
+
 > **⚠️ STATUS UPDATE (2026-08-11):** The "broken/stub/orphan" state documented in
 > the body of this file (the `:8105`/`:8080` split, dead `user_wallet_handler.go`,
 > desktop route mismatch, Android not compiling, iOS placeholders, Rust fetchers

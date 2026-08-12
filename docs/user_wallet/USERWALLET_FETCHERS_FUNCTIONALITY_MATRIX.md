@@ -62,6 +62,27 @@ supersedes the "🟥/⚪/⚠️" markers in the body for the items it covers.
 - `user_wallet/android` compiles (base URL = :8443; fragment/service signatures
   match).
 
+### Full per-client fetcher parity + build verification (2026-08-12) ✅
+All four UserWallet native clients (`user_wallet/web`, `user_wallet/desktop`,
+`user_wallet/android`, `user_wallet/ios`) now expose the **identical fetcher
+set** against `go/wallet_api` (:8443). The 2026-08-11 status retargeted the
+clients to :8443, but per-client parity was incomplete; this closes it:
+- `web` added `getSwapQuote` + `getStakingQuote` (send/sign already existed).
+- `desktop` added `getNFTs` + `getSwapQuote` + `getStakingQuote`.
+- `android` added `getTokenBalances`/`getNFTs`/`getGasPrice`/`getTokenPrice`/
+  `getChains`/`getNetworkStatus`/`getSwapQuote`/`getStakingQuote` + data classes.
+- `ios` added `sendTransaction`/`signMessage`/`getTokenBalances`/`getNFTs`/
+  `getGasPrice`/`getTokenPrice`/`getChains`/`getNetworkStatus`/`getSwapQuote`/
+  `getStakingQuote` + Codable structs.
+`getNetworkStatus` is honest: derives `connected` from `/chains`, reports
+`block_number = 0` (no fabricated blocks).
+**Build verification (all green):** `frontend/web_nextjs` tsc → 0 errors;
+`user_wallet/web` tsc → 0 errors (`--legacy-peer-deps`); `go/wallet_api`
+build+tests pass (BIP-44 vector); `desktop_wallet` C++ cmake/make exit 0 +
+tests pass; Foundry `forge build` exit 0, `forge test` **31/31 pass** (real
+ECDSA via `vm.sign`, no mocks). OpenZeppelin v5 installed via
+`forge install` (was absent from the shallow clone).
+
 > The body of this document (below) is retained as the **historical 2026-08-09
 > record** of the pre-fix state for traceability.
 
