@@ -32,7 +32,7 @@ This module provides comprehensive privacy features for the TigerWallet Master W
 - Amount encryption
 - Sender/receiver privacy
 - View key management
-- Audit capability for合规
+- Audit capability for regulatory compliance
 
 ## Supported Platforms
 - Android (Kotlin)

@@ -189,7 +189,7 @@ TigerWallet is an enterprise-grade Web3 multi-chain wallet system with:
 | 17 | Sei | SEI | Account |
 | 18 | Injective | INJ | Account |
 | 19 | Monad | MON | Account |
-| 20 | S链 | S | Account |
+| 20 | Sui | S | Account |
 
 ### 3.4 Pre-Installed Tokens (50+)
 
@@ -1159,7 +1159,7 @@ SushiSwap (SUSHI), PancakeSwap (CAKE),
 │   │ 17. Sei (SEI)           Account         │    │
 │   │ 18. Injective (INJ)    Account         │    │
 │   │ 19. Monad (MON)         Account         │    │
-│   │ 20. S链 (S)            Account         │    │
+│   │ 20. Sui (S)            Account         │    │
 │   └─────────────────────────────────────────────┘    │
 │                                                          │
 │   TOTAL: 40+ Blockchains pre-installed               │

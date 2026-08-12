@@ -209,7 +209,7 @@ Requirements:
 | OpenZeppelin | Smart contracts | contracts@openzeppelin.com |
 | Halborn | Blockchain security | info@halborn.com |
 | CertiK | Smart contracts, AI | audit@certik.com |
-| SlowMist | DeFi,交易所 | security@slowmist.com |
+| SlowMist | DeFi, Exchange | security@slowmist.com |
 
 ### Audit Checklist
 

@@ -94,7 +94,7 @@ with separate handlers.
    crypto-cards, liquidity, margin, p2p, master-wallet, integrations, brokers,
    institutional, compliance, KB, multisig, NFTs, notifications, tickets).
 6. **Android:** 3 incoherent trees; corrupted Retrofit annotation
-   `@POST("kyc/{id}/request更多信息")`; **no `AndroidManifest.xml`** → not
+   `@POST("kyc/{id}/request-more-info")`; **no `AndroidManifest.xml`** → not
    buildable; package/fragment mismatches.
 7. **Flutter:** `AppConstants.baseUrl = 'https://api.tigerwallet.com/v1'`
    (mismatch with `:9093/api/v1`); 7 orphan un-registered mock screens; unresolved
