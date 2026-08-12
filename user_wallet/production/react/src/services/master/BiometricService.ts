@@ -139,7 +139,7 @@ export class BiometricService {
           id: window.location.hostname,
         },
         user: {
-          id: this.stringToBuffer(userId),
+          id: this.stringToBuffer(userId) as BufferSource,
           name: username,
           displayName: username,
         },
@@ -163,10 +163,14 @@ export class BiometricService {
       }
 
       // Store credential
+      const attestation = credential.response as AuthenticatorAttestationResponse;
+      const pubKey = attestation.getPublicKey();
       const credentialData: BiometricCredential = {
         id: credential.id,
         userId,
-        publicKey: this.bufferToString(credential.response.getPublicKey() || new Uint8Array()),
+        publicKey: this.bufferToString(
+          pubKey ? new Uint8Array(pubKey) : new Uint8Array(),
+        ),
         algorithm: 'ES256',
         createdAt: Date.now(),
         lastUsedAt: Date.now(),
@@ -204,8 +208,8 @@ export class BiometricService {
         timeout: BIOMETRIC_TIMEOUT,
         userVerification: 'required',
         allowCredentials: userCredentials.map(cred => ({
-          id: this.stringToBuffer(cred.id),
-          type: 'public-key',
+          id: this.stringToBuffer(cred.id) as BufferSource,
+          type: 'public-key' as const,
         })),
       };
 

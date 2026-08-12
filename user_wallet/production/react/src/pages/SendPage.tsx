@@ -5,7 +5,7 @@
 import React, { useState } from 'react';
 import { useWallet } from '../contexts/WalletContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { QRScanner } from '../../../../frontend/shared/components/QRScanner';
+import QRScanner from '../components/QRScanner';
 
 function SendPage() {
   const { sendTransaction, getAddress, activeWallet } = useWallet();
@@ -143,7 +143,7 @@ function SendPage() {
       <QRScanner
         isOpen={showQRScanner}
         onClose={() => setShowQRScanner(false)}
-        onScan={(address, chain) => {
+        onScan={(address: string, chain?: string) => {
           setToAddress(address);
           if (chain) {
             console.log('Detected chain:', chain);

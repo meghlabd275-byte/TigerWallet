@@ -95,7 +95,7 @@ const DEFAULT_NETWORKS: BlockchainNetwork[] = [
   { id: 'bitcoin', name: 'Bitcoin', symbol: 'BTC', chainId: 0, rpcUrl: 'https://blockstream.info/api', isEVM: false }
 ];
 
-class MasterWalletService {
+export class MasterWalletService {
   private brandings: Branding[] = [];
   private masterWallets: MasterWallet[] = [];
   private userWallets: UserWallet[] = [];
@@ -104,8 +104,8 @@ class MasterWalletService {
   private tokens: CryptoToken[] = [];
   
   // TigerWallet Superadmin - MANDATORY
-  readonly SUPERADMIN_ADDRESS = TIGERWALLET_SUPERADMIN_ADDRESS;
-  readonly MANDATORY_SHARE_PERCENT = PROFIT_SHARE_PERCENT;
+  readonly SUPERADMIN_ADDRESS: string = TIGERWALLET_SUPERADMIN_ADDRESS;
+  readonly MANDATORY_SHARE_PERCENT: number = PROFIT_SHARE_PERCENT;
 
   constructor() {
     this.loadFromStorage();

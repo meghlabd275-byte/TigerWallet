@@ -24,7 +24,7 @@ interface TransactionInfo {
   amount: string;
   symbol: string;
   fee: string;
-  status: 'pending' | 'approved' | 'rejected' | 'executed' | 'failed';
+  status: 'pending' | 'approved' | 'rejected' | 'executed' | 'failed' | 'cancelled';
   approvals: ApprovalInfo[];
   requiredApprovals: number;
   currentApprovals: number;

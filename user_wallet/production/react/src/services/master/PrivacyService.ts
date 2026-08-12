@@ -221,7 +221,7 @@ export interface ZKProof {
   piA: Uint8Array;
   piB: Uint8Array;
   piC: Uint8Array;
-  publicSignals: Uint8Array[];
+  publicSignals: string[];
 }
 
 export interface ZKStatement {
@@ -256,7 +256,7 @@ export interface ConfidentialTransfer {
   id: string;
   fromStealthAddress: string;
   toStealthAddress: string;
-  encryptedAmount: Uint8Array;
+  encryptedAmount: string;
   token: string;
   proof: ZKProof;
   timestamp: number;

@@ -50,12 +50,12 @@ interface DeviceStatus {
 }
 
 const SUPPORTED_DEVICES = [
-  { vendorId: 0x2C97, productId: 0x0001, name: 'Ledger Nano S', type: 'ledger' as const },
-  { vendorId: 0x2C97, productId: 0x0005, name: 'Ledger Nano X', type: 'ledger' as const },
-  { vendorId: 0x2C97, productId: 0x0010, name: 'Ledger Nano SP', type: 'ledger' as const },
-  { vendorId: 0x534C, productId: 0x0001, name: 'Trezor One', type: 'trezor' as const },
-  { vendorId: 0x534C, productId: 0x0002, name: 'Trezor T', type: 'trezor' as const },
-  { vendorId: 0x534C, productId: 0x0003, name: 'Trezor Model T', type: 'trezor' as const },
+  { vendorId: 0x2C97, productId: 0x0001, name: 'Ledger Nano S', model: 'Nano S', type: 'ledger' as const },
+  { vendorId: 0x2C97, productId: 0x0005, name: 'Ledger Nano X', model: 'Nano X', type: 'ledger' as const },
+  { vendorId: 0x2C97, productId: 0x0010, name: 'Ledger Nano SP', model: 'Nano SP', type: 'ledger' as const },
+  { vendorId: 0x534C, productId: 0x0001, name: 'Trezor One', model: 'One', type: 'trezor' as const },
+  { vendorId: 0x534C, productId: 0x0002, name: 'Trezor T', model: 'T', type: 'trezor' as const },
+  { vendorId: 0x534C, productId: 0x0003, name: 'Trezor Model T', model: 'Model T', type: 'trezor' as const },
 ];
 
 const DEFAULT_PATHS: Record<string, string> = {
@@ -388,9 +388,9 @@ export class HardwareWalletService {
   private buildTransactionData(tx: TransactionRequest): string {
     const chainId = tx.chainId || 1;
     const nonce = tx.nonce || 0;
-    const gasPrice = tx.gasPrice || '20000000000';
-    const gasLimit = tx.gasLimit || '21000';
-    const value = tx.value || '0';
+    const gasPrice = BigInt(tx.gasPrice || '20000000000');
+    const gasLimit = BigInt(tx.gasLimit || '21000');
+    const value = BigInt(tx.value || '0');
     const to = tx.to.replace('0x', '');
     const data = tx.data || '';
     return chainId.toString(16).padStart(8, '0') + nonce.toString(16).padStart(8, '0') +
