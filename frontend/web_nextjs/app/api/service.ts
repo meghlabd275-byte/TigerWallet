@@ -774,6 +774,11 @@ export interface ChainInfo {
   rpc_endpoint: string;
   derivation_path: string;
   explorer_api: string;
+  explorer_url: string;
+  chain_type: string;
+  decimals: number;
+  coin_type: number;
+  is_testnet: boolean;
 }
 
 export const walletService = new WalletService();

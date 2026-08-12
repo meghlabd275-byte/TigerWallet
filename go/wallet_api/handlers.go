@@ -522,11 +522,20 @@ func handlePrice(c *gin.Context) {
 }
 
 func handleSupportedChains(c *gin.Context) {
-	chains := make([]ChainConfig, 0, len(SupportedChains))
-	for _, ch := range SupportedChains {
-		chains = append(chains, ch)
+	ct := c.Query("type")
+	var chains []ChainConfig
+	if ct != "" {
+		chains = listChainsByType(ct)
+	} else {
+		chains = listSupportedChains()
 	}
-	c.JSON(http.StatusOK, gin.H{"chains": chains})
+	c.JSON(http.StatusOK, gin.H{
+		"chains":          chains,
+		"count":           len(chains),
+		"evm_count":       evmChainCount(),
+		"non_evm_count":   nonEvmChainCount(),
+		"mainnet_only":    true,
+	})
 }
 
 func handleSignMessage(c *gin.Context) {

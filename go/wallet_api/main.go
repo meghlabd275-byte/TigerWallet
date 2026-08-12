@@ -38,6 +38,11 @@ func main() {
 	} else {
 		store = s
 		log.Println("Connected to PostgreSQL + Redis")
+		// Load any admin-managed chain config overrides into the live registry
+		// so admin-added/updated chains are visible immediately at boot.
+		bgCtx, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+		applyAdminChainOverrides(bgCtx)
+		cancel2()
 	}
 
 	gin.SetMode(gin.ReleaseMode)

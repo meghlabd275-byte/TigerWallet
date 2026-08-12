@@ -71,8 +71,8 @@ func TestEncryptDecryptSeed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EncryptSeed failed: %v", err)
 	}
-	if enc == "" || strings.Contains(enc, "0000") {
-		t.Error("ciphertext is empty or all zeros")
+	if enc == "" || len(enc) < 128 {
+		t.Errorf("ciphertext is empty or too short: len=%d", len(enc))
 	}
 	dec, err := DecryptSeed(enc, password)
 	if err != nil {
@@ -181,13 +181,37 @@ func TestTokenRegistry(t *testing.T) {
 
 // TestSupportedChains verifies the chain registry.
 func TestSupportedChains(t *testing.T) {
-	if c := chainByID(1); c == nil || c.Name != "Ethereum" {
-		t.Error("Ethereum chain not found")
+	if c := chainByID(1); c == nil || c.Name != "Ethereum Mainnet" {
+		t.Error("Ethereum Mainnet chain not found")
 	}
-	if c := chainByID(137); c == nil || c.Name != "Polygon" {
+	if c := chainByID(137); c == nil || c.Name != "Polygon Mainnet" {
 		t.Error("Polygon chain not found")
 	}
 	if c := chainByID(99999); c != nil {
 		t.Error("unknown chain should return nil")
+	}
+	// Verify the preinstalled mainnet minimums: >=100 EVM, >=50 non-EVM.
+	if n := evmChainCount(); n < 100 {
+		t.Errorf("expected >=100 EVM mainnet chains, got %d", n)
+	}
+	if n := nonEvmChainCount(); n < 50 {
+		t.Errorf("expected >=50 non-EVM mainnet chains, got %d", n)
+	}
+	// Verify Pi Network is preinstalled (per requirement).
+	piFound := false
+	for _, c := range listSupportedChains() {
+		if c.ChainType == "pi" {
+			piFound = true
+			break
+		}
+	}
+	if !piFound {
+		t.Error("Pi Network chain not found")
+	}
+	// Verify no testnets shipped in the static registry.
+	for _, c := range listSupportedChains() {
+		if c.IsTestnet {
+			t.Errorf("static registry must be mainnet-only; found testnet: %s", c.Name)
+		}
 	}
 }

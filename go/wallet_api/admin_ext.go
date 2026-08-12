@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
@@ -83,6 +84,7 @@ func handleAdminCreateChain(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot save chain"})
 		return
 	}
+	applyAdminChainOverrides(c.Request.Context())
 	c.JSON(http.StatusCreated, gin.H{"id": id, "chain_id": req.ChainID, "name": req.Name, "status": req.Status})
 }
 
@@ -105,6 +107,7 @@ func handleAdminUpdateChain(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "update failed"})
 		return
 	}
+	applyAdminChainOverrides(c.Request.Context())
 	c.JSON(http.StatusOK, gin.H{"chain_id": chainID, "updated": true})
 }
 
@@ -119,7 +122,68 @@ func handleAdminDeleteChain(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "delete failed"})
 		return
 	}
+	applyAdminChainOverrides(c.Request.Context())
 	c.JSON(http.StatusOK, gin.H{"chain_id": chainID, "deleted": true})
+}
+
+// applyAdminChainOverrides merges admin_chain_config rows into the in-memory
+// SupportedChains registry so admin-added/updated chains become immediately
+// visible to every client via GET /api/v1/chains. A row with status "inactive"
+// or "maintenance" removes the chain from the live registry (it remains in the
+// admin table for re-activation). Called at startup and after every admin CRUD.
+func applyAdminChainOverrides(ctx context.Context) {
+	if store == nil || store.PG == nil {
+		return
+	}
+	initSupportedChains()
+	rows, err := store.PG.Query(ctx,
+		`SELECT chain_id, name, symbol, rpc_url, explorer_url, status FROM admin_chain_config`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int64
+		var name, symbol, rpc, explorer, status string
+		if err := rows.Scan(&cid, &name, &symbol, &rpc, &explorer, &status); err != nil {
+			continue
+		}
+		if status == "inactive" || status == "maintenance" {
+			delete(SupportedChains, cid)
+			continue
+		}
+		// merge: base on existing entry if present (preserves derivation path,
+		// coin type, chain type), else create a fresh admin-added entry.
+		if base, ok := SupportedChains[cid]; ok {
+			if name != "" {
+				base.Name = name
+			}
+			if symbol != "" {
+				base.Symbol = symbol
+			}
+			if rpc != "" {
+				base.RPCEndpoint = rpc
+			}
+			if explorer != "" {
+				base.ExplorerAPI = explorer
+				base.ExplorerURL = explorer
+			}
+			SupportedChains[cid] = base
+		} else {
+			SupportedChains[cid] = ChainConfig{
+				ID:             cid,
+				Name:           name,
+				Symbol:         symbol,
+				RPCEndpoint:    rpc,
+				ExplorerAPI:    explorer,
+				ExplorerURL:    explorer,
+				ChainType:      "evm", // admin-added chains default to EVM unless extended
+				DerivationPath: "m/44'/60'/0'/0/0",
+				CoinType:       60,
+				Decimals:       18,
+			}
+		}
+	}
 }
 
 // ---- Bridges ----

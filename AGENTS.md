@@ -875,47 +875,63 @@ language selector must display each language's native name.
 **Final repo-wide scan: 0 stray CJK characters anywhere outside the i18n files.**
 All 4 commits pushed to `origin/main` (53492cb, 7ec6f6e, b7a73b4, 40fdc73).
 
-## Session 2026-08-12 #3: Chain registry expanded to 150 (100 EVM + 50 non-EVM)
+## Session 2026-08-12: Authoritative multi-chain blockchain registry (Go + Rust + C++ + frontend)
 
-### Gap found + fixed
-The canonical backend chain registry `go/wallet_api/chains.go` (`SupportedChains`)
-had only **7 chains incl. Sepolia TESTNET** — clients calling `GET /api/v1/chains`
-got only those 7. Expanded to **100 EVM mainnet + 50 non-EVM chains (incl. Pi
-Network)**: all mainnet, zero testnets. Real public RPC endpoints + BIP-44/
-SLIP-0044 derivation paths per chain family.
-- `ChainConfig` gained fields: `Type` (evm/solana/bitcoin/tron/cosmos/near/aptos/
-  sui/pi/etc.), `Decimals`, `CoinGeckoID`, `AddressPrefix`, `ExplorerURL`, `IsEVM`.
-- New `evmChainByChainID(id)` scopes EVM-only operations (balance, signing,
-  broadcast, AMM getAmountsOut/swapExactTokensForTokens, ethGetCode security scan)
-  to EVM chains. All EVM-op call sites in `handlers.go`, `amm_router.go`,
-  `defi_handlers.go`, `security.go` switched from `chainByID` →
-  `evmChainByChainID` so non-EVM chains are discoverable via `/chains` + the
-  admin dashboard but never fed to `eth_call` (which would fail/error).
-- `chainByID` still returns non-EVM configs for discovery/listing.
-- Non-EVM chains use synthetic IDs (1000001+) to avoid colliding with real EVM
-  chain IDs in the `map[int64]ChainConfig`.
-- Frontend `libs/chain_registry/universal_chain_registry.ts` expanded 51→100 EVM
-  (new entries use internal `id` 200-249 to avoid colliding with non-EVM ids 51+).
-  Non-EVM already 55 (incl Pi). tsc exit 0.
-- DB `database/schemas/extended_schema.sql` bootstrap seed: EVM seed fixed
-  (was "IOTA" at chainId 4689 → IoTeX; Raydium placeholder → Gnosis), non-EVM
-  seed gained Pi Network (chainId 314159). Canonical full source is `chains.go`;
-  `admin_ext.go` seeds `admin_chain_config` from `SupportedChains` on first admin
-  list — admins/WL-admins/master-wallet-admins add chains at runtime via the
-  `admin_chain_config` PostgreSQL table (CRUD at `/api/v1/admin/chains`).
-- `go build`+`go vet`+`go test` all exit 0 (BIP-44 vector still passes).
-- Chain generator script: `/tmp/gen_chains.py` (ephemeral; the generated
-  `chains.go` is committed directly).
+### Canonical mainnet chain registry (NO testnets, NO fabricated data)
+- **Dataset**: 120 EVM mainnet chains (sourced from the canonical
+  `ethereum-lists/chains` registry via chainid.network) + 66 non-EVM mainnet
+  chains (curated public RPC docs), including Pi Network. Non-EVM registry
+  IDs live in namespace >= 9,000,000,000 (derived from SLIP-44 coin_type) so
+  there are ZERO collisions with EVM chain ids. Pi's RPC is honestly empty
+  (admin-configurable) — no fabricated endpoint. EVM coin_type = 60 (BIP-44
+  `m/44'/60'/...`) for all EVM chains regardless of the registry's per-asset
+  slip44 (714/966 are SLIP-44 asset registry values, NOT the wallet derivation
+  coin type).
+- **Go (`go/wallet_api` — system of record)**: `chains_evm_data.go` (var
+  `evmMainnet`, 120), `chains_nonevm_data.go` (var `nonEVMMainnet`, 66),
+  `chains.go` (`ChainConfig` struct with `ChainType`/`Decimals`/`CoinType`/
+  `ExplorerURL`; `chainByID`/`listSupportedChains`/`listChainsByType`/
+  `initSupportedChains`/`applyAdminChainOverrides`). `admin_ext.go` has runtime
+  admin CRUD (`POST /api/v1/admin/chains/{add,update}`, `GET /admin/chains`,
+  `DELETE /admin/chains/:id`) persisted in PostgreSQL `admin_chain_config` and
+  merged into the live `SupportedChains` map at boot (main.go calls
+  `applyAdminChainOverrides`) + after each mutation. REST: `GET /api/v1/chains`
+  with `?type=evm|nonevm` filter (`handleSupportedChains` in handlers.go).
+  `wallet_engine_test.go` asserts >=100 EVM, >=50 non-EVM, Pi present, no
+  testnets, Ethereum/Polygon names. `go build` + `go test ./...` + `go vet`
+  all clean. Fixed a flaky seed-encrypt test (`strings.Contains(enc,"0000")`
+  false positive → length check).
+- **Rust (`rust/blockchain_registry` — security layer)**: rewrote with a real
+  `Cargo.toml` (deps serde/parking_lot/hex/tiny-keccak). Removed the duplicate
+  `Polkadot` enum variant, id:0 collisions, and testnets. `BlockchainRegistry`
+  (lock-free `RwLock<HashMap>`), `ChainType`, `ChainConfig`. REAL per-family
+  address validation — EVM EIP-55 (real keccak256 via `tiny-keccak`), Bitcoin
+  base58check (real base58 + a compact real SHA-256 verified against the "abc"
+  FIPS-180-4 vector), Solana base58 32-byte, Cosmos/bech32 (real BIP-173
+  polymod checksum), Ripple base58check, Stellar/Nano sanity. `AddressCheck`
+  enum (`Valid`/`Invalid`/`ValidNoRpc`). `cargo test`: 13/13 pass (no mocks).
+- **C++ (`cpp/chain_registry` — ultra-low-latency hot path)**: header-only
+  `ChainResolver.hpp` (wait-free O(1) `findById` via hash index after a one-
+  time frozen build; `loadExtra` for admin additions before first lookup) +
+  generated `chain_registry_data.cpp` (120+66). `test_chain_resolver.cpp`
+  compiles + runs with g++ 14 (`-std=c++20 -O2`): asserts >=100 EVM, >=50
+  non-EVM, Pi present, admin merge.
+- **Frontend**: `frontend/web_nextjs/app/chains/page.tsx` — removed the 14-entry
+  hardcoded fake chain list; now fetches live via `walletService.getSupported
+  Chains()` (`GET /api/v1/chains`), with loading/error states, an
+  EVM/non-EVM/all filter, and a theme-aware detail modal (useTheme `isDark`).
+  `ChainInfo` in `app/api/service.ts` extended with `chain_type`/`decimals`/
+  `coin_type`/`is_testnet`/`explorer_url`. Proxy route `app/api/v1/chains/
+  route.ts` already correct. `tsc --noEmit -p tsconfig.json` 0 errors.
+- **Generators** (ephemeral, in /tmp): `gen_evm.py`/`gen_curated.py`/
+  `gen_nonevm.py`/`gen_go.py`/`gen_rs.py`/`gen_cpp.py`. Source JSON:
+  `/tmp/chains_raw.json` (canonical), `/tmp/evm_curated.json`,
+  `/tmp/non_evm_mainnet.json`.
+- **Still pending (honest)**: per-non-EVM transaction signing (Solana on-chain
+  program + RPC wiring; BTC/Cardano/Cosmos signing), admin chain-management
+  UI panel (CRUD endpoints exist), wiring the registry into
+  mobile/desktop/extension chain selectors.
 
-### Verified (already-correct, NOT re-broken)
-The user's message contained an OLDER analysis describing `user_wallet/*` clients
-as pointing at `:8105`/`:8080`, dead handlers, uncompilable rust fetchers, missing
-flutter pubspec, etc. Verified against current source: ALL already fixed in prior
-sessions (clients on :8443, `user_wallet/go` is a clean shim, dead handlers dir
-removed, `rust/userwallet_fetchers` has Cargo.toml + compiles, `mobile/flutter`
-has pubspec.yaml, Next.js transactions.ts uses real backend delegation / honest
-fail-closed throws). Did NOT re-implement these — only the chain registry gap was
-real and is now closed.
 
 ## Session 2026-08-12: UserWallet backend param-contract parity + dedup
 

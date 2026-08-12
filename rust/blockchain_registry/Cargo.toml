@@ -1,0 +1,15 @@
+[package]
+name = "blockchain_registry"
+version = "1.0.0"
+edition = "2021"
+description = "TigerWallet canonical mainnet blockchain registry: 120+ EVM and 66+ non-EVM chains with security-validated address checks and lock-free reads."
+license = "MIT"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+parking_lot = "0.12"
+hex = "0.4"
+tiny-keccak = { version = "2", features = ["keccak"] }
+
+[lib]
+path = "src/lib.rs"
