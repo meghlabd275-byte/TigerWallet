@@ -53,12 +53,12 @@ This document provides a comprehensive comparison of all UserWallet apps across 
 
 | Platform | Location | Technology | Status |
 |----------|----------|------------|--------|
-| Flutter | `/mobile/flutter/lib/features/` | Dart | ‚úÖ Active |
-| Android | `/mobile/android/app/src/main/java/` | Java | ‚úÖ Active |
-| iOS | `/mobile/ios/Runner/Services/` | Swift | ‚úÖ Active |
-| Web | `/frontend/web_nextjs/app/` | Next.js/React | ‚úÖ Active |
-| Desktop | `/desktop_wallet/src/services/` | C++ | ‚úÖ Active |
-| Browser Extension | `/browser_extensions/chrome/src/services/` | JavaScript | ‚úÖ Active |
+| Flutter | `/mobile/flutter/lib/features/` | Dart | ACTIVE |
+| Android | `/mobile/android/app/src/main/java/` | Java | ACTIVE |
+| iOS | `/mobile/ios/Runner/Services/` | Swift | ACTIVE |
+| Web | `/frontend/web_nextjs/app/` | Next.js/React | ACTIVE |
+| Desktop | `/desktop_wallet/src/services/` | C++ | ACTIVE |
+| Browser Extension | `/browser_extensions/chrome/src/services/` | JavaScript | ACTIVE |
 
 ---
 
@@ -68,85 +68,85 @@ This document provides a comprehensive comparison of all UserWallet apps across 
 
 | Feature | Flutter | Android | iOS | Web | Desktop | Extension |
 |---------|---------|---------|-----|-----|---------|-----------|
-| P2P Trading | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ |
-| P2P Merchant | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚ö†ÔłŹ Partial | ‚úÖ |
-| Margin Trading | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ |
-| Futures Trading | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ |
-| Options Trading | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚ĚĆ |
-| Copy Trading | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ |
-| Convert | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚ĚĆ |
-| Swap/DEX | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ |
+| P2P Trading | YES | YES | YES | YES | YES | YES |
+| P2P Merchant | YES | YES | YES | YES | PARTIAL | YES |
+| Margin Trading | YES | YES | YES | YES | YES | YES |
+| Futures Trading | YES | YES | YES | YES | YES | YES |
+| Options Trading | YES | YES | YES | YES | YES | NO |
+| Copy Trading | YES | YES | YES | YES | YES | YES |
+| Convert | YES | YES | YES | YES | YES | NO |
+| Swap/DEX | YES | YES | YES | YES | YES | YES |
 
 ### 2. WALLET FEATURES
 
 | Feature | Flutter | Android | iOS | Web | Desktop | Extension |
 |---------|---------|---------|-----|-----|---------|-----------|
-| Multi-chain Wallet | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ |
-| Send/Receive | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ |
-| Address Book | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ |
-| QR Code | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ |
-| Hardware Wallet | ‚úÖ NEW | ‚úÖ NEW | ‚úÖ NEW | ‚úÖ | ‚ĚĆ | ‚úÖ |
-| MPC Wallet | ‚úÖ NEW | ‚úÖ NEW | ‚úÖ NEW | ‚úÖ | ‚ĚĆ | ‚ĚĆ |
-| Social Recovery | ‚úÖ NEW | ‚úÖ NEW | ‚úÖ NEW | ‚úÖ | ‚ĚĆ | ‚ĚĆ |
-| Account Abstraction | ‚úÖ NEW | ‚úÖ NEW | ‚úÖ NEW | ‚úÖ | ‚ĚĆ | ‚ĚĆ |
+| Multi-chain Wallet | YES | YES | YES | YES | YES | YES |
+| Send/Receive | YES | YES | YES | YES | YES | YES |
+| Address Book | YES | YES | YES | YES | YES | YES |
+| QR Code | YES | YES | YES | YES | YES | YES |
+| Hardware Wallet | YES NEW | YES NEW | YES NEW | YES | NO | YES |
+| MPC Wallet | YES NEW | YES NEW | YES NEW | YES | NO | NO |
+| Social Recovery | YES NEW | YES NEW | YES NEW | YES | NO | NO |
+| Account Abstraction | YES NEW | YES NEW | YES NEW | YES | NO | NO |
 
 ### 3. DeFi FEATURES
 
 | Feature | Flutter | Android | iOS | Web | Desktop | Extension |
 |---------|---------|---------|-----|-----|---------|-----------|
-| Staking | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ |
-| Liquid Staking | ‚ö†ÔłŹ Partial | ‚ö†ÔłŹ Partial | ‚ö†ÔłŹ Partial | ‚úÖ | ‚úÖ | ‚ĚĆ |
-| Lending | ‚úÖ NEW | ‚úÖ | ‚úÖ | ‚úÖ | ‚ĚĆ | ‚úÖ |
-| Bridge | ‚úÖ NEW | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ |
-| Farming | ‚úÖ NEW | ‚ĚĆ | ‚ĚĆ | ‚úÖ | ‚úÖ | ‚ĚĆ |
-| DAO | ‚úÖ NEW | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ |
+| Staking | YES | YES | YES | YES | YES | YES |
+| Liquid Staking | PARTIAL | PARTIAL | PARTIAL | YES | YES | NO |
+| Lending | YES NEW | YES | YES | YES | NO | YES |
+| Bridge | YES NEW | YES | YES | YES | YES | YES |
+| Farming | YES NEW | NO | NO | YES | YES | NO |
+| DAO | YES NEW | YES | YES | YES | YES | YES |
 
 ### 4. NFT FEATURES
 
 | Feature | Flutter | Android | iOS | Web | Desktop | Extension |
 |---------|---------|---------|-----|-----|---------|-----------|
-| NFT Gallery | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚ĚĆ |
-| NFT Trading | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚ĚĆ |
-| NFT Mint | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚ĚĆ | ‚ĚĆ |
+| NFT Gallery | YES | YES | YES | YES | YES | NO |
+| NFT Trading | YES | YES | YES | YES | YES | NO |
+| NFT Mint | YES | YES | YES | YES | NO | NO |
 
 ### 5. PAYMENTS
 
 | Feature | Flutter | Android | iOS | Web | Desktop | Extension |
 |---------|---------|---------|-----|-----|---------|-----------|
-| Crypto Card | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ |
-| Fiat On-Ramp | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ |
-| Fiat Off-Ramp | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ |
-| Gift Cards | ‚úÖ NEW | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ NEW |
+| Crypto Card | YES | YES | YES | YES | YES | YES |
+| Fiat On-Ramp | YES | YES | YES | YES | YES | YES |
+| Fiat Off-Ramp | YES | YES | YES | YES | YES | YES |
+| Gift Cards | YES NEW | YES | YES | YES | YES | YES NEW |
 
 ### 6. DApp & TOOLS
 
 | Feature | Flutter | Android | iOS | Web | Desktop | Extension |
 |---------|---------|---------|-----|-----|---------|-----------|
-| DApp Browser | ‚úÖ NEW | ‚úÖ | ‚úÖ | ‚úÖ | ‚ĚĆ | ‚úÖ |
-| Launchpad | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚ĚĆ |
-| Prediction Markets | ‚ĚĆ | ‚ĚĆ | ‚ĚĆ | ‚úÖ | ‚úÖ | ‚ĚĆ |
-| RWA Trading | ‚ĚĆ | ‚úÖ | ‚ĚĆ | ‚úÖ | ‚úÖ | ‚ĚĆ |
-| Security Scanner | ‚ĚĆ | ‚ĚĆ | ‚ĚĆ | ‚úÖ | ‚ĚĆ | ‚ĚĆ |
-| Gas Tracker | ‚ĚĆ | ‚ĚĆ | ‚ĚĆ | ‚úÖ | ‚ĚĆ | ‚úÖ |
-| Orderbook | ‚ĚĆ | ‚ĚĆ | ‚ĚĆ | ‚úÖ | ‚ĚĆ | ‚ĚĆ |
-| TWAP | ‚ĚĆ | ‚ĚĆ | ‚ĚĆ | ‚úÖ | ‚ĚĆ | ‚ĚĆ |
-| Intent Routing | ‚ĚĆ | ‚ĚĆ | ‚ĚĆ | ‚úÖ | ‚ĚĆ | ‚ĚĆ |
+| DApp Browser | YES NEW | YES | YES | YES | NO | YES |
+| Launchpad | YES | YES | YES | YES | YES | NO |
+| Prediction Markets | NO | NO | NO | YES | YES | NO |
+| RWA Trading | NO | YES | NO | YES | YES | NO |
+| Security Scanner | NO | NO | NO | YES | NO | NO |
+| Gas Tracker | NO | NO | NO | YES | NO | YES |
+| Orderbook | NO | NO | NO | YES | NO | NO |
+| TWAP | NO | NO | NO | YES | NO | NO |
+| Intent Routing | NO | NO | NO | YES | NO | NO |
 
 ### 7. SOCIAL & REWARDS
 
 | Feature | Flutter | Android | iOS | Web | Desktop | Extension |
 |---------|---------|---------|-----|-----|---------|-----------|
-| Red Packet | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ |
-| Airdrop Claim | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ |
+| Red Packet | YES | YES | YES | YES | YES | YES |
+| Airdrop Claim | YES | YES | YES | YES | YES | YES |
 
 ### 8. SECURITY FEATURES
 
 | Feature | Flutter | Android | iOS | Web | Desktop | Extension |
 |---------|---------|---------|-----|-----|---------|-----------|
-| Biometric Auth | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ | ‚úÖ |
-| Passkey | ‚ĚĆ | ‚ĚĆ | ‚ĚĆ | ‚úÖ | ‚ĚĆ | ‚ĚĆ |
-| MEV Protection | ‚ĚĆ | ‚ĚĆ | ‚ĚĆ | ‚úÖ | ‚úÖ | ‚úÖ |
-| Transaction Simulation | ‚ĚĆ | ‚ĚĆ | ‚ĚĆ | ‚úÖ | ‚ĚĆ | ‚ĚĆ |
+| Biometric Auth | YES | YES | YES | YES | YES | YES |
+| Passkey | NO | NO | NO | YES | NO | NO |
+| MEV Protection | NO | NO | NO | YES | YES | YES |
+| Transaction Simulation | NO | NO | NO | YES | NO | NO |
 
 ---
 
@@ -156,14 +156,14 @@ This document provides a comprehensive comparison of all UserWallet apps across 
 
 | Fetcher | Function | Status | Implementation |
 |---------|----------|--------|----------------|
-| `balance` | Fetch token/native balance | ‚ö†ÔłŹ STUB | Returns mock data |
-| `transactions` | Fetch transaction history | ‚ö†ÔłŹ STUB | Returns empty array |
-| `tokens` | Fetch token list | ‚ö†ÔłŹ STUB | Returns empty array |
-| `nfts` | Fetch NFT collections | ‚ö†ÔłŹ STUB | Returns empty array |
-| `swap` | Fetch DEX swap quotes | ‚ö†ÔłŹ STUB | Returns null |
-| `staking` | Fetch staking positions | ‚ö†ÔłŹ STUB | Returns empty array |
-| `gas` | Fetch gas prices | ‚ö†ÔłŹ STUB | Returns mock values |
-| `price` | Fetch price feeds | ‚ö†ÔłŹ STUB | Returns empty object |
+| `balance` | Fetch token/native balance | STUB | Returns mock data |
+| `transactions` | Fetch transaction history | STUB | Returns empty array |
+| `tokens` | Fetch token list | STUB | Returns empty array |
+| `nfts` | Fetch NFT collections | STUB | Returns empty array |
+| `swap` | Fetch DEX swap quotes | STUB | Returns null |
+| `staking` | Fetch staking positions | STUB | Returns empty array |
+| `gas` | Fetch gas prices | STUB | Returns mock values |
+| `price` | Fetch price feeds | STUB | Returns empty object |
 
 ### Missing Fetchers (NOT IMPLEMENTED)
 
@@ -191,16 +191,16 @@ This document provides a comprehensive comparison of all UserWallet apps across 
 
 | Endpoint | Handler | Function | Status |
 |----------|---------|----------|--------|
-| `POST /register` | RegisterHandler | User registration | ‚úÖ |
-| `POST /login` | LoginHandler | JWT authentication | ‚úÖ |
-| `POST /wallets` | CreateWalletHandler | Create wallet | ‚úÖ |
-| `GET /wallets` | GetWalletsHandler | List wallets | ‚úÖ |
-| `GET /wallet/{id}` | GetWalletHandler | Wallet details | ‚úÖ |
-| `POST /transactions` | CreateTransactionHandler | Create tx | ‚úÖ |
-| `GET /transactions` | GetTransactionsHandler | Tx history | ‚úÖ |
-| `POST /kyc` | SubmitKYCHandler | KYC submission | ‚úÖ |
-| `GET /kyc/status` | GetKYCStatusHandler | KYC status | ‚úÖ |
-| `POST /auth/refresh` | RefreshTokenHandler | Token refresh | ‚úÖ |
+| `POST /register` | RegisterHandler | User registration | YES |
+| `POST /login` | LoginHandler | JWT authentication | YES |
+| `POST /wallets` | CreateWalletHandler | Create wallet | YES |
+| `GET /wallets` | GetWalletsHandler | List wallets | YES |
+| `GET /wallet/{id}` | GetWalletHandler | Wallet details | YES |
+| `POST /transactions` | CreateTransactionHandler | Create tx | YES |
+| `GET /transactions` | GetTransactionsHandler | Tx history | YES |
+| `POST /kyc` | SubmitKYCHandler | KYC submission | YES |
+| `GET /kyc/status` | GetKYCStatusHandler | KYC status | YES |
+| `POST /auth/refresh` | RefreshTokenHandler | Token refresh | YES |
 
 ---
 
@@ -210,114 +210,114 @@ This document provides a comprehensive comparison of all UserWallet apps across 
 
 | Feature | Service File | Status | Lines |
 |---------|-------------|--------|-------|
-| Account Abstraction | `account_abstraction/account_abstraction_service.dart` | ‚úÖ | ~300 |
-| Bridge | `bridge/bridge_service.dart` | ‚úÖ | ~250 |
-| Claim | `claim/claim_service.dart` | ‚úÖ | ~200 |
-| Convert | `convert/convert_service.dart` | ‚úÖ | ~280 |
-| Copy Trading | `copy_trading/copy_trading_service.dart` | ‚úÖ | ~350 |
-| Crypto Card | `crypto_card/crypto_card_service.dart` | ‚úÖ | ~320 |
-| DAO | `dao/dao_service.dart` | ‚úÖ | ~290 |
-| DApp Browser | `dapp_browser/dapp_browser_service.dart` | ‚úÖ | ~400 |
-| Fiat Ramp | `fiat_ramp/fiat_ramp_service.dart` | ‚úÖ | ~350 |
-| Futures | `futures/futures_service.dart` | ‚úÖ | ~380 |
-| Gift Cards | `gift_cards/gift_card_service.dart` | ‚úÖ | ~310 |
-| Hardware Wallet | `hardware_wallet/hardware_wallet_service.dart` | ‚úÖ NEW | ~280 |
-| Launchpad | `launchpad/launchpad_service.dart` | ‚úÖ | ~260 |
-| Lending | `lending/lending_service.dart` | ‚úÖ | ~340 |
-| Liquid Staking | `liquid_staking/liquid_staking_service.dart` | ‚ö†ÔłŹ PARTIAL | ~180 |
-| Margin Trading | `margin_trading/margin_trading_service.dart` | ‚úÖ | ~360 |
-| MPC Wallet | `mpc_wallet/mpc_wallet_service.dart` | ‚úÖ NEW | ~290 |
-| NFT | `nft/services/nft_service.dart` | ‚úÖ | ~280 |
-| Options | `options/options_service.dart` | ‚úÖ | ~320 |
-| P2P Trading | `p2p_trading/p2p_service.dart` | ‚úÖ | ~420 |
-| Red Packet | `red_packet/red_packet_service.dart` | ‚úÖ | ~240 |
-| Social Recovery | `social_recovery/social_recovery_service.dart` | ‚úÖ NEW | ~270 |
-| Staking | `staking/services/staking_service.dart` | ‚úÖ | ~310 |
-| Swap | `swap/services/swap_service.dart` | ‚úÖ | ~340 |
-| Wallet | `wallet/services/wallet_service.dart` | ‚úÖ | ~850 |
+| Account Abstraction | `account_abstraction/account_abstraction_service.dart` | YES | ~300 |
+| Bridge | `bridge/bridge_service.dart` | YES | ~250 |
+| Claim | `claim/claim_service.dart` | YES | ~200 |
+| Convert | `convert/convert_service.dart` | YES | ~280 |
+| Copy Trading | `copy_trading/copy_trading_service.dart` | YES | ~350 |
+| Crypto Card | `crypto_card/crypto_card_service.dart` | YES | ~320 |
+| DAO | `dao/dao_service.dart` | YES | ~290 |
+| DApp Browser | `dapp_browser/dapp_browser_service.dart` | YES | ~400 |
+| Fiat Ramp | `fiat_ramp/fiat_ramp_service.dart` | YES | ~350 |
+| Futures | `futures/futures_service.dart` | YES | ~380 |
+| Gift Cards | `gift_cards/gift_card_service.dart` | YES | ~310 |
+| Hardware Wallet | `hardware_wallet/hardware_wallet_service.dart` | YES NEW | ~280 |
+| Launchpad | `launchpad/launchpad_service.dart` | YES | ~260 |
+| Lending | `lending/lending_service.dart` | YES | ~340 |
+| Liquid Staking | `liquid_staking/liquid_staking_service.dart` | WARN PARTIAL | ~180 |
+| Margin Trading | `margin_trading/margin_trading_service.dart` | YES | ~360 |
+| MPC Wallet | `mpc_wallet/mpc_wallet_service.dart` | YES NEW | ~290 |
+| NFT | `nft/services/nft_service.dart` | YES | ~280 |
+| Options | `options/options_service.dart` | YES | ~320 |
+| P2P Trading | `p2p_trading/p2p_service.dart` | YES | ~420 |
+| Red Packet | `red_packet/red_packet_service.dart` | YES | ~240 |
+| Social Recovery | `social_recovery/social_recovery_service.dart` | YES NEW | ~270 |
+| Staking | `staking/services/staking_service.dart` | YES | ~310 |
+| Swap | `swap/services/swap_service.dart` | YES | ~340 |
+| Wallet | `wallet/services/wallet_service.dart` | YES | ~850 |
 
 ### Android (`/mobile/android/app/src/main/java/com/tigerwallet/app/`)
 
 | Feature | Service File | Status |
 |---------|-------------|--------|
-| P2P Trading | `trading/P2PService.java` | ‚úÖ |
-| Crypto Card | `trading/CryptoCardService.java` | ‚úÖ |
-| Convert | `trading/ConvertService.java` | ‚úÖ |
-| Margin Trading | `trading/MarginTradingService.java` | ‚úÖ |
-| Fiat Ramp | `trading/FiatRampService.java` | ‚úÖ |
-| Futures | `trading/FuturesService.java` | ‚úÖ |
-| Copy Trading | `trading/CopyTradingService.java` | ‚úÖ |
-| Options Trading | `services/options/OptionsTradingService.java` | ‚úÖ |
-| RWA Trading | `services/rwa/RWAService.java` | ‚úÖ |
-| Launchpad | `services/launchpad/LaunchpadService.java` | ‚úÖ |
-| Lending | `services/LendingService.java` | ‚úÖ |
-| NFT | `services/nft/NFTService.java` | ‚úÖ |
-| DApp Browser | `services/dapp/DAppBrowserService.java` | ‚úÖ |
-| Bridge | `services/BridgeService.java` | ‚úÖ |
-| DAO | `services/dao/DAOService.java` | ‚úÖ |
-| Gift Cards | `services/gift/GiftCardService.java` | ‚úÖ |
-| Swap | `services/swap/SwapService.java` | ‚úÖ |
-| Staking | `services/staking/StakingService.java` | ‚úÖ |
+| P2P Trading | `trading/P2PService.java` | YES |
+| Crypto Card | `trading/CryptoCardService.java` | YES |
+| Convert | `trading/ConvertService.java` | YES |
+| Margin Trading | `trading/MarginTradingService.java` | YES |
+| Fiat Ramp | `trading/FiatRampService.java` | YES |
+| Futures | `trading/FuturesService.java` | YES |
+| Copy Trading | `trading/CopyTradingService.java` | YES |
+| Options Trading | `services/options/OptionsTradingService.java` | YES |
+| RWA Trading | `services/rwa/RWAService.java` | YES |
+| Launchpad | `services/launchpad/LaunchpadService.java` | YES |
+| Lending | `services/LendingService.java` | YES |
+| NFT | `services/nft/NFTService.java` | YES |
+| DApp Browser | `services/dapp/DAppBrowserService.java` | YES |
+| Bridge | `services/BridgeService.java` | YES |
+| DAO | `services/dao/DAOService.java` | YES |
+| Gift Cards | `services/gift/GiftCardService.java` | YES |
+| Swap | `services/swap/SwapService.java` | YES |
+| Staking | `services/staking/StakingService.java` | YES |
 
 ### iOS (`/mobile/ios/Runner/Services/`)
 
 | Feature | Service File | Status |
 |---------|-------------|--------|
-| Gift Card | `GiftCardService.swift` | ‚úÖ |
-| Options Trading | `options/OptionsTradingService.swift` | ‚úÖ |
-| Fiat Ramp | `fiat/FiatRampService.swift` | ‚úÖ |
-| DAO | `dao/DAOService.swift` | ‚úÖ |
-| Bridge | `BridgeService.swift` | ‚úÖ |
-| Lending | `LendingService.swift` | ‚úÖ |
-| Swap | `swap/SwapService.swift` | ‚úÖ |
+| Gift Card | `GiftCardService.swift` | YES |
+| Options Trading | `options/OptionsTradingService.swift` | YES |
+| Fiat Ramp | `fiat/FiatRampService.swift` | YES |
+| DAO | `dao/DAOService.swift` | YES |
+| Bridge | `BridgeService.swift` | YES |
+| Lending | `LendingService.swift` | YES |
+| Swap | `swap/SwapService.swift` | YES |
 
 ### Desktop C++ (`/desktop_wallet/src/services/`)
 
 | Feature | Service File | Status | Size |
 |---------|-------------|--------|------|
-| API Client | `api_client.cpp` | ‚úÖ | 6.7 KB |
-| Blockchain | `blockchain_service.cpp` | ‚úÖ | 23.5 KB |
-| Convert | `convert_service.cpp` | ‚úÖ | 3.3 KB |
-| Copy Trading | `copy_trading_service.cpp` | ‚úÖ | 5.2 KB |
-| Crypto Card | `crypto_card_service.cpp` | ‚úÖ | 7.0 KB |
-| Fiat Ramp | `fiat_ramp_service.cpp` | ‚úÖ | 7.2 KB |
-| Futures | `futures_service.cpp` | ‚úÖ | 4.6 KB |
-| Keychain | `keychain_manager.cpp` | ‚úÖ | 9.9 KB |
-| Margin Trading | `margin_trading_service.cpp` | ‚úÖ | 5.6 KB |
-| NFT | `nft_service.cpp` | ‚úÖ | 7.2 KB |
-| Price | `price_service.cpp` | ‚úÖ | 15.2 KB |
-| Staking | `staking_service.cpp` | ‚úÖ | 9.9 KB |
-| Swap | `swap_service.cpp` | ‚úÖ | 6.9 KB |
-| Biometric | `biometric/` | ‚úÖ | 10.3 KB |
-| Bridge | `bridge/` | ‚úÖ | 17.4 KB |
-| DAO | `dao/` | ‚úÖ | 2.9 KB |
-| DApp Browser | `dapp_browser/` | ‚úÖ | 12.0 KB |
-| Farming | `farming/` | ‚úÖ | 1.5 KB |
-| Gas Tracker | `gas_tracker/` | ‚ĚĆ STUB | 0.3 KB |
-| Gift Card | `gift_card/` | ‚úÖ | 3.9 KB |
-| Launchpad | `launchpad/` | ‚úÖ | 1.9 KB |
-| Liquid Staking | `liquid_staking/` | ‚úÖ | 1.8 KB |
-| MEV Protection | `mev_protection/` | ‚úÖ | 5.4 KB |
-| Options | `options/` | ‚úÖ | 20.7 KB |
-| Prediction Markets | `prediction_markets/` | ‚úÖ | 1.8 KB |
-| Realtime Alerts | `realtime_alerts/` | ‚úÖ | 11.0 KB |
-| RWA Trading | `rwa_trading/` | ‚úÖ | 0.7 KB |
+| API Client | `api_client.cpp` | YES | 6.7 KB |
+| Blockchain | `blockchain_service.cpp` | YES | 23.5 KB |
+| Convert | `convert_service.cpp` | YES | 3.3 KB |
+| Copy Trading | `copy_trading_service.cpp` | YES | 5.2 KB |
+| Crypto Card | `crypto_card_service.cpp` | YES | 7.0 KB |
+| Fiat Ramp | `fiat_ramp_service.cpp` | YES | 7.2 KB |
+| Futures | `futures_service.cpp` | YES | 4.6 KB |
+| Keychain | `keychain_manager.cpp` | YES | 9.9 KB |
+| Margin Trading | `margin_trading_service.cpp` | YES | 5.6 KB |
+| NFT | `nft_service.cpp` | YES | 7.2 KB |
+| Price | `price_service.cpp` | YES | 15.2 KB |
+| Staking | `staking_service.cpp` | YES | 9.9 KB |
+| Swap | `swap_service.cpp` | YES | 6.9 KB |
+| Biometric | `biometric/` | YES | 10.3 KB |
+| Bridge | `bridge/` | YES | 17.4 KB |
+| DAO | `dao/` | YES | 2.9 KB |
+| DApp Browser | `dapp_browser/` | YES | 12.0 KB |
+| Farming | `farming/` | YES | 1.5 KB |
+| Gas Tracker | `gas_tracker/` | NO STUB | 0.3 KB |
+| Gift Card | `gift_card/` | YES | 3.9 KB |
+| Launchpad | `launchpad/` | YES | 1.9 KB |
+| Liquid Staking | `liquid_staking/` | YES | 1.8 KB |
+| MEV Protection | `mev_protection/` | YES | 5.4 KB |
+| Options | `options/` | YES | 20.7 KB |
+| Prediction Markets | `prediction_markets/` | YES | 1.8 KB |
+| Realtime Alerts | `realtime_alerts/` | YES | 11.0 KB |
+| RWA Trading | `rwa_trading/` | YES | 0.7 KB |
 
 ### Browser Extension (`/browser_extensions/chrome/src/services/`)
 
 | Feature | Service File | Status | Size |
 |---------|-------------|--------|------|
-| Additional Services | `additional-services.js` | ‚úÖ | 7.8 KB |
-| Biometric Auth | `biometric-auth.js` | ‚úÖ | 7.0 KB |
-| Lending Service | `lending-service.js` | ‚úÖ | 11.0 KB |
-| NFT-DAO Service | `nft-dao-service.js` | ‚úÖ | 9.1 KB |
-| Price Service | `price-service.js` | ‚úÖ | 3.5 KB |
-| Swap-NFT-Staking-Bridge | `swap-nft-staking-bridge.js` | ‚úÖ | 9.0 KB |
-| Trading-MEV-Session-Gas | `trading-mev-session-gas-widget.js` | ‚úÖ | 9.5 KB |
-| DApp Browser | `dapp_browser/` | ‚úÖ | 10.8 KB |
-| Hardware Wallet | `hardware_wallet/` | ‚úÖ | 17.1 KB |
-| Multisig | `multisig/` | ‚úÖ | 9.3 KB |
-| Notifications | `notifications/` | ‚úÖ | 12.7 KB |
+| Additional Services | `additional-services.js` | YES | 7.8 KB |
+| Biometric Auth | `biometric-auth.js` | YES | 7.0 KB |
+| Lending Service | `lending-service.js` | YES | 11.0 KB |
+| NFT-DAO Service | `nft-dao-service.js` | YES | 9.1 KB |
+| Price Service | `price-service.js` | YES | 3.5 KB |
+| Swap-NFT-Staking-Bridge | `swap-nft-staking-bridge.js` | YES | 9.0 KB |
+| Trading-MEV-Session-Gas | `trading-mev-session-gas-widget.js` | YES | 9.5 KB |
+| DApp Browser | `dapp_browser/` | YES | 10.8 KB |
+| Hardware Wallet | `hardware_wallet/` | YES | 17.1 KB |
+| Multisig | `multisig/` | YES | 9.3 KB |
+| Notifications | `notifications/` | YES | 12.7 KB |
 
 ---
 
@@ -327,39 +327,39 @@ This document provides a comprehensive comparison of all UserWallet apps across 
 
 | Platform | Feature | Location | Status | Action Required |
 |----------|---------|----------|--------|-----------------|
-| Desktop | Gas Tracker | `desktop_wallet/src/services/gas_tracker/` | ‚ĚĆ STUB | Implement C++ gas estimation |
-| Extension | Options Trading | N/A | ‚ĚĆ MISSING | Add options trading service |
-| Extension | Convert | N/A | ‚ĚĆ MISSING | Add convert service |
-| Extension | NFT Gallery/Trading | N/A | ‚ĚĆ MISSING | Add NFT services |
-| Extension | Launchpad | N/A | ‚ĚĆ MISSING | Add launchpad service |
-| Extension | Lending | N/A | ‚ĚĆ MISSING | Already in main services? |
-| Extension | MPC Wallet | N/A | ‚ĚĆ MISSING | Add MPC wallet service |
-| Extension | Account Abstraction | N/A | ‚ĚĆ MISSING | Add AA service |
+| Desktop | Gas Tracker | `desktop_wallet/src/services/gas_tracker/` | NO STUB | Implement C++ gas estimation |
+| Extension | Options Trading | N/A | NO MISSING | Add options trading service |
+| Extension | Convert | N/A | NO MISSING | Add convert service |
+| Extension | NFT Gallery/Trading | N/A | NO MISSING | Add NFT services |
+| Extension | Launchpad | N/A | NO MISSING | Add launchpad service |
+| Extension | Lending | N/A | NO MISSING | Already in main services? |
+| Extension | MPC Wallet | N/A | NO MISSING | Add MPC wallet service |
+| Extension | Account Abstraction | N/A | NO MISSING | Add AA service |
 
 ### MEDIUM PRIORITY GAPS
 
 | Platform | Feature | Status |
 |----------|---------|--------|
-| Flutter | Liquid Staking | ‚ö†ÔłŹ Partial - needs completion |
-| Web | Biometric Auth | ‚úÖ Implemented but needs mobile |
-| All Mobile | Security Scanner | ‚ĚĆ Not implemented |
-| All Mobile | Orderbook | ‚ĚĆ Not implemented |
-| All Mobile | TWAP | ‚ĚĆ Not implemented |
-| All Mobile | Intent Routing | ‚ĚĆ Not implemented |
-| All Mobile | Prediction Markets | ‚ĚĆ Not implemented |
-| All Mobile | Passkey | ‚ĚĆ Not implemented |
+| Flutter | Liquid Staking | PARTIAL - needs completion |
+| Web | Biometric Auth | YES Implemented but needs mobile |
+| All Mobile | Security Scanner | NO Not implemented |
+| All Mobile | Orderbook | NO Not implemented |
+| All Mobile | TWAP | NO Not implemented |
+| All Mobile | Intent Routing | NO Not implemented |
+| All Mobile | Prediction Markets | NO Not implemented |
+| All Mobile | Passkey | NO Not implemented |
 
 ### BACKEND GAPS
 
 | Service | Location | Status | Notes |
 |---------|----------|--------|-------|
-| Account Abstraction | `/backend/go/internal/services/` | ‚úÖ Implemented | |
-| Bridge | `/backend/go/internal/services/` | ‚ö†ÔłŹ Partial | Needs completion |
-| Gift Card | `/backend/go/internal/services/` | ‚ö†ÔłŹ Partial | Needs completion |
-| Hardware Wallet | `/backend/go/internal/services/` | ‚ö†ÔłŹ Partial | Needs completion |
-| Lending | `/backend/go/internal/services/` | ‚ö†ÔłŹ Partial | Needs completion |
-| MPC Wallet | `/backend/go/internal/services/` | ‚ö†ÔłŹ Partial | Needs completion |
-| Social Recovery | `/backend/go/internal/services/` | ‚ö†ÔłŹ Partial | Needs completion |
+| Account Abstraction | `/backend/go/internal/services/` | YES Implemented | |
+| Bridge | `/backend/go/internal/services/` | PARTIAL | Needs completion |
+| Gift Card | `/backend/go/internal/services/` | PARTIAL | Needs completion |
+| Hardware Wallet | `/backend/go/internal/services/` | PARTIAL | Needs completion |
+| Lending | `/backend/go/internal/services/` | PARTIAL | Needs completion |
+| MPC Wallet | `/backend/go/internal/services/` | PARTIAL | Needs completion |
+| Social Recovery | `/backend/go/internal/services/` | PARTIAL | Needs completion |
 
 ### RUST FETCHER GAPS
 
@@ -386,11 +386,11 @@ All fetchers in `/rust/userwallet_fetchers/` return mock/stub data:
 
 ## Separation Verification
 
-‚úÖ **CONFIRMED**: UserWallet apps are completely isolated from:
-- ‚ĚĆ Admin APIs (`https://admin-api.tigerwallet.com`)
-- ‚ĚĆ MasterWallet APIs (`https://master-api.tigerwallet.com`)
-- ‚ĚĆ Admin fetchers and functionality
-- ‚ĚĆ MasterWallet fetchers and functionality
+YES **CONFIRMED**: UserWallet apps are completely isolated from:
+- NO Admin APIs (`https://admin-api.tigerwallet.com`)
+- NO MasterWallet APIs (`https://master-api.tigerwallet.com`)
+- NO Admin fetchers and functionality
+- NO MasterWallet fetchers and functionality
 
 All UserWallet components are in:
 - `/rust/userwallet_fetchers/` - UserWallet only

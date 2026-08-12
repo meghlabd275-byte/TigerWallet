@@ -1,4 +1,4 @@
-# TigerWallet â€” Agent Memory
+# TigerWallet ” Agent Memory
 
 ## ERC-4337 / Account Abstraction contracts
 
@@ -34,7 +34,7 @@
   extends the audited `BasePaymaster` and sponsors gas only when an off-chain
   sponsor's real ECDSA signature over the EIP-191-prefixed `userOpHash`
   recovers to the registered `signingSigner` (Pimlico/Stackup
-  verifying-paymaster pattern â€” the GetGas-equivalent gas-subsidy product).
+  verifying-paymaster pattern ” the GetGas-equivalent gas-subsidy product).
   Fail-closed sender whitelist, `validUntil`/`validAfter` time-range bounds,
   owner-gated signer rotation, inherited stake/deposit/withdraw via
   `Stakeable`/`BasePaymaster`. `test_aa/VerifyingPaymaster.t.sol`: 8 passing
@@ -44,7 +44,7 @@
   account). A tx executes only after `threshold` owner ECDSA signatures over an
   EIP-712 typed-data hash (`domain(chainId,verifyingContract) ||
   Transaction(to,value,dataHash,nonce)`) are collected. Verification uses OZ v5
-  `ECDSA.recover` (real secp256k1, low-s) â€” NOT length checks. Sorted-sig
+  `ECDSA.recover` (real secp256k1, low-s) ” NOT length checks. Sorted-sig
   convention (`recovered > lastOwner`) dedups without storage. `ReentrancyGuard`,
   nonce replay protection, threshold clamped to `[1, ownerCount]`, self-governed
   owner mgmt (add/remove/changeThreshold) via the wallet's own execute path,
@@ -79,7 +79,7 @@
   `forge install OpenZeppelin/openzeppelin-contracts --no-git`). Auto-remapping
   `@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/`.
 - Forge binary: `~/.foundry/bin/forge` (v1.7.1). Build:
-  `cd smart_contracts/evm_contracts && forge build` â†’ "Compiler run successful!"
+  `cd smart_contracts/evm_contracts && forge build` -> "Compiler run successful!"
 - `smart_contracts/evm_contracts/contracts/AccountAbstraction.sol` and
   `AccountAbstraction_Upgraded.sol` only use an `onlyEntryPoint`
   (`msg.sender == entryPoint`) pattern and do NOT depend on the `UserOperation`
@@ -94,7 +94,7 @@
 - Module: `tigerwallet/dapp_browser` (go.mod created in `dapp_browser/go/`).
 - `walletconnect.go`: `handlePersonalSign` / `handleEthSignTypedData_v4` now do
   REAL signing via `github.com/ethereum/go-ethereum/crypto` (ECDSA secp256k1).
-  NEVER return a fake all-zero `0x0000...` signature â€” if no signer key is
+  NEVER return a fake all-zero `0x0000...` signature ” if no signer key is
   configured, reject the request with JSON-RPC error `-32000`
   ("Signing not available: wallet not connected").
 - The signer ECDSA private key is loaded from env `SIGNER_PRIVATE_KEY` (hex,
@@ -129,17 +129,17 @@
 
 ## Network / package install
 
-## go/wallet_api (canonical wallet backend â€” REAL)
+## go/wallet_api (canonical wallet backend ” REAL)
 
 - The canonical Go wallet backend at `go/wallet_api/` is the ONLY service that
   performs key management and signing. It replaces the old `go/wallet_service`
-  (which used NIST P-256 + `sha512(seed)` â€” NOT secp256k1/BIP-32). Do NOT use
+  (which used NIST P-256 + `sha512(seed)` ” NOT secp256k1/BIP-32). Do NOT use
   `go/wallet_service` for signing.
 - Real BIP-39 mnemonic generation (`tyler-smith/go-bip39`), real BIP-32 HD
   derivation (`hd_derive.go`: HMAC-SHA512 "Bitcoin seed" master + CKDpriv mod-n
   via secp256k1), BIP-44 path parsing (`m/44'/60'/0'/0/0`, `'`/`h`/`H` hardened
   suffixes). The **canonical BIP-44 test vector PASSES**: mnemonic
-  "abandon abandon ... about" m/44'/60'/0'/0/0 â†’ `0x9858EfFD232B4033E47d90003D41EC34EcaEda94`.
+  "abandon abandon ... about" m/44'/60'/0'/0/0 -> `0x9858EfFD232B4033E47d90003D41EC34EcaEda94`.
 - Real EVM transaction signing via `go-ethereum/core/types.SignTx` +
   `NewLondonSigner` (EIP-1559 DynamicFeeTx + legacy LegacyTx), real
   `eth_sendRawTransaction` broadcast. `MarshalBinary()` gives the signed RLP.
@@ -155,7 +155,7 @@
   prices via CoinGecko, gas via `eth_feeHistory`/`eth_gasPrice`.
 - Curated dApp directory (`dapp_directory.go`): ~20 real protocol entries
   (Uniswap, Aave, OpenSea, Curve, 1inch, Jupiter, Stargate, Lido, ENS, Lens,
-  Farcaster, etc.) with categories/chains/verified flag â€” NO fabricated metrics
+  Farcaster, etc.) with categories/chains/verified flag ” NO fabricated metrics
   (no invented user counts/ratings). Public REST `GET /api/v1/dapps`
   (`?category=&chain=`), `/dapps/categories`, `/dapps/:id`. Frontend
   `dapp-store` + `dapp-browser` pages fetch this instead of hardcoding.
@@ -163,7 +163,7 @@
   per-chain token lists (mainnet contract addresses/decimals/symbols for
   Ethereum/BSC/Polygon/Arbitrum/Optimism/Base). Public REST
   `GET /api/v1/tokens/registry` (full registry grouped by chain, or
-  `?chain_id=N`; 404 for unknown chain â€” never fabricated).
+  `?chain_id=N`; 404 for unknown chain ” never fabricated).
 - REST API (gin, port 8443): `/api/v1/auth/{register,login}`,
   `/api/v1/wallets` (POST create, GET list), `/api/v1/{balance,tokens,transactions,nfts}`,
   `/api/v1/send`, `/api/v1/sign`, `/api/v1/gas`, `/api/v1/price`, `/api/v1/chains`,
@@ -176,7 +176,7 @@
   staking/quote returns supported native assets with APY 0 (no invented yield).
 - Build: `cd go/wallet_api && go build ./...` (exit 0). Tests: `go test ./...`
   (11 tests pass, including BIP-44 test vector). `go vet` clean.
-- Docker: `go/wallet_api/Dockerfile` (multi-stage, golang:1.23-alpine â†’ alpine).
+- Docker: `go/wallet_api/Dockerfile` (multi-stage, golang:1.23-alpine -> alpine).
 - Frontend connects to this backend (port 8443, not 8080). All Next.js API
   routes updated to use `localhost:8443`. The `WalletService` class in
   `frontend/web_nextjs/app/api/service.ts` calls the real endpoints.
@@ -188,14 +188,14 @@
 
 ## docker-compose.yml (cleaned)
 
-- Rewritten from 17 broken services â†’ 10 working services: `postgres`,
+- Rewritten from 17 broken services -> 10 working services: `postgres`,
   `redis`, `wallet-api`, `wallet-frontend`, `super-admin-api`,
   `white-label-frontend`, `permission-service`, `connection-api`,
   `fetcher-gateway`, `monitoring-dashboard`. All build contexts have real
   Dockerfiles. `database/init.sql` creates the `tigerwallet` DB + schema on
   first boot. No SQLite.
 
-- npm registry is reachable in this env (`npm ping` â†’ PONG). `npm install`
+- npm registry is reachable in this env (`npm ping` -> PONG). `npm install`
   works (installs the full tree). `@scure/bip39` + `@noble/hashes` +
   `@scure/base` were added to `frontend/web_nextjs/package.json`.
 
@@ -207,7 +207,7 @@
   `cargo check` / `cargo test --lib` from `core/rust/zk_infrastructure`.
   Toolchain installed 2026-08-11: cargo/rustc 1.97.1 (stable, minimal profile).
 
-## hardware_wallet/rust (Ledger APDU layer â€” real, fail-closed)
+## hardware_wallet/rust (Ledger APDU layer ” real, fail-closed)
 
 - `hardware_wallet/rust/src/ledger/mod.rs` is a REAL Ledger Ethereum-app APDU
   protocol layer (NOT a fake). Implements: APDU constants (CLA 0xE0,
@@ -215,31 +215,31 @@
   P1_FIRST/P1_MORE, P2_TRANSACTION/P2_TYPED_DATA/P2_MESSAGE, status words
   0x9000/0x6985/0x6A80/0x6700/0x6A86); real APDU builders
   (`build_get_public_key_apdu`, `build_sign_apdu`, `build_get_app_configuration_apdu`
-  â€” BIP-32 path BE-encoded, Lc length); real response parsers
+  ” BIP-32 path BE-encoded, Lc length); real response parsers
   (`parse_get_public_key_response` pubKey+address, `parse_sign_response`
-  v||r||s with v normalized 0/1â†’27/28, `split_status_word`, `check_status`,
+  v||r||s with v normalized 0/1->27/28, `split_status_word`, `check_status`,
   `parse_app_config_response`); real EIP-191 host-side message prefixing
   (`eip191_personal_message`). `ApduTransport` trait + fail-closed `NoTransport`
-  default â€” NO fake signature is ever produced. `derive_bip32_path` accepts
+  default ” NO fake signature is ever produced. `derive_bip32_path` accepts
   `'`/`h`/`H` hardened suffixes, rejects oversized indices + empty paths.
 - The fake `"02"+zeros` public key and `vec![0u8;64]` signature are GONE.
-  `cargo test --lib` â†’ 20/20 pass (19 ledger via a canned-response transport).
+  `cargo test --lib` -> 20/20 pass (19 ledger via a canned-response transport).
 - Trezor/OneKey/Ellipal/SafePal modules are now fail-closed (DeviceNotFound)
-  â€” removed fake all-zero keys/sigs + the compile-broken `"0x" + &hex::encode()`
+  ” removed fake all-zero keys/sigs + the compile-broken `"0x" + &hex::encode()`
   string concat. AirGap is a legitimate QR-code air-gapped protocol (kept).
 - Production next step: wire `ApduTransport` to a HID/BLE backend (hidapi /
-  ledger-rs) â€” the protocol layer above is unchanged.
+  ledger-rs) ” the protocol layer above is unchanged.
 
-## wallet_core (Rust core) â€” keystore_v3
+## wallet_core (Rust core) ” keystore_v3
 
 - `wallet_core/src/keystore_v3.rs` is a REAL Web3 Secret Storage v3
-  implementation (Geth/MetaMask/MyCrypto keystore JSON format â€”
+  implementation (Geth/MetaMask/MyCrypto keystore JSON format ”
   https://github.com/ethereum/wiki/wiki/Web3-Secret-Storage-Definition).
 - Both real KDFs: `scrypt` (default N=131072,r=8,p=1,dklen=32) and
   `pbkdf2` (HMAC-SHA256, 262144 iters). Power-of-two N validation.
 - Cipher AES-128-CTR (real `aes`+`ctr` crates). MAC =
-  keccak256(derived_key[16:32]â€–ciphertext), constant-time compared via
-  `subtle::ConstantTimeEq`. Wrong password / tampered ciphertext â†’
+  keccak256(derived_key[16:32]–ciphertext), constant-time compared via
+  `subtle::ConstantTimeEq`. Wrong password / tampered ciphertext ->
   `MacMismatch` (fail-closed). Derived material zeroized.
 - serde structs match the spec field names exactly (`crypto.cipher`,
   `ciphertext`, `cipherparams.iv`, `kdf`, `kdfparams.{n,r,p,c,prf,dklen,
@@ -247,7 +247,7 @@
 - API: `encrypt_key`/`encrypt_key_scrypt`/`encrypt_key_pbkdf2`/`decrypt_key`/
   `to_json`/`from_json`. Added deps `ctr = "0.9.2"`,
   `scrypt = { version = "0.11", default-features = false }`.
-- `cargo test --lib keystore_v3` â†’ 12/12 pass (real crypto, no mocks):
+- `cargo test --lib keystore_v3` -> 12/12 pass (real crypto, no mocks):
   scrypt/pbkdf2 roundtrip, wrong-password fails, JSON roundtrip, invalid
   key length, non-power-of-two N rejected, unsupported cipher/KDF
   rejected, MAC non-constant (real randomness), both-KDFs cross-JSON
@@ -256,7 +256,7 @@
   (Go backend already had the scrypt variant + REST endpoints); both
   now produce spec-valid keystores importable across wallets.
 
-## solana/rust (Solana core â€” real Ed25519 + PDA)
+## solana/rust (Solana core ” real Ed25519 + PDA)
 
 - New crate `tiger_solana_core` (`solana/rust/src/lib.rs`). Replaces the
   C++ `solana_core.cpp` fakes (SHA256-as-pubkey, unsalted-SHA256 PDA).
@@ -265,14 +265,14 @@
   `scalar_mult(seed)` via SHA-512 clamping, NOT SHA-256. Validates the
   result decompresses to a real on-curve point.
 - `find_program_address` / `create_program_address`: the canonical Solana
-  PDA algorithm â€” `sha256(seeds || program_id || bump)` with
-  `PDA_MARKER = b"ProgramDerivedAddress"`, 255â†’1 bump-seed search, and
+  PDA algorithm ” `sha256(seeds || program_id || bump)` with
+  `PDA_MARKER = b"ProgramDerivedAddress"`, 255->1 bump-seed search, and
   curve25519 on-curve REJECTION (a PDA must NOT be a valid Ed25519
   pubkey). Matches `solana-program`.
 - `sign_message` / `verify_signature`: real Ed25519.
 - `pubkey_to_base58` / `pubkey_from_base58`: real base58, rejects wrong
   length (must be 32 bytes).
-- `cargo test --lib` â†’ 12/12 pass (no mocks): pubkey derivation (seed +
+- `cargo test --lib` -> 12/12 pass (no mocks): pubkey derivation (seed +
   expanded), bad-length reject, sign+verify roundtrip + tamper, PDA is
   off-curve, PDA deterministic + idempotent bump, create-with-bump ==
   find, PDAs differ across program ids, long-seed reject, base58
@@ -280,7 +280,7 @@
 - C++ side: the three fake SHA-256 derivations (`derive_public_key`,
   `TokenAddress::create`, `NFTMetadata::get_metadata_address`) are now
   fail-closed (return all-zero sentinel + comment). The legitimate
-  `Message::hash` (SHA-256 of the serialized message â€” used for signing)
+  `Message::hash` (SHA-256 of the serialized message ” used for signing)
   is kept; that one is real.
 
 ## zk_infrastructure / ZK prover
@@ -296,7 +296,7 @@
 ## desktop_wallet (C++)
 
 - CMake project at `desktop_wallet/`, C++20. Depends on CURL + OpenSSL
-  (dev pkgs: `libcurl4-openssl-dev libssl-dev`; `cmake` was not preinstalled â€”
+  (dev pkgs: `libcurl4-openssl-dev libssl-dev`; `cmake` was not preinstalled ”
   `sudo apt-get install -y cmake`). `g++` 14.x is available.
 - UI is NOT a GUI toolkit (no ImGui/Qt/wx). UI components under
   `src/ui/components/**.hpp` are header-only HTML-string generators. Themes
@@ -315,7 +315,7 @@
   standard build command above works.
 - NEW (2026-08-11): `src/services/swap_service.cpp` now calls the real on-chain
   AMM router (`GET /api/v1/amm/quote` for `getAmountsOut`, then the two-step
-  `POST /api/v1/amm/swap` + `POST /api/v1/send` for real tx broadcast) â€” same
+  `POST /api/v1/amm/swap` + `POST /api/v1/send` for real tx broadcast) ” same
   backend path as the web frontend. NEW `include/services/multisig_service.h`
   + `src/services/multisig_service.cpp`: C++ service calling the
   `go/multisig_service` REST API (port 8450) for threshold multisig
@@ -323,7 +323,7 @@
   executeTransaction/revokeTransaction/pendingTransactions). Uses a dedicated
   `APIClient` instance (NOT the wallet_api singleton) pointed at the multisig
   port. Added to `CMakeLists.txt`. Singleton ctor moved to public (copy ctor
-  stays deleted in private) so `std::make_shared` works â€” same fix pattern as
+  stays deleted in private) so `std::make_shared` works ” same fix pattern as
   the other desktop services.
 - SINGLETON PATTERN FIX: service headers (`include/services/*` +
   `include/services/master/master_wallet_service.h`) used the singleton pattern
@@ -334,15 +334,15 @@
   staking_service.h, nft_service.h, keychain_manager.h, api_client.h,
   master_wallet_service.h. Do NOT regress these back to private ctor/dtor.
 - When a struct has a user-declared default constructor it is NOT an aggregate,
-  so brace-init-list assignment like `tokens_ = { {"BTC","Bitcoin",1.5,"â‚ż"}, ... }`
+  so brace-init-list assignment like `tokens_ = { {"BTC","Bitcoin",1.5,"zloty"}, ... }`
   fails ("no match for operator= ... <brace-enclosed initializer list>"). Fix:
   add an explicit constructor taking all the initialized fields (done for
   `ConvertToken`/`ConvertPair` in `src/services/convert_service.h` and
   `Trader` in `src/services/copy_trading_service.h`). Include `<utility>` for
   `std::move` in those headers.
-- `std::cerr` requires `#include <iostream>` â€” was missing in
+- `std::cerr` requires `#include <iostream>` ” was missing in
   `src/models/wallet_models.cpp`; added. `std::remove_if` requires
-  `#include <algorithm>` â€” was missing in `src/services/margin_trading_service.cpp`;
+  `#include <algorithm>` ” was missing in `src/services/margin_trading_service.cpp`;
   added.
 - Note: the bundled `cpp/rpc_manager/json.hpp` referenced as
   `<nlohmann/json.hpp>` is a stub; not on the current build's include path for
@@ -413,8 +413,8 @@
 - Go toolchain: install on demand from go.dev (system Go is NOT installed).
   In this env: `cd /tmp && curl -sSfL https://go.dev/dl/go1.23.12.linux-amd64.tar.gz -o go.tar.gz && mkdir -p $HOME/.go-sdk && tar -C $HOME/.go-sdk -xzf go.tar.gz`,
   then `export PATH="$HOME/.go-sdk/go/bin:$PATH" && export GOPATH="$HOME/go" && export GOTOOLCHAIN=local`.
-  Verify: `go version` â†’ `go1.23.12 linux/amd64`. Build any `go/<svc>` with
-  `cd go/<svc> && go build ./...`. NOTE: `/usr/local` is read-only â€” install
+  Verify: `go version` -> `go1.23.12 linux/amd64`. Build any `go/<svc>` with
+  `cd go/<svc> && go build ./...`. NOTE: `/usr/local` is read-only ” install
   into `$HOME`.
 - Two modules: go/multisig_service (github.com/tigerwallet/multisig-service), go/mpc (github.com/tigerwallet/mpc).
 - All signing uses github.com/ethereum/go-ethereum/crypto (real ECDSA secp256k1, low-s). No sha256/sha3 fakes.
@@ -454,7 +454,7 @@
   staking/staking.go: SetString returns (*Int,bool) not (*Int,error); added
   missing LastClaimTime field to UserStake. Build+vet OK.
 - go/payment/main.go: processWithdrawal now does a REAL on-chain ERC-20
-  transfer(address,uint256) â€” manual calldata (selector 0xa9059cbb + padded
+  transfer(address,uint256) ” manual calldata (selector 0xa9059cbb + padded
   addr + amount) + types.NewTx(DynamicFeeTx) + types.SignTx(NewLondonSigner)
   + ethclient.SendTransaction. No more `0x%x` of timestamp. If no hot-wallet
   key/RPC, status="requires_signing" (not failed, not faked).
@@ -482,7 +482,7 @@
   tokens,transactions,nfts,gas,chains,auth/login,auth/register,
   public/balance,public/tokens,public/transactions,public/nfts}/route.ts.
 - tsc --noEmit: 0 errors in all changed files (57 pre-existing errors in
-  OTHER pages like hardware-wallet/launchpad/lending/bridge remain â€” not
+  OTHER pages like hardware-wallet/launchpad/lending/bridge remain ” not
   from these changes).
 
 ## user_wallet/* retarget + fake-crypto elimination (2026-08-11)
@@ -589,7 +589,7 @@
 ## Rust crate compile audit (2026-08-10)
 
 - Toolchain: rustc 1.97.1 stable (minimal profile). libssl-dev / pkg-config are NOT
-  installed â€” every crate depending on openssl-sys fails its build script.
+  installed ” every crate depending on openssl-sys fails its build script.
   Installing libssl-dev + pkg-config is a precondition, not a code fix.
 - 88 Rust crates total (no workspaces; each Cargo.toml is standalone). cargo check
   (offline first, online fallback), per-crate timeout ~240s: 23 clean, 65 fail (exit 101).
@@ -662,13 +662,13 @@ Notes:
   (route to /send), GET /api/v1/transactions/:txHash (real explorer proxy).
 - go/wallet_api/amm_router.go (NEW, on-chain AMM): REAL `getAmountsOut` via
   `eth_call` to per-chain Uniswap-V2-compatible routers (Ethereum
-  `0x7a250d56â€¦`, PancakeSwap BSC, QuickSwap Polygon, SushiSwap
+  `0x7a250d56...`, PancakeSwap BSC, QuickSwap Polygon, SushiSwap
   Arbitrum/Optimism, Base). REAL `swapExactTokensForTokens` calldata
   construction (selector `0x18cbafe5`, exact ABI encoding). Real on-chain
   `decimals()` per token for human<->wei. 0.5% slippage default from the
   live `getAmountsOut`. `GET /api/v1/amm/quote` + `POST /api/v1/amm/swap`
   (constructs calldata; client broadcasts via real `/api/v1/send`). 503 on
-  RPC failure â€” never fabricates. 8 Go tests (byte-exact selector + encoding,
+  RPC failure ” never fabricates. 8 Go tests (byte-exact selector + encoding,
   decode roundtrip, short-return reject, router resolution, humanToWei +
   zero/negative reject). `go build` + `go vet` clean. Frontend parity:
   `app/api/v1/amm/{quote,swap}/route.ts` (wallet_api auth group), `tsc` clean.
@@ -681,7 +681,7 @@ Notes:
   createWallet(name,password,mnemonic) (suspend). Flutter is unaffected: real
   on-device BIP-39/32/44 + flutter_secure_storage (self-custody, no backend pw).
 
-## Frontend (web_nextjs) â€” light/dark theme switching
+## Frontend (web_nextjs) ” light/dark theme switching
 
 - `ThemeProvider` at `frontend/web_nextjs/app/components/ThemeProvider.tsx` exposes `useTheme()` returning `{ theme, isDark, colors, ... }`.
 - Reference implementation: `app/convert/page.tsx` (zero `dark:` Tailwind variants; uses `isDark ? '...' : '...'` ternaries).
@@ -689,11 +689,11 @@ Notes:
   1. `import { useTheme } from '../components/ThemeProvider';`
   2. `const { isDark } = useTheme();` near the top of the component body (after existing `useState`/`useEffect` hooks).
   3. Root container: `isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'` (keep layout classes like `min-h-screen`, `p-6`).
-  4. Convert `dark:bg-*`/`dark:text-*`/`dark:border-*` Tailwind variants into `isDark ? 'dark-classes' : 'light-classes'` ternaries. Light-mode equivalents: bg â†’ `bg-white border border-gray-200`; text â†’ `text-gray-900`/`text-gray-600`; secondary text â†’ `text-gray-500`; border â†’ `border-gray-200`/`border-slate-200`.
+  4. Convert `dark:bg-*`/`dark:text-*`/`dark:border-*` Tailwind variants into `isDark ? 'dark-classes' : 'light-classes'` ternaries. Light-mode equivalents: bg -> `bg-white border border-gray-200`; text -> `text-gray-900`/`text-gray-600`; secondary text -> `text-gray-500`; border -> `border-gray-200`/`border-slate-200`.
 - Pages already converted (all under `app/<route>/page.tsx`): themes, tx-simulation, gas-estimation, approvals, address_book, nft-marketplace, bug-bounty, defi, staking, token_sale, ieo, master_wallet, copy_trading, swap, walletconnect, fiat-ramps, price-feeds, protection-fund, kyc, history, social_recovery, gift_cards, biometric, insurance_fund, widgets, dao, perpetual, notifications_center, launchpool, fiat_onramp, i18n. Verify with `grep -rn "dark:" app/` (should be 0 in themed pages). Full `npx tsc --noEmit` passes with 0 errors after `npm install`.
 - NOTE: `approvals/page.tsx` `RISK_COLORS` badges are intentionally light-tinted and not theme-dependent.
 
-## Frontend (web_nextjs) â€” perpetual/margin_trading/token_sale/dao real backend (2026-08-11)
+## Frontend (web_nextjs) ” perpetual/margin_trading/token_sale/dao real backend (2026-08-11)
 
 Converted four `app/<route>/page.tsx` pages from MOCK_* consts to real wallet_api
 (:8443) PostgreSQL-backed fetch calls, following the launchpool/approvals/defi
@@ -713,7 +713,7 @@ Per-page:
 - **perpetual/page.tsx**: removed `MOCK_POSITIONS`; GET `/perpetual/positions`;
   POST `/perpetual/positions` (create) + POST `/perpetual/positions/:id/close`
   replaced `setTimeout` simulators.
-- **margin_trading/page.tsx**: `MOCK_PAIRS` (BTC/USDT, ETH/USDT â€” chain/reference
+- **margin_trading/page.tsx**: `MOCK_PAIRS` (BTC/USDT, ETH/USDT ” chain/reference
   config, NOT user data) renamed to local const `TRADING_PAIRS` (kept, not from
   backend); positions now come from GET `/margin/positions`; POST create +
   POST `/margin/positions/:id/close` are real fetchAPI calls.
@@ -721,7 +721,7 @@ Per-page:
   `/token-sales/:id/participate` real. Backend snake_case mapped to frontend
   camelCase interface (token_name/token_symbol/contract_address/chain_id/
   price_per_token/total_supply/sold_amount/min_allocation/max_allocation/
-  start_time/end_time/status/description/website â†’ existing fields).
+  start_time/end_time/status/description/website -> existing fields).
 - **dao/page.tsx**: removed `MOCK_PROPOSALS` + `MOCK_DELEGATES`; GET
   `/dao/proposals` + GET `/dao/delegates`; POST `/dao/proposals` (create) +
   POST `/dao/proposals/:id/vote` real. Backend snake_case mapped to frontend
@@ -729,14 +729,14 @@ Per-page:
   proposer/proposer_name). Stats block uses real data. Vote modal submit
   disabled while submitting/empty.
 - JSX gotcha fixed in dao: nested ternary `{loading ? ... : empty ? ... : (
-  arr.map(...) )}` â€” the `.map` branch MUST close with `})` then `)}` (arrow
+  arr.map(...) )}` ” the `.map` branch MUST close with `})` then `)}` (arrow
   body + map call, then ternary `)` + JSX `}`); a stray extra `)` causes
   TS1005/TS1381.
 
 ### Pitfalls observed during conversion
-- A half-converted file may already reference `isDark` in JSX but be **missing the import + hook declaration** â†’ compiles to "isDark is not defined". Always confirm both `import { useTheme }` and `const { isDark } = useTheme();` exist (token_sale and ieo hit this).
+- A half-converted file may already reference `isDark` in JSX but be **missing the import + hook declaration** -> compiles to "isDark is not defined". Always confirm both `import { useTheme }` and `const { isDark } = useTheme();` exist (token_sale and ieo hit this).
 - When converting a static multi-class `className` to a template literal, keep ALL original classes inside the backticks; accidentally leaving trailing classes (e.g. `px-4 py-3`) outside the closing backtick produces an unbalanced template literal (syntax error). Verify backtick count is even after edits (gas-estimation error banner hit this).
-- `master_wallet/page.tsx` contains REAL BIP-39/AES-GCM/PBKDF2/WebCrypto logic â€” only change its colors, never its crypto code.
+- `master_wallet/page.tsx` contains REAL BIP-39/AES-GCM/PBKDF2/WebCrypto logic ” only change its colors, never its crypto code.
 
 
 ## Go toolchain + real-NFT-fetcher + keystore V3 (2026-08-11)
@@ -746,7 +746,7 @@ Per-page:
   install: `cd /tmp && curl -sSfL https://go.dev/dl/go1.23.12.linux-amd64.tar.gz
   -o go.tar.gz && mkdir -p $HOME/.go-sdk && tar -C $HOME/.go-sdk -xzf go.tar.gz`,
   then `export PATH="$HOME/.go-sdk/go/bin:$PATH" && export GOPATH="$HOME/go" &&
-  export GOTOOLCHAIN=local`. Verify: `go version` â†’ `go1.23.12 linux/amd64`.
+  export GOTOOLCHAIN=local`. Verify: `go version` -> `go1.23.12 linux/amd64`.
 - **go-ethereum version pinning**: go-ethereum v1.17.5 (latest) requires
   Go >= 1.24.0; with Go 1.23.12 you MUST pin `go-ethereum@v1.13.15` (the same
   version `go/wallet_api` uses) or `go get`/`go mod tidy` fail with "requires
@@ -756,16 +756,16 @@ Per-page:
   `go/nft_prices/` dirs. `go/nft_service/fetcher.go` (new) does REAL on-chain
   ERC-721 reads via go-ethereum `ethclient` (balanceOf/tokenOfOwnerByIndex/
   ownerOf/tokenURI/name/symbol/totalSupply via `eth_call`), with HTTP metadata
-  fetch + `ipfs://`â†’gateway resolution + Redis cache (60s TTL, capped 200
+  fetch + `ipfs://`->gateway resolution + Redis cache (60s TTL, capped 200
   tokens/owner). If `ETH_RPC_URL` is unset, `GetUserNFTs?contract=` returns 503
-  "unavailable" â€” NEVER fabricates data. The old `initializeDefaultData()`
+  "unavailable" ” NEVER fabricates data. The old `initializeDefaultData()`
   (mock BAYC/CryptoPunks/Azuki/DeGods with `Owner:"0x000"`) was REMOVED;
   service starts empty. `NFT` struct has NO `Standard` field (only
-  `NFTCollection` does) â€” don't set it in fetcher literals. `cfg.Port` is a
+  `NFTCollection` does) ” don't set it in fetcher literals. `cfg.Port` is a
   string. go build + go vet clean.
 - **go/wallet_api/keystore_v3.go (new)**: real Web3 Secret Storage V3 (scrypt
-  variant) â€” `ExportKeystoreV3`/`ImportKeystoreV3`. scrypt N=1<<18/r=8/p=1/
-  dklen=32, AES-128-CTR, MAC = keccak256(dk[16:32]â€–ciphertext), constant-time
+  variant) ” `ExportKeystoreV3`/`ImportKeystoreV3`. scrypt N=1<<18/r=8/p=1/
+  dklen=32, AES-128-CTR, MAC = keccak256(dk[16:32]–ciphertext), constant-time
   MAC compare, v4 UUID. 2 tests pass (round-trip + wrong-password MAC failure).
   REST: `POST /api/v1/keystore/{export,import}` (AuthMiddleware-protected) +
   Next.js proxy routes `app/api/v1/keystore/{export,import}/route.ts` (use
@@ -1124,7 +1124,7 @@ co-located bundles (`frontend/web_nextjs`, `mobile_apps/*`) are NOT duplicates.
 
 
 
-### mobile_apps/ios_app/TigerWallet Master services (FIXED â fail-closed, no fabricated crypto)
+### mobile_apps/ios_app/TigerWallet Master services (FIXED -- fail-closed, no fabricated crypto)
 All 6 target files rewritten to eliminate fabricated crypto/tx hashes/ZK proofs/WebAuthn/wallet
 addresses. No stubs/mocks/fakes. Each crypto path either delegates to the real backend
 (go/wallet_api at http://localhost:8443) or uses real on-device primitives, else throws
@@ -1157,5 +1157,5 @@ fail-closed.
 - Duplicate-extension audit: only one struct UserOperation (AccountAbstractionService); no
   Data.sha256() extensions remain; sha256 funcs in SuperAdminService/PasskeyService are private
   methods (no signature conflict).
-- swiftc NOT available in this environment (no Swift toolchain) â syntax verified by manual
+- swiftc NOT available in this environment (no Swift toolchain) -- syntax verified by manual
   review, not by swiftc -parse.
