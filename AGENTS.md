@@ -840,25 +840,40 @@ Per-page:
   `/api/v1/ramp`). `bridge`/`red_packets_service`/`nft` (the dir, not
   nft_service) have NO main.go — they're libraries.
 
-## Session 2026-08-12 #4: All markdown docs converted to English
+## Session 2026-08-12 #4: All non-English content converted to English (COMPLETE)
 
-Scanned all 61 `.md` files repo-wide (excluding node_modules/.git/lib) for
-non-Latin scripts. Found and fixed non-English / mojibake content in 6 files:
+Scanned the ENTIRE repo (all .md + all source files: .ts/.tsx/.js/.go/.rs/.sol/
+.swift/.kt/.java/.dart/.py/.cpp/.hpp/.h/.yaml/.html/.css) for non-Latin scripts.
+Found and fixed non-English / mojibake content in markdown docs AND source:
+
+**Markdown docs (6 files, commit 53492cb):**
 - `security_audit/AUDIT_FRAMEWORK.md`: Chinese word for "Exchange" -> "Exchange"
 - `privacy_features/README.md`: Chinese word for "compliance" -> "regulatory compliance"
 - `ADMIN_APPS_DETAILED_ANALYSIS.md`: Chinese phrase for "more info" -> "more-info"
-- `TIGERWALLET_WALLET_SYSTEM_SPECIFICATION.md`: corrupted chain name ("S" + Chinese
-  word for "chain") -> "Sui" (the correct chain name)
-- `USERWALLET_FEATURES.md`: corrupted-UTF-8 emoji mojibake (broken checkmark/cross
-  glyphs) -> plain English status markers (YES/NO/WARN)
-- `competitor_analysis/04-GAP-ANALYSIS.md`: triple-corrupted emoji mojibake (broken
-  status-circle glyphs) -> English status markers (REAL/PARTIAL/MISSING/STUB);
-  fixed title artifact + legend label order.
-Final repo-wide scan: **0 non-Latin script lines remain in any markdown file.**
-The 2 big files had double/triple-encoded emoji (UTF-8 bytes mis-decoded as
-CP1251 then re-encoded) that could not be cleanly recovered to real emoji,
-so they were replaced with plain English markers (cleaner + more portable).
-Commit `53492cb` pushed to `origin/main`.
+- `TIGERWALLET_WALLET_SYSTEM_SPECIFICATION.md`: corrupted chain name -> "Sui"
+- `USERWALLET_FEATURES.md`: corrupted-UTF-8 emoji mojibake -> English markers (YES/NO/WARN)
+- `competitor_analysis/04-GAP-ANALYSIS.md`: triple-corrupted emoji mojibake -> English markers
+
+**Source files (9 files, commits b7a73b4 + 40fdc73):**
+- `go/wallet_api/dapp_directory.go`: Raydium Logo "射线" -> "ray"
+- `smart_contracts/evm_contracts/contracts/Pair.sol`: comment "清算" -> "liquidation"
+- `admin/android AdminApiService.kt`: Retrofit path "request更多信息" -> "request-more-info"
+- `services/go/hardware_wallet_service/main.go`: comment "人对" -> "for"
+- `backend_services/api_gateway/platform_services.go`: key "其他" -> "OTHER"
+- `fiat_onramp/go/cmd/main.go`: Transak URL "c报价" -> "currencies"
+- `mobile/flutter app_constants.dart`: explorer key "g链" -> "gchain"
+- `mobile_apps/tigerwallet BlockchainService.ts`: corrupted WMATIC address (had
+  "弥" mid-hex) -> correct canonical 0x7D1AfA7B718fb893dB30A3aBc0Cfc608A36CdeD8
+- `browser_extensions/chrome account-abstraction-service.js`: Japanese var
+  "エントロピー" -> "entropy"
+- `desktop_wallet p2p_trading_service.hpp`: C++ struct field "限流" -> "rate_limit"
+
+**Kept intentionally (legitimate i18n):** `libs/i18n/translations.ts` and
+language picker UIs retain native language names ("中文", "日本語", etc.) — a
+language selector must display each language's native name.
+
+**Final repo-wide scan: 0 stray CJK characters anywhere outside the i18n files.**
+All 4 commits pushed to `origin/main` (53492cb, 7ec6f6e, b7a73b4, 40fdc73).
 
 ## Session 2026-08-12 #3: Chain registry expanded to 150 (100 EVM + 50 non-EVM)
 
