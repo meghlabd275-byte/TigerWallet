@@ -840,6 +840,25 @@ Per-page:
   `/api/v1/ramp`). `bridge`/`red_packets_service`/`nft` (the dir, not
   nft_service) have NO main.go — they're libraries.
 
+## Session 2026-08-12 #4: All markdown docs converted to English
+
+Scanned all 61 `.md` files repo-wide (excluding node_modules/.git/lib) for
+non-Latin scripts. Found and fixed non-English / mojibake content in 6 files:
+- `security_audit/AUDIT_FRAMEWORK.md`: Chinese "交易所" → "Exchange"
+- `privacy_features/README.md`: Chinese "合规" → "regulatory compliance"
+- `ADMIN_APPS_DETAILED_ANALYSIS.md`: Chinese "更多信息" → "more-info"
+- `TIGERWALLET_WALLET_SYSTEM_SPECIFICATION.md`: Chinese "S链" → "Sui" (chain name)
+- `USERWALLET_FEATURES.md`: corrupted-UTF-8 emoji mojibake (`вњ…`/`вќѕ`/...) →
+  plain English status markers (YES/NO/WARN)
+- `competitor_analysis/04-GAP-ANALYSIS.md`: triple-corrupted emoji mojibake
+  (`—А—Я—Я–О` etc.) → English status markers (REAL/PARTIAL/MISSING/STUB);
+  fixed title artifact + legend label order.
+Final repo-wide scan: **0 non-Latin script lines remain in any markdown file.**
+The 2 big files had double/triple-encoded emoji (UTF-8 bytes mis-decoded as
+CP1251 then re-encoded) that could not be cleanly recovered to real emoji,
+so they were replaced with plain English markers (cleaner + more portable).
+Commit `53492cb` pushed to `origin/main`.
+
 ## Session 2026-08-12 #3: Chain registry expanded to 150 (100 EVM + 50 non-EVM)
 
 ### Gap found + fixed
