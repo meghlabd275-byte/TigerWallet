@@ -304,6 +304,22 @@ class ApiService {
     const { data } = await this.client.get('/nfts', { params: { address, chain_id: chainId } });
     return data;
   }
+
+  // ---- Swap (real CoinGecko cross-rate + on-chain via wallet_api) ----
+  async getSwapQuote(params: { fromToken: string; toToken: string; fromAmount: string; chainId?: number }): Promise<{
+    from_token: string; to_token: string; from_amount: string; to_amount: string; price_impact: number; route: string;
+  }> {
+    const { data } = await this.client.get('/swap/quote', {
+      params: { from_token: params.fromToken, to_token: params.toToken, from_amount: params.fromAmount, chain_id: params.chainId ?? 1 },
+    });
+    return data;
+  }
+
+  // ---- Staking (real on-chain action via wallet_api /send) ----
+  async getStakingQuote(asset: string): Promise<{ asset: string; apy: number; min_amount: string }> {
+    const { data } = await this.client.get('/staking/quote', { params: { asset } });
+    return data;
+  }
 }
 
 export const api = new ApiService();

@@ -28,7 +28,7 @@ impl MasterFetcher for FeeManagementFetcher {
         let master_wallet_id = params.get("master_wallet_id").cloned().unwrap_or_default();
         
         let query = r#"
-            SELECT id, fee_type, percentage, flat_fee, min_amount, max_amount, is_active, created_at
+            SELECT id, fee_type, percentage::double precision AS percentage, flat_fee, min_amount, max_amount, is_active, created_at
             FROM fee_config
             WHERE master_wallet_id = $1 AND is_active = true
         "#;
@@ -168,20 +168,22 @@ impl MasterFetcher for TreasuryFetcher {
         
         // Get total balance across all sub-wallets
         let balance_query = r#"
-            SELECT COALESCE(SUM(wt.balance::numeric), 0) as total_balance
+            SELECT COALESCE(SUM(wt.balance::numeric), 0)::double precision as total_balance
             FROM wallet_tokens wt
             JOIN sub_wallets sw ON sw.id = wt.wallet_id
             WHERE sw.master_wallet_id = $1 AND sw.is_active = true
         "#;
         
-        let total_balance: f64 = self.db_pool.query(balance_query, &[&master_wallet_id])
-            .ok()
-            .and_then(|rows| rows.first().and_then(|r| r.get::<_, f64>("total_balance").ok()))
-            .unwrap_or(0.0);
+        let total_balance: f64 = match self.db_pool.query(balance_query, &[&master_wallet_id]) {
+            Ok(rows) => rows.first()
+                .and_then(|r| Some(r.get::<_, f64>("total_balance")))
+                .unwrap_or(0.0),
+            Err(_) => 0.0,
+        };
         
         // Get token breakdown
         let token_query = r#"
-            SELECT t.symbol, t.name, SUM(wt.balance::numeric) as balance
+            SELECT t.symbol, t.name, SUM(wt.balance::numeric)::double precision as balance
             FROM wallet_tokens wt
             JOIN sub_wallets sw ON sw.id = wt.wallet_id
             JOIN tokens t ON t.id = wt.token_id

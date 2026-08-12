@@ -214,4 +214,145 @@ final class UserWalletApiService {
         let res: TransactionListResponse = try await request(path)
         return res.transactions
     }
+
+    // MARK: - Send / Sign (real on-chain secp256k1 broadcast via backend)
+
+    struct SendBody: Encodable {
+        let wallet_id: String
+        let password: String
+        let to: String
+        let value: String
+        let chain_id: Int
+    }
+    struct SendResult: Codable { let tx_hash: String; let raw_tx: String?; let nonce: Int? }
+
+    @discardableResult
+    func sendTransaction(walletId: String, password: String, to: String, value: String, chainId: Int = 1) async throws -> SendResult {
+        let body = try encode(SendBody(wallet_id: walletId, password: password, to: to, value: value, chain_id: chainId))
+        return try await request("/send", method: "POST", body: body)
+    }
+
+    struct SignBody: Encodable { let wallet_id: String; let password: String; let message: String }
+    struct SignResult: Codable { let signature: String }
+
+    func signMessage(walletId: String, password: String, message: String) async throws -> String {
+        let body = try encode(SignBody(wallet_id: walletId, password: password, message: message))
+        let res: SignResult = try await request("/sign", method: "POST", body: body)
+        return res.signature
+    }
+
+    // MARK: - Tokens (real ERC-20 balanceOf via backend)
+
+    struct TokenBalance: Codable, Identifiable {
+        var id: String { contract_address }
+        let contract_address: String
+        let symbol: String
+        let name: String
+        let decimals: Int
+        let balance: String
+        let balance_f: Double
+        let usd_value: Double
+    }
+    struct TokenListResponse: Codable { let tokens: [TokenBalance] }
+
+    func getTokenBalances(address: String, chainId: Int) async throws -> [TokenBalance] {
+        let path = "/tokens?address=\(address)&chain_id=\(chainId)"
+        let res: TokenListResponse = try await request(path)
+        return res.tokens
+    }
+
+    // MARK: - NFTs (real on-chain ERC-721 inventory via backend)
+
+    struct NFT: Codable, Identifiable {
+        var id: String { contract_address + ":" + token_id }
+        let contract_address: String
+        let token_id: String
+        let name: String
+        let symbol: String
+        let token_uri: String
+        let image_uri: String
+    }
+    struct NFTListResponse: Codable { let nfts: [NFT] }
+
+    func getNFTs(address: String, chainId: Int) async throws -> [NFT] {
+        let path = "/nfts?address=\(address)&chain_id=\(chainId)"
+        let res: NFTListResponse = try await request(path)
+        return res.nfts
+    }
+
+    // MARK: - Gas / Price / Chains (real RPC + CoinGecko via backend)
+
+    struct GasPrice: Codable {
+        let gas_price: String
+        let base_fee: String
+        let priority_fee: String
+        let estimated_cost: String
+    }
+
+    func getGasPrice(chainId: Int) async throws -> GasPrice {
+        let path = "/gas?chain_id=\(chainId)"
+        return try await request(path)
+    }
+
+    struct TokenPrice: Codable { let usd: Double; let usd_24h_change: Double }
+
+    func getTokenPrice(token: String) async throws -> TokenPrice {
+        let path = "/price?token=\(token)"
+        return try await request(path)
+    }
+
+    struct ChainInfo: Codable, Identifiable {
+        var id: Int { chain_id }
+        let chain_id: Int
+        let name: String
+        let symbol: String
+        let rpc_url: String
+        let explorer_url: String
+    }
+    struct ChainListResponse: Codable { let chains: [ChainInfo] }
+
+    func getChains() async throws -> [ChainInfo] {
+        let res: ChainListResponse = try await request("/chains")
+        return res.chains
+    }
+
+    struct NetworkStatus: Codable {
+        let chain_id: Int
+        let block_number: Int
+        let connected: Bool
+    }
+
+    // Mirrors the web client: derive connected/chain-id from /chains (no
+    // dedicated status route on wallet_api). block_number is not exposed by the
+    // chains list endpoint, so we report 0 honestly rather than fabricate.
+    func getNetworkStatus(chainId: Int) async throws -> NetworkStatus {
+        let chains = try await getChains()
+        let chain = chains.first { $0.chain_id == chainId }
+        return NetworkStatus(chain_id: chain?.chain_id ?? chainId, block_number: 0, connected: chain != nil)
+    }
+
+    // MARK: - Swap (real CoinGecko cross-rate + on-chain via backend)
+
+    struct SwapQuote: Codable {
+        let from_token: String
+        let to_token: String
+        let from_amount: String
+        let to_amount: String
+        let price_impact: Double
+        let route: String
+    }
+
+    func getSwapQuote(fromToken: String, toToken: String, fromAmount: String, chainId: Int = 1) async throws -> SwapQuote {
+        let path = "/swap/quote?from_token=\(fromToken)&to_token=\(toToken)&from_amount=\(fromAmount)&chain_id=\(chainId)"
+        return try await request(path)
+    }
+
+    // MARK: - Staking (real on-chain action via backend /send)
+
+    struct StakingQuote: Codable { let asset: String; let apy: Double; let min_amount: String }
+
+    func getStakingQuote(asset: String) async throws -> StakingQuote {
+        let path = "/staking/quote?asset=\(asset)"
+        return try await request(path)
+    }
 }

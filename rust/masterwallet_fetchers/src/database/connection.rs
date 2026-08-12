@@ -1,109 +1,84 @@
 //! Database connection module for MasterWallet
-//! Provides high-performance connection pooling with PostgreSQL
+//! Provides PostgreSQL connection management (tokio-postgres 0.7 has no
+//! built-in pool; this opens a connection per op on a shared runtime, and is
+//! a drop-in for a future bb8-postgres pool).
 
-use std::sync::Arc;
-use std::time::Duration;
 use tokio::runtime::Runtime;
-use tokio_postgres::{NoTls, Client, Config, Pool, PoolConfig, PoolError};
-use tokio::task;
+use tokio_postgres::{NoTls, Client};
 use std::collections::HashMap;
 
-/// High-performance connection pool for PostgreSQL
+/// PostgreSQL connection manager for MasterWallet.
 pub struct MasterWalletDatabase {
-    pool: Pool<NoTls>,
+    conn_str: String,
     runtime: Runtime,
 }
 
 impl MasterWalletDatabase {
-    /// Create a new database connection pool
     pub fn new(
         host: &str,
         port: u16,
         database: &str,
         username: &str,
         password: &str,
-        max_connections: u32,
-    ) -> Result<Self, PoolError> {
-        let config = Config::builder()
-            .host(host)
-            .port(port)
-            .dbname(database)
-            .user(username)
-            .password(password)
-            .pool_max_size(max_connections as usize)
-            .pool_min_idle(Some(5))
-            .pool_max_lifetime(Some(Duration::from_secs(1800)))
-            .pool_acquire_timeout(Some(Duration::from_secs(30)))
-            .build();
+        _max_connections: u32,
+    ) -> Result<Self, String> {
+        let conn_str = format!(
+            "host={} port={} dbname={} user={} password={} application_name=tigerwallet_master",
+            host, port, database, username, password
+        );
+        let runtime = Runtime::new().map_err(|e| format!("Failed to create runtime: {}", e))?;
+        Ok(Self { conn_str, runtime })
+    }
 
-        let runtime = Runtime::new().expect("Failed to create runtime");
-        let pool = config.connect_pool(NoTls)?;
-
-        Ok(Self { pool, runtime })
+    async fn connect(&self) -> Result<Client, String> {
+        let (client, connection) = tokio_postgres::connect(&self.conn_str, NoTls)
+            .await
+            .map_err(|e| format!("Database connection failed: {}", e))?;
+        tokio::spawn(async move {
+            let _ = connection.await;
+        });
+        Ok(client)
     }
 
     /// Execute a query and return rows
-    pub fn execute(&self, query: &str, params: &[&dyn tokio_postgres::types::ToSql]) 
+    pub fn execute(&self, query: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)])
         -> Result<Vec<tokio_postgres::Row>, String> {
         self.runtime.block_on(async {
-            let client = self.pool.acquire().await
-                .map_err(|e| format!("Failed to acquire connection: {}", e))?;
+            let mut client = self.connect().await?;
             client.query(query, params).await
                 .map_err(|e| format!("Query failed: {}", e))
         })
     }
 
     /// Execute a query without returning rows
-    pub fn execute_non_query(&self, query: &str, params: &[&dyn tokio_postgres::types::ToSql]) 
+    pub fn execute_non_query(&self, query: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)])
         -> Result<u64, String> {
         self.runtime.block_on(async {
-            let client = self.pool.acquire().await
-                .map_err(|e| format!("Failed to acquire connection: {}", e))?;
+            let mut client = self.connect().await?;
             client.execute(query, params).await
                 .map_err(|e| format!("Execute failed: {}", e))
         })
     }
 
-    /// Execute multiple queries in a transaction
-    pub fn execute_transaction<F>(&self, f: F) -> Result<(), String> 
+    /// Execute multiple statements in a single transaction. The closure
+    /// receives the live `Transaction` so it can run statements atomically.
+    pub fn execute_transaction<F>(&self, f: F) -> Result<(), String>
     where
-        F: FnOnce(&Client) -> Result<(), String> + Send,
+        F: FnOnce(&tokio_postgres::Transaction<'_>) -> Result<(), String> + Send + 'static,
     {
         self.runtime.block_on(async {
-            let client = self.pool.acquire().await
-                .map_err(|e| format!("Failed to acquire connection: {}", e))?;
-            
+            let mut client = self.connect().await?;
             let transaction = client.transaction().await
                 .map_err(|e| format!("Failed to start transaction: {}", e))?;
-            
-            // Note: In a real implementation, we'd handle this properly
-            // For now, we just commit
+            f(&transaction)?;
             transaction.commit().await
                 .map_err(|e| format!("Transaction commit failed: {}", e))
         })
     }
 
-    /// Get a connection from the pool
-    pub fn get_connection(&self) -> Result<PooledConnection, String> {
-        self.runtime.block_on(async {
-            self.pool.acquire().await
-                .map_err(|e| format!("Failed to acquire connection: {}", e))
-                .map(PooledConnection)
-        })
-    }
-}
-
-/// Wrapper for pooled connection
-pub struct PooledConnection<'a>(pub(crate) tokio_postgres::PooledConnection<'a, NoTls>);
-
-impl<'a> PooledConnection<'a> {
-    pub fn query<T>(&self, query: &str, params: &[&dyn tokio_postgres::types::ToSql]) 
-        -> Result<Vec<T>, String>
-    where
-        T: From<tokio_postgres::Row>,
-    {
-        // This would need proper async handling
-        Ok(vec![])
+    /// Get a raw client for ad-hoc async work on the runtime
+    pub fn get_connection(&self) -> Result<Client, String> {
+        self.runtime.block_on(async { self.connect().await })
     }
 }
 
@@ -161,6 +136,13 @@ impl Default for QueryBuilder {
     }
 }
 
+#[allow(unused_imports)]
+use std::time::Duration;
+#[allow(unused_imports)]
+use std::sync::Arc;
+#[allow(dead_code)]
+fn _unused(_: HashMap<String, String>, _: Duration) {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,7 +154,7 @@ mod tests {
             .where_clause("active = true")
             .order_by("created_at", "DESC")
             .limit(10);
-        
+
         let (query, _) = builder.build();
         assert!(query.contains("SELECT"));
         assert!(query.contains("WHERE"));

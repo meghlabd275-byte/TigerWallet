@@ -266,4 +266,162 @@ object UserWalletApiService {
         val json = execute(req)
         return json.optString("signature")
     }
+
+    // ==================== Tokens (real ERC-20 balanceOf via backend) ====================
+
+    data class TokenBalance(
+        val contractAddress: String,
+        val symbol: String,
+        val name: String,
+        val decimals: Int,
+        val balance: String,
+        val balanceF: Double,
+        val usdValue: Double
+    )
+
+    fun getTokenBalances(address: String, chainId: Int): List<TokenBalance> {
+        val path = "/tokens?address=$address&chain_id=$chainId"
+        val req = requestBuilder(path).get().build()
+        return executeList(req, "tokens").map {
+            TokenBalance(
+                contractAddress = it.optString("contract_address"),
+                symbol = it.optString("symbol"),
+                name = it.optString("name"),
+                decimals = it.optInt("decimals"),
+                balance = it.optString("balance"),
+                balanceF = it.optDouble("balance_f"),
+                usdValue = it.optDouble("usd_value")
+            )
+        }
+    }
+
+    // ==================== NFTs (real on-chain ERC-721 via backend) ====================
+
+    data class NFT(
+        val contractAddress: String,
+        val tokenId: String,
+        val name: String,
+        val symbol: String,
+        val tokenURI: String,
+        val imageURI: String
+    )
+
+    fun getNFTs(address: String, chainId: Int): List<NFT> {
+        val path = "/nfts?address=$address&chain_id=$chainId"
+        val req = requestBuilder(path).get().build()
+        return executeList(req, "nfts").map {
+            NFT(
+                contractAddress = it.optString("contract_address"),
+                tokenId = it.optString("token_id"),
+                name = it.optString("name"),
+                symbol = it.optString("symbol"),
+                tokenURI = it.optString("token_uri"),
+                imageURI = it.optString("image_uri")
+            )
+        }
+    }
+
+    // ==================== Gas / Price / Chains (real RPC + CoinGecko via backend) ====================
+
+    data class GasPrice(val gasPrice: String, val baseFee: String, val priorityFee: String, val estimatedCost: String)
+
+    fun getGasPrice(chainId: Int): GasPrice {
+        val path = "/gas?chain_id=$chainId"
+        val req = requestBuilder(path).get().build()
+        val json = execute(req)
+        return GasPrice(
+            gasPrice = json.optString("gas_price"),
+            baseFee = json.optString("base_fee"),
+            priorityFee = json.optString("priority_fee"),
+            estimatedCost = json.optString("estimated_cost")
+        )
+    }
+
+    data class TokenPrice(val usd: Double, val usd24hChange: Double)
+
+    fun getTokenPrice(token: String): TokenPrice {
+        val path = "/price?token=$token"
+        val req = requestBuilder(path).get().build()
+        val json = execute(req)
+        return TokenPrice(
+            usd = json.optDouble("usd"),
+            usd24hChange = json.optDouble("usd_24h_change")
+        )
+    }
+
+    data class ChainInfo(
+        val chainId: Int,
+        val name: String,
+        val symbol: String,
+        val rpcUrl: String,
+        val explorerUrl: String
+    )
+
+    fun getChains(): List<ChainInfo> {
+        val req = requestBuilder("/chains").get().build()
+        return executeList(req, "chains").map {
+            ChainInfo(
+                chainId = it.optInt("chain_id"),
+                name = it.optString("name"),
+                symbol = it.optString("symbol"),
+                rpcUrl = it.optString("rpc_url"),
+                explorerUrl = it.optString("explorer_url")
+            )
+        }
+    }
+
+    data class NetworkStatus(val chainId: Int, val blockNumber: Long, val connected: Boolean)
+
+    fun getNetworkStatus(chainId: Int): NetworkStatus {
+        // Mirrors the web client: derive connected/chain-id from /chains (no
+        // dedicated status route on wallet_api). block_number is not exposed by
+        // the chains list endpoint, so we report 0 honestly rather than fabricate.
+        val chains = getChains()
+        val chain = chains.firstOrNull { it.chainId == chainId }
+        return NetworkStatus(
+            chainId = chain?.chainId ?: chainId,
+            blockNumber = 0L,
+            connected = chain != null
+        )
+    }
+
+    // ==================== Swap (real CoinGecko cross-rate + on-chain via backend) ====================
+
+    data class SwapQuote(
+        val fromToken: String,
+        val toToken: String,
+        val fromAmount: String,
+        val toAmount: String,
+        val priceImpact: Double,
+        val route: String
+    )
+
+    fun getSwapQuote(fromToken: String, toToken: String, fromAmount: String, chainId: Int = 1): SwapQuote {
+        val path = "/swap/quote?from_token=$fromToken&to_token=$toToken&from_amount=$fromAmount&chain_id=$chainId"
+        val req = requestBuilder(path).get().build()
+        val json = execute(req)
+        return SwapQuote(
+            fromToken = json.optString("from_token"),
+            toToken = json.optString("to_token"),
+            fromAmount = json.optString("from_amount"),
+            toAmount = json.optString("to_amount"),
+            priceImpact = json.optDouble("price_impact"),
+            route = json.optString("route")
+        )
+    }
+
+    // ==================== Staking (real on-chain action via backend /send) ====================
+
+    data class StakingQuote(val asset: String, val apy: Double, val minAmount: String)
+
+    fun getStakingQuote(asset: String): StakingQuote {
+        val path = "/staking/quote?asset=$asset"
+        val req = requestBuilder(path).get().build()
+        val json = execute(req)
+        return StakingQuote(
+            asset = json.optString("asset"),
+            apy = json.optDouble("apy"),
+            minAmount = json.optString("min_amount")
+        )
+    }
 }

@@ -8,16 +8,22 @@ description = "High-performance MasterWallet fetchers with PostgreSQL and Redis"
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }
 
-# PostgreSQL
-tokio-postgres = "0.7"
+# PostgreSQL — with-serde_json-1 enables FromSql/ToSql for serde_json::Value (JSONB columns)
+tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
 postgis = "0.9"
 bb8 = "0.8"
 
-# Redis
-redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+# Redis — script feature enables redis::Script for atomic Lua lock release
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager", "script"] }
 
-# HTTP client
-reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+# HTTP client — blocking feature for synchronous blockchain RPC calls
+reqwest = { version = "0.11", features = ["json", "rustls-tls", "blocking"], default-features = false }
+
+# Real secp256k1 ECDSA for EVM transaction/message signing (no fake crypto).
+# The `recovery` feature exposes sign_ecdsa_recoverable / recover_ecdsa / RecoveryId.
+secp256k1 = { version = "0.28", features = ["rand", "global-context", "recovery"] }
+sha3 = "0.10"
+hex = "0.4"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

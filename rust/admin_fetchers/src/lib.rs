@@ -145,10 +145,3 @@ impl AdminFetcherManager {
         self.cache.as_ref()
     }
 }
-
-// Admin fetcher trait
-pub trait AdminFetcher: Send + Sync {
-    fn name(&self) -> &str;
-    fn fetch(&self, params: HashMap<String, String>) -> Result<serde_json::Value, String>;
-    fn initialize(&self) -> Result<(), String>;
-}

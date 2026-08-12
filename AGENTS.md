@@ -884,6 +884,69 @@ Per-page:
 - cargo check --lib exit 0. Has Cargo.toml. Delegates ALL fetchers to wallet_api
   (:8443) via pooled async reqwest::Client. No stubs; fail-closed (Err).
 
+## Session 2026-08-12: Build verification + full UserWallet client parity
+
+### Rust fetchers — both broken crates now compile + pass real-crypto tests
+- **rust/masterwallet_fetchers**: 51 → 0 compile errors. Real secp256k1 0.28
+  ECDSA signer (`signer.rs`): `RecoverableSignature`/`RecoveryId`/`sign_ecdsa_recoverable`/
+  `recover_ecdsa` (recover-address roundtrip test), Solana path fail-closed.
+  `DatabasePool` owns its own `Runtime` (no borrowed runtime); `CacheManager` uses
+  `Mutex<redis::Connection>`; sync wrappers throughout. **cargo test --lib: 10/10 pass.**
+- **rust/admin_fetchers**: was missing `Cargo.toml` + uncompilable (38 errors) +
+  fabricated analytics metrics (`total_volume="1500000000.00"`, `revenue`, `growth`,
+  hardcoded top-tokens/pairs). Rewrote `database.rs` (sync PG wrappers owning a Runtime),
+  `cache.rs` (sync Redis via `Mutex<Option<Connection>>`), `fetchers.rs` (8 fetchers
+  impl the `AdminFetcher` trait, real SQL, NO fabricated metrics — analytics now does
+  real `SUM(amount)`/`GROUP BY token` and is honestly empty when DB has no data).
+  Added `Cargo.toml` (tokio, tokio-postgres, redis 0.23, serde, chrono). The duplicate
+  `AdminFetcher` trait def in `lib.rs` was removed (it lives in `fetchers.rs`).
+  **cargo test --lib: 5/5 pass.** `RedisConfig::with_password` URL is `redis://:secret@host`
+  (password prefixed with colon, per redis URL spec).
+
+### Foundry / smart contracts — verified
+- Foundry installed on demand (`foundryup`): forge/cast/anvil/chisel 1.7.1 at
+  `~/.foundry/bin`. OpenZeppelin v5 was NOT present in `lib/` (shallow clone) —
+  installed via `forge install OpenZeppelin/openzeppelin-contracts --no-git`.
+  `cd smart_contracts/evm_contracts && forge build` exit 0. **`forge test`: 31/31
+  pass** (MultisigWallet 13, AccountFactory 5, VerifyingPaymaster, TigerWalletAAFactory) —
+  all real ECDSA via `vm.sign`, no mocks.
+
+### UserWallet clients — FULL feature parity (web/desktop/android/ios)
+- ALL four UserWallet native clients now expose the SAME fetcher set against the
+  canonical `go/wallet_api` (:8443): login/register, getWallets/createWallet,
+  getBalances/getBalance(fetchBalance), getTransactions, sendTransaction, signMessage,
+  getTokenBalances, getNFTs, getTokenPrice/getPrice, getChains/getNetworks, getGasPrice,
+  getNetworkStatus (derived from /chains, block_number honestly 0 — no dedicated status
+  route), getSwapQuote, getStakingQuote.
+- `user_wallet/android/.../UserWalletApiService.kt`: added getTokenBalances/getNFTs/
+  getGasPrice/getTokenPrice/getChains/getNetworkStatus/getSwapQuote/getStakingQuote
+  (+ TokenBalance/NFT/GasPrice/TokenPrice/ChainInfo/NetworkStatus/SwapQuote/StakingQuote
+  data classes).
+- `user_wallet/ios/App/UserWalletApiService.swift`: added sendTransaction/signMessage/
+  getTokenBalances/getNFTs/getGasPrice/getTokenPrice/getChains/getNetworkStatus/
+  getSwapQuote/getStakingQuote (+ Codable structs).
+- `user_wallet/web/src/services/api.ts`: added getSwapQuote/getStakingQuote (send/sign
+  already existed — avoid duplicate method definitions, TS2393).
+- `user_wallet/desktop/src/services/api.js`: added getNFTs/getSwapQuote/getStakingQuote.
+- The dead `user_wallet/go/handlers/` (user_wallet_handler.go, wallet_service.go,
+  swap_service.go) trap is GONE (removed in a prior session). desktop route mismatch
+  (`/wallet/balances`) is fixed (`/balances`). All clients target :8443, not :8105/:8080.
+
+### Build verification — all green
+- `frontend/web_nextjs`: `npx tsc --noEmit` → 0 errors (npm install done).
+- `user_wallet/web`: `npx tsc --noEmit` → 0 errors (`npm install --legacy-peer-deps`;
+  CRA needs legacy-peer-deps due to old react-scripts peer ranges).
+- `go/wallet_api`: `go build ./...` exit 0, `go test ./...` pass (incl. BIP-44 vector).
+  Key DeFi Go services (nft_service, payment, ens_service, lending_service,
+  copy_trading_service, governance_service, perpetual_service, prediction_service)
+  all build clean.
+- `desktop_wallet` (C++20): `cmake .. && make -j4` exit 0 (builds tigerwallet_core +
+  tigerwallet_test incl. multisig_service.cpp); `./tigerwallet_test` exit 0
+  (CoinGecko 403 in sandbox is live-API rate-limiting, not a code failure).
+- Flutter SDK NOT installed in this env; `mobile/flutter` + `mobile_apps/flutter_app`
+  have `pubspec.yaml` and all services target :8443 (buildable where Flutter present).
+- swiftc NOT installed — iOS verified by manual review (Codable structs + async/await).
+
 ### user_wallet/* client wiring (all verified -> :8443)
 - web, desktop, ios, android, production/react all target :8443 with correct
   routes. Route mismatches fixed. mobile_apps/flutter_app + mobile/flutter

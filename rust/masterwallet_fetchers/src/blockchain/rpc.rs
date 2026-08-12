@@ -74,8 +74,7 @@ impl BlockchainRPC {
     pub fn new(timeout_ms: u64) -> Result<Self, String> {
         let client = Client::builder()
             .timeout(Duration::from_millis(timeout_ms))
-            .pool_max_size(100)
-            .pool_idle_timeout(Duration::from_secs(30))
+            .pool_idle_timeout(Some(Duration::from_secs(30)))
             .build()
             .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
         

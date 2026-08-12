@@ -154,6 +154,18 @@ export const api = {
   async getNetworks() {
     return request('/chains');
   },
+
+  async getNFTs(address, chainId) {
+    return request(`/nfts?address=${address}&chain_id=${chainId}`);
+  },
+
+  async getSwapQuote({ fromToken, toToken, fromAmount, chainId = 1 }) {
+    return request(`/swap/quote?from_token=${fromToken}&to_token=${toToken}&from_amount=${fromAmount}&chain_id=${chainId}`);
+  },
+
+  async getStakingQuote(asset) {
+    return request(`/staking/quote?asset=${asset}`);
+  },
 };
 
 export default api;
