@@ -1,4 +1,4 @@
-package bridge
+package aggregator
 
 import (
 	"context"
@@ -297,14 +297,19 @@ func (s *StargateBridge) Name() string              { return "Stargate" }
 func (s *StargateBridge) SupportedChains() []uint64 { return []uint64{1, 56, 137, 42161, 10, 8453} }
 
 func (s *StargateBridge) GetQuote(ctx context.Context, req QuoteRequest) (QuoteResponse, error) {
-	// Simulate quote - in production would call API
+	if req.Amount == nil || req.Amount.Sign() <= 0 {
+		return QuoteResponse{}, fmt.Errorf("invalid amount")
+	}
+	fee := new(big.Int).Mul(req.Amount, big.NewInt(5))
+	fee.Div(fee, big.NewInt(1000))
+	amountOut := new(big.Int).Sub(req.Amount, fee)
 	return QuoteResponse{
 		Bridge:    "Stargate",
 		SrcToken:  req.SrcToken,
 		DstToken:  req.DstToken,
 		AmountIn:  req.Amount,
-		AmountOut: new(big.Int).Mul(req.Amount, big.NewInt(99)),
-		BridgeFee: big.NewInt(0),
+		AmountOut: amountOut,
+		BridgeFee: fee,
 		Duration:  5 * time.Minute,
 		Slippage:  0.5,
 		Route:     []Hop{{Bridge: "Stargate", Chain: req.DstChain}},
@@ -313,14 +318,16 @@ func (s *StargateBridge) GetQuote(ctx context.Context, req QuoteRequest) (QuoteR
 
 func (s *StargateBridge) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) {
 	return ExecuteResponse{
-		TxHash:     "0x" + generateHash(64),
 		Status:     StatusPending,
 		ExecutedAt: time.Now(),
 	}, nil
 }
 
 func (s *StargateBridge) GetStatus(ctx context.Context, txHash string) (BridgeStatus, error) {
-	return StatusCompleted, nil
+	if txHash == "" {
+		return StatusFailed, fmt.Errorf("empty tx hash")
+	}
+	return StatusPending, nil
 }
 
 // AcrossBridge represents Across bridge
@@ -337,13 +344,19 @@ func (a *AcrossBridge) Name() string              { return "Across" }
 func (a *AcrossBridge) SupportedChains() []uint64 { return []uint64{1, 10, 42161, 137, 8453} }
 
 func (a *AcrossBridge) GetQuote(ctx context.Context, req QuoteRequest) (QuoteResponse, error) {
+	if req.Amount == nil || req.Amount.Sign() <= 0 {
+		return QuoteResponse{}, fmt.Errorf("invalid amount")
+	}
+	fee := new(big.Int).Mul(req.Amount, big.NewInt(3))
+	fee.Div(fee, big.NewInt(1000))
+	amountOut := new(big.Int).Sub(req.Amount, fee)
 	return QuoteResponse{
 		Bridge:    "Across",
 		SrcToken:  req.SrcToken,
 		DstToken:  req.DstToken,
 		AmountIn:  req.Amount,
-		AmountOut: new(big.Int).Mul(req.Amount, big.NewInt(98)),
-		BridgeFee: big.NewInt(0),
+		AmountOut: amountOut,
+		BridgeFee: fee,
 		Duration:  3 * time.Minute,
 		Slippage:  0.3,
 		Route:     []Hop{{Bridge: "Across", Chain: req.DstChain}},
@@ -352,28 +365,21 @@ func (a *AcrossBridge) GetQuote(ctx context.Context, req QuoteRequest) (QuoteRes
 
 func (a *AcrossBridge) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) {
 	return ExecuteResponse{
-		TxHash:     "0x" + generateHash(64),
 		Status:     StatusPending,
 		ExecutedAt: time.Now(),
 	}, nil
 }
 
 func (a *AcrossBridge) GetStatus(ctx context.Context, txHash string) (BridgeStatus, error) {
-	return StatusCompleted, nil
+	if txHash == "" {
+		return StatusFailed, fmt.Errorf("empty tx hash")
+	}
+	return StatusPending, nil
 }
 
 // ============================================================================
 // Utilities
 // ============================================================================
-
-func generateHash(length int) string {
-	charset := "0123456789abcdef"
-	b := make([]byte, length)
-	for i := range b {
-		b[i] = charset[i%len(charset)]
-	}
-	return string(b)
-}
 
 func min(a, b int) int {
 	if a < b {
