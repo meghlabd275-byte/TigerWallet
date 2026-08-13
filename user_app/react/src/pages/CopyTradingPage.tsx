@@ -38,236 +38,6 @@ interface CopyPosition {
   openTime: number;
 }
 
-const TOP_TRADERS: Trader[] = [
-  {
-    id: '1',
-    username: 'CryptoWhale',
-    avatar: '🐋',
-    winRate: 78.5,
-    totalPnl: 125000,
-    pnlPercent: 156.2,
-    followers: 15234,
-    copyCount: 4521,
-    tradingPair: 'BTC/USDT',
-    monthlyPnl: 12.5,
-    weeklyPnl: 3.2,
-    dailyPnl: 0.8,
-    maxDrawdown: -8.5,
-    avgHoldingTime: '2h 30m',
-    riskLevel: 'medium',
-    isFollowing: false,
-    isPreInstalled: true
-  },
-  {
-    id: '2',
-    username: 'DeFiMaster',
-    avatar: '🎯',
-    winRate: 82.3,
-    totalPnl: 98500,
-    pnlPercent: 142.8,
-    followers: 12456,
-    copyCount: 3890,
-    tradingPair: 'ETH/USDT',
-    monthlyPnl: 15.2,
-    weeklyPnl: 4.1,
-    dailyPnl: 1.2,
-    maxDrawdown: -6.2,
-    avgHoldingTime: '4h 15m',
-    riskLevel: 'low',
-    isFollowing: false,
-    isPreInstalled: true
-  },
-  {
-    id: '3',
-    username: 'AltSeason',
-    avatar: '🚀',
-    winRate: 71.2,
-    totalPnl: 87000,
-    pnlPercent: 198.5,
-    followers: 8923,
-    copyCount: 2156,
-    tradingPair: 'SOL/USDT',
-    monthlyPnl: 22.5,
-    weeklyPnl: 8.3,
-    dailyPnl: 2.1,
-    maxDrawdown: -12.8,
-    avgHoldingTime: '1h 45m',
-    riskLevel: 'high',
-    isFollowing: false,
-    isPreInstalled: true
-  },
-  {
-    id: '4',
-    username: 'GridTrader',
-    avatar: '📊',
-    winRate: 85.1,
-    totalPnl: 67800,
-    pnlPercent: 98.3,
-    followers: 6543,
-    copyCount: 1890,
-    tradingPair: 'BNB/USDT',
-    monthlyPnl: 8.2,
-    weeklyPnl: 2.1,
-    dailyPnl: 0.5,
-    maxDrawdown: -4.2,
-    avgHoldingTime: '6h 20m',
-    riskLevel: 'low',
-    isFollowing: false,
-    isPreInstalled: true
-  },
-  {
-    id: '5',
-    username: 'MomentumKing',
-    avatar: '👑',
-    winRate: 75.8,
-    totalPnl: 54200,
-    pnlPercent: 125.6,
-    followers: 9876,
-    copyCount: 2567,
-    tradingPair: 'DOGE/USDT',
-    monthlyPnl: 18.5,
-    weeklyPnl: 5.2,
-    dailyPnl: 1.5,
-    maxDrawdown: -15.2,
-    avgHoldingTime: '0h 45m',
-    riskLevel: 'high',
-    isFollowing: false,
-    isPreInstalled: true
-  },
-  {
-    id: '6',
-    username: 'SwingTrader',
-    avatar: '🌊',
-    winRate: 68.5,
-    totalPnl: 42500,
-    pnlPercent: 88.2,
-    followers: 5432,
-    copyCount: 1234,
-    tradingPair: 'XRP/USDT',
-    monthlyPnl: 10.2,
-    weeklyPnl: 2.8,
-    dailyPnl: 0.3,
-    maxDrawdown: -9.5,
-    avgHoldingTime: '12h 30m',
-    riskLevel: 'medium',
-    isFollowing: false,
-    isPreInstalled: true
-  },
-  {
-    id: '7',
-    username: 'BotMaster',
-    avatar: '🤖',
-    winRate: 88.2,
-    totalPnl: 38900,
-    pnlPercent: 72.5,
-    followers: 4321,
-    copyCount: 987,
-    tradingPair: 'AVAX/USDT',
-    monthlyPnl: 6.8,
-    weeklyPnl: 1.5,
-    dailyPnl: 0.2,
-    maxDrawdown: -3.2,
-    avgHoldingTime: '8h 00m',
-    riskLevel: 'low',
-    isFollowing: false,
-    isPreInstalled: true
-  },
-  {
-    id: '8',
-    username: 'NanoGainer',
-    avatar: '💎',
-    winRate: 73.2,
-    totalPnl: 31500,
-    pnlPercent: 145.8,
-    followers: 7654,
-    copyCount: 1876,
-    tradingPair: 'PEPE/USDT',
-    monthlyPnl: 25.2,
-    weeklyPnl: 9.5,
-    dailyPnl: 3.2,
-    maxDrawdown: -18.5,
-    avgHoldingTime: '0h 30m',
-    riskLevel: 'high',
-    isFollowing: false,
-    isPreInstalled: true
-  },
-  {
-    id: '9',
-    username: 'StableTrader',
-    avatar: '🛡️',
-    winRate: 91.2,
-    totalPnl: 28900,
-    pnlPercent: 52.3,
-    followers: 3210,
-    copyCount: 654,
-    tradingPair: 'LINK/USDT',
-    monthlyPnl: 4.2,
-    weeklyPnl: 1.0,
-    dailyPnl: 0.1,
-    maxDrawdown: -2.1,
-    avgHoldingTime: '24h 00m',
-    riskLevel: 'low',
-    isFollowing: false,
-    isPreInstalled: true
-  },
-  {
-    id: '10',
-    username: 'FlashBoys',
-    avatar: '⚡',
-    winRate: 76.8,
-    totalPnl: 24500,
-    pnlPercent: 168.5,
-    followers: 5678,
-    copyCount: 1432,
-    tradingPair: 'MATIC/USDT',
-    monthlyPnl: 14.5,
-    weeklyPnl: 4.8,
-    dailyPnl: 1.8,
-    maxDrawdown: -11.2,
-    avgHoldingTime: '1h 15m',
-    riskLevel: 'high',
-    isFollowing: false,
-    isPreInstalled: true
-  },
-  {
-    id: '11',
-    username: 'TrendFollower',
-    avatar: '📈',
-    winRate: 69.5,
-    totalPnl: 21200,
-    pnlPercent: 95.2,
-    followers: 4321,
-    copyCount: 1098,
-    tradingPair: 'DOT/USDT',
-    monthlyPnl: 8.8,
-    weeklyPnl: 2.5,
-    dailyPnl: 0.6,
-    maxDrawdown: -7.8,
-    avgHoldingTime: '5h 45m',
-    riskLevel: 'medium',
-    isFollowing: false,
-    isPreInstalled: true
-  },
-  {
-    id: '12',
-    username: 'OptionsGuru',
-    avatar: '🎰',
-    winRate: 65.2,
-    totalPnl: 18900,
-    pnlPercent: 82.5,
-    followers: 3456,
-    copyCount: 876,
-    tradingPair: 'NEAR/USDT',
-    monthlyPnl: 11.2,
-    weeklyPnl: 3.2,
-    dailyPnl: 0.9,
-    maxDrawdown: -10.5,
-    avgHoldingTime: '3h 30m',
-    riskLevel: 'medium',
-    isFollowing: false,
-    isPreInstalled: true
-  }
-];
 
 const CopyTradingPage: React.FC = () => {
   const [traders, setTraders] = useState<Trader[]>([]);
@@ -284,42 +54,83 @@ const CopyTradingPage: React.FC = () => {
   const [copyAmount, setCopyAmount] = useState('1000');
   const [copyLeverage, setCopyLeverage] = useState(1);
 
-  // Generate additional traders to simulate large pool
-  useEffect(() => {
-    const additionalTraders: Trader[] = [];
-    const avatars = ['🐵', '🦊', '🦁', '🐯', '🐲', '🐍', '🐴', '🦄', '🐝', '🦋', '🌸', '🌺', '🌻', '🌹', '🍀'];
-    const pairs = ['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'XRP/USDT', 'DOGE/USDT', 'ADA/USDT', 'AVAX/USDT', 'DOT/USDT', 'LINK/USDT', 'MATIC/USDT', 'LTC/USDT', 'UNI/USDT', 'ATOM/USDT', 'XLM/USDT', 'NEAR/USDT', 'APT/USDT', 'ARB/USDT', 'OP/USDT', 'INJ/USDT', 'PEPE/USDT', 'SHIB/USDT', 'TRX/USDT', 'FIL/USDT', 'ALGO/USDT', 'VET/USDT', 'ICP/USDT', 'HBAR/USDT', 'QNT/USDT', 'MKR/USDT', 'AAVE/USDT', 'GRT/USDT', 'SNX/USDT', 'CRV/USDT', 'LDO/USDT', 'RUNE/USDT', 'STX/USDT', 'KAVA/USDT', 'FLOW/USDT', 'AXS/USDT', 'SAND/USDT', 'MANA/USDT', 'ENJ/USDT', 'CHZ/USDT', 'BAT/USDT', 'ZEC/USDT', 'DASH/USDT', 'XMR/USDT', 'NEO/USDT', 'EOS/USDT', 'XTZ/USDT', 'ONE/USDT', 'ZIL/USDT', 'CELO/USDT', 'CAKE/USDT', 'GMT/USDT', 'GALA/USDT', 'ROSE/USDT', 'KLAY/USDT', 'MINA/USDT', 'COMP/USDT', 'BAL/USDT', 'YFI/USDT', 'SUSHI/USDT', '1INCH/USDT', 'CEL/USDT', 'OKB/USDT', 'KCS/USDT', 'HT/USDT', 'FTT/USDT', 'TUSD/USDT', 'BUSD/USDT', 'USDP/USDT', 'USDC/USDT'];
-    const riskLevels: ('low' | 'medium' | 'high')[] = ['low', 'medium', 'high'];
-    
-    for (let i = 0; i < 500; i++) {
-      const risk = riskLevels[0]; // real value from backend
-      additionalTraders.push({
-        id: `trader-${i + 100}`,
-        username: `Trader${i + 100}`,
-        avatar: avatars[i % avatars.length],
-        winRate: 0, // real value from backend
-        totalPnl: 0, // real value from backend
-        pnlPercent: 0, // real value from backend
-        followers: 0, // real value from backend
-        copyCount: 0, // real value from backend
-        tradingPair: pairs[i % pairs.length],
-        monthlyPnl: 0, // real value from backend
-        weeklyPnl: 0, // real value from backend
-        dailyPnl: 0, // real value from backend
-        maxDrawdown: 0, // real value from backend
-        avgHoldingTime: `${0}h ${0}m`, // real value from backend
-        riskLevel: risk,
-        isFollowing: false,
-        isPreInstalled: false
+  // Fetch real traders from the copy_trading_service backend (:8006).
+  // No fabricated 500-trader pool — only real registered traders.
+  const fetchTraders = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('user_token');
+      const res = await fetch(`${API_BASE_URL}/traders`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
+      if (!res.ok) throw new Error('Failed to load traders');
+      const data = await res.json();
+      const backendTraders: Trader[] = (data.traders || []).map((t: any) => ({
+        id: t.id,
+        username: t.name || t.address || t.id,
+        avatar: '🐯',
+        winRate: Number(t.win_rate) || 0,
+        totalPnl: Number(t.pnl_pct) || 0,
+        pnlPercent: Number(t.pnl_pct) || 0,
+        followers: Number(t.followers) || 0,
+        copyCount: 0,
+        tradingPair: 'BTC/USDT',
+        monthlyPnl: 0,
+        weeklyPnl: 0,
+        dailyPnl: 0,
+        maxDrawdown: 0,
+        avgHoldingTime: '0h 0m',
+        riskLevel: 'medium',
+        isFollowing: false,
+        isPreInstalled: true,
+      }));
+      setTraders(backendTraders.length > 0 ? backendTraders : []);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load traders');
+      setTraders([]);
+    } finally {
+      setLoading(false);
     }
-    setTraders([...TOP_TRADERS, ...additionalTraders]);
-  }, []);
+  }, [API_BASE_URL]);
+
+  // Fetch the caller's active copy positions from the backend.
+  const fetchPositions = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('user_token');
+      const res = await fetch(`${API_BASE_URL}/copiers`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCopyPositions((data.copiers || []).map((c: any) => ({
+          id: c.id,
+          traderId: c.trader_id,
+          traderName: c.trader_name || c.trader_id,
+          symbol: c.symbol || 'BTC/USDT',
+          side: c.side || 'long',
+          size: Number(c.size) || 0,
+          entryPrice: Number(c.entry_price) || 0,
+          currentPrice: Number(c.current_price) || 0,
+          pnl: Number(c.pnl) || 0,
+          pnlPercent: Number(c.pnl_pct) || 0,
+          openTime: Number(c.open_time) || Date.now(),
+        })));
+      }
+    } catch (err) {
+      // Positions list stays empty on failure (fail-closed).
+    }
+  }, [API_BASE_URL]);
+
+  useEffect(() => {
+    fetchTraders();
+    fetchPositions();
+  }, [fetchTraders, fetchPositions]);
 
   const filteredTraders = traders
     .filter(trader => {
       if (filterRisk !== 'all' && trader.riskLevel !== filterRisk) return false;
-      if (searchTerm && !trader.username.toLowerCase().includes(searchTerm.toLowerCase()) && 
+      if (searchTerm && !trader.username.toLowerCase().includes(searchTerm.toLowerCase()) &&
           !trader.tradingPair.toLowerCase().includes(searchTerm.toLowerCase())) return false;
       return true;
     })
@@ -329,30 +140,41 @@ const CopyTradingPage: React.FC = () => {
       return b.followers - a.followers;
     });
 
-  const displayTraders = showAllTraders ? filteredTraders : filteredTraders.filter(t => t.isPreInstalled);
+  const displayTraders = showAllTraders ? filteredTraders : filteredTraders.slice(0, 12);
 
-  const handleFollow = (traderId: string) => {
-    setTraders(traders.map(t => 
-      t.id === traderId ? { ...t, isFollowing: !t.isFollowing } : t
-    ));
+  const handleFollow = async (traderId: string) => {
+    try {
+      const token = localStorage.getItem('user_token');
+      const res = await fetch(`${API_BASE_URL}/follow`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ trader_id: traderId }),
+      });
+      if (res.ok) {
+        setTraders(traders.map(t =>
+          t.id === traderId ? { ...t, isFollowing: !t.isFollowing } : t
+        ));
+      }
+    } catch (err) {
+      // Fail-closed: follow state unchanged on error.
+    }
   };
 
-  const handleCopyTrade = (trader: Trader) => {
-    const newPosition: CopyPosition = {
-      id: Date.now().toString(),
-      traderId: trader.id,
-      traderName: trader.username,
-      symbol: trader.tradingPair,
-      side: trader.dailyPnl >= 0 ? 'long' : 'short',
-      size: parseFloat(copyAmount) / 1000,
-      entryPrice: 0, // real value from backend
-      currentPrice: 0, // real value from backend
-      pnl: 0,
-      pnlPercent: 0,
-      openTime: Date.now()
-    };
-    setCopyPositions([...copyPositions, newPosition]);
-    setActiveTab('my-copies');
+  const handleCopyTrade = async (trader: Trader) => {
+    try {
+      const token = localStorage.getItem('user_token');
+      const res = await fetch(`${API_BASE_URL}/follow`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ trader_id: trader.id, amount: parseFloat(copyAmount), leverage: copyLeverage }),
+      });
+      if (res.ok) {
+        await fetchPositions();
+        setActiveTab('my-copies');
+      }
+    } catch (err) {
+      // Fail-closed.
+    }
   };
 
   const followingTraders = traders.filter(t => t.isFollowing);
