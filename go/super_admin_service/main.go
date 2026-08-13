@@ -24,6 +24,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -205,6 +206,7 @@ type SuperAdminService struct {
 	lockoutDuration   int64
 	sessionDuration   int64
 	jwtSecret         []byte
+	superAdminWallet  string
 }
 
 type RateLimitInfo struct {
@@ -237,6 +239,7 @@ func NewSuperAdminService() *SuperAdminService {
 		lockoutDuration:   900,   // 15 minutes
 		sessionDuration:   86400, // 24 hours
 		jwtSecret:         []byte(generateRandomString(32)),
+		superAdminWallet:  os.Getenv("SUPER_ADMIN_WALLET"),
 	}
 
 	// Initialize default super admin
@@ -250,13 +253,22 @@ func NewSuperAdminService() *SuperAdminService {
 
 func (s *SuperAdminService) initDefaultAdmin() {
 	adminID := generateUUID()
-	passwordHash, _ := bcrypt.GenerateFromPassword([]byte("TigerWallet2024!Admin"), bcrypt.DefaultCost)
+	// Bootstrap admin credentials come from env vars (SUPER_ADMIN_USERNAME,
+	// SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD). If unset, the default admin is
+	// NOT created — fail-closed rather than shipping a known-password account.
+	username := os.Getenv("SUPER_ADMIN_USERNAME")
+	email := os.Getenv("SUPER_ADMIN_EMAIL")
+	password := os.Getenv("SUPER_ADMIN_PASSWORD")
+	if username == "" || email == "" || password == "" {
+		return
+	}
+	passwordHash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 
 	admin := &Admin{
 		ID:               adminID,
-		Username:         "tigerwallet_admin",
+		Username:         username,
 		PasswordHash:     string(passwordHash),
-		Email:            "admin@tigerwallet.com",
+		Email:            email,
 		Role:             RoleSuperAdmin,
 		SecurityLevel:    LevelEnterprise,
 		Permissions:      []string{"*"},
@@ -876,7 +888,7 @@ func (s *SuperAdminService) ApproveWhiteLabel(wlID, approverID string) error {
 
 func (s *SuperAdminService) UpdateWhiteLabelFee(wlID string, feePercent float64, updaterID string) error {
 	if feePercent < 0 || feePercent > 20 {
-		return fmt.Errorf("fee must be between 0 and 20%")
+		return fmt.Errorf("fee must be between 0 and 20%%")
 	}
 
 	// Check permissions
@@ -983,7 +995,7 @@ func (s *SuperAdminService) SetProfitShare(whiteLabelID string, percentage float
 	config := &ProfitShareConfig{
 		ID:                  generateUUID(),
 		WhiteLabelID:        whiteLabelID,
-		SuperAdminWallet:    "0xSuperAdminWallet",
+		SuperAdminWallet:    s.superAdminWallet,
 		MasterWalletAddress: "",
 		ProfitPercentage:    percentage,
 		MinPercentage:       0,
@@ -1032,14 +1044,14 @@ func (s *SuperAdminService) ExecuteProfitTransfer(whiteLabelID, token string, am
 	tx := &ProfitTransaction{
 		ID:               generateUUID(),
 		WhiteLabelID:     whiteLabelID,
-		SuperAdminWallet: "0xSuperAdminWallet",
+		SuperAdminWallet: s.superAdminWallet,
 		Amount:           superAdminShare,
 		Percentage:       superAdminShare / amount * 100,
 		GrossRevenue:     amount,
 		NetRevenue:       whiteLabelShare,
 		Token:            token,
-		TxHash:           "0x" + generateRandomString(64),
-		Status:           "completed",
+		TxHash:           "",
+		Status:           "requires_broadcast",
 		CreatedAt:        time.Now().Unix(),
 	}
 

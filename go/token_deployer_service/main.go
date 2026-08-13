@@ -28,10 +28,9 @@ func main() {
 			return
 		}
 		// Validation passed and a pending deployment was recorded. We mark it
-		// deploying immediately with a synthesized tx hash so callers can poll
-		// /api/v1/token/:id for status.
-		txHash := "0x" + created.ID[len(created.ID)-1:]
-		if err := svc.Deploy(r.Context(), created.ID, txHash); err != nil {
+		// deploying with an empty tx hash; the real on-chain deploy tx hash is
+		// filled in once the deployment is broadcast. No fabricated hash.
+		if err := svc.Deploy(r.Context(), created.ID, ""); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
