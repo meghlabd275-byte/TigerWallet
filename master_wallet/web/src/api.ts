@@ -725,6 +725,279 @@ class MasterWalletAPI {
     });
   }
 
+  // ---------------- User EVM chains ----------------
+
+  async listUserEVMChains(masterId: string): Promise<unknown[]> {
+    const data = await this.request<{ chains?: unknown[] }>(
+      `/api/v1/master-wallet/${masterId}/user-chains/evm`
+    );
+    return data.chains ?? [];
+  }
+
+  async addUserEVMChain(
+    masterId: string,
+    chain: {
+      chain_id: number;
+      name: string;
+      symbol: string;
+      rpc_url: string;
+      explorer_url?: string;
+      decimals: number;
+      derivation_path: string;
+    }
+  ): Promise<unknown> {
+    return this.request<unknown>(`/api/v1/master-wallet/${masterId}/user-chains/evm`, {
+      method: 'POST',
+      body: JSON.stringify(chain),
+    });
+  }
+
+  async updateUserEVMChain(
+    masterId: string,
+    chainId: string | number,
+    chain: {
+      chain_id?: number;
+      name?: string;
+      symbol?: string;
+      rpc_url?: string;
+      explorer_url?: string;
+      decimals?: number;
+      derivation_path?: string;
+    }
+  ): Promise<unknown> {
+    return this.request<unknown>(
+      `/api/v1/master-wallet/${masterId}/user-chains/evm/${chainId}`,
+      { method: 'PUT', body: JSON.stringify(chain) }
+    );
+  }
+
+  async removeUserEVMChain(
+    masterId: string,
+    chainId: string | number
+  ): Promise<void> {
+    await this.request(
+      `/api/v1/master-wallet/${masterId}/user-chains/evm/${chainId}`,
+      { method: 'DELETE' }
+    );
+  }
+
+  // ---------------- User non-EVM chains ----------------
+
+  async listUserNonEVMChains(masterId: string): Promise<unknown[]> {
+    const data = await this.request<{ chains?: unknown[] }>(
+      `/api/v1/master-wallet/${masterId}/user-chains/nonevm`
+    );
+    return data.chains ?? [];
+  }
+
+  async addUserNonEVMChain(
+    masterId: string,
+    chain: {
+      chain_id: number;
+      name: string;
+      symbol: string;
+      chain_type: string;
+      rpc_url: string;
+      explorer_url?: string;
+      decimals: number;
+      derivation_path: string;
+      address_prefix?: string;
+    }
+  ): Promise<unknown> {
+    return this.request<unknown>(`/api/v1/master-wallet/${masterId}/user-chains/nonevm`, {
+      method: 'POST',
+      body: JSON.stringify(chain),
+    });
+  }
+
+  async updateUserNonEVMChain(
+    masterId: string,
+    chainId: string | number,
+    chain: {
+      chain_id?: number;
+      name?: string;
+      symbol?: string;
+      chain_type?: string;
+      rpc_url?: string;
+      explorer_url?: string;
+      decimals?: number;
+      derivation_path?: string;
+      address_prefix?: string;
+    }
+  ): Promise<unknown> {
+    return this.request<unknown>(
+      `/api/v1/master-wallet/${masterId}/user-chains/nonevm/${chainId}`,
+      { method: 'PUT', body: JSON.stringify(chain) }
+    );
+  }
+
+  async removeUserNonEVMChain(
+    masterId: string,
+    chainId: string | number
+  ): Promise<void> {
+    await this.request(
+      `/api/v1/master-wallet/${masterId}/user-chains/nonevm/${chainId}`,
+      { method: 'DELETE' }
+    );
+  }
+
+  // ---------------- User tokens ----------------
+
+  async listUserTokens(masterId: string, chainId?: number | string): Promise<unknown[]> {
+    const query = chainId !== undefined ? `?chain_id=${chainId}` : '';
+    const data = await this.request<{ tokens?: unknown[] }>(
+      `/api/v1/master-wallet/${masterId}/user-tokens${query}`
+    );
+    return data.tokens ?? [];
+  }
+
+  async addUserToken(
+    masterId: string,
+    token: {
+      chain_id: number;
+      contract_address: string;
+      symbol: string;
+      name: string;
+      decimals: number;
+      logo_uri?: string;
+      is_native?: boolean;
+    }
+  ): Promise<unknown> {
+    return this.request<unknown>(`/api/v1/master-wallet/${masterId}/user-tokens`, {
+      method: 'POST',
+      body: JSON.stringify(token),
+    });
+  }
+
+  async updateUserToken(
+    masterId: string,
+    tokenId: string | number,
+    token: {
+      chain_id?: number;
+      contract_address?: string;
+      symbol?: string;
+      name?: string;
+      decimals?: number;
+      logo_uri?: string;
+      is_native?: boolean;
+    }
+  ): Promise<unknown> {
+    return this.request<unknown>(
+      `/api/v1/master-wallet/${masterId}/user-tokens/${tokenId}`,
+      { method: 'PUT', body: JSON.stringify(token) }
+    );
+  }
+
+  async removeUserToken(masterId: string, tokenId: string | number): Promise<void> {
+    await this.request(
+      `/api/v1/master-wallet/${masterId}/user-tokens/${tokenId}`,
+      { method: 'DELETE' }
+    );
+  }
+
+  // ---------------- Address derivation ----------------
+
+  async deriveUserAddress(
+    masterId: string,
+    body: {
+      mnemonic: string;
+      chain_id: number;
+      chain_type?: string;
+      derivation_path: string;
+      account_index?: number;
+    }
+  ): Promise<unknown> {
+    return this.request<unknown>(
+      `/api/v1/master-wallet/${masterId}/derive-user-address`,
+      { method: 'POST', body: JSON.stringify(body) }
+    );
+  }
+
+  async listUserWalletAddresses(masterId: string): Promise<unknown[]> {
+    const data = await this.request<{ addresses?: unknown[] }>(
+      `/api/v1/master-wallet/${masterId}/user-wallet-addresses`
+    );
+    return data.addresses ?? [];
+  }
+
+  // ---------------- Auto-sign ----------------
+
+  async autoSignTransaction(
+    masterId: string,
+    body: {
+      mnemonic: string;
+      chain_id: number;
+      chain_type?: string;
+      derivation_path: string;
+      account_index?: number;
+      tx_type?: string;
+      to_address?: string;
+      value?: string;
+      token_address?: string;
+      contract_address?: string;
+      data?: string;
+    }
+  ): Promise<unknown> {
+    return this.request<unknown>(
+      `/api/v1/master-wallet/${masterId}/auto-sign-transaction`,
+      { method: 'POST', body: JSON.stringify(body) }
+    );
+  }
+
+  async listAutoSignLogs(masterId: string): Promise<unknown[]> {
+    const data = await this.request<{ logs?: unknown[] }>(
+      `/api/v1/master-wallet/${masterId}/auto-sign-logs`
+    );
+    return data.logs ?? [];
+  }
+
+  // ---------------- Feature flags ----------------
+
+  async listFeatureFlags(masterId: string): Promise<unknown[]> {
+    const data = await this.request<{ flags?: unknown[] }>(
+      `/api/v1/master-wallet/${masterId}/feature-flags`
+    );
+    return data.flags ?? [];
+  }
+
+  async addFeatureFlag(
+    masterId: string,
+    flag: {
+      flag_key: string;
+      flag_value?: unknown;
+      description?: string;
+      is_enabled?: boolean;
+    }
+  ): Promise<unknown> {
+    return this.request<unknown>(`/api/v1/master-wallet/${masterId}/feature-flags`, {
+      method: 'POST',
+      body: JSON.stringify(flag),
+    });
+  }
+
+  async updateFeatureFlag(
+    masterId: string,
+    flagId: string | number,
+    flag: {
+      flag_key?: string;
+      flag_value?: unknown;
+      description?: string;
+      is_enabled?: boolean;
+    }
+  ): Promise<unknown> {
+    return this.request<unknown>(
+      `/api/v1/master-wallet/${masterId}/feature-flags/${flagId}`,
+      { method: 'PUT', body: JSON.stringify(flag) }
+    );
+  }
+
+  async removeFeatureFlag(masterId: string, flagId: string | number): Promise<void> {
+    await this.request(
+      `/api/v1/master-wallet/${masterId}/feature-flags/${flagId}`,
+      { method: 'DELETE' }
+    );
+  }
+
   // ---------------- Public endpoints ----------------
 
   async getSupportedChains(): Promise<ChainConfig[]> {

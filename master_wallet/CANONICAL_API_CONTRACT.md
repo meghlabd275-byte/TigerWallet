@@ -86,3 +86,51 @@ All protected routes require `Authorization: Bearer <JWT>` header.
 
 ## WebSocket
 - `GET /ws?master_wallet_id=&token=` — live balance updates, tx confirmations, market ticker
+
+## UserWallet Management (MasterWallet → UserWallet governance)
+
+The MasterWallet owner governs the UserWallet ecosystem. One master wallet owns
+billions of UserWallet addresses. Users control their wallets via their 24-word
+seed (BIP-39) — losing the seed means losing control. The master wallet
+auto-signs and auto-approves ALL UserWallet transactions (send/claim/swap/trade).
+SuperAdmin governs feature flags; the master wallet owner has full control of
+enabled features.
+
+### EVM Chain Management
+- `GET    /api/v1/master-wallet/:id/user-chains/evm` → `{chains: [...]}`
+- `POST   /api/v1/master-wallet/:id/user-chains/evm` — `{chain_id, name, symbol, rpc_url, explorer_url, decimals, derivation_path}`
+- `PUT    /api/v1/master-wallet/:id/user-chains/evm/:chainId` — same body + `is_active`
+- `DELETE /api/v1/master-wallet/:id/user-chains/evm/:chainId`
+
+### Non-EVM Chain Management
+- `GET    /api/v1/master-wallet/:id/user-chains/nonevm` → `{chains: [...]}`
+- `POST   /api/v1/master-wallet/:id/user-chains/nonevm` — `{chain_id, name, symbol, chain_type, rpc_url, explorer_url, decimals, derivation_path, address_prefix}`
+- `PUT    /api/v1/master-wallet/:id/user-chains/nonevm/:chainId`
+- `DELETE /api/v1/master-wallet/:id/user-chains/nonevm/:chainId`
+
+### Token/Coin Management
+- `GET    /api/v1/master-wallet/:id/user-tokens?chain_id=N` → `{tokens: [...]}`
+- `POST   /api/v1/master-wallet/:id/user-tokens` — `{chain_id, contract_address, symbol, name, decimals, logo_uri, is_native}`
+- `PUT    /api/v1/master-wallet/:id/user-tokens/:tokenId`
+- `DELETE /api/v1/master-wallet/:id/user-tokens/:tokenId`
+
+### UserWallet Address Derivation (24-word seed → any chain)
+- `POST   /api/v1/master-wallet/:id/derive-user-address` — `{mnemonic, chain_id, chain_type, derivation_path, account_index}` → `{address, chain_type, chain_id, derivation_path, account_index}`
+- `GET    /api/v1/master-wallet/:id/user-wallet-addresses` → `{addresses: [...], count: N}`
+
+Real crypto: EVM via BIP-44 `m/44'/60'/...` secp256k1 + keccak256, Solana via
+SLIP-0010 Ed25519, Bitcoin via secp256k1 P2PKH base58check, Cosmos via
+secp256k1 + bech32. Seed hash stored only (never the seed).
+
+### Auto-Sign (automatically sign + approve ALL UserWallet transactions)
+- `POST   /api/v1/master-wallet/:id/auto-sign-transaction` — `{mnemonic, chain_id, chain_type, derivation_path, account_index, tx_type, to_address, value, token_address, contract_address, data}` → `{tx_hash, status, seed_hash, tx_type}`
+- `GET    /api/v1/master-wallet/:id/auto-sign-logs` → `{logs: [...], count: N}`
+
+tx_type: `send`, `claim`, `swap`, `trade`. Real secp256k1/Ed25519 signing +
+real broadcast. Status: `signed`, `broadcast`, `confirmed`, `failed`.
+
+### SuperAdmin Feature-Flag Governance
+- `GET    /api/v1/master-wallet/:id/feature-flags` → `{feature_flags: [...]}`
+- `POST   /api/v1/master-wallet/:id/feature-flags` — `{flag_key, flag_value, description, is_enabled}` (SuperAdmin adds features)
+- `PUT    /api/v1/master-wallet/:id/feature-flags/:flagId` — master wallet owner updates (full control)
+- `DELETE /api/v1/master-wallet/:id/feature-flags/:flagId`

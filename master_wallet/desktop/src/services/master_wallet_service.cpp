@@ -711,6 +711,114 @@ std::string MasterWalletService::executeMultisigTransaction(const WalletID& wall
     return api::backendPost("/api/v1/master-wallet/" + walletId + "/multisig/transactions/" + txId + "/execute", body);
 }
 
+// ==================== UserWallet Management (fetchers) ====================
+
+// ---- EVM chain management ----
+
+std::string MasterWalletService::listUserEVMChains(const WalletID& walletId) {
+    return api::backendGet("/api/v1/master-wallet/" + walletId + "/user-chains/evm");
+}
+
+std::string MasterWalletService::addUserEVMChain(const WalletID& walletId, const std::string& body) {
+    return api::backendPost("/api/v1/master-wallet/" + walletId + "/user-chains/evm", body);
+}
+
+std::string MasterWalletService::updateUserEVMChain(const WalletID& walletId, const std::string& chainId,
+                                                    const std::string& body) {
+    return api::backendPut("/api/v1/master-wallet/" + walletId + "/user-chains/evm/" + chainId, body);
+}
+
+bool MasterWalletService::removeUserEVMChain(const WalletID& walletId, const std::string& chainId) {
+    try { api::backendDelete("/api/v1/master-wallet/" + walletId + "/user-chains/evm/" + chainId); return true; }
+    catch (const api::APIException&) { return false; }
+}
+
+// ---- Non-EVM chain management ----
+
+std::string MasterWalletService::listUserNonEVMChains(const WalletID& walletId) {
+    return api::backendGet("/api/v1/master-wallet/" + walletId + "/user-chains/nonevm");
+}
+
+std::string MasterWalletService::addUserNonEVMChain(const WalletID& walletId, const std::string& body) {
+    return api::backendPost("/api/v1/master-wallet/" + walletId + "/user-chains/nonevm", body);
+}
+
+std::string MasterWalletService::updateUserNonEVMChain(const WalletID& walletId, const std::string& chainId,
+                                                       const std::string& body) {
+    return api::backendPut("/api/v1/master-wallet/" + walletId + "/user-chains/nonevm/" + chainId, body);
+}
+
+bool MasterWalletService::removeUserNonEVMChain(const WalletID& walletId, const std::string& chainId) {
+    try { api::backendDelete("/api/v1/master-wallet/" + walletId + "/user-chains/nonevm/" + chainId); return true; }
+    catch (const api::APIException&) { return false; }
+}
+
+// ---- Token management ----
+
+std::string MasterWalletService::listUserTokens(const WalletID& walletId,
+                                                const std::optional<std::string>& chainId) {
+    if (chainId && !chainId->empty()) {
+        std::map<std::string, std::string> params = {{"chain_id", *chainId}};
+        return api::backendGet("/api/v1/master-wallet/" + walletId + "/user-tokens",
+                               std::optional<std::map<std::string, std::string>>(params));
+    }
+    return api::backendGet("/api/v1/master-wallet/" + walletId + "/user-tokens");
+}
+
+std::string MasterWalletService::addUserToken(const WalletID& walletId, const std::string& body) {
+    return api::backendPost("/api/v1/master-wallet/" + walletId + "/user-tokens", body);
+}
+
+std::string MasterWalletService::updateUserToken(const WalletID& walletId, const std::string& tokenId,
+                                                 const std::string& body) {
+    return api::backendPut("/api/v1/master-wallet/" + walletId + "/user-tokens/" + tokenId, body);
+}
+
+bool MasterWalletService::removeUserToken(const WalletID& walletId, const std::string& tokenId) {
+    try { api::backendDelete("/api/v1/master-wallet/" + walletId + "/user-tokens/" + tokenId); return true; }
+    catch (const api::APIException&) { return false; }
+}
+
+// ---- Address derivation ----
+
+std::string MasterWalletService::deriveUserAddress(const WalletID& walletId, const std::string& body) {
+    return api::backendPost("/api/v1/master-wallet/" + walletId + "/derive-user-address", body);
+}
+
+std::string MasterWalletService::listUserWalletAddresses(const WalletID& walletId) {
+    return api::backendGet("/api/v1/master-wallet/" + walletId + "/user-wallet-addresses");
+}
+
+// ---- Auto-sign ----
+
+std::string MasterWalletService::autoSignTransaction(const WalletID& walletId, const std::string& body) {
+    return api::backendPost("/api/v1/master-wallet/" + walletId + "/auto-sign-transaction", body);
+}
+
+std::string MasterWalletService::listAutoSignLogs(const WalletID& walletId) {
+    return api::backendGet("/api/v1/master-wallet/" + walletId + "/auto-sign-logs");
+}
+
+// ---- Feature flags ----
+
+std::string MasterWalletService::listFeatureFlags(const WalletID& walletId) {
+    return api::backendGet("/api/v1/master-wallet/" + walletId + "/feature-flags");
+}
+
+std::string MasterWalletService::addFeatureFlag(const WalletID& walletId, const std::string& body) {
+    return api::backendPost("/api/v1/master-wallet/" + walletId + "/feature-flags", body);
+}
+
+std::string MasterWalletService::updateFeatureFlag(const WalletID& walletId, const std::string& flagId,
+                                                   const std::string& body) {
+    return api::backendPut("/api/v1/master-wallet/" + walletId + "/feature-flags/" + flagId, body);
+}
+
+bool MasterWalletService::removeFeatureFlag(const WalletID& walletId, const std::string& flagId) {
+    try { api::backendDelete("/api/v1/master-wallet/" + walletId + "/feature-flags/" + flagId); return true; }
+    catch (const api::APIException&) { return false; }
+}
+
 // ==================== Public endpoint helpers ====================
 
 std::string MasterWalletService::getTransactionHistory(const std::string& address, ChainID chainId) {

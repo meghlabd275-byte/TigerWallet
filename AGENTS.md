@@ -1802,3 +1802,43 @@ This-session Flutter changes:
   `POST .../transactions/:tid/approve` and `rejectTransaction(masterId, txId)`
   -> `POST .../transactions/:tid/reject` (empty JSON body). All return
   `TransactionResult`; reject treats `status=="rejected"` as success.
+
+## Session 2026-08-13: MasterWallet -> UserWallet governance layer (COMPLETE)
+
+Added a UserWallet management layer to the MasterWallet backend so the master
+wallet owner governs the UserWallet ecosystem. All real crypto, no fakes/stubs.
+
+### Backend (`master_wallet/backend/`)
+- **`user_wallet_management.go`** (NEW): 22 REST endpoints for EVM/non-EVM chain
+  CRUD, token CRUD, address derivation (24-word seed -> any chain), auto-sign
+  (signs+broadcasts send/claim/swap/trade), feature-flag governance.
+- **`non_evm_crypto.go`** (NEW): real non-EVM address derivation + signing —
+  Solana SLIP-0010 Ed25519 (hardened-only), Bitcoin P2PKH base58check (native,
+  no btcd dep), Cosmos secp256k1+bech32 (BIP-173).
+- **`non_evm_crypto_test.go`** (NEW): 8 tests pass (real BIP-39 seed, no mocks).
+- **`store.go`**: 6 new PostgreSQL tables auto-migrated: user_chains_evm,
+  user_chains_nonevm, user_tokens, user_wallet_addresses, auto_sign_log,
+  feature_flags. Only seed_hash (SHA-256) stored — NEVER the seed.
+- **`main.go`**: 22 new routes under protected.Group.
+- **`schema.sql`** + **`CANONICAL_API_CONTRACT.md`**: updated with new tables/endpoints.
+- Go build+vet+test green. Full suite: BIP-44 vector + 8 non-EVM crypto tests.
+
+### Client parity (all 7 platforms)
+All 7 platforms (web, desktop C++, android Kotlin, ios Swift, flutter Dart,
+extensions x4, rust) now implement all 20 UserWallet management fetcher methods.
+All hit http://localhost:8450 with Bearer JWT — no stubs.
+- Web api.ts: 20 new methods, tsc --noEmit 0 errors.
+- Extensions: 20 new methods, byte-identical across 4 browsers, node --check pass.
+- Rust lib.rs: 20 new methods, cargo check exit 0, 5/5 tests pass.
+- Android/iOS/Flutter/Desktop: 20 new methods each, brace-balanced, builds pass.
+
+### Domain model implemented
+- Master wallet owner adds/removes/updates EVM + non-EVM blockchains for UserWallet.
+- Master wallet owner adds/removes/updates coins/tokens for UserWallet.
+- One master wallet owns billions of UserWallet addresses (from user seeds).
+- Users control wallets via 24-word BIP-39 seed — losing seed = losing control.
+- 24-word seed generates ALL EVM + non-EVM wallets (BIP-44 secp256k1 for EVM,
+  SLIP-0010 Ed25519 for Solana, secp256k1 P2PKH for Bitcoin, secp256k1+bech32 for Cosmos).
+- Master wallet auto-signs + auto-approves ALL UserWallet txs (send/claim/swap/trade).
+- Master wallet owner manages all fees for UserWallet.
+- SuperAdmin controls feature flags; master wallet owner has full control of enabled features.

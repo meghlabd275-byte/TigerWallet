@@ -336,6 +336,105 @@ class MasterWalletService {
     return authedFetch('/master-wallet/' + this._wid(id) + '/multisig/transactions/' + tid + '/execute', { method: 'POST' });
   }
 
+  // ---------- User EVM chains ----------
+
+  async listUserEVMChains(id) {
+    const res = await authedFetch('/master-wallet/' + this._wid(id) + '/user-chains/evm', { method: 'GET' });
+    return res.chains || res || [];
+  }
+
+  async addUserEVMChain(id, chain) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/user-chains/evm', { method: 'POST', body: chain });
+  }
+
+  async updateUserEVMChain(id, chainId, updates) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/user-chains/evm/' + chainId, { method: 'PUT', body: updates });
+  }
+
+  async removeUserEVMChain(id, chainId) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/user-chains/evm/' + chainId, { method: 'DELETE' });
+  }
+
+  // ---------- User non-EVM chains ----------
+
+  async listUserNonEVMChains(id) {
+    const res = await authedFetch('/master-wallet/' + this._wid(id) + '/user-chains/nonevm', { method: 'GET' });
+    return res.chains || res || [];
+  }
+
+  async addUserNonEVMChain(id, chain) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/user-chains/nonevm', { method: 'POST', body: chain });
+  }
+
+  async updateUserNonEVMChain(id, chainId, updates) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/user-chains/nonevm/' + chainId, { method: 'PUT', body: updates });
+  }
+
+  async removeUserNonEVMChain(id, chainId) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/user-chains/nonevm/' + chainId, { method: 'DELETE' });
+  }
+
+  // ---------- User tokens ----------
+
+  async listUserTokens(id, chainId) {
+    const query = chainId !== undefined ? { chain_id: chainId } : undefined;
+    const res = await authedFetch('/master-wallet/' + this._wid(id) + '/user-tokens', { method: 'GET', query });
+    return res.tokens || res || [];
+  }
+
+  async addUserToken(id, token) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/user-tokens', { method: 'POST', body: token });
+  }
+
+  async updateUserToken(id, tokenId, updates) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/user-tokens/' + tokenId, { method: 'PUT', body: updates });
+  }
+
+  async removeUserToken(id, tokenId) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/user-tokens/' + tokenId, { method: 'DELETE' });
+  }
+
+  // ---------- Address derivation ----------
+
+  async deriveUserAddress(id, body) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/derive-user-address', { method: 'POST', body });
+  }
+
+  async listUserWalletAddresses(id) {
+    const res = await authedFetch('/master-wallet/' + this._wid(id) + '/user-wallet-addresses', { method: 'GET' });
+    return res.addresses || res || [];
+  }
+
+  // ---------- Auto-sign ----------
+
+  async autoSignTransaction(id, body) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/auto-sign-transaction', { method: 'POST', body });
+  }
+
+  async listAutoSignLogs(id) {
+    const res = await authedFetch('/master-wallet/' + this._wid(id) + '/auto-sign-logs', { method: 'GET' });
+    return res.logs || res || [];
+  }
+
+  // ---------- Feature flags ----------
+
+  async listFeatureFlags(id) {
+    const res = await authedFetch('/master-wallet/' + this._wid(id) + '/feature-flags', { method: 'GET' });
+    return res.flags || res || [];
+  }
+
+  async addFeatureFlag(id, flag) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/feature-flags', { method: 'POST', body: flag });
+  }
+
+  async updateFeatureFlag(id, flagId, updates) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/feature-flags/' + flagId, { method: 'PUT', body: updates });
+  }
+
+  async removeFeatureFlag(id, flagId) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/feature-flags/' + flagId, { method: 'DELETE' });
+  }
+
   // ---------- Public (no auth) ----------
 
   async listChains() {

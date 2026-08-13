@@ -692,6 +692,102 @@ impl BackendClient {
         self.post_empty(&format!("/api/v1/master-wallet/{}/multisig/transactions/{}/execute", master_wallet_id, transaction_id)).await
     }
 
+    // ---- User EVM chains ----
+
+    pub async fn list_user_evm_chains(&self, master_wallet_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/user-chains/evm", master_wallet_id)).await
+    }
+
+    pub async fn add_user_evm_chain(&self, master_wallet_id: &str, chain: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/user-chains/evm", master_wallet_id), chain).await
+    }
+
+    pub async fn update_user_evm_chain(&self, master_wallet_id: &str, chain_id: &str, chain: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.put(&format!("/api/v1/master-wallet/{}/user-chains/evm/{}", master_wallet_id, chain_id), chain).await
+    }
+
+    pub async fn remove_user_evm_chain(&self, master_wallet_id: &str, chain_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.delete(&format!("/api/v1/master-wallet/{}/user-chains/evm/{}", master_wallet_id, chain_id)).await
+    }
+
+    // ---- User non-EVM chains ----
+
+    pub async fn list_user_nonevm_chains(&self, master_wallet_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/user-chains/nonevm", master_wallet_id)).await
+    }
+
+    pub async fn add_user_nonevm_chain(&self, master_wallet_id: &str, chain: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/user-chains/nonevm", master_wallet_id), chain).await
+    }
+
+    pub async fn update_user_nonevm_chain(&self, master_wallet_id: &str, chain_id: &str, chain: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.put(&format!("/api/v1/master-wallet/{}/user-chains/nonevm/{}", master_wallet_id, chain_id), chain).await
+    }
+
+    pub async fn remove_user_nonevm_chain(&self, master_wallet_id: &str, chain_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.delete(&format!("/api/v1/master-wallet/{}/user-chains/nonevm/{}", master_wallet_id, chain_id)).await
+    }
+
+    // ---- User tokens ----
+
+    pub async fn list_user_tokens(&self, master_wallet_id: &str, chain_id: Option<&str>) -> Result<serde_json::Value, MasterError> {
+        let path = match chain_id {
+            Some(cid) => format!("/api/v1/master-wallet/{}/user-tokens?chain_id={}", master_wallet_id, cid),
+            None => format!("/api/v1/master-wallet/{}/user-tokens", master_wallet_id),
+        };
+        self.get(&path).await
+    }
+
+    pub async fn add_user_token(&self, master_wallet_id: &str, token: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/user-tokens", master_wallet_id), token).await
+    }
+
+    pub async fn update_user_token(&self, master_wallet_id: &str, token_id: &str, token: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.put(&format!("/api/v1/master-wallet/{}/user-tokens/{}", master_wallet_id, token_id), token).await
+    }
+
+    pub async fn remove_user_token(&self, master_wallet_id: &str, token_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.delete(&format!("/api/v1/master-wallet/{}/user-tokens/{}", master_wallet_id, token_id)).await
+    }
+
+    // ---- Address derivation ----
+
+    pub async fn derive_user_address(&self, master_wallet_id: &str, body: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/derive-user-address", master_wallet_id), body).await
+    }
+
+    pub async fn list_user_wallet_addresses(&self, master_wallet_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/user-wallet-addresses", master_wallet_id)).await
+    }
+
+    // ---- Auto-sign ----
+
+    pub async fn auto_sign_transaction(&self, master_wallet_id: &str, body: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/auto-sign-transaction", master_wallet_id), body).await
+    }
+
+    pub async fn list_auto_sign_logs(&self, master_wallet_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/auto-sign-logs", master_wallet_id)).await
+    }
+
+    // ---- Feature flags ----
+
+    pub async fn list_feature_flags(&self, master_wallet_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/feature-flags", master_wallet_id)).await
+    }
+
+    pub async fn add_feature_flag(&self, master_wallet_id: &str, flag: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/feature-flags", master_wallet_id), flag).await
+    }
+
+    pub async fn update_feature_flag(&self, master_wallet_id: &str, flag_id: &str, flag: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.put(&format!("/api/v1/master-wallet/{}/feature-flags/{}", master_wallet_id, flag_id), flag).await
+    }
+
+    pub async fn remove_feature_flag(&self, master_wallet_id: &str, flag_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.delete(&format!("/api/v1/master-wallet/{}/feature-flags/{}", master_wallet_id, flag_id)).await
+    }
+
     // ---- Public (no auth) ----
 
     pub async fn get_transaction_history(&self, address: &str, chain_id: i64) -> Result<TransactionHistoryResponse, MasterError> {

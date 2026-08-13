@@ -917,5 +917,109 @@ COMMENT ON TABLE webhooks IS 'Webhook endpoints for event notifications';
 COMMENT ON TABLE sessions IS 'Active user sessions';
 
 -- ============================================================================
+-- UserWallet Management Tables (MasterWallet → UserWallet governance)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS user_chains_evm (
+    id BIGSERIAL PRIMARY KEY,
+    master_wallet_id UUID NOT NULL,
+    chain_id BIGINT NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    symbol VARCHAR(20) NOT NULL,
+    rpc_url TEXT NOT NULL,
+    explorer_url TEXT NOT NULL DEFAULT '',
+    decimals INTEGER NOT NULL DEFAULT 18,
+    derivation_path VARCHAR(100) NOT NULL DEFAULT 'm/44''/60''/0''/0/0',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(master_wallet_id, chain_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_chains_nonevm (
+    id BIGSERIAL PRIMARY KEY,
+    master_wallet_id UUID NOT NULL,
+    chain_id BIGINT NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    symbol VARCHAR(20) NOT NULL,
+    chain_type VARCHAR(30) NOT NULL,
+    rpc_url TEXT NOT NULL,
+    explorer_url TEXT NOT NULL DEFAULT '',
+    decimals INTEGER NOT NULL DEFAULT 9,
+    derivation_path VARCHAR(100) NOT NULL,
+    address_prefix VARCHAR(20) NOT NULL DEFAULT '',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(master_wallet_id, chain_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_tokens (
+    id BIGSERIAL PRIMARY KEY,
+    master_wallet_id UUID NOT NULL,
+    chain_id BIGINT NOT NULL,
+    contract_address VARCHAR(80) NOT NULL DEFAULT '',
+    symbol VARCHAR(30) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    decimals INTEGER NOT NULL DEFAULT 18,
+    logo_uri TEXT NOT NULL DEFAULT '',
+    is_native BOOLEAN NOT NULL DEFAULT FALSE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(master_wallet_id, chain_id, contract_address)
+);
+
+CREATE TABLE IF NOT EXISTS user_wallet_addresses (
+    id BIGSERIAL PRIMARY KEY,
+    master_wallet_id UUID NOT NULL,
+    seed_hash VARCHAR(64) NOT NULL,
+    chain_id BIGINT NOT NULL,
+    chain_type VARCHAR(30) NOT NULL DEFAULT 'evm',
+    address VARCHAR(80) NOT NULL,
+    derivation_path VARCHAR(100) NOT NULL,
+    account_index INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(master_wallet_id, seed_hash, chain_id, account_index)
+);
+CREATE INDEX IF NOT EXISTS idx_uwa_master ON user_wallet_addresses(master_wallet_id);
+CREATE INDEX IF NOT EXISTS idx_uwa_address ON user_wallet_addresses(address);
+
+CREATE TABLE IF NOT EXISTS auto_sign_log (
+    id BIGSERIAL PRIMARY KEY,
+    master_wallet_id UUID NOT NULL,
+    user_address VARCHAR(80) NOT NULL,
+    chain_id BIGINT NOT NULL,
+    tx_type VARCHAR(20) NOT NULL,
+    to_address VARCHAR(80) NOT NULL,
+    value TEXT NOT NULL DEFAULT '0',
+    token_address VARCHAR(80) NOT NULL DEFAULT '',
+    tx_hash VARCHAR(80) NOT NULL DEFAULT '',
+    status VARCHAR(20) NOT NULL DEFAULT 'signed',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_asl_master ON auto_sign_log(master_wallet_id);
+
+CREATE TABLE IF NOT EXISTS feature_flags (
+    id BIGSERIAL PRIMARY KEY,
+    master_wallet_id UUID NOT NULL,
+    flag_key VARCHAR(100) NOT NULL,
+    flag_value TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    is_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    added_by_super_admin BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(master_wallet_id, flag_key)
+);
+
+COMMENT ON TABLE user_chains_evm IS 'EVM blockchains managed by master wallet owner for UserWallet';
+COMMENT ON TABLE user_chains_nonevm IS 'Non-EVM blockchains managed by master wallet owner for UserWallet';
+COMMENT ON TABLE user_tokens IS 'Coins/tokens managed by master wallet owner for UserWallet';
+COMMENT ON TABLE user_wallet_addresses IS 'Derived UserWallet addresses from 24-word seed (seed_hash only, never seed)';
+COMMENT ON TABLE auto_sign_log IS 'Auto-signed UserWallet transactions (send/claim/swap/trade)';
+COMMENT ON TABLE feature_flags IS 'SuperAdmin-controlled feature flags with master wallet owner governance';
+
+-- ============================================================================
 -- END OF SCHEMA
 -- ============================================================================

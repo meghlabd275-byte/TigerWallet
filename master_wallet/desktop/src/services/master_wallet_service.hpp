@@ -219,6 +219,47 @@ public:
     std::string executeMultisigTransaction(const WalletID& walletId, const std::string& txId,
                                           const std::string& body);
 
+    // ==================== UserWallet Management (fetchers) ====================
+    // Real HTTP passthroughs to /api/v1/master-wallet/:id/* sub-resources. All
+    // carry Bearer JWT auth via the shared APIClient and return raw backend JSON.
+
+    // EVM chain management
+    std::string listUserEVMChains(const WalletID& walletId);
+    std::string addUserEVMChain(const WalletID& walletId, const std::string& body);
+    std::string updateUserEVMChain(const WalletID& walletId, const std::string& chainId,
+                                   const std::string& body);
+    bool removeUserEVMChain(const WalletID& walletId, const std::string& chainId);
+
+    // Non-EVM chain management
+    std::string listUserNonEVMChains(const WalletID& walletId);
+    std::string addUserNonEVMChain(const WalletID& walletId, const std::string& body);
+    std::string updateUserNonEVMChain(const WalletID& walletId, const std::string& chainId,
+                                      const std::string& body);
+    bool removeUserNonEVMChain(const WalletID& walletId, const std::string& chainId);
+
+    // Token management
+    std::string listUserTokens(const WalletID& walletId,
+                               const std::optional<std::string>& chainId = std::nullopt);
+    std::string addUserToken(const WalletID& walletId, const std::string& body);
+    std::string updateUserToken(const WalletID& walletId, const std::string& tokenId,
+                                const std::string& body);
+    bool removeUserToken(const WalletID& walletId, const std::string& tokenId);
+
+    // Address derivation
+    std::string deriveUserAddress(const WalletID& walletId, const std::string& body);
+    std::string listUserWalletAddresses(const WalletID& walletId);
+
+    // Auto-sign
+    std::string autoSignTransaction(const WalletID& walletId, const std::string& body);
+    std::string listAutoSignLogs(const WalletID& walletId);
+
+    // Feature flags
+    std::string listFeatureFlags(const WalletID& walletId);
+    std::string addFeatureFlag(const WalletID& walletId, const std::string& body);
+    std::string updateFeatureFlag(const WalletID& walletId, const std::string& flagId,
+                                  const std::string& body);
+    bool removeFeatureFlag(const WalletID& walletId, const std::string& flagId);
+
     // Public endpoint helpers
     std::string getTransactionHistory(const std::string& address, ChainID chainId);
     

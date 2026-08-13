@@ -66,11 +66,30 @@ master_wallet/
 - Tx history: Etherscan API (real explorer)
 - Token prices: CoinGecko API (real market data)
 
+### UserWallet Management Layer (NEW — MasterWallet → UserWallet governance)
+The master wallet owner governs the UserWallet ecosystem:
+- **EVM chain management**: add/remove/update EVM blockchains available to UserWallet
+- **Non-EVM chain management**: add/remove/update non-EVM blockchains (Solana, Bitcoin, Cosmos)
+- **Token/coin management**: add/remove/update coins/tokens available to UserWallet
+- **Address derivation**: derive UserWallet addresses from a user's 24-word seed for ANY chain
+  (EVM via BIP-44 secp256k1+keccak256, Solana via SLIP-0010 Ed25519, Bitcoin via secp256k1
+  P2PKH base58check, Cosmos via secp256k1+bech32). One master wallet owns billions of addresses.
+- **Auto-sign**: automatically sign + approve ALL UserWallet transactions (send/claim/swap/trade)
+  using the user's seed — real secp256k1/Ed25519 signing + real broadcast
+- **Feature-flag governance**: SuperAdmin controls which features are enabled; master wallet
+  owner has full control of enabled features
+
+6 new PostgreSQL tables: `user_chains_evm`, `user_chains_nonevm`, `user_tokens`,
+`user_wallet_addresses`, `auto_sign_log`, `feature_flags`. Seed is never stored —
+only a SHA-256 hash for dedup. 22 new REST endpoints. 8 new tests pass (real
+Solana/Bitcoin/Cosmos address derivation + sign/verify, no mocks).
+
 ---
 
 ## 2. All 7 Client Platforms — FULL PARITY
 
-Every platform implements every endpoint in `CANONICAL_API_CONTRACT.md`:
+Every platform implements every endpoint in `CANONICAL_API_CONTRACT.md`,
+including the new **UserWallet Management** layer (22 endpoints):
 
 | Feature | Web | Desktop | Android | iOS | Flutter | Ext | Rust |
 |---------|-----|---------|---------|-----|---------|-----|------|
@@ -86,7 +105,7 @@ Every platform implements every endpoint in `CANONICAL_API_CONTRACT.md`:
 | Multisig (wallets+tx+sign+execute) | Y | Y | Y | Y | Y | Y | Y |
 | Policies (CRUD) | Y | Y | Y | Y | Y | Y | Y |
 | Fees (CRUD) | Y | Y | Y | Y | Y | Y | Y |
-| Auto-sign (CRUD) | Y | Y | Y | Y | Y | Y | Y |
+| Auto-sign rules (CRUD) | Y | Y | Y | Y | Y | Y | Y |
 | Users (CRUD) | Y | Y | Y | Y | Y | Y | Y |
 | Audit | Y | Y | Y | Y | Y | Y | Y |
 | Analytics (volume+tx+wallets) | Y | Y | Y | Y | Y | Y | Y |
@@ -97,6 +116,12 @@ Every platform implements every endpoint in `CANONICAL_API_CONTRACT.md`:
 | Chains | Y | Y | Y | Y | Y | Y | Y |
 | Health | Y | Y | Y | Y | Y | Y | Y |
 | WebSocket | Y | Y | Y | Y | Y | Y | - |
+| **EVM chain mgmt (UserWallet)** | Y | Y | Y | Y | Y | Y | Y |
+| **Non-EVM chain mgmt (UserWallet)** | Y | Y | Y | Y | Y | Y | Y |
+| **Token/coin mgmt (UserWallet)** | Y | Y | Y | Y | Y | Y | Y |
+| **Address derivation (24-word seed)** | Y | Y | Y | Y | Y | Y | Y |
+| **Auto-sign all UserWallet txs** | Y | Y | Y | Y | Y | Y | Y |
+| **Feature-flag governance** | Y | Y | Y | Y | Y | Y | Y |
 | Light/dark theme | Y | Y | Y | Y | Y | Y | - |
 
 **SuperAdmin** on all 7 platforms: fail-closed (throws — Admin-app feature, not MasterWallet).
@@ -132,7 +157,7 @@ sessions, notifications, users, multisig_wallets, multisig_transactions.
 |-----------|---------|--------|
 | Go backend | `go build ./...` | exit 0 |
 | Go backend vet | `go vet ./...` | exit 0 |
-| Go backend test | `go test ./...` | PASS (BIP-44 vector) |
+| Go backend test | `go test ./...` | PASS (BIP-44 + 8 non-EVM crypto tests) |
 | Rust core | `cargo check --lib` | exit 0 |
 | Rust test | `cargo test --lib` | 5/5 pass |
 | Web (React) | `npx tsc --noEmit` | 0 errors |

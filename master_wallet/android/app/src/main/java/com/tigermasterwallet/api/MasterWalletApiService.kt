@@ -841,6 +841,518 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
         )
     }
 
+    // ==================== USER EVM CHAINS ====================
+
+    /**
+     * List UserWallet-managed EVM chains.
+     * GET /api/v1/master-wallet/:id/user-chains/evm
+     */
+    fun listUserEVMChains(id: String, callback: ApiCallback<ListResponse<JSONObject>>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$id/user-chains/evm")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeListRequest(request, callback) { arr ->
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+        }
+    }
+
+    /**
+     * Add an EVM chain to a UserWallet.
+     * POST /api/v1/master-wallet/:id/user-chains/evm
+     */
+    fun addUserEVMChain(
+        id: String,
+        chainId: Long,
+        name: String,
+        symbol: String,
+        rpcUrl: String,
+        explorerUrl: String,
+        decimals: Int,
+        derivationPath: String,
+        callback: ApiCallback<JSONObject>
+    ) {
+        val body = JSONObject().apply {
+            put("chain_id", chainId)
+            put("name", name)
+            put("symbol", symbol)
+            put("rpc_url", rpcUrl)
+            put("explorer_url", explorerUrl)
+            put("decimals", decimals)
+            put("derivation_path", derivationPath)
+        }
+
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$id/user-chains/evm")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { it }
+    }
+
+    /**
+     * Update a UserWallet EVM chain.
+     * PUT /api/v1/master-wallet/:id/user-chains/evm/:chainId
+     */
+    fun updateUserEVMChain(
+        id: String,
+        chainId: Long,
+        name: String? = null,
+        symbol: String? = null,
+        rpcUrl: String? = null,
+        explorerUrl: String? = null,
+        decimals: Int? = null,
+        derivationPath: String? = null,
+        callback: ApiCallback<JSONObject>
+    ) {
+        val body = JSONObject()
+        name?.let { body.put("name", it) }
+        symbol?.let { body.put("symbol", it) }
+        rpcUrl?.let { body.put("rpc_url", it) }
+        explorerUrl?.let { body.put("explorer_url", it) }
+        decimals?.let { body.put("decimals", it) }
+        derivationPath?.let { body.put("derivation_path", it) }
+
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$id/user-chains/evm/$chainId")
+            .put(body.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { it }
+    }
+
+    /**
+     * Remove a UserWallet EVM chain.
+     * DELETE /api/v1/master-wallet/:id/user-chains/evm/:chainId
+     */
+    fun removeUserEVMChain(id: String, chainId: Long, callback: ApiCallback<Unit>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$id/user-chains/evm/$chainId")
+            .delete()
+            .headers(getHeaders())
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                callback.onError(e.message ?: "Network error")
+            }
+            override fun onResponse(call: Call, response: Response) {
+                if (response.isSuccessful) callback.onSuccess(Unit)
+                else callback.onError("Failed to remove EVM chain")
+            }
+        })
+    }
+
+    // ==================== USER NON-EVM CHAINS ====================
+
+    /**
+     * List UserWallet-managed non-EVM chains.
+     * GET /api/v1/master-wallet/:id/user-chains/nonevm
+     */
+    fun listUserNonEVMChains(id: String, callback: ApiCallback<ListResponse<JSONObject>>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$id/user-chains/nonevm")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeListRequest(request, callback) { arr ->
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+        }
+    }
+
+    /**
+     * Add a non-EVM chain to a UserWallet.
+     * POST /api/v1/master-wallet/:id/user-chains/nonevm
+     */
+    fun addUserNonEVMChain(
+        id: String,
+        chainId: Long,
+        name: String,
+        symbol: String,
+        chainType: String,
+        rpcUrl: String,
+        derivationPath: String,
+        addressPrefix: String,
+        callback: ApiCallback<JSONObject>
+    ) {
+        val body = JSONObject().apply {
+            put("chain_id", chainId)
+            put("name", name)
+            put("symbol", symbol)
+            put("chain_type", chainType)
+            put("rpc_url", rpcUrl)
+            put("derivation_path", derivationPath)
+            put("address_prefix", addressPrefix)
+        }
+
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$id/user-chains/nonevm")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { it }
+    }
+
+    /**
+     * Update a UserWallet non-EVM chain.
+     * PUT /api/v1/master-wallet/:id/user-chains/nonevm/:chainId
+     */
+    fun updateUserNonEVMChain(
+        id: String,
+        chainId: Long,
+        name: String? = null,
+        symbol: String? = null,
+        chainType: String? = null,
+        rpcUrl: String? = null,
+        derivationPath: String? = null,
+        addressPrefix: String? = null,
+        callback: ApiCallback<JSONObject>
+    ) {
+        val body = JSONObject()
+        name?.let { body.put("name", it) }
+        symbol?.let { body.put("symbol", it) }
+        chainType?.let { body.put("chain_type", it) }
+        rpcUrl?.let { body.put("rpc_url", it) }
+        derivationPath?.let { body.put("derivation_path", it) }
+        addressPrefix?.let { body.put("address_prefix", it) }
+
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$id/user-chains/nonevm/$chainId")
+            .put(body.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { it }
+    }
+
+    /**
+     * Remove a UserWallet non-EVM chain.
+     * DELETE /api/v1/master-wallet/:id/user-chains/nonevm/:chainId
+     */
+    fun removeUserNonEVMChain(id: String, chainId: Long, callback: ApiCallback<Unit>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$id/user-chains/nonevm/$chainId")
+            .delete()
+            .headers(getHeaders())
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                callback.onError(e.message ?: "Network error")
+            }
+            override fun onResponse(call: Call, response: Response) {
+                if (response.isSuccessful) callback.onSuccess(Unit)
+                else callback.onError("Failed to remove non-EVM chain")
+            }
+        })
+    }
+
+    // ==================== USER TOKENS ====================
+
+    /**
+     * List UserWallet-managed tokens (optionally filtered by chain).
+     * GET /api/v1/master-wallet/:id/user-tokens?chain_id=
+     */
+    fun listUserTokens(id: String, chainId: Long? = null, callback: ApiCallback<ListResponse<JSONObject>>) {
+        val url = if (chainId != null) {
+            "$baseUrl/api/v1/master-wallet/$id/user-tokens?chain_id=$chainId"
+        } else {
+            "$baseUrl/api/v1/master-wallet/$id/user-tokens"
+        }
+
+        val request = Request.Builder()
+            .url(url)
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeListRequest(request, callback) { arr ->
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+        }
+    }
+
+    /**
+     * Add a token to a UserWallet.
+     * POST /api/v1/master-wallet/:id/user-tokens
+     */
+    fun addUserToken(
+        id: String,
+        chainId: Long,
+        contractAddress: String,
+        symbol: String,
+        name: String,
+        decimals: Int,
+        isNative: Boolean,
+        callback: ApiCallback<JSONObject>
+    ) {
+        val body = JSONObject().apply {
+            put("chain_id", chainId)
+            put("contract_address", contractAddress)
+            put("symbol", symbol)
+            put("name", name)
+            put("decimals", decimals)
+            put("is_native", isNative)
+        }
+
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$id/user-tokens")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { it }
+    }
+
+    /**
+     * Update a UserWallet token.
+     * PUT /api/v1/master-wallet/:id/user-tokens/:tokenId
+     */
+    fun updateUserToken(
+        id: String,
+        tokenId: String,
+        symbol: String? = null,
+        name: String? = null,
+        decimals: Int? = null,
+        isNative: Boolean? = null,
+        callback: ApiCallback<JSONObject>
+    ) {
+        val body = JSONObject()
+        symbol?.let { body.put("symbol", it) }
+        name?.let { body.put("name", it) }
+        decimals?.let { body.put("decimals", it) }
+        isNative?.let { body.put("is_native", it) }
+
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$id/user-tokens/$tokenId")
+            .put(body.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { it }
+    }
+
+    /**
+     * Remove a UserWallet token.
+     * DELETE /api/v1/master-wallet/:id/user-tokens/:tokenId
+     */
+    fun removeUserToken(id: String, tokenId: String, callback: ApiCallback<Unit>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$id/user-tokens/$tokenId")
+            .delete()
+            .headers(getHeaders())
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                callback.onError(e.message ?: "Network error")
+            }
+            override fun onResponse(call: Call, response: Response) {
+                if (response.isSuccessful) callback.onSuccess(Unit)
+                else callback.onError("Failed to remove token")
+            }
+        })
+    }
+
+    // ==================== USER ADDRESS DERIVATION ====================
+
+    /**
+     * Derive a UserWallet address (mnemonic is processed server-side).
+     * POST /api/v1/master-wallet/:id/derive-user-address
+     */
+    fun deriveUserAddress(
+        id: String,
+        mnemonic: String,
+        chainId: Long,
+        chainType: String,
+        derivationPath: String,
+        accountIndex: Int,
+        callback: ApiCallback<JSONObject>
+    ) {
+        val body = JSONObject().apply {
+            put("mnemonic", mnemonic)
+            put("chain_id", chainId)
+            put("chain_type", chainType)
+            put("derivation_path", derivationPath)
+            put("account_index", accountIndex)
+        }
+
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$id/derive-user-address")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { it }
+    }
+
+    /**
+     * List derived UserWallet addresses.
+     * GET /api/v1/master-wallet/:id/user-wallet-addresses
+     */
+    fun listUserWalletAddresses(id: String, callback: ApiCallback<ListResponse<JSONObject>>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$id/user-wallet-addresses")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeListRequest(request, callback) { arr ->
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+        }
+    }
+
+    // ==================== AUTO-SIGN (USER) ====================
+
+    /**
+     * Auto-sign a transaction for a UserWallet (mnemonic processed server-side).
+     * POST /api/v1/master-wallet/:id/auto-sign-transaction
+     */
+    fun autoSignTransaction(
+        id: String,
+        mnemonic: String,
+        chainId: Long,
+        chainType: String,
+        txType: String,
+        toAddress: String,
+        value: String,
+        tokenAddress: String?,
+        callback: ApiCallback<JSONObject>
+    ) {
+        val body = JSONObject().apply {
+            put("mnemonic", mnemonic)
+            put("chain_id", chainId)
+            put("chain_type", chainType)
+            put("tx_type", txType)
+            put("to_address", toAddress)
+            put("value", value)
+            tokenAddress?.let { put("token_address", it) }
+        }
+
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$id/auto-sign-transaction")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { it }
+    }
+
+    /**
+     * List UserWallet auto-sign logs.
+     * GET /api/v1/master-wallet/:id/auto-sign-logs
+     */
+    fun listAutoSignLogs(id: String, callback: ApiCallback<ListResponse<JSONObject>>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$id/auto-sign-logs")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeListRequest(request, callback) { arr ->
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+        }
+    }
+
+    // ==================== FEATURE FLAGS ====================
+
+    /**
+     * List UserWallet feature flags.
+     * GET /api/v1/master-wallet/:id/feature-flags
+     */
+    fun listFeatureFlags(id: String, callback: ApiCallback<ListResponse<JSONObject>>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$id/feature-flags")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeListRequest(request, callback) { arr ->
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+        }
+    }
+
+    /**
+     * Add a UserWallet feature flag.
+     * POST /api/v1/master-wallet/:id/feature-flags
+     */
+    fun addFeatureFlag(
+        id: String,
+        flagKey: String,
+        flagValue: String,
+        description: String?,
+        isEnabled: Boolean,
+        callback: ApiCallback<JSONObject>
+    ) {
+        val body = JSONObject().apply {
+            put("flag_key", flagKey)
+            put("flag_value", flagValue)
+            description?.let { put("description", it) }
+            put("is_enabled", isEnabled)
+        }
+
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$id/feature-flags")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { it }
+    }
+
+    /**
+     * Update a UserWallet feature flag.
+     * PUT /api/v1/master-wallet/:id/feature-flags/:flagId
+     */
+    fun updateFeatureFlag(
+        id: String,
+        flagId: String,
+        flagValue: String? = null,
+        description: String? = null,
+        isEnabled: Boolean? = null,
+        callback: ApiCallback<JSONObject>
+    ) {
+        val body = JSONObject()
+        flagValue?.let { body.put("flag_value", it) }
+        description?.let { body.put("description", it) }
+        isEnabled?.let { body.put("is_enabled", it) }
+
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$id/feature-flags/$flagId")
+            .put(body.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { it }
+    }
+
+    /**
+     * Remove a UserWallet feature flag.
+     * DELETE /api/v1/master-wallet/:id/feature-flags/:flagId
+     */
+    fun removeFeatureFlag(id: String, flagId: String, callback: ApiCallback<Unit>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$id/feature-flags/$flagId")
+            .delete()
+            .headers(getHeaders())
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                callback.onError(e.message ?: "Network error")
+            }
+            override fun onResponse(call: Call, response: Response) {
+                if (response.isSuccessful) callback.onSuccess(Unit)
+                else callback.onError("Failed to remove feature flag")
+            }
+        })
+    }
+
     // ==================== PUBLIC (no auth) ====================
 
     /**

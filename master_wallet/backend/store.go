@@ -400,6 +400,12 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 			return fmt.Errorf("migration failed: %w\nstatement: %s", err, stmt)
 		}
 	}
+	// UserWallet management tables (chains, tokens, addresses, auto-sign, feature flags).
+	for _, stmt := range userWalletMigrations() {
+		if _, err := pool.Exec(ctx, stmt); err != nil {
+			return fmt.Errorf("user-wallet migration failed: %w\nstatement: %s", err, stmt)
+		}
+	}
 	return nil
 }
 

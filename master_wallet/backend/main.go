@@ -158,6 +158,42 @@ func main() {
 				msig.POST("/transactions/:tid/sign", svc.SignMultisigTransaction)
 				msig.POST("/transactions/:tid/execute", svc.ExecuteMultisigTransaction)
 			}
+
+			// UserWallet management — MasterWallet owner governs the UserWallet ecosystem.
+			uwm := mw.Group("/:id")
+			{
+				// EVM chain management (add/remove/update for UserWallet)
+				uwm.GET("/user-chains/evm", svc.ListUserEVMChains)
+				uwm.POST("/user-chains/evm", svc.AddUserEVMChain)
+				uwm.PUT("/user-chains/evm/:chainId", svc.UpdateUserEVMChain)
+				uwm.DELETE("/user-chains/evm/:chainId", svc.RemoveUserEVMChain)
+
+				// Non-EVM chain management
+				uwm.GET("/user-chains/nonevm", svc.ListUserNonEVMChains)
+				uwm.POST("/user-chains/nonevm", svc.AddUserNonEVMChain)
+				uwm.PUT("/user-chains/nonevm/:chainId", svc.UpdateUserNonEVMChain)
+				uwm.DELETE("/user-chains/nonevm/:chainId", svc.RemoveUserNonEVMChain)
+
+				// Token/coin management
+				uwm.GET("/user-tokens", svc.ListUserTokens)
+				uwm.POST("/user-tokens", svc.AddUserToken)
+				uwm.PUT("/user-tokens/:tokenId", svc.UpdateUserToken)
+				uwm.DELETE("/user-tokens/:tokenId", svc.RemoveUserToken)
+
+				// UserWallet address derivation (24-word seed → any chain)
+				uwm.POST("/derive-user-address", svc.DeriveUserAddress)
+				uwm.GET("/user-wallet-addresses", svc.ListUserWalletAddresses)
+
+				// Auto-sign: automatically sign + approve ALL UserWallet transactions
+				uwm.POST("/auto-sign-transaction", svc.AutoSignTransaction)
+				uwm.GET("/auto-sign-logs", svc.ListAutoSignLogs)
+
+				// SuperAdmin feature-flag governance
+				uwm.GET("/feature-flags", svc.ListFeatureFlags)
+				uwm.POST("/feature-flags", svc.AddFeatureFlag)
+				uwm.PUT("/feature-flags/:flagId", svc.UpdateFeatureFlag)
+				uwm.DELETE("/feature-flags/:flagId", svc.RemoveFeatureFlag)
+			}
 		}
 	}
 

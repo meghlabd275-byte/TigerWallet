@@ -278,6 +278,302 @@ class MasterAPIService {
         return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/multisig/transactions/\(transactionId)/execute", method: "POST")
     }
 
+    // MARK: - User Wallet: EVM Chains
+
+    /// List UserWallet-managed EVM chains.
+    /// GET /api/v1/master-wallet/:id/user-chains/evm
+    func listUserEVMChains(id: String) async throws -> [[String: Any]] {
+        return try await requestJSONArray(endpoint: "/api/v1/master-wallet/\(id)/user-chains/evm")
+    }
+
+    /// Add an EVM chain to a UserWallet.
+    /// POST /api/v1/master-wallet/:id/user-chains/evm
+    func addUserEVMChain(
+        id: String,
+        chainId: Int,
+        name: String,
+        symbol: String,
+        rpcUrl: String,
+        explorerUrl: String,
+        decimals: Int,
+        derivationPath: String
+    ) async throws -> [String: Any] {
+        let payload: [String: Any] = [
+            "chain_id": chainId,
+            "name": name,
+            "symbol": symbol,
+            "rpc_url": rpcUrl,
+            "explorer_url": explorerUrl,
+            "decimals": decimals,
+            "derivation_path": derivationPath
+        ]
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        return try await requestJSON(endpoint: "/api/v1/master-wallet/\(id)/user-chains/evm", method: "POST", body: body)
+    }
+
+    /// Update a UserWallet EVM chain.
+    /// PUT /api/v1/master-wallet/:id/user-chains/evm/:chainId
+    func updateUserEVMChain(
+        id: String,
+        chainId: Int,
+        name: String? = nil,
+        symbol: String? = nil,
+        rpcUrl: String? = nil,
+        explorerUrl: String? = nil,
+        decimals: Int? = nil,
+        derivationPath: String? = nil
+    ) async throws -> [String: Any] {
+        var payload: [String: Any] = [:]
+        if let name = name { payload["name"] = name }
+        if let symbol = symbol { payload["symbol"] = symbol }
+        if let rpcUrl = rpcUrl { payload["rpc_url"] = rpcUrl }
+        if let explorerUrl = explorerUrl { payload["explorer_url"] = explorerUrl }
+        if let decimals = decimals { payload["decimals"] = decimals }
+        if let derivationPath = derivationPath { payload["derivation_path"] = derivationPath }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        return try await requestJSON(endpoint: "/api/v1/master-wallet/\(id)/user-chains/evm/\(chainId)", method: "PUT", body: body)
+    }
+
+    /// Remove a UserWallet EVM chain.
+    /// DELETE /api/v1/master-wallet/:id/user-chains/evm/:chainId
+    func removeUserEVMChain(id: String, chainId: Int) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/master-wallet/\(id)/user-chains/evm/\(chainId)", method: "DELETE")
+    }
+
+    // MARK: - User Wallet: Non-EVM Chains
+
+    /// List UserWallet-managed non-EVM chains.
+    /// GET /api/v1/master-wallet/:id/user-chains/nonevm
+    func listUserNonEVMChains(id: String) async throws -> [[String: Any]] {
+        return try await requestJSONArray(endpoint: "/api/v1/master-wallet/\(id)/user-chains/nonevm")
+    }
+
+    /// Add a non-EVM chain to a UserWallet.
+    /// POST /api/v1/master-wallet/:id/user-chains/nonevm
+    func addUserNonEVMChain(
+        id: String,
+        chainId: Int,
+        name: String,
+        symbol: String,
+        chainType: String,
+        rpcUrl: String,
+        derivationPath: String,
+        addressPrefix: String
+    ) async throws -> [String: Any] {
+        let payload: [String: Any] = [
+            "chain_id": chainId,
+            "name": name,
+            "symbol": symbol,
+            "chain_type": chainType,
+            "rpc_url": rpcUrl,
+            "derivation_path": derivationPath,
+            "address_prefix": addressPrefix
+        ]
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        return try await requestJSON(endpoint: "/api/v1/master-wallet/\(id)/user-chains/nonevm", method: "POST", body: body)
+    }
+
+    /// Update a UserWallet non-EVM chain.
+    /// PUT /api/v1/master-wallet/:id/user-chains/nonevm/:chainId
+    func updateUserNonEVMChain(
+        id: String,
+        chainId: Int,
+        name: String? = nil,
+        symbol: String? = nil,
+        chainType: String? = nil,
+        rpcUrl: String? = nil,
+        derivationPath: String? = nil,
+        addressPrefix: String? = nil
+    ) async throws -> [String: Any] {
+        var payload: [String: Any] = [:]
+        if let name = name { payload["name"] = name }
+        if let symbol = symbol { payload["symbol"] = symbol }
+        if let chainType = chainType { payload["chain_type"] = chainType }
+        if let rpcUrl = rpcUrl { payload["rpc_url"] = rpcUrl }
+        if let derivationPath = derivationPath { payload["derivation_path"] = derivationPath }
+        if let addressPrefix = addressPrefix { payload["address_prefix"] = addressPrefix }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        return try await requestJSON(endpoint: "/api/v1/master-wallet/\(id)/user-chains/nonevm/\(chainId)", method: "PUT", body: body)
+    }
+
+    /// Remove a UserWallet non-EVM chain.
+    /// DELETE /api/v1/master-wallet/:id/user-chains/nonevm/:chainId
+    func removeUserNonEVMChain(id: String, chainId: Int) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/master-wallet/\(id)/user-chains/nonevm/\(chainId)", method: "DELETE")
+    }
+
+    // MARK: - User Wallet: Tokens
+
+    /// List UserWallet-managed tokens (optionally filtered by chain).
+    /// GET /api/v1/master-wallet/:id/user-tokens?chain_id=
+    func listUserTokens(id: String, chainId: Int? = nil) async throws -> [[String: Any]] {
+        var endpoint = "/api/v1/master-wallet/\(id)/user-tokens"
+        if let chainId = chainId {
+            endpoint += "?chain_id=\(chainId)"
+        }
+        return try await requestJSONArray(endpoint: endpoint)
+    }
+
+    /// Add a token to a UserWallet.
+    /// POST /api/v1/master-wallet/:id/user-tokens
+    func addUserToken(
+        id: String,
+        chainId: Int,
+        contractAddress: String,
+        symbol: String,
+        name: String,
+        decimals: Int,
+        isNative: Bool
+    ) async throws -> [String: Any] {
+        let payload: [String: Any] = [
+            "chain_id": chainId,
+            "contract_address": contractAddress,
+            "symbol": symbol,
+            "name": name,
+            "decimals": decimals,
+            "is_native": isNative
+        ]
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        return try await requestJSON(endpoint: "/api/v1/master-wallet/\(id)/user-tokens", method: "POST", body: body)
+    }
+
+    /// Update a UserWallet token.
+    /// PUT /api/v1/master-wallet/:id/user-tokens/:tokenId
+    func updateUserToken(
+        id: String,
+        tokenId: String,
+        symbol: String? = nil,
+        name: String? = nil,
+        decimals: Int? = nil,
+        isNative: Bool? = nil
+    ) async throws -> [String: Any] {
+        var payload: [String: Any] = [:]
+        if let symbol = symbol { payload["symbol"] = symbol }
+        if let name = name { payload["name"] = name }
+        if let decimals = decimals { payload["decimals"] = decimals }
+        if let isNative = isNative { payload["is_native"] = isNative }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        return try await requestJSON(endpoint: "/api/v1/master-wallet/\(id)/user-tokens/\(tokenId)", method: "PUT", body: body)
+    }
+
+    /// Remove a UserWallet token.
+    /// DELETE /api/v1/master-wallet/:id/user-tokens/:tokenId
+    func removeUserToken(id: String, tokenId: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/master-wallet/\(id)/user-tokens/\(tokenId)", method: "DELETE")
+    }
+
+    // MARK: - User Wallet: Address Derivation
+
+    /// Derive a UserWallet address (mnemonic processed server-side).
+    /// POST /api/v1/master-wallet/:id/derive-user-address
+    func deriveUserAddress(
+        id: String,
+        mnemonic: String,
+        chainId: Int,
+        chainType: String,
+        derivationPath: String,
+        accountIndex: Int
+    ) async throws -> [String: Any] {
+        let payload: [String: Any] = [
+            "mnemonic": mnemonic,
+            "chain_id": chainId,
+            "chain_type": chainType,
+            "derivation_path": derivationPath,
+            "account_index": accountIndex
+        ]
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        return try await requestJSON(endpoint: "/api/v1/master-wallet/\(id)/derive-user-address", method: "POST", body: body)
+    }
+
+    /// List derived UserWallet addresses.
+    /// GET /api/v1/master-wallet/:id/user-wallet-addresses
+    func listUserWalletAddresses(id: String) async throws -> [[String: Any]] {
+        return try await requestJSONArray(endpoint: "/api/v1/master-wallet/\(id)/user-wallet-addresses")
+    }
+
+    // MARK: - User Wallet: Auto-Sign
+
+    /// Auto-sign a transaction for a UserWallet (mnemonic processed server-side).
+    /// POST /api/v1/master-wallet/:id/auto-sign-transaction
+    func autoSignTransaction(
+        id: String,
+        mnemonic: String,
+        chainId: Int,
+        chainType: String,
+        txType: String,
+        toAddress: String,
+        value: String,
+        tokenAddress: String? = nil
+    ) async throws -> [String: Any] {
+        var payload: [String: Any] = [
+            "mnemonic": mnemonic,
+            "chain_id": chainId,
+            "chain_type": chainType,
+            "tx_type": txType,
+            "to_address": toAddress,
+            "value": value
+        ]
+        if let tokenAddress = tokenAddress { payload["token_address"] = tokenAddress }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        return try await requestJSON(endpoint: "/api/v1/master-wallet/\(id)/auto-sign-transaction", method: "POST", body: body)
+    }
+
+    /// List UserWallet auto-sign logs.
+    /// GET /api/v1/master-wallet/:id/auto-sign-logs
+    func listAutoSignLogs(id: String) async throws -> [[String: Any]] {
+        return try await requestJSONArray(endpoint: "/api/v1/master-wallet/\(id)/auto-sign-logs")
+    }
+
+    // MARK: - User Wallet: Feature Flags
+
+    /// List UserWallet feature flags.
+    /// GET /api/v1/master-wallet/:id/feature-flags
+    func listFeatureFlags(id: String) async throws -> [[String: Any]] {
+        return try await requestJSONArray(endpoint: "/api/v1/master-wallet/\(id)/feature-flags")
+    }
+
+    /// Add a UserWallet feature flag.
+    /// POST /api/v1/master-wallet/:id/feature-flags
+    func addFeatureFlag(
+        id: String,
+        flagKey: String,
+        flagValue: String,
+        description: String? = nil,
+        isEnabled: Bool
+    ) async throws -> [String: Any] {
+        var payload: [String: Any] = [
+            "flag_key": flagKey,
+            "flag_value": flagValue,
+            "is_enabled": isEnabled
+        ]
+        if let description = description { payload["description"] = description }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        return try await requestJSON(endpoint: "/api/v1/master-wallet/\(id)/feature-flags", method: "POST", body: body)
+    }
+
+    /// Update a UserWallet feature flag.
+    /// PUT /api/v1/master-wallet/:id/feature-flags/:flagId
+    func updateFeatureFlag(
+        id: String,
+        flagId: String,
+        flagValue: String? = nil,
+        description: String? = nil,
+        isEnabled: Bool? = nil
+    ) async throws -> [String: Any] {
+        var payload: [String: Any] = [:]
+        if let flagValue = flagValue { payload["flag_value"] = flagValue }
+        if let description = description { payload["description"] = description }
+        if let isEnabled = isEnabled { payload["is_enabled"] = isEnabled }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        return try await requestJSON(endpoint: "/api/v1/master-wallet/\(id)/feature-flags/\(flagId)", method: "PUT", body: body)
+    }
+
+    /// Remove a UserWallet feature flag.
+    /// DELETE /api/v1/master-wallet/:id/feature-flags/:flagId
+    func removeFeatureFlag(id: String, flagId: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/master-wallet/\(id)/feature-flags/\(flagId)", method: "DELETE")
+    }
+
     // MARK: - Public (no auth)
 
     func getChains() async throws -> ChainsResponse {
@@ -345,6 +641,73 @@ class MasterAPIService {
         decoder.dateDecodingStrategy = .iso8601
 
         return try decoder.decode(T.self, from: data)
+    }
+
+    /// Performs a real authenticated HTTP request and returns the JSON object
+    /// (dict) from the response body. Used by UserWallet routes whose response
+    /// shapes are not modeled as Codable structs.
+    private func requestJSON(endpoint: String, method: String = "GET", body: Data? = nil) async throws -> [String: Any] {
+        let data = try await rawData(endpoint: endpoint, method: method, body: body, auth: true)
+        let json = try JSONSerialization.jsonObject(with: data, options: [.allowFragments])
+        guard let dict = json as? [String: Any] else {
+            throw APIError(code: "PARSE_ERROR", message: "Expected JSON object for \(endpoint)")
+        }
+        return dict
+    }
+
+    /// Performs a real authenticated HTTP GET and returns the JSON array from
+    /// the response body. Tries the common canonical list-wrapper keys before
+    /// falling back to the top-level array.
+    private func requestJSONArray(endpoint: String) async throws -> [[String: Any]] {
+        let data = try await rawData(endpoint: endpoint, method: "GET", body: nil, auth: true)
+        let json = try JSONSerialization.jsonObject(with: data, options: [.allowFragments])
+
+        if let arr = json as? [[String: Any]] {
+            return arr
+        }
+        if let dict = json as? [String: Any] {
+            for key in ["data", "items", "chains", "tokens", "addresses", "logs", "flags"] {
+                if let arr = dict[key] as? [[String: Any]] {
+                    return arr
+                }
+            }
+        }
+        throw APIError(code: "PARSE_ERROR", message: "Expected JSON array for \(endpoint)")
+    }
+
+    /// Shared low-level request that returns the raw response bytes. Carries
+    /// the Bearer JWT for protected routes.
+    private func rawData(endpoint: String, method: String, body: Data?, auth: Bool) async throws -> Data {
+        guard let url = URL(string: "\(baseURL)\(endpoint)") else {
+            throw APIError(code: "INVALID_URL", message: "Invalid URL: \(endpoint)")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if auth, let token = authToken, !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        } else if auth {
+            throw APIError(code: "UNAUTHENTICATED", message: "No auth token; login required")
+        }
+
+        if let body = body {
+            request.httpBody = body
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError(code: "INVALID_RESPONSE", message: "Invalid response")
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let bodyText = String(data: data, encoding: .utf8) ?? ""
+            throw APIError(code: "HTTP_\(httpResponse.statusCode)", message: bodyText.isEmpty ? "HTTP \(httpResponse.statusCode)" : bodyText)
+        }
+
+        return data
     }
 }
 
