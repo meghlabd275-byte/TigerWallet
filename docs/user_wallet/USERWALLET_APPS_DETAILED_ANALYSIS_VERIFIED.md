@@ -96,6 +96,26 @@ Findings:
 - No SQLite anywhere in the repo (confirmed by repo-wide audit). All DBs are
   PostgreSQL + Redis.
 
+## Backend/frontend parity — NEW Go service HTTP servers + proxy routes (2026-08-12)
+
+Four Go services (airdrop, earn, coupon, red_packets) had real business
+logic but no `main.go` HTTP server — they were libraries only. Now each has
+a `main.go` (stdlib `net/http`) exposing its methods as REST endpoints:
+
+| Service | Port | Endpoints |
+|---------|------|-----------|
+| `go/airdrop_service` | :8465 | `GET/POST /api/v1/airdrop/campaigns`, `POST /api/v1/airdrop/claim`, `GET /api/v1/airdrop/campaigns/{id}` |
+| `go/earn_service` | :8466 | `GET /api/v1/earn/products`, `POST /api/v1/earn/{products/create,deposit,withdraw,claim}`, `GET /api/v1/earn/deposits` |
+| `go/coupon_service` | :8467 | `POST /api/v1/coupon/{validate,create}`, `GET /api/v1/coupon/{code}` |
+| `go/red_packets_service` | :8468 | `POST /api/v1/red-packets/{create,claim}`, `GET /api/v1/red-packets/{id}` |
+
+Corresponding frontend proxy routes added (all forward to the real backends):
+`/api/v1/{airdrop/*, earn/*, coupon/validate, red-packets/*}` plus
+`/api/v1/{wallet/create,wallet/import,wallet/list,wallet/send}` → wallet_api,
+`/api/v1/{copy-trading/start, perpetual/open, perpetual/close,
+insurance/coverage, multisig/create, multisig/sign}` → their respective Go
+services. All build clean (Go build+vet exit 0; TSC 0 errors).
+
 <!-- END VERIFICATION STATUS -->
 
 # TigerWallet UserWallet Applications — Verified Full Fetchers & Functionality Inventory

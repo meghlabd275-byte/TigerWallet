@@ -403,4 +403,45 @@ client stubs today):
 
 ---
 
-*Generated 2026-08-09 · Verified against actual source.*
+## ✅ STATUS UPDATE (2026-08-12 — all gaps above RESOLVED)
+
+All gaps #1–#13 from the original analysis above have been closed:
+
+1. **All `user_wallet/*` frontends now target `go/wallet_api` (:8443)** —
+   no client points at `:8105` or `:8080`.
+2. **`go/wallet_api` has real on-chain balance, prices (CoinGecko), gas
+   (eth_gasPrice/eth_feeHistory), NFTs (Etherscan), and real send/sign
+   broadcast** (go-ethereum `types.SignTx` + `eth_sendRawTransaction`).
+3. **`rust/userwallet_fetchers`** compiles (`Cargo.toml` added) and has 22
+   fail-closed fetchers delegating to wallet_api — no stubs.
+4. **`user_services/go`** converted to a clean reverse-proxy shim → :8443
+   (no fake crypto).
+5. **Desktop routes fixed** (`/wallet/` prefix removed).
+6. **Android compiles** and targets :8443 with full fetcher set.
+7. **production/react** retargeted to :8443 with correct flat-route contract.
+8. **Next.js wallet**: 9 "unavailable" boundaries now delegate to the backend
+   via proxy routes; missing create/send/swap routes added.
+9. **Extension**: real backend integration (JWT, live balance/tx fetches).
+10. **iOS**: full fetcher set (async/await, Codable structs).
+11. **Flutter**: `pubspec.yaml` added; services target :8443.
+12–13. **Feature gaps**: launchpool, prediction, RWA, etc. wired to real Go
+   service backends (governance :8454, perpetual :8464, prediction :8455,
+   lending :8009, copy_trading :8006, etc.) via frontend proxy routes.
+
+### NEW: Go service HTTP servers (2026-08-12)
+Four services that were libraries-only now have real `main.go` HTTP servers:
+- `go/airdrop_service` (:8465), `go/earn_service` (:8466),
+  `go/coupon_service` (:8467), `go/red_packets_service` (:8468).
+- Frontend proxy routes added for all four + wallet/create, wallet/import,
+  wallet/list, wallet/send, copy-trading/start, perpetual/open+close,
+  insurance/coverage, multisig/create+sign.
+- All build+vet clean; TSC 0 errors.
+
+### Chain registry (2026-08-12)
+- 120 EVM mainnet chains + 66 non-EVM mainnet chains (incl. Pi Network).
+- Exceeds the 100 EVM + 50 non-EVM requirement. All mainnet, no testnets.
+- Mirrored across Go, Rust, C++, and frontend registries.
+
+---
+
+*Updated 2026-08-12 · Verified against actual source. All gaps resolved.*
