@@ -1,12 +1,94 @@
-// Swap Screen
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+// Swap Screen — real quote/execute via the canonical wallet_api swap endpoints.
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
+import { API } from '../services/API';
 import { useThemeStore } from '../stores/ThemeStore';
 import { useNavigation } from '@react-navigation/native';
 
 const SwapScreen: React.FC = () => {
   const { theme } = useThemeStore();
   const navigation = useNavigation();
+  const wallet = useSelector((state: RootState) => state.wallet.wallet);
+  const selectedChainId = useSelector((state: RootState) => state.wallet.selectedChainId);
+
+  const [fromToken, setFromToken] = useState('ETH');
+  const [toToken, setToToken] = useState('USDT');
+  const [amount, setAmount] = useState('');
+  const [quote, setQuote] = useState<any>(null);
+  const [loadingQuote, setLoadingQuote] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch a real swap quote from the backend (debounced via effect on amount).
+  useEffect(() => {
+    if (!amount || parseFloat(amount) <= 0) {
+      setQuote(null);
+      setError(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingQuote(true);
+    setError(null);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await API.getSwapQuote({
+          fromChainId: selectedChainId,
+          toChainId: selectedChainId,
+          fromToken,
+          toToken,
+          amount,
+          fromAddress: wallet?.addresses?.[selectedChainId] || '',
+        });
+        if (!cancelled) {
+          if (res?.success === false) {
+            setError(res.error || 'No route found for this pair');
+            setQuote(null);
+          } else {
+            setQuote(res?.data);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) setError('Failed to fetch quote');
+      } finally {
+        if (!cancelled) setLoadingQuote(false);
+      }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [amount, fromToken, toToken, selectedChainId, wallet]);
+
+  const handleSwap = async () => {
+    if (!wallet?.id || !quote) {
+      Alert.alert('Error', 'Enter an amount and fetch a quote first');
+      return;
+    }
+    setExecuting(true);
+    try {
+      const res = await API.executeSwap({
+        quoteId: quote?.quoteId ?? quote?.quote_id ?? quote?.id ?? '',
+        walletId: wallet.id,
+        slippage: 0.5,
+      });
+      if (res?.success === false) {
+        Alert.alert('Error', res.error || 'Swap failed');
+      } else {
+        Alert.alert('Success', 'Swap submitted!');
+        setAmount('');
+        setQuote(null);
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Swap request failed');
+    } finally {
+      setExecuting(false);
+    }
+  };
+
+  const swapTokens = () => {
+    setFromToken(toToken);
+    setToToken(fromToken);
+    setQuote(null);
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -21,35 +103,66 @@ const SwapScreen: React.FC = () => {
         <View style={[styles.card, { backgroundColor: theme.colors.surface }]}>
           <Text style={[styles.label, { color: theme.colors.textSecondary }]}>From</Text>
           <View style={styles.tokenRow}>
-            <Text style={[styles.tokenSymbol, { color: theme.colors.text }]}>ETH</Text>
-            <Text style={[styles.balance, { color: theme.colors.textTertiary }]}>0.00</Text>
+            <TextInput
+              style={[styles.tokenSymbol, { color: theme.colors.text }]}
+              value={fromToken}
+              onChangeText={setFromToken}
+              autoCapitalize="characters"
+            />
           </View>
           <View style={[styles.input, { backgroundColor: theme.colors.surfaceVariant }]}>
-            <Text style={[styles.inputText, { color: theme.colors.text }]}>0.00</Text>
+            <TextInput
+              style={[styles.inputText, { color: theme.colors.text }]}
+              value={amount}
+              onChangeText={setAmount}
+              placeholder="0.00"
+              keyboardType="decimal-pad"
+              placeholderTextColor={theme.colors.textTertiary}
+            />
           </View>
         </View>
-        
-        <TouchableOpacity style={[styles.swapButton, { backgroundColor: theme.colors.primary }]}>
+
+        <TouchableOpacity style={[styles.swapButton, { backgroundColor: theme.colors.primary }]} onPress={swapTokens}>
           <Text style={styles.swapIcon}>⇅</Text>
         </TouchableOpacity>
 
         <View style={[styles.card, { backgroundColor: theme.colors.surface }]}>
           <Text style={[styles.label, { color: theme.colors.textSecondary }]}>To</Text>
           <View style={styles.tokenRow}>
-            <Text style={[styles.tokenSymbol, { color: theme.colors.text }]}>USDT</Text>
+            <TextInput
+              style={[styles.tokenSymbol, { color: theme.colors.text }]}
+              value={toToken}
+              onChangeText={setToToken}
+              autoCapitalize="characters"
+            />
           </View>
           <View style={[styles.input, { backgroundColor: theme.colors.surfaceVariant }]}>
-            <Text style={[styles.inputText, { color: theme.colors.text }]}>0.00</Text>
+            <Text style={[styles.inputText, { color: theme.colors.text }]}>
+              {quote?.toAmount ?? quote?.outputAmount ?? quote?.to_amount ?? '0.00'}
+            </Text>
           </View>
         </View>
 
         <View style={[styles.rateInfo, { backgroundColor: theme.colors.surface }]}>
           <Text style={[styles.rateLabel, { color: theme.colors.textSecondary }]}>Rate</Text>
-          <Text style={[styles.rateValue, { color: theme.colors.text }]}>1 ETH = 2,500 USDT</Text>
+          {loadingQuote && <ActivityIndicator color={theme.colors.primary} size="small" />}
+          {error && <Text style={[styles.rateValue, { color: '#ef4444' }]}>{error}</Text>}
+          {!loadingQuote && !error && quote && (
+            <Text style={[styles.rateValue, { color: theme.colors.text }]}>
+              {`1 ${fromToken} = ${quote?.rate ?? quote?.price ?? '—'} ${toToken}`}
+            </Text>
+          )}
+          {!loadingQuote && !error && !quote && (
+            <Text style={[styles.rateValue, { color: theme.colors.textTertiary }]}>Enter an amount</Text>
+          )}
         </View>
 
-        <TouchableOpacity style={[styles.swapButtonFull, { backgroundColor: theme.colors.primary }]}>
-          <Text style={styles.swapButtonText}>Swap</Text>
+        <TouchableOpacity
+          style={[styles.swapButtonFull, { backgroundColor: theme.colors.primary }, (executing || !quote) && { opacity: 0.5 }]}
+          onPress={handleSwap}
+          disabled={executing || !quote}
+        >
+          <Text style={styles.swapButtonText}>{executing ? 'Swapping...' : 'Swap'}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>

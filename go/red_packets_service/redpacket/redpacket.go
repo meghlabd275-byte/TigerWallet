@@ -238,6 +238,36 @@ func (s *RedPacketService) GetUserClaims(ctx context.Context, userID string) ([]
 	return result, nil
 }
 
+// GetSentPackets returns all red packets created by the given user.
+func (s *RedPacketService) GetSentPackets(ctx context.Context, userID string) ([]*RedPacket, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]*RedPacket, 0)
+	for _, packet := range s.packets {
+		if packet.SenderID == userID {
+			result = append(result, packet)
+		}
+	}
+	return result, nil
+}
+
+// GetReceivedPackets returns all red packets the given user has claimed.
+func (s *RedPacketService) GetReceivedPackets(ctx context.Context, userID string) ([]*RedPacket, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]*RedPacket, 0)
+	for _, claim := range s.claims {
+		if claim.ClaimerID == userID {
+			if packet, ok := s.packets[claim.PacketID]; ok {
+				result = append(result, packet)
+			}
+		}
+	}
+	return result, nil
+}
+
 func (r *RedPacket) ToJSON() (string, error) {
 	data, err := json.Marshal(r)
 	if err != nil {

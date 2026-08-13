@@ -62,8 +62,11 @@ interface BundleStatus {
 // API Service
 // ================================================================================
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_AA_API_URL || 'http://localhost:8443/v1';
+const API_BASE_URL = typeof window !== 'undefined' ? '' : (process.env.BACKEND_URL || 'http://localhost:8081');
 
+// The AccountAbstractionAPI talks to the real ERC-4337 bundler
+// (account_abstraction/go service on :8081) via same-origin Next.js proxy
+// routes under /api/v1/aa/. No fabricated hashes / mock bundles.
 class AccountAbstractionAPI {
   private baseUrl: string;
 
@@ -72,10 +75,12 @@ class AccountAbstractionAPI {
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+    const response = await fetch(`${this.baseUrl}/api/v1/aa${endpoint}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers,
       },
     });

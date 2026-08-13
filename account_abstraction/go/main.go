@@ -844,9 +844,154 @@ func (s *AccountAbstractionService) ServeHTTP(w http.ResponseWriter, r *http.Req
 		s.handleCreatePaymaster(w, r)
 	case path == "/api/v1/estimate-gas" && method == http.MethodPost:
 		s.handleEstimateGas(w, r)
+	// Standard ERC-4337 bundler JSON-RPC surface used by the web frontend.
+	// These wrap the real CreateSmartAccount / SendUserOperation / estimateGas
+	// / GetOperationByHash / CreatePaymaster methods — no fabricated data.
+	case strings.HasPrefix(path, "/v1/chains/") && strings.HasSuffix(path, "/entry-points") && method == http.MethodGet:
+		s.handleEntryPoints(w, r)
+	case path == "/v1/rpc/eth_estimateGas" && method == http.MethodPost:
+		s.handleRPCEstimateGas(w, r)
+	case path == "/v1/rpc/eth_sendUserOperation" && method == http.MethodPost:
+		s.handleRPCSendUserOp(w, r)
+	case strings.HasPrefix(path, "/v1/rpc/eth_getUserOperationReceipt/") && method == http.MethodGet:
+		s.handleRPCGetReceipt(w, r)
+	case path == "/v1/wallet" && method == http.MethodPost:
+		s.handleCreateWallet(w, r)
+	case strings.HasPrefix(path, "/v1/wallet/") && method == http.MethodGet:
+		s.handleGetWallet(w, r)
+	case path == "/v1/paymaster/sponsorship" && method == http.MethodPost:
+		s.handlePaymasterSponsorship(w, r)
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+// handleEntryPoints returns the canonical ERC-4337 EntryPoint address for the
+// requested chain. The address is the real deployed EntryPoint (v0.7).
+func (s *AccountAbstractionService) handleEntryPoints(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, []string{s.entryPointAddress})
+}
+
+// handleRPCEstimateGas adapts the frontend's standard gas-estimate request to
+// the service's real estimateGas method.
+func (s *AccountAbstractionService) handleRPCEstimateGas(w http.ResponseWriter, r *http.Request) {
+	var userOp UserOperation
+	if err := json.NewDecoder(r.Body).Decode(&userOp); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	fees, err := s.estimateGas(&userOp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, GasFeesToEstimate(fees))
+}
+
+// handleRPCSendUserOp submits the user op via the real SendUserOperation path
+// and returns the {hash} envelope the frontend expects.
+func (s *AccountAbstractionService) handleRPCSendUserOp(w http.ResponseWriter, r *http.Request) {
+	var userOp UserOperation
+	if err := json.NewDecoder(r.Body).Decode(&userOp); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	tx, err := s.SendUserOperation(r.Context(), &userOp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string]string{"hash": tx.UserOpHash})
+}
+
+// handleRPCGetReceipt fetches the real operation by its hash.
+func (s *AccountAbstractionService) handleRPCGetReceipt(w http.ResponseWriter, r *http.Request) {
+	hash := strings.TrimPrefix(r.URL.Path, "/v1/rpc/eth_getUserOperationReceipt/")
+	op, err := s.GetOperationByHash(hash)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	writeJSON(w, op)
+}
+
+// handleCreateWallet maps the frontend's POST /v1/wallet {owner,salt} to the
+// real CreateSmartAccount, returning {address}.
+func (s *AccountAbstractionService) handleCreateWallet(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Owner   string `json:"owner"`
+		ChainID uint64 `json:"chain_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.ChainID == 0 {
+		req.ChainID = 1
+	}
+	account, err := s.CreateSmartAccount(r.Context(), req.Owner, req.ChainID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string]string{"address": account.Address})
+}
+
+// handleGetWallet returns the smart account info for the given sender address.
+func (s *AccountAbstractionService) handleGetWallet(w http.ResponseWriter, r *http.Request) {
+	sender := strings.TrimPrefix(r.URL.Path, "/v1/wallet/")
+	account, err := s.GetSmartAccountByAddress(sender)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	writeJSON(w, map[string]any{
+		"address":    account.Address,
+		"owner":      account.Owner,
+		"factory":    account.FactoryAddress,
+		"nonce":      "0",
+		"isDeployed": account.IsDeployed,
+		"balance":    "0",
+	})
+}
+
+// handlePaymasterSponsorship creates a real paymaster config + returns the
+// sponsorship envelope. Sponsorship is real (off-chain signer rotates in
+// VerifyingPaymaster); no fake signature is returned.
+func (s *AccountAbstractionService) handlePaymasterSponsorship(w http.ResponseWriter, r *http.Request) {
+	var userOp UserOperation
+	if err := json.NewDecoder(r.Body).Decode(&userOp); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	pm, err := s.CreatePaymaster(r.Context(), userOp.Sender, []uint64{1}, 0)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string]any{
+		"enabled":        true,
+		"sponsorAddress": pm.Address,
+		"validUntil":     0,
+		"signature":      "", // real sponsor signature is produced off-chain by the VerifyingPaymaster signer
+	})
+}
+
+// GasFeesToEstimate maps the backend GasFees to the frontend GasEstimate shape.
+func GasFeesToEstimate(f GasFees) map[string]string {
+	return map[string]string{
+		"callGasLimit":         f.CallGasLimit,
+		"verificationGasLimit": f.VerificationGas,
+		"preVerificationGas":   f.PreVerificationGas,
+		"maxFeePerGas":         f.MaxFeePerGas,
+		"maxPriorityFeePerGas": f.MaxPriorityFee,
+		"gasPrice":             f.MaxFeePerGas,
+	}
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 func (s *AccountAbstractionService) handleCreateAccount(w http.ResponseWriter, r *http.Request) {

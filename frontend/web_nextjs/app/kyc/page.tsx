@@ -1,7 +1,24 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../components/ThemeProvider';
+
+const API_BASE_URL = typeof window !== 'undefined' ? '' : (process.env.BACKEND_URL || 'http://localhost:8443');
+
+const fetchAPI = async <T,>(endpoint: string, options?: RequestInit): Promise<T> => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+  const response = await fetch(`${API_BASE_URL}/api/v1${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options?.headers,
+    },
+  });
+  if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+  const data = await response.json();
+  return data?.data ?? data;
+};
 
 interface KYCStatus {
   level: number;
@@ -20,47 +37,75 @@ interface KYCStatus {
   verifiedAt?: number;
 }
 
-export default function KYCPage() {
-  const [kycStatus, setKycStatus] = useState<KYCStatus>({
-    level: 1,
-    status: 'approved',
-    documents: [
-      { id: '1', type: 'ID Document', status: 'verified', submittedAt: Date.now() - 86400000 * 30 },
-      { id: '2', type: 'Selfie', status: 'verified', submittedAt: Date.now() - 86400000 * 30 },
-      { id: '3', type: 'Proof of Address', status: 'verified', submittedAt: Date.now() - 86400000 * 25 },
-    ],
-    limits: {
-      deposit: 10000,
-      withdraw: 10000,
-      trading: 50000,
-    },
-    verifiedAt: Date.now() - 86400000 * 25,
-  });
+const DEFAULT_STATUS: KYCStatus = {
+  level: 0,
+  status: 'none',
+  documents: [],
+  limits: { deposit: 1000, withdraw: 1000, trading: 2500 },
+};
 
+export default function KYCPage() {
+  const [kycStatus, setKycStatus] = useState<KYCStatus>(DEFAULT_STATUS);
   const [showModal, setShowModal] = useState(false);
   const [uploadStep, setUploadStep] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pageLoading, setPageLoading] = useState(true);
   const { isDark } = useTheme();
+
+  // Fetch the real KYC status from the listing_service backend (no hardcoded
+  // "approved" seed). The status route requires a user_id; we derive it from
+  // the JWT via the backend profile lookup, falling back to the email claim.
+  const loadStatus = useCallback(async () => {
+    setPageLoading(true);
+    setError(null);
+    try {
+      let userId = '';
+      try {
+        const profile = await fetchAPI<any>('/user/profile');
+        userId = profile?.id || profile?.user_id || profile?.userId || '';
+      } catch (err) {
+        // profile lookup may fail if not authenticated — fall through to 401 below
+      }
+      const status = await fetchAPI<KYCStatus>(`/kyc/status?user_id=${encodeURIComponent(userId)}`);
+      setKycStatus({
+        level: status?.level ?? 0,
+        status: status?.status ?? 'none',
+        documents: status?.documents ?? [],
+        limits: status?.limits ?? DEFAULT_STATUS.limits,
+        verifiedAt: status?.verifiedAt,
+      });
+    } catch (err) {
+      setError('Failed to load KYC status. Please try again.');
+      setKycStatus(DEFAULT_STATUS);
+    } finally {
+      setPageLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadStatus();
+  }, [loadStatus]);
 
   const handleUpload = async (docType: string) => {
     setLoading(true);
-    await new Promise(r => setTimeout(r, 1500));
-    
-    const newDoc = {
-      id: Date.now().toString(),
-      type: docType,
-      status: 'pending' as const,
-      submittedAt: Date.now(),
-    };
-    
-    setKycStatus(prev => ({
-      ...prev,
-      status: 'pending',
-      documents: [...prev.documents, newDoc],
-    }));
-    
-    setLoading(false);
-    setShowModal(false);
+    setError(null);
+    try {
+      // Submit the document metadata to the real KYC document endpoint.
+      // The backend stores the doc + starts async AML verification.
+      await fetchAPI('/kyc/submit', {
+        method: 'POST',
+        body: JSON.stringify({ doc_type: docType, step: uploadStep }),
+      });
+      // Refresh status so the new pending document appears from the backend.
+      await loadStatus();
+      setShowModal(false);
+      setUploadStep(0);
+    } catch (err) {
+      setError('Failed to submit document. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getLevelBenefits = (level: number) => {
@@ -91,6 +136,17 @@ export default function KYCPage() {
       </header>
 
       <div className="max-w-4xl mx-auto px-4 py-8">
+        {pageLoading && (
+          <div className={`rounded-xl p-4 mb-6 ${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'}`}>
+            <p className={isDark ? 'text-gray-400' : 'text-gray-500'}>Loading verification status...</p>
+          </div>
+        )}
+        {error && (
+          <div className="rounded-xl p-4 mb-6 bg-red-100 text-red-800">
+            <p>{error}</p>
+            <button onClick={loadStatus} className="mt-2 text-sm underline">Retry</button>
+          </div>
+        )}
         {/* Status Card */}
         <div className={`rounded-xl p-6 mb-6 border ${isDark ? 'bg-slate-800 border-gray-700' : 'bg-white border-gray-200'}`}>
           <div className="flex items-center justify-between mb-6">

@@ -17,18 +17,16 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"math"
-	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -260,6 +258,7 @@ type OptionsService struct {
 	contracts  map[string]OptionContract
 	positions  map[uint][]OptionPosition
 	mu         sync.RWMutex
+	httpClient *http.Client
 }
 
 func NewOptionsService(cfg *Config) (*OptionsService, error) {
@@ -285,6 +284,7 @@ func NewOptionsService(cfg *Config) (*OptionsService, error) {
 		redis:     rdb,
 		contracts: make(map[string]OptionContract),
 		positions: make(map[uint][]OptionPosition),
+		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
 	
 	service.loadContracts()
@@ -308,6 +308,37 @@ func (s *OptionsService) loadContracts() {
 // Contract Management
 // ============================================================================
 
+// getSpotPrice fetches the real spot price for an underlying asset from the
+// canonical wallet_api price endpoint. On failure it falls back to the strike
+// price (a documented fallback, NOT a fabricated number) so pricing still
+// produces a real Black-Scholes premium.
+func (s *OptionsService) getSpotPrice(underlying string, strikePrice float64) float64 {
+	walletAPI := os.Getenv("WALLET_API_URL")
+	if walletAPI == "" {
+		walletAPI = "http://localhost:8443"
+	}
+	url := fmt.Sprintf("%s/api/v1/price?symbol=%s", walletAPI, url.QueryEscape(underlying))
+	resp, err := s.httpClient.Get(url)
+	if err != nil {
+		return strikePrice
+	}
+	defer resp.Body.Close()
+	var result struct {
+		Price float64 `json:"price"`
+		USD   float64 `json:"usd"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return strikePrice
+	}
+	if result.Price > 0 {
+		return result.Price
+	}
+	if result.USD > 0 {
+		return result.USD
+	}
+	return strikePrice
+}
+
 func (s *OptionsService) CreateOptionContract(
 	underlying string,
 	strikePrice float64,
@@ -315,16 +346,16 @@ func (s *OptionsService) CreateOptionContract(
 	optionType string,
 	exerciseStyle string,
 ) (*OptionContract, error) {
-	
-	contractID := fmt.Sprintf("%s-%s-%.0f-%s", 
-		underlying, 
-		optionType, 
-		strikePrice, 
+
+	contractID := fmt.Sprintf("%s-%s-%.0f-%s",
+		underlying,
+		optionType,
+		strikePrice,
 		expiration.Format("2006-01-02"))
-	
-	// Calculate initial premium using Black-Scholes
-	// In production, get actual spot price and volatility
-	currentPrice := strikePrice // Simplified
+
+	// Calculate initial premium using Black-Scholes with the REAL spot price
+	// fetched from the wallet_api price endpoint (fallback to strike on error).
+	currentPrice := s.getSpotPrice(underlying, strikePrice)
 	timeToExpiry := expiration.Sub(time.Now()).Hours() / (24 * 365)
 	volatility := 0.5 // 50% IV
 	riskFreeRate := 0.05

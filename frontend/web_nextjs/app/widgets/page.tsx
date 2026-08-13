@@ -39,8 +39,11 @@ export default function Widgets() {
   const [theme, setTheme] = useState('light');
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [portfolioBalance, setPortfolioBalance] = useState<number | null>(null);
+  const [ethPrice, setEthPrice] = useState<number | null>(null);
 
-  // Load widget preferences
+  // Load widget preferences + the live portfolio balance / ETH price shown in
+  // the preview (no hardcoded $12,450 / $3,524.50 mock values).
   useEffect(() => {
     const loadPreferences = async () => {
       try {
@@ -54,6 +57,20 @@ export default function Widgets() {
     };
     loadPreferences();
   }, []);
+
+  // Fetch live preview data whenever the corresponding widgets are active.
+  useEffect(() => {
+    if (activeWidgets.includes('portfolio')) {
+      fetchAPI<{ total_usd?: number; total?: number }>('/balance?address=&chain_id=1')
+        .then((b) => setPortfolioBalance(b?.total_usd ?? b?.total ?? 0))
+        .catch(() => setPortfolioBalance(null));
+    }
+    if (activeWidgets.includes('price')) {
+      fetchAPI<{ price?: number; usd?: number }>('/price?symbol=ETH')
+        .then((p) => setEthPrice(p?.price ?? p?.usd ?? 0))
+        .catch(() => setEthPrice(null));
+    }
+  }, [activeWidgets]);
 
   const toggleWidget = (id: string) => {
     setActiveWidgets(prev => prev.includes(id) ? prev.filter(w => w !== id) : [...prev, id]);
@@ -86,8 +103,8 @@ export default function Widgets() {
         <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-6 mb-6`}>
           <h2 className="font-semibold mb-4">Preview</h2>
           <div className={`${isDark ? 'bg-slate-700' : 'bg-slate-100'} rounded-lg p-4 min-h-[200px]`}>
-            {activeWidgets.includes('portfolio') && <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-4 mb-2`}><div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Total Balance</div><div className="text-2xl font-bold">$12,450.00</div></div>}
-            {activeWidgets.includes('price') && <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-4 mb-2 flex justify-between`}><span>ETH</span><span className="text-green-500">$3,524.50</span></div>}
+            {activeWidgets.includes('portfolio') && <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-4 mb-2`}><div className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Total Balance</div><div className="text-2xl font-bold">${portfolioBalance != null ? portfolioBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</div></div>}
+            {activeWidgets.includes('price') && <div className={`${isDark ? 'bg-slate-800' : 'bg-white border border-gray-200'} rounded-lg p-4 mb-2 flex justify-between`}><span>ETH</span><span className="text-green-500">{ethPrice != null ? `$${ethPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}</span></div>}
             {activeWidgets.length === 0 && <div className={`text-center ${isDark ? 'text-slate-400' : 'text-slate-500'} py-8`}>Select widgets to preview</div>}
           </div>
         </div>

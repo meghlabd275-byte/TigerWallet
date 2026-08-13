@@ -12,7 +12,9 @@ import {
 // Configuration
 // ============================================================================
 
-const API_BASE_URL = process.env.API_BASE_URL || 'https://api.tigerwallet.io';
+// Canonical wallet_api backend (same target as all other TigerWallet clients).
+// In dev it runs locally on :8443; override via API_BASE_URL env in production.
+const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:8443';
 const API_TIMEOUT = 30000;
 
 // ============================================================================
@@ -238,13 +240,25 @@ class APIService {
     return this.delete(`/api/v1/wallets/${walletId}`);
   }
 
-  // Balance & Transactions
+  // Balance & Transactions — canonical wallet_api takes ?address=&chain_id=
+  // (not /wallets/:id/balance). Resolve the wallet address first, then call
+  // the public read endpoints the same way the web/desktop clients do.
   async getBalance(walletId: string, chainId: number): Promise<APIResponse<any>> {
-    return this.get(`/api/v1/wallets/${walletId}/balance`, { chainId });
+    const walletRes = await this.get(`/api/v1/wallets/${walletId}`);
+    const address = walletRes?.data?.address;
+    if (!address) {
+      return { success: false, error: 'wallet address not found' } as any;
+    }
+    return this.get('/api/v1/balance', { address, chain_id: chainId });
   }
 
   async getTokens(walletId: string, chainId: number): Promise<APIResponse<any>> {
-    return this.get(`/api/v1/wallets/${walletId}/tokens`, { chainId });
+    const walletRes = await this.get(`/api/v1/wallets/${walletId}`);
+    const address = walletRes?.data?.address;
+    if (!address) {
+      return { success: false, error: 'wallet address not found' } as any;
+    }
+    return this.get('/api/v1/tokens', { address, chain_id: chainId });
   }
 
   async getTransactions(walletId: string, chainId: number, page?: number): Promise<APIResponse<any>> {
@@ -382,6 +396,140 @@ class APIService {
 
   async getTrending(): Promise<APIResponse<any>> {
     return this.get('/api/v1/market/trending');
+  }
+
+  // NFTs — canonical wallet_api public read endpoint (?address=&chain_id=)
+  async getNFTs(walletId: string, chainId: number): Promise<APIResponse<any>> {
+    const walletRes = await this.get(`/api/v1/wallets/${walletId}`);
+    const address = walletRes?.data?.address;
+    if (!address) {
+      return { success: false, error: 'wallet address not found' } as any;
+    }
+    return this.get('/api/v1/nfts', { address, chain_id: chainId });
+  }
+
+  // dApp directory — served by wallet_api dapp_directory.go
+  async getDApps(category?: string, chain?: string): Promise<APIResponse<any>> {
+    return this.get('/api/v1/dapps', { category, chain });
+  }
+
+  async getDAppCategories(): Promise<APIResponse<any>> {
+    return this.get('/api/v1/dapps/categories');
+  }
+
+  // Portfolio + price feed (CoinGecko via wallet_api)
+  async getPortfolio(): Promise<APIResponse<any>> {
+    return this.get('/api/v1/portfolio');
+  }
+
+  async getPrice(coin: string): Promise<APIResponse<any>> {
+    return this.get('/api/v1/price', { coin });
+  }
+
+  // Gas oracle
+  async getGasPrice(chainId: number): Promise<APIResponse<any>> {
+    return this.get('/api/v1/gas', { chain_id: chainId });
+  }
+
+  // Chains registry (live backend list, 120 EVM + 66 non-EVM)
+  async getChains(type?: string): Promise<APIResponse<any>> {
+    return this.get('/api/v1/chains', { type });
+  }
+
+  // DeFi earn products (earn_service :8466) — for the DeFi screen
+  async getEarnProducts(): Promise<APIResponse<any>> {
+    return this.get('/api/v1/earn/products');
+  }
+
+  // Token approval manager (wallet_api)
+  async getTokenApprovals(address: string, chainId: number): Promise<APIResponse<any>> {
+    return this.get('/api/v1/approvals', { address, chain_id: chainId });
+  }
+
+  // Gift cards (gift card service via card_service :8457)
+  async getGiftCards(): Promise<APIResponse<any>> {
+    return this.get('/api/v1/gift-cards');
+  }
+
+  async buyGiftCard(cardId: string, amount: number): Promise<APIResponse<any>> {
+    return this.post('/api/v1/gift-cards/buy', { card_id: cardId, amount });
+  }
+
+  // Red packets (red_packets_service :8468, hyphenated route)
+  async createRedPacket(data: {
+    token: string;
+    amount: number;
+    totalCount: number;
+    message?: string;
+    senderAddress: string;
+  }): Promise<APIResponse<any>> {
+    return this.post('/api/v1/red-packets/create', data);
+  }
+
+  async claimRedPacket(packetId: string, claimerAddress: string): Promise<APIResponse<any>> {
+    return this.post('/api/v1/red-packets/claim', { packet_id: packetId, claimer_address: claimerAddress });
+  }
+
+  async getRedPacket(packetId: string): Promise<APIResponse<any>> {
+    return this.get(`/api/v1/red-packets/${packetId}`);
+  }
+
+  async getSentRedPackets(): Promise<APIResponse<any>> {
+    return this.get('/api/v1/red-packets/sent');
+  }
+
+  async getReceivedRedPackets(): Promise<APIResponse<any>> {
+    return this.get('/api/v1/red-packets/received');
+  }
+
+  // Copy trading (copy_trading_service :8006)
+  async getTopTraders(): Promise<APIResponse<any>> {
+    return this.get('/api/v1/copytrading/traders');
+  }
+
+  async followTrader(traderId: string): Promise<APIResponse<any>> {
+    return this.post('/api/v1/copytrading/follow', { traderId });
+  }
+
+  async unfollowTrader(traderId: string): Promise<APIResponse<any>> {
+    return this.post('/api/v1/copytrading/stop', { traderId });
+  }
+
+  // Options trading (options_trading service :9097)
+  async getOptionContracts(underlying?: string): Promise<APIResponse<any>> {
+    return this.get('/api/v1/options/contracts', { underlying });
+  }
+
+  async getOptionChain(underlying: string): Promise<APIResponse<any>> {
+    return this.get(`/api/v1/options/contracts/${underlying}/chain`);
+  }
+
+  async placeOptionOrder(data: {
+    contractId: string;
+    side: 'buy' | 'sell';
+    orderType: 'market' | 'limit';
+    quantity: number;
+    price?: number;
+  }): Promise<APIResponse<any>> {
+    return this.post('/api/v1/options/orders', data);
+  }
+
+  // Airdrop / reward claims (airdrop_service :8465)
+  async getAirdropCampaigns(): Promise<APIResponse<any>> {
+    return this.get('/api/v1/airdrop/campaigns');
+  }
+
+  async claimAirdrop(campaignId: string): Promise<APIResponse<any>> {
+    return this.post('/api/v1/airdrop/claim', { campaign_id: campaignId });
+  }
+
+  // User preferences (widgets)
+  async getUserPreferences(): Promise<APIResponse<any>> {
+    return this.get('/api/v1/user/preferences');
+  }
+
+  async updateUserPreferences(prefs: { widgets?: string[]; theme?: string }): Promise<APIResponse<any>> {
+    return this.put('/api/v1/user/preferences', prefs);
   }
 
   // Support

@@ -76,6 +76,36 @@ func main() {
 		writeJSON(w, 201, apiResponse{Success: true, Data: claim})
 	})
 
+	// GET /api/v1/red-packets/sent?user_id= — list packets sent by a user
+	mux.HandleFunc("/api/v1/red-packets/sent", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
+			return
+		}
+		userID := r.URL.Query().Get("user_id")
+		packets, err := svc.GetSentPackets(r.Context(), userID)
+		if err != nil {
+			writeJSON(w, 500, apiResponse{Error: err.Error()})
+			return
+		}
+		writeJSON(w, 200, apiResponse{Success: true, Data: map[string]any{"packets": packets}})
+	})
+
+	// GET /api/v1/red-packets/received?user_id= — list packets a user has claimed
+	mux.HandleFunc("/api/v1/red-packets/received", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
+			return
+		}
+		userID := r.URL.Query().Get("user_id")
+		packets, err := svc.GetReceivedPackets(r.Context(), userID)
+		if err != nil {
+			writeJSON(w, 500, apiResponse{Error: err.Error()})
+			return
+		}
+		writeJSON(w, 200, apiResponse{Success: true, Data: map[string]any{"packets": packets}})
+	})
+
 	// GET /api/v1/red-packets/{id} — get red packet by ID
 	mux.HandleFunc("/api/v1/red-packets/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

@@ -4,7 +4,7 @@
  * Built-in DApp browser with Web3 connectivity
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -15,11 +15,14 @@ import {
   StatusBar,
   FlatList,
   Image,
+  ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../store';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { ThemeToggle } from '../../components/ThemeToggle';
+import { API } from '../../services/API';
 
 interface DApp {
   id: string;
@@ -30,40 +33,69 @@ interface DApp {
   description: string;
 }
 
-const popularDApps: DApp[] = [
-  { id: '1', name: 'Uniswap', category: 'DeFi', icon: '🦄', url: 'https://app.uniswap.org', description: ' Decentralized trading protocol' },
-  { id: '2', name: 'Aave', category: 'DeFi', icon: '👻', url: 'https://app.aave.com', description: 'Lending and borrowing' },
-  { id: '3', name: 'Compound', category: 'DeFi', icon: '🔷', url: 'https://app.compound.finance', description: 'Algorithmic money markets' },
-  { id: '4', name: 'OpenSea', category: 'NFT', icon: '🌊', url: 'https://opensea.io', description: 'NFT marketplace' },
-  { id: '5', name: 'Blur', category: 'NFT', icon: '🟣', url: 'https://blur.io', description: 'NFT marketplace & aggregator' },
-  { id: '6', name: 'PancakeSwap', category: 'DeFi', icon: '🥞', url: 'https://pancakeswap.finance', description: 'DEX on BNB Chain' },
-  { id: '7', name: 'Curve', category: 'DeFi', icon: '📈', url: 'https://curve.fi', description: 'Stable asset swapping' },
-  { id: '8', name: '1inch', category: 'DeFi', icon: '1️⃣', url: 'https://app.1inch.io', description: 'DEX aggregator' },
-  { id: '9', name: 'Yearn', category: 'DeFi', icon: '📦', url: 'https://yearn.finance', description: 'Yield aggregator' },
-  { id: '10', name: 'Lido', category: 'DeFi', icon: '💧', url: 'https://lido.fi', description: 'Liquid staking' },
-  { id: '11', name: 'Rocket Pool', category: 'DeFi', icon: '🚀', url: 'https://rocketpool.net', description: 'ETH staking' },
-  { id: '12', name: 'LooksRare', category: 'NFT', icon: '👀', url: 'https://looksrare.org', description: 'NFT marketplace' },
-];
-
-const categories = ['All', 'DeFi', 'NFT', 'Games', 'Social', 'Tools'];
-
 const DAppBrowserScreen: React.FC = () => {
   const theme = useSelector((state: RootState) => state.theme.mode);
   const isDark = theme === 'dark';
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [dapps, setDapps] = useState<DApp[]>([]);
+  const [categories, setCategories] = useState<string[]>(['All']);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredDApps = popularDApps.filter(dapp => {
+  // Fetch the curated dApp directory from the canonical wallet_api
+  // dapp_directory.go (~20 real protocol entries, no fabricated metrics).
+  const loadDApps = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [dappsRes, catsRes] = await Promise.all([
+        API.getDApps(),
+        API.getDAppCategories().catch(() => null),
+      ]);
+      const list = dappsRes?.data?.dapps ?? dappsRes?.data ?? [];
+      const mapped: DApp[] = (list as any[]).map((d) => ({
+        id: d.id ?? d.name,
+        name: d.name ?? 'dApp',
+        category: d.category ?? 'Other',
+        icon: d.logo ?? d.icon ?? '🔗',
+        url: d.url ?? d.website ?? '',
+        description: d.description ?? '',
+      }));
+      setDapps(mapped);
+      const cats = catsRes?.data?.categories ?? catsRes?.data ?? [];
+      if (Array.isArray(cats) && cats.length > 0) {
+        setCategories(['All', ...cats]);
+      } else {
+        setCategories(['All', ...Array.from(new Set(mapped.map((d) => d.category)))]);
+      }
+    } catch (err) {
+      setError('Failed to load dApp directory. Pull down to retry.');
+      setDapps([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDApps();
+  }, []);
+
+  const filteredDApps = dapps.filter(dapp => {
     const matchesSearch = dapp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          dapp.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'All' || dapp.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
+  const openDApp = (url: string) => {
+    if (url) Linking.openURL(url).catch(() => {});
+  };
+
   const renderDAppItem = ({ item }: { item: DApp }) => (
-    <TouchableOpacity 
+    <TouchableOpacity
       style={[styles.dappItem, { backgroundColor: isDark ? COLORS.cardDark : COLORS.cardLight }]}
-      onPress={() => {}}
+      onPress={() => openDApp(item.url)}
     >
       <View style={[styles.dappIcon, { backgroundColor: COLORS.primary + '20' }]}>
         <Text style={styles.dappIconText}>{item.icon}</Text>
@@ -147,6 +179,22 @@ const DAppBrowserScreen: React.FC = () => {
         keyExtractor={item => item.id}
         contentContainerStyle={styles.dappList}
         showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            {loading ? (
+              <ActivityIndicator color={COLORS.primary} />
+            ) : (
+              <Text style={{ color: isDark ? COLORS.gray : COLORS.lightGray, textAlign: 'center' }}>
+                {error || 'No dApps found.'}
+              </Text>
+            )}
+            {!loading && error && (
+              <TouchableOpacity style={styles.retryButton} onPress={loadDApps}>
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        }
       />
 
       {/* Bottom Bar */}
@@ -195,6 +243,9 @@ const styles = StyleSheet.create({
   bottomBarItem: { alignItems: 'center' },
   bottomBarIcon: { fontSize: 24 },
   bottomBarText: { fontSize: FONT_SIZES.sm, marginTop: 4 },
+  emptyContainer: { padding: SPACING.xl, alignItems: 'center' },
+  retryButton: { marginTop: SPACING.md, backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8 },
+  retryButtonText: { color: COLORS.white, fontWeight: '600' },
 });
 
 export default DAppBrowserScreen;

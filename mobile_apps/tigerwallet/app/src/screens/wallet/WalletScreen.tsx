@@ -23,6 +23,7 @@ import { setSelectedChain, setBalances } from '../../store/slices/walletSlice';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { ChainId, NATIVE_CURRENCIES } from '../../constants/chains';
 import { ThemeToggle } from '../../components/ThemeToggle';
+import { API } from '../../services/API';
 
 interface TokenBalance {
   symbol: string;
@@ -39,34 +40,80 @@ const WalletScreen: React.FC = () => {
   const wallet = useSelector((state: RootState) => state.wallet.wallet);
   const selectedChainId = useSelector((state: RootState) => state.wallet.selectedChainId);
   const isDark = theme === 'dark';
-  
+
   const [refreshing, setRefreshing] = useState(false);
   const [totalValue, setTotalValue] = useState(0);
+  const [tokens, setTokens] = useState<TokenBalance[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Mock token balances (in production, fetch from blockchain)
-  const tokens: TokenBalance[] = [
-    { symbol: 'ETH', name: 'Ethereum', balance: '1.5', value: 4500, chainId: 1 },
-    { symbol: 'BNB', name: 'BNB', balance: '2.0', value: 600, chainId: 56 },
-    { symbol: 'MATIC', name: 'Polygon', balance: '1000', value: 850, chainId: 137 },
-    { symbol: 'USDT', name: 'Tether', balance: '5000', value: 5000, chainId: 1 },
-    { symbol: 'USDC', name: 'USD Coin', balance: '2500', value: 2500, chainId: 1 },
-    { symbol: 'SOL', name: 'Solana', balance: '25', value: 3000, chainId: 501 },
-    { symbol: 'AVAX', name: 'Avalanche', balance: '50', value: 1500, chainId: 43114 },
-    { symbol: 'LINK', name: 'Chainlink', balance: '100', value: 1200, chainId: 1 },
-    { symbol: 'UNI', name: 'Uniswap', balance: '75', value: 600, chainId: 1 },
-    { symbol: 'DOT', name: 'Polkadot', balance: '150', value: 900, chainId: 1 },
-  ];
+  // Fetch real token balances + native balance for the active wallet on the
+  // selected chain from the canonical wallet_api backend (no hardcoded data).
+  const loadBalances = async () => {
+    if (!wallet?.id) {
+      setTokens([]);
+      setTotalValue(0);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const nativeRes = await API.getBalance(wallet.id, selectedChainId);
+      const tokensRes = await API.getTokens(wallet.id, selectedChainId);
+
+      const nativeBal = nativeRes?.data?.balance ?? '0';
+      const nativeSymbol = NATIVE_CURRENCIES[selectedChainId]?.symbol || 'ETH';
+      const built: TokenBalance[] = [];
+
+      // Native coin row (only show if there is a balance)
+      if (parseFloat(nativeBal) > 0) {
+        const priceRes = await API.getPrice(nativeSymbol.toLowerCase());
+        const price = priceRes?.data?.price ?? 0;
+        built.push({
+          symbol: nativeSymbol,
+          name: NATIVE_CURRENCIES[selectedChainId]?.name || nativeSymbol,
+          balance: nativeBal,
+          value: parseFloat(nativeBal) * price,
+          chainId: selectedChainId,
+        });
+      }
+
+      // ERC-20 rows returned by the backend
+      const tokenList = tokensRes?.data?.tokens ?? tokensRes?.data ?? [];
+      for (const t of tokenList) {
+        const sym = t.symbol || t.contractAddress?.slice(0, 4) || 'TOKEN';
+        const bal = t.balance ?? t.amount ?? '0';
+        const priceRes = await API.getPrice(sym.toLowerCase());
+        const price = priceRes?.data?.price ?? 0;
+        built.push({
+          symbol: sym,
+          name: t.name || sym,
+          balance: bal,
+          value: parseFloat(bal) * price,
+          chainId: selectedChainId,
+        });
+      }
+
+      setTokens(built);
+      setTotalValue(built.reduce((sum, token) => sum + token.value, 0));
+      dispatch(setBalances({ [selectedChainId]: nativeBal }));
+    } catch (err) {
+      setError('Failed to load balances. Pull to retry.');
+      setTokens([]);
+      setTotalValue(0);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    // Calculate total value
-    const total = tokens.reduce((sum, token) => sum + token.value, 0);
-    setTotalValue(total);
-  }, []);
+    loadBalances();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wallet?.id, selectedChainId]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    // Simulate refresh - in production, fetch fresh balances
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await loadBalances();
     setRefreshing(false);
   };
 
@@ -179,6 +226,13 @@ const WalletScreen: React.FC = () => {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
         contentContainerStyle={styles.tokenList}
         showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={{ color: isDark ? COLORS.gray : COLORS.lightGray, textAlign: 'center' }}>
+              {loading ? 'Loading balances...' : error || 'No tokens found. Pull to refresh.'}
+            </Text>
+          </View>
+        }
       />
     </SafeAreaView>
   );
@@ -211,6 +265,7 @@ const styles = StyleSheet.create({
   tokenRight: { alignItems: 'flex-end' },
   tokenBalance: { fontSize: FONT_SIZES.lg, fontWeight: 'bold' },
   tokenValue: { fontSize: FONT_SIZES.sm },
+  emptyContainer: { padding: SPACING.xl, alignItems: 'center' },
 });
 
 export default WalletScreen;

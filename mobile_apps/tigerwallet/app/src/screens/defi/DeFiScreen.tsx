@@ -4,7 +4,7 @@
  * Staking, yield farming, liquidity pools
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -14,11 +14,13 @@ import {
   SafeAreaView,
   StatusBar,
   FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../store';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { ThemeToggle } from '../../components/ThemeToggle';
+import { API } from '../../services/API';
 
 interface DeFiProduct {
   id: string;
@@ -32,27 +34,69 @@ interface DeFiProduct {
   risk: 'low' | 'medium' | 'high';
 }
 
-const defiProducts: DeFiProduct[] = [
-  { id: '1', name: 'ETH Staking', type: 'staking', apy: 4.5, tvl: '$12.5B', chain: 'Ethereum', logo: '🔷', description: 'Stake ETH and earn rewards', risk: 'low' },
-  { id: '2', name: 'MATIC Staking', type: 'staking', apy: 8.2, tvl: '$2.1B', chain: 'Polygon', logo: '⬡', description: 'Stake MATIC for rewards', risk: 'low' },
-  { id: '3', name: 'SOL Staking', type: 'staking', apy: 6.8, tvl: '$15B', chain: 'Solana', logo: '◎', description: 'Stake SOL for 6.8% APY', risk: 'low' },
-  { id: '4', name: 'USDT Pool', type: 'pool', apy: 12.5, tvl: '$8.2B', chain: 'Multi', logo: '💰', description: 'Stablecoin lending pool', risk: 'medium' },
-  { id: '5', name: 'ETH-USDC LP', type: 'pool', apy: 25.0, tvl: '$3.5B', chain: 'Ethereum', logo: '📊', description: 'Uniswap V3 LP position', risk: 'medium' },
-  { id: '6', name: 'BNB Staking', type: 'staking', apy: 5.5, tvl: '$4.2B', chain: 'BSC', logo: '🟡', description: 'BNB Token Hub staking', risk: 'low' },
-  { id: '7', name: 'AVAX Staking', type: 'staking', apy: 7.2, tvl: '$1.8B', chain: 'Avalanche', logo: '🔺', description: 'Avalanche staking', risk: 'low' },
-  { id: '8', name: 'Launchpad', type: 'launchpad', apy: 0, tvl: '$500M', chain: 'Multi', logo: '🚀', description: 'Early access to new tokens', risk: 'high' },
-  { id: '9', name: 'LINK Staking', type: 'staking', apy: 5.0, tvl: '$800M', chain: 'Ethereum', logo: '⛓️', description: 'Chainlink staking', risk: 'low' },
-  { id: '10', name: 'Yield Optimizer', type: 'yield', apy: 18.0, tvl: '$2.5B', chain: 'Multi', logo: '📈', description: 'Auto-compound yields', risk: 'medium' },
-];
-
 const DeFiScreen: React.FC = () => {
   const theme = useSelector((state: RootState) => state.theme.mode);
   const isDark = theme === 'dark';
   const [selectedTab, setSelectedTab] = useState<'all' | 'staking' | 'pool' | 'yield'>('all');
+  const [products, setProducts] = useState<DeFiProduct[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [portfolio, setPortfolio] = useState<{ totalValue: number; totalApy: number; activePositions: number }>({
+    totalValue: 0,
+    totalApy: 0,
+    activePositions: 0,
+  });
 
-  const filteredProducts = selectedTab === 'all' 
-    ? defiProducts 
-    : defiProducts.filter(p => p.type === selectedTab);
+  // Fetch real DeFi earn products + portfolio from the backend (no hardcoded
+  // product list). earn_service :8466 + wallet_api portfolio endpoint.
+  const loadDeFi = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [productsRes, portfolioRes] = await Promise.all([
+        API.getEarnProducts(),
+        API.getPortfolio().catch(() => null),
+      ]);
+
+      const list = productsRes?.data?.products ?? productsRes?.data ?? [];
+      const mapped: DeFiProduct[] = (list as any[]).map((p) => ({
+        id: p.id ?? p.product_id ?? p.name,
+        name: p.name ?? p.asset ?? 'Product',
+        type: (p.type ?? p.category ?? 'staking') as DeFiProduct['type'],
+        apy: (p.apy ?? p.apr ?? 0) as number,
+        tvl: p.tvl ?? p.total_staked ?? '—',
+        chain: p.chain ?? p.network ?? 'Multi',
+        logo: '💎',
+        description: p.description ?? '',
+        risk: (p.risk ?? 'medium') as DeFiProduct['risk'],
+      }));
+      setProducts(mapped);
+
+      if (portfolioRes?.data) {
+        setPortfolio({
+          totalValue: portfolioRes.data.totalValue ?? portfolioRes.data.total_value ?? 0,
+          totalApy: portfolioRes.data.totalApy ?? portfolioRes.data.total_apy ?? 0,
+          activePositions: portfolioRes.data.activePositions ?? portfolioRes.data.active_positions ?? mapped.length,
+        });
+      } else {
+        setPortfolio((prev) => ({ ...prev, activePositions: mapped.length }));
+      }
+    } catch (err) {
+      setError('Failed to load DeFi products. Pull down to retry.');
+      setProducts([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDeFi();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const filteredProducts = selectedTab === 'all'
+    ? products
+    : products.filter(p => p.type === selectedTab);
 
   const getRiskColor = (risk: string) => {
     switch (risk) {
@@ -132,15 +176,15 @@ const DeFiScreen: React.FC = () => {
       {/* Portfolio Summary */}
       <View style={[styles.summaryCard, { backgroundColor: COLORS.primary }]}>
         <Text style={styles.summaryLabel}>Total DeFi Balance</Text>
-        <Text style={styles.summaryValue}>$12,450.00</Text>
+        <Text style={styles.summaryValue}>${portfolio.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
         <View style={styles.summaryRow}>
           <View style={styles.summaryStat}>
             <Text style={styles.summaryStatLabel}>Total APY</Text>
-            <Text style={styles.summaryStatValue}>8.5%</Text>
+            <Text style={styles.summaryStatValue}>{portfolio.totalApy.toFixed(1)}%</Text>
           </View>
           <View style={styles.summaryStat}>
             <Text style={styles.summaryStatLabel}>Active Positions</Text>
-            <Text style={styles.summaryStatValue}>5</Text>
+            <Text style={styles.summaryStatValue}>{portfolio.activePositions}</Text>
           </View>
         </View>
       </View>
@@ -167,6 +211,23 @@ const DeFiScreen: React.FC = () => {
         keyExtractor={item => item.id}
         contentContainerStyle={styles.productList}
         showsVerticalScrollIndicator={false}
+        refreshControl={undefined}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            {loading ? (
+              <ActivityIndicator color={COLORS.primary} />
+            ) : (
+              <Text style={{ color: isDark ? COLORS.gray : COLORS.lightGray, textAlign: 'center' }}>
+                {error || 'No DeFi products available.'}
+              </Text>
+            )}
+            {!loading && error && (
+              <TouchableOpacity style={styles.retryButton} onPress={loadDeFi}>
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        }
       />
     </SafeAreaView>
   );
@@ -205,6 +266,9 @@ const styles = StyleSheet.create({
   statValue: { fontSize: FONT_SIZES.md, fontWeight: 'bold', marginTop: 2 },
   stakeButton: { marginTop: SPACING.md, padding: SPACING.sm, borderRadius: 8, alignItems: 'center' },
   stakeButtonText: { color: COLORS.white, fontSize: FONT_SIZES.md, fontWeight: 'bold' },
+  emptyContainer: { padding: SPACING.xl, alignItems: 'center' },
+  retryButton: { marginTop: SPACING.md, backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8 },
+  retryButtonText: { color: COLORS.white, fontWeight: '600' },
 });
 
 export default DeFiScreen;

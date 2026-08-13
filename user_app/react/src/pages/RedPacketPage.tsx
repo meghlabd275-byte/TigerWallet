@@ -26,8 +26,9 @@ interface ClaimRecord {
   timestamp: number;
 }
 
-// Backend API URL for red packets
-const API_BASE_URL = 'http://localhost:8443/api/v1/redpacket';
+// Backend API URL for red packets (canonical red_packets_service on :8468,
+// path /api/v1/red-packets/). NOT /redpacket (that 404s).
+const API_BASE_URL = 'http://localhost:8468/api/v1/red-packets';
 
 const RedPacketPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'send' | 'receive' | 'history'>('send');
@@ -53,24 +54,25 @@ const RedPacketPage: React.FC = () => {
     const loadPackets = async () => {
       setLoading(true);
       try {
-        const token = localStorage.getItem('user_token');
-        
+        const authToken = localStorage.getItem('user_token');
+        const userId = localStorage.getItem('user_id') || '';
+
         // Load sent packets
-        const sentRes = await fetch(`${API_BASE_URL}/sent`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        const sentRes = await fetch(`${API_BASE_URL}/sent?user_id=${encodeURIComponent(userId)}`, {
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {}
         });
         if (sentRes.ok) {
           const sentData = await sentRes.json();
-          setSentPackets(sentData.packets || []);
+          setSentPackets(sentData.data?.packets || sentData.packets || []);
         }
-        
+
         // Load received packets
-        const receivedRes = await fetch(`${API_BASE_URL}/received`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        const receivedRes = await fetch(`${API_BASE_URL}/received?user_id=${encodeURIComponent(userId)}`, {
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {}
         });
         if (receivedRes.ok) {
           const receivedData = await receivedRes.json();
-          setReceivedPackets(receivedData.packets || []);
+          setReceivedPackets(receivedData.data?.packets || receivedData.packets || []);
         }
       } catch (err) {
         console.error('Failed to load packets:', err);
@@ -78,54 +80,100 @@ const RedPacketPage: React.FC = () => {
         setLoading(false);
       }
     };
-    
+
     loadPackets();
   }, []);
 
-  const handleCreatePacket = () => {
+  const handleCreatePacket = async () => {
     const count = parseInt(totalCount);
     const totalAmount = parseFloat(amount);
-    
-    const newPacket: RedPacket = {
-      id: Date.now().toString(),
-      sender: 'You',
-      senderAddress: '0x1234...5678',
-      amount: totalAmount,
-      token,
-      totalCount: count,
-      receivedCount: 0,
-      remainingAmount: totalAmount,
-      message,
-      timestamp: Date.now(),
-      isExpired: false,
-    };
+    if (!count || !totalAmount) return;
 
-    setSentPackets([newPacket, ...sentPackets]);
-    setGeneratedLink(`https://tigerwallet.com/redpacket/claim/${newPacket.id}`);
-    setActiveTab('history');
+    setLoading(true);
+    setError(null);
+    try {
+      const authToken = localStorage.getItem('user_token');
+      const res = await fetch(`${API_BASE_URL}/create`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({
+          token,
+          total_amount: totalAmount,
+          total_count: count,
+          distribution: packetType,
+          message,
+          sender_id: localStorage.getItem('user_id') || '',
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to create red packet');
+      const data = await res.json();
+      const newPacket: RedPacket = {
+        id: data.id ?? data.packet_id ?? Date.now().toString(),
+        sender: 'You',
+        senderAddress: data.sender ?? '',
+        amount: totalAmount,
+        token,
+        totalCount: count,
+        receivedCount: 0,
+        remainingAmount: totalAmount,
+        message,
+        timestamp: Date.now(),
+        isExpired: false,
+      };
+      setSentPackets([newPacket, ...sentPackets]);
+      setGeneratedLink(`https://tigerwallet.com/red-packet/claim/${newPacket.id}`);
+      setActiveTab('history');
+    } catch (err: any) {
+      setError(err.message || 'Failed to create red packet');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleClaim = () => {
+  const handleClaim = async () => {
     if (!claimLink) return;
-    
-    // Simulate claiming
-    const claimedAmount = packetType === 'random' 
-      ? parseFloat(amount) / parseInt(totalCount)  // equal split; real distribution from contract
-      : parseFloat(amount) / parseInt(totalCount);
-    
-    setClaimResult({
-      success: true,
-      amount: claimedAmount,
-      message: `You claimed ${claimedAmount.toFixed(4)} ${token}! 🧧`
-    });
-
-    const newRecord: ClaimRecord = {
-      packetId: claimLink.split('/').pop() || '',
-      claimer: 'You',
-      amount: claimedAmount,
-      timestamp: Date.now()
-    };
-    setClaimRecords([newRecord, ...claimRecords]);
+    const packetId = claimLink.split('/').pop() || claimLink;
+    setLoading(true);
+    setError(null);
+    try {
+      const authToken = localStorage.getItem('user_token');
+      const res = await fetch(`${API_BASE_URL}/claim`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({
+          packet_id: packetId,
+          claimer_id: localStorage.getItem('user_id') || '',
+        }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to claim red packet');
+      }
+      const data = await res.json();
+      const claimedAmount = data.amount ?? data.claimed_amount ?? 0;
+      setClaimResult({
+        success: true,
+        amount: claimedAmount,
+        message: `You claimed ${Number(claimedAmount).toFixed(4)} ${data.token || token}! 🧧`,
+      });
+      const newRecord: ClaimRecord = {
+        packetId,
+        claimer: 'You',
+        amount: claimedAmount,
+        timestamp: Date.now(),
+      };
+      setClaimRecords([newRecord, ...claimRecords]);
+    } catch (err: any) {
+      setClaimResult({ success: false, message: err.message || 'Claim failed' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const copyLink = () => {
