@@ -174,6 +174,82 @@ services:
       - "9090:9090"
     restart: unless-stopped
 
+  # Airdrop Service
+  airdrop-service:
+    build:
+      context: ./go/airdrop_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-airdrop
+    ports:
+      - "8465:8465"
+    environment:
+      - PORT=8465
+      - DATABASE_URL=postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Earn Service
+  earn-service:
+    build:
+      context: ./go/earn_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-earn
+    ports:
+      - "8466:8466"
+    environment:
+      - PORT=8466
+      - DATABASE_URL=postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Coupon Service
+  coupon-service:
+    build:
+      context: ./go/coupon_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-coupon
+    ports:
+      - "8467:8467"
+    environment:
+      - PORT=8467
+      - DATABASE_URL=postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Red Packets Service
+  red-packets-service:
+    build:
+      context: ./go/red_packets_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-red-packets
+    ports:
+      - "8468:8468"
+    environment:
+      - PORT=8468
+      - DATABASE_URL=postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
