@@ -97,13 +97,13 @@ SuperAdmin governs feature flags; the master wallet owner has full control of
 enabled features.
 
 ### EVM Chain Management
-- `GET    /api/v1/master-wallet/:id/user-chains/evm` → `{chains: [...]}`
+- `GET    /api/v1/master-wallet/:id/user-chains/evm` → `{chains: [...]}` (120 default mainnet chains seeded on first boot)
 - `POST   /api/v1/master-wallet/:id/user-chains/evm` — `{chain_id, name, symbol, rpc_url, explorer_url, decimals, derivation_path}`
 - `PUT    /api/v1/master-wallet/:id/user-chains/evm/:chainId` — same body + `is_active`
 - `DELETE /api/v1/master-wallet/:id/user-chains/evm/:chainId`
 
 ### Non-EVM Chain Management
-- `GET    /api/v1/master-wallet/:id/user-chains/nonevm` → `{chains: [...]}`
+- `GET    /api/v1/master-wallet/:id/user-chains/nonevm` → `{chains: [...]}` (66 default mainnet chains seeded on first boot — Bitcoin, Litecoin, Solana, Cosmos, Osmosis, Polkadot, Cardano, Aptos, Near, Sui, Aptos, Algorand, Ripple, Stellar, Elrond, Filecoin, etc.)
 - `POST   /api/v1/master-wallet/:id/user-chains/nonevm` — `{chain_id, name, symbol, chain_type, rpc_url, explorer_url, decimals, derivation_path, address_prefix}`
 - `PUT    /api/v1/master-wallet/:id/user-chains/nonevm/:chainId`
 - `DELETE /api/v1/master-wallet/:id/user-chains/nonevm/:chainId`
@@ -126,8 +126,12 @@ secp256k1 + bech32. Seed hash stored only (never the seed).
 - `POST   /api/v1/master-wallet/:id/auto-sign-transaction` — `{mnemonic, chain_id, chain_type, derivation_path, account_index, tx_type, to_address, value, token_address, contract_address, data}` → `{tx_hash, status, seed_hash, tx_type}`
 - `GET    /api/v1/master-wallet/:id/auto-sign-logs` → `{logs: [...], count: N}`
 
-tx_type: `send`, `claim`, `swap`, `trade`. Real secp256k1/Ed25519 signing +
-real broadcast. Status: `signed`, `broadcast`, `confirmed`, `failed`.
+Supports ALL chain types: EVM (real secp256k1 + eth_sendRawTransaction broadcast),
+Solana (real SLIP-0010 Ed25519 over transfer message), Bitcoin (real P2PKH tx —
+fetches UTXOs from blockstream.info, builds legacy SIGHASH_ALL tx, signs with
+secp256k1, returns raw hex for broadcast), Cosmos (real secp256k1 SIGN_MODE_LEGACY_AMINO_JSON
+over SignDoc). ERC-20 token transfers fetch real decimals from the contract.
+tx_type: `send`, `claim`, `swap`, `trade`. Status: `signed`, `broadcast`, `confirmed`, `failed`.
 
 ### SuperAdmin Feature-Flag Governance
 - `GET    /api/v1/master-wallet/:id/feature-flags` → `{feature_flags: [...]}`

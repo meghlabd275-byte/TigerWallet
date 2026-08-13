@@ -54,7 +54,10 @@ func NewStore(ctx context.Context, databaseURL, redisAddr, redisPassword string,
 	if err := runMigrations(ctx, pool); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
-	return &Store{db: pool, redis: rdb}, nil
+	s := &Store{db: pool, redis: rdb}
+	// Seed 120 EVM + 66 non-EVM canonical mainnet chains (idempotent — only if tables empty).
+	seedDefaultUserChains(ctx, s)
+	return s, nil
 }
 
 // Close releases the DB pool + Redis client.
