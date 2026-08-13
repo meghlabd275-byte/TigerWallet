@@ -42,6 +42,11 @@ func main() {
 		// so admin-added/updated chains are visible immediately at boot.
 		bgCtx, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
 		applyAdminChainOverrides(bgCtx)
+		// Bootstrap the first admin from the ADMIN_BOOTSTRAP_EMAIL env so the
+		// admin/wl-admin/master-wallet-admin role can be seeded without a
+		// pre-existing admin (the first user to register with that email is
+		// promoted). Subsequent role changes go through the admin API.
+		bootstrapAdminRole(bgCtx, appConfig.AdminBootstrapEmail)
 		cancel2()
 	}
 
@@ -153,9 +158,10 @@ func main() {
 		wallet.POST("/launchpool/stake", handleLaunchpoolStake)
 		wallet.POST("/launchpool/unstake", handleLaunchpoolUnstake)
 
-		// ---- Admin / dashboard routes (authenticated) ----
+		// ---- Admin / dashboard routes (authenticated + admin-role) ----
 		// Back the master-wallet dashboard with real PostgreSQL aggregates.
 		admin := wallet.Group("/admin")
+		admin.Use(RequireAdmin())
 		{
 			admin.GET("/stats", handleAdminStats)
 			admin.GET("/wallets", handleAdminWallets)
@@ -177,6 +183,9 @@ func main() {
 			admin.POST("/chains/validators", handleAdminCreateValidator)
 			admin.GET("/chains/metrics", handleAdminChainMetrics)
 			admin.GET("/chains/token-deployments", handleAdminTokenDeployments)
+
+			// ---- Admin role management ----
+			admin.PUT("/users/:id/role", handleAdminSetUserRole)
 
 			// ---- Admin fee configuration ----
 			admin.GET("/fees", handleAdminListFees)

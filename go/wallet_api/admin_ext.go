@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -332,6 +333,66 @@ func handleAdminChainMetrics(c *gin.Context) {
 		out = append(out, r)
 	}
 	c.JSON(http.StatusOK, gin.H{"metrics": out, "count": len(out)})
+}
+
+// ---- Admin role management ----
+
+// bootstrapAdminRole promotes the user matching ADMIN_BOOTSTRAP_EMAIL to the
+// "admin" role at startup. This seeds the first admin so the admin API is
+// usable without a pre-existing admin. Idempotent + safe (no-op if unset).
+func bootstrapAdminRole(ctx context.Context, email string) {
+	if store == nil || store.PG == nil || email == "" {
+		return
+	}
+	_, err := store.PG.Exec(ctx,
+		`UPDATE users SET role='admin', updated_at=NOW() WHERE email=$1 AND role='user'`, email)
+	if err != nil {
+		log.Printf("admin bootstrap: failed to promote %s: %v", email, err)
+		return
+	}
+	log.Printf("admin bootstrap: ensured admin role for %s", email)
+}
+
+// validAdminRoles is the set of roles an admin may assign to other users.
+var validAdminRoles = map[string]bool{
+	"user": true, "admin": true, "wl_admin": true, "master_wallet_admin": true,
+}
+
+// handleAdminSetUserRole lets an existing admin change another user's role.
+// Route: PUT /api/v1/admin/users/:id/role  body: {"role":"admin"}
+func handleAdminSetUserRole(c *gin.Context) {
+	targetID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+	var req struct {
+		Role string `json:"role" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !validAdminRoles[req.Role] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid role; must be one of user, admin, wl_admin, master_wallet_admin"})
+		return
+	}
+	callerID, _ := uuid.Parse(getUserID(c))
+	if targetID == callerID && req.Role != "admin" && req.Role != "master_wallet_admin" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot demote yourself"})
+		return
+	}
+	tag, err := store.PG.Exec(c.Request.Context(),
+		`UPDATE users SET role=$1, updated_at=NOW() WHERE id=$2`, req.Role, targetID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "update failed"})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"user_id": targetID, "role": req.Role, "updated": true})
 }
 
 // ---- Token deployments ----

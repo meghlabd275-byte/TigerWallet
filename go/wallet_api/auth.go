@@ -43,19 +43,24 @@ func emailLocalPart(email string) string {
 	return ""
 }
 
-// IssueJWT creates a signed JWT for a user ID.
-func IssueJWT(secret string, userID string) (string, error) {
+// IssueJWT creates a signed JWT for a user ID + role. The role claim is used
+// by RequireAdmin to gate admin/wl-admin/master-wallet-admin endpoints.
+func IssueJWT(secret string, userID string, role string) (string, error) {
+	if role == "" {
+		role = "user"
+	}
 	claims := jwt.MapClaims{
-		"sub": userID,
-		"exp": time.Now().Add(24 * time.Hour).Unix(),
-		"iat": time.Now().Unix(),
+		"sub":  userID,
+		"role": role,
+		"exp":  time.Now().Add(24 * time.Hour).Unix(),
+		"iat":  time.Now().Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(secret))
 }
 
-// ParseJWT validates and parses a JWT token.
-func ParseJWT(secret, tokenStr string) (string, error) {
+// ParseJWT validates and parses a JWT token, returning (userID, role).
+func ParseJWT(secret, tokenStr string) (string, string, error) {
 	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("unexpected signing method")
@@ -63,20 +68,24 @@ func ParseJWT(secret, tokenStr string) (string, error) {
 		return []byte(secret), nil
 	})
 	if err != nil || !token.Valid {
-		return "", errors.New("invalid token")
+		return "", "", errors.New("invalid token")
 	}
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return "", errors.New("invalid claims")
+		return "", "", errors.New("invalid claims")
 	}
 	sub, _ := claims["sub"].(string)
 	if sub == "" {
-		return "", errors.New("missing subject")
+		return "", "", errors.New("missing subject")
 	}
-	return sub, nil
+	role, _ := claims["role"].(string)
+	if role == "" {
+		role = "user"
+	}
+	return sub, role, nil
 }
 
-// AuthMiddleware validates the JWT bearer token and sets userID in context.
+// AuthMiddleware validates the JWT bearer token and sets userID + role in context.
 func AuthMiddleware(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -89,12 +98,27 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization header"})
 			return
 		}
-		userID, err := ParseJWT(secret, parts[1])
+		userID, role, err := ParseJWT(secret, parts[1])
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
 			return
 		}
 		c.Set("userID", userID)
+		c.Set("role", role)
+		c.Next()
+	}
+}
+
+// RequireAdmin is middleware that rejects requests unless the authenticated
+// user holds an admin-level role (admin, wl_admin, or master_wallet_admin).
+// Must be used after AuthMiddleware.
+func RequireAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role := getUserRole(c)
+		if role != "admin" && role != "wl_admin" && role != "master_wallet_admin" {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "admin privileges required"})
+			return
+		}
 		c.Next()
 	}
 }
@@ -102,6 +126,13 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 // getUserID extracts the authenticated user ID from the gin context.
 func getUserID(c *gin.Context) string {
 	v, _ := c.Get("userID")
+	s, _ := v.(string)
+	return s
+}
+
+// getUserRole extracts the authenticated user's role from the gin context.
+func getUserRole(c *gin.Context) string {
+	v, _ := c.Get("role")
 	s, _ := v.(string)
 	return s
 }

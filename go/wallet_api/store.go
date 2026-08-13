@@ -57,12 +57,17 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT UNIQUE NOT NULL,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user',           -- user | admin | wl_admin | master_wallet_admin
     kyc_status TEXT DEFAULT 'unverified',
     kyc_level INT DEFAULT 0,
     two_factor_enabled BOOLEAN DEFAULT false,
+    last_login_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+-- Backfill the role column on pre-existing databases (idempotent).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS wallets (
     id UUID PRIMARY KEY,
@@ -185,13 +190,26 @@ func (s *Store) CreateUser(ctx context.Context, email, username, passwordHash st
 
 func (s *Store) GetUserByEmail(ctx context.Context, email string) (*UserRecord, error) {
 	row := s.PG.QueryRow(ctx,
-		"SELECT id, email, username, password_hash, kyc_status, kyc_level, two_factor_enabled FROM users WHERE email=$1", email)
+		"SELECT id, email, username, password_hash, role, kyc_status, kyc_level, two_factor_enabled FROM users WHERE email=$1", email)
 	u := &UserRecord{}
-	err := row.Scan(&u.ID, &u.Email, &u.Username, &u.PasswordHash, &u.KYCStatus, &u.KYCLevel, &u.TwoFactorEnabled)
+	err := row.Scan(&u.ID, &u.Email, &u.Username, &u.PasswordHash, &u.Role, &u.KYCStatus, &u.KYCLevel, &u.TwoFactorEnabled)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	return u, err
+}
+
+// GetUserRole returns the role string for a user ID, or "user" if unset.
+func (s *Store) GetUserRole(ctx context.Context, userID uuid.UUID) (string, error) {
+	if s == nil || s.PG == nil {
+		return "user", nil
+	}
+	var role string
+	err := s.PG.QueryRow(ctx, "SELECT COALESCE(role,'user') FROM users WHERE id=$1", userID).Scan(&role)
+	if err != nil {
+		return "user", err
+	}
+	return role, nil
 }
 
 // ---- Wallet operations ----
@@ -371,6 +389,7 @@ type UserRecord struct {
 	Email            string    `json:"email"`
 	Username         string    `json:"username"`
 	PasswordHash     string    `json:"-"`
+	Role             string    `json:"role"`
 	KYCStatus        string    `json:"kyc_status"`
 	KYCLevel         int       `json:"kyc_level"`
 	TwoFactorEnabled bool      `json:"two_factor_enabled"`

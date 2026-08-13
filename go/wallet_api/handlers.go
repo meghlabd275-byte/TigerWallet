@@ -77,7 +77,7 @@ func handleRegister(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
 		return
 	}
-	token, _ := IssueJWT(appConfig.JWTSecret, uid.String())
+	token, _ := IssueJWT(appConfig.JWTSecret, uid.String(), "user")
 	c.JSON(http.StatusCreated, gin.H{"user_id": uid, "token": token})
 }
 
@@ -96,7 +96,7 @@ func handleLogin(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
-	token, _ := IssueJWT(appConfig.JWTSecret, user.ID.String())
+	token, _ := IssueJWT(appConfig.JWTSecret, user.ID.String(), user.Role)
 	c.JSON(http.StatusOK, gin.H{"token": token, "user": user})
 }
 

@@ -15,6 +15,7 @@ type AppConfig struct {
 	JWTSecret       string
 	CoinGeckoAPIKey string
 	EtherscanAPIKey string
+	AdminBootstrapEmail string
 }
 
 // LoadConfig reads configuration from environment variables. Every secret has
@@ -27,6 +28,7 @@ func LoadConfig() *AppConfig {
 		JWTSecret:       envOr("JWT_SECRET", "tigerwallet-dev-secret-change-in-production"),
 		CoinGeckoAPIKey: os.Getenv("COINGECKO_API_KEY"),
 		EtherscanAPIKey: os.Getenv("ETHERSCAN_API_KEY"),
+		AdminBootstrapEmail: os.Getenv("ADMIN_BOOTSTRAP_EMAIL"),
 	}
 }
 
