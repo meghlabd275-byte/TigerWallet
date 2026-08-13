@@ -1544,3 +1544,52 @@ source before acting.
 - Flutter: ThemeProvider ChangeNotifier.
 - production/react: ThemeContext theme === 'dark' ternaries.
 - mobile_apps/tigerwallet: Redux theme.mode + COLORS ternaries.
+
+## Session 2026-08-12 (continued): RBAC + Flutter critical crypto fix
+
+### Role-based access control (admin endpoints)
+- **Problem**: ANY authenticated user could call `/api/v1/admin/*` — no role
+  check. **Fixed**:
+  - `store.go`: `users.role` column (user|admin|wl_admin|master_wallet_admin)
+    + `last_login_at`; ALTER TABLE backfills existing DBs; `GetUserRole()`.
+  - `auth.go`: `IssueJWT(secret, userID, role)` 3-arg; `ParseJWT` returns
+    `(userID, role, err)`; `AuthMiddleware` sets role in context; new
+    `RequireAdmin()` middleware 403-rejects non-admins.
+  - `main.go`: admin group wrapped with `RequireAdmin()`; `bootstrapAdminRole`
+    promotes `ADMIN_BOOTSTRAP_EMAIL` env at startup (seeds first admin).
+  - `admin_ext.go`: `handleAdminSetUserRole` (PUT /admin/users/:id/role) with
+    self-demotion guard; `validAdminRoles` whitelist.
+  - `config.go`: `AdminBootstrapEmail` field.
+  - Frontend proxy: `app/api/v1/admin/users/[id]/role/route.ts` (import depth
+    `../../../../_proxy` — 4 levels from `users/[id]/role/route.ts` to
+    `api/v1/_proxy.ts`).
+  - Build+vet+test (BIP-44 vector) all pass; tsc 0 errors. Committed `bd2f35e`.
+
+### Flutter app (mobile_apps/flutter_app) critical crypto fix
+- **Problem**: the self-custody Flutter app had FAKE crypto that would cause
+  lost funds / invalid txs:
+  1. `ethAddress` used SHA-256 instead of Keccak-256 -> WRONG Ethereum addresses.
+  2. `_ripemd160` was a NO-OP (returned input unchanged) -> WRONG Bitcoin addresses.
+  3. `EVMSigner` was completely fake: tx "hash" = SHA-256(string concat) not
+     RLP+keccak256; ECDSA used `SHA256Digest()` not keccak256; signed tx was
+     `0x`+hex(signature) not RLP-encoded.
+- **Fixed** (all via pointycastle, already a dependency):
+  - Added `CryptoUtils.keccak256` (KeccakDigest(256)) + `CryptoUtils.ripemd160`
+    (RIPEMD160Digest) helpers.
+  - `ethAddress`: keccak256(pubkey[1:]) last 20 bytes + full EIP-55 checksum.
+  - `bitcoinAddress`: Hash160 = RIPEMD160(SHA256(pubkey)) + base58check.
+  - `EVMSigner` rewritten: real RLP encoding primitives (bytes/bint/list),
+    keccak256 tx hash, secp256k1 ECDSA via `ECDSASigner(null)` with EIP-2
+    low-s normalization + recovery-id key recovery, EIP-155 replay protection
+    (v = chainId*2 + 35 + recoveryId). Produces valid raw signed tx hex for
+    `eth_sendRawTransaction`.
+  - BIP-39 mnemonic-to-seed (PBKDF2-HMAC-SHA512, 2048 iters) + BIP-32
+    HMAC-SHA512 CKD were ALREADY correct — unchanged.
+  - Flutter SDK NOT installed in this env; verified by construction (matches
+    go/wallet_api's real signing path) + brace balance. Committed `c8b4de8`.
+
+### Chain coverage (verified, all mainnet, no testnets)
+- 120 EVM chains (`chains_evm_data.go`) — meets >=100 requirement.
+- 66 non-EVM chains (`chains_nonevm_data.go`) — meets >=50 requirement.
+- Pi Network: ID 9000004242, ChainType "pi", explorer blockexplorer.minepi.com,
+  RPC empty (Pi mainnet is enclosed). All `IsTestnet: false`.
