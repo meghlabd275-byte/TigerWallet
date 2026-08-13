@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { ThemeToggle } from '../../components/ThemeToggle'
+import { useTheme } from '../../components/ThemeProvider'
 
 interface Update {
   update_id: string
@@ -23,6 +24,7 @@ interface VersionInfo {
 }
 
 export default function WhiteLabelUpdates() {
+  const { isDark } = useTheme()
   const [updates, setUpdates] = useState<Update[]>([])
   const [version, setVersion] = useState<VersionInfo | null>(null)
   const [loading, setLoading] = useState(true)
@@ -83,7 +85,7 @@ export default function WhiteLabelUpdates() {
 
   return (
     <div className="min-h-screen">
-      <div className="flex justify-between items-center p-4 border-b border-white/10">
+      <div className={`flex justify-between items-center p-4 border-b ${isDark ? 'border-white/10' : 'border-black/10'}`}>
         <div className="text-xl font-bold">🐯 TigerSwap Updates</div>
         <ThemeToggle />
       </div>
@@ -98,11 +100,11 @@ export default function WhiteLabelUpdates() {
             <div className="card mb-8">
               <div className="flex justify-between items-center">
                 <div>
-                  <p className="text-slate-400">Current Version</p>
+                  <p className={`${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Current Version</p>
                   <p className="text-2xl font-bold">{version.current_version}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-slate-400">Latest Version</p>
+                  <p className={`${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Latest Version</p>
                   <p className="text-2xl font-bold text-orange-500">{version.latest_version}</p>
                 </div>
                 {version.update_available && (
@@ -114,7 +116,7 @@ export default function WhiteLabelUpdates() {
             </div>
 
             {updates.length === 0 ? (
-              <div className="text-center py-12 text-slate-400">
+              <div className={`text-center py-12 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                 <p className="text-xl mb-2">All updates applied</p>
                 <p>You are running the latest version</p>
               </div>
@@ -129,9 +131,9 @@ export default function WhiteLabelUpdates() {
                           <span className={`px-2 py-1 rounded text-xs text-white ${getUpdateTypeColor(update.update_type)}`}>
                             {update.update_type}
                           </span>
-                          <span className="text-slate-400 text-sm">v{update.update_version}</span>
+                          <span className={`${isDark ? 'text-slate-400' : 'text-slate-600'} text-sm`}>v{update.update_version}</span>
                         </div>
-                        <p className="text-slate-400">{update.description}</p>
+                        <p className={`${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{update.description}</p>
                       </div>
                       {update.status === 'available' && (
                         <button

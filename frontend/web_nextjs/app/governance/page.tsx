@@ -91,6 +91,7 @@ function timeAgo(timestamp: number): string {
 // ============================================================================
 
 export default function GovernancePage() {
+  const { isDark } = useTheme();
   // State
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [topHolders, setTopHolders] = useState<Delegate[]>([]);
@@ -291,12 +292,12 @@ export default function GovernancePage() {
   // ============================================================================
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a14', p: 3 }}>
+    <Box sx={{ minHeight: '100vh', bgcolor: isDark ? '#0a0a14' : '#f5f7fa', color: isDark ? 'white' : '#1a1a2e', p: 3 }}>
       <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
         {/* Header */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
           <Box>
-            <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
+            <Typography variant="h4" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
               🏛️ Governance
             </Typography>
             <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mt: 1 }}>
@@ -318,7 +319,7 @@ export default function GovernancePage() {
           <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
               <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Active Proposals</Typography>
-              <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
+              <Typography variant="h5" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
                 {activeProposals}
               </Typography>
             </CardContent>
@@ -326,7 +327,7 @@ export default function GovernancePage() {
           <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
               <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total Votes Cast</Typography>
-              <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
+              <Typography variant="h5" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
                 {formatNumber(totalVotes)}
               </Typography>
             </CardContent>
@@ -346,7 +347,7 @@ export default function GovernancePage() {
           <CardContent sx={{ p: 3 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
               <Box>
-                <Typography variant="h6" sx={{ color: 'white', mb: 1 }}>
+                <Typography variant="h6" sx={{ color: isDark ? 'white' : '#1a1a2e', mb: 1 }}>
                   Delegate Your Voting Power
                 </Typography>
                 <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
@@ -361,7 +362,7 @@ export default function GovernancePage() {
                   onChange={(e) => setDelegateAddress(e.target.value)}
                   sx={{
                     width: 250,
-                    '& input': { color: 'white' },
+                    '& input': { color: isDark ? 'white' : '#1a1a2e' },
                     '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } },
                   }}
                 />
@@ -433,7 +434,7 @@ export default function GovernancePage() {
                             onClick={() => { setSelectedProposal(proposal); setShowProposalDetail(true); }}>
                             <TableCell>
                               <Box>
-                                <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{proposal.title}</Typography>
+                                <Typography sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>{proposal.title}</Typography>
                                 <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                                   by {formatAddress(proposal.proposer)} • {timeAgo(proposal.createdAt)}
                                 </Typography>
@@ -496,7 +497,7 @@ export default function GovernancePage() {
                         {proposals.filter(p => p.status === 'active').map(proposal => (
                           <TableRow key={proposal.id} sx={{ '&:hover': { bgcolor: 'var(--bg-secondary)' } }}>
                             <TableCell>
-                              <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{proposal.title}</Typography>
+                              <Typography sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>{proposal.title}</Typography>
                             </TableCell>
                             <TableCell>
                               <Box sx={{ minWidth: 120 }}>{renderVoteBar(proposal)}</Box>
@@ -557,7 +558,7 @@ export default function GovernancePage() {
                             {proposals.filter(p => p.myVote !== undefined).map(proposal => (
                               <TableRow key={proposal.id} sx={{ '&:hover': { bgcolor: 'var(--bg-secondary)' } }}>
                                 <TableCell>
-                                  <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{proposal.title}</Typography>
+                                  <Typography sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>{proposal.title}</Typography>
                                 </TableCell>
                                 <TableCell>
                                   <Chip
@@ -617,7 +618,7 @@ export default function GovernancePage() {
                                     {formatAddress(holder.address, 2)}
                                   </Avatar>
                                   <Box>
-                                    <Typography sx={{ color: 'white' }}>{holder.name || formatAddress(holder.address)}</Typography>
+                                    <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{holder.name || formatAddress(holder.address)}</Typography>
                                     <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>{formatAddress(holder.address)}</Typography>
                                   </Box>
                                 </Box>
@@ -629,10 +630,10 @@ export default function GovernancePage() {
                                 <Typography sx={{ color: 'var(--text-secondary)' }}>{formatNumber(holder.delegatedPower)}</Typography>
                               </TableCell>
                               <TableCell align="right">
-                                <Typography sx={{ color: 'white' }}>{holder.proposalsCreated}</Typography>
+                                <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{holder.proposalsCreated}</Typography>
                               </TableCell>
                               <TableCell align="right">
-                                <Typography sx={{ color: 'white' }}>{holder.votesCast}</Typography>
+                                <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{holder.votesCast}</Typography>
                               </TableCell>
                               <TableCell align="right">
                                 <Typography sx={{ color: 'var(--text-secondary)' }}>{timeAgo(holder.since)}</Typography>
@@ -659,7 +660,7 @@ export default function GovernancePage() {
         >
           {selectedProposal && (
             <>
-              <DialogTitle sx={{ color: 'white', display: 'flex', justifyContent: 'space-between' }}>
+              <DialogTitle sx={{ color: isDark ? 'white' : '#1a1a2e', display: 'flex', justifyContent: 'space-between' }}>
                 <Box>
                   <Typography variant="h6">{selectedProposal.title}</Typography>
                   <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
@@ -667,7 +668,7 @@ export default function GovernancePage() {
                     {renderStatusChip(selectedProposal.status)}
                   </Box>
                 </Box>
-                <IconButton onClick={() => setShowProposalDetail(false)} sx={{ color: 'white' }}>
+                <IconButton onClick={() => setShowProposalDetail(false)} sx={{ color: isDark ? 'white' : '#1a1a2e' }}>
                   <Close />
                 </IconButton>
               </DialogTitle>
@@ -676,7 +677,7 @@ export default function GovernancePage() {
                   Proposed by {formatAddress(selectedProposal.proposer)} • {timeAgo(selectedProposal.createdAt)}
                 </Typography>
 
-                <Typography sx={{ color: 'white', mb: 3, lineHeight: 1.7 }}>
+                <Typography sx={{ color: isDark ? 'white' : '#1a1a2e', mb: 3, lineHeight: 1.7 }}>
                   {selectedProposal.description}
                 </Typography>
 

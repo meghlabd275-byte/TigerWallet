@@ -118,6 +118,7 @@ function timeAgo(timestamp: number): string {
 // ============================================================================
 
 export default function LeaderboardPage() {
+  const { isDark } = useTheme();
   // State
   const [traders, setTraders] = useState<Trader[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -243,12 +244,12 @@ export default function LeaderboardPage() {
   // ============================================================================
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a14', p: 3 }}>
+    <Box sx={{ minHeight: '100vh', bgcolor: isDark ? '#0a0a14' : '#f5f7fa', color: isDark ? 'white' : '#1a1a2e', p: 3 }}>
       <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
         {/* Header */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
           <Box>
-            <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
+            <Typography variant="h4" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
               🏆 ContentCopy Trading Leaderboard
             </Typography>
             <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mt: 1 }}>
@@ -259,7 +260,7 @@ export default function LeaderboardPage() {
             variant="outlined"
             startIcon={<Refresh />}
             onClick={loadData}
-            sx={{ borderColor: 'var(--bg-tertiary)', color: 'white' }}
+            sx={{ borderColor: 'var(--bg-tertiary)', color: isDark ? 'white' : '#1a1a2e' }}
           >
             Refresh
           </Button>
@@ -332,7 +333,7 @@ export default function LeaderboardPage() {
               <Select
                 value={filterPair}
                 onChange={(e) => setFilterPair(e.target.value)}
-                sx={{ color: 'white', bgcolor: 'var(--bg-secondary)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
+                sx={{ color: isDark ? 'white' : '#1a1a2e', bgcolor: 'var(--bg-secondary)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
               >
                 <MenuItem value="all">All Pairs</MenuItem>
                 <MenuItem value="ETH/USDC">ETH/USDC</MenuItem>
@@ -382,7 +383,7 @@ export default function LeaderboardPage() {
                             </Avatar>
                             <Box>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
+                                <Typography sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
                                   {entry.trader.ensName || formatAddress(entry.trader.address)}
                                 </Typography>
                                 {entry.trader.isVerified && <Verified sx={{ color: '#00d4aa', fontSize: 16 }} />}
@@ -448,13 +449,13 @@ export default function LeaderboardPage() {
           <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
               <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total Traders</Typography>
-              <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>{traders.length}</Typography>
+              <Typography variant="h5" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>{traders.length}</Typography>
             </CardContent>
           </Card>
           <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
               <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Active Copiers</Typography>
-              <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>{formatNumber(traders.reduce((sum, t) => sum + t.followers, 0))}</Typography>
+              <Typography variant="h5" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>{formatNumber(traders.reduce((sum, t) => sum + t.followers, 0))}</Typography>
             </CardContent>
           </Card>
           <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
@@ -466,7 +467,7 @@ export default function LeaderboardPage() {
           <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
               <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total Volume</Typography>
-              <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>{formatUSD(traders.reduce((sum, t) => sum + t.totalVolume, 0))}</Typography>
+              <Typography variant="h5" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>{formatUSD(traders.reduce((sum, t) => sum + t.totalVolume, 0))}</Typography>
             </CardContent>
           </Card>
         </Box>
@@ -482,7 +483,7 @@ export default function LeaderboardPage() {
       >
         {selectedTrader && (
           <>
-            <DialogTitle sx={{ color: 'white', display: 'flex', justifyContent: 'space-between' }}>
+            <DialogTitle sx={{ color: isDark ? 'white' : '#1a1a2e', display: 'flex', justifyContent: 'space-between' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Avatar sx={{ width: 56, height: 56, bgcolor: 'var(--bg-secondary)' }}>
                   {formatAddress(selectedTrader.address, 2)}
@@ -497,7 +498,7 @@ export default function LeaderboardPage() {
                   </Typography>
                 </Box>
               </Box>
-              <IconButton onClick={() => setShowTraderDetail(false)} sx={{ color: 'white' }}>✕</IconButton>
+              <IconButton onClick={() => setShowTraderDetail(false)} sx={{ color: isDark ? 'white' : '#1a1a2e' }}>✕</IconButton>
             </DialogTitle>
             <DialogContent>
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, mb: 3 }}>
@@ -520,7 +521,7 @@ export default function LeaderboardPage() {
                 <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 2 }}>
                   <CardContent>
                     <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Profit Factor</Typography>
-                    <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
+                    <Typography variant="h6" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
                       {selectedTrader.profitFactor.toFixed(2)}
                     </Typography>
                   </CardContent>
@@ -555,7 +556,7 @@ export default function LeaderboardPage() {
                 <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 2 }}>
                   <CardContent>
                     <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total Trades</Typography>
-                    <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
+                    <Typography variant="h6" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
                       {formatNumber(selectedTrader.totalTrades)}
                     </Typography>
                   </CardContent>
@@ -563,7 +564,7 @@ export default function LeaderboardPage() {
                 <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 2 }}>
                   <CardContent>
                     <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Followers</Typography>
-                    <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
+                    <Typography variant="h6" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
                       {formatNumber(selectedTrader.followers)}
                     </Typography>
                   </CardContent>
@@ -582,7 +583,7 @@ export default function LeaderboardPage() {
                     startAdornment: <Typography sx={{ color: 'var(--text-secondary)', mr: 1 }}>$</Typography>,
                   }}
                   sx={{
-                    '& .MuiInputBase-input': { color: 'white' },
+                    '& .MuiInputBase-input': { color: isDark ? 'white' : '#1a1a2e' },
                     '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } },
                   }}
                 />

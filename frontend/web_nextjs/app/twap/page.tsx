@@ -218,6 +218,7 @@ function normalizeExec(e: any): OrderExecution {
 // ============================================================================
 
 export default function TWAPPage() {
+  const { isDark } = useTheme();
   // State
   const [twapOrders, setTwapOrders] = useState<TWAPOrder[]>([]);
   const [dcaOrders, setDcaOrders] = useState<DCAOrder[]>([]);
@@ -407,12 +408,12 @@ export default function TWAPPage() {
   // ============================================================================
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'var(--bg-primary)', p: 3 }}>
+    <Box sx={{ minHeight: '100vh', bgcolor: 'var(--bg-primary)', color: isDark ? 'white' : '#1a1a2e', p: 3 }}>
       <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
         {/* Header */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
           <Box>
-            <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
+            <Typography variant="h4" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
               📅 TWAP & DCA Orders
             </Typography>
             <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mt: 1 }}>
@@ -424,7 +425,7 @@ export default function TWAPPage() {
               variant="outlined"
               startIcon={<Refresh />}
               onClick={loadData}
-              sx={{ borderColor: 'var(--bg-tertiary)', color: 'white' }}
+              sx={{ borderColor: 'var(--bg-tertiary)', color: isDark ? 'white' : '#1a1a2e' }}
             >
               Refresh
             </Button>
@@ -468,7 +469,7 @@ export default function TWAPPage() {
           <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent>
               <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Active Orders</Typography>
-              <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
+              <Typography variant="h5" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
                 {activeOrders}
               </Typography>
             </CardContent>
@@ -549,7 +550,7 @@ export default function TWAPPage() {
                               </Box>
                             </TableCell>
                             <TableCell align="right">
-                              <Typography sx={{ color: 'white' }}>{formatUSD(parseFloat(order.totalAmount))}</Typography>
+                              <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{formatUSD(parseFloat(order.totalAmount))}</Typography>
                             </TableCell>
                             <TableCell align="right">
                               <Typography sx={{ color: '#00d4aa' }}>{formatUSD(parseFloat(order.filledAmount))}</Typography>
@@ -641,10 +642,10 @@ export default function TWAPPage() {
                               <Chip label={FREQUENCIES.find(f => f.value === order.frequency)?.label || order.frequency} size="small" sx={{ bgcolor: 'var(--bg-secondary)' }} />
                             </TableCell>
                             <TableCell align="right">
-                              <Typography sx={{ color: 'white' }}>{formatUSD(parseFloat(order.amountPerOrder))}</Typography>
+                              <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{formatUSD(parseFloat(order.amountPerOrder))}</Typography>
                             </TableCell>
                             <TableCell align="right">
-                              <Typography sx={{ color: 'white' }}>{formatUSD(parseFloat(order.totalAmount))}</Typography>
+                              <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{formatUSD(parseFloat(order.totalAmount))}</Typography>
                             </TableCell>
                             <TableCell align="right">
                               <Typography sx={{ color: '#00d4aa' }}>{formatUSD(parseFloat(order.filledAmount))}</Typography>
@@ -720,13 +721,13 @@ export default function TWAPPage() {
                           <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>→ {exec.tokenOut}</Typography>
                         </TableCell>
                         <TableCell align="right">
-                          <Typography sx={{ color: 'white' }}>{exec.amountIn}</Typography>
+                          <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{exec.amountIn}</Typography>
                         </TableCell>
                         <TableCell align="right">
                           <Typography sx={{ color: '#00d4aa' }}>{exec.amountOut}</Typography>
                         </TableCell>
                         <TableCell align="right">
-                          <Typography sx={{ color: 'white' }}>${exec.price.toLocaleString()}</Typography>
+                          <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>${exec.price.toLocaleString()}</Typography>
                         </TableCell>
                         <TableCell>
                           <Chip
@@ -757,9 +758,9 @@ export default function TWAPPage() {
         fullWidth
         PaperProps={{ sx: { bgcolor: 'var(--bg-primary)', backgroundImage: 'none' } }}
       >
-        <DialogTitle sx={{ color: 'white', display: 'flex', justifyContent: 'space-between' }}>
+        <DialogTitle sx={{ color: isDark ? 'white' : '#1a1a2e', display: 'flex', justifyContent: 'space-between' }}>
           Create {orderType.toUpperCase()} Order
-          <IconButton onClick={() => setShowCreateDialog(false)} sx={{ color: 'white' }}>✕</IconButton>
+          <IconButton onClick={() => setShowCreateDialog(false)} sx={{ color: isDark ? 'white' : '#1a1a2e' }}>✕</IconButton>
         </DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2 }}>
@@ -785,7 +786,7 @@ export default function TWAPPage() {
                   value={tokenIn}
                   onChange={(e) => setTokenIn(e.target.value)}
                   label="From Token"
-                  sx={{ color: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
+                  sx={{ color: isDark ? 'white' : '#1a1a2e', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
                 >
                   {TOKENS.map(t => (
                     <MenuItem key={t.symbol} value={t.symbol}>
@@ -803,7 +804,7 @@ export default function TWAPPage() {
                   value={tokenOut}
                   onChange={(e) => setTokenOut(e.target.value)}
                   label="To Token"
-                  sx={{ color: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
+                  sx={{ color: isDark ? 'white' : '#1a1a2e', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
                 >
                   {TOKENS.map(t => (
                     <MenuItem key={t.symbol} value={t.symbol}>
@@ -827,7 +828,7 @@ export default function TWAPPage() {
               InputProps={{
                 startAdornment: <InputAdornment position="start" sx={{ color: 'var(--text-secondary)' }}>$</InputAdornment>,
               }}
-              sx={{ mb: 3, '& .MuiInputLabel-root': { color: 'var(--text-secondary)' }, '& input': { color: 'white' }, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } } }}
+              sx={{ mb: 3, '& .MuiInputLabel-root': { color: 'var(--text-secondary)' }, '& input': { color: isDark ? 'white' : '#1a1a2e' }, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } } }}
             />
 
             {/* TWAP Settings */}
@@ -840,7 +841,7 @@ export default function TWAPPage() {
                       value={numOrders}
                       onChange={(e) => setNumOrders(e.target.value as number)}
                       label="Number of Orders"
-                      sx={{ color: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
+                      sx={{ color: isDark ? 'white' : '#1a1a2e', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
                     >
                       {[5, 10, 20, 50, 100].map(n => (
                         <MenuItem key={n} value={n}>{n} orders</MenuItem>
@@ -853,7 +854,7 @@ export default function TWAPPage() {
                       value={intervalMinutes}
                       onChange={(e) => setIntervalMinutes(e.target.value as number)}
                       label="Interval"
-                      sx={{ color: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
+                      sx={{ color: isDark ? 'white' : '#1a1a2e', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
                     >
                       {INTERVALS.map(int => (
                         <MenuItem key={int.value} value={int.value}>{int.label}</MenuItem>
@@ -868,7 +869,7 @@ export default function TWAPPage() {
                     value={priceType}
                     onChange={(e) => setPriceType(e.target.value as 'market' | 'limit')}
                     label="Price Type"
-                    sx={{ color: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
+                    sx={{ color: isDark ? 'white' : '#1a1a2e', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
                   >
                     <MenuItem value="market">Market Price</MenuItem>
                     <MenuItem value="limit">Limit Price</MenuItem>
@@ -882,7 +883,7 @@ export default function TWAPPage() {
                     label="Limit Price"
                     value={limitPrice}
                     onChange={(e) => setLimitPrice(e.target.value)}
-                    sx={{ mb: 3, '& .MuiInputLabel-root': { color: 'var(--text-secondary)' }, '& input': { color: 'white' }, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } } }}
+                    sx={{ mb: 3, '& .MuiInputLabel-root': { color: 'var(--text-secondary)' }, '& input': { color: isDark ? 'white' : '#1a1a2e' }, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } } }}
                   />
                 )}
               </Box>
@@ -895,7 +896,7 @@ export default function TWAPPage() {
                     value={frequency}
                     onChange={(e) => setFrequency(e.target.value as 'daily' | 'weekly' | 'monthly')}
                     label="Frequency"
-                    sx={{ color: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
+                    sx={{ color: isDark ? 'white' : '#1a1a2e', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
                   >
                     {FREQUENCIES.map(f => (
                       <MenuItem key={f.value} value={f.value}>{f.label}</MenuItem>
@@ -911,7 +912,7 @@ export default function TWAPPage() {
                         value={dayOfWeek}
                         onChange={(e) => setDayOfWeek(e.target.value as number)}
                         label="Day of Week"
-                        sx={{ color: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
+                        sx={{ color: isDark ? 'white' : '#1a1a2e', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
                       >
                         {DAYS_OF_WEEK.map((day, i) => (
                           <MenuItem key={i} value={i}>{day}</MenuItem>
@@ -926,7 +927,7 @@ export default function TWAPPage() {
                         value={dayOfMonth}
                         onChange={(e) => setDayOfMonth(e.target.value as number)}
                         label="Day of Month"
-                        sx={{ color: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
+                        sx={{ color: isDark ? 'white' : '#1a1a2e', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
                       >
                         {Array.from({ length: 28 }, (_, i) => (
                           <MenuItem key={i + 1} value={i + 1}>{i + 1}</MenuItem>
@@ -940,7 +941,7 @@ export default function TWAPPage() {
                       value={hourOfDay}
                       onChange={(e) => setHourOfDay(e.target.value as number)}
                       label="Time of Day"
-                      sx={{ color: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
+                      sx={{ color: isDark ? 'white' : '#1a1a2e', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
                     >
                       {Array.from({ length: 24 }, (_, i) => (
                         <MenuItem key={i} value={i}>{i.toString().padStart(2, '0')}:00</MenuItem>

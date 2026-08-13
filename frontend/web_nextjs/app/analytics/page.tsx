@@ -120,6 +120,7 @@ function formatDate(timestamp: number): string {
 // ============================================================================
 
 export default function AnalyticsPage() {
+  const { isDark } = useTheme();
   // State
   const [timeRange, setTimeRange] = useState<'24h' | '7d' | '30d' | 'all'>('7d');
   const [activeTab, setActiveTab] = useState(0);
@@ -244,7 +245,7 @@ export default function AnalyticsPage() {
           <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>{title}</Typography>
           {icon && <Box sx={{ color: 'var(--text-secondary)' }}>{icon}</Box>}
         </Box>
-        <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold', mb: 0.5 }}>
+        <Typography variant="h5" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold', mb: 0.5 }}>
           {value}
         </Typography>
         {change !== undefined && renderChangeIndicator(change)}
@@ -262,12 +263,12 @@ export default function AnalyticsPage() {
   // ============================================================================
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a14', p: 3 }}>
+    <Box sx={{ minHeight: '100vh', bgcolor: isDark ? '#0a0a14' : '#f5f7fa', color: isDark ? 'white' : '#1a1a2e', p: 3 }}>
       <Box sx={{ maxWidth: 1600, mx: 'auto' }}>
         {/* Header */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
           <Box>
-            <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
+            <Typography variant="h4" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
               📊 Analytics Dashboard
             </Typography>
             <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mt: 1 }}>
@@ -296,7 +297,7 @@ export default function AnalyticsPage() {
             <Button
               variant="outlined"
               startIcon={<Download />}
-              sx={{ borderColor: 'var(--bg-tertiary)', color: 'white' }}
+              sx={{ borderColor: 'var(--bg-tertiary)', color: isDark ? 'white' : '#1a1a2e' }}
             >
               Export
             </Button>
@@ -304,7 +305,7 @@ export default function AnalyticsPage() {
               variant="outlined"
               startIcon={<Refresh />}
               onClick={loadAnalytics}
-              sx={{ borderColor: 'var(--bg-tertiary)', color: 'white' }}
+              sx={{ borderColor: 'var(--bg-tertiary)', color: isDark ? 'white' : '#1a1a2e' }}
             >
               Refresh
             </Button>
@@ -396,7 +397,7 @@ export default function AnalyticsPage() {
                 {/* Volume Chart */}
                 <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 3, mb: 3 }}>
                   <CardContent>
-                    <Typography variant="h6" sx={{ color: 'white', mb: 2 }}>Volume History</Typography>
+                    <Typography variant="h6" sx={{ color: isDark ? 'white' : '#1a1a2e', mb: 2 }}>Volume History</Typography>
                     <Box sx={{ height: 300, display: 'flex', alignItems: 'flex-end', gap: 1, px: 2 }}>
                       {volumeData.slice(-14).map((data, idx) => {
                         const maxVolume = Math.max(...volumeData.slice(-14).map(d => d.volume));
@@ -434,7 +435,7 @@ export default function AnalyticsPage() {
                 <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 3 }}>
                   <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 3 }}>
                     <CardContent>
-                      <Typography variant="h6" sx={{ color: 'white', mb: 2 }}>Fee Distribution</Typography>
+                      <Typography variant="h6" sx={{ color: isDark ? 'white' : '#1a1a2e', mb: 2 }}>Fee Distribution</Typography>
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         {[
                           { label: 'Swap Fees', value: 65, color: '#00d4aa' },
@@ -445,7 +446,7 @@ export default function AnalyticsPage() {
                           <Box key={item.label}>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
                               <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>{item.label}</Typography>
-                              <Typography variant="body2" sx={{ color: 'white' }}>{item.value}%</Typography>
+                              <Typography variant="body2" sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{item.value}%</Typography>
                             </Box>
                             <LinearProgress
                               variant="determinate"
@@ -465,12 +466,12 @@ export default function AnalyticsPage() {
 
                   <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 3 }}>
                     <CardContent>
-                      <Typography variant="h6" sx={{ color: 'white', mb: 2 }}>Top Performing Pools</Typography>
+                      <Typography variant="h6" sx={{ color: isDark ? 'white' : '#1a1a2e', mb: 2 }}>Top Performing Pools</Typography>
                       {poolAnalytics.slice(0, 5).map((pool, idx) => (
                         <Box key={pool.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             <Typography variant="body2" sx={{ color: 'var(--text-secondary)', width: 20 }}>{idx + 1}</Typography>
-                            <Typography variant="body2" sx={{ color: 'white' }}>{pool.name}</Typography>
+                            <Typography variant="body2" sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{pool.name}</Typography>
                           </Box>
                           <Box sx={{ textAlign: 'right' }}>
                             <Typography variant="body2" sx={{ color: '#00d4aa' }}>{formatPercent(pool.apr)}</Typography>
@@ -509,10 +510,10 @@ export default function AnalyticsPage() {
                           <Typography sx={{ color: '#00d4aa', fontWeight: 'bold' }}>{pool.name}</Typography>
                         </TableCell>
                         <TableCell align="right">
-                          <Typography sx={{ color: 'white' }}>{formatUSD(pool.tvl)}</Typography>
+                          <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{formatUSD(pool.tvl)}</Typography>
                         </TableCell>
                         <TableCell align="right">
-                          <Typography sx={{ color: 'white' }}>{formatUSD(pool.volume24h)}</Typography>
+                          <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{formatUSD(pool.volume24h)}</Typography>
                         </TableCell>
                         <TableCell align="right">
                           <Typography sx={{ color: '#ff9800' }}>{formatUSD(pool.fees24h)}</Typography>
@@ -527,7 +528,7 @@ export default function AnalyticsPage() {
                             <Box sx={{ width: 60, bgcolor: 'var(--bg-primary)', borderRadius: 1, height: 6 }}>
                               <Box sx={{ width: `${pool.utilization}%`, bgcolor: pool.utilization > 70 ? '#00d4aa' : pool.utilization > 40 ? '#ff9800' : '#ff4757', height: '100%', borderRadius: 1 }} />
                             </Box>
-                            <Typography sx={{ color: 'white' }}>{pool.utilization.toFixed(0)}%</Typography>
+                            <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{pool.utilization.toFixed(0)}%</Typography>
                           </Box>
                         </TableCell>
                       </TableRow>
@@ -565,7 +566,7 @@ export default function AnalyticsPage() {
                           </Box>
                         </TableCell>
                         <TableCell align="right">
-                          <Typography sx={{ color: 'white' }}>
+                          <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>
                             {token.price < 1 ? `$${token.price.toFixed(4)}` : `$${formatNumber(token.price)}`}
                           </Typography>
                         </TableCell>
@@ -573,10 +574,10 @@ export default function AnalyticsPage() {
                           {renderChangeIndicator(token.change24h)}
                         </TableCell>
                         <TableCell align="right">
-                          <Typography sx={{ color: 'white' }}>{formatUSD(token.volume24h)}</Typography>
+                          <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{formatUSD(token.volume24h)}</Typography>
                         </TableCell>
                         <TableCell align="right">
-                          <Typography sx={{ color: 'white' }}>{formatUSD(token.marketCap)}</Typography>
+                          <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{formatUSD(token.marketCap)}</Typography>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -599,7 +600,7 @@ export default function AnalyticsPage() {
                       <CardContent>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                           <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: CHAIN_CONFIG[chain.chainId]?.color || 'var(--text-secondary)' }} />
-                          <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{chain.chainName}</Typography>
+                          <Typography sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>{chain.chainName}</Typography>
                         </Box>
                         <Typography variant="h6" sx={{ color: '#00d4aa' }}>{formatUSD(chain.volume24h)}</Typography>
                         <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>24h Volume</Typography>
@@ -631,17 +632,17 @@ export default function AnalyticsPage() {
                           <TableCell>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: CHAIN_CONFIG[chain.chainId]?.color || 'var(--text-secondary)' }} />
-                              <Typography sx={{ color: 'white' }}>{chain.chainName}</Typography>
+                              <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{chain.chainName}</Typography>
                             </Box>
                           </TableCell>
                           <TableCell align="right">
-                            <Typography sx={{ color: 'white' }}>{formatUSD(chain.volume24h)}</Typography>
+                            <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{formatUSD(chain.volume24h)}</Typography>
                           </TableCell>
                           <TableCell align="right">
                             <Typography sx={{ color: '#00d4aa' }}>{formatUSD(chain.tvl)}</Typography>
                           </TableCell>
                           <TableCell align="right">
-                            <Typography sx={{ color: 'white' }}>{formatNumber(chain.transactions)}</Typography>
+                            <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{formatNumber(chain.transactions)}</Typography>
                           </TableCell>
                           <TableCell align="right">
                             <Typography sx={{ color: 'var(--text-secondary)' }}>{chain.avgGasPrice.toFixed(1)} gwei</Typography>
@@ -651,7 +652,7 @@ export default function AnalyticsPage() {
                               <Box sx={{ width: 60, bgcolor: 'var(--bg-primary)', borderRadius: 1, height: 6 }}>
                                 <Box sx={{ width: `${chain.sharePercent * 3}%`, bgcolor: '#00d4aa', height: '100%', borderRadius: 1 }} />
                               </Box>
-                              <Typography sx={{ color: 'white' }}>{chain.sharePercent}%</Typography>
+                              <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{chain.sharePercent}%</Typography>
                             </Box>
                           </TableCell>
                         </TableRow>

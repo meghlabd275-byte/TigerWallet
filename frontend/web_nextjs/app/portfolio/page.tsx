@@ -44,6 +44,7 @@ function formatAddress(hash: string): string {
 // ============================================================================
 
 export default function PortfolioPage() {
+  const { isDark } = useTheme();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,19 +91,19 @@ export default function PortfolioPage() {
 
   if (loading) {
     return (
-      <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a14', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+      <Box sx={{ minHeight: '100vh', bgcolor: isDark ? '#0a0a14' : '#f5f7fa', color: isDark ? 'white' : '#1a1a2e', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
         <CircularProgress sx={{ color: '#00d4aa' }} />
       </Box>
     );
   }
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a14', p: 3 }}>
+    <Box sx={{ minHeight: '100vh', bgcolor: isDark ? '#0a0a14' : '#f5f7fa', color: isDark ? 'white' : '#1a1a2e', p: 3 }}>
       <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
         {/* Header */}
         <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <Box>
-            <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
+            <Typography variant="h4" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
               💼 Portfolio
             </Typography>
             <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mt: 1 }}>
@@ -152,7 +153,7 @@ export default function PortfolioPage() {
                 <Pool sx={{ color: '#ff9800' }} />
                 <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Positions Value</Typography>
               </Box>
-              <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
+              <Typography variant="h5" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
                 {formatUSD(positions.reduce((s, p) => s + (p.value || 0), 0))}
               </Typography>
             </CardContent>
@@ -204,13 +205,13 @@ export default function PortfolioPage() {
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                               <Typography sx={{ fontSize: 24 }}>{asset.icon || '🪙'}</Typography>
                               <Box>
-                                <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{asset.symbol}</Typography>
+                                <Typography sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>{asset.symbol}</Typography>
                                 <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>{asset.name}</Typography>
                               </Box>
                             </Box>
                           </TableCell>
                           <TableCell align="right">
-                            <Typography sx={{ color: 'white' }}>{(asset.balance || 0).toLocaleString()}</Typography>
+                            <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{(asset.balance || 0).toLocaleString()}</Typography>
                           </TableCell>
                           <TableCell align="right">
                             <Typography sx={{ color: '#00d4aa' }}>{formatUSD(asset.value || 0)}</Typography>
@@ -249,7 +250,7 @@ export default function PortfolioPage() {
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                               <Typography sx={{ fontSize: 24 }}>{pos.icon || '🧩'}</Typography>
                               <Box>
-                                <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{pos.pair}</Typography>
+                                <Typography sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>{pos.pair}</Typography>
                                 <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>{pos.protocol}</Typography>
                               </Box>
                             </Box>
@@ -295,7 +296,7 @@ export default function PortfolioPage() {
                             <Chip label="Transaction" size="small" sx={{ bgcolor: 'var(--bg-secondary)' }} />
                           </TableCell>
                           <TableCell>
-                            <Typography sx={{ color: 'white' }}>{tx.value} {tx.from ? `from ${formatAddress(tx.from)}` : ''} → {tx.to ? formatAddress(tx.to) : ''}</Typography>
+                            <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>{tx.value} {tx.from ? `from ${formatAddress(tx.from)}` : ''} → {tx.to ? formatAddress(tx.to) : ''}</Typography>
                           </TableCell>
                           <TableCell align="right">
                             <Typography sx={{ color: '#00d4aa' }}>{formatUSD(Number(tx.value) || 0)}</Typography>

@@ -63,6 +63,7 @@ function timeUntil(timestamp: number): string {
 // ============================================================================
 
 export default function LaunchpadPage() {
+  const { isDark } = useTheme();
   const [projects, setProjects] = useState<IDOProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -218,7 +219,7 @@ export default function LaunchpadPage() {
           <Box sx={{ display: 'flex', gap: 2 }}>
             <Typography sx={{ fontSize: 48 }}>{project.logo}</Typography>
             <Box>
-              <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
+              <Typography variant="h6" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
                 {project.name}
               </Typography>
               <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
@@ -242,7 +243,7 @@ export default function LaunchpadPage() {
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, mb: 2 }}>
           <Box>
             <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Token Price</Typography>
-            <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
+            <Typography sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
               ${project.tokenPrice}
             </Typography>
           </Box>
@@ -256,7 +257,7 @@ export default function LaunchpadPage() {
           </Box>
           <Box>
             <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Participants</Typography>
-            <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
+            <Typography sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
               {formatNumber(project.participants)}
             </Typography>
           </Box>
@@ -310,11 +311,11 @@ export default function LaunchpadPage() {
   );
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a14', p: 3 }}>
+    <Box sx={{ minHeight: '100vh', bgcolor: isDark ? '#0a0a14' : '#f5f7fa', color: isDark ? 'white' : '#1a1a2e', p: 3 }}>
       <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
         {/* Header */}
         <Box sx={{ mb: 4, textAlign: 'center' }}>
-          <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold', mb: 1 }}>
+          <Typography variant="h4" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold', mb: 1 }}>
             🚀 TigerSwap Launchpad
           </Typography>
           <Typography variant="body1" sx={{ color: 'var(--text-secondary)', maxWidth: 600, mx: 'auto' }}>
@@ -327,14 +328,14 @@ export default function LaunchpadPage() {
           <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent sx={{ textAlign: 'center' }}>
               <RocketLaunch sx={{ color: '#00d4aa', fontSize: 32, mb: 1 }} />
-              <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>{projects.length}</Typography>
+              <Typography variant="h4" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>{projects.length}</Typography>
               <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total Projects</Typography>
             </CardContent>
           </Card>
           <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent sx={{ textAlign: 'center' }}>
               <People sx={{ color: '#00d4aa', fontSize: 32, mb: 1 }} />
-              <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
+              <Typography variant="h4" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
                 {formatNumber(projects.reduce((s, p) => s + p.participants, 0))}
               </Typography>
               <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Total Participants</Typography>
@@ -352,7 +353,7 @@ export default function LaunchpadPage() {
           <Card sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 3 }}>
             <CardContent sx={{ textAlign: 'center' }}>
               <Ballot sx={{ color: '#00d4aa', fontSize: 32, mb: 1 }} />
-              <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
+              <Typography variant="h4" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
                 {upcomingProjects.length}
               </Typography>
               <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Upcoming</Typography>
@@ -441,7 +442,7 @@ export default function LaunchpadPage() {
                 <Box sx={{ flex: 1 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <Box>
-                      <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
+                      <Typography variant="h5" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
                         {selectedProject.name}
                       </Typography>
                       <Typography sx={{ color: 'var(--text-secondary)' }}>
@@ -461,7 +462,7 @@ export default function LaunchpadPage() {
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2, mb: 3 }}>
                 <Box sx={{ bgcolor: 'var(--bg-secondary)', p: 2, borderRadius: 2 }}>
                   <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Token Price</Typography>
-                  <Typography sx={{ color: 'white', fontWeight: 'bold', fontSize: 20 }}>
+                  <Typography sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold', fontSize: 20 }}>
                     ${selectedProject.tokenPrice}
                   </Typography>
                 </Box>
@@ -475,13 +476,13 @@ export default function LaunchpadPage() {
                   <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                     {selectedProject.status === 'upcoming' ? 'Starts' : 'Ends'}
                   </Typography>
-                  <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
+                  <Typography sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
                     {formatDateTime(selectedProject.status === 'upcoming' ? selectedProject.startTime : selectedProject.endTime)}
                   </Typography>
                 </Box>
                 <Box sx={{ bgcolor: 'var(--bg-secondary)', p: 2, borderRadius: 2 }}>
                   <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Participants</Typography>
-                  <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
+                  <Typography sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
                     {formatNumber(selectedProject.participants)}
                   </Typography>
                 </Box>
@@ -499,7 +500,7 @@ export default function LaunchpadPage() {
                 <Typography variant="caption" sx={{ color: 'var(--text-secondary)', mb: 1, display: 'block' }}>
                   Allocation Range
                 </Typography>
-                <Typography sx={{ color: 'white' }}>
+                <Typography sx={{ color: isDark ? 'white' : '#1a1a2e' }}>
                   {formatUSD(selectedProject.minAllocation)} - {formatUSD(selectedProject.maxAllocation)}
                 </Typography>
                 <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
@@ -533,7 +534,7 @@ export default function LaunchpadPage() {
                     sx={{
                       mb: 2,
                       '& .MuiInputLabel-root': { color: 'var(--text-secondary)' },
-                      '& input': { color: 'white' },
+                      '& input': { color: isDark ? 'white' : '#1a1a2e' },
                       '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'var(--bg-tertiary)' } }
                     }}
                   />

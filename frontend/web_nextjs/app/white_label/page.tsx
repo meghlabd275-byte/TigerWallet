@@ -25,7 +25,7 @@ interface WhiteLabelClient {
 }
 
 export default function WhiteLabelDashboard() {
-  const { theme } = useTheme()
+  const { theme, isDark } = useTheme()
   const [clients, setClients] = useState<WhiteLabelClient[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedClient, setSelectedClient] = useState<WhiteLabelClient | null>(null)
@@ -154,36 +154,36 @@ export default function WhiteLabelDashboard() {
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <h3 className="text-xl font-bold">{client.client_name}</h3>
-                    <p className="text-slate-400">{client.brand_name}</p>
+                    <p className={`${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{client.brand_name}</p>
                   </div>
                   <div className="flex items-center gap-4">
                     <span className={`px-3 py-1 rounded-full text-white text-sm ${getStatusColor(client.status)}`}>
                       {client.status}
                     </span>
-                    <span className="text-slate-400">{client.tier}</span>
+                    <span className={`${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{client.tier}</span>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-4 gap-4 mb-4">
                   <div>
-                    <span className="text-slate-400">Volume</span>
+                    <span className={`${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Volume</span>
                     <p className="text-xl font-bold">${client.total_volume_usd.toLocaleString()}</p>
                   </div>
                   <div>
-                    <span className="text-slate-400">Fees Paid</span>
+                    <span className={`${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Fees Paid</span>
                     <p className="text-xl font-bold text-orange-500">${client.total_fees_paid.toLocaleString()}</p>
                   </div>
                   <div>
-                    <span className="text-slate-400">Users</span>
+                    <span className={`${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Users</span>
                     <p className="text-xl font-bold">{client.total_users}</p>
                   </div>
                   <div>
-                    <span className="text-slate-400">Swap Fee</span>
+                    <span className={`${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Swap Fee</span>
                     <p className="text-xl font-bold">{formatBPS(client.swap_fee_share_bps)}</p>
                   </div>
                 </div>
 
-                <div className="border-t border-white/10 pt-4">
+                <div className={`border-t ${isDark ? 'border-white/10' : 'border-black/10'} pt-4`}>
                   <h4 className="font-semibold mb-3">Features</h4>
                   <div className="flex flex-wrap gap-2">
                     {[
@@ -209,7 +209,7 @@ export default function WhiteLabelDashboard() {
                   </div>
                 </div>
 
-                <div className="border-t border-white/10 pt-4 mt-4 flex gap-4">
+                <div className={`border-t ${isDark ? 'border-white/10' : 'border-black/10'} pt-4 mt-4 flex gap-4`}>
                   {client.status === 'pending' && (
                     <button
                       onClick={() => approveClient(client.client_id)}
@@ -239,7 +239,7 @@ export default function WhiteLabelDashboard() {
         )}
 
         {clients.length === 0 && (
-          <div className="text-center py-12 text-slate-400">
+          <div className={`text-center py-12 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
             No white label clients yet
           </div>
         )}
@@ -251,7 +251,7 @@ export default function WhiteLabelDashboard() {
             <h2 className="text-2xl font-bold mb-4">Create White Label Client</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-slate-400 mb-2">Client Name</label>
+                <label className={`block ${isDark ? 'text-slate-400' : 'text-slate-600'} mb-2`}>Client Name</label>
                 <input
                   type="text"
                   value={newClient.client_name}
@@ -260,7 +260,7 @@ export default function WhiteLabelDashboard() {
                 />
               </div>
               <div>
-                <label className="block text-slate-400 mb-2">Brand Name</label>
+                <label className={`block ${isDark ? 'text-slate-400' : 'text-slate-600'} mb-2`}>Brand Name</label>
                 <input
                   type="text"
                   value={newClient.brand_name}
@@ -269,7 +269,7 @@ export default function WhiteLabelDashboard() {
                 />
               </div>
               <div>
-                <label className="block text-slate-400 mb-2">Contact Email</label>
+                <label className={`block ${isDark ? 'text-slate-400' : 'text-slate-600'} mb-2`}>Contact Email</label>
                 <input
                   type="email"
                   value={newClient.contact_email}
@@ -278,7 +278,7 @@ export default function WhiteLabelDashboard() {
                 />
               </div>
               <div>
-                <label className="block text-slate-400 mb-2">Tier</label>
+                <label className={`block ${isDark ? 'text-slate-400' : 'text-slate-600'} mb-2`}>Tier</label>
                 <select
                   value={newClient.tier}
                   onChange={(e) => setNewClient({ ...newClient, tier: e.target.value })}

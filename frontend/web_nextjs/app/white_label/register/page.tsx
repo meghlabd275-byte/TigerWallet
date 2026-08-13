@@ -148,7 +148,7 @@ const validateWebsite = (website: string): boolean => {
 
 export default function WhiteLabelRegisterPage() {
   const router = useRouter();
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   
   // State
   const [mode, setMode] = useState<'register' | 'pending' | 'approved' | 'api_keys'>('register');
@@ -286,7 +286,7 @@ export default function WhiteLabelRegisterPage() {
   // ============================================================================
   
   return (
-    <div className="min-h-screen bg-slate-950">
+    <div className={`min-h-screen ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
       <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10">
         <div className="logo text-2xl font-bold text-orange-500">🐯 TigerWallet</div>
         <ThemeToggle />
@@ -310,10 +310,10 @@ export default function WhiteLabelRegisterPage() {
           
           {/* Registration Form */}
           {mode === 'register' && (
-            <div className="bg-slate-900/80 rounded-2xl p-8 backdrop-blur-xl border border-slate-800">
+            <div className={`${isDark ? 'bg-slate-900/80' : 'bg-white'} rounded-2xl p-8 backdrop-blur-xl border ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
               <div className="text-center mb-8">
-                <h1 className="text-3xl font-bold text-white mb-2">White Label Program</h1>
-                <p className="text-slate-400">
+                <h1 className={`text-3xl font-bold ${isDark ? 'text-white' : 'text-slate-900'} mb-2`}>White Label Program</h1>
+                <p className={`${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                   Create your branded TigerWallet product with 20% fee sharing
                 </p>
               </div>
@@ -321,28 +321,28 @@ export default function WhiteLabelRegisterPage() {
               <form onSubmit={handleRegister}>
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                    <label className={`block text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'} mb-2`}>
                       Company Name *
                     </label>
                     <input
                       type="text"
                       value={formData.client_name}
                       onChange={(e) => setFormData({ ...formData, client_name: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-orange-500"
+                      className={`w-full px-4 py-3 ${isDark ? 'bg-slate-800/50' : 'bg-slate-100'} border ${isDark ? 'border-slate-700' : 'border-slate-300'} rounded-lg ${isDark ? 'text-white' : 'text-slate-900'} focus:outline-none focus:border-orange-500`}
                       placeholder="Your Company LLC"
                       required
                     />
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                    <label className={`block text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'} mb-2`}>
                       Brand Name *
                     </label>
                     <input
                       type="text"
                       value={formData.brand_name}
                       onChange={(e) => setFormData({ ...formData, brand_name: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-orange-500"
+                      className={`w-full px-4 py-3 ${isDark ? 'bg-slate-800/50' : 'bg-slate-100'} border ${isDark ? 'border-slate-700' : 'border-slate-300'} rounded-lg ${isDark ? 'text-white' : 'text-slate-900'} focus:outline-none focus:border-orange-500`}
                       placeholder="MyWallet"
                       required
                     />
@@ -350,54 +350,54 @@ export default function WhiteLabelRegisterPage() {
                 </div>
                 
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className={`block text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'} mb-2`}>
                     Contact Email *
                   </label>
                   <input
                     type="email"
                     value={formData.contact_email}
                     onChange={(e) => setFormData({ ...formData, contact_email: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-orange-500"
+                    className={`w-full px-4 py-3 ${isDark ? 'bg-slate-800/50' : 'bg-slate-100'} border ${isDark ? 'border-slate-700' : 'border-slate-300'} rounded-lg ${isDark ? 'text-white' : 'text-slate-900'} focus:outline-none focus:border-orange-500`}
                     placeholder="contact@yourcompany.com"
                     required
                   />
                 </div>
                 
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className={`block text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'} mb-2`}>
                     Website URL
                   </label>
                   <input
                     type="url"
                     value={formData.website}
                     onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-orange-500"
+                    className={`w-full px-4 py-3 ${isDark ? 'bg-slate-800/50' : 'bg-slate-100'} border ${isDark ? 'border-slate-700' : 'border-slate-300'} rounded-lg ${isDark ? 'text-white' : 'text-slate-900'} focus:outline-none focus:border-orange-500`}
                     placeholder="https://www.yourcompany.com"
                   />
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                    <label className={`block text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'} mb-2`}>
                       Domain for Your Wallet
                     </label>
                     <input
                       type="text"
                       value={formData.domain}
                       onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-orange-500"
+                      className={`w-full px-4 py-3 ${isDark ? 'bg-slate-800/50' : 'bg-slate-100'} border ${isDark ? 'border-slate-700' : 'border-slate-300'} rounded-lg ${isDark ? 'text-white' : 'text-slate-900'} focus:outline-none focus:border-orange-500`}
                       placeholder="wallet.yourbrand.com"
                     />
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                    <label className={`block text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'} mb-2`}>
                       Cloud Provider
                     </label>
                     <select
                       value={formData.cloud_provider}
                       onChange={(e) => setFormData({ ...formData, cloud_provider: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-orange-500"
+                      className={`w-full px-4 py-3 ${isDark ? 'bg-slate-800/50' : 'bg-slate-100'} border ${isDark ? 'border-slate-700' : 'border-slate-300'} rounded-lg ${isDark ? 'text-white' : 'text-slate-900'} focus:outline-none focus:border-orange-500`}
                     >
                       <option value="aws">AWS</option>
                       <option value="gcp">Google Cloud</option>
@@ -408,7 +408,7 @@ export default function WhiteLabelRegisterPage() {
                 </div>
                 
                 <div className="mb-6">
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className={`block text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'} mb-2`}>
                     Plan Tier
                   </label>
                   <div className="grid grid-cols-3 gap-4">
@@ -426,9 +426,9 @@ export default function WhiteLabelRegisterPage() {
                             : 'border-slate-700 hover:border-slate-600'
                         }`}
                       >
-                        <div className="font-bold text-white">{tier.label}</div>
+                        <div className={`font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{tier.label}</div>
                         <div className="text-orange-500">{tier.price}</div>
-                        <div className="text-xs text-slate-400">{tier.features}</div>
+                        <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{tier.features}</div>
                       </div>
                     ))}
                   </div>
@@ -452,10 +452,10 @@ export default function WhiteLabelRegisterPage() {
           
           {/* Pending Status */}
           {mode === 'pending' && (
-            <div className="bg-slate-900/80 rounded-2xl p-8 backdrop-blur-xl border border-slate-800 text-center">
+            <div className={`${isDark ? 'bg-slate-900/80' : 'bg-white'} rounded-2xl p-8 backdrop-blur-xl border ${isDark ? 'border-slate-800' : 'border-slate-200'} text-center`}>
               <div className="text-6xl mb-4">⏳</div>
-              <h1 className="text-2xl font-bold text-white mb-2">Pending Approval</h1>
-              <p className="text-slate-400 mb-8">
+              <h1 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'} mb-2`}>Pending Approval</h1>
+              <p className={`${isDark ? 'text-slate-400' : 'text-slate-600'} mb-8`}>
                 Your white label application is being reviewed by TigerWallet admin.
                 You'll be notified once approved.
               </p>
@@ -463,7 +463,7 @@ export default function WhiteLabelRegisterPage() {
               <button
                 onClick={checkStatus}
                 disabled={loading}
-                className="px-6 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white"
+                className={`px-6 py-2 ${isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-200 hover:bg-slate-300'} rounded-lg ${isDark ? 'text-white' : 'text-slate-900'}`}
               >
                 {loading ? 'Checking...' : 'Check Status'}
               </button>
@@ -472,32 +472,32 @@ export default function WhiteLabelRegisterPage() {
           
           {/* Approved Status */}
           {mode === 'approved' && (
-            <div className="bg-slate-900/80 rounded-2xl p-8 backdrop-blur-xl border border-slate-800">
+            <div className={`${isDark ? 'bg-slate-900/80' : 'bg-white'} rounded-2xl p-8 backdrop-blur-xl border ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
               <div className="text-center mb-8">
                 <div className="text-6xl mb-4">🎉</div>
-                <h1 className="text-2xl font-bold text-white mb-2">Approved!</h1>
-                <p className="text-slate-400">
+                <h1 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'} mb-2`}>Approved!</h1>
+                <p className={`${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                   Your white label product is now active
                 </p>
               </div>
               
               {client && (
-                <div className="mb-6 p-4 bg-slate-800/50 rounded-lg">
+                <div className={`mb-6 p-4 ${isDark ? 'bg-slate-800/50' : 'bg-slate-100'} rounded-lg`}>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <span className="text-slate-400">Client ID</span>
+                      <span className={`${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Client ID</span>
                       <p className="font-mono text-sm">{client.client_id}</p>
                     </div>
                     <div>
-                      <span className="text-slate-400">Brand</span>
+                      <span className={`${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Brand</span>
                       <p className="font-bold">{client.brand_name}</p>
                     </div>
                     <div>
-                      <span className="text-slate-400">Swap Fee</span>
+                      <span className={`${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Swap Fee</span>
                       <p className="text-orange-500">{client.swap_fee_share_bps / 100}%</p>
                     </div>
                     <div>
-                      <span className="text-slate-400">Trading Fee</span>
+                      <span className={`${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Trading Fee</span>
                       <p className="text-orange-500">{client.trading_fee_share_bps / 100}%</p>
                     </div>
                   </div>
@@ -515,12 +515,12 @@ export default function WhiteLabelRegisterPage() {
           
           {/* API Keys Management */}
           {mode === 'api_keys' && (
-            <div className="bg-slate-900/80 rounded-2xl p-8 backdrop-blur-xl border border-slate-800">
+            <div className={`${isDark ? 'bg-slate-900/80' : 'bg-white'} rounded-2xl p-8 backdrop-blur-xl border ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
               <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold text-white">API Keys</h1>
+                <h1 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>API Keys</h1>
                 <button
                   onClick={() => setMode('approved')}
-                  className="text-slate-400 hover:text-white"
+                  className={`${isDark ? 'text-slate-400' : 'text-slate-600'} hover:text-white`}
                 >
                   ← Back
                 </button>
@@ -530,7 +530,7 @@ export default function WhiteLabelRegisterPage() {
               {showAPIKey && (
                 <div className="mb-6 p-4 bg-green-500/10 border border-green-500/50 rounded-lg">
                   <p className="text-green-500 font-bold mb-2">API Key Generated!</p>
-                  <p className="text-sm text-slate-400 mb-2">
+                  <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'} mb-2`}>
                     Save this key - it won't be shown again:
                   </p>
                   <code className="block p-2 bg-slate-800 rounded text-sm break-all">
@@ -547,19 +547,19 @@ export default function WhiteLabelRegisterPage() {
               
               {/* Existing API keys */}
               <div className="mb-6">
-                <h2 className="text-lg font-semibold text-white mb-4">Your API Keys</h2>
+                <h2 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-slate-900'} mb-4`}>Your API Keys</h2>
                 {apiKeys.length === 0 ? (
-                  <p className="text-slate-400">No API keys yet</p>
+                  <p className={`${isDark ? 'text-slate-400' : 'text-slate-600'}`}>No API keys yet</p>
                 ) : (
                   <div className="space-y-2">
                     {apiKeys.map((key) => (
                       <div
                         key={key.id}
-                        className="p-3 bg-slate-800/50 rounded-lg flex justify-between items-center"
+                        className={`p-3 ${isDark ? 'bg-slate-800/50' : 'bg-slate-100'} rounded-lg flex justify-between items-center`}
                       >
                         <div>
                           <div className="font-medium">{key.name}</div>
-                          <div className="text-xs text-slate-400">
+                          <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                             Created: {new Date(key.createdAt).toLocaleDateString()}
                           </div>
                         </div>
@@ -581,7 +581,7 @@ export default function WhiteLabelRegisterPage() {
                   value={newAPIKeyName}
                   onChange={(e) => setNewAPIKeyName(e.target.value)}
                   placeholder="Key name (e.g., Production)"
-                  className="flex-1 px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-white"
+                  className={`flex-1 px-4 py-2 ${isDark ? 'bg-slate-800/50' : 'bg-slate-100'} border ${isDark ? 'border-slate-700' : 'border-slate-300'} rounded-lg ${isDark ? 'text-white' : 'text-slate-900'}`}
                 />
                 <button
                   type="submit"
@@ -594,7 +594,7 @@ export default function WhiteLabelRegisterPage() {
               
               <div className="mt-6 p-4 bg-yellow-500/10 border border-yellow-500/50 rounded-lg">
                 <p className="text-yellow-500 font-bold mb-2">Important</p>
-                <p className="text-sm text-slate-400">
+                <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                   Your white label product requires valid API keys to work. 
                   Without authorized API keys, your product will show 
                   "Please input authorized API keys" error.

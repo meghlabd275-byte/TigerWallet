@@ -101,6 +101,7 @@ const POPULAR_PAIRS = [
 // ============================================================================
 
 export default function AdvancedTradingInterface() {
+  const { isDark } = useTheme();
   // State
   const [activeTab, setActiveTab] = useState(0);
   const [selectedPair, setSelectedPair] = useState('ETH/USDC');
@@ -381,7 +382,7 @@ export default function AdvancedTradingInterface() {
   // ============================================================================
   
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: 3, bgcolor: isDark ? '#0a0a14' : '#f5f7fa', color: isDark ? 'white' : '#1a1a2e', minHeight: '100vh' }}>
       {/* Header */}
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h5" fontWeight="bold">
