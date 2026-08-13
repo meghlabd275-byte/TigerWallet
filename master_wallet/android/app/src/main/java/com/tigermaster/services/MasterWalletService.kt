@@ -1,291 +1,147 @@
 /**
  * MasterWalletService - Android Implementation
- * Complete wallet management for Master Wallet
- * Features: HD Wallet, Multi-chain, Token Management, Transaction Signing
+ * Delegates HD wallet creation, balance, and signing to the canonical MasterWallet
+ * backend at :8450 (see CANONICAL_API_CONTRACT.md). The backend performs the real
+ * secp256k1 key derivation + broadcast; this service never fabricates keys, balances,
+ * or signatures locally.
  */
 
 package com.tigermaster.services
 
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
-import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.web3j.crypto.Credentials
-import org.web3j.crypto.Keys
-import org.web3j.crypto.MnemonicUtils
-import org.web3j.protocol.Web3j
-import org.web3j.protocol.http.HttpService
-import org.web3j.tx.gas.DefaultGasProvider
+import org.json.JSONArray
+import org.json.JSONObject
 import java.math.BigInteger
-import java.security.KeyStore
-import java.security.SecureRandom
-import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
-import javax.crypto.spec.GCMParameterSpec
+import java.net.HttpURLConnection
+import java.net.URL
 
 class MasterWalletService {
-    private val keyStore: KeyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-    private val secureRandom = SecureRandom()
-    private var web3j: Web3j? = null
-    
-    // In-memory cache (production should use encrypted storage)
-    private val walletCache = mutableMapOf<String, WalletData>()
-    private val chainConfigs = mutableMapOf<Int, ChainConfig>()
-    
-    companion object {
-        private const val ANDROID_KEYSTORE = "AndroidKeyStore"
-        private const val KEY_ALIAS = "tigermaster_wallet_key"
-        private const val TRANSFORMATION = "AES/GCM/NoPadding"
-        private const val GCM_TAG_LENGTH = 128
-        private const val GCM_IV_LENGTH = 12
-        
-        // Supported chains
-        const val CHAIN_ETHEREUM = 1
-        const val CHAIN_BSC = 56
-        const val CHAIN_POLYGON = 137
-        const val CHAIN_ARBITRUM = 42161
-        const val CHAIN_OPTIMISM = 10
-        const val CHAIN_AVALANCHE = 43114
-        const val CHAIN_SOLANA = -1
-        const val CHAIN_BITCOIN = 0
+    // Canonical MasterWallet backend (see CANONICAL_API_CONTRACT.md)
+    private var baseUrl: String = "http://localhost:8450"
+    private var authToken: String? = null
+
+    // Locally cached chain metadata fetched from GET /api/v1/chains (no hardcoded RPC URLs).
+    private val chainCache = mutableMapOf<Int, ChainConfig>()
+
+    fun setBaseUrl(url: String) {
+        baseUrl = url.trimEnd('/')
     }
-    
-    init {
-        initializeChains()
+
+    fun setAuthToken(token: String?) {
+        authToken = token
     }
-    
-    private fun initializeChains() {
-        chainConfigs[CHAIN_ETHEREUM] = ChainConfig(
-            id = CHAIN_ETHEREUM,
-            name = "Ethereum",
-            symbol = "ETH",
-            rpcUrl = "https://eth.llamarpc.com",
-            explorerUrl = "https://etherscan.io",
-            decimals = 18,
-            isEVM = true
-        )
-        chainConfigs[CHAIN_BSC] = ChainConfig(
-            id = CHAIN_BSC,
-            name = "BNB Smart Chain",
-            symbol = "BNB",
-            rpcUrl = "https://bsc-dataseed.binance.org",
-            explorerUrl = "https://bscscan.com",
-            decimals = 18,
-            isEVM = true
-        )
-        chainConfigs[CHAIN_POLYGON] = ChainConfig(
-            id = CHAIN_POLYGON,
-            name = "Polygon",
-            symbol = "MATIC",
-            rpcUrl = "https://polygon-rpc.com",
-            explorerUrl = "https://polygonscan.com",
-            decimals = 18,
-            isEVM = true
-        )
-        chainConfigs[CHAIN_ARBITRUM] = ChainConfig(
-            id = CHAIN_ARBITRUM,
-            name = "Arbitrum One",
-            symbol = "ETH",
-            rpcUrl = "https://arb1.arbitrum.io/rpc",
-            explorerUrl = "https://arbiscan.io",
-            decimals = 18,
-            isEVM = true
-        )
-        chainConfigs[CHAIN_OPTIMISM] = ChainConfig(
-            id = CHAIN_OPTIMISM,
-            name = "Optimism",
-            symbol = "ETH",
-            rpcUrl = "https://mainnet.optimism.io",
-            explorerUrl = "https://optimistic.etherscan.io",
-            decimals = 18,
-            isEVM = true
-        )
-        chainConfigs[CHAIN_AVALANCHE] = ChainConfig(
-            id = CHAIN_AVALANCHE,
-            name = "Avalanche",
-            symbol = "AVAX",
-            rpcUrl = "https://api.avax.network/ext/bc/C/rpc",
-            explorerUrl = "https://snowtrace.io",
-            decimals = 18,
-            isEVM = true
-        )
-    }
-    
+
+    private fun requireToken(): String =
+        authToken ?: throw IllegalStateException("Not authenticated: JWT token required")
+
     /**
-     * Generate a new HD wallet with BIP-39 mnemonic
+     * Create a master wallet via POST /api/v1/master-wallet. The backend creates the
+     * HD wallet and returns the mnemonic exactly once.
      */
-    suspend fun generateWallet(password: String): WalletResult = withContext(Dispatchers.IO) {
-        try {
-            // Generate 256-bit entropy for 24-word mnemonic
-            val entropy = ByteArray(32)
-            secureRandom.nextBytes(entropy)
-            
-            // Generate mnemonic from entropy
-            val mnemonic = MnemonicUtils.generateMnemonic(entropy)
-            
-            // Derive master key from mnemonic
-            val seed = MnemonicUtils.generateSeed(mnemonic, password)
-            val masterKey = deriveMasterKey(seed)
-            
-            // Generate wallet address
-            val address = Keys.getAddress(masterKey.publicKey)
-            
-            // Create wallet data
-            val walletData = WalletData(
-                id = generateWalletId(),
-                address = address,
-                publicKey = Base64.encodeToString(masterKey.publicKey, Base64.NO_WRAP),
-                encryptedMnemonic = encryptMnemonic(mnemonic, password),
-                createdAt = System.currentTimeMillis(),
-                chains = listOf(CHAIN_ETHEREUM)
-            )
-            
-            // Cache wallet
-            walletCache[walletData.id] = walletData
-            
-            WalletResult(
-                success = true,
-                walletId = walletData.id,
-                address = address,
-                mnemonic = mnemonic
-            )
-        } catch (e: Exception) {
-            WalletResult(success = false, error = e.message)
-        }
-    }
-    
-    /**
-     * Import wallet from existing mnemonic
-     */
-    suspend fun importWallet(mnemonic: String, password: String): WalletResult = withContext(Dispatchers.IO) {
-        try {
-            if (!MnemonicUtils.validateMnemonic(mnemonic)) {
-                return@withContext WalletResult(success = false, error = "Invalid mnemonic")
+    suspend fun generateWallet(name: String, password: String, chainId: Long = 1L): WalletResult =
+        withContext(Dispatchers.IO) {
+            try {
+                val body = JSONObject()
+                    .put("name", name)
+                    .put("password", password)
+                    .put("chain_id", chainId)
+                    .toString()
+                val resp = apiPost("/api/v1/master-wallet", body)
+                    ?: return@withContext WalletResult(success = false, error = "Wallet creation failed")
+                val json = JSONObject(resp)
+                WalletResult(
+                    success = true,
+                    walletId = json.optString("id", json.optString("wallet_id", "")),
+                    address = json.optString("address", ""),
+                    mnemonic = json.optString("mnemonic", "")
+                )
+            } catch (e: Exception) {
+                WalletResult(success = false, error = e.message)
             }
-            
-            val seed = MnemonicUtils.generateSeed(mnemonic, password)
-            val masterKey = deriveMasterKey(seed)
-            val address = Keys.getAddress(masterKey.publicKey)
-            
-            val walletData = WalletData(
-                id = generateWalletId(),
-                address = address,
-                publicKey = Base64.encodeToString(masterKey.publicKey, Base64.NO_WRAP),
-                encryptedMnemonic = encryptMnemonic(mnemonic, password),
-                createdAt = System.currentTimeMillis(),
-                chains = listOf(CHAIN_ETHEREUM)
-            )
-            
-            walletCache[walletData.id] = walletData
-            
-            WalletResult(
-                success = true,
-                walletId = walletData.id,
-                address = address,
-                mnemonic = mnemonic
-            )
-        } catch (e: Exception) {
-            WalletResult(success = false, error = e.message)
         }
-    }
-    
+
     /**
-     * Get wallet balance for a specific chain
+     * No canonical import endpoint exists; fail closed rather than fabricating keys.
      */
-    suspend fun getBalance(walletId: String, chainId: Int): BalanceResult = withContext(Dispatchers.IO) {
-        try {
-            val wallet = walletCache[walletId] ?: return@withContext BalanceResult(success = false, error = "Wallet not found")
-            val chainConfig = chainConfigs[chainId] ?: return@withContext BalanceResult(success = false, error = "Chain not supported")
-            
-            // Initialize Web3j if needed
-            if (web3j == null) {
-                web3j = Web3j.build(HttpService(chainConfig.rpcUrl))
+    suspend fun importWallet(mnemonic: String, password: String): WalletResult =
+        withContext(Dispatchers.IO) {
+            WalletResult(success = false, error = "Wallet import is not supported by the canonical backend")
+        }
+
+    /**
+     * GET /api/v1/master-wallet/:id/balance returns real RPC native + token balances.
+     */
+    suspend fun getBalance(walletId: String, chainId: Int): BalanceResult =
+        withContext(Dispatchers.IO) {
+            try {
+                val resp = apiGet("/api/v1/master-wallet/$walletId/balance")
+                    ?: return@withContext BalanceResult(success = false, error = "Balance fetch failed")
+                val json = JSONObject(resp)
+                val native = json.optJSONObject("native") ?: json
+                BalanceResult(
+                    success = true,
+                    balance = native.optDouble("balance", native.optDouble("amount", 0.0)),
+                    symbol = native.optString("symbol", ""),
+                    decimals = native.optInt("decimals", 18)
+                )
+            } catch (e: Exception) {
+                BalanceResult(success = false, error = e.message)
             }
-            
-            val credentials = getCredentials(wallet, chainId)
-            val balance = web3j!!.ethGetBalance(credentials.address, "latest").send()
-            
-            val balanceInEth = balance.balance.toDouble() / Math.pow(10.0, chainConfig.decimals.toDouble())
-            
-            BalanceResult(
-                success = true,
-                balance = balanceInEth,
-                symbol = chainConfig.symbol,
-                decimals = chainConfig.decimals
-            )
-        } catch (e: Exception) {
-            BalanceResult(success = false, error = e.message)
         }
-    }
-    
+
     /**
-     * Get token balance for a specific chain
+     * Token balances come from the canonical balance endpoint (real RPC), never fabricated.
      */
-    suspend fun getTokenBalance(walletId: String, chainId: Int, tokenAddress: String): TokenBalanceResult = withContext(Dispatchers.IO) {
-        try {
-            val wallet = walletCache[walletId] ?: return@withContext TokenBalanceResult(success = false, error = "Wallet not found")
-            
-            // In production, call token contract to get balance
-            TokenBalanceResult(
-                success = true,
-                balance = "0",
-                symbol = "TOKEN",
-                decimals = 18
-            )
-        } catch (e: Exception) {
-            TokenBalanceResult(success = false, error = e.message)
+    suspend fun getTokenBalance(walletId: String, chainId: Int, tokenAddress: String): TokenBalanceResult =
+        withContext(Dispatchers.IO) {
+            try {
+                val resp = apiGet("/api/v1/master-wallet/$walletId/balance")
+                    ?: return@withContext TokenBalanceResult(success = false, error = "Balance fetch failed")
+                val json = JSONObject(resp)
+                val tokens = json.optJSONArray("tokens") ?: JSONArray()
+                for (i in 0 until tokens.length()) {
+                    val t = tokens.getJSONObject(i)
+                    if (t.optString("address", "").equals(tokenAddress, ignoreCase = true)) {
+                        return@withContext TokenBalanceResult(
+                            success = true,
+                            balance = t.optString("balance", "0"),
+                            symbol = t.optString("symbol", ""),
+                            decimals = t.optInt("decimals", 18)
+                        )
+                    }
+                }
+                TokenBalanceResult(success = false, error = "Token not found in balances")
+            } catch (e: Exception) {
+                TokenBalanceResult(success = false, error = e.message)
+            }
         }
-    }
-    
+
     /**
-     * Send transaction
+     * POST /api/v1/master-wallet/:id/sign performs real secp256k1 signing + broadcast.
      */
     suspend fun sendTransaction(
         walletId: String,
         chainId: Int,
         toAddress: String,
         amount: BigInteger,
-        data: ByteArray = ByteArray(0)
+        password: String,
+        token: String? = null
     ): TransactionResult = withContext(Dispatchers.IO) {
         try {
-            val wallet = walletCache[walletId] ?: return@withContext TransactionResult(success = false, error = "Wallet not found")
-            val chainConfig = chainConfigs[chainId] ?: return@withContext TransactionResult(success = false, error = "Chain not supported")
-            
-            if (web3j == null) {
-                web3j = Web3j.build(HttpService(chainConfig.rpcUrl))
-            }
-            
-            val credentials = getCredentials(wallet, chainId)
-            
-            // Get nonce
-            val nonce = web3j!!.ethGetTransactionCount(credentials.address, "latest").send().transactionCount
-            
-            // Get gas price
-            val gasPrice = web3j!!.ethGasPrice().send().gasPrice
-            
-            // Build transaction
-            val rawTransaction = org.web3j.crypto.Transaction.createTransaction(
-                chainId.toLong(),
-                nonce,
-                gasPrice,
-                BigInteger.valueOf(21000), // gas limit for simple transfer
-                toAddress,
-                amount,
-                data
-            )
-            
-            // Sign transaction
-            val signedTx = org.web3j.crypto.Transaction.signTransaction(rawTransaction, credentials.ecKeyPair)
-            
-            // Send transaction
-            val txHash = web3j!!.ethSendRawTransaction(signedTx.encode()).send().transactionHash
-            
+            val body = JSONObject()
+                .put("to", toAddress)
+                .put("amount", amount.toString())
+                .put("password", password)
+                .apply { token?.let { put("token", it) } }
+                .toString()
+            val resp = apiPost("/api/v1/master-wallet/$walletId/sign", body)
+                ?: return@withContext TransactionResult(success = false, error = "Sign request failed")
+            val json = JSONObject(resp)
             TransactionResult(
                 success = true,
-                txHash = txHash,
-                from = credentials.address,
+                txHash = json.optString("transaction_hash", json.optString("hash", "")),
+                from = json.optString("from", ""),
                 to = toAddress,
                 amount = amount.toString()
             )
@@ -293,127 +149,82 @@ class MasterWalletService {
             TransactionResult(success = false, error = e.message)
         }
     }
-    
+
     /**
-     * Get supported chains
+     * GET /api/v1/chains returns the supported chains from the backend (no hardcoded RPC URLs).
      */
-    fun getSupportedChains(): List<ChainConfig> {
-        return chainConfigs.values.toList()
-    }
-    
-    /**
-     * Add chain to wallet
-     */
-    suspend fun addChain(walletId: String, chainId: Int): Boolean = withContext(Dispatchers.IO) {
+    suspend fun getSupportedChains(): List<ChainConfig> = withContext(Dispatchers.IO) {
         try {
-            val wallet = walletCache[walletId] ?: return@withContext false
-            if (!chainConfigs.containsKey(chainId)) return@withContext false
-            
-            val updatedChains = wallet.chains.toMutableList()
-            if (!updatedChains.contains(chainId)) {
-                updatedChains.add(chainId)
-                walletCache[walletId] = wallet.copy(chains = updatedChains)
+            val resp = apiGet("/api/v1/chains") ?: return@withContext chainCache.values.toList()
+            val json = JSONObject(resp)
+            val arr = json.optJSONArray("chains") ?: JSONArray(resp)
+            val list = mutableListOf<ChainConfig>()
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                val cfg = ChainConfig(
+                    id = obj.optInt("id", obj.optInt("chain_id", 0)),
+                    name = obj.optString("name", ""),
+                    symbol = obj.optString("symbol", ""),
+                    rpcUrl = obj.optString("rpc_url", obj.optString("rpcUrl", "")),
+                    explorerUrl = obj.optString("explorer_url", obj.optString("explorerUrl", "")),
+                    decimals = obj.optInt("decimals", 18),
+                    isEVM = obj.optBoolean("is_evm", obj.optBoolean("isEVM", true))
+                )
+                chainCache[cfg.id] = cfg
+                list.add(cfg)
             }
-            true
+            list
         } catch (e: Exception) {
-            false
+            chainCache.values.toList()
         }
     }
-    
-    /**
-     * Get wallet address
-     */
-    fun getWalletAddress(walletId: String): String? {
-        return walletCache[walletId]?.address
-    }
-    
-    /**
-     * Get all wallets
-     */
-    fun getAllWallets(): List<WalletData> {
-        return walletCache.values.toList()
-    }
-    
-    /**
-     * Delete wallet
-     */
+
     suspend fun deleteWallet(walletId: String): Boolean = withContext(Dispatchers.IO) {
-        walletCache.remove(walletId) != null
+        apiDelete("/api/v1/master-wallet/$walletId")
     }
-    
-    // Private helper methods
-    
-    private fun deriveMasterKey(seed: ByteArray): MasterKey {
-        // In production, use proper BIP-32 derivation
-        // This is a simplified version
-        val keyPair = Keys.createEcKeyPair()
-        return MasterKey(
-            publicKey = Keys.getAddress(keyPair.publicKey).toByteArray(),
-            privateKey = keyPair.privateKey.toByteArray()
-        )
+
+    // -- HTTP helpers (Bearer JWT auth against the canonical backend) --
+
+    private fun apiGet(endpoint: String): String? {
+        val token = try { requireToken() } catch (e: Exception) { return null }
+        return try {
+            val conn = (URL("$baseUrl$endpoint").openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                setRequestProperty("Authorization", "Bearer $token")
+                connectTimeout = 10000
+                readTimeout = 10000
+            }
+            if (conn.responseCode in 200..299) conn.inputStream.bufferedReader().readText() else null
+        } catch (e: Exception) { null }
     }
-    
-    private fun getCredentials(wallet: WalletData, chainId: Int): Credentials {
-        // In production, decrypt mnemonic and derive key for specific chain
-        // This is a simplified version
-        return Credentials.create(
-            "0x" + Base64.encodeToString(wallet.publicKey.toByteArray(), Base64.NO_WRAP).take(64)
-        )
+
+    private fun apiPost(endpoint: String, body: String): String? {
+        val token = try { requireToken() } catch (e: Exception) { return null }
+        return try {
+            val conn = (URL("$baseUrl$endpoint").openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Authorization", "Bearer $token")
+                doOutput = true
+                connectTimeout = 10000
+                readTimeout = 10000
+            }
+            conn.outputStream.use { it.write(body.toByteArray()) }
+            if (conn.responseCode in 200..299) conn.inputStream.bufferedReader().readText() else null
+        } catch (e: Exception) { null }
     }
-    
-    private fun encryptMnemonic(mnemonic: String, password: String): String {
-        val key = getOrCreateSecretKey()
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, key)
-        
-        val iv = cipher.iv
-        val encrypted = cipher.doFinal(mnemonic.toByteArray(Charsets.UTF_8))
-        
-        // Combine IV and encrypted data
-        val combined = ByteArray(iv.size + encrypted.size)
-        System.arraycopy(iv, 0, combined, 0, iv.size)
-        System.arraycopy(encrypted, 0, combined, iv.size, encrypted.size)
-        
-        return Base64.encodeToString(combined, Base64.NO_WRAP)
-    }
-    
-    private fun decryptMnemonic(encryptedData: String, password: String): String {
-        val key = getOrCreateSecretKey()
-        val combined = Base64.decode(encryptedData, Base64.NO_WRAP)
-        
-        val iv = combined.copyOfRange(0, GCM_IV_LENGTH)
-        val encrypted = combined.copyOfRange(GCM_IV_LENGTH, combined.size)
-        
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        val spec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
-        cipher.init(Cipher.DECRYPT_MODE, key, spec)
-        
-        return String(cipher.doFinal(encrypted), Charsets.UTF_8)
-    }
-    
-    private fun getOrCreateSecretKey(): SecretKey {
-        return if (keyStore.containsAlias(KEY_ALIAS)) {
-            keyStore.getKey(KEY_ALIAS, null) as SecretKey
-        } else {
-            val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-            val spec = KeyGenParameterSpec.Builder(
-                KEY_ALIAS,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-            )
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(256)
-                .build()
-            
-            keyGenerator.init(spec)
-            keyGenerator.generateKey()
-        }
-    }
-    
-    private fun generateWalletId(): String {
-        val bytes = ByteArray(16)
-        secureRandom.nextBytes(bytes)
-        return Base64.encodeToString(bytes, Base64.NO_WRAP)
+
+    private fun apiDelete(endpoint: String): Boolean {
+        val token = try { requireToken() } catch (e: Exception) { return false }
+        return try {
+            val conn = (URL("$baseUrl$endpoint").openConnection() as HttpURLConnection).apply {
+                requestMethod = "DELETE"
+                setRequestProperty("Authorization", "Bearer $token")
+                connectTimeout = 10000
+                readTimeout = 10000
+            }
+            conn.responseCode in 200..299
+        } catch (e: Exception) { false }
     }
 }
 
@@ -427,20 +238,6 @@ data class ChainConfig(
     val explorerUrl: String,
     val decimals: Int,
     val isEVM: Boolean
-)
-
-data class WalletData(
-    val id: String,
-    val address: String,
-    val publicKey: String,
-    val encryptedMnemonic: String,
-    val createdAt: Long,
-    val chains: List<Int>
-)
-
-data class MasterKey(
-    val publicKey: ByteArray,
-    val privateKey: ByteArray
 )
 
 data class WalletResult(

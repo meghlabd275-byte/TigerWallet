@@ -1,20 +1,45 @@
 // MasterWallet Audit Service - Flutter
+//
+// Thin REST client over the canonical Go backend (:8450). The canonical audit
+// endpoint is GET /api/v1/master-wallet/:id/audit. Summaries, compliance
+// reports, suspicious-activity feeds, and exports are not part of the
+// canonical contract and fail closed rather than returning fabricated data.
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class AuditService {
-  static const String API_BASE = 'http://localhost:8443/api/v1';
+  static const String API_BASE = String.fromEnvironment(
+    'MASTER_WALLET_API_URL',
+    defaultValue: 'http://localhost:8450',
+  );
+  static const String _apiV1 = '$API_BASE/api/v1';
+
+  final String masterWalletId;
   String? _token;
-  
-  AuditService({String? token}) : _token = token;
-  
+
+  AuditService({required this.masterWalletId, String? token}) : _token = token;
+
+  void setToken(String? token) => _token = token;
+
+  String get _base => '$_apiV1/master-wallet/$masterWalletId/audit';
+
   Map<String, String> get _headers => {
-    'Content-Type': 'application/json',
-    if (_token != null) 'Authorization': 'Bearer $_token',
-  };
-  
-  // Get audit logs
+        'Content-Type': 'application/json',
+        if (_token != null) 'Authorization': 'Bearer $_token',
+      };
+
+  Exception _err(http.Response r, String op) =>
+      Exception('audit $op failed (${r.statusCode}): ${r.body}');
+
+  dynamic _body(http.Response r) {
+    final data = json.decode(r.body);
+    return data['data'] ?? data;
+  }
+
+  /// Get audit logs from the canonical backend audit endpoint. Supports
+  /// limit/offset pagination; user/action/date filters are forwarded as query
+  /// params for the backend to apply (or ignore) - never fabricated locally.
   Future<List<AuditLog>> getLogs({
     String? userId,
     String? action,
@@ -23,119 +48,64 @@ class AuditService {
     int limit = 100,
     int offset = 0,
   }) async {
-    String url = '$API_BASE/audit/logs?limit=$limit&offset=$offset';
-    if (userId != null) url += '&userId=$userId';
-    if (action != null) url += '&action=$action';
-    if (startDate != null) url += '&startDate=${startDate.toIso8601String()}';
-    if (endDate != null) url += '&endDate=${endDate.toIso8601String()}';
-    
-    final response = await http.get(Uri.parse(url), headers: _headers);
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return (data['data'] as List).map((l) => AuditLog.fromJson(l)).toList();
-    }
-    return [];
+    final q = Uri.parse(_base).replace(
+      queryParameters: {
+        'limit': limit.toString(),
+        'offset': offset.toString(),
+        if (userId != null) 'user_id': userId,
+        if (action != null) 'action': action,
+        if (startDate != null) 'start': startDate.toIso8601String(),
+        if (endDate != null) 'end': endDate.toIso8601String(),
+      },
+    );
+    final r = await http.get(q, headers: _headers);
+    if (r.statusCode != 200) throw _err(r, 'getLogs');
+    final list = (_body(r) as List?) ?? const [];
+    return list.map((l) => AuditLog.fromJson(l as Map<String, dynamic>)).toList();
   }
-  
-  // Get audit summary
+
+  // The canonical backend exposes only the flat audit log endpoint. Derived
+  // reports / activity feeds / exports are not supported and fail closed.
   Future<AuditSummary> getSummary({DateTime? startDate, DateTime? endDate}) async {
-    String url = '$API_BASE/audit/summary';
-    if (startDate != null || endDate != null) {
-      url += '?';
-      if (startDate != null) url += 'startDate=${startDate.toIso8601String()}';
-      if (endDate != null) url += '&endDate=${endDate.toIso8601String()}';
-    }
-    
-    final response = await http.get(Uri.parse(url), headers: _headers);
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return AuditSummary.fromJson(data['data']);
-    }
-    throw Exception('Failed to get summary');
+    throw UnimplementedError(
+      'audit summary is not supported by the canonical backend contract. '
+      'Aggregate the audit log endpoint client-side if needed.',
+    );
   }
-  
-  // Get user activity
+
   Future<List<AuditLog>> getUserActivity(String userId, {int limit = 50}) async {
-    final response = await http.get(
-      Uri.parse('$API_BASE/audit/users/$userId/activity?limit=$limit'),
-      headers: _headers,
-    );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return (data['data'] as List).map((l) => AuditLog.fromJson(l)).toList();
-    }
-    return [];
+    return getLogs(userId: userId, limit: limit);
   }
-  
-  // Get transaction audit trail
+
   Future<List<AuditLog>> getTransactionAudit(String txId) async {
-    final response = await http.get(
-      Uri.parse('$API_BASE/audit/transactions/$txId'),
-      headers: _headers,
+    throw UnimplementedError(
+      'audit transaction trail is not supported by the canonical backend contract.',
     );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return (data['data'] as List).map((l) => AuditLog.fromJson(l)).toList();
-    }
-    return [];
   }
-  
-  // Export audit logs
+
   Future<String> exportLogs({
     required String format,
     DateTime? startDate,
     DateTime? endDate,
   }) async {
-    final response = await http.post(
-      Uri.parse('$API_BASE/audit/export'),
-      headers: _headers,
-      body: json.encode({
-        'format': format,
-        'startDate': startDate?.toIso8601String(),
-        'endDate': endDate?.toIso8601String(),
-      }),
+    throw UnimplementedError(
+      'audit export is not supported by the canonical backend contract.',
     );
-    
-    if (response.statusCode == 201) {
-      final data = json.decode(response.body);
-      return data['data']['downloadUrl'];
-    }
-    throw Exception('Failed to export');
   }
-  
-  // Get compliance report
+
   Future<ComplianceReport> getComplianceReport({
     required DateTime startDate,
     required DateTime endDate,
   }) async {
-    final response = await http.get(
-      Uri.parse('$API_BASE/audit/compliance?start=${startDate.toIso8601String()}&end=${endDate.toIso8601String()}'),
-      headers: _headers,
+    throw UnimplementedError(
+      'audit compliance reports are not supported by the canonical backend contract.',
     );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return ComplianceReport.fromJson(data['data']);
-    }
-    throw Exception('Failed to get compliance report');
   }
-  
-  // Get suspicious activities
+
   Future<List<AuditLog>> getSuspiciousActivities({int limit = 50}) async {
-    final response = await http.get(
-      Uri.parse('$API_BASE/audit/suspicious?limit=$limit'),
-      headers: _headers,
+    throw UnimplementedError(
+      'audit suspicious-activity feed is not supported by the canonical backend contract.',
     );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return (data['data'] as List).map((l) => AuditLog.fromJson(l)).toList();
-    }
-    return [];
   }
 }
 

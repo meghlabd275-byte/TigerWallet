@@ -1,314 +1,207 @@
 /**
- * MasterWalletService - Desktop (React/TypeScript)
- * Complete wallet management for Master Wallet
- * Features: HD Wallet, Multi-chain, Token Management, Transaction Signing
+ * MasterWalletService - Web (React/TypeScript)
+ * Real BIP-39 mnemonic generation (ethers.js) + backend wiring for wallet
+ * creation, balance lookups, and transaction signing/broadcast. No fake
+ * balances, no fabricated transaction hashes — all on-chain state comes from
+ * the canonical backend (port 8450).
  */
 
 import { ethers } from 'ethers';
-import { createCipheriv, randomBytes, createDecipheriv } from 'crypto';
+import {
+  masterWalletAPI,
+  BalanceResponse,
+  SignTransactionResponse,
+} from '../api';
 
-// Chain configurations
-const CHAIN_CONFIGS = {
-  1: { name: 'Ethereum', symbol: 'ETH', rpcUrl: 'https://eth.llamarpc.com', decimals: 18 },
-  56: { name: 'BNB Smart Chain', symbol: 'BNB', rpcUrl: 'https://bsc-dataseed.binance.org', decimals: 18 },
-  137: { name: 'Polygon', symbol: 'MATIC', rpcUrl: 'https://polygon-rpc.com', decimals: 18 },
-  42161: { name: 'Arbitrum One', symbol: 'ETH', rpcUrl: 'https://arb1.arbitrum.io/rpc', decimals: 18 },
-  10: { name: 'Optimism', symbol: 'ETH', rpcUrl: 'https://mainnet.optimism.io', decimals: 18 },
-  43114: { name: 'Avalanche', symbol: 'AVAX', rpcUrl: 'https://api.avax.network/ext/bc/C/rpc', decimals: 18 },
-};
-
-interface ChainConfig {
+export interface ChainConfig {
   id: number;
   name: string;
   symbol: string;
-  rpcUrl: string;
   decimals: number;
 }
 
-interface WalletData {
-  id: string;
+// Curated EVM chain metadata (display/symbol only; RPC + signing live on the
+// backend). Keep in sync with backend chains.go.
+const CHAIN_CONFIGS: Record<number, ChainConfig> = {
+  1: { id: 1, name: 'Ethereum', symbol: 'ETH', decimals: 18 },
+  56: { id: 56, name: 'BNB Smart Chain', symbol: 'BNB', decimals: 18 },
+  137: { id: 137, name: 'Polygon', symbol: 'POL', decimals: 18 },
+  42161: { id: 42161, name: 'Arbitrum One', symbol: 'ETH', decimals: 18 },
+  10: { id: 10, name: 'Optimism', symbol: 'ETH', decimals: 18 },
+  43114: { id: 43114, name: 'Avalanche C-Chain', symbol: 'AVAX', decimals: 18 },
+  8453: { id: 8453, name: 'Base', symbol: 'ETH', decimals: 18 },
+  42220: { id: 42220, name: 'Celo', symbol: 'CELO', decimals: 18 },
+  250: { id: 250, name: 'Fantom', symbol: 'FTM', decimals: 18 },
+  25: { id: 25, name: 'Cronos', symbol: 'CRO', decimals: 18 },
+};
+
+export interface GeneratedWallet {
+  walletId: string;
   address: string;
-  publicKey: string;
-  encryptedMnemonic: string;
-  createdAt: number;
-  chains: number[];
+  mnemonic: string;
 }
 
-interface WalletResult {
-  success: boolean;
-  walletId?: string;
-  address?: string;
-  mnemonic?: string;
-  error?: string;
-}
-
-interface BalanceResult {
-  success: boolean;
-  balance?: number;
-  symbol?: string;
-  decimals?: number;
-  error?: string;
-}
-
-interface TokenBalanceResult {
-  success: boolean;
-  balance?: string;
-  symbol?: string;
-  decimals?: number;
-  error?: string;
-}
-
-interface TransactionResult {
-  success: boolean;
-  txHash?: string;
+export interface SendResult {
+  transaction_hash: string;
+  status: string;
   from?: string;
-  to?: string;
-  amount?: string;
-  error?: string;
+  chain_id?: number;
 }
 
 class MasterWalletService {
-  private wallets: Map<string, WalletData> = new Map();
-  private providers: Map<number, ethers.JsonRpcProvider> = new Map();
-
   /**
-   * Generate a new HD wallet with BIP-39 mnemonic
+   * Generate a fresh BIP-39 mnemonic + derived EVM address (m/44'/60'/0'/0/0).
+   * Used to preview a mnemonic before POSTing it to the backend for creation.
    */
-  async generateWallet(password: string): Promise<WalletResult> {
-    try {
-      // Generate mnemonic using ethers
-      const wallet = ethers.Wallet.createRandom();
-      const mnemonic = wallet.mnemonic.phrase;
-      
-      // Derive master key
-      const masterNode = ethers.Mnemonic.fromPhrase(mnemonic);
-      const masterKey = masterNode.derivePath("m/44'/60'/0'/0/0");
-      
-      // Get address
-      const address = masterKey.address;
-      
-      // Create wallet data
-      const walletData: WalletData = {
-        id: this.generateWalletId(),
-        address,
-        publicKey: masterKey.publicKey,
-        encryptedMnemonic: this.encryptMnemonic(mnemonic, password),
-        createdAt: Date.now(),
-        chains: [1],
-      };
-      
-      this.wallets.set(walletData.id, walletData);
-      
-      return {
-        success: true,
-        walletId: walletData.id,
-        address,
-        mnemonic,
-      };
-    } catch (error) {
-      return { success: false, error: String(error) };
+  generateMnemonic(): { mnemonic: string; address: string } {
+    const wallet = ethers.Wallet.createRandom();
+    const phrase = wallet.mnemonic?.phrase ?? '';
+    if (!phrase) {
+      throw new Error('Failed to generate mnemonic');
     }
+    const masterNode = ethers.HDNodeWallet.fromMnemonic(ethers.Mnemonic.fromPhrase(phrase));
+    const derived = masterNode.derivePath("m/44'/60'/0'/0/0");
+    return { mnemonic: phrase, address: derived.address };
   }
 
   /**
-   * Import wallet from existing mnemonic
+   * Validate a BIP-39 mnemonic (real checksum via ethers.js).
    */
-  async importWallet(mnemonic: string, password: string): Promise<WalletResult> {
-    try {
-      // Validate mnemonic
-      if (!ethers.Mnemonic.isValidMnemonic(mnemonic)) {
-        return { success: false, error: 'Invalid mnemonic' };
-      }
-      
-      const masterNode = ethers.Mnemonic.fromPhrase(mnemonic);
-      const masterKey = masterNode.derivePath("m/44'/60'/0'/0/0");
-      const address = masterKey.address;
-      
-      const walletData: WalletData = {
-        id: this.generateWalletId(),
-        address,
-        publicKey: masterKey.publicKey,
-        encryptedMnemonic: this.encryptMnemonic(mnemonic, password),
-        createdAt: Date.now(),
-        chains: [1],
-      };
-      
-      this.wallets.set(walletData.id, walletData);
-      
-      return {
-        success: true,
-        walletId: walletData.id,
-        address,
-        mnemonic,
-      };
-    } catch (error) {
-      return { success: false, error: String(error) };
-    }
+  isValidMnemonic(mnemonic: string): boolean {
+    return ethers.Mnemonic.isValidMnemonic(mnemonic);
   }
 
   /**
-   * Get wallet balance
+   * Derive the EVM address for an existing mnemonic (m/44'/60'/0'/0/0).
    */
-  async getBalance(walletId: string, chainId: number): Promise<BalanceResult> {
-    try {
-      const wallet = this.wallets.get(walletId);
-      if (!wallet) {
-        return { success: false, error: 'Wallet not found' };
-      }
-      
-      const chainConfig = CHAIN_CONFIGS[chainId as keyof typeof CHAIN_CONFIGS];
-      if (!chainConfig) {
-        return { success: false, error: 'Chain not supported' };
-      }
-      
-      // Get or create provider
-      let provider = this.providers.get(chainId);
-      if (!provider) {
-        provider = new ethers.JsonRpcProvider(chainConfig.rpcUrl);
-        this.providers.set(chainId, provider);
-      }
-      
-      // Get balance
-      const balance = await provider.getBalance(wallet.address);
-      const balanceInEth = Number(ethers.formatEther(balance));
-      
-      return {
-        success: true,
-        balance: balanceInEth,
-        symbol: chainConfig.symbol,
-        decimals: chainConfig.decimals,
-      };
-    } catch (error) {
-      return { success: false, error: String(error) };
+  deriveAddressFromMnemonic(mnemonic: string): string {
+    if (!ethers.Mnemonic.isValidMnemonic(mnemonic)) {
+      throw new Error('Invalid mnemonic');
     }
+    const masterNode = ethers.HDNodeWallet.fromMnemonic(
+      ethers.Mnemonic.fromPhrase(mnemonic)
+    );
+    return masterNode.derivePath("m/44'/60'/0'/0/0").address;
   }
 
   /**
-   * Get token balance
+   * Create a master wallet on the backend. The backend generates (or imports
+   * the provided) mnemonic, derives the key, encrypts the seed with the
+   * password, persists, and returns the mnemonic once.
    */
-  async getTokenBalance(walletId: string, chainId: number, tokenAddress: string): Promise<TokenBalanceResult> {
-    try {
-      const wallet = this.wallets.get(walletId);
-      if (!wallet) {
-        return { success: false, error: 'Wallet not found' };
-      }
-      
-      // In production, call token contract
-      return {
-        success: true,
-        balance: '0',
-        symbol: 'TOKEN',
-        decimals: 18,
-      };
-    } catch (error) {
-      return { success: false, error: String(error) };
-    }
+  async createMasterWallet(
+    name: string,
+    password: string,
+    chainId: number,
+    mnemonic?: string
+  ): Promise<GeneratedWallet> {
+    const res = await masterWalletAPI.createMasterWallet(
+      name,
+      password,
+      chainId,
+      mnemonic
+    );
+    // backend returns { wallet_id, address, mnemonic, ... }
+    const anyRes = res as unknown as {
+      wallet_id?: string;
+      id?: string;
+      address: string;
+      mnemonic?: string;
+    };
+    const walletId = anyRes.wallet_id ?? anyRes.id ?? '';
+    return { walletId, address: anyRes.address, mnemonic: anyRes.mnemonic ?? '' };
   }
 
   /**
-   * Send transaction
+   * Import an existing mnemonic by creating a backend master wallet with it.
+   */
+  async importWallet(
+    mnemonic: string,
+    password: string,
+    chainId: number,
+    name = 'Imported Wallet'
+  ): Promise<GeneratedWallet> {
+    if (!this.isValidMnemonic(mnemonic)) {
+      throw new Error('Invalid mnemonic');
+    }
+    return this.createMasterWallet(name, password, chainId, mnemonic);
+  }
+
+  /**
+   * Fetch the real native + token balances for a master wallet from the
+   * backend (real RPC, no client-side providers).
+   */
+  async getBalance(walletId: string): Promise<BalanceResponse> {
+    return masterWalletAPI.getMasterWalletBalance(walletId);
+  }
+
+  /**
+   * Fetch the real balance for a sub-wallet from the backend.
+   */
+  async getSubWalletBalance(
+    masterId: string,
+    subId: string
+  ): Promise<BalanceResponse> {
+    return masterWalletAPI.getSubWalletBalance(masterId, subId);
+  }
+
+  /**
+   * Sign + broadcast a transaction through the backend (real secp256k1 signing
+   * with the password-decrypted key). Returns the real on-chain tx hash.
    */
   async sendTransaction(
     walletId: string,
-    chainId: number,
-    toAddress: string,
-    amount: bigint,
-    data?: string
-  ): Promise<TransactionResult> {
-    try {
-      const wallet = this.wallets.get(walletId);
-      if (!wallet) {
-        return { success: false, error: 'Wallet not found' };
-      }
-      
-      const chainConfig = CHAIN_CONFIGS[chainId as keyof typeof CHAIN_CONFIGS];
-      if (!chainConfig) {
-        return { success: false, error: 'Chain not supported' };
-      }
-      
-      // Get or create provider
-      let provider = this.providers.get(chainId);
-      if (!provider) {
-        provider = new ethers.JsonRpcProvider(chainConfig.rpcUrl);
-        this.providers.set(chainId, provider);
-      }
-      
-      // In production, use decrypted mnemonic to create wallet
-      // For now, return placeholder tx hash
-      const txHash = `0x${randomBytes(32).toString('hex')}`;
-      
-      return {
-        success: true,
-        txHash,
-        from: wallet.address,
-        to: toAddress,
-        amount: amount.toString(),
-      };
-    } catch (error) {
-      return { success: false, error: String(error) };
-    }
+    to: string,
+    amount: string,
+    password: string,
+    token?: string
+  ): Promise<SendResult> {
+    const res: SignTransactionResponse = await masterWalletAPI.signTransaction(
+      walletId,
+      { to, amount, password, token }
+    );
+    return {
+      transaction_hash: res.transaction_hash,
+      status: res.status,
+      from: res.from,
+      chain_id: res.chain_id,
+    };
   }
 
   /**
-   * Get supported chains
+   * Sign + broadcast from a sub-wallet via the backend.
+   */
+  async sendFromSubWallet(
+    masterId: string,
+    subId: string,
+    to: string,
+    amount: string,
+    password: string,
+    token?: string
+  ): Promise<SendResult> {
+    const res = await masterWalletAPI.transferFromSubWallet(masterId, subId, {
+      to,
+      amount,
+      password,
+      token,
+    });
+    return {
+      transaction_hash: res.transaction_hash,
+      status: res.status,
+      from: res.from,
+      chain_id: res.chain_id,
+    };
+  }
+
+  /**
+   * Supported chains metadata (display only; RPC resolution is server-side).
    */
   getSupportedChains(): ChainConfig[] {
-    return Object.entries(CHAIN_CONFIGS).map(([id, config]) => ({
-      id: Number(id),
-      ...config,
-    }));
+    return Object.values(CHAIN_CONFIGS).sort((a, b) => a.id - b.id);
   }
 
-  /**
-   * Add chain to wallet
-   */
-  addChain(walletId: string, chainId: number): boolean {
-    const wallet = this.wallets.get(walletId);
-    if (!wallet || !CHAIN_CONFIGS[chainId as keyof typeof CHAIN_CONFIGS]) {
-      return false;
-    }
-    
-    if (!wallet.chains.includes(chainId)) {
-      wallet.chains.push(chainId);
-    }
-    return true;
-  }
-
-  /**
-   * Get wallet address
-   */
-  getWalletAddress(walletId: string): string | undefined {
-    return this.wallets.get(walletId)?.address;
-  }
-
-  /**
-   * Get all wallets
-   */
-  getAllWallets(): WalletData[] {
-    return Array.from(this.wallets.values());
-  }
-
-  /**
-   * Delete wallet
-   */
-  deleteWallet(walletId: string): boolean {
-    return this.wallets.delete(walletId);
-  }
-
-  private generateWalletId(): string {
-    return randomBytes(16).toString('base64');
-  }
-
-  private encryptMnemonic(mnemonic: string, password: string): string {
-    const key = Buffer.from(password.padEnd(32, '0').slice(0, 32));
-    const iv = randomBytes(16);
-    const cipher = createCipheriv('aes-256-gcm', key, iv);
-    
-    let encrypted = cipher.update(mnemonic, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-    const authTag = cipher.getAuthTag();
-    
-    return iv.toString('hex') + ':' + encrypted + ':' + authTag.toString('hex');
+  getChainConfig(chainId: number): ChainConfig | undefined {
+    return CHAIN_CONFIGS[chainId];
   }
 }
 

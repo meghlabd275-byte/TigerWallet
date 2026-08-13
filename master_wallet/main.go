@@ -1,86 +1,46 @@
+// main.go — MasterWallet deprecation reverse-proxy shim.
+//
+// The canonical MasterWallet backend now lives in ./backend/ (module
+// github.com/tigerwallet/master-wallet-backend, port 8450). This file is a
+// thin stdlib reverse-proxy so any legacy client that still points at this
+// module's entry point gets transparently forwarded to the canonical backend.
+//
+// Build: go build -o master-wallet-shim .   (stdlib only, no external deps)
+// Run:   PORT=8450 ./master-wallet-shim     (or MASTER_WALLET_BACKEND_URL)
 package main
 
 import (
-	"context"
-	"fmt"
 	"log"
-	"master_wallet"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
 )
 
 func main() {
-	// Initialize services
-	_ = master_wallet.GetRegistry()
-	_ = master_wallet.GetTokenRegistry()
-	_ = master_wallet.GetMasterWalletService()
-	_ = master_wallet.GetTigerWalletService()
-	_ = master_wallet.GetCustomBrandingService()
+	backend := os.Getenv("MASTER_WALLET_BACKEND_URL")
+	if backend == "" {
+		backend = "http://localhost:8450"
+	}
+	target, err := url.Parse(backend)
+	if err != nil {
+		log.Fatalf("invalid MASTER_WALLET_BACKEND_URL %q: %v", backend, err)
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	// Preserve the original Host header for the backend.
+	origDirector := proxy.Director
+	proxy.Director = func(r *http.Request) {
+		origDirector(r)
+		r.Host = target.Host
+	}
 
-	// Setup router
-	adminAPI := master_wallet.GetAdminAPIService()
-	router := adminAPI.SetupRouter()
-
-	// Get port from environment or default
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080"
+		port = "8451" // legacy port; canonical backend is 8450
 	}
 
-	// Create server
-	srv := &http.Server{
-		Addr:    ":" + port,
-		Handler: router,
+	log.Printf("MasterWallet deprecation shim -> %s on port %s", backend, port)
+	if err := http.ListenAndServe(":"+port, proxy); err != nil {
+		log.Fatalf("server error: %v", err)
 	}
-
-	// Print startup information
-	registry := master_wallet.GetRegistry()
-	tokenRegistry := master_wallet.GetTokenRegistry()
-	masterService := master_wallet.GetMasterWalletService()
-
-	fmt.Println("======================================")
-	fmt.Println("  TigerWallet Master Wallet System")
-	fmt.Println("======================================")
-	fmt.Printf("\n✅ Services Initialized Successfully\n\n")
-	fmt.Printf("📊 Network Statistics:\n")
-	fmt.Printf("   - Total Networks: %d\n", registry.GetSupportedChains())
-	fmt.Printf("   - Active Networks: %d\n", registry.GetActiveChainCount())
-	fmt.Printf("   - Total Tokens: %d\n", tokenRegistry.GetTokenCount())
-	
-	// Get TigerWallet master wallet
-	tigerWallet := masterService.GetMasterWalletByType("tiger")
-	if tigerWallet != nil {
-		fmt.Printf("\n🐯 TigerWallet Master:\n")
-		fmt.Printf("   - ID: %s\n", tigerWallet.ID)
-		fmt.Printf("   - Networks: %d\n", len(tigerWallet.NetworkIDs))
-		fmt.Printf("   - Tokens: %d\n", len(tigerWallet.TokenIDs))
-	}
-	
-	fmt.Printf("\n🌐 Server starting on port %s\n", port)
-	fmt.Println("======================================\n")
-
-	// Start server in goroutine
-	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server error: %v", err)
-		}
-	}()
-
-	// Wait for interrupt signal
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	log.Println("Shutting down server...")
-
-	// Graceful shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatal("Server forced to shutdown:", err)
-	}
-
-	log.Println("Server exited properly")
 }

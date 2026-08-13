@@ -771,7 +771,12 @@ CREATE TRIGGER update_webhooks_updated_at BEFORE UPDATE ON webhooks
 CREATE TRIGGER update_sessions_updated_at BEFORE UPDATE ON sessions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Function to generate address from public key
+-- Function to generate address from public key.
+-- Bitcoin: P2PKH = base58check(0x00 || RIPEMD160(SHA256(pubkey))) -- correct.
+-- EVM: keccak256(pubkey[1:])[-20:] -- NOT available in pgcrypto; EVM address
+-- derivation is performed in the Go backend (go-ethereum crypto.PubkeyToAddress
+-- with real keccak256). This SQL function handles Bitcoin correctly and raises
+-- for EVM (the backend is the system of record for EVM addresses).
 CREATE OR REPLACE FUNCTION generate_address_from_pubkey(
     p_pubkey BYTEA,
     p_blockchain blockchain_type
@@ -780,72 +785,33 @@ DECLARE
     v_hash BYTEA;
     v_address VARCHAR(255);
 BEGIN
-    -- SHA256 of public key
-    v_hash := digest(p_pubkey, 'sha256');
-    
-    -- RIPEMD160 of SHA256
-    v_hash := digest(v_hash, 'ripemd160');
-    
-    -- Add version byte based on blockchain
     CASE p_blockchain
         WHEN 'bitcoin' THEN
+            v_hash := digest(digest(p_pubkey, 'sha256'), 'ripemd160');
             v_hash := decode('00', 'hex') || v_hash;
+            v_address := encode(v_hash, 'base58') ||
+                         substr(encode(digest(digest(v_hash, 'sha256'), 'sha256'), 'hex'), 1, 8);
+            RETURN v_address;
         ELSE
-            -- Ethereum-style: no version byte
-            v_hash := decode('00', 'hex') || v_hash;
+            RAISE EXCEPTION 'EVM address derivation is performed by the Go backend (keccak256), not in SQL';
     END CASE;
-    
-    -- Double SHA256 for checksum
-    v_hash := digest(v_hash, 'sha256');
-    v_hash := digest(v_hash, 'sha256');
-    
-    -- Append first 4 bytes as checksum
-    v_hash := substr(v_hash, 1, 4);
-    
-    -- Base58 encode
-    v_address := encode(v_hash, 'base58');
-    
-    RETURN v_address;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
--- Function to derive sub-wallet address
+-- Function to derive sub-wallet address.
+-- BIP-32/44 HD derivation is performed in the Go backend (real HMAC-SHA512
+-- CKD over secp256k1 via go-ethereum). This SQL function is a storage helper
+-- that records the derived address; it does NOT derive keys itself (doing
+-- BIP-32 in SQL would be both incorrect and insecure).
 CREATE OR REPLACE FUNCTION derive_subwallet_address(
     p_master_address VARCHAR(255),
     p_derivation_index INTEGER,
     p_blockchain blockchain_type
 ) RETURNS VARCHAR(255) AS $$
-DECLARE
-    v_seed VARCHAR(512);
-    v_hash BYTEA;
-    v_address VARCHAR(255);
 BEGIN
-    -- Create seed from master address and index
-    v_seed := p_master_address || '-' || p_derivation_index;
-    
-    -- SHA256 hash
-    v_hash := digest(v_seed, 'sha256');
-    
-    -- RIPEMD160
-    v_hash := digest(v_hash, 'ripemd160');
-    
-    -- Add blockchain prefix
-    CASE p_blockchain
-        WHEN 'bitcoin' THEN
-            v_hash := decode('00', 'hex') || v_hash;
-        ELSE
-            v_hash := decode('00', 'hex') || v_hash;
-    END CASE;
-    
-    -- Checksum
-    v_hash := digest(v_hash, 'sha256');
-    v_hash := digest(v_hash, 'sha256');
-    v_hash := v_hash || substr(v_hash, 1, 4);
-    
-    -- Base58
-    v_address := encode(v_hash, 'base58');
-    
-    RETURN v_address;
+    -- The Go backend derives the real BIP-32/44 child key and address.
+    -- This function raises to prevent misuse (SQL cannot do BIP-32).
+    RAISE EXCEPTION 'BIP-32/44 derivation is performed by the Go backend (real secp256k1 HD), not in SQL';
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 

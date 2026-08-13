@@ -12,6 +12,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Log
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
@@ -20,6 +22,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 
 class PushNotificationService : FirebaseMessagingService() {
     
@@ -27,22 +31,55 @@ class PushNotificationService : FirebaseMessagingService() {
     
     companion object {
         private const val TAG = "PushNotificationService"
-        
+        const val BASE_URL = "http://localhost:8450"
+
         // Notification channels
         const val CHANNEL_TRANSACTIONS = "transactions"
         const val CHANNEL_BALANCE = "balance"
         const val CHANNEL_SECURITY = "security"
         const val CHANNEL_ALERTS = "alerts"
-        
+
         // Notification IDs
         const val NOTIFICATION_ID_TRANSACTION = 1001
         const val NOTIFICATION_ID_BALANCE = 1002
         const val NOTIFICATION_ID_SECURITY = 1003
         const val NOTIFICATION_ID_ALERT = 1004
-        
+
         private var fcmToken: String? = null
-        
+
+        private const val PREFS_FILE = "tigermaster_auth_prefs"
+        private const val KEY_AUTH_TOKEN = "auth_token"
+        private const val KEY_MASTER_WALLET_ID = "master_wallet_id"
+
         fun getFcmToken(): String? = fcmToken
+
+        /**
+         * Persist auth token + master wallet id so the push service can register
+         * the FCM token against the canonical backend even when the app is not
+         * in the foreground. Stored in EncryptedSharedPreferences.
+         */
+        fun persistAuth(context: Context, token: String, masterWalletId: String) {
+            try {
+                val prefs = encryptedPrefs(context)
+                prefs.edit()
+                    .putString(KEY_AUTH_TOKEN, token)
+                    .putString(KEY_MASTER_WALLET_ID, masterWalletId)
+                    .apply()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to persist auth: ${e.message}")
+            }
+        }
+
+        private fun encryptedPrefs(context: Context) =
+            EncryptedSharedPreferences.create(
+                context,
+                PREFS_FILE,
+                MasterKey.Builder(context)
+                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                    .build(),
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
     }
     
     override fun onCreate() {
@@ -291,14 +328,54 @@ class PushNotificationService : FirebaseMessagingService() {
     }
     
     /**
-     * Send FCM token to server
+     * Register the FCM token with the canonical backend at :8450 via
+     * POST /api/v1/master-wallet/:id/notifications. Fails closed: if the auth
+     * token or master wallet id are not available, this throws rather than
+     * silently succeeding (never pretends the token was registered).
      */
     private suspend fun sendTokenToServer(token: String) {
-        try {
-            // In production, call your server API
-            Log.d(TAG, "Token sent to server: $token")
+        val prefs = try {
+            encryptedPrefs(applicationContext)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to send token to server: ${e.message}")
+            throw IllegalStateException("Cannot open encrypted prefs: ${e.message}", e)
+        }
+
+        val authToken = prefs.getString(KEY_AUTH_TOKEN, null)
+        val masterWalletId = prefs.getString(KEY_MASTER_WALLET_ID, null)
+        if (authToken.isNullOrEmpty() || masterWalletId.isNullOrEmpty()) {
+            throw IllegalStateException(
+                "Cannot register push token: missing auth token or master wallet id"
+            )
+        }
+
+        val endpoint = "/api/v1/master-wallet/$masterWalletId/notifications"
+        val url = URL("$BASE_URL$endpoint")
+        val body = JSONObject()
+            .put("type", "fcm_token")
+            .put("token", token)
+            .toString()
+
+        val conn = (url.openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Authorization", "Bearer $authToken")
+            connectTimeout = 15000
+            readTimeout = 15000
+            doOutput = true
+        }
+
+        try {
+            conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            val code = conn.responseCode
+            if (code !in 200..299) {
+                val err = conn.errorStream?.bufferedReader()?.readText().orEmpty()
+                throw IllegalStateException(
+                    "Push token registration failed: HTTP $code ${err.take(200)}"
+                )
+            }
+            Log.d(TAG, "FCM token registered with backend for wallet $masterWalletId")
+        } finally {
+            conn.disconnect()
         }
     }
     

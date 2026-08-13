@@ -4,12 +4,15 @@
  */
 
 #include "tax_analytics_service.hpp"
+#include "api_client.hpp"
 #include <algorithm>
 #include <cstring>
+#include <set>
 #include <openssl/sha.h>
 #include <sstream>
 #include <iomanip>
 #include <fstream>
+#include <stdexcept>
 
 namespace tiger {
 namespace master {
@@ -605,16 +608,38 @@ std::string TaxAnalyticsService::formatDate(
 }
 
 double TaxAnalyticsService::getCurrentPrice(const std::string& asset) {
-    // In production, fetch from price oracle
-    return 1.0;
+    // Real price from the canonical backend (GET /api/v1/price?coin_id=...).
+    // Never fabricate a price — a wrong price corrupts cost basis / gain math.
+    if (asset.empty()) {
+        throw std::runtime_error("getCurrentPrice: asset is required");
+    }
+    std::map<std::string, std::string> params = {{"coin_id", asset}};
+    std::string resp;
+    try {
+        resp = api::backendGet("/api/v1/price", std::optional<std::map<std::string, std::string>>(params));
+    } catch (const api::APIException& e) {
+        throw std::runtime_error(std::string("getCurrentPrice: price fetch failed: ") + e.what());
+    }
+    auto usd = api::jsonNumberField(resp, "usd");
+    if (!usd) {
+        throw std::runtime_error("getCurrentPrice: backend returned no usd price");
+    }
+    return *usd;
 }
 
 double TaxAnalyticsService::getHistoricalPrice(
     const std::string& asset,
     const std::string& date
 ) {
-    // In production, fetch historical price
-    return 1.0;
+    // The canonical backend exposes only the current price (GET /api/v1/price).
+    // Historical prices are not available client-side; fabricating a value
+    // (e.g. 1.0) would silently corrupt realized-gain calculations, so fail
+    // closed instead.
+    (void)asset;
+    (void)date;
+    throw std::runtime_error(
+        "getHistoricalPrice: historical price oracle is not available; "
+        "supply historical cost basis via addTransaction instead");
 }
 
 } // namespace tax

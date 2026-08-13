@@ -12,14 +12,24 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.tigermaster.services.ThemeService
 
 class MainActivity : ComponentActivity() {
+    private lateinit var themeService: ThemeService
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        themeService = ThemeService(applicationContext)
+        themeService.initialize()
         setContent {
-            val viewModel: MasterWalletViewModel = androidx.lifecycle.viewModel.compose.rememberViewModel()
+            val viewModel: MasterWalletViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
             val isDarkMode by viewModel.isDarkMode.collectAsState()
-            
+
+            // Keep Compose theme in sync with the AppCompatDelegate-driven ThemeService.
+            LaunchedEffect(isDarkMode) {
+                themeService.setTheme(if (isDarkMode) "dark" else "light")
+            }
+
             MasterWalletTheme(darkTheme = isDarkMode) {
                 MasterMainScreen(viewModel = viewModel)
             }
@@ -81,7 +91,7 @@ fun MasterMainScreen(viewModel: MasterWalletViewModel) {
         when (selectedTab) {
             0 -> DashboardScreen(viewModel = viewModel, modifier = Modifier.padding(padding))
             1 -> WalletsScreen(viewModel = viewModel, modifier = Modifier.padding(padding))
-            2 -> TransactionsScreen(modifier = Modifier.padding(padding))
+            2 -> TransactionsScreen(viewModel = viewModel, modifier = Modifier.padding(padding))
             3 -> SettingsScreen(viewModel = viewModel, modifier = Modifier.padding(padding))
         }
     }
@@ -90,51 +100,58 @@ fun MasterMainScreen(viewModel: MasterWalletViewModel) {
 @Composable
 fun DashboardScreen(viewModel: MasterWalletViewModel, modifier: Modifier = Modifier) {
     val wallet by viewModel.masterWallet.collectAsState()
-    
+    val transactions by viewModel.transactions.collectAsState()
+    val subWallets by viewModel.subWallets.collectAsState()
+    val volume by viewModel.volumeStats.collectAsState()
+
     Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Dashboard", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Master Wallet", fontSize = 12.sp, color = Color.Gray)
+                Text(wallet?.name?.ifBlank { "—" } ?: "—", fontWeight = FontWeight.Bold)
+                Text(wallet?.address?.ifBlank { "—" } ?: "—", fontSize = 10.sp, color = Color.Gray)
+            }
+        }
+
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             MasterStatCard(
-                title = "Wallets",
-                value = "${wallet?.subWalletCount ?: 0}",
+                title = "Sub-Wallets",
+                value = "${subWallets.size}",
                 icon = "💼",
                 modifier = Modifier.weight(1f)
             )
             MasterStatCard(
-                title = "Volume",
-                value = "$${wallet?.totalVolume ?: "0"}",
-                icon = "💰",
+                title = "Tx Count",
+                value = "${volume?.txCount ?: 0}",
+                icon = "📊",
                 modifier = Modifier.weight(1f)
             )
         }
-        
+
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             MasterStatCard(
-                title = "Users",
-                value = "${wallet?.userCount ?: 0}",
-                icon = "👥",
+                title = "Total Volume",
+                value = volume?.totalVolume?.ifBlank { "0" } ?: "0",
+                icon = "💰",
                 modifier = Modifier.weight(1f)
             )
             MasterStatCard(
-                title = "Pending",
-                value = "${wallet?.pendingTx ?: 0}",
+                title = "Pending Tx",
+                value = "${transactions.count { it.status.equals("pending", ignoreCase = true) }}",
                 icon = "⏳",
                 modifier = Modifier.weight(1f)
             )
         }
-        
-        Text("Quick Actions", fontWeight = FontWeight.Bold)
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MasterActionButton("➕", "Create Wallet", Modifier.weight(1f)) { }
-            MasterActionButton("👤", "Add User", Modifier.weight(1f)) { }
-            MasterActionButton("🔑", "Auto Sign", Modifier.weight(1f)) { }
-            MasterActionButton("📊", "Analytics", Modifier.weight(1f)) { }
-        }
-        
+
         Text("Recent Activity", fontWeight = FontWeight.Bold)
-        for (i in 0..3) {
-            MasterActivityRow()
+        if (transactions.isEmpty()) {
+            Text("No recent transactions", fontSize = 12.sp, color = Color.Gray)
+        } else {
+            transactions.take(5).forEach { tx ->
+                MasterActivityRow(tx)
+            }
         }
     }
 }
@@ -168,7 +185,8 @@ fun MasterActionButton(icon: String, label: String, modifier: Modifier = Modifie
 }
 
 @Composable
-fun MasterActivityRow() {
+fun MasterActivityRow(tx: TransactionData) {
+    val isPending = tx.status.equals("pending", ignoreCase = true)
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.padding(12.dp).fillMaxWidth(),
@@ -179,11 +197,15 @@ fun MasterActivityRow() {
                 Text("📤", fontSize = 20.sp)
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
-                    Text("Transaction Sent", fontSize = 14.sp)
-                    Text("0x742d...12eB3", fontSize = 10.sp, color = Color.Gray)
+                    Text(tx.token.ifBlank { tx.chain }.ifBlank { "Transaction" }, fontSize = 14.sp)
+                    Text(tx.hash.ifBlank { tx.id }.ifBlank { "—" }, fontSize = 10.sp, color = Color.Gray)
                 }
             }
-            Text("+$5,000", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+            Text(
+                tx.amount.ifBlank { "0" },
+                color = if (isPending) Color.Gray else Color(0xFF4CAF50),
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
@@ -221,22 +243,29 @@ fun WalletsScreen(viewModel: MasterWalletViewModel, modifier: Modifier = Modifie
 }
 
 @Composable
-fun TransactionsScreen(modifier: Modifier = Modifier) {
+fun TransactionsScreen(viewModel: MasterWalletViewModel, modifier: Modifier = Modifier) {
+    val transactions by viewModel.transactions.collectAsState()
+
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
         Text("Transactions", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        for (i in 0..5) {
-            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                Row(
-                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column {
-                        Text("ETH Transfer", fontWeight = FontWeight.Bold)
-                        Text("To: 0x742d...12eB3", fontSize = 10.sp, color = Color.Gray)
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("-2.5 ETH", color = Color.Red)
-                        Text("Confirmed", fontSize = 10.sp, color = Color(0xFF4CAF50))
+        if (transactions.isEmpty()) {
+            Text("No transactions", fontSize = 12.sp, color = Color.Gray)
+        } else {
+            transactions.forEach { tx ->
+                Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    Row(
+                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(tx.token.ifBlank { tx.chain }.ifBlank { "Transfer" }, fontWeight = FontWeight.Bold)
+                            Text("To: ${tx.to.ifBlank { "—" }}", fontSize = 10.sp, color = Color.Gray)
+                            Text(tx.hash.ifBlank { tx.id }, fontSize = 10.sp, color = Color.Gray)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(tx.amount.ifBlank { "0" }, color = Color.Red)
+                            Text(tx.status, fontSize = 10.sp, color = if (tx.status.equals("confirmed", ignoreCase = true)) Color(0xFF4CAF50) else Color.Gray)
+                        }
                     }
                 }
             }
@@ -247,10 +276,13 @@ fun TransactionsScreen(modifier: Modifier = Modifier) {
 @Composable
 fun SettingsScreen(viewModel: MasterWalletViewModel, modifier: Modifier = Modifier) {
     val isDarkMode by viewModel.isDarkMode.collectAsState()
-    
+    val networks by viewModel.networks.collectAsState()
+    val autoSignRules by viewModel.autoSignRules.collectAsState()
+    val users by viewModel.users.collectAsState()
+
     Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        
+
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Appearance", fontWeight = FontWeight.Bold)
@@ -261,42 +293,39 @@ fun SettingsScreen(viewModel: MasterWalletViewModel, modifier: Modifier = Modifi
                 }
             }
         }
-        
+
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Security", fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Auto-Sign Rules")
-                Text("User Permissions")
-                Text("API Keys")
+                Text("Auto-Sign Rules: ${autoSignRules.size}")
+                Text("Users: ${users.size}")
             }
         }
-        
+
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Network", fontWeight = FontWeight.Bold)
+                Text("Networks", fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Default Chain: Ethereum")
+                if (networks.isEmpty()) {
+                    Text("No networks configured", fontSize = 12.sp, color = Color.Gray)
+                } else {
+                    networks.forEach { network ->
+                        Text("${network.name} (${network.id}) — ${network.symbol.ifBlank { "—" }}")
+                    }
+                }
             }
         }
-        
+
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("About", fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Version: 1.0.0")
+                Text("Backend: ${ApiConfig.BASE_URL}")
             }
         }
     }
 }
-
-// Data classes
-data class SubWalletData(
-    val name: String,
-    val address: String,
-    val balance: String,
-    val status: String
-)
 
 // Theme
 @Composable

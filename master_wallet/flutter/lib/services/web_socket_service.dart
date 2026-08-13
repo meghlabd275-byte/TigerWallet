@@ -29,7 +29,10 @@ class WebSocketService {
   String? _authToken;
   int _reconnectAttempts = 0;
   
-  static const String WS_URL = '';
+  static const String WS_HOST = String.fromEnvironment(
+    'MASTER_WALLET_WS_URL',
+    defaultValue: 'ws://localhost:8450',
+  );
   static const int MAX_RECONNECT_ATTEMPTS = 10;
   static const Duration RECONNECT_DELAY = Duration(seconds: 5);
   
@@ -60,7 +63,16 @@ class WebSocketService {
     _stateController.add(_connectionState);
     
     try {
-      _channel = WebSocketChannel.connect(Uri.parse(WS_URL));
+      // Canonical WebSocket: GET /ws?master_wallet_id=&token=
+      final qs = <String>[];
+      if (_walletId != null && _walletId!.isNotEmpty) {
+        qs.add('master_wallet_id=${Uri.encodeQueryComponent(_walletId!)}');
+      }
+      if (_authToken != null && _authToken!.isNotEmpty) {
+        qs.add('token=${Uri.encodeQueryComponent(_authToken!)}');
+      }
+      final url = qs.isEmpty ? '$WS_HOST/ws' : '$WS_HOST/ws?${qs.join('&')}';
+      _channel = WebSocketChannel.connect(Uri.parse(url));
       
       _subscription = _channel!.stream.listen(
         _onMessage,
@@ -139,43 +151,53 @@ class WebSocketService {
   void _onMessage(dynamic data) {
     try {
       final json = jsonDecode(data as String) as Map<String, dynamic>;
-      final channel = json['channel'] as String?;
-      final payload = json['data'] as Map<String, dynamic>? ?? {};
-      
       _messageController.add(data as String);
-      
-      switch (channel) {
+
+      // The canonical backend emits flat messages keyed by `type`
+      // (e.g. "balance", "ticker", "tx_confirmation"), not channel/data envelopes.
+      final type = json['type'] as String?;
+      switch (type) {
         case 'balance':
-          _handleBalanceUpdate(payload);
+          _handleBalanceUpdate(json);
           break;
-        case 'transactions':
-          _handleTransactionUpdate(payload);
+        case 'tx_confirmation':
+        case 'transaction':
+          _handleTransactionUpdate(json);
           break;
       }
     } catch (e) {
-      // Handle parse error
+      // Ignore malformed frames; the connection itself is retried elsewhere.
     }
   }
-  
+
   void _handleBalanceUpdate(Map<String, dynamic> data) {
     _balanceController.add(BalanceUpdate(
-      chainId: data['chainId'] as int? ?? 0,
+      chainId: _asInt(data['chain_id'] ?? data['chainId']) ?? 0,
       address: data['address'] as String? ?? '',
-      balance: data['balance'] as String? ?? '0',
-      token: data['token'] as String? ?? 'ETH',
-      timestamp: data['timestamp'] as int? ?? 0,
+      balance: data['balance']?.toString() ?? '0',
+      token: data['symbol'] as String? ?? data['token'] as String? ?? 'ETH',
+      timestamp: _asInt(data['timestamp']) ??
+          DateTime.now().millisecondsSinceEpoch,
     ));
   }
-  
+
   void _handleTransactionUpdate(Map<String, dynamic> data) {
     _transactionController.add(TransactionUpdate(
-      txHash: data['txHash'] as String? ?? '',
+      txHash: data['tx_hash'] as String? ?? data['txHash'] as String? ?? '',
       from: data['from'] as String? ?? '',
       to: data['to'] as String? ?? '',
-      amount: data['amount'] as String? ?? '0',
+      amount: data['amount']?.toString() ?? '0',
       status: data['status'] as String? ?? '',
-      timestamp: data['timestamp'] as int? ?? 0,
+      timestamp: _asInt(data['timestamp']) ??
+          DateTime.now().millisecondsSinceEpoch,
     ));
+  }
+
+  static int? _asInt(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString());
   }
   
   void _onError(dynamic error) {

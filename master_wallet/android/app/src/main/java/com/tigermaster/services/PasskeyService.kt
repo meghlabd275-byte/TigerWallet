@@ -6,10 +6,18 @@ import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import org.json.JSONObject
+import java.math.BigInteger
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.Signature
+import java.security.spec.X509EncodedKeySpec
+import java.security.KeyFactory
+import java.security.spec.ECPublicKeySpec
+import java.security.spec.ECParameterSpec
+import java.security.spec.ECPoint
+import java.security.interfaces.ECPublicKey
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -275,15 +283,9 @@ class PasskeyService(private val context: Context) {
      * Generate a cryptographically secure challenge
      */
     private fun generateChallenge(length: Int): ByteArray {
-        val random = java.security.SecureRandom()
         val challenge = ByteArray(length)
-        random.nextBytes(challenge)
-        
-        // Mix with hash for better randomness
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hash = digest.digest(challenge)
-        
-        return hash.copyOf(length)
+        java.security.SecureRandom().nextBytes(challenge)
+        return challenge
     }
     
     /**
@@ -333,7 +335,12 @@ class PasskeyService(private val context: Context) {
     }
     
     /**
-     * Verify assertion during authentication
+     * Verify a WebAuthn assertion with REAL P-256 ECDSA signature verification.
+     *
+     * The signed bytes are: authenticatorData || SHA-256(clientDataJSON).
+     * The signature is a DER-encoded ECDSA signature (P-256/secp256r1) produced
+     * by the authenticator. Verification fails closed — a missing credential,
+     * public key, authenticatorData, or signature returns false (never true).
      */
     private fun verifyAssertion(
         credentialId: String,
@@ -341,9 +348,93 @@ class PasskeyService(private val context: Context) {
         authenticatorData: String?,
         signature: String?
     ): Boolean {
-        // In production, verify the signature using the stored public key
-        // For now, validate basic structure
-        return credentialId.isNotEmpty() && clientDataJSON.isNotEmpty()
+        if (credentialId.isEmpty() || clientDataJSON.isEmpty() ||
+            authenticatorData.isNullOrEmpty() || signature.isNullOrEmpty()
+        ) {
+            return false
+        }
+
+        val credential = getCredentials().firstOrNull { it.id == credentialId }
+            ?: return false
+        if (credential.publicKey.isEmpty()) return false
+
+        // Verify the clientDataJSON origin/challenge as a JSON object.
+        val clientData = try {
+            JSONObject(clientDataJSON)
+        } catch (e: Exception) {
+            return false
+        }
+        if (clientData.optString("type") != "webauthn.get") return false
+        if (clientData.optString("challenge").isEmpty()) return false
+
+        val publicKey = decodeP256PublicKey(credential.publicKey) ?: return false
+
+        val authData = try {
+            Base64.decode(authenticatorData, Base64.URL_SAFE or Base64.NO_WRAP)
+        } catch (e: Exception) {
+            return false
+        }
+        // authenticatorData must be at least 37 bytes (rpIdHash(32) + flags(1) + signCount(4)).
+        if (authData.size < 37) return false
+
+        val signedData = authData + MessageDigest.getInstance("SHA-256")
+            .digest(clientDataJSON.toByteArray(Charsets.UTF_8))
+
+        val sigBytes = try {
+            Base64.decode(signature, Base64.URL_SAFE or Base64.NO_WRAP)
+        } catch (e: Exception) {
+            return false
+        }
+
+        return try {
+            val verifier = Signature.getInstance("SHA256withECDSA")
+            verifier.initVerify(publicKey)
+            verifier.update(signedData)
+            verifier.verify(sigBytes)
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Decode a P-256 (secp256r1) public key from X.509/SPKI base64 or raw
+     * uncompressed point form (0x04 || X || Y).
+     */
+    private fun decodeP256PublicKey(encoded: String): ECPublicKey? {
+        return try {
+            val clean = encoded.trim().removePrefix("-----BEGIN PUBLIC KEY-----")
+                .removeSuffix("-----END PUBLIC KEY-----")
+                .replace("\\s+".toRegex(), "")
+            val der = Base64.decode(clean, Base64.NO_WRAP)
+
+            // Try X.509 SPKI first.
+            try {
+                val kf = KeyFactory.getInstance("EC")
+                kf.generatePublic(X509EncodedKeySpec(der)) as ECPublicKey
+            } catch (e: Exception) {
+                // Fall back to raw uncompressed point (0x04 || X(32) || Y(32)).
+                if (der.size == 65 && der[0] == 0x04.toByte()) {
+                    val x = BigInteger(1, der.copyOfRange(1, 33))
+                    val y = BigInteger(1, der.copyOfRange(33, 65))
+                    val kf = KeyFactory.getInstance("EC")
+                    val ecSpec = ECParameterSpec(
+                        java.security.spec.EllipticCurve(
+                            java.security.spec.ECFieldFp(BigInteger("FFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF", 16)),
+                            BigInteger("FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551", 16),
+                            BigInteger("FFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFC", 16)
+                        ),
+                        java.security.spec.ECPoint(x, y),
+                        BigInteger("1"),
+                        1
+                    )
+                    kf.generatePublic(ECPublicKeySpec(ECPoint(x, y), ecSpec)) as ECPublicKey
+                } else {
+                    null
+                }
+            }
+        } catch (e: Exception) {
+            null
+        }
     }
     
     /**

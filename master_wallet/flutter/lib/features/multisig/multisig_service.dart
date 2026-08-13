@@ -1,186 +1,152 @@
 // MasterWallet Multi-Sig Service - Flutter
-// Complete multi-signature wallet functionality with real backend
+//
+// Thin REST client over the canonical Go backend (:8450). Multisig routes are
+// nested under /api/v1/master-wallet/:id/multisig/... . No fabricated data;
+// on backend failure methods throw rather than returning empty/fake results.
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class MultiSigService {
-  static const String API_BASE = 'http://localhost:8443/api/v1';
+  static const String API_BASE = String.fromEnvironment(
+    'MASTER_WALLET_API_URL',
+    defaultValue: 'http://localhost:8450',
+  );
+  static const String _apiV1 = '$API_BASE/api/v1';
+
+  final String masterWalletId;
   String? _token;
-  
-  MultiSigService({String? token}) : _token = token;
-  
+
+  MultiSigService({required this.masterWalletId, String? token}) : _token = token;
+
+  void setToken(String? token) => _token = token;
+
+  String get _base => '$_apiV1/master-wallet/$masterWalletId/multisig';
+
   Map<String, String> get _headers => {
-    'Content-Type': 'application/json',
-    if (_token != null) 'Authorization': 'Bearer $_token',
-  };
-  
-  // Create multi-sig wallet
+        'Content-Type': 'application/json',
+        if (_token != null) 'Authorization': 'Bearer $_token',
+      };
+
+  Exception _err(http.Response r, String op) =>
+      Exception('multisig $op failed (${r.statusCode}): ${r.body}');
+
+  dynamic _body(http.Response r) {
+    final data = json.decode(r.body);
+    return data['data'] ?? data;
+  }
+
+  /// Create a multi-sig wallet (real backend).
   Future<MultiSigWallet> createWallet({
     required String name,
     required List<String> owners,
     required int threshold,
   }) async {
-    final response = await http.post(
-      Uri.parse('$API_BASE/multisig/wallets'),
+    final r = await http.post(
+      Uri.parse('$_base/wallets'),
       headers: _headers,
-      body: json.encode({
-        'name': name,
-        'owners': owners,
-        'threshold': threshold,
-      }),
+      body: json.encode({'name': name, 'owners': owners, 'threshold': threshold}),
     );
-    
-    if (response.statusCode == 201) {
-      final data = json.decode(response.body);
-      return MultiSigWallet.fromJson(data['data']);
-    }
-    throw Exception('Failed to create wallet');
+    if (r.statusCode != 200 && r.statusCode != 201) throw _err(r, 'createWallet');
+    return MultiSigWallet.fromJson(_body(r) as Map<String, dynamic>);
   }
-  
-  // Get user's wallets
+
+  /// List multi-sig wallets (real backend).
   Future<List<MultiSigWallet>> getWallets() async {
-    final response = await http.get(
-      Uri.parse('$API_BASE/multisig/wallets'),
-      headers: _headers,
-    );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return (data['data'] as List).map((w) => MultiSigWallet.fromJson(w)).toList();
-    }
-    return [];
+    final r = await http.get(Uri.parse('$_base/wallets'), headers: _headers);
+    if (r.statusCode != 200) throw _err(r, 'getWallets');
+    final list = (_body(r) as List?) ?? const [];
+    return list.map((w) => MultiSigWallet.fromJson(w as Map<String, dynamic>)).toList();
   }
-  
-  // Get wallet details
+
+  /// Get wallet details (real backend).
   Future<MultiSigWallet> getWalletDetails(String walletId) async {
-    final response = await http.get(
-      Uri.parse('$API_BASE/multisig/wallets/$walletId'),
+    final r = await http.get(
+      Uri.parse('$_base/wallets/$walletId'),
       headers: _headers,
     );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return MultiSigWallet.fromJson(data['data']);
-    }
-    throw Exception('Failed to get wallet');
+    if (r.statusCode != 200) throw _err(r, 'getWalletDetails');
+    return MultiSigWallet.fromJson(_body(r) as Map<String, dynamic>);
   }
-  
-  // Create transaction
+
+  /// Create a multi-sig transaction proposal (real backend).
   Future<MultiSigTx> createTransaction({
     required String walletId,
     required String to,
-    required String token,
     required double amount,
+    String? token,
     String? data,
   }) async {
-    final response = await http.post(
-      Uri.parse('$API_BASE/multisig/wallets/$walletId/transactions'),
+    final r = await http.post(
+      Uri.parse('$_base/wallets/$walletId/transactions'),
       headers: _headers,
       body: json.encode({
         'to': to,
-        'token': token,
         'amount': amount,
-        'data': data,
+        if (token != null) 'token': token,
+        if (data != null) 'data': data,
       }),
     );
-    
-    if (response.statusCode == 201) {
-      final data = json.decode(response.body);
-      return MultiSigTx.fromJson(data['data']);
-    }
-    throw Exception('Failed to create transaction');
+    if (r.statusCode != 200 && r.statusCode != 201) throw _err(r, 'createTransaction');
+    return MultiSigTx.fromJson(_body(r) as Map<String, dynamic>);
   }
-  
-  // Approve transaction
-  Future<bool> approveTransaction(String walletId, String txId) async {
-    final response = await http.post(
-      Uri.parse('$API_BASE/multisig/wallets/$walletId/transactions/$txId/approve'),
+
+  /// Sign (approve) a multi-sig transaction. Canonical route is
+  /// /multisig/transactions/:tid/sign.
+  Future<bool> signTransaction(String txId) async {
+    final r = await http.post(
+      Uri.parse('$_base/transactions/$txId/sign'),
       headers: _headers,
     );
-    
-    return response.statusCode == 200;
+    if (r.statusCode != 200 && r.statusCode != 201) throw _err(r, 'signTransaction');
+    return true;
   }
-  
-  // Execute transaction (after threshold met)
-  Future<bool> executeTransaction(String walletId, String txId) async {
-    final response = await http.post(
-      Uri.parse('$API_BASE/multisig/wallets/$walletId/transactions/$txId/execute'),
+
+  /// Execute a multi-sig transaction once the threshold is met.
+  Future<bool> executeTransaction(String txId) async {
+    final r = await http.post(
+      Uri.parse('$_base/transactions/$txId/execute'),
       headers: _headers,
     );
-    
-    return response.statusCode == 200;
+    if (r.statusCode != 200 && r.statusCode != 201) throw _err(r, 'executeTransaction');
+    return true;
   }
-  
-  // Cancel transaction
-  Future<bool> cancelTransaction(String walletId, String txId) async {
-    final response = await http.delete(
-      Uri.parse('$API_BASE/multisig/wallets/$walletId/transactions/$txId'),
-      headers: _headers,
+
+  /// List transactions for a multi-sig wallet, optionally filtered by status.
+  Future<List<MultiSigTx>> getTransactions(String walletId, {String? status}) async {
+    final q = Uri.parse('$_base/wallets/$walletId/transactions').replace(
+      queryParameters: {if (status != null) 'status': status},
     );
-    
-    return response.statusCode == 200;
+    final r = await http.get(q, headers: _headers);
+    if (r.statusCode != 200) throw _err(r, 'getTransactions');
+    final list = (_body(r) as List?) ?? const [];
+    return list.map((t) => MultiSigTx.fromJson(t as Map<String, dynamic>)).toList();
   }
-  
-  // Get pending transactions
-  Future<List<MultiSigTx>> getPendingTransactions(String walletId) async {
-    final response = await http.get(
-      Uri.parse('$API_BASE/multisig/wallets/$walletId/transactions?status=PENDING'),
-      headers: _headers,
-    );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return (data['data'] as List).map((t) => MultiSigTx.fromJson(t)).toList();
-    }
-    return [];
-  }
-  
-  // Get transaction history
-  Future<List<MultiSigTx>> getTransactionHistory(String walletId) async {
-    final response = await http.get(
-      Uri.parse('$API_BASE/multisig/wallets/$walletId/transactions'),
-      headers: _headers,
-    );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return (data['data'] as List).map((t) => MultiSigTx.fromJson(t)).toList();
-    }
-    return [];
-  }
-  
-  // Add owner
+
+  Future<List<MultiSigTx>> getPendingTransactions(String walletId) =>
+      getTransactions(walletId, status: 'PENDING');
+
+  Future<List<MultiSigTx>> getTransactionHistory(String walletId) =>
+      getTransactions(walletId);
+
+  // Owner / threshold management are not part of the canonical multisig
+  // contract. They fail closed rather than posting to a non-existent route.
   Future<bool> addOwner(String walletId, String newOwner) async {
-    final response = await http.post(
-      Uri.parse('$API_BASE/multisig/wallets/$walletId/owners'),
-      headers: _headers,
-      body: json.encode({'owner': newOwner}),
+    throw UnimplementedError(
+      'multisig addOwner is not supported by the canonical backend contract.',
     );
-    
-    return response.statusCode == 201;
   }
-  
-  // Remove owner
+
   Future<bool> removeOwner(String walletId, String owner) async {
-    final response = await http.delete(
-      Uri.parse('$API_BASE/multisig/wallets/$walletId/owners'),
-      headers: _headers,
-      body: json.encode({'owner': owner}),
+    throw UnimplementedError(
+      'multisig removeOwner is not supported by the canonical backend contract.',
     );
-    
-    return response.statusCode == 200;
   }
-  
-  // Update threshold
+
   Future<bool> updateThreshold(String walletId, int newThreshold) async {
-    final response = await http.put(
-      Uri.parse('$API_BASE/multisig/wallets/$walletId/threshold'),
-      headers: _headers,
-      body: json.encode({'threshold': newThreshold}),
+    throw UnimplementedError(
+      'multisig updateThreshold is not supported by the canonical backend contract.',
     );
-    
-    return response.statusCode == 200;
   }
 }
 

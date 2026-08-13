@@ -18,6 +18,7 @@
 #include <optional>
 #include <array>
 #include <cstdint>
+#include <atomic>
 
 namespace tiger {
 namespace master {
@@ -209,7 +210,7 @@ private:
     
     // Statistics
     std::atomic<size_t> totalMixedTransactions_{0};
-    std::atomic<std::string> totalMixedVolume_{"0"};
+    std::string totalMixedVolume_{"0"};
     
     // Thread safety
     mutable std::mutex mutex_;

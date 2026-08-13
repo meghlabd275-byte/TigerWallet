@@ -86,6 +86,35 @@ struct BalanceResult {
     std::string error;
 };
 
+// Gas price snapshot from GET /api/v1/gas?chain_id=N (real backend oracle).
+struct GasEstimate {
+    std::string gasPrice;     // base fee / legacy gas price (wei, hex or decimal)
+    std::string maxFee;        // EIP-1559 max fee (wei)
+    std::string priorityFee;   // EIP-1559 priority fee (wei)
+    bool success;
+    std::string error;
+};
+
+// Market price from GET /api/v1/price?coin_id=... (real backend oracle).
+struct PriceQuote {
+    double usd;
+    double usd24hChange;
+    bool success;
+    std::string error;
+};
+
+// A single backend transaction record (GET /api/v1/master-wallet/:id/transactions).
+struct TransactionRecord {
+    std::string hash;
+    std::string from;
+    std::string to;
+    std::string amount;
+    std::string token;
+    std::string status;
+    std::string timestamp;
+    std::string blockNumber;
+};
+
 class MasterWalletService {
 public:
     static MasterWalletService& getInstance();
@@ -118,6 +147,74 @@ public:
     TransactionResult signAndBroadcast(const TransactionRequest& request);
     std::string signMessage(const WalletID& walletId, const std::string& message);
     bool verifySignature(const std::string& message, const std::string& signature, const std::string& address);
+
+    // Real backend queries (canonical API contract, backend :8450).
+    // These return data fetched from the backend; none fabricate values. On
+    // error the result carries success=false / an error string, or throws.
+    std::vector<TransactionRecord> getTransactions(const WalletID& walletId);
+    GasEstimate getGas(ChainID chainId);
+    PriceQuote getPrice(const std::string& coinId);
+    std::vector<ChainConfig> fetchChains(); // force-refresh from GET /api/v1/chains
+
+    // Sub-wallets
+    std::string getSubWallets(const WalletID& walletId);          // raw backend JSON
+    BalanceResult getSubWalletBalance(const WalletID& walletId, const std::string& subId);
+    TransactionResult transferSubWallet(const WalletID& walletId, const std::string& subId,
+                                         const std::string& to, const std::string& amount,
+                                         const std::string& password, const std::string& token = "");
+
+    // Policies / Fees / Auto-sign / Users (raw backend JSON passthrough)
+    std::string getPolicies(const WalletID& walletId);
+    std::string createPolicy(const WalletID& walletId, const std::string& body);
+    std::string updatePolicy(const WalletID& walletId, const std::string& policyId, const std::string& body);
+    bool deletePolicy(const WalletID& walletId, const std::string& policyId);
+
+    std::string getFees(const WalletID& walletId);
+    std::string createFee(const WalletID& walletId, const std::string& body);
+    bool deleteFee(const WalletID& walletId, const std::string& feeId);
+
+    std::string getAutoSignRules(const WalletID& walletId);
+    std::string createAutoSignRule(const WalletID& walletId, const std::string& body);
+    bool deleteAutoSignRule(const WalletID& walletId, const std::string& ruleId);
+
+    std::string getUsers(const WalletID& walletId);
+    std::string createUser(const WalletID& walletId, const std::string& body);
+    bool deleteUser(const WalletID& walletId, const std::string& userId);
+
+    // Audit + Analytics
+    std::string getAudit(const WalletID& walletId);
+    std::string getAnalyticsVolume(const WalletID& walletId);
+    std::string getAnalyticsTransactions(const WalletID& walletId);
+    std::string getAnalyticsWallets(const WalletID& walletId);
+
+    // Notifications + Webhooks
+    std::string getNotifications(const WalletID& walletId);
+    std::string createNotification(const WalletID& walletId, const std::string& body);
+    std::string getWebhooks(const WalletID& walletId);
+    std::string createWebhook(const WalletID& walletId, const std::string& body);
+    bool deleteWebhook(const WalletID& walletId, const std::string& webhookId);
+
+    // Treasury (real balances via backend)
+    std::string getTreasury(const WalletID& walletId);
+    std::string getTreasuryTransactions(const WalletID& walletId);
+    TransactionResult treasuryTransfer(const WalletID& walletId, const std::string& to,
+                                       const std::string& amount, const std::string& password);
+    TransactionResult treasurySweep(const WalletID& walletId, const std::string& to,
+                                    const std::string& password);
+
+    // Multisig
+    std::string getMultisigWallets(const WalletID& walletId);
+    std::string createMultisigWallet(const WalletID& walletId, const std::string& body);
+    std::string getMultisigTransactions(const WalletID& walletId, const std::string& multisigId);
+    std::string createMultisigTransaction(const WalletID& walletId, const std::string& multisigId,
+                                          const std::string& body);
+    std::string signMultisigTransaction(const WalletID& walletId, const std::string& txId,
+                                        const std::string& body);
+    std::string executeMultisigTransaction(const WalletID& walletId, const std::string& txId,
+                                          const std::string& body);
+
+    // Public endpoint helpers
+    std::string getTransactionHistory(const std::string& address, ChainID chainId);
     
     // HD Wallet Operations
     std::string deriveAddress(const WalletID& walletId, ChainID chainId, uint32_t index);
@@ -170,15 +267,15 @@ private:
     mutable std::shared_mutex tokenMutex_;
     mutable std::shared_mutex cacheMutex_;
     
-    // Storage
-    std::map<WalletID, WalletData> wallets_;
-    std::map<ChainID, ChainConfig> chains_;
-    std::map<std::pair<TokenAddress, ChainID>, TokenConfig> tokens_;
-    std::map<UserID, WalletID> userWallets_;
-    std::map<WalletID, std::set<UserID>> walletUsers_;
+    // Storage (mutable so const accessors may refresh the in-memory cache)
+    mutable std::map<WalletID, WalletData> wallets_;
+    mutable std::map<ChainID, ChainConfig> chains_;
+    mutable std::map<std::pair<TokenAddress, ChainID>, TokenConfig> tokens_;
+    mutable std::map<UserID, WalletID> userWallets_;
+    mutable std::map<WalletID, std::set<UserID>> walletUsers_;
     
     // Cache
-    std::map<WalletID, std::pair<BalanceResult, uint64_t>> balanceCache_;
+    mutable std::map<WalletID, std::pair<BalanceResult, uint64_t>> balanceCache_;
     uint64_t cacheTTLMs_ = 30000; // 30 seconds
     
     // Configuration

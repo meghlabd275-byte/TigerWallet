@@ -6,6 +6,7 @@
 import Foundation
 import LocalAuthentication
 import Security
+import CryptoKit
 
 public class BiometricService {
     
@@ -110,18 +111,52 @@ public class BiometricService {
         }
     }
     
-    /// Verify PIN
+    /// Verify PIN against the stored encrypted PIN. Real decryption + constant-time
+    /// comparison; never accepts an arbitrary 6-digit PIN.
     public func verifyPin(_ pin: String) -> PinVerificationResult {
         guard pin.count == PIN_LENGTH, pin.allSatisfy({ $0.isNumber }) else {
             return PinVerificationResult(success: false, error: "Invalid PIN format")
         }
-        
+
         guard isPinSetup() else {
             return PinVerificationResult(success: false, error: "PIN not set up")
         }
-        
-        // In production, verify against stored encrypted PIN
-        return PinVerificationResult(success: true, remainingAttempts: MAX_PIN_ATTEMPTS)
+
+        // Load the stored (encrypted) PIN from the Keychain.
+        let loadQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: PIN_KEY_ALIAS,
+            kSecReturnData as String: true
+        ]
+
+        var item: AnyObject?
+        let status = SecItemCopyMatching(loadQuery as CFDictionary, &item)
+        guard status == errSecSuccess, let encryptedPin = item as? Data else {
+            return PinVerificationResult(success: false, error: "PIN storage unavailable")
+        }
+
+        // Decrypt the stored PIN and compare in constant time.
+        do {
+            let storedPin = try decryptPin(encryptedPin)
+            let providedPin = Data(pin.utf8)
+
+            guard storedPin.count == providedPin.count else {
+                return PinVerificationResult(success: false, remainingAttempts: MAX_PIN_ATTEMPTS - 1)
+            }
+
+            var diff: UInt8 = 0
+            for i in 0..<storedPin.count {
+                diff |= storedPin[i] ^ providedPin[i]
+            }
+
+            if diff == 0 {
+                return PinVerificationResult(success: true, remainingAttempts: MAX_PIN_ATTEMPTS)
+            } else {
+                return PinVerificationResult(success: false, remainingAttempts: MAX_PIN_ATTEMPTS - 1)
+            }
+        } catch {
+            return PinVerificationResult(success: false, error: "PIN verification failed")
+        }
     }
     
     /// Change PIN
@@ -195,9 +230,18 @@ public class BiometricService {
     private func encryptPin(_ pin: String) throws -> Data {
         let key = try getOrCreatePinKey()
         let data = Data(pin.utf8)
-        
+
         let sealedBox = try AES.GCM.seal(data, using: key)
         return sealedBox.nonce + sealedBox.ciphertext + sealedBox.tag
+    }
+
+    private func decryptPin(_ encryptedPin: Data) throws -> Data {
+        let key = try getOrCreatePinKey()
+        let nonce = encryptedPin.prefix(12)
+        let ciphertext = encryptedPin.dropFirst(12).dropLast(16)
+        let tag = encryptedPin.suffix(16)
+        let sealedBox = try AES.GCM.SealedBox(nonce: nonce, ciphertext: ciphertext, tag: tag)
+        return try AES.GCM.open(sealedBox, using: key)
     }
     
     private func getOrCreatePinKey() throws -> SymmetricKey {

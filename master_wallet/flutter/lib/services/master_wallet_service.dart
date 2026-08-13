@@ -1,277 +1,257 @@
 /**
  * MasterWalletService - Flutter Implementation
- * Complete wallet management for Master Wallet
- * Features: HD Wallet, Multi-chain, Token Management, Transaction Signing
+ *
+ * Thin REST client over the canonical Go backend (:8450). All key material,
+ * signing, and balance resolution happen server-side (real secp256k1 signing +
+ * RPC broadcast via /api/v1/master-wallet/:id/sign). There is NO in-memory
+ * wallet, NO local signing, and NO fabricated data.
+ *
+ * See master_wallet/CANONICAL_API_CONTRACT.md for the full contract.
  */
 
 import 'dart:convert';
-import 'dart:math';
-import 'dart:typed_data';
 import 'package:http/http.dart' as http;
-import 'dart:io' show Client;
-import 'package:web3dart/web3dart.dart';
-import 'package:bip39/bip39.dart' as bip39;
-import 'package:bip32/bip32.dart' as bip32;
 
 class MasterWalletService {
-  static const String API_BASE = 'http://localhost:8443/api/v1';
-  
-  // Chain IDs
+  // Canonical backend base URL (port 8450). Configurable via the
+  // MASTER_WALLET_API_URL environment / build flag.
+  static const String API_BASE = String.fromEnvironment(
+    'MASTER_WALLET_API_URL',
+    defaultValue: 'http://localhost:8450',
+  );
+
+  static const String _apiV1 = '$API_BASE/api/v1';
+
+  // Chain IDs (metadata only - the backend is the source of truth for balances).
   static const int CHAIN_ETHEREUM = 1;
   static const int CHAIN_BSC = 56;
   static const int CHAIN_POLYGON = 137;
   static const int CHAIN_ARBITRUM = 42161;
   static const int CHAIN_OPTIMISM = 10;
   static const int CHAIN_AVALANCHE = 43114;
-  
-  final Map<int, ChainConfig> _chainConfigs = {};
-  final Map<String, WalletData> _wallets = {};
-  Web3Client? _web3Client;
-  
-  MasterWalletService() {
-    _initializeChains();
+
+  String? _token;
+
+  MasterWalletService({String? token}) : _token = token;
+
+  void setToken(String? token) => _token = token;
+
+  Map<String, String> get _headers => {
+        'Content-Type': 'application/json',
+        if (_token != null) 'Authorization': 'Bearer $_token',
+      };
+
+  Exception _error(http.Response r) =>
+      Exception('backend error ${r.statusCode}: ${r.body}');
+
+  // ==================== Wallets ====================
+
+  /// List master wallets for the authenticated user.
+  Future<List<WalletData>> getWallets() async {
+    final r = await http.get(Uri.parse('$_apiV1/master-wallet'), headers: _headers);
+    if (r.statusCode != 200) throw _error(r);
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    final wallets = body['wallets'] as List? ?? [];
+    return wallets.map((w) => WalletData.fromJson(w as Map<String, dynamic>)).toList();
   }
-  
-  void _initializeChains() {
-    _chainConfigs[CHAIN_ETHEREUM] = ChainConfig(
-      id: CHAIN_ETHEREUM,
-      name: 'Ethereum',
-      symbol: 'ETH',
-      rpcUrl: 'https://eth.llamarpc.com',
-      explorerUrl: 'https://etherscan.io',
-      decimals: 18,
-      isEVM: true,
-    );
-    _chainConfigs[CHAIN_BSC] = ChainConfig(
-      id: CHAIN_BSC,
-      name: 'BNB Smart Chain',
-      symbol: 'BNB',
-      rpcUrl: 'https://bsc-dataseed.binance.org',
-      explorerUrl: 'https://bscscan.com',
-      decimals: 18,
-      isEVM: true,
-    );
-    _chainConfigs[CHAIN_POLYGON] = ChainConfig(
-      id: CHAIN_POLYGON,
-      name: 'Polygon',
-      symbol: 'MATIC',
-      rpcUrl: 'https://polygon-rpc.com',
-      explorerUrl: 'https://polygonscan.com',
-      decimals: 18,
-      isEVM: true,
-    );
-    _chainConfigs[CHAIN_ARBITRUM] = ChainConfig(
-      id: CHAIN_ARBITRUM,
-      name: 'Arbitrum One',
-      symbol: 'ETH',
-      rpcUrl: 'https://arb1.arbitrum.io/rpc',
-      explorerUrl: 'https://arbiscan.io',
-      decimals: 18,
-      isEVM: true,
-    );
-    _chainConfigs[CHAIN_OPTIMISM] = ChainConfig(
-      id: CHAIN_OPTIMISM,
-      name: 'Optimism',
-      symbol: 'ETH',
-      rpcUrl: 'https://mainnet.optimism.io',
-      explorerUrl: 'https://optimistic.etherscan.io',
-      decimals: 18,
-      isEVM: true,
-    );
-    _chainConfigs[CHAIN_AVALANCHE] = ChainConfig(
-      id: CHAIN_AVALANCHE,
-      name: 'Avalanche',
-      symbol: 'AVAX',
-      rpcUrl: 'https://api.avax.network/ext/bc/C/rpc',
-      explorerUrl: 'https://snowtrace.io',
-      decimals: 18,
-      isEVM: true,
-    );
-  }
-  
-  /// Generate a new HD wallet with BIP-39 mnemonic
-  Future<WalletResult> generateWallet(String password) async {
+
+  /// Create a master wallet on the backend. The mnemonic is generated and
+  /// returned ONCE server-side (real BIP-39); it is never stored locally.
+  Future<WalletResult> createWallet({
+    required String name,
+    required String password,
+    int chainId = CHAIN_ETHEREUM,
+  }) async {
     try {
-      // Generate mnemonic
-      final mnemonic = bip39.generateMnemonic(strength: 256);
-      
-      // Derive master key
-      final seed = bip39.mnemonicToSeed(mnemonic, password: password);
-      final root = bip32.BIP32.fromSeed(seed);
-      final masterKey = root.derivePath("m/44'/60'/0'/0/0");
-      
-      // Generate address
-      final credentials = EthPrivateKey.fromInt(masterKey.privateKey[0]);
-      final address = credentials.address.toString();
-      
-      // Create wallet data
-      final walletData = WalletData(
-        id: _generateWalletId(),
-        address: address,
-        publicKey: base64Encode(masterKey.publicKey),
-        encryptedMnemonic: '',
-        createdAt: DateTime.now().millisecondsSinceEpoch,
-        chains: [CHAIN_ETHEREUM],
+      final r = await http.post(
+        Uri.parse('$_apiV1/master-wallet'),
+        headers: _headers,
+        body: jsonEncode({
+          'name': name,
+          'password': password,
+          'chain_id': chainId,
+        }),
       );
-      
-      _wallets[walletData.id] = walletData;
-      
-      return WalletResult(
-        success: true,
-        walletId: walletData.id,
-        address: address,
-        mnemonic: mnemonic,
-      );
-    } catch (e) {
-      return WalletResult(success: false, error: e.toString());
-    }
-  }
-  
-  /// Import wallet from existing mnemonic
-  Future<WalletResult> importWallet(String mnemonic, String password) async {
-    try {
-      if (!bip39.validateMnemonic(mnemonic)) {
-        return WalletResult(success: false, error: 'Invalid mnemonic');
+      if (r.statusCode != 200 && r.statusCode != 201) {
+        return WalletResult(success: false, error: 'backend ${r.statusCode}: ${r.body}');
       }
-      
-      final seed = bip39.mnemonicToSeed(mnemonic, password: password);
-      final root = bip32.BIP32.fromSeed(seed);
-      final masterKey = root.derivePath("m/44'/60'/0'/0/0");
-      
-      final credentials = EthPrivateKey.fromInt(masterKey.privateKey[0]);
-      final address = credentials.address.toString();
-      
-      final walletData = WalletData(
-        id: _generateWalletId(),
-        address: address,
-        publicKey: base64Encode(masterKey.publicKey),
-        encryptedMnemonic: '',
-        createdAt: DateTime.now().millisecondsSinceEpoch,
-        chains: [CHAIN_ETHEREUM],
-      );
-      
-      _wallets[walletData.id] = walletData;
-      
+      final data = jsonDecode(r.body) as Map<String, dynamic>;
+      final walletId = (data['wallet_id'] ?? data['id']) as String? ?? '';
       return WalletResult(
         success: true,
-        walletId: walletData.id,
-        address: address,
-        mnemonic: mnemonic,
+        walletId: walletId,
+        address: data['address'] as String?,
+        mnemonic: data['mnemonic'] as String?,
       );
     } catch (e) {
       return WalletResult(success: false, error: e.toString());
     }
   }
-  
-  /// Get wallet balance
+
+  /// Fetch a single master wallet by id.
+  Future<WalletData> getWallet(String walletId) async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/master-wallet/$walletId'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    return WalletData.fromJson(jsonDecode(r.body) as Map<String, dynamic>);
+  }
+
+  Future<bool> deleteWallet(String walletId) async {
+    final r = await http.delete(
+      Uri.parse('$_apiV1/master-wallet/$walletId'),
+      headers: _headers,
+    );
+    return r.statusCode == 200 || r.statusCode == 204;
+  }
+
+  // ==================== Balance (real RPC, server-side) ====================
+
+  /// Get native balance from the backend's GET /balance endpoint (real RPC).
   Future<BalanceResult> getBalance(String walletId, int chainId) async {
     try {
-      final wallet = _wallets[walletId];
-      if (wallet == null) {
-        return BalanceResult(success: false, error: 'Wallet not found');
+      final r = await http.get(
+        Uri.parse('$_apiV1/master-wallet/$walletId/balance'),
+        headers: _headers,
+      );
+      if (r.statusCode != 200) {
+        return BalanceResult(success: false, error: 'backend ${r.statusCode}: ${r.body}');
       }
-      
-      final chainConfig = _chainConfigs[chainId];
-      if (chainConfig == null) {
-        return BalanceResult(success: false, error: 'Chain not supported');
-      }
-      
-      // In production, make actual RPC call
+      final data = jsonDecode(r.body) as Map<String, dynamic>;
+      final native = (data['native'] as Map<String, dynamic>?) ?? {};
       return BalanceResult(
         success: true,
-        balance: 0.0,
-        symbol: chainConfig.symbol,
-        decimals: chainConfig.decimals,
+        balance: _toDouble(native['balance']),
+        symbol: native['symbol'] as String? ?? '',
+        decimals: 18,
+        usdValue: _toDouble(data['usd_value']),
       );
     } catch (e) {
       return BalanceResult(success: false, error: e.toString());
     }
   }
-  
-  /// Get token balance
-  Future<TokenBalanceResult> getTokenBalance(String walletId, int chainId, String tokenAddress) async {
+
+  /// Get token balances from the same balance endpoint (the backend resolves
+  /// live ERC-20 balances for tracked tokens). The [tokenAddress] filter is
+  /// applied client-side against the returned token list.
+  Future<TokenBalanceResult> getTokenBalance(
+    String walletId,
+    int chainId,
+    String tokenAddress,
+  ) async {
     try {
-      final wallet = _wallets[walletId];
-      if (wallet == null) {
-        return TokenBalanceResult(success: false, error: 'Wallet not found');
+      final r = await http.get(
+        Uri.parse('$_apiV1/master-wallet/$walletId/balance'),
+        headers: _headers,
+      );
+      if (r.statusCode != 200) {
+        return TokenBalanceResult(
+          success: false,
+          error: 'backend ${r.statusCode}: ${r.body}',
+        );
       }
-      
-      // In production, call token contract
+      final data = jsonDecode(r.body) as Map<String, dynamic>;
+      final tokens = (data['tokens'] as List?) ?? const [];
+      for (final t in tokens) {
+        final m = t as Map<String, dynamic>;
+        final contract = (m['contract'] ?? m['address']) as String? ?? '';
+        if (contract.toLowerCase() == tokenAddress.toLowerCase()) {
+          return TokenBalanceResult(
+            success: true,
+            balance: _toStr(m['balance']),
+            symbol: m['symbol'] as String? ?? 'TOKEN',
+            decimals: (m['decimals'] as num?)?.toInt() ?? 18,
+          );
+        }
+      }
       return TokenBalanceResult(
-        success: true,
-        balance: '0',
-        symbol: 'TOKEN',
-        decimals: 18,
+        success: false,
+        error: 'Token not tracked for this wallet',
       );
     } catch (e) {
       return TokenBalanceResult(success: false, error: e.toString());
     }
   }
-  
-  /// Send transaction — REAL signing + broadcast via web3dart.
-  ///
-  /// The mnemonic is NEVER persisted on-device (see [_encryptMnemonic]).
-  /// Instead the caller supplies the mnemonic here; the private key is
-  /// re-derived in memory (BIP-39 seed -> BIP-32 m/44'/60'/0'/0/0), used to
-  /// sign the EVM transaction, and discarded. The transaction is broadcast
-  /// with eth_sendRawTransaction through the chain's RPC node and the REAL
-  /// transaction hash returned by the node is used. No fabricated hash.
+
+  // ==================== Send / Sign (real, server-side) ====================
+
+  /// Send a transaction via the backend's POST /sign endpoint. The backend
+  /// decrypts the wallet seed with [password], derives the secp256k1 key,
+  /// builds + signs the EIP-1559 tx, broadcasts via eth_sendRawTransaction,
+  /// and returns the REAL node transaction hash.
   Future<TransactionResult> sendTransaction({
     required String walletId,
     required int chainId,
     required String toAddress,
     required BigInt amount,
-    required String mnemonic,
-    Uint8List? data,
+    required String password,
+    String? token,
   }) async {
     try {
-      final wallet = _wallets[walletId];
-      if (wallet == null) {
-        return TransactionResult(success: false, error: 'Wallet not found');
-      }
-
-      final chainConfig = _chainConfigs[chainId];
-      if (chainConfig == null) {
-        return TransactionResult(success: false, error: 'Chain not supported');
-      }
-
-      if (!bip39.validateMnemonic(mnemonic)) {
-        return TransactionResult(success: false, error: 'Invalid mnemonic');
-      }
-
-      // Re-derive the signing key in memory (never stored).
-      final seed = bip39.mnemonicToSeed(mnemonic);
-      final root = bip32.BIP32.fromSeed(seed);
-      final masterKey = root.derivePath("m/44'/60'/0'/0/0");
-      final credentials = EthPrivateKey.fromInt(masterKey.privateKey[0]);
-
-      final client = Web3Client(chainConfig.rpcUrl, Client());
-      final toAddr = EthereumAddress.fromHex(toAddress);
-      final txHash = await client.sendTransaction(
-        credentials,
-        Transaction(
-          to: toAddr,
-          value: EtherAmount.fromBigInt(EtherUnit.wei, amount),
-          data: data,
-        ),
-        chainId: chainConfig.id,
+      final r = await http.post(
+        Uri.parse('$_apiV1/master-wallet/$walletId/sign'),
+        headers: _headers,
+        body: jsonEncode({
+          'to': toAddress,
+          'amount': _formatAmount(amount),
+          'password': password,
+          if (token != null) 'token': token,
+        }),
       );
-
+      if (r.statusCode != 200) {
+        return TransactionResult(
+          success: false,
+          error: 'backend ${r.statusCode}: ${r.body}',
+        );
+      }
+      final data = jsonDecode(r.body) as Map<String, dynamic>;
       return TransactionResult(
         success: true,
-        txHash: txHash,
-        from: wallet.address,
+        txHash: data['transaction_hash'] as String?,
+        from: data['from'] as String?,
         to: toAddress,
-        amount: amount.toString(),
+        amount: _formatAmount(amount),
       );
     } catch (e) {
       return TransactionResult(success: false, error: e.toString());
     }
   }
+
+  // ==================== Transactions ====================
+
+  Future<List<Map<String, dynamic>>> getTransactions(String walletId) async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/master-wallet/$walletId/transactions'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    final txs = body['transactions'] as List? ?? [];
+    return txs.cast<Map<String, dynamic>>();
+  }
+
+  // ==================== Helpers ====================
+
+  double _toDouble(dynamic v) {
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v) ?? 0;
+    return 0;
+  }
+
+  String _toStr(dynamic v) => v?.toString() ?? '0';
+
+  String _formatAmount(BigInt amount) {
+    // The backend accepts human-readable amounts (e.g. "0.5"). Convert wei.
+    final whole = amount ~/ BigInt.from(10).pow(18);
+    final frac = amount.remainder(BigInt.from(10).pow(18));
+    if (frac == BigInt.zero) return whole.toString();
+    final fracStr = frac.toString().padLeft(18, '0').replaceAll(RegExp(r'0+$'), '');
+    return '$whole.$fracStr';
   }
 }
 
-// Data Classes
+// ==================== Data Classes ====================
 
 class ChainConfig {
   final int id;
@@ -281,7 +261,7 @@ class ChainConfig {
   final String explorerUrl;
   final int decimals;
   final bool isEVM;
-  
+
   ChainConfig({
     required this.id,
     required this.name,
@@ -297,18 +277,35 @@ class WalletData {
   final String id;
   final String address;
   final String publicKey;
-  final String encryptedMnemonic;
+  final String name;
+  final int chainId;
   final int createdAt;
-  List<int> chains;
-  
+
   WalletData({
     required this.id,
     required this.address,
-    required this.publicKey,
-    required this.encryptedMnemonic,
-    required this.createdAt,
-    required this.chains,
+    this.publicKey = '',
+    this.name = '',
+    this.chainId = 1,
+    this.createdAt = 0,
   });
+
+  factory WalletData.fromJson(Map<String, dynamic> json) {
+    return WalletData(
+      id: json['id'] as String? ?? '',
+      address: json['address'] as String? ?? '',
+      publicKey: json['public_key'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      chainId: (json['chain_id'] as num?)?.toInt() ?? 1,
+      createdAt: json['created_at'] is int
+          ? json['created_at'] as int
+          : (json['created_at'] != null
+              ? DateTime.tryParse(json['created_at'].toString())
+                      ?.millisecondsSinceEpoch ??
+                  0
+              : 0),
+    );
+  }
 }
 
 class WalletResult {
@@ -317,7 +314,7 @@ class WalletResult {
   final String? address;
   final String? mnemonic;
   final String? error;
-  
+
   WalletResult({
     required this.success,
     this.walletId,
@@ -332,13 +329,15 @@ class BalanceResult {
   final double balance;
   final String symbol;
   final int decimals;
+  final double usdValue;
   final String? error;
-  
+
   BalanceResult({
     required this.success,
     required this.balance,
     required this.symbol,
     required this.decimals,
+    this.usdValue = 0,
     this.error,
   });
 }
@@ -349,7 +348,7 @@ class TokenBalanceResult {
   final String symbol;
   final int decimals;
   final String? error;
-  
+
   TokenBalanceResult({
     required this.success,
     required this.balance,
@@ -366,7 +365,7 @@ class TransactionResult {
   final String? to;
   final String? amount;
   final String? error;
-  
+
   TransactionResult({
     required this.success,
     this.txHash,

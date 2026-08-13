@@ -17,22 +17,9 @@ import org.json.JSONObject
 // MasterWallet API Configuration
 // ============================================================================
 object ApiConfig {
-    const val BASE_URL = "https://api.tigerwallet.io/master"
+    // Canonical MasterWallet backend (see CANONICAL_API_CONTRACT.md)
+    const val BASE_URL = "http://localhost:8450"
     const val API_VERSION = "/api/v1"
-    
-    // Supported Networks (103+ chains)
-    val NETWORKS = mapOf(
-        1L to "Ethereum",
-        56L to "BNB Chain",
-        137L to "Polygon",
-        42161L to "Arbitrum",
-        10L to "Optimism",
-        43114L to "Avalanche",
-        8453L to "Base",
-        324L to "zkSync Era",
-        59144L to "Linea",
-        534352L to "Scroll"
-    )
 }
 
 class MasterWalletViewModel : ViewModel() {
@@ -73,6 +60,7 @@ class MasterWalletViewModel : ViewModel() {
     val error: StateFlow<String?> = _error.asStateFlow()
     
     private var authToken: String? = null
+    private var masterWalletId: String? = null
     
     init {
         loadData()
@@ -80,6 +68,7 @@ class MasterWalletViewModel : ViewModel() {
     
     fun setAuthToken(token: String) {
         authToken = token
+        loadData()
     }
     
     fun toggleDarkMode() {
@@ -114,15 +103,17 @@ class MasterWalletViewModel : ViewModel() {
     
     private suspend fun loadMasterWallet() = withContext(Dispatchers.IO) {
         try {
-            val response = apiGet("/master/wallet")
-            if (response != null) {
-                val json = JSONObject(response)
+            val response = apiGet("/master-wallet") ?: return@withContext
+            val json = JSONObject(response)
+            val wallets = json.optJSONArray("wallets")
+            if (wallets != null && wallets.length() > 0) {
+                val first = wallets.getJSONObject(0)
+                masterWalletId = first.optString("id", "")
                 _masterWallet.value = MasterWalletData(
-                    address = json.optString("address", ""),
-                    totalVolume = json.optString("totalVolume", "0"),
-                    subWalletCount = json.optInt("subWalletCount", 0),
-                    userCount = json.optInt("userCount", 0),
-                    pendingTx = json.optInt("pendingTx", 0)
+                    id = first.optString("id", ""),
+                    address = first.optString("address", ""),
+                    name = first.optString("name", ""),
+                    createdAt = first.optString("created_at", "")
                 )
             }
         } catch (e: Exception) {
@@ -130,99 +121,99 @@ class MasterWalletViewModel : ViewModel() {
         }
     }
     
+    private fun requireWalletId(): String? =
+        masterWalletId?.takeIf { it.isNotBlank() }
+
     private suspend fun loadSubWallets() = withContext(Dispatchers.IO) {
+        val id = requireWalletId() ?: return@withContext
         try {
-            val response = apiGet("/subwallets")
-            if (response != null) {
-                val jsonArray = JSONArray(response)
-                val list = mutableListOf<SubWalletData>()
-                for (i in 0 until jsonArray.length()) {
-                    val obj = jsonArray.getJSONObject(i)
-                    list.add(SubWalletData(
-                        name = obj.optString("name", ""),
-                        address = obj.optString("address", ""),
-                        balance = obj.optString("balance", "0"),
-                        status = obj.optString("status", "Active")
-                    ))
-                }
-                _subWallets.value = list
+            val response = apiGet("/master-wallet/$id/sub-wallets") ?: return@withContext
+            val jsonArray = JSONArray(response)
+            val list = mutableListOf<SubWalletData>()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                list.add(SubWalletData(
+                    name = obj.optString("name", ""),
+                    address = obj.optString("address", ""),
+                    balance = obj.optString("balance", "0"),
+                    status = obj.optString("status", "Active")
+                ))
             }
+            _subWallets.value = list
         } catch (e: Exception) {
             _error.value = "Failed to load subwallets: ${e.message}"
         }
     }
     
     private suspend fun loadTransactions() = withContext(Dispatchers.IO) {
+        val id = requireWalletId() ?: return@withContext
         try {
-            val response = apiGet("/transactions")
-            if (response != null) {
-                val jsonArray = JSONArray(response)
-                val list = mutableListOf<TransactionData>()
-                for (i in 0 until jsonArray.length()) {
-                    val obj = jsonArray.getJSONObject(i)
-                    list.add(TransactionData(
-                        id = obj.optString("id", ""),
-                        hash = obj.optString("hash", ""),
-                        from = obj.optString("from", ""),
-                        to = obj.optString("to", ""),
-                        amount = obj.optString("amount", "0"),
-                        token = obj.optString("token", ""),
-                        chain = obj.optString("chain", ""),
-                        status = obj.optString("status", "Pending"),
-                        timestamp = obj.optLong("timestamp", System.currentTimeMillis())
-                    ))
-                }
-                _transactions.value = list
+            val response = apiGet("/master-wallet/$id/transactions") ?: return@withContext
+            val json = JSONObject(response)
+            val jsonArray = json.optJSONArray("transactions") ?: JSONArray(response)
+            val list = mutableListOf<TransactionData>()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                list.add(TransactionData(
+                    id = obj.optString("id", ""),
+                    hash = obj.optString("hash", obj.optString("transaction_hash", "")),
+                    from = obj.optString("from", ""),
+                    to = obj.optString("to", ""),
+                    amount = obj.optString("amount", "0"),
+                    token = obj.optString("token", ""),
+                    chain = obj.optString("chain", ""),
+                    status = obj.optString("status", "Pending"),
+                    timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                ))
             }
+            _transactions.value = list
         } catch (e: Exception) {
             _error.value = "Failed to load transactions: ${e.message}"
         }
     }
     
     private suspend fun loadAutoSignRules() = withContext(Dispatchers.IO) {
+        val id = requireWalletId() ?: return@withContext
         try {
-            val response = apiGet("/auto-sign/rules")
-            if (response != null) {
-                val jsonArray = JSONArray(response)
-                val list = mutableListOf<AutoSignRuleData>()
-                for (i in 0 until jsonArray.length()) {
-                    val obj = jsonArray.getJSONObject(i)
-                    list.add(AutoSignRuleData(
-                        id = obj.optString("id", ""),
-                        name = obj.optString("name", ""),
-                        maxAmount = obj.optString("maxAmount", "0"),
-                        chain = obj.optString("chain", ""),
-                        enabled = obj.optBoolean("enabled", false)
-                    ))
-                }
-                _autoSignRules.value = list
+            val response = apiGet("/master-wallet/$id/auto-sign") ?: return@withContext
+            val jsonArray = JSONArray(response)
+            val list = mutableListOf<AutoSignRuleData>()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                list.add(AutoSignRuleData(
+                    id = obj.optString("id", ""),
+                    name = obj.optString("name", ""),
+                    maxAmount = obj.optString("maxAmount", obj.optString("threshold", "0")),
+                    chain = obj.optString("chain", ""),
+                    enabled = obj.optBoolean("enabled", false)
+                ))
             }
+            _autoSignRules.value = list
         } catch (e: Exception) {
             _error.value = "Failed to load auto-sign rules: ${e.message}"
         }
     }
     
     private suspend fun loadUsers() = withContext(Dispatchers.IO) {
+        val id = requireWalletId() ?: return@withContext
         try {
-            val response = apiGet("/users")
-            if (response != null) {
-                val jsonArray = JSONArray(response)
-                val list = mutableListOf<UserData>()
-                for (i in 0 until jsonArray.length()) {
-                    val obj = jsonArray.getJSONObject(i)
-                    list.add(UserData(
-                        id = obj.optString("id", ""),
-                        email = obj.optString("email", ""),
-                        name = obj.optString("name", ""),
-                        role = obj.optString("role", ""),
-                        walletAddress = obj.optString("walletAddress", ""),
-                        permissions = obj.optJSONArray("permissions")?.let { arr ->
-                            (0 until arr.length()).map { arr.getString(it) }
-                        } ?: emptyList()
-                    ))
-                }
-                _users.value = list
+            val response = apiGet("/master-wallet/$id/users") ?: return@withContext
+            val jsonArray = JSONArray(response)
+            val list = mutableListOf<UserData>()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                list.add(UserData(
+                    id = obj.optString("id", ""),
+                    email = obj.optString("email", ""),
+                    name = obj.optString("name", ""),
+                    role = obj.optString("role", ""),
+                    walletAddress = obj.optString("walletAddress", ""),
+                    permissions = obj.optJSONArray("permissions")?.let { arr ->
+                        (0 until arr.length()).map { arr.getString(it) }
+                    } ?: emptyList()
+                ))
             }
+            _users.value = list
         } catch (e: Exception) {
             _error.value = "Failed to load users: ${e.message}"
         }
@@ -230,88 +221,64 @@ class MasterWalletViewModel : ViewModel() {
     
     private suspend fun loadNetworks() = withContext(Dispatchers.IO) {
         try {
-            val response = apiGet("/networks")
-            if (response != null) {
-                val jsonArray = JSONArray(response)
-                val list = mutableListOf<NetworkData>()
-                for (i in 0 until jsonArray.length()) {
-                    val obj = jsonArray.getJSONObject(i)
-                    list.add(NetworkData(
-                        id = obj.optLong("id", 0),
-                        name = obj.optString("name", ""),
-                        symbol = obj.optString("symbol", ""),
-                        rpcUrl = obj.optString("rpcUrl", ""),
-                        explorerUrl = obj.optString("explorerUrl", ""),
-                        isEnabled = obj.optBoolean("isEnabled", true)
-                    ))
-                }
-                _networks.value = list
+            // Public endpoint: no wallet id required
+            val response = apiGet("/chains") ?: return@withContext
+            val json = JSONObject(response)
+            val jsonArray = json.optJSONArray("chains") ?: JSONArray(response)
+            val list = mutableListOf<NetworkData>()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                list.add(NetworkData(
+                    id = obj.optLong("id", obj.optLong("chain_id", 0)),
+                    name = obj.optString("name", ""),
+                    symbol = obj.optString("symbol", ""),
+                    rpcUrl = obj.optString("rpcUrl", obj.optString("rpc_url", "")),
+                    explorerUrl = obj.optString("explorerUrl", obj.optString("explorer_url", "")),
+                    isEnabled = obj.optBoolean("isEnabled", obj.optBoolean("is_enabled", true))
+                ))
             }
+            _networks.value = list
         } catch (e: Exception) {
-            // Use default networks
-            _networks.value = ApiConfig.NETWORKS.map { (id, name) ->
-                NetworkData(id = id, name = name, symbol = "", rpcUrl = "", explorerUrl = "", isEnabled = true)
-            }
+            _error.value = "Failed to load networks: ${e.message}"
         }
     }
     
     private suspend fun loadTokens() = withContext(Dispatchers.IO) {
-        try {
-            val response = apiGet("/tokens")
-            if (response != null) {
-                val jsonArray = JSONArray(response)
-                val list = mutableListOf<TokenData>()
-                for (i in 0 until jsonArray.length()) {
-                    val obj = jsonArray.getJSONObject(i)
-                    list.add(TokenData(
-                        id = obj.optString("id", ""),
-                        name = obj.optString("name", ""),
-                        symbol = obj.optString("symbol", ""),
-                        chainId = obj.optLong("chainId", 0),
-                        address = obj.optString("address", ""),
-                        decimals = obj.optInt("decimals", 18)
-                    ))
-                }
-                _tokens.value = list
-            }
-        } catch (e: Exception) {
-            _error.value = "Failed to load tokens: ${e.message}"
-        }
+        // No canonical tokens list endpoint; derived from wallet balances instead of fake data.
+        _tokens.value = emptyList()
     }
     
     private suspend fun loadVolumeStats() = withContext(Dispatchers.IO) {
+        val id = requireWalletId() ?: return@withContext
         try {
-            val response = apiGet("/analytics/volume")
-            if (response != null) {
-                val json = JSONObject(response)
-                _volumeStats.value = VolumeStatsData(
-                    totalVolume = json.optString("totalVolume", "0"),
-                    dailyVolume = json.optString("dailyVolume", "0"),
-                    monthlyVolume = json.optString("monthlyVolume", "0"),
-                    txCount = json.optInt("txCount", 0)
-                )
-            }
+            val response = apiGet("/master-wallet/$id/analytics/volume") ?: return@withContext
+            val json = JSONObject(response)
+            _volumeStats.value = VolumeStatsData(
+                totalVolume = json.optString("totalVolume", json.optString("total_volume", "0")),
+                dailyVolume = json.optString("dailyVolume", json.optString("daily_volume", "0")),
+                monthlyVolume = json.optString("monthlyVolume", json.optString("monthly_volume", "0")),
+                txCount = json.optInt("txCount", json.optInt("tx_count", 0))
+            )
         } catch (e: Exception) {
             _error.value = "Failed to load volume stats: ${e.message}"
         }
     }
     
     private suspend fun loadWhitelist() = withContext(Dispatchers.IO) {
+        val id = requireWalletId() ?: return@withContext
         try {
-            val response = apiGet("/whitelist")
-            if (response != null) {
-                val jsonArray = JSONArray(response)
-                val list = mutableListOf<WhitelistEntry>()
-                for (i in 0 until jsonArray.length()) {
-                    val obj = jsonArray.getJSONObject(i)
-                    list.add(WhitelistEntry(
-                        address = obj.optString("address", ""),
-                        label = obj.optString("label", ""),
-                        isVerified = obj.optBoolean("isVerified", false)
-                    ))
-                }
-                _whitelist.value = list
+            val response = apiGet("/master-wallet/$id/webhooks") ?: return@withContext
+            val jsonArray = JSONArray(response)
+            val list = mutableListOf<WhitelistEntry>()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                list.add(WhitelistEntry(
+                    address = obj.optString("address", obj.optString("url", "")),
+                    label = obj.optString("label", obj.optString("name", "")),
+                    isVerified = obj.optBoolean("isVerified", obj.optBoolean("active", false))
+                ))
             }
+            _whitelist.value = list
         } catch (e: Exception) {
             _error.value = "Failed to load whitelist: ${e.message}"
         }
@@ -325,23 +292,17 @@ class MasterWalletViewModel : ViewModel() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val response = apiPost("/subwallets", """{"name":"$name","chain":"$chain"}""")
-                if (response != null) {
-                    loadSubWallets()
+                val id = requireWalletId()
+                if (id == null) {
+                    _error.value = "No master wallet selected"
+                    return@launch
                 }
-            } catch (e: Exception) {
-                _error.value = e.message
-            } finally {
-                _isLoading.value = false
-            }
-        }
-    }
-    
-    fun deleteSubWallet(id: String) {
-        viewModelScope.launch {
-            _isLoading.value = true
-            try {
-                apiDelete("/subwallets/$id")
+                val body = JSONObject()
+                    .put("name", name)
+                    .put("password", "")
+                    .put("chain_id", chain)
+                    .toString()
+                apiPost("/master-wallet/$id/sub-wallets", body)
                 loadSubWallets()
             } catch (e: Exception) {
                 _error.value = e.message
@@ -351,11 +312,35 @@ class MasterWalletViewModel : ViewModel() {
         }
     }
     
-    fun approveTransaction(id: String) {
+    fun deleteSubWallet(sid: String) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                apiPost("/transactions/$id/approve", "{}")
+                val id = requireWalletId()
+                if (id == null) {
+                    _error.value = "No master wallet selected"
+                    return@launch
+                }
+                apiDelete("/master-wallet/$id/sub-wallets/$sid")
+                loadSubWallets()
+            } catch (e: Exception) {
+                _error.value = e.message
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+    
+    fun approveTransaction(tid: String) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val id = requireWalletId()
+                if (id == null) {
+                    _error.value = "No master wallet selected"
+                    return@launch
+                }
+                apiPost("/master-wallet/$id/transactions/$tid/approve", "{}")
                 loadTransactions()
             } catch (e: Exception) {
                 _error.value = e.message
@@ -365,11 +350,17 @@ class MasterWalletViewModel : ViewModel() {
         }
     }
     
-    fun rejectTransaction(id: String, reason: String) {
+    fun rejectTransaction(tid: String, reason: String) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                apiPost("/transactions/$id/reject", """{"reason":"$reason"}""")
+                val id = requireWalletId()
+                if (id == null) {
+                    _error.value = "No master wallet selected"
+                    return@launch
+                }
+                val body = JSONObject().put("reason", reason).toString()
+                apiPost("/master-wallet/$id/transactions/$tid/reject", body)
                 loadTransactions()
             } catch (e: Exception) {
                 _error.value = e.message
@@ -383,8 +374,18 @@ class MasterWalletViewModel : ViewModel() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val body = """{"name":"$name","maxAmount":"$maxAmount","chain":"$chain","enabled":$enabled}"""
-                apiPost("/auto-sign/rules", body)
+                val id = requireWalletId()
+                if (id == null) {
+                    _error.value = "No master wallet selected"
+                    return@launch
+                }
+                val body = JSONObject()
+                    .put("name", name)
+                    .put("threshold", maxAmount)
+                    .put("chain", chain)
+                    .put("enabled", enabled)
+                    .toString()
+                apiPost("/master-wallet/$id/auto-sign", body)
                 loadAutoSignRules()
             } catch (e: Exception) {
                 _error.value = e.message
@@ -394,11 +395,16 @@ class MasterWalletViewModel : ViewModel() {
         }
     }
     
-    fun toggleAutoSignRule(id: String) {
+    fun deleteAutoSignRule(rid: String) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                apiPost("/auto-sign/rules/$id/toggle", "{}")
+                val id = requireWalletId()
+                if (id == null) {
+                    _error.value = "No master wallet selected"
+                    return@launch
+                }
+                apiDelete("/master-wallet/$id/auto-sign/$rid")
                 loadAutoSignRules()
             } catch (e: Exception) {
                 _error.value = e.message
@@ -412,7 +418,16 @@ class MasterWalletViewModel : ViewModel() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                apiPost("/whitelist", """{"address":"$address","label":"$label"}""")
+                val id = requireWalletId()
+                if (id == null) {
+                    _error.value = "No master wallet selected"
+                    return@launch
+                }
+                val body = JSONObject()
+                    .put("address", address)
+                    .put("label", label)
+                    .toString()
+                apiPost("/master-wallet/$id/webhooks", body)
                 loadWhitelist()
             } catch (e: Exception) {
                 _error.value = e.message
@@ -422,11 +437,16 @@ class MasterWalletViewModel : ViewModel() {
         }
     }
     
-    fun removeFromWhitelist(address: String) {
+    fun removeFromWhitelist(wid: String) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                apiDelete("/whitelist/$address")
+                val id = requireWalletId()
+                if (id == null) {
+                    _error.value = "No master wallet selected"
+                    return@launch
+                }
+                apiDelete("/master-wallet/$id/webhooks/$wid")
                 loadWhitelist()
             } catch (e: Exception) {
                 _error.value = e.message
@@ -499,11 +519,10 @@ class MasterWalletViewModel : ViewModel() {
 // ============================================================================
 
 data class MasterWalletData(
+    val id: String,
     val address: String,
-    val totalVolume: String,
-    val subWalletCount: Int,
-    val userCount: Int,
-    val pendingTx: Int
+    val name: String,
+    val createdAt: String
 )
 
 data class SubWalletData(

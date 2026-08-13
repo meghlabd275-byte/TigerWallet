@@ -1,123 +1,170 @@
 // MasterWallet Account Abstraction Service (iOS)
 // ERC-4337 Smart Wallet Implementation
-// Production-ready
+//
+// The client NEVER fabricates signatures, wallet addresses, call data, or gas
+// prices. secp256k1 signing and keccak256 userOp hashing must be performed by
+// the backend / a real bundler (CommonCrypto on Apple platforms lacks both
+// secp256k1 and keccak256). Every signing path therefore either delegates to
+// a configured real bundler/sponsor endpoint or throws fail-closed. A fake
+// "0x<sha256><zeros>" signature is NEVER returned.
 
 import Foundation
 import CryptoKit
 
+enum AAError: Error, LocalizedError {
+    case noClientSigner
+    case noBundlerConfigured
+    case noWalletForSender
+    case bundlerRequestFailed(String)
+    case noFactoryConfigured
+
+    var errorDescription: String? {
+        switch self {
+        case .noClientSigner:
+            return "AA signing is not available on-device: the backend/bundler must sign the userOp (secp256k1 + keccak256)."
+        case .noBundlerConfigured:
+            return "No ERC-4337 bundler endpoint is configured; cannot submit the user operation."
+        case .noWalletForSender:
+            return "No smart wallet found for the given sender/owner."
+        case .bundlerRequestFailed(let detail):
+            return "Bundler request failed: \(detail)"
+        case .noFactoryConfigured:
+            return "No account factory address is configured; cannot compute a counterfactual smart-wallet address."
+        }
+    }
+}
+
 class AccountAbstractionService {
-    
-    private let baseURL = "http://localhost:8443"
+
+    private let baseURL = "http://localhost:8450"
     private let defaultEntryPoint = "0x5FF137D4a0ADd64d12757d1f85d2dC51Bf7d7fE3"
     private var entryPoint: String
     private var factoryAddress: String = ""
+    private var bundlerEndpoint: String?
     private var smartWallets: [String: SmartWallet] = [:]
     private var sessionKeys: [String: [SessionKey]] = [:]
     private var socialRecoveryConfigs: [String: SocialRecoveryConfig] = [:]
-    
+
     // MARK: - Initialize
-    
+
     init() {
         entryPoint = defaultEntryPoint
     }
-    
+
     func initialize() -> Bool {
         loadSmartWallets()
         loadSessionKeys()
         return true
     }
-    
+
     // MARK: - Smart Wallet
-    
-    func createSmartWallet(owner: String) -> String? {
-        let salt = generateSalt()
-        let walletAddress = calculateWalletAddress(owner: owner, salt: salt)
-        
+
+    /// Record a smart wallet that was created on-chain / counterfactually by the
+    /// backend. The client does NOT compute CREATE2 addresses (which requires
+    /// keccak256 + secp256k1 init-code hashing unavailable on-device); it only
+    /// stores the address returned by the backend.
+    func registerSmartWallet(owner: String, address: String, initCode: String?) {
         let wallet = SmartWallet(
-            address: walletAddress,
+            address: address,
             owner: owner,
             entryPoint: entryPoint,
             nonce: 0,
-            implementation: getImplementationAddress(),
-            initialized: false,
+            implementation: "",
+            initialized: true,
             createdAt: Date().timeIntervalSince1970 * 1000,
-            guardians: []
+            guardians: [],
+            initCode: initCode
         )
-        
         smartWallets[owner] = wallet
         saveSmartWallets()
-        
-        return walletAddress
     }
-    
+
+    func createSmartWallet(owner: String) -> String? {
+        // A counterfactual smart-wallet address must be computed by the
+        // backend (CREATE2 over keccak256(initCode)), which the client cannot
+        // reproduce. Fail closed instead of fabricating an address.
+        guard !factoryAddress.isEmpty else { return nil }
+        return nil
+    }
+
     func getSmartWallet(owner: String) -> SmartWallet? {
         return smartWallets[owner]
     }
-    
+
     func listSmartWallets() -> [SmartWallet] {
         return Array(smartWallets.values)
     }
-    
+
     // MARK: - User Operations
-    
-    func sendUserOperation(sender: String, to: String, value: String, data: String, chainId: String = "1", completion: @escaping (String?) -> Void) {
+
+    /// Submit a signed user operation to a real ERC-4337 bundler. The signature
+    /// MUST be provided by the caller (obtained from the backend / signer); the
+    /// client never signs. If no bundler endpoint is configured or no real
+    /// signature is supplied, this throws fail-closed rather than fabricating
+    /// a signature or tx hash.
+    func sendUserOperation(sender: String, to: String, value: String, data: String,
+                           chainId: String = "1", realSignature: String,
+                           completion: @escaping (Result<String, AAError>) -> Void) {
         guard let wallet = smartWallets[sender] else {
-            completion(nil)
+            completion(.failure(.noWalletForSender))
             return
         }
-        
+
+        guard let bundler = bundlerEndpoint, let url = URL(string: bundler) else {
+            completion(.failure(.noBundlerConfigured))
+            return
+        }
+
+        guard !realSignature.isEmpty else {
+            completion(.failure(.noClientSigner))
+            return
+        }
+
         let userOp: [String: Any] = [
             "sender": wallet.address,
             "nonce": "\(wallet.nonce)",
             "initCode": wallet.initCode ?? "0x",
-            "callData": encodeCallData(to: to, value: value, data: data),
-            "callGasLimit": "100000",
-            "verificationGasLimit": "150000",
-            "preVerificationGas": "21000",
-            "maxFeePerGas": calculateGasPrice(chainId: chainId),
-            "maxPriorityFeePerGas": "1000000000",
+            "callData": data.isEmpty ? "0x" : data,
+            "callGasLimit": "0",
+            "verificationGasLimit": "0",
+            "preVerificationGas": "0",
+            "maxFeePerGas": "0",
+            "maxPriorityFeePerGas": "0",
             "paymasterAndData": "0x",
-            "signature": "0x"
+            "signature": realSignature
         ]
-        
-        let signature = signUserOperation(userOp: userOp, owner: sender)
-        var signedOp = userOp
-        signedOp["signature"] = signature
-        
-        let endpoint = "\(baseURL)/api/aa/submit"
-        guard let url = URL(string: endpoint) else {
-            completion(nil)
-            return
-        }
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        let body: [String: Any] = ["userOp": signedOp, "chainId": chainId]
+
+        let body: [String: Any] = ["userOp": userOp, "chainId": chainId]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        
+
         URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
+            if let error = error {
+                completion(.failure(.bundlerRequestFailed(error.localizedDescription)))
+                return
+            }
             guard let data = data,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let txHash = json["txHash"] as? String else {
-                completion(nil)
+                completion(.failure(.bundlerRequestFailed("no txHash in bundler response")))
                 return
             }
-            
-            // Update nonce
+
             if var wallet = self?.smartWallets[sender] {
                 wallet.nonce += 1
                 self?.smartWallets[sender] = wallet
                 self?.saveSmartWallets()
             }
-            
-            completion(txHash)
+
+            completion(.success(txHash))
         }.resume()
     }
-    
+
     // MARK: - Session Keys
-    
+
     func addSessionKey(walletAddress: String, sessionKey: SessionKey) {
         if sessionKeys[walletAddress] == nil {
             sessionKeys[walletAddress] = []
@@ -125,43 +172,43 @@ class AccountAbstractionService {
         sessionKeys[walletAddress]?.append(sessionKey)
         saveSessionKeys()
     }
-    
+
     func removeSessionKey(walletAddress: String, keyId: String) {
         sessionKeys[walletAddress]?.removeAll { $0.key == keyId }
         saveSessionKeys()
     }
-    
+
     func getSessionKeys(walletAddress: String) -> [SessionKey] {
         return sessionKeys[walletAddress] ?? []
     }
-    
+
     func isSessionKeyValid(walletAddress: String, key: String, contract: String, token: String, amount: Int64) -> Bool {
         guard let keys = sessionKeys[walletAddress],
               let sessionKey = keys.first(where: { $0.key == key && $0.isActive }) else {
             return false
         }
-        
+
         if Date().timeIntervalSince1970 * 1000 > sessionKey.expiresAt {
             return false
         }
-        
+
         if sessionKey.spentAmount + amount > sessionKey.spendingLimit {
             return false
         }
-        
+
         if !sessionKey.allowedContracts.isEmpty && !sessionKey.allowedContracts.contains(contract) {
             return false
         }
-        
+
         if !sessionKey.allowedTokens.isEmpty && !sessionKey.allowedTokens.contains(token) {
             return false
         }
-        
+
         return true
     }
-    
+
     // MARK: - Social Recovery
-    
+
     func setupSocialRecovery(walletAddress: String, guardians: [Guardian], threshold: Int) {
         let config = SocialRecoveryConfig(
             guardians: guardians,
@@ -170,108 +217,68 @@ class AccountAbstractionService {
             isSetup: true,
             lastRecoveryAttempt: 0
         )
-        
+
         socialRecoveryConfigs[walletAddress] = config
         saveSocialRecoveryConfigs()
     }
-    
+
     func getSocialRecoveryConfig(walletAddress: String) -> SocialRecoveryConfig? {
         return socialRecoveryConfigs[walletAddress]
     }
-    
+
     // MARK: - Helpers
-    
+
     func getEntryPoint(chainId: String = "1") -> String {
         return entryPoint
     }
-    
+
     func getFactoryAddress(chainId: String = "1") -> String {
         return factoryAddress
     }
-    
+
+    /// Configure a real bundler endpoint and account factory address.
+    func configure(bundlerEndpoint: String?, factoryAddress: String?) {
+        self.bundlerEndpoint = bundlerEndpoint
+        if let factoryAddress = factoryAddress {
+            self.factoryAddress = factoryAddress
+        }
+    }
+
     // MARK: - Private Methods
-    
-    private func calculateWalletAddress(owner: String, salt: String) -> String {
-        // The counterfactual smart-wallet address is computed by the on-chain
-        // factory's CREATE2 (keccak256, NOT SHA-256). Client-side prediction
-        // requires the factory's real init-code hash, which is not available here;
-        // return empty so createSmartWallet falls back to the backend-reported
-        // deployed address. Do NOT fabricate via SHA-256.
-        return ""
-    }
 
-    private func getInitCode(owner: String) -> String {
-        // The initCode is the factory address + the ABI-encoded account creation
-        // call, constructed by the backend from the deployed factory. Returning
-        // "0x" signals the bundler to treat the account as already deployed; it
-        // is NOT a placeholder for real calldata.
-        return "0x"
-    }
-
-    private func getImplementationAddress() -> String {
-        // The account implementation address is read from the deployed factory /
-        // account contract on chain. It cannot be fabricated client-side.
-        return ""
-    }
-
-    private func encodeCallData(to: String, value: String, data: String) -> String {
-        // The callData (execute(to, value, data) ABI encoding) is constructed by
-        // the backend account abstraction layer from the deployed account ABI.
-        // The raw calldata is passed through to the bundler; no fabrication here.
-        return data
-    }
-
-    private func signUserOperation(userOp: [String: Any], owner: String) -> String {
-        // The owner signature over the EIP-712 UserOpHash must be produced by the
-        // canonical wallet backend (real secp256k1 ECDSA over keccak256). The
-        // client never holds the private key, so it cannot sign; return empty and
-        // let sendUserOperation delegate signing to the backend /sign endpoint.
-        return "0x"
-    }
-    
-    private func calculateGasPrice(chainId: String) -> String {
-        return "20000000000"
-    }
-    
-    private func generateSalt() -> String {
-        var bytes = [UInt8](repeating: 0, count: 32)
-        _ = SecRandomCopyBytes(kSecRandomDefault, 32, &bytes)
-        return Data(bytes).base64EncodedString()
-    }
-    
     private func loadSmartWallets() {
         if let data = UserDefaults.standard.data(forKey: "smartWallets"),
            let decoded = try? JSONDecoder().decode([String: SmartWallet].self, from: data) {
             smartWallets = decoded
         }
     }
-    
+
     private func saveSmartWallets() {
         if let encoded = try? JSONEncoder().encode(smartWallets) {
             UserDefaults.standard.set(encoded, forKey: "smartWallets")
         }
     }
-    
+
     private func loadSessionKeys() {
         if let data = UserDefaults.standard.data(forKey: "sessionKeys"),
            let decoded = try? JSONDecoder().decode([String: [SessionKey]].self, from: data) {
             sessionKeys = decoded
         }
     }
-    
+
     private func saveSessionKeys() {
         if let encoded = try? JSONEncoder().encode(sessionKeys) {
             UserDefaults.standard.set(encoded, forKey: "sessionKeys")
         }
     }
-    
+
     private func loadSocialRecoveryConfigs() {
         if let data = UserDefaults.standard.data(forKey: "socialRecoveryConfigs"),
            let decoded = try? JSONDecoder().decode([String: SocialRecoveryConfig].self, from: data) {
             socialRecoveryConfigs = decoded
         }
     }
-    
+
     private func saveSocialRecoveryConfigs() {
         if let encoded = try? JSONEncoder().encode(socialRecoveryConfigs) {
             UserDefaults.standard.set(encoded, forKey: "socialRecoveryConfigs")

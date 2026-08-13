@@ -1,149 +1,128 @@
 // MasterWallet Policy Engine Service - Flutter
+//
+// Thin REST client over the canonical Go backend (:8450). Policy routes are
+// nested under /api/v1/master-wallet/:id/policies. No fabricated data; on
+// backend failure methods throw rather than returning empty/fake results.
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class PolicyEngineService {
-  static const String API_BASE = 'http://localhost:8443/api/v1';
+  static const String API_BASE = String.fromEnvironment(
+    'MASTER_WALLET_API_URL',
+    defaultValue: 'http://localhost:8450',
+  );
+  static const String _apiV1 = '$API_BASE/api/v1';
+
+  final String masterWalletId;
   String? _token;
-  
-  PolicyEngineService({String? token}) : _token = token;
-  
+
+  PolicyEngineService({required this.masterWalletId, String? token}) : _token = token;
+
+  void setToken(String? token) => _token = token;
+
+  String get _base => '$_apiV1/master-wallet/$masterWalletId/policies';
+
   Map<String, String> get _headers => {
-    'Content-Type': 'application/json',
-    if (_token != null) 'Authorization': 'Bearer $_token',
-  };
-  
-  // Create policy
+        'Content-Type': 'application/json',
+        if (_token != null) 'Authorization': 'Bearer $_token',
+      };
+
+  Exception _err(http.Response r, String op) =>
+      Exception('policy $op failed (${r.statusCode}): ${r.body}');
+
+  dynamic _body(http.Response r) {
+    final data = json.decode(r.body);
+    return data['data'] ?? data;
+  }
+
+  /// Create a policy (real backend). The canonical contract accepts
+  /// {rule_type, threshold, ...} rather than {name,type,conditions,action};
+  /// we forward a permissive payload so the backend can validate the rule.
   Future<Policy> createPolicy({
     required String name,
     required String type,
     required Map<String, dynamic> conditions,
     required String action,
   }) async {
-    final response = await http.post(
-      Uri.parse('$API_BASE/policies'),
+    final payload = {
+      'name': name,
+      'rule_type': type,
+      ...conditions,
+      'action': action,
+    };
+    final r = await http.post(
+      Uri.parse(_base),
       headers: _headers,
-      body: json.encode({
-        'name': name,
-        'type': type,
-        'conditions': conditions,
-        'action': action,
-      }),
+      body: json.encode(payload),
     );
-    
-    if (response.statusCode == 201) {
-      final data = json.decode(response.body);
-      return Policy.fromJson(data['data']);
-    }
-    throw Exception('Failed to create policy');
+    if (r.statusCode != 200 && r.statusCode != 201) throw _err(r, 'createPolicy');
+    return Policy.fromJson(_body(r) as Map<String, dynamic>);
   }
-  
-  // Get policies
+
+  /// List policies (real backend).
   Future<List<Policy>> getPolicies() async {
-    final response = await http.get(
-      Uri.parse('$API_BASE/policies'),
-      headers: _headers,
-    );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return (data['data'] as List).map((p) => Policy.fromJson(p)).toList();
-    }
-    return [];
+    final r = await http.get(Uri.parse(_base), headers: _headers);
+    if (r.statusCode != 200) throw _err(r, 'getPolicies');
+    final list = (_body(r) as List?) ?? const [];
+    return list.map((p) => Policy.fromJson(p as Map<String, dynamic>)).toList();
   }
-  
-  // Update policy
+
+  /// Update a policy (real backend).
   Future<Policy> updatePolicy(String policyId, Map<String, dynamic> updates) async {
-    final response = await http.put(
-      Uri.parse('$API_BASE/policies/$policyId'),
+    final r = await http.put(
+      Uri.parse('$_base/$policyId'),
       headers: _headers,
       body: json.encode(updates),
     );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return Policy.fromJson(data['data']);
-    }
-    throw Exception('Failed to update policy');
+    if (r.statusCode != 200) throw _err(r, 'updatePolicy');
+    return Policy.fromJson(_body(r) as Map<String, dynamic>);
   }
-  
-  // Delete policy
+
+  /// Delete a policy (real backend).
   Future<bool> deletePolicy(String policyId) async {
-    final response = await http.delete(
-      Uri.parse('$API_BASE/policies/$policyId'),
+    final r = await http.delete(
+      Uri.parse('$_base/$policyId'),
       headers: _headers,
     );
-    
-    return response.statusCode == 200;
+    if (r.statusCode != 200 && r.statusCode != 204) throw _err(r, 'deletePolicy');
+    return true;
   }
-  
-  // Test policy
-  Future<PolicyTestResult> testPolicy(String policyId, Map<String, dynamic> transaction) async {
-    final response = await http.post(
-      Uri.parse('$API_BASE/policies/$policyId/test'),
-      headers: _headers,
-      body: json.encode(transaction),
+
+  // Policy testing, policy logs, and spend limits are not part of the canonical
+  // policy contract. They fail closed rather than hitting non-existent routes.
+  Future<PolicyTestResult> testPolicy(
+    String policyId,
+    Map<String, dynamic> transaction,
+  ) async {
+    throw UnimplementedError(
+      'policy testPolicy is not supported by the canonical backend contract.',
     );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return PolicyTestResult.fromJson(data['data']);
-    }
-    throw Exception('Failed to test policy');
   }
-  
-  // Get policy logs
+
   Future<List<PolicyLog>> getPolicyLogs({int limit = 100}) async {
-    final response = await http.get(
-      Uri.parse('$API_BASE/policies/logs?limit=$limit'),
-      headers: _headers,
+    throw UnimplementedError(
+      'policy logs are not supported by the canonical backend contract. '
+      'Use the audit endpoint for activity history.',
     );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return (data['data'] as List).map((l) => PolicyLog.fromJson(l)).toList();
-    }
-    return [];
   }
-  
-  // Create spend limit
+
   Future<SpendLimit> createSpendLimit({
     required String token,
     required double dailyLimit,
     required double monthlyLimit,
     required double perTxLimit,
   }) async {
-    final response = await http.post(
-      Uri.parse('$API_BASE/policies/spend-limits'),
-      headers: _headers,
-      body: json.encode({
-        'token': token,
-        'dailyLimit': dailyLimit,
-        'monthlyLimit': monthlyLimit,
-        'perTxLimit': perTxLimit,
-      }),
+    throw UnimplementedError(
+      'policy spend limits are not supported by the canonical backend contract. '
+      'Model spend thresholds as policies instead.',
     );
-    
-    if (response.statusCode == 201) {
-      final data = json.decode(response.body);
-      return SpendLimit.fromJson(data['data']);
-    }
-    throw Exception('Failed to create spend limit');
   }
-  
-  // Get spend limits
+
   Future<List<SpendLimit>> getSpendLimits() async {
-    final response = await http.get(
-      Uri.parse('$API_BASE/policies/spend-limits'),
-      headers: _headers,
+    throw UnimplementedError(
+      'policy spend limits are not supported by the canonical backend contract.',
     );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return (data['data'] as List).map((s) => SpendLimit.fromJson(s)).toList();
-    }
-    return [];
   }
 }
 

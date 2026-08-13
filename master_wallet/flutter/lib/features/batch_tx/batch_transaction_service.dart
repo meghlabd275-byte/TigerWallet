@@ -1,112 +1,83 @@
 // MasterWallet Batch Transaction Service - Flutter
+//
+// The canonical Go backend (:8450) exposes single-transaction sign/broadcast
+// at POST /api/v1/master-wallet/:id/transactions and multi-signature
+// proposals under /master-wallet/:id/multisig/... . There is NO atomic
+// "batch transaction" endpoint in the canonical contract, so this client
+// fails closed for batch-specific operations rather than fabricating batch
+// state or silently fanning out to single transactions (which would lose
+// atomicity). Callers that need multi-tx flows should use MultiSigService.
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+// (Imports retained for API_BASE/JSON helpers if future canonical batch
+// endpoints are added; currently all operations fail closed with no I/O.)
+
 class BatchTransactionService {
-  static const String API_BASE = 'http://localhost:8443/api/v1';
+  static const String API_BASE = String.fromEnvironment(
+    'MASTER_WALLET_API_URL',
+    defaultValue: 'http://localhost:8450',
+  );
+  static const String _apiV1 = '$API_BASE/api/v1';
+
+  final String masterWalletId;
   String? _token;
-  
-  BatchTransactionService({String? token}) : _token = token;
-  
+
+  BatchTransactionService({required this.masterWalletId, String? token})
+      : _token = token;
+
+  void setToken(String? token) => _token = token;
+
+  String get _txBase => '$_apiV1/master-wallet/$masterWalletId/transactions';
+
   Map<String, String> get _headers => {
-    'Content-Type': 'application/json',
-    if (_token != null) 'Authorization': 'Bearer $_token',
-  };
-  
-  // Create batch transaction
+        'Content-Type': 'application/json',
+        if (_token != null) 'Authorization': 'Bearer $_token',
+      };
+
+  Exception _unsupported(String op) => UnimplementedError(
+        'batch $op is not supported by the canonical backend contract. '
+        'There is no atomic batch-transaction endpoint; use single '
+        '/master-wallet/:id/transactions or MultiSigService for multi-tx flows.');
+
+  /// Create a batch transaction. NOT supported by the canonical backend.
   Future<BatchTransaction> createBatch({
     required String name,
     required List<BatchTxItem> transactions,
     required int approvalRequired,
   }) async {
-    final response = await http.post(
-      Uri.parse('$API_BASE/batch/transactions'),
-      headers: _headers,
-      body: json.encode({
-        'name': name,
-        'transactions': transactions.map((t) => t.toJson()).toList(),
-        'approvalRequired': approvalRequired,
-      }),
-    );
-    
-    if (response.statusCode == 201) {
-      final data = json.decode(response.body);
-      return BatchTransaction.fromJson(data['data']);
-    }
-    throw Exception('Failed to create batch');
+    throw _unsupported('createBatch');
   }
-  
-  // Get batch transactions
+
+  /// List batch transactions. NOT supported by the canonical backend.
   Future<List<BatchTransaction>> getBatches() async {
-    final response = await http.get(
-      Uri.parse('$API_BASE/batch/transactions'),
-      headers: _headers,
-    );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return (data['data'] as List).map((b) => BatchTransaction.fromJson(b)).toList();
-    }
-    return [];
+    throw _unsupported('getBatches');
   }
-  
-  // Get batch details
+
+  /// Get batch details. NOT supported by the canonical backend.
   Future<BatchTransaction> getBatchDetails(String batchId) async {
-    final response = await http.get(
-      Uri.parse('$API_BASE/batch/transactions/$batchId'),
-      headers: _headers,
-    );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return BatchTransaction.fromJson(data['data']);
-    }
-    throw Exception('Failed to get batch');
+    throw _unsupported('getBatchDetails');
   }
-  
-  // Approve batch
+
+  /// Approve a batch. NOT supported by the canonical backend.
   Future<bool> approveBatch(String batchId) async {
-    final response = await http.post(
-      Uri.parse('$API_BASE/batch/transactions/$batchId/approve'),
-      headers: _headers,
-    );
-    
-    return response.statusCode == 200;
+    throw _unsupported('approveBatch');
   }
-  
-  // Execute batch
+
+  /// Execute a batch. NOT supported by the canonical backend.
   Future<bool> executeBatch(String batchId) async {
-    final response = await http.post(
-      Uri.parse('$API_BASE/batch/transactions/$batchId/execute'),
-      headers: _headers,
-    );
-    
-    return response.statusCode == 200;
+    throw _unsupported('executeBatch');
   }
-  
-  // Cancel batch
+
+  /// Cancel a batch. NOT supported by the canonical backend.
   Future<bool> cancelBatch(String batchId) async {
-    final response = await http.delete(
-      Uri.parse('$API_BASE/batch/transactions/$batchId'),
-      headers: _headers,
-    );
-    
-    return response.statusCode == 200;
+    throw _unsupported('cancelBatch');
   }
-  
-  // Get batch status
+
+  /// Get batch status. NOT supported by the canonical backend.
   Future<BatchStatus> getBatchStatus(String batchId) async {
-    final response = await http.get(
-      Uri.parse('$API_BASE/batch/transactions/$batchId/status'),
-      headers: _headers,
-    );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return BatchStatus.fromJson(data['data']);
-    }
-    throw Exception('Failed to get status');
+    throw _unsupported('getBatchStatus');
   }
 }
 

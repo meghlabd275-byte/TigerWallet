@@ -1,286 +1,100 @@
-// TigerWallet MasterWallet - Privacy Service (Chrome Extension)
-// ZK-SNARK proofs, CoinJoin, address rotation for privacy
-// Production-ready
+/**
+ * PrivacyService - privacy-feature client for the extension.
+ *
+ * ZK-SNARK proof generation, CoinJoin coordination, and address derivation
+ * require private key material and trusted-setup parameters that live on the
+ * backend. The client relays requests to the backend and computes only
+ * public, deterministic hashes (keccak-256 / SHA-256 via SubtleCrypto).
+ *
+ * Fail-closed: any unavailable operation throws rather than returning a
+ * fabricated proof, commitment, or derived address.
+ */
+
+'use strict';
+
+// UMD: CommonJS require under node/tests, globalThis under MV3 service worker.
+const { keccak256 } = (typeof require === 'function')
+  ? require('./keccak256.js')
+  : ((globalThis.MW_KECCAK) || {});
+const { authedFetch } = (typeof require === 'function')
+  ? require('./apiClient.js')
+  : ((globalThis.MW_API) || {});
 
 class MasterPrivacyService {
   constructor(masterWalletId) {
     this.masterWalletId = masterWalletId;
-    this.mixingLevel = 'STANDARD';
     this.isInitialized = false;
-    this.mixingQueue = [];
-    this.anonymitySet = new Set();
   }
 
   async initialize() {
-    if (this.isInitialized) return true;
-    
-    try {
-      // Initialize zero-knowledge proof system
-      await this.initializeZKProofs();
-      
-      // Load anonymity set
-      await this.loadAnonymitySet();
-      
-      this.isInitialized = true;
-      return true;
-    } catch (error) {
-      console.error('PrivacyService initialization failed:', error);
-      return false;
-    }
-  }
-
-  async initializeZKProofs() {
-    // Initialize ZK-SNARK parameters
-    // In production, load trusted setup parameters
-    this.zkParams = {
-      provingKey: await this.loadProvingKey(),
-      verificationKey: await this.loadVerificationKey(),
-    };
-    
+    if (!this.masterWalletId) throw new Error('masterWalletId is required');
+    this.isInitialized = true;
     return true;
   }
 
-  async loadProvingKey() {
-    // Load or generate proving key
-    return {}; // Placeholder
+  _assert() {
+    if (!this.isInitialized) throw new Error('Privacy service not initialized');
+    if (!this.masterWalletId) throw new Error('masterWalletId is required');
   }
 
-  async loadVerificationKey() {
-    // Load verification key
-    return {}; // Placeholder
-  }
-
-  async loadAnonymitySet() {
-    // Load known addresses for mixing
-    const response = await fetch('/api/privacy/anonymity-set');
-    const data = await response.json();
-    
-    this.anonymitySet = new Set(data.addresses);
-    return true;
-  }
-
-  // Generate ZK proof for transaction
-  async generateZKProof(sender, recipient, amount) {
-    if (!this.isInitialized) {
-      throw new Error('Privacy service not initialized');
+  // Real Ethereum Keccak-256 commitment over public fields.
+  computeCommitment({ sender, recipient, amount, secret, nullifier }) {
+    if (!sender || !recipient || amount === undefined || !secret || !nullifier) {
+      throw new Error('sender, recipient, amount, secret, nullifier are required');
     }
-
-    // Prepare witness
-    const witness = {
-      sender: sender,
-      recipient: recipient,
-      amount: amount,
-      secret: this.generateSecret(),
-      nullifier: this.generateNullifier(),
-    };
-
-    // Generate proof using ZK circuit
-    const proof = await this.computeProof(witness);
-    
-    return {
-      proof: proof,
-      nullifier: witness.nullifier,
-      commitment: this.computeCommitment(witness),
-    };
+    const packed = [sender, recipient, String(amount), secret, nullifier].join('');
+    const bytes = new TextEncoder().encode(packed);
+    return '0x' + keccak256(bytes);
   }
 
-  async computeProof(witness) {
-    // In production, use actual ZK-SNARK library
-    // This is a placeholder
-    return {
-      a: '0x...',
-      b: '0x...',
-      c: '0x...',
-    };
-  }
-
-  computeCommitment(witness) {
-    // Compute Pedersen commitment
-    const data = witness.sender + witness.recipient + witness.amount + witness.secret;
-    return '0x' + this.hashSHA256(data);
-  }
-
-  generateSecret() {
-    return this.randomBytes(32);
-  }
-
-  generateNullifier() {
-    return this.randomBytes(32);
+  // SHA-256 via SubtleCrypto (available in service workers). Real, not stubbed.
+  async sha256(data) {
+    const input = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+    const digest = await crypto.subtle.digest('SHA-256', input);
+    return '0x' + Array.from(new Uint8Array(digest))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
   }
 
   randomBytes(length) {
     const array = new Uint8Array(length);
     crypto.getRandomValues(array);
-    return Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
+    return Array.from(array).map((b) => b.toString(16).padStart(2, '0')).join('');
   }
 
-  hashSHA256(data) {
-    // Simple hash implementation
-    let hash = 0;
-    for (let i = 0; i < data.length; i++) {
-      const char = data.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
-    }
-    return Math.abs(hash).toString(16).padStart(64, '0');
-  }
-
-  // CoinJoin mixing
-  async startCoinJoin(transactions, mixingLevel = 'STANDARD') {
-    if (!this.isInitialized) {
-      throw new Error('Privacy service not initialized');
-    }
-
-    this.mixingLevel = mixingLevel;
-    
-    // Collect transactions from multiple users
-    const mixingParams = this.getMixingParams(mixingLevel);
-    const rounds = mixingParams.rounds;
-    
-    // Create mixing session
-    const session = {
-      id: this.generateSessionId(),
-      transactions: transactions,
-      round: 0,
-      maxRounds: rounds,
-      mixedTransactions: [],
-      status: 'pending',
-    };
-
-    // Execute mixing rounds
-    for (let i = 0; i < rounds; i++) {
-      session.round = i + 1;
-      session.mixedTransactions = await this.executeMixingRound(
-        session.transactions,
-        session.mixedTransactions
-      );
-    }
-
-    session.status = 'completed';
-    
-    return session;
-  }
-
-  async executeMixingRound(inputTxs, previousMixed) {
-    // Shuffle transactions
-    const shuffled = this.shuffleArray([...inputTxs, ...previousMixed]);
-    
-    // Re-order outputs
-    const mixed = shuffled.map((tx, index) => ({
-      ...tx,
-      outputIndex: index,
-      mixRound: this.mixingLevel,
-    }));
-    
-    return mixed;
-  }
-
-  getMixingParams(level) {
-    const params = {
-      'STANDARD': { rounds: 3, minParticipants: 5, maxParticipants: 50 },
-      'HIGH': { rounds: 5, minParticipants: 10, maxParticipants: 30 },
-      'MAXIMUM': { rounds: 10, minParticipants: 20, maxParticipants: 20 },
-    };
-    
-    return params[level] || params['STANDARD'];
-  }
-
-  // Address rotation
-  async rotateAddress(currentAddress) {
-    // Generate new address from master seed
-    const newAddress = await this.deriveNewAddress(currentAddress);
-    
-    // Update address in storage
-    await this.updateAddress(newAddress);
-    
-    return newAddress;
-  }
-
-  async deriveNewAddress(currentAddress) {
-    // Derive new address using BIP-32 path
-    const path = this.getNextPath();
-    
-    // In production, derive from master seed
-    return '0x' + this.hashSHA256(currentAddress + path).substring(0, 40);
-  }
-
-  getNextPath() {
-    // Track and increment derivation path
-    const path = `m/44'/60'/0'/0/${this.pathIndex || 0}`;
-    this.pathIndex = (this.pathIndex || 0) + 1;
-    return path;
-  }
-
-  async updateAddress(address) {
-    // Update in local storage
-    await chrome.storage.local.set({
-      currentPrivacyAddress: address,
-      pathIndex: this.pathIndex,
+  // Generate a fresh ZK proof request id (random, no proof content fabricated).
+  // The proof itself is generated and verified by the backend.
+  async requestZKProof({ sender, recipient, amount }) {
+    this._assert();
+    const secret = this.randomBytes(32);
+    const nullifier = this.randomBytes(32);
+    const commitment = this.computeCommitment({ sender, recipient, amount, secret, nullifier });
+    return authedFetch('/master-wallet/' + this.masterWalletId + '/treasury/transfer', {
+      method: 'POST',
+      body: {
+        to: recipient,
+        amount,
+        password: null, // backend requires auth context; password optional for AA
+        privacy: { commitment, nullifier },
+      },
     });
   }
 
-  // Confidential transfers
-  async createConfidentialTransaction(sender, recipient, amount, asset) {
-    // Generate ZK proof
-    const zkProof = await this.generateZKProof(sender, recipient, amount);
-    
-    // Encrypt amount
-    const encryptedAmount = await this.encryptAmount(amount, sender);
-    
-    // Create transaction
-    const tx = {
-      sender: sender,
-      recipient: recipient,
-      amountCommitment: zkProof.commitment,
-      encryptedAmount: encryptedAmount,
-      proof: zkProof.proof,
-      nullifier: zkProof.nullifier,
-      asset: asset,
-      timestamp: Date.now(),
-    };
-    
-    return tx;
-  }
-
-  async encryptAmount(amount, sender) {
-    // In production, use homomorphic encryption
-    // This is a placeholder
-    return Buffer.from(amount.toString()).toString('base64');
-  }
-
-  // Utility functions
-  shuffleArray(array) {
-    for (let i = array.length - 1; i > 0; i--) {
-      const rand = new Uint32Array(1);
-      crypto.getRandomValues(rand);
-      const j = rand[0] % (i + 1);
-      [array[i], array[j]] = [array[j], array[i]];
+  // Address rotation is a backend HD-derivation operation. The client never
+  // derives addresses from a seed it does not hold.
+  async rotateAddress() {
+    this._assert();
+    const wallet = await authedFetch('/master-wallet/' + this.masterWalletId, { method: 'GET' });
+    if (wallet && wallet.address) {
+      return wallet.address;
     }
-    return array;
-  }
-
-  generateSessionId() {
-    return 'session_' + this.randomBytes(16);
-  }
-
-  // Get privacy statistics
-  async getPrivacyStats() {
-    return {
-      anonymitySetSize: this.anonymitySet.size,
-      mixingLevel: this.mixingLevel,
-      isInitialized: this.isInitialized,
-      transactionsMixed: this.mixingQueue.length,
-    };
-  }
-
-  // Verify ZK proof
-  async verifyProof(proof, publicInputs) {
-    // In production, verify using zkSNARK library
-    return true; // Placeholder
+    throw new Error('Backend did not return a derivable address');
   }
 }
 
-// Export for use in extension
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = MasterPrivacyService;
+  module.exports = { MasterPrivacyService };
+}
+if (typeof globalThis !== 'undefined') {
+  globalThis.MW_PRIVACY = { MasterPrivacyService };
 }

@@ -1594,53 +1594,137 @@ source before acting.
 - Pi Network: ID 9000004242, ChainType "pi", explorer blockexplorer.minepi.com,
   RPC empty (Pi mainnet is enclosed). All `IsTestnet: false`.
 
-## Session 2026-08-13 (cont): api_gateway + governance fake-data removal
 
-### api_gateway/go (rewritten as a clean reverse-proxy gateway)
-- **Problem**: `api_gateway/go/cmd/unified_gateway/main.go` (1813 lines) was a
-  fabricated "gateway" that invented data instead of proxying: `handleAuthLogin`
-  accepted ANY credentials (`sub: "user_demo"`), `handleWalletCreate` returned
-  `generateDemoAddress()` = `fmt.Sprintf("0x%x", time.Now().UnixNano())`,
-  `handleWalletList` returned 3 hardcoded `0x742d35Cc...`/`0x123d35Cc...`/
-  `0x456d35Cc...` demo wallets, `fetchNativeBalance` returned a hardcoded `1.5`,
-  `fetchTokenPriceFromAPI` returned `1.0`, and `tokenPrices` was a hardcoded
-  `map[string]float64{ETH:3500, BNB:600, ...}`. A second orphan `main.go` at the
-  module root fabricated tx hashes via `generateTXHash()` (deterministic
-  `byte(i*17%256)`) and returned `0x1234567890abcdef` signatures / hardcoded
-  `0x742d35Cc...` hardware-wallet addresses. The two files were BOTH `package
-  main` at the root → two `main()` funcs → never compiled together.
-- **Fix**: rewrote `cmd/unified_gateway/main.go` as a thin **reverse-proxy
-  gateway** using `httputil.NewSingleHostReverseProxy`. Every route forwards
-  verbatim to the canonical backend service (`cfg.WalletAPI`=:8443,
-  `StakingService`, `LendingService`, `BridgeService`, `SwapService`,
-  `NFTService`, etc.). NO handler fabricates data; on backend failure it
-  returns an honest 502 `{"error":"backend service unavailable"}`. Kept the
-  legitimate middleware (CORS, token-bucket rate-limit, JWT validation that
-  forwards the original Bearer header to the backend for authoritative
-  re-validation) + Redis health check. Deleted the fabricated orphan root
-  `main.go`. `chain_management.go` (real mainnet chain registry, no fakes) is
-  kept and builds as the module's root binary.
-- **go.mod**: was stale (declared gorilla/go-ethereum but main.go used
-  gin/jwt/pgx/redis). Rewritten to `gin v1.10.0` + `golang-jwt/v5 v5.2.1` +
-  `redis/go-redis/v9 v9.6.1`, `go 1.23`. `go build ./...` + `go vet ./...` exit 0.
+### MasterWallet WEB client rebuild (master_wallet/web, React/TS/Vite)
+- Canonical Go backend on :8450; contract at master_wallet/CANONICAL_API_CONTRACT.md.
+- `src/api.ts`: full canonical API client (auth, master wallets, sub-wallets,
+  transactions, policies, fees, auto-sign, users, audit, analytics,
+  notifications, webhooks, treasury, multisig, public chains/gas/price/health).
+  Base URL from `process.env.MASTER_WALLET_API_URL` (vite `define`) else
+  `http://localhost:8450`. Bearer JWT on protected routes (default `auth=true`);
+  public routes pass `auth=false`. `wsUrl` derives `ws://.../ws` from base.
+  Token in localStorage via getAuthToken/setAuthToken/clearAuthToken.
+- `src/services/masterWalletService.ts`: real BIP-39 mnemonic (ethers) +
+  backend wiring for create/balance/send (no fake hash; uses backend
+  transaction_hash).
+- `src/services/webSocketService.ts`: real WS to wsUrl with master_wallet_id +
+  token query params; reconnect/heartbeat; balance/tx listeners.
+- `src/App.tsx`: real fetch on mount (loadAll -> wallets/subs/txs/rules/users/
+  balances), WS connect on masterId, auth + create-wallet flows. Theme via
+  `useTheme()` context with `isDark ? 'dark' : 'light'` ternaries on EVERY page
+  (NO Tailwind `dark:` variants anywhere).
+- `src/index.tsx`: typed ThemeProvider + ThemeContext (isDark, setDark,
+  toggleTheme), persists to localStorage, sets data-theme + .dark class.
+- AUX service files (Biometric, Passkey, Paymaster, AccountAbstraction,
+  SuperAdmin, TaxAnalytics, privacy) have NO canonical backend endpoints and
+  are NOT imported anywhere. Gutted of ALL fake/stub/crypto data and reduced to
+  clean typed modules whose methods return descriptive "not supported by
+  canonical backend" errors (NOT fabricated data). PasskeyService keeps REAL
+  WebAuthn (`navigator.credentials`) ceremonies only. Files kept (not deleted)
+  per "don't delete unless pure duplicates" constraint.
+- tsc: `npx tsc --noEmit` => 0 errors (down from 160). Strict +
+  noUnusedLocals/Parameters + isolatedModules + checkJs:false (themeService.js
+  not type-checked). Uint8Array<ArrayBuffer> used to satisfy BufferSource.
+- Syntax fixes this session: TaxAnalyticsService missing `{` (line ~120),
+  App.tsx `;`->`,` in useState, removed unused setApiUrl/toggleTheme/id.
 
-### governance/go (sample-proposal fabrication removed)
-- **Problem**: `governance/go/cmd/main.go` (gin service) returned hardcoded
-  sample proposals (`0x1234...5678`, `0xabcd...efgh`, prop-1/prop-2), sample
-  votes (`0x1111...2222`, `0x3333...4444`), a sample treasury (`ETH:500.5`,
-  `TIGER:1000000`), and a seed DAO with a fabricated `0xTIGER` token address.
-  `CreateProposal`/`CastVote` only `log.Printf`'d — they did NOT store anything,
-  so the getters always returned the hardcoded samples. The root
-  `governance/go/main.go` (gorilla/mux, 1012 lines) was a separate broken
-  orphan: `1000000 * 1e18` overflowed uint64, referenced undefined
-  `GovernanceConfig.ProposalThresholdDenominator` / `GovernanceToken.admin`,
-  declared `GetVotes` twice, and never compiled.
-- **Fix**: added `proposals map[string]*Proposal` + `votes map[string][]*Vote`
-  to `GovernanceService`; `CreateProposal`/`CastVote`/`ExecuteProposal` now
-  persist + tally real data; `GetProposals`/`GetProposal`/`GetVotes` return the
-  real stored data (empty slice/nil when none — never samples); `GetTreasury`
-  returns a real empty treasury (no fabricated balances); seed DAO token address
-  is `""` (configured via admin API, never `0xTIGER`). Deleted the broken
-  orphan root `main.go`. Pinned `gin v1.10.0` (v1.12 needs Go>=1.25) + added
-  `google/uuid v1.6.0`. `go build ./cmd/` + `go vet ./...` exit 0.
-- Removed unused `encoding/json` import from cmd/main.go.
+## Android master_wallet client remediation (2026-08-13)
+
+Location: `master_wallet/android/app/src/main/java/`. Source-only tree — NO
+`build.gradle`/Gradle scaffolding present in checkout, so `org.web3j:core`
+dependency (required by the real crypto: `Sign.signMessage`, `Hash.sha3`,
+`ECKeyPair`) must be added when the full Gradle project is assembled. `kotlinc`
+not installed; verified by manual review + grep (no real parse errors).
+
+Fake-crypto/stub remediations verified in place:
+- **AccountAbstractionService.kt**: `signUserOperation` uses REAL
+  `Hash.sha3` (keccak256) + `Sign.signMessage` (secp256k1 ECDSA) via Web3j;
+  fail-closed (throws `AccountAbstractionException` when no signer key for
+  owner — never returns all-zero sig). AA submission POSTs to canonical
+  `/api/aa/submit` at `http://localhost:8450`. `simulateValidation` throws
+  (no canonical bundler endpoint).
+- **PaymasterService.kt**: gas from real `GET /api/v1/gas` (not hardcoded);
+  `fetchGasPrices` returns null on failure. `sponsorUserOperation` delegates
+  to backend `POST /api/aa/paymaster/sponsor` or throws when no paymaster
+  signer key (fail-closed, no fake signature).
+- **PasskeyService.kt**: `verifyAssertion` does REAL P-256 ECDSA verification
+  via `Signature.getInstance("SHA256withECDSA")` over
+  `authenticatorData || SHA-256(clientDataJSON)` using the credential decoded
+  SPKI/raw public key. Missing credential/pubkey/authData/sig => returns false
+  (never true). No non-empty-check stub.
+- **BiometricService.kt**: `verifyPin` does PBKDF2WithHmacSHA256 (200k iters)
+  against a stored salted hash with constant-time compare; locks after too many
+  fails. No auto-success.
+- **PushNotificationService.kt**: `sendTokenToServer` POSTs to real canonical
+  `/api/v1/master-wallet/:id/notifications` at :8450 or throws (no silent stub).
+
+Route/endpoint remediations this session:
+- **WebSocketService.kt**: `WS_URL = ""` -> `WS_BASE_URL = "ws://localhost:8450/ws"`;
+  `connect()` now builds `?master_wallet_id=&token=` query per contract
+  (URL-encoded), used by reconnect too.
+- **MasterWalletApiService.kt**: 5 non-canonical `/api/v1/master/*` routes that
+  had NO callers anywhere (getTransaction, setGasStrategy, createWhitelabel,
+  listWhitelabels, getAnalytics) converted to fail-closed `callback.onError(...)`
+  pointing to the canonical per-wallet alternatives, instead of silently
+  POSTing/GETting non-existent backend paths. `Whitelabel`/`MasterAnalytics`
+  data classes + `parseWhitelabel` helpers left in place (harmless, no fake data).
+
+All service BASE_URLs confirmed `http://localhost:8450` (MasterWalletService,
+MasterWalletApiService, SuperAdminService, TaxAnalyticsService,
+PushNotificationService, AccountAbstractionService, PaymasterService).
+MasterWalletViewModel routes all canonical (`/master-wallet/$id/...`).
+Theme: AppCompatDelegate.setDefaultNightMode via ThemeService + Compose
+MasterWalletTheme(darkTheme) wraps every screen; toggle wired in MainActivity.
+No hardcoded fake UI data (all stats fetched from backend; `?: 0`/`?: "0"`
+are null-safe display defaults only). `0x5FF137D4...` EntryPoint constant is
+the real EIP-4337 address, not fake data.
+
+
+---
+## MasterWallet Flutter (Dart) client -- master_wallet/flutter/
+
+Scope note: master_wallet/flutter/lib/ is a **service-layer library only** --
+there is NO main.dart, no MaterialApp, and no pages/screens/UI. It is not a
+runnable Flutter app; it is a set of services consumed by an app shell that does
+not exist in this tree. ThemeService (ChangeNotifier + persistence + light/dark
+ThemeData) is correct but has no consumer to wire into MaterialApp yet.
+
+All services verified as thin REST wrappers over the canonical Go backend
+(:8450) with fail-closed behavior:
+- master_wallet_service.dart: NO in-memory wallet; createWallet -> POST
+  /api/v1/master-wallet, getBalance -> GET .../balance, sendTransaction -> POST
+  .../sign, getTokenBalance -> GET .../balance (client-side filter). All real
+  server-side BIP-39/44 derivation + signing + RPC broadcast.
+- biometric_service.dart: PIN verified against REAL PBKDF2-HMAC-SHA256 hash in
+  flutter_secure_storage + constant-time compare + lockout. NO auto-success.
+- passkey_service.dart: WebAuthn assertion verified via REAL pointycastle
+  ECDSA P-256 (ECDSAVerifier), authData flags + signCount checks. register/delete
+  are backend-FIRST (throw on failure) before any local mutation.
+- account_abstraction_service.dart: thin REST wrapper; AA ops not in the
+  canonical contract throw UnimplementedError (fail-closed). 0x5FF137D4...
+  EntryPoint is the real EIP-4337 address.
+- paymaster_service.dart: live gas via GET /api/v1/gas?chain_id=N.
+- privacy_service.dart: REAL AES-256-GCM (pointycastle) at-rest encryption;
+  ZK proofs/stealth/mixing throw fail-closed (delegate to backend).
+- super_admin_service.dart: admin auth delegates to canonical auth login;
+  other ops throw UnimplementedError.
+- tax_analytics_service.dart: real tx via GET .../transactions, real price via
+  GET /api/v1/price; NO simulated prices/lots.
+- web_socket_service.dart: connects ws://localhost:8450/ws?master_wallet_id=&token=.
+- Feature services (treasury/multisig/policy/audit/batch_tx): canonical routes,
+  fail-closed UnimplementedError for non-canonical ops.
+
+Security fixes: weak Fortuna seeding (DateTime.now().microsecondsSinceEpoch)
+replaced with Random.secure() (CSPRNG) in privacy/biometric/passkey services.
+
+Pubspec: master_wallet/flutter/pubspec.yaml has http, pointycastle, crypto,
+shared_preferences, web_socket_channel, local_auth, flutter_secure_storage.
+
+Dart SDK is NOT installed in this env (verified `which dart` -> exit 1).
+Syntax verified via manual review + Python brace/bracket/paren balance check
+(all 15 files balanced). Cannot run `dart analyze`.
+
+This-session Flutter changes:
+- features/treasury/treasury_service.dart: getBalances() was hitting a
+  non-existent /treasury/balances route; now derives balances from the
+  canonical GET /treasury overview response (data['balances']).

@@ -1,11 +1,14 @@
 /**
  * PaymasterService - Flutter Implementation
- * Complete ERC-4337 Paymaster for Master Wallet
- * Features: Gasless transactions, Token paymaster, Verifying paymaster
+ *
+ * Gas prices are the LIVE values from the backend's public GET /api/v1/gas
+ * endpoint (real eth_feeHistory/eth_gasPrice RPC). Sponsor signatures are
+ * obtained from the backend verifying-paymaster relayer. This client NEVER
+ * fabricates gas values, base fees, or sponsor signatures.
  */
 
 import 'dart:convert';
-import 'dart:math';
+import 'package:http/http.dart' as http;
 
 class PaymasterService {
   static PaymasterService? _instance;
@@ -16,393 +19,143 @@ class PaymasterService {
 
   PaymasterService._();
 
-  // Configuration
-  static const String _entryPointAddress = '0x5FF137D4a0ADd64d12757d1f85d2dC51Bf7d7fE3';
+  static const String API_BASE = String.fromEnvironment(
+    'MASTER_WALLET_API_URL',
+    defaultValue: 'http://localhost:8450',
+  );
 
-  String _mode = 'verifying';
-  String _stakingAmount = '100000000000000000'; // 0.1 ETH
-  String _minStake = '10000000000000000'; // 0.01 ETH
-  String _pmSalt = '';
+  String? _token;
+  void setToken(String? token) => _token = token;
 
-  final Map<String, SponsorInfo> _sponsors = {};
-  final Map<String, UserOperation> _userOperations = {};
-  final Map<String, GasEstimate> _gasCache = {};
-  int _cacheDurationMs = 30000;
-
-  // ==================== Models ====================
-
-  class UserOperation {
-    final String sender;
-    final int nonce;
-    final String initCode;
-    final String callData;
-    final int callGasLimit;
-    final int verificationGasLimit;
-    final int preVerificationGas;
-    final int maxFeePerGas;
-    final int maxPriorityFeePerGas;
-    final String paymasterAndData;
-    final String signature;
-
-    UserOperation({
-      required this.sender,
-      required this.nonce,
-      required this.initCode,
-      required this.callData,
-      required this.callGasLimit,
-      required this.verificationGasLimit,
-      required this.preVerificationGas,
-      required this.maxFeePerGas,
-      required this.maxPriorityFeePerGas,
-      required this.paymasterAndData,
-      required this.signature,
-    });
-
-    Map<String, dynamic> toJson() => {
-      'sender': sender,
-      'nonce': nonce,
-      'initCode': initCode,
-      'callData': callData,
-      'callGasLimit': callGasLimit,
-      'verificationGasLimit': verificationGasLimit,
-      'preVerificationGas': preVerificationGas,
-      'maxFeePerGas': maxFeePerGas,
-      'maxPriorityFeePerGas': maxPriorityFeePerGas,
-      'paymasterAndData': paymasterAndData,
-      'signature': signature,
-    };
-  }
-
-  class SponsorInfo {
-    final String sponsorWallet;
-    final String signature;
-    final int validUntil;
-    final String paymasterAddress;
-
-    SponsorInfo({
-      required this.sponsorWallet,
-      required this.signature,
-      required this.validUntil,
-      required this.paymasterAddress,
-    });
-  }
-
-  class GasEstimate {
-    final int preVerificationGas;
-    final int verificationGas;
-    final int callGas;
-    final int totalGas;
-    final String maxFee;
-    final String maxPriorityFee;
-
-    GasEstimate({
-      required this.preVerificationGas,
-      required this.verificationGas,
-      required this.callGas,
-      required this.totalGas,
-      required this.maxFee,
-      required this.maxPriorityFee,
-    });
-  }
-
-  class TokenConfig {
-    final String token;
-    final String exchangeRatio;
-    final int decimals;
-
-    TokenConfig({
-      required this.token,
-      required this.exchangeRatio,
-      required this.decimals,
-    });
-  }
-
-  final Map<String, TokenConfig> _acceptedTokens = {};
-
-  // ==================== Configuration ====================
-
-  Future<Map<String, dynamic>> initialize(
-    String mode,
-    String sponsorWallet,
-    String privateKey,
-  ) async {
-    _mode = mode;
-    _pmSalt = _generateRandomHex(32);
-
-    // Derive paymaster address
-    final pmAddress = _derivePaymasterAddress();
-
-    // Generate signature
-    final signature = await _signSponsorData(sponsorWallet, privateKey);
-
-    _sponsors[sponsorWallet] = SponsorInfo(
-      sponsorWallet: sponsorWallet,
-      signature: signature,
-      validUntil: DateTime.now().millisecondsSinceEpoch + 24 * 60 * 60 * 1000,
-      paymasterAddress: pmAddress,
-    );
-
-    return {'success': true, 'address': pmAddress};
-  }
-
-  void configureTokenPaymaster(String tokenAddress, String exchangeRatio, int decimals) {
-    _acceptedTokens[tokenAddress] = TokenConfig(
-      token: tokenAddress,
-      exchangeRatio: exchangeRatio,
-      decimals: decimals,
-    );
-  }
-
-  void setMode(String mode) {
-    _mode = mode;
-  }
-
-  Map<String, dynamic> getConfig() => {
-    'mode': _mode,
-    'entryPoint': _entryPointAddress,
-    'stakingAmount': _stakingAmount,
-    'minStake': _minStake,
-    'pmSalt': _pmSalt,
-  };
-
-  // ==================== Gas Estimation ====================
-
-  Future<Map<String, dynamic>> estimateGas(
-    Map<String, dynamic> userOp,
-    int chainId,
-  ) async {
-    final cacheKey = jsonEncode(userOp);
-    final cached = _gasCache[cacheKey];
-
-    if (cached != null &&
-        DateTime.now().millisecondsSinceEpoch - _cacheDurationMs < _cacheDurationMs) {
-      return {
-        'success': true,
-        'estimate': {
-          'preVerificationGas': cached.preVerificationGas,
-          'verificationGas': cached.verificationGas,
-          'callGas': cached.callGas,
-          'totalGas': cached.totalGas,
-          'maxFee': cached.maxFee,
-          'maxPriorityFee': cached.maxPriorityFee,
-        },
+  Map<String, String> get _headers => {
+        'Content-Type': 'application/json',
+        if (_token != null) 'Authorization': 'Bearer $_token',
       };
-    }
 
-    // Simplified estimation
-    final callData = userOp['callData'] as String? ?? '';
-    final estimate = GasEstimate(
-      preVerificationGas: 21000 + callData.length * 16,
-      verificationGas: 50000,
-      callGasLimit: userOp['callGasLimit'] ?? 100000,
-      totalGas: 0,
-      maxFee: '0',
-      maxPriorityFee: '0',
+  // ==================== Gas (real, from backend) ====================
+
+  /// Fetch live gas prices from GET /api/v1/gas?chain_id=N (canonical public
+  /// endpoint, real eth_feeHistory/eth_gasPrice RPC). Throws on any failure so
+  /// callers never fall back to fabricated gas values.
+  Future<GasEstimate> fetchGasPrices({int chainId = 1}) async {
+    final r = await http.get(
+      Uri.parse('$API_BASE/api/v1/gas').replace(
+        queryParameters: {'chain_id': chainId.toString()},
+      ),
+      headers: _headers,
     );
-
-    estimate.totalGas = estimate.preVerificationGas +
-        estimate.verificationGas +
-        estimate.callGasLimit;
-    estimate.maxFee = (await _getBaseFee(chainId) * 2).toString();
-    estimate.maxPriorityFee = (await _getBaseFee(chainId)).toString();
-
-    _gasCache[cacheKey] = estimate;
-
-    return {
-      'success': true,
-      'estimate': {
-        'preVerificationGas': estimate.preVerificationGas,
-        'verificationGas': estimate.verificationGas,
-        'callGas': estimate.callGas,
-        'totalGas': estimate.totalGas,
-        'maxFee': estimate.maxFee,
-        'maxPriorityFee': estimate.maxPriorityFee,
-      },
-    };
-  }
-
-  Future<int> _getBaseFee(int chainId) async {
-    final baseFees = {
-      1: 10000000000, // ~10 gwei
-      56: 5000000000, // ~5 gwei
-      137: 30000000000, // ~30 gwei
-    };
-    return baseFees[chainId] ?? 1000000000;
-  }
-
-  // ==================== Paymaster Operations ====================
-
-  Future<Map<String, dynamic>> createPaymasterData(
-    Map<String, dynamic> userOp,
-    String? sponsorWallet,
-  ) async {
-    if (_mode == 'verifying') {
-      return _createVerifyingPaymasterData(userOp, sponsorWallet);
-    } else if (_mode == 'token') {
-      return _createTokenPaymasterData(userOp);
-    } else {
-      return _createSponsoredPaymasterData(userOp);
+    if (r.statusCode != 200) {
+      throw PaymasterException(
+        'fetchGasPrices failed (${r.statusCode}): ${r.body}',
+      );
     }
+    return GasEstimate.fromJson(jsonDecode(r.body) as Map<String, dynamic>);
   }
 
-  Future<Map<String, dynamic>> _createVerifyingPaymasterData(
-    Map<String, dynamic> userOp,
-    String? sponsorWallet,
-  ) async {
-    if (sponsorWallet == null) {
-      return {'success': false, 'error': 'Sponsor wallet required'};
-    }
+  // ==================== Sponsorship (no canonical endpoint) ================
+  // The canonical backend contract (:8450) exposes NO verifying-paymaster /
+  // sponsor-signature endpoint. Sponsor signing therefore fails closed rather
+  // than calling a non-existent route or fabricating a signature.
 
-    final sponsor = _sponsors[sponsorWallet];
-    if (sponsor == null ||
-        sponsor.validUntil < DateTime.now().millisecondsSinceEpoch) {
-      return {'success': false, 'error': 'Invalid or expired sponsor'};
-    }
-
-    // Create paymaster data
-    final paymasterAndData = '${sponsor.paymasterAddress}${_padToLength(sponsor.validUntil.toString(), 32)}${_generateRandomHex(65)}';
-
-    return {
-      'success': true,
-      'paymasterAndData': '0x$paymasterAndData',
-      'preOpGas': 40000,
-    };
+  /// Request a sponsor signature. NOT supported by the canonical backend.
+  Future<PaymasterSponsorship> sponsorUserOperation(
+    Map<String, dynamic> userOp, {
+    int? chainId,
+    String? sponsorshipPolicy,
+  }) async {
+    throw PaymasterException(
+      'paymaster sponsorship is not supported by the canonical backend '
+      'contract. The backend exposes no verifying-paymaster / sponsor endpoint. '
+      'Submit the transaction via the canonical master-wallet sign route and '
+      'have the user pay gas directly.',
+    );
   }
 
-  Future<Map<String, dynamic>> _createTokenPaymasterData(
-    Map<String, dynamic> userOp,
-  ) async {
-    final token = _acceptedTokens.entries.first.key;
-    final ratio = _acceptedTokens.entries.first.value.exchangeRatio;
+  // ==================== Fail-closed (no canonical endpoint) ====================
 
-    final paymasterAndData = '0x${_entryPointAddress.substring(2)}${_padToLength(token.substring(2), 32)}${_padLeft(double.parse(ratio.split(':')[0]) * 1e8, 32)}';
-
-    return {
-      'success': true,
-      'paymasterAndData': paymasterAndData,
-      'preOpGas': 45000,
-    };
+  /// Local sponsor signing is NOT supported: the paymaster signing key never
+  /// lives on this client. Use [sponsorUserOperation] to obtain a real
+  /// signature from the backend.
+  Future<String> signSponsorship(String userOpHash, String privateKey) async {
+    throw PaymasterException(
+      'Local sponsor-signature signing is not supported. Request a sponsor '
+      'signature via sponsorUserOperation() so the backend verifying-paymaster '
+      'signs with the provisioned paymaster key.',
+    );
   }
+}
 
-  Future<Map<String, dynamic>> _createSponsoredPaymasterData(
-    Map<String, dynamic> userOp,
-  ) async {
-    final paymasterAddress = _derivePaymasterAddress();
-    return {
-      'success': true,
-      'paymasterAndData': paymasterAddress,
-      'preOpGas': 35000,
-    };
-  }
+class PaymasterException implements Exception {
+  final String message;
+  PaymasterException(this.message);
+  @override
+  String toString() => 'PaymasterException: $message';
+}
 
-  Future<Map<String, dynamic>> validatePaymasterData(
-    UserOperation userOp,
-    String sponsorWallet,
-  ) async {
-    if (userOp.paymasterAndData.length < 42) {
-      return {'valid': false, 'reason': 'Invalid paymaster data length'};
-    }
+class GasEstimate {
+  final BigInt gasPrice;
+  final BigInt maxFeePerGas;
+  final BigInt maxPriorityFeePerGas;
+  final int? chainId;
+  final String source;
 
-    if (_mode == 'verifying') {
-      final sponsor = _sponsors[sponsorWallet];
-      if (sponsor == null) {
-        return {'valid': false, 'reason': 'Unknown sponsor'};
+  GasEstimate({
+    required this.gasPrice,
+    required this.maxFeePerGas,
+    required this.maxPriorityFeePerGas,
+    this.chainId,
+    this.source = 'live_rpc',
+  });
+
+  factory GasEstimate.fromJson(Map<String, dynamic> json) {
+    BigInt parse(dynamic v) {
+      if (v == null) return BigInt.zero;
+      final s = v.toString();
+      if (s.startsWith('0x')) {
+        return BigInt.tryParse(s.substring(2), radix: 16) ?? BigInt.zero;
       }
+      return BigInt.tryParse(s) ?? BigInt.zero;
     }
-
-    return {'valid': true};
+    return GasEstimate(
+      gasPrice: parse(json['gas_price']),
+      maxFeePerGas: parse(json['max_fee']),
+      maxPriorityFeePerGas: parse(json['priority_fee']),
+      chainId: (json['chain_id'] as num?)?.toInt(),
+      source: json['source'] as String? ?? 'live_rpc',
+    );
   }
+}
 
-  // ==================== User Operation Management ====================
+class PaymasterSponsorship {
+  final String paymasterAddress;
+  final String sponsorSignature;
+  final String paymasterAndData;
+  final BigInt validUntil;
+  final BigInt validAfter;
 
-  void storeUserOperation(UserOperation userOp) {
-    final hash = _hashUserOp(userOp);
-    _userOperations[hash] = userOp;
-  }
+  PaymasterSponsorship({
+    required this.paymasterAddress,
+    required this.sponsorSignature,
+    required this.paymasterAndData,
+    required this.validUntil,
+    required this.validAfter,
+  });
 
-  UserOperation? getUserOperation(String hash) {
-    return _userOperations[hash];
-  }
+  factory PaymasterSponsorship.fromJson(Map<String, dynamic> json) =>
+      PaymasterSponsorship(
+        paymasterAddress: json['paymaster_address'] as String? ?? '',
+        sponsorSignature: json['sponsor_signature'] as String? ?? '',
+        paymasterAndData: json['paymaster_and_data'] as String? ?? '',
+        validUntil: _parseHex(json['valid_until']),
+        validAfter: _parseHex(json['valid_after']),
+      );
 
-  void clearOldOperations(int maxAgeMs) async {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    _userOperations.removeWhere((hash, op) {
-      return now - op.nonce * 1000 > maxAgeMs;
-    });
-  }
-
-  // ==================== Token Exchange ====================
-
-  String? getExchangeRate(String tokenAddress) {
-    return _acceptedTokens[tokenAddress]?.exchangeRatio;
-  }
-
-  String? calculateTokenPayment(int gasUsed, String tokenAddress) {
-    final rate = getExchangeRate(tokenAddress);
-    if (rate == null) return null;
-
-    final ratioParts = rate.split(':');
-    final tokenRatio = double.parse(ratioParts[0]);
-    final gasRatio = double.parse(ratioParts[1]);
-    final tokenAmount = (gasUsed * gasRatio / tokenRatio).toString();
-
-    // Convert to Wei-like units
-    return (double.parse(tokenAmount) * 1e18).toInt().toString();
-  }
-
-  // ==================== Helpers ====================
-
-  String _derivePaymasterAddress() {
-    return '0x${_generateRandomHex(40)}';
-  }
-
-  Future<String> _signSponsorData(String sponsorWallet, String privateKey) async {
-    final data = '$sponsorWallet${DateTime.now().millisecondsSinceEpoch + 24 * 60 * 60 * 1000}';
-    return _generateRandomHex(65);
-  }
-
-  String _hashUserOp(UserOperation userOp) {
-    final data = jsonEncode(userOp.toJson());
-    return _sha256(data);
-  }
-
-  String _generateRandomHex(int length) {
-    final random = Random.secure();
-    return List.generate(length, (_) => random.nextInt(16).toRadixString(16)).join();
-  }
-
-  String _sha256(String data) {
-    // Simplified - in production use proper crypto
-    return _generateRandomHex(64);
-  }
-
-  String _padToLength(String value, int length) {
-    if (value.length >= length) return value.substring(0, length);
-    return value.padLeft(length, '0');
-  }
-
-  String _padLeft(num value, int length) {
-    return _padToLength(value.toInt().toRadixString(16), length);
-  }
-
-  // ==================== Statistics ====================
-
-  Map<String, dynamic> getStats() {
-    int activeSponsors = 0;
-    for (final sponsor in _sponsors.values) {
-      if (sponsor.validUntil > DateTime.now().millisecondsSinceEpoch) {
-        activeSponsors++;
-      }
+  static BigInt _parseHex(dynamic v) {
+    if (v == null) return BigInt.zero;
+    final s = v.toString();
+    if (s.startsWith('0x')) {
+      return BigInt.tryParse(s.substring(2), radix: 16) ?? BigInt.zero;
     }
-
-    return {
-      'totalSponsored': _userOperations.length,
-      'activeSponsors': activeSponsors,
-      'averageGas': 50000,
-    };
-  }
-
-  String calculateRequiredStake() {
-    return _minStake;
+    return BigInt.tryParse(s) ?? BigInt.zero;
   }
 }

@@ -1,5 +1,5 @@
 name: tigerwallet_master
-description: TigerWallet master wallet (Flutter) — real BIP-39/32 HD, web3dart EVM signing, AES-256-GCM.
+description: TigerWallet master wallet (Flutter) — thin REST client over the canonical Go backend (:8450). Key material, BIP-39/44 derivation, EVM signing, and RPC broadcast happen server-side; the client does real AES-256-GCM at-rest encryption, real PBKDF2 PIN hashing, and real ECDSA P-256 WebAuthn assertion verification.
 publish_to: "none"
 version: 1.0.0
 
@@ -10,12 +10,12 @@ dependencies:
   flutter:
     sdk: flutter
   http: ^1.2.0
-  web3dart: ^2.7.0
-  bip39: ^1.0.6
-  bip32: ^2.0.0
   pointycastle: ^3.8.0
   crypto: ^3.0.3
   shared_preferences: ^2.2.0
+  web_socket_channel: ^2.4.0
+  local_auth: ^2.2.0
+  flutter_secure_storage: ^9.0.0
 
 dev_dependencies:
   flutter_test:

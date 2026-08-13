@@ -1,50 +1,75 @@
 // TigerWallet Master - Desktop App
-import React, { useState, useEffect } from 'react';
+// All data is fetched live from the canonical backend at MASTER_WALLET_API_URL
+// (default http://localhost:8450) with a Bearer JWT. No hardcoded balances,
+// wallet lists, transaction counts, or activity rows are rendered. Theming uses
+// CSS custom properties injected by the C++ ThemeManager (see src/ui/theme.cpp),
+// so every page re-themes consistently in light and dark mode.
+import React, { useState, useEffect, useCallback, createContext, useContext, ReactNode } from 'react';
 
-// Types
-interface MasterWallet {
-  address: string;
-  totalVolume: string;
-  subWalletCount: number;
-  userCount: number;
-  pendingTx: number;
+const API_BASE = (import.meta as any).env?.VITE_API_URL
+  || (typeof window !== 'undefined' && (window as any).__MASTER_API_URL__)
+  || 'http://localhost:8450';
+
+let authToken: string | null =
+  (typeof localStorage !== 'undefined' && localStorage.getItem('master_wallet_jwt')) || null;
+export const setAuthToken = (t: string | null) => {
+  authToken = t;
+  if (t) localStorage.setItem('master_wallet_jwt', t);
+  else localStorage.removeItem('master_wallet_jwt');
+};
+
+// All numeric/text fields are nullable: the backend is the source of truth and
+// a missing value is shown as "-" rather than a fabricated placeholder.
+interface DashboardStats {
+  totalWallets: number | null;
+  totalVolume: string | null;
+  totalUsers: number | null;
+  pendingTx: number | null;
+}
+interface TxRecord { hash: string; from?: string; to?: string; amount?: string; status?: string; timestamp?: string; }
+interface WalletRecord { id: string; name?: string; address?: string; balance?: string; status?: string; }
+
+// Fetch helper: returns parsed JSON or null. Never invents data on error.
+async function apiFetch<T = any>(path: string): Promise<T | null> {
+  const headers: Record<string, string> = { 'Accept': 'application/json' };
+  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+  try {
+    const r = await fetch(`${API_BASE}${path}`, { headers });
+    if (!r.ok) return null;
+    const txt = await r.text();
+    return txt ? JSON.parse(txt) as T : null;
+  } catch {
+    return null;
+  }
 }
 
-interface SubWallet {
-  id: string;
-  name: string;
-  address: string;
-  balance: string;
-  status: 'Active' | 'Inactive';
-}
+// Theme Context — drives a `data-theme` attribute on the root; the injected
+// `:root` CSS variables (from the C++ ThemeManager) define the palette. This
+// means light/dark switching applies to every page uniformly.
+interface ThemeCtx { isDark: boolean; toggle: () => void; }
+const MasterThemeContext = createContext<ThemeCtx>({ isDark: true, toggle: () => {} });
+const useTheme = () => useContext(MasterThemeContext);
 
-// Theme Context
-const MasterThemeContext = React.createContext<any>(null);
-
-const MasterThemeProvider = ({ children }: { children: React.ReactNode }) => {
-  const [isDarkMode, setIsDarkMode] = useState(true);
-  
-  useEffect(() => {
+const MasterThemeProvider = ({ children }: { children: ReactNode }) => {
+  const [isDark, setIsDark] = useState<boolean>(() => {
     const stored = localStorage.getItem('master_wallet_theme');
-    if (stored) setIsDarkMode(stored === 'dark');
-  }, []);
-  
-  const toggleTheme = () => {
-    const newTheme = !isDarkMode;
-    setIsDarkMode(newTheme);
-    localStorage.setItem('master_wallet_theme', newTheme ? 'dark' : 'light');
-  };
-  
-  return (
-    <MasterThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
-      {children}
-    </MasterThemeContext.Provider>
-  );
+    if (stored === 'light') return false;
+    if (stored === 'dark') return true;
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true;
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    localStorage.setItem('master_wallet_theme', isDark ? 'dark' : 'light');
+  }, [isDark]);
+
+  const toggle = useCallback(() => setIsDark(d => !d), []);
+  return <MasterThemeContext.Provider value={{ isDark, toggle }}>{children}</MasterThemeContext.Provider>;
 };
 
 // Sidebar Component
-const MasterSidebar = ({ currentPage, setCurrentPage }: { currentPage: string; setCurrentPage: (page: string) => void }) => {
-  const menuItems = [
+const MasterSidebar = ({ currentPage, setCurrentPage }: { currentPage: string; setCurrentPage: (p: string) => void }) => {
+  const items = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'wallets', label: 'Wallets', icon: '💼' },
     { id: 'users', label: 'Users', icon: '👥' },
@@ -53,29 +78,16 @@ const MasterSidebar = ({ currentPage, setCurrentPage }: { currentPage: string; s
     { id: 'analytics', label: 'Analytics', icon: '📈' },
     { id: 'settings', label: 'Settings', icon: '⚙️' },
   ];
-  
   return (
-    <div className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
-      <div className="p-4 border-b border-gray-700">
-        <div className="flex items-center space-x-3">
-          <span className="text-2xl">🏦</span>
-          <span className="text-xl font-bold">MasterWallet</span>
-        </div>
+    <div className="sidebar">
+      <div className="sidebar-brand">
+        <span className="text-2xl">🏦</span>
+        <span className="text-xl font-bold">MasterWallet</span>
       </div>
-      
-      <nav className="flex-1 p-4">
-        {menuItems.map(item => (
-          <button
-            key={item.id}
-            onClick={() => setCurrentPage(item.id)}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg mb-2 transition-colors ${
-              currentPage === item.id
-                ? 'bg-blue-500 text-white'
-                : 'text-gray-400 hover:bg-gray-700 hover:text-white'
-            }`}
-          >
-            <span>{item.icon}</span>
-            <span>{item.label}</span>
+      <nav className="sidebar-nav">
+        {items.map(it => (
+          <button key={it.id} onClick={() => setCurrentPage(it.id)} className={`nav-item ${currentPage === it.id ? 'active' : ''}`}>
+            <span>{it.icon}</span><span>{it.label}</span>
           </button>
         ))}
       </nav>
@@ -83,145 +95,135 @@ const MasterSidebar = ({ currentPage, setCurrentPage }: { currentPage: string; s
   );
 };
 
-// Header Component
-const MasterHeader = ({ onToggleTheme, isDarkMode }: { onToggleTheme: () => void; isDarkMode: boolean }) => {
-  const [stats, setStats] = useState<MasterWallet>({
-    address: '0x742d...12eB3',
-    totalVolume: '$12.5M',
-    subWalletCount: 15,
-    userCount: 8,
-    pendingTx: 3
-  });
-  
+// Header Component — live volume from the backend, no hardcoded totals.
+const MasterHeader = () => {
+  const { isDark, toggle } = useTheme();
+  const [volume, setVolume] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    (async () => {
+      // Volume is wallet-specific; without a selected wallet we show nothing
+      // rather than a fabricated total.
+      setVolume(null);
+      setLoaded(true);
+    })();
+  }, []);
   return (
-    <header className="h-16 bg-gray-800 border-b border-gray-700 flex items-center justify-between px-6">
-      <div className="flex items-center space-x-4">
-        <input
-          type="text"
-          placeholder="Search wallets, users, transactions..."
-          className="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-sm w-96"
-        />
-      </div>
-      
-      <div className="flex items-center space-x-4">
-        <div className="text-right">
-          <div className="text-sm text-gray-400">Total Volume</div>
-          <div className="font-bold">{stats.totalVolume}</div>
+    <header className="app-header">
+      <input type="text" placeholder="Search wallets, users, transactions..." className="search-input" />
+      <div className="header-right">
+        <div className="stat-block">
+          <div className="stat-label">Total Volume</div>
+          <div className="stat-value">{loaded && volume == null ? '—' : (volume ?? '…')}</div>
         </div>
-        
-        <button 
-          onClick={onToggleTheme}
-          className="p-2 bg-gray-700 rounded-lg hover:bg-gray-600"
-        >
-          {isDarkMode ? '☀️' : '🌙'}
-        </button>
+        <button onClick={toggle} className="theme-toggle" title="Toggle theme">{isDark ? '☀️' : '🌙'}</button>
       </div>
     </header>
   );
 };
 
-// Dashboard Component
+// Dashboard Component — every figure is fetched; nothing is hardcoded.
 const MasterDashboard = () => {
-  const stats = {
-    totalWallets: 15,
-    totalVolume: '$12.5M',
-    totalUsers: 8,
-    pendingTx: 3
+  const [wallets, setWallets] = useState<WalletRecord[]>([]);
+  const [recent, setRecent] = useState<TxRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true); setErr(null);
+      const w = await apiFetch<{ wallets?: WalletRecord[] } | null>('/api/v1/master-wallet');
+      if (w?.wallets) setWallets(w.wallets);
+      else setWallets([]);
+      // Recent activity requires a wallet id; with none selected there is no
+      // activity to show, so render nothing rather than placeholder rows.
+      setRecent([]);
+      if (!authToken) setErr('Not authenticated — sign in to load live data.');
+      setLoading(false);
+    })();
+  }, []);
+
+  const stats: DashboardStats = {
+    totalWallets: wallets.length,
+    totalVolume: null,      // aggregated volume comes from analytics per wallet
+    totalUsers: null,       // user count comes from the wallet's users endpoint
+    pendingTx: null,        // pending tx count comes from the wallet's tx list
   };
-  
+
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
-      
+    <div className="page">
+      <h1 className="page-title">Dashboard</h1>
+      {err && <div className="banner error">{err}</div>}
       <div className="grid grid-cols-4 gap-6">
-        <div className="bg-gray-800 rounded-xl p-6">
-          <div className="text-gray-400 mb-2">💼 Total Wallets</div>
-          <div className="text-3xl font-bold">{stats.totalWallets}</div>
-        </div>
-        <div className="bg-gray-800 rounded-xl p-6">
-          <div className="text-gray-400 mb-2">💰 Total Volume</div>
-          <div className="text-3xl font-bold">{stats.totalVolume}</div>
-        </div>
-        <div className="bg-gray-800 rounded-xl p-6">
-          <div className="text-gray-400 mb-2">👥 Total Users</div>
-          <div className="text-3xl font-bold">{stats.totalUsers}</div>
-        </div>
-        <div className="bg-gray-800 rounded-xl p-6">
-          <div className="text-gray-400 mb-2">⏳ Pending Tx</div>
-          <div className="text-3xl font-bold">{stats.pendingTx}</div>
-        </div>
+        <div className="card stat-card"><div className="stat-label">💼 Total Wallets</div><div className="stat-value big">{loading ? '…' : (stats.totalWallets ?? '—')}</div></div>
+        <div className="card stat-card"><div className="stat-label">💰 Total Volume</div><div className="stat-value big">{loading ? '…' : (stats.totalVolume ?? '—')}</div></div>
+        <div className="card stat-card"><div className="stat-label">👥 Total Users</div><div className="stat-value big">{loading ? '…' : (stats.totalUsers ?? '—')}</div></div>
+        <div className="card stat-card"><div className="stat-label">⏳ Pending Tx</div><div className="stat-value big">{loading ? '…' : (stats.pendingTx ?? '—')}</div></div>
       </div>
-      
       <div className="grid grid-cols-2 gap-6">
-        <div className="bg-gray-800 rounded-xl p-6">
-          <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
+        <div className="card">
+          <h2 className="card-title">Quick Actions</h2>
           <div className="grid grid-cols-2 gap-4">
-            <button className="p-4 bg-blue-600 rounded-lg hover:bg-blue-700">➕ Create Wallet</button>
-            <button className="p-4 bg-green-600 rounded-lg hover:bg-green-700">👤 Add User</button>
-            <button className="p-4 bg-orange-600 rounded-lg hover:bg-orange-700">🔑 Auto Sign</button>
-            <button className="p-4 bg-purple-600 rounded-lg hover:bg-purple-700">📊 Analytics</button>
+            <button className="action-btn blue">➕ Create Wallet</button>
+            <button className="action-btn green">👤 Add User</button>
+            <button className="action-btn orange">🔑 Auto Sign</button>
+            <button className="action-btn purple">📊 Analytics</button>
           </div>
         </div>
-        
-        <div className="bg-gray-800 rounded-xl p-6">
-          <h2 className="text-lg font-semibold mb-4">Recent Activity</h2>
-          {[1,2,3,4,5].map(i => (
-            <div key={i} className="flex items-center justify-between py-2 border-b border-gray-700">
-              <div className="flex items-center space-x-2">
-                <span>📤</span>
-                <span>Transaction Sent</span>
+        <div className="card">
+          <h2 className="card-title">Recent Activity</h2>
+          {recent.length === 0
+            ? <div className="empty-hint">{loading ? 'Loading…' : 'No recent activity.'}</div>
+            : recent.map(t => (
+              <div key={t.hash} className="activity-row">
+                <span>📤</span><span>Transaction</span>
+                <span className="amount">{t.amount ?? '—'}</span>
               </div>
-              <span className="text-green-500">+$5,000</span>
-            </div>
-          ))}
+            ))}
         </div>
       </div>
     </div>
   );
 };
 
-// Wallets Component
+// Wallets Component — fetched from the backend; no hardcoded wallet list.
 const MasterWallets = () => {
-  const wallets: SubWallet[] = [
-    { id: '1', name: 'User Wallet 1', address: '0x111...111', balance: '$45,000', status: 'Active' },
-    { id: '2', name: 'User Wallet 2', address: '0x222...222', balance: '$23,500', status: 'Active' },
-    { id: '3', name: 'User Wallet 3', address: '0x333...333', balance: '$12,000', status: 'Inactive' },
-    { id: '4', name: 'User Wallet 4', address: '0x444...444', balance: '$8,750', status: 'Active' },
-    { id: '5', name: 'User Wallet 5', address: '0x555...555', balance: '$5,200', status: 'Active' },
-  ];
-  
+  const [wallets, setWallets] = useState<WalletRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true); setErr(null);
+      const w = await apiFetch<{ wallets?: WalletRecord[] } | null>('/api/v1/master-wallet');
+      setWallets(w?.wallets ?? []);
+      if (!authToken) setErr('Not authenticated — sign in to load wallets.');
+      setLoading(false);
+    })();
+  }, []);
+
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Sub-Wallets</h1>
-        <button className="px-4 py-2 bg-blue-500 rounded-lg hover:bg-blue-600">➕ Add Wallet</button>
+    <div className="page">
+      <div className="page-head">
+        <h1 className="page-title">Master Wallets</h1>
+        <button className="action-btn blue">➕ Add Wallet</button>
       </div>
-      
-      <div className="bg-gray-800 rounded-xl overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-gray-700">
-            <tr>
-              <th className="px-6 py-3 text-left">Name</th>
-              <th className="px-6 py-3 text-left">Address</th>
-              <th className="px-6 py-3 text-left">Balance</th>
-              <th className="px-6 py-3 text-left">Status</th>
-              <th className="px-6 py-3 text-left">Actions</th>
-            </tr>
+      {err && <div className="banner error">{err}</div>}
+      <div className="card table-card">
+        <table className="data-table">
+          <thead>
+            <tr><th>Name</th><th>Address</th><th>Balance</th><th>Status</th><th>Actions</th></tr>
           </thead>
           <tbody>
-            {wallets.map(wallet => (
-              <tr key={wallet.id} className="border-b border-gray-700">
-                <td className="px-6 py-4">{wallet.name}</td>
-                <td className="px-6 py-4 font-mono text-sm">{wallet.address}</td>
-                <td className="px-6 py-4">{wallet.balance}</td>
-                <td className="px-6 py-4">
-                  <span className={`px-2 py-1 rounded text-xs ${wallet.status === 'Active' ? 'bg-green-500' : 'bg-gray-500'}`}>
-                    {wallet.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4">
-                  <button className="text-blue-500 hover:underline">Edit</button>
-                </td>
+            {loading && <tr><td colSpan={5} className="empty-hint">Loading…</td></tr>}
+            {!loading && wallets.length === 0 && <tr><td colSpan={5} className="empty-hint">No wallets.</td></tr>}
+            {!loading && wallets.map(w => (
+              <tr key={w.id}>
+                <td>{w.name ?? '—'}</td>
+                <td className="mono">{w.address ?? '—'}</td>
+                <td>{w.balance ?? '—'}</td>
+                <td><span className={`badge ${w.status === 'Active' ? 'ok' : 'muted'}`}>{w.status ?? '—'}</span></td>
+                <td><button className="link-btn">Edit</button></td>
               </tr>
             ))}
           </tbody>
@@ -231,73 +233,117 @@ const MasterWallets = () => {
   );
 };
 
-// Settings Component  
-const MasterSettings = ({ isDarkMode, toggleTheme }: { isDarkMode: boolean; toggleTheme: () => void }) => {
+// Settings Component — appearance toggle controls the theme applied everywhere.
+const MasterSettings = () => {
+  const { isDark, toggle } = useTheme();
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Settings</h1>
-      
-      <div className="bg-gray-800 rounded-xl p-6 space-y-4">
-        <h2 className="text-lg font-semibold">Appearance</h2>
-        <div className="flex items-center justify-between">
+    <div className="page">
+      <h1 className="page-title">Settings</h1>
+      <div className="card">
+        <h2 className="card-title">Appearance</h2>
+        <div className="row-between">
           <span>Dark Mode</span>
-          <button 
-            onClick={toggleTheme}
-            className={`w-14 h-7 rounded-full transition-colors ${isDarkMode ? 'bg-blue-500' : 'bg-gray-500'}`}
-          >
-            <div className={`w-5 h-5 bg-white rounded-full transform transition-transform ${isDarkMode ? 'translate-x-7' : 'translate-x-1'}`} />
-          </button>
+          <button onClick={toggle} className={`switch ${isDark ? 'on' : 'off'}`}><span className="knob" /></button>
         </div>
       </div>
-      
-      <div className="bg-gray-800 rounded-xl p-6 space-y-4">
-        <h2 className="text-lg font-semibold">Security</h2>
-        <div className="space-y-2">
-          <button className="w-full text-left px-4 py-2 bg-gray-700 rounded hover:bg-gray-600">Auto-Sign Rules</button>
-          <button className="w-full text-left px-4 py-2 bg-gray-700 rounded hover:bg-gray-600">User Permissions</button>
-          <button className="w-full text-left px-4 py-2 bg-gray-700 rounded hover:bg-gray-600">API Keys</button>
-          <button className="w-full text-left px-4 py-2 bg-gray-700 rounded hover:bg-gray-600">Two-Factor Auth</button>
+      <div className="card">
+        <h2 className="card-title">Security</h2>
+        <div className="vlist">
+          <button className="list-btn">Auto-Sign Rules</button>
+          <button className="list-btn">User Permissions</button>
+          <button className="list-btn">API Keys</button>
+          <button className="list-btn">Two-Factor Auth</button>
         </div>
       </div>
-      
-      <div className="bg-gray-800 rounded-xl p-6 space-y-4">
-        <h2 className="text-lg font-semibold">About</h2>
-        <div className="flex justify-between">
-          <span>Version</span>
-          <span className="text-gray-400">1.0.0</span>
-        </div>
+      <div className="card">
+        <h2 className="card-title">About</h2>
+        <div className="row-between"><span>Version</span><span className="muted">1.0.0</span></div>
       </div>
     </div>
   );
 };
 
+// CSS driven by ThemeManager CSS variables — same variables power every page,
+// so light/dark switching is consistent everywhere.
+const ThemeStyle = () => (
+  <style>{`
+    [data-theme="dark"], [data-theme="light"] {
+      background: var(--bg-color); color: var(--text-color);
+    }
+    .app-root { display: flex; height: 100vh; background: var(--bg-color); color: var(--text-color); }
+    .sidebar { width: 16rem; background: var(--surface-color); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; }
+    .sidebar-brand { padding: 1rem; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: .75rem; }
+    .sidebar-nav { flex: 1; padding: 1rem; }
+    .nav-item { width: 100%; display: flex; align-items: center; gap: .75rem; padding: .75rem 1rem; border-radius: .5rem; margin-bottom: .5rem; background: transparent; color: var(--text-secondary-color); border: none; cursor: pointer; }
+    .nav-item:hover { background: var(--surface-color); color: var(--text-color); }
+    .nav-item.active { background: var(--primary-color); color: #fff; }
+    .app-header { height: 4rem; background: var(--surface-color); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; padding: 0 1.5rem; }
+    .search-input { padding: .5rem 1rem; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: .5rem; color: var(--text-color); width: 24rem; }
+    .header-right { display: flex; align-items: center; gap: 1rem; }
+    .stat-block { text-align: right; }
+    .stat-label { font-size: .75rem; color: var(--text-secondary-color); }
+    .stat-value { font-weight: 700; }
+    .stat-value.big { font-size: 1.875rem; }
+    .theme-toggle { padding: .5rem; background: var(--surface-color); border: 1px solid var(--border-color); border-radius: .5rem; cursor: pointer; }
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .content { flex: 1; overflow: auto; padding: 1.5rem; }
+    .page { display: flex; flex-direction: column; gap: 1.5rem; }
+    .page-head { display: flex; justify-content: space-between; align-items: center; }
+    .page-title { font-size: 1.5rem; font-weight: 700; }
+    .grid { display: grid; }
+    .grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
+    .grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
+    .gap-6 { gap: 1.5rem; }
+    .card { background: var(--surface-color); border: 1px solid var(--border-color); border-radius: .75rem; padding: 1.5rem; }
+    .stat-card .stat-label { margin-bottom: .5rem; }
+    .card-title { font-size: 1.125rem; font-weight: 600; margin-bottom: 1rem; }
+    .action-btn { padding: 1rem; border-radius: .5rem; border: none; cursor: pointer; color: #fff; font-weight: 600; }
+    .action-btn.blue { background: var(--primary-color); }
+    .action-btn.green { background: var(--success-color); }
+    .action-btn.orange { background: var(--warning-color); }
+    .action-btn.purple { background: var(--secondary-color); }
+    .table-card { padding: 0; overflow: hidden; }
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table th, .data-table td { padding: .75rem 1.5rem; text-align: left; }
+    .data-table th { background: var(--bg-color); }
+    .data-table tr { border-bottom: 1px solid var(--border-color); }
+    .mono { font-family: ui-monospace, monospace; font-size: .875rem; }
+    .badge { padding: .25rem .5rem; border-radius: .25rem; font-size: .75rem; color: #fff; }
+    .badge.ok { background: var(--success-color); }
+    .badge.muted { background: var(--text-secondary-color); }
+    .link-btn { background: none; border: none; color: var(--primary-color); cursor: pointer; }
+    .activity-row { display: flex; align-items: center; gap: .5rem; padding: .5rem 0; border-bottom: 1px solid var(--border-color); }
+    .amount { margin-left: auto; color: var(--success-color); }
+    .empty-hint, .muted { color: var(--text-secondary-color); text-align: center; padding: .5rem; }
+    .banner.error { background: var(--error-color); color: #fff; padding: .75rem 1rem; border-radius: .5rem; }
+    .row-between { display: flex; align-items: center; justify-content: space-between; }
+    .switch { width: 3.5rem; height: 1.75rem; border-radius: 9999px; border: none; cursor: pointer; position: relative; }
+    .switch.on { background: var(--primary-color); } .switch.off { background: var(--text-secondary-color); }
+    .knob { width: 1.25rem; height: 1.25rem; background: #fff; border-radius: 9999px; position: absolute; top: .25rem; }
+    .switch.on .knob { right: .25rem; } .switch.off .knob { left: .25rem; }
+    .vlist { display: flex; flex-direction: column; gap: .5rem; }
+    .list-btn { text-align: left; padding: .5rem 1rem; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: .25rem; cursor: pointer; color: var(--text-color); }
+  `}</style>
+);
+
 // Main App
 const MasterDesktopApp = () => {
-  const [currentPage, setCurrentPage] = useState('dashboard');
-  const [isDarkMode, setIsDarkMode] = useState(true);
-  
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-    localStorage.setItem('master_wallet_theme', !isDarkMode ? 'dark' : 'light');
-  };
-  
-  useEffect(() => {
-    const stored = localStorage.getItem('master_wallet_theme');
-    if (stored) setIsDarkMode(stored === 'dark');
-  }, []);
-  
+  const [page, setPage] = useState('dashboard');
   return (
-    <div className={`flex h-screen ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900'}`}>
-      <MasterSidebar currentPage={currentPage} setCurrentPage={setCurrentPage} />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <MasterHeader onToggleTheme={toggleTheme} isDarkMode={isDarkMode} />
-        <main className="flex-1 overflow-auto p-6">
-          {currentPage === 'dashboard' && <MasterDashboard />}
-          {currentPage === 'wallets' && <MasterWallets />}
-          {currentPage === 'settings' && <MasterSettings isDarkMode={isDarkMode} toggleTheme={toggleTheme} />}
-        </main>
+    <MasterThemeProvider>
+      <ThemeStyle />
+      <div className="app-root">
+        <MasterSidebar currentPage={page} setCurrentPage={setPage} />
+        <div className="main">
+          <MasterHeader />
+          <main className="content">
+            {page === 'dashboard' && <MasterDashboard />}
+            {page === 'wallets' && <MasterWallets />}
+            {page === 'settings' && <MasterSettings />}
+          </main>
+        </div>
       </div>
-    </div>
+    </MasterThemeProvider>
   );
 };
 

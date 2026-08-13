@@ -20,7 +20,7 @@ import java.security.MessageDigest
 class SuperAdminService(private val context: Context) {
     
     companion object {
-        private const val BASE_URL = "http://localhost:8443"
+        private const val BASE_URL = "http://localhost:8450"
         private const val PREFS_NAME = "super_admin_prefs"
     }
     

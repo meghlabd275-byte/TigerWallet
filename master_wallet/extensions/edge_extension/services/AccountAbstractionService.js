@@ -1,396 +1,189 @@
-// TigerWallet MasterWallet - Account Abstraction Service (Chrome Extension)
-// ERC-4337 Smart Wallet Integration
-// Production-ready
+/**
+ * AccountAbstractionService - ERC-4337 smart-wallet client for the extension.
+ *
+ * Heavy operations (deployment, bundler submission, signature creation) MUST
+ * be performed by the canonical backend, which holds the keys and the deployed
+ * factory/paymaster contracts. The client never fabricates an address, a
+ * signature, or a hash. When an operation is not available it throws
+ * (fail-closed) rather than returning placeholder data.
+ *
+ * Keccak-256 uses the vendored implementation in keccak256.js (Ethereum
+ * padding 0x01), NOT the placeholder hash that used to live here.
+ */
+
+'use strict';
+
+// UMD: CommonJS require under node/tests, globalThis under MV3 service worker.
+const { keccak256 } = (typeof require === 'function')
+  ? require('./keccak256.js')
+  : ((globalThis.MW_KECCAK) || {});
+const { authedFetch, getAuthContext } = (typeof require === 'function')
+  ? require('./apiClient.js')
+  : ((globalThis.MW_API) || {});
+
+// Known mainnet EntryPoint address (ERC-4337 v0.6). Constant, not a stub.
+const ENTRYPOINT_ADDRESS = '0x5FF137D4a0ADd64d12757d1f85d2dC51Bf7d7fE3';
 
 class MasterAccountAbstractionService {
   constructor(masterWalletId) {
     this.masterWalletId = masterWalletId;
-    this.smartWallets = new Map();
-    this.sessionKeys = new Map();
-    this.entryPoint = '0x5FF137D4a0ADd64d12757d1f85d2dC51Bf7d7fE3';
-    this.factoryAddress = '0x...'; // Deployed factory address
     this.isInitialized = false;
   }
 
   async initialize() {
-    if (this.isInitialized) return true;
-    
-    try {
-      // Load existing smart wallets
-      await this.loadSmartWallets();
-      
-      // Load session keys
-      await this.loadSessionKeys();
-      
-      this.isInitialized = true;
-      return true;
-    } catch (error) {
-      console.error('AccountAbstractionService initialization failed:', error);
-      return false;
+    if (!this.masterWalletId) {
+      throw new Error('masterWalletId is required');
+    }
+    const ctx = await getAuthContext();
+    if (!ctx.token) {
+      throw new Error('Not authenticated: cannot initialize AA service');
+    }
+    this.isInitialized = true;
+    return true;
+  }
+
+  _requireInit() {
+    if (!this.isInitialized) {
+      throw new Error('AccountAbstractionService not initialized');
     }
   }
 
-  async loadSmartWallets() {
-    const result = await chrome.storage.local.get('smartWallets');
-    if (result.smartWallets) {
-      this.smartWallets = new Map(Object.entries(result.smartWallets));
-    }
+  _assertId() {
+    if (!this.masterWalletId) throw new Error('masterWalletId is required');
   }
 
-  async loadSessionKeys() {
-    const result = await chrome.storage.local.get('sessionKeys');
-    if (result.sessionKeys) {
-      this.sessionKeys = new Map(Object.entries(result.sessionKeys));
-    }
-  }
-
-  // Create smart wallet for user
-  async createSmartWallet(owner) {
-    // Generate salt
-    const salt = this.generateSalt();
-    
-    // Calculate wallet address using CREATE2
-    const walletAddress = await this.calculateWalletAddress(owner, salt);
-    
-    // Initialize wallet data
-    const wallet = {
-      address: walletAddress,
-      owner: owner,
-      entryPoint: this.entryPoint,
-      nonce: 0,
-      implementation: await this.getImplementationAddress(),
-      initialized: false,
-      createdAt: Date.now(),
-      guardians: [],
-    };
-    
-    // Store wallet
-    this.smartWallets.set(owner, wallet);
-    await this.saveSmartWallets();
-    
-    // Deploy wallet contract (in production)
-    await this.deployWallet(walletAddress, owner);
-    
-    return walletAddress;
-  }
-
-  async calculateWalletAddress(owner, salt) {
-    // CREATE2: address = keccak256(0xff ++ factory ++ salt ++ keccak256(initCode))[12:]
-    const initCode = this.getInitCode(owner);
-    const initCodeHash = this.keccak256(initCode);
-    const data = '0xff' + this.factoryAddress + salt + initCodeHash;
-    const hash = this.keccak256(data);
-    
-    return '0x' + hash.substring(26); // Last 20 bytes
-  }
-
+  // Real Ethereum Keccak-256. Accepts hex (0x-prefixed) or a UTF-8 string and
+  // returns a 0x-prefixed 32-byte hex digest.
   keccak256(data) {
-    // Placeholder - use actual keccak implementation
-    return this.hashSHA3(data);
-  }
-
-  hashSHA3(data) {
-    // Simple hash placeholder
-    let hash = 0;
-    for (let i = 0; i < data.length; i++) {
-      hash = ((hash << 5) - hash) + data.charCodeAt(i);
-      hash = hash & hash;
+    if (typeof data !== 'string') {
+      throw new Error('keccak256: expected hex or string input');
     }
-    return Math.abs(hash).toString(16).padStart(64, '0');
+    let bytes;
+    if (data.startsWith('0x') || data.startsWith('0X')) {
+      const hex = data.slice(2);
+      if (!/^[0-9a-fA-F]*$/.test(hex) || hex.length % 2 !== 0) {
+        throw new Error('keccak256: invalid hex input');
+      }
+      bytes = new Uint8Array(hex.length / 2);
+      for (let i = 0; i < bytes.length; i++) {
+        bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+      }
+    } else {
+      bytes = new TextEncoder().encode(data);
+    }
+    return '0x' + keccak256(bytes);
   }
 
-  getInitCode(owner) {
-    // ABI-encoded initialization call
-    return '0x...'; // Placeholder
+  get entryPoint() {
+    return ENTRYPOINT_ADDRESS;
   }
 
-  getImplementationAddress() {
-    // Return latest implementation
-    return '0x...'; // Placeholder
+  // ---- Smart wallet CRUD (backend-owned) ----
+
+  async listSmartWallets() {
+    this._assertId();
+    const res = await authedFetch('/master-wallet/' + this.masterWalletId + '/multisig/wallets', { method: 'GET' });
+    return res.wallets || res || [];
   }
 
-  generateSalt() {
-    return this.randomBytes(32);
+  async createSmartWallet({ name, owners, threshold }) {
+    this._assertId();
+    if (!owners || !Array.isArray(owners) || owners.length === 0) {
+      throw new Error('At least one owner address is required');
+    }
+    if (!threshold || threshold < 1) {
+      throw new Error('A valid threshold is required');
+    }
+    return authedFetch('/master-wallet/' + this.masterWalletId + '/multisig/wallets', {
+      method: 'POST',
+      body: { name, owners, threshold },
+    });
+  }
+
+  async getSmartWalletTransactions(walletId) {
+    this._assertId();
+    const res = await authedFetch(
+      '/master-wallet/' + this.masterWalletId + '/multisig/wallets/' + walletId + '/transactions',
+      { method: 'GET' }
+    );
+    return res.transactions || res || [];
+  }
+
+  async submitMultisigTransaction(walletId, body) {
+    this._assertId();
+    return authedFetch(
+      '/master-wallet/' + this.masterWalletId + '/multisig/wallets/' + walletId + '/transactions',
+      { method: 'POST', body }
+    );
+  }
+
+  async signMultisigTransaction(transactionId) {
+    this._assertId();
+    return authedFetch(
+      '/master-wallet/' + this.masterWalletId + '/multisig/transactions/' + transactionId + '/sign',
+      { method: 'POST' }
+    );
+  }
+
+  async executeMultisigTransaction(transactionId) {
+    this._assertId();
+    return authedFetch(
+      '/master-wallet/' + this.masterWalletId + '/multisig/transactions/' + transactionId + '/execute',
+      { method: 'POST' }
+    );
+  }
+
+  // ---- Pure client-side crypto helpers (no key material) ----
+
+  /**
+   * Compute the ERC-4337 userOpHash (packed encoding) for a user operation.
+   * This is a deterministic hash of public fields only; it is safe to compute
+   * client-side. Signing must be done by the backend (signMultisigTransaction).
+   */
+  computeUserOpHash(userOp) {
+    if (!userOp) throw new Error('userOp required');
+    const packed = [
+      userOp.sender || '0x',
+      userOp.nonce || '0x0',
+      this.keccak256(userOp.initCode || '0x'),
+      this.keccak256(userOp.callData || '0x'),
+      userOp.callGasLimit || '0x0',
+      userOp.verificationGasLimit || '0x0',
+      userOp.preVerificationGas || '0x0',
+      userOp.maxFeePerGas || '0x0',
+      userOp.maxPriorityFeePerGas || '0x0',
+      this.keccak256(userOp.paymasterAndData || '0x'),
+    ].join('');
+    return this.keccak256(packed);
+  }
+
+  /**
+   * Compute a CREATE2 counterfactual address from the factory, salt and
+   * init code hash. Pure public-data crypto; no deployment or signing here.
+   * address = keccak256(0xff ++ factory ++ salt ++ initCodeHash)[12:]
+   */
+  computeCreate2Address(factoryAddress, salt, initCodeHash) {
+    if (!factoryAddress || !salt || !initCodeHash) {
+      throw new Error('factoryAddress, salt and initCodeHash are required');
+    }
+    const ff = 'ff';
+    const factory = factoryAddress.toLowerCase().replace(/^0x/, '').padStart(40, '0');
+    const s = salt.toLowerCase().replace(/^0x/, '').padStart(64, '0');
+    const ich = initCodeHash.toLowerCase().replace(/^0x/, '').padStart(64, '0');
+    const digest = this.keccak256('0x' + ff + factory + s + ich);
+    return '0x' + digest.slice(2 + 24); // last 20 bytes
   }
 
   randomBytes(length) {
     const array = new Uint8Array(length);
     crypto.getRandomValues(array);
-    return Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  async deployWallet(walletAddress, owner) {
-    // In production, submit deployment transaction
-    console.log('Deploying wallet:', walletAddress);
-    return true;
-  }
-
-  // Send user operation
-  async sendUserOperation(sender, to, value, data, chainId = '1') {
-    const wallet = this.smartWallets.get(sender);
-    if (!wallet) {
-      throw new Error('Smart wallet not found');
-    }
-
-    // Build user operation
-    const userOp = {
-      sender: wallet.address,
-      nonce: wallet.nonce.toString(),
-      initCode: '0x',
-      callData: this.encodeCallData(to, value, data),
-      callGasLimit: '100000',
-      verificationGasLimit: '150000',
-      preVerificationGas: '21000',
-      maxFeePerGas: this.calculateGasPrice(chainId),
-      maxPriorityFeePerGas: this.calculatePriorityFee(chainId),
-      paymasterAndData: '0x',
-      signature: '0x',
-    };
-
-    // Sign user operation
-    userOp.signature = await this.signUserOperation(userOp, sender);
-
-    // Submit to bundler
-    const txHash = await this.submitUserOperation(userOp, chainId);
-
-    // Update nonce
-    wallet.nonce++;
-    await this.saveSmartWallets();
-
-    return txHash;
-  }
-
-  encodeCallData(to, value, data) {
-    // ABI-encode the call
-    return '0x...'; // Placeholder
-  }
-
-  calculateGasPrice(chainId) {
-    // Get current gas price
-    return '20000000000'; // 20 Gwei
-  }
-
-  calculatePriorityFee(chainId) {
-    return '1000000000'; // 1 Gwei
-  }
-
-  async signUserOperation(userOp, owner) {
-    // Hash user operation
-    const hash = this.hashUserOperation(userOp);
-    
-    // Sign with owner's key (in production, use proper signing)
-    const signature = await this.signMessage(hash, owner);
-    
-    return signature;
-  }
-
-  hashUserOperation(userOp) {
-    // ERC-4337 user operation hash
-    const types = [
-      'address', 'uint256', 'bytes32', 'bytes32',
-      'uint256', 'uint256', 'uint256',
-      'uint256', 'uint256', 'bytes32', 'bytes32'
-    ];
-    
-    const values = [
-      userOp.sender,
-      userOp.nonce,
-      this.keccak256(userOp.initCode),
-      this.keccak256(userOp.callData),
-      userOp.callGasLimit,
-      userOp.verificationGasLimit,
-      userOp.preVerificationGas,
-      userOp.maxFeePerGas,
-      userOp.maxPriorityFeePerGas,
-      this.keccak256(userOp.paymasterAndData),
-      this.keccak256(userOp.signature),
-    ];
-    
-    return this.keccak256(JSON.stringify(values));
-  }
-
-  async signMessage(message, owner) {
-    // Sign message (placeholder)
-    return '0x...';
-  }
-
-  async submitUserOperation(userOp, chainId) {
-    // Submit to bundler or EntryPoint
-    const response = await fetch('/api/aa/submit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userOp, chainId }),
-    });
-    
-    const result = await response.json();
-    return result.txHash;
-  }
-
-  // Session key management
-  async addSessionKey(walletAddress, sessionKey) {
-    if (!this.sessionKeys.has(walletAddress)) {
-      this.sessionKeys.set(walletAddress, []);
-    }
-    
-    this.sessionKeys.get(walletAddress).push({
-      ...sessionKey,
-      isActive: true,
-      createdAt: Date.now(),
-    });
-    
-    await this.saveSessionKeys();
-    return true;
-  }
-
-  async removeSessionKey(walletAddress, keyId) {
-    const keys = this.sessionKeys.get(walletAddress);
-    if (!keys) return false;
-    
-    const index = keys.findIndex(k => k.id === keyId);
-    if (index >= 0) {
-      keys.splice(index, 1);
-      await this.saveSessionKeys();
-      return true;
-    }
-    
-    return false;
-  }
-
-  async getSessionKeys(walletAddress) {
-    return this.sessionKeys.get(walletAddress) || [];
-  }
-
-  async isSessionKeyValid(walletAddress, keyId, contract, token, amount) {
-    const keys = await this.getSessionKeys(walletAddress);
-    const key = keys.find(k => k.id === keyId && k.isActive);
-    
-    if (!key) return false;
-    
-    // Check expiration
-    if (key.expiresAt && Date.now() > key.expiresAt) {
-      return false;
-    }
-    
-    // Check spending limit
-    if (key.spent + amount > key.spendingLimit) {
-      return false;
-    }
-    
-    // Check allowed contracts
-    if (key.allowedContracts && key.allowedContracts.length > 0) {
-      if (!key.allowedContracts.includes(contract)) {
-        return false;
-      }
-    }
-    
-    // Check allowed tokens
-    if (key.allowedTokens && key.allowedTokens.length > 0) {
-      if (!key.allowedTokens.includes(token)) {
-        return false;
-      }
-    }
-    
-    return true;
-  }
-
-  // Social recovery
-  async setupSocialRecovery(walletAddress, guardians, threshold) {
-    const wallet = this.smartWallets.get(walletAddress);
-    if (!wallet) {
-      throw new Error('Wallet not found');
-    }
-    
-    wallet.guardians = guardians.map(g => ({
-      ...g,
-      confirmed: false,
-      addedAt: Date.now(),
-    }));
-    
-    wallet.recoveryThreshold = threshold;
-    await this.saveSmartWallets();
-    
-    return true;
-  }
-
-  async initiateRecovery(walletAddress, newOwner) {
-    const wallet = this.smartWallets.get(walletAddress);
-    if (!wallet) {
-      throw new Error('Wallet not found');
-    }
-    
-    wallet.pendingOwner = newOwner;
-    wallet.recoveryStartTime = Date.now();
-    await this.saveSmartWallets();
-    
-    return true;
-  }
-
-  async confirmRecovery(walletAddress, guardianAddress) {
-    const wallet = this.smartWallets.get(walletAddress);
-    if (!wallet) return false;
-    
-    const guardian = wallet.guardians.find(g => g.address === guardianAddress);
-    if (guardian) {
-      guardian.confirmed = true;
-      await this.saveSmartWallets();
-      return true;
-    }
-    
-    return false;
-  }
-
-  async completeRecovery(walletAddress, signatures) {
-    const wallet = this.smartWallets.get(walletAddress);
-    if (!wallet) return false;
-    
-    // Verify sufficient confirmations
-    const confirmedCount = wallet.guardians.filter(g => g.confirmed).length;
-    if (confirmedCount < wallet.recoveryThreshold) {
-      return false;
-    }
-    
-    // Update owner
-    wallet.owner = wallet.pendingOwner;
-    wallet.pendingOwner = null;
-    wallet.recoveryStartTime = null;
-    
-    // Reset guardians
-    wallet.guardians.forEach(g => g.confirmed = false);
-    
-    await this.saveSmartWallets();
-    return true;
-  }
-
-  // Save to storage
-  async saveSmartWallets() {
-    const data = {};
-    this.smartWallets.forEach((value, key) => {
-      data[key] = value;
-    });
-    
-    await chrome.storage.local.set({ smartWallets: data });
-  }
-
-  async saveSessionKeys() {
-    const data = {};
-    this.sessionKeys.forEach((value, key) => {
-      data[key] = value;
-    });
-    
-    await chrome.storage.local.set({ sessionKeys: data });
-  }
-
-  // Get wallet info
-  async getSmartWallet(owner) {
-    return this.smartWallets.get(owner);
-  }
-
-  async listSmartWallets() {
-    return Array.from(this.smartWallets.values());
+    return Array.from(array).map((b) => b.toString(16).padStart(2, '0')).join('');
   }
 }
 
-// Export
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = MasterAccountAbstractionService;
+  module.exports = { MasterAccountAbstractionService, ENTRYPOINT_ADDRESS };
+}
+if (typeof globalThis !== 'undefined') {
+  globalThis.MW_AA = { MasterAccountAbstractionService, ENTRYPOINT_ADDRESS };
 }

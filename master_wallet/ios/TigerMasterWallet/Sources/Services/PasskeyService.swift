@@ -1,29 +1,71 @@
 // MasterWallet Passkey Service (iOS)
-// WebAuthn/FIDO2 Implementation for secure, passwordless authentication
-// Production-ready with full functionality
+// Real WebAuthn / passkey registration + assertion via AuthenticationServices
+// (ASAuthorizationPlatformPublicKeyCredentialRegistrationRequest /
+//  ASAuthorizationPlatformPublicKeyCredentialAssertionRequest) and CryptoKit
+// P256 signature verification. No simulated credentials, no hash(pubkey) as
+// pubkey, and assertion verification is a real cryptographic check over
+// authenticatorData || SHA-256(clientDataJSON) (NOT a non-empty-string check).
 
 import Foundation
 import Security
 import LocalAuthentication
 import CryptoKit
+import AuthenticationServices
+import UIKit
 
-class PasskeyService {
-    
+enum PasskeyError: Error, LocalizedError {
+    case notSupported
+    case canceled
+    case registrationFailed(String)
+    case assertionFailed(String)
+    case unknownCredential
+    case invalidAssertion(String)
+    case missingPublicKey
+
+    var errorDescription: String? {
+        switch self {
+        case .notSupported: return "Platform passkeys are not supported on this device."
+        case .canceled: return "Passkey operation was canceled."
+        case .registrationFailed(let d): return "Passkey registration failed: \(d)"
+        case .assertionFailed(let d): return "Passkey assertion failed: \(d)"
+        case .unknownCredential: return "Unknown credential; no stored public key."
+        case .invalidAssertion(let d): return "Invalid assertion: \(d)"
+        case .missingPublicKey: return "Credential has no stored P-256 public key to verify against."
+        }
+    }
+}
+
+class PasskeyService: NSObject {
+
     private let keyTag = "com.tigerwallet.passkey"
     private var credentials: [PasskeyCredential] = []
-    
+
+    // Active authorization controllers bridged to Swift continuations.
+    private var registrationContinuation: CheckedContinuation<PasskeyCredential, Error>?
+    private var assertionContinuation: CheckedContinuation<PasskeyAuthResult, Error>?
+    private var currentAuthorizationController: ASAuthorizationController?
+
     // MARK: - Initialize
-    
+
     func initialize() -> Bool {
         loadCredentials()
         return true
     }
-    
-    // MARK: - Registration
-    
-    func generateRegistrationOptions(relyingPartyId: String, relyingPartyName: String, userId: String, userName: String) -> [String: Any] {
+
+    // MARK: - Support Check
+
+    func isSupported() -> Bool {
+        return ASAuthorizationPlatformPublicKeyCredentialRegistrationRequest.self != nil &&
+            LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
+    }
+
+    // MARK: - Registration (real ASAuthorization)
+
+    /// Build real WebAuthn registration options. The challenge is generated with
+    /// `SecRandomCopyBytes` (cryptographically secure), not a string hash.
+    func generateRegistrationOptions(relyingPartyId: String, relyingPartyName: String,
+                                     userId: String, userName: String) -> [String: Any] {
         let challenge = generateChallenge(length: 32)
-        
         return [
             "relyingPartyId": relyingPartyId,
             "relyingPartyName": relyingPartyName,
@@ -38,32 +80,40 @@ class PasskeyService {
             "attestation": "direct"
         ]
     }
-    
-    func registerPasskey(attestationResponse: [String: Any], credentialId: String = "") -> PasskeyCredential? {
-        guard let clientDataJSON = attestationResponse["clientDataJSON"] as? String,
-              let attestationObject = attestationResponse["attestationObject"] as? String else {
-            return nil
-        }
-        
-        let id = credentialId.isEmpty ? generateCredentialId() : credentialId
-        
-        let credential = PasskeyCredential(
-            id: id,
-            publicKey: attestationResponse["publicKey"] as? String ?? "",
-            counter: "0",
-            transports: (attestationResponse["transports"] as? [String])?.joined(separator: ",") ?? "internal",
-            createdAt: Date().timeIntervalSince1970 * 1000
+
+    /// Perform a real platform passkey registration via ASAuthorization. The
+    /// returned credential stores the real P-256 public key (x963) produced by
+    /// the Secure Enclave-backed authenticator. Throws on failure/cancel.
+    func registerPasskey(relyingPartyId: String, relyingPartyName: String,
+                         userId: String, userName: String) async throws -> PasskeyCredential {
+        guard isSupported() else { throw PasskeyError.notSupported }
+
+        let challenge = generateChallenge(length: 32)
+        let challengeData = challenge
+        let userID = Data(userId.utf8)
+
+        let request = ASAuthorizationPlatformPublicKeyCredentialRegistrationRequest(
+            provider: ASAuthorizationPlatformPublicKeyCredentialProvider(),
+            challenge: challengeData,
+            name: userName,
+            userID: userID
         )
-        
-        saveCredential(credential)
-        return credential
+
+        return try await withCheckedThrowingContinuation { continuation in
+            self.registrationContinuation = continuation
+
+            let controller = ASAuthorizationController(authorizationRequests: [request])
+            controller.delegate = self
+            controller.presentationContextProvider = self
+            controller.performRequests()
+            self.currentAuthorizationController = controller
+        }
     }
-    
-    // MARK: - Authentication
-    
+
+    // MARK: - Authentication (real ASAuthorization + CryptoKit P-256 verify)
+
     func generateAuthenticationOptions(allowedCredentialIds: [String]) -> [String: Any] {
         let challenge = generateChallenge(length: 32)
-        
         return [
             "challenge": challenge.base64EncodedString(),
             "timeout": 60000,
@@ -72,82 +122,112 @@ class PasskeyService {
             "userVerification": "required"
         ]
     }
-    
-    func authenticateWithPasskey(assertionResponse: [String: Any]) -> PasskeyAuthResult {
-        guard let credentialId = assertionResponse["credentialId"] as? String,
-              let clientDataJSON = assertionResponse["clientDataJSON"] as? String else {
-            return PasskeyAuthResult(success: false, error: "Invalid assertion response")
-        }
-        
-        // Verify assertion
-        let verified = verifyAssertion(
-            credentialId: credentialId,
-            clientDataJSON: clientDataJSON,
-            authenticatorData: assertionResponse["authenticatorData"] as? String,
-            signature: assertionResponse["signature"] as? String
-        )
-        
-        if verified {
-            updateCredentialCounter(credentialId: credentialId)
-            return PasskeyAuthResult(
-                success: true,
-                credentialId: credentialId,
-                signature: assertionResponse["signature"] as? String,
-                authenticatorData: assertionResponse["authenticatorData"] as? String,
-                clientDataJSON: clientDataJSON
-            )
+
+    /// Perform a real platform passkey assertion, then cryptographically verify
+    /// the returned P-256 signature over `authenticatorData || SHA256(clientDataJSON)`
+    /// against the credential's stored public key. Throws on failure/cancel or if
+    /// the signature does not verify.
+    func authenticateWithPasskey(credentialId: String) async throws -> PasskeyAuthResult {
+        guard isSupported() else { throw PasskeyError.notSupported }
+
+        let credentialIdData: Data
+        if let idData = Data(base64Encoded: credentialId),
+           !idData.isEmpty {
+            credentialIdData = idData
         } else {
-            return PasskeyAuthResult(success: false, error: "Assertion verification failed")
+            credentialIdData = Data(credentialId.utf8)
+        }
+
+        let request = ASAuthorizationPlatformPublicKeyCredentialAssertionRequest(
+            provider: ASAuthorizationPlatformPublicKeyCredentialProvider(),
+            challenge: generateChallenge(length: 32),
+            credentialID: credentialIdData
+        )
+
+        return try await withCheckedThrowingContinuation { continuation in
+            self.assertionContinuation = continuation
+
+            let controller = ASAuthorizationController(authorizationRequests: [request])
+            controller.delegate = self
+            controller.presentationContextProvider = self
+            controller.performRequests()
+            self.currentAuthorizationController = controller
         }
     }
-    
+
+    /// Verify an externally-supplied assertion (e.g. from a server relay) using
+    /// real CryptoKit P-256 signature verification. All inputs are base64url/base64.
+    /// Returns true only if the signature is valid over
+    /// `authenticatorData || SHA-256(clientDataJSON)` for the stored public key.
+    func verifyAssertion(credentialId: String, clientDataJSONBase64: String,
+                         authenticatorDataBase64: String, signatureBase64: String) -> Bool {
+        guard let credential = credentials.first(where: { $0.id == credentialId }) else {
+            return false
+        }
+        guard !credential.publicKey.isEmpty else { return false }
+
+        guard let clientData = Data(base64Encoded: unbase64url(clientDataJSONBase64)),
+              let authenticatorData = Data(base64Encoded: unbase64url(authenticatorDataBase64)),
+              let signatureData = Data(base64Encoded: unbase64url(signatureBase64)) else {
+            return false
+        }
+
+        guard let publicKeyData = Data(base64Encoded: credential.publicKey) else {
+            return false
+        }
+
+        guard let publicKey = try? P256.Signing.PublicKey(x963Representation: publicKeyData) else {
+            return false
+        }
+
+        let clientDataHash = SHA256.hash(data: clientData)
+        let signedData = authenticatorData + Data(clientDataHash)
+
+        guard let signature = try? P256.Signing.ECDSASignature(derRepresentation: signatureData) else {
+            return false
+        }
+
+        return publicKey.isValidSignature(signature, for: signedData)
+    }
+
     // MARK: - Credentials Management
-    
+
     func getCredentials() -> [PasskeyCredential] {
         return credentials
     }
-    
+
     func deleteCredential(credentialId: String) -> Bool {
+        let before = credentials.count
         credentials.removeAll { $0.id == credentialId }
         saveAllCredentials()
-        return true
+        return credentials.count < before
     }
-    
+
     func deleteAllCredentials() -> Bool {
         credentials.removeAll()
         saveAllCredentials()
         return true
     }
-    
-    // MARK: - Support Check
-    
-    func isSupported() -> Bool {
-        let context = LAContext()
-        var error: NSError?
-        return context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
-    }
-    
+
     // MARK: - Private Methods
-    
+
     private func generateChallenge(length: Int) -> Data {
         var bytes = [UInt8](repeating: 0, count: length)
-        _ = SecRandomCopyBytes(kSecRandomDefault, length, &bytes)
-        let data = Data(bytes)
-        
-        // Mix with hash
-        let hash = SHA256.hash(data: data)
-        return Data(hash)
+        let status = SecRandomCopyBytes(kSecRandomDefault, length, &bytes)
+        if status == errSecSuccess {
+            return Data(bytes)
+        }
+        // Fallback is still a secure random source from SystemRandomNumberGenerator.
+        return Data((0..<length).map { _ in UInt8.random(in: 0...255) })
     }
-    
-    private func generateCredentialId() -> String {
-        let challenge = generateChallenge(length: 16)
-        return challenge.base64EncodedString()
+
+    private func unbase64url(_ s: String) -> String {
+        var t = s.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        let pad = (4 - t.count % 4) % 4
+        t.append(String(repeating: "=", count: pad))
+        return t
     }
-    
-    private func verifyAssertion(credentialId: String, clientDataJSON: String, authenticatorData: String?, signature: String?) -> Bool {
-        return !credentialId.isEmpty && !clientDataJSON.isEmpty
-    }
-    
+
     private func updateCredentialCounter(credentialId: String) {
         if let index = credentials.firstIndex(where: { $0.id == credentialId }) {
             let current = credentials[index]
@@ -162,15 +242,14 @@ class PasskeyService {
             saveAllCredentials()
         }
     }
-    
+
     private func loadCredentials() {
-        // Load from UserDefaults
         if let data = UserDefaults.standard.data(forKey: "passkey_credentials"),
            let decoded = try? JSONDecoder().decode([PasskeyCredential].self, from: data) {
             credentials = decoded
         }
     }
-    
+
     private func saveCredential(_ credential: PasskeyCredential) {
         if let index = credentials.firstIndex(where: { $0.id == credential.id }) {
             credentials[index] = credential
@@ -179,7 +258,7 @@ class PasskeyService {
         }
         saveAllCredentials()
     }
-    
+
     private func saveAllCredentials() {
         if let encoded = try? JSONEncoder().encode(credentials) {
             UserDefaults.standard.set(encoded, forKey: "passkey_credentials")
@@ -187,11 +266,96 @@ class PasskeyService {
     }
 }
 
+// MARK: - ASAuthorizationControllerDelegate
+
+extension PasskeyService: ASAuthorizationControllerDelegate {
+    func authorizationController(controller: ASAuthorizationController,
+                                 didCompleteWithAuthorization authorization: ASAuthorization) {
+        if let cred = authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialRegistrationResult {
+            let credentialId = cred.credentialID.base64EncodedString()
+            let publicKeyData: Data
+            if let key = cred.rawPublicKey {
+                publicKeyData = key
+            } else {
+                publicKeyData = Data()
+            }
+            let credential = PasskeyCredential(
+                id: credentialId,
+                publicKey: publicKeyData.base64EncodedString(),
+                counter: "0",
+                transports: "internal",
+                createdAt: Date().timeIntervalSince1970 * 1000
+            )
+            saveCredential(credential)
+            currentAuthorizationController = nil
+            registrationContinuation?.resume(returning: credential)
+            registrationContinuation = nil
+        } else if let assertion = authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialAssertionResult {
+            let credentialId = assertion.credentialID.base64EncodedString()
+            let clientDataB64 = assertion.clientDataJSON.base64EncodedString()
+            let authDataB64 = assertion.authenticatorData.base64EncodedString()
+            let sigB64 = assertion.signature.base64EncodedString()
+
+            let verified = verifyAssertion(credentialId: credentialId,
+                                           clientDataJSONBase64: clientDataB64,
+                                           authenticatorDataBase64: authDataB64,
+                                           signatureBase64: sigB64)
+            currentAuthorizationController = nil
+            if verified {
+                updateCredentialCounter(credentialId: credentialId)
+                let result = PasskeyAuthResult(
+                    success: true,
+                    credentialId: credentialId,
+                    signature: sigB64,
+                    authenticatorData: authDataB64,
+                    clientDataJSON: clientDataB64
+                )
+                assertionContinuation?.resume(returning: result)
+                assertionContinuation = nil
+            } else {
+                assertionContinuation?.resume(throwing: PasskeyError.invalidAssertion("signature verification failed"))
+                assertionContinuation = nil
+            }
+        } else {
+            currentAuthorizationController = nil
+            registrationContinuation?.resume(throwing: PasskeyError.registrationFailed("unexpected credential type"))
+            registrationContinuation = nil
+            assertionContinuation?.resume(throwing: PasskeyError.assertionFailed("unexpected credential type"))
+            assertionContinuation = nil
+        }
+    }
+
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        currentAuthorizationController = nil
+        if let asError = error as? ASAuthorizationError, asError.code == .canceled {
+            registrationContinuation?.resume(throwing: PasskeyError.canceled)
+            assertionContinuation?.resume(throwing: PasskeyError.canceled)
+        } else {
+            registrationContinuation?.resume(throwing: PasskeyError.registrationFailed(error.localizedDescription))
+            assertionContinuation?.resume(throwing: PasskeyError.assertionFailed(error.localizedDescription))
+        }
+        registrationContinuation = nil
+        assertionContinuation = nil
+    }
+}
+
+// MARK: - ASAuthorizationControllerPresentationContextProviding
+
+extension PasskeyService: ASAuthorizationControllerPresentationContextProviding {
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first {
+            return window
+        }
+        return ASPresentationAnchor()
+    }
+}
+
 // MARK: - Models
 
 struct PasskeyCredential: Codable {
     let id: String
-    let publicKey: String
+    let publicKey: String   // base64-encoded P-256 public key (x963 representation)
     let counter: String
     let transports: String
     let createdAt: Double
@@ -204,4 +368,14 @@ struct PasskeyAuthResult {
     let authenticatorData: String?
     let clientDataJSON: String?
     let error: String?
+
+    init(success: Bool, credentialId: String? = nil, signature: String? = nil,
+         authenticatorData: String? = nil, clientDataJSON: String? = nil, error: String? = nil) {
+        self.success = success
+        self.credentialId = credentialId
+        self.signature = signature
+        self.authenticatorData = authenticatorData
+        self.clientDataJSON = clientDataJSON
+        self.error = error
+    }
 }

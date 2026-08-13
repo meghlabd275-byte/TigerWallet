@@ -1,156 +1,143 @@
 // MasterWallet Treasury Service - Flutter
+//
+// Thin REST client over the canonical Go backend (:8450). Treasury routes
+// are nested under /api/v1/master-wallet/:id/treasury. No fabricated data;
+// on backend failure methods throw rather than returning fake balances.
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class TreasuryService {
-  static const String API_BASE = 'http://localhost:8443/api/v1';
+  static const String API_BASE = String.fromEnvironment(
+    'MASTER_WALLET_API_URL',
+    defaultValue: 'http://localhost:8450',
+  );
+  static const String _apiV1 = '$API_BASE/api/v1';
+
+  final String masterWalletId;
   String? _token;
-  
-  TreasuryService({String? token}) : _token = token;
-  
+
+  TreasuryService({required this.masterWalletId, String? token}) : _token = token;
+
+  void setToken(String? token) => _token = token;
+
+  String get _base => '$_apiV1/master-wallet/$masterWalletId/treasury';
+
   Map<String, String> get _headers => {
-    'Content-Type': 'application/json',
-    if (_token != null) 'Authorization': 'Bearer $_token',
-  };
-  
-  // Get treasury overview
+        'Content-Type': 'application/json',
+        if (_token != null) 'Authorization': 'Bearer $_token',
+      };
+
+  Exception _err(http.Response r, String op) =>
+      Exception('treasury $op failed (${r.statusCode}): ${r.body}');
+
+  /// Get treasury overview (real balances from the backend).
   Future<TreasuryOverview> getOverview() async {
-    final response = await http.get(
-      Uri.parse('$API_BASE/treasury/overview'),
-      headers: _headers,
-    );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return TreasuryOverview.fromJson(data['data']);
-    }
-    throw Exception('Failed to get treasury');
+    final r = await http.get(Uri.parse(_base), headers: _headers);
+    if (r.statusCode != 200) throw _err(r, 'overview');
+    final data = json.decode(r.body);
+    return TreasuryOverview.fromJson((data['data'] ?? data) as Map<String, dynamic>);
   }
-  
-  // Get treasury balances
+
+  /// Get treasury balances (real, from the backend). The canonical contract
+  /// exposes a single treasury overview at GET /treasury (which carries the real
+  /// balances); there is no separate /treasury/balances route, so this derives
+  /// the balance list from the overview response. Throws on any backend error.
   Future<List<TreasuryBalance>> getBalances() async {
-    final response = await http.get(
-      Uri.parse('$API_BASE/treasury/balances'),
-      headers: _headers,
-    );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return (data['data'] as List).map((b) => TreasuryBalance.fromJson(b)).toList();
-    }
-    return [];
+    final r = await http.get(Uri.parse(_base), headers: _headers);
+    if (r.statusCode != 200) throw _err(r, 'balances');
+    final data = json.decode(r.body);
+    final root = (data['data'] ?? data) as Map<String, dynamic>;
+    final list = (root['balances'] as List?) ??
+        (data['balances'] as List?) ??
+        const [];
+    return list
+        .map((b) => TreasuryBalance.fromJson(b as Map<String, dynamic>))
+        .toList();
   }
-  
-  // Get transactions
+
+  /// Get treasury transactions (real).
   Future<List<TreasuryTransaction>> getTransactions({int limit = 50}) async {
-    final response = await http.get(
-      Uri.parse('$API_BASE/treasury/transactions?limit=$limit'),
+    final r = await http.get(
+      Uri.parse('$_base/transactions?limit=$limit'),
       headers: _headers,
     );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return (data['data'] as List).map((t) => TreasuryTransaction.fromJson(t)).toList();
-    }
-    return [];
+    if (r.statusCode != 200) throw _err(r, 'transactions');
+    final data = json.decode(r.body);
+    final list = (data['data'] as List?) ?? (data['transactions'] as List?) ?? const [];
+    return list
+        .map((t) => TreasuryTransaction.fromJson(t as Map<String, dynamic>))
+        .toList();
   }
-  
-  // Create allocation
+
+  /// Transfer treasury funds (real backend sign + broadcast).
+  Future<TreasuryTransaction> transfer({
+    required String to,
+    required double amount,
+    required String password,
+    String? token,
+  }) async {
+    final r = await http.post(
+      Uri.parse('$_base/transfer'),
+      headers: _headers,
+      body: json.encode({
+        'to': to,
+        'amount': amount,
+        'password': password,
+        if (token != null) 'token': token,
+      }),
+    );
+    if (r.statusCode != 200 && r.statusCode != 201) throw _err(r, 'transfer');
+    final data = json.decode(r.body);
+    return TreasuryTransaction.fromJson(
+      (data['data'] ?? data) as Map<String, dynamic>,
+    );
+  }
+
+  /// Sweep treasury funds to a cold wallet (real backend broadcast).
+  Future<bool> sweep({required String to, required String password}) async {
+    final r = await http.post(
+      Uri.parse('$_base/sweep'),
+      headers: _headers,
+      body: json.encode({'to': to, 'password': password}),
+    );
+    if (r.statusCode != 200 && r.statusCode != 201) throw _err(r, 'sweep');
+    return true;
+  }
+
+  /// Allocations are not part of the canonical treasury contract. Fetching or
+  /// creating them is not supported against the live backend - fail-closed.
   Future<Allocation> createAllocation({
     required String name,
     required String token,
     required double amount,
     required String purpose,
   }) async {
-    final response = await http.post(
-      Uri.parse('$API_BASE/treasury/allocations'),
-      headers: _headers,
-      body: json.encode({
-        'name': name,
-        'token': token,
-        'amount': amount,
-        'purpose': purpose,
-      }),
+    throw UnimplementedError(
+      'Treasury allocations are not supported by the canonical backend. '
+      'Use the treasury transfer/sweep endpoints for fund movement.',
     );
-    
-    if (response.statusCode == 201) {
-      final data = json.decode(response.body);
-      return Allocation.fromJson(data['data']);
-    }
-    throw Exception('Failed to create allocation');
   }
-  
-  // Get allocations
+
   Future<List<Allocation>> getAllocations() async {
-    final response = await http.get(
-      Uri.parse('$API_BASE/treasury/allocations'),
-      headers: _headers,
+    throw UnimplementedError(
+      'Treasury allocations are not supported by the canonical backend.',
     );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return (data['data'] as List).map((a) => Allocation.fromJson(a)).toList();
-    }
-    return [];
   }
-  
-  // Transfer between accounts
-  Future<TreasuryTransaction> transfer({
-    required String fromAccount,
-    required String toAccount,
-    required String token,
-    required double amount,
-  }) async {
-    final response = await http.post(
-      Uri.parse('$API_BASE/treasury/transfer'),
-      headers: _headers,
-      body: json.encode({
-        'fromAccount': fromAccount,
-        'toAccount': toAccount,
-        'token': token,
-        'amount': amount,
-      }),
-    );
-    
-    if (response.statusCode == 201) {
-      final data = json.decode(response.body);
-      return TreasuryTransaction.fromJson(data['data']);
-    }
-    throw Exception('Failed to transfer');
-  }
-  
-  // Sweep to cold wallet
-  Future<bool> sweepToCold(String token, double amount) async {
-    final response = await http.post(
-      Uri.parse('$API_BASE/treasury/sweep'),
-      headers: _headers,
-      body: json.encode({
-        'token': token,
-        'amount': amount,
-      }),
-    );
-    
-    return response.statusCode == 200;
-  }
-  
-  // Get reports
+
+  /// Treasury reports are not a canonical endpoint. Surface an error instead of
+  /// returning fabricated inflow/outflow numbers.
   Future<TreasuryReport> getReport({
     required DateTime startDate,
     required DateTime endDate,
   }) async {
-    final response = await http.get(
-      Uri.parse('$API_BASE/treasury/report?start=${startDate.toIso8601String()}&end=${endDate.toIso8601String()}'),
-      headers: _headers,
+    throw UnimplementedError(
+      'Treasury reports are not supported by the canonical backend. '
+      'Derive reports from the treasury transactions endpoint instead.',
     );
-    
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return TreasuryReport.fromJson(data['data']);
-    }
-    throw Exception('Failed to get report');
   }
 }
+
 
 class TreasuryOverview {
   final double totalValue;

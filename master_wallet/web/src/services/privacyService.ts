@@ -1,11 +1,14 @@
 /**
- * PrivacyService - Desktop Implementation
- * Zero-knowledge proofs and privacy features
+ * PrivacyService - Web (React/TypeScript)
+ *
+ * NOTE: Stealth-address / ZK privacy primitives are NOT part of the canonical
+ * MasterWallet backend contract (port 8450). This module exposes the public
+ * surface without any client-side fake/stub cryptography: every operation that
+ * would require server-side support returns a descriptive error so callers
+ * fail loudly instead of receiving fabricated data.
  */
 
-import { randomBytes, createCipheriv, createDecipheriv } from 'crypto';
-
-interface StealthAddressResult {
+export interface StealthAddressResult {
   success: boolean;
   stealthAddress?: string;
   viewingKey?: string;
@@ -13,270 +16,36 @@ interface StealthAddressResult {
   error?: string;
 }
 
-interface CoinJoinResult {
-  success: boolean;
-  mixedOutputs?: string[];
-  proofs?: Buffer[];
-  rounds?: number;
-  error?: string;
+export interface PrivacyError {
+  success: false;
+  error: string;
 }
 
-interface ZKProofResult {
-  success: boolean;
-  proof?: string;
-  commitment?: string;
-  blindingFactor?: string;
-  error?: string;
-}
-
-interface RotationResult {
-  success: boolean;
-  newAddress?: string;
-  newPublicKey?: string;
-  viewingKey?: string;
-  error?: string;
-}
-
-interface EncryptedDataResult {
-  success: boolean;
-  encryptedData?: string;
-  error?: string;
-}
+const unsupported = (op: string): PrivacyError => ({
+  success: false,
+  error: `${op} is not supported by the canonical MasterWallet backend`,
+});
 
 class PrivacyService {
-  private readonly PRIVACY_STANDARD = 1;
-  private readonly PRIVACY_HIGH = 2;
-  private readonly PRIVACY_MAXIMUM = 3;
-
-  private secureShuffle<T>(arr: T[]): T[] {
-    const result = [...arr];
-    for (let i = result.length - 1; i > 0; i--) {
-      const rand = new Uint32Array(1);
-      crypto.getRandomValues(rand);
-      const j = rand[0] % (i + 1);
-      [result[i], result[j]] = [result[j], result[i]];
-    }
-    return result;
+  generateStealthAddress(_ownerAddress: string): StealthAddressResult | PrivacyError {
+    return unsupported('generateStealthAddress');
   }
-
-  /**
-   * Generate stealth address for privacy
-   */
-  async generateStealthAddress(ownerAddress: string, spendingPublicKey: Buffer): Promise<StealthAddressResult> {
-    try {
-      // Generate ephemeral key pair
-      const ephemeralPrivateKey = randomBytes(32);
-      const ephemeralPublicKey = randomBytes(64);
-      
-      // Derive shared secret (simplified ECDH)
-      const sharedSecret = this.deriveSharedSecret(ephemeralPrivateKey, spendingPublicKey);
-      
-      // Generate stealth address
-      const stealthPublicKey = this.deriveStealthPublicKey(sharedSecret, spendingPublicKey);
-      const stealthAddress = this.publicKeyToAddress(stealthPublicKey);
-      
-      // Generate viewing key
-      const viewingKey = this.deriveViewingKey(sharedSecret);
-      
-      return {
-        success: true,
-        stealthAddress,
-        viewingKey: viewingKey.toString('base64'),
-        ephemeralPublicKey: ephemeralPublicKey.toString('base64'),
-      };
-    } catch (error) {
-      return { success: false, error: String(error) };
-    }
+  scanStealthAddresses(_viewingKey: string): StealthAddressResult | PrivacyError {
+    return unsupported('scanStealthAddresses');
   }
-
-  /**
-   * Create CoinJoin mixing transaction
-   */
-  async createCoinJoin(
-    inputs: { address: string; amount: bigint; privateKey: Buffer }[],
-    outputs: { address: string; amount: bigint }[],
-    privacyLevel: number
-  ): Promise<CoinJoinResult> {
-    try {
-      if (inputs.length < privacyLevel + 2) {
-        return { success: false, error: 'Not enough participants' };
-      }
-      
-      // Shuffle outputs for privacy
-      let shuffledOutputs = this.secureShuffle([...outputs]);
-      
-      // Determine rounds
-      const rounds = privacyLevel === this.PRIVACY_STANDARD ? 2 
-        : privacyLevel === this.PRIVACY_HIGH ? 5 
-        : privacyLevel === this.PRIVACY_MAXIMUM ? 10 
-        : 1;
-      
-      // Perform mixing rounds
-      for (let i = 0; i < rounds; i++) {
-        shuffledOutputs = this.shuffleWithDecoy(shuffledOutputs, privacyLevel);
-      }
-      
-      // Generate proofs
-      const proofs = shuffledOutputs.map(o => this.generateRangeProof(o.amount, o.address));
-      
-      return {
-        success: true,
-        mixedOutputs: shuffledOutputs.map(o => o.address),
-        proofs,
-        rounds,
-      };
-    } catch (error) {
-      return { success: false, error: String(error) };
-    }
+  spendStealth(_stealthAddress: string, _amount: string): StealthAddressResult | PrivacyError {
+    return unsupported('spendStealth');
   }
-
-  /**
-   * Generate ZK proof for confidential transaction
-   */
-  async generateZKProof(amount: bigint, commitment: Buffer): Promise<ZKProofResult> {
-    try {
-      // Generate random blinding factor
-      const blindingFactor = randomBytes(32);
-      
-      // Create Pedersen commitment
-      const commitmentResult = this.createPedersenCommitment(amount, blindingFactor);
-      
-      // Generate proof
-      const proof = this.generateSnarkProof(amount, blindingFactor, commitment);
-      
-      return {
-        success: true,
-        proof: proof.toString('base64'),
-        commitment: commitmentResult.toString('base64'),
-        blindingFactor: blindingFactor.toString('base64'),
-      };
-    } catch (error) {
-      return { success: false, error: String(error) };
-    }
+  createConfidentialTransaction(
+    _from: string, _to: string, _amount: string
+  ): StealthAddressResult | PrivacyError {
+    return unsupported('createConfidentialTransaction');
   }
-
-  /**
-   * Verify ZK proof
-   */
-  verifyZKProof(proof: string, commitment: Buffer): boolean {
-    return proof.length > 0 && commitment.length > 0;
+  generateZKProof(_inputs: unknown): StealthAddressResult | PrivacyError {
+    return unsupported('generateZKProof');
   }
-
-  /**
-   * Rotate address for improved privacy
-   */
-  async rotateAddress(currentAddress: string): Promise<RotationResult> {
-    try {
-      const newPrivateKey = randomBytes(32);
-      const newPublicKey = randomBytes(64);
-      const newAddress = this.publicKeyToAddress(newPublicKey);
-      
-      const viewingKey = randomBytes(32);
-      
-      return {
-        success: true,
-        newAddress,
-        newPublicKey: newPublicKey.toString('base64'),
-        viewingKey: viewingKey.toString('base64'),
-      };
-    } catch (error) {
-      return { success: false, error: String(error) };
-    }
-  }
-
-  /**
-   * Encrypt sensitive data
-   */
-  async encryptSensitiveData(data: Buffer, password: string): Promise<EncryptedDataResult> {
-    try {
-      const key = Buffer.from(password.padEnd(32, '0').slice(0, 32));
-      const iv = randomBytes(16);
-      const cipher = createCipheriv('aes-256-gcm', key, iv);
-      
-      let encrypted = cipher.update(data);
-      encrypted = Buffer.concat([encrypted, cipher.final()]);
-      const authTag = cipher.getAuthTag();
-      
-      const combined = Buffer.concat([iv, encrypted, authTag]);
-      
-      return {
-        success: true,
-        encryptedData: combined.toString('base64'),
-      };
-    } catch (error) {
-      return { success: false, error: String(error) };
-    }
-  }
-
-  /**
-   * Decrypt sensitive data
-   */
-  async decryptSensitiveData(encryptedBase64: string, password: string): Promise<{ success: boolean; data?: Buffer; error?: string }> {
-    try {
-      const combined = Buffer.from(encryptedBase64, 'base64');
-      const iv = combined.subarray(0, 16);
-      const encrypted = combined.subarray(16, combined.length - 16);
-      const authTag = combined.subarray(combined.length - 16);
-      
-      const key = Buffer.from(password.padEnd(32, '0').slice(0, 32));
-      const decipher = createDecipheriv('aes-256-gcm', key, iv);
-      decipher.setAuthTag(authTag);
-      
-      let decrypted = decipher.update(encrypted);
-      decrypted = Buffer.concat([decrypted, decipher.final()]);
-      
-      return { success: true, data: decrypted };
-    } catch (error) {
-      return { success: false, error: String(error) };
-    }
-  }
-
-  // Private helpers
-  private deriveSharedSecret(privateKey: Buffer, publicKey: Buffer): Buffer {
-    const result = Buffer.alloc(32);
-    for (let i = 0; i < 32; i++) {
-      result[i] = privateKey[i] ^ publicKey[i % publicKey.length];
-    }
-    return result;
-  }
-
-  private deriveStealthPublicKey(sharedSecret: Buffer, spendingPublicKey: Buffer): Buffer {
-    const result = Buffer.alloc(64);
-    for (let i = 0; i < 64; i++) {
-      result[i] = sharedSecret[i % 32] ^ spendingPublicKey[i % spendingPublicKey.length];
-    }
-    return result;
-  }
-
-  private publicKeyToAddress(publicKey: Buffer): string {
-    const addressData = publicKey.sublist(12, 32);
-    return '0x' + addressData.toString('hex');
-  }
-
-  private deriveViewingKey(sharedSecret: Buffer): Buffer {
-    return sharedSecret.subarray(0, 32);
-  }
-
-  private shuffleWithDecoy(outputs: { address: string; amount: bigint }[], decoyCount: number) {
-    const decoys = Array.from({ length: decoyCount }, () => ({
-      address: '0x' + '0'.repeat(40),
-      amount: BigInt(0), // real decoy amounts from on-chain UTXO sampling
-    }));
-
-    return this.secureShuffle([...outputs, ...decoys]);
-  }
-
-  private generateRangeProof(amount: bigint, address: string): Buffer {
-    const data = Buffer.from(address + amount.toString());
-    return Buffer.from(data.sublist(0, 64));
-  }
-
-  private createPedersenCommitment(value: bigint, blinding: Buffer): Buffer {
-    return Buffer.concat([Buffer.from(value.toString()), blinding]).subarray(0, 64);
-  }
-
-  private generateSnarkProof(amount: bigint, blinding: Buffer, commitment: Buffer): Buffer {
-    return commitment;
+  verifyZKProof(_proof: string): StealthAddressResult | PrivacyError {
+    return unsupported('verifyZKProof');
   }
 }
 

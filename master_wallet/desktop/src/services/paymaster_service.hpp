@@ -10,6 +10,9 @@
 #include <mutex>
 #include <atomic>
 #include <optional>
+#include <stdexcept>
+#include <thread>
+#include <cstdint>
 
 namespace tiger {
 namespace master {
@@ -95,6 +98,8 @@ private:
     std::thread monitorThread_;
     
     GasPrices fetchFromMultipleSources(const std::string& chainId);
+    // Fetch real gas prices from the canonical backend GET /api/v1/gas.
+    bool fetchFromBackend(const std::string& chainId, GasPrices& out);
     uint64_t calculateAverage(const std::vector<uint64_t>& values);
 };
 
@@ -270,18 +275,22 @@ private:
 // Inline implementations
 
 inline std::string UserOperation::hash() const {
-    // Implementation would hash all fields using keccak256
-    return ""; // Placeholder
+    // Requires keccak256 over an ABI-encoded payload; not available client-side.
+    throw std::runtime_error(
+        "UserOperation hash computation requires keccak256 and is not "
+        "available client-side");
 }
 
 inline std::vector<uint8_t> UserOperation::encode() const {
-    // RLP encode the user operation
-    return {}; // Placeholder
+    // Requires ERC-4337 ABI encoding; not available client-side.
+    throw std::runtime_error(
+        "UserOperation ABI encoding is not available client-side");
 }
 
-inline UserOperation UserOperation::decode(const std::vector<uint8_t>& data) {
-    // RLP decode
-    return UserOperation{}; // Placeholder
+inline UserOperation UserOperation::decode(const std::vector<uint8_t>& /*data*/) {
+    // Requires ERC-4337 ABI decoding; not available client-side.
+    throw std::runtime_error(
+        "UserOperation ABI decoding is not available client-side");
 }
 
 inline PaymasterConfig::PaymasterConfig()

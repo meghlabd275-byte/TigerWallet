@@ -1,110 +1,75 @@
 /**
- * BiometricService - Browser Extension Implementation
- * Complete biometric authentication for Master Wallet
- * Features: Fingerprint, Face, Behavioral Biometrics
- * Production-ready with secure storage
+ * BiometricService - browser extension biometric authentication.
+ *
+ * Real biometric verification is performed by the platform (WebAuthn /
+ * authenticator hardware); the client never fabricates a biometric match
+ * score. The `compareBiometric` method intentionally throws (fail-closed) to
+ * prevent any client-side score simulation. Enrollment/session bookkeeping is
+ * real; only the cryptographic match is delegated to the platform + backend.
+ *
+ * NOTE: The previous file used Dart syntax (`Type?`, `??=`, nested `class`
+ * declarations inside a class body). That has been removed; this is plain JS.
  */
 
+'use strict';
+
 class BiometricService {
-  static BiometricService? _instance;
-  static BiometricService get instance {
-    _instance ??= BiometricService._();
-    return _instance!;
+  constructor() {
+    // Storage
+    this.enrollments = new Map();
+    this.userEnrollments = new Map();
+    this.sessions = new Map();
+    this.behavioralData = new Map();
+    this.failedAttempts = new Map();
+    this.rateLimiter = new Map();
+
+    // Config
+    this.MAX_FAILED_ATTEMPTS = 5;
+    this.LOCKOUT_DURATION = 5 * 60 * 1000;
+    this.SESSION_DURATION = 30 * 60 * 1000;
   }
 
-  BiometricService._();
-
-  // Storage
-  enrollments = new Map();
-  userEnrollments = new Map();
-  sessions = new Map();
-  behavioralData = new Map();
-  failedAttempts = new Map();
-  rateLimiter = new Map();
-
-  // Config
-  MAX_FAILED_ATTEMPTS = 5;
-  LOCKOUT_DURATION = 5 * 60 * 1000;
-  SESSION_DURATION = 30 * 60 * 1000;
+  // Singleton accessor (plain JS, no Dart syntax).
+  static getInstance() {
+    if (!BiometricService._instance) {
+      BiometricService._instance = new BiometricService();
+    }
+    return BiometricService._instance;
+  }
 
   // ==================== Types ====================
+  // Plain factory functions (not nested classes, which are invalid JS).
 
-  class BiometricEnrollment {
-    constructor(id, userId, type, template, deviceId, createdAt, lastUsedAt, confidence, isActive) {
-      this.id = id;
-      this.userId = userId;
-      this.type = type;
-      this.template = template;
-      this.deviceId = deviceId;
-      this.createdAt = createdAt;
-      this.lastUsedAt = lastUsedAt;
-      this.confidence = confidence;
-      this.isActive = isActive;
-    }
+  createEnrollment({ id, userId, type, template, deviceId, createdAt, lastUsedAt, confidence, isActive }) {
+    return {
+      id, userId, type, template, deviceId, createdAt, lastUsedAt, confidence,
+      isActive: isActive !== false,
+    };
   }
 
-  class BiometricCapability {
-    constructor(type, available, quality, livenessDetection) {
-      this.type = type;
-      this.available = available;
-      this.quality = quality;
-      this.livenessDetection = livenessDetection;
-    }
+  createCapability({ type, available, quality, livenessDetection }) {
+    return { type, available, quality, livenessDetection };
   }
 
-  class Session {
-    constructor(sessionId, userId, type, startedAt, expiresAt, verified) {
-      this.sessionId = sessionId;
-      this.userId = userId;
-      this.type = type;
-      this.startedAt = startedAt;
-      this.expiresAt = expiresAt;
-      this.verified = verified;
-    }
+  createSession({ sessionId, userId, type, startedAt, expiresAt, verified }) {
+    return { sessionId, userId, type, startedAt, expiresAt, verified: !!verified };
   }
 
   // ==================== Capability Detection ====================
 
   async getCapabilities() {
-    const capabilities = [];
-
-    // WebAuthn support
-    const webAuthnAvailable = !!(window.PublicKeyCredential);
-
-    capabilities.push(new BiometricCapability(
-      'fingerprint',
-      webAuthnAvailable,
-      'high',
-      true
-    ));
-
-    capabilities.push(new BiometricCapability(
-      'face',
-      webAuthnAvailable && this.checkCameraAccess(),
-      'high',
-      true
-    ));
-
-    capabilities.push(new BiometricCapability(
-      'iris',
-      webAuthnAvailable && this.checkCameraAccess(),
-      'high',
-      true
-    ));
-
-    // Behavioral biometrics always available
-    capabilities.push(new BiometricCapability(
-      'behavioral',
-      true,
-      'medium',
-      false
-    ));
-
-    return capabilities;
+    const webAuthnAvailable = typeof window !== 'undefined' && !!window.PublicKeyCredential;
+    const camera = this.checkCameraAccess();
+    return [
+      this.createCapability({ type: 'fingerprint', available: webAuthnAvailable, quality: 'high', livenessDetection: true }),
+      this.createCapability({ type: 'face', available: webAuthnAvailable && camera, quality: 'high', livenessDetection: true }),
+      this.createCapability({ type: 'iris', available: webAuthnAvailable && camera, quality: 'high', livenessDetection: true }),
+      this.createCapability({ type: 'behavioral', available: true, quality: 'medium', livenessDetection: false }),
+    ];
   }
 
   checkCameraAccess() {
-    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    return typeof navigator !== 'undefined' && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
   }
 
   // ==================== Enrollment ====================
@@ -113,89 +78,69 @@ class BiometricService {
     if (!this.checkRateLimit(userId)) {
       return { success: false, error: 'Too many attempts. Please try again later.' };
     }
-
-    const existingEnrollments = this.getUserEnrollments(userId, type);
-    if (existingEnrollments.length >= 5) {
+    const existing = this.getUserEnrollments(userId, type);
+    if (existing.length >= 5) {
       return { success: false, error: 'Maximum enrollments reached for this biometric type' };
     }
-
     const sessionId = this.generateId();
     const challenge = this.generateRandom(32);
-
-    const session = new Session(
-      sessionId,
-      userId,
-      type,
-      Date.now(),
-      Date.now() + this.SESSION_DURATION,
-      false
-    );
-
-    this.sessions[sessionId] = session;
-
+    const session = this.createSession({
+      sessionId, userId, type,
+      startedAt: Date.now(),
+      expiresAt: Date.now() + this.SESSION_DURATION,
+      verified: false,
+    });
+    this.sessions.set(sessionId, session);
     return { success: true, sessionId, challenge };
   }
 
   async completeEnrollment(sessionId, biometricData, deviceId) {
-    const session = this.sessions[sessionId];
-    if (!session) {
-      return { success: false, error: 'Session not found or expired' };
-    }
-
+    const session = this.sessions.get(sessionId);
+    if (!session) return { success: false, error: 'Session not found or expired' };
     if (session.expiresAt < Date.now()) {
-      delete this.sessions[sessionId];
+      this.sessions.delete(sessionId);
       return { success: false, error: 'Session expired' };
     }
-
-    // Create enrollment
-    const enrollment = new BiometricEnrollment(
-      this.generateId(),
-      session.userId,
-      session.type,
-      this.encryptTemplate(biometricData),
+    const enrollment = this.createEnrollment({
+      id: this.generateId(),
+      userId: session.userId,
+      type: session.type,
+      template: this.encryptTemplate(biometricData),
       deviceId,
-      Date.now(),
-      Date.now(),
-      100,
-      true
-    );
-
-    this.enrollments[enrollment.id] = enrollment;
-
-    if (!this.userEnrollments[session.userId]) {
-      this.userEnrollments[session.userId] = new Set();
-    }
-    this.userEnrollments[session.userId].add(enrollment.id);
-
+      createdAt: Date.now(),
+      lastUsedAt: Date.now(),
+      confidence: 100,
+      isActive: true,
+    });
+    this.enrollments.set(enrollment.id, enrollment);
+    let userSet = this.userEnrollments.get(session.userId);
+    if (!userSet) { userSet = new Set(); this.userEnrollments.set(session.userId, userSet); }
+    userSet.add(enrollment.id);
     session.verified = true;
-    this.sessions[sessionId] = session;
-
+    this.sessions.set(sessionId, session);
     return { success: true, enrollmentId: enrollment.id };
   }
 
   getUserEnrollments(userId, type) {
-    const userEnrollIds = this.userEnrollments[userId];
-    if (!userEnrollIds) return [];
-
-    const enrollments = [];
-    for (const id of userEnrollIds) {
-      const enrollment = this.enrollments[id];
-      if (enrollment && (!type || enrollment.type === type)) {
-        enrollments.push({ ...enrollment, template: '[ENCRYPTED]' });
+    const ids = this.userEnrollments.get(userId);
+    if (!ids) return [];
+    const result = [];
+    for (const id of ids) {
+      const e = this.enrollments.get(id);
+      if (e && (!type || e.type === type)) {
+        result.push({ ...e, template: '[ENCRYPTED]' });
       }
     }
-    return enrollments;
+    return result;
   }
 
   async deleteEnrollment(userId, enrollmentId) {
-    const enrollment = this.enrollments[enrollmentId];
+    const enrollment = this.enrollments.get(enrollmentId);
     if (!enrollment || enrollment.userId !== userId) {
       return { success: false, error: 'Enrollment not found' };
     }
-
     enrollment.isActive = false;
-    this.enrollments[enrollmentId] = enrollment;
-
+    this.enrollments.set(enrollmentId, enrollment);
     return { success: true };
   }
 
@@ -205,93 +150,63 @@ class BiometricService {
     if (!this.checkRateLimit(userId)) {
       return { success: false, error: 'Too many attempts. Account temporarily locked.' };
     }
-
-    const failed = this.failedAttempts[userId];
+    const failed = this.failedAttempts.get(userId);
     if (failed && failed.lockedUntil && failed.lockedUntil > Date.now()) {
       const remaining = Math.ceil((failed.lockedUntil - Date.now()) / 1000);
-      return { 
-        success: false, 
-        error: `Account locked. Try again in ${remaining} seconds.`,
-        requiresFallback: true
-      };
+      return { success: false, error: `Account locked. Try again in ${remaining} seconds.`, requiresFallback: true };
     }
-
-    const enrollments = this.getUserEnrollments(userId, type).filter(e => e.isActive);
+    const enrollments = this.getUserEnrollments(userId, type).filter((e) => e.isActive);
     if (enrollments.length === 0) {
       return { success: false, error: 'No enrolled biometrics found' };
     }
-
-    let bestMatch = null;
-    let bestConfidence = 0;
-
-    for (const enrollment of enrollments) {
-      const confidence = this.compareBiometric(biometricData, enrollment.template);
-      if (confidence > bestConfidence) {
-        bestConfidence = confidence;
-        bestMatch = enrollment;
+    // Biometric match is performed by the platform; client-side fabrication is
+    // disabled. compareBiometric throws (see below).
+    try {
+      this.compareBiometric(biometricData, enrollments[0].template);
+    } catch (e) {
+      const current = this.failedAttempts.get(userId) || { count: 0 };
+      current.count++;
+      if (current.count >= this.MAX_FAILED_ATTEMPTS) {
+        current.lockedUntil = Date.now() + this.LOCKOUT_DURATION;
       }
+      this.failedAttempts.set(userId, current);
+      return {
+        success: false,
+        error: 'Biometric verification requires platform/WebAuthn match; client-side score unavailable',
+        requiresFallback: current.count >= this.MAX_FAILED_ATTEMPTS,
+      };
     }
-
-    const THRESHOLD = 80;
-    if (bestConfidence >= THRESHOLD && bestMatch) {
-      bestMatch.lastUsedAt = Date.now();
-      bestMatch.confidence = bestConfidence;
-      this.enrollments[bestMatch.id] = bestMatch;
-
-      delete this.failedAttempts[userId];
-
-      return { success: true, confidence: bestConfidence };
-    }
-
-    const current = this.failedAttempts[userId] || { count: 0 };
-    current.count++;
-    if (current.count >= this.MAX_FAILED_ATTEMPTS) {
-      current.lockedUntil = Date.now() + this.LOCKOUT_DURATION;
-    }
-    this.failedAttempts[userId] = current;
-
-    return { 
-      success: false, 
-      error: 'Biometric verification failed',
-      requiresFallback: current.count >= this.MAX_FAILED_ATTEMPTS
-    };
   }
 
   async quickVerify(userId) {
-    const capabilities = await this.getCapabilities();
-    const availableTypes = capabilities.filter(c => c.available).map(c => c.type);
-
+    const caps = await this.getCapabilities();
+    const availableTypes = caps.filter((c) => c.available).map((c) => c.type);
     for (const type of availableTypes) {
       const result = await this.verify(userId, type, new ArrayBuffer(0));
       if (result.success) return result;
     }
-
     return { success: false, error: 'No biometrics enrolled' };
   }
 
   // ==================== Behavioral Biometrics ====================
 
   startBehavioralCollection(userId) {
-    this.behavioralData[userId] = {
+    this.behavioralData.set(userId, {
       keystrokeDynamics: { keyPressTime: [], keyReleaseTime: [], interKeyDelay: [] },
       mouseMovements: { x: [], y: [], timestamps: [] },
-      touchGestures: { pressure: [], size: [], angle: [] }
-    };
+      touchGestures: { pressure: [], size: [], angle: [] },
+    });
   }
 
   recordKeystroke(userId, keyPressTime, keyReleaseTime) {
-    const data = this.behavioralData[userId];
+    const data = this.behavioralData.get(userId);
     if (!data) return;
-
     data.keystrokeDynamics.keyPressTime.push(keyPressTime);
     data.keystrokeDynamics.keyReleaseTime.push(keyReleaseTime);
-
     if (data.keystrokeDynamics.keyPressTime.length > 1) {
-      const lastPress = data.keystrokeDynamics.keyPressTime[data.keystrokeDynamics.keyPressTime.length - 2];
-      data.keystrokeDynamics.interKeyDelay.push(keyPressTime - lastPress);
+      const last = data.keystrokeDynamics.keyPressTime[data.keystrokeDynamics.keyPressTime.length - 2];
+      data.keystrokeDynamics.interKeyDelay.push(keyPressTime - last);
     }
-
-    // Keep only last 100
     if (data.keystrokeDynamics.keyPressTime.length > 100) {
       data.keystrokeDynamics.keyPressTime.shift();
       data.keystrokeDynamics.keyReleaseTime.shift();
@@ -300,13 +215,11 @@ class BiometricService {
   }
 
   recordMouseMovement(userId, x, y) {
-    const data = this.behavioralData[userId];
+    const data = this.behavioralData.get(userId);
     if (!data) return;
-
     data.mouseMovements.x.push(x);
     data.mouseMovements.y.push(y);
     data.mouseMovements.timestamps.push(Date.now());
-
     if (data.mouseMovements.x.length > 200) {
       data.mouseMovements.x.shift();
       data.mouseMovements.y.shift();
@@ -315,60 +228,52 @@ class BiometricService {
   }
 
   async verifyBehavioral(userId) {
-    const data = this.behavioralData[userId];
-    if (!data) {
-      return { success: false, error: 'No behavioral data collected' };
-    }
-
+    const data = this.behavioralData.get(userId);
+    if (!data) return { success: false, error: 'No behavioral data collected' };
     const keystrokeScore = this.analyzeKeystrokeDynamics(data.keystrokeDynamics);
     const mouseScore = this.analyzeMouseMovements(data.mouseMovements);
-
     const confidence = Math.round((keystrokeScore + mouseScore) / 2);
-
-    if (confidence >= 70) {
-      return { success: true, confidence };
-    }
-
-    return { success: false, confidence: 0, error: 'Behavioral verification failed' };
+    // Behavioral signals are an auxiliary factor only; they do NOT authorize
+    // on their own. Return the confidence but never success without platform
+    // verification.
+    return { success: false, confidence, error: 'Behavioral score is advisory only; platform verification required' };
   }
 
   stopBehavioralCollection(userId) {
-    delete this.behavioralData[userId];
+    this.behavioralData.delete(userId);
   }
 
   // ==================== Session Management ====================
 
   createSession(userId, enrollmentId) {
     const sessionId = this.generateId();
-    const enrollment = this.enrollments[enrollmentId];
-
-    this.sessions[sessionId] = new Session(
+    const enrollment = this.enrollments.get(enrollmentId);
+    const session = this.createSession({
       sessionId,
       userId,
-      enrollment?.type || 'behavioral',
-      Date.now(),
-      Date.now() + this.SESSION_DURATION,
-      true
-    );
-
+      type: enrollment ? enrollment.type : 'behavioral',
+      startedAt: Date.now(),
+      expiresAt: Date.now() + this.SESSION_DURATION,
+      verified: true,
+    });
+    this.sessions.set(sessionId, session);
     return sessionId;
   }
 
   validateSession(sessionId) {
-    const session = this.sessions[sessionId];
+    const session = this.sessions.get(sessionId);
     if (!session || session.expiresAt < Date.now()) {
-      if (session) delete this.sessions[sessionId];
+      if (session) this.sessions.delete(sessionId);
       return { valid: false };
     }
     return { valid: true, userId: session.userId };
   }
 
   extendSession(sessionId) {
-    const session = this.sessions[sessionId];
+    const session = this.sessions.get(sessionId);
     if (!session || !session.verified) return false;
-
     session.expiresAt = Date.now() + this.SESSION_DURATION;
-    this.sessions[sessionId] = session;
+    this.sessions.set(sessionId, session);
     return true;
   }
 
@@ -376,64 +281,54 @@ class BiometricService {
 
   checkRateLimit(userId) {
     const now = Date.now();
-    const attempts = this.rateLimiter[userId] || [];
-
-    const recentAttempts = attempts.filter(t => now - t < 60000);
-    if (recentAttempts.length >= 10) {
-      return false;
-    }
-
-    recentAttempts.push(now);
-    this.rateLimiter[userId] = recentAttempts;
+    const attempts = this.rateLimiter.get(userId) || [];
+    const recent = attempts.filter((t) => now - t < 60000);
+    if (recent.length >= 10) return false;
+    recent.push(now);
+    this.rateLimiter.set(userId, recent);
     return true;
   }
 
   encryptTemplate(data) {
-    // Simplified - use proper crypto
+    // Encode the template for storage. This is transport encoding, not a
+    // substitute for backend-side key-protected storage.
     return btoa(String.fromCharCode(...new Uint8Array(data)));
   }
 
   decryptTemplate(encrypted) {
-    // Simplified
-    return Uint8Array.from(atob(encrypted), c => c.charCodeAt(0));
+    return Uint8Array.from(atob(encrypted), (c) => c.charCodeAt(0));
   }
 
   compareBiometric(data1, template2) {
+    // Biometric verification is performed by the platform WebAuthn/hardware;
+    // client-side score fabrication is disabled (fail-closed).
     throw new Error('Biometric verification is performed by the platform WebAuthn/hardware; client-side score fabrication is disabled');
   }
 
   analyzeKeystrokeDynamics(dynamics) {
-    if (dynamics.interKeyDelay.length < 5) return 50;
-
+    if (!dynamics || dynamics.interKeyDelay.length < 5) return 50;
     const delays = dynamics.interKeyDelay;
     const avg = delays.reduce((a, b) => a + b, 0) / delays.length;
     const variance = delays.reduce((sum, d) => sum + Math.pow(d - avg, 2), 0) / delays.length;
     const stdDev = Math.sqrt(variance);
-
     const consistency = Math.max(0, 100 - (stdDev / avg) * 100);
     return Math.round(consistency);
   }
 
   analyzeMouseMovements(movements) {
-    if (movements.x.length < 10) return 50;
-
+    if (!movements || movements.x.length < 10) return 50;
     const velocities = [];
     for (let i = 1; i < movements.x.length; i++) {
       const dx = movements.x[i] - movements.x[i - 1];
       const dy = movements.y[i] - movements.y[i - 1];
       const dt = movements.timestamps[i] - movements.timestamps[i - 1];
-      if (dt > 0) {
-        velocities.push(Math.sqrt(dx * dx + dy * dy) / dt);
-      }
+      if (dt > 0) velocities.push(Math.sqrt(dx * dx + dy * dy) / dt);
     }
-
     if (velocities.length === 0) return 50;
-
-    const avgVelocity = velocities.reduce((a, b) => a + b, 0) / velocities.length;
-    const variance = velocities.reduce((sum, v) => sum + Math.pow(v - avgVelocity, 2), 0) / velocities.length;
+    const avg = velocities.reduce((a, b) => a + b, 0) / velocities.length;
+    const variance = velocities.reduce((sum, v) => sum + Math.pow(v - avg, 2), 0) / velocities.length;
     const stdDev = Math.sqrt(variance);
-
-    const humanity = Math.min(100, (stdDev / avgVelocity) * 50);
+    const humanity = Math.min(100, (stdDev / avg) * 50);
     return Math.round(humanity);
   }
 
@@ -461,11 +356,15 @@ class BiometricService {
   }
 
   resetFailedAttempts(userId) {
-    delete this.failedAttempts[userId];
+    this.failedAttempts.delete(userId);
   }
 }
 
-// Export
+BiometricService._instance = null;
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = BiometricService;
+}
+if (typeof globalThis !== 'undefined') {
+  globalThis.MW_BIOMETRIC = { BiometricService };
 }

@@ -62,16 +62,16 @@ xcode-select --install
 
 ## Backend Services
 
-### 1. Go Master Wallet Service
+### 1. Canonical Go Master Wallet Backend (port 8450)
 
 ```bash
-cd /workspace/project/TigerWallet/go/services/master_wallet_service
+cd /workspace/project/TigerWallet/master_wallet/backend
 
 # Build
-go build -o master-wallet-service .
+go build -o master-wallet-backend .
 
 # Run
-./master-wallet-service
+./master-wallet-backend
 
 # Or run directly
 go run main.go
@@ -88,54 +88,31 @@ export REDIS_HOST=redis
 export REDIS_PORT=6379
 export JWT_SECRET=your_jwt_secret_32_bytes
 export ENCRYPTION_KEY=your_encryption_key_32_bytes
-export MASTER_WALLET_PORT=9095
-export PLATFORM_FEE_PERCENT=0.3
-export FEE_WALLET=0xYourFeeWalletAddress
+export PORT=8450
+export ETH_RPC_URL=https://eth-mainnet.alchemyapi.io/v2/YOUR_KEY
+export BSC_RPC_URL=https://bsc-dataseed.binance.org
+export ETHERSCAN_API_KEY=your_etherscan_key
+export COINGECKO_API_KEY=your_coingecko_key
 ```
 
-### 2. Rust Fetchers Service
+### 2. Rust Core Library
 
 ```bash
-cd /workspace/project/TigerWallet/rust/masterwallet_fetchers
+cd /workspace/project/TigerWallet/master_wallet/rust
 
 # Build
 cargo build --release
 
-# Run
-./target/release/masterwallet-fetchers-server
-
-# Or with custom config
-./target/release/masterwallet-fetchers-server --config config.toml
+# Test (BIP-44 test vector + sign/verify + seed encryption)
+cargo test --lib
 ```
 
-**Configuration (config.toml):**
-```toml
-[server]
-host = "0.0.0.0"
-port = 9096
+### 3. Deprecation Shim (port 8451 → 8450)
 
-[database]
-host = "postgres"
-port = 5432
-user = "tigerwallet"
-password = "your_secure_password"
-database = "tigerwallet_master"
-max_connections = 20
-
-[redis]
-host = "redis"
-port = 6379
-password = ""
-db = 0
-pool_size = 20
-
-[blockchain]
-rpc_timeout_ms = 5000
-max_retries = 3
-
-[security]
-encryption_key = "your_32_byte_encryption_key"
-jwt_secret = "your_jwt_secret"
+```bash
+cd /workspace/project/TigerWallet/master_wallet
+go build main.go
+MASTER_WALLET_BACKEND_URL=http://localhost:8450 PORT=8451 ./main
 ```
 
 ---

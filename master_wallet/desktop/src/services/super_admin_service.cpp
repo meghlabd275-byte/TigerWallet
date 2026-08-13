@@ -16,6 +16,8 @@
 #include <iomanip>
 #include <random>
 #include <fstream>
+#include <vector>
+#include <ctime>
 
 namespace tiger {
 namespace master {
@@ -134,13 +136,26 @@ bool SuperAdminService::authenticate(
     std::lock_guard<std::mutex> lock(dataMutex_);
     
     for (auto& pair : admins_) {
-        const auto& admin = pair.second;
+        auto& admin = pair.second;
         if (admin.email == email) {
             if (!admin.isActive) {
                 return false;
             }
             
             if (verifyPassword(password, admin.passwordHash, admin.salt)) {
+                // 2FA-enforced accounts must not authenticate with a password
+                // alone; require a verified TOTP code via verify2FA().
+                if (admin.twoFactorEnabled) {
+                    AuditEntry entry;
+                    entry.id = generateAdminId();
+                    entry.adminId = admin.id;
+                    entry.action = "LOGIN_2FA_REQUIRED";
+                    entry.resourceType = "session";
+                    entry.success = false;
+                    entry.timestamp = std::time(nullptr);
+                    logAudit(entry);
+                    return false;
+                }
                 adminId = admin.id;
                 admin.lastLoginAt = std::time(nullptr);
                 
@@ -222,32 +237,13 @@ bool SuperAdminService::resetPassword(
     if (!isValidPassword(newPassword)) {
         return false;
     }
-    
-    // In production, verify reset token from email/Redis
-    // For now, accept any non-empty token
-    
-    std::lock_guard<std::mutex> lock(dataMutex_);
-    
-    for (auto& pair : admins_) {
-        if (pair.second.email == email) {
-            auto& admin = pair.second;
-            admin.salt = generateSalt();
-            admin.passwordHash = hashPassword(newPassword, admin.salt);
-            
-            AuditEntry entry;
-            entry.id = generateAdminId();
-            entry.adminId = admin.id;
-            entry.action = "PASSWORD_RESET";
-            entry.resourceType = "admin";
-            entry.resourceId = admin.id;
-            entry.success = true;
-            entry.timestamp = std::time(nullptr);
-            logAudit(entry);
-            
-            return true;
-        }
-    }
-    
+
+    // Password reset requires verifying an out-of-band reset token issued by
+    // the backend (email/Redis). The canonical backend does not expose a
+    // client-side reset-token verification endpoint, and accepting an
+    // arbitrary token would let anyone reset any admin's password. Fail
+    // closed.
+    (void)resetToken;
     return false;
 }
 
@@ -262,19 +258,20 @@ bool SuperAdminService::enable2FA(const std::string& adminId, std::string& secre
         return false;
     }
     
-    // Generate secret
+    // Generate a 20-byte (160-bit) TOTP secret with the CSPRNG, per RFC 6238.
     unsigned char secretBytes[20];
-    RAND_bytes(secretBytes, 20);
-    
+    if (RAND_bytes(secretBytes, sizeof(secretBytes)) != 1) return false;
+
     std::stringstream ss;
     for (int i = 0; i < 20; i++) {
         ss << std::hex << std::setw(2) << std::setfill('0') << (int)secretBytes[i];
     }
     secret = ss.str();
-    
-    // Store secret (encrypted in production)
+
+    // Store the hex-encoded HMAC-SHA1 secret used to verify future codes.
+    it->second.twoFactorSecret = secret;
     it->second.twoFactorEnabled = true;
-    
+
     return true;
 }
 
@@ -297,9 +294,68 @@ bool SuperAdminService::disable2FA(const std::string& adminId, const std::string
 }
 
 bool SuperAdminService::verify2FA(const std::string& adminId, const std::string& code) {
-    // In production, implement TOTP verification
-    // For demo, accept any 6-digit code
-    return code.length() == 6 && std::all_of(code.begin(), code.end(), ::isdigit);
+    // Real RFC 6238 TOTP verification (HMAC-SHA1, 30s step, 6 digits). Accepts a
+    // +/-1 step window to tolerate clock drift, but never accepts an arbitrary
+    // 6-digit string. An admin with no stored secret cannot be verified.
+    std::string secret;
+    bool enabled = false;
+    {
+        std::lock_guard<std::mutex> lock(dataMutex_);
+        auto it = admins_.find(adminId);
+        if (it == admins_.end()) return false;
+        secret = it->second.twoFactorSecret;
+        enabled = it->second.twoFactorEnabled;
+    }
+    if (!enabled || secret.empty()) return false;
+    if (code.length() != 6 || !std::all_of(code.begin(), code.end(), ::isdigit)) return false;
+
+    // Decode the hex-encoded secret to raw key bytes.
+    std::vector<uint8_t> key;
+    key.reserve(secret.size() / 2);
+    for (size_t i = 0; i + 1 < secret.size(); i += 2) {
+        auto hexVal = [](char c) -> int {
+            if (c >= '0' && c <= '9') return c - '0';
+            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+            return -1;
+        };
+        int hi = hexVal(secret[i]), lo = hexVal(secret[i + 1]);
+        if (hi < 0 || lo < 0) return false;
+        key.push_back(static_cast<uint8_t>((hi << 4) | lo));
+    }
+    if (key.empty()) return false;
+
+    uint64_t now = static_cast<uint64_t>(std::time(nullptr));
+    for (int offset = -1; offset <= 1; ++offset) {
+        uint64_t step = (now / 30) + static_cast<uint64_t>(offset);
+        if (generateTOTP(key, step) == code) return true;
+    }
+    return false;
+}
+
+std::string SuperAdminService::generateTOTP(const std::vector<uint8_t>& key, uint64_t step) {
+    // RFC 6238 / RFC 4226 HOTP with HMAC-SHA1, 6-digit truncation.
+    uint8_t msg[8];
+    for (int i = 7; i >= 0; --i) {
+        msg[i] = static_cast<uint8_t>(step & 0xFF);
+        step >>= 8;
+    }
+
+    unsigned char hash[EVP_MAX_MD_SIZE];
+    unsigned int hashLen = 0;
+    HMAC(EVP_sha1(), key.data(), static_cast<int>(key.size()), msg, sizeof(msg), hash, &hashLen);
+    if (hashLen < 20) return "";
+
+    int offset = hash[hashLen - 1] & 0x0F;
+    uint32_t binary = ((hash[offset] & 0x7F) << 24) |
+                      ((hash[offset + 1] & 0xFF) << 16) |
+                      ((hash[offset + 2] & 0xFF) << 8) |
+                      (hash[offset + 3] & 0xFF);
+    uint32_t otp = binary % 1000000;
+
+    std::ostringstream ss;
+    ss << std::setw(6) << std::setfill('0') << otp;
+    return ss.str();
 }
 
 std::string SuperAdminService::createAdmin(const AdminUser& admin) {
@@ -685,22 +741,14 @@ bool SuperAdminService::executeDistribution(const std::string& masterWalletId) {
     if (!profitSharingConfig_.has_value()) {
         return false;
     }
-    
-    // In production, this would:
-    // 1. Calculate profits from master wallet
-    // 2. Distribute to super admin, master admin, white labels
-    // 3. Create transaction records
-    
-    AuditEntry entry;
-    entry.id = generateAdminId();
-    entry.action = "PROFIT_DISTRIBUTION";
-    entry.resourceType = "master_wallet";
-    entry.resourceId = masterWalletId;
-    entry.success = true;
-    entry.timestamp = std::time(nullptr);
-    logAudit(entry);
-    
-    return true;
+
+    // Profit distribution requires on-chain transfers calculated from real
+    // wallet balances and broadcast through the canonical backend. Performing
+    // this client-side is not possible, and logging a "success" audit entry
+    // without an actual transfer would fabricate a financial event. Fail
+    // closed.
+    (void)masterWalletId;
+    return false;
 }
 
 bool SuperAdminService::authorizeMasterAdmin(
@@ -784,7 +832,9 @@ SuperAdminService::AdminStats SuperAdminService::getStats() const {
     
     stats.totalAuditEntries = auditLogs_.size();
     stats.failedLogins = failedLogins_.load();
-    stats.averageSessionDuration = 3600.0; // 1 hour
+    // No fabricated session metrics: average session duration is not tracked
+    // client-side, so report 0 rather than a hardcoded placeholder.
+    stats.averageSessionDuration = 0.0;
     
     return stats;
 }

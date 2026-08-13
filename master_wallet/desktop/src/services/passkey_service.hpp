@@ -10,6 +10,8 @@
 #include <chrono>
 #include <mutex>
 #include <atomic>
+#include <stdexcept>
+#include <cstdint>
 
 namespace tiger {
 namespace master {
@@ -282,13 +284,13 @@ inline PasskeyCredential::PasskeyCredential()
     , isResident(false) {}
 
 inline std::vector<uint8_t> PasskeyCredential::encode() const {
-    // Binary encode credential
-    return {}; // Placeholder
+    // Credential serialization must be implemented with an explicit, versioned
+    // format. Returning empty silently would lose data; fail closed.
+    throw std::runtime_error("PasskeyCredential serialization is not implemented");
 }
 
-inline PasskeyCredential PasskeyCredential::decode(const std::vector<uint8_t>& data) {
-    // Binary decode credential
-    return PasskeyCredential{}; // Placeholder
+inline PasskeyCredential PasskeyCredential::decode(const std::vector<uint8_t>& /*data*/) {
+    throw std::runtime_error("PasskeyCredential deserialization is not implemented");
 }
 
 inline std::vector<PublicKeyCredentialParameters> 

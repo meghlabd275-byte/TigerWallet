@@ -110,16 +110,23 @@ class PasskeyAuthResult {
 /// Provides WebAuthn/FIDO2 passkey authentication for MasterWallet operations
 class MasterPasskeyService {
   static const String _storageKey = 'master_passkey_credentials';
-  static const String _baseUrl = 'http://localhost:8443';
+  // Canonical backend base URL (port 8450).
+  static const String _baseUrl = String.fromEnvironment(
+    'MASTER_WALLET_API_URL',
+    defaultValue: 'http://localhost:8450',
+  );
+  static const String _apiV1 = '$_baseUrl/api/v1';
   
   final String _masterWalletId;
   final String _encryptionKey;
+  String? authToken;
   late SharedPreferences _prefs;
   bool _initialized = false;
 
   MasterPasskeyService({
     required String masterWalletId,
     required String encryptionKey,
+    this.authToken,
   })  : _masterWalletId = masterWalletId,
         _encryptionKey = encryptionKey;
 
@@ -210,11 +217,14 @@ class MasterPasskeyService {
         createdAt: DateTime.now().millisecondsSinceEpoch,
       );
 
-      // Store credential locally
-      await _storeCredential(credential);
-
-      // Register with backend
+      // Register with the backend FIRST. The canonical backend is the relying
+      // party and must persist the credential public key; until it confirms,
+      // nothing is persisted locally, so a failed/absent endpoint can never
+      // leave a "phantom" passkey that assertions later verify against.
       await _registerCredentialBackend(credential);
+
+      // Only persist locally once the RP has accepted the credential.
+      await _storeCredential(credential);
 
       return credential;
     } catch (e) {
@@ -279,7 +289,7 @@ class MasterPasskeyService {
       // Update credential counter
       await _updateCredentialCounter(credentialId);
 
-      return PasskeyAuthAuthResult(
+      return PasskeyAuthResult(
         success: true,
         credentialId: credentialId,
         signature: signature,
@@ -294,15 +304,26 @@ class MasterPasskeyService {
     }
   }
 
-  /// Get all registered passkey credentials
+  /// Get all registered passkey credentials (decrypted at rest).
   Future<List<PasskeyCredential>> getCredentials() async {
     if (!_initialized) await initialize();
 
     try {
       final stored = _prefs.getString(_storageKey);
       if (stored == null) return [];
+      if (stored.isEmpty) return [];
 
-      final List<dynamic> credentialsJson = jsonDecode(stored);
+      // Backward compat: tolerate an unencrypted JSON blob only if it parses
+      // as a credential array; otherwise treat it as an encrypted blob.
+      String jsonStr;
+      final plain = _tryDecodePlainCredentials(stored);
+      if (plain != null) {
+        jsonStr = plain;
+      } else {
+        jsonStr = _decrypt(stored);
+      }
+
+      final List<dynamic> credentialsJson = jsonDecode(jsonStr);
       return credentialsJson
           .map((json) => PasskeyCredential.fromJson(json as Map<String, dynamic>))
           .toList();
@@ -312,21 +333,22 @@ class MasterPasskeyService {
     }
   }
 
-  /// Delete a passkey credential
+  /// Delete a passkey credential. The backend (relying party) must drop its
+  /// server-side record first; only then is the local copy removed, so a
+  /// failed/absent endpoint can never desync local and RP state.
   Future<bool> deleteCredential(String credentialId) async {
     if (!_initialized) await initialize();
 
     try {
+      await _deleteCredentialBackend(credentialId);
+
       final credentials = await getCredentials();
       credentials.removeWhere((c) => c.id == credentialId);
-      
+
       await _prefs.setString(
         _storageKey,
-        jsonEncode(credentials.map((c) => c.toJson()).toList()),
+        _encrypt(jsonEncode(credentials.map((c) => c.toJson()).toList())),
       );
-
-      // Notify backend
-      await _deleteCredentialBackend(credentialId);
 
       return true;
     } catch (e) {
@@ -335,13 +357,14 @@ class MasterPasskeyService {
     }
   }
 
-  /// Delete all passkey credentials
+  /// Delete all passkey credentials. Backend-first for the same reason as
+  /// [deleteCredential]; local storage is only cleared once the RP confirms.
   Future<bool> deleteAllCredentials() async {
     if (!_initialized) await initialize();
 
     try {
-      await _prefs.remove(_storageKey);
       await _deleteAllCredentialsBackend();
+      await _prefs.remove(_storageKey);
       return true;
     } catch (e) {
       debugPrint('Failed to delete all credentials: $e');
@@ -349,27 +372,35 @@ class MasterPasskeyService {
     }
   }
 
-  /// Check if device supports passkeys
+  /// Check if this platform supports passkeys. There is no generic Flutter
+  /// API to detect WebAuthn support, so this reports false unless a platform
+  /// WebAuthn bridge is wired (e.g. a method channel returning true). Never
+  /// claims support it cannot back up.
   Future<bool> isSupported() async {
-    // In a real implementation, this would check platform capabilities
-    return true;
+    return false;
   }
 
-  /// Generate a cryptographically secure challenge
+  /// Generate a cryptographically secure challenge using a CSPRNG.
   Uint8List _generateChallenge(int length) {
-    final random = Uint8List(length);
-    for (int i = 0; i < length; i++) {
-      random[i] = DateTime.now().microsecondsSinceEpoch % 256;
-    }
-    // Mix with hash for better randomness
-    final hash = sha256.convert(random);
-    return Uint8List.fromList(hash.bytes.sublist(0, length));
+    final rng = SecureRandom('Fortuna')..seed(KeyParameter(_seedFortuna()));
+    return rng.nextBytes(length);
   }
 
-  /// Store credential locally
+  Uint8List _seedFortuna() {
+    // Seed from the platform CSPRNG rather than wall-clock microseconds, which
+    // is predictable and would let an attacker reproduce the challenge bytes.
+    final secure = Random.secure();
+    final seed = Uint8List(32);
+    for (var i = 0; i < 32; i++) {
+      seed[i] = secure.nextInt(256);
+    }
+    return seed;
+  }
+
+  /// Store credential locally (encrypted at rest with AES-256-GCM).
   Future<void> _storeCredential(PasskeyCredential credential) async {
     final credentials = await getCredentials();
-    
+
     // Check if already exists
     final existing = credentials.indexWhere((c) => c.id == credential.id);
     if (existing >= 0) {
@@ -380,8 +411,21 @@ class MasterPasskeyService {
 
     await _prefs.setString(
       _storageKey,
-      jsonEncode(credentials.map((c) => c.toJson()).toList()),
+      _encrypt(jsonEncode(credentials.map((c) => c.toJson()).toList())),
     );
+  }
+
+  /// Returns the raw string if it is a plaintext JSON credential array,
+  /// otherwise null (caller should treat as encrypted blob). Used only for
+  /// one-time backward compatibility with any pre-encryption storage.
+  String? _tryDecodePlainCredentials(String stored) {
+    try {
+      final decoded = jsonDecode(stored);
+      if (decoded is List) return stored;
+    } catch (_) {
+      // not JSON -> encrypted blob
+    }
+    return null;
   }
 
   /// Update credential counter after authentication
@@ -398,81 +442,221 @@ class MasterPasskeyService {
         createdAt: credentials[index].createdAt,
       );
       credentials[index] = updated;
-      
+
       await _prefs.setString(
         _storageKey,
-        jsonEncode(credentials.map((c) => c.toJson()).toList()),
+        _encrypt(jsonEncode(credentials.map((c) => c.toJson()).toList())),
       );
     }
   }
 
-  /// Verify attestation from authenticator
+  /// Verify an attestation object from the authenticator. Full WebAuthn
+  /// attestation verification parses the CBOR attestationObject, validates the
+  /// fmt-specific statement, and extracts the credential public key. CBOR
+  /// parsing is not available without a dedicated dependency, so we fail
+  /// closed: a credential is accepted only when the platform WebAuthn layer
+  /// returned a verified credential id AND a credential public key. We do NOT
+  /// accept a credential id alone.
   Future<String?> _verifyAttestation(
     Map<String, dynamic> attestationResponse,
   ) async {
-    // In production, this would verify the attestation statement
-    // using the authenticator's attestation certificate
-    // For now, return the credential ID from the response
-    return attestationResponse['credentialId'] as String?;
+    final credentialId = attestationResponse['credentialId'] as String?;
+    final publicKey = attestationResponse['publicKey'] as String?;
+    if (credentialId == null || credentialId.isEmpty) return null;
+    if (publicKey == null || publicKey.isEmpty) {
+      throw PasskeyException(
+        'Attestation verification failed: no credential public key provided. '
+        'The platform WebAuthn layer must return the verified public key.',
+      );
+    }
+    return credentialId;
   }
 
-  /// Verify assertion during authentication
+  /// Verify a WebAuthn assertion. Performs REAL ECDSA (P-256, alg -7) signature
+  /// verification over `authenticatorData || SHA-256(clientDataJSON)` using the
+  /// stored credential public key, plus checks the userPresent/userVerified
+  /// flags in the authenticator data and that the counter advanced. Returns
+  /// false (never true) when any check fails or data is missing.
   Future<bool> _verifyAssertion(
     String credentialId,
     String clientDataJSON,
     String? authenticatorData,
     String? signature,
   ) async {
-    // In production, this would:
-    // 1. Verify the signature using the stored public key
-    // 2. Check the authenticator data flags
-    // 3. Verify the challenge matches
-    // 4. Check the counter is higher than stored
-    
-    // For demo purposes, validate basic structure
-    return credentialId.isNotEmpty && clientDataJSON.isNotEmpty;
+    if (credentialId.isEmpty || clientDataJSON.isEmpty) return false;
+    if (authenticatorData == null || authenticatorData.isEmpty) return false;
+    if (signature == null || signature.isEmpty) return false;
+
+    final credentials = await getCredentials();
+    final cred = credentials.where((c) => c.id == credentialId).toList();
+    if (cred.isEmpty) return false;
+    final publicKeyStr = cred.first.publicKey;
+    if (publicKeyStr.isEmpty) return false;
+
+    try {
+      final authData = authenticatorData.startsWith('0x')
+          ? base64.decode(authenticatorData.substring(2))
+          : base64.decode(authenticatorData);
+      if (authData.length < 37) return false;
+
+      // RP ID hash (32) + flags (1) + signCount (4).
+      final flags = authData[32];
+      final userPresent = (flags & 0x01) != 0;
+      final userVerified = (flags & 0x04) != 0;
+      if (!userPresent || !userVerified) return false;
+
+      final signCount = (authData[33] << 24) |
+          (authData[34] << 16) |
+          (authData[35] << 8) |
+          authData[36];
+      final storedCount = int.tryParse(cred.first.counter) ?? 0;
+      if (signCount != 0 && signCount <= storedCount) return false;
+
+      final clientData = clientDataJSON.startsWith('0x')
+          ? base64.decode(clientDataJSON.substring(2))
+          : base64.decode(clientDataJSON);
+      final message = Uint8List.fromList(
+        [...authData, ...sha256.convert(clientData).bytes],
+      );
+      final sig = signature.startsWith('0x')
+          ? base64.decode(signature.substring(2))
+          : base64.decode(signature);
+
+      final pubKeyBytes = publicKeyStr.startsWith('0x')
+          ? base64.decode(publicKeyStr.substring(2))
+          : base64.decode(publicKeyStr);
+      if (!_verifyP256Signature(message, sig, pubKeyBytes)) return false;
+
+      await _setCredentialCounter(credentialId, signCount);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
-  /// Register credential with backend
+  /// Verify an ECDSA P-256 signature. Accepts DER-encoded or raw r||s signatures.
+  bool _verifyP256Signature(
+    Uint8List message,
+    Uint8List signature,
+    Uint8List pubKeyBytes,
+  ) {
+    try {
+      final q = _decodeP256PublicKey(pubKeyBytes);
+      if (q == null) return false;
+      final der = _toDerSignature(signature);
+      final verifier = ECDSAVerifier(ECCurve_secp256r1())
+        ..init(false, PublicKeyParameter(ECPublicKey(q, ECCurve_secp256r1())));
+      return verifier.verifyMessage(message, der);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  ECPoint? _decodeP256PublicKey(Uint8List bytes) {
+    final curve = ECCurve_secp256r1();
+    if (bytes.length == 65 && bytes[0] == 0x04) {
+      return curve.curve.decodePoint(bytes);
+    }
+    if (bytes.length == 33 && (bytes[0] == 0x02 || bytes[0] == 0x03)) {
+      return curve.curve.decodePoint(bytes);
+    }
+    return null;
+  }
+
+  Uint8List _toDerSignature(Uint8List raw) {
+    if (raw.isNotEmpty && raw[0] == 0x30) return raw;
+    if (raw.length != 64) return raw;
+    BigInt encodeInt(Uint8List half) {
+      var v = BigInt.zero;
+      for (final b in half) {
+        v = (v << 8) | BigInt.from(b);
+      }
+      return v;
+    }
+    final r = encodeInt(Uint8List.fromList(raw.sublist(0, 32)));
+    final s = encodeInt(Uint8List.fromList(raw.sublist(32, 64)));
+    final seq = ASN1Sequence();
+    seq.add(ASN1Integer(r));
+    seq.add(ASN1Integer(s));
+    return seq.encode();
+  }
+
+  Future<void> _setCredentialCounter(String credentialId, int newCount) async {
+    final credentials = await getCredentials();
+    final index = credentials.indexWhere((c) => c.id == credentialId);
+    if (index < 0) return;
+    final existing = credentials[index];
+    final stored = int.tryParse(existing.counter) ?? 0;
+    final next = newCount > stored ? newCount : stored + 1;
+    credentials[index] = PasskeyCredential(
+      id: existing.id,
+      publicKey: existing.publicKey,
+      counter: next.toString(),
+      transports: existing.transports,
+      createdAt: existing.createdAt,
+    );
+    await _prefs.setString(
+      _storageKey,
+      _encrypt(jsonEncode(credentials.map((c) => c.toJson()).toList())),
+    );
+  }
+
+  /// Register credential with the backend (canonical :8450 route). The backend
+  /// must persist the credential public key for server-side assertion checks.
+  /// Throws on failure — never silently swallows.
   Future<void> _registerCredentialBackend(PasskeyCredential credential) async {
-    try {
-      await http.post(
-        Uri.parse('$_baseUrl/master/passkey/register'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'masterWalletId': _masterWalletId,
-          'credentialId': credential.id,
-          'publicKey': credential.publicKey,
-          'transports': credential.transports,
-          'createdAt': credential.createdAt,
-        }),
+    final res = await http.post(
+      Uri.parse('$_apiV1/master-wallet/$_masterWalletId/passkey/register'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (authToken != null) 'Authorization': 'Bearer $authToken',
+      },
+      body: jsonEncode({
+        'credentialId': credential.id,
+        'publicKey': credential.publicKey,
+        'transports': credential.transports,
+        'counter': credential.counter,
+        'createdAt': credential.createdAt,
+      }),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw PasskeyException(
+        'Backend passkey registration failed (${res.statusCode})',
       );
-    } catch (e) {
-      debugPrint('Backend registration failed: $e');
     }
   }
 
-  /// Delete credential from backend
+  /// Delete a credential from the backend. Throws on failure.
   Future<void> _deleteCredentialBackend(String credentialId) async {
-    try {
-      await http.delete(
-        Uri.parse('$_baseUrl/master/passkey/credential/$credentialId'),
-        headers: {'Content-Type': 'application/json'},
+    final res = await http.delete(
+      Uri.parse(
+        '$_apiV1/master-wallet/$_masterWalletId/passkey/credentials/$credentialId',
+      ),
+      headers: {
+        'Content-Type': 'application/json',
+        if (authToken != null) 'Authorization': 'Bearer $authToken',
+      },
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw PasskeyException(
+        'Backend passkey deletion failed (${res.statusCode})',
       );
-    } catch (e) {
-      debugPrint('Backend delete failed: $e');
     }
   }
 
-  /// Delete all credentials from backend
+  /// Delete all credentials from the backend. Throws on failure.
   Future<void> _deleteAllCredentialsBackend() async {
-    try {
-      await http.delete(
-        Uri.parse('$_baseUrl/master/passkey/credentials'),
-        headers: {'Content-Type': 'application/json'},
+    final res = await http.delete(
+      Uri.parse('$_apiV1/master-wallet/$_masterWalletId/passkey/credentials'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (authToken != null) 'Authorization': 'Bearer $authToken',
+      },
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw PasskeyException(
+        'Backend passkey delete-all failed (${res.statusCode})',
       );
-    } catch (e) {
-      debugPrint('Backend delete all failed: $e');
     }
   }
 
@@ -531,7 +715,11 @@ class MasterPasskeyService {
   }
 }
 
-/// Alias for PasskeyAuthResult
-typedef PasskeyAuthAuthResult = PasskeyAuthResult;
-
-export 'package:flutter/foundation.dart' show debugPrint;
+/// Thrown when passkey attestation/assertion verification or backend
+/// passkey operations fail. Used to fail closed instead of returning success.
+class PasskeyException implements Exception {
+  final String message;
+  PasskeyException(this.message);
+  @override
+  String toString() => 'PasskeyException: $message';
+}

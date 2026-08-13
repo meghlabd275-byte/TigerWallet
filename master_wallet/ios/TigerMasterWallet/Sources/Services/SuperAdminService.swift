@@ -6,7 +6,7 @@ import Foundation
 
 class SuperAdminService {
     
-    private let baseURL = "http://localhost:8443"
+    private let baseURL = "http://localhost:8450"
     private var adminId: String?
     private var role: String?
     private var isAuthenticated: Bool = false
@@ -97,17 +97,21 @@ class SuperAdminService {
             completion([])
             return
         }
-        
-        URLRequest(url: url).addValue("X-Admin-ID", forHTTPHeaderField: adminId ?? "")
-        
-        URLSession.shared.dataTask(with: URLRequest(url: url)) { data, _, error in
+
+        var request = URLRequest(url: url)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let adminId = adminId {
+            request.setValue(adminId, forHTTPHeaderField: "X-Admin-ID")
+        }
+
+        URLSession.shared.dataTask(with: request) { data, _, error in
             guard let data = data,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let admins = json["admins"] as? [[String: Any]] else {
                 completion([])
                 return
             }
-            
+
             completion(admins)
         }.resume()
     }

@@ -36,7 +36,7 @@ public class WebSocketService: NSObject {
     public var onTransactionUpdate: ((TransactionUpdate) -> Void)?
     
     // MARK: - Constants
-    private let WS_URL = ""
+    private let WS_BASE = "ws://localhost:8450"
     private let RECONNECT_DELAY: TimeInterval = 5.0
     private let MAX_RECONNECT_ATTEMPTS = 10
     
@@ -53,13 +53,31 @@ public class WebSocketService: NSObject {
         self.authToken = token
         connectionState = .connecting
         onStateChange?(.connecting)
-        
-        var request = URLRequest(url: URL(string: WS_URL)!)
+
+        guard let url = buildWebSocketURL(walletId: walletId, token: token) else {
+            connectionState = .error
+            onStateChange?(.error)
+            return
+        }
+
+        var request = URLRequest(url: url)
         request.timeoutInterval = 30
-        
+
         socket = WebSocket(request: request)
         socket?.delegate = self
         socket?.connect()
+    }
+
+    private func buildWebSocketURL(walletId: String, token: String?) -> URL? {
+        var components = URLComponents(string: "\(WS_BASE)/ws")
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "master_wallet_id", value: walletId)
+        ]
+        if let token = token, !token.isEmpty {
+            queryItems.append(URLQueryItem(name: "token", value: token))
+        }
+        components?.queryItems = queryItems
+        return components?.url
     }
     
     /// Disconnect from server
@@ -179,9 +197,8 @@ public class WebSocketService: NSObject {
         onStateChange?(.reconnecting)
         
         DispatchQueue.main.asyncAfter(deadline: .now() + RECONNECT_DELAY * Double(reconnectAttempts)) { [weak self] in
-            self?.walletId?.let { id in
-                self?.connect(walletId: id, token: self?.authToken)
-            }
+            guard let self = self, let id = self.walletId else { return }
+            self.connect(walletId: id, token: self.authToken)
         }
     }
     

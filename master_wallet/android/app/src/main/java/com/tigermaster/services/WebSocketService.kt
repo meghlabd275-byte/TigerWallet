@@ -46,7 +46,8 @@ class WebSocketService {
     
     companion object {
         private const val TAG = "WebSocketService"
-        private const val WS_URL = ""
+        // Canonical live-update socket per CANONICAL_API_CONTRACT.md: GET /ws?master_wallet_id=&token=
+        private const val WS_BASE_URL = "ws://localhost:8450/ws"
         private const val RECONNECT_DELAY = 5000L
         private const val MAX_RECONNECT_ATTEMPTS = 10
     }
@@ -66,11 +67,19 @@ class WebSocketService {
         this.walletId = walletId
         this.authToken = token
         _connectionState.value = ConnectionState.CONNECTING
-        
+
+        val url = buildString {
+            append(WS_BASE_URL)
+            append("?master_wallet_id=").append(java.net.URLEncoder.encode(walletId, "UTF-8"))
+            token?.takeIf { it.isNotBlank() }?.let {
+                append("&token=").append(java.net.URLEncoder.encode(it, "UTF-8"))
+            }
+        }
+
         val request = Request.Builder()
-            .url(WS_URL)
+            .url(url)
             .build()
-        
+
         webSocket = client.newWebSocket(request, createListener())
     }
     

@@ -10,6 +10,7 @@
 #include <chrono>
 #include <mutex>
 #include <atomic>
+#include <cstdint>
 
 namespace tiger {
 namespace master {
@@ -27,7 +28,7 @@ struct SmartWallet {
     std::string address;
     std::string owner;
     std::string entryPoint;
-    uint256_t nonce;
+    std::string nonce;
     std::string implementation;
     bool initialized;
     std::vector<std::string> guardians;
@@ -39,7 +40,7 @@ struct SmartWallet {
  */
 struct UserOperation {
     std::string sender;
-    uint256_t nonce;
+    std::string nonce;
     std::string initCode;
     std::string callData;
     uint64_t callGasLimit;

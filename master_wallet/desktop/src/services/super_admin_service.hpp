@@ -43,6 +43,7 @@ struct AdminUser {
     std::string masterWalletId;
     std::vector<std::string> permissions;
     bool twoFactorEnabled;
+    std::string twoFactorSecret; // hex-encoded HMAC-SHA1 TOTP secret
     int64_t createdAt;
     int64_t lastLoginAt;
     bool isActive;
@@ -237,6 +238,7 @@ private:
     
     std::string generateAdminId();
     std::string generateRequestId();
+    std::string generateTOTP(const std::vector<uint8_t>& key, uint64_t step);
     
     bool hasPermission(
         const AdminUser& admin,

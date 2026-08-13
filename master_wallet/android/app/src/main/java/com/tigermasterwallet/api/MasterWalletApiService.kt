@@ -13,21 +13,21 @@ import java.util.concurrent.TimeUnit
  * Handles all API communications with the MasterWallet backend
  */
 class MasterWalletApiService(private val baseUrl: String, private var authToken: String? = null) {
-    
+
     companion object {
         private const val CONNECT_TIMEOUT = 30L
         private const val READ_TIMEOUT = 30L
         private const val WRITE_TIMEOUT = 30L
     }
-    
+
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(CONNECT_TIMEOUT, TimeUnit.SECONDS)
         .readTimeout(READ_TIMEOUT, TimeUnit.SECONDS)
         .writeTimeout(WRITE_TIMEOUT, TimeUnit.SECONDS)
         .build()
-    
+
     private val jsonMediaType = "application/json".toMediaType()
-    
+
     private fun getHeaders(): Headers {
         return Headers.Builder()
             .add("Content-Type", "application/json")
@@ -37,84 +37,84 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
             }
             .build()
     }
-    
+
     // ==================== WALLETS ====================
-    
+
     /**
-     * Create a new master wallet
-     * POST /api/v1/master/wallets
+     * Create a new master wallet (backend creates HD wallet, returns mnemonic once)
+     * POST /api/v1/master-wallet — {name, password, chain_id}
      */
-    fun createWallet(name: String, chain: String, walletType: String, callback: ApiCallback<Wallet>) {
+    fun createWallet(name: String, chain: String, walletType: String, password: String, chainId: Long, callback: ApiCallback<Wallet>) {
         val body = JSONObject().apply {
             put("name", name)
-            put("chain", chain)
-            put("wallet_type", walletType)
+            put("password", password)
+            put("chain_id", chainId)
         }
-        
+
         val request = Request.Builder()
-            .url("$baseUrl/api/v1/master/wallets")
+            .url("$baseUrl/api/v1/master-wallet")
             .post(body.toString().toRequestBody(jsonMediaType))
             .headers(getHeaders())
             .build()
-        
+
         executeRequest(request, callback) { parseWallet(it) }
     }
-    
+
     /**
      * List all master wallets
-     * GET /api/v1/master/wallets
+     * GET /api/v1/master-wallet
      */
     fun listWallets(chain: String? = null, walletType: String? = null, callback: ApiCallback<ListResponse<Wallet>>) {
         val params = mutableListOf<String>()
         chain?.let { params.add("chain=$it") }
         walletType?.let { params.add("wallet_type=$it") }
-        
+
         val url = if (params.isNotEmpty()) {
-            "$baseUrl/api/v1/master/wallets?${params.joinToString("&")}"
+            "$baseUrl/api/v1/master-wallet?${params.joinToString("&")}"
         } else {
-            "$baseUrl/api/v1/master/wallets"
+            "$baseUrl/api/v1/master-wallet"
         }
-        
+
         val request = Request.Builder()
             .url(url)
             .get()
             .headers(getHeaders())
             .build()
-        
+
         executeListRequest(request, callback) { parseWalletList(it) }
     }
-    
+
     /**
      * Get wallet details
-     * GET /api/v1/master/wallets/:id
+     * GET /api/v1/master-wallet/:id
      */
     fun getWallet(walletId: String, callback: ApiCallback<Wallet>) {
         val request = Request.Builder()
-            .url("$baseUrl/api/v1/master/wallets/$walletId")
+            .url("$baseUrl/api/v1/master-wallet/$walletId")
             .get()
             .headers(getHeaders())
             .build()
-        
+
         executeRequest(request, callback) { parseWallet(it) }
     }
-    
+
     /**
      * Get wallet balance
-     * GET /api/v1/master/wallets/:id/balance
+     * GET /api/v1/master-wallet/:id/balance
      */
     fun getWalletBalance(walletId: String, token: String? = null, callback: ApiCallback<BalanceResponse>) {
         val url = if (token != null) {
-            "$baseUrl/api/v1/master/wallets/$walletId/balance?token=$token"
+            "$baseUrl/api/v1/master-wallet/$walletId/balance?token=$token"
         } else {
-            "$baseUrl/api/v1/master/wallets/$walletId/balance"
+            "$baseUrl/api/v1/master-wallet/$walletId/balance"
         }
-        
+
         val request = Request.Builder()
             .url(url)
             .get()
             .headers(getHeaders())
             .build()
-        
+
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 callback.onError(e.message ?: "Network error")
@@ -147,36 +147,36 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
             }
         })
     }
-    
+
     /**
      * Update wallet
-     * PUT /api/v1/master/wallets/:id
+     * PUT /api/v1/master-wallet/:id
      */
     fun updateWallet(walletId: String, name: String?, isActive: Boolean?, callback: ApiCallback<Wallet>) {
         val body = JSONObject()
         name?.let { body.put("name", it) }
         isActive?.let { body.put("is_active", it) }
-        
+
         val request = Request.Builder()
-            .url("$baseUrl/api/v1/master/wallets/$walletId")
+            .url("$baseUrl/api/v1/master-wallet/$walletId")
             .put(body.toString().toRequestBody(jsonMediaType))
             .headers(getHeaders())
             .build()
-        
+
         executeRequest(request, callback) { parseWallet(it) }
     }
-    
+
     /**
      * Delete wallet
-     * DELETE /api/v1/master/wallets/:id
+     * DELETE /api/v1/master-wallet/:id
      */
     fun deleteWallet(walletId: String, callback: ApiCallback<Unit>) {
         val request = Request.Builder()
-            .url("$baseUrl/api/v1/master/wallets/$walletId")
+            .url("$baseUrl/api/v1/master-wallet/$walletId")
             .delete()
             .headers(getHeaders())
             .build()
-        
+
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 callback.onError(e.message ?: "Network error")
@@ -190,91 +190,98 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
             }
         })
     }
-    
+
     // ==================== TRANSACTIONS ====================
-    
+
     /**
-     * Send transaction
-     * POST /api/v1/master/wallets/:id/send
+     * Send transaction (real secp256k1 sign + broadcast on backend)
+     * POST /api/v1/master-wallet/:id/sign  — {to, amount, password, token?}
      */
-    fun sendTransaction(walletId: String, to: String, amount: Double, token: String, chain: String, callback: ApiCallback<MasterTransaction>) {
+    fun sendTransaction(
+        walletId: String,
+        to: String,
+        amount: Double,
+        token: String,
+        chain: String,
+        password: String,
+        callback: ApiCallback<MasterTransaction>
+    ) {
         val body = JSONObject().apply {
             put("to", to)
             put("amount", amount)
-            put("token", token)
-            put("chain", chain)
+            put("password", password)
+            if (token.isNotEmpty()) put("token", token)
         }
-        
+
         val request = Request.Builder()
-            .url("$baseUrl/api/v1/master/wallets/$walletId/send")
+            .url("$baseUrl/api/v1/master-wallet/$walletId/sign")
             .post(body.toString().toRequestBody(jsonMediaType))
             .headers(getHeaders())
             .build()
-        
+
         executeRequest(request, callback) { parseMasterTransaction(it) }
     }
-    
+
     /**
      * Get transactions
-     * GET /api/v1/master/wallets/:id/transactions
+     * GET /api/v1/master-wallet/:id/transactions
      */
     fun getTransactions(walletId: String, status: String? = null, callback: ApiCallback<ListResponse<MasterTransaction>>) {
         val url = if (status != null) {
-            "$baseUrl/api/v1/master/wallets/$walletId/transactions?status=$status"
+            "$baseUrl/api/v1/master-wallet/$walletId/transactions?status=$status"
         } else {
-            "$baseUrl/api/v1/master/wallets/$walletId/transactions"
+            "$baseUrl/api/v1/master-wallet/$walletId/transactions"
         }
-        
+
         val request = Request.Builder()
             .url(url)
             .get()
             .headers(getHeaders())
             .build()
-        
+
         executeListRequest(request, callback) { parseMasterTransactionList(it) }
     }
-    
+
     /**
-     * Get transaction details
-     * GET /api/v1/master/transactions/:id
+     * Get transaction details. The canonical contract exposes transaction
+     * history only as a list (GET /api/v1/master-wallet/:id/transactions) and
+     * approve/reject actions — there is no single-tx fetch route. Calling this
+     * therefore fails closed rather than hitting a non-canonical endpoint.
      */
     fun getTransaction(txId: String, callback: ApiCallback<MasterTransaction>) {
-        val request = Request.Builder()
-            .url("$baseUrl/api/v1/master/transactions/$txId")
-            .get()
-            .headers(getHeaders())
-            .build()
-        
-        executeRequest(request, callback) { parseMasterTransaction(it) }
+        callback.onError(
+            "getTransaction('$txId') has no canonical backend route; " +
+            "use listTransactions(walletId) instead"
+        )
     }
-    
+
     /**
-     * Cancel transaction
-     * POST /api/v1/master/transactions/:id/cancel
+     * Cancel transaction (mapped to canonical reject route)
+     * POST /api/v1/master-wallet/:id/transactions/:tid/reject
      */
     fun cancelTransaction(txId: String, callback: ApiCallback<MasterTransaction>) {
         val request = Request.Builder()
-            .url("$baseUrl/api/v1/master/transactions/$txId/cancel")
+            .url("$baseUrl/api/v1/master-wallet/transactions/$txId/reject")
             .post("{}".toRequestBody(jsonMediaType))
             .headers(getHeaders())
             .build()
-        
+
         executeRequest(request, callback) { parseMasterTransaction(it) }
     }
-    
+
     // ==================== GAS ====================
-    
+
     /**
      * Get gas price
-     * GET /api/v1/master/gas/:chain
+     * GET /api/v1/gas?chain_id=N  → {gas_price, max_fee, priority_fee}
      */
-    fun getGasPrice(chain: String, callback: ApiCallback<GasPrice>) {
+    fun getGasPrice(chainId: Long, callback: ApiCallback<GasPrice>) {
         val request = Request.Builder()
-            .url("$baseUrl/api/v1/master/gas/$chain")
+            .url("$baseUrl/api/v1/gas?chain_id=$chainId")
             .get()
             .headers(getHeaders())
             .build()
-        
+
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 callback.onError(e.message ?: "Network error")
@@ -283,13 +290,13 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
                 try {
                     val json = JSONObject(response.body?.string() ?: "{}")
                     if (response.isSuccessful) {
-                        val pricesObj = json.optJSONObject("prices")
+                        val gasPrice = json.optString("gas_price", "0")
                         callback.onSuccess(GasPrice(
-                            chain = json.optString("chain", chain),
-                            slow = pricesObj?.optString("slow", "0") ?: "0",
-                            standard = pricesObj?.optString("standard", "0") ?: "0",
-                            fast = pricesObj?.optString("fast", "0") ?: "0",
-                            unit = pricesObj?.optString("unit", "gwei") ?: "gwei"
+                            chain = chainId.toString(),
+                            slow = gasPrice,
+                            standard = json.optString("max_fee", gasPrice),
+                            fast = json.optString("priority_fee", gasPrice),
+                            unit = "gwei"
                         ))
                     } else {
                         callback.onError(json.optString("error", "Request failed"))
@@ -300,78 +307,57 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
             }
         })
     }
-    
+
     /**
-     * Set gas strategy
-     * POST /api/v1/master/gas/strategy
+     * Set gas strategy. The canonical contract only exposes gas *reading*
+     * (GET /api/v1/gas) — there is no gas-strategy persistence route. Calling
+     * this fails closed rather than POSTing to a non-canonical endpoint.
      */
     fun setGasStrategy(chain: String, strategy: String, maxGas: String?, callback: ApiCallback<Unit>) {
-        val body = JSONObject().apply {
-            put("chain", chain)
-            put("strategy", strategy)
-            maxGas?.let { put("max_gas", it) }
-        }
-        
-        val request = Request.Builder()
-            .url("$baseUrl/api/v1/master/gas/strategy")
-            .post(body.toRequestBody(jsonMediaType))
-            .headers(getHeaders())
-            .build()
-        
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                callback.onError(e.message ?: "Network error")
-            }
-            override fun onResponse(call: Call, response: Response) {
-                if (response.isSuccessful) {
-                    callback.onSuccess(Unit)
-                } else {
-                    callback.onError("Failed to set gas strategy")
-                }
-            }
-        })
+        callback.onError(
+            "setGasStrategy has no canonical backend route; " +
+            "read gas via getGasPrice(chainId) instead"
+        )
     }
-    
+
     // ==================== MULTISIG ====================
-    
+
     /**
      * Create multisig wallet
-     * POST /api/v1/master/multisig
+     * POST /api/v1/master-wallet/:id/multisig/wallets
      */
     fun createMultisig(name: String, chain: String, signers: List<String>, requiredSigs: Int, callback: ApiCallback<MultisigWallet>) {
         val body = JSONObject().apply {
             put("name", name)
-            put("chain", chain)
-            put("signers", JSONArray(signers))
-            put("required_sigs", requiredSigs)
+            put("owners", JSONArray(signers))
+            put("threshold", requiredSigs)
         }
-        
+
         val request = Request.Builder()
-            .url("$baseUrl/api/v1/master/multisig")
+            .url("$baseUrl/api/v1/master-wallet/multisig/wallets")
             .post(body.toString().toRequestBody(jsonMediaType))
             .headers(getHeaders())
             .build()
-        
+
         executeRequest(request, callback) { parseMultisig(it) }
     }
-    
+
     /**
      * Sign transaction
-     * POST /api/v1/master/multisig/:id/sign
+     * POST /api/v1/master-wallet/:id/multisig/transactions/:tid/sign
      */
     fun signMultisig(walletId: String, transactionId: String, signer: String, signature: String, callback: ApiCallback<MultisigSignature>) {
         val body = JSONObject().apply {
-            put("transaction_id", transactionId)
             put("signer", signer)
             put("signature", signature)
         }
-        
+
         val request = Request.Builder()
-            .url("$baseUrl/api/v1/master/multisig/$walletId/sign")
+            .url("$baseUrl/api/v1/master-wallet/$walletId/multisig/transactions/$transactionId/sign")
             .post(body.toString().toRequestBody(jsonMediaType))
             .headers(getHeaders())
             .build()
-        
+
         executeRequest(request, callback) { json ->
             MultisigSignature(
                 walletId = json.optString("wallet_id", walletId),
@@ -381,88 +367,58 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
             )
         }
     }
-    
+
     /**
      * Execute multisig
-     * POST /api/v1/master/multisig/:id/execute
+     * POST /api/v1/master-wallet/:id/multisig/transactions/:tid/execute
      */
     fun executeMultisig(walletId: String, transactionId: String, callback: ApiCallback<MasterTransaction>) {
         val body = JSONObject().put("transaction_id", transactionId)
-        
+
         val request = Request.Builder()
-            .url("$baseUrl/api/v1/master/multisig/$walletId/execute")
+            .url("$baseUrl/api/v1/master-wallet/$walletId/multisig/transactions/$transactionId/execute")
             .post(body.toRequestBody(jsonMediaType))
             .headers(getHeaders())
             .build()
-        
+
         executeRequest(request, callback) { parseMasterTransaction(it) }
     }
-    
+
     // ==================== WHITELABEL ====================
-    
+
     /**
-     * Create whitelabel
-     * POST /api/v1/master/whitelabels
+     * Create whitelabel. The canonical contract has no whitelabel routes;
+     * calling this fails closed rather than POSTing to a non-canonical endpoint.
      */
     fun createWhitelabel(name: String, domain: String, branding: String?, feePercent: Double, callback: ApiCallback<Whitelabel>) {
-        val body = JSONObject().apply {
-            put("name", name)
-            put("domain", domain)
-            branding?.let { put("branding", it) }
-            put("fee_percent", feePercent)
-        }
-        
-        val request = Request.Builder()
-            .url("$baseUrl/api/v1/master/whitelabels")
-            .post(body.toString().toRequestBody(jsonMediaType))
-            .headers(getHeaders())
-            .build()
-        
-        executeRequest(request, callback) { parseWhitelabel(it) }
+        callback.onError("createWhitelabel has no canonical backend route")
     }
-    
+
     /**
-     * List whitelabels
-     * GET /api/v1/master/whitelabels
+     * List whitelabels. The canonical contract has no whitelabel routes;
+     * calling this fails closed rather than GETting a non-canonical endpoint.
      */
     fun listWhitelabels(callback: ApiCallback<ListResponse<Whitelabel>>) {
-        val request = Request.Builder()
-            .url("$baseUrl/api/v1/master/whitelabels")
-            .get()
-            .headers(getHeaders())
-            .build()
-        
-        executeListRequest(request, callback) { parseWhitelabelList(it) }
+        callback.onError("listWhitelabels has no canonical backend route")
     }
-    
+
     // ==================== ANALYTICS ====================
-    
+
     /**
-     * Get analytics
-     * GET /api/v1/master/analytics
+     * Get analytics. The canonical contract exposes only per-wallet analytics
+     * (GET /api/v1/master-wallet/:id/analytics/{volume,transactions,wallets});
+     * there is no global analytics route. Calling this fails closed rather than
+     * GETting a non-canonical endpoint.
      */
     fun getAnalytics(period: String = "30d", callback: ApiCallback<MasterAnalytics>) {
-        val request = Request.Builder()
-            .url("$baseUrl/api/v1/master/analytics?period=$period")
-            .get()
-            .headers(getHeaders())
-            .build()
-        
-        executeRequest(request, callback) { json ->
-            val volume = json.optJSONObject("total_volume")
-            MasterAnalytics(
-                period = json.optString("period", period),
-                totalVolume = volume?.optString("incoming", "0") ?: "0",
-                incomingVolume = volume?.optString("incoming", "0") ?: "0",
-                outgoingVolume = volume?.optString("outgoing", "0") ?: "0",
-                totalTransactions = json.optJSONObject("transactions")?.optInt("total", 0) ?: 0,
-                successRate = json.optJSONObject("transactions")?.optDouble("success_rate", 0.0) ?: 0.0
-            )
-        }
+        callback.onError(
+            "getAnalytics has no canonical backend route; " +
+            "use per-wallet analytics (MasterWalletViewModel.loadVolumeStats)"
+        )
     }
-    
+
     // ==================== HELPERS ====================
-    
+
     private fun <T> executeRequest(request: Request, callback: ApiCallback<T>, parser: (JSONObject) -> T) {
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
@@ -482,7 +438,7 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
             }
         })
     }
-    
+
     private fun <T> executeListRequest(request: Request, callback: ApiCallback<ListResponse<T>>, parser: (JSONArray) -> List<T>) {
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
@@ -492,12 +448,17 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
                 try {
                     val json = JSONObject(response.body?.string() ?: "{}")
                     if (response.isSuccessful) {
-                        val data = parser(json.optJSONArray("data") ?: JSONArray())
+                        val arr = json.optJSONArray("data")
+                            ?: json.optJSONArray("wallets")
+                            ?: json.optJSONArray("transactions")
+                            ?: json.optJSONArray("items")
+                            ?: JSONArray()
+                        val data = parser(arr)
                         callback.onSuccess(ListResponse(
                             data = data,
-                            total = json.optInt("total", 0),
+                            total = json.optInt("total", data.size),
                             page = json.optInt("page", 1),
-                            pageSize = json.optInt("page_size", 20)
+                            pageSize = json.optInt("page_size", data.size)
                         ))
                     } else {
                         callback.onError(json.optString("error", "Request failed"))
@@ -508,7 +469,7 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
             }
         })
     }
-    
+
     // Parsers
     private fun parseWallet(json: JSONObject) = Wallet(
         id = json.optString("id", ""),
@@ -520,9 +481,9 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
         balance = json.optString("balance", "0"),
         createdAt = json.optString("created_at", "")
     )
-    
+
     private fun parseWalletList(json: JSONArray): List<Wallet> = (0 until json.length()).map { parseWallet(json.getJSONObject(it)) }
-    
+
     private fun parseMasterTransaction(json: JSONObject) = MasterTransaction(
         id = json.optString("id", ""),
         txHash = json.optString("tx_hash", ""),
@@ -537,9 +498,9 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
         status = json.optString("status", ""),
         createdAt = json.optString("created_at", "")
     )
-    
+
     private fun parseMasterTransactionList(json: JSONArray): List<MasterTransaction> = (0 until json.length()).map { parseMasterTransaction(json.getJSONObject(it)) }
-    
+
     private fun parseMultisig(json: JSONObject): MultisigWallet {
         val signersArray = json.optJSONArray("signers")
         val signers = mutableListOf<String>()
@@ -558,7 +519,7 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
             isActive = json.optBoolean("is_active", true)
         )
     }
-    
+
     private fun parseWhitelabel(json: JSONObject) = Whitelabel(
         id = json.optString("id", ""),
         name = json.optString("name", ""),
@@ -568,7 +529,7 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
         isActive = json.optBoolean("is_active", true),
         usersCount = json.optInt("users_count", 0)
     )
-    
+
     private fun parseWhitelabelList(json: JSONArray): List<Whitelabel> = (0 until json.length()).map { parseWhitelabel(json.getJSONObject(it)) }
 }
 

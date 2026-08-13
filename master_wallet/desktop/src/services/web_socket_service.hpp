@@ -20,6 +20,7 @@
 #include <queue>
 #include <optional>
 #include <chrono>
+#include <condition_variable>
 
 namespace tiger {
 namespace master {
@@ -60,6 +61,16 @@ struct WebSocketMessage {
     MessageType type;
     std::string data;
     uint64_t timestamp;
+};
+
+// Parsed components of a ws://host:port/path URL. Defined here (complete type)
+// so that both the free parseUrl() helper and the member handleClient() share
+// one type across the translation unit.
+struct ParsedUrl {
+    std::string host;
+    uint16_t port = 80;
+    std::string path = "/";
+    bool valid = false;
 };
 
 class WebSocketService {
@@ -109,7 +120,7 @@ private:
     
     // Internal methods
     void acceptConnections();
-    void handleClient(const std::string& clientId);
+    void handleClient(const std::string& clientId, const std::string& target, const ParsedUrl& pu);
     void sendPing(const std::string& clientId);
     void processMessage(const std::string& clientId, const std::string& data);
     
@@ -131,6 +142,7 @@ private:
     
     // Client state
     std::map<std::string, ClientInfo> clients_;
+    std::map<std::string, int> clientSockets_;  // live socket fds for real WS clients
     mutable std::mutex clientsMutex_;
     
     // Message queues

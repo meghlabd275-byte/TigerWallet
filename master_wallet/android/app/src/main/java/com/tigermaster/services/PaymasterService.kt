@@ -8,28 +8,45 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import org.web3j.crypto.ECKeyPair
+import org.web3j.crypto.Hash
+import org.web3j.crypto.Sign
+import java.math.BigInteger
 import java.net.HttpURLConnection
 import java.net.URL
 
 /**
  * MasterWallet Paymaster Service (Android)
- * ERC-4337 Paymaster Implementation for gasless transactions
- * Production-ready with ultra-low latency
+ * ERC-4337 Paymaster support for gasless transactions.
+ *
+ * Gas prices are sourced from the canonical backend (GET /api/v1/gas) — never
+ * hardcoded. Client-side sponsorship signing requires a paymaster signer key;
+ * when one is not available, sponsorship is delegated to the backend
+ * (POST /api/aa/paymaster/sponsor) or fails closed rather than emitting a
+ * fake all-zero signature.
  */
 class PaymasterService(private val context: Context) {
-    
+
+    class PaymasterException(message: String) : Exception(message)
+
     companion object {
-        private const val BASE_URL = "http://localhost:8443"
+        private const val BASE_URL = "http://localhost:8450"
         private const val PREFS_NAME = "paymaster_prefs"
         private const val DEFAULT_ENTRY_POINT = "0x5FF137D4a0ADd64d12757d1f85d2dC51Bf7d7fE3"
     }
-    
+
+    private var authToken: String? = null
+
+    fun setAuthToken(token: String?) {
+        authToken = token
+    }
+
     private val masterKey: MasterKey by lazy {
         MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
     }
-    
+
     private val encryptedPrefs by lazy {
         EncryptedSharedPreferences.create(
             context,
@@ -39,11 +56,11 @@ class PaymasterService(private val context: Context) {
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
     }
-    
+
     private var paymasterAddress: String = ""
     private var isInitialized: Boolean = false
     private var gasPriceCache: Map<String, GasPrices> = emptyMap()
-    
+
     /**
      * Initialize the paymaster service
      */
@@ -51,7 +68,7 @@ class PaymasterService(private val context: Context) {
         return try {
             // Load configuration
             paymasterAddress = encryptedPrefs.getString("paymasterAddress", "") ?: ""
-            
+
             // Start gas price monitoring
             isInitialized = true
             true
@@ -60,7 +77,7 @@ class PaymasterService(private val context: Context) {
             false
         }
     }
-    
+
     /**
      * Validate user operation
      */
@@ -80,26 +97,26 @@ class PaymasterService(private val context: Context) {
         if (sender.isEmpty()) {
             return "AA10: sender not specified"
         }
-        
+
         // Validate nonce
         if (nonce == Long.MAX_VALUE) {
             return "AA11: nonce too large"
         }
-        
+
         // Validate gas limits
         if (callGasLimit > 5000000L || verificationGasLimit > 5000000L) {
             return "AA13: gas limit too high"
         }
-        
+
         // Check sponsorship policy
         val canSponsor = canSponsor(sender, chainId)
         if (!canSponsor.first) {
             return "AA23: not sponsored"
         }
-        
+
         return "0" // Success
     }
-    
+
     /**
      * Sponsor user operation - generate paymasterAndData
      */
@@ -121,108 +138,143 @@ class PaymasterService(private val context: Context) {
                 maxPriorityFeePerGas = (userOp["maxPriorityFeePerGas"] as? Number)?.toLong() ?: 0,
                 chainId = chainId
             )
-            
+
             if (validationResult != "0") {
                 return null
             }
-            
+
             // Build paymasterAndData
             val paymasterAndData = buildPaymasterAndData(userOp, chainId)
-            
+
             // Increment daily usage
             incrementDailyUsage()
-            
+
             return paymasterAndData
         } catch (e: Exception) {
             e.printStackTrace()
             return null
         }
     }
-    
+
     /**
-     * Build paymasterAndData according to ERC-4337
+     * Build paymasterAndData according to ERC-4337. Sponsorship signing that
+     * cannot be done client-side (no paymaster signer key) is delegated to the
+     * canonical backend via POST /api/aa/paymaster/sponsor.
      */
-    private fun buildPaymasterAndData(userOp: Map<String, Any>, chainId: String): String {
+    private suspend fun buildPaymasterAndData(userOp: Map<String, Any>, chainId: String): String {
         val validUntil = 0 // Always valid
-        
-        // Build hash for signing
+
+        val signerKey = getPaymasterSignerKey()
+        if (signerKey == null) {
+            // Delegate sponsorship to the backend, which holds the paymaster key.
+            val sponsored = makeRequest(
+                method = "POST",
+                endpoint = "/api/aa/paymaster/sponsor",
+                body = mapOf(
+                    "userOp" to userOp,
+                    "chainId" to chainId,
+                    "validUntil" to validUntil
+                )
+            )
+            val pd = sponsored.optString("paymasterAndData")
+            if (pd.isEmpty()) {
+                throw PaymasterException(
+                    "Backend did not return paymasterAndData; refusing to sponsor (fail-closed)"
+                )
+            }
+            return pd
+        }
+
         val hash = hashPaymasterData(userOp, chainId, validUntil)
-        
-        // Sign (placeholder - in production use proper signing)
-        val signature = signMessage(hash)
-        
-        // Combine: address(20 bytes) + validUntil(4 bytes) + signature
-        val address = paymasterAddress.ifEmpty { "0x" + "0".repeat(40) }
+        val signature = signMessage(hash, signerKey)
+
+        if (paymasterAddress.isEmpty()) {
+            throw PaymasterException(
+                "Paymaster address not configured; refusing to sponsor (fail-closed)"
+            )
+        }
         val validUntilHex = String.format("%08x", validUntil)
-        
-        return address + validUntilHex + signature
+        return paymasterAddress + validUntilHex + signature
     }
-    
+
+    private fun getPaymasterSignerKey(): ECKeyPair? {
+        val stored = encryptedPrefs.getString("paymasterSignerKey", null) ?: return null
+        return try {
+            val priv = BigInteger(stored, 16)
+            ECKeyPair.create(priv)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun setPaymasterSignerKey(privateKeyHex: String): Boolean {
+        return try {
+            val clean = privateKeyHex.removePrefix("0x")
+            val priv = BigInteger(clean, 16)
+            val keyPair = ECKeyPair.create(priv)
+            encryptedPrefs.edit().putString("paymasterSignerKey", keyPair.privateKey.toString(16)).apply()
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
     /**
-     * Hash paymaster data
+     * Hash paymaster data with keccak256 (Web3j), not SHA-256.
      */
     private fun hashPaymasterData(userOp: Map<String, Any>, chainId: String, validUntil: Int): ByteArray {
-        // Build concatenation of values
         val data = buildString {
             append(paymasterAddress)
             append(String.format("%08x", validUntil))
             append(userOp["sender"] ?: "")
             append(userOp["nonce"] ?: "0")
+            append(chainId)
         }
-        
-        return sha256(data.toByteArray())
+        return Hash.sha3(data.toByteArray())
     }
-    
+
     /**
-     * Sign message
+     * Sign a message with REAL secp256k1 ECDSA via Web3j.
      */
-    private fun signMessage(data: ByteArray): String {
-        // The paymaster signature must be produced by the off-chain sponsor
-        // signing key (real secp256k1 ECDSA over the EIP-191-prefixed userOpHash),
-        // obtained from the sponsor/paymaster RPC (pm_sponsorUserOperation). The
-        // client never holds the sponsor key, so it cannot sign; return empty and
-        // let the bundler request sponsorship from the configured paymaster.
-        return "0x"
+    private fun signMessage(data: ByteArray, keyPair: ECKeyPair): String {
+        val sig = Sign.signMessage(data, keyPair, false)
+        val r = sig.r.toString(16).padStart(64, '0')
+        val s = sig.s.toString(16).padStart(64, '0')
+        val v = (sig.v.toInt() + 27).toString(16).padStart(2, '0')
+        return "0x$r$s$v"
     }
-    
-    /**
-     * SHA-256 hash
-     */
-    private fun sha256(data: ByteArray): ByteArray {
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
-        return digest.digest(data)
-    }
-    
+
     /**
      * Check if transaction can be sponsored
      */
     fun canSponsor(sender: String, chainId: String): Pair<Boolean, String> {
         val policy = getPolicy()
-        
+
         if (!policy.enabled) {
             return Pair(false, "Sponsorship disabled")
         }
-        
+
         // Check daily limit
         if (policy.dailyUsed >= policy.maxDailySponsored) {
             return Pair(false, "Daily limit reached")
         }
-        
+
         // Check sender whitelist
         if (policy.requireWhitelist && policy.allowedSenders.isNotEmpty()) {
             if (!policy.allowedSenders.contains(sender)) {
                 return Pair(false, "Sender not whitelisted")
             }
         }
-        
+
         // Check blocked senders
         if (policy.blockedSenders.contains(sender)) {
             return Pair(false, "Sender blocked")
         }
-        
+
         return Pair(true, "")
     }
-    
+
     /**
      * Get current gas prices
      */
@@ -234,24 +286,32 @@ class PaymasterService(private val context: Context) {
                 return cached
             }
         }
-        
+
         // Fetch fresh prices
         return fetchGasPrices(chainId)
     }
-    
+
     /**
-     * Fetch gas prices from network
+     * Fetch real gas prices from the canonical backend (GET /api/v1/gas).
+     * Never returns hardcoded/simulated values; on failure returns null.
      */
     private suspend fun fetchGasPrices(chainId: String): GasPrices? = withContext(Dispatchers.IO) {
         try {
-            // In production, fetch from multiple RPC endpoints
-            // For now, return simulated values
+            val result = makeRequest("GET", "/api/v1/gas?chain_id=$chainId")
+            val gasPrice = result.optLong("gas_price", -1)
+            val maxFee = result.optLong("max_fee", -1)
+            val priorityFee = result.optLong("priority_fee", -1)
+            if (gasPrice <= 0 && maxFee <= 0) return@withContext null
+
+            val resolvedMax = if (maxFee > 0) maxFee else gasPrice
+            val resolvedPriority = if (priorityFee > 0) priorityFee else (resolvedMax / 10L)
+            val resolvedBase = if (gasPrice > 0) gasPrice else resolvedMax
             GasPrices(
-                baseFeePerGas = 20000000000L, // 20 Gwei
-                maxFeePerGas = 30000000000L, // 30 Gwei
-                maxPriorityFeePerGas = 1000000000L, // 1 Gwei
-                suggestedMaxFeePerGas = 36000000000L, // 36 Gwei
-                suggestedMaxPriorityFeePerGas = 1200000000L, // 1.2 Gwei
+                baseFeePerGas = resolvedBase,
+                maxFeePerGas = resolvedMax,
+                maxPriorityFeePerGas = resolvedPriority,
+                suggestedMaxFeePerGas = resolvedMax,
+                suggestedMaxPriorityFeePerGas = resolvedPriority,
                 timestamp = System.currentTimeMillis()
             ).also { prices ->
                 gasPriceCache = gasPriceCache + (chainId to prices)
@@ -261,7 +321,7 @@ class PaymasterService(private val context: Context) {
             null
         }
     }
-    
+
     /**
      * Calculate post-op gas
      */
@@ -269,32 +329,32 @@ class PaymasterService(private val context: Context) {
         val baseGas = 21000L
         val perUserOpGas = 21000L
         val perCalldataByte = 16L
-        
+
         // Estimate based on typical call data
         val estimatedCallDataGas = 1000L * perCalldataByte
-        
+
         return baseGas + perUserOpGas + estimatedCallDataGas + (actualGasUsed / 10)
     }
-    
+
     /**
      * Calculate fee for user operation
      */
     suspend fun calculateFee(userOp: Map<String, Any>, chainId: String): Long {
         val gasPrices = getGasPrices(chainId) ?: return 0L
-        
+
         val callGasLimit = (userOp["callGasLimit"] as? Number)?.toLong() ?: 100000L
         val verificationGasLimit = (userOp["verificationGasLimit"] as? Number)?.toLong() ?: 150000L
         val preVerificationGas = (userOp["preVerificationGas"] as? Number)?.toLong() ?: 21000L
-        
+
         val totalGas = callGasLimit + verificationGasLimit + preVerificationGas
         val policy = getPolicy()
-        
+
         val baseFee = totalGas * gasPrices.maxFeePerGas
         val markup = (baseFee * policy.markupPercent / 100).toLong()
-        
+
         return baseFee + markup
     }
-    
+
     /**
      * Get sponsorship policy
      */
@@ -322,7 +382,7 @@ class PaymasterService(private val context: Context) {
             getDefaultPolicy().also { savePolicy(it) }
         }
     }
-    
+
     /**
      * Get default policy
      */
@@ -340,7 +400,7 @@ class PaymasterService(private val context: Context) {
             markupPercent = 10.0
         )
     }
-    
+
     /**
      * Save policy
      */
@@ -357,10 +417,10 @@ class PaymasterService(private val context: Context) {
             put("requireWhitelist", policy.requireWhitelist)
             put("markupPercent", policy.markupPercent)
         }
-        
+
         encryptedPrefs.edit().putString("sponsorshipPolicy", json.toString()).apply()
     }
-    
+
     /**
      * Increment daily usage
      */
@@ -369,7 +429,7 @@ class PaymasterService(private val context: Context) {
         val updatedPolicy = policy.copy(dailyUsed = policy.dailyUsed + 1)
         savePolicy(updatedPolicy)
     }
-    
+
     /**
      * Reset daily usage (called daily)
      */
@@ -378,7 +438,7 @@ class PaymasterService(private val context: Context) {
         val updatedPolicy = policy.copy(dailyUsed = 0L)
         savePolicy(updatedPolicy)
     }
-    
+
     /**
      * Create new policy
      */
@@ -391,30 +451,30 @@ class PaymasterService(private val context: Context) {
             false
         }
     }
-    
+
     /**
-     * Get paymaster balance
+     * Get paymaster balance from the canonical backend.
      */
     suspend fun getPaymasterBalance(chainId: String): String {
         return try {
             val result = makeRequest(
                 method = "GET",
-                endpoint = "/api/paymaster/balance/$chainId"
+                endpoint = "/api/aa/paymaster/balance?chain_id=$chainId"
             )
             result.optString("balance", "0")
         } catch (e: Exception) {
             "0"
         }
     }
-    
+
     /**
-     * Fund paymaster
+     * Fund paymaster via the canonical backend.
      */
     suspend fun fundPaymaster(chainId: String, amount: String): Boolean {
         return try {
             makeRequest(
                 method = "POST",
-                endpoint = "/api/paymaster/fund",
+                endpoint = "/api/aa/paymaster/fund",
                 body = mapOf("chainId" to chainId, "amount" to amount)
             )
             true
@@ -423,13 +483,13 @@ class PaymasterService(private val context: Context) {
             false
         }
     }
-    
+
     /**
      * Get statistics
      */
     fun getStats(): PaymasterStats {
         val policy = getPolicy()
-        
+
         return PaymasterStats(
             totalSponsored = policy.dailyUsed,
             dailyLimit = policy.maxDailySponsored,
@@ -437,19 +497,19 @@ class PaymasterService(private val context: Context) {
             markupPercent = policy.markupPercent
         )
     }
-    
+
     /**
      * Check if service is initialized
      */
     fun isInitialized(): Boolean = isInitialized
-    
+
     /**
      * Get entry point address
      */
     fun getEntryPoint(): String = DEFAULT_ENTRY_POINT
-    
+
     // Private helper
-    
+
     private suspend fun makeRequest(
         method: String,
         endpoint: String,
@@ -457,30 +517,45 @@ class PaymasterService(private val context: Context) {
     ): JSONObject = withContext(Dispatchers.IO) {
         val url = URL("$BASE_URL$endpoint")
         val connection = url.openConnection() as HttpURLConnection
-        
+
         connection.requestMethod = method
         connection.setRequestProperty("Content-Type", "application/json")
-        connection.doOutput = true
-        
+        connection.connectTimeout = 15000
+        connection.readTimeout = 15000
+        authToken?.takeIf { it.isNotEmpty() }?.let {
+            connection.setRequestProperty("Authorization", "Bearer $it")
+        }
+
+        if (body != null) connection.doOutput = true
+        connection.connect()
+
         body?.let {
             val bodyBytes = JSONObject(it).toString().toByteArray()
-            connection.outputStream.write(bodyBytes)
+            connection.outputStream.use { os -> os.write(bodyBytes) }
         }
-        
+
         val responseCode = connection.responseCode
         val responseBody = if (responseCode in 200..299) {
-            connection.inputStream.bufferedReader().readText()
+            connection.inputStream?.bufferedReader()?.readText() ?: ""
         } else {
             connection.errorStream?.bufferedReader()?.readText() ?: ""
         }
-        
+
+        connection.disconnect()
+
+        if (responseCode !in 200..299) {
+            throw PaymasterException(
+                "Backend $endpoint failed: HTTP $responseCode ${responseBody.take(200)}"
+            )
+        }
+
         if (responseBody.isNotEmpty()) {
             JSONObject(responseBody)
         } else {
             JSONObject()
         }
     }
-    
+
     private fun JSONArray.toStringList(): List<String> {
         return (0 until length()).map { get(it) as String }
     }
