@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../components/ThemeProvider';
 
 interface GasPrice {
@@ -19,6 +19,19 @@ interface ChainGas {
   gasPrice: GasPrice;
 }
 
+const API_BASE_URL = typeof window !== 'undefined' ? '' : (process.env.BACKEND_URL || 'http://localhost:8443');
+
+const GAS_CHAINS: { id: number; name: string; symbol: string }[] = [
+  { id: 1, name: 'Ethereum', symbol: 'ETH' },
+  { id: 56, name: 'BNB Smart Chain', symbol: 'BNB' },
+  { id: 137, name: 'Polygon', symbol: 'MATIC' },
+  { id: 42161, name: 'Arbitrum One', symbol: 'ARB' },
+  { id: 10, name: 'Optimism', symbol: 'OP' },
+  { id: 8453, name: 'Base', symbol: 'ETH' },
+  { id: 43114, name: 'Avalanche', symbol: 'AVAX' },
+  { id: 250, name: 'Fantom', symbol: 'FTM' },
+];
+
 export default function GasEstimation() {
   const [chainsGas, setChainsGas] = useState<ChainGas[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,11 +41,56 @@ export default function GasEstimation() {
   const [gasLimit, setGasLimit] = useState<string>('21000');
   const { isDark } = useTheme();
 
-  useEffect(() => {
-    setChainsGas([]);
-    setError('Live gas estimates are unavailable until an authenticated multi-chain gas provider is configured.');
-    setLoading(false);
+  const loadGas = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const results = await Promise.allSettled(
+        GAS_CHAINS.map(async (ch) => {
+          const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+          const res = await fetch(`${API_BASE_URL}/api/v1/gas?chain_id=${ch.id}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
+          if (!res.ok) throw new Error(`gas fetch failed for ${ch.name}`);
+          const data = await res.json();
+          const gwei = parseFloat(data.gas_price_gwei || '0');
+          const slowGwei = (gwei * 0.85).toFixed(2);
+          const stdGwei = gwei.toFixed(2);
+          const fastGwei = (gwei * 1.2).toFixed(2);
+          return {
+            chainId: ch.id,
+            chainName: ch.name,
+            symbol: ch.symbol,
+            gasPrice: {
+              slow: slowGwei,
+              standard: stdGwei,
+              fast: fastGwei,
+              slowWait: '~5 min',
+              standardWait: '~3 min',
+              fastWait: '~30 sec',
+            },
+          } as ChainGas;
+        })
+      );
+      const ok: ChainGas[] = [];
+      let lastErr: string | null = null;
+      for (const r of results) {
+        if (r.status === 'fulfilled') ok.push(r.value);
+        else lastErr = r.reason instanceof Error ? r.reason.message : 'gas fetch failed';
+      }
+      setChainsGas(ok);
+      if (ok.length === 0 && lastErr) setError(lastErr);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load gas prices');
+      setChainsGas([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadGas();
+  }, [loadGas]);
 
   const calculateCost = (gasPrice: string, limit: string): string => {
     const price = parseFloat(gasPrice);

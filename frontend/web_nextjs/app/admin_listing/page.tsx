@@ -246,13 +246,39 @@ export default function AdminListingPage() {
     }
   }, [requests, adminToken]);
   
-  const handleFeature = useCallback(async (_tokenId: string, _featured: boolean) => {
-    setError('Feature updates are unavailable until the authenticated listing administration API is configured')
-  }, []);
-  
-  const handleVerify = useCallback(async (_tokenId: string, _verified: boolean) => {
-    setError('Verification updates are unavailable until the authenticated listing administration API is configured')
-  }, []);
+  const handleFeature = useCallback(async (tokenId: string, featured: boolean) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/listing/admin/listings/${tokenId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+        },
+        body: JSON.stringify({ status: featured ? 'featured' : 'approved' }),
+      });
+      if (!response.ok) throw new Error('Failed to update featured status');
+      setTokens(tokens => tokens.map(t => t.id === tokenId ? { ...t, featured } : t));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update featured status');
+    }
+  }, [adminToken]);
+
+  const handleVerify = useCallback(async (tokenId: string, verified: boolean) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/listing/admin/listings/${tokenId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+        },
+        body: JSON.stringify({ status: verified ? 'approved' : 'pending', verified }),
+      });
+      if (!response.ok) throw new Error('Failed to update verification status');
+      setTokens(tokens => tokens.map(t => t.id === tokenId ? { ...t, verified } : t));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update verification status');
+    }
+  }, [adminToken]);
   
   const handleViewDetail = useCallback((request: ListingRequest) => {
     setSelectedRequest(request);

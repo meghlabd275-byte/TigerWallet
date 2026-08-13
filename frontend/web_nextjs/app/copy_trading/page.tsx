@@ -1,7 +1,24 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../components/ThemeProvider';
+
+const API_BASE_URL = typeof window !== 'undefined' ? '' : (process.env.BACKEND_URL || 'http://localhost:8443');
+
+async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+  const res = await fetch(`${API_BASE_URL}/api/v1${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options?.headers || {}),
+    },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error((data as { error?: string }).error || `Request failed (${res.status})`);
+  return data as T;
+}
 
 // Types
 interface Trader {
@@ -44,16 +61,64 @@ interface Position {
 export default function CopyTrading() {
   const { isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<'traders' | 'signals' | 'portfolio'>('traders');
-  const [traders] = useState<Trader[]>([]);
-  const [signals] = useState<Signal[]>([]);
+  const [traders, setTraders] = useState<Trader[]>([]);
+  const [signals, setSignals] = useState<Signal[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [selectedTrader, setSelectedTrader] = useState<Trader | null>(null);
   const [copyAmount, setCopyAmount] = useState('');
   const [loading, setLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const loadData = useCallback(async () => {
+    setDataLoading(true);
+    setError(null);
+    try {
+      const [tradersRes, signalsRes, copiersRes] = await Promise.allSettled([
+        fetchAPI<{ traders?: Trader[] } | Trader[]>('/copy-trading/traders'),
+        fetchAPI<{ signals?: Signal[] } | Signal[]>('/copy-trading/signals'),
+        fetchAPI<{ copiers?: Position[] } | Position[]>('/copy-trading/copiers'),
+      ]);
+      if (tradersRes.status === 'fulfilled') {
+        const t = tradersRes.value as Trader[] | { traders?: Trader[] };
+        setTraders(Array.isArray(t) ? t : t.traders || []);
+      }
+      if (signalsRes.status === 'fulfilled') {
+        const s = signalsRes.value as Signal[] | { signals?: Signal[] };
+        setSignals(Array.isArray(s) ? s : s.signals || []);
+      }
+      if (copiersRes.status === 'fulfilled') {
+        const c = copiersRes.value as Position[] | { copiers?: Position[] };
+        setPositions(Array.isArray(c) ? c : c.copiers || []);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load copy-trading data');
+    } finally {
+      setDataLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
   const handleFollow = async (trader: Trader) => {
-    setMessage({ type: 'error', text: 'Following traders is unavailable until an authenticated copy-trading API is configured.' });
+    setLoading(true);
+    try {
+      await fetchAPI('/copy-trading/follow', {
+        method: 'POST',
+        body: JSON.stringify({ traderAddress: trader.address }),
+      });
+      setTraders((prev) => prev.map((t) =>
+        t.address === trader.address ? { ...t, isFollowing: true, followers: t.followers + 1 } : t
+      ));
+      setMessage({ type: 'success', text: `Now following ${formatAddress(trader.address)}` });
+    } catch (e) {
+      setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Failed to follow trader' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCopyTrade = async (signal: Signal) => {
@@ -61,8 +126,20 @@ export default function CopyTrading() {
       setMessage({ type: 'error', text: 'Please enter a valid amount' });
       return;
     }
-    
-    setMessage({ type: 'error', text: 'Copy execution is unavailable until an authenticated execution provider is configured.' });
+    setLoading(true);
+    try {
+      await fetchAPI('/copy-trading/follow', {
+        method: 'POST',
+        body: JSON.stringify({ signalId: signal.id, amount: copyAmount }),
+      });
+      setMessage({ type: 'success', text: 'Copy trade submitted successfully' });
+      setCopyAmount('');
+      loadData();
+    } catch (e) {
+      setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Failed to execute copy trade' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const formatAddress = (addr: string) => {
@@ -115,6 +192,20 @@ export default function CopyTrading() {
       </header>
 
       {/* Message */}
+      {error && (
+        <div className="max-w-7xl mx-auto px-4 pt-4">
+          <div className={`p-3 rounded-lg ${isDark ? 'bg-red-900/40 text-red-300' : 'bg-red-100 text-red-800'}`}>
+            {error}
+          </div>
+        </div>
+      )}
+      {dataLoading && (
+        <div className="max-w-7xl mx-auto px-4 pt-4">
+          <div className={`p-3 rounded-lg ${isDark ? 'bg-slate-800 text-gray-300' : 'bg-blue-100 text-blue-800'}`}>
+            Loading copy-trading data…
+          </div>
+        </div>
+      )}
       {message && (
         <div className="max-w-7xl mx-auto px-4 pt-4">
           <div className={`p-3 rounded-lg ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>

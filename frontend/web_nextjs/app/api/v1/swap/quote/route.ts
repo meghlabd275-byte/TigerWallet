@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
-import { swapProxyGet } from '../../_proxy';
+import { swapProxyMutation } from '../../_proxy';
 
-export async function GET(req: NextRequest) {
-  return swapProxyGet(req, '/swap/quote');
+export async function POST(req: NextRequest) {
+  return swapProxyMutation(req, '/swap/quote', 'POST');
 }

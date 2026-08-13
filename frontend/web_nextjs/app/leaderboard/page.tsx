@@ -14,6 +14,23 @@ import {
 } from '@mui/icons-material';
 import { useTheme } from '../components/ThemeProvider';
 
+const API_BASE_URL = typeof window !== 'undefined' ? '' : (process.env.BACKEND_URL || 'http://localhost:8443');
+
+async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+  const res = await fetch(`${API_BASE_URL}/api/v1${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options?.headers || {}),
+    },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error((data as { error?: string }).error || `Request failed (${res.status})`);
+  return data as T;
+}
+
 // ============================================================================
 // Types & Interfaces
 // ============================================================================
@@ -126,9 +143,20 @@ export default function LeaderboardPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
+      const res = await fetchAPI<{ traders?: Trader[] } | Trader[]>('/copy-trading/traders');
+      const t = res as Trader[] | { traders?: Trader[] };
+      const list = Array.isArray(t) ? t : t.traders || [];
+      setTraders(list);
+      setLeaderboard(list.map((tr, idx) => ({
+        rank: idx + 1,
+        trader: tr,
+        monthlyReturn: tr.monthlyReturn,
+        totalPnL: tr.totalPnL,
+      })));
+    } catch (e) {
       setTraders([]);
       setLeaderboard([]);
-      setSnackbar({ open: true, message: 'Live leaderboard data is unavailable until an authenticated copy-trading API is configured.', severity: 'info' });
+      setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to load leaderboard data', severity: 'error' });
     } finally {
       setLoading(false);
     }
@@ -147,13 +175,34 @@ export default function LeaderboardPage() {
       setSnackbar({ open: true, message: 'Please enter a valid amount', severity: 'error' });
       return;
     }
-
-    setContentCopying(false);
-    setSnackbar({ open: true, message: 'Copy execution is unavailable until an authenticated execution provider is configured.', severity: 'error' });
+    setContentCopying(true);
+    try {
+      await fetchAPI('/copy-trading/follow', {
+        method: 'POST',
+        body: JSON.stringify({ traderAddress: trader.address, amount: copyAmount }),
+      });
+      setSnackbar({ open: true, message: `Now copying ${trader.address.slice(0, 8)}…`, severity: 'success' });
+      setContentCopying(false);
+      setShowTraderDetail(false);
+    } catch (e) {
+      setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to start copy trading', severity: 'error' });
+      setContentCopying(false);
+    }
   };
 
   const handleFollowTrader = async (trader: Trader) => {
-    setSnackbar({ open: true, message: 'Follow management is unavailable until an authenticated copy-trading API is configured.', severity: 'error' });
+    try {
+      await fetchAPI('/copy-trading/follow', {
+        method: 'POST',
+        body: JSON.stringify({ traderAddress: trader.address }),
+      });
+      setTraders((prev) => prev.map((t) =>
+        t.address === trader.address ? { ...t, isFollowing: !t.isFollowing, followers: t.isFollowing ? t.followers - 1 : t.followers + 1 } : t
+      ));
+      setSnackbar({ open: true, message: trader.isFollowing ? 'Unfollowed' : 'Now following', severity: 'success' });
+    } catch (e) {
+      setSnackbar({ open: true, message: e instanceof Error ? e.message : 'Failed to update follow status', severity: 'error' });
+    }
   };
 
   // ============================================================================
