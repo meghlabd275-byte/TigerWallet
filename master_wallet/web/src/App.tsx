@@ -128,18 +128,45 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState({
-    totalWallets: 15,
-    totalVolume: '$12.5M',
-    totalUsers: 8,
-    pendingTx: 3,
-    activeRules: 5,
-  };
+    totalWallets: 0,
+    totalVolume: '$0',
+    totalUsers: 0,
+    pendingTx: 0,
+    activeRules: 0,
+  });
+  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
 
-  const recentTransactions: Transaction[] = [
-    { id: '1', hash: '0x742d35Cc6634C0532925a3b844Bc9e7595f', type: 'Transfer', amount: '$5,000', status: 'Confirmed', from: '0x111', to: '0x222', timestamp: '2 min ago' },
-    { id: '2', hash: '0x1111111111111111111111111111111111111111', type: 'Swap', amount: '$12,500', status: 'Pending', from: '0x333', to: '0x444', timestamp: '5 min ago' },
-    { id: '3', hash: '0x2222222222222222222222222222222222222222', type: 'Transfer', amount: '$3,200', status: 'Confirmed', from: '0x555', to: '0x666', timestamp: '10 min ago' },
-  ];
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const txs = await masterWalletAPI.getTransactions();
+        const wallets = await masterWalletAPI.getSubWallets();
+        if (!mounted) return;
+        setRecentTransactions(txs.slice(0, 10));
+        const pending = txs.filter((t) => t.status?.toLowerCase() === 'pending').length;
+        setStats({
+          totalWallets: wallets.length,
+          totalVolume: '$0',
+          totalUsers: wallets.reduce((sum, w) => sum + (w.userCount || 0), 0),
+          pendingTx: pending,
+          activeRules: 0,
+        });
+      } catch (e: any) {
+        if (mounted) {
+          // Fail-closed: no fabricated dashboard data. Show honest empty state.
+          setRecentTransactions([]);
+          setStats({ totalWallets: 0, totalVolume: '$0', totalUsers: 0, pendingTx: 0, activeRules: 0 });
+          setError('Failed to load dashboard data: ' + (e?.message || 'backend unreachable'));
+        }
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -206,13 +233,30 @@ const Dashboard = () => {
 
 // Wallets Page
 const Wallets = () => {
-  const wallets: SubWallet[] = [
-    { id: '1', name: 'Trading Wallet', address: '0x1111111111111111111111111111111111111111', balance: '$45,000', status: 'Active', userCount: 3 },
-    { id: '2', name: 'Staking Wallet', address: '0x2222222222222222222222222222222222222222', balance: '$23,500', status: 'Active', userCount: 2 },
-    { id: '3', name: 'Reserve Wallet', address: '0x3333333333333333333333333333333333333333', balance: '$12,000', status: 'Inactive', userCount: 1 },
-    { id: '4', name: 'Marketing Wallet', address: '0x4444444444444444444444444444444444444444', balance: '$8,750', status: 'Active', userCount: 4 },
-    { id: '5', name: 'Development Wallet', address: '0x5555555555555555555555555555555555555555', balance: '$5,200', status: 'Active', userCount: 2 },
-  ];
+  const [wallets, setWallets] = useState<SubWallet[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const list = await masterWalletAPI.getSubWallets();
+        if (mounted) setWallets(list);
+      } catch (e: any) {
+        // Fail-closed: no fabricated wallets. Show honest empty state.
+        if (mounted) {
+          setWallets([]);
+          setError('Failed to load wallets: ' + (e?.message || 'backend unreachable'));
+        }
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   return (
     <div className="space-y-6">

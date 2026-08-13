@@ -208,44 +208,10 @@ public:
             }
         }
         
-        // In production, would fetch from actual URI
-        // For now, return mock data for common patterns
-        
-        json metadata;
-        
-        if (uri.find("ipfs://") == 0) {
-            // IPFS URI - would resolve via IPFS gateway
-            // Return mock for demonstration
-            metadata = create_mock_metadata(uri);
-        } else if (uri.find("ar://") == 0) {
-            // Arweave - would resolve via Arweave gateway
-            metadata = create_mock_metadata(uri);
-        } else {
-            // HTTP URL - would fetch directly
-            metadata = create_mock_metadata(uri);
-        }
-        
-        // Cache the result
-        {
-            std::lock_guard<std::mutex> lock(cache_mutex_);
-            if (cached_metadata_.size() >= max_cache_size_) {
-                // Simple eviction: remove oldest 10%
-                size_t to_remove = cached_metadata_.size() / 10;
-                for (size_t i = 0; i < to_remove && !cache_timestamps_.empty(); i++) {
-                    auto oldest = std::min_element(cache_timestamps_.begin(), cache_timestamps_.end(),
-                        [](const auto& a, const auto& b) { return a.second < b.second; });
-                    if (oldest != cache_timestamps_.end()) {
-                        cached_metadata_.erase(oldest->first);
-                        cache_timestamps_.erase(oldest->first);
-                    }
-                }
-            }
-            
-            cached_metadata_[uri] = metadata.dump();
-            cache_timestamps_[uri] = std::chrono::steady_clock::now();
-        }
-        
-        return metadata;
+        // Fail-closed: real metadata fetching requires an HTTP client to resolve
+        // the token URI (IPFS gateway, Arweave gateway, or HTTP endpoint). None
+        // is wired into this header-only library, so we cannot fabricate metadata.
+        return std::nullopt;
     }
     
     // Parse metadata into NFT struct
@@ -305,26 +271,10 @@ public:
     }
     
 private:
-    json create_mock_metadata(const std::string& uri) {
-        // Generate deterministic mock data based on URI
-        std::hash<std::string> hasher;
-        size_t seed = hasher(uri);
-        
-        std::stringstream ss;
-        ss << seed;
-        
-        json metadata = {
-            {"name", "TigerWallet NFT #" + ss.str().substr(0, 6)},
-            {"description", "A unique digital collectible on the blockchain."},
-            {"image", "https://example.com/nft/image.png"},
-            {"attributes", json::array({
-                {{"trait_type", "Background"}, {"value", "Blue"}},
-                {{"trait_type", "Eyes"}, {"value", "Laser"}},
-                {{"trait_type", "Hat"}, {"value", "Crown"}}
-            })}
-        };
-        
-        return metadata;
+    json create_mock_metadata(const std::string& /*uri*/) {
+        // Fail-closed: real metadata must be fetched from the token URI HTTP/IPFS
+        // endpoint via an HTTP client. No fake names/descriptions/images are generated.
+        return json::object();
     }
 };
 
@@ -439,28 +389,10 @@ public:
     }
     
     // Fetch collection data
-    std::optional<Collection> fetch_collection(const std::string& address) {
-        Collection collection;
-        collection.address = address;
-        
-        // In production, would fetch from marketplace API
-        // Generate mock data based on address
-        collection.name = "Collection " + address.substr(0, 8);
-        collection.description = "A unique NFT collection";
-        collection.blockchain = chain_id_;
-        collection.total_supply = 10000;
-        collection.num_owners = 5000;
-        collection.floor_price = 0.5; // ETH
-        collection.volume_24h = 100.0;
-        collection.volume_total = 10000.0;
-        
-        // Cache
-        {
-            std::lock_guard<std::mutex> lock(collections_mutex_);
-            collections_[address] = collection;
-        }
-        
-        return collection;
+    std::optional<Collection> fetch_collection(const std::string& /*address*/) {
+        // Fail-closed: real collection data must come from the marketplace API or
+        // on-chain query. Do not fabricate names, supply, owners, or prices.
+        return std::nullopt;
     }
     
     // Get NFT
@@ -471,7 +403,6 @@ public:
         NFT nft;
         nft.contract_address = contract;
         nft.token_id = token_id;
-        nft.name = "NFT #" + token_id;
         nft.blockchain = chain_id_;
         
         // Fetch metadata URI from contract
@@ -510,10 +441,8 @@ public:
             }
         }
         
-        // If no cached listings, return mock
-        if (result.empty() && config_.marketplace != Marketplace::Unknown) {
-            result = generate_mock_listings(contract, token_id, limit);
-        }
+        // Fail-closed: real listings must come from the marketplace contract or an
+        // on-chain query. Cached listings above remain intact; nothing is fabricated.
         
         return result;
     }
@@ -568,11 +497,12 @@ public:
     
     // Get offers for NFT
     std::vector<Offer> get_offers(
-        const std::string& contract,
-        const std::string& token_id
+        const std::string& /*contract*/,
+        const std::string& /*token_id*/
     ) {
-        // In production, would fetch from marketplace API
-        return generate_mock_offers(contract, token_id);
+        // Fail-closed: real offers must be fetched from the marketplace contract or
+        // an on-chain query. Do not fabricate offerers or prices.
+        return {};
     }
     
     // Create listing (returns transaction data)
@@ -650,12 +580,13 @@ public:
     
     // Get user's NFTs
     std::vector<NFT> get_user_nfts(
-        const std::string& owner_address,
-        const std::string& contract = "",
-        int limit = 50
+        const std::string& /*owner_address*/,
+        const std::string& /*contract*/ = "",
+        int /*limit*/ = 50
     ) {
-        // In production, would fetch from marketplace API
-        return generate_mock_user_nfts(owner_address, contract, limit);
+        // Fail-closed: real NFTs must come from on-chain balanceOf / tokenOfOwnerByIndex
+        // via the backend. Do not fabricate token IDs or ownership.
+        return {};
     }
     
     // Get user's listings
@@ -721,90 +652,40 @@ public:
     }
     
 private:
-    std::string get_metadata_uri(const std::string& contract, const std::string& token_id) {
-        // In production, would call contract to get URI
-        // For now, generate mock URI
-        
-        if (chain_id_ == "1") {
-            // Ethereum - ERC-721
-            return "ipfs://Qm" + contract.substr(2, 44) + "/" + token_id;
-        } else if (chain_id_ == "101") {
-            // Solana
-            return "https://api.mainnet.magiceden.io/v2/tokens/" + contract + "/" + token_id;
-        }
-        
+    std::string get_metadata_uri(const std::string& /*contract*/, const std::string& /*token_id*/) {
+        // Fail-closed: the real token URI must be obtained by calling the NFT
+        // contract's tokenURI/tokenURI(uint256) via an eth_call through the backend.
+        // Do not fabricate IPFS/HTTP URIs from the contract address.
         return "";
     }
     
     std::vector<Listing> generate_mock_listings(
-        const std::string& contract,
-        const std::string& token_id,
-        int limit
+        const std::string& /*contract*/,
+        const std::string& /*token_id*/,
+        int /*limit*/
     ) {
-        std::vector<Listing> listings;
-        
-        for (int i = 0; i < limit; i++) {
-            Listing listing;
-            listing.id = "0x" + std::to_string(i);
-            listing.nft_contract = contract;
-            listing.nft_token_id = token_id.empty() ? std::to_string(i) : token_id;
-            listing.seller = "0x742d35Cc6634C0532925a3b844Bc454e4438f44e";
-            listing.price_token = "0x0000000000000000000000000000000000000000000"; // ETH
-            listing.price_amount = "0x" + std::to_string(1000000000000000000ULL + i * 100000000000000000ULL); // 0.01 + i ETH
-            listing.marketplace = config_.name;
-            listing.created_at = time(nullptr) - i * 3600;
-            listing.expires_at = listing.created_at + 86400;
-            listing.is_active = true;
-            
-            listings.push_back(listing);
-        }
-        
-        return listings;
+        // Fail-closed: real listings come from the marketplace contract or an
+        // on-chain query. Do not fabricate prices, sellers, or listing IDs.
+        return {};
     }
     
     std::vector<Offer> generate_mock_offers(
-        const std::string& contract,
-        const std::string& token_id
+        const std::string& /*contract*/,
+        const std::string& /*token_id*/
     ) {
-        std::vector<Offer> offers;
-        
-        for (int i = 0; i < 3; i++) {
-            Offer offer;
-            offer.id = "0xoffer" + std::to_string(i);
-            offer.nft_contract = contract;
-            offer.nft_token_id = token_id;
-            offer.offerer = "0x" + std::string(40, 'a' + i);
-            offer.price_token = "0x0000000000000000000000000000000000000000000";
-            offer.price_amount = "0x" + std::to_string(1500000000000000000ULL - i * 100000000000000000ULL);
-            offer.marketplace = config_.name;
-            offer.created_at = time(nullptr) - i * 7200;
-            offer.expires_at = offer.created_at + 86400;
-            offer.is_active = true;
-            
-            offers.push_back(offer);
-        }
-        
-        return offers;
+        // Fail-closed: real offers come from the marketplace contract or an
+        // on-chain query. Do not fabricate offerers or prices.
+        return {};
     }
     
     std::vector<NFT> generate_mock_user_nfts(
-        const std::string& owner,
-        const std::string& contract,
-        int limit
+        const std::string& /*owner*/,
+        const std::string& /*contract*/,
+        int /*limit*/
     ) {
-        std::vector<NFT> nfts;
-        
-        for (int i = 0; i < limit; i++) {
-            NFT nft;
-            nft.token_id = std::to_string(i);
-            nft.contract_address = contract.empty() ? "0x1234567890abcdef1234567890abcdef12345678" : contract;
-            nft.name = "NFT #" + std::to_string(i);
-            nft.owner = owner;
-            nft.blockchain = chain_id_;
-            nfts.push_back(nft);
-        }
-        
-        return nfts;
+        // Fail-closed: real NFTs come from on-chain balanceOf / tokenOfOwnerByIndex
+        // via the backend. Do not fabricate token IDs or ownership.
+        return {};
     }
     
     // Transaction data builders

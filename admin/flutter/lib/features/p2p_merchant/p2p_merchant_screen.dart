@@ -4,8 +4,10 @@
  */
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../../core/network/api_client.dart';
+import '../../../core/network/dio_client.dart';
 
 class P2PMerchantScreen extends StatefulWidget {
   const P2PMerchantScreen({Key? key}) : super(key: key);
@@ -15,10 +17,13 @@ class P2PMerchantScreen extends StatefulWidget {
 }
 
 class _P2PMerchantScreenState extends State<P2PMerchantScreen> {
-  List<dynamic> _merchants = [];
+  List<Map<String, dynamic>> _merchants = [];
   bool _loading = true;
+  String? _error;
   String _filter = 'all';
   bool _isDark = false;
+
+  ApiClient? _api;
 
   @override
   void initState() {
@@ -26,59 +31,41 @@ class _P2PMerchantScreenState extends State<P2PMerchantScreen> {
     _loadMerchants();
   }
 
+  Future<ApiClient> _client() async {
+    if (_api != null) return _api!;
+    final prefs = await SharedPreferences.getInstance();
+    _api = DioClient.withPrefs(prefs);
+    return _api!;
+  }
+
   Future<void> _loadMerchants() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
-      final response = await http.get(
-        Uri.parse('http://localhost:8444/api/v1/admin/p2p/merchants?status=$_filter'),
-        headers: {'Authorization': 'Bearer ${await _getToken()}'},
-      );
-      if (response.statusCode == 200) {
-        setState(() => _merchants = json.decode(response.body)['data']);
-      }
+      final api = await _client();
+      _merchants = await api.getAdminP2PMerchants(status: _filter);
+      setState(() {});
     } catch (e) {
-      _merchants = _getMockMerchants();
+      setState(() {
+        _error = e.toString();
+        _merchants = [];
+      });
     } finally {
       setState(() => _loading = false);
     }
   }
 
-  Future<String> _getToken() async => '';
-
-  List<dynamic> _getMockMerchants() {
-    return [
-      {
-        'id': '1',
-        'business_name': 'CryptoShop Ltd',
-        'email': 'contact@cryptoshop.com',
-        'country': 'US',
-        'total_volume': 150000.0,
-        'transaction_count': 250,
-        'rating': 4.8,
-        'status': 'approved',
-      },
-      {
-        'id': '2',
-        'business_name': 'P2P Trading Hub',
-        'email': 'support@p2phub.com',
-        'country': 'UK',
-        'total_volume': 50000.0,
-        'transaction_count': 80,
-        'rating': 4.5,
-        'status': 'pending',
-      },
-    ];
-  }
-
   Future<void> _approveMerchant(String id) async {
     try {
-      await http.post(
-        Uri.parse('http://localhost:8444/api/v1/admin/p2p/merchants/$id/approve'),
-        headers: {'Authorization': 'Bearer ${await _getToken()}'},
-      );
+      final api = await _client();
+      await api.approveP2PMerchant(id);
       _loadMerchants();
     } catch (e) {
-      // Handle error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Approve failed: $e')));
+      }
     }
   }
 
@@ -99,14 +86,13 @@ class _P2PMerchantScreenState extends State<P2PMerchantScreen> {
     );
     if (reason != null && reason.isNotEmpty) {
       try {
-        await http.post(
-          Uri.parse('http://localhost:8444/api/v1/admin/p2p/merchants/$id/reject'),
-          headers: {'Authorization': 'Bearer ${await _getToken()}'},
-          body: json.encode({'reason': reason}),
-        );
+        final api = await _client();
+        await api.rejectP2PMerchant(id, reason);
         _loadMerchants();
       } catch (e) {
-        // Handle error
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Reject failed: $e')));
+        }
       }
     }
   }
@@ -141,7 +127,12 @@ class _P2PMerchantScreenState extends State<P2PMerchantScreen> {
           Expanded(child: _buildStatCard('Total', '${_merchants.length}')),
           Expanded(child: _buildStatCard('Approved', '${_merchants.where((m) => m['status'] == 'approved').length}')),
           Expanded(child: _buildStatCard('Pending', '${_merchants.where((m) => m['status'] == 'pending').length}')),
-          Expanded(child: _buildStatCard('Volume', '\$${(_merchants.fold(0.0, (sum, m) => sum + (m['total_volume'] ?? 0.0)) / 1000).toStringAsFixed(0)}K')),
+          Expanded(
+            child: _buildStatCard(
+              'Volume',
+              '\$${(_merchants.fold(0.0, (sum, m) => sum + ((m['total_volume'] as num?) ?? 0.0)) / 1000).toStringAsFixed(0)}K',
+            ),
+          ),
         ],
       ),
     );
@@ -151,10 +142,12 @@ class _P2PMerchantScreenState extends State<P2PMerchantScreen> {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Column(children: [
-          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
-        ]),
+        child: Column(
+          children: [
+            Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+          ],
+        ),
       ),
     );
   }
@@ -164,11 +157,32 @@ class _P2PMerchantScreenState extends State<P2PMerchantScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          FilterChip(label: const Text('All'), selected: _filter == 'all', onSelected: (_) { setState(() => _filter = 'all'); _loadMerchants(); }),
+          FilterChip(
+            label: const Text('All'),
+            selected: _filter == 'all',
+            onSelected: (_) {
+              setState(() => _filter = 'all');
+              _loadMerchants();
+            },
+          ),
           const SizedBox(width: 8),
-          FilterChip(label: const Text('Pending'), selected: _filter == 'pending', onSelected: (_) { setState(() => _filter = 'pending'); _loadMerchants(); }),
+          FilterChip(
+            label: const Text('Pending'),
+            selected: _filter == 'pending',
+            onSelected: (_) {
+              setState(() => _filter = 'pending');
+              _loadMerchants();
+            },
+          ),
           const SizedBox(width: 8),
-          FilterChip(label: const Text('Approved'), selected: _filter == 'approved', onSelected: (_) { setState(() => _filter = 'approved'); _loadMerchants(); }),
+          FilterChip(
+            label: const Text('Approved'),
+            selected: _filter == 'approved',
+            onSelected: (_) {
+              setState(() => _filter = 'approved');
+              _loadMerchants();
+            },
+          ),
         ],
       ),
     );
@@ -176,6 +190,39 @@ class _P2PMerchantScreenState extends State<P2PMerchantScreen> {
 
   Widget _buildMerchantsList() {
     if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                'Failed to load P2P merchants: $_error',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(onPressed: _loadMerchants, child: const Text('Retry')),
+          ],
+        ),
+      );
+    }
+    if (_merchants.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.store_mall_directory_outlined, size: 48, color: Colors.grey),
+            const SizedBox(height: 12),
+            Text('No P2P merchants found', style: TextStyle(color: Colors.grey[600])),
+          ],
+        ),
+      );
+    }
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: _merchants.length,
@@ -191,27 +238,43 @@ class _P2PMerchantScreenState extends State<P2PMerchantScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(merchant['business_name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    Chip(label: Text(merchant['status'].toString().toUpperCase()), backgroundColor: _getStatusColor(merchant['status'])),
+                    Text('${merchant['business_name'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    Chip(
+                      label: Text('${merchant['status'] ?? ''}'.toString().toUpperCase()),
+                      backgroundColor: _getStatusColor(merchant['status']?.toString() ?? ''),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text('${merchant['email']} • ${merchant['country']}'),
+                Text('${merchant['email'] ?? '—'} • ${merchant['country'] ?? '—'}'),
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    _buildDetail('Volume', '\$${(merchant['total_volume'] / 1000).toStringAsFixed(1)}K'),
-                    _buildDetail('Txns', '${merchant['transaction_count']}'),
-                    _buildDetail('Rating', '${merchant['rating']} ★'),
+                    _buildDetail(
+                      'Volume',
+                      merchant['total_volume'] != null
+                          ? '\$${((merchant['total_volume'] as num) / 1000).toStringAsFixed(1)}K'
+                          : '—',
+                    ),
+                    _buildDetail('Txns', '${merchant['transaction_count'] ?? '—'}'),
+                    _buildDetail('Rating', '${merchant['rating'] ?? '—'} ★'),
                   ],
                 ),
                 if (merchant['status'] == 'pending') ...[
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      ElevatedButton(onPressed: () => _approveMerchant(merchant['id']), style: ElevatedButton.styleFrom(backgroundColor: Colors.green), child: const Text('Approve')),
+                      ElevatedButton(
+                        onPressed: () => _approveMerchant(merchant['id'].toString()),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                        child: const Text('Approve'),
+                      ),
                       const SizedBox(width: 8),
-                      ElevatedButton(onPressed: () => _rejectMerchant(merchant['id']), style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: const Text('Reject')),
+                      ElevatedButton(
+                        onPressed: () => _rejectMerchant(merchant['id'].toString()),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                        child: const Text('Reject'),
+                      ),
                     ],
                   ),
                 ],
@@ -236,10 +299,14 @@ class _P2PMerchantScreenState extends State<P2PMerchantScreen> {
 
   Color _getStatusColor(String status) {
     switch (status) {
-      case 'approved': return Colors.green;
-      case 'pending': return Colors.orange;
-      case 'rejected': return Colors.red;
-      default: return Colors.grey;
+      case 'approved':
+        return Colors.green;
+      case 'pending':
+        return Colors.orange;
+      case 'rejected':
+        return Colors.red;
+      default:
+        return Colors.grey;
     }
   }
 }

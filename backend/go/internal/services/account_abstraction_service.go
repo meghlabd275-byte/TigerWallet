@@ -248,13 +248,12 @@ func deriveSmartAccountAddress(owner, salt string) string {
 }
 
 func (s *AccountAbstractionService) verifySignature(userOp *models.UserOperation) bool {
-	// In production, verify EIP-4337 signature
-	// Hash the user operation and verify against owner's signature
-	data := fmt.Sprintf("%s%d%s%s", userOp.Sender, userOp.Nonce, userOp.CallData, userOp.Signature)
-	hash := sha256.Sum256([]byte(data))
-	
-	// Simplified - in production use proper signature verification
-	return len(userOp.Signature) > 0
+	// Fail-closed: an EIP-4337 owner signature must be verified with real
+	// secp256k1 ECDSA recovery over the EntryPoint userOpHash (keccak256, NOT
+	// sha256) and the recovered address must match the account owner. Until the
+	// go-ethereum crypto dependency is wired, signatures are REJECTED rather
+	// than accepted on length alone. Never accept a non-empty signature as valid.
+	return false
 }
 
 func parseBigInt(s string) *big.Int {

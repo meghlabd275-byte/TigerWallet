@@ -57,6 +57,11 @@ struct PaymasterConfig {
     uint64_t maxGasLimit;
     double markupPercent;
     bool enableBundlerIntegration;
+    // Off-chain sponsor endpoint that returns a real ECDSA signature over the
+    // EIP-191-prefixed userOpHash (the Pimlico/Stackup verifying-paymaster
+    // pattern). When empty, buildPaymasterAndData fails closed rather than
+    // emitting a placeholder signature.
+    std::string sponsorEndpoint;
     
     PaymasterConfig();
 };
@@ -239,6 +244,17 @@ private:
         const UserOperation& userOp,
         const std::string& chainId
     );
+
+    // Compute the Keccak-256 userOpHash over the packed UserOperation fields.
+    std::string computeUserOpHash(const UserOperation& userOp, const std::string& chainId) const;
+    // Request a real ECDSA signature from the off-chain sponsor endpoint.
+    std::string requestSponsorSignature(const std::string& endpoint, const std::string& userOpHash) const;
+    // Minimal HTTP POST (JSON) via libcurl.
+    std::string httpPostJson(const std::string& url, const std::string& body) const;
+    // Minimal flat-JSON field extractor.
+    std::string extractJsonField(const std::string& json, const std::string& field) const;
+    std::string toHex(const std::string& bytes) const;
+    std::string fromHex(const std::string& hex) const;
     
     void recordSuccess(const UserOperation& userOp, uint64_t gasUsed);
     void recordFailure(const UserOperation& userOp, const std::string& error);

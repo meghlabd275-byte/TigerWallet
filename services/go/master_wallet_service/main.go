@@ -74,19 +74,13 @@ type AdminOperation struct {
 }
 
 // Generate master wallet
+// Key generation is delegated to the canonical wallet_api (real BIP-39
+// mnemonic + BIP-32/BIP-44 HD derivation + secp256k1 + keccak256 address).
+// This service must NOT fabricate keys from a hardcoded seed via sha256/XOR
+// (the previous implementation did, producing insecure non-BIP-39 keys). It
+// returns an error so the caller surfaces 'delegate to wallet_api' until wired.
 func generateMasterWallet(chain string, chainID int, index int) (string, string, error) {
-	// Use admin's master seed
-	seed := "tiger_master_seed_2026"
-	seedHash := sha256.Sum256([]byte(seed))
-	pathHash := sha256.Sum256([]byte(fmt.Sprintf("m/44'/%d'/0'/0'/%d'", chainID, index)))
-	
-	var key []byte
-	for i := 0; i < 32; i++ {
-		key = append(key, seedHash[i]^pathHash[i])
-	}
-	
-	address := fmt.Sprintf("0x%x", sha256.Sum256(key)[:20])
-	return address, hex.EncodeToString(key), nil
+	return "", "", fmt.Errorf("master wallet key generation must be delegated to canonical wallet_api /wallets (real BIP-39/BIP-32/secp256k1); do not fabricate keys locally")
 }
 
 // Handlers
@@ -138,7 +132,7 @@ func createMasterWalletHandler(c *gin.Context) {
 	
 	// Encrypt keys
 	encryptedKey, _ := encryptData(privateKey)
-	seedEncrypted, _ := encryptData("tiger_master_seed_2026")
+	seedEncrypted, _ := encryptData("") // seed is held by canonical wallet_api, not stored here
 	
 	// Save master wallet
 	var walletID int

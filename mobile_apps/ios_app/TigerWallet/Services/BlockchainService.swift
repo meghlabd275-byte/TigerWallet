@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import CommonCrypto
 import Combine
 
 // MARK: - Blockchain Types
@@ -367,14 +368,13 @@ class BlockchainService {
     }
     
     private func deriveEVMKeypair(from seed: [UInt8]) throws -> (address: String, publicKey: String) {
-        // Simplified EVM key derivation
-        // In production, use proper secp256k1 library
-        
-        let publicKey = seed.prefix(32)
-        let addressData = Data(publicKey).suffix(20)
-        let address = "0x" + addressData.map { String(format: "%02x", $0) }.joined()
-        
-        return (address, "0x" + publicKey.map { String(format: "%02x", $0) }.joined())
+        // Fail-closed: real EVM key derivation requires secp256k1 (private key ->
+        // public key scalar mult) + keccak256(pubkey)[12:] for the address. Neither
+        // is available on-device here without a secp256k1 library; using the seed
+        // bytes directly as the public key / address (the previous implementation)
+        // produces INVALID addresses. Wallet creation/import must delegate to the
+        // canonical wallet_api (real BIP-39/BIP-32/secp256k1). Do not fabricate.
+        throw BlockchainError.keyDerivationFailed
     }
     
     private func deriveSolanaKeypair(from seed: [UInt8]) throws -> (address: String, publicKey: String) {
@@ -432,16 +432,30 @@ class BlockchainService {
     }
     
     private func deriveBIP39Seed(from mnemonic: String) throws -> [UInt8] {
-        // Simplified BIP39 seed derivation
-        // In production, use proper PBKDF2 with HMAC-SHA512
-        
+        // Real BIP-39: PBKDF2-HMAC-SHA512(mnemonic, "mnemonic" + passphrase, 2048, 64).
+        // The previous XOR-fold implementation was NOT BIP-39 and produced wrong seeds.
         let normalized = mnemonic.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let salt = "mnemonic"
         var seed = [UInt8](repeating: 0, count: 64)
-        
-        for (i, char) in normalized.utf8.enumerated() {
-            seed[i % 64] ^= char
+        let mnemonicData = Array(normalized.utf8)
+        let saltData = Array(salt.utf8)
+        let status = mnemonicData.withUnsafeBufferPointer { mp -> Int32 in
+            saltData.withUnsafeBufferPointer { sp -> Int32 in
+                seed.withUnsafeMutableBufferPointer { out -> Int32 in
+                    CCKeyDerivationPBKDF(
+                        CCPBKDFAlgorithm(kCCPBKDF2),
+                        mp.baseAddress, mnemonicData.count,
+                        sp.baseAddress, saltData.count,
+                        CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA512),
+                        2048,
+                        out.baseAddress, 64
+                    )
+                }
+            }
         }
-        
+        guard status == kCCSuccess else {
+            throw BlockchainError.keyDerivationFailed
+        }
         return seed
     }
     
@@ -789,6 +803,7 @@ class RPCProvider {
 // MARK: - Errors
 
 enum BlockchainError: Error {
+    case keyDerivationFailed
     case invalidSeedPhrase
     case keyGenerationFailed
     case unsupportedBlockchain

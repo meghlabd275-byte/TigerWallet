@@ -9,6 +9,7 @@ license = "MIT"
 [dependencies]
 # Cryptography
 k256 = { version = "0.13", features = ["ecdsa", "arithmetic"] }
+p256 = { version = "0.13", features = ["ecdsa", "arithmetic"] }
 ed25519-dalek = { version = "2.0", features = ["rand_core", "zeroize"] }
 crypto-bigint = "0.5"
 sha2 = "0.10"

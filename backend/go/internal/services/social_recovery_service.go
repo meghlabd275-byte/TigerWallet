@@ -292,7 +292,10 @@ func hashRecoveryKey(key string) string {
 }
 
 func verifyGuardianSignature(guardianAddress, message, signature string) bool {
-	// In production, verify the ECDSA signature
-	// For now, just check signature format
-	return len(signature) > 10
+	// Fail-closed: a guardian signature must be verified with real secp256k1
+	// ECDSA recovery (ecrecover over the keccak256 message hash) and the
+	// recovered address must match guardianAddress. Until the go-ethereum
+	// crypto dependency is wired, signatures are REJECTED rather than
+	// accepted on format alone. Never accept a >10-char string as valid.
+	return false
 }

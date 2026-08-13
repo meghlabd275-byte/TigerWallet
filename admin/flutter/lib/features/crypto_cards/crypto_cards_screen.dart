@@ -4,8 +4,10 @@
  */
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../../core/network/api_client.dart';
+import '../../../core/network/dio_client.dart';
 
 class CryptoCardsScreen extends StatefulWidget {
   const CryptoCardsScreen({Key? key}) : super(key: key);
@@ -15,102 +17,73 @@ class CryptoCardsScreen extends StatefulWidget {
 }
 
 class _CryptoCardsScreenState extends State<CryptoCardsScreen> {
-  List<dynamic> _cards = [];
+  List<Map<String, dynamic>> _cards = [];
   bool _loading = true;
+  String? _error;
   String _filter = 'all';
   final _searchController = TextEditingController();
   bool _isDark = false;
+
+  ApiClient? _api;
 
   @override
   void initState() {
     super.initState();
     _loadCards();
-    _loadTheme();
   }
 
-  Future<void> _loadTheme() async {
-    // Load theme from shared preferences or API
-    setState(() {});
+  Future<ApiClient> _client() async {
+    if (_api != null) return _api!;
+    final prefs = await SharedPreferences.getInstance();
+    _api = DioClient.withPrefs(prefs);
+    return _api!;
   }
 
   Future<void> _loadCards() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
-      final response = await http.get(
-        Uri.parse('http://localhost:8444/api/v1/admin/crypto-cards?status=$_filter'),
-        headers: {'Authorization': 'Bearer ${await _getToken()}'},
-      );
-      if (response.statusCode == 200) {
-        setState(() {
-          _cards = json.decode(response.body)['data'];
-        });
-      }
+      final api = await _client();
+      _cards = await api.getAdminCryptoCards(status: _filter);
+      setState(() {});
     } catch (e) {
-      // Handle error - show mock data in demo mode
-      _cards = _getMockCards();
+      setState(() {
+        _error = e.toString();
+        _cards = [];
+      });
     } finally {
       setState(() => _loading = false);
     }
   }
 
-  Future<String> _getToken() async {
-    // Get token from storage
-    return '';
-  }
-
-  List<dynamic> _getMockCards() {
-    return [
-      {
-        'id': '1',
-        'user_name': 'John Doe',
-        'card_number': '4532123456789012',
-        'currency': 'USDT',
-        'balance': 5000.00,
-        'limit': 10000.00,
-        'status': 'active',
-        'card_type': 'virtual',
-      },
-      {
-        'id': '2',
-        'user_name': 'Jane Smith',
-        'card_number': '4532987654321098',
-        'currency': 'USDT',
-        'balance': 2500.00,
-        'limit': 5000.00,
-        'status': 'blocked',
-        'card_type': 'physical',
-      },
-    ];
-  }
-
   Future<void> _blockCard(String cardId) async {
     try {
-      await http.post(
-        Uri.parse('http://localhost:8444/api/v1/admin/crypto-cards/$cardId/block'),
-        headers: {'Authorization': 'Bearer ${await _getToken()}'},
-      );
+      final api = await _client();
+      await api.blockCryptoCard(cardId);
       _loadCards();
     } catch (e) {
-      // Show error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Block failed: $e')));
+      }
     }
   }
 
   Future<void> _activateCard(String cardId) async {
     try {
-      await http.post(
-        Uri.parse('http://localhost:8444/api/v1/admin/crypto-cards/$cardId/activate'),
-        headers: {'Authorization': 'Bearer ${await _getToken()}'},
-      );
+      final api = await _client();
+      await api.activateCryptoCard(cardId);
       _loadCards();
     } catch (e) {
-      // Show error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Activate failed: $e')));
+      }
     }
   }
 
   void _toggleTheme() {
-    setState(() {
-      _isDark = !_isDark;
-    });
+    setState(() => _isDark = !_isDark);
   }
 
   @override
@@ -145,7 +118,12 @@ class _CryptoCardsScreenState extends State<CryptoCardsScreen> {
         children: [
           Expanded(child: _buildStatCard('Total Cards', '${_cards.length}')),
           Expanded(child: _buildStatCard('Active', '${_cards.where((c) => c['status'] == 'active').length}')),
-          Expanded(child: _buildStatCard('Balance', '\$${_cards.fold(0.0, (sum, c) => sum + (c['balance'] ?? 0.0)).toStringAsFixed(0)}')),
+          Expanded(
+            child: _buildStatCard(
+              'Balance',
+              '\$${_cards.fold(0.0, (sum, c) => sum + ((c['balance'] as num?) ?? 0.0)).toStringAsFixed(0)}',
+            ),
+          ),
         ],
       ),
     );
@@ -202,40 +180,67 @@ class _CryptoCardsScreenState extends State<CryptoCardsScreen> {
   }
 
   Widget _buildCardsList() {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                'Failed to load crypto cards: $_error',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(onPressed: _loadCards, child: const Text('Retry')),
+          ],
+        ),
+      );
     }
-
+    if (_cards.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.credit_card_outlined, size: 48, color: Colors.grey),
+            const SizedBox(height: 12),
+            Text('No crypto cards found', style: TextStyle(color: Colors.grey[600])),
+          ],
+        ),
+      );
+    }
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: _cards.length,
       itemBuilder: (context, index) {
         final card = _cards[index];
+        final cardNumber = card['card_number']?.toString() ?? '—';
+        final masked = cardNumber.length >= 4 ? cardNumber.substring(cardNumber.length - 4) : cardNumber;
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
           child: ListTile(
-            leading: CircleAvatar(
-              child: Text(card['card_type'] == 'virtual' ? 'V' : 'P'),
-            ),
-            title: Text('•••• ${card['card_number'].toString().substring(12)}'),
-            subtitle: Text('${card['user_name']} - ${card['currency']} ${card['balance']}'),
+            leading: CircleAvatar(child: Text(card['card_type'] == 'virtual' ? 'V' : 'P')),
+            title: Text('•••• $masked'),
+            subtitle: Text('${card['user_name'] ?? '—'} - ${card['currency'] ?? ''} ${card['balance'] ?? ''}'),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Chip(
-                  label: Text(card['status']),
+                  label: Text('${card['status'] ?? ''}'),
                   backgroundColor: card['status'] == 'active' ? Colors.green : Colors.red,
                 ),
                 const SizedBox(width: 8),
                 if (card['status'] == 'active')
-                  IconButton(
-                    icon: const Icon(Icons.block),
-                    onPressed: () => _blockCard(card['id']),
-                  )
+                  IconButton(icon: const Icon(Icons.block), onPressed: () => _blockCard(card['id'].toString()))
                 else
                   IconButton(
                     icon: const Icon(Icons.check_circle),
-                    onPressed: () => _activateCard(card['id']),
+                    onPressed: () => _activateCard(card['id'].toString()),
                   ),
               ],
             ),

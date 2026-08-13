@@ -177,8 +177,12 @@ class PaymasterService(private val context: Context) {
      * Sign message
      */
     private fun signMessage(data: ByteArray): String {
-        // Placeholder - in production use proper ECDSA signing
-        return "0x" + "0".repeat(130)
+        // The paymaster signature must be produced by the off-chain sponsor
+        // signing key (real secp256k1 ECDSA over the EIP-191-prefixed userOpHash),
+        // obtained from the sponsor/paymaster RPC (pm_sponsorUserOperation). The
+        // client never holds the sponsor key, so it cannot sign; return empty and
+        // let the bundler request sponsorship from the configured paymaster.
+        return "0x"
     }
     
     /**

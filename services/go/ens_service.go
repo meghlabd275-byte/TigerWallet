@@ -557,35 +557,38 @@ func (w *WalletSDK) Initialize() error {
 	return nil
 }
 
-// CreateWallet creates a new wallet
+// CreateWallet creates a new wallet via the canonical wallet API (real BIP-39
+// mnemonic + secp256k1 key derivation). This SDK does not perform key management
+// itself; it must delegate to the backend. Returns an error until wired.
 func (w *WalletSDK) CreateWallet() (string, string, error) {
-	// Returns address, mnemonic
-	return "0x...", "word1 word2 ... word24", nil
+	return "", "", fmt.Errorf("CreateWallet not wired: delegate to canonical wallet_api /wallets")
 }
 
-// ImportWallet imports existing wallet
+// ImportWallet imports an existing wallet via the canonical wallet API.
 func (w *WalletSDK) ImportWallet(mnemonic string) (string, error) {
-	return "0x...", nil
+	return "", fmt.Errorf("ImportWallet not wired: delegate to canonical wallet_api /wallets")
 }
 
-// SignTransaction signs a transaction
+// SignTransaction signs a transaction via the canonical wallet API (real
+// secp256k1 over the RLP-encoded tx). Never returns a placeholder signature.
 func (w *WalletSDK) SignTransaction(tx *Transaction) (string, error) {
-	return "0x...", nil
+	return "", fmt.Errorf("SignTransaction not wired: delegate to canonical wallet_api /sign")
 }
 
-// SignMessage signs a message
+// SignMessage signs a message via the canonical wallet API (real secp256k1
+// EIP-191 personal_sign). Never returns a placeholder signature.
 func (w *WalletSDK) SignMessage(message string) (string, error) {
-	return "0x...", nil
+	return "", fmt.Errorf("SignMessage not wired: delegate to canonical wallet_api /sign")
 }
 
-// SignTypedData signs typed data (EIP-712)
+// SignTypedData signs EIP-712 typed data via the canonical wallet API.
 func (w *WalletSDK) SignTypedData(data string) (string, error) {
-	return "0x...", nil
+	return "", fmt.Errorf("SignTypedData not wired: delegate to canonical wallet_api /sign")
 }
 
-// GetBalance gets token balance
+// GetBalance gets a token balance via the canonical wallet API.
 func (w *WalletSDK) GetBalance(address, token string) (string, error) {
-	return "0", nil
+	return "", fmt.Errorf("GetBalance not wired: delegate to canonical wallet_api /balance")
 }
 
 // SendTransaction sends a transaction

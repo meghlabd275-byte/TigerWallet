@@ -286,8 +286,8 @@ private:
         eth_usdc.address = "0x88e6A0c2dDD26EEb57f7344B303f1c5372A19dB1";
         eth_usdc.token_a = tokens_["0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"];
         eth_usdc.token_b = tokens_["0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"];
-        eth_usdc.reserve_a = "10000";
-        eth_usdc.reserve_b = "35000000";
+                eth_usdc.reserve_a = ""; // real reserves from pair contract getReserves()
+                eth_usdc.reserve_b = ""; // real reserves from pair contract getReserves()
         eth_usdc.fee_bps = 30;
         
         pools_cache_["0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2-0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"] = {eth_usdc};
@@ -305,16 +305,9 @@ private:
     }
     
     std::string generate_random_hash() {
-        static const char hex_chars[] = "0123456789abcdef";
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_int_distribution<> dis(0, 15);
-        
-        std::stringstream ss;
-        for (int i = 0; i < 64; i++) {
-            ss << hex_chars[dis(gen)];
-        }
-        return ss.str();
+        // Fail-closed: never fabricate a transaction hash. Real tx hashes come
+        // from the on-chain broadcast receipt (wallet_api /send), not RNG.
+        return "";
     }
 };
 
@@ -454,9 +447,10 @@ public:
     
     SwapResult execute_swap(const Order& order) override {
         SwapResult result;
-        result.success = true;
+        // Fail-closed: real swap execution requires broadcast via wallet_api /send.
+        result.success = false;
         result.order_id = order.order_id;
-        result.tx_hash = "0x" + generate_random_hash();
+        result.tx_hash = "";
         return result;
     }
     
@@ -480,16 +474,9 @@ private:
     }
     
     std::string generate_random_hash() {
-        static const char hex_chars[] = "0123456789abcdef";
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_int_distribution<> dis(0, 15);
-        
-        std::stringstream ss;
-        for (int i = 0; i < 64; i++) {
-            ss << hex_chars[dis(gen)];
-        }
-        return ss.str();
+        // Fail-closed: never fabricate a transaction hash. Real tx hashes come
+        // from the on-chain broadcast receipt (wallet_api /send), not RNG.
+        return "";
     }
 };
 

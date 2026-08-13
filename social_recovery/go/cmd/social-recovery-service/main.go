@@ -309,9 +309,13 @@ return hex.EncodeToString(h[:])
 }
 
 // Helper: Verify signature
+// Fail-closed: a guardian signature must be verified with real secp256k1
+// ECDSA recovery (ecrecover over the keccak256 message hash). The stdlib
+// crypto/ecdsa path does not support secp256k1 recovery, so until the
+// go-ethereum crypto dependency is wired, signatures are REJECTED rather
+// than accepted. Never accept a non-empty signature as valid.
 func verifySignature(pubKey, msg, sig string) bool {
-// In production, would use proper cryptographic verification
-return len(sig) > 0
+return false
 }
 
 func main() {

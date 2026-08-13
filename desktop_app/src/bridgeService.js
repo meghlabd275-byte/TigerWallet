@@ -63,37 +63,11 @@ class BridgeService {
             });
             return await response.json();
         } catch (error) {
+            // Fail-closed: never fabricate a bridge quote. Surface the real error
+            // so the caller can retry against the canonical bridge service.
             console.error('Failed to get bridge quote:', error);
-            // Return mock quote
-            return this.getMockQuote(fromChain, toChain, token, amount);
+            throw new Error('Bridge quote unavailable: ' + (error?.message || 'backend unreachable'));
         }
-    }
-
-    /**
-     * Get mock quote for demo
-     */
-    getMockQuote(fromChain, toChain, token, amount) {
-        const feePercent = 0.001; // 0.1%
-        const bridgeFee = amount * feePercent;
-        const receivedAmount = amount - bridgeFee;
-        
-        // Find route
-        const route = this.supportedRoutes.find(
-            r => r.from === fromChain && r.to === toChain && r.tokens.includes(token)
-        );
-
-        return {
-            fromChain,
-            toChain,
-            token,
-            sendAmount: amount.toString(),
-            receiveAmount: receivedAmount.toString(),
-            bridgeFee: bridgeFee.toString(),
-            estimatedTime: route?.time || '15-30m',
-            provider: route?.provider || 'stargate',
-            priceImpact: 0.01,
-            route: [fromChain, toChain]
-        };
     }
 
     /**

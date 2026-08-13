@@ -40,14 +40,44 @@ class AuthService {
     }
     
     func login(email: String, password: String, completion: @escaping (Result<User, Error>) -> Void) {
-        // Simulate API call
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-            self?.token = "mock_token_\(UUID().uuidString)"
-            self?.refreshToken = "mock_refresh_\(UUID().uuidString)"
-            
-            let user = User(id: UUID().uuidString, email: email, username: "Admin", role: .admin)
-            completion(.success(user))
+        // Real backend login against the canonical wallet_api /api/v1/auth/login
+        // (real JWT, NOT a simulated mock_token). Fails-closed on any error.
+        let apiBase = ProcessInfo.processInfo.environment["ADMIN_API_URL"] ?? "http://localhost:8443"
+        guard let url = URL(string: apiBase + "/api/v1/auth/login") else {
+            completion(.failure(NSError(domain: "AuthService", code: 0,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid ADMIN_API_URL"])))
+            return
         }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "email": email, "password": password
+        ])
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self,
+                  error == nil,
+                  let http = response as? HTTPURLResponse,
+                  http.statusCode == 200,
+                  let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let token = json["token"] as? String else {
+                DispatchQueue.main.async {
+                    completion(.failure(error ?? NSError(domain: "AuthService", code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "Login failed"])))
+                }
+                return
+            }
+            self.token = token
+            self.refreshToken = json["refresh_token"] as? String
+            let user = User(
+                id: (json["user_id"] as? String) ?? UUID().uuidString,
+                email: (json["email"] as? String) ?? email,
+                username: (json["username"] as? String) ?? "Admin",
+                role: .admin
+            )
+            DispatchQueue.main.async { completion(.success(user)) }
+        }.resume()
     }
     
     func logout() {

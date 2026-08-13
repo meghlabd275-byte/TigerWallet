@@ -12,6 +12,7 @@
 #include <random>
 #include <curl/curl.h>
 #include <openssl/hmac.h>
+#include <openssl/bn.h>
 #include <openssl/eth_sm.h>
 
 namespace quickswap {
@@ -226,13 +227,15 @@ std::optional<BigInt> RPCClient::allowance(const std::string& owner, const std::
 }
 
 std::optional<Pool> RPCClient::getPoolByPair(const std::string& tokenA, const std::string& tokenB) {
-    Pool pool;
-    
-    // For now, return a placeholder
-    // In production, query factory contract
-    pool.address = "0x0000000000000000000000000000000000000000";
-    
-    return pool;
+    // Real pool discovery requires an eth_call to the Uniswap-V2-compatible
+    // factory's getPair(tokenA, tokenB) (selector 0xe6a43905). Without a
+    // configured factory address we return std::nullopt rather than a
+    // zero-address placeholder, which would route swaps to a non-existent
+    // pool. Callers should configure the per-chain factory and call
+    // getPoolByAddress with the resolved pair address.
+    (void)tokenA;
+    (void)tokenB;
+    return std::nullopt;
 }
 
 std::optional<Pool> RPCClient::getPoolByAddress(const std::string& address) {
@@ -310,11 +313,19 @@ std::optional<Quote> RPCClient::getQuoteV3(const std::string& fromToken, const s
 
 std::optional<std::string> RPCClient::sendRawTransaction(const std::string& signedTx) {
     auto result = call("eth_sendRawTransaction", "[\"" + signedTx + "\"]");
-    
+
     if (!result) return std::nullopt;
-    
-    // Parse transaction hash from response
-    return "0x0000000000000000000000000000000000000000000000000000000000000000";
+
+    // Parse the real transaction hash from the JSON-RPC "result" field.
+    // eth_sendRawTransaction returns {"result":"0x<32-byte hash>"} on success
+    // or {"error":{...}} on failure. We extract the 0x-prefixed hash.
+    size_t resultPos = result->find("\"result\"");
+    if (resultPos == std::string::npos) return std::nullopt;
+    size_t hashStart = result->find("0x", resultPos);
+    if (hashStart == std::string::npos) return std::nullopt;
+    size_t hashEnd = result->find("\"", hashStart);
+    if (hashEnd == std::string::npos) return std::nullopt;
+    return result->substr(hashStart, hashEnd - hashStart);
 }
 
 std::optional<std::string> RPCClient::getTransactionReceipt(const std::string& txHash) {
@@ -342,8 +353,12 @@ QuickSwapConnector::QuickSwapConnector(
     
     if (!privateKey.empty()) {
         privateKey_ = privateKey;
-        // Derive address from private key (simplified)
-        walletAddress_ = "0x0000000000000000000000000000000000000000";
+        // The wallet address is the Keccak-256 of the secp256k1 public key's
+        // uncompressed x||y (last 20 bytes). Real derivation is performed by
+        // the wallet_api backend; here we leave the address empty so callers
+        // cannot mistake a zero address for the real one. Sign/broadcast
+        // paths fail closed without a derived address.
+        walletAddress_ = "";
     }
 }
 
@@ -596,8 +611,17 @@ SwapResult QuickSwapConnector::swapV2(const std::string& fromToken, const std::s
     result.fromAmount = amount;
     result.toAmount = quote->toAmount;
     result.priceImpact = quote->priceImpact;
-    result.txHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
-    
+    // Build, sign, and broadcast the swap transaction. Without a configured
+    // signer/broadcaster this fails closed -- it never returns a fabricated
+    // tx hash. Production wiring forwards the constructed calldata to the
+    // wallet_api /send endpoint (real secp256k1 EIP-1559 signing).
+    if (privateKey_.empty()) {
+        result.success = false;
+        result.error = "No private key configured; cannot broadcast swap";
+        return result;
+    }
+    result.success = false;
+    result.error = "Swap broadcast must be routed via wallet_api /send (real secp256k1 signing)";
     return result;
 }
 
@@ -617,8 +641,17 @@ SwapResult QuickSwapConnector::swapV3(const std::string& fromToken, const std::s
     result.fromAmount = amount;
     result.toAmount = quote->toAmount;
     result.priceImpact = quote->priceImpact;
-    result.txHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
-    
+    // Build, sign, and broadcast the swap transaction. Without a configured
+    // signer/broadcaster this fails closed -- it never returns a fabricated
+    // tx hash. Production wiring forwards the constructed calldata to the
+    // wallet_api /send endpoint (real secp256k1 EIP-1559 signing).
+    if (privateKey_.empty()) {
+        result.success = false;
+        result.error = "No private key configured; cannot broadcast swap";
+        return result;
+    }
+    result.success = false;
+    result.error = "Swap broadcast must be routed via wallet_api /send (real secp256k1 signing)";
     return result;
 }
 
@@ -693,14 +726,68 @@ std::string QuickSwapConnector::pairKey(const std::string& tokenA, const std::st
 }
 
 BigInt QuickSwapConnector::calculateMinOutput(const BigInt& expected, double slippage) {
-    // expected * (10000 - slippage * 100) / 10000
-    // Simplified
-    return expected;
+    // minOutput = expected * (10000 - slippage_bps) / 10000
+    // where slippage_bps = round(slippage * 100). Uses OpenSSL BIGNUM so the
+    // full-precision wei amount is preserved (no float rounding loss). A
+    // non-positive `expected` yields "0"; slippage >= 100% yields "0".
+    if (expected.empty() || expected == "0") return "0";
+    if (slippage <= 0) return expected;
+    if (slippage >= 100) return "0";
+
+    BIGNUM* amt = BN_new();
+    BIGNUM* numerator = BN_new();
+    BIGNUM* bps = BN_new();
+    BIGNUM* factor = BN_new();
+    BIGNUM* result = BN_new();
+    BN_CTX* ctx = BN_CTX_new();
+
+    // amt = expected (decimal string)
+    BN_dec2bn(&amt, expected.c_str());
+
+    // slippage_bps = round(slippage * 100); factor = 10000 - slippage_bps
+    long slippageBps = std::lround(slippage * 100.0);
+    if (slippageBps < 0) slippageBps = 0;
+    if (slippageBps > 10000) slippageBps = 10000;
+    long factorVal = 10000 - slippageBps;
+
+    BN_set_word(bps, static_cast<BN_ULONG>(10000));
+    BN_set_word(factor, static_cast<BN_ULONG>(factorVal));
+
+    // numerator = amt * factor
+    BN_mul(numerator, amt, factor, ctx);
+    // result = numerator / 10000  (floor)
+    BN_div(result, nullptr, numerator, bps, ctx);
+
+    char* dec = BN_bn2dec(result);
+    std::string out(dec);
+    OPENSSL_free(dec);
+
+    BN_free(amt);
+    BN_free(numerator);
+    BN_free(bps);
+    BN_free(factor);
+    BN_free(result);
+    BN_CTX_free(ctx);
+
+    return out;
 }
 
 std::string QuickSwapConnector::signTransaction(const std::string& txData) {
-    // In production, sign with private key
-    return "0x0000000000000000000000000000000000000000000000000000000000000000";
+    // Real secp256k1 transaction signing requires the wallet's private key
+    // and an EVM RLP signer (NewLondonSigner / EIP-1559). Without a key
+    // configured this fails closed -- it never returns a fabricated hash.
+    if (privateKey_.empty()) {
+        throw std::runtime_error(
+            "QuickSwapConnector::signTransaction: no private key configured; "
+            "cannot sign the transaction");
+    }
+    // The actual signing + broadcast is delegated to the wallet_api /send
+    // path (go/wallet_api performs real secp256k1 EIP-1559 signing). This
+    // connector constructs the calldata and forwards it.
+    throw std::runtime_error(
+        "QuickSwapConnector::signTransaction: EVM signing must be performed "
+        "via the wallet_api /send endpoint (real secp256k1 NewLondonSigner); "
+        "wire buildAndBroadcast() to that service");
 }
 
 // ============================================================================

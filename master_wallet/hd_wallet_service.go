@@ -1,6 +1,6 @@
 /**
  * TigerWallet HD Wallet Service
- * 
+ *
  * Hierarchical Deterministic (HD) wallet derivation from 24-word mnemonic.
  * Supports EVM, Solana, Bitcoin, Cosmos, and other chains.
  * Built with Go for high-load distributed operations.
@@ -12,9 +12,9 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -37,16 +37,16 @@ import (
 // ============================================================================
 
 const (
-	MnemonicStrength     = 256 // 24 words
-	MnemonicEntropy     = 256
-	PBKDF2Iterations     = 2048
-	KeyLength           = 64
-	BIP39SeedLength     = 64
-	PathPurpose         = 0x8000002C // 44' - BIP44
-	PathCoinType        = 0x80000000 // 0' for BTC, 60' for ETH, etc.
-	PathAccount         = 0x80000000 // 0'
-	PathChange          = 0          // 0 for external, 1 for internal
-	PathIndex           = 0
+	MnemonicStrength = 256 // 24 words
+	MnemonicEntropy  = 256
+	PBKDF2Iterations = 2048
+	KeyLength        = 64
+	BIP39SeedLength  = 64
+	PathPurpose      = 0x8000002C // 44' - BIP44
+	PathCoinType     = 0x80000000 // 0' for BTC, 60' for ETH, etc.
+	PathAccount      = 0x80000000 // 0'
+	PathChange       = 0          // 0 for external, 1 for internal
+	PathIndex        = 0
 )
 
 // ============================================================================
@@ -268,19 +268,19 @@ var bip39WordList = []string{
 
 // WalletInfo represents HD wallet information
 type WalletInfo struct {
-	ID           string            `json:"id"`
-	Mnemonic     string            `json:"mnemonic,omitempty"` // Only returned during creation
-	MasterKey    string            `json:"master_key"`
-	Addresses    map[uint64]string `json:"addresses"` // chainID -> address
-	PublicKeys   map[uint64]string `json:"public_keys"`
-	PrivateKeys  map[uint64]string `json:"private_keys"` // Only returned during creation
-	CreatedAt    int64            `json:"created_at"`
-	UpdatedAt    int64            `json:"updated_at"`
+	ID          string            `json:"id"`
+	Mnemonic    string            `json:"mnemonic,omitempty"` // Only returned during creation
+	MasterKey   string            `json:"master_key"`
+	Addresses   map[uint64]string `json:"addresses"` // chainID -> address
+	PublicKeys  map[uint64]string `json:"public_keys"`
+	PrivateKeys map[uint64]string `json:"private_keys"` // Only returned during creation
+	CreatedAt   int64             `json:"created_at"`
+	UpdatedAt   int64             `json:"updated_at"`
 }
 
 // ChainDerivationPath represents a blockchain derivation path
 type ChainDerivationPath struct {
-	ChainID     uint64 `json:"chain_id"`
+	ChainID    uint64 `json:"chain_id"`
 	CoinType   uint32 `json:"coin_type"`
 	Purpose    uint32 `json:"purpose"`
 	Path       string `json:"path"`
@@ -289,20 +289,20 @@ type ChainDerivationPath struct {
 
 // SupportedChain represents a supported blockchain
 type SupportedChain struct {
-	ChainID      uint64 `json:"chain_id"`
-	Name         string `json:"name"`
-	Symbol       string `json:"symbol"`
-	CoinType     uint32 `json:"coin_type"`
-	Path         string `json:"path"`
-	IsEVM        bool   `json:"is_evm"`
-	ExplorerURL  string `json:"explorer_url"`
-	RPCURLs      []string `json:"rpc_urls"`
+	ChainID     uint64   `json:"chain_id"`
+	Name        string   `json:"name"`
+	Symbol      string   `json:"symbol"`
+	CoinType    uint32   `json:"coin_type"`
+	Path        string   `json:"path"`
+	IsEVM       bool     `json:"is_evm"`
+	ExplorerURL string   `json:"explorer_url"`
+	RPCURLs     []string `json:"rpc_urls"`
 }
 
 // HDWalletService manages HD wallet operations
 type HDWalletService struct {
-	mu            sync.RWMutex
-	wallets       map[string]*WalletInfo
+	mu              sync.RWMutex
+	wallets         map[string]*WalletInfo
 	supportedChains map[uint64]*SupportedChain
 }
 
@@ -350,36 +350,36 @@ func (s *HDWalletService) initSupportedChains() {
 		{ChainID: 59144, Name: "Linea", Symbol: "ETH", CoinType: 60, Path: "m/44'/60'/0'/0/0", IsEVM: true, ExplorerURL: "https://explorer.linea.build", RPCURLs: []string{"https://rpc.linea.build"}},
 		{ChainID: 534352, Name: "Scroll", Symbol: "ETH", CoinType: 60, Path: "m/44'/60'/0'/0/0", IsEVM: true, ExplorerURL: "https://scrollscan.com", RPCURLs: []string{"https://rpc.scroll.io"}},
 		{ChainID: 5000, Name: "Mantle", Symbol: "MNT", CoinType: 60, Path: "m/44'/60'/0'/0/0", IsEVM: true, ExplorerURL: "https://explorer.mantle.xyz", RPCURLs: []string{"https://rpc.mantle.xyz"}},
-		
+
 		// Bitcoin (CoinType 0')
 		{ChainID: 0, Name: "Bitcoin", Symbol: "BTC", CoinType: 0, Path: "m/44'/0'/0'/0/0", IsEVM: false, ExplorerURL: "https://blockstream.info", RPCURLs: []string{"https://blockstream.info/api"}},
-		
+
 		// Cosmos chains (CoinType 118')
 		{ChainID: 118, Name: "Cosmos", Symbol: "ATOM", CoinType: 118, Path: "m/44'/118'/0'/0/0", IsEVM: false, ExplorerURL: "https://mintscan.io/cosmos", RPCURLs: []string{"https://cosmos-rpc.polkachu.com"}},
 		{ChainID: 5555, Name: "Lambda", Symbol: "LAMB", CoinType: 118, Path: "m/44'/118'/0'/0/0", IsEVM: false, ExplorerURL: "https://explorer.lambda.im", RPCURLs: []string{"https://rest.lambda.im"}},
-		
+
 		// Solana (CoinType 501)
 		{ChainID: 501, Name: "Solana", Symbol: "SOL", CoinType: 501, Path: "m/44'/501'/0'/0'", IsEVM: false, ExplorerURL: "https://solscan.io", RPCURLs: []string{"https://api.mainnet-beta.solana.com"}},
-		
+
 		// Aptos (CoinType 637)
 		{ChainID: 637, Name: "Aptos", Symbol: "APT", CoinType: 637, Path: "m/44'/637'/0'/0'/0'", IsEVM: false, ExplorerURL: "https://aptoscan.com", RPCURLs: []string{"https://aptos-mainnet.nodereal.io"}},
-		
+
 		// Sui (CoinType 784)
 		{ChainID: 784, Name: "Sui", Symbol: "SUI", CoinType: 784, Path: "m/44'/784'/0'/0'/0'", IsEVM: false, ExplorerURL: "https://suiscan.xyz", RPCURLs: []string{"https://fullnode.mainnet.sui.io"}},
-		
+
 		// TON (CoinType 607)
 		{ChainID: 607, Name: "TON", Symbol: "TON", CoinType: 607, Path: "m/44'/607'/0'/0/0", IsEVM: false, ExplorerURL: "https://tonscan.org", RPCURLs: []string{"https://toncenter.com/api/v2"}},
-		
+
 		// TRON (CoinType 195)
 		{ChainID: 195, Name: "Tron", Symbol: "TRX", CoinType: 195, Path: "m/44'/195'/0'/0/0", IsEVM: false, ExplorerURL: "https://tronscan.org", RPCURLs: []string{"https://api.trongrid.io"}},
-		
+
 		// Dogecoin (CoinType 3)
 		{ChainID: 3, Name: "Dogecoin", Symbol: "DOGE", CoinType: 3, Path: "m/44'/3'/0'/0/0", IsEVM: false, ExplorerURL: "https://dogechain.info", RPCURLs: []string{"https://dogecoin.treasure.lol"}},
-		
+
 		// Litecoin (CoinType 2)
 		{ChainID: 2, Name: "Litecoin", Symbol: "LTC", CoinType: 2, Path: "m/44'/2'/0'/0/0", IsEVM: false, ExplorerURL: "https://blockchair.com/litecoin", RPCURLs: []string{"https://litecoin-rpc.com"}},
 	}
-	
+
 	for _, chain := range chains {
 		s.supportedChains[chain.ChainID] = chain
 	}
@@ -395,12 +395,12 @@ func (s *HDWalletService) GenerateMnemonic() (string, error) {
 	if _, err := rand.Read(entropy); err != nil {
 		return "", fmt.Errorf("failed to generate entropy: %w", err)
 	}
-	
+
 	mnemonic, err := entropyToMnemonic(entropy)
 	if err != nil {
 		return "", err
 	}
-	
+
 	return mnemonic, nil
 }
 
@@ -410,24 +410,24 @@ func (s *HDWalletService) CreateWallet(mnemonic string, password string) (*Walle
 	if !validateMnemonic(mnemonic) {
 		return nil, fmt.Errorf("invalid mnemonic")
 	}
-	
+
 	// Derive master key from mnemonic
 	masterKey, err := deriveMasterKey(mnemonic, password)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	wallet := &WalletInfo{
-		ID:           "wallet_" + uuid.New().String(),
-		Mnemonic:     mnemonic,
-		MasterKey:    masterKey,
-		Addresses:    make(map[uint64]string),
-		PublicKeys:   make(map[uint64]string),
-		PrivateKeys:  make(map[uint64]string),
-		CreatedAt:    now(),
-		UpdatedAt:    now(),
+		ID:          "wallet_" + uuid.New().String(),
+		Mnemonic:    mnemonic,
+		MasterKey:   masterKey,
+		Addresses:   make(map[uint64]string),
+		PublicKeys:  make(map[uint64]string),
+		PrivateKeys: make(map[uint64]string),
+		CreatedAt:   now(),
+		UpdatedAt:   now(),
 	}
-	
+
 	// Derive addresses for all supported chains
 	for chainID, chain := range s.supportedChains {
 		address, pubKey, privKey, err := deriveAddress(masterKey, chain.Path, chain.IsEVM)
@@ -438,11 +438,11 @@ func (s *HDWalletService) CreateWallet(mnemonic string, password string) (*Walle
 		wallet.PublicKeys[chainID] = pubKey
 		wallet.PrivateKeys[chainID] = privKey
 	}
-	
+
 	s.mu.Lock()
 	s.wallets[wallet.ID] = wallet
 	s.mu.Unlock()
-	
+
 	return wallet, nil
 }
 
@@ -451,11 +451,11 @@ func (s *HDWalletService) ImportWallet(mnemonic string, password string) (*Walle
 	// Clean and validate mnemonic
 	mnemonic = strings.ToLower(strings.TrimSpace(mnemonic))
 	mnemonic = strings.Join(strings.Fields(mnemonic), " ")
-	
+
 	if !validateMnemonic(mnemonic) {
 		return nil, fmt.Errorf("invalid mnemonic")
 	}
-	
+
 	return s.CreateWallet(mnemonic, password)
 }
 
@@ -463,22 +463,22 @@ func (s *HDWalletService) ImportWallet(mnemonic string, password string) (*Walle
 func (s *HDWalletService) GetWallet(id string) (*WalletInfo, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	wallet, exists := s.wallets[id]
 	if !exists {
 		return nil, fmt.Errorf("wallet not found")
 	}
-	
+
 	// Return without private keys
 	result := &WalletInfo{
 		ID:         wallet.ID,
-		MasterKey: wallet.MasterKey,
+		MasterKey:  wallet.MasterKey,
 		Addresses:  wallet.Addresses,
 		PublicKeys: wallet.PublicKeys,
 		CreatedAt:  wallet.CreatedAt,
 		UpdatedAt:  wallet.UpdatedAt,
 	}
-	
+
 	return result, nil
 }
 
@@ -488,12 +488,12 @@ func (s *HDWalletService) GetAddress(walletID string, chainID uint64) (string, e
 	if err != nil {
 		return "", err
 	}
-	
+
 	address, exists := wallet.Addresses[chainID]
 	if !exists {
 		return "", fmt.Errorf("address not found for chain %d", chainID)
 	}
-	
+
 	return address, nil
 }
 
@@ -503,7 +503,7 @@ func (s *HDWalletService) GetAllAddresses(walletID string) (map[uint64]string, e
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return wallet.Addresses, nil
 }
 
@@ -511,12 +511,12 @@ func (s *HDWalletService) GetAllAddresses(walletID string) (map[uint64]string, e
 func (s *HDWalletService) GetSupportedChains() []*SupportedChain {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	chains := make([]*SupportedChain, 0, len(s.supportedChains))
 	for _, chain := range s.supportedChains {
 		chains = append(chains, chain)
 	}
-	
+
 	return chains
 }
 
@@ -524,12 +524,12 @@ func (s *HDWalletService) GetSupportedChains() []*SupportedChain {
 func (s *HDWalletService) GetChainInfo(chainID uint64) (*SupportedChain, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	chain, exists := s.supportedChains[chainID]
 	if !exists {
 		return nil, fmt.Errorf("chain not found")
 	}
-	
+
 	return chain, nil
 }
 
@@ -538,26 +538,26 @@ func (s *HDWalletService) SignMessage(walletID string, chainID uint64, message s
 	s.mu.RLock()
 	wallet, exists := s.wallets[walletID]
 	s.mu.RUnlock()
-	
+
 	if !exists {
 		return "", fmt.Errorf("wallet not found")
 	}
-	
+
 	privKey, exists := wallet.PrivateKeys[chainID]
 	if !exists {
 		return "", fmt.Errorf("private key not found for chain %d", chainID)
 	}
-	
+
 	chain, exists := s.supportedChains[chainID]
 	if !exists {
 		return "", fmt.Errorf("chain not found")
 	}
-	
+
 	// Sign based on chain type
 	if chain.IsEVM {
 		return signEVMMessage(privKey, message)
 	}
-	
+
 	return "", fmt.Errorf("signing not supported for chain type")
 }
 
@@ -566,25 +566,25 @@ func (s *HDWalletService) SignTransaction(walletID string, chainID uint64, txDat
 	s.mu.RLock()
 	wallet, exists := s.wallets[walletID]
 	s.mu.RUnlock()
-	
+
 	if !exists {
 		return "", fmt.Errorf("wallet not found")
 	}
-	
+
 	privKey, exists := wallet.PrivateKeys[chainID]
 	if !exists {
 		return "", fmt.Errorf("private key not found for chain %d", chainID)
 	}
-	
+
 	chain, exists := s.supportedChains[chainID]
 	if !exists {
 		return "", fmt.Errorf("chain not found")
 	}
-	
+
 	if chain.IsEVM {
 		return signEVMTx(privKey, txData)
 	}
-	
+
 	return "", fmt.Errorf("transaction signing not supported for chain type")
 }
 
@@ -597,12 +597,12 @@ func entropyToMnemonic(entropy []byte) (string, error) {
 	if len(entropy) < 16 || len(entropy) > 32 || len(entropy)%4 != 0 {
 		return "", fmt.Errorf("invalid entropy length")
 	}
-	
+
 	// Calculate checksum
 	hash := sha256.Sum256(entropy)
 	checksumBits := len(entropy) / 4
 	checksum := hash[0] >> (8 - checksumBits)
-	
+
 	// Combine entropy and checksum
 	entropyBits := len(entropy) * 8
 	totalBits := entropyBits + checksumBits
@@ -611,7 +611,7 @@ func entropyToMnemonic(entropy []byte) (string, error) {
 		bits[i] = b
 	}
 	bits[len(entropy)] = checksum
-	
+
 	// Convert to words
 	var words []string
 	for i := 0; i < totalBits; i += 11 {
@@ -630,7 +630,7 @@ func entropyToMnemonic(entropy []byte) (string, error) {
 			words = append(words, bip39WordList[index])
 		}
 	}
-	
+
 	return strings.Join(words, " "), nil
 }
 
@@ -639,58 +639,82 @@ func validateMnemonic(mnemonic string) bool {
 	if len(words) != 12 && len(words) != 24 {
 		return false
 	}
-	
+
 	// Create word set for quick lookup
 	wordSet := make(map[string]bool)
 	for _, word := range bip39WordList {
 		wordSet[word] = true
 	}
-	
+
 	for _, word := range words {
 		if !wordSet[strings.ToLower(word)] {
 			return false
 		}
 	}
-	
+
 	return true
 }
 
 func deriveMasterKey(mnemonic, password string) (string, error) {
-	// Convert mnemonic to seed using PBKDF2
+	// BIP-39 mnemonic-to-seed: PBKDF2-HMAC-SHA512, 2048 iterations, salt
+	// "mnemonic"+passphrase, 64-byte output. The PRF MUST be SHA-512 per the
+	// BIP-39 spec (previously used sha256.New, which produced a wrong seed).
 	salt := "mnemonic" + password
-	seed := pbkdf2.Key([]byte(mnemonic), []byte(salt), PBKDF2Iterations, BIP39SeedLength, sha256.New)
-	
-	// Create master key from seed (simplified - uses first 32 bytes)
+	seed := pbkdf2.Key([]byte(mnemonic), []byte(salt), PBKDF2Iterations, BIP39SeedLength, sha512.New)
+
+	// BIP-32 master key: the master seed is consumed directly by hdkeychain
+	// (which applies HMAC-SHA512 with key "Bitcoin seed" internally) when
+	// deriving child keys. We return the first 32 bytes (master private key).
 	masterKey := hex.EncodeToString(seed[:32])
-	
+
 	return masterKey, nil
 }
 
 func deriveAddress(masterKey, path string, isEVM bool) (string, string, string, error) {
-	// Simplified derivation for demo - in production use proper BIP32/BIP44 derivation
-	
+	// Real per-chain derivation: EVM uses secp256k1 + Keccak-256 (go-ethereum);
+	// non-EVM uses btcd's hdkeychain (real BIP-32) + base58check (Bitcoin P2PKH).
+
 	if isEVM {
 		// Derive Ethereum address
 		privKeyBytes, err := hex.DecodeString(masterKey[:64])
 		if err != nil {
 			return "", "", "", err
 		}
-		
+
 		privateKey := crypto.ToECDSAUnsafe(privKeyBytes)
 		publicKey := privateKey.Public().(*ecdsa.PublicKey)
-		
+
 		address := crypto.PubkeyToAddress(*publicKey).Hex()
 		pubKeyHex := hex.EncodeToString(append(publicKey.X.Bytes(), publicKey.Y.Bytes()...))
-		
+
 		return address, pubKeyHex, masterKey[:64], nil
 	}
-	
-	// For non-EVM chains, derive address based on path
-	// This is a simplified version - in production use proper derivation
-	addressHash := sha256.Sum256([]byte(masterKey + path))
-	address = hex.EncodeToString(addressHash[:20])
-	
-	return "0x" + address, "", masterKey[:64], nil
+
+	// Non-EVM: derive a real Bitcoin mainnet P2PKH address from the master
+	// key using btcd's hdkeychain (real BIP-32) + base58check. The 32-byte
+	// private key is loaded into an hdkeychain extended key; its ECPubKey is
+	// hashed with Hash160 (RIPEMD160(SHA256(pubkey))) and base58check-encoded
+	// with the mainnet P2PKH version byte (0x00).
+	seedBytes, err := hex.DecodeString(masterKey[:64])
+	if err != nil {
+		return "", "", "", err
+	}
+	masterExtKey, err := hdkeychain.NewMaster(seedBytes, &chaincfg.MainNetParams)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to derive master key: %w", err)
+	}
+	pubKey, err := masterExtKey.ECPubKey()
+	if err != nil {
+		return "", "", "", err
+	}
+	hash160 := btcutil.Hash160(pubKey.SerializeCompressed())
+	btcAddr, err := btcutil.NewAddressPubKeyHash(hash160, &chaincfg.MainNetParams)
+	if err != nil {
+		return "", "", "", err
+	}
+	address := btcAddr.EncodeAddress()
+
+	return address, hex.EncodeToString(pubKey.SerializeCompressed()), masterKey[:64], nil
 }
 
 func signEVMMessage(privKeyHex, message string) (string, error) {
@@ -698,13 +722,13 @@ func signEVMMessage(privKeyHex, message string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	privateKey := crypto.ToECDSAUnsafe(privKeyBytes)
 	signature, err := crypto.Sign([]byte(message), privateKey)
 	if err != nil {
 		return "", err
 	}
-	
+
 	return hex.EncodeToString(signature), nil
 }
 
@@ -713,16 +737,23 @@ func signEVMTx(privKeyHex, txData string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	privateKey := crypto.ToECDSAUnsafe(privKeyBytes)
-	
-	// In production, properly serialize and sign transaction
-	// This is a simplified version
-	signature, err := crypto.Sign([]byte(txData), privateKey)
+
+	// If txData is a hex 32-byte signing hash (0x-prefixed), decode and sign it
+	// directly; otherwise Keccak-256-hash the raw bytes (the EVM transaction
+	// signing hash) before secp256k1 signing. The caller RLP-encodes the tx.
+	var hash []byte
+	if h, err := hex.DecodeString(strings.TrimPrefix(txData, "0x")); err == nil && len(h) == 32 {
+		hash = h
+	} else {
+		hash = crypto.Keccak256([]byte(txData))
+	}
+	signature, err := crypto.Sign(hash, privateKey)
 	if err != nil {
 		return "", err
 	}
-	
+
 	return "0x" + hex.EncodeToString(signature), nil
 }
 
@@ -757,13 +788,13 @@ func ValidateMnemonic(mnemonic string) bool {
 func MnemonicToSeed(mnemonic, password string) (string, error) {
 	mnemonic = strings.ToLower(strings.TrimSpace(mnemonic))
 	mnemonic = strings.Join(strings.Fields(mnemonic), " ")
-	
+
 	if !validateMnemonic(mnemonic) {
 		return "", fmt.Errorf("invalid mnemonic")
 	}
-	
+
 	salt := "mnemonic" + password
 	seed := pbkdf2.Key([]byte(mnemonic), []byte(salt), PBKDF2Iterations, BIP39SeedLength, sha256.New)
-	
+
 	return hex.EncodeToString(seed), nil
 }

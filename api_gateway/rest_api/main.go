@@ -1073,17 +1073,15 @@ func executeSwapHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Mock swap execution
-	txHash := fmt.Sprintf("0x%x", time.Now().UnixNano())
-
-	response := map[string]interface{}{
-		"success":   true,
-		"txHash":    txHash,
-		"message":   "Swap submitted successfully",
-		"timestamp": time.Now(),
-	}
-
-	json.NewEncoder(w).Encode(response)
+	// Swap execution must go through the canonical wallet_api /swap/execute +
+	// /send (real on-chain AMM router + secp256k1 broadcast). This gateway does
+	// not sign or broadcast; do not fabricate a tx hash from a timestamp.
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":         false,
+		"error":           "swap execution not wired: delegate to canonical wallet_api /swap/execute + /send",
+		"action_required": "submit via wallet_api",
+	})
+	return
 }
 
 func getTokensHandler(w http.ResponseWriter, r *http.Request) {
@@ -1146,14 +1144,14 @@ func executeBridgeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	txHash := fmt.Sprintf("0x%x", time.Now().UnixNano())
-
+	// Bridge execution must go through the canonical bridge service + wallet_api
+	// /send (real on-chain cross-chain transfer). Do not fabricate a tx hash.
+	_ = req
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success":   true,
-		"txHash":    txHash,
-		"bridgeId":  fmt.Sprintf("bridge_%d", time.Now().Unix()),
-		"message":   "Bridge initiated",
-		"timestamp": time.Now(),
+		"success":         false,
+		"error":           "bridge execution not wired: delegate to canonical bridge service + wallet_api /send",
+		"action_required": "submit via bridge service",
+		"timestamp":       time.Now(),
 	})
 }
 
@@ -1756,7 +1754,7 @@ func main() {
 		ID:              "master_1",
 		Name:            "Tiger Master",
 		Type:            "hot",
-		MasterAddress:   "0x" + generateRandomToken(20),
+		MasterAddress:   "", // real address comes from canonical wallet_api key management
 		ChainId:         1,
 		ChainName:       "Ethereum",
 		IsActive:        true,

@@ -100,31 +100,41 @@ fn sign_ed25519(
     })
 }
 
-/// Sign with P-256
+/// Sign with P-256 (NIST P-256 / secp256r1) using real ECDSA (RFC 6979).
+///
+/// Reconstructs the secret scalar from the threshold shares via Lagrange
+/// interpolation at x = 0 over the P-256 scalar field, then signs the
+/// SHA-256 digest of `message` with `p256::ecdsa::SigningKey`. This produces
+/// a real, verifiable ECDSA signature — NOT a hash placeholder.
 fn sign_p256(
     shares: &[Vec<u8>],
     public_key: &[u8],
     message: &[u8],
     config: &MpcConfig,
 ) -> Result<SignResult, MpcError> {
+    use p256::ecdsa::{Signature, SigningKey};
+    use p256::ecdsa::signature::Signer;
+
     let threshold = config.threshold as usize;
 
-    let mut secret_bytes = Zeroizing::new([0u8; 32]);
+    // Reconstruct the secret scalar via Lagrange interpolation at x = 0.
+    let xs: Vec<u32> = (1..=threshold as u32).collect();
+    let ys: Vec<crypto_bigint::U256> = shares.iter().take(threshold)
+        .map(|s| crate::field_p256::bytes_to_scalar(s))
+        .collect();
 
-    for share in shares.iter().take(threshold) {
-        for (i, byte) in share.iter().enumerate().take(32) {
-            secret_bytes[i] ^= byte;
-        }
-    }
+    let secret = crate::field_p256::lagrange_at_zero(&xs, &ys);
+    let secret_bytes = Zeroizing::new(crate::field_p256::scalar_to_be_bytes(secret));
 
-    // P-256 crate is not available; use a deterministic placeholder signature.
-    let mut hasher = Sha256::new();
-    hasher.update(&*secret_bytes);
-    hasher.update(message);
-    let sig = hasher.finalize();
+    let signing_key = SigningKey::from_slice(&*secret_bytes)
+        .map_err(|e| MpcError::SigningFailed(format!("invalid P-256 secret: {}", e)))?;
+
+    // p256's `sign(&[u8])` hashes the message once internally (RFC 6979 with
+    // SHA-256), matching the verify path's `verify_digest(Sha256(message))`.
+    let signature: Signature = signing_key.sign(message);
 
     Ok(SignResult {
-        signature: sig.to_vec(),
+        signature: signature.to_bytes().to_vec(),
         public_key: public_key.to_vec(),
         key_id: format!("p256-{}", hex::encode(&public_key[..public_key.len().min(8)])),
     })
@@ -171,11 +181,22 @@ pub fn verify(
             Ok(pk.verify(message, &sig).is_ok())
         }
         CurveType::P256 => {
-            let digest = Sha256::digest(message);
-            let hash = Sha256::digest(public_key);
-            // Constant-time comparison: this is a verification check on hashes.
-            Ok(!signature.is_empty()
-                && digest.as_slice().ct_eq(hash.as_slice()).unwrap_u8() == 0)
+            use p256::ecdsa::{Signature, VerifyingKey};
+            use p256::ecdsa::signature::DigestVerifier;
+
+            let sig = match Signature::from_slice(signature) {
+                Ok(s) => s,
+                Err(_) => return Ok(false),
+            };
+
+            let verifying_key = match VerifyingKey::from_sec1_bytes(public_key) {
+                Ok(k) => k,
+                Err(_) => return Ok(false),
+            };
+
+            let mut hasher = Sha256::new();
+            hasher.update(message);
+            Ok(verifying_key.verify_digest(hasher, &sig).is_ok())
         }
     }
 }
@@ -219,5 +240,29 @@ mod tests {
         let result = sign(&shares, &result.public_key, message, &config);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_sign_and_verify_p256() {
+        let mut config = MpcConfig::default();
+        config.curve = CurveType::P256;
+        let result = generate_key_shares(&config, b"p256 test entropy").unwrap();
+
+        let shares: Vec<Vec<u8>> = result.shares.iter()
+            .take(2)
+            .map(|s| s.share_data.clone())
+            .collect();
+
+        let message = b"Hello, P-256!";
+
+        let sign_result = sign(&shares, &result.public_key, message, &config).unwrap();
+
+        let is_valid = verify(&sign_result.signature, &result.public_key, message, CurveType::P256).unwrap();
+
+        assert!(is_valid, "P-256 signature must verify against the real ECDSA public key");
+
+        // Tampered message must fail verification.
+        let tampered = verify(&sign_result.signature, &result.public_key, b"tampered", CurveType::P256).unwrap();
+        assert!(!tampered, "P-256 signature must NOT verify for a tampered message");
     }
 }

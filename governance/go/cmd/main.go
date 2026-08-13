@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
@@ -144,32 +143,38 @@ type TreasuryTx struct {
 // ============ Service ============
 
 type GovernanceService struct {
-	config *Config
-	daos   map[string]*DAO
+	config     *Config
+	daos       map[string]*DAO
+	proposals  map[string]*Proposal
+	votes      map[string][]*Vote // proposalID -> votes
 }
 
 func NewGovernanceService(config *Config) *GovernanceService {
 	return &GovernanceService{
-		config: config,
-		daos:  make(map[string]*DAO),
+		config:     config,
+		daos:       make(map[string]*DAO),
+		proposals:  make(map[string]*Proposal),
+		votes:      make(map[string][]*Vote),
 	}
 }
 
 func (s *GovernanceService) Initialize() {
-	// Create sample DAOs
+	// Seed the default TigerWallet DAO with an honest (empty) token address.
+	// A real governance token address is configured via the admin API or the
+	// canonical chain registry; we never hardcode a fabricated 0xTIGER.
 	s.CreateDAO(DAO{
 		ID:          "tiger-dao",
 		Name:        "TigerWallet DAO",
 		Description: "Decentralized governance for TigerWallet protocol",
 		Token: Token{
-			Address:   "0xTIGER",
-			Name:      "Tiger Token",
-			Symbol:    "TIGER",
-			Decimals:  18,
-			Supply:    "1000000000",
+			Address:  "",
+			Name:     "Tiger Token",
+			Symbol:   "TIGER",
+			Decimals: 18,
+			Supply:   "1000000000",
 		},
-		Threshold:  100000,
-		Quorum:     50000,
+		Threshold: 100000,
+		Quorum:    50000,
 	})
 }
 
@@ -196,19 +201,38 @@ func (s *GovernanceService) CreateProposal(proposal Proposal) string {
 	proposal.ID = uuid.New().String()
 	proposal.Status = StatusPending
 	proposal.CreatedAt = time.Now().Unix()
-	// In production, would save to DB
+	// Store the proposal in memory so GetProposals/GetProposal return real data.
+	s.proposals[proposal.ID] = &proposal
 	log.Printf("Proposal created: %s by %s", proposal.Title, proposal.Proposer)
 	return proposal.ID
 }
 
 func (s *GovernanceService) CastVote(proposalID string, vote Vote) {
 	vote.ID = uuid.New().String()
+	vote.ProposalID = proposalID
 	vote.CreatedAt = time.Now().Unix()
-	log.Printf("Vote cast: proposal=%s, voter=%s, support=%v, weight=%d", 
+	s.votes[proposalID] = append(s.votes[proposalID], &vote)
+	// Tally the vote on the proposal so the counts are real.
+	if p, ok := s.proposals[proposalID]; ok {
+		p.VoteCount++
+		if vote.Support {
+			p.ForVotes += vote.Weight
+		} else {
+			p.AgainstVotes += vote.Weight
+		}
+	}
+	log.Printf("Vote cast: proposal=%s, voter=%s, support=%v, weight=%d",
 		proposalID, vote.Voter, vote.Support, vote.Weight)
 }
 
 func (s *GovernanceService) ExecuteProposal(proposalID string) bool {
+	p, ok := s.proposals[proposalID]
+	if !ok {
+		return false
+	}
+	now := time.Now().Unix()
+	p.ExecutedAt = &now
+	p.Status = StatusExecuted
 	log.Printf("Proposal executed: %s", proposalID)
 	return true
 }
@@ -220,84 +244,42 @@ func (s *GovernanceService) Delegate(delegate Delegate) {
 }
 
 func (s *GovernanceService) GetProposals(daoID string) []Proposal {
-	// Return sample proposals
-	return []Proposal{
-		{
-			ID:            "prop-1",
-			DAOID:        daoID,
-			Title:        "Add New Trading Pair",
-			Description:  "Add support for new trading pair on TigerSwap",
-			Type:         TypeParameter,
-			Status:       StatusActive,
-			Proposer:    "0x1234...5678",
-			ForVotes:     150000,
-			AgainstVotes: 30000,
-			AbstainVotes: 5000,
-			StartBlock:   15000000,
-			EndBlock:     15001000,
-		},
-		{
-			ID:            "prop-2",
-			DAOID:        daoID,
-			Title:        "Reduce Trading Fees",
-			Description:  "Reduce trading fees from 0.3% to 0.2%",
-			Type:         TypeParameter,
-			Status:       StatusPending,
-			Proposer:    "0xabcd...efgh",
-			ForVotes:     0,
-			AgainstVotes: 0,
-			AbstainVotes: 0,
-			StartBlock:   15002000,
-			EndBlock:     15003000,
-		},
+	// Return the real proposals stored in memory for the given DAO. If none
+	// exist yet, return an empty slice -- never fabricated sample proposals.
+	var out []Proposal
+	for _, p := range s.proposals {
+		if p.DAOID == daoID {
+			out = append(out, *p)
+		}
 	}
+	return out
 }
 
 func (s *GovernanceService) GetProposal(id string) *Proposal {
-	// Return sample
-	return &Proposal{
-		ID:            id,
-		DAOID:        "tiger-dao",
-		Title:        "Add New Trading Pair",
-		Description:  "Add support for new trading pair",
-		Type:         TypeParameter,
-		Status:       StatusActive,
-		Proposer:    "0x1234...5678",
-		ForVotes:     150000,
-		AgainstVotes: 30000,
-		AbstainVotes: 5000,
+	// Return the real stored proposal, or nil if it does not exist.
+	p, ok := s.proposals[id]
+	if !ok {
+		return nil
 	}
+	return p
 }
 
 func (s *GovernanceService) GetVotes(proposalID string) []Vote {
-	return []Vote{
-		{
-			ID:          "vote-1",
-			ProposalID:  proposalID,
-			Voter:       "0x1111...2222",
-			Support:     true,
-			Weight:      10000,
-			Reason:      "Good for the ecosystem",
-		},
-		{
-			ID:          "vote-2",
-			ProposalID:  proposalID,
-			Voter:       "0x3333...4444",
-			Support:     false,
-			Weight:      5000,
-			Reason:      "Too risky",
-		},
+	// Return the real votes cast for this proposal, or an empty slice.
+	out := make([]Vote, 0, len(s.votes[proposalID]))
+	for _, v := range s.votes[proposalID] {
+		out = append(out, *v)
 	}
+	return out
 }
 
 func (s *GovernanceService) GetTreasury(daoID string) *Treasury {
+	// The treasury is sourced from on-chain balances via the wallet_api
+	// backend; this in-memory service does not fabricate balances. It
+	// returns a real (empty) treasury until an admin deposits/withdraws.
 	return &Treasury{
-		DAOID: daoID,
-		Balance: map[string]string{
-			"ETH":   "500.5",
-			"USDC": "100000",
-			"TIGER": "1000000",
-		},
+		DAOID:        daoID,
+		Balance:      map[string]string{},
 		Transactions: []TreasuryTx{},
 	}
 }

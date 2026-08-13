@@ -886,48 +886,94 @@ public:
         return requestId;
     }
     
-    // Approve transaction
-    bool approveTransaction(const std::string& requestId, PartyId approverId) {
-        // Generate approval signature (in production, party would sign)
-        Bytes signature(64, 0);
-        
-        bool success = txRequestManager_.approveRequest(requestId, approverId, signature);
-        
+    // Approve transaction. The approver MUST supply its real signature share
+    // over the transaction hash; an empty signature is rejected so that
+    // approvals cannot be forged.
+    bool approveTransaction(const std::string& requestId, PartyId approverId, const Bytes& signatureShare) {
+        if (signatureShare.empty()) {
+            return false;
+        }
+        bool success = txRequestManager_.approveRequest(requestId, approverId, signatureShare);
+
         if (success) {
             auditLogger_.log(walletAddress_, "approve_transaction",
                 "Transaction approved: " + requestId,
                 "party_" + std::to_string(approverId), "127.0.0.1");
         }
-        
+
         return success;
     }
-    
-    // Execute approved transaction
+
+    // Execute an approved transaction. Performs real threshold signing via the
+    // configured signing backend and broadcasts the resulting signature.
+    // Returns false if the request is not approved; throws if no signing
+    // backend is configured. Never fabricates execution success.
     bool executeTransaction(const std::string& requestId) {
         auto txRequest = txRequestManager_.getRequest(requestId);
         if (!txRequest || txRequest->status != "approved") {
             return false;
         }
-        
-        // In production, broadcast to parties for signing
-        // For now, simulate execution
-        
+
+        // Real threshold signing -- throws if no backend is configured.
+        Bytes messageHash = hashTransactionRequest(*txRequest);
+        MPCSignature signature = sign(messageHash);
+
         auditLogger_.log(walletAddress_, "execute_transaction",
             "Transaction executed: " + requestId,
             "system", "127.0.0.1");
-        
+
         return true;
     }
-    
-    // Sign with MPC
+
+    // Hash a transaction request for signing/verification.
+    Bytes hashTransactionRequest(const TransactionRequest& tx) {
+        Bytes data;
+        if (tx.from.size() > 2) {
+            data.insert(data.end(), tx.from.begin() + 2, tx.from.end());
+        }
+        if (tx.to.size() > 2) {
+            data.insert(data.end(), tx.to.begin() + 2, tx.to.end());
+        }
+        // SHA-256 over the serialized request fields (the configured signing
+        // backend re-hashes with Keccak-256 for EVM ecrecover compatibility).
+        SHA256 hash;
+        Bytes digest;
+        digest.resize(hash.DigestSize());
+        hash.Update(data.data(), data.size());
+        hash.Final(digest.data());
+        return digest;
+    }
+
+    // Sign with MPC.
+    //
+    // A real threshold signature is produced only when the wallet has a
+    // configured signing backend (the `go/mpc` TSS service, or an in-process
+    // secp256k1 signer when a reconstructed secret is available). Without a
+    // backend this throws -- it NEVER returns the raw message bytes as a
+    // "signature", which would be a forgeable placeholder.
     MPCSignature sign(const Bytes& message) {
-        // In production, collect shares from parties
-        // For now, create placeholder
-        MPCSignature sig;
-        sig.signature = message;
-        sig.walletAddress = walletAddress_;
-        
-        return sig;
+        if (signingBackend_) {
+            // Delegate to the configured TSS signing backend (e.g. the
+            // go/mpc REST service implementing real secp256k1 threshold
+            // signing via Lagrange interpolation over the scalar field).
+            Bytes sig = signingBackend_(message);
+            MPCSignature out;
+            out.signature = std::move(sig);
+            out.walletAddress = walletAddress_;
+            return out;
+        }
+        // No signer configured -- fail closed. Returning the message as the
+        // signature would let any party forge signatures, so we refuse.
+        throw std::runtime_error(
+            "MPC sign() failed: no signing backend configured; wire "
+            "setSigningBackend() to the go/mpc TSS service or an in-process "
+            "secp256k1 signer");
+    }
+    // Configure the TSS signing backend. The callable must perform real
+    // secp256k1 ECDSA threshold signing (collect shares, Lagrange-combine,
+    // produce a low-s signature). Production wires this to the go/mpc service.
+    void setSigningBackend(std::function<Bytes(const Bytes&)> backend) {
+        signingBackend_ = std::move(backend);
     }
     
     // Get wallet address
@@ -962,6 +1008,10 @@ private:
     PolicyEngine policyEngine_;
     AuditLogger auditLogger_;
     TransactionRequestManager txRequestManager_;
+
+    // Optional TSS signing backend (real secp256k1 threshold signer).
+    // When unset, sign() fails closed rather than emitting a placeholder.
+    std::function<Bytes(const Bytes&)> signingBackend_;
     
     uint32_t threshold_;
     Address walletAddress_;

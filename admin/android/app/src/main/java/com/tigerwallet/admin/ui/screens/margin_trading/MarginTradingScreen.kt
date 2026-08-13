@@ -48,13 +48,11 @@ class MarginTradingViewModel : ViewModel() {
         viewModelScope.launch {
             _loading.value = true
             try {
-                _positions.value = getMockPositions()
-                _stats.value = mapOf(
-                    "totalPositions" to 150,
-                    "totalVolume" to 5000000.0,
-                    "liquidationsToday" to 3,
-                    "liquidatedVolume" to 50000.0
-                )
+                // No admin margin endpoint is wired yet. Show honest empty state
+                // (no fabricated positions/stats). Wire to a real admin/perpetual
+                // backend endpoint before populating.
+                _positions.value = emptyList()
+                _stats.value = emptyMap()
             } catch (e: Exception) { } finally { _loading.value = false }
         }
     }
@@ -63,10 +61,7 @@ class MarginTradingViewModel : ViewModel() {
     fun toggleTheme() { _isDark.value = !_isDark.value }
     fun liquidate(id: Long) { loadData() }
 
-    private fun getMockPositions(): List<MarginPosition> = listOf(
-        MarginPosition(1, "Trader John", "BTC/USDT", "long", 1.5, 10, 45000.0, 47000.0, 3000.0, 40500.0, "open"),
-        MarginPosition(2, "Trader Jane", "ETH/USDT", "short", 10.0, 5, 3000.0, 2800.0, 2000.0, 3600.0, "open")
-    )
+    // getMockPositions removed: do not fabricate margin positions.
 }
 
 @Composable

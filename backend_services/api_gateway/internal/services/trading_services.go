@@ -241,9 +241,10 @@ func (s *CopyTradingService) GetSignals(ctx context.Context, traderAddress strin
 	return []TradingSignal{}, nil
 }
 
-// ExecuteSignal executes a copy trade signal
+// ExecuteSignal executes a copy trade signal via the canonical wallet_api /send
+// (real on-chain broadcast). It must not fabricate a tx hash from a timestamp.
 func (s *CopyTradingService) ExecuteSignal(ctx context.Context, userID uint64, signal *TradingSignal, amount *big.Int) (string, error) {
-	return "0x" + fmt.Sprintf("%x", time.Now().UnixNano()), nil
+	return "", fmt.Errorf("ExecuteSignal not wired: delegate to canonical wallet_api /send for real on-chain execution")
 }
 
 // GetTopTraders returns top traders to copy

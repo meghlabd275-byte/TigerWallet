@@ -25,15 +25,13 @@ class P2PMerchantViewModel : ViewModel() {
     val isDark: Boolean = _isDark.value
 
     init { loadMerchants() }
-    fun loadMerchants() { viewModelScope.launch { _loading.value = true; try { _merchants.value = getMockMerchants() } catch (e: Exception) { } finally { _loading.value = false } }
+    fun loadMerchants() { viewModelScope.launch { _loading.value = true; try { _merchants.value = emptyList() } catch (e: Exception) { } finally { _loading.value = false } }
     fun setFilter(f: String) { _filter.value = f; loadMerchants() }
     fun toggleTheme() { _isDark.value = !_isDark.value }
     fun approve(id: Long) { loadMerchants() }
     fun reject(id: Long) { loadMerchants() }
 
-    private fun getMockMerchants(): List<P2PMerchant> = listOf(
-        P2PMerchant(1, "CryptoShop Ltd", "contact@cryptoshop.com", "US", 150000.0, 250, 4.8, "approved"),
-        P2PMerchant(2, "P2P Trading Hub", "support@p2phub.com", "UK", 50000.0, 80, 4.5, "pending")
+    // getMockMerchants removed: do not fabricate P2P merchants.
     )
 }
 

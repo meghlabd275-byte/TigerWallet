@@ -221,14 +221,38 @@ struct SendScreen: View {
         isLoading = true
         showError = false
         
-        // Simulate transaction
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            isLoading = false
-            transactionHash = "0x" + (0..<64).map { _ in "0123456789abcdef".randomElement()! }.joined()
-            
-            // Show success
-            recipientAddress = ""
-            amount = ""
+        // Real on-chain send via the canonical wallet_api /api/v1/send (real
+        // secp256k1 signing + eth_sendRawTransaction). Do NOT fabricate a tx hash.
+        let chainMap = ["Ethereum": 1, "BNB Chain": 56, "Polygon": 137,
+                        "Arbitrum": 42161, "Optimism": 10, "Avalanche": 43114]
+        let chainId = chainMap[selectedChain] ?? 1
+        Task {
+            do {
+                struct SendBody: Encodable {
+                    let to: String
+                    let amount: String
+                    let chain_id: Int
+                    let token: String
+                }
+                struct SendResp: Decodable { let txHash: String? }
+                let resp: SendResp = try await APIClient.shared.post(
+                    endpoint: "/api/v1/send",
+                    body: SendBody(to: recipientAddress, amount: amount, chain_id: chainId, token: selectedToken),
+                    authenticated: true
+                )
+                await MainActor.run {
+                    isLoading = false
+                    transactionHash = resp.txHash
+                    recipientAddress = ""
+                    amount = ""
+                }
+            } catch {
+                await MainActor.run {
+                    isLoading = false
+                    errorMessage = "Transaction failed: \(error.localizedDescription)"
+                    showError = true
+                }
+            }
         }
     }
     

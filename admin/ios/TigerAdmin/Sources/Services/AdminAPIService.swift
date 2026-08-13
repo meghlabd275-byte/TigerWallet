@@ -7,9 +7,13 @@ import Foundation
 
 class AdminAPIService {
     private let baseURL: String
-    
-    init(baseURL: String = "https://api.tigerwallet.io/admin") {
+
+    init(baseURL: String? = nil) {
+        // Use ADMIN_API_URL env (canonical wallet_api admin surface) instead of the
+        // removed api.tigerwallet.io placeholder.
         self.baseURL = baseURL
+            ?? ProcessInfo.processInfo.environment["ADMIN_API_URL"]
+            ?? "http://localhost:8443"
     }
     
     // MARK: - User Management APIs

@@ -168,34 +168,58 @@ fn generate_ed25519_shares(
     })
 }
 
-/// Generate P-256 key shares
+/// Generate P-256 key shares via real Shamir secret sharing over the P-256
+/// (secp256r1) scalar field, deriving the real P-256 public key from the
+/// reconstructed secret scalar.
 fn generate_p256_shares(
     config: &MpcConfig,
     entropy: &[u8],
 ) -> Result<KeyGenResult, MpcError> {
+    use p256::ecdsa::SigningKey;
+
     let mut seed = Zeroizing::new(Vec::new());
     seed.extend_from_slice(entropy);
     let mut rnd = [0u8; 32];
     OsRng.fill_bytes(&mut rnd);
     seed.extend_from_slice(&rnd);
 
-    let hash = Sha256::digest(&seed[..]);
-    let key_bytes = Zeroizing::new(<[u8; 32]>::from(hash));
+    let key_bytes: [u8; 32] = Sha256::digest(&seed[..]).into();
+    let signing_key = SigningKey::from_bytes(&key_bytes.into())
+        .map_err(|e| MpcError::KeyGenFailed(e.to_string()))?;
 
-    let public_key = Sha256::digest(&*key_bytes).to_vec();
+    let verifying_key = signing_key.verifying_key();
+    let public_key = verifying_key.to_encoded_point(false).as_bytes().to_vec();
 
     let threshold = config.threshold as usize;
     let total_shares = config.total_shares as usize;
 
+    // Build the Shamir polynomial: f(x) = secret + a_1*x + ... over the P-256
+    // scalar field. coeffs[0] is the secret (constant term).
+    let mut coefficients: Zeroizing<Vec<crypto_bigint::U256>> =
+        Zeroizing::new(Vec::with_capacity(threshold));
+    let mut secret_bytes = Zeroizing::new(<[u8; 32]>::from(signing_key.to_bytes()));
+    coefficients.push(crypto_bigint::U256::from_be_bytes(*secret_bytes));
+    secret_bytes.zeroize();
+
+    for _ in 1..threshold {
+        let mut coeff: [u8; 32] = [0u8; 32];
+        OsRng.fill_bytes(&mut coeff);
+        let reduced = crate::field_p256::eval_polynomial(
+            &[crypto_bigint::U256::from_be_bytes(coeff)], 0,
+        );
+        coefficients.push(reduced);
+    }
+
     let mut shares = Vec::with_capacity(total_shares);
 
     for i in 1..=total_shares {
-        let mut hasher = Sha256::new();
-        hasher.update(&*key_bytes);
-        hasher.update(&(i as u32).to_le_bytes());
-        let share_data = hasher.finalize().to_vec();
+        let y = crate::field_p256::eval_polynomial(&coefficients, i as u32);
+        let share_data = crate::field_p256::scalar_to_le_bytes(y).to_vec();
 
-        let verification_key = Sha256::digest(&share_data).to_vec();
+        let mut vkey_input = Vec::new();
+        vkey_input.extend_from_slice(&i.to_le_bytes());
+        vkey_input.extend_from_slice(&share_data);
+        let verification_key = Sha256::digest(&vkey_input).to_vec();
 
         shares.push(ShareInfo {
             index: i as u32,
@@ -206,7 +230,8 @@ fn generate_p256_shares(
 
     let mut backup_key = Zeroizing::new([0u8; 32]);
     OsRng.fill_bytes(&mut *backup_key);
-    let backup = encrypt_master_key(&key_bytes.to_vec(), &*backup_key)?;
+    let secret_bytes: [u8; 32] = signing_key.to_bytes().into();
+    let backup = encrypt_master_key(&secret_bytes.to_vec(), &*backup_key)?;
 
     let key_id = generate_key_id(&public_key);
 

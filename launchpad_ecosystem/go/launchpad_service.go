@@ -171,59 +171,13 @@ func NewLaunchpadService(config Config) (*LaunchpadService, error) {
 }
 
 func (s *LaunchpadService) initializeSampleProjects() {
-	// Create sample launchpad project
-	now := time.Now()
-	launchpadProject := LaunchpadProject{
-		ProjectID:     "tiger-launch-001",
-		Name:          "TigerToken",
-		Description:   "The native token of TigerWallet ecosystem",
-		TokenSymbol:   "TIGER",
-		TokenAddress:  "0x1234567890abcdef1234567890abcdef12345678",
-		TokenDecimals: 18,
-		TotalSupply:   "1000000000",
-		SoftCap:       "500000",
-		HardCap:       "2000000",
-		MinBuy:        100,
-		MaxBuy:        10000,
-		TokenPrice:    0.10,
-		PaymentToken:  "USDT",
-		StartTime:     now.Add(24 * time.Hour),
-		EndTime:       now.Add(7 * 24 * time.Hour),
-		ClaimTime:     now.Add(14 * 24 * time.Hour),
-		Status:        "UPCOMING",
-		Logo:          "https://tigerwallet.io/logo.png",
-		Website:        "https://tigerwallet.io",
-		Whitepaper:    "https://tigerwallet.io/whitepaper.pdf",
-		ChainID:       1,
-	}
-
-	var existing LaunchpadProject
-	if s.db.Where("project_id = ?", launchpadProject.ProjectID).First(&existing).RowsAffected == 0 {
-		s.db.Create(&launchpadProject)
-	}
-
-	// Create sample launchpool project
-	launchpoolProject := LaunchpoolProject{
-		ProjectID:      "tiger-pool-001",
-		Name:           "TIGER-USDT LP",
-		Description:    "Stake TIGER-USDT LP to earn TIGER tokens",
-		StakeToken:     "0xlp_token_address",
-		RewardToken:    "0x1234567890abcdef1234567890abcdef12345678",
-		RewardPerBlock: 1.5,
-		StartTime:      now.Add(48 * time.Hour),
-		EndTime:        now.Add(30 * 24 * time.Hour),
-		Status:         "UPCOMING",
-		MinStake:       10,
-		MaxStake:       100000,
-		ChainID:        1,
-	}
-
-	if s.db.Where("project_id = ?", launchpoolProject.ProjectID).First(&existing).RowsAffected == 0 {
-		s.db.Create(&launchpoolProject)
-	}
+        // No sample/seed projects. Launchpad/launchpool projects must be created by
+        // admins with real on-chain token/stake/reward contract addresses, not
+        // fabricated placeholder addresses (0x1234...) or fake caps/prices. Do not
+        // seed fake projects.
 }
 
-// ============================================================================
+// ====+
 // Launchpad Operations
 // ============================================================================
 

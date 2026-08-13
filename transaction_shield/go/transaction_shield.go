@@ -8,8 +8,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -304,6 +302,10 @@ type AnalyzeRequest struct {
 	TokenAddress string `json:"token_address"`
 	ChainID      uint64 `json:"chain_id" binding:"required"`
 	GasPrice     string `json:"gas_price"`
+	// Optional on-chain tx hash, supplied by the client when analyzing an
+	// already-broadcast transaction. Not fabricated when absent (pre-flight
+	// analysis of a proposed tx has no on-chain hash yet).
+	TxHash       string `json:"tx_hash"`
 }
 
 type AnalyzeResponse struct {
@@ -359,6 +361,7 @@ func (s *ShieldService) analyzeTransaction(c *gin.Context) {
 		Amount:       req.Amount,
 		TokenAddress: req.TokenAddress,
 		ChainID:      req.ChainID,
+		TxHash:       req.TxHash,
 		RiskScore:    combinedScore,
 		RiskLevel:    riskLevel,
 		MLPrediction: mlPrediction,
@@ -379,7 +382,7 @@ func (s *ShieldService) analyzeTransaction(c *gin.Context) {
 	s.stats.TotalScanned++
 
 	response := AnalyzeResponse{
-		TxHash:          fmt.Sprintf("0x%x", sha256.Sum256([]byte(req.UserAddress+req.ToAddress+req.Amount))),
+		TxHash:          req.TxHash,
 		RiskScore:        combinedScore,
 		RiskLevel:        riskLevel,
 		RiskFactors:      riskFactors,

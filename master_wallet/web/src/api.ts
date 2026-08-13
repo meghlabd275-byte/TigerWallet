@@ -1,7 +1,7 @@
 // MasterWallet Web - API Service
 // Connects to master wallet backend
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_MASTER_WALLET_API || 'https://api.tigerwallet.io/master';
+const API_BASE_URL = process.env.NEXT_PUBLIC_MASTER_WALLET_API || 'http://localhost:8443';
 
 export interface SubWallet {
   id: string;

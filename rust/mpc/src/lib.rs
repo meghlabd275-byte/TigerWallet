@@ -13,6 +13,7 @@
 #![allow(dead_code)]
 
 mod field;
+mod field_p256;
 pub mod key_gen;
 pub mod signing;
 pub mod key_sharing;

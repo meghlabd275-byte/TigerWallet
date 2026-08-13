@@ -1,14 +1,24 @@
-// TigerSwap Wallet Management - Go Implementation
-// Full Web3 wallet implementation with multi-chain support
+// TigerWallet Wallet Management - Go Implementation
+// Real BIP-39/BIP-32/BIP-44 HD wallet engine + multi-chain token registry.
+// Signing and broadcast delegate to the canonical go/wallet_api backend
+// (POST /api/v1/send, /api/v1/swap/quote) so this package never fabricates a
+// transaction hash or a swap rate.
 
 package main
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/tyler-smith/go-bip39"
+	"github.com/tyler-smith/go-bip32"
 )
 
 // Chain chain information
@@ -26,25 +36,23 @@ type Chain struct {
 
 // Token token information
 type Token struct {
-	Symbol    string `json:"symbol"`
-	Name      string `json:"name"`
-	Address   string `json:"address"`
-	Decimals  int    `json:"decimals"`
-	ChainID   int64  `json:"chainId"`
-	Logo      string `json:"logo"`
-	Price     string `json:"price,omitempty"`
-	IsNative  bool   `json:"isNative"`
-	IsStable  bool   `json:"isStable"`
+	Symbol   string `json:"symbol"`
+	Name     string `json:"name"`
+	Address  string `json:"address"`
+	Decimals int    `json:"decimals"`
+	ChainID  int64  `json:"chainId"`
+	Logo     string `json:"logo"`
+	IsNative bool   `json:"isNative"`
+	IsStable bool   `json:"isStable"`
 }
 
-// Wallet wallet structure
 type Wallet struct {
-	ID        string    `json:"id"`
-	Address   string    `json:"address"`
-	ChainType string    `json:"chainType"`
-	CreatedAt int64     `json:"createdAt"`
-	Name      string    `json:"name"`
-	IsHardware bool    `json:"isHardware"`
+	ID         string    `json:"id"`
+	Address    string    `json:"address"`
+	ChainType  string    `json:"chainType"`
+	CreatedAt  int64     `json:"createdAt"`
+	Name       string    `json:"name"`
+	IsHardware bool      `json:"isHardware"`
 	Balances   []Balance `json:"balances"`
 }
 
@@ -75,14 +83,14 @@ type Transaction struct {
 
 // SwapQuote swap quote
 type SwapQuote struct {
-	FromToken   Token      `json:"fromToken"`
-	ToToken     Token      `json:"toToken"`
-	FromAmount  string     `json:"fromAmount"`
-	ToAmount    string     `json:"toAmount"`
-	PriceImpact float64    `json:"priceImpact"`
-	Route       []RouteInfo `json:"route"`
-	EstimatedGas string     `json:"estimatedGas"`
-	Slippage    float64    `json:"slippage"`
+	FromToken    Token       `json:"fromToken"`
+	ToToken      Token       `json:"toToken"`
+	FromAmount   string      `json:"fromAmount"`
+	ToAmount     string      `json:"toAmount"`
+	PriceImpact  float64     `json:"priceImpact"`
+	Route        []RouteInfo `json:"route"`
+	EstimatedGas string      `json:"estimatedGas"`
+	Slippage     float64     `json:"slippage"`
 }
 
 // RouteInfo routing information
@@ -93,72 +101,126 @@ type RouteInfo struct {
 	Percentage int      `json:"percentage"`
 }
 
-// HDWalletEngine BIP39 HD wallet engine
+// HDWalletEngine is a REAL BIP-39/BIP-32/BIP-44 HD wallet engine. The seed is
+// derived from the mnemonic via PBKDF2-HMAC-SHA512 (the canonical BIP-39
+// mnemonic-to-seed), then child keys are derived via HMAC-SHA512 CKDpriv.
+// The EVM address is keccak256(pubkey[1:])[12:] with the EIP-55 checksum.
 type HDWalletEngine struct {
 	mnemonic       string
 	derivationPath string
+	seed           []byte
 }
 
-func NewHDWalletEngine(mnemonic, path string) *HDWalletEngine {
+// NewHDWalletEngine validates the mnemonic (real BIP-39 checksum) and derives
+// the seed. It returns an error on an invalid mnemonic — never a fake address.
+func NewHDWalletEngine(mnemonic, path string) (*HDWalletEngine, error) {
+	if !bip39.IsMnemonicValid(mnemonic) {
+		return nil, fmt.Errorf("invalid BIP-39 mnemonic (checksum failed)")
+	}
+	seed := bip39.NewSeed(mnemonic, "")
 	return &HDWalletEngine{
 		mnemonic:       mnemonic,
 		derivationPath: path,
-	}
+		seed:           seed,
+	}, nil
 }
 
-func (e *HDWalletEngine) GetEVMAddress(index uint32) string {
-	seed := fmt.Sprintf("%s-%d", e.mnemonic, index)
-	hash := hashString(seed)
-	return "0x" + hash[:40]
-}
-
-func hashString(s string) string {
-	h := 0
-	for _, c := range s {
-		h = h*31 + int(c)
-		h = h & 0xFFFFFFFF
-	}
-	return fmt.Sprintf("%08x", h)
-}
-
-func GenerateMnemonic() string {
-	words := []string{
-		"abandon", "ability", "able", "about", "above", "absent", "absorb",
-		"abstract", "access", "accident", "account", "accuse", "achieve",
-		"acid", "acoustic", "acquire", "across", "act", "action", "actor",
-		"actress", "actual", "adapt", "add", "addict", "address", "adjust",
-	}
-	
-	mnemonic := make([]string, 24)
-	for i := range mnemonic {
-		mnemonic[i] = words[time.Now().UnixNano()%int64(len(words))]
-		time.Sleep(time.Nanosecond)
-	}
-	
-	result := ""
-	for i, w := range mnemonic {
-		if i > 0 {
-			result += " "
+// parsePath splits a BIP-44 derivation path like "m/44'/60'/0'/0/0" into
+// integer components, honoring hardened (' / h / H) suffixes.
+func parsePath(path string) ([]uint32, error) {
+	path = strings.TrimSpace(path)
+	path = strings.TrimPrefix(path, "m")
+	parts := strings.Split(path, "/")
+	var idxs []uint32
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
 		}
-		result += w
+		hardened := false
+		if strings.HasSuffix(p, "'") || strings.HasSuffix(p, "h") || strings.HasSuffix(p, "H") {
+			hardened = true
+			p = p[:len(p)-1]
+		}
+		var n uint32
+		if _, err := fmt.Sscanf(p, "%d", &n); err != nil {
+			return nil, fmt.Errorf("bad path segment %q: %w", p, err)
+		}
+		if hardened {
+			n += 0x80000000
+		}
+		idxs = append(idxs, n)
 	}
-	return result
+	return idxs, nil
+}
+
+// GetEVMAddress derives the real EIP-55-checksummed Ethereum address at the
+// given account index along the engine's derivation path.
+func (e *HDWalletEngine) GetEVMAddress(index uint32) (string, error) {
+	master, err := bip32.NewMasterKey(e.seed)
+	if err != nil {
+		return "", fmt.Errorf("master key: %w", err)
+	}
+	idxs, err := parsePath(e.derivationPath)
+	if err != nil {
+		return "", err
+	}
+	// The last segment is the account index; override it with the caller's index.
+	if len(idxs) == 0 {
+		return "", fmt.Errorf("empty derivation path")
+	}
+	idxs[len(idxs)-1] = index
+	key := master
+	for _, i := range idxs {
+		if i >= 0x80000000 {
+			key, err = key.NewChildKey(i)
+		} else {
+			key, err = key.NewChildKey(i)
+		}
+		if err != nil {
+			return "", fmt.Errorf("derive child %d: %w", i, err)
+		}
+	}
+	// bip32 key.Key is the 32-byte private key; derive the secp256k1 pubkey.
+	priv, err := crypto.ToECDSA(key.Key)
+	if err != nil {
+		return "", fmt.Errorf("private key decode: %w", err)
+	}
+	return crypto.PubkeyToAddress(priv.PublicKey).Hex(), nil
+}
+
+// GenerateMnemonic generates a VALID 24-word BIP-39 mnemonic (256-bit entropy
+// + checksum) using a cryptographically-secure entropy source.
+func GenerateMnemonic() (string, error) {
+	entropy, err := bip39.NewEntropy(256)
+	if err != nil {
+		return "", fmt.Errorf("entropy: %w", err)
+	}
+	mnemonic, err := bip39.NewMnemonic(entropy)
+	if err != nil {
+		return "", fmt.Errorf("mnemonic: %w", err)
+	}
+	return mnemonic, nil
 }
 
 // WalletManager manages all wallets
 type WalletManager struct {
-	mu            sync.RWMutex
-	wallets       map[string]*Wallet
-	activeWallet  string
-	chains        map[int64]*Chain
-	tokens        map[int64][]*Token
+	mu           sync.RWMutex
+	wallets      map[string]*Wallet
+	activeWallet string
+	chains       map[int64]*Chain
+	tokens       map[int64][]*Token
+	backendURL   string
+	httpClient   *http.Client
 }
 
 func NewWalletManager() *WalletManager {
 	m := &WalletManager{
-		wallets: make(map[string]*Wallet),
-		chains: make(map[int64]*Chain),
-		tokens: make(map[int64][]*Token),
+		wallets:    make(map[string]*Wallet),
+		chains:     make(map[int64]*Chain),
+		tokens:     make(map[int64][]*Token),
+		backendURL: getEnv("WALLET_API_URL", "http://localhost:8443"),
+		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 	m.initializeDefaultChains()
 	m.initializeDefaultTokens()
@@ -174,13 +236,14 @@ func (m *WalletManager) initializeDefaultChains() {
 		{ID: 10, Name: "Optimism", Type: "evm", RPC: "https://optimism.llamarpc.com", Explorer: "https://optimistic.etherscan.io", Symbol: "ETH", Decimals: 18, IsEnabled: true, Icon: "op.png"},
 		{ID: 43114, Name: "Avalanche", Type: "evm", RPC: "https://avax.llamarpc.com", Explorer: "https://snowtrace.io", Symbol: "AVAX", Decimals: 18, IsEnabled: true, Icon: "avax.png"},
 	}
-
 	for _, chain := range defaultChains {
 		m.chains[chain.ID] = chain
 	}
 }
 
 func (m *WalletManager) initializeDefaultTokens() {
+	// Real mainnet token contracts (verified). Native assets use the zero
+	// address sentinel, the standard convention.
 	tokens := []*Token{
 		{Symbol: "ETH", Name: "Ethereum", Address: "0x0000000000000000000000000000000000000000", Decimals: 18, ChainID: 1, Logo: "eth.png", IsNative: true},
 		{Symbol: "USDT", Name: "Tether USD", Address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", Decimals: 6, ChainID: 1, Logo: "usdt.png", IsStable: true, IsNative: false},
@@ -190,49 +253,53 @@ func (m *WalletManager) initializeDefaultTokens() {
 		{Symbol: "CAKE", Name: "PancakeSwap", Address: "0x0E09FaBB73Bd3ade0a17ECC321fD13a19e81cE82", Decimals: 18, ChainID: 56, Logo: "cake.png", IsNative: false},
 		{Symbol: "MATIC", Name: "Polygon", Address: "0x0000000000000000000000000000000000000000", Decimals: 18, ChainID: 137, Logo: "matic.png", IsNative: true},
 	}
-
 	for _, token := range tokens {
-		tokens := m.tokens[token.ChainID]
-		if tokens == nil {
-			tokens = make([]*Token, 0)
+		t := m.tokens[token.ChainID]
+		if t == nil {
+			t = make([]*Token, 0)
 		}
-		tokens = append(tokens, token)
-		m.tokens[token.ChainID] = tokens
+		t = append(t, token)
+		m.tokens[token.ChainID] = t
 	}
 }
 
-// CreateWallet creates a new wallet
-func (m *WalletManager) CreateWallet(mnemonic, name string) *Wallet {
+// CreateWallet creates a new wallet from a real BIP-39 mnemonic. The address
+// is derived via real BIP-32/44 HD derivation; it is never fabricated.
+func (m *WalletManager) CreateWallet(mnemonic, name string) (*Wallet, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	id := fmt.Sprintf("wallet_%d", time.Now().UnixNano())
-	engine := NewHDWalletEngine(mnemonic, "m/44'/60'/0'/0/0")
-	
-	wallet := &Wallet{
-		ID:        id,
-		Address:   engine.GetEVMAddress(0),
-		ChainType: "evm",
-		CreatedAt: time.Now().Unix(),
-		Name:      name,
-		IsHardware: false,
-		Balances:  make([]Balance, 0),
+	engine, err := NewHDWalletEngine(mnemonic, "m/44'/60'/0'/0/0")
+	if err != nil {
+		return nil, err
 	}
+	address, err := engine.GetEVMAddress(0)
+	if err != nil {
+		return nil, err
+	}
+	id := fmt.Sprintf("wallet_%d", time.Now().UnixNano())
 
+	wallet := &Wallet{
+		ID:         id,
+		Address:    address,
+		ChainType:  "evm",
+		CreatedAt:  time.Now().Unix(),
+		Name:       name,
+		IsHardware: false,
+		Balances:   make([]Balance, 0),
+	}
 	m.wallets[id] = wallet
 	m.activeWallet = id
-
-	return wallet
+	return wallet, nil
 }
 
-// ImportWallet imports an existing wallet
+// ImportWallet imports an existing wallet from a mnemonic, validated with the
+// real BIP-39 checksum (NOT a string-length check).
 func (m *WalletManager) ImportWallet(mnemonic, name string) (*Wallet, error) {
-	// Validate mnemonic
-	words := len(mnemonic)/5 + 1 // approximate
-	if words != 12 && words != 24 {
-		return nil, fmt.Errorf("invalid mnemonic: expected 12 or 24 words")
+	if !bip39.IsMnemonicValid(mnemonic) {
+		return nil, fmt.Errorf("invalid BIP-39 mnemonic (checksum failed)")
 	}
-	return m.CreateWallet(mnemonic, name), nil
+	return m.CreateWallet(mnemonic, name)
 }
 
 // GetActiveWallet returns the active wallet
@@ -246,7 +313,6 @@ func (m *WalletManager) GetActiveWallet() *Wallet {
 func (m *WalletManager) GetAllWallets() []*Wallet {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-
 	result := make([]*Wallet, 0, len(m.wallets))
 	for _, w := range m.wallets {
 		result = append(result, w)
@@ -258,7 +324,6 @@ func (m *WalletManager) GetAllWallets() []*Wallet {
 func (m *WalletManager) SetActiveWallet(walletID string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
 	if _, ok := m.wallets[walletID]; !ok {
 		return false
 	}
@@ -270,7 +335,6 @@ func (m *WalletManager) SetActiveWallet(walletID string) bool {
 func (m *WalletManager) GetChains() []*Chain {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-
 	result := make([]*Chain, 0, len(m.chains))
 	for _, c := range m.chains {
 		result = append(result, c)
@@ -285,110 +349,168 @@ func (m *WalletManager) GetTokens(chainID int64) []*Token {
 	return m.tokens[chainID]
 }
 
-// Send sends a transaction
+// Send broadcasts a real transaction via the canonical go/wallet_api backend
+// (POST /api/v1/send). It returns the real on-chain tx hash from the
+// backend; it NEVER fabricates a hash. When the backend is unreachable it
+// returns an honest error.
 func (m *WalletManager) Send(to, amount, tokenAddress string, chainID int64) (*Transaction, error) {
 	m.mu.RLock()
 	wallet := m.wallets[m.activeWallet]
 	m.mu.RUnlock()
-
 	if wallet == nil {
 		return nil, fmt.Errorf("no active wallet")
 	}
-
-	tx := &Transaction{
+	if m.backendURL == "" {
+		return nil, fmt.Errorf("wallet_api not configured (set WALLET_API_URL)")
+	}
+	payload, _ := json.Marshal(map[string]interface{}{
+		"address":   wallet.Address,
+		"chain_id":  chainID,
+		"to":        to,
+		"amount":    amount,
+		"token":     tokenAddress,
+	})
+	resp, err := m.postJSON(m.backendURL+"/api/v1/send", string(payload))
+	if err != nil {
+		return nil, fmt.Errorf("broadcast: %w", err)
+	}
+	var out struct {
+		TxHash string `json:"tx_hash"`
+		Hash   string `json:"hash"`
+		Error  string `json:"error"`
+	}
+	if err := json.Unmarshal(resp, &out); err != nil {
+		return nil, fmt.Errorf("broadcast response: %w (body: %s)", err, string(resp))
+	}
+	if out.Error != "" {
+		return nil, fmt.Errorf("wallet_api: %s", out.Error)
+	}
+	hash := out.TxHash
+	if hash == "" {
+		hash = out.Hash
+	}
+	if hash == "" {
+		return nil, fmt.Errorf("wallet_api returned no tx hash (body: %s)", string(resp))
+	}
+	return &Transaction{
 		ID:        fmt.Sprintf("tx_%d", time.Now().UnixNano()),
-		Hash:      "0x" + generateRandomHash(),
+		Hash:      hash,
 		From:      wallet.Address,
 		To:        to,
 		Value:     amount,
 		Token:     tokenAddress,
-		Fee:       "0.001",
-		Status:    "pending",
+		Fee:       "",
+		Status:    "submitted",
 		Timestamp: time.Now().Unix(),
 		ChainID:   chainID,
 		Type:      "send",
-	}
-
-	return tx, nil
+	}, nil
 }
 
-// Swap performs a swap
-func (m *WalletManager) Swap(fromToken, toToken Token, amount string) *SwapQuote {
-	// Simplified swap quote
-	toAmount := fmt.Sprintf("%.6f", parseFloat(amount)*0.85)
-	
+// Swap fetches a real swap quote from the canonical go/wallet_api backend
+// (GET /api/v1/swap/quote). It NEVER fabricates a rate or a route. When the
+// backend is unreachable it returns an honest error.
+func (m *WalletManager) Swap(fromToken, toToken Token, amount string) (*SwapQuote, error) {
+	if m.backendURL == "" {
+		return nil, fmt.Errorf("wallet_api not configured (set WALLET_API_URL)")
+	}
+	url := fmt.Sprintf("%s/api/v1/swap/quote?from=%s&to=%s&amount=%s&chain_id=%d",
+		m.backendURL, fromToken.Address, toToken.Address, amount, fromToken.ChainID)
+	resp, err := m.getJSON(url)
+	if err != nil {
+		return nil, fmt.Errorf("swap quote: %w", err)
+	}
+	var out struct {
+		ToAmount     string      `json:"to_amount"`
+		PriceImpact  float64     `json:"price_impact"`
+		EstimatedGas string      `json:"estimated_gas"`
+		Route        []RouteInfo `json:"route"`
+		Error        string      `json:"error"`
+	}
+	if err := json.Unmarshal(resp, &out); err != nil {
+		return nil, fmt.Errorf("swap quote response: %w (body: %s)", err, string(resp))
+	}
+	if out.Error != "" {
+		return nil, fmt.Errorf("wallet_api: %s", out.Error)
+	}
 	return &SwapQuote{
-		FromToken:   fromToken,
-		ToToken:     toToken,
-		FromAmount:  amount,
-		ToAmount:    toAmount,
-		PriceImpact: 0.5,
-		Route: []RouteInfo{
-			{Protocol: "TigerSwap Router", Path: []string{fromToken.Address, toToken.Address}, Pools: []string{"0x..."}, Percentage: 100},
-		},
-		EstimatedGas: "150000",
-		Slippage:    0.5,
-	}
+		FromToken:    fromToken,
+		ToToken:      toToken,
+		FromAmount:   amount,
+		ToAmount:     out.ToAmount,
+		PriceImpact:  out.PriceImpact,
+		Route:        out.Route,
+		EstimatedGas: out.EstimatedGas,
+		Slippage:     0.5,
+	}, nil
 }
 
-func parseFloat(s string) float64 {
-	result := 0.0
-	dot := -1
-	for i, c := range s {
-		if c == '.' {
-			dot = i
-			continue
-		}
-		if c >= '0' && c <= '9' {
-			digit := float64(c - '0')
-			if dot >= 0 {
-				result = result*10 + digit
-			} else {
-				result = result*10 + digit
-			}
-		}
+func (m *WalletManager) postJSON(url, body string) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(body))
+	if err != nil {
+		return nil, err
 	}
-	if dot >= 0 {
-		result = result / 1000 // simplified
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := m.httpClient.Do(req)
+	if err != nil {
+		return nil, err
 	}
-	return result
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("backend %s returned %d: %s", url, resp.StatusCode, string(data))
+	}
+	return data, nil
 }
 
-func generateRandomHash() string {
-	b := make([]byte, 32)
-	for i := range b {
-		b[i] = byte(time.Now().UnixNano() >> uint(i*8) & 0xFF)
-		time.Sleep(time.Nanosecond)
+func (m *WalletManager) getJSON(url string) ([]byte, error) {
+	resp, err := m.httpClient.Get(url)
+	if err != nil {
+		return nil, err
 	}
-	return hex.EncodeToString(b)[:64]
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("backend %s returned %d: %s", url, resp.StatusCode, string(data))
+	}
+	return data, nil
+}
+
+func getEnv(key, defaultValue string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultValue
 }
 
 func main() {
-	fmt.Println("TigerSwap Wallet Management - Go")
+	fmt.Println("TigerWallet Wallet Management - Go")
 	fmt.Println("=================================")
 	fmt.Println()
 
+	mnemonic, err := GenerateMnemonic()
+	if err != nil {
+		fmt.Printf("Failed to generate mnemonic: %v\n", err)
+		os.Exit(1)
+	}
 	mgr := NewWalletManager()
-	
-	// Create wallet
-	wallet := mgr.CreateWallet(GenerateMnemonic(), "Main Wallet")
+	wallet, err := mgr.CreateWallet(mnemonic, "Main Wallet")
+	if err != nil {
+		fmt.Printf("Failed to create wallet: %v\n", err)
+		os.Exit(1)
+	}
 	fmt.Printf("Created Wallet:\n  ID: %s\n  Address: %s\n  Name: %s\n", wallet.ID, wallet.Address, wallet.Name)
 	fmt.Println()
 
-	// List chains
 	chains := mgr.GetChains()
 	fmt.Println("Supported Chains:")
 	for _, chain := range chains {
 		fmt.Printf("  - %s (%d) %s\n", chain.Name, chain.ID, chain.Symbol)
-	}
-	fmt.Println()
-
-	// Test swap
-	tokens := mgr.GetTokens(1)
-	if len(tokens) >= 2 {
-		quote := mgr.Swap(*tokens[0], *tokens[1], "1.0")
-		fmt.Println("Swap Quote:")
-		data, _ := json.MarshalIndent(quote, "", "  ")
-		fmt.Println(string(data))
 	}
 }

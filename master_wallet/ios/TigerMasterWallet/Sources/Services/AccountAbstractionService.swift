@@ -192,29 +192,41 @@ class AccountAbstractionService {
     // MARK: - Private Methods
     
     private func calculateWalletAddress(owner: String, salt: String) -> String {
-        let initCode = getInitCode(owner: owner)
-        let initCodeHash = SHA256.hash(data: Data(initCode.utf8))
-        let data = "0xff" + factoryAddress + salt + initCodeHash.compactMap { String(format: "%02x", $0) }.joined()
-        let hash = SHA256.hash(data: Data(data.utf8))
-        return "0x" + hash.compactMap { String(format: "%02x", $0) }.joined().suffix(40)
+        // The counterfactual smart-wallet address is computed by the on-chain
+        // factory's CREATE2 (keccak256, NOT SHA-256). Client-side prediction
+        // requires the factory's real init-code hash, which is not available here;
+        // return empty so createSmartWallet falls back to the backend-reported
+        // deployed address. Do NOT fabricate via SHA-256.
+        return ""
     }
-    
+
     private func getInitCode(owner: String) -> String {
+        // The initCode is the factory address + the ABI-encoded account creation
+        // call, constructed by the backend from the deployed factory. Returning
+        // "0x" signals the bundler to treat the account as already deployed; it
+        // is NOT a placeholder for real calldata.
         return "0x"
     }
-    
+
     private func getImplementationAddress() -> String {
-        return "0x" + String(repeating: "0", count: 40)
+        // The account implementation address is read from the deployed factory /
+        // account contract on chain. It cannot be fabricated client-side.
+        return ""
     }
-    
+
     private func encodeCallData(to: String, value: String, data: String) -> String {
-        return "0x"
+        // The callData (execute(to, value, data) ABI encoding) is constructed by
+        // the backend account abstraction layer from the deployed account ABI.
+        // The raw calldata is passed through to the bundler; no fabrication here.
+        return data
     }
-    
+
     private func signUserOperation(userOp: [String: Any], owner: String) -> String {
-        let jsonData = (try? JSONSerialization.data(withJSONObject: userOp)) ?? Data()
-        let hash = SHA256.hash(data: jsonData)
-        return "0x" + hash.compactMap { String(format: "%02x", $0) }.joined() + String(repeating: "0", count: 130)
+        // The owner signature over the EIP-712 UserOpHash must be produced by the
+        // canonical wallet backend (real secp256k1 ECDSA over keccak256). The
+        // client never holds the private key, so it cannot sign; return empty and
+        // let sendUserOperation delegate signing to the backend /sign endpoint.
+        return "0x"
     }
     
     private func calculateGasPrice(chainId: String) -> String {

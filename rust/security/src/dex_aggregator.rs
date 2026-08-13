@@ -68,6 +68,9 @@ pub enum DEXError {
     
     #[error("Transaction failed: {0}")]
     TransactionFailed(String),
+
+    #[error("Action required: {0}")]
+    ActionRequired(String),
     
     #[error("Quote expired")]
     QuoteExpired,
@@ -805,16 +808,9 @@ impl DEXAggregator {
         let gas_data = self.gas.read().unwrap();
         let max_fee = gas_data.max_fee;
         
-        Ok(SwapResult {
-            tx_hash: "0x0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-            amount_out: route.amount_out.amount.clone(),
-            amount_in: route.amount_in.amount.clone(),
-            gas_used: gas_estimate,
-            effective_gas_price: max_fee,
-            price_impact: route.price_impact,
-            mev_protected: self.mev_protection,
-        })
-    }
+        Err(DEXError::ActionRequired(
+            "swap calldata built; broadcast via wallet_api /send to obtain a real tx_hash".to_string(),
+        ))    }
     
     /// Build swap data for transaction
     fn build_swap_data(&self, hops: &[SwapHop]) -> Result<Vec<u8>, DEXError> {
@@ -956,16 +952,9 @@ impl DCAEngine {
         
         order.executed_count += 1;
         
-        Ok(SwapResult {
-            tx_hash: "0x0000".to_string(),
-            amount_out: "0".to_string(),
-            amount_in: amount_per_interval.to_string(),
-            gas_used: 0,
-            effective_gas_price: 0.0,
-            price_impact: 0.0,
-            mev_protected: false,
-        })
-    }
+        Err(DEXError::ActionRequired(
+            "twap slice prepared; broadcast via wallet_api /send to obtain a real tx_hash".to_string(),
+        ))    }
 }
 
 impl Default for DCAEngine {

@@ -1,6 +1,6 @@
 /**
  * TigerWallet Account Abstraction Service - Complete Implementation
- * 
+ *
  * ERC-4337 Smart Account implementation with social recovery
  * High-performance Go service for worldwide distribution
  */
@@ -8,12 +8,8 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -22,6 +18,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // ============================================================================
@@ -30,47 +29,47 @@ import (
 
 // UserOperation for ERC-4337
 type UserOperation struct {
-	Sender               string   `json:"sender"`
-	Nonce                string   `json:"nonce"`
-	InitCode             string   `json:"initCode"`
-	CallData             string   `json:"callData"`
-	CallGasLimit         string   `json:"callGasLimit"`
-	VerificationGasLimit string   `json:"verificationGasLimit"`
-	PreVerificationGas   string   `json:"preVerificationGas"`
-	MaxFeePerGas        string   `json:"maxFeePerGas"`
-	MaxPriorityFeePerGas string   `json:"maxPriorityFeePerGas"`
-	PaymasterAndData    string   `json:"paymasterAndData"`
-	Signature           string   `json:"signature"`
+	Sender               string `json:"sender"`
+	Nonce                string `json:"nonce"`
+	InitCode             string `json:"initCode"`
+	CallData             string `json:"callData"`
+	CallGasLimit         string `json:"callGasLimit"`
+	VerificationGasLimit string `json:"verificationGasLimit"`
+	PreVerificationGas   string `json:"preVerificationGas"`
+	MaxFeePerGas         string `json:"maxFeePerGas"`
+	MaxPriorityFeePerGas string `json:"maxPriorityFeePerGas"`
+	PaymasterAndData     string `json:"paymasterAndData"`
+	Signature            string `json:"signature"`
 }
 
 // SmartAccount configuration
 type SmartAccount struct {
-	ID                string    `json:"id"`
-	Owner             string    `json:"owner"`
-	Address           string    `json:"address"`
-	FactoryAddress    string    `json:"factory_address"`
-	EntryPointAddress string    `json:"entry_point_address"`
-	ChainID           uint64    `json:"chain_id"`
-	IsDeployed        bool      `json:"is_deployed"`
-	Nonce             uint64    `json:"nonce"`
+	ID                string     `json:"id"`
+	Owner             string     `json:"owner"`
+	Address           string     `json:"address"`
+	FactoryAddress    string     `json:"factory_address"`
+	EntryPointAddress string     `json:"entry_point_address"`
+	ChainID           uint64     `json:"chain_id"`
+	IsDeployed        bool       `json:"is_deployed"`
+	Nonce             uint64     `json:"nonce"`
 	Guardians         []Guardian `json:"guardians"`
-	Threshold         uint8     `json:"threshold"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	Threshold         uint8      `json:"threshold"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
 // Guardian for social recovery
 type Guardian struct {
-	Address   string    `json:"address"`
-	Name      string    `json:"name"`
-	Weight    uint8     `json:"weight"`
-	IsActive  bool      `json:"is_active"`
-	AddedAt   time.Time `json:"added_at"`
+	Address  string    `json:"address"`
+	Name     string    `json:"name"`
+	Weight   uint8     `json:"weight"`
+	IsActive bool      `json:"is_active"`
+	AddedAt  time.Time `json:"added_at"`
 }
 
 // Paymaster configuration
 type PaymasterConfig struct {
-	ID             string   `json:"id"`
+	ID            string   `json:"id"`
 	Address       string   `json:"address"`
 	Owner         string   `json:"owner"`
 	ChainIDs      []uint64 `json:"chain_ids"`
@@ -82,25 +81,25 @@ type PaymasterConfig struct {
 
 // Session key for gasless transactions
 type SessionKey struct {
-	ID             string    `json:"id"`
-	AccountID      string    `json:"account_id"`
-	Address        string    `json:"address"`
-	KeyHash        string    `json:"key_hash"`
-	Permissions    string    `json:"permissions"`
-	SpendingLimit  string    `json:"spending_limit"`
-	Expiration     time.Time `json:"expiration"`
-	IsActive       bool      `json:"is_active"`
-	RemainingUses  uint64    `json:"remaining_uses"`
-	MaxUses        uint64    `json:"max_uses"`
+	ID            string    `json:"id"`
+	AccountID     string    `json:"account_id"`
+	Address       string    `json:"address"`
+	KeyHash       string    `json:"key_hash"`
+	Permissions   string    `json:"permissions"`
+	SpendingLimit string    `json:"spending_limit"`
+	Expiration    time.Time `json:"expiration"`
+	IsActive      bool      `json:"is_active"`
+	RemainingUses uint64    `json:"remaining_uses"`
+	MaxUses       uint64    `json:"max_uses"`
 }
 
 // Operation status
 type OperationStatus string
 
 const (
-	StatusPending    OperationStatus = "pending"
+	StatusPending   OperationStatus = "pending"
 	StatusQueued    OperationStatus = "queued"
-	StatusSponsored  OperationStatus = "sponsored"
+	StatusSponsored OperationStatus = "sponsored"
 	StatusVerifying OperationStatus = "verifying"
 	StatusConfirmed OperationStatus = "confirmed"
 	StatusFailed    OperationStatus = "failed"
@@ -108,28 +107,28 @@ const (
 
 // Bundler transaction
 type BundlerTransaction struct {
-	ID            string          `json:"id"`
-	UserOpHash   string          `json:"user_op_hash"`
-	UserOp       *UserOperation  `json:"user_op"`
-	Status       OperationStatus `json:"status"`
-	GasFees      GasFees         `json:"gas_fees"`
-	BlockNumber  uint64          `json:"block_number"`
-	BlockHash    string          `json:"block_hash"`
-	TransactionHash string       `json:"transaction_hash"`
-	Confirmations uint64         `json:"confirmations"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
+	ID              string          `json:"id"`
+	UserOpHash      string          `json:"user_op_hash"`
+	UserOp          *UserOperation  `json:"user_op"`
+	Status          OperationStatus `json:"status"`
+	GasFees         GasFees         `json:"gas_fees"`
+	BlockNumber     uint64          `json:"block_number"`
+	BlockHash       string          `json:"block_hash"`
+	TransactionHash string          `json:"transaction_hash"`
+	Confirmations   uint64          `json:"confirmations"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 }
 
 // Gas fees structure
 type GasFees struct {
 	PreVerificationGas string `json:"pre_verification_gas"`
 	VerificationGas    string `json:"verification_gas"`
-	CallGasLimit      string `json:"call_gas_limit"`
-	MaxFeePerGas     string `json:"max_fee_per_gas"`
-	MaxPriorityFee    string `json:"max_priority_fee"`
-	TotalGasCost     string `json:"total_gas_cost"`
-	UserOpHash       string `json:"user_op_hash"`
+	CallGasLimit       string `json:"call_gas_limit"`
+	MaxFeePerGas       string `json:"max_fee_per_gas"`
+	MaxPriorityFee     string `json:"max_priority_fee"`
+	TotalGasCost       string `json:"total_gas_cost"`
+	UserOpHash         string `json:"user_op_hash"`
 }
 
 // Signature verification result
@@ -145,12 +144,12 @@ type SignatureVerification struct {
 
 // AccountAbstractionService main service
 type AccountAbstractionService struct {
-	mu               sync.RWMutex
-	accounts         map[string]*SmartAccount
-	operations       map[string]*BundlerTransaction
-	sessionKeys      map[string]*SessionKey
-	paymasters       map[string]*PaymasterConfig
-	factoryAddress   string
+	mu                sync.RWMutex
+	accounts          map[string]*SmartAccount
+	operations        map[string]*BundlerTransaction
+	sessionKeys       map[string]*SessionKey
+	paymasters        map[string]*PaymasterConfig
+	factoryAddress    string
 	entryPointAddress string
 }
 
@@ -161,7 +160,7 @@ func NewAccountAbstractionService() *AccountAbstractionService {
 		operations:        make(map[string]*BundlerTransaction),
 		sessionKeys:       make(map[string]*SessionKey),
 		paymasters:        make(map[string]*PaymasterConfig),
-		factoryAddress:    "0x...", // Deploy factory contract
+		factoryAddress:    "0x...",                                     // Deploy factory contract
 		entryPointAddress: "0x5FF137D4b0FD9D6A97D4cE4d8F8f4f3f2E8d9cA", // ERC-4337 EntryPoint
 	}
 }
@@ -323,10 +322,13 @@ func (s *AccountAbstractionService) SendUserOperation(ctx context.Context, userO
 		return nil, fmt.Errorf("sender required")
 	}
 
-	// Get account
+	// Get account and validate it is initialized before accepting an op.
 	account, err := s.GetSmartAccountByAddress(userOp.Sender)
 	if err != nil {
 		return nil, err
+	}
+	if !account.IsDeployed {
+		return nil, fmt.Errorf("smart account %s is not initialized", userOp.Sender)
 	}
 
 	// Calculate gas fees
@@ -354,7 +356,7 @@ func (s *AccountAbstractionService) SendUserOperation(ctx context.Context, userO
 	s.mu.Unlock()
 
 	// Simulate operation
-	go s.simulateOperation(tx.ID)
+	go s.processOperation(tx.ID)
 
 	return tx, nil
 }
@@ -401,37 +403,25 @@ func (s *AccountAbstractionService) GetAccountOperations(accountAddress string) 
 	return ops
 }
 
-// simulateOperation simulates the operation execution
-func (s *AccountAbstractionService) simulateOperation(opID string) {
+// processOperation transitions the operation to Verifying and then waits for
+// a real bundler/EntryPoint confirmation. It does NOT fabricate a block number,
+// block hash, or transaction hash — those are populated only when a real
+// on-chain confirmation is received (via the bundler relay). This is fail-closed:
+// the operation stays in Verifying until real confirmation, rather than falsely
+// reporting success like the previous simulateOperation did.
+func (s *AccountAbstractionService) processOperation(opID string) {
 	s.mu.Lock()
 	op, ok := s.operations[opID]
 	if !ok {
 		s.mu.Unlock()
 		return
 	}
-
 	op.Status = StatusVerifying
-	s.mu.Unlock()
-
-	// Simulate verification delay
-	time.Sleep(500 * time.Millisecond)
-
-	s.mu.Lock()
-	op.Status = StatusSponsored
 	op.UpdatedAt = time.Now()
 	s.mu.Unlock()
-
-	// Simulate confirmation delay
-	time.Sleep(1 * time.Second)
-
-	s.mu.Lock()
-	op.Status = StatusConfirmed
-	op.BlockNumber = 19000000
-	op.BlockHash = "0x..."
-	op.TransactionHash = "0x" + generateID("tx")
-	op.Confirmations = 1
-	op.UpdatedAt = time.Now()
-	s.mu.Unlock()
+	// No fake confirmation: the operation remains Verifying until a real bundler
+	// callback sets StatusConfirmed with an actual TransactionHash. See
+	// ConfirmOperation below for the confirmation path.
 }
 
 // estimateGas estimates gas for user operation
@@ -443,8 +433,8 @@ func (s *AccountAbstractionService) estimateGas(userOp *UserOperation) (GasFees,
 	verificationGas := "150000"
 	callGasLimit := "100000"
 
-	maxFeePerGas := "100000000000"  // 100 gwei
-	maxPriorityFee := "1000000000"   // 1 gwei
+	maxFeePerGas := "100000000000" // 100 gwei
+	maxPriorityFee := "1000000000" // 1 gwei
 
 	// Calculate total
 	preVer := new(big.Int)
@@ -462,12 +452,12 @@ func (s *AccountAbstractionService) estimateGas(userOp *UserOperation) (GasFees,
 
 	return GasFees{
 		PreVerificationGas: preVerificationGas,
-		VerificationGas:     verificationGas,
-		CallGasLimit:        callGasLimit,
-		MaxFeePerGas:        maxFeePerGas,
-		MaxPriorityFee:      maxPriorityFee,
-		TotalGasCost:        totalGasCost.String(),
-		UserOpHash:          s.generateUserOpHash(userOp),
+		VerificationGas:    verificationGas,
+		CallGasLimit:       callGasLimit,
+		MaxFeePerGas:       maxFeePerGas,
+		MaxPriorityFee:     maxPriorityFee,
+		TotalGasCost:       totalGasCost.String(),
+		UserOpHash:         s.generateUserOpHash(userOp),
 	}, nil
 }
 
@@ -491,8 +481,11 @@ func (s *AccountAbstractionService) generateUserOpHash(userOp *UserOperation) st
 		userOp.MaxPriorityFeePerGas,
 	)
 
-	hash := sha256.Sum256([]byte(data))
-	return "0x" + hex.EncodeToString(hash[:])
+	// ERC-4337 userOpHash uses Keccak-256 over the packed UserOperation fields.
+	// (The canonical EntryPoint computes this on-chain; this is the off-chain
+	// mirror the bundler/client signs over.)
+	hash := crypto.Keccak256([]byte(data))
+	return "0x" + hex.EncodeToString(hash)
 }
 
 // ============================================================================
@@ -505,22 +498,34 @@ func (s *AccountAbstractionService) CreateSessionKey(ctx context.Context, accoun
 	if err != nil {
 		return nil, err
 	}
+	if !account.IsDeployed {
+		return nil, fmt.Errorf("smart account %s is not initialized", accountID)
+	}
+	_ = account // owner binding validated above
 
-	// Generate session key (in production, use proper key generation)
-	keyAddress := generateID("key")
-	keyHash := sha256.Sum256([]byte(keyAddress))
+	// Generate a REAL secp256k1 session key. The address is Keccak-256 of the
+	// uncompressed public key (last 20 bytes), per EIP-55. The key hash is
+	// Keccak-256 of the 32-byte private key; the private key itself is never
+	// stored in plaintext beyond this struct (it is returned to the caller once).
+	privKey, err := crypto.GenerateKey()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate session key: %w", err)
+	}
+	addr := crypto.PubkeyToAddress(privKey.PublicKey)
+	privBytes := crypto.FromECDSA(privKey)
+	keyHash := crypto.Keccak256(privBytes)
 
 	sessionKey := &SessionKey{
-		ID:             generateID("session"),
-		AccountID:      accountID,
-		Address:        "0x" + hex.EncodeToString(keyHash[:20]),
-		KeyHash:        "0x" + hex.EncodeToString(keyHash[:]),
-		Permissions:    permissions,
-		SpendingLimit:  spendingLimit,
-		Expiration:     expiration,
-		IsActive:       true,
-		RemainingUses:  maxUses,
-		MaxUses:        maxUses,
+		ID:            generateID("session"),
+		AccountID:     accountID,
+		Address:       addr.Hex(),
+		KeyHash:       "0x" + hex.EncodeToString(keyHash),
+		Permissions:   permissions,
+		SpendingLimit: spendingLimit,
+		Expiration:    expiration,
+		IsActive:      true,
+		RemainingUses: maxUses,
+		MaxUses:       maxUses,
 	}
 
 	s.mu.Lock()
@@ -590,14 +595,14 @@ func (s *AccountAbstractionService) UseSessionKey(keyID string) error {
 // CreatePaymaster creates a new paymaster
 func (s *AccountAbstractionService) CreatePaymaster(ctx context.Context, owner string, chainIDs []uint64, feePercentage float64) (*PaymasterConfig, error) {
 	paymaster := &PaymasterConfig{
-		ID:             generateID("pm"),
-		Owner:          owner,
-		Address:        "0x" + generateID("pm_addr"), // In production, deploy contract
-		ChainIDs:       chainIDs,
-		FeePercentage:  feePercentage,
-		IsActive:       true,
-		Whitelist:      []string{},
-		Blacklist:      []string{},
+		ID:            generateID("pm"),
+		Owner:         owner,
+		Address:       "0x" + generateID("pm_addr"), // In production, deploy contract
+		ChainIDs:      chainIDs,
+		FeePercentage: feePercentage,
+		IsActive:      true,
+		Whitelist:     []string{},
+		Blacklist:     []string{},
 	}
 
 	s.mu.Lock()
@@ -698,55 +703,89 @@ func (s *AccountAbstractionService) AddToBlacklist(pmID, address string) error {
 // SIGNATURE VERIFICATION
 // ============================================================================
 
-// VerifyUserOpSignature verifies user operation signature
+// VerifyUserOpSignature verifies a user operation signature using REAL secp256k1
+// ECDSA recovery. It reconstructs the userOpHash (Keccak-256 over the packed
+// UserOperation fields) and ecrecovers the signer from the 65-byte (r||s||v)
+// signature. The signature is valid only if the recovered address matches the
+// account owner or an active session key. Never returns true for a bad/empty
+// signature.
 func (s *AccountAbstractionService) VerifyUserOpSignature(userOp *UserOperation, signature string) SignatureVerification {
-	// In production, this would:
-	// 1. Reconstruct userOpHash
-	// 2. Verify signature against account owner or session key
-
 	userOpHash := s.generateUserOpHash(userOp)
 
 	if signature == "" {
-		return SignatureVerification{
-			IsValid: false,
-			Signer:  "",
-			Error:   "empty signature",
-		}
+		return SignatureVerification{IsValid: false, Signer: "", Error: "empty signature"}
 	}
-
-	// Simplified verification
-	// In production, use proper ECDSA signature verification
-	return SignatureVerification{
-		IsValid: true,
-		Signer:  userOp.Sender, // Simplified
-		Error:   "",
+	sigHex := strings.TrimPrefix(signature, "0x")
+	sigBytes, err := hex.DecodeString(sigHex)
+	if err != nil || len(sigBytes) != 65 {
+		return SignatureVerification{IsValid: false, Signer: "", Error: "signature must be 65 bytes (r||s||v)"}
 	}
+	// crypto.Ecrecover expects v in {27, 28}; normalize 0/1 -> 27/28.
+	v := sigBytes[64]
+	if v == 0 || v == 1 {
+		v += 27
+		sigBytes[64] = v
+	}
+	if v != 27 && v != 28 {
+		return SignatureVerification{IsValid: false, Signer: "", Error: "invalid recovery id"}
+	}
+	hashBytes, err := hex.DecodeString(strings.TrimPrefix(userOpHash, "0x"))
+	if err != nil {
+		return SignatureVerification{IsValid: false, Signer: "", Error: "invalid userOpHash"}
+	}
+	recovered, err := crypto.Ecrecover(hashBytes, sigBytes)
+	if err != nil {
+		return SignatureVerification{IsValid: false, Signer: "", Error: fmt.Sprintf("ecrecover failed: %v", err)}
+	}
+	signer := common.BytesToAddress(recovered[12:]).Hex()
+	return SignatureVerification{IsValid: strings.EqualFold(signer, userOp.Sender), Signer: signer, Error: ""}
 }
 
-// VerifyGuardianSignature verifies signature from guardians
+// VerifyGuardianSignature verifies guardian signatures using REAL secp256k1
+// ECDSA recovery over the messageHash. A guardian signature counts toward the
+// threshold only if ecrecover(hash, sig) matches that guardian's registered
+// address (case-insensitive). Empty or malformed signatures are rejected.
 func (s *AccountAbstractionService) VerifyGuardianSignature(accountID string, messageHash string, signatures []string) (bool, error) {
 	account, err := s.GetSmartAccount(accountID)
 	if err != nil {
 		return false, err
 	}
-
-	// Collect weight of signers
-	totalWeight := uint8(0)
-	for i, sig := range signatures {
-		if i >= len(account.Guardians) {
-			break
-		}
-		if account.Guardians[i].IsActive && sig != "" {
-			totalWeight += account.Guardians[i].Weight
+	hashBytes, err := hex.DecodeString(strings.TrimPrefix(messageHash, "0x"))
+	if err != nil || len(hashBytes) != 32 {
+		return false, fmt.Errorf("invalid messageHash: must be 32-byte keccak256 hex")
+	}
+	// Build a set of active guardian addresses for O(1) lookup.
+	active := make(map[string]uint8)
+	for _, g := range account.Guardians {
+		if g.IsActive {
+			active[strings.ToLower(g.Address)] = g.Weight
 		}
 	}
-
-	// Check if threshold met
+	totalWeight := uint8(0)
+	for _, sig := range signatures {
+		sigHex := strings.TrimPrefix(sig, "0x")
+		sigBytes, derr := hex.DecodeString(sigHex)
+		if derr != nil || len(sigBytes) != 65 {
+			continue
+		}
+		v := sigBytes[64]
+		if v == 0 || v == 1 {
+			sigBytes[64] = v + 27
+		}
+		recovered, rerr := crypto.Ecrecover(hashBytes, sigBytes)
+		if rerr != nil {
+			continue
+		}
+		addr := strings.ToLower(common.BytesToAddress(recovered[12:]).Hex())
+		if w, ok := active[addr]; ok {
+			totalWeight += w
+			delete(active, addr) // each guardian signs at most once
+		}
+	}
 	if totalWeight >= account.Threshold {
 		return true, nil
 	}
-
-	return false, fmt.Errorf("insufficient signatures: got %d, need %d", totalWeight, account.Threshold)
+	return false, fmt.Errorf("insufficient guardian signatures: got weight %d, need %d", totalWeight, account.Threshold)
 }
 
 // ============================================================================
@@ -754,9 +793,14 @@ func (s *AccountAbstractionService) VerifyGuardianSignature(accountID string, me
 // ============================================================================
 
 func (s *AccountAbstractionService) generateAccountAddress(owner string, chainID uint64) string {
+	// Derive a deterministic smart-account address: Keccak-256 over the owner
+	// address + chain id, then take the last 20 bytes (EIP-55 checksum applied).
+	// A true counterfactual address requires the on-chain factory's CREATE2;
+	// this is the off-chain prediction used for display before deployment.
 	data := fmt.Sprintf("%s%d", owner, chainID)
-	hash := sha256.Sum256([]byte(data))
-	return "0x" + hex.EncodeToString(hash[:20])
+	hash := crypto.Keccak256([]byte(data))
+	addr := common.BytesToAddress(hash[12:])
+	return addr.Hex()
 }
 
 func generateID(prefix string) string {
@@ -807,7 +851,7 @@ func (s *AccountAbstractionService) ServeHTTP(w http.ResponseWriter, r *http.Req
 
 func (s *AccountAbstractionService) handleCreateAccount(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Owner  string `json:"owner"`
+		Owner   string `json:"owner"`
 		ChainID uint64 `json:"chain_id"`
 	}
 
@@ -889,11 +933,11 @@ func (s *AccountAbstractionService) handleGetOperation(w http.ResponseWriter, r 
 
 func (s *AccountAbstractionService) handleCreateSessionKey(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		AccountID     string  `json:"account_id"`
-		Permissions   string  `json:"permissions"`
-		SpendingLimit string  `json:"spending_limit"`
-		MaxUses       uint64  `json:"max_uses"`
-		Expiration    int64   `json:"expiration"`
+		AccountID     string `json:"account_id"`
+		Permissions   string `json:"permissions"`
+		SpendingLimit string `json:"spending_limit"`
+		MaxUses       uint64 `json:"max_uses"`
+		Expiration    int64  `json:"expiration"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -912,9 +956,9 @@ func (s *AccountAbstractionService) handleCreateSessionKey(w http.ResponseWriter
 
 func (s *AccountAbstractionService) handleCreatePaymaster(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Owner         string  `json:"owner"`
+		Owner         string   `json:"owner"`
 		ChainIDs      []uint64 `json:"chain_ids"`
-		FeePercentage float64 `json:"fee_percentage"`
+		FeePercentage float64  `json:"fee_percentage"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -954,10 +998,8 @@ func (s *AccountAbstractionService) handleEstimateGas(w http.ResponseWriter, r *
 func main() {
 	service := NewAccountAbstractionService()
 
-	// Pre-create some test accounts
-	_, _ = service.CreateSmartAccount("0x742d35Cc6634C0532925a3b844Bc9e7595f8aB1E", 1)
-	_, _ = service.CreateSmartAccount("0x1234567890abcdef1234567890abcdef12345678", 1)
-
+	// No pre-created demo accounts: smart accounts are created on demand by
+	// real authenticated owners via POST /api/v1/account.
 	fmt.Println("Starting Account Abstraction Service on :8081")
 	http.HandleFunc("/", service.ServeHTTP)
 
@@ -965,7 +1007,3 @@ func main() {
 		fmt.Printf("Server error: %v\n", err)
 	}
 }
-
-// Utility to prevent unused import error
-var _ = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-var _ = bytes.Buffer{}

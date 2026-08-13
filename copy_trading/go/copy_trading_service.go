@@ -176,66 +176,12 @@ func NewCopyTradingService(config Config) (*CopyTradingService, error) {
 }
 
 func (s *CopyTradingService) initializeSampleTraders() {
-	traders := []Trader{
-		{
-			TraderID:    "trader_001",
-			UserAddress: "0x1111111111111111111111111111111111111111",
-			Username:   "CryptoMaster",
-			Avatar:     "https://example.com/avatar1.png",
-			Bio:        "Professional crypto trader with 5+ years experience",
-			TotalPnl:    125000,
-			WinRate:     68.5,
-			TotalTrades: 1250,
-			Followers:   5420,
-			TotalAum:   2500000,
-			Verified:   true,
-			Status:     "ACTIVE",
-			Commission: 15.0,
-			ChainID:    1,
-		},
-		{
-			TraderID:    "trader_002",
-			UserAddress: "0x2222222222222222222222222222222222222222",
-			Username:   "DeFiExpert",
-			Avatar:     "https://example.com/avatar2.png",
-			Bio:        "Specializing in DeFi and yield farming strategies",
-			TotalPnl:    89000,
-			WinRate:     72.0,
-			TotalTrades: 890,
-			Followers:   3200,
-			TotalAum:   1800000,
-			Verified:   true,
-			Status:     "ACTIVE",
-			Commission: 12.0,
-			ChainID:    1,
-		},
-		{
-			TraderID:    "trader_003",
-			UserAddress: "0x3333333333333333333333333333333333333333",
-			Username:   "MoonWalker",
-			Avatar:     "https://example.com/avatar3.png",
-			Bio:        "Long-term investor focusing on altcoins",
-			TotalPnl:    156000,
-			WinRate:     55.0,
-			TotalTrades: 456,
-			Followers:   8900,
-			TotalAum:   5200000,
-			Verified:   true,
-			Status:     "ACTIVE",
-			Commission: 20.0,
-			ChainID:    1,
-		},
-	}
-
-	for _, trader := range traders {
-		var existing Trader
-		if s.db.Where("trader_id = ?", trader.TraderID).First(&existing).RowsAffected == 0 {
-			s.db.Create(&trader)
-		}
-	}
+        // No sample/seed traders. Trader profiles must come from real on-chain
+        // performance data (verified via the backend), not fabricated placeholder
+        // addresses (0x1111...), PnL, or win rates. Do not seed fake copy-trading leaders.
 }
 
-// ============================================================================
+// ====+
 // Trader Management
 // ============================================================================
 

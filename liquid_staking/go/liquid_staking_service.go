@@ -18,7 +18,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
@@ -388,14 +387,13 @@ func (s *StakingService) Stake(userID uint, chain, token, walletAddress string, 
 	pool.TotalLiquidToken += liquidTokenAmount
 	s.db.Save(&pool)
 
-	// In production, trigger blockchain transaction here
-	var txHash string
-	if chain == "ethereum" && s.ethClient != nil {
-		// Simulate staking transaction
-		txHash = fmt.Sprintf("0x%x", sha256.Sum256([]byte(position.PositionID)))[:66]
-	}
+	// No on-chain staking transaction is fabricated here. The position is
+	// recorded as pending until the user broadcasts a real staking deposit to
+	// the protocol's staking contract (via the canonical wallet_api /send) and
+	// the resulting tx hash is supplied back via ConfirmStakingTransaction.
+	txHash := ""
 
-	// Create transaction record
+	// Create transaction record (pending until real on-chain confirmation)
 	stakingTx := StakingTransaction{
 		UserID:          userID,
 		PositionID:      position.PositionID,
@@ -404,7 +402,7 @@ func (s *StakingService) Stake(userID uint, chain, token, walletAddress string, 
 		Chain:           chain,
 		Token:           token,
 		Amount:          amount,
-		Status:          "confirmed",
+		Status:          "pending",
 	}
 	s.db.Create(&stakingTx)
 

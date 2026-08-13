@@ -1593,3 +1593,54 @@ source before acting.
 - 66 non-EVM chains (`chains_nonevm_data.go`) — meets >=50 requirement.
 - Pi Network: ID 9000004242, ChainType "pi", explorer blockexplorer.minepi.com,
   RPC empty (Pi mainnet is enclosed). All `IsTestnet: false`.
+
+## Session 2026-08-13 (cont): api_gateway + governance fake-data removal
+
+### api_gateway/go (rewritten as a clean reverse-proxy gateway)
+- **Problem**: `api_gateway/go/cmd/unified_gateway/main.go` (1813 lines) was a
+  fabricated "gateway" that invented data instead of proxying: `handleAuthLogin`
+  accepted ANY credentials (`sub: "user_demo"`), `handleWalletCreate` returned
+  `generateDemoAddress()` = `fmt.Sprintf("0x%x", time.Now().UnixNano())`,
+  `handleWalletList` returned 3 hardcoded `0x742d35Cc...`/`0x123d35Cc...`/
+  `0x456d35Cc...` demo wallets, `fetchNativeBalance` returned a hardcoded `1.5`,
+  `fetchTokenPriceFromAPI` returned `1.0`, and `tokenPrices` was a hardcoded
+  `map[string]float64{ETH:3500, BNB:600, ...}`. A second orphan `main.go` at the
+  module root fabricated tx hashes via `generateTXHash()` (deterministic
+  `byte(i*17%256)`) and returned `0x1234567890abcdef` signatures / hardcoded
+  `0x742d35Cc...` hardware-wallet addresses. The two files were BOTH `package
+  main` at the root → two `main()` funcs → never compiled together.
+- **Fix**: rewrote `cmd/unified_gateway/main.go` as a thin **reverse-proxy
+  gateway** using `httputil.NewSingleHostReverseProxy`. Every route forwards
+  verbatim to the canonical backend service (`cfg.WalletAPI`=:8443,
+  `StakingService`, `LendingService`, `BridgeService`, `SwapService`,
+  `NFTService`, etc.). NO handler fabricates data; on backend failure it
+  returns an honest 502 `{"error":"backend service unavailable"}`. Kept the
+  legitimate middleware (CORS, token-bucket rate-limit, JWT validation that
+  forwards the original Bearer header to the backend for authoritative
+  re-validation) + Redis health check. Deleted the fabricated orphan root
+  `main.go`. `chain_management.go` (real mainnet chain registry, no fakes) is
+  kept and builds as the module's root binary.
+- **go.mod**: was stale (declared gorilla/go-ethereum but main.go used
+  gin/jwt/pgx/redis). Rewritten to `gin v1.10.0` + `golang-jwt/v5 v5.2.1` +
+  `redis/go-redis/v9 v9.6.1`, `go 1.23`. `go build ./...` + `go vet ./...` exit 0.
+
+### governance/go (sample-proposal fabrication removed)
+- **Problem**: `governance/go/cmd/main.go` (gin service) returned hardcoded
+  sample proposals (`0x1234...5678`, `0xabcd...efgh`, prop-1/prop-2), sample
+  votes (`0x1111...2222`, `0x3333...4444`), a sample treasury (`ETH:500.5`,
+  `TIGER:1000000`), and a seed DAO with a fabricated `0xTIGER` token address.
+  `CreateProposal`/`CastVote` only `log.Printf`'d — they did NOT store anything,
+  so the getters always returned the hardcoded samples. The root
+  `governance/go/main.go` (gorilla/mux, 1012 lines) was a separate broken
+  orphan: `1000000 * 1e18` overflowed uint64, referenced undefined
+  `GovernanceConfig.ProposalThresholdDenominator` / `GovernanceToken.admin`,
+  declared `GetVotes` twice, and never compiled.
+- **Fix**: added `proposals map[string]*Proposal` + `votes map[string][]*Vote`
+  to `GovernanceService`; `CreateProposal`/`CastVote`/`ExecuteProposal` now
+  persist + tally real data; `GetProposals`/`GetProposal`/`GetVotes` return the
+  real stored data (empty slice/nil when none — never samples); `GetTreasury`
+  returns a real empty treasury (no fabricated balances); seed DAO token address
+  is `""` (configured via admin API, never `0xTIGER`). Deleted the broken
+  orphan root `main.go`. Pinned `gin v1.10.0` (v1.12 needs Go>=1.25) + added
+  `google/uuid v1.6.0`. `go build ./cmd/` + `go vet ./...` exit 0.
+- Removed unused `encoding/json` import from cmd/main.go.

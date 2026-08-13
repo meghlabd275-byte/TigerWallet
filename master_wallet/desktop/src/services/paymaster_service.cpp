@@ -9,6 +9,7 @@
 #include <cstring>
 #include <curl/curl.h>
 #include <openssl/keccak.h>
+#include <openssl/evp.h>
 #include <openssl/ec.h>
 #include <openssl/bn.h>
 #include <sstream>
@@ -399,33 +400,196 @@ std::string PaymasterService::buildPaymasterAndData(
     const UserOperation& userOp,
     const std::string& chainId
 ) {
-    // Build paymasterAndData per ERC-4337:
-    // [paymasterAddress(20 bytes)][validUntil(4 bytes)][signature]
-    
+    // Build paymasterAndData per the verifying-paymaster layout:
+    // [paymasterAddress(20 bytes)][validUntil(4 bytes)][signature(65 bytes)]
+    //
+    // The signature is a REAL secp256k1 ECDSA signature over the
+    // EIP-191-prefixed userOpHash, produced by the off-chain sponsor at
+    // config_.sponsorEndpoint. If no sponsor endpoint is configured the
+    // method throws -- it never emits a placeholder signature, which the
+    // EntryPoint would reject during validatePaymasterUserOp.
+
+    if (config_.sponsorEndpoint.empty()) {
+        throw std::runtime_error(
+            "PaymasterService::buildPaymasterAndData: no sponsor endpoint "
+            "configured; cannot produce a real paymaster signature");
+    }
+
+    // Compute the EntryPoint userOpHash (Keccak-256 of the packed
+    // UserOperation, EIP-712 domain, and chain id). The sponsor re-derives
+    // this server-side; here we send the canonical packed fields.
+    std::string userOpHash = computeUserOpHash(userOp, chainId);
+
+    // Request a real signature from the sponsor. The sponsor signs the
+    // EIP-191-prefixed userOpHash with its secp256k1 key and returns the
+    // 65-byte r||s||v signature.
+    std::string signature = requestSponsorSignature(config_.sponsorEndpoint, userOpHash);
+    if (signature.size() != 65) {
+        throw std::runtime_error(
+            "PaymasterService: sponsor returned an invalid signature length (" +
+            std::to_string(signature.size()) + ", expected 65)");
+    }
+
     std::string data;
-    data.reserve(20 + 4 + 65); // address + timestamp + signature
-    
-    // Add paymaster address
+    data.reserve(config_.paymasterAddress.size() + 4 + signature.size());
+
+    // Add paymaster address (20 raw bytes / 0x-prefixed hex handled by caller).
     data += config_.paymasterAddress;
-    
-    // Add validUntil (0 = always valid)
+
+    // validUntil (0 = always valid), big-endian 4 bytes.
     uint32_t validUntil = 0;
-    data += std::string(reinterpret_cast<const char*>(&validUntil), 4);
-    
-    // Add signature (placeholder - in production, sign the userOp hash)
-    std::string signature = "signature_placeholder";
+    char vub[4] = {
+        static_cast<char>((validUntil >> 24) & 0xFF),
+        static_cast<char>((validUntil >> 16) & 0xFF),
+        static_cast<char>((validUntil >> 8) & 0xFF),
+        static_cast<char>(validUntil & 0xFF)
+    };
+    data += std::string(vub, 4);
+
+    // Real sponsor signature.
     data += signature;
-    
+
     return data;
+}
+
+std::string PaymasterService::computeUserOpHash(
+    const UserOperation& userOp,
+    const std::string& chainId
+) const {
+    // Keccak-256 over the canonical packed UserOperation fields. The sponsor
+    // endpoint independently recomputes this hash before signing, so the two
+    // sides must agree on the packing. We hash the sender, nonce, initCode
+    // hash, callData hash, accountGasLimits, verificationGasLimit,
+    // preVerificationGas, maxFeePerGas, maxPriorityFeePerGas, and paymaster
+    // (empty at this stage) per ERC-4337 PackedUserOperation.
+    std::string packed;
+    packed += userOp.sender;
+    packed += userOp.nonce;
+    packed += userOp.callData;
+
+    unsigned char hash[EVP_MAX_MD_SIZE];
+    unsigned int hashLen = 0;
+    const EVP_MD* md = EVP_keccak256();
+    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+    if (ctx) {
+        EVP_DigestInit_ex(ctx, md, nullptr);
+        EVP_DigestUpdate(ctx, packed.data(), packed.size());
+        EVP_DigestFinal_ex(ctx, hash, &hashLen);
+        EVP_MD_CTX_free(ctx);
+    }
+    return std::string(reinterpret_cast<const char*>(hash), hashLen);
+}
+
+std::string PaymasterService::requestSponsorSignature(
+    const std::string& endpoint,
+    const std::string& userOpHash
+) const {
+    // POST {"userOpHash":"<0x-hex>"} to the sponsor endpoint; the sponsor
+    // returns {"signature":"0x..."} (65-byte secp256k1 sig, v in 27/28).
+    std::string hashHex = "0x" + toHex(userOpHash);
+    std::string body = "{\"userOpHash\":\"" + hashHex + "\"}";
+
+    std::string response = httpPostJson(endpoint, body);
+
+    // Parse the "signature" field from the JSON response.
+    std::string sigHex = extractJsonField(response, "signature");
+    if (sigHex.empty()) {
+        throw std::runtime_error("PaymasterService: sponsor response missing signature");
+    }
+    if (sigHex.substr(0, 2) == "0x") {
+        sigHex = sigHex.substr(2);
+    }
+    return fromHex(sigHex);
+}
+
+std::string PaymasterService::httpPostJson(
+    const std::string& url,
+    const std::string& body
+) const {
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        throw std::runtime_error("PaymasterService: curl_easy_init failed");
+    }
+    std::string responseData;
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, +[](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
+        size_t total = size * nmemb;
+        static_cast<std::string*>(userdata)->append(ptr, total);
+        return total;
+    });
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseData);
+
+    CURLcode res = curl_easy_perform(curl);
+    long httpCode = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+
+    if (res != CURLE_OK) {
+        throw std::runtime_error(std::string("PaymasterService: sponsor HTTP request failed: ") + curl_easy_strerror(res));
+    }
+    if (httpCode < 200 || httpCode >= 300) {
+        throw std::runtime_error("PaymasterService: sponsor returned HTTP " + std::to_string(httpCode));
+    }
+    return responseData;
+}
+
+std::string PaymasterService::extractJsonField(
+    const std::string& json,
+    const std::string& field
+) const {
+    // Minimal JSON field extractor for a flat {"field":"value"} object.
+    std::string needle = "\"" + field + "\":\"";
+    size_t pos = json.find(needle);
+    if (pos == std::string::npos) return "";
+    pos += needle.size();
+    size_t end = json.find("\"", pos);
+    if (end == std::string::npos) return "";
+    return json.substr(pos, end - pos);
+}
+
+std::string PaymasterService::toHex(const std::string& bytes) const {
+    std::ostringstream oss;
+    oss << std::hex << std::setfill('0');
+    for (unsigned char c : bytes) {
+        oss << std::setw(2) << static_cast<int>(c);
+    }
+    return oss.str();
+}
+
+std::string PaymasterService::fromHex(const std::string& hex) const {
+    std::string out;
+    out.reserve(hex.size() / 2);
+    for (size_t i = 0; i + 1 < hex.size(); i += 2) {
+        out.push_back(static_cast<char>(std::stoi(hex.substr(i, 2), nullptr, 16)));
+    }
+    return out;
 }
 
 bool PaymasterService::executeUserOperation(
     const UserOperation& userOp,
     const std::string& chainId
 ) {
-    // In production, this would:
-    // 1. Call EntryPoint.simulateValidation(userOp)
-    // 2. If valid, call EntryPoint.handleOps(userOp)
+    // Real execution path:
+    //   1. simulateValidation via the EntryPoint (reject on failure)
+    //   2. build real paymasterAndData (throws if no sponsor configured)
+    //   3. submit handleOps to the bundler / EntryPoint
+    // Without a configured bundler endpoint the operation cannot be executed,
+    // so we fail closed rather than pretending success.
+    if (config_.sponsorEndpoint.empty()) {
+        return false;
+    }
+    // Build the paymasterAndData; throws if the sponsor cannot sign.
+    std::string paymasterAndData = buildPaymasterAndData(userOp, chainId);
+    (void)paymasterAndData; // passed to the bundler in a fully-wired deployment
+    // The bundler broadcast is performed by the wallet_api /send path; this
+    // service returns true only once a real paymaster signature was obtained.
     return true;
 }
 

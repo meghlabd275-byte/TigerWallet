@@ -72,12 +72,9 @@ class CryptoCardsViewController: UIViewController, UITableViewDelegate, UITableV
     }
     
     private func loadData() {
-        // Mock data - in production, call API
-        cards = [
-            CryptoCard(id: "1", userName: "John Doe", cardNumber: "4532123456789012", currency: "USDT", balance: 5000, limit: 10000, status: "active", cardType: "virtual"),
-            CryptoCard(id: "2", userName: "Jane Smith", cardNumber: "4532987654321098", currency: "USDT", balance: 2500, limit: 5000, status: "blocked", cardType: "physical"),
-            CryptoCard(id: "3", userName: "Bob Wilson", cardNumber: "4532567890123456", currency: "USDT", balance: 1000, limit: 2000, status: "pending", cardType: "virtual")
-        ]
+        // Fail-closed: do not fabricate crypto card data (names, card numbers,
+        // balances). Cards must be fetched from a real admin crypto-cards endpoint.
+        cards = []
         applyFilter()
     }
     

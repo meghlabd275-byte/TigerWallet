@@ -679,8 +679,8 @@ fun executeProfitTransfer(whiteLabelId: String, token: String, amount: Double): 
         grossRevenue = amount,
         netRevenue = amount - superAdminShare,
         token = token,
-        txHash = "0x${hashData("$whiteLabelId$amount${System.currentTimeMillis()}")}",
-        status = "completed",
+        txHash = "", // real tx hash from on-chain broadcast via wallet_api /send
+        status = "pending", // pending until real on-chain transfer confirms
         createdAt = System.currentTimeMillis()
     )
     

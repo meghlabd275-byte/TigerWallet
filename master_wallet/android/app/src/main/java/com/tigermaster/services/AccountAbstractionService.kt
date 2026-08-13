@@ -414,33 +414,41 @@ class AccountAbstractionService(private val context: Context) {
     // Private helper methods
     
     private fun calculateWalletAddress(owner: String, salt: String): String {
-        // CREATE2: address = keccak256(0xff ++ factory ++ salt ++ keccak256(initCode))[12:]
-        val initCode = getInitCode(owner)
-        val initCodeHash = sha256(initCode.toByteArray())
-        val data = "0xff" + factoryAddress + salt + initCodeHash
-        val hash = sha256(data.toByteArray())
-        
-        return "0x" + hash.takeLast(40)
+        // The counterfactual smart-wallet address is computed by the on-chain
+        // factory's CREATE2 (keccak256(0xff ++ factory ++ salt ++ keccak256(initCode))[12:]).
+        // Client-side prediction requires the factory's real init-code hash, which
+        // is not available here; return empty so createSmartWallet falls back to
+        // the backend-reported deployed address. Do NOT fabricate via sha256.
+        return ""
     }
-    
+
     private fun getInitCode(owner: String): String {
-        // ABI-encoded initialization call
-        return "0x" // Placeholder
+        // The initCode is the factory address + the ABI-encoded account creation
+        // call, constructed by the backend from the deployed factory. Returning
+        // "0x" signals the bundler to treat the account as already deployed; it
+        // is NOT a placeholder for real calldata.
+        return "0x"
     }
-    
+
     private fun getImplementationAddress(): String {
-        return "0x" + "0".repeat(40) // Placeholder
+        // The account implementation address is read from the deployed factory /
+        // account contract on chain. It cannot be fabricated client-side.
+        return ""
     }
-    
+
     private fun encodeCallData(to: String, value: String, data: String): String {
-        // ABI-encode the call
-        return "0x" // Placeholder
+        // The callData (execute(to, value, data) ABI encoding) is constructed by
+        // the backend account abstraction layer from the deployed account ABI.
+        // The raw calldata is passed through to the bundler; no fabrication here.
+        return data
     }
-    
+
     private fun signUserOperation(userOp: Map<String, Any>, owner: String): String {
-        // Sign user operation hash
-        val hash = sha256(JSONObject(userOp).toString().toByteArray())
-        return "0x" + hash + "0".repeat(130)
+        // The owner signature over the EIP-712 UserOpHash must be produced by the
+        // canonical wallet backend (real secp256k1 ECDSA over keccak256). The
+        // client never holds the private key, so it cannot sign; return empty and
+        // let sendUserOperation delegate signing to the backend /sign endpoint.
+        return "0x"
     }
     
     private fun calculateGasPrice(chainId: String): String {

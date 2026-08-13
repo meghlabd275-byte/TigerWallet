@@ -133,4 +133,24 @@ abstract class ApiClient {
   Future<Map<String, dynamic>> updateWebhook(String id, Map<String, dynamic> data);
   Future<void> testWebhook(String id);
   Future<void> deleteWebhook(String id);
+
+  // Admin platform endpoints (wallet_api :8443 /api/v1/admin/*)
+  Future<List<Map<String, dynamic>>> getAdminWallets();
+  Future<Map<String, dynamic>> getAdminStats();
+  Future<List<Map<String, dynamic>>> getAdminCryptoCards({String? status});
+  Future<void> blockCryptoCard(String id);
+  Future<void> activateCryptoCard(String id);
+  Future<List<Map<String, dynamic>>> getAdminFeatureFlags();
+  Future<Map<String, dynamic>> createFeatureFlag2(Map<String, dynamic> data);
+  Future<void> toggleFeatureFlag(String id);
+  Future<List<Map<String, dynamic>>> getAdminLiquidityPools();
+  Future<Map<String, dynamic>> getAdminLiquidityStats();
+  Future<void> addLiquidity(String poolId, Map<String, dynamic> data);
+  Future<List<Map<String, dynamic>>> getAdminP2PMerchants({String? status});
+  Future<void> approveP2PMerchant(String id);
+  Future<void> rejectP2PMerchant(String id, String reason);
+  Future<List<Map<String, dynamic>>> getAdminMarginPositions();
+  Future<Map<String, dynamic>> getAdminMarginLiquidationStats();
+  Future<void> liquidateMarginPosition(String id);
+  Future<void> transferMasterWallet(String walletId, String toAddress, double amount);
 }

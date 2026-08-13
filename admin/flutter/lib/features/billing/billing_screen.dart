@@ -37,9 +37,12 @@ class _BillingScreenState extends State<BillingScreen> {
       if (subRes.statusCode == 200) _subscription = json.decode(subRes.body)['data'];
       if (invoicesRes.statusCode == 200) _invoices = json.decode(invoicesRes.body)['data'];
     } catch (e) {
-      _plans = _getMockPlans();
-      _subscription = _getMockSubscription();
-      _invoices = _getMockInvoices();
+      // Fail-closed: do not fabricate billing plans/subscription/invoices.
+      // Surface the error so the admin can retry against the real billing backend.
+      _plans = [];
+      _subscription = {};
+      _invoices = [];
+      _error = 'Failed to load billing data: \${e.toString()}';
     } finally {
       setState(() => _loading = false);
     }
@@ -47,25 +50,11 @@ class _BillingScreenState extends State<BillingScreen> {
 
   Future<String> _getToken() async => '';
 
-  List<dynamic> _getMockPlans() {
-    return [
-      {'id': '1', 'name': 'Basic', 'price': 99.0, 'period': 'month', 'features': ['Up to 1,000 users', 'Basic analytics', 'Email support']},
-      {'id': '2', 'name': 'Pro', 'price': 299.0, 'period': 'month', 'features': ['Up to 10,000 users', 'Advanced analytics', 'Priority support', 'API access']},
-      {'id': '3', 'name': 'Enterprise', 'price': 999.0, 'period': 'month', 'features': ['Unlimited users', 'Custom analytics', '24/7 support', 'Full API access', 'Dedicated account manager']},
-    ];
-  }
+  // _getMockPlans removed: do not fabricate billing plans.
 
-  Map<String, dynamic> _getMockSubscription() {
-    return {'plan_id': '2', 'plan_name': 'Pro', 'status': 'active', 'current_period_end': '2024-12-31', 'users': 2500, 'api_calls': 50000};
-  }
+  // _getMockSubscription removed: do not fabricate subscription.
 
-  List<dynamic> _getMockInvoices() {
-    return [
-      {'id': 'INV001', 'amount': 299.0, 'status': 'paid', 'date': '2024-01-01'},
-      {'id': 'INV002', 'amount': 299.0, 'status': 'paid', 'date': '2023-12-01'},
-      {'id': 'INV003', 'amount': 299.0, 'status': 'paid', 'date': '2023-11-01'},
-    ];
-  }
+  // _getMockInvoices removed: do not fabricate invoices.
 
   Future<void> _subscribe(String planId) async {
     try {

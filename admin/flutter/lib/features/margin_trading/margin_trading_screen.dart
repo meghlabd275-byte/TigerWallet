@@ -4,8 +4,10 @@
  */
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../../core/network/api_client.dart';
+import '../../../core/network/dio_client.dart';
 
 class MarginTradingScreen extends StatefulWidget {
   const MarginTradingScreen({Key? key}) : super(key: key);
@@ -15,11 +17,13 @@ class MarginTradingScreen extends StatefulWidget {
 }
 
 class _MarginTradingScreenState extends State<MarginTradingScreen> {
-  List<dynamic> _positions = [];
+  List<Map<String, dynamic>> _positions = [];
+  Map<String, dynamic>? _liquidationStats;
   bool _loading = true;
-  String _filter = 'all';
-  Map<String, dynamic>? _stats;
+  String? _error;
   bool _isDark = false;
+
+  ApiClient? _api;
 
   @override
   void initState() {
@@ -27,100 +31,62 @@ class _MarginTradingScreenState extends State<MarginTradingScreen> {
     _loadData();
   }
 
+  Future<ApiClient> _client() async {
+    if (_api != null) return _api!;
+    final prefs = await SharedPreferences.getInstance();
+    _api = DioClient.withPrefs(prefs);
+    return _api!;
+  }
+
   Future<void> _loadData() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
-      final response = await http.get(
-        Uri.parse('http://localhost:8444/api/v1/admin/margin/positions'),
-        headers: {'Authorization': 'Bearer ${await _getToken()}'},
-      );
-      if (response.statusCode == 200) {
-        setState(() {
-          _positions = json.decode(response.body);
-        });
-      }
-      
-      final statsResponse = await http.get(
-        Uri.parse('http://localhost:8444/api/v1/admin/margin/liquidation-stats'),
-        headers: {'Authorization': 'Bearer ${await _getToken()}'},
-      );
-      if (statsResponse.statusCode == 200) {
-        setState(() {
-          _stats = json.decode(statsResponse.body);
-        });
-      }
+      final api = await _client();
+      final results = await Future.wait([
+        api.getAdminMarginPositions(),
+        api.getAdminMarginLiquidationStats().catchError((_) => <String, dynamic>{}),
+      ]);
+      setState(() {
+        _positions = results[0] as List<Map<String, dynamic>>;
+        _liquidationStats = results[1] as Map<String, dynamic>?;
+      });
     } catch (e) {
-      _positions = _getMockPositions();
-      _stats = _getMockStats();
+      setState(() {
+        _error = e.toString();
+        _positions = [];
+        _liquidationStats = null;
+      });
     } finally {
       setState(() => _loading = false);
     }
   }
 
-  Future<String> _getToken() async => '';
-
-  List<dynamic> _getMockPositions() {
-    return [
-      {
-        'id': '1',
-        'user_name': 'Trader John',
-        'pair': 'BTC/USDT',
-        'side': 'long',
-        'size': 1.5,
-        'leverage': 10,
-        'entry_price': 45000.0,
-        'current_price': 47000.0,
-        'pnl': 3000.0,
-        'liquidation_price': 40500.0,
-        'status': 'open',
-      },
-      {
-        'id': '2',
-        'user_name': 'Trader Jane',
-        'pair': 'ETH/USDT',
-        'side': 'short',
-        'size': 10.0,
-        'leverage': 5,
-        'entry_price': 3000.0,
-        'current_price': 2800.0,
-        'pnl': 2000.0,
-        'liquidation_price': 3600.0,
-        'status': 'open',
-      },
-    ];
-  }
-
-  Map<String, dynamic> _getMockStats() {
-    return {
-      'total_positions': 150,
-      'total_volume': 5000000.0,
-      'liquidations_today': 3,
-      'liquidated_volume': 50000.0,
-    };
-  }
-
-  Future<void> _liquidatePosition(String positionId) async {
-    final confirmed = await showDialog<bool>(
+  Future<void> _liquidatePosition(String id) async {
+    final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Confirm Liquidation'),
         content: const Text('Are you sure you want to liquidate this position?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Liquidate')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Liquidate', style: TextStyle(color: Colors.red)),
+          ),
         ],
       ),
     );
-    
-    if (confirmed == true) {
-      try {
-        await http.post(
-          Uri.parse('http://localhost:8444/api/v1/admin/margin/positions/$positionId/liquidate'),
-          headers: {'Authorization': 'Bearer ${await _getToken()}'},
-        );
-        _loadData();
-      } catch (e) {
-        // Handle error
+    if (confirm != true) return;
+    try {
+      final api = await _client();
+      await api.liquidateMarginPosition(id);
+      _loadData();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Liquidation failed: $e')));
       }
     }
   }
@@ -134,14 +100,11 @@ class _MarginTradingScreenState extends State<MarginTradingScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Margin Trading'),
-          actions: [
-            IconButton(icon: Icon(_isDark ? Icons.light_mode : Icons.dark_mode), onPressed: _toggleTheme),
-          ],
+          actions: [IconButton(icon: Icon(_isDark ? Icons.light_mode : Icons.dark_mode), onPressed: _toggleTheme)],
         ),
         body: Column(
           children: [
-            _buildStats(),
-            _buildFilterChips(),
+            if (_liquidationStats != null && _liquidationStats!.isNotEmpty) _buildStats(),
             Expanded(child: _buildPositionsList()),
           ],
         ),
@@ -150,62 +113,90 @@ class _MarginTradingScreenState extends State<MarginTradingScreen> {
   }
 
   Widget _buildStats() {
-    if (_stats == null) return const SizedBox.shrink();
+    final stats = _liquidationStats!;
     return Container(
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
-          _buildStatCard('Total Positions', '${_stats!['total_positions']}'),
-          _buildStatCard('Volume', '\$${(_stats!['total_volume'] / 1000000).toStringAsFixed(1)}M'),
-          _buildStatCard('Liquidations', '${_stats!['liquidations_today']}'),
-          _buildStatCard('Liq. Volume', '\$${(_stats!['liquidated_volume'] / 1000).toStringAsFixed(0)}K'),
+          Expanded(child: _buildStatCard('Open', '${stats['open_positions'] ?? 0}')),
+          Expanded(child: _buildStatCard('Liquidations', '${stats['liquidations_24h'] ?? 0}')),
+          Expanded(
+            child: _buildStatCard(
+              'Borrowed',
+              stats['total_borrowed'] != null ? '\$${((stats['total_borrowed'] as num) / 1000000).toStringAsFixed(1)}M' : '—',
+            ),
+          ),
+          Expanded(
+            child: _buildStatCard(
+              'Risk',
+              stats['system_risk_level']?.toString() ?? '—',
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildStatCard(String label, String value) {
-    return Expanded(
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            children: [
-              Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
-            ],
-          ),
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+          ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildFilterChips() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          FilterChip(label: const Text('All'), selected: _filter == 'all', onSelected: (_) => setState(() => _filter = 'all')),
-          const SizedBox(width: 8),
-          FilterChip(label: const Text('Open'), selected: _filter == 'open', onSelected: (_) => setState(() => _filter = 'open')),
-          const SizedBox(width: 8),
-          FilterChip(label: const Text('Liquidated'), selected: _filter == 'liquidated', onSelected: (_) => setState(() => _filter = 'liquidated')),
-        ],
       ),
     );
   }
 
   Widget _buildPositionsList() {
     if (_loading) return const Center(child: CircularProgressIndicator());
-    
-    final filtered = _filter == 'all' ? _positions : _positions.where((p) => p['status'] == _filter).toList();
-    
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                'Failed to load margin positions: $_error',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(onPressed: _loadData, child: const Text('Retry')),
+          ],
+        ),
+      );
+    }
+    if (_positions.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.trending_down, size: 48, color: Colors.grey),
+            const SizedBox(height: 12),
+            Text('No margin positions found', style: TextStyle(color: Colors.grey[600])),
+          ],
+        ),
+      );
+    }
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: filtered.length,
+      itemCount: _positions.length,
       itemBuilder: (context, index) {
-        final pos = filtered[index];
-        final isProfit = (pos['pnl'] as double) >= 0;
+        final position = _positions[index];
+        final symbol = '${position['symbol'] ?? '—'}';
+        final side = position['side']?.toString() ?? '';
+        final leverage = position['leverage'];
+        final liquidationPrice = position['liquidation_price'];
+        final status = position['status']?.toString() ?? '';
+        final risk = position['risk_level']?.toString() ?? 'low';
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
           child: Padding(
@@ -216,33 +207,63 @@ class _MarginTradingScreenState extends State<MarginTradingScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('${pos['pair']} (${pos['leverage']}x)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    Row(
+                      children: [
+                        Text(symbol, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(width: 8),
+                        Chip(
+                          label: Text(side.toUpperCase()),
+                          backgroundColor: side == 'long' ? Colors.green : Colors.red,
+                        ),
+                      ],
+                    ),
                     Chip(
-                      label: Text(pos['side'].toString().toUpperCase()),
-                      backgroundColor: pos['side'] == 'long' ? Colors.green : Colors.red,
+                      label: Text(status.toUpperCase()),
+                      backgroundColor: _getStatusColor(status),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    _buildDetail('User', '${position['user_id'] ?? '—'}'),
+                    _buildDetail('Leverage', leverage != null ? '${leverage}x' : '—'),
+                    _buildDetail(
+                      'Size',
+                      position['size'] != null ? '\$${(position['size'] as num).toStringAsFixed(0)}' : '—',
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text('Trader: ${pos['user_name']}'),
-                const SizedBox(height: 4),
                 Row(
                   children: [
-                    _buildPositionDetail('Size', '${pos['size']}'),
-                    _buildPositionDetail('Entry', '\$${pos['entry_price']}'),
-                    _buildPositionDetail('Current', '\$${pos['current_price']}'),
-                    _buildPositionDetail('PnL', '\$${pos['pnl']}', color: isProfit ? Colors.green : Colors.red),
+                    _buildDetail(
+                      'Entry',
+                      position['entry_price'] != null ? '\$${position['entry_price']}' : '—',
+                    ),
+                    _buildDetail(
+                      'Liq. Price',
+                      liquidationPrice != null ? '\$${liquidationPrice}' : '—',
+                    ),
+                    _buildDetail('PNL', position['pnl'] != null ? '${position['pnl']}' : '—'),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Liq. Price: \$${pos['liquidation_price']}', style: TextStyle(color: Colors.orange[700])),
-                    if (pos['status'] == 'open')
-                      ElevatedButton(
-                        onPressed: () => _liquidatePosition(pos['id']),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                    Expanded(
+                      child: LinearProgressIndicator(
+                        value: _getRiskValue(risk),
+                        color: _getRiskColor(risk),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text('Risk: ${risk.toUpperCase()}', style: const TextStyle(fontSize: 12)),
+                    const SizedBox(width: 16),
+                    if (status == 'open')
+                      OutlinedButton(
+                        onPressed: () => _liquidatePosition(position['id'].toString()),
+                        style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
                         child: const Text('Liquidate'),
                       ),
                   ],
@@ -255,14 +276,49 @@ class _MarginTradingScreenState extends State<MarginTradingScreen> {
     );
   }
 
-  Widget _buildPositionDetail(String label, String value, {Color? color}) {
+  Widget _buildDetail(String label, String value) {
     return Expanded(
       child: Column(
         children: [
           Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
-          Text(value, style: TextStyle(fontWeight: FontWeight.w600, color: color)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
         ],
       ),
     );
+  }
+
+  double _getRiskValue(String risk) {
+    switch (risk.toLowerCase()) {
+      case 'high':
+        return 0.9;
+      case 'medium':
+        return 0.5;
+      default:
+        return 0.2;
+    }
+  }
+
+  Color _getRiskColor(String risk) {
+    switch (risk.toLowerCase()) {
+      case 'high':
+        return Colors.red;
+      case 'medium':
+        return Colors.orange;
+      default:
+        return Colors.green;
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'open':
+        return Colors.green;
+      case 'liquidated':
+        return Colors.red;
+      case 'closed':
+        return Colors.grey;
+      default:
+        return Colors.grey;
+    }
   }
 }

@@ -739,4 +739,150 @@ class DioClient implements ApiClient {
   Future<void> deleteWebhook(String id) async {
     await _dio.delete('${ApiEndpoints.webhooks}/$id');
   }
+
+  // ---- Admin platform endpoints (wallet_api :8443 /api/v1/admin/*) ----
+  // These hit the canonical wallet_api backend. Endpoints that are not
+  // implemented by the backend will return an error, which callers surface as
+  // an honest error/empty state (no fabricated data).
+
+  @override
+  Future<List<Map<String, dynamic>>> getAdminWallets() async {
+    final response = await _dio.get('/admin/wallets');
+    final data = response.data;
+    if (data is List) {
+      return List<Map<String, dynamic>>.from(data);
+    }
+    if (data is Map && data['data'] is List) {
+      return List<Map<String, dynamic>>.from(data['data'] as List);
+    }
+    return [];
+  }
+
+  @override
+  Future<Map<String, dynamic>> getAdminStats() async {
+    final response = await _dio.get('/admin/stats');
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getAdminCryptoCards({String? status}) async {
+    final response = await _dio.get(
+      '/admin/crypto-cards',
+      queryParameters: {if (status != null && status != 'all') 'status': status},
+    );
+    final data = response.data;
+    if (data is List) return List<Map<String, dynamic>>.from(data);
+    if (data is Map && data['data'] is List) {
+      return List<Map<String, dynamic>>.from(data['data'] as List);
+    }
+    return [];
+  }
+
+  @override
+  Future<void> blockCryptoCard(String id) async {
+    await _dio.post('/admin/crypto-cards/$id/block');
+  }
+
+  @override
+  Future<void> activateCryptoCard(String id) async {
+    await _dio.post('/admin/crypto-cards/$id/activate');
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getAdminFeatureFlags() async {
+    final response = await _dio.get('/admin/features');
+    final data = response.data;
+    if (data is List) return List<Map<String, dynamic>>.from(data);
+    if (data is Map && data['data'] is List) {
+      return List<Map<String, dynamic>>.from(data['data'] as List);
+    }
+    return [];
+  }
+
+  @override
+  Future<Map<String, dynamic>> createFeatureFlag2(Map<String, dynamic> data) async {
+    final response = await _dio.post('/admin/features', data: data);
+    return response.data;
+  }
+
+  @override
+  Future<void> toggleFeatureFlag(String id) async {
+    await _dio.post('/admin/features/$id/toggle');
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getAdminLiquidityPools() async {
+    final response = await _dio.get('/admin/liquidity/pools');
+    final data = response.data;
+    if (data is List) return List<Map<String, dynamic>>.from(data);
+    if (data is Map && data['data'] is List) {
+      return List<Map<String, dynamic>>.from(data['data'] as List);
+    }
+    return [];
+  }
+
+  @override
+  Future<Map<String, dynamic>> getAdminLiquidityStats() async {
+    final response = await _dio.get('/admin/liquidity/stats');
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  @override
+  Future<void> addLiquidity(String poolId, Map<String, dynamic> data) async {
+    await _dio.post('/admin/liquidity/pools/$poolId/add', data: data);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getAdminP2PMerchants({String? status}) async {
+    final response = await _dio.get(
+      '/admin/p2p/merchants',
+      queryParameters: {if (status != null && status != 'all') 'status': status},
+    );
+    final data = response.data;
+    if (data is List) return List<Map<String, dynamic>>.from(data);
+    if (data is Map && data['data'] is List) {
+      return List<Map<String, dynamic>>.from(data['data'] as List);
+    }
+    return [];
+  }
+
+  @override
+  Future<void> approveP2PMerchant(String id) async {
+    await _dio.post('/admin/p2p/merchants/$id/approve');
+  }
+
+  @override
+  Future<void> rejectP2PMerchant(String id, String reason) async {
+    await _dio.post('/admin/p2p/merchants/$id/reject', data: {'reason': reason});
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getAdminMarginPositions() async {
+    final response = await _dio.get('/admin/margin/positions');
+    final data = response.data;
+    if (data is List) return List<Map<String, dynamic>>.from(data);
+    if (data is Map && data['data'] is List) {
+      return List<Map<String, dynamic>>.from(data['data'] as List);
+    }
+    return [];
+  }
+
+  @override
+  Future<Map<String, dynamic>> getAdminMarginLiquidationStats() async {
+    final response = await _dio.get('/admin/margin/liquidation-stats');
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  @override
+  Future<void> liquidateMarginPosition(String id) async {
+    await _dio.post('/admin/margin/positions/$id/liquidate');
+  }
+
+  @override
+  Future<void> transferMasterWallet(String walletId, String toAddress, double amount) async {
+    await _dio.post(
+      '/admin/master-wallets/$walletId/transfer',
+      data: {'to_address': toAddress, 'amount': amount},
+    );
+  }
 }

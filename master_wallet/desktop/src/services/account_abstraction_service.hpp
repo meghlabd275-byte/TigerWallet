@@ -158,7 +158,12 @@ public:
     );
     
     std::string getPaymaster(const std::string& chainId);
-    
+
+    // Bundler endpoint (ERC-4337 eth_sendUserOperation). Required for any
+    // UserOperation execution; without it executeUserOperation fails closed.
+    bool setBundlerUrl(const std::string& chainId, const std::string& bundlerUrl);
+    std::string getBundlerUrl(const std::string& chainId);
+
     // Session keys
     std::string addSessionKey(
         const std::string& walletAddress,
@@ -237,6 +242,9 @@ public:
     
     // Factory
     std::string getFactoryAddress(const std::string& chainId);
+    // Set the on-chain factory address for `chainId` (must be a real deployed
+    // ERC-4337 account factory address, not invented here).
+    bool setFactoryAddress(const std::string& chainId, const std::string& factoryAddress);
     bool deployFactory(const std::string& chainId);
     
     // Statistics
@@ -262,6 +270,10 @@ private:
     std::map<std::string, SocialRecoveryConfig> socialRecoveryConfigs_;
     std::map<std::string, BatchedUserOperation> batches_;
     std::map<std::string, std::string> factories_;    // chainId -> factory
+    // chainId -> bundler RPC endpoint (ERC-4337 eth_sendUserOperation). A
+    // UserOperation can only be executed when a real bundler is configured;
+    // without one executeUserOperation fails closed (returns "").
+    std::map<std::string, std::string> bundlerUrls_;
     
     mutable std::mutex dataMutex_;
     
