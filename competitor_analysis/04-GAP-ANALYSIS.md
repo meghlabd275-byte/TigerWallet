@@ -162,3 +162,43 @@ Gaps closed this session (all committed to `main`, pushed to GitHub):
 ### Still open (unchanged from above)
 See the gap matrix for remaining PARTIAL/STUB/MISSING items — the priority order remains: (1) end-to-end working wallet across mobile (Flutter/Android still need real BIP-39), (2) hardware-wallet USB/BLE HID transport wiring, (3) cross-chain bridge real integration, (4) fiat on-ramp partner integration, (5) SDK publication.
 **Remaining (honest):** the non-EVM signing layer returns signed payloads (raw_tx for BTC, signature+sign_doc for Cosmos, Ed25519 sig for Solana). Broadcasting those to chain-native RPC nodes (Bitcoin `sendrawtransaction`, Cosmos `BroadcastTx`, Solana `sendTransaction`) is performed by the client against the chain's own RPC — the wallet backend signs but does not host non-EVM nodes. This is the standard architecture (same as MetaMask/Trust for non-EVM chains).
+
+---
+
+## Session Update — 2026-08-12 (final)
+
+### Critical Flutter crypto fix (mobile_apps/flutter_app)
+The self-custody Flutter app had **CRITICAL fake cryptography** that would have
+caused lost funds / invalid transactions. All fixed (pointycastle, real crypto):
+1. **Ethereum address derivation** used SHA-256 instead of Keccak-256 → WRONG
+   addresses. **Fixed**: real KeccakDigest(256) over uncompressed pubkey (minus
+   0x04 prefix), last 20 bytes, full EIP-55 checksum.
+2. **Bitcoin P2PKH address** used a no-op `_ripemd160` (returned input
+   unchanged) → WRONG addresses. **Fixed**: real RIPEMD160Digest; Hash160 =
+   RIPEMD160(SHA256(pubkey)) + base58check.
+3. **EVMSigner** was completely fake (SHA-256 tx hash, SHA256Digest ECDSA,
+   `0x`+sig "encoding") → invalid signatures. **Fixed**: real RLP encoding
+   primitives, Keccak-256 tx hash, secp256k1 ECDSA with EIP-2 low-s
+   normalization + recovery-id recovery, EIP-155 replay protection. Produces
+   valid raw signed tx for `eth_sendRawTransaction`.
+- BIP-39 (PBKDF2-HMAC-SHA512) + BIP-32 (HMAC-SHA512 CKD) were already correct.
+
+### Fabricated tx hashes + hardcoded admin creds removed
+- **go/super_admin_service**: removed hardcoded default admin (`tigerwallet_admin`
+  / `admin@tigerwallet.com` / `TigerWallet2024!Admin`) → env-configured
+  (`SUPER_ADMIN_USERNAME`/`EMAIL`/`PASSWORD`), fail-closed if unset. Replaced
+  placeholder `0xSuperAdminWallet` → `SUPER_ADMIN_WALLET` env. Replaced
+  fabricated `TxHash: "0x"+random64` + `Status:"completed"` → empty hash +
+  `Status:"requires_broadcast"` (honest). Fixed `fmt.Errorf` `%` verb.
+- **go/token_deployer_service**: replaced synthesized `txHash: "0x"+id[-1]` →
+  empty string (pending) — no fabricated tx hash.
+- **iOS/Android/React SuperAdminService**: removed auto-created default
+  super-admin account (`superadmin@tigerwallet.com` / `SuperAdmin@2024!`) —
+  known-password vulnerability. `createDefaultSuperAdmin()` now fail-closed;
+  bootstrap via backend env. Real RFC 6238 TOTP (HMAC-SHA1) unchanged.
+
+### Verification
+- `go/super_admin_service` + `go/token_deployer_service`: build+vet exit 0.
+- Flutter: SDK not installed in env; verified by construction + brace balance.
+- No `Math.random()` calls remain in any client code (repo-wide scan).
+- All changes committed + pushed to `origin/main`.

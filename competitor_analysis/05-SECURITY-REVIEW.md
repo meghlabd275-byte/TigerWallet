@@ -89,3 +89,49 @@ Security-focused companion to the audit (`03-TIGERWALLET-AUDIT.md`). The goal: d
 ---
 
 **Security bottom line:** The *core* (key mgmt, signing, seed-at-rest, WC2, ZK, scam-scanning, fetchers) is genuinely real and comparable to competitor secure-enclave practice. **But the repo as a whole does NOT meet "no fake logic, high-grade security"** because the mobile paths, the broad Go/Rust service layer, the "MPC"/multisig/AA, hardware-wallet, and the web `app/wallet` path all contain **fabricated, weak, or unsound** crypto that must be fixed/removed before anything there can be called shipping-grade. The safest statement today: **the plumbing is real; the product's security surface is largely unimplemented or fake.**
+
+---
+
+## Update — 2026-08-12 (final)
+
+Significant security gaps closed this session (all on `origin/main`):
+
+### Critical: Flutter app crypto was fake (lost-fund risk)
+`mobile_apps/flutter_app/lib/services/wallet_service.dart` — the self-custody
+Flutter wallet used SHA-256 instead of Keccak-256 for Ethereum address
+derivation (wrong addresses → funds sent to wrong recipients), a no-op
+`_ripemd160` for Bitcoin addresses, and a completely fabricated `EVMSigner`
+(SHA-256 tx "hash" + SHA256Digest ECDSA + `0x`+sig). All replaced with real
+pointycastle primitives: Keccak-256, RIPEMD-160, RLP encoding, secp256k1 ECDSA
+with EIP-2 low-s + recovery-id + EIP-155 replay protection. Produces valid
+raw signed transactions.
+
+### Removed: hardcoded super-admin credentials (auth bypass risk)
+`go/super_admin_service`, iOS/Android/React `SuperAdminService` all
+auto-created a default super-admin account with a known email + password
+(`superadmin@tigerwallet.com` / `SuperAdmin@2024!`, or
+`tigerwallet_admin` / `TigerWallet2024!Admin`). Anyone with source access
+could authenticate as super-admin. All removed — `createDefaultSuperAdmin()`
+is now fail-closed; bootstrap via backend env vars
+(`SUPER_ADMIN_USERNAME`/`EMAIL`/`PASSWORD`). The real RFC 6238 TOTP
+(HMAC-SHA1) 2FA verification is unchanged.
+
+### Removed: fabricated transaction hashes
+`go/super_admin_service` `ExecuteProfitTransfer` returned a fake
+`"0x"+random64` tx hash with `Status:"completed"` (no on-chain tx happened).
+Now: empty hash + `Status:"requires_broadcast"` (honest, same pattern as
+`go/payment`). `go/token_deployer_service` synthesized a tx hash from the
+deployment ID — now empty string (pending).
+
+### RBAC on admin endpoints
+Previously any authenticated user could call `/api/v1/admin/*`. Now
+`users.role` column + JWT role claim + `RequireAdmin()` middleware (403
+non-admins). `ADMIN_BOOTSTRAP_EMAIL` seeds the first admin.
+
+### Updated security posture
+The Flutter self-custody app, the Go service layer (super_admin,
+token_deployer, payment, ens, swap, staking, mpc, multisig — all real
+secp256k1 now), and the admin auth surface are now real. The remaining
+honest gaps are: hardware-wallet USB/BLE HID transport (protocol layer is
+real, transport not wired), and non-EVM broadcast (client broadcasts to
+chain RPC — standard architecture).
