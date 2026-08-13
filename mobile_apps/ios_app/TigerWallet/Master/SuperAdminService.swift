@@ -127,21 +127,10 @@ class SuperAdminService {
     // MARK: - Default Super Admin
     
     private func createDefaultSuperAdmin() {
-        let superAdmin = SuperAdmin(
-            id: "super_admin_001",
-            email: "superadmin@tigerwallet.com",
-            passwordHash: sha256("SuperAdmin@2024!"),
-            secretKey: generateSecretKey(),
-            twoFactorEnabled: false,
-            twoFactorSecret: "",
-            phone: "",
-            createdAt: Date().timeIntervalSince1970,
-            lastLogin: 0,
-            isActive: true,
-            permissions: ["*"]
-        )
-        superAdmins[superAdmin.id] = superAdmin
-        superAdmins[superAdmin.email] = superAdmin
+        // No hardcoded default super admin. Bootstrap admin credentials must be
+        // provisioned out-of-band via the backend (go/super_admin_service reads
+        // SUPER_ADMIN_USERNAME/SUPER_ADMIN_EMAIL/SUPER_ADMIN_PASSWORD env vars).
+        // Shipping a known-password account is a security vulnerability.
     }
     
     private func initializeFeatureControls() {

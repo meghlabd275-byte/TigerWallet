@@ -168,21 +168,10 @@ class SuperAdminServiceClass {
   }
 
   private createDefaultSuperAdmin(): void {
-    const superAdmin: SuperAdmin = {
-      id: 'super_admin_001',
-      email: 'superadmin@tigerwallet.com',
-      passwordHash: this.hashPassword(process.env.REACT_APP_SUPER_ADMIN_PASSWORD || ''),
-      secretKey: this.generateSecretKey(),
-      twoFactorEnabled: false,
-      twoFactorSecret: '',
-      phone: '',
-      createdAt: Date.now(),
-      lastLogin: 0,
-      isActive: true,
-      permissions: ['*'],
-    };
-    this.superAdmins.set(superAdmin.id, superAdmin);
-    this.superAdmins.set(superAdmin.email, superAdmin);
+    // No hardcoded default super admin. Bootstrap admin credentials must be
+    // provisioned out-of-band via the backend (go/super_admin_service reads
+    // SUPER_ADMIN_USERNAME/SUPER_ADMIN_EMAIL/SUPER_ADMIN_PASSWORD env vars).
+    // Shipping a known-password account is a security vulnerability.
   }
 
   private initializeFeatureControls(): void {
