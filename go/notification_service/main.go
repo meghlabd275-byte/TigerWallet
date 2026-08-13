@@ -29,6 +29,7 @@ type Notification struct {
 	Status    string                 `json:"status"` // pending, sent, failed
 	Channel   string                 `json:"channel"`
 	Priority  string                 `json:"priority"` // low, normal, high, urgent
+	Read      bool                   `json:"read"`
 	CreatedAt time.Time              `json:"created_at"`
 	SentAt    *time.Time             `json:"sent_at"`
 }
@@ -104,6 +105,58 @@ func (ns *NotificationService) GetNotifications(c *gin.Context) {
 		"success":       true,
 		"notifications": notifs,
 	})
+}
+
+// MarkAsRead marks a single notification as read by ID.
+func (ns *NotificationService) MarkAsRead(c *gin.Context) {
+	notifID := c.Param("id")
+	for i := range ns.notifications {
+		if ns.notifications[i].ID == notifID {
+			ns.notifications[i].Read = true
+			c.JSON(http.StatusOK, gin.H{"success": true, "notification": ns.notifications[i]})
+			return
+		}
+	}
+	c.JSON(http.StatusNotFound, gin.H{"error": "notification not found"})
+}
+
+// MarkAllAsRead marks all notifications for a user as read.
+func (ns *NotificationService) MarkAllAsRead(c *gin.Context) {
+	userID := c.Param("user_id")
+	count := 0
+	for i := range ns.notifications {
+		if ns.notifications[i].UserID == userID && !ns.notifications[i].Read {
+			ns.notifications[i].Read = true
+			count++
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "marked_read": count})
+}
+
+// DeleteNotification removes a single notification by ID.
+func (ns *NotificationService) DeleteNotification(c *gin.Context) {
+	notifID := c.Param("id")
+	for i := range ns.notifications {
+		if ns.notifications[i].ID == notifID {
+			ns.notifications = append(ns.notifications[:i], ns.notifications[i+1:]...)
+			c.JSON(http.StatusOK, gin.H{"success": true})
+			return
+		}
+	}
+	c.JSON(http.StatusNotFound, gin.H{"error": "notification not found"})
+}
+
+// ClearAll removes all notifications for a user.
+func (ns *NotificationService) ClearAll(c *gin.Context) {
+	userID := c.Param("user_id")
+	filtered := ns.notifications[:0]
+	for _, n := range ns.notifications {
+		if n.UserID != userID {
+			filtered = append(filtered, n)
+		}
+	}
+	ns.notifications = filtered
+	c.JSON(http.StatusOK, gin.H{"success": true, "cleared": true})
 }
 
 func (ns *NotificationService) Subscribe(c *gin.Context) {
@@ -228,6 +281,10 @@ func main() {
 		api.POST("/send", ns.SendNotification)
 		api.POST("/batch", ns.SendBatch)
 		api.GET("/users/:user_id", ns.GetNotifications)
+		api.PUT("/users/:user_id/read", ns.MarkAllAsRead)
+		api.PUT("/users/:user_id/clear", ns.ClearAll)
+		api.PUT("/:id/read", ns.MarkAsRead)
+		api.DELETE("/:id", ns.DeleteNotification)
 		api.POST("/subscribe", ns.Subscribe)
 		api.DELETE("/subscribe/:id", ns.Unsubscribe)
 		api.GET("/templates", ns.GetTemplates)

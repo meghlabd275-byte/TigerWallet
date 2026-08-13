@@ -79,6 +79,7 @@ func main() {
 	r.GET("/api/v1/dapps", handleListDApps)
 	r.GET("/api/v1/dapps/categories", handleDAppCategories)
 	r.GET("/api/v1/dapps/:id", handleGetDApp)
+	r.GET("/api/v1/defi/protocols", handleDefiProtocols)
 
 	// ---- Token asset registry (read-only public) ----
 	r.GET("/api/v1/tokens/registry", handleTokenRegistry)

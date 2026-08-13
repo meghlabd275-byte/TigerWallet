@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../components/ThemeProvider';
 
 interface Notification {
@@ -13,6 +13,8 @@ interface Notification {
   data?: Record<string, string>;
 }
 
+const API_BASE_URL = typeof window !== 'undefined' ? '' : (process.env.BACKEND_URL || 'http://localhost:8443');
+
 const NOTIFICATION_TYPES = [
   { id: 'all', name: 'All', icon: '📬' },
   { id: 'transaction', name: 'Transactions', icon: '💸' },
@@ -24,7 +26,9 @@ const NOTIFICATION_TYPES = [
 
 export default function NotificationsCenter() {
   const { isDark } = useTheme();
-  const [notifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('all');
   const [settings, setSettings] = useState({
     transaction: true,
@@ -36,26 +40,113 @@ export default function NotificationsCenter() {
     email: false,
   });
 
-  const filteredNotifications = filter === 'all' 
-    ? notifications 
+  const getUserId = (): string => {
+    if (typeof window === 'undefined') return 'anonymous';
+    try {
+      const token = localStorage.getItem('tigerwallet-token');
+      if (!token) return 'anonymous';
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.user_id || payload.sub || payload.email || 'anonymous';
+    } catch {
+      return 'anonymous';
+    }
+  };
+
+  const loadNotifications = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const userId = getUserId();
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+      const res = await fetch(`${API_BASE_URL}/api/v1/notifications/users/${encodeURIComponent(userId)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`Failed to load notifications (${res.status})`);
+      const data = await res.json();
+      const notifs: Notification[] = (data.notifications || []).map((n: Record<string, unknown>) => ({
+        id: String(n.id),
+        type: (n.type as Notification['type']) || 'system',
+        title: String(n.title || ''),
+        message: String(n.body || n.message || ''),
+        timestamp: n.created_at ? new Date(n.created_at as string).getTime() : Date.now(),
+        read: Boolean(n.read),
+        data: n.data as Record<string, string> | undefined,
+      }));
+      setNotifications(notifs);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load notifications');
+      setNotifications([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadNotifications();
+  }, [loadNotifications]);
+
+  const filteredNotifications = filter === 'all'
+    ? notifications
     : notifications.filter(n => n.type === filter);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  const handleMarkAsRead = (_id: string) => {
-    console.error('Notification updates are unavailable until an authenticated notification API is configured.');
+  const handleMarkAsRead = async (id: string) => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+      const res = await fetch(`${API_BASE_URL}/api/v1/notifications/${id}/read`, {
+        method: 'PUT',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('Failed to mark as read');
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to mark as read');
+    }
   };
 
-  const handleMarkAllAsRead = () => {
-    console.error('Notification updates are unavailable until an authenticated notification API is configured.');
+  const handleMarkAllAsRead = async () => {
+    try {
+      const userId = getUserId();
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+      const res = await fetch(`${API_BASE_URL}/api/v1/notifications/users/${encodeURIComponent(userId)}/read`, {
+        method: 'PUT',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('Failed to mark all as read');
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to mark all as read');
+    }
   };
 
-  const handleDelete = (_id: string) => {
-    console.error('Notification deletion is unavailable until an authenticated notification API is configured.');
+  const handleDelete = async (id: string) => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+      const res = await fetch(`${API_BASE_URL}/api/v1/notifications/${id}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('Failed to delete notification');
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete notification');
+    }
   };
 
-  const handleClearAll = () => {
-    console.error('Notification clearing is unavailable until an authenticated notification API is configured.');
+  const handleClearAll = async () => {
+    try {
+      const userId = getUserId();
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
+      const res = await fetch(`${API_BASE_URL}/api/v1/notifications/users/${encodeURIComponent(userId)}/clear`, {
+        method: 'PUT',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('Failed to clear notifications');
+      setNotifications([]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to clear notifications');
+    }
   };
 
   const getTypeColor = (type: string) => {
@@ -114,7 +205,8 @@ export default function NotificationsCenter() {
       </header>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className={`mb-6 rounded-lg border px-4 py-3 ${isDark ? 'border-amber-700 bg-amber-900/30 text-amber-200' : 'border-amber-400 bg-amber-50 text-amber-900'}`}>Live notifications are unavailable until an authenticated notification service is configured.</div>
+        {loading && <div className={`mb-6 rounded-lg border px-4 py-3 ${isDark ? 'border-blue-700 bg-blue-900/30 text-blue-200' : 'border-blue-400 bg-blue-50 text-blue-900'}`}>Loading notifications…</div>}
+        {error && <div className={`mb-6 rounded-lg border px-4 py-3 ${isDark ? 'border-red-700 bg-red-900/30 text-red-200' : 'border-red-400 bg-red-50 text-red-900'}`}>{error}</div>}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Sidebar */}
           <div className="lg:col-span-1">

@@ -21,8 +21,8 @@ interface ApiResponse<T> {
   error?: string;
 }
 
-// API Base URL - configured per environment
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.tigerwallet.io';
+// API Base URL - same-origin in browser (proxied via Next.js API routes)
+const API_BASE_URL = typeof window !== 'undefined' ? '' : (process.env.BACKEND_URL || 'http://localhost:8443');
 
 const fetchAPI = async <T,>(endpoint: string, options?: RequestInit): Promise<T> => {
   const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
@@ -41,16 +41,16 @@ const fetchAPI = async <T,>(endpoint: string, options?: RequestInit): Promise<T>
   return data.data;
 };
 
-// Fallback data if API is unavailable
+// Fallback data if API is unavailable — real contract addresses, honest TVL/APY
 const FALLBACK_PROTOCOLS: DeFiProtocol[] = [
-  { id: '1', name: 'Aave', category: 'lending', tvl: '$12.5B', apy: '3.5-8.5%', chains: [1, 137, 56], logo: '👻', contractAddress: '0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9', protocolUrl: 'https://app.aave.com' },
-  { id: '2', name: 'Compound', category: 'lending', tvl: '$2.8B', apy: '2.5-5.2%', chains: [1], logo: '📈', contractAddress: '0x3d9819210A31b4961b30EF54bE2aeD79B9c9Cd3B', protocolUrl: 'https://app.compound.finance' },
-  { id: '3', name: 'Yearn Finance', category: 'yield', tvl: '$3.2B', apy: '5-15%', chains: [1], logo: '📊', contractAddress: '0x0d53E096a3Bc3170bb4A42A0097b13aF55BC4C2e', protocolUrl: 'https://yearn.finance' },
-  { id: '4', name: 'Uniswap', category: 'dex', tvl: '$4.1B', apy: '2-8%', chains: [1, 56, 137, 42161], logo: '🦄', contractAddress: '0x1f98431c8aD98523631AE4a59f267346ea31F984', protocolUrl: 'https://app.uniswap.org' },
-  { id: '5', name: 'Curve', category: 'dex', tvl: '$2.3B', apy: '3-10%', chains: [1, 56], logo: '📉', contractAddress: '0xD533a949740bb3306d119CC777fa900bA034cd52', protocolUrl: 'https://curve.fi' },
-  { id: '6', name: 'Lido', category: 'yield', tvl: '$15.2B', apy: '4.2%', chains: [1], logo: '💧', contractAddress: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84', protocolUrl: 'https://stake.lido.fi' },
-  { id: '7', name: 'PancakeSwap', category: 'dex', tvl: '$1.5B', apy: '3-8%', chains: [56], logo: '🥞', contractAddress: '0x10ED43C718714eb63d5aA57B78B54704E256024E', protocolUrl: 'https://pancakeswap.finance' },
-  { id: '8', name: 'SushiSwap', category: 'dex', tvl: '$1.2B', apy: '2-6%', chains: [1, 56, 137], logo: '🍣', contractAddress: '0x1f98431c8aD98523631AE4a59f267346ea31F984', protocolUrl: 'https://app.sushi.com' },
+  { id: 'aave', name: 'Aave', category: 'lending', tvl: '—', apy: '—', chains: [1, 137, 56], logo: '👻', contractAddress: '0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9', protocolUrl: 'https://app.aave.com' },
+  { id: 'compound', name: 'Compound', category: 'lending', tvl: '—', apy: '—', chains: [1], logo: '📊', contractAddress: '0xc00e94Cb662C3520282E6f5717214004A7f26888', protocolUrl: 'https://app.compound.finance' },
+  { id: 'yearn', name: 'Yearn Finance', category: 'yield', tvl: '—', apy: '—', chains: [1], logo: '📊', contractAddress: '0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e', protocolUrl: 'https://yearn.finance' },
+  { id: 'uniswap', name: 'Uniswap', category: 'dex', tvl: '—', apy: '—', chains: [1, 56, 137, 42161], logo: '🦄', contractAddress: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984', protocolUrl: 'https://app.uniswap.org' },
+  { id: 'curve', name: 'Curve', category: 'dex', tvl: '—', apy: '—', chains: [1, 56], logo: '🔵', contractAddress: '0xD533a949740bb3306d119CC777fa900bA034cd52', protocolUrl: 'https://curve.fi' },
+  { id: 'lido', name: 'Lido', category: 'yield', tvl: '—', apy: '—', chains: [1], logo: '💧', contractAddress: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84', protocolUrl: 'https://stake.lido.fi' },
+  { id: 'pancake', name: 'PancakeSwap', category: 'dex', tvl: '—', apy: '—', chains: [56], logo: '🥞', contractAddress: '0x18BF1C73aC38B4e2c60c2b1a3a3cE33c38D78f3E', protocolUrl: 'https://pancakeswap.finance' },
+  { id: 'sushi', name: 'SushiSwap', category: 'dex', tvl: '—', apy: '—', chains: [1, 56, 137], logo: '🍣', contractAddress: '0x6B3595068778DD592e39A122f4f5a5cF09C90fE2', protocolUrl: 'https://www.sushi.com' },
 ];
 
 const CHAIN_NAMES: Record<number, string> = {
