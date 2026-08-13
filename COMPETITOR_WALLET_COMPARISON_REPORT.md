@@ -731,3 +731,34 @@ The following files contain `setTimeout`, mock data, or placeholder implementati
 ---
 
 **End of Report**
+
+---
+
+## Update Log — 2026-08-12
+
+Gaps closed this session (all committed to `main`, pushed to GitHub):
+
+1. **NFT transfer flow (real ERC-721)** — `go/wallet_api/nft_transfer.go` builds
+   real `safeTransferFrom(from,to,tokenId)` calldata (selector `0x42842e0e`,
+   ABI-padded), delegates to the shared `executeSend` secp256k1
+   `eth_sendRawTransaction` path. Route `POST /api/v1/nft/transfer` +
+   Next.js proxy + frontend Transfer button/dialog in `nft-marketplace/page.tsx`.
+
+2. **Role-based access control (admin endpoints)** — Previously any authenticated
+   user could call `/api/v1/admin/*`. Now: `users.role` column, JWT role claim,
+   `RequireAdmin()` middleware (403 non-admins), `ADMIN_BOOTSTRAP_EMAIL` seeds
+   the first admin at startup, `PUT /admin/users/:id/role` for role assignment.
+   Build+vet+test pass; tsc 0 errors.
+
+3. **Flutter app critical crypto fix** (`mobile_apps/flutter_app`) — the
+   self-custody Flutter wallet had fake crypto that would cause lost funds:
+   - Ethereum address derivation: SHA-256 -> **Keccak-256** (EIP-55 checksum).
+   - Bitcoin P2PKH: no-op `_ripemd160` -> **real RIPEMD-160** (pointycastle).
+   - Transaction signing: fake SHA-256(string concat) hash + `SHA256Digest`
+     ECDSA + `0x`+sig "encoding" -> **real RLP encoding + Keccak-256 + secp256k1
+     ECDSA (EIP-2 low-s, recovery-id) + EIP-155 replay protection** producing a
+     valid raw signed transaction for `eth_sendRawTransaction`.
+
+4. **Chain coverage verified** — 120 EVM + 66 non-EVM mainnet chains (incl. Pi
+   Network), all `IsTestnet: false`. Admins can add more chains at runtime via
+   the `/admin/chains` CRUD API (PostgreSQL `admin_chain_config`).
