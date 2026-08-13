@@ -142,7 +142,7 @@ export default function LendingPage() {
   const [operation, setOperation] = useState<'supply' | 'borrow'>('supply');
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  // Simulated wallet address (in production, connect to wallet)
+  // Wallet address from the connected EIP-1193 provider (stored by useWallet hook)
   useEffect(() => {
     const savedWallet = localStorage.getItem('tigerwallet_address');
     if (savedWallet) {

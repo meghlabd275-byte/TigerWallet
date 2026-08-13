@@ -102,22 +102,12 @@ export default function BiometricAuthPage() {
             await loadCredentials();
           }
         } else {
-          // Simulate registration for demo
-          await fetch(`${API_BASE}/api/v1/2fa/webauthn/register`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, deviceName }),
-          });
-          await loadCredentials();
+          // WebAuthn platform authenticator not available — fail-closed
+          throw new Error('Biometric authentication is not available on this device. A platform authenticator is required.');
         }
       } else {
-        // Fallback: simulate registration
-        await fetch(`${API_BASE}/api/v1/2fa/webauthn/register`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, deviceName }),
-        });
-        await loadCredentials();
+        // WebAuthn not supported — fail-closed
+        throw new Error('WebAuthn is not supported by this browser. Cannot register a biometric credential.');
       }
     } catch (err: any) {
       setError(err.message || 'Failed to register credential');
@@ -161,15 +151,17 @@ export default function BiometricAuthPage() {
             const data = await res.json();
             if (data.valid) {
               setIsAuthenticated(true);
+            } else {
+              throw new Error('Authentication rejected by the verification service.');
             }
           }
         } else {
-          // No credentials, simulate auth
-          setIsAuthenticated(true);
+          // No registered credentials — fail-closed
+          throw new Error('No biometric credentials are registered. Please register a credential first.');
         }
       } else {
-        // Simulate
-        setIsAuthenticated(true);
+        // WebAuthn not supported — fail-closed
+        throw new Error('WebAuthn is not supported by this browser. Cannot authenticate.');
       }
     } catch (err: any) {
       setError(err.message || 'Authentication failed');

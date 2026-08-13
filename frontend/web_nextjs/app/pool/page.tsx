@@ -7,7 +7,7 @@ import {
   Chip, IconButton, Select, MenuItem, FormControl, InputLabel,
   Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab,
   Slider, InputAdornment, Tooltip, CircularProgress, Snackbar, Alert,
-  Divider
+  Divider, Grid, Paper
 } from '@mui/material';
 import {
   Add, Remove, Visibility, Close, Refresh, ShowChart,
@@ -624,9 +624,90 @@ export default function PoolPage() {
               </Box>
             ) : (
               <Box sx={{ py: 3 }}>
-                <Typography sx={{ color: 'var(--text-secondary)', textAlign: 'center' }}>
-                  📊 Analytics Dashboard - Coming Soon
+                {/* Analytics Dashboard — computed from live pool + position data */}
+                <Grid container spacing={3} sx={{ mb: 3 }}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 2 }}>
+                      <CardContent>
+                        <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase' }}>Total Pools</Typography>
+                        <Typography sx={{ color: 'var(--text-primary)', fontSize: '1.75rem', fontWeight: 700, mt: 1 }}>
+                          {pools.length}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 2 }}>
+                      <CardContent>
+                        <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase' }}>Aggregate TVL</Typography>
+                        <Typography sx={{ color: 'var(--text-primary)', fontSize: '1.75rem', fontWeight: 700, mt: 1 }}>
+                          ${pools.reduce((sum, p) => sum + (p.tvlUSD || 0), 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 2 }}>
+                      <CardContent>
+                        <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase' }}>24h Volume</Typography>
+                        <Typography sx={{ color: 'var(--text-primary)', fontSize: '1.75rem', fontWeight: 700, mt: 1 }}>
+                          ${pools.reduce((sum, p) => sum + (p.volume24h || 0), 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card sx={{ bgcolor: 'var(--bg-secondary)', borderRadius: 2 }}>
+                      <CardContent>
+                        <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase' }}>Your Positions</Typography>
+                        <Typography sx={{ color: 'var(--text-primary)', fontSize: '1.75rem', fontWeight: 700, mt: 1 }}>
+                          {positions.length}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+
+                {/* Top pools by TVL */}
+                <Typography sx={{ color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 600, mb: 2 }}>
+                  Top Pools by TVL
                 </Typography>
+                {pools.length === 0 ? (
+                  <Typography sx={{ color: 'var(--text-secondary)', textAlign: 'center', py: 4 }}>
+                    No pool data available. Connect a wallet or select a chain.
+                  </Typography>
+                ) : (
+                  <TableContainer component={Paper} sx={{ bgcolor: 'var(--bg-secondary)' }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ color: 'var(--text-secondary)' }}>Pool</TableCell>
+                          <TableCell align="right" sx={{ color: 'var(--text-secondary)' }}>TVL</TableCell>
+                          <TableCell align="right" sx={{ color: 'var(--text-secondary)' }}>24h Volume</TableCell>
+                          <TableCell align="right" sx={{ color: 'var(--text-secondary)' }}>APR</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {[...pools].sort((a, b) => (b.tvlUSD || 0) - (a.tvlUSD || 0)).slice(0, 10).map((p) => (
+                          <TableRow key={p.id}>
+                            <TableCell sx={{ color: 'var(--text-primary)' }}>
+                              {p.token0.symbol} / {p.token1.symbol}
+                            </TableCell>
+                            <TableCell align="right" sx={{ color: 'var(--text-primary)' }}>
+                              ${(p.tvlUSD || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            </TableCell>
+                            <TableCell align="right" sx={{ color: 'var(--text-primary)' }}>
+                              ${(p.volume24h || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            </TableCell>
+                            <TableCell align="right" sx={{ color: '#00d4aa' }}>
+                              {(p.apr || 0).toFixed(2)}%
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
               </Box>
             )}
           </CardContent>
