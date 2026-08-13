@@ -77,7 +77,9 @@ interface BridgeTransfer {
 // Constants
 // ============================================================================
 
-const CHAINS: Chain[] = [
+// Hardcoded chains kept ONLY as an offline fallback; the live list is fetched
+// from the canonical GET /api/v1/chains registry on mount (see fetchChains below).
+const CHAINS_FALLBACK: Chain[] = [
   { id: 1, name: 'Ethereum', icon: '🔷', color: '#627EEA', rpcUrl: 'https://eth.llamarpc.com', explorerUrl: 'https://etherscan.io', nativeCurrency: 'ETH', avgBridgeTime: '10-15 min', gasCost: '$5-15' },
   { id: 56, name: 'BNB Chain', icon: '🟡', color: '#F3BA2F', rpcUrl: 'https://bsc-dataseed.binance.org', explorerUrl: 'https://bscscan.com', nativeCurrency: 'BNB', avgBridgeTime: '5-10 min', gasCost: '$1-3' },
   { id: 137, name: 'Polygon', icon: '🟣', color: '#8247E5', rpcUrl: 'https://polygon-rpc.com', explorerUrl: 'https://polygonscan.com', nativeCurrency: 'MATIC', avgBridgeTime: '7-12 min', gasCost: '$0.5-2' },
@@ -145,7 +147,9 @@ function timeAgo(timestamp: number): string {
 // ============================================================================
 
 export default function BridgePage() {
+  const { isDark } = useTheme();
   // State
+  const [chains, setChains] = useState<Chain[]>(CHAINS_FALLBACK);
   const [fromChain, setFromChain] = useState(1);
   const [toChain, setToChain] = useState(137);
   const [token, setToken] = useState('ETH');
@@ -171,8 +175,41 @@ export default function BridgePage() {
   // ============================================================================
 
   useEffect(() => {
-    // Fetch routes from API. The bridge service does not currently expose a
-    // /routes endpoint, so routes default to empty until one is added.
+    // Fetch the live chain registry from the canonical backend so the chain
+    // pickers reflect admin-added chains (no hardcoded-only list). On failure
+    // we keep the offline fallback (CHAINS_FALLBACK) rather than fabricate.
+    const fetchChains = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/v1/chains`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.chains && Array.isArray(data.chains) && data.chains.length > 0) {
+            // Map the backend ChainConfig schema to the local Chain interface.
+            const mapped: Chain[] = data.chains
+              .filter((c: { chain_type?: string; is_testnet?: boolean }) => c.chain_type === 'evm' && !c.is_testnet)
+              .map((c: { id: number; name: string; symbol: string; rpc_endpoint?: string; explorer_url?: string }) => ({
+                id: c.id,
+                name: c.name,
+                icon: '⛓️',
+                color: '#627EEA',
+                rpcUrl: c.rpc_endpoint || '',
+                explorerUrl: c.explorer_url || '',
+                nativeCurrency: c.symbol,
+                avgBridgeTime: '5-15 min',
+                gasCost: '$1-15',
+              }));
+            if (mapped.length > 0) setChains(mapped);
+          }
+        }
+      } catch (err) {
+        // Backend unreachable: keep CHAINS_FALLBACK (no fabricated chains).
+      }
+    };
+
+    fetchChains();
+
+    // Fetch routes from API. The bridge service exposes a /routes endpoint
+    // listing the registered bridges + their supported chains.
     const fetchRoutes = async () => {
       try {
         const response = await fetch(`${API_BASE}/api/v1/bridge/routes?from_chain=${fromChain}&to_chain=${toChain}`);
@@ -333,11 +370,11 @@ export default function BridgePage() {
   // ============================================================================
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a14', p: 3 }}>
+    <Box sx={{ minHeight: '100vh', bgcolor: isDark ? '#0a0a14' : '#f5f7fa', color: isDark ? 'white' : '#1a1a2e', p: 3 }}>
       <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
         {/* Header */}
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
+          <Typography variant="h4" sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>
             🌉 Cross-Chain Bridge
           </Typography>
           <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mt: 1 }}>
@@ -404,9 +441,9 @@ export default function BridgePage() {
                       <Select
                         value={fromChain}
                         onChange={(e) => setFromChain(e.target.value as number)}
-                        sx={{ color: 'white', bgcolor: 'var(--bg-secondary)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
+                        sx={{ color: isDark ? 'white' : '#1a1a2e', bgcolor: 'var(--bg-secondary)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
                       >
-                        {CHAINS.map(chain => (
+                        {chains.map(chain => (
                           <MenuItem key={chain.id} value={chain.id}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <span>{chain.icon}</span>
@@ -457,9 +494,9 @@ export default function BridgePage() {
                     <Select
                       value={toChain}
                       onChange={(e) => setToChain(e.target.value as number)}
-                      sx={{ color: 'white', bgcolor: 'var(--bg-secondary)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
+                      sx={{ color: isDark ? 'white' : '#1a1a2e', bgcolor: 'var(--bg-secondary)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg-tertiary)' } }}
                     >
-                      {CHAINS.filter(c => c.id !== fromChain).map(chain => (
+                      {chains.filter(c => c.id !== fromChain).map(chain => (
                         <MenuItem key={chain.id} value={chain.id}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             <span>{chain.icon}</span>
@@ -519,7 +556,7 @@ export default function BridgePage() {
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                         <Typography sx={{ fontSize: 20 }}>{route.logo}</Typography>
                         <Box>
-                          <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{route.name}</Typography>
+                          <Typography sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>{route.name}</Typography>
                           <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>{route.time}</Typography>
                         </Box>
                       </Box>
@@ -589,9 +626,9 @@ export default function BridgePage() {
                         <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>Fastest Route</Typography>
                       </Box>
                       <Typography sx={{ color: 'white' }}>
-                        {CHAINS.find(c => c.id === fromChain)?.icon} {CHAINS.find(c => c.id === fromChain)?.name}
+                        {chains.find(c => c.id === fromChain)?.icon} {chains.find(c => c.id === fromChain)?.name}
                         {' → '}
-                        {CHAINS.find(c => c.id === toChain)?.icon} {CHAINS.find(c => c.id === toChain)?.name}
+                        {chains.find(c => c.id === toChain)?.icon} {chains.find(c => c.id === toChain)?.name}
                       </Typography>
                     </Box>
                   </Box>
@@ -623,9 +660,9 @@ export default function BridgePage() {
                   >
                     <Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                        {CHAINS.find(c => c.id === tx.fromChain)?.icon}
+                        {chains.find(c => c.id === tx.fromChain)?.icon}
                         <ArrowForward sx={{ color: 'var(--text-secondary)', fontSize: 16 }} />
-                        {CHAINS.find(c => c.id === tx.toChain)?.icon}
+                        {chains.find(c => c.id === tx.toChain)?.icon}
                         <Typography sx={{ color: 'white', ml: 1 }}>
                           {tx.amount} {tx.token}
                         </Typography>
@@ -634,7 +671,7 @@ export default function BridgePage() {
                       <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                         {timeAgo(tx.timestamp)}
                         {tx.sourceTxHash && (
-                          <> • Source: <a href={`${CHAINS.find(c => c.id === tx.fromChain)?.explorerUrl}/tx/${tx.sourceTxHash}`} target="_blank" rel="noopener" style={{ color: '#00d4aa' }}>{formatAddress(tx.sourceTxHash)}</a></>
+                          <> • Source: <a href={`${chains.find(c => c.id === tx.fromChain)?.explorerUrl}/tx/${tx.sourceTxHash}`} target="_blank" rel="noopener" style={{ color: '#00d4aa' }}>{formatAddress(tx.sourceTxHash)}</a></>
                         )}
                       </Typography>
                       {tx.status === 'confirming' && (
@@ -648,7 +685,7 @@ export default function BridgePage() {
                     {tx.destTxHash && (
                       <Button
                         size="small"
-                        href={`${CHAINS.find(c => c.id === tx.toChain)?.explorerUrl}/tx/${tx.destTxHash}`}
+                        href={`${chains.find(c => c.id === tx.toChain)?.explorerUrl}/tx/${tx.destTxHash}`}
                         target="_blank"
                         sx={{ color: '#00d4aa' }}
                       >
@@ -666,12 +703,12 @@ export default function BridgePage() {
         <Box sx={{ mt: 4 }}>
           <Typography variant="h6" sx={{ color: 'white', mb: 2 }}>Supported Chains</Typography>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            {CHAINS.map(chain => (
+            {chains.map(chain => (
               <Card key={chain.id} sx={{ bgcolor: 'var(--bg-primary)', borderRadius: 2, minWidth: 150 }}>
                 <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                     <Typography sx={{ fontSize: 24 }}>{chain.icon}</Typography>
-                    <Typography sx={{ color: 'white', fontWeight: 'bold' }}>{chain.name}</Typography>
+                    <Typography sx={{ color: isDark ? 'white' : '#1a1a2e', fontWeight: 'bold' }}>{chain.name}</Typography>
                   </Box>
                   <Typography variant="caption" sx={{ color: 'var(--text-secondary)', display: 'block' }}>
                     Avg Time: {chain.avgBridgeTime}

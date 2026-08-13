@@ -60,26 +60,28 @@ type Config struct {
 
 // QuoteRequest for bridge quote
 type QuoteRequest struct {
-	SrcChain  uint64
-	DstChain  uint64
-	SrcToken  string
-	DstToken  string
-	Amount    *big.Int
-	Recipient string
+	SrcChain  uint64   `json:"srcChain"`
+	DstChain  uint64   `json:"dstChain"`
+	SrcToken  string   `json:"srcToken"`
+	DstToken  string   `json:"dstToken"`
+	Amount    *big.Int `json:"amount"`
+	Recipient string   `json:"recipient"`
 }
 
 // QuoteResponse from bridge
 type QuoteResponse struct {
-	Bridge      string
-	SrcToken    string
-	DstToken    string
-	AmountIn    *big.Int
-	AmountOut   *big.Int
-	BridgeFee   *big.Int
-	GasEstimate uint64
-	Duration    time.Duration
-	Slippage    float64
-	Route       []Hop
+	Bridge        string        `json:"bridge"`
+	SrcToken      string        `json:"src_token"`
+	DstToken      string        `json:"dst_token"`
+	AmountIn      *big.Int      `json:"amount_in"`
+	AmountOut     *big.Int      `json:"amount_out"`
+	BridgeFee     *big.Int      `json:"bridge_fee"`
+	GasEstimate   uint64        `json:"gas_estimate"`
+	Duration      time.Duration `json:"duration"`
+	EstimatedTime int64         `json:"estimated_time"` // seconds
+	Fee           string        `json:"fee"` // human-readable bridge fee
+	Slippage      float64       `json:"slippage"`
+	Route         []Hop         `json:"route"`
 }
 
 // Hop represents a single bridge hop
@@ -311,8 +313,10 @@ func (s *StargateBridge) GetQuote(ctx context.Context, req QuoteRequest) (QuoteR
 		AmountOut: amountOut,
 		BridgeFee: fee,
 		Duration:  5 * time.Minute,
-		Slippage:  0.5,
-		Route:     []Hop{{Bridge: "Stargate", Chain: req.DstChain}},
+		Slippage:      0.5,
+		Route:        []Hop{{Bridge: "Stargate", Chain: req.DstChain}},
+		EstimatedTime: int64(5 * 60),
+		Fee:          fee.String(),
 	}, nil
 }
 
@@ -358,8 +362,10 @@ func (a *AcrossBridge) GetQuote(ctx context.Context, req QuoteRequest) (QuoteRes
 		AmountOut: amountOut,
 		BridgeFee: fee,
 		Duration:  3 * time.Minute,
-		Slippage:  0.3,
-		Route:     []Hop{{Bridge: "Across", Chain: req.DstChain}},
+		Slippage:      0.3,
+		Route:        []Hop{{Bridge: "Across", Chain: req.DstChain}},
+		EstimatedTime: int64(3 * 60),
+		Fee:          fee.String(),
 	}, nil
 }
 

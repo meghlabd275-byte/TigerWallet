@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"math/big"
 	"net/http"
@@ -73,30 +74,65 @@ func (s *Server) handleQuote(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 		return
 	}
-	var req struct {
-		SrcChain  uint64 `json:"srcChain"`
-		DstChain  uint64 `json:"dstChain"`
-		SrcToken  string `json:"srcToken"`
-		DstToken  string `json:"dstToken"`
-		Amount    string `json:"amount"`
-		Recipient string `json:"recipient"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	// Accept both camelCase (srcChain) and snake_case (from_chain) field names
+	// so the frontend contract works regardless of convention.
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
-	amount, ok := new(big.Int).SetString(req.Amount, 10)
-	if !ok {
-		http.Error(w, `{"error":"invalid amount"}`, http.StatusBadRequest)
+	pick := func(keys ...string) string {
+		for _, k := range keys {
+			if v, ok := raw[k]; ok {
+				var s string
+				if json.Unmarshal(v, &s) == nil && s != "" {
+					return s
+				}
+				var f float64
+				if json.Unmarshal(v, &f) == nil {
+					return strconv.FormatFloat(f, 'f', -1, 64)
+				}
+			}
+		}
+		return ""
+	}
+	srcChainStr := pick("srcChain", "from_chain")
+	dstChainStr := pick("dstChain", "to_chain")
+	srcToken := pick("srcToken", "token", "from_token")
+	dstToken := pick("dstToken", "to_token")
+	if dstToken == "" {
+		dstToken = srcToken
+	}
+	amountStr := pick("amount", "from_amount")
+	recipient := pick("recipient")
+	srcChain, err := strconv.ParseUint(srcChainStr, 10, 64)
+	if err != nil {
+		http.Error(w, `{"error":"invalid or missing srcChain/from_chain"}`, http.StatusBadRequest)
 		return
 	}
+	dstChain, err := strconv.ParseUint(dstChainStr, 10, 64)
+	if err != nil {
+		http.Error(w, `{"error":"invalid or missing dstChain/to_chain"}`, http.StatusBadRequest)
+		return
+	}
+	amount, ok := new(big.Int).SetString(amountStr, 10)
+	if !ok {
+		// amount may be a decimal human-unit string; accept it as an estimate
+		// by converting to smallest unit assuming 18 decimals.
+		f, ferr := strconv.ParseFloat(amountStr, 64)
+		if ferr != nil || f <= 0 {
+			http.Error(w, `{"error":"invalid amount"}`, http.StatusBadRequest)
+			return
+		}
+		amount = big.NewInt(int64(f * 1e18))
+	}
 	quoteReq := aggregator.QuoteRequest{
-		SrcChain:  req.SrcChain,
-		DstChain:  req.DstChain,
-		SrcToken:  req.SrcToken,
-		DstToken:  req.DstToken,
+		SrcChain:  srcChain,
+		DstChain:  dstChain,
+		SrcToken:  srcToken,
+		DstToken:  dstToken,
 		Amount:    amount,
-		Recipient: req.Recipient,
+		Recipient: recipient,
 	}
 	quote, err := s.agg.GetQuote(context.Background(), quoteReq)
 	if err != nil {
@@ -112,22 +148,46 @@ func (s *Server) handleTransfer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 		return
 	}
+	// Accept both camelCase and snake_case field names from the frontend.
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+	pick := func(keys ...string) string {
+		for _, k := range keys {
+			if v, ok := raw[k]; ok {
+				var s string
+				if json.Unmarshal(v, &s) == nil {
+					return s
+				}
+			}
+		}
+		return ""
+	}
+	bridge := pick("bridge", "bridge_name")
+	if bridge == "" {
+		bridge = "Stargate"
+	}
+	recipient := pick("recipient", "user_id")
+	fromChain := pick("from_chain", "srcChain")
+	toChain := pick("to_chain", "dstChain")
 	// Bridge execution requires an on-chain transaction signed and broadcast
 	// by the user via wallet_api /send. We return action_required with the
-	// quote details so the client can construct and broadcast the tx.
-	var req struct {
-		QuoteID   string `json:"quoteId"`
-		Bridge    string `json:"bridge"`
-		Recipient string `json:"recipient"`
-	}
-	json.NewDecoder(r.Body).Decode(&req)
+	// quote details so the client can construct and broadcast the tx. We never
+	// fabricate a tx hash -- the client signs + broadcasts the real on-chain tx.
+	txID := fmt.Sprintf("bridge-%s-%s-%s", fromChain, toChain, strconv.FormatInt(time.Now().UnixNano(), 36))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":          "action_required",
-		"message":         "Bridge transfer requires client to sign and broadcast via wallet_api /send",
-		"bridge":          req.Bridge,
-		"recipient":       req.Recipient,
+		"success":    true,
+		"status":     "action_required",
+		"tx_id":      txID,
+		"message":    "Bridge transfer requires client to sign and broadcast via wallet_api /send",
+		"bridge":     bridge,
+		"from_chain": fromChain,
+		"to_chain":   toChain,
+		"recipient":  recipient,
 	})
 }
 
@@ -139,8 +199,10 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	// Bridge history requires on-chain indexing (query src/dst chain logs).
 	// Without a live indexer configured, return an honest empty list.
 	w.Header().Set("Content-Type", "application/json")
+	empty := []interface{}{}
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"transfers": []interface{}{},
+		"transfers": empty,
+		"history":   empty,
 	})
 }
 
