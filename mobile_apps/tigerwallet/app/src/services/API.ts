@@ -248,7 +248,14 @@ class APIService {
   }
 
   async getTransactions(walletId: string, chainId: number, page?: number): Promise<APIResponse<any>> {
-    return this.get(`/api/v1/wallets/${walletId}/transactions`, { chainId, page });
+    // Canonical wallet_api route is /api/v1/transactions?address=&chain_id=
+    // (not /wallets/:id/transactions). Resolve the wallet address first.
+    const walletRes = await this.get(`/api/v1/wallets/${walletId}`);
+    const address = walletRes?.data?.address;
+    if (!address) {
+      return { success: false, error: 'wallet address not found' } as any;
+    }
+    return this.get(`/api/v1/transactions`, { address, chain_id: chainId, page });
   }
 
   // Swap

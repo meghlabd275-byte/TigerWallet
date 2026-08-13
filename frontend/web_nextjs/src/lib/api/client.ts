@@ -516,8 +516,8 @@ class TigerWalletAPI {
     return (await this.client.get('/wallet/list')).data;
   }
 
-  async getWalletBalance(walletId: string): Promise<APIResponse<Record<string, WalletBalance>>> {
-    return (await this.client.get(`/wallet/${walletId}/balance`)).data;
+  async getWalletBalance(address: string, chainId: number): Promise<APIResponse<WalletBalance>> {
+    return (await this.client.get('/balance', { params: { address, chain_id: chainId } })).data;
   }
 
   async sendTransaction(walletId: string, to: string, value: string, chainId: number): Promise<APIResponse<Transaction>> {
@@ -566,7 +566,7 @@ class TigerWalletAPI {
   }
 
   async getNFTItems(collectionId: string): Promise<APIResponse<any[]>> {
-    return (await this.client.get(`/nft/collections/${collectionId}/items`)).data;
+    return (await this.client.get(`/nft/collections/${collectionId}/nfts`)).data;
   }
 
   async createListing(itemId: string, price: string): Promise<APIResponse<any>> {
@@ -1028,7 +1028,7 @@ class TigerWalletAPI {
   }
 
   async participateInIEO(projectId: string, amount: string): Promise<APIResponse<any>> {
-    return (await this.client.post(`/ieo/projects/${projectId}/participate`, { amount })).data;
+    return (await this.client.post(`/ieo/projects/${projectId}`, { amount })).data;
   }
 
   async claimIEOTokens(projectId: string): Promise<APIResponse<any>> {
@@ -1041,15 +1041,15 @@ class TigerWalletAPI {
   }
 
   async followTrader(traderId: string): Promise<APIResponse<any>> {
-    return (await this.client.post(`/leaderboard/${traderId}/follow`)).data;
+    return (await this.client.post('/copy-trading/follow', { traderId })).data;
   }
 
   async unfollowTrader(traderId: string): Promise<APIResponse<any>> {
-    return (await this.client.post(`/leaderboard/${traderId}/unfollow`)).data;
+    return (await this.client.post('/copy-trading/stop', { traderId })).data;
   }
 
   async copyTrader(traderId: string, amount: string): Promise<APIResponse<any>> {
-    return (await this.client.post(`/leaderboard/${traderId}/copy`, { amount })).data;
+    return (await this.client.post('/copy-trading/follow', { traderId, allocation: amount })).data;
   }
 
   // Copy Trading

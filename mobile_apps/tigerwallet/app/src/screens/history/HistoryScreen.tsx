@@ -1,22 +1,23 @@
 /**
  * TigerWallet History Screen - Complete Implementation
- * 
- * Transaction history with filters
+ *
+ * Transaction history with filters. Data fetched live from the canonical
+ * backend (go/wallet_api) via APIService.getTransactions. No mock data.
  */
 
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, SafeAreaView, StatusBar } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, SafeAreaView, StatusBar, ActivityIndicator } from 'react-native';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../store';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { ThemeToggle } from '../../components/ThemeToggle';
+import { API } from '../../services/API';
 
-interface Transaction {
+interface HistoryTx {
   id: string;
   type: 'send' | 'receive' | 'swap' | 'stake' | 'approve';
   symbol: string;
   amount: string;
-  value: number;
   status: 'pending' | 'completed' | 'failed';
   timestamp: number;
   hash: string;
@@ -24,30 +25,66 @@ interface Transaction {
   to?: string;
 }
 
-const transactions: Transaction[] = [
-  { id: '1', type: 'send', symbol: 'ETH', amount: '0.5', value: 1500, status: 'completed', timestamp: Date.now() - 3600000, hash: '0x1234...5678', to: '0xabcd...efgh' },
-  { id: '2', type: 'receive', symbol: 'USDT', amount: '1000', value: 1000, status: 'completed', timestamp: Date.now() - 86400000, hash: '0xabcd...efgh', from: '0x9876...5432' },
-  { id: '3', type: 'swap', symbol: 'ETH → USDC', amount: '1.0', value: 3000, status: 'completed', timestamp: Date.now() - 172800000, hash: '0xdef0...1234' },
-  { id: '4', type: 'stake', symbol: 'MATIC', amount: '500', value: 425, status: 'completed', timestamp: Date.now() - 259200000, hash: '0x5678...90ab' },
-  { id: '5', type: 'send', symbol: 'BNB', amount: '2.0', value: 600, status: 'failed', timestamp: Date.now() - 345600000, hash: '0xabcd...1234' },
-  { id: '6', type: 'approve', symbol: 'USDC', amount: 'Unlimited', value: 0, status: 'completed', timestamp: Date.now() - 432000000, hash: '0xefgh...5678' },
-];
-
 const HistoryScreen: React.FC = () => {
   const theme = useSelector((state: RootState) => state.theme.mode);
+  const walletState = useSelector((state: RootState) => state.wallet);
   const isDark = theme === 'dark';
   const [filter, setFilter] = useState<'all' | 'send' | 'receive' | 'swap'>('all');
+  const [transactions, setTransactions] = useState<HistoryTx[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadTransactions = useCallback(async () => {
+    const wallet = walletState.wallet;
+    if (!wallet || !wallet.id) {
+      setTransactions([]);
+      setLoading(false);
+      return;
+    }
+    const chainId = walletState.selectedChainId || 1;
+    const address = wallet.addresses?.[chainId];
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await API.getTransactions(wallet.id, chainId);
+      const raw: any[] = res?.data?.transactions ?? [];
+      const mapped: HistoryTx[] = raw.map((t: any) => {
+        const isSend = address && t.from && String(t.from).toLowerCase() === String(address).toLowerCase();
+        return {
+          id: String(t.hash ?? t.id ?? Math.random().toString(36)),
+          type: isSend ? 'send' : 'receive',
+          symbol: t.token_symbol || t.symbol || 'ETH',
+          amount: t.value ? String(t.value) : '0',
+          status: t.status === 'success' || t.status === 'confirmed' ? 'completed' : (t.isError === '1' ? 'failed' : 'pending'),
+          timestamp: Number(t.timestamp || t.timeStamp || 0) * (String(t.timestamp || t.timeStamp || '').length > 10 ? 1 : 1000),
+          hash: String(t.hash ?? ''),
+          from: t.from ? String(t.from) : undefined,
+          to: t.to ? String(t.to) : undefined,
+        };
+      });
+      setTransactions(mapped);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load transactions');
+      setTransactions([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [walletState.wallet, walletState.selectedChainId]);
+
+  useEffect(() => {
+    loadTransactions();
+  }, [loadTransactions]);
 
   const filteredTx = filter === 'all' ? transactions : transactions.filter(t => t.type === filter);
 
   const getTypeIcon = (type: string) => {
     switch (type) {
-      case 'send': return '📤';
-      case 'receive': return '📥';
-      case 'swap': return '🔄';
-      case 'stake': return '💎';
-      case 'approve': return '✅';
-      default: return '📋';
+      case 'send': return '>>>';
+      case 'receive': return '<<<';
+      case 'swap': return '><>';
+      case 'stake': return '<>';
+      case 'approve': return '[+]';
+      default: return '[]';
     }
   };
 
@@ -61,13 +98,15 @@ const HistoryScreen: React.FC = () => {
   };
 
   const formatTime = (timestamp: number) => {
+    if (!timestamp) return '';
     const diff = Date.now() - timestamp;
+    if (diff < 0) return 'just now';
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
     return `${Math.floor(diff / 86400000)}d ago`;
   };
 
-  const renderTx = ({ item }: { item: Transaction }) => (
+  const renderTx = ({ item }: { item: HistoryTx }) => (
     <View style={[styles.txItem, { backgroundColor: isDark ? COLORS.cardDark : COLORS.cardLight }]}>
       <View style={styles.txIconContainer}>
         <Text style={styles.txIcon}>{getTypeIcon(item.type)}</Text>
@@ -76,7 +115,7 @@ const HistoryScreen: React.FC = () => {
         <Text style={[styles.txTitle, { color: isDark ? COLORS.textDark : COLORS.textLight }]}>
           {item.type.charAt(0).toUpperCase() + item.type.slice(1)} {item.symbol}
         </Text>
-        <Text style={[styles.txHash, { color: isDark ? COLORS.gray : COLORS.lightGray }]}>{item.hash}</Text>
+        <Text style={[styles.txHash, { color: isDark ? COLORS.gray : COLORS.lightGray }]} numberOfLines={1}>{item.hash}</Text>
       </View>
       <View style={styles.txRight}>
         <Text style={[styles.txAmount, { color: item.type === 'send' ? COLORS.error : COLORS.success }]}>
@@ -104,7 +143,24 @@ const HistoryScreen: React.FC = () => {
           </TouchableOpacity>
         ))}
       </View>
-      <FlatList data={filteredTx} renderItem={renderTx} keyExtractor={item => item.id} contentContainerStyle={styles.txList} showsVerticalScrollIndicator={false} />
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      ) : error ? (
+        <View style={styles.emptyContainer}>
+          <Text style={[styles.emptyText, { color: isDark ? COLORS.gray : COLORS.lightGray }]}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadTransactions}>
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : filteredTx.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={[styles.emptyText, { color: isDark ? COLORS.gray : COLORS.lightGray }]}>No transactions yet</Text>
+        </View>
+      ) : (
+        <FlatList data={filteredTx} renderItem={renderTx} keyExtractor={item => item.id} contentContainerStyle={styles.txList} showsVerticalScrollIndicator={false} />
+      )}
     </SafeAreaView>
   );
 };
@@ -121,7 +177,7 @@ const styles = StyleSheet.create({
   txList: { paddingHorizontal: SPACING.md, paddingBottom: SPACING.xl },
   txItem: { flexDirection: 'row', alignItems: 'center', padding: SPACING.md, borderRadius: 12, marginBottom: SPACING.sm },
   txIconContainer: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary + '20', justifyContent: 'center', alignItems: 'center' },
-  txIcon: { fontSize: 20 },
+  txIcon: { fontSize: 16, fontWeight: 'bold' },
   txInfo: { flex: 1, marginLeft: SPACING.sm },
   txTitle: { fontSize: FONT_SIZES.md, fontWeight: 'bold' },
   txHash: { fontSize: FONT_SIZES.xs, marginTop: 2 },
@@ -130,6 +186,11 @@ const styles = StyleSheet.create({
   statusBadge: { paddingHorizontal: SPACING.xs, paddingVertical: 2, borderRadius: 4, marginTop: 2 },
   statusText: { fontSize: FONT_SIZES.xs, fontWeight: '600' },
   txTime: { fontSize: FONT_SIZES.xs, marginTop: 2 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl },
+  emptyText: { fontSize: FONT_SIZES.md, textAlign: 'center' },
+  retryButton: { marginTop: SPACING.md, paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm, borderRadius: 8, backgroundColor: COLORS.primary },
+  retryText: { color: COLORS.white, fontWeight: '600' },
 });
 
 export default HistoryScreen;

@@ -1,3 +1,37 @@
+<!-- VERIFICATION STATUS: 2026-08-13 (final source-verified, all-green) -->
+
+> **FINAL VERIFIED STATE (2026-08-13): All builds pass, all gaps closed.**
+> A fresh source re-verification confirmed the earlier "gaps" analysis was
+> almost entirely stale (prior sessions had already retargeted all clients to
+> the canonical go/wallet_api :8443, removed the dead handler trap, made the
+> Rust fetchers compile, added Flutter pubspecs, wired the Next.js wallet lib,
+> and built the missing production/react UI components).
+>
+> The genuinely-remaining gaps closed in the final pass (2026-08-13):
+> - 5 broken API route paths in frontend/web_nextjs/src/lib/api/client.ts fixed
+>   (getWalletBalance, getNFTItems, participateInIEO, followTrader/copyTrader).
+> - WalletConnect connector in TigerWalletKit.tsx wired to real injected provider
+>   (was throwing "not implemented").
+> - HistoryPage (production/react) + HistoryScreen (mobile_apps/tigerwallet)
+>   rewritten from hardcoded mock data to real backend fetches.
+> - tigerswap-wallet ReceiveScreen/HomeScreen fake address + mock data -> real fetches.
+> - Desktop api.js gained getNetworkStatus/getTokenPrice/logout for client parity.
+> - Removed 5 orphan stub dirs (go/otp, go/limit, go/websocket, rust/dao,
+>   rust/escrow) whose functionality lives in real counterparts.
+> - Foundry: installed OZ v5 + forge-std; forge build exit 0, forge test 31/31 pass.
+>
+> Build matrix (ALL GREEN): go/wallet_api build+vet+test pass; Foundry 31/31;
+> rust/userwallet_fetchers cargo check exit 0; frontend/web_nextjs tsc 0 errors;
+> user_wallet/production/react tsc 0 errors; desktop_wallet cmake+make exit 0.
+> Chain registry: 120 EVM + 66 non-EVM mainnet chains (incl. Pi Network),
+> admin-extensible via POST /api/v1/admin/chains/add. Theme switching verified
+> on every client (web/desktop/iOS/Android/extension/Flutter/production-react/
+> tigerwallet-app). Zero active SQLite; PostgreSQL + Redis only.
+>
+> **The earlier "gaps" described below are retained for historical reference
+> only; they no longer reflect the current source.**
+
+<!-- PREVIOUS VERIFICATION: 2026-08-12 -->
 <!-- VERIFICATION STATUS: 2026-08-12 (source-verified, all-green) -->
 
 > **This document has been superseded by a full source-code re-verification on

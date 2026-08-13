@@ -147,12 +147,20 @@ export const api = {
     return request(`/price?symbol=${coin}`);
   },
 
+  async getTokenPrice(coin = 'eth') {
+    return request(`/price?symbol=${coin}`);
+  },
+
   async getGasPrice(network) {
     return request(`/gas?chain_id=${chainIdFor(network)}`);
   },
 
   async getNetworks() {
     return request('/chains');
+  },
+
+  async getNetworkStatus(chainId = 1) {
+    return request(`/chains?chain_id=${chainId}`);
   },
 
   async getNFTs(address, chainId) {
@@ -165,6 +173,13 @@ export const api = {
 
   async getStakingQuote(asset) {
     return request(`/staking/quote?asset=${asset}`);
+  },
+
+  async logout() {
+    authToken = null;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('tigerwallet-token');
+    }
   },
 };
 

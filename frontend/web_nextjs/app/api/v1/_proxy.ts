@@ -67,7 +67,6 @@ export const MULTISIG_SERVICE_URL = process.env.MULTISIG_SERVICE_URL || 'http://
 export const NFT_PRICES_URL = process.env.NFT_PRICES_URL || 'http://localhost:8089';
 export const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:8011';
 export const ORACLE_SERVICE_URL = process.env.ORACLE_SERVICE_URL || 'http://localhost:8093';
-export const OTP_SERVICE_URL = process.env.OTP_SERVICE_URL || 'http://localhost:8104';
 export const PAYMENT_SERVICE_URL = process.env.PAYMENT_SERVICE_URL || 'http://localhost:8096';
 export const PERPETUAL_SERVICE_URL = process.env.PERPETUAL_SERVICE_URL || 'http://localhost:8464';
 export const PORTFOLIO_TRACKER_URL = process.env.PORTFOLIO_TRACKER_URL || 'http://localhost:8081';

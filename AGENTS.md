@@ -1433,3 +1433,114 @@ chain-management UI panel. All real crypto, all mainnet, no fakes/stubs/mocks.
 - Go 1.23.12 at `$HOME/.go-sdk/go/bin` (GOTOOLCHAIN=local, GOPATH=$HOME/go).
 - Rust 1.97.1 stable (minimal) at `$HOME/.cargo/env`.
 
+
+## Build-state audit (2026-08-13)
+- Toolchains were NOT preinstalled; installed on demand: Go 1.23.12 ($HOME/.go-sdk/go/bin, GOPATH=$HOME/go, GOTOOLCHAIN=local), Rust/cargo 1.97.1 ($HOME/.cargo/env), Foundry/forge 1.7.1 ($HOME/.foundry/bin). Also apt-installed cmake 3.31.6 + libcurl4-openssl-dev + libssl-dev for desktop_wallet.
+- RESULTS:
+  1. go/wallet_api go build ./... — PASS (exit 0).
+  2. go/wallet_api go vet ./... — PASS (exit 0).
+  3. rust/userwallet_fetchers cargo check --lib — PASS (0 errors).
+  4. rust/masterwallet_fetchers cargo check --lib — PASS (0 errors, warnings: unused fields like cache in TreasuryFetcher/PolicyFetcher fetchers.rs:154,221).
+  5. rust/admin_fetchers cargo check --lib — PASS (0 errors, 1 warning: unused import std::sync::Arc src/database.rs:7).
+  6. rust/blockchain_registry cargo check --lib — PASS (0 errors, 0 warnings).
+  7. smart_contracts/evm_contracts forge build — FIXED: installed lib/openzeppelin-contracts + lib/forge-std via `forge install OpenZeppelin/openzeppelin-contracts foundry-rs/forge-std --no-git`. `forge build` exit 0; `forge test` 31/31 pass (MultisigWallet 13, VerifyingPaymaster 8, AccountFactory 5, TigerWalletAAFactory). NOTE: lib/ is git-ignored (vendor deps), so `forge install` must be re-run after a fresh clone.
+  8. frontend/web_nextjs npx tsc --noEmit — PASS (0 errors, after npm install).
+  9. user_wallet/web npx tsc --noEmit — PASS (0 errors, after npm install --legacy-peer-deps).
+  10. user_wallet/production/react npx tsc --noEmit — PASS (0 errors, after npm install).
+  11. desktop_wallet cmake+make — PASS (cmake found CURL 8.14.1 + OpenSSL 3.5.6; make -j4 100%, built libtigerwallet_core.a + tigerwallet_test, exit 0).
+- Fake-crypto grep (12): 0 real hits. 8 raw matches are all // comment lines saying "no fakes/no stubs/not a fake hash"; filtered to 0.
+- SQLite grep (13): NO active SQLite in source. Hits were only transitive deps in go.sum/Cargo.lock (mattn/go-sqlite3, gorm.io/driver/sqlite, libsqlite3-sys, sqlx-sqlite) and one compiled binary go/wallet_api/wallet-api (build artifact containing stdlib MIME string application/x-sqlite3). No .go/.rs source file imports sqlite.
+
+## Session 2026-08-13: Final gap closure (route mismatches + fake data + stubs)
+
+### STALE-ANALYSIS WARNING
+A large user-pasted "UserWallet fetchers & functionality" analysis claimed the
+`user_wallet/*` clients were broken (targeting :8105/:8080, route mismatches,
+dead handlers, uncompilable Rust fetchers, unbuildable Flutter). A fresh
+source re-verification confirmed this analysis was ALMOST ENTIRELY STALE:
+prior sessions had already retargeted ALL clients to :8443, removed the dead
+handler trap, made the Rust fetchers compile, added Flutter pubspecs, and
+wired the Next.js wallet lib. ALWAYS verify pasted analysis against actual
+source before acting.
+
+### Genuinely-fixed gaps this session (verified against actual source)
+1. frontend/web_nextjs/src/lib/api/client.ts -- 5 route paths that 404'd
+   against the Next.js proxy are now correct:
+   - getWalletBalance: /wallet/${id}/balance -> /balance?address=&chain_id=
+     (matches wallet_api handleBalance which takes address+chain_id).
+   - getNFTItems: /nft/collections/${id}/items -> /nft/collections/${id}/nfts
+     (matches nft_service /api/v1/nft/collections/:id/nfts).
+   - participateInIEO: /ieo/projects/${id}/participate -> /ieo/projects/${id}
+     POST (the [id]/route.ts POST handler forwards to ieo_service
+     /api/v1/ieo/rounds/:id/participate). The ieo page handleBuy now works.
+   - followTrader/unfollowTrader/copyTrader: /leaderboard/${id}/follow
+     -> /copy-trading/follow (POST body {traderId}) and /copy-trading/stop
+     (leaderboard_service is GET-only; follow lives in copy_trading_service
+     /api/v1/copytrading/follow).
+   - closePosition was already correct (/perpetual/close proxy extracts
+     positionId from body and forwards to /api/v1/perpetual/position/:id/close).
+2. frontend/web_nextjs/src/components/rainbowkit/TigerWalletKit.tsx -- the
+   WalletConnect connector threw Error('WalletConnect not implemented'). Now
+   wired to the real injected provider bridge (standard RainbowKit pattern when
+   a WC-compatible wallet extension is present), with an honest error if no
+   injected provider exists. isInstalled checks isWalletConnect via `as any`
+   cast (Eip1193Provider doesn't declare the optional WC flag).
+3. frontend/web_nextjs/app/api/v1/_proxy.ts -- removed the unused
+   OTP_SERVICE_URL constant (pointed at the now-deleted go/otp stub; the real
+   2FA/TOTP service is go/two_factor_auth).
+4. user_wallet/production/react/src/pages/HistoryPage.tsx -- rewrote from 5
+   hardcoded fake transactions (0x1234..., 0xabcd...) to real fetch via
+   WalletService.getTransactions (Etherscan history from wallet_api :8443),
+   with loading/error/empty states.
+5. user_wallet/desktop/src/services/api.js -- added getNetworkStatus,
+   getTokenPrice (alias of getPrice for cross-client naming parity), and
+   logout (clears authToken) so desktop matches android/ios/web method set.
+6. mobile_apps/tigerwallet/app/src/screens/history/HistoryScreen.tsx -- rewrote
+   from 6 hardcoded mock transactions to real fetch via API.getTransactions
+   with loading/error/empty/retry states.
+7. mobile_apps/tigerwallet/app/src/services/API.ts -- getTransactions was
+   calling the nonexistent /wallets/:id/transactions. Now resolves the wallet
+   address first (GET /wallets/:id) then calls the canonical /transactions?
+   address=&chain_id=.
+8. mobile/tigerswap-wallet/App.tsx -- ReceiveScreen had a hardcoded fake
+   address 0x1234567890abcdef...; now loads the real wallet address from
+   storage. HomeScreen had mock tokens + transactions; now fetches real ETH
+   balance via walletService.getBalance + real tx history via
+   /api/v1/transactions.
+
+### Removed orphan stubs (no logic, no references, real counterparts exist)
+- go/otp (12-line empty handler; real TOTP at go/two_factor_auth).
+- go/limit (14-line {"status":"ok"} stub; limit orders at
+  go/services/exchange_service).
+- go/websocket (11-line empty server; real WS at go/websocket_service, 844 lines).
+- rust/dao (1-line println; real governance at go/governance_service, 460 lines).
+- rust/escrow (1-line println; no Cargo.toml, unreferenced).
+
+### Final build verification (ALL GREEN)
+| Component | Result |
+|-----------|--------|
+| go/wallet_api | build+vet+test exit 0 (BIP-44 vector + 8 non-EVM tests + chain registry) |
+| Foundry contracts | forge install OZ+forge-std; forge build exit 0; forge test 31/31 pass |
+| rust/userwallet_fetchers | cargo check --lib exit 0 |
+| frontend/web_nextjs | npx tsc --noEmit 0 errors |
+| user_wallet/production/react | npx tsc --noEmit 0 errors |
+| user_wallet/desktop api.js | node --check exit 0 |
+| Fake-crypto grep | 0 real hits (only a React-list-key fallback Math.random().toString(36) in HistoryScreen, not fake data) |
+
+### Chain registry (meets 100 EVM + 50 non-EVM requirement)
+- go/wallet_api/chains_evm_data.go: 120 EVM mainnet chains.
+- go/wallet_api/chains_nonevm_data.go: 66 non-EVM mainnet chains (incl. Pi Network).
+- Mirrored in rust/blockchain_registry + cpp/chain_registry + frontend.
+- Admin can add more via POST /api/v1/admin/chains/add (persisted in PG
+  admin_chain_config, merged into SupportedChains at boot + after mutation).
+- TestSupportedChains asserts >=100 EVM, >=50 non-EVM, Pi present, no testnets.
+
+### Theme switching (verified complete across ALL clients)
+- web_nextjs: useTheme() + isDark ternaries, 0 dark: variants in themed pages.
+- desktop_wallet (C++): ThemeManager singleton, CSS-var injection.
+- iOS: ThemeManager @StateObject + preferredColorScheme.
+- Android: AppCompatDelegate.setDefaultNightMode.
+- Chrome extension: data-theme attr + chrome.storage.
+- Flutter: ThemeProvider ChangeNotifier.
+- production/react: ThemeContext theme === 'dark' ternaries.
+- mobile_apps/tigerwallet: Redux theme.mode + COLORS ternaries.

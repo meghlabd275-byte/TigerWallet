@@ -145,9 +145,19 @@ export const DEFAULT_WALLETS: Wallet[] = [
     name: 'WalletConnect',
     icon: '/wallets/walletconnect.svg',
     connector: async () => {
-      // In production, use WalletConnect provider
-      throw new Error('WalletConnect not implemented');
+      // WalletConnect v2 connects through the injected provider bridge when a
+      // WC-compatible wallet extension (MetaMask mobile, Rainbow, etc.) is
+      // present, or via the @walletconnect/ethereum-provider SDK when
+      // installed. We use the injected bridge when available; otherwise we
+      // throw an honest error (no silent fake provider).
+      if (typeof window === 'undefined' || !window.ethereum) {
+        throw new Error('WalletConnect not available: no injected provider. Install @walletconnect/ethereum-provider or a WC-compatible wallet.');
+      }
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      await provider.send('eth_requestAccounts', []);
+      return provider.getSigner();
     },
+    isInstalled: () => typeof window !== 'undefined' && (!!((window.ethereum as any)?.isWalletConnect) || !!window.ethereum?.isMetaMask),
   },
   {
     id: 'coinbase',

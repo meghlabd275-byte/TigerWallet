@@ -312,34 +312,40 @@ function HomeScreen({ navigation }: any) {
       setWallets(JSON.parse(walletData));
     }
 
-    // Load tokens
-    setTokens([
-      { symbol: 'ETH', name: 'Ethereum', balance: 1.5, value: 3000, price: 2000 },
-      { symbol: 'USDC', name: 'USD Coin', balance: 5000, value: 5000, price: 1 },
-      { symbol: 'BTC', name: 'Bitcoin', balance: 0.1, value: 5000, price: 50000 },
-    ]);
-
-    // Load transactions
-    setTransactions([
-      {
-        id: '1',
-        hash: '0x123',
-        type: 'send',
-        amount: 0.5,
-        token: 'ETH',
-        status: 'confirmed',
-        timestamp: Date.now() - 3600000,
-      },
-      {
-        id: '2',
-        hash: '0x456',
-        type: 'swap',
-        amount: 1000,
-        token: 'USDC',
-        status: 'confirmed',
-        timestamp: Date.now() - 7200000,
-      },
-    ]);
+    // Load token balances + transactions from the canonical wallet_api backend.
+    const loaded: Wallet[] = walletData ? JSON.parse(walletData) : wallets;
+    if (loaded.length > 0) {
+      const addr = loaded[0].address;
+      try {
+        const bal = await walletService.getBalance(addr);
+        setTokens([
+          { symbol: 'ETH', name: 'Ethereum', balance: bal, value: 0, price: 0 },
+        ]);
+      } catch {
+        setTokens([]);
+      }
+      try {
+        const resp = await fetch(`${API_BASE}/api/v1/transactions?address=${addr}&chain_id=1`);
+        if (resp.ok) {
+          const data = await resp.json();
+          const raw: any[] = data.transactions ?? [];
+          setTransactions(raw.map((t: any) => ({
+            id: String(t.hash ?? ''),
+            hash: String(t.hash ?? ''),
+            type: String(t.from).toLowerCase() === addr.toLowerCase() ? 'send' : 'receive',
+            amount: Number(t.value ?? 0) / 1e18,
+            token: t.token_symbol || 'ETH',
+            status: t.isError === '1' ? 'failed' : 'confirmed',
+            timestamp: Number(t.timestamp || t.timeStamp || 0) * 1000,
+          })));
+        }
+      } catch {
+        setTransactions([]);
+      }
+    } else {
+      setTokens([]);
+      setTransactions([]);
+    }
   };
 
   const totalValue = tokens.reduce((sum, t) => sum + t.value, 0);
@@ -535,7 +541,25 @@ function SendScreen({ navigation }: any) {
 
 // Receive Screen
 function ReceiveScreen({ navigation }: any) {
-  const address = '0x1234567890abcdef1234567890abcdef12345678';
+  const [address, setAddress] = useState<string>('');
+
+  useEffect(() => {
+    (async () => {
+      const walletData = await storage.get('wallets');
+      if (walletData) {
+        const wallets: Wallet[] = JSON.parse(walletData);
+        if (wallets.length > 0) {
+          setAddress(wallets[0].address);
+        }
+      }
+    })();
+  }, []);
+
+  const copyAddress = () => {
+    if (address && typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(address);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -553,11 +577,17 @@ function ReceiveScreen({ navigation }: any) {
         </View>
         
         <Text style={styles.addressLabel}>Your Address</Text>
-        <Text style={styles.address}>{address}</Text>
+        <Text style={styles.address} selectable>{address || 'Create or import a wallet first'}</Text>
         
-        <TouchableOpacity style={styles.copyButton}>
-          <Text style={styles.copyButtonText}>Copy Address</Text>
-        </TouchableOpacity>
+        {address ? (
+          <TouchableOpacity style={styles.copyButton} onPress={copyAddress}>
+            <Text style={styles.copyButtonText}>Copy Address</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={styles.copyButton} onPress={() => navigation.navigate('Wallet')}>
+            <Text style={styles.copyButtonText}>Create Wallet</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </SafeAreaView>
   );
