@@ -61,7 +61,7 @@ var nonEVMMainnet = []ChainConfig{
 		ID: 9000000141, Name: "Komodo", Symbol: "KMD", RPCEndpoint: "https://kmdexplorer.io/api", DerivationPath: "m/44'/141'/0'/0/0", ExplorerAPI: "https://kmdexplorer.io", ExplorerURL: "https://kmdexplorer.io", ChainType: "komodo", Decimals: 8, CoinType: 141, IsTestnet: false,
 	},
 	{
-		ID: 9000000501, Name: "Solana", Symbol: "SOL", RPCEndpoint: "https://api.mainnet-beta.solana.com", DerivationPath: "m/44'/501'/0'/0/0", ExplorerAPI: "https://solscan.io", ExplorerURL: "https://solscan.io", ChainType: "solana", Decimals: 9, CoinType: 501, IsTestnet: false,
+		ID: 9000000501, Name: "Solana", Symbol: "SOL", RPCEndpoint: "https://api.mainnet-beta.solana.com", DerivationPath: "m/44'/501'/0'/0'/0'", ExplorerAPI: "https://solscan.io", ExplorerURL: "https://solscan.io", ChainType: "solana", Decimals: 9, CoinType: 501, IsTestnet: false,
 	},
 	{
 		ID: 9000000637, Name: "Aptos", Symbol: "APT", RPCEndpoint: "https://fullnode.mainnet.aptoslabs.com", DerivationPath: "m/44'/637'/0'/0/0", ExplorerAPI: "https://aptoscan.com", ExplorerURL: "https://aptoscan.com", ChainType: "aptos", Decimals: 8, CoinType: 637, IsTestnet: false,

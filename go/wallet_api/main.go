@@ -104,6 +104,12 @@ func main() {
 		wallet.POST("/send", handleSendTransaction)
 		wallet.POST("/sign", handleSignMessage)
 
+		// ---- Non-EVM signing (Solana Ed25519, Bitcoin secp256k1, Cosmos secp256k1) ----
+		// Real key derivation + signing; mainnet only. See non_evm_signing.go.
+		wallet.POST("/non_evm/sign", handleNonEvmSign)
+		wallet.POST("/non_evm/send", handleNonEvmSend)
+		wallet.POST("/non_evm/address", handleNonEvmAddress)
+
 		// ---- Web3 Secret Storage V3 keystore import/export (geth/MetaMask interop) ----
 		wallet.POST("/keystore/export", handleExportKeystore)
 		wallet.POST("/keystore/import", handleImportKeystore)

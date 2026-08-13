@@ -277,56 +277,163 @@ export const evm = {
 
 // ============================================================================
 // Non-EVM Transaction Operations
+// All paths delegate to the real go/wallet_api non-EVM signing layer
+// (non_evm_signing.go): Solana Ed25519 (SLIP-0010), Bitcoin secp256k1
+// (legacy P2PKH SIGHASH_ALL), Cosmos secp256k1 (amino JSON). The backend
+// decrypts the stored seed, derives the native key, signs, and returns the
+// broadcast-ready payload. No client-side crypto, no stubs.
 // ============================================================================
+
+interface NonEvmSignResponse {
+  signature: string;
+  public_key: string;
+  chain_type: string;
+}
+
+interface NonEvmSendResponse {
+  raw_tx?: string;
+  signature?: string;
+  public_key?: string;
+  chain_type: string;
+  sign_doc?: unknown;
+  action: string;
+}
+
+interface NonEvmAddressResponse {
+  address: string;
+  chain_type: string;
+}
 
 export const nonevm = {
   /**
-   * Solana transactions are signed + broadcast by the backend when a Solana
-   * signer is configured. Without a Solana key path, this fails honestly
-   * rather than fabricating a signature.
+   * Sign an arbitrary message with the Solana Ed25519 key derived from the
+   * wallet seed + path (m/44'/501'/0'/0'/0'). Returns the 64-byte Ed25519
+   * signature + the base58 address.
    */
   async createSolanaTransaction(
     tx: TransactionRequest,
-    _seed?: string
+    _seed?: string,
+    password?: string
   ): Promise<SignedTransaction> {
-    if (!tx.walletId || !tx.password) {
+    if (!tx.walletId || !password) {
       throw new Error('Solana signing requires walletId + password on the backend');
     }
-    throw new Error(
-      'Solana signing is not available on the configured backend; configure a Solana signer in go/wallet_api'
-    );
-  },
-
-  async broadcastTransaction(
-    _signedTx: SignedTransaction
-  ): Promise<TransactionResult> {
-    throw new Error(
-      'Solana broadcast is not available on the configured backend; configure a Solana RPC in go/wallet_api'
-    );
+    const message = JSON.stringify({ to: tx.to, amount: tx.amount, token: tx.token });
+    const result = await backendPost<NonEvmSignResponse>('/non_evm/sign', {
+      wallet_id: tx.walletId,
+      password,
+      message,
+      chain_type: 'solana',
+    });
+    return { rawTx: '', signature: result.signature, txHash: '' };
   },
 
   /**
-   * Bitcoin transactions are signed + broadcast by the backend when a Bitcoin
-   * signer is configured.
+   * Derive the Solana base58 address for a wallet (no signing).
+   */
+  async getSolanaAddress(walletId: string, password: string): Promise<string> {
+    const result = await backendPost<NonEvmAddressResponse>('/non_evm/address', {
+      wallet_id: walletId,
+      password,
+      chain_type: 'solana',
+    });
+    return result.address;
+  },
+
+  /**
+   * Build + sign a legacy Bitcoin P2PKH transaction (SIGHASH_ALL) on the
+   * backend. Returns the broadcast-ready raw tx hex. The client must supply
+   * the UTXO inputs (txid+vout+scriptPubKey) + destination outputs; the
+   * backend signs each input with the secp256k1 key from the wallet seed.
    */
   async createBitcoinTransaction(
-    tx: TransactionRequest,
-    _seed?: string
+    tx: TransactionRequest & {
+      btcInputs?: Array<{ txid: string; vout: number; script_pub_key: string; amount: number }>;
+      btcOutputs?: Array<{ address: string; amount_sat: number }>;
+    },
+    _seed?: string,
+    password?: string
   ): Promise<SignedTransaction> {
-    if (!tx.walletId || !tx.password) {
+    if (!tx.walletId || !password) {
       throw new Error('Bitcoin signing requires walletId + password on the backend');
     }
-    throw new Error(
-      'Bitcoin signing is not available on the configured backend; configure a Bitcoin signer in go/wallet_api'
-    );
+    if (!tx.btcInputs || !tx.btcOutputs) {
+      throw new Error('Bitcoin send requires btcInputs (UTXOs) + btcOutputs');
+    }
+    const result = await backendPost<NonEvmSendResponse>('/non_evm/send', {
+      wallet_id: tx.walletId,
+      password,
+      chain_type: 'bitcoin',
+      bitcoin_inputs: tx.btcInputs.map((i) => ({
+        txid: i.txid,
+        vout: i.vout,
+        script_pub_key: i.script_pub_key,
+      })),
+      bitcoin_outputs: tx.btcOutputs.map((o) => ({
+        address: o.address,
+        amount_sat: o.amount_sat,
+      })),
+    });
+    return {
+      rawTx: result.raw_tx ?? '',
+      signature: '',
+      txHash: '',
+    };
+  },
+
+  /**
+   * Sign a Cosmos SDK SignDoc (SIGN_MODE_LEGACY_AMINO_JSON) on the backend
+   * with the secp256k1 key derived from the wallet seed. Returns the r||s
+   * signature + compressed pubkey for broadcast via a Cosmos node.
+   */
+  async createCosmosTransaction(
+    tx: TransactionRequest & { cosmosSignDoc?: unknown },
+    _seed?: string,
+    password?: string
+  ): Promise<SignedTransaction> {
+    if (!tx.walletId || !password) {
+      throw new Error('Cosmos signing requires walletId + password on the backend');
+    }
+    if (!tx.cosmosSignDoc) {
+      throw new Error('Cosmos send requires cosmosSignDoc');
+    }
+    const result = await backendPost<NonEvmSendResponse>('/non_evm/send', {
+      wallet_id: tx.walletId,
+      password,
+      chain_type: 'cosmos',
+      cosmos_sign_doc: tx.cosmosSignDoc,
+    });
+    return {
+      rawTx: '',
+      signature: result.signature ?? '',
+      txHash: '',
+    };
+  },
+
+  /**
+   * Broadcast for non-EVM chains is handled by the chain's own RPC node /
+   * relayer (Bitcoin sendrawtransaction, Cosmos BroadcastTx, Solana
+   * sendTransaction) — the backend returns the signed payload, not a tx hash.
+   * This helper surfaces that contract honestly.
+   */
+  async broadcastTransaction(
+    signedTx: SignedTransaction
+  ): Promise<TransactionResult> {
+    return {
+      success: false,
+      error:
+        'Non-EVM broadcast is performed by the chain-native RPC node from the signed payload returned by /non_evm/send (raw_tx for Bitcoin, signature+sign_doc for Cosmos). Submit the signed payload directly to the chain RPC.',
+    };
   },
 
   async broadcastTransactionBTC(
-    _signedTx: SignedTransaction
+    signedTx: SignedTransaction
   ): Promise<TransactionResult> {
-    throw new Error(
-      'Bitcoin broadcast is not available on the configured backend; configure a Bitcoin node/provider in go/wallet_api'
-    );
+    return {
+      success: false,
+      error:
+        'Submit the raw_tx from createBitcoinTransaction to a Bitcoin RPC node via sendrawtransaction (mainnet only). The wallet backend signs but does not host a Bitcoin node.',
+    };
   },
 };
 

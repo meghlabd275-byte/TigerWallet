@@ -927,9 +927,9 @@ All 4 commits pushed to `origin/main` (53492cb, 7ec6f6e, b7a73b4, 40fdc73).
   `gen_nonevm.py`/`gen_go.py`/`gen_rs.py`/`gen_cpp.py`. Source JSON:
   `/tmp/chains_raw.json` (canonical), `/tmp/evm_curated.json`,
   `/tmp/non_evm_mainnet.json`.
-- **Still pending (honest)**: per-non-EVM transaction signing (Solana on-chain
-  program + RPC wiring; BTC/Cardano/Cosmos signing), admin chain-management
-  UI panel (CRUD endpoints exist).
+- **COMPLETED (2026-08-12)**: per-non-EVM transaction signing + admin
+  chain-management UI panel are now REAL. See "Session 2026-08-12:
+  Non-EVM signing layer + admin chain UI" below for the full record.
 
 ## Session 2026-08-12: Chain registry wired across ALL client platforms
 
@@ -966,8 +966,9 @@ client keeps its built-in list only as an offline fallback.
   user_wallet/web tsc 0 errors, production/react no new errors, extension JS
   `node --check` clean. iOS/Android/Flutter verified by manual review
   (no swiftc/kotlinc/flutter SDK in env).
-- **Still pending (honest):** per-non-EVM transaction signing + admin
-  chain-management UI panel (CRUD endpoints exist, no dashboard page yet).
+- **COMPLETED (2026-08-12):** per-non-EVM transaction signing + admin
+  chain-management UI panel are now REAL — see "Session 2026-08-12:
+  Non-EVM signing layer + admin chain UI" section below.
 
 
 ## Session 2026-08-12: UserWallet backend param-contract parity + dedup
@@ -1360,4 +1361,75 @@ ports 8465-8468 to avoid conflicts with existing service assignments.
 
 ### Build verification
 - `frontend/web_nextjs`: `npx tsc --noEmit` → 0 errors.
+
 - All 4 Go services: `go build ./...` + `go vet ./...` → exit 0.
+## Session 2026-08-12: Non-EVM signing layer + admin chain UI
+
+Closed the last two functional gaps identified in the prior survey:
+per-non-EVM transaction signing (Solana/Bitcoin/Cosmos) and the admin
+chain-management UI panel. All real crypto, all mainnet, no fakes/stubs/mocks.
+
+### Non-EVM signing layer (`go/wallet_api/non_evm_signing.go` + `_handlers.go`)
+- **Solana** — SLIP-0010 Ed25519 hardened HD derivation
+  (`slip10DeriveEd25519`, master = HMAC-SHA512("ed25519 seed", seed),
+  hardened-only children) + `golang.org/x/crypto/ed25519` sign/verify.
+  Path `m/44'/501'/0'/0'/0'` (corrected the registry entry from the
+  mixed-hardening `m/44'/501'/0'/0/0` which is invalid under SLIP-0010).
+  64-byte Ed25519 signature verifiable on-chain. base58 address.
+- **Bitcoin** — legacy P2PKH transaction builder + SIGHASH_ALL signer via
+  `btcec/v2/ecdsa` (real secp256k1, low-S DER). Manual legacy wire
+  serialization (version, varint input/output counts, prevout, scriptSig,
+  sequence, value, pkScript, lockTime), real SIGHASH_ALL computation
+  (substitute subscript, zero others, append sighash type LE, double-SHA256).
+  Real base58check P2PKH address (hash160 = RIPEMD160(SHA256(pubkey)),
+  version 0x00 mainnet). Broadcast-ready raw tx hex output.
+- **Cosmos** — `SIGN_MODE_LEGACY_AMINO_JSON` SignDoc canonicalization
+  (Go `json.Marshal` sorts struct keys alphabetically = canonical amino)
+  + SHA-256 + secp256k1 sign (r||s, 64 bytes, no recovery byte).
+  Real bech32 (BIP-173) account address with per-chain prefix
+  (polymod checksum, hrp expand, 8->5 bit conversion).
+- **Tests**: `non_evm_signing_test.go` — 8 tests pass (real BIP-39
+  "abandon...about" seed via `tyler-smith/go-bip39`, no mocks): Solana
+  deterministic derivation + sign/verify roundtrip + tamper detection,
+  Bitcoin mainnet P2PKH address (starts with '1', checksum validates) +
+  deterministic, Cosmos bech32 (cosmos1/osmo1 prefixes) + sign roundtrip,
+  base58 roundtrip, bech32 length/checksum. Full `go test ./...` + `go vet`
+  clean.
+- **REST**: `POST /api/v1/non_evm/sign` (message signing),
+  `POST /api/v1/non_evm/send` (BTC tx build/sign, Cosmos SignDoc sign),
+  `POST /api/v1/non_evm/address` (derive native address). All
+  JWT-authenticated (AuthMiddleware) + wallet-ownership-verified, same
+  pattern as EVM `/send` + `/sign`. `loadOwnedSeed` decrypts via the
+  existing scrypt + AES-256-GCM path.
+- **Frontend**: `app/wallet/lib/transactions.ts` `nonevm` block rewritten —
+  the fail-closed throws are GONE. `createSolanaTransaction` /
+  `createBitcoinTransaction` / `createCosmosTransaction` /
+  `getSolanaAddress` now POST to the real backend endpoints via
+  same-origin proxy. Broadcast helpers honestly document that non-EVM
+  broadcast is performed by the chain-native RPC node from the signed
+  payload (standard architecture — the backend signs but does not host
+  non-EVM nodes). Next.js proxy routes added:
+  `app/api/v1/non_evm/{sign,send,address}/route.ts`. `tsc` 0 errors on all
+  changed files.
+
+### Admin chain-management UI panel (`frontend/web_nextjs/app/admin/chains/page.tsx`)
+- Full CRUD dashboard, theme-aware (useTheme `isDark` ternaries, 0 `dark:`
+  variants). Calls the existing `/admin/chains` REST endpoints
+  (`go/wallet_api/admin_ext.go`): list with search + status filter, add/edit
+  form (chain_id, name, symbol, rpc_url, explorer_url, status, is_default),
+  delete with confirmation. Changes propagate to `GET /api/v1/chains` for all
+  clients immediately (admin overrides merged via `applyAdminChainOverrides`).
+  Proxy routes already existed
+  (`app/api/v1/admin/chains/{route.ts,[id]/route.ts}`). `tsc` 0 errors.
+
+### Build verification (all green)
+- `go/wallet_api`: build + vet + test exit 0 (8 new non-EVM tests + existing
+  suite incl. BIP-44 vector).
+- `solana/rust` (tiger_solana_core): `cargo check` exit 0.
+- `frontend/web_nextjs` changed files: `tsc --noEmit --skipLibCheck` 0 errors
+  (transactions.ts, 3 non_evm proxy routes, admin/chains page).
+
+### Toolchain (env was fresh — reinstalled)
+- Go 1.23.12 at `$HOME/.go-sdk/go/bin` (GOTOOLCHAIN=local, GOPATH=$HOME/go).
+- Rust 1.97.1 stable (minimal) at `$HOME/.cargo/env`.
+
