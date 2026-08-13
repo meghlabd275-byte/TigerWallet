@@ -69,6 +69,7 @@ struct TransactionRequest {
     ChainID chainId;
     uint64_t gasLimit;
     uint64_t gasPrice;
+    std::string data; // optional calldata for the create-transaction-record endpoint
 };
 
 struct TransactionResult {
@@ -143,8 +144,13 @@ public:
     std::map<std::string, BalanceResult> getAllBalances(const WalletID& walletId);
     
     // Transaction Operations
+    // createTransaction POSTs a transaction RECORD to /transactions (pending),
+    // distinct from signAndBroadcast which signs+broadcasts via /sign.
     TransactionResult createTransaction(const TransactionRequest& request);
     TransactionResult signAndBroadcast(const TransactionRequest& request);
+    // Approve / reject a pending transaction record created via createTransaction.
+    TransactionResult approveTransaction(const WalletID& masterId, const std::string& txId);
+    TransactionResult rejectTransaction(const WalletID& masterId, const std::string& txId);
     std::string signMessage(const WalletID& walletId, const std::string& message);
     bool verifySignature(const std::string& message, const std::string& signature, const std::string& address);
 

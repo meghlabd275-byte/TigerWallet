@@ -28,6 +28,11 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
 
     private val jsonMediaType = "application/json".toMediaType()
 
+    /** Update the JWT used for protected routes (set after login/register). */
+    fun setAuthToken(token: String?) {
+        authToken = token
+    }
+
     private fun getHeaders(): Headers {
         return Headers.Builder()
             .add("Content-Type", "application/json")
@@ -37,6 +42,62 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
             }
             .build()
     }
+
+    // ==================== AUTH ====================
+
+    /**
+     * Register a new user.
+     * POST /api/v1/auth/register — {email, password, name} → {token, user_id, email, role}
+     * Public route (no Bearer token required). On success the returned token is cached.
+     */
+    fun register(email: String, password: String, name: String, callback: ApiCallback<AuthResponse>) {
+        val body = JSONObject().apply {
+            put("email", email)
+            put("password", password)
+            put("name", name)
+        }
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/auth/register")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { json ->
+            val token = json.optString("token", "")
+            if (token.isNotEmpty()) authToken = token
+            parseAuthResponse(json)
+        }
+    }
+
+    /**
+     * Login an existing user.
+     * POST /api/v1/auth/login — {email, password} → {token, user_id, email, role}
+     * Public route (no Bearer token required). On success the returned token is cached.
+     */
+    fun login(email: String, password: String, callback: ApiCallback<AuthResponse>) {
+        val body = JSONObject().apply {
+            put("email", email)
+            put("password", password)
+        }
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/auth/login")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { json ->
+            val token = json.optString("token", "")
+            if (token.isNotEmpty()) authToken = token
+            parseAuthResponse(json)
+        }
+    }
+
+    private fun parseAuthResponse(json: JSONObject) = AuthResponse(
+        token = json.optString("token", ""),
+        userId = json.optString("user_id", ""),
+        email = json.optString("email", ""),
+        role = json.optString("role", "")
+    )
 
     // ==================== WALLETS ====================
 
@@ -223,6 +284,35 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
     }
 
     /**
+     * Create a transaction RECORD (no signing/broadcast — distinct from
+     * [sendTransaction], which POSTs to /sign and signs+broadcasts on the
+     * backend). POST /api/v1/master-wallet/:id/transactions — {to, value, data, chain_id}.
+     */
+    fun createTransactionRecord(
+        masterId: String,
+        to: String,
+        value: String,
+        data: String,
+        chainId: Long,
+        callback: ApiCallback<MasterTransaction>
+    ) {
+        val body = JSONObject().apply {
+            put("to", to)
+            put("value", value)
+            put("data", data)
+            put("chain_id", chainId)
+        }
+
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$masterId/transactions")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { parseMasterTransaction(it) }
+    }
+
+    /**
      * Get transactions
      * GET /api/v1/master-wallet/:id/transactions
      */
@@ -256,13 +346,28 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
     }
 
     /**
-     * Cancel transaction (mapped to canonical reject route)
+     * Approve a pending transaction.
+     * POST /api/v1/master-wallet/:id/transactions/:tid/approve
+     */
+    fun approveTransaction(walletId: String, txId: String, callback: ApiCallback<MasterTransaction>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/transactions/$txId/approve")
+            .post("{}".toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { parseMasterTransaction(it) }
+    }
+
+    /**
+     * Reject (cancel) a pending transaction.
      * POST /api/v1/master-wallet/:id/transactions/:tid/reject
      */
-    fun cancelTransaction(txId: String, callback: ApiCallback<MasterTransaction>) {
+    fun rejectTransaction(walletId: String, txId: String, reason: String? = null, callback: ApiCallback<MasterTransaction>) {
+        val body = if (reason != null) JSONObject().put("reason", reason).toString() else "{}"
         val request = Request.Builder()
-            .url("$baseUrl/api/v1/master-wallet/transactions/$txId/reject")
-            .post("{}".toRequestBody(jsonMediaType))
+            .url("$baseUrl/api/v1/master-wallet/$walletId/transactions/$txId/reject")
+            .post(body.toRequestBody(jsonMediaType))
             .headers(getHeaders())
             .build()
 
@@ -320,13 +425,302 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
         )
     }
 
+    // ==================== FEES ====================
+
+    /**
+     * List fee rules.
+     * GET /api/v1/master-wallet/:id/fees
+     */
+    fun listFees(walletId: String, callback: ApiCallback<ListResponse<JSONObject>>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/fees")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeListRequest(request, callback) { arr ->
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+        }
+    }
+
+    /**
+     * Create a fee rule.
+     * POST /api/v1/master-wallet/:id/fees
+     */
+    fun createFee(walletId: String, fee: JSONObject, callback: ApiCallback<JSONObject>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/fees")
+            .post(fee.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { it }
+    }
+
+    /**
+     * Delete a fee rule.
+     * DELETE /api/v1/master-wallet/:id/fees/:fid
+     */
+    fun deleteFee(walletId: String, feeId: String, callback: ApiCallback<Unit>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/fees/$feeId")
+            .delete()
+            .headers(getHeaders())
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                callback.onError(e.message ?: "Network error")
+            }
+            override fun onResponse(call: Call, response: Response) {
+                if (response.isSuccessful) callback.onSuccess(Unit)
+                else callback.onError("Failed to delete fee")
+            }
+        })
+    }
+
+    // ==================== POLICIES ====================
+
+    /**
+     * List policies.
+     * GET /api/v1/master-wallet/:id/policies
+     */
+    fun listPolicies(walletId: String, callback: ApiCallback<ListResponse<JSONObject>>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/policies")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeListRequest(request, callback) { arr ->
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+        }
+    }
+
+    /**
+     * Create a policy.
+     * POST /api/v1/master-wallet/:id/policies — {rule_type, threshold, ...}
+     */
+    fun createPolicy(walletId: String, policy: JSONObject, callback: ApiCallback<JSONObject>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/policies")
+            .post(policy.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { it }
+    }
+
+    /**
+     * Update a policy.
+     * PUT /api/v1/master-wallet/:id/policies/:pid
+     */
+    fun updatePolicy(walletId: String, policyId: String, updates: JSONObject, callback: ApiCallback<JSONObject>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/policies/$policyId")
+            .put(updates.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { it }
+    }
+
+    /**
+     * Delete a policy.
+     * DELETE /api/v1/master-wallet/:id/policies/:pid
+     */
+    fun deletePolicy(walletId: String, policyId: String, callback: ApiCallback<Unit>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/policies/$policyId")
+            .delete()
+            .headers(getHeaders())
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                callback.onError(e.message ?: "Network error")
+            }
+            override fun onResponse(call: Call, response: Response) {
+                if (response.isSuccessful) callback.onSuccess(Unit)
+                else callback.onError("Failed to delete policy")
+            }
+        })
+    }
+
+    // ==================== NOTIFICATIONS ====================
+
+    /**
+     * List notifications.
+     * GET /api/v1/master-wallet/:id/notifications
+     */
+    fun listNotifications(walletId: String, callback: ApiCallback<ListResponse<JSONObject>>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/notifications")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeListRequest(request, callback) { arr ->
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+        }
+    }
+
+    /**
+     * Create a notification.
+     * POST /api/v1/master-wallet/:id/notifications
+     */
+    fun createNotification(walletId: String, notification: JSONObject, callback: ApiCallback<JSONObject>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/notifications")
+            .post(notification.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { it }
+    }
+
+    // ==================== AUDIT + ANALYTICS ====================
+
+    /**
+     * Get audit log.
+     * GET /api/v1/master-wallet/:id/audit
+     */
+    fun getAudit(walletId: String, callback: ApiCallback<ListResponse<JSONObject>>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/audit")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeListRequest(request, callback) { arr ->
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+        }
+    }
+
+    /**
+     * Get analytics: transactions.
+     * GET /api/v1/master-wallet/:id/analytics/transactions
+     */
+    fun getAnalyticsTransactions(walletId: String, callback: ApiCallback<ListResponse<JSONObject>>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/analytics/transactions")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeListRequest(request, callback) { arr ->
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+        }
+    }
+
+    /**
+     * Get analytics: wallets.
+     * GET /api/v1/master-wallet/:id/analytics/wallets
+     */
+    fun getAnalyticsWallets(walletId: String, callback: ApiCallback<ListResponse<JSONObject>>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/analytics/wallets")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeListRequest(request, callback) { arr ->
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+        }
+    }
+
+    // ==================== TREASURY ====================
+
+    /**
+     * Get treasury overview (real balances).
+     * GET /api/v1/master-wallet/:id/treasury
+     */
+    fun getTreasuryOverview(walletId: String, callback: ApiCallback<JSONObject>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/treasury")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { it }
+    }
+
+    /**
+     * List treasury transactions.
+     * GET /api/v1/master-wallet/:id/treasury/transactions
+     */
+    fun getTreasuryTransactions(walletId: String, callback: ApiCallback<ListResponse<JSONObject>>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/treasury/transactions")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeListRequest(request, callback) { arr ->
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+        }
+    }
+
+    /**
+     * Transfer from treasury.
+     * POST /api/v1/master-wallet/:id/treasury/transfer — {to, amount, password}
+     */
+    fun treasuryTransfer(walletId: String, to: String, amount: String, password: String, callback: ApiCallback<MasterTransaction>) {
+        val body = JSONObject().apply {
+            put("to", to)
+            put("amount", amount)
+            put("password", password)
+        }
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/treasury/transfer")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { parseMasterTransaction(it) }
+    }
+
+    /**
+     * Sweep treasury balance to a destination address.
+     * POST /api/v1/master-wallet/:id/treasury/sweep — {to, password}
+     */
+    fun treasurySweep(walletId: String, to: String, password: String, callback: ApiCallback<MasterTransaction>) {
+        val body = JSONObject().apply {
+            put("to", to)
+            put("password", password)
+        }
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/treasury/sweep")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { parseMasterTransaction(it) }
+    }
+
     // ==================== MULTISIG ====================
 
     /**
-     * Create multisig wallet
-     * POST /api/v1/master-wallet/:id/multisig/wallets
+     * List multisig wallets.
+     * GET /api/v1/master-wallet/:id/multisig/wallets
      */
-    fun createMultisig(name: String, chain: String, signers: List<String>, requiredSigs: Int, callback: ApiCallback<MultisigWallet>) {
+    fun listMultisigWallets(walletId: String, callback: ApiCallback<ListResponse<MultisigWallet>>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/multisig/wallets")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeListRequest(request, callback) { arr ->
+            (0 until arr.length()).map { parseMultisig(arr.getJSONObject(it)) }
+        }
+    }
+
+    /**
+     * Create multisig wallet.
+     * POST /api/v1/master-wallet/:id/multisig/wallets — {name, owners, threshold}
+     */
+    fun createMultisig(walletId: String, name: String, chain: String, signers: List<String>, requiredSigs: Int, callback: ApiCallback<MultisigWallet>) {
         val body = JSONObject().apply {
             put("name", name)
             put("owners", JSONArray(signers))
@@ -334,7 +728,7 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
         }
 
         val request = Request.Builder()
-            .url("$baseUrl/api/v1/master-wallet/multisig/wallets")
+            .url("$baseUrl/api/v1/master-wallet/$walletId/multisig/wallets")
             .post(body.toString().toRequestBody(jsonMediaType))
             .headers(getHeaders())
             .build()
@@ -343,7 +737,37 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
     }
 
     /**
-     * Sign transaction
+     * List multisig wallet transactions.
+     * GET /api/v1/master-wallet/:id/multisig/wallets/:wid/transactions
+     */
+    fun listMultisigTransactions(walletId: String, multisigWalletId: String, callback: ApiCallback<ListResponse<MasterTransaction>>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/multisig/wallets/$multisigWalletId/transactions")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeListRequest(request, callback) { arr ->
+            (0 until arr.length()).map { parseMasterTransaction(arr.getJSONObject(it)) }
+        }
+    }
+
+    /**
+     * Submit a multisig wallet transaction for approval.
+     * POST /api/v1/master-wallet/:id/multisig/wallets/:wid/transactions
+     */
+    fun createMultisigTransaction(walletId: String, multisigWalletId: String, body: JSONObject, callback: ApiCallback<MasterTransaction>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/multisig/wallets/$multisigWalletId/transactions")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { parseMasterTransaction(it) }
+    }
+
+    /**
+     * Sign a multisig transaction.
      * POST /api/v1/master-wallet/:id/multisig/transactions/:tid/sign
      */
     fun signMultisig(walletId: String, transactionId: String, signer: String, signature: String, callback: ApiCallback<MultisigSignature>) {
@@ -369,7 +793,7 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
     }
 
     /**
-     * Execute multisig
+     * Execute a multisig transaction once threshold signatures are collected.
      * POST /api/v1/master-wallet/:id/multisig/transactions/:tid/execute
      */
     fun executeMultisig(walletId: String, transactionId: String, callback: ApiCallback<MasterTransaction>) {
@@ -417,6 +841,74 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
         )
     }
 
+    // ==================== PUBLIC (no auth) ====================
+
+    /**
+     * Get coin price.
+     * GET /api/v1/price?coin_id=ethereum → {usd, usd_24h_change}
+     */
+    fun getPrice(coinId: String = "ethereum", callback: ApiCallback<PriceResult>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/price?coin_id=$coinId")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                callback.onError(e.message ?: "Network error")
+            }
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val json = JSONObject(response.body?.string() ?: "{}")
+                    if (response.isSuccessful) {
+                        callback.onSuccess(
+                            PriceResult(
+                                coinId = coinId,
+                                usd = json.optString("usd", "0"),
+                                usd24hChange = json.optString("usd_24h_change", "0")
+                            )
+                        )
+                    } else {
+                        callback.onError(json.optString("error", "Request failed"))
+                    }
+                } catch (e: Exception) {
+                    callback.onError(e.message ?: "Parse error")
+                }
+            }
+        })
+    }
+
+    /**
+     * Backend health check.
+     * GET /health
+     */
+    fun health(callback: ApiCallback<JSONObject>) {
+        val request = Request.Builder()
+            .url("$baseUrl/health")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { it }
+    }
+
+    /**
+     * Get transaction history for an address (Etherscan-backed on the backend).
+     * GET /api/v1/transactions/history?address=&chain_id= → {transactions: [...]}
+     */
+    fun getTransactionHistory(address: String, chainId: Long, callback: ApiCallback<ListResponse<JSONObject>>) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/transactions/history?address=$address&chain_id=$chainId")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeListRequest(request, callback) { arr ->
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+        }
+    }
+
     // ==================== HELPERS ====================
 
     private fun <T> executeRequest(request: Request, callback: ApiCallback<T>, parser: (JSONObject) -> T) {
@@ -448,10 +940,21 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
                 try {
                     val json = JSONObject(response.body?.string() ?: "{}")
                     if (response.isSuccessful) {
+                        // Try the common canonical list-wrapper keys before falling back to an
+                        // empty array. Mirrors the extension client's `res.<key> || res` pattern.
                         val arr = json.optJSONArray("data")
                             ?: json.optJSONArray("wallets")
                             ?: json.optJSONArray("transactions")
                             ?: json.optJSONArray("items")
+                            ?: json.optJSONArray("fees")
+                            ?: json.optJSONArray("policies")
+                            ?: json.optJSONArray("notifications")
+                            ?: json.optJSONArray("rules")
+                            ?: json.optJSONArray("users")
+                            ?: json.optJSONArray("entries")
+                            ?: json.optJSONArray("logs")
+                            ?: json.optJSONArray("sub_wallets")
+                            ?: json.optJSONArray("webhooks")
                             ?: JSONArray()
                         val data = parser(arr)
                         callback.onSuccess(ListResponse(
@@ -550,3 +1053,7 @@ data class MultisigSignature(val walletId: String, val transactionId: String, va
 data class Whitelabel(val id: String, val name: String, val domain: String, val branding: String, val feePercent: Double, val isActive: Boolean, val usersCount: Int)
 data class MasterAnalytics(val period: String, val totalVolume: String, val incomingVolume: String, val outgoingVolume: String, val totalTransactions: Int, val successRate: Double)
 data class ListResponse<T>(val data: List<T>, val total: Int, val page: Int, val pageSize: Int)
+
+// Auth + public endpoints
+data class AuthResponse(val token: String, val userId: String, val email: String, val role: String)
+data class PriceResult(val coinId: String, val usd: String, val usd24hChange: String)

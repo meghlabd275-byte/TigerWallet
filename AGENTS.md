@@ -1683,11 +1683,14 @@ the real EIP-4337 address, not fake data.
 ---
 ## MasterWallet Flutter (Dart) client -- master_wallet/flutter/
 
-Scope note: master_wallet/flutter/lib/ is a **service-layer library only** --
-there is NO main.dart, no MaterialApp, and no pages/screens/UI. It is not a
-runnable Flutter app; it is a set of services consumed by an app shell that does
-not exist in this tree. ThemeService (ChangeNotifier + persistence + light/dark
-ThemeData) is correct but has no consumer to wire into MaterialApp yet.
+Scope note (UPDATED 2026-08-13): master_wallet/flutter/lib/ is NOW a FULLY
+RUNNABLE Flutter app. `lib/main.dart` exists with a `MaterialApp` wired to
+`ThemeService` (ChangeNotifierProvider) + `AuthService`
+(ChangeNotifierProvider) + `MasterWalletService` (Provider). An `AuthGate`
+routes between `AuthScreen` (login/register) and `DashboardScreen` (6 tabs:
+Wallets, Activity, Policies, Config, Analytics, Network). ThemeToggle is on
+every AppBar. All UI calls REAL service-layer fetchers (no mock data).
+`theme_service.dart` is unchanged and now has a real MaterialApp consumer.
 
 All services verified as thin REST wrappers over the canonical Go backend
 (:8450) with fail-closed behavior:
@@ -1728,3 +1731,74 @@ This-session Flutter changes:
 - features/treasury/treasury_service.dart: getBalances() was hitting a
   non-existent /treasury/balances route; now derives balances from the
   canonical GET /treasury overview response (data['balances']).
+- FUNCTIONAL PARITY GAP FIX (2026-08-13): Added ALL missing fetchers to close
+  parity gaps vs the chrome extensions reference client + canonical contract.
+  * services/auth_service.dart (NEW): ChangeNotifier, POST /api/v1/auth/register
+    + POST /api/v1/auth/login, Bearer JWT cached, notifyListeners on state change.
+  * services/master_wallet_service.dart: added
+    - Fees: GET/POST /master-wallet/:id/fees, DELETE .../fees/:fid
+    - Auto-Sign: GET/POST /master-wallet/:id/auto-sign, DELETE .../auto-sign/:rid
+    - Users: GET/POST /master-wallet/:id/users, DELETE .../users/:uid
+    - Notifications: GET/POST /master-wallet/:id/notifications
+    - Webhooks: GET/POST /master-wallet/:id/webhooks, DELETE .../webhooks/:wid
+    - Chains: GET /api/v1/chains (public, no auth)
+    - Health: GET /health (public, no auth)
+    - Tx history: GET /api/v1/transactions/history?address=&chain_id= (public)
+    - Analytics: GET .../analytics/transactions ({by_status}), .../analytics/wallets
+    - Tx approve/reject: POST .../transactions/:tid/approve|reject
+    Response keys verified against Go backend (management.go/handlers.go):
+    `fees`, `auto_sign_rules`, `users`, `notifications`, `webhooks`, `chains`,
+    `transactions`, `by_status`.
+  * lib/main.dart (NEW): MultiProvider(ThemeService + AuthService as
+    ChangeNotifierProvider, MasterWalletService as Provider) -> MaterialApp.
+    AuthGate watches AuthService, syncs token to MasterWalletService on every
+    build, routes to AuthScreen or DashboardScreen.
+  * lib/ui/auth_screen.dart (NEW): real register/login form -> AuthService.
+  * lib/ui/theme_toggle.dart (NEW): reusable AppBar ThemeToggle.
+  * lib/ui/dashboard_screen.dart (NEW): 6-tab dashboard driving real fetchers.
+    `_LiveList` + `_LiveMap` use `cacheKey` (not closure identity) for refetch
+    decisions; safe substring handling on short IDs; delete actions wired to
+    fees/auto-sign/users/webhooks; approve/reject on pending transactions.
+  All 6 Dart files pass brace/paren/bracket balance check (string-aware
+  tokenizer handles `${...}` interpolation). Dart SDK NOT installed so
+  `flutter analyze`/`dart analyze` could not be run.
+
+## Rust core (master_wallet/rust) - API fetcher parity (2026-08-13)
+
+- `src/lib.rs` is a single-file crate (crate name `tiger_master_wallet`).
+  Real crypto (BIP-39 wordlist via `include!("bip39_wordlist.rs")`, BIP-32/44
+  HMAC-SHA512 CKD, k256 secp256k1, keccak256 EIP-55, AES-256-GCM+scrypt seed
+  encryption, ECDSA sign_hash/sign_personal_message) is UNCHANGED and passes
+  5 unit tests. Do NOT touch the crypto section.
+- Canonical Go backend is on :8450; contract lives at
+  `master_wallet/CANONICAL_API_CONTRACT.md`. Gold-standard client is the JS
+  `master_wallet/extensions/chrome/services/masterWalletService.js` (uses
+  `authedFetch` with `/api/v1` prefix + Bearer JWT; many list endpoints do
+  `res.<field> || res || []`, so Rust list-response structs use
+  `#[serde(default)]` Vec fields to tolerate missing keys).
+- `BackendClient` private helpers: `get<T>`, `post<T,B>`, `post_empty<T>`
+  (empty-body POST, tolerates 204), `put<T,B>`, `delete<T>`. All protected
+  routes attach `bearer_auth`. Empty 2xx bodies decode to `Value::Null`.
+- `MasterWalletService.get_fees(master_wallet_id)` now does a REAL HTTP fetch
+  to `GET /api/v1/master-wallet/:id/fees` (returns `FeesListResponse`); the
+  in-memory `RwLock<FeeConfig>` is retained only for the local
+  `set_fees`/`local_fee_config` override (validated cap 20%).
+- Verify with: `cd master_wallet/rust && . "$HOME/.cargo/env" && cargo check --lib`
+  (must be 0 errors). `cargo test --lib` runs the 5 crypto tests; the scrypt
+  KDF test (SCRYPT_N=2^18) takes ~80s, so allow a long timeout.
+## MasterWallet Desktop (C++) — parity notes
+- Canonical backend on :8450; API contract at master_wallet/CANONICAL_API_CONTRACT.md.
+- Desktop C++ client in master_wallet/desktop/src/services/. HTTP via libcurl APIClient; helpers api::backendGet/Post/Put/Delete carry Bearer JWT from APIClient::setAuthToken.
+- Auth endpoints /api/v1/auth/login & /api/v1/auth/register are PUBLIC: clearAuthToken() before calling; setAuthToken(token) on success.
+- Backend has NO /master-wallet/import route. Import = POST /api/v1/master-wallet with optional mnemonic field; response uses wallet_id.
+- Extensions chrome services (master_wallet/extensions/chrome/services/) are the gold-standard reference.
+- Build: cd master_wallet/desktop && rm -rf build && mkdir build && cd build && cmake .. && make -j4. Needs cmake, libcurl4-openssl-dev, libssl-dev.
+- Transaction method split (fixed 2026-08-13): `createTransaction` POSTs a
+  PENDING transaction RECORD to `POST /api/v1/master-wallet/:id/transactions`
+  (body `{to, value, data, chain_id}`), distinct from `signAndBroadcast`
+  which signs+broadcasts via `POST /api/v1/master-wallet/:id/sign` (body
+  `{to, amount, token}`). `TransactionRequest` gained a `data` (calldata) field
+  for the record endpoint. Added `approveTransaction(masterId, txId)` ->
+  `POST .../transactions/:tid/approve` and `rejectTransaction(masterId, txId)`
+  -> `POST .../transactions/:tid/reject` (empty JSON body). All return
+  `TransactionResult`; reject treats `status=="rejected"` as success.

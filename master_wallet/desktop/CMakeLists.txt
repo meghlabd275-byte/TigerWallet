@@ -18,6 +18,7 @@ include_directories(
 
 set(SERVICE_SOURCES
     src/services/api_client.cpp
+    src/services/auth_service.cpp
     src/services/master_wallet_service.cpp
     src/services/web_socket_service.cpp
     src/services/account_abstraction_service.cpp

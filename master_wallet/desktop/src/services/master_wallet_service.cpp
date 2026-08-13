@@ -147,19 +147,27 @@ bool MasterWalletService::deleteWallet(const WalletID& walletId) {
 bool MasterWalletService::importWallet(const std::string& mnemonic, const std::string& password) {
     if (mnemonic.empty() || password.empty())
         throw std::runtime_error("Mnemonic and password are required");
+    // The canonical backend has no dedicated /import route. Importing an
+    // existing mnemonic is done via POST /api/v1/master-wallet (create) with
+    // the optional "mnemonic" field set: the backend validates the BIP-39
+    // checksum, derives the secp256k1 key, and persists the encrypted seed.
+    const std::string name = "Imported-" + std::to_string(nowMs());
     auto body = api::buildJsonObject({
+        {"name", name},
         {"mnemonic", mnemonic},
         {"password", password},
         {"chain_id", std::to_string(CHAIN_ETHEREUM)},
     });
     std::string resp;
     try {
-        resp = api::backendPost("/api/v1/master-wallet/import", body);
+        resp = api::backendPost("/api/v1/master-wallet", body);
     } catch (const api::APIException& e) {
         throw std::runtime_error(std::string("Wallet import failed: ") + e.what());
     }
     WalletData wallet;
-    wallet.id = api::jsonStringField(resp, "id").value_or("");
+    // The create endpoint returns "wallet_id"; older callers used "id".
+    wallet.id = api::jsonStringField(resp, "wallet_id")
+                    .value_or(api::jsonStringField(resp, "id").value_or(""));
     wallet.address = api::jsonStringField(resp, "address").value_or("");
     wallet.encryptedMnemonic = encryptData(mnemonic, password);
     wallet.createdAt = nowMs();
@@ -295,8 +303,49 @@ std::map<std::string, BalanceResult> MasterWalletService::getAllBalances(const W
 
 // ==================== Transaction Operations ====================
 
+// POST /api/v1/master-wallet/:id/transactions
+// Creates a (pending) transaction RECORD on the backend. Distinct from
+// signAndBroadcast, which signs+broadcasts a ready-to-send tx via /sign.
 TransactionResult MasterWalletService::createTransaction(const TransactionRequest& request) {
-    return signAndBroadcast(request);
+    TransactionResult result;
+    result.timestamp = nowMs();
+
+    if (request.fromWallet.empty() || request.toAddress.empty()) {
+        result.success = false;
+        result.error = "Missing from/to";
+        return result;
+    }
+
+    auto body = api::buildJsonObject({
+        {"to", request.toAddress},
+        {"value", request.amount.empty() ? "0" : request.amount},
+        {"data", request.data},
+        {"chain_id", std::to_string(request.chainId)},
+    });
+    std::string resp;
+    try {
+        resp = api::backendPost("/api/v1/master-wallet/" + request.fromWallet + "/transactions", body);
+    } catch (const api::APIException& e) {
+        result.success = false;
+        result.error = e.what();
+        return result;
+    }
+
+    // The created record is identified by its id (and optional hash once mined).
+    auto txHash = api::jsonStringField(resp, "hash");
+    if (!txHash) txHash = api::jsonStringField(resp, "transaction_hash");
+    if (!txHash) txHash = api::jsonStringField(resp, "tx_hash");
+    if (!txHash) txHash = api::jsonStringField(resp, "id");
+    if (!txHash) {
+        result.success = false;
+        result.error = "Backend create-transaction response missing transaction id";
+        return result;
+    }
+    result.txHash = *txHash;
+    auto status = api::jsonStringField(resp, "status");
+    result.success = status ? (*status == "pending" || *status == "success" || *status == "confirmed") : true;
+    if (!result.success) result.error = status.value_or("unknown status");
+    return result;
 }
 
 TransactionResult MasterWalletService::signAndBroadcast(const TransactionRequest& request) {
@@ -333,6 +382,73 @@ TransactionResult MasterWalletService::signAndBroadcast(const TransactionRequest
     result.txHash = *txHash;
     auto status = api::jsonStringField(resp, "status");
     result.success = status ? (*status == "success" || *status == "pending" || *status == "confirmed") : true;
+    if (!result.success) result.error = status.value_or("unknown status");
+    return result;
+}
+
+// POST /api/v1/master-wallet/:id/transactions/:tid/approve
+TransactionResult MasterWalletService::approveTransaction(const WalletID& masterId, const std::string& txId) {
+    TransactionResult result;
+    result.timestamp = nowMs();
+
+    if (masterId.empty() || txId.empty()) {
+        result.success = false;
+        result.error = "Missing masterId/txId";
+        return result;
+    }
+
+    auto body = api::buildJsonObject({});
+    std::string resp;
+    try {
+        resp = api::backendPost(
+            "/api/v1/master-wallet/" + masterId + "/transactions/" + txId + "/approve", body);
+    } catch (const api::APIException& e) {
+        result.success = false;
+        result.error = e.what();
+        return result;
+    }
+
+    auto hash = api::jsonStringField(resp, "hash");
+    if (!hash) hash = api::jsonStringField(resp, "transaction_hash");
+    if (!hash) hash = api::jsonStringField(resp, "tx_hash");
+    if (!hash) hash = api::jsonStringField(resp, "id");
+    if (hash) result.txHash = *hash;
+    auto status = api::jsonStringField(resp, "status");
+    result.success = status ? (*status == "approved" || *status == "success" || *status == "pending" || *status == "confirmed") : true;
+    if (!result.success) result.error = status.value_or("unknown status");
+    return result;
+}
+
+// POST /api/v1/master-wallet/:id/transactions/:tid/reject
+TransactionResult MasterWalletService::rejectTransaction(const WalletID& masterId, const std::string& txId) {
+    TransactionResult result;
+    result.timestamp = nowMs();
+
+    if (masterId.empty() || txId.empty()) {
+        result.success = false;
+        result.error = "Missing masterId/txId";
+        return result;
+    }
+
+    auto body = api::buildJsonObject({});
+    std::string resp;
+    try {
+        resp = api::backendPost(
+            "/api/v1/master-wallet/" + masterId + "/transactions/" + txId + "/reject", body);
+    } catch (const api::APIException& e) {
+        result.success = false;
+        result.error = e.what();
+        return result;
+    }
+
+    auto hash = api::jsonStringField(resp, "hash");
+    if (!hash) hash = api::jsonStringField(resp, "transaction_hash");
+    if (!hash) hash = api::jsonStringField(resp, "tx_hash");
+    if (!hash) hash = api::jsonStringField(resp, "id");
+    if (hash) result.txHash = *hash;
+    // A rejected transaction is a successful rejection operation, not a failed tx.
+    auto status = api::jsonStringField(resp, "status");
+    result.success = status ? (*status == "rejected" || *status == "success") : true;
     if (!result.success) result.error = status.value_or("unknown status");
     return result;
 }

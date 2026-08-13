@@ -137,8 +137,22 @@ class MasterAPIService {
         let _: EmptyResponse = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/policies/\(policyId)", method: "DELETE")
     }
 
+    func updatePolicy(walletId: String, policyId: String, policy: Policy) async throws -> Policy {
+        let body = try JSONEncoder().encode(policy)
+        return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/policies/\(policyId)", method: "PUT", body: body)
+    }
+
     func getFees(walletId: String) async throws -> [Fee] {
         return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/fees")
+    }
+
+    func createFee(walletId: String, fee: Fee) async throws -> Fee {
+        let body = try JSONEncoder().encode(fee)
+        return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/fees", method: "POST", body: body)
+    }
+
+    func deleteFee(walletId: String, feeId: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/fees/\(feeId)", method: "DELETE")
     }
 
     func getAutoSignRules(walletId: String) async throws -> [AutoSignRule] {
@@ -163,6 +177,10 @@ class MasterAPIService {
         return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/users", method: "POST", body: body)
     }
 
+    func deleteUser(walletId: String, userId: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/users/\(userId)", method: "DELETE")
+    }
+
     // MARK: - Audit + Analytics
 
     func getAudit(walletId: String) async throws -> [AuditEntry] {
@@ -181,16 +199,83 @@ class MasterAPIService {
         return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/analytics/wallets")
     }
 
+    // MARK: - Notifications
+
+    func getNotifications(walletId: String) async throws -> [MasterNotification] {
+        let resp: NotificationsResponse = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/notifications")
+        return resp.notifications
+    }
+
+    func createNotification(walletId: String, notification: CreateNotificationRequest) async throws -> MasterNotification {
+        let body = try JSONEncoder().encode(notification)
+        return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/notifications", method: "POST", body: body)
+    }
+
+    // MARK: - Webhooks
+
+    func getWebhooks(walletId: String) async throws -> [Webhook] {
+        let resp: WebhooksResponse = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/webhooks")
+        return resp.webhooks
+    }
+
+    func createWebhook(walletId: String, webhook: CreateWebhookRequest) async throws -> Webhook {
+        let body = try JSONEncoder().encode(webhook)
+        return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/webhooks", method: "POST", body: body)
+    }
+
+    func deleteWebhook(walletId: String, webhookId: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/webhooks/\(webhookId)", method: "DELETE")
+    }
+
     // MARK: - Treasury
 
     func getTreasury(walletId: String) async throws -> TreasuryOverview {
         return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/treasury")
     }
 
+    func getTreasuryTransactions(walletId: String) async throws -> [MasterTransaction] {
+        let resp: TransactionsResponse = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/treasury/transactions")
+        return resp.transactions
+    }
+
+    func treasuryTransfer(walletId: String, to: String, amount: String, password: String) async throws -> SignResponse {
+        let body = try JSONEncoder().encode(["to": to, "amount": amount, "password": password])
+        return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/treasury/transfer", method: "POST", body: body)
+    }
+
+    func treasurySweep(walletId: String, to: String, password: String) async throws -> SignResponse {
+        let body = try JSONEncoder().encode(["to": to, "password": password])
+        return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/treasury/sweep", method: "POST", body: body)
+    }
+
     // MARK: - Multisig
 
-    func getMultisigWallets(walletId: String) async throws -> [SubWallet] {
-        return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/multisig/wallets")
+    func getMultisigWallets(walletId: String) async throws -> [MultisigWallet] {
+        let resp: MultisigWalletsResponse = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/multisig/wallets")
+        return resp.wallets
+    }
+
+    func createMultisigWallet(walletId: String, name: String, owners: [String], threshold: Int) async throws -> MultisigWallet {
+        let body = try JSONEncoder().encode(["name": name, "owners": owners, "threshold": threshold])
+        return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/multisig/wallets", method: "POST", body: body)
+    }
+
+    func getMultisigTransactions(walletId: String, multisigWalletId: String) async throws -> [MultisigTransaction] {
+        let resp: MultisigTransactionsResponse = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/multisig/wallets/\(multisigWalletId)/transactions")
+        return resp.transactions
+    }
+
+    func createMultisigTransaction(walletId: String, multisigWalletId: String, payload: CreateMultisigTransactionRequest) async throws -> MultisigTransaction {
+        let body = try JSONEncoder().encode(payload)
+        return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/multisig/wallets/\(multisigWalletId)/transactions", method: "POST", body: body)
+    }
+
+    func signMultisigTransaction(walletId: String, transactionId: String) async throws -> MultisigTransaction {
+        return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/multisig/transactions/\(transactionId)/sign", method: "POST")
+    }
+
+    func executeMultisigTransaction(walletId: String, transactionId: String) async throws -> MultisigTransaction {
+        return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/multisig/transactions/\(transactionId)/execute", method: "POST")
     }
 
     // MARK: - Public (no auth)
@@ -209,6 +294,14 @@ class MasterAPIService {
 
     func getHealth() async throws -> HealthResponse {
         return try await request(endpoint: "/health", auth: false)
+    }
+
+    func getTransactionHistory(address: String, chainId: Int) async throws -> [MasterTransaction] {
+        let resp: TransactionsResponse = try await request(
+            endpoint: "/api/v1/transactions/history?address=\(address)&chain_id=\(chainId)",
+            auth: false
+        )
+        return resp.transactions
     }
 
     // MARK: - Generic Request
@@ -490,6 +583,105 @@ struct MasterAnalytics: Codable {
 struct VolumeData: Codable {
     let date: Date
     let volumeUSD: Double
+}
+
+// MARK: - Notification / Webhook Models
+
+struct MasterNotification: Codable, Identifiable {
+    let id: String
+    let type: String
+    let title: String
+    let message: String
+    let read: Bool
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, type, title, message, read
+        case createdAt = "created_at"
+    }
+}
+
+struct NotificationsResponse: Codable {
+    let notifications: [MasterNotification]
+}
+
+struct CreateNotificationRequest: Codable {
+    let type: String
+    let title: String
+    let message: String
+}
+
+struct Webhook: Codable, Identifiable {
+    let id: String
+    let url: String
+    let events: [String]
+    let active: Bool
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, url, events, active
+        case createdAt = "created_at"
+    }
+}
+
+struct WebhooksResponse: Codable {
+    let webhooks: [Webhook]
+}
+
+struct CreateWebhookRequest: Codable {
+    let url: String
+    let events: [String]
+}
+
+// MARK: - Multisig Models
+
+struct MultisigWallet: Codable, Identifiable {
+    let id: String
+    let name: String
+    let address: String
+    let owners: [String]
+    let threshold: Int
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, address, owners, threshold
+        case createdAt = "created_at"
+    }
+}
+
+struct MultisigWalletsResponse: Codable {
+    let wallets: [MultisigWallet]
+}
+
+struct MultisigTransaction: Codable, Identifiable {
+    let id: String
+    let multisigWalletId: String
+    let to: String
+    let amount: String
+    let data: String?
+    let status: String
+    let confirmations: Int
+    let threshold: Int
+    let createdAt: Date
+    var executedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case multisigWalletId = "multisig_wallet_id"
+        case to, amount, data, status, confirmations, threshold
+        case createdAt = "created_at"
+        case executedAt = "executed_at"
+    }
+}
+
+struct MultisigTransactionsResponse: Codable {
+    let transactions: [MultisigTransaction]
+}
+
+struct CreateMultisigTransactionRequest: Codable {
+    let to: String
+    let amount: String
+    let data: String?
 }
 
 // MARK: - Public Models

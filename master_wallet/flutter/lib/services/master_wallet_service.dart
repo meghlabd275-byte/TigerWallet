@@ -220,6 +220,31 @@ class MasterWalletService {
 
   // ==================== Transactions ====================
 
+  /// Create a transaction RECORD (distinct from [sendTransaction], which
+  /// POSTs to /sign and signs+broadcasts on the backend). This POSTs to the
+  /// canonical POST /master-wallet/:id/transactions route with body
+  /// {to, value, data, chain_id} and returns the recorded transaction object.
+  Future<Map<String, dynamic>> createTransactionRecord({
+    required String masterId,
+    required String to,
+    required String value,
+    required String data,
+    required int chainId,
+  }) async {
+    final r = await http.post(
+      Uri.parse('$_apiV1/master-wallet/$masterId/transactions'),
+      headers: _headers,
+      body: jsonEncode({
+        'to': to,
+        'value': value,
+        'data': data,
+        'chain_id': chainId,
+      }),
+    );
+    if (r.statusCode != 200 && r.statusCode != 201) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
   Future<List<Map<String, dynamic>>> getTransactions(String walletId) async {
     final r = await http.get(
       Uri.parse('$_apiV1/master-wallet/$walletId/transactions'),
@@ -228,6 +253,366 @@ class MasterWalletService {
     if (r.statusCode != 200) throw _error(r);
     final body = jsonDecode(r.body) as Map<String, dynamic>;
     final txs = body['transactions'] as List? ?? [];
+    return txs.cast<Map<String, dynamic>>();
+  }
+
+  /// Approve a pending transaction via the canonical
+  /// POST /master-wallet/:id/transactions/:tid/approve route.
+  Future<bool> approveTransaction(String walletId, String txId) async {
+    final r = await http.post(
+      Uri.parse('$_apiV1/master-wallet/$walletId/transactions/$txId/approve'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    return true;
+  }
+
+  /// Reject a pending transaction via the canonical
+  /// POST /master-wallet/:id/transactions/:tid/reject route.
+  Future<bool> rejectTransaction(String walletId, String txId) async {
+    final r = await http.post(
+      Uri.parse('$_apiV1/master-wallet/$walletId/transactions/$txId/reject'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    return true;
+  }
+
+  // ==================== Fees ====================
+
+  /// GET /master-wallet/:id/fees → {fees: [...]}
+  Future<List<Map<String, dynamic>>> getFees(String walletId) async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/master-wallet/$walletId/fees'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    final fees = body['fees'] as List? ?? [];
+    return fees.cast<Map<String, dynamic>>();
+  }
+
+  /// POST /master-wallet/:id/fees — body: {fee_type, fee_percentage?, fee_fixed?, is_active?}
+  Future<Map<String, dynamic>> createFee(
+    String walletId,
+    Map<String, dynamic> fee,
+  ) async {
+    final r = await http.post(
+      Uri.parse('$_apiV1/master-wallet/$walletId/fees'),
+      headers: _headers,
+      body: jsonEncode(fee),
+    );
+    if (r.statusCode != 200 && r.statusCode != 201) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// DELETE /master-wallet/:id/fees/:fid
+  Future<bool> deleteFee(String walletId, String feeId) async {
+    final r = await http.delete(
+      Uri.parse('$_apiV1/master-wallet/$walletId/fees/$feeId'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200 && r.statusCode != 204) throw _error(r);
+    return true;
+  }
+
+  // ==================== Auto-Sign Rules ====================
+
+  /// GET /master-wallet/:id/auto-sign → {auto_sign_rules: [...]}
+  Future<List<Map<String, dynamic>>> getAutoSignRules(String walletId) async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/master-wallet/$walletId/auto-sign'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    final rules = body['auto_sign_rules'] as List? ??
+        body['rules'] as List? ??
+        const [];
+    return rules.cast<Map<String, dynamic>>();
+  }
+
+  /// POST /master-wallet/:id/auto-sign — body: {name, rule_type, conditions?, max_amount?, is_active?}
+  Future<Map<String, dynamic>> createAutoSignRule(
+    String walletId,
+    Map<String, dynamic> rule,
+  ) async {
+    final r = await http.post(
+      Uri.parse('$_apiV1/master-wallet/$walletId/auto-sign'),
+      headers: _headers,
+      body: jsonEncode(rule),
+    );
+    if (r.statusCode != 200 && r.statusCode != 201) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// DELETE /master-wallet/:id/auto-sign/:rid
+  Future<bool> deleteAutoSignRule(String walletId, String ruleId) async {
+    final r = await http.delete(
+      Uri.parse('$_apiV1/master-wallet/$walletId/auto-sign/$ruleId'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200 && r.statusCode != 204) throw _error(r);
+    return true;
+  }
+
+  // ==================== Sub Wallets ====================
+
+  /// GET /master-wallet/:id/sub-wallets → {sub_wallets: [...]}
+  Future<List<Map<String, dynamic>>> getSubWallets(String walletId) async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/master-wallet/$walletId/sub-wallets'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    final subWallets = body['sub_wallets'] as List? ?? const [];
+    return subWallets.cast<Map<String, dynamic>>();
+  }
+
+  /// POST /master-wallet/:id/sub-wallets — body: {name, password, chain_id}
+  Future<Map<String, dynamic>> createSubWallet(
+    String walletId,
+    String name,
+    String password,
+    int chainId,
+  ) async {
+    final r = await http.post(
+      Uri.parse('$_apiV1/master-wallet/$walletId/sub-wallets'),
+      headers: _headers,
+      body: jsonEncode({
+        'name': name,
+        'password': password,
+        'chain_id': chainId,
+      }),
+    );
+    if (r.statusCode != 200 && r.statusCode != 201) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// GET /master-wallet/:id/sub-wallets/:sid/balance → {native: {balance, symbol}, ...}
+  Future<Map<String, dynamic>> getSubWalletBalance(
+    String walletId,
+    String subWalletId,
+  ) async {
+    final r = await http.get(
+      Uri.parse(
+        '$_apiV1/master-wallet/$walletId/sub-wallets/$subWalletId/balance',
+      ),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// POST /master-wallet/:id/sub-wallets/:sid/transfer — body: {to, amount, password, token?}
+  Future<Map<String, dynamic>> transferSubWallet({
+    required String walletId,
+    required String subWalletId,
+    required String to,
+    required String amount,
+    required String password,
+    String? token,
+  }) async {
+    final r = await http.post(
+      Uri.parse(
+        '$_apiV1/master-wallet/$walletId/sub-wallets/$subWalletId/transfer',
+      ),
+      headers: _headers,
+      body: jsonEncode({
+        'to': to,
+        'amount': amount,
+        'password': password,
+        if (token != null) 'token': token,
+      }),
+    );
+    if (r.statusCode != 200 && r.statusCode != 201) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  // ==================== Users ====================
+
+  /// GET /master-wallet/:id/users → {users: [...]}
+  Future<List<Map<String, dynamic>>> getUsers(String walletId) async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/master-wallet/$walletId/users'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    final users = body['users'] as List? ?? const [];
+    return users.cast<Map<String, dynamic>>();
+  }
+
+  /// POST /master-wallet/:id/users — body: {email, password, name?, role?}
+  Future<Map<String, dynamic>> createUser(
+    String walletId,
+    Map<String, dynamic> user,
+  ) async {
+    final r = await http.post(
+      Uri.parse('$_apiV1/master-wallet/$walletId/users'),
+      headers: _headers,
+      body: jsonEncode(user),
+    );
+    if (r.statusCode != 200 && r.statusCode != 201) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// DELETE /master-wallet/:id/users/:uid
+  Future<bool> deleteUser(String walletId, String userId) async {
+    final r = await http.delete(
+      Uri.parse('$_apiV1/master-wallet/$walletId/users/$userId'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200 && r.statusCode != 204) throw _error(r);
+    return true;
+  }
+
+  // ==================== Notifications ====================
+
+  /// GET /master-wallet/:id/notifications → {notifications: [...]}
+  Future<List<Map<String, dynamic>>> getNotifications(String walletId) async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/master-wallet/$walletId/notifications'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    final notifs = body['notifications'] as List? ?? const [];
+    return notifs.cast<Map<String, dynamic>>();
+  }
+
+  /// POST /master-wallet/:id/notifications — body:
+  /// {notification_type, title, message, category?, priority?, channel?, user_id?, data?}
+  Future<Map<String, dynamic>> createNotification(
+    String walletId,
+    Map<String, dynamic> notification,
+  ) async {
+    final r = await http.post(
+      Uri.parse('$_apiV1/master-wallet/$walletId/notifications'),
+      headers: _headers,
+      body: jsonEncode(notification),
+    );
+    if (r.statusCode != 200 && r.statusCode != 201) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  // ==================== Webhooks ====================
+
+  /// GET /master-wallet/:id/webhooks → {webhooks: [...]}
+  Future<List<Map<String, dynamic>>> getWebhooks(String walletId) async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/master-wallet/$walletId/webhooks'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    final webhooks = body['webhooks'] as List? ?? const [];
+    return webhooks.cast<Map<String, dynamic>>();
+  }
+
+  /// POST /master-wallet/:id/webhooks — body: {name, url, events, retry_count?}
+  Future<Map<String, dynamic>> createWebhook(
+    String walletId,
+    Map<String, dynamic> webhook,
+  ) async {
+    final r = await http.post(
+      Uri.parse('$_apiV1/master-wallet/$walletId/webhooks'),
+      headers: _headers,
+      body: jsonEncode(webhook),
+    );
+    if (r.statusCode != 200 && r.statusCode != 201) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// DELETE /master-wallet/:id/webhooks/:wid
+  Future<bool> deleteWebhook(String walletId, String webhookId) async {
+    final r = await http.delete(
+      Uri.parse('$_apiV1/master-wallet/$walletId/webhooks/$webhookId'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200 && r.statusCode != 204) throw _error(r);
+    return true;
+  }
+
+  // ==================== Analytics ====================
+
+  /// GET /master-wallet/:id/analytics/transactions → {by_status: {...}}
+  Future<Map<String, dynamic>> getAnalyticsTransactions(
+    String walletId,
+  ) async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/master-wallet/$walletId/analytics/transactions'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// GET /master-wallet/:id/analytics/volume → {total_volume, transaction_count}
+  Future<VolumeAnalytics> getVolumeAnalytics(String walletId) async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/master-wallet/$walletId/analytics/volume'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    final data = jsonDecode(r.body) as Map<String, dynamic>;
+    return VolumeAnalytics(
+      totalVolume: _toDouble(data['total_volume']),
+      transactionCount: (data['transaction_count'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  /// GET /master-wallet/:id/analytics/wallets → {master_wallets, sub_wallets, users}
+  Future<Map<String, dynamic>> getAnalyticsWallets(String walletId) async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/master-wallet/$walletId/analytics/wallets'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  // ==================== Public (no auth) ====================
+
+  /// GET /api/v1/chains → {chains: [...]} (public, no auth).
+  Future<List<Map<String, dynamic>>> getChains() async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/chains'),
+      headers: {'Content-Type': 'application/json'},
+    );
+    if (r.statusCode != 200) throw _error(r);
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    final chains = body['chains'] as List? ?? const [];
+    return chains.cast<Map<String, dynamic>>();
+  }
+
+  /// GET /health → {status, service, version, port, time} (public, no auth).
+  Future<Map<String, dynamic>> health() async {
+    final r = await http.get(
+      Uri.parse('$API_BASE/health'),
+      headers: {'Content-Type': 'application/json'},
+    );
+    if (r.statusCode != 200) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// GET /api/v1/transactions/history?address=&chain_id= →
+  /// {address, chain_id, transactions: [...]} (public, no auth).
+  Future<List<Map<String, dynamic>>> getTransactionHistory({
+    required String address,
+    int chainId = CHAIN_ETHEREUM,
+  }) async {
+    final uri = Uri.parse('$_apiV1/transactions/history').replace(
+      queryParameters: {'address': address, 'chain_id': chainId.toString()},
+    );
+    final r = await http.get(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+    );
+    if (r.statusCode != 200) throw _error(r);
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    final txs = body['transactions'] as List? ?? const [];
     return txs.cast<Map<String, dynamic>>();
   }
 
@@ -373,5 +758,15 @@ class TransactionResult {
     this.to,
     this.amount,
     this.error,
+  });
+}
+
+class VolumeAnalytics {
+  final double totalVolume;
+  final int transactionCount;
+
+  VolumeAnalytics({
+    required this.totalVolume,
+    required this.transactionCount,
   });
 }

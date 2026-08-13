@@ -788,7 +788,7 @@ const AnalyticsPage = ({ isDark, masterId }: AnalyticsProps) => {
         const [v, t, w] = await Promise.all([
           masterId ? masterWalletAPI.getVolumeAnalytics(masterId) : Promise.resolve(null),
           masterId ? masterWalletAPI.getTransactionAnalytics(masterId) : Promise.resolve(null),
-          masterWalletAPI.getWalletAnalytics(),
+          masterId ? masterWalletAPI.getWalletAnalytics(masterId) : Promise.resolve(null),
         ]);
         if (cancelled) return;
         if (v) setVolume({ total_volume: v.total_volume, transaction_count: v.transaction_count });

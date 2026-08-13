@@ -395,7 +395,68 @@ impl BackendClient {
         resp.json().await.map_err(|e| MasterError::BackendRequest(e.to_string()))
     }
 
+    async fn post_empty<T: for<'de> Deserialize<'de>>(&self, path: &str) -> Result<T, MasterError> {
+        let cfg = self.config.read().clone();
+        let mut req = self.http.post(format!("{}{}", cfg.backend_url, path));
+        if let Some(t) = &cfg.jwt_token {
+            req = req.bearer_auth(t);
+        }
+        let resp = req.send().await.map_err(|e| MasterError::BackendRequest(e.to_string()))?;
+        if !resp.status().is_success() {
+            return Err(MasterError::BackendRequest(format!("HTTP {}", resp.status())));
+        }
+        // Tolerate empty 2xx bodies (e.g. 204 No Content) by falling back to null.
+        let status = resp.status();
+        let bytes = resp.bytes().await.map_err(|e| MasterError::BackendRequest(e.to_string()))?;
+        if bytes.is_empty() {
+            return serde_json::from_value(serde_json::Value::Null)
+                .map_err(|e| MasterError::BackendRequest(format!("decode empty body: {e} (HTTP {status})")));
+        }
+        serde_json::from_slice(&bytes).map_err(|e| MasterError::BackendRequest(e.to_string()))
+    }
+
+    async fn put<T: for<'de> Deserialize<'de>, B: Serialize>(&self, path: &str, body: &B) -> Result<T, MasterError> {
+        let cfg = self.config.read().clone();
+        let mut req = self.http.put(format!("{}{}", cfg.backend_url, path)).json(body);
+        if let Some(t) = &cfg.jwt_token {
+            req = req.bearer_auth(t);
+        }
+        let resp = req.send().await.map_err(|e| MasterError::BackendRequest(e.to_string()))?;
+        if !resp.status().is_success() {
+            return Err(MasterError::BackendRequest(format!("HTTP {}", resp.status())));
+        }
+        let bytes = resp.bytes().await.map_err(|e| MasterError::BackendRequest(e.to_string()))?;
+        if bytes.is_empty() {
+            return serde_json::from_value(serde_json::Value::Null)
+                .map_err(|e| MasterError::BackendRequest(format!("decode empty body: {e}")));
+        }
+        serde_json::from_slice(&bytes).map_err(|e| MasterError::BackendRequest(e.to_string()))
+    }
+
+    async fn delete<T: for<'de> Deserialize<'de>>(&self, path: &str) -> Result<T, MasterError> {
+        let cfg = self.config.read().clone();
+        let mut req = self.http.delete(format!("{}{}", cfg.backend_url, path));
+        if let Some(t) = &cfg.jwt_token {
+            req = req.bearer_auth(t);
+        }
+        let resp = req.send().await.map_err(|e| MasterError::BackendRequest(e.to_string()))?;
+        if !resp.status().is_success() {
+            return Err(MasterError::BackendRequest(format!("HTTP {}", resp.status())));
+        }
+        let bytes = resp.bytes().await.map_err(|e| MasterError::BackendRequest(e.to_string()))?;
+        if bytes.is_empty() {
+            return serde_json::from_value(serde_json::Value::Null)
+                .map_err(|e| MasterError::BackendRequest(format!("decode empty body: {e}")));
+        }
+        serde_json::from_slice(&bytes).map_err(|e| MasterError::BackendRequest(e.to_string()))
+    }
+
     // ---- Real fetchers (delegate to the canonical Go backend) ----
+
+    // Auth
+    pub async fn register(&self, email: &str, password: &str, name: &str) -> Result<LoginResponse, MasterError> {
+        self.post("/api/v1/auth/register", &serde_json::json!({"email": email, "password": password, "name": name})).await
+    }
 
     pub async fn login(&self, email: &str, password: &str) -> Result<LoginResponse, MasterError> {
         self.post("/api/v1/auth/login", &serde_json::json!({"email": email, "password": password})).await
@@ -407,6 +468,14 @@ impl BackendClient {
 
     pub async fn create_master_wallet(&self, name: &str, password: &str, chain_id: i64) -> Result<MasterWallet, MasterError> {
         self.post("/api/v1/master-wallet", &serde_json::json!({"name": name, "password": password, "chain_id": chain_id})).await
+    }
+
+    pub async fn get_master_wallet(&self, wallet_id: &str) -> Result<MasterWallet, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}", wallet_id)).await
+    }
+
+    pub async fn delete_master_wallet(&self, wallet_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.delete(&format!("/api/v1/master-wallet/{}", wallet_id)).await
     }
 
     pub async fn get_balance(&self, wallet_id: &str) -> Result<BalanceResponse, MasterError> {
@@ -447,6 +516,190 @@ impl BackendClient {
 
     pub async fn get_policies(&self, master_wallet_id: &str) -> Result<PolicyListResponse, MasterError> {
         self.get(&format!("/api/v1/master-wallet/{}/policies", master_wallet_id)).await
+    }
+
+    // ---- Sub wallets ----
+
+    pub async fn list_sub_wallets(&self, master_wallet_id: &str) -> Result<SubWalletsListResponse, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/sub-wallets", master_wallet_id)).await
+    }
+
+    pub async fn create_sub_wallet(&self, master_wallet_id: &str, name: &str, password: &str, chain_id: i64) -> Result<serde_json::Value, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/sub-wallets", master_wallet_id), &serde_json::json!({"name": name, "password": password, "chain_id": chain_id})).await
+    }
+
+    pub async fn get_sub_wallet_balance(&self, master_wallet_id: &str, sub_wallet_id: &str) -> Result<BalanceResponse, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/sub-wallets/{}/balance", master_wallet_id, sub_wallet_id)).await
+    }
+
+    pub async fn transfer_from_sub_wallet(&self, master_wallet_id: &str, sub_wallet_id: &str, to: &str, amount: &str, password: &str, token: Option<&str>) -> Result<TransactionResponse, MasterError> {
+        let mut body = serde_json::json!({"to": to, "amount": amount, "password": password});
+        if let Some(t) = token {
+            body["token"] = serde_json::Value::String(t.to_string());
+        }
+        self.post(&format!("/api/v1/master-wallet/{}/sub-wallets/{}/transfer", master_wallet_id, sub_wallet_id), &body).await
+    }
+
+    // ---- Transactions ----
+
+    pub async fn create_transaction(&self, master_wallet_id: &str, to: &str, amount: &str, password: &str, token: Option<&str>) -> Result<TransactionResponse, MasterError> {
+        let mut body = serde_json::json!({"to": to, "amount": amount, "password": password});
+        if let Some(t) = token {
+            body["token"] = serde_json::Value::String(t.to_string());
+        }
+        self.post(&format!("/api/v1/master-wallet/{}/transactions", master_wallet_id), &body).await
+    }
+
+    pub async fn approve_transaction(&self, master_wallet_id: &str, transaction_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.post_empty(&format!("/api/v1/master-wallet/{}/transactions/{}/approve", master_wallet_id, transaction_id)).await
+    }
+
+    pub async fn reject_transaction(&self, master_wallet_id: &str, transaction_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.post_empty(&format!("/api/v1/master-wallet/{}/transactions/{}/reject", master_wallet_id, transaction_id)).await
+    }
+
+    // ---- Policies ----
+
+    pub async fn create_policy(&self, master_wallet_id: &str, rule: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/policies", master_wallet_id), rule).await
+    }
+
+    pub async fn update_policy(&self, master_wallet_id: &str, policy_id: &str, updates: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.put(&format!("/api/v1/master-wallet/{}/policies/{}", master_wallet_id, policy_id), updates).await
+    }
+
+    pub async fn delete_policy(&self, master_wallet_id: &str, policy_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.delete(&format!("/api/v1/master-wallet/{}/policies/{}", master_wallet_id, policy_id)).await
+    }
+
+    // ---- Fees ----
+
+    pub async fn list_fees(&self, master_wallet_id: &str) -> Result<FeesListResponse, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/fees", master_wallet_id)).await
+    }
+
+    pub async fn create_fee(&self, master_wallet_id: &str, fee: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/fees", master_wallet_id), fee).await
+    }
+
+    pub async fn delete_fee(&self, master_wallet_id: &str, fee_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.delete(&format!("/api/v1/master-wallet/{}/fees/{}", master_wallet_id, fee_id)).await
+    }
+
+    // ---- Auto-sign rules ----
+
+    pub async fn list_auto_sign_rules(&self, master_wallet_id: &str) -> Result<AutoSignListResponse, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/auto-sign", master_wallet_id)).await
+    }
+
+    pub async fn create_auto_sign_rule(&self, master_wallet_id: &str, rule: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/auto-sign", master_wallet_id), rule).await
+    }
+
+    pub async fn delete_auto_sign_rule(&self, master_wallet_id: &str, rule_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.delete(&format!("/api/v1/master-wallet/{}/auto-sign/{}", master_wallet_id, rule_id)).await
+    }
+
+    // ---- Users ----
+
+    pub async fn list_users(&self, master_wallet_id: &str) -> Result<UsersListResponse, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/users", master_wallet_id)).await
+    }
+
+    pub async fn create_user(&self, master_wallet_id: &str, user: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/users", master_wallet_id), user).await
+    }
+
+    pub async fn delete_user(&self, master_wallet_id: &str, user_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.delete(&format!("/api/v1/master-wallet/{}/users/{}", master_wallet_id, user_id)).await
+    }
+
+    // ---- Analytics ----
+
+    pub async fn get_analytics_volume(&self, master_wallet_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/analytics/volume", master_wallet_id)).await
+    }
+
+    pub async fn get_analytics_transactions(&self, master_wallet_id: &str) -> Result<AnalyticsTransactionsResponse, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/analytics/transactions", master_wallet_id)).await
+    }
+
+    pub async fn get_analytics_wallets(&self, master_wallet_id: &str) -> Result<AnalyticsWalletsResponse, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/analytics/wallets", master_wallet_id)).await
+    }
+
+    // ---- Notifications ----
+
+    pub async fn list_notifications(&self, master_wallet_id: &str) -> Result<NotificationsListResponse, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/notifications", master_wallet_id)).await
+    }
+
+    pub async fn create_notification(&self, master_wallet_id: &str, notification: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/notifications", master_wallet_id), notification).await
+    }
+
+    // ---- Webhooks ----
+
+    pub async fn list_webhooks(&self, master_wallet_id: &str) -> Result<WebhooksListResponse, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/webhooks", master_wallet_id)).await
+    }
+
+    pub async fn create_webhook(&self, master_wallet_id: &str, webhook: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/webhooks", master_wallet_id), webhook).await
+    }
+
+    pub async fn delete_webhook(&self, master_wallet_id: &str, webhook_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.delete(&format!("/api/v1/master-wallet/{}/webhooks/{}", master_wallet_id, webhook_id)).await
+    }
+
+    // ---- Treasury ----
+
+    pub async fn get_treasury_transactions(&self, master_wallet_id: &str) -> Result<TreasuryTransactionsResponse, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/treasury/transactions", master_wallet_id)).await
+    }
+
+    pub async fn treasury_transfer(&self, master_wallet_id: &str, to: &str, amount: &str, password: &str) -> Result<TransactionResponse, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/treasury/transfer", master_wallet_id), &serde_json::json!({"to": to, "amount": amount, "password": password})).await
+    }
+
+    pub async fn treasury_sweep(&self, master_wallet_id: &str, to: &str, password: &str) -> Result<TransactionResponse, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/treasury/sweep", master_wallet_id), &serde_json::json!({"to": to, "password": password})).await
+    }
+
+    // ---- Multisig ----
+
+    pub async fn list_multisig_wallets(&self, master_wallet_id: &str) -> Result<MultisigWalletsListResponse, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/multisig/wallets", master_wallet_id)).await
+    }
+
+    pub async fn create_multisig_wallet(&self, master_wallet_id: &str, name: &str, owners: &[String], threshold: u32) -> Result<serde_json::Value, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/multisig/wallets", master_wallet_id), &serde_json::json!({"name": name, "owners": owners, "threshold": threshold})).await
+    }
+
+    pub async fn list_multisig_transactions(&self, master_wallet_id: &str, multisig_wallet_id: &str) -> Result<MultisigTransactionsListResponse, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/multisig/wallets/{}/transactions", master_wallet_id, multisig_wallet_id)).await
+    }
+
+    pub async fn create_multisig_transaction(&self, master_wallet_id: &str, multisig_wallet_id: &str, body: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/multisig/wallets/{}/transactions", master_wallet_id, multisig_wallet_id), body).await
+    }
+
+    pub async fn sign_multisig_transaction(&self, master_wallet_id: &str, transaction_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.post_empty(&format!("/api/v1/master-wallet/{}/multisig/transactions/{}/sign", master_wallet_id, transaction_id)).await
+    }
+
+    pub async fn execute_multisig_transaction(&self, master_wallet_id: &str, transaction_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.post_empty(&format!("/api/v1/master-wallet/{}/multisig/transactions/{}/execute", master_wallet_id, transaction_id)).await
+    }
+
+    // ---- Public (no auth) ----
+
+    pub async fn get_transaction_history(&self, address: &str, chain_id: i64) -> Result<TransactionHistoryResponse, MasterError> {
+        self.get(&format!("/api/v1/transactions/history?address={}&chain_id={}", address, chain_id)).await
+    }
+
+    pub async fn health(&self) -> Result<serde_json::Value, MasterError> {
+        self.get("/health").await
     }
 }
 
@@ -547,6 +800,79 @@ pub struct PolicyListResponse {
     pub policies: Vec<serde_json::Value>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SubWalletsListResponse {
+    #[serde(default)]
+    pub sub_wallets: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct FeesListResponse {
+    #[serde(default)]
+    pub fees: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AutoSignListResponse {
+    #[serde(default)]
+    pub rules: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct UsersListResponse {
+    #[serde(default)]
+    pub users: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AnalyticsTransactionsResponse {
+    #[serde(default)]
+    pub transactions: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AnalyticsWalletsResponse {
+    #[serde(default)]
+    pub wallets: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct NotificationsListResponse {
+    #[serde(default)]
+    pub notifications: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WebhooksListResponse {
+    #[serde(default)]
+    pub webhooks: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TreasuryTransactionsResponse {
+    #[serde(default)]
+    pub transactions: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MultisigWalletsListResponse {
+    #[serde(default)]
+    pub wallets: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MultisigTransactionsListResponse {
+    #[serde(default)]
+    pub transactions: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TransactionHistoryResponse {
+    #[serde(default)]
+    pub transactions: Vec<serde_json::Value>,
+}
+
+
 // --- MasterWalletService: orchestrates crypto + backend ---
 
 pub struct MasterWalletService {
@@ -602,7 +928,7 @@ impl MasterWalletService {
         sign_personal_message(key, message)
     }
 
-    /// Sets the fee configuration. Validates that no fee exceeds 20%.
+    /// Sets the local fee configuration override. Validates that no fee exceeds 20%.
     pub fn set_fees(&self, config: FeeConfig) -> Result<(), MasterError> {
         if config.withdrawal_fee_percent > 20.0 || config.swap_fee_percent > 20.0 || config.transaction_fee_percent > 20.0 {
             return Err(MasterError::FeeTooHigh);
@@ -611,8 +937,16 @@ impl MasterWalletService {
         Ok(())
     }
 
-    pub fn get_fees(&self) -> FeeConfig {
+    /// Returns the local fee configuration override (validated by `set_fees`).
+    pub fn local_fee_config(&self) -> FeeConfig {
         self.fee_config.read().clone()
+    }
+
+    /// Fetches the canonical fee list for a master wallet from the backend
+    /// (GET /api/v1/master-wallet/:id/fees). Replaces the previous in-memory
+    /// RwLock read with a real HTTP fetch against the canonical Go backend.
+    pub async fn get_fees(&self, master_wallet_id: &str) -> Result<FeesListResponse, MasterError> {
+        self.client.list_fees(master_wallet_id).await
     }
 }
 

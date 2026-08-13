@@ -150,3 +150,7 @@ user_wallet/go/user_wallet
 /monitoring_dashboard/cmd
 /permission_service/cmd
 /connection_api/cmd
+
+# MasterWallet compiled backend binary
+master_wallet/backend/master-wallet-backend
+master_wallet/main

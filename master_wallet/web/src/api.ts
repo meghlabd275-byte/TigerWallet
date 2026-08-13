@@ -585,12 +585,12 @@ class MasterWalletAPI {
     return this.request(`/api/v1/master-wallet/${masterId}/analytics/transactions`);
   }
 
-  async getWalletAnalytics(): Promise<{
+  async getWalletAnalytics(masterId: string): Promise<{
     master_wallets: number;
     sub_wallets: number;
     users: number;
   }> {
-    return this.request('/api/v1/master-wallet/analytics/wallets');
+    return this.request(`/api/v1/master-wallet/${masterId}/analytics/wallets`);
   }
 
   // ---------------- Notifications + Webhooks ----------------
