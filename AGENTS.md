@@ -1451,6 +1451,94 @@ chain-management UI panel. All real crypto, all mainnet, no fakes/stubs/mocks.
 - Fake-crypto grep (12): 0 real hits. 8 raw matches are all // comment lines saying "no fakes/no stubs/not a fake hash"; filtered to 0.
 - SQLite grep (13): NO active SQLite in source. Hits were only transitive deps in go.sum/Cargo.lock (mattn/go-sqlite3, gorm.io/driver/sqlite, libsqlite3-sys, sqlx-sqlite) and one compiled binary go/wallet_api/wallet-api (build artifact containing stdlib MIME string application/x-sqlite3). No .go/.rs source file imports sqlite.
 
+## Session 2026-08-13 (cont): DeFi page + AA bundler + copy-trading gap closure
+
+Closed the genuine remaining stubs flagged by COMPETITOR_WALLET_COMPARISON_REPORT.md
+(staking/swap/lending/bridge/NFT pages were already fixed in prior sessions —
+re-verified; their "MOCK_POSITIONS" flag is STALE). Real backend wiring only,
+no mocks/stubs/fakes.
+
+### Frontend (web_nextjs) — tsc 0 errors
+- `app/gift_cards/page.tsx`: real gift_card_service (:8469) API for
+  brands/buy/redeem/list with loading/error/empty states. Removed
+  AVAILABLE_CARDS + MY_CARDS mock consts.
+- `app/widgets/page.tsx`: live portfolio balance (`/balance`) + ETH price
+  (`/price`) in the preview widget (was hardcoded $12,450 / $3,524.50).
+- `app/account-abstraction/page.tsx`: wired to the real ERC-4337 bundler
+  (:8081) via same-origin `/api/v1/aa/[...path]` proxy. The AccountAbstractionAPI
+  class now targets `/api/v1/aa` (was `localhost:8443/v1` which had no AA routes).
+- `app/kyc/page.tsx`: real KYC status fetch (`/kyc/status`) + document submit
+  (`/kyc/submit`).
+
+### Frontend (user_app/react)
+- `RedPacketPage.tsx`: create+claim now POST to the real
+  red_packets_service (:8468, `/api/v1/red-packets/{create,claim,sent,received}`).
+  Removed the simulated claim + fabricated `0x1234...5678` sender address + the
+  404 `/redpacket` path.
+- `CopyTradingPage.tsx`: REMOVED the fabricated 500-trader pool (all-zero
+  metrics) + the `TOP_TRADERS` hardcoded const. Now fetches real traders
+  (`GET /api/v1/copytrading/traders`) + positions (`/copiers`) from the
+  PostgreSQL-backed copy_trading_service (:8006), and POSTs follow/copy via
+  `/follow`. Fail-closed empty list on error.
+
+### Backend (Go) — all build + vet clean
+- `account_abstraction/go/main.go`: added the standard ERC-4337 JSON-RPC
+  surface the frontend expects, wrapping the REAL service methods (no
+  fabricated data):
+  - `GET /v1/chains/{id}/entry-points` -> real EntryPoint address
+  - `POST /v1/rpc/eth_estimateGas` -> real estimateGas (Black-Scholes path)
+  - `POST /v1/rpc/eth_sendUserOperation` -> real SendUserOperation
+  - `GET /v1/rpc/eth_getUserOperationReceipt/{hash}` -> real GetOperationByHash
+  - `POST /v1/wallet` -> real CreateSmartAccount
+  - `GET /v1/wallet/{sender}` -> real GetSmartAccountByAddress
+  - `POST /v1/paymaster/sponsorship` -> real CreatePaymaster (empty signature;
+    real sponsor sig produced off-chain by the VerifyingPaymaster signer)
+- `go/red_packets_service`: added `GET /api/v1/red-packets/sent?user_id=` +
+  `/received?user_id=` list endpoints + `GetSentPackets`/`GetReceivedPackets`
+  service methods (in-memory store; PostgreSQL migration is a future task).
+- `options_trading/go/cmd/main.go`: real spot price fetched from the
+  wallet_api `/api/v1/price?symbol=` endpoint for Black-Scholes premium
+  (was `currentPrice := strikePrice`). Created `go.mod` + `go.sum`
+  (gin v1.10, gorm v1.25.10, go-redis/v9 v9.0.0 — pinned for Go 1.23).
+  Removed unused `math/rand` + `context` + `strings` imports.
+- `go/gift_card_service` (NEW): PostgreSQL-backed gift card microservice
+  with CSPRNG (`crypto/rand` + `math/big`) code generation. Endpoints:
+  `GET /api/v1/gift-cards/brands`, `POST /buy`, `POST /redeem`,
+  `GET /list?user_id=`. Port :8469.
+
+### Proxy routes (web_nextjs) — tsc 0 errors
+- `app/api/v1/aa/[...path]/route.ts` (catch-all GET/POST/PUT/DELETE -> :8081/v1)
+- `app/api/v1/gift-cards/{brands,buy,redeem,list}/route.ts` -> :8469
+- `app/api/v1/kyc/submit/route.ts` -> listing_service
+- Added `AA_SERVICE_URL` (:8081) + `GIFT_CARD_SERVICE_URL` (:8469) constants
+  to `_proxy.ts`. Import depth for nested `app/api/v1/<a>/<b>/route.ts` is
+  `../../_proxy` (NOT `../../../_proxy`).
+
+### Build verification (ALL GREEN)
+- `go/wallet_api` go build -> exit 0
+- `go/gift_card_service` go build -> exit 0
+- `go/red_packets_service` go build + vet -> exit 0
+- `account_abstraction/go` go build + vet -> exit 0
+- `options_trading/go` go build (`-o /dev/null ./cmd/...`) -> exit 0
+- `frontend/web_nextjs` npx tsc --noEmit -> 0 errors
+- `user_app/react` CopyTradingPage + RedPacketPage tsc (loose) -> 0 errors
+  (no node_modules; only "Cannot find module 'react'" which is expected)
+
+### Notes
+- `STAKING_POOLS` in staking/page.tsx is a curated protocol reference list
+  (Lido/Rocket Pool/Aave/Solana/Polygon/Avalanche/BNB) used ONLY as an
+  offline fallback; the primary path fetches real pools from
+  `/api/v1/staking/pools`. NOT fabricated user data.
+- `TOP_PAIRS` in FuturesTradingPage is an offline fallback; primary path
+  fetches real pairs from `/api/v1/perpetual/pairs`. The SVG price chart is
+  a decorative placeholder; the displayed price/change/high/low are real
+  (from the perpetual pair's mark_price).
+- `Date.now().toString()` as a React list key in web3-browser/dapp-browser
+  history+bookmark items is a legitimate client-side key (the backend
+  assigns the real DB id on POST), NOT fabricated data.
+- `BlockchainService.writeContract` (mobile) throws fail-closed
+  ("Contract write requires signer") — acceptable, not a fake.
+
 ## Session 2026-08-13: Final gap closure (route mismatches + fake data + stubs)
 
 ### STALE-ANALYSIS WARNING

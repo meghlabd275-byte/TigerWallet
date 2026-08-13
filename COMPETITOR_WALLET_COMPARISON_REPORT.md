@@ -16,6 +16,49 @@ This document provides a detailed feature-by-feature comparison between TigerWal
 
 **Critical Finding:** TigerWallet's core wallet engine (`go/wallet_api`) implements real cryptography with no mocks, but the frontend DeFi features (swap, staking, lending, bridge, NFT marketplace) are predominantly stubs that display "unavailable until X is configured" messages rather than functional integrations.
 
+> **STATUS UPDATE (2026-08-13, verified against current `main`):** The "Critical
+> Finding" above is now largely STALE. As of this date the following have been
+> re-verified as REAL backend integrations (no mocks/stubs/fakes):
+> - **Staking page** (`frontend/web_nextjs/app/staking/page.tsx`): fetches real
+>   pools from `/api/v1/staking/pools`, real positions from `/staking/positions`,
+>   and POSTs stake/unstake/claim to the `go/staking_service`. The `MOCK_POSITIONS`
+>   const flagged below no longer exists. `STAKING_POOLS` remains ONLY as an
+>   offline-fallback curated protocol list (Lido/Rocket Pool/Aave/...), not user
+>   data. See commit history 2026-08-09 onward.
+> - **NFT marketplace / NFTScreen**: real on-chain ERC-721 reads via
+>   `go/nft_service` (`/api/v1/nft/collections`, `/nfts`); the "unavailable until
+>   configured" throws are replaced with real fetches + loading/error/empty states.
+> - **Bridge page**: real bridge-aggregator quotes via `/api/v1/bridge/quote`;
+>   the "Bridge execution is unavailable" throw is replaced with a real
+>   `/bridge/quote` call.
+> - **Swap page**: real `/api/v1/swap/quote` + on-chain AMM router via
+>   `go/wallet_api/amm_router.go`.
+> - **Lending page**: real Aave V3 markets via `go/lending_service` (:8009).
+> - **Account-abstraction page** (`frontend/web_nextjs/app/account-abstraction/`):
+>   wired to the real ERC-4337 bundler (`account_abstraction/go` on :8081) via
+>   same-origin `/api/v1/aa/[...path]` proxy; the bundler now exposes the
+>   standard JSON-RPC surface (entry-points, eth_estimateGas,
+>   eth_sendUserOperation, eth_getUserOperationReceipt, /wallet,
+>   /paymaster/sponsorship) wrapping the real service methods.
+> - **Gift cards** (`app/gift_cards/page.tsx`): real `go/gift_card_service`
+>   (:8469, PostgreSQL-backed, CSPRNG codes) via `/api/v1/gift-cards/*` proxy.
+> - **Widgets page**: live portfolio balance + ETH price in the preview
+>   (was hardcoded $12,450 / $3,524.50).
+> - **KYC page**: real `listing_service` status fetch + document submit.
+> - **Red packets** (`user_app/react/.../RedPacketPage.tsx`): real
+>   `go/red_packets_service` (:8468) create/claim/sent/received.
+> - **Copy trading** (`user_app/react/.../CopyTradingPage.tsx`): removed the
+>   fabricated 500-trader pool; now fetches real traders/positions from
+>   `go/copy_trading_service` (:8006, PostgreSQL).
+> - **Options trading** (`options_trading/go`): real spot price from
+>   `wallet_api /price` for Black-Scholes premium (was `currentPrice=strikePrice`).
+>
+> The stub sections below are retained for historical reference; treat their
+> "⚠️ STUB" markers as RESOLVED unless a code re-check shows otherwise. The
+> canonical, up-to-date record of build status + remaining work lives in
+> `AGENTS.md` (section "Session 2026-08-13 (cont): DeFi page + AA bundler +
+> copy-trading gap closure").
+
 > **PROGRESS UPDATE (2026-08-09):** The following high-impact fixes were landed this session — all verified to build + `go vet` clean (Go) and `tsc --noEmit` 0 errors (changed TS files):
 > 1. **Web wallet UI** (`app/wallet/page.tsx`) — fully rewritten to call the real `WalletService` backend (real BIP-39 mnemonic, real `POST /api/v1/send` EIP-1559 broadcast, real balance + tx history). No more fabricated `0x`+random-hex addresses or `Math.random()` mnemonics.
 > 2. **Frontend↔backend connectivity** — fixed 30 broken `_proxy` import paths and added 15 missing Next.js proxy routes (`/api/v1/{wallets,send,balance,tokens,transactions,nfts,gas,chains,sign,auth/*,public/*}`) so the browser talks same-origin to `go/wallet_api` (no CORS).
