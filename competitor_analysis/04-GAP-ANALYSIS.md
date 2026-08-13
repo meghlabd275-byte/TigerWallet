@@ -140,4 +140,25 @@ Gaps #1, #3, #13, the theme UX gap, the ELF-binary hygiene gap, the NFT-mock-dat
   - Frontend (`app/wallet/lib/transactions.ts`): the `nonevm` block now calls these real endpoints — the fail-closed throws are GONE. Next.js proxy routes added (`app/api/v1/non_evm/{sign,send,address}/route.ts`). `tsc` 0 errors on changed files.
 - **Admin chain-management UI panel** — `frontend/web_nextjs/app/admin/chains/page.tsx` is a full CRUD dashboard (theme-aware, isDark ternaries) that calls the existing `/admin/chains` REST endpoints: list with search + status filter, add/edit form, delete with confirmation, default-chain toggle. Changes propagate to `GET /api/v1/chains` for all clients immediately.
 
+
+---
+
+## Session Update — 2026-08-12 (continued)
+
+Gaps closed this session (all committed to `main`, pushed to GitHub):
+
+### Closed
+- **#18 NFT transfer flow** — Was PARTIAL ("no mint/market/transfer flow yet"). **Now REAL**: `go/wallet_api/nft_transfer.go` builds real ERC-721 `safeTransferFrom(from,to,tokenId)` calldata (selector `0x42842e0e`, ABI-padded), delegates to a shared `executeSend` signing/broadcast path (real secp256k1 `eth_sendRawTransaction`, no fabricated tx). Route `POST /api/v1/nft/transfer` (auth-protected). Next.js proxy `app/api/v1/nft/transfer/route.ts`. Frontend `nft-marketplace/page.tsx` now has a **Transfer** button in the NFT detail dialog + a transfer form (wallet_id, recipient, password) that calls the real endpoint. Theme-aware. Build+vet clean; tsc 0 errors.
+- **Admin chain management (gap #5 extensibility)** — Verified already REAL: `handleAdminCreateChain`/`Update`/`Delete` + `applyAdminChainOverrides` merge admin-added chains into the live `GET /api/v1/chains` registry at boot + after every CRUD. PostgreSQL `admin_chain_config`. Admins / wl-admins / master-wallet-admins can add more blockchain networks at runtime (user requirement satisfied).
+
+### Security hardening
+- **Role-based access control (RBAC) for admin endpoints** — Previously ANY authenticated user could call `/api/v1/admin/*` (no role check). **Now fixed**: `users.role` column (user|admin|wl_admin|master_wallet_admin), JWT carries a `role` claim, `RequireAdmin()` middleware 403-rejects non-admins on the admin route group. First admin seeded via `ADMIN_BOOTSTRAP_EMAIL` env at startup (`bootstrapAdminRole`). Admins can promote other users via `PUT /api/v1/admin/users/:id/role` (self-demotion guard). Frontend proxy route added. Build+vet+test (BIP-44 vector) all pass; tsc 0 errors.
+
+### Chain coverage (verified)
+- **120 EVM mainnet chains** (>=100 requirement met) — sourced from canonical ethereum-lists/chains registry.
+- **66 non-EVM mainnet chains** (>=50 requirement met) — incl. **Pi Network** (ID 9000004242, ChainType "pi", explorer blockexplorer.minepi.com; RPC empty because Pi mainnet is enclosed).
+- All `IsTestnet: false` — mainnet only, no testnets (user requirement met).
+
+### Still open (unchanged from above)
+See the gap matrix for remaining PARTIAL/STUB/MISSING items — the priority order remains: (1) end-to-end working wallet across mobile (Flutter/Android still need real BIP-39), (2) hardware-wallet USB/BLE HID transport wiring, (3) cross-chain bridge real integration, (4) fiat on-ramp partner integration, (5) SDK publication.
 **Remaining (honest):** the non-EVM signing layer returns signed payloads (raw_tx for BTC, signature+sign_doc for Cosmos, Ed25519 sig for Solana). Broadcasting those to chain-native RPC nodes (Bitcoin `sendrawtransaction`, Cosmos `BroadcastTx`, Solana `sendTransaction`) is performed by the client against the chain's own RPC — the wallet backend signs but does not host non-EVM nodes. This is the standard architecture (same as MetaMask/Trust for non-EVM chains).
