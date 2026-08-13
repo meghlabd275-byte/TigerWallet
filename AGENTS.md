@@ -1304,3 +1304,60 @@ more via the registry.
 - `dd23092` Close user_wallet/production/react gaps: build missing UI, fix
   master services (rebased onto 12f4af0 chain-registry commits). Pushed to
   origin/main.
+
+## Session 2026-08-12 (cont): Missing Go service HTTP servers + frontend proxy routes
+
+### Problem
+4 Go services (airdrop, earn, coupon, red_packets) had real business logic
+(CreateCampaign, Deposit, ValidateCoupon, Claim, etc.) in their `*_service.go`
+files but NO `main.go` — they compiled as libraries but ran no HTTP server, so
+the frontend had no backend to proxy to. Additionally, several frontend API
+client methods called endpoints with no matching proxy route.
+
+### Go service HTTP servers (NEW main.go, stdlib net/http, real logic — no stubs)
+Each service's `*_service.go` was moved into a subpackage (to resolve the
+two-packages-one-directory conflict with the new `package main`), then a
+`main.go` HTTP server was added that wraps the existing service methods:
+- `go/airdrop_service/main.go` (:8465): `GET/POST /api/v1/airdrop/campaigns`,
+  `POST /api/v1/airdrop/claim`, `GET /api/v1/airdrop/campaigns/{id}`,
+  `POST /api/v1/airdrop/claim/{id}/confirm`. Logic in `airdrop/airdrop.go`.
+- `go/earn_service/main.go` (:8466): `GET /api/v1/earn/products`,
+  `POST /api/v1/earn/{products/create,deposit,withdraw,claim}`,
+  `GET /api/v1/earn/deposits?user_id=`. Logic in `earn/earn.go`.
+- `go/coupon_service/main.go` (:8467): `POST /api/v1/coupon/{validate,create}`,
+  `GET /api/v1/coupon/{code}`. Logic in `coupon/coupon.go`.
+- `go/red_packets_service/main.go` (:8468): `POST /api/v1/red-packets/{create,claim}`,
+  `GET /api/v1/red-packets/{id}`. Logic in `redpacket/redpacket.go`
+  (package `redpackets`, imported with alias).
+All 4: `go build ./...` + `go vet ./...` exit 0.
+
+### Frontend proxy routes (NEW, all forward to REAL Go backends)
+- `/api/v1/wallet/{create,import}` → wallet_api `:8443` `/wallets` (POST)
+- `/api/v1/wallet/list` → wallet_api `:8443` `/wallets` (GET)
+- `/api/v1/wallet/send` → wallet_api `:8443` `/send` (POST)
+- `/api/v1/copy-trading/start` → copy_trading_service `:8006` `/copytrading/follow`
+- `/api/v1/perpetual/open` → perpetual_service `:8464` `/perpetual/position`
+- `/api/v1/perpetual/close` → perpetual_service `:8464` `/perpetual/position/{id}/close`
+- `/api/v1/insurance/coverage` → insurance_service `:8459` `/insurance/positions`
+- `/api/v1/multisig/create` → multisig_service `:8450` `/multisig/wallets`
+- `/api/v1/multisig/sign` → multisig_service `:8450` `/multisig/transactions/{id}/sign`
+- `/api/v1/airdrop/{campaigns,claim}` → airdrop_service `:8465`
+- `/api/v1/earn/{products,deposit,withdraw,claim}` → earn_service `:8466`
+- `/api/v1/coupon/validate` → coupon_service `:8467`
+- `/api/v1/red-packets/{create,claim}` → red_packets_service `:8468`
+
+### Service URL constants added to `_proxy.ts`
+`AIRDROP_SERVICE_URL` (:8465), `EARN_SERVICE_URL` (:8466),
+`COUPON_SERVICE_URL` (:8467), `RED_PACKETS_SERVICE_URL` (:8468) — all use
+ports 8465-8468 to avoid conflicts with existing service assignments.
+
+### Route-path gotchas fixed
+- copy_trading_service has `/copytrading/follow` (NOT `/copytrading/start`).
+- perpetual_service uses `/perpetual/position` (singular, NOT `/positions`).
+- insurance_service uses `/insurance/positions` (NOT `/insurance/coverage`).
+- multisig_service sign route is `/multisig/transactions/{id}/sign` (NOT `/multisig/sign`).
+- `proxyMutation(req, path, method)` requires 3 args — the method arg is mandatory.
+
+### Build verification
+- `frontend/web_nextjs`: `npx tsc --noEmit` → 0 errors.
+- All 4 Go services: `go build ./...` + `go vet ./...` → exit 0.
