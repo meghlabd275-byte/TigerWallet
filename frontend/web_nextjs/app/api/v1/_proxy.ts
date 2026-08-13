@@ -33,6 +33,7 @@ export const BLOCKCHAIN_RPC_URL = process.env.BLOCKCHAIN_RPC_URL || 'http://loca
 export const BRIDGE_SERVICE_URL = process.env.BRIDGE_SERVICE_URL || 'http://localhost:8470';
 export const BRIDGE_AGGREGATOR_URL = process.env.BRIDGE_AGGREGATOR_URL || 'http://localhost:8447';
 export const CARD_SERVICE_URL = process.env.CARD_SERVICE_URL || 'http://localhost:8457';
+export const P2P_SERVICE_URL = process.env.P2P_SERVICE_URL || 'http://localhost:8475';
 export const BUG_BOUNTY_SERVICE_URL = process.env.BUG_BOUNTY_SERVICE_URL || 'http://localhost:8080';
 export const CEX_CONNECTOR_URL = process.env.CEX_CONNECTOR_URL || 'http://localhost:8090';
 export const CLOUD_BACKUP_SERVICE_URL = process.env.CLOUD_BACKUP_SERVICE_URL || 'http://localhost:8452';
