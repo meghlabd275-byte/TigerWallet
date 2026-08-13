@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 import {
   Search, FilterList, ShoppingCart, Visibility, Favorite,
-  Refresh, Close, Verified, Collections, Hexagon
+  Refresh, Close, Verified, Collections, Hexagon, Send
 } from '@mui/icons-material';
 import { useTheme } from '../components/ThemeProvider';
 
@@ -66,6 +66,13 @@ export default function NFTMarketplace() {
   const [walletAddress, setWalletAddress] = useState<string>('');
   const [buyDialogOpen, setBuyDialogOpen] = useState(false);
   const { isDark } = useTheme();
+
+  // ---- NFT transfer (real ERC-721 safeTransferFrom via wallet_api) ----
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [transferRecipient, setTransferRecipient] = useState('');
+  const [transferWalletId, setTransferWalletId] = useState('');
+  const [transferPassword, setTransferPassword] = useState('');
+  const [isTransferring, setIsTransferring] = useState(false);
 
   useEffect(() => {
     const savedWallet = localStorage.getItem('tigerwallet_address');
@@ -178,6 +185,55 @@ export default function NFTMarketplace() {
       setError(err instanceof Error ? err.message : 'Purchase failed');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Transfer an owned ERC-721 NFT to another address via the wallet_api
+  // signing backend (real on-chain safeTransferFrom -- no fabricated tx).
+  const handleNFTTransfer = async () => {
+    if (!selectedNFT) return;
+    if (!transferWalletId.trim()) { setError('Wallet ID is required'); return; }
+    if (!transferPassword.trim()) { setError('Password is required'); return; }
+    if (!transferRecipient.trim()) { setError('Recipient address is required'); return; }
+
+    setIsTransferring(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const token = localStorage.getItem('tigerwallet_token');
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const response = await fetch(`${API_BASE}/api/v1/nft/transfer`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          wallet_id: transferWalletId.trim(),
+          password: transferPassword,
+          contract: selectedNFT.contract_address,
+          to: transferRecipient.trim(),
+          token_id: selectedNFT.token_id,
+          chain_id: selectedNFT.chain_id,
+        }),
+      });
+
+      const data = await response.json();
+      if (response.ok && data.tx_hash) {
+        setSuccess(`Transferred ${selectedNFT.name}! Tx: ${data.tx_hash}`);
+        setTransferDialogOpen(false);
+        setBuyDialogOpen(false);
+        setSelectedNFT(null);
+        setTransferRecipient('');
+        setTransferPassword('');
+        fetchNFTs();
+      } else {
+        setError(data.error || 'Transfer failed');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Transfer failed');
+    } finally {
+      setIsTransferring(false);
     }
   };
 
@@ -365,11 +421,69 @@ export default function NFTMarketplace() {
                   >
                     {!walletAddress ? 'Connect Wallet' : isLoading ? 'Processing...' : 'Buy Now'}
                   </Button>
+                    <Button
+                      variant="outlined"
+                      className={isDark ? 'border-gray-600 text-white' : 'border-gray-300'}
+                      onClick={() => setTransferDialogOpen(true)}
+                      startIcon={<Send />}
+                      title="Transfer this NFT to another address"
+                    >
+                      Transfer
+                    </Button>
                 </Grid>
               </Grid>
             </DialogContent>
           </>
         )}
+      </Dialog>
+      <Dialog open={transferDialogOpen && !!selectedNFT} onClose={() => setTransferDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle className="flex justify-between items-center">
+          <span>Transfer NFT{selectedNFT ? `: ${selectedNFT.name}` : ''}</span>
+          <IconButton onClick={() => setTransferDialogOpen(false)}><Close /></IconButton>
+        </DialogTitle>
+        <DialogContent>
+          {selectedNFT && (
+            <Box className="space-y-4 pt-2">
+              <Alert severity="info">
+                This will send <strong>{selectedNFT.name}</strong> (#{selectedNFT.token_id}) on {CHAIN_NAMES[selectedNFT.chain_id] || `Chain ${selectedNFT.chain_id}`} to the recipient address. The transfer is signed and broadcast on-chain.
+              </Alert>
+              <TextField
+                fullWidth
+                label="Your Wallet ID"
+                value={transferWalletId}
+                onChange={(e) => setTransferWalletId(e.target.value)}
+                size="small"
+                placeholder="UUID of the wallet that owns this NFT"
+              />
+              <TextField
+                fullWidth
+                label="Recipient Address"
+                value={transferRecipient}
+                onChange={(e) => setTransferRecipient(e.target.value)}
+                size="small"
+                placeholder="0x... address to receive the NFT"
+              />
+              <TextField
+                fullWidth
+                label="Wallet Password"
+                type="password"
+                value={transferPassword}
+                onChange={(e) => setTransferPassword(e.target.value)}
+                size="small"
+              />
+              <Button
+                fullWidth
+                variant="contained"
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={handleNFTTransfer}
+                disabled={isTransferring || !transferWalletId || !transferRecipient || !transferPassword}
+                startIcon={isTransferring ? <CircularProgress size={24} /> : <Send />}
+              >
+                {isTransferring ? 'Transferring...' : 'Transfer NFT'}
+              </Button>
+            </Box>
+          )}
+        </DialogContent>
       </Dialog>
     </div>
   );

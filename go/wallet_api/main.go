@@ -103,6 +103,7 @@ func main() {
 		wallet.GET("/nfts", handleNFTs)
 		wallet.POST("/send", handleSendTransaction)
 		wallet.POST("/sign", handleSignMessage)
+		wallet.POST("/nft/transfer", handleNFTTransfer)
 
 		// ---- Non-EVM signing (Solana Ed25519, Bitcoin secp256k1, Cosmos secp256k1) ----
 		// Real key derivation + signing; mainnet only. See non_evm_signing.go.

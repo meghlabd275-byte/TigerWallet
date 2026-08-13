@@ -348,6 +348,13 @@ func handleSendTransaction(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	executeSend(c, req)
+}
+
+// executeSend performs the real EVM transaction signing + broadcast for an
+// already-bound sendTxReq. Shared by handleSendTransaction and handleNFTTransfer
+// (which builds an ERC-721 safeTransferFrom calldata before delegating here).
+func executeSend(c *gin.Context, req sendTxReq) {
 	if req.ChainID == 0 {
 		req.ChainID = 1
 	}
@@ -530,11 +537,11 @@ func handleSupportedChains(c *gin.Context) {
 		chains = listSupportedChains()
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"chains":          chains,
-		"count":           len(chains),
-		"evm_count":       evmChainCount(),
-		"non_evm_count":   nonEvmChainCount(),
-		"mainnet_only":    true,
+		"chains":        chains,
+		"count":         len(chains),
+		"evm_count":     evmChainCount(),
+		"non_evm_count": nonEvmChainCount(),
+		"mainnet_only":  true,
 	})
 }
 
@@ -583,8 +590,8 @@ func handleListDApps(c *gin.Context) {
 	category := c.Query("category")
 	chain := c.Query("chain")
 	c.JSON(http.StatusOK, gin.H{
-		"dapps":  listDApps(category, chain),
-		"count":  len(listDApps(category, chain)),
+		"dapps": listDApps(category, chain),
+		"count": len(listDApps(category, chain)),
 	})
 }
 
@@ -634,8 +641,8 @@ func handleTokenRegistry(c *gin.Context) {
 // re-derived, then re-encrypted with the export password into the V3 format.
 func handleExportKeystore(c *gin.Context) {
 	var req struct {
-		WalletID    string `json:"wallet_id" binding:"required"`
-		Password    string `json:"password" binding:"required"`
+		WalletID       string `json:"wallet_id" binding:"required"`
+		Password       string `json:"password" binding:"required"`
 		ExportPassword string `json:"export_password" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
