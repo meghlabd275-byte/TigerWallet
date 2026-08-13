@@ -28,11 +28,11 @@ interface MarketStats {
   activeTokens: number;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.tigerwallet.io';
+const API_BASE_URL = typeof window !== 'undefined' ? '' : (process.env.BACKEND_URL || 'http://localhost:8443');
 
 const fetchAPI = async <T,>(endpoint: string, options?: RequestInit): Promise<T> => {
   const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null;
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const response = await fetch(`${API_BASE_URL}/api/v1${endpoint}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',

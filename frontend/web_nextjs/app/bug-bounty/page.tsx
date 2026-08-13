@@ -52,7 +52,7 @@ interface Stats {
 // API Functions
 // ============================================================================
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.tigerwallet.io';
+const API_BASE = typeof window !== 'undefined' ? '' : (process.env.BACKEND_URL || 'http://localhost:8443');
 
 async function fetchStats(): Promise<Stats | null> {
   try {
