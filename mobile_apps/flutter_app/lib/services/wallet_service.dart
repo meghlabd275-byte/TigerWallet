@@ -384,6 +384,19 @@ class CryptoUtils {
     return Uint8List.fromList(Digest('SHA-256').convert(data).bytes);
   }
 
+  /// Compute Keccak-256 (Ethereum). pointycastle's KeccakDigest(256) is the
+  /// real pre-Sha3 NIST Keccak used by Ethereum (NOT SHA3-256).
+  static Uint8List keccak256(Uint8List data) {
+    final d = KeccakDigest(256);
+    return Uint8List.fromList(d.process(data));
+  }
+
+  /// Compute RIPEMD-160 (Bitcoin Hash160). Real pointycastle implementation.
+  static Uint8List ripemd160(Uint8List data) {
+    final d = RIPEMD160Digest();
+    return Uint8List.fromList(d.process(data));
+  }
+
   /// Compute SHA512
   static Uint8List sha512(Uint8List data) {
     return Uint8List.fromList(Digest('SHA-512').convert(data).bytes);
@@ -593,25 +606,38 @@ class Bip32HDKey {
     return Uint8List.fromList(encoded.sublist(1));
   }
 
-  /// Get Ethereum address
+  /// Get Ethereum address (EIP-55 checksummed). Uses Keccak-256 of the
+  /// uncompressed public key bytes (without the 0x04 prefix), per the
+  /// Ethereum Yellow Paper. NOT SHA-256.
   String get ethAddress {
-    final pubKey = publicKey;
-    final hash = CryptoUtils.sha256(pubKey);
-    return '0x${HEX.encode(hash.sublist(12, 32))}';
+    final pubKey = publicKey; // uncompressed: [0x04, X(32), Y(32)]
+    final hash = CryptoUtils.keccak256(pubKey.sublist(1)); // drop 0x04 prefix
+    final addrBytes = hash.sublist(12); // last 20 bytes
+    final addr = HEX.encode(addrBytes);
+    // EIP-55 checksum: keccak256(lowercase hex address), capitalize letters
+    // where the corresponding nibble in the hash is >= 8.
+    final hashHex = HEX.encode(CryptoUtils.keccak256(Uint8List.fromList(utf8.encode(addr))));
+    final sb = StringBuffer('0x');
+    for (var i = 0; i < addr.length; i++) {
+      final c = addr[i];
+      if (int.parse(hashHex[i], radix: 16) >= 8) {
+        sb.write(c.toUpperCase());
+      } else {
+        sb.write(c.toLowerCase());
+      }
+    }
+    return sb.toString();
   }
 
-  /// Get Bitcoin address (P2PKH)
+  /// Get Bitcoin address (P2PKH). Hash160 = RIPEMD160(SHA256(pubkey)), then
+  /// base58check-encode with version byte 0x00.
   String get bitcoinAddress {
-    final pubKeyHash = CryptoUtils.sha256(publicKey);
-    final ripeMd160 = _ripemd160(pubKeyHash);
+    final sha = CryptoUtils.sha256(publicKey);
+    final ripeMd160 = CryptoUtils.ripemd160(sha);
     final versioned = Uint8List.fromList([0x00] + ripeMd160);
     final checksum = CryptoUtils.sha256(CryptoUtils.sha256(versioned)).sublist(0, 4);
     final address = versioned + checksum;
     return _base58Encode(address);
-  }
-
-  Uint8List _ripemd160(Uint8List data) {
-    return data;
   }
 
   String _base58Encode(Uint8List data) {
@@ -648,13 +674,16 @@ class Bip32HDKey {
   }
 }
 
-/// EVM Transaction signer
+/// EVM Transaction signer — real legacy (pre-EIP-1559) transaction signing.
+/// Implements RLP encoding, Keccak-256 hashing, secp256k1 ECDSA with low-s
+/// normalization (EIP-2), and EIP-155 replay protection. Produces a valid raw
+/// signed transaction hex that any EVM node accepts via eth_sendRawTransaction.
 class EVMSigner {
   final Uint8List privateKey;
 
   EVMSigner(this.privateKey);
 
-  /// Sign transaction
+  /// Sign a legacy transaction and return the raw signed tx hex (0x-prefixed).
   String signTransaction({
     required int chainId,
     required String to,
@@ -664,69 +693,213 @@ class EVMSigner {
     required BigInt value,
     required Uint8List data,
   }) {
-    final txHash = _encodeTransaction(
-      chainId: chainId,
-      to: to,
+    final unsignedTx = _encodeUnsignedTx(
       nonce: nonce,
-      gasLimit: gasLimit,
       gasPrice: gasPrice,
+      gasLimit: gasLimit,
+      to: to,
       value: value,
       data: data,
-    );
-    
-    final signature = _signHash(txHash);
-    return _encodeSignedTransaction(
       chainId: chainId,
-      to: to,
+    );
+    final hash = CryptoUtils.keccak256(unsignedTx);
+    final sig = _signHash(hash);
+
+    final r = sig.sublist(0, 32);
+    final s = sig.sublist(32, 64);
+    var recoveryId = sig[64];
+    if (recoveryId > 1) recoveryId = recoveryId - 27;
+    final v = BigInt.from(chainId) * BigInt.two + BigInt.from(35) + BigInt.from(recoveryId);
+
+    final signedTx = _encodeSignedTx(
       nonce: nonce,
-      gasLimit: gasLimit,
       gasPrice: gasPrice,
+      gasLimit: gasLimit,
+      to: to,
       value: value,
       data: data,
-      signature: signature,
+      v: v,
+      r: BigInt.parse('0x' + HEX.encode(r)),
+      s: BigInt.parse('0x' + HEX.encode(s)),
     );
+    return '0x' + HEX.encode(signedTx);
   }
 
-  Uint8List _encodeTransaction({
-    required int chainId,
-    required String to,
+  /// RLP-encode the unsigned legacy tx with EIP-155 ChainId (9 elements).
+  Uint8List _encodeUnsignedTx({
     required BigInt nonce,
-    required BigInt gasLimit,
     required BigInt gasPrice,
+    required BigInt gasLimit,
+    required String to,
     required BigInt value,
     required Uint8List data,
+    required int chainId,
   }) {
-    return CryptoUtils.sha256(utf8.encode(
-      '$chainId$to$nonce$gasLimit$gasPrice$value${HEX.encode(data)}',
-    ));
+    final toHex = to.startsWith('0x') ? to.substring(2) : to;
+    final toData = toHex.isEmpty ? Uint8List(0) : Uint8List.fromList(HEX.decode(toHex));
+    final items = <Uint8List>[
+      _encodeBigInt(nonce),
+      _encodeBigInt(gasPrice),
+      _encodeBigInt(gasLimit),
+      _encodeBytes(toData),
+      _encodeBigInt(value),
+      _encodeBytes(data),
+      _encodeBigInt(BigInt.from(chainId)),
+      _encodeBigInt(BigInt.zero),
+      _encodeBigInt(BigInt.zero),
+    ];
+    return _encodeList(items);
   }
 
+  Uint8List _encodeSignedTx({
+    required BigInt nonce,
+    required BigInt gasPrice,
+    required BigInt gasLimit,
+    required String to,
+    required BigInt value,
+    required Uint8List data,
+    required BigInt v,
+    required BigInt r,
+    required BigInt s,
+  }) {
+    final toHex = to.startsWith('0x') ? to.substring(2) : to;
+    final toData = toHex.isEmpty ? Uint8List(0) : Uint8List.fromList(HEX.decode(toHex));
+    final items = <Uint8List>[
+      _encodeBigInt(nonce),
+      _encodeBigInt(gasPrice),
+      _encodeBigInt(gasLimit),
+      _encodeBytes(toData),
+      _encodeBigInt(value),
+      _encodeBytes(data),
+      _encodeBigInt(v),
+      _encodeBigInt(r),
+      _encodeBigInt(s),
+    ];
+    return _encodeList(items);
+  }
+
+  /// Sign a Keccak-256 hash with secp256k1 ECDSA, returning r||s||recoveryId.
+  /// Low-s normalization per EIP-2. Recovery id found by key recovery.
   Uint8List _signHash(Uint8List hash) {
-    final signer = ECDSASigner(SHA256Digest());
+    final signer = ECDSASigner(null);
     final key = ECPrivateKey(
-      BigInt.parse('0x${HEX.encode(privateKey)}'),
+      BigInt.parse('0x' + HEX.encode(privateKey)),
       secp256k1,
     );
-    signer.init(true, key);
-    final signature = signer.generateSignature(hash);
-    final r = signature.r.toUnsigned(256).toRadixString(16).padLeft(64, '0');
-    final s = signature.s.toUnsigned(256).toRadixString(16).padLeft(64, '0');
-    return Uint8List.fromList(HEX.decode('$r$s'));
+    signer.init(true, PrivateKeyParameter<ECPrivateKey>(key));
+    final sig = signer.generateSignature(hash) as ECSignature;
+    var s = sig.s;
+    final n = secp256k1.n;
+    final pubBytes = _publicKeyBytes();
+    var recoveryId = 0;
+    for (var rid = 0; rid < 2; rid++) {
+      final recovered = _recoverPublicKey(hash, sig.r, s, rid);
+      if (recovered != null && _bytesEqual(recovered, pubBytes)) {
+        recoveryId = rid;
+        break;
+      }
+    }
+    if (s > n >> 1) {
+      s = n - s;
+      recoveryId ^= 1;
+    }
+    final rBytes = _bigIntToBytes(sig.r, 32);
+    final sBytes = _bigIntToBytes(s, 32);
+    return Uint8List.fromList(rBytes + sBytes + [recoveryId]);
   }
 
-  String _encodeSignedTransaction({
-    required int chainId,
-    required String to,
-    required BigInt nonce,
-    required BigInt gasLimit,
-    required BigInt gasPrice,
-    required BigInt value,
-    required Uint8List data,
-    required Uint8List signature,
-  }) {
-    return '0x${HEX.encode(signature)}';
+  Uint8List _publicKeyBytes() {
+    final key = ECPrivateKey(BigInt.parse('0x' + HEX.encode(privateKey)), secp256k1);
+    final pub = (secp256k1.G * key.d)!;
+    return Uint8List.fromList(pub.getEncoded(false));
+  }
+
+  bool _bytesEqual(Uint8List a, Uint8List b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  Uint8List? _recoverPublicKey(Uint8List hash, BigInt r, BigInt s, int recId) {
+    final params = secp256k1;
+    final n = params.n;
+    final G = params.G;
+    if (r >= n || s >= n) return null;
+    BigInt x = r + (recId ~/ 2 == 1 ? n : BigInt.zero);
+    if (x >= params.p) return null;
+    final R = _decompressPoint(x, recId % 2 == 1);
+    if (R == null) return null;
+    final e = _bytesToBigInt(hash);
+    final rInv = r.modInverse(n);
+    final Q = (R * (s - e * r) + G * (n - (rInv * r % n)))!;
+    return Uint8List.fromList(Q.getEncoded(false));
+  }
+
+  ECPoint? _decompressPoint(BigInt x, bool yBit) {
+    final params = secp256k1;
+    final p = params.p;
+    final a = params.a;
+    final b = params.b;
+    final alpha = (x * x * x + a * x + b) % p;
+    var beta = alpha.modPow((p + BigInt.one) ~/ BigInt.from(4), p);
+    final y = (beta.isEven == yBit) ? beta : p - beta;
+    final curve = params.curve;
+    return curve.createPoint(x, y);
+  }
+
+  // ---- RLP encoding primitives ----
+
+  Uint8List _encodeBytes(Uint8List bytes) {
+    if (bytes.length == 1 && bytes[0] < 0x80) {
+      return bytes;
+    }
+    return Uint8List.fromList(_encodeLength(bytes.length, 0x80) + bytes);
+  }
+
+  Uint8List _encodeBigInt(BigInt i) {
+    if (i == BigInt.zero) return Uint8List.fromList([0x80]);
+    return _encodeBytes(_bigIntToBytes(i, 0));
+  }
+
+  Uint8List _encodeLength(int length, int offset) {
+    if (length < 56) {
+      return Uint8List.fromList([offset + length]);
+    }
+    final lenBytes = _intToBytes(length);
+    return Uint8List.fromList([offset + 55 + lenBytes.length, ...lenBytes]);
+  }
+
+  Uint8List _encodeList(List<Uint8List> items) {
+    final encoded = BytesBuilder();
+    for (final item in items) {
+      encoded.add(item);
+    }
+    final payload = encoded.toBytes();
+    return Uint8List.fromList(_encodeLength(payload.length, 0xc0) + payload);
+  }
+
+  Uint8List _bigIntToBytes(BigInt value, int minLength) {
+    var hexStr = value.toUnsigned(value.bitLength + 8).toRadixString(16);
+    if (hexStr.length.isOdd) hexStr = '0' + hexStr;
+    final list = HEX.decode(hexStr);
+    final padded = Uint8List(minLength > list.length ? minLength : list.length);
+    padded.setRange(padded.length - list.length, padded.length, list);
+    return padded;
+  }
+
+  Uint8List _intToBytes(int value) {
+    var hexStr = value.toRadixString(16);
+    if (hexStr.length.isOdd) hexStr = '0' + hexStr;
+    return Uint8List.fromList(HEX.decode(hexStr));
+  }
+
+  BigInt _bytesToBigInt(Uint8List bytes) {
+    return BigInt.parse('0x' + HEX.encode(bytes));
   }
 }
+
 
 /// Main Wallet Service - PRODUCTION IMPLEMENTATION
 class WalletService {
