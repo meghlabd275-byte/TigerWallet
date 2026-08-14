@@ -8,8 +8,10 @@ package main
 
 import (
 	"context"
+	cryptorand "crypto/rand"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -294,13 +296,20 @@ func (s *CardService) ValidateCardNumber(cardNumber string) bool {
 	return sum%10 == 0
 }
 
-func (s *CardService) GenerateCVV(cardNumber, expiryMonth, expiryYear string) string {
-	data := cardNumber + expiryMonth + expiryYear
-	hash := uuid.NewSHA1(uuid.NameSpaceOID, []byte(data))
-	return strings.ReplaceAll(hash.String(), "-", "")[0:3]
+// GenerateCVV returns a cryptographically-random 3-digit CVV. It is NOT
+// derived from the card number (that would be a deterministic, guessable
+// secret). The CVV must be shown to the user once at creation and never
+// persisted (PCI-DSS requirement).
+func (s *CardService) GenerateCVV() string {
+	b := make([]byte, 1)
+	if _, err := cryptorand.Read(b); err != nil {
+		// Should not happen; fall back to time-based entropy.
+		b[0] = byte(time.Now().UnixNano() & 0xff)
+	}
+	return fmt.Sprintf("%03d", int(b[0])%1000)
 }
 
-func (s *CardService) CreateCard(req CreateCardRequest) (*CardData, error) {
+func (s *CardService) CreateCard(req CreateCardRequest) (*CardData, string, string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -312,19 +321,19 @@ func (s *CardService) CreateCard(req CreateCardRequest) (*CardData, error) {
 	}
 
 	if userCardCount >= s.config.Limits.MaxCardsPerUser {
-		return nil, fmt.Errorf("maximum cards per user reached")
+		return nil, "", "", fmt.Errorf("maximum cards per user reached")
 	}
 
 	cardNumber, err := s.GenerateCardNumber(req.Network, req.UserID)
 	if err != nil {
-		return nil, err
+		return nil, "", "", err
 	}
 
 	if !s.ValidateCardNumber(cardNumber) {
-		return nil, fmt.Errorf("invalid card number generated")
+		return nil, "", "", fmt.Errorf("invalid card number generated")
 	}
 
-	cvv := s.GenerateCVV(cardNumber, "12", "2029")
+	cvv := s.GenerateCVV()
 
 	now := time.Now()
 	card := &CardData{
@@ -360,7 +369,10 @@ func (s *CardService) CreateCard(req CreateCardRequest) (*CardData, error) {
 	cardJSON, _ := json.Marshal(card)
 	s.redis.Set(ctx, "card:"+card.CardID, cardJSON, 0)
 
-	return card, nil
+	// Return the one-time CVV and full card number alongside the card. Neither
+	// is persisted — only the masked number is stored. The caller (handler)
+	// surfaces them once in the create response.
+	return card, cvv, cardNumber, nil
 }
 
 func (s *CardService) ActivateCard(cardID string) (*CardData, error) {
@@ -639,14 +651,68 @@ func (s *CardService) UpdateCardLimits(cardID string, limits CardLimits) (*CardD
 	return card, nil
 }
 
+// GetCryptoRates fetches live USD->crypto conversion rates from CoinGecko
+// (cached in Redis for 60s). Fiat->fiat pairs fall back to a static FX table
+// since CoinGecko prices USD pairs only. Never returns a fabricated rate.
 func (s *CardService) GetCryptoRates() map[string]float64 {
-	return map[string]float64{
-		"USD_BTC":  0.000025,
-		"USD_ETH":  0.0004,
-		"USD_USDT": 1.0,
-		"USD_EUR":  0.92,
-		"USD_GBP":  0.79,
+	fx := map[string]float64{
+		"USD_EUR": 0.92, "USD_GBP": 0.79, "USD_USD": 1.0,
+		"EUR_USD": 1.0 / 0.92, "GBP_USD": 1.0 / 0.79,
 	}
+	// Merge live crypto rates.
+	for sym, rate := range s.fetchCryptoRates() {
+		fx["USD_"+sym] = rate
+	}
+	return fx
+}
+
+// fetchCryptoRates pulls live USD prices for the supported crypto assets from
+// CoinGecko and caches them in Redis (60s TTL). Returns an empty map on any
+// failure rather than fabricated fallback rates.
+func (s *CardService) fetchCryptoRates() map[string]float64 {
+	cacheKey := "cardcard:rates"
+	if s.redis != nil {
+		if cached, err := s.redis.Get(context.Background(), cacheKey).Result(); err == nil {
+			var m map[string]float64
+			if json.Unmarshal([]byte(cached), &m) == nil {
+				return m
+			}
+		}
+	}
+	ids := "bitcoin,ethereum,tether,binancecoin,matic-network,solana"
+	resp, err := http.Get("https://api.coingecko.com/api/v3/simple/price?ids=" + ids + "&vs_currencies=usd")
+	if err != nil {
+		return map[string]float64{}
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return map[string]float64{}
+	}
+	var parsed map[string]map[string]float64
+	if json.Unmarshal(body, &parsed) != nil {
+		return map[string]float64{}
+	}
+	symbolOf := map[string]string{
+		"bitcoin": "BTC", "ethereum": "ETH", "tether": "USDT",
+		"binancecoin": "BNB", "matic-network": "MATIC", "solana": "SOL",
+	}
+	out := make(map[string]float64)
+	for id, inner := range parsed {
+		sym, ok := symbolOf[id]
+		if !ok {
+			continue
+		}
+		if usd, ok := inner["usd"]; ok && usd > 0 {
+			out[sym] = 1.0 / usd
+		}
+	}
+	if s.redis != nil && len(out) > 0 {
+		if b, err := json.Marshal(out); err == nil {
+			s.redis.Set(context.Background(), cacheKey, string(b), 60*time.Second)
+		}
+	}
+	return out
 }
 
 func (s *CardService) ConvertToCrypto(amount int64, fiatCurrency, cryptoCurrency string) (int64, error) {
@@ -669,13 +735,21 @@ func (s *CardService) CreateCardHandler(c *gin.Context) {
 		return
 	}
 
-	card, err := s.CreateCard(req)
+	card, cvv, fullNumber, err := s.CreateCard(req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusCreated, card)
+	// The full card number + CVV are returned ONCE at creation and never
+	// persisted or retrievable again (PCI-DSS).
+	cardJSON, _ := json.Marshal(card)
+	var resp map[string]interface{}
+	_ = json.Unmarshal(cardJSON, &resp)
+	resp["full_number"] = fullNumber
+	resp["cvv"] = cvv
+	resp["security_note"] = "Store your card number and CVV securely. They will not be shown again."
+	c.JSON(http.StatusCreated, resp)
 }
 
 func (s *CardService) GetCardHandler(c *gin.Context) {
@@ -853,7 +927,7 @@ func (s *CardService) SetupRoutes(r *gin.Engine) {
 
 func main() {
 	cfg := Config{
-		ServerPort:   getEnv("CARD_SERVICE_PORT", "8085"),
+		ServerPort:   getEnv("CARD_SERVICE_PORT", "8470"),
 		RedisAddr:   getEnv("REDIS_ADDR", "localhost:6379"),
 		JWTSecret:   getEnv("JWT_SECRET", ""),
 		FeeConfiguration: FeeConfig{

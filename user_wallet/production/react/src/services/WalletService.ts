@@ -519,6 +519,54 @@ class WalletService {
       'DApp signing is handled by the dapp_browser WalletConnect service; wire dapp_browser/go before use'
     );
   }
+
+  // ---- Auxiliary DeFi (fiat ramp, crypto card, P2P, convert, staking quote) ----
+  // All delegate to the canonical backend proxy routes (real CoinGecko prices,
+  // real provider checkout URLs, real PostgreSQL-backed listings).
+
+  async getFiatProviders(): Promise<unknown> {
+    const response = await this.api.get('/ramp/providers');
+    return response.data;
+  }
+
+  async getFiatQuote(providerId: string, amount: string, fiat: string, crypto: string, method: string): Promise<unknown> {
+    const response = await this.api.post('/ramp/quote', {
+      providerId, amount, fiatCurrency: fiat, cryptoCurrency: crypto, paymentMethod: method,
+    });
+    return response.data;
+  }
+
+  async getFiatOfframpQuote(providerId: string, amount: string, fiat: string, crypto: string): Promise<unknown> {
+    const response = await this.api.post('/ramp/offramp-quote', {
+      providerId, amount, fiatCurrency: fiat, cryptoCurrency: crypto,
+    });
+    return response.data;
+  }
+
+  async getCryptoCardBalance(): Promise<unknown> {
+    const response = await this.api.get('/card/balance');
+    return response.data;
+  }
+
+  async getCardTransactions(): Promise<unknown> {
+    const response = await this.api.get('/card/transactions');
+    return response.data;
+  }
+
+  async getP2PAdverts(): Promise<unknown> {
+    const response = await this.api.get('/p2p/adverts');
+    return response.data;
+  }
+
+  async getConvertQuote(fromToken: string, toToken: string, fromAmount: string, chainId = 1): Promise<{ fromAmount: string; toAmount: string; priceImpact: number; route: string[] }> {
+    return this.getSwapQuote(fromToken, toToken, fromAmount, chainId);
+  }
+
+  async getStakingQuote(): Promise<unknown> {
+    // The backend returns the full supported-asset list and ignores ?asset=.
+    const response = await this.api.get('/staking/quote');
+    return response.data;
+  }
 }
 
 export { WalletService };

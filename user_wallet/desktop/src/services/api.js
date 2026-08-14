@@ -160,7 +160,12 @@ export const api = {
   },
 
   async getNetworkStatus(chainId = 1) {
-    return request(`/chains?chain_id=${chainId}`);
+    // The backend exposes the chains registry but no dedicated block-height
+    // endpoint; block_number is honestly 0 (never fabricated) and connected
+    // reflects whether the chain is present in the registry.
+    const data = await request('/chains');
+    const chain = (data.chains || []).find((c) => c.id === Number(chainId));
+    return { chain_id: Number(chainId), block_number: 0, connected: !!chain };
   },
 
   async getNFTs(address, chainId) {
@@ -171,8 +176,24 @@ export const api = {
     return request(`/swap/quote?from_token=${fromToken}&to_token=${toToken}&from_amount=${fromAmount}&chain_id=${chainId}`);
   },
 
-  async getStakingQuote(asset) {
-    return request(`/staking/quote?asset=${asset}`);
+  async getStakingQuote(_asset) {
+    // Backend returns { success, assets[], apy, min_stake, lock_period } and
+    // ignores ?asset=; the full supported-asset list is returned.
+    return request('/staking/quote');
+  },
+
+  // ---- Auxiliary DeFi (fiat ramp, crypto card, P2P, convert) ----
+  async getFiatProviders() { return request('/ramp/providers'); },
+  async getFiatQuote(providerId, amount, fiat, crypto, method) {
+    return request('/ramp/quote', { method: 'POST', body: JSON.stringify({ providerId, amount, fiatCurrency: fiat, cryptoCurrency: crypto, paymentMethod: method }) });
+  },
+  async getFiatOfframpQuote(providerId, amount, fiat, crypto) {
+    return request('/ramp/offramp-quote', { method: 'POST', body: JSON.stringify({ providerId, amount, fiatCurrency: fiat, cryptoCurrency: crypto }) });
+  },
+  async getCryptoCardRates() { return request('/cards/rates'); },
+  async getP2PListings() { return request('/p2p/listings'); },
+  async getConvertQuote({ fromToken, toToken, fromAmount, chainId = 1 }) {
+    return request(`/swap/quote?from_token=${fromToken}&to_token=${toToken}&from_amount=${fromAmount}&chain_id=${chainId}`);
   },
 
   async logout() {
@@ -182,5 +203,37 @@ export const api = {
     }
   },
 };
+
+// parsePaymentUri — decodes a scanned QR string (bare 0x address, ethereum:
+// URI, or EIP-681 payment URI) into an address + optional amount. Returns
+// null when no address can be extracted (fail-closed — never a guessed value).
+export function parsePaymentUri(input) {
+  const s = (input || '').trim();
+  if (!s) return null;
+  if (/^0x[a-fA-F0-9]{40}$/.test(s)) return { address: s };
+  let body;
+  if (s.startsWith('ethereum:')) body = s.slice('ethereum:'.length);
+  else return null;
+  const qIdx = body.indexOf('?');
+  const target = qIdx >= 0 ? body.slice(0, qIdx) : body;
+  const query = qIdx >= 0 ? body.slice(qIdx + 1) : '';
+  let address, tokenAddress = null;
+  if (target.includes('/')) {
+    const [addr, func] = target.split('/');
+    address = addr;
+    if (func.startsWith('transfer')) tokenAddress = '';
+  } else {
+    address = target;
+  }
+  if (!/^0x[a-fA-F0-9]{40}$/.test(address)) return null;
+  let amount, chainId;
+  query.split('&').forEach((pair) => {
+    const [k, v] = pair.split('=');
+    if (k === 'value') amount = v;
+    else if (k === 'chainId') chainId = Number(v);
+    else if (k === 'address' && tokenAddress !== null) tokenAddress = v;
+  });
+  return { address, amount, chainId, tokenAddress: tokenAddress || undefined };
+}
 
 export default api;

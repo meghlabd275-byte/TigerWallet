@@ -39,10 +39,35 @@ func main() {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return
 		}
-		var p redpackets.RedPacket
-		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		// Decode the request body including the plaintext password, which is
+		// immediately hashed by CreateRedPacket and never persisted in plaintext.
+		var body struct {
+			SenderID      string `json:"sender_id"`
+			SenderAddress string `json:"sender_address"`
+			TokenAddress  string `json:"token_address"`
+			ChainID       uint64 `json:"chain_id"`
+			TotalAmount   string `json:"total_amount"`
+			Quantity      int    `json:"quantity"`
+			ClaimType     string `json:"claim_type"`
+			Password      string `json:"password"`
+			Message       string `json:"message"`
+			TxHash        string `json:"tx_hash"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, 400, apiResponse{Error: "invalid request body"})
 			return
+		}
+		p := redpackets.RedPacket{
+			SenderID:      body.SenderID,
+			SenderAddress: body.SenderAddress,
+			TokenAddress:  body.TokenAddress,
+			ChainID:       body.ChainID,
+			TotalAmount:   body.TotalAmount,
+			Quantity:      body.Quantity,
+			ClaimType:     body.ClaimType,
+			PasswordHash:  body.Password,
+			Message:       body.Message,
+			TxHash:        body.TxHash,
 		}
 		created, err := svc.CreateRedPacket(r.Context(), &p)
 		if err != nil {

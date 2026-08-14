@@ -355,10 +355,87 @@ final class UserWalletApiService {
 
     // MARK: - Staking (real on-chain action via backend /send)
 
-    struct StakingQuote: Codable { let asset: String; let apy: Double; let min_amount: String }
+    // The backend returns the full supported-asset list and ignores ?asset=.
+    // Response shape: { success, assets[], apy, min_stake, lock_period }.
+    struct StakingAsset: Codable {
+        let symbol: String
+        let chain_id: Int
+        let apy: Double
+        let min_stake: Double
+        let lock_period: Int
+        let verified: Bool
+    }
 
-    func getStakingQuote(asset: String) async throws -> StakingQuote {
-        let path = "/staking/quote?asset=\(asset)"
-        return try await request(path)
+    struct StakingQuote: Codable {
+        let success: Bool
+        let assets: [StakingAsset]
+        let apy: Double
+        let min_stake: Double
+        let lock_period: Int
+    }
+
+    func getStakingQuote(_ asset: String? = nil) async throws -> StakingQuote {
+        // asset is accepted for client-parity but ignored by the backend,
+        // which returns every supported staking asset.
+        return try await request("/staking/quote")
+    }
+
+    // MARK: - Auxiliary DeFi (fiat ramp, crypto card, P2P, convert)
+    // All delegate to the canonical backend proxy routes (real CoinGecko
+    // prices, real provider checkout URLs, real PostgreSQL-backed listings).
+
+    // requestRaw returns an untyped [String: Any] JSON object for endpoints
+    // whose response shapes are service-specific (fiat/card/p2p).
+    private func requestRaw(_ path: String, method: String = "GET", body: Data? = nil, authenticated: Bool = true) async throws -> [String: Any] {
+        guard let url = URL(string: baseURL + path) else { throw WalletAPIError.invalidURL }
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        if authenticated, let t = storedToken {
+            req.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization")
+        }
+        if let body = body { req.httpBody = body }
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse else { throw WalletAPIError.emptyResponse }
+        if http.statusCode == 401 { throw WalletAPIError.unauthorized }
+        if !(200..<300).contains(http.statusCode) {
+            let msg = (try? JSONDecoder().decode([String: String].self, from: data))?["error"] ?? ""
+            throw WalletAPIError.http(status: http.statusCode, message: msg)
+        }
+        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+    }
+
+    func getFiatProviders() async throws -> [String: Any] {
+        return try await requestRaw("/ramp/providers")
+    }
+
+    func getFiatQuote(providerId: String, amount: String, fiat: String, crypto: String, method: String) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "providerId": providerId, "amount": amount,
+            "fiatCurrency": fiat, "cryptoCurrency": crypto, "paymentMethod": method,
+        ])
+        return try await requestRaw("/ramp/quote", method: "POST", body: body)
+    }
+
+    func getFiatOfframpQuote(providerId: String, amount: String, fiat: String, crypto: String) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "providerId": providerId, "amount": amount,
+            "fiatCurrency": fiat, "cryptoCurrency": crypto,
+        ])
+        return try await requestRaw("/ramp/offramp-quote", method: "POST", body: body)
+    }
+
+    func getCryptoCardBalance() async throws -> [String: Any] {
+        return try await requestRaw("/card/balance")
+    }
+
+    func getP2PAdverts() async throws -> [String: Any] {
+        return try await requestRaw("/p2p/adverts")
+    }
+
+    // Convert is the same path as swap (cross-token conversion).
+    func getConvertQuote(fromToken: String, toToken: String, fromAmount: String, chainId: Int = 1) async throws -> SwapQuote {
+        return try await getSwapQuote(fromToken: fromToken, toToken: toToken, fromAmount: fromAmount, chainId: chainId)
     }
 }

@@ -424,16 +424,101 @@ object UserWalletApiService {
 
     // ==================== Staking (real on-chain action via backend /send) ====================
 
-    data class StakingQuote(val asset: String, val apy: Double, val minAmount: String)
+    data class StakingAsset(
+        val symbol: String,
+        val chainId: Int,
+        val apy: Double,
+        val minStake: Double,
+        val lockPeriod: Long,
+        val verified: Boolean,
+    )
 
-    fun getStakingQuote(asset: String): StakingQuote {
-        val path = "/staking/quote?asset=$asset"
+    data class StakingQuote(
+        val success: Boolean,
+        val assets: List<StakingAsset>,
+        val apy: Double,
+        val minStake: Double,
+        val lockPeriod: Long,
+    )
+
+    fun getStakingQuote(_asset: String? = null): StakingQuote {
+        // The backend returns the full supported-asset list and ignores
+        // ?asset=; the response shape is { success, assets[], apy,
+        // min_stake, lock_period }. Decoded into the typed StakingQuote.
+        val req = requestBuilder("/staking/quote").get().build()
+        val json = execute(req)
+        val arr = json.optJSONArray("assets") ?: org.json.JSONArray()
+        val assets = (0 until arr.length()).map { i ->
+            val a = arr.getJSONObject(i)
+            StakingAsset(
+                symbol = a.optString("symbol"),
+                chainId = a.optInt("chain_id"),
+                apy = a.optDouble("apy"),
+                minStake = a.optDouble("min_stake"),
+                lockPeriod = a.optLong("lock_period"),
+                verified = a.optBoolean("verified"),
+            )
+        }
+        return StakingQuote(
+            success = json.optBoolean("success"),
+            assets = assets,
+            apy = json.optDouble("apy"),
+            minStake = json.optDouble("min_stake"),
+            lockPeriod = json.optLong("lock_period"),
+        )
+    }
+
+    // ==================== Auxiliary DeFi (fiat ramp, crypto card, P2P, convert) ====================
+    // All delegate to the canonical backend proxy routes (real CoinGecko
+    // prices, real provider checkout URLs, real PostgreSQL-backed listings).
+
+    fun getFiatProviders(): JSONObject =
+        execute(requestBuilder("/ramp/providers").get().build())
+
+    fun getFiatQuote(providerId: String, amount: String, fiat: String, crypto: String, method: String): JSONObject {
+        val body = JSONObject().apply {
+            put("providerId", providerId)
+            put("amount", amount)
+            put("fiatCurrency", fiat)
+            put("cryptoCurrency", crypto)
+            put("paymentMethod", method)
+        }
+        val req = requestBuilder("/ramp/quote").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun getFiatOfframpQuote(providerId: String, amount: String, fiat: String, crypto: String): JSONObject {
+        val body = JSONObject().apply {
+            put("providerId", providerId)
+            put("amount", amount)
+            put("fiatCurrency", fiat)
+            put("cryptoCurrency", crypto)
+        }
+        val req = requestBuilder("/ramp/offramp-quote").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun getCryptoCardBalance(): JSONObject =
+        execute(requestBuilder("/card/balance").get().build())
+
+    fun getCardTransactions(): List<JSONObject> =
+        executeList(requestBuilder("/card/transactions").get().build(), "transactions")
+
+    fun getP2PAdverts(): List<JSONObject> =
+        executeList(requestBuilder("/p2p/adverts").get().build(), "adverts")
+
+    // Convert is the same path as swap (cross-token conversion).
+    fun getConvertQuote(fromToken: String, toToken: String, fromAmount: String, chainId: Int): SwapQuote {
+        val path = "/swap/quote?from_token=$fromToken&to_token=$toToken&from_amount=$fromAmount&chain_id=$chainId"
         val req = requestBuilder(path).get().build()
         val json = execute(req)
-        return StakingQuote(
-            asset = json.optString("asset"),
-            apy = json.optDouble("apy"),
-            minAmount = json.optString("min_amount")
+        return SwapQuote(
+            fromToken = json.optString("from_token"),
+            toToken = json.optString("to_token"),
+            fromAmount = json.optString("from_amount"),
+            toAmount = json.optString("to_amount"),
+            priceImpact = json.optDouble("price_impact"),
+            route = json.optString("route"),
         )
     }
 }

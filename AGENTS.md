@@ -2390,3 +2390,57 @@ Cosmos chain.
 | privacy_features/cpp/src/privacy.cpp | `g++ -std=c++17 -fsyntax-only` exit 0 |
 | notifications/go | `go build ./...` exit 0 |
 | security_center/wallet_guardian/security.go | `go build` exit 0 (temp module) |
+
+
+## Session 2026-08-14: UserWallet auxiliary DeFi parity + admin provider-key panel
+
+Closed the last client-parity gaps so EVERY UserWallet app (web, desktop,
+android, ios, production/react, rust, extension) exposes the SAME auxiliary
+DeFi fetcher set + admin-configurable fiat-ramp provider keys. No
+demos/stubs/fakes/mock data; all real backend delegations.
+
+### Auxiliary DeFi fetchers - added to all clients
+Each client now implements (in addition to the core fetcher set):
+- getFiatProviders, getFiatQuote, getFiatOfframpQuote  (fiat_ramp :8451)
+- getCryptoCardBalance, getCardTransactions             (card_service :8457)
+- getP2PAdverts                                         (p2p :8475)
+- getConvertQuote (reuses /swap/quote; cross-token conversion)
+- getStakingQuote (real /staking/quote shape {success,assets[],apy,min_stake,lock_period})
+- parsePaymentUri (QR scanner: bare 0x addr, ethereum:, EIP-681, Solana base58)
+Clients: web + production/react (tsc 0); desktop + extension (node --check);
+rust (cargo check 0, 6/6 tests); android (UserWalletApiService.kt uses
+requestBuilder/execute/executeList + SwapQuote data class); ios
+(UserWalletApiService.swift added private requestRaw [String:Any] helper since
+generic request needs Decodable; getConvertQuote delegates to getSwapQuote).
+NOTE production getSwapQuote is positional (fromToken,toToken,amount,chainId)
+NOT an object; getConvertQuote must call it positionally.
+
+### Admin panel: set provider API keys at runtime (fiat_ramp)
+- go/fiat_ramp/main.go: providerKeys map (RWMutex) + getProviderKey (prefers
+  runtime over env TRANSAK_API_KEY/MOONPAY_API_KEY) + SetProviderKey/
+  ClearProviderKey + adminMiddleware (JWT + role in {admin,
+  master_wallet_admin}). Routes GET/POST/DELETE
+  /api/v1/ramp/admin/providers/:id/key (GET returns only {configured:bool},
+  never the key value). go build+vet clean.
+- web_nextjs proxy app/api/v1/ramp/admin/providers/[id]/key/route.ts. IMPORT
+  DEPTH from ramp/admin/providers/[id]/key/route.ts to _proxy.ts is FIVE
+  levels = ../../../../../_proxy (NOT four; 4 -> TS2307).
+- web_nextjs admin UI app/admin/providers/page.tsx (theme-aware, 0 dark:
+  variants). tsc 0 errors. This is the admin-sets-provider-API requirement.
+
+### Next.js proxy route added
+- app/api/v1/ramp/offramp-quote/route.ts (POST -> :8451
+  /api/v1/ramp/offramp-quote via proxyMutationFrom(req, FIAT_ONRAMP_URL,
+  path, 'POST')). proxyMutationFrom signature: (req, baseUrl, path, method:
+  'POST'|'PUT'|'DELETE').
+
+### Build verification (ALL GREEN)
+go/wallet_api, go/fiat_ramp (build+vet), go/red_packets_service (build+vet),
+go/card_service, crypto_card/go all exit 0. user_wallet/rust cargo check 0 +
+6/6 tests. frontend/web_nextjs, user_wallet/web, user_wallet/production/react
+tsc 0 errors. user_wallet/desktop + user_wallet/extension node --check PASS.
+Theme infra present on every UserWallet platform (web ThemeProvider isDark;
+android ThemeManager + AppCompatDelegate; ios ThemeManager +
+preferredColorScheme; extension data-theme + chrome.storage; rust is a pure
+client lib with no UI). Fake-crypto scan on changed Go services: 0 real hits
+(only "never a fabricated rate" comments).

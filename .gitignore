@@ -114,6 +114,7 @@ go/governance_service/governance_service
 go/prediction_service/prediction_service
 go/rwa_service/rwa_service
 go/card_service/card_service
+crypto_card/go/card_service
 go/nft_service/nft-service
 go/listing_service/listing_service
 go/leaderboard_service/leaderboard_service

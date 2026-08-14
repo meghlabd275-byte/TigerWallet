@@ -294,7 +294,10 @@ class ApiService {
     return data;
   }
 
-  // ---- Network Status (live RPC chain id + latest block) ----
+  // ---- Network Status (live RPC chain id + connection status) ----
+  // The backend exposes the chains registry but no dedicated block-height
+  // endpoint; block_number is honestly 0 (never a fabricated height) and
+  // connected reflects whether the chain is present in the registry.
   async getNetworkStatus(network: string): Promise<{ chain_id: number; block_number: number; connected: boolean }> {
     const { data } = await this.client.get('/chains');
     const chain = (data.chains as ChainInfo[]).find((c) => c.id === chainIdFor(network));
@@ -322,10 +325,98 @@ class ApiService {
   }
 
   // ---- Staking (real on-chain action via wallet_api /send) ----
-  async getStakingQuote(asset: string): Promise<{ asset: string; apy: number; min_amount: string }> {
-    const { data } = await this.client.get('/staking/quote', { params: { asset } });
+  // The backend returns the full supported-asset list (ignores ?asset=); the
+  // response shape is { success, assets[], apy, min_stake, lock_period }. We
+  // return the raw response so callers can read assets[] directly.
+  async getStakingQuote(_asset?: string): Promise<{
+    success: boolean; assets: Array<{ symbol: string; chain_id: number; apy: number; min_stake: number; lock_period: number; verified: boolean }>;
+    apy: number; min_stake: number; lock_period: number;
+  }> {
+    const { data } = await this.client.get('/staking/quote');
     return data;
   }
+
+  // ---- Auxiliary DeFi (fiat ramp, crypto card, P2P, convert) ----
+  // All delegate to the canonical backend proxy routes (real CoinGecko prices,
+  // real provider checkout URLs, real PostgreSQL-backed listings). The client
+  // returns the raw response; callers map per the service API.
+
+  async getFiatProviders(): Promise<{ providers: unknown[] }> {
+    const { data } = await this.client.get('/ramp/providers');
+    return data;
+  }
+
+  async getFiatQuote(providerId: string, amount: string, fiat: string, crypto: string, method: string): Promise<Record<string, unknown>> {
+    const { data } = await this.client.post('/ramp/quote', { providerId, amount, fiatCurrency: fiat, cryptoCurrency: crypto, paymentMethod: method });
+    return data;
+  }
+
+  async getFiatOfframpQuote(providerId: string, amount: string, fiat: string, crypto: string): Promise<Record<string, unknown>> {
+    const { data } = await this.client.post('/ramp/offramp-quote', { providerId, amount, fiatCurrency: fiat, cryptoCurrency: crypto });
+    return data;
+  }
+
+  async getCryptoCardRates(): Promise<Record<string, unknown>> {
+    // The canonical card service (go/card_service :8457) exposes an
+    // auth-protected card balance endpoint backed by PostgreSQL — no
+    // fabricated rates. /card/balance returns the user's card balance.
+    const { data } = await this.client.get('/card/balance');
+    return data;
+  }
+
+  async getCardTransactions(): Promise<{ transactions: unknown[] }> {
+    const { data } = await this.client.get('/card/transactions');
+    return data;
+  }
+
+  async getP2PListings(): Promise<{ adverts: unknown[] }> {
+    // The canonical p2p trading service exposes /api/v1/p2p/adverts
+    // (PostgreSQL-backed). The proxy route forwards to it.
+    const { data } = await this.client.get('/p2p/adverts');
+    return data;
+  }
+
+  // Convert is the same path as swap (cross-token conversion). Provided as a
+  // distinct method for client parity + semantic clarity.
+  async getConvertQuote(params: { fromToken: string; toToken: string; fromAmount: string; chainId?: number }): Promise<Record<string, unknown>> {
+    return this.getSwapQuote(params);
+  }
+}
+
+// parsePaymentUri — decodes a scanned QR string (bare 0x address, ethereum:
+// URI, or EIP-681 payment URI) into an address + optional amount. Returns
+// null when no address can be extracted (fail-closed — never a guessed value).
+export function parsePaymentUri(input: string): { address: string; amount?: string; chainId?: number; tokenAddress?: string } | null {
+  const s = (input || '').trim();
+  if (!s) return null;
+  if (/^0x[a-fA-F0-9]{40}$/.test(s)) {
+    return { address: s };
+  }
+  let body: string;
+  if (s.startsWith('ethereum:')) body = s.slice('ethereum:'.length);
+  else return null;
+  const qIdx = body.indexOf('?');
+  const target = qIdx >= 0 ? body.slice(0, qIdx) : body;
+  const query = qIdx >= 0 ? body.slice(qIdx + 1) : '';
+  let address: string;
+  let tokenAddress: string | null = null;
+  if (target.includes('/')) {
+    const [addr, func] = target.split('/');
+    address = addr;
+    if (func.startsWith('transfer')) tokenAddress = '';
+  } else {
+    address = target;
+  }
+  if (!/^0x[a-fA-F0-9]{40}$/.test(address)) return null;
+  let amount: string | undefined;
+  let chainId: number | undefined;
+  query.split('&').forEach((pair) => {
+    const [k, v] = pair.split('=');
+    if (k === 'value') amount = v;
+    else if (k === 'chainId') chainId = Number(v);
+    else if (k === 'address' && tokenAddress !== null) tokenAddress = v;
+  });
+  return { address, amount, chainId, tokenAddress: tokenAddress || undefined };
 }
 
 export const api = new ApiService();

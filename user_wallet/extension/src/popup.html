@@ -85,6 +85,13 @@
     .wallet-balance { font-size: 13px; margin-top: 2px; }
     .hidden { display: none; }
     .spinner { text-align: center; color: var(--text-secondary); padding: 16px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+    .tab-btn {
+      flex: 1 1 auto; min-width: 70px; padding: 6px 4px; font-size: 11px;
+      font-weight: 600; background: var(--bg-card); color: var(--text-secondary);
+      border: 1px solid var(--border); border-radius: 8px; cursor: pointer; margin: 0;
+    }
+    .tab-btn:hover { color: var(--accent); border-color: var(--accent); }
   </style>
 </head>
 <body>
@@ -120,10 +127,96 @@
       <div class="total" id="totalUsd">$0.00</div>
       <button class="secondary" id="refreshBtn">Refresh</button>
     </div>
-    <div class="card">
+
+    <!-- Navigation tabs -->
+    <div class="tabs">
+      <button class="tab-btn" data-tab="walletTab">Wallets</button>
+      <button class="tab-btn" data-tab="sendTab">Send</button>
+      <button class="tab-btn" data-tab="convertTab">Convert</button>
+      <button class="tab-btn" data-tab="stakingTab">Staking</button>
+      <button class="tab-btn" data-tab="fiatTab">Fiat Ramp</button>
+      <button class="tab-btn" data-tab="qrTab">QR Scan</button>
+    </div>
+
+    <!-- Wallets tab -->
+    <div id="walletTab" class="card">
       <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">My Wallets</div>
       <div id="walletList"><div class="spinner">Loading...</div></div>
     </div>
+
+    <!-- Send tab -->
+    <div id="sendTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Send</div>
+      <label for="sendTo">Recipient address</label>
+      <input type="text" id="sendTo" placeholder="0x..." />
+      <label for="sendAmount">Amount</label>
+      <input type="text" id="sendAmount" placeholder="0.0" />
+      <label for="sendPassword">Wallet password</label>
+      <input type="password" id="sendPassword" placeholder="••••••••" />
+      <button id="sendBtn">Send</button>
+    </div>
+
+    <!-- Convert tab -->
+    <div id="convertTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Convert</div>
+      <label for="convertFrom">From token</label>
+      <input type="text" id="convertFrom" placeholder="ETH" />
+      <label for="convertTo">To token</label>
+      <input type="text" id="convertTo" placeholder="USDC" />
+      <label for="convertAmount">Amount</label>
+      <input type="text" id="convertAmount" placeholder="0.0" />
+      <label for="convertChain">Chain</label>
+      <select id="convertChain"></select>
+      <button id="convertBtn">Get Quote</button>
+      <div id="convertResult" class="wallet-balance"></div>
+    </div>
+
+    <!-- Staking tab -->
+    <div id="stakingTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Staking</div>
+      <div id="stakingList"><div class="spinner">Loading...</div></div>
+      <label for="stakeToken">Token</label>
+      <input type="text" id="stakeToken" placeholder="ETH" />
+      <label for="stakeAmount">Amount</label>
+      <input type="text" id="stakeAmount" placeholder="0.0" />
+      <label for="stakePassword">Wallet password</label>
+      <input type="password" id="stakePassword" placeholder="••••••••" />
+      <button id="stakeBtn">Stake</button>
+    </div>
+
+    <!-- Fiat ramp tab -->
+    <div id="fiatTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Fiat On/Off-Ramp</div>
+      <label for="fiatProvider">Provider</label>
+      <select id="fiatProvider"></select>
+      <label for="fiatAmount">Amount</label>
+      <input type="text" id="fiatAmount" placeholder="100" />
+      <label for="fiatCurrency">Fiat currency</label>
+      <input type="text" id="fiatCurrency" placeholder="USD" />
+      <label for="fiatCrypto">Crypto</label>
+      <input type="text" id="fiatCrypto" placeholder="ETH" />
+      <label for="fiatMethod">Payment method</label>
+      <input type="text" id="fiatMethod" placeholder="card" />
+      <button id="fiatBuyBtn">Buy (On-Ramp)</button>
+      <button id="fiatSellBtn">Sell (Off-Ramp)</button>
+      <div id="fiatResult" class="wallet-balance"></div>
+      <a id="fiatOpenUrl" class="hidden" href="#" target="_blank" rel="noopener noreferrer" style="display:block;margin-top:8px;color:var(--accent);font-size:13px;">Open provider checkout</a>
+    </div>
+
+    <!-- QR scan tab -->
+    <div id="qrTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Scan / Paste Payment URI</div>
+      <label for="qrInput">Paste address or EIP-681 URI</label>
+      <input type="text" id="qrInput" placeholder="0x... or ethereum:0x...?value=1" />
+      <button id="qrParseBtn">Parse</button>
+      <div id="qrResult" class="wallet-balance"></div>
+      <label for="qrToAddress">Recipient (parsed)</label>
+      <input type="text" id="qrToAddress" placeholder="0x..." />
+      <label for="qrAmount">Amount (parsed)</label>
+      <input type="text" id="qrAmount" placeholder="0.0" />
+      <button id="qrSendBtn">Send Parsed</button>
+    </div>
+
     <button id="logoutBtn" class="toggle-auth">Logout</button>
   </div>
 

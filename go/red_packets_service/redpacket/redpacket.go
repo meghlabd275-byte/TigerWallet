@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // RedPacket represents a red packet
@@ -30,12 +31,16 @@ type RedPacket struct {
 	RemainingAmount string `json:"remaining_amount"`
 	RemainingQty    int    `json:"remaining_qty"`
 	ClaimType       string `json:"claim_type"` // random, fixed
-	Password        string `json:"password"`
-	Message         string `json:"message"`
-	ExpiredAt       int64  `json:"expired_at"`
-	Status          string `json:"status"`
-	TxHash          string `json:"tx_hash"`
-	CreatedAt       int64  `json:"created_at"`
+	// PasswordHash stores a bcrypt hash of the optional claim password. It is
+	// NEVER serialized to JSON (json:"-") and is NEVER stored/compared in
+	// plaintext — the previous plaintext compare was a credential-disclosure
+	// vulnerability.
+	PasswordHash string `json:"-"`
+	Message      string `json:"message"`
+	ExpiredAt    int64  `json:"expired_at"`
+	Status       string `json:"status"`
+	TxHash       string `json:"tx_hash"`
+	CreatedAt    int64  `json:"created_at"`
 }
 
 // RedPacketClaim represents a claim
@@ -87,6 +92,18 @@ func (s *RedPacketService) CreateRedPacket(ctx context.Context, packet *RedPacke
 	minAmount := big.NewInt(int64(packet.Quantity))
 	if total.Cmp(minAmount) < 0 {
 		return nil, fmt.Errorf("total amount must be >= quantity")
+	}
+
+	// Hash the optional claim password with bcrypt (never store plaintext).
+	// The plaintext is wiped from the in-memory packet after hashing.
+	plain := packet.PasswordHash
+	packet.PasswordHash = ""
+	if plain != "" {
+		hash, err := bcrypt.GenerateFromPassword([]byte(plain), bcrypt.DefaultCost)
+		if err != nil {
+			return nil, fmt.Errorf("failed to hash password: %v", err)
+		}
+		packet.PasswordHash = string(hash)
 	}
 
 	packet.ID = "redpacket_" + uuid.New().String()
@@ -141,9 +158,11 @@ func (s *RedPacketService) Claim(ctx context.Context, packetID, claimerID, claim
 		return nil, fmt.Errorf("red packet expired")
 	}
 
-	// Check password
-	if packet.Password != "" && packet.Password != password {
-		return nil, fmt.Errorf("invalid password")
+	// Check password (constant-time bcrypt compare, never plaintext equality).
+	if packet.PasswordHash != "" {
+		if password == "" || bcrypt.CompareHashAndPassword([]byte(packet.PasswordHash), []byte(password)) != nil {
+			return nil, fmt.Errorf("invalid password")
+		}
 	}
 
 	// Check remaining quantity
