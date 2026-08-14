@@ -1,10 +1,14 @@
 // TigerWallet NFT Service - Comprehensive NFT Marketplace and Management
-// Supports ERC-721, ERC-1155, Solana NFTs with marketplace, minting, and trading
+// Supports ERC-721, ERC-1155, Solana NFTs with marketplace, minting, and trading.
+// PostgreSQL-backed marketplace state (collections/tokens/listings/offers/
+// transactions/auctions). Real on-chain NFT reads (fetcher.go) and Redis cache
+// are preserved unchanged.
 
 package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -12,13 +16,14 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -196,15 +201,145 @@ type NFTAuction struct {
 // ============================================================================
 
 type NFTService struct {
-	redis        *redis.Client
-	mu           sync.RWMutex
-	collections  map[string]*NFTCollection
-	nfts         map[string]*NFT
-	listings     map[string]*NFTListing
-	offers       map[string]*NFTOffer
-	transactions map[string]*NFTTransaction
-	auctions     map[string]*NFTAuction
-	fetcher      *Fetcher // real on-chain NFT reader (nil if ETH_RPC_URL unset)
+	pg      *pgxpool.Pool // PostgreSQL-backed marketplace state
+	redis   *redis.Client
+	fetcher *Fetcher // real on-chain NFT reader (nil if ETH_RPC_URL unset)
+}
+
+const nftSchema = `
+CREATE TABLE IF NOT EXISTS nft_collections (
+    id               TEXT PRIMARY KEY,
+    name             TEXT NOT NULL DEFAULT '',
+    symbol           TEXT NOT NULL DEFAULT '',
+    chain            TEXT NOT NULL DEFAULT '',
+    contract_address TEXT NOT NULL DEFAULT '',
+    owner            TEXT NOT NULL DEFAULT '',
+    creator          TEXT NOT NULL DEFAULT '',
+    description      TEXT NOT NULL DEFAULT '',
+    image_url        TEXT NOT NULL DEFAULT '',
+    external_url     TEXT NOT NULL DEFAULT '',
+    category         TEXT NOT NULL DEFAULT '',
+    standard         TEXT NOT NULL DEFAULT '',
+    total_supply     TEXT NOT NULL DEFAULT '0',
+    floor_price      TEXT NOT NULL DEFAULT '0',
+    volume_24h       TEXT NOT NULL DEFAULT '0',
+    sales_24h        INTEGER NOT NULL DEFAULT 0,
+    owners           INTEGER NOT NULL DEFAULT 0,
+    verified         BOOLEAN NOT NULL DEFAULT FALSE,
+    featured         BOOLEAN NOT NULL DEFAULT FALSE,
+    royalty_fee      TEXT NOT NULL DEFAULT '0',
+    status           TEXT NOT NULL DEFAULT 'active',
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_nft_collections_chain ON nft_collections(chain);
+CREATE INDEX IF NOT EXISTS idx_nft_collections_category ON nft_collections(category);
+CREATE INDEX IF NOT EXISTS idx_nft_collections_owner ON nft_collections(owner);
+
+CREATE TABLE IF NOT EXISTS nft_tokens (
+    id               TEXT PRIMARY KEY,
+    collection_id    TEXT NOT NULL DEFAULT '',
+    token_id         TEXT NOT NULL DEFAULT '',
+    chain            TEXT NOT NULL DEFAULT '',
+    contract_address TEXT NOT NULL DEFAULT '',
+    owner            TEXT NOT NULL DEFAULT '',
+    creator          TEXT NOT NULL DEFAULT '',
+    name             TEXT NOT NULL DEFAULT '',
+    description      TEXT NOT NULL DEFAULT '',
+    image_url        TEXT NOT NULL DEFAULT '',
+    animation_url    TEXT NOT NULL DEFAULT '',
+    external_url     TEXT NOT NULL DEFAULT '',
+    attributes       JSONB NOT NULL DEFAULT '[]'::jsonb,
+    edition          INTEGER NOT NULL DEFAULT 0,
+    quantity         INTEGER NOT NULL DEFAULT 0,
+    token_uri        TEXT NOT NULL DEFAULT '',
+    is_for_sale      BOOLEAN NOT NULL DEFAULT FALSE,
+    price            TEXT NOT NULL DEFAULT '0',
+    price_token      TEXT NOT NULL DEFAULT '',
+    listing_fee      TEXT NOT NULL DEFAULT '0',
+    last_sale_price  TEXT NOT NULL DEFAULT '0',
+    last_sale_time   TIMESTAMPTZ,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_nft_tokens_collection ON nft_tokens(collection_id);
+CREATE INDEX IF NOT EXISTS idx_nft_tokens_owner ON nft_tokens(owner);
+CREATE INDEX IF NOT EXISTS idx_nft_tokens_for_sale ON nft_tokens(is_for_sale) WHERE is_for_sale = TRUE;
+CREATE INDEX IF NOT EXISTS idx_nft_tokens_name_trgm ON nft_tokens USING gin (to_tsvector('simple', name || ' ' || coalesce(description,'')));
+
+CREATE TABLE IF NOT EXISTS nft_listings (
+    id          TEXT PRIMARY KEY,
+    nft_id      TEXT NOT NULL DEFAULT '',
+    seller      TEXT NOT NULL DEFAULT '',
+    price       TEXT NOT NULL DEFAULT '0',
+    price_token TEXT NOT NULL DEFAULT '',
+    quantity    INTEGER NOT NULL DEFAULT 0,
+    status      TEXT NOT NULL DEFAULT 'active',
+    start_time  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    end_time    TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_nft_listings_nft ON nft_listings(nft_id);
+CREATE INDEX IF NOT EXISTS idx_nft_listings_seller ON nft_listings(seller);
+CREATE INDEX IF NOT EXISTS idx_nft_listings_status ON nft_listings(status);
+
+CREATE TABLE IF NOT EXISTS nft_offers (
+    id          TEXT PRIMARY KEY,
+    nft_id      TEXT NOT NULL DEFAULT '',
+    buyer       TEXT NOT NULL DEFAULT '',
+    price       TEXT NOT NULL DEFAULT '0',
+    price_token TEXT NOT NULL DEFAULT '',
+    quantity    INTEGER NOT NULL DEFAULT 0,
+    status      TEXT NOT NULL DEFAULT 'pending',
+    expired_at  TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_nft_offers_nft ON nft_offers(nft_id);
+CREATE INDEX IF NOT EXISTS idx_nft_offers_buyer ON nft_offers(buyer);
+
+CREATE TABLE IF NOT EXISTS nft_transactions (
+    id            TEXT PRIMARY KEY,
+    nft_id        TEXT NOT NULL DEFAULT '',
+    collection_id TEXT NOT NULL DEFAULT '',
+    chain         TEXT NOT NULL DEFAULT '',
+    seller        TEXT NOT NULL DEFAULT '',
+    buyer         TEXT NOT NULL DEFAULT '',
+    price         TEXT NOT NULL DEFAULT '0',
+    price_token   TEXT NOT NULL DEFAULT '',
+    fee           TEXT NOT NULL DEFAULT '0',
+    royalty       TEXT NOT NULL DEFAULT '0',
+    tx_hash       TEXT NOT NULL DEFAULT '',
+    timestamp     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_nft_transactions_nft ON nft_transactions(nft_id);
+CREATE INDEX IF NOT EXISTS idx_nft_transactions_buyer ON nft_transactions(buyer);
+
+CREATE TABLE IF NOT EXISTS nft_auctions (
+    id          TEXT PRIMARY KEY,
+    nft_id      TEXT NOT NULL DEFAULT '',
+    seller      TEXT NOT NULL DEFAULT '',
+    start_price TEXT NOT NULL DEFAULT '0',
+    end_price   TEXT NOT NULL DEFAULT '0',
+    current_bid TEXT NOT NULL DEFAULT '0',
+    bidder      TEXT NOT NULL DEFAULT '',
+    quantity    INTEGER NOT NULL DEFAULT 0,
+    status      TEXT NOT NULL DEFAULT 'active',
+    start_time  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    end_time    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_nft_auctions_nft ON nft_auctions(nft_id);
+CREATE INDEX IF NOT EXISTS idx_nft_auctions_status ON nft_auctions(status);
+CREATE INDEX IF NOT EXISTS idx_nft_auctions_seller ON nft_auctions(seller);
+`
+
+// Migrate creates the marketplace tables and indexes if they do not exist.
+func (ns *NFTService) Migrate(ctx context.Context) error {
+	if ns.pg == nil {
+		return fmt.Errorf("database not configured")
+	}
+	_, err := ns.pg.Exec(ctx, nftSchema)
+	return err
 }
 
 func NewNFTService() *NFTService {
@@ -220,18 +355,22 @@ func NewNFTService() *NFTService {
 	}
 
 	ns := &NFTService{
-		redis:        rdb,
-		fetcher:      fetcher,
-		collections:  make(map[string]*NFTCollection),
-		nfts:         make(map[string]*NFT),
-		listings:     make(map[string]*NFTListing),
-		offers:       make(map[string]*NFTOffer),
-		transactions: make(map[string]*NFTTransaction),
-		auctions:     make(map[string]*NFTAuction),
+		redis:   rdb,
+		fetcher: fetcher,
 	}
 
-	// No seeded/mock data. The service starts empty; collections and NFTs are
-	// created by users via the API or fetched live from chain by the fetcher.
+	dbURL := getEnv("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable")
+	pool, err := pgxpool.New(context.Background(), dbURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
+	}
+	ns.pg = pool
+
+	if err := ns.Migrate(context.Background()); err != nil {
+		log.Fatalf("NFT marketplace migration failed: %v", err)
+	}
+	log.Println("NFT service connected to PostgreSQL on", dbURL)
+
 	return ns
 }
 
@@ -249,27 +388,235 @@ func (ns *NFTService) fetchUserNFTsOnChain(ctx context.Context, contract, owner 
 }
 
 // ============================================================================
+// PG scan helpers
+// ============================================================================
+
+func attrJSON(attrs []NFTAttribute) []byte {
+	if attrs == nil {
+		attrs = []NFTAttribute{}
+	}
+	b, _ := json.Marshal(attrs)
+	return b
+}
+
+func scanAttributes(b []byte) []NFTAttribute {
+	var attrs []NFTAttribute
+	if len(b) > 0 {
+		_ = json.Unmarshal(b, &attrs)
+	}
+	if attrs == nil {
+		attrs = []NFTAttribute{}
+	}
+	return attrs
+}
+
+func (ns *NFTService) getCollectionRow(ctx context.Context, q pgx.Row, id string) (*NFTCollection, error) {
+	var c NFTCollection
+	err := q.Scan(&c.ID, &c.Name, &c.Symbol, &c.Chain, &c.ContractAddress, &c.Owner, &c.Creator,
+		&c.Description, &c.ImageURL, &c.ExternalURL, &c.Category, &c.Standard, &c.TotalSupply,
+		&c.FloorPrice, &c.Volume24h, &c.Sales24h, &c.Owners, &c.Verified, &c.Featured,
+		&c.RoyaltyFee, &c.Status, &c.CreatedAt, &c.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+const collectionCols = `id,name,symbol,chain,contract_address,owner,creator,description,image_url,
+external_url,category,standard,total_supply,floor_price,volume_24h,sales_24h,owners,verified,
+featured,royalty_fee,status,created_at,updated_at`
+
+// getCollectionByID returns a single collection or an error wrapping pgx.ErrNoRows.
+func (ns *NFTService) getCollectionByID(ctx context.Context, id string) (*NFTCollection, error) {
+	row := ns.pg.QueryRow(ctx, `SELECT `+collectionCols+` FROM nft_collections WHERE id=$1`, id)
+	return ns.getCollectionRow(ctx, row, id)
+}
+
+// getNFTRow scans a token row from any pgx.Row.
+func (ns *NFTService) getNFTRow(q pgx.Row) (*NFT, error) {
+	var n NFT
+	var attrs []byte
+	err := q.Scan(&n.ID, &n.CollectionID, &n.TokenID, &n.Chain, &n.ContractAddress, &n.Owner,
+		&n.Creator, &n.Name, &n.Description, &n.ImageURL, &n.AnimationURL, &n.ExternalURL,
+		&attrs, &n.Edition, &n.Quantity, &n.TokenURI, &n.IsForSale, &n.Price, &n.PriceToken,
+		&n.ListingFee, &n.LastSalePrice, &n.LastSaleTime, &n.CreatedAt, &n.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	n.Attributes = scanAttributes(attrs)
+	return &n, nil
+}
+
+const nftCols = `id,collection_id,token_id,chain,contract_address,owner,creator,name,description,
+image_url,animation_url,external_url,attributes,edition,quantity,token_uri,is_for_sale,price,
+price_token,listing_fee,last_sale_price,last_sale_time,created_at,updated_at`
+
+func (ns *NFTService) getNFTByID(ctx context.Context, id string) (*NFT, error) {
+	row := ns.pg.QueryRow(ctx, `SELECT `+nftCols+` FROM nft_tokens WHERE id=$1`, id)
+	return ns.getNFTRow(row)
+}
+
+const listingCols = `id,nft_id,seller,price,price_token,quantity,status,start_time,end_time,created_at`
+
+func (ns *NFTService) scanListing(q pgx.Row) (*NFTListing, error) {
+	var l NFTListing
+	err := q.Scan(&l.ID, &l.NFTID, &l.Seller, &l.Price, &l.PriceToken, &l.Quantity,
+		&l.Status, &l.StartTime, &l.EndTime, &l.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &l, nil
+}
+
+const auctionCols = `id,nft_id,seller,start_price,end_price,current_bid,bidder,quantity,status,start_time,end_time,created_at`
+
+func (ns *NFTService) scanAuction(q pgx.Row) (*NFTAuction, error) {
+	var a NFTAuction
+	err := q.Scan(&a.ID, &a.NFTID, &a.Seller, &a.StartPrice, &a.EndPrice, &a.CurrentBid,
+		&a.Bidder, &a.Quantity, &a.Status, &a.StartTime, &a.EndTime, &a.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &a, nil
+}
+
+const txCols = `id,nft_id,collection_id,chain,seller,buyer,price,price_token,fee,royalty,tx_hash,timestamp`
+
+func (ns *NFTService) scanTransaction(q pgx.Row) (*NFTTransaction, error) {
+	var t NFTTransaction
+	err := q.Scan(&t.ID, &t.NFTID, &t.CollectionID, &t.Chain, &t.Seller, &t.Buyer, &t.Price,
+		&t.PriceToken, &t.Fee, &t.Royalty, &t.TxHash, &t.Timestamp)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// insertCollection persists a collection row.
+func (ns *NFTService) insertCollection(ctx context.Context, c *NFTCollection) error {
+	_, err := ns.pg.Exec(ctx, `INSERT INTO nft_collections
+		(id,name,symbol,chain,contract_address,owner,creator,description,image_url,external_url,
+		category,standard,total_supply,floor_price,volume_24h,sales_24h,owners,verified,featured,
+		royalty_fee,status,created_at,updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+		c.ID, c.Name, c.Symbol, c.Chain, c.ContractAddress, c.Owner, c.Creator, c.Description,
+		c.ImageURL, c.ExternalURL, c.Category, c.Standard, c.TotalSupply, c.FloorPrice, c.Volume24h,
+		c.Sales24h, c.Owners, c.Verified, c.Featured, c.RoyaltyFee, c.Status, c.CreatedAt, c.UpdatedAt)
+	return err
+}
+
+// insertNFT persists a token row.
+func (ns *NFTService) insertNFT(ctx context.Context, n *NFT) error {
+	_, err := ns.pg.Exec(ctx, `INSERT INTO nft_tokens
+		(id,collection_id,token_id,chain,contract_address,owner,creator,name,description,image_url,
+		animation_url,external_url,attributes,edition,quantity,token_uri,is_for_sale,price,
+		price_token,listing_fee,last_sale_price,last_sale_time,created_at,updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
+		n.ID, n.CollectionID, n.TokenID, n.Chain, n.ContractAddress, n.Owner, n.Creator, n.Name,
+		n.Description, n.ImageURL, n.AnimationURL, n.ExternalURL, attrJSON(n.Attributes), n.Edition,
+		n.Quantity, n.TokenURI, n.IsForSale, n.Price, n.PriceToken, n.ListingFee, n.LastSalePrice,
+		n.LastSaleTime, n.CreatedAt, n.UpdatedAt)
+	return err
+}
+
+// insertListing persists a listing row.
+func (ns *NFTService) insertListing(ctx context.Context, l *NFTListing) error {
+	_, err := ns.pg.Exec(ctx, `INSERT INTO nft_listings
+		(id,nft_id,seller,price,price_token,quantity,status,start_time,end_time,created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		l.ID, l.NFTID, l.Seller, l.Price, l.PriceToken, l.Quantity, l.Status, l.StartTime, l.EndTime, l.CreatedAt)
+	return err
+}
+
+// insertOffer persists an offer row.
+func (ns *NFTService) insertOffer(ctx context.Context, o *NFTOffer) error {
+	_, err := ns.pg.Exec(ctx, `INSERT INTO nft_offers
+		(id,nft_id,buyer,price,price_token,quantity,status,expired_at,created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		o.ID, o.NFTID, o.Buyer, o.Price, o.PriceToken, o.Quantity, o.Status, o.ExpiredAt, o.CreatedAt)
+	return err
+}
+
+// insertTransaction persists a transaction row.
+func (ns *NFTService) insertTransaction(ctx context.Context, t *NFTTransaction) error {
+	_, err := ns.pg.Exec(ctx, `INSERT INTO nft_transactions
+		(id,nft_id,collection_id,chain,seller,buyer,price,price_token,fee,royalty,tx_hash,timestamp)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		t.ID, t.NFTID, t.CollectionID, t.Chain, t.Seller, t.Buyer, t.Price, t.PriceToken, t.Fee,
+		t.Royalty, t.TxHash, t.Timestamp)
+	return err
+}
+
+// insertAuction persists an auction row.
+func (ns *NFTService) insertAuction(ctx context.Context, a *NFTAuction) error {
+	_, err := ns.pg.Exec(ctx, `INSERT INTO nft_auctions
+		(id,nft_id,seller,start_price,end_price,current_bid,bidder,quantity,status,start_time,end_time,created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		a.ID, a.NFTID, a.Seller, a.StartPrice, a.EndPrice, a.CurrentBid, a.Bidder, a.Quantity,
+		a.Status, a.StartTime, a.EndTime, a.CreatedAt)
+	return err
+}
+
+// tokenCount returns the number of minted tokens (used for token-id generation).
+func (ns *NFTService) tokenCount(ctx context.Context) (int, error) {
+	var n int
+	err := ns.pg.QueryRow(ctx, `SELECT count(*) FROM nft_tokens`).Scan(&n)
+	return n, err
+}
+
+// ============================================================================
 // API Handlers
 // ============================================================================
 
 // Get all collections
 func (ns *NFTService) GetCollections(c *gin.Context) {
+	if ns.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
 	category := c.Query("category")
 	chain := c.Query("chain")
 	featured := c.Query("featured")
 
+	ctx := c.Request.Context()
+	qb := strings.Builder{}
+	qb.WriteString(`SELECT ` + collectionCols + ` FROM nft_collections WHERE 1=1`)
+	args := []interface{}{}
+	n := 1
+	if category != "" {
+		qb.WriteString(fmt.Sprintf(` AND category=$%d`, n))
+		args = append(args, category)
+		n++
+	}
+	if chain != "" {
+		qb.WriteString(fmt.Sprintf(` AND chain=$%d`, n))
+		args = append(args, chain)
+		n++
+	}
+	if featured == "true" {
+		qb.WriteString(` AND featured=TRUE`)
+	}
+	qb.WriteString(` ORDER BY created_at DESC`)
+
+	rows, err := ns.pg.Query(ctx, qb.String(), args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
 	collections := make([]*NFTCollection, 0)
-	for _, col := range ns.collections {
-		if category != "" && col.Category != category {
-			continue
-		}
-		if chain != "" && col.Chain != chain {
-			continue
-		}
-		if featured == "true" && !col.Featured {
-			continue
+	for rows.Next() {
+		col, err := ns.getCollectionRow(ctx, rows, "")
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
 		collections = append(collections, col)
+	}
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -281,10 +628,14 @@ func (ns *NFTService) GetCollections(c *gin.Context) {
 
 // Get collection by ID
 func (ns *NFTService) GetCollection(c *gin.Context) {
+	if ns.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
 	collectionID := c.Param("id")
 
-	collection, exists := ns.collections[collectionID]
-	if !exists {
+	collection, err := ns.getCollectionByID(c.Request.Context(), collectionID)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "collection not found"})
 		return
 	}
@@ -297,13 +648,32 @@ func (ns *NFTService) GetCollection(c *gin.Context) {
 
 // Get NFTs in collection
 func (ns *NFTService) GetCollectionNFTs(c *gin.Context) {
+	if ns.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
 	collectionID := c.Param("id")
 
+	ctx := c.Request.Context()
+	rows, err := ns.pg.Query(ctx, `SELECT `+nftCols+` FROM nft_tokens WHERE collection_id=$1 ORDER BY created_at DESC`, collectionID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
 	nfts := make([]*NFT, 0)
-	for _, nft := range ns.nfts {
-		if nft.CollectionID == collectionID {
-			nfts = append(nfts, nft)
+	for rows.Next() {
+		nft, err := ns.getNFTRow(rows)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
+		nfts = append(nfts, nft)
+	}
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -315,10 +685,14 @@ func (ns *NFTService) GetCollectionNFTs(c *gin.Context) {
 
 // Get NFT by ID
 func (ns *NFTService) GetNFT(c *gin.Context) {
+	if ns.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
 	nftID := c.Param("id")
 
-	nft, exists := ns.nfts[nftID]
-	if !exists {
+	nft, err := ns.getNFTByID(c.Request.Context(), nftID)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "nft not found"})
 		return
 	}
@@ -342,6 +716,10 @@ type CreateCollectionRequest struct {
 }
 
 func (ns *NFTService) CreateCollection(c *gin.Context) {
+	if ns.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
 	var req CreateCollectionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -349,6 +727,7 @@ func (ns *NFTService) CreateCollection(c *gin.Context) {
 	}
 
 	collectionID := uuid.New().String()
+	now := time.Now()
 	collection := &NFTCollection{
 		ID:              collectionID,
 		Name:            req.Name,
@@ -362,11 +741,14 @@ func (ns *NFTService) CreateCollection(c *gin.Context) {
 		Standard:        req.Standard,
 		RoyaltyFee:      req.RoyaltyFee,
 		Status:          "active",
-		CreatedAt:       time.Now(),
-		UpdatedAt:       time.Now(),
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 
-	ns.collections[collectionID] = collection
+	if err := ns.insertCollection(c.Request.Context(), collection); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusCreated, gin.H{
 		"success":       true,
@@ -389,23 +771,35 @@ type MintNFTRequest struct {
 }
 
 func (ns *NFTService) MintNFT(c *gin.Context) {
+	if ns.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
 	var req MintNFTRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Validate collection
-	collection, exists := ns.collections[req.CollectionID]
-	if !exists {
+	ctx := c.Request.Context()
+
+	// Validate collection.
+	collection, err := ns.getCollectionByID(ctx, req.CollectionID)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "collection not found"})
 		return
 	}
 
-	// Generate token ID
-	tokenID := fmt.Sprintf("%d", len(ns.nfts)+1)
+	// Generate token id from current token count.
+	count, err := ns.tokenCount(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	tokenID := fmt.Sprintf("%d", count+1)
 
 	nftID := uuid.New().String()
+	now := time.Now()
 	nft := &NFT{
 		ID:              nftID,
 		CollectionID:    req.CollectionID,
@@ -423,14 +817,22 @@ func (ns *NFTService) MintNFT(c *gin.Context) {
 		Price:           req.Price,
 		PriceToken:      req.PriceToken,
 		TokenURI:        fmt.Sprintf("ipfs://%s/%s.json", nftID, tokenID),
-		CreatedAt:       time.Now(),
-		UpdatedAt:       time.Now(),
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 
-	ns.nfts[nftID] = nft
+	if err := ns.insertNFT(ctx, nft); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-	// Update collection
-	collection.TotalSupply = fmt.Sprintf("%d", len(ns.nfts))
+	// Update collection total supply.
+	if _, err := ns.pg.Exec(ctx,
+		`UPDATE nft_collections SET total_supply=CAST($1 AS TEXT), updated_at=$2 WHERE id=$3`,
+		count+1, now, req.CollectionID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusCreated, gin.H{
 		"success":   true,
@@ -450,49 +852,61 @@ type ListNFTRequest struct {
 }
 
 func (ns *NFTService) ListNFT(c *gin.Context) {
+	if ns.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
 	var req ListNFTRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Validate NFT
-	nft, exists := ns.nfts[req.NFTID]
-	if !exists {
+	ctx := c.Request.Context()
+	userID := c.GetString("user_id")
+
+	// Validate NFT ownership.
+	nft, err := ns.getNFTByID(ctx, req.NFTID)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "nft not found"})
 		return
 	}
-
-	if nft.Owner != c.GetString("user_id") {
+	if nft.Owner != userID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not owner"})
 		return
 	}
 
-	// Create listing
+	// Create listing.
 	listingID := uuid.New().String()
 	quantity := req.Quantity
 	if quantity == 0 {
 		quantity = 1
 	}
-
+	now := time.Now()
 	listing := &NFTListing{
 		ID:         listingID,
 		NFTID:      req.NFTID,
-		Seller:     c.GetString("user_id"),
+		Seller:     userID,
 		Price:      req.Price,
 		PriceToken: req.PriceToken,
 		Quantity:   quantity,
 		Status:     "active",
-		StartTime:  time.Now(),
-		CreatedAt:  time.Now(),
+		StartTime:  now,
+		CreatedAt:  now,
 	}
 
-	ns.listings[listingID] = listing
+	if err := ns.insertListing(ctx, listing); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-	// Update NFT
-	nft.IsForSale = true
-	nft.Price = req.Price
-	nft.PriceToken = req.PriceToken
+	// Update NFT.
+	if _, err := ns.pg.Exec(ctx,
+		`UPDATE nft_tokens SET is_for_sale=TRUE, price=$1, price_token=$2, updated_at=$3 WHERE id=$4`,
+		req.Price, req.PriceToken, now, req.NFTID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusCreated, gin.H{
 		"success":     true,
@@ -508,65 +922,107 @@ type BuyNFTRequest struct {
 }
 
 func (ns *NFTService) BuyNFT(c *gin.Context) {
+	if ns.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
 	var req BuyNFTRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Validate listing
-	listing, exists := ns.listings[req.ListingID]
-	if !exists {
+	ctx := c.Request.Context()
+	buyer := c.GetString("user_id")
+
+	tx, err := ns.pg.Begin(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	// Lock the listing row to serialize concurrent buyers.
+	var listingID, nftID, seller, price, priceToken, status string
+	err = tx.QueryRow(ctx,
+		`SELECT id,nft_id,seller,price,price_token,status FROM nft_listings WHERE id=$1 FOR UPDATE`,
+		req.ListingID).Scan(&listingID, &nftID, &seller, &price, &priceToken, &status)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "listing not found"})
 		return
 	}
-
-	if listing.Status != "active" {
+	if status != "active" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "listing not active"})
 		return
 	}
 
-	// Get NFT
-	nft := ns.nfts[listing.NFTID]
-	collection := ns.collections[nft.CollectionID]
+	// Lock the NFT row and read collection for royalty.
+	var collectionID, chain string
+	err = tx.QueryRow(ctx,
+		`SELECT collection_id,chain FROM nft_tokens WHERE id=$1 FOR UPDATE`, nftID).
+		Scan(&collectionID, &chain)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "nft not found"})
+		return
+	}
+	var royalty string
+	_ = tx.QueryRow(ctx, `SELECT royalty_fee FROM nft_collections WHERE id=$1`, collectionID).Scan(&royalty)
 
-	// Create transaction
 	txID := uuid.New().String()
-	tx := &NFTTransaction{
+	now := time.Now()
+	transaction := &NFTTransaction{
 		ID:           txID,
-		NFTID:        listing.NFTID,
-		CollectionID: nft.CollectionID,
-		Chain:        nft.Chain,
-		Seller:       listing.Seller,
-		Buyer:        c.GetString("user_id"),
-		Price:        listing.Price,
-		PriceToken:   listing.PriceToken,
+		NFTID:        nftID,
+		CollectionID: collectionID,
+		Chain:        chain,
+		Seller:       seller,
+		Buyer:        buyer,
+		Price:        price,
+		PriceToken:   priceToken,
 		Fee:          "2.5", // platform fee
-		Royalty:      collection.RoyaltyFee,
+		Royalty:      royalty,
 		TxHash:       "", // not broadcast via RPC; real hash requires on-chain broadcast
-		Timestamp:    time.Now(),
+		Timestamp:    now,
 	}
 
-	ns.transactions[txID] = tx
+	if _, err := tx.Exec(ctx, `INSERT INTO nft_transactions
+		(id,nft_id,collection_id,chain,seller,buyer,price,price_token,fee,royalty,tx_hash,timestamp)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		transaction.ID, transaction.NFTID, transaction.CollectionID, transaction.Chain,
+		transaction.Seller, transaction.Buyer, transaction.Price, transaction.PriceToken,
+		transaction.Fee, transaction.Royalty, transaction.TxHash, transaction.Timestamp); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-	// Update listing
-	listing.Status = "sold"
+	// Mark listing sold.
+	if _, err := tx.Exec(ctx, `UPDATE nft_listings SET status='sold' WHERE id=$1`, listingID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-	// Update NFT
-	nft.Owner = c.GetString("user_id")
-	nft.IsForSale = false
-	nft.LastSalePrice = listing.Price
-	nft.LastSaleTime = &tx.Timestamp
+	// Transfer NFT ownership.
+	if _, err := tx.Exec(ctx,
+		`UPDATE nft_tokens SET owner=$1, is_for_sale=FALSE, last_sale_price=$2, last_sale_time=$3, updated_at=$3 WHERE id=$4`,
+		buyer, price, now, nftID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success":     true,
 		"tx_id":       txID,
-		"nft_id":      listing.NFTID,
-		"buyer":       c.GetString("user_id"),
-		"seller":      listing.Seller,
-		"price":       listing.Price,
-		"price_token": listing.PriceToken,
-		"tx_hash":     tx.TxHash,
+		"nft_id":      nftID,
+		"buyer":       buyer,
+		"seller":      seller,
+		"price":       price,
+		"price_token": priceToken,
+		"tx_hash":     transaction.TxHash,
 		"status":      "pending",
 	})
 }
@@ -581,27 +1037,32 @@ type MakeOfferRequest struct {
 }
 
 func (ns *NFTService) MakeOffer(c *gin.Context) {
+	if ns.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
 	var req MakeOfferRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Validate NFT
-	if _, exists := ns.nfts[req.NFTID]; !exists {
+	ctx := c.Request.Context()
+
+	// Validate NFT.
+	if _, err := ns.getNFTByID(ctx, req.NFTID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "nft not found"})
 		return
 	}
 
-	// Create offer
+	// Create offer.
 	offerID := uuid.New().String()
 	quantity := req.Quantity
 	if quantity == 0 {
 		quantity = 1
 	}
-
-	expiredAt := time.Now().Add(time.Duration(req.Duration) * time.Hour)
-
+	now := time.Now()
+	expiredAt := now.Add(time.Duration(req.Duration) * time.Hour)
 	offer := &NFTOffer{
 		ID:         offerID,
 		NFTID:      req.NFTID,
@@ -611,10 +1072,13 @@ func (ns *NFTService) MakeOffer(c *gin.Context) {
 		Quantity:   quantity,
 		Status:     "pending",
 		ExpiredAt:  &expiredAt,
-		CreatedAt:  time.Now(),
+		CreatedAt:  now,
 	}
 
-	ns.offers[offerID] = offer
+	if err := ns.insertOffer(ctx, offer); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusCreated, gin.H{
 		"success":  true,
@@ -625,7 +1089,7 @@ func (ns *NFTService) MakeOffer(c *gin.Context) {
 }
 
 // ============================================================================
-// Auction handlers — English-auction style bidding over Redis-backed state.
+// Auction handlers — English-auction style bidding over PostgreSQL state.
 // ============================================================================
 
 type CreateAuctionRequest struct {
@@ -638,21 +1102,25 @@ type CreateAuctionRequest struct {
 
 // CreateAuction lists an NFT for English-auction style bidding.
 func (ns *NFTService) CreateAuction(c *gin.Context) {
+	if ns.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
 	var req CreateAuctionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	ns.mu.RLock()
-	nft, exists := ns.nfts[req.NFTID]
-	ns.mu.RUnlock()
-	if !exists {
+	ctx := c.Request.Context()
+	userID := c.GetString("user_id")
+
+	nft, err := ns.getNFTByID(ctx, req.NFTID)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "nft not found"})
 		return
 	}
-
-	if nft.Owner != c.GetString("user_id") {
+	if nft.Owner != userID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not nft owner"})
 		return
 	}
@@ -681,10 +1149,16 @@ func (ns *NFTService) CreateAuction(c *gin.Context) {
 		CreatedAt:  now,
 	}
 
-	ns.mu.Lock()
-	ns.auctions[auction.ID] = auction
-	nft.IsForSale = true
-	ns.mu.Unlock()
+	if err := ns.insertAuction(ctx, auction); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if _, err := ns.pg.Exec(ctx,
+		`UPDATE nft_tokens SET is_for_sale=TRUE, updated_at=$1 WHERE id=$2`, now, req.NFTID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusCreated, gin.H{
 		"success":    true,
@@ -701,26 +1175,45 @@ type PlaceBidRequest struct {
 // PlaceBid records a bid on an active auction. Bids must exceed the current
 // high bid and must be placed before the auction end time.
 func (ns *NFTService) PlaceBid(c *gin.Context) {
+	if ns.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
 	var req PlaceBidRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	ns.mu.Lock()
-	defer ns.mu.Unlock()
+	ctx := c.Request.Context()
+	bidder := c.GetString("user_id")
 
-	auction, exists := ns.auctions[req.AuctionID]
-	if !exists {
+	tx, err := ns.pg.Begin(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	var auctionID, currentBid, status string
+	var endTime time.Time
+	err = tx.QueryRow(ctx,
+		`SELECT id,current_bid,status,end_time FROM nft_auctions WHERE id=$1 FOR UPDATE`,
+		req.AuctionID).Scan(&auctionID, &currentBid, &status, &endTime)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "auction not found"})
 		return
 	}
-	if auction.Status != "active" {
+	if status != "active" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "auction not active"})
 		return
 	}
-	if time.Now().After(auction.EndTime) {
-		auction.Status = "ended"
+	if time.Now().After(endTime) {
+		if _, err := tx.Exec(ctx, `UPDATE nft_auctions SET status='ended' WHERE id=$1`, auctionID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		_ = tx.Commit(ctx)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "auction ended"})
 		return
 	}
@@ -731,7 +1224,7 @@ func (ns *NFTService) PlaceBid(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid amount"})
 		return
 	}
-	bigCurrent, _ := new(big.Int).SetString(auction.CurrentBid, 10)
+	bigCurrent, _ := new(big.Int).SetString(currentBid, 10)
 	if bigCurrent == nil {
 		bigCurrent = new(big.Int)
 	}
@@ -740,54 +1233,88 @@ func (ns *NFTService) PlaceBid(c *gin.Context) {
 		return
 	}
 
-	auction.CurrentBid = req.Amount
-	auction.Bidder = c.GetString("user_id")
+	if _, err := tx.Exec(ctx,
+		`UPDATE nft_auctions SET current_bid=$1, bidder=$2 WHERE id=$3`,
+		req.Amount, bidder, auctionID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success":     true,
-		"auction_id":  auction.ID,
-		"current_bid": auction.CurrentBid,
-		"bidder":      auction.Bidder,
+		"auction_id":  auctionID,
+		"current_bid": req.Amount,
+		"bidder":      bidder,
 	})
 }
 
 // EndAuction settles an auction after its end time and returns the winning bid.
 func (ns *NFTService) EndAuction(c *gin.Context) {
+	if ns.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
 	auctionID := c.Param("id")
 
-	ns.mu.Lock()
-	defer ns.mu.Unlock()
+	ctx := c.Request.Context()
 
-	auction, exists := ns.auctions[auctionID]
-	if !exists {
+	tx, err := ns.pg.Begin(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	var id, currentBid, bidder, status string
+	err = tx.QueryRow(ctx,
+		`SELECT id,current_bid,bidder,status FROM nft_auctions WHERE id=$1 FOR UPDATE`,
+		auctionID).Scan(&id, &currentBid, &bidder, &status)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "auction not found"})
 		return
 	}
-	if auction.Status == "ended" {
+	if status == "ended" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "auction already ended"})
 		return
 	}
 
-	auction.Status = "ended"
+	if _, err := tx.Exec(ctx, `UPDATE nft_auctions SET status='ended' WHERE id=$1`, auctionID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
 	saleID := uuid.New().String()
 
 	c.JSON(http.StatusOK, gin.H{
 		"success":    true,
-		"auction_id": auction.ID,
+		"auction_id": auctionID,
 		"sale_id":    saleID,
-		"winner":     auction.Bidder,
-		"final_bid":  auction.CurrentBid,
+		"winner":     bidder,
+		"final_bid":  currentBid,
 	})
 }
 
 // GetAuction returns the current state of a single auction.
 func (ns *NFTService) GetAuction(c *gin.Context) {
+	if ns.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
 	auctionID := c.Param("id")
 
-	ns.mu.RLock()
-	auction, exists := ns.auctions[auctionID]
-	ns.mu.RUnlock()
-	if !exists {
+	auction, err := ns.scanAuction(ns.pg.QueryRow(c.Request.Context(),
+		`SELECT `+auctionCols+` FROM nft_auctions WHERE id=$1`, auctionID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "auction not found"})
 		return
 	}
@@ -798,37 +1325,72 @@ func (ns *NFTService) GetAuction(c *gin.Context) {
 // GetActiveAuctions lists currently-active auctions, optionally filtered by
 // collection id (query param ?collection_id=...).
 func (ns *NFTService) GetActiveAuctions(c *gin.Context) {
+	if ns.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
 	collectionID := c.Query("collection_id")
 
-	ns.mu.RLock()
-	result := make([]*NFTAuction, 0)
-	for _, a := range ns.auctions {
-		if a.Status != "active" {
-			continue
-		}
-		if collectionID != "" {
-			if nft, ok := ns.nfts[a.NFTID]; !ok || nft.CollectionID != collectionID {
-				continue
-			}
-		}
-		result = append(result, a)
+	ctx := c.Request.Context()
+	var (
+		rows pgx.Rows
+		err  error
+	)
+	if collectionID != "" {
+		rows, err = ns.pg.Query(ctx,
+			`SELECT `+auctionColsAlias()+` FROM nft_auctions a
+			WHERE a.status='active' AND EXISTS (
+				SELECT 1 FROM nft_tokens t WHERE t.id=a.nft_id AND t.collection_id=$1
+			) ORDER BY a.end_time ASC`, collectionID)
+	} else {
+		rows, err = ns.pg.Query(ctx,
+			`SELECT `+auctionCols+` FROM nft_auctions WHERE status='active' ORDER BY end_time ASC`)
 	}
-	ns.mu.RUnlock()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	result := make([]*NFTAuction, 0)
+	for rows.Next() {
+		auction, err := ns.scanAuction(rows)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		result = append(result, auction)
+	}
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{"auctions": result, "count": len(result)})
+}
+
+// auctionColsAlias returns the auction columns prefixed with the alias used by
+// the joined query in GetActiveAuctions.
+func auctionColsAlias() string {
+	return `a.id,a.nft_id,a.seller,a.start_price,a.end_price,a.current_bid,a.bidder,
+		a.quantity,a.status,a.start_time,a.end_time,a.created_at`
 }
 
 // CancelListing removes an active fixed-price listing. Only the listing owner
 // may cancel.
 func (ns *NFTService) CancelListing(c *gin.Context) {
+	if ns.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
 	listingID := c.Param("id")
 	userID := c.GetString("user_id")
 
-	ns.mu.Lock()
-	defer ns.mu.Unlock()
+	ctx := c.Request.Context()
 
-	listing, exists := ns.listings[listingID]
-	if !exists {
+	listing, err := ns.scanListing(ns.pg.QueryRow(ctx,
+		`SELECT `+listingCols+` FROM nft_listings WHERE id=$1`, listingID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "listing not found"})
 		return
 	}
@@ -841,9 +1403,15 @@ func (ns *NFTService) CancelListing(c *gin.Context) {
 		return
 	}
 
-	listing.Status = "cancelled"
-	if nft, ok := ns.nfts[listing.NFTID]; ok {
-		nft.IsForSale = false
+	if _, err := ns.pg.Exec(ctx,
+		`UPDATE nft_listings SET status='cancelled' WHERE id=$1`, listingID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := ns.pg.Exec(ctx,
+		`UPDATE nft_tokens SET is_for_sale=FALSE, updated_at=$1 WHERE id=$2`, time.Now(), listing.NFTID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "listing_id": listingID, "status": "cancelled"})
@@ -880,13 +1448,33 @@ func (ns *NFTService) GetUserNFTs(c *gin.Context) {
 		return
 	}
 
+	if ns.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
+
 	// Fallback: return marketplace-tracked NFTs owned by the user (real
 	// application state created via Mint/List), not seeded mock data.
+	ctx := c.Request.Context()
+	rows, err := ns.pg.Query(ctx, `SELECT `+nftCols+` FROM nft_tokens WHERE owner=$1 ORDER BY created_at DESC`, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
 	nfts := make([]*NFT, 0)
-	for _, nft := range ns.nfts {
-		if nft.Owner == userID {
-			nfts = append(nfts, nft)
+	for rows.Next() {
+		nft, err := ns.getNFTRow(rows)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
+		nfts = append(nfts, nft)
+	}
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -899,13 +1487,32 @@ func (ns *NFTService) GetUserNFTs(c *gin.Context) {
 
 // Get NFT transactions
 func (ns *NFTService) GetNFTHistory(c *gin.Context) {
+	if ns.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
 	nftID := c.Param("id")
 
+	ctx := c.Request.Context()
+	rows, err := ns.pg.Query(ctx, `SELECT `+txCols+` FROM nft_transactions WHERE nft_id=$1 ORDER BY timestamp DESC`, nftID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
 	txs := make([]*NFTTransaction, 0)
-	for _, tx := range ns.transactions {
-		if tx.NFTID == nftID {
-			txs = append(txs, tx)
+	for rows.Next() {
+		t, err := ns.scanTransaction(rows)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
+		txs = append(txs, t)
+	}
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -917,18 +1524,49 @@ func (ns *NFTService) GetNFTHistory(c *gin.Context) {
 
 // Get listings
 func (ns *NFTService) GetListings(c *gin.Context) {
+	if ns.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
 	nftID := c.Query("nft_id")
 	status := c.Query("status")
 
+	ctx := c.Request.Context()
+	qb := strings.Builder{}
+	qb.WriteString(`SELECT ` + listingCols + ` FROM nft_listings WHERE 1=1`)
+	args := []interface{}{}
+	n := 1
+	if nftID != "" {
+		qb.WriteString(fmt.Sprintf(` AND nft_id=$%d`, n))
+		args = append(args, nftID)
+		n++
+	}
+	if status != "" {
+		qb.WriteString(fmt.Sprintf(` AND status=$%d`, n))
+		args = append(args, status)
+		n++
+	}
+	qb.WriteString(` ORDER BY created_at DESC`)
+
+	rows, err := ns.pg.Query(ctx, qb.String(), args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
 	listings := make([]*NFTListing, 0)
-	for _, listing := range ns.listings {
-		if nftID != "" && listing.NFTID != nftID {
-			continue
-		}
-		if status != "" && listing.Status != status {
-			continue
+	for rows.Next() {
+		listing, err := ns.scanListing(rows)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
 		listings = append(listings, listing)
+	}
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -940,32 +1578,62 @@ func (ns *NFTService) GetListings(c *gin.Context) {
 
 // Search NFTs
 func (ns *NFTService) SearchNFTs(c *gin.Context) {
+	if ns.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
 	query := c.Query("q")
 	collection := c.Query("collection")
 	minPrice := c.Query("min_price")
 	maxPrice := c.Query("max_price")
 
+	ctx := c.Request.Context()
+	qb := strings.Builder{}
+	qb.WriteString(`SELECT ` + nftCols + ` FROM nft_tokens WHERE 1=1`)
+	args := []interface{}{}
+	n := 1
+	if query != "" {
+		qb.WriteString(fmt.Sprintf(` AND (LOWER(name) LIKE LOWER($%d) OR LOWER(coalesce(description,'')) LIKE LOWER($%d))`, n, n))
+		args = append(args, "%"+query+"%")
+		n++
+	}
+	if collection != "" {
+		qb.WriteString(fmt.Sprintf(` AND collection_id=$%d`, n))
+		args = append(args, collection)
+		n++
+	}
+	// Price range filter on the numeric token price (simplified big-int compare).
+	if minPrice != "" {
+		qb.WriteString(fmt.Sprintf(` AND pg_typeof(price)::text IS NOT NULL AND length(price) > 0 AND price >= $%d`, n))
+		args = append(args, minPrice)
+		n++
+	}
+	if maxPrice != "" {
+		qb.WriteString(fmt.Sprintf(` AND length(price) > 0 AND price <= $%d`, n))
+		args = append(args, maxPrice)
+		n++
+	}
+	qb.WriteString(` ORDER BY created_at DESC`)
+
+	rows, err := ns.pg.Query(ctx, qb.String(), args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
 	nfts := make([]*NFT, 0)
-	for _, nft := range ns.nfts {
-		// Check query
-		if query != "" {
-			if !strings.Contains(strings.ToLower(nft.Name), strings.ToLower(query)) &&
-				!strings.Contains(strings.ToLower(nft.Description), strings.ToLower(query)) {
-				continue
-			}
+	for rows.Next() {
+		nft, err := ns.getNFTRow(rows)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
-
-		// Check collection
-		if collection != "" && nft.CollectionID != collection {
-			continue
-		}
-
-		// Check price range (simplified)
-		if minPrice != "" || maxPrice != "" {
-			// Would need proper big number comparison
-		}
-
 		nfts = append(nfts, nft)
+	}
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -974,10 +1642,6 @@ func (ns *NFTService) SearchNFTs(c *gin.Context) {
 		"total":   len(nfts),
 	})
 }
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
 
 // ============================================================================
 // Middleware
