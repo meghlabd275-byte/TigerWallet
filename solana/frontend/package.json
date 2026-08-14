@@ -8,13 +8,12 @@
     "start": "next start"
   },
   "dependencies": {
-    "next": "14.2.3",
+    "next": "14.2.35",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "@solana/web3.js": "1.91.8",
     "@solana/spl-token": "0.4.1",
-    "@solana/nft-sdk": "1.1.1",
-    "@solana/wallet-adapter-react": "2.1.3",
+    "@solana/wallet-adapter-react": "^0.15.39",
     "ethers": "6.12.1",
     "zustand": "4.5.2",
     "lucide-react": "0.378.0",

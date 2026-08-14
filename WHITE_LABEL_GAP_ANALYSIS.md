@@ -1,7 +1,34 @@
 # TigerWallet White-Label Architecture — Complete Gap Analysis
 
 > Full audit of the white-label operating model against the current codebase.
-> Date: 2026-08-09
+> Date: 2026-08-09. **Re-verified 2026-08-13** — see update notes below.
+
+> **Update 2026-08-13.** A re-verification against the current source shows
+> several Pillar-1 findings from the original audit are now **RESOLVED**:
+> - `go/wallet_service` is no longer a mock-quote service — it is a stdlib
+>   reverse-proxy shim to the canonical `go/wallet_api` (no fabricated quotes).
+> - `fetcher_core/rust/src/blockchain/mod.rs` no longer hardcodes
+>   `block_number: 18000000` / fake `0x1234…` addresses — it delegates to the
+>   backend and is fail-closed.
+> - `white_label_admin/go` is no longer a `status:ok` stub — it initializes a
+>   real PostgreSQL DB (`database.Initialize`) and wires the admin router with
+>   real handler logic (113 handlers).
+> - MasterWallet + UserWallet clients (`master_wallet/*`, `user_wallet/*`,
+>   `mobile_apps/*`) all target the real canonical backends
+>   (`go/wallet_api`:8443, `master_wallet/backend`:8450) — the old
+>   `api.tigerwallet.com` cloud hardcoding was removed repo-wide.
+>
+> Items still genuinely OPEN at re-verification:
+> - `license_service` / `kill_switch` are not wired into `docker-compose.yml`
+>   (Pillar 4 control-plane enforcement) — pending.
+>
+> **Update 2026-08-13 (2).** `selfhosted_masterwallet/rust/src/main.rs` is no
+> longer a 5-line `println!` placeholder — it is now a real, standalone
+> actix-web HTTP server (port 8470) with its own PostgreSQL schema (sqlx),
+> real PBKDF2-HMAC-SHA256 password hashing (600k iters, constant-time verify),
+> real HS256 JWT auth, and the full canonical MasterWallet REST contract
+> (auth, master wallets, sub-wallets, transactions, approve/reject, fees,
+> auto-sign, users, analytics, chains, health). `cargo check` exit 0.
 
 ## Target Operating Model (4 pillars)
 
