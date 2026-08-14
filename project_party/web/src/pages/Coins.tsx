@@ -1,6 +1,6 @@
 // Coins Page - ProjectParty
 import React, { useState, useEffect } from 'react';
-import { api } from '../../services/api';
+import { api } from '../services/api';
 
 export default function Coins() {
   const [coins, setCoins] = useState<any[]>([]);

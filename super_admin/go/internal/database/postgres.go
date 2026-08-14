@@ -79,12 +79,97 @@ func runMigrations(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS integration_configs (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), integration VARCHAR(50) NOT NULL, name VARCHAR(255) NOT NULL, api_key TEXT, api_secret TEXT, webhook_url TEXT, is_active BOOLEAN DEFAULT TRUE, settings JSONB, created_by UUID REFERENCES admin_users(id), created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW())`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_logs_admin_id ON audit_logs(admin_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_sessions_admin_id ON sessions(admin_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_sessions_admin_id ON admin_sessions(admin_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_notifications_admin_id ON notifications(admin_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
 		`CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_withdrawals_user_id ON withdrawals(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)`,
+
+		// Bot platform tables
+		`CREATE TABLE IF NOT EXISTS bots (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name TEXT NOT NULL,
+			bot_type TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'stopped',
+			owner_id UUID,
+			tier_id UUID,
+			config JSONB,
+			stats JSONB,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE TABLE IF NOT EXISTS bot_tiers (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name TEXT UNIQUE NOT NULL,
+			max_bots INT NOT NULL DEFAULT 1,
+			max_dex INT NOT NULL DEFAULT 1,
+			max_cex INT NOT NULL DEFAULT 0,
+			latency_ms INT NOT NULL DEFAULT 5000,
+			monthly_fee NUMERIC NOT NULL DEFAULT 0,
+			is_active BOOLEAN DEFAULT true,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE TABLE IF NOT EXISTS bots_clients (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name TEXT NOT NULL,
+			company TEXT,
+			email TEXT,
+			api_key TEXT UNIQUE,
+			status TEXT NOT NULL DEFAULT 'pending',
+			permission_level TEXT NOT NULL DEFAULT 'read',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE TABLE IF NOT EXISTS project_teams (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name TEXT NOT NULL,
+			description TEXT,
+			owner_id UUID,
+			status TEXT NOT NULL DEFAULT 'active',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE TABLE IF NOT EXISTS project_team_members (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			team_id UUID NOT NULL REFERENCES project_teams(id) ON DELETE CASCADE,
+			user_id UUID,
+			role TEXT NOT NULL DEFAULT 'member',
+			joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE TABLE IF NOT EXISTS master_wallets (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name TEXT NOT NULL,
+			address TEXT,
+			chain_id BIGINT,
+			balance NUMERIC DEFAULT 0,
+			status TEXT NOT NULL DEFAULT 'active',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE TABLE IF NOT EXISTS user_wallets (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			master_wallet_id UUID REFERENCES master_wallets(id) ON DELETE CASCADE,
+			name TEXT NOT NULL,
+			address TEXT,
+			chain_id BIGINT,
+			balance NUMERIC DEFAULT 0,
+			status TEXT NOT NULL DEFAULT 'active',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE TABLE IF NOT EXISTS wl_clients (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name TEXT NOT NULL,
+			domain TEXT UNIQUE,
+			status TEXT NOT NULL DEFAULT 'active',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_bots_owner ON bots(owner_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_bots_clients_status ON bots_clients(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_project_team_members_team ON project_team_members(team_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_user_wallets_master ON user_wallets(master_wallet_id)`,
 	}
 
 	for _, migration := range migrations {

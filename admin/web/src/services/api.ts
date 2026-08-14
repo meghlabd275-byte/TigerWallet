@@ -2,8 +2,8 @@
 // Connects to Go Admin Service and Rust Admin Fetchers
 // Uses PostgreSQL and Redis on the backend
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_ADMIN_API || 'http://localhost:8080';
-const WS_BASE_URL = process.env.NEXT_PUBLIC_ADMIN_WS || 'ws://localhost:8080';
+const API_BASE_URL = process.env.NEXT_PUBLIC_ADMIN_API || 'http://localhost:9093';
+const WS_BASE_URL = process.env.NEXT_PUBLIC_ADMIN_WS || 'ws://localhost:9093';
 
 class AdminApiService {
   private baseURL: string;
@@ -32,7 +32,7 @@ class AdminApiService {
     }
   }
 
-  private async request<T>(
+  async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
@@ -96,6 +96,11 @@ class AdminApiService {
     return this.request('/api/v1/admins');
   }
 
+  async listAdmins(): Promise<{ data: any[] }> {
+    const admins = await this.request<any[]>('/api/v1/admins');
+    return { data: admins || [] };
+  }
+
   async getAdmin(id: string): Promise<any> {
     return this.request(`/api/v1/admins/${id}`);
   }
@@ -123,10 +128,10 @@ class AdminApiService {
     return this.request(`/api/v1/admins/${id}`, { method: 'DELETE' });
   }
 
-  async suspendAdmin(id: string, reason: string): Promise<void> {
+  async suspendAdmin(id: string, reason?: string): Promise<void> {
     return this.request(`/api/v1/admins/${id}/suspend`, {
       method: 'POST',
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify({ reason: reason || '' }),
     });
   }
 
@@ -202,7 +207,7 @@ class AdminApiService {
     pageSize?: number;
     status?: string;
     search?: string;
-  }): Promise<{ data: any[]; total: number; page: number; pageSize: number }> {
+  }): Promise<{ data: any[]; total: number; page: number; pageSize: number; totalPages: number }> {
     const query = new URLSearchParams();
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
@@ -211,7 +216,8 @@ class AdminApiService {
         }
       });
     }
-    return this.request(`/api/v1/kyc?${query}`);
+    const res = await this.request<{ data: any[]; total: number; page: number; pageSize: number }>(`/api/v1/kyc?${query}`);
+    return { ...res, totalPages: Math.ceil((res.total || 0) / (res.pageSize || 20)) };
   }
 
   async getKycRecord(id: string): Promise<any> {
@@ -251,7 +257,7 @@ class AdminApiService {
     search?: string;
     startDate?: string;
     endDate?: string;
-  }): Promise<{ data: any[]; total: number; page: number; pageSize: number }> {
+  }): Promise<{ data: any[]; total: number; page: number; pageSize: number; totalPages: number }> {
     const query = new URLSearchParams();
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
@@ -260,7 +266,8 @@ class AdminApiService {
         }
       });
     }
-    return this.request(`/api/v1/transactions?${query}`);
+    const res = await this.request<{ data: any[]; total: number; page: number; pageSize: number }>(`/api/v1/transactions?${query}`);
+    return { ...res, totalPages: Math.ceil((res.total || 0) / (res.pageSize || 20)) };
   }
 
   async getTransaction(id: string): Promise<any> {
@@ -294,7 +301,7 @@ class AdminApiService {
     chain?: string;
     listed?: boolean;
     search?: string;
-  }): Promise<{ data: any[]; total: number; page: number; pageSize: number }> {
+  }): Promise<{ data: any[]; total: number; page: number; pageSize: number; totalPages: number }> {
     const query = new URLSearchParams();
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
@@ -303,7 +310,8 @@ class AdminApiService {
         }
       });
     }
-    return this.request(`/api/v1/tokens?${query}`);
+    const res = await this.request<{ data: any[]; total: number; page: number; pageSize: number }>(`/api/v1/tokens?${query}`);
+    return { ...res, totalPages: Math.ceil((res.total || 0) / (res.pageSize || 20)) };
   }
 
   async getToken(address: string): Promise<any> {
@@ -413,8 +421,9 @@ class AdminApiService {
 
   // ==================== BLOCKCHAIN MANAGEMENT ====================
 
-  async getBlockchains(): Promise<any[]> {
-    return this.request('/api/v1/blockchains');
+  async getBlockchains(): Promise<{ data: any[] }> {
+    const blockchains = await this.request<any[]>('/api/v1/blockchains');
+    return { data: blockchains || [] };
   }
 
   async getBlockchain(id: string): Promise<any> {
@@ -476,7 +485,7 @@ class AdminApiService {
     status?: string;
     token?: string;
     chain?: string;
-  }): Promise<{ data: any[]; total: number; page: number; pageSize: number }> {
+  }): Promise<{ data: any[]; total: number; page: number; pageSize: number; totalPages: number }> {
     const query = new URLSearchParams();
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
@@ -485,7 +494,8 @@ class AdminApiService {
         }
       });
     }
-    return this.request(`/api/v1/withdrawals?${query}`);
+    const res = await this.request<{ data: any[]; total: number; page: number; pageSize: number }>(`/api/v1/withdrawals?${query}`);
+    return { ...res, totalPages: Math.ceil((res.total || 0) / (res.pageSize || 20)) };
   }
 
   async getWithdrawal(id: string): Promise<any> {
@@ -516,7 +526,7 @@ class AdminApiService {
     page?: number;
     pageSize?: number;
     status?: string;
-  }): Promise<{ data: any[]; total: number; page: number; pageSize: number }> {
+  }): Promise<{ data: any[]; total: number; page: number; pageSize: number; totalPages: number }> {
     const query = new URLSearchParams();
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
@@ -525,7 +535,8 @@ class AdminApiService {
         }
       });
     }
-    return this.request(`/api/v1/whitelabels?${query}`);
+    const res = await this.request<{ data: any[]; total: number; page: number; pageSize: number }>(`/api/v1/whitelabels?${query}`);
+    return { ...res, totalPages: Math.ceil((res.total || 0) / (res.pageSize || 20)) };
   }
 
   async getWhiteLabel(id: string): Promise<any> {
@@ -637,7 +648,7 @@ class AdminApiService {
     resource?: string;
     startDate?: string;
     endDate?: string;
-  }): Promise<{ data: any[]; total: number; page: number; pageSize: number }> {
+  }): Promise<{ data: any[]; total: number; page: number; pageSize: number; totalPages: number }> {
     const query = new URLSearchParams();
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
@@ -646,7 +657,8 @@ class AdminApiService {
         }
       });
     }
-    return this.request(`/api/v1/audit-logs?${query}`);
+    const res = await this.request<{ data: any[]; total: number; page: number; pageSize: number }>(`/api/v1/audit-logs?${query}`);
+    return { ...res, totalPages: Math.ceil((res.total || 0) / (res.pageSize || 20)) };
   }
 
   // ==================== NOTIFICATIONS ====================
@@ -700,7 +712,66 @@ class AdminApiService {
       return false;
     }
   }
+
+  // ---- Liquidity pools ----
+  async getLiquidityPools(): Promise<{ pools: any[] }> {
+    return this.request('/api/v1/liquidity/pools');
+  }
+  async getLiquidityPool(id: string): Promise<{ pool: any }> {
+    return this.request(`/api/v1/liquidity/pools/${id}`);
+  }
+  async createLiquidityPool(data: { pair: string; tokenA: string; tokenB: string }): Promise<any> {
+    return this.request('/api/v1/liquidity/pools', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async addLiquidity(id: string, data: { amountA: number; amountB: number }): Promise<any> {
+    return this.request(`/api/v1/liquidity/pools/${id}/add`, { method: 'POST', body: JSON.stringify(data) });
+  }
+  async removeLiquidity(id: string, data: { amount: number }): Promise<any> {
+    return this.request(`/api/v1/liquidity/pools/${id}/remove`, { method: 'POST', body: JSON.stringify(data) });
+  }
+  async getLiquidityStats(): Promise<any> {
+    return this.request('/api/v1/liquidity/stats');
+  }
 }
 
 export const adminApi = new AdminApiService();
 export default adminApi;
+
+// Liquidity API facade (used by the Liquidity page)
+export const liquidityAPI = {
+  getPools: async () => ({ data: (await adminApi.getLiquidityPools()).pools || [] }),
+  getStats: async () => ({ data: await adminApi.getLiquidityStats() }),
+  createPool: (data: { pair: string; tokenA: string; tokenB: string }) => adminApi.createLiquidityPool(data),
+  addLiquidity: (id: string, data: { amountA: number; amountB: number }) => adminApi.addLiquidity(id, data),
+  removeLiquidity: (id: string, data: { amount: number }) => adminApi.removeLiquidity(id, data),
+};
+
+// Features API facade (real /api/v1/features endpoints)
+export const featuresAPI = {
+  getAll: async () => ({ data: await adminApi.request<any[]>('/api/v1/features') }),
+  toggle: (id: string) => adminApi.request(`/api/v1/features/${id}`, { method: 'PUT', body: JSON.stringify({ enabled: true }) }),
+  create: (data: any) => adminApi.request('/api/v1/features', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => adminApi.request(`/api/v1/features/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+};
+
+// Crypto Cards API facade (real /api/v1/crypto-cards endpoints)
+export const cryptoCardAPI = {
+  getAll: async (status?: string) => ({ data: await adminApi.request<any[]>(`/api/v1/crypto-cards${status ? `?status=${status}` : ''}`) }),
+  block: (id: string) => adminApi.request(`/api/v1/crypto-cards/${id}/block`, { method: 'POST', body: JSON.stringify({}) }),
+  activate: (id: string) => adminApi.request(`/api/v1/crypto-cards/${id}/activate`, { method: 'POST', body: JSON.stringify({}) }),
+};
+
+// Margin Trading API facade (real /api/v1/margin-trading endpoints)
+export const marginTradingAPI = {
+  getPositions: async () => ({ data: await adminApi.request<any[]>('/api/v1/margin-trading/positions') }),
+  getLiquidationStats: async () => ({ data: await adminApi.request<any>('/api/v1/margin-trading/stats') }),
+  liquidate: (id: string) => adminApi.request(`/api/v1/margin-trading/positions/${id}/close`, { method: 'POST', body: JSON.stringify({}) }),
+};
+
+// P2P Merchant API facade (real /api/v1/p2p-merchants endpoints)
+export const p2pMerchantAPI = {
+  getMerchants: async (status?: string) => ({ data: await adminApi.request<any[]>(`/api/v1/p2p-merchants${status ? `?status=${status}` : ''}`) }),
+  approveMerchant: (id: string) => adminApi.request(`/api/v1/p2p-merchants/${id}/approve`, { method: 'POST', body: JSON.stringify({}) }),
+  rejectMerchant: (id: string, reason: string) => adminApi.request(`/api/v1/p2p-merchants/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  getTransactions: async (id: string) => ({ data: await adminApi.request<any[]>(`/api/v1/p2p-merchants/${id}/transactions`) }),
+};

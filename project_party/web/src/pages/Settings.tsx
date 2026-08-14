@@ -1,7 +1,7 @@
 // Settings Page - ProjectParty
 import React from 'react';
-import { useTheme } from '../../contexts/ThemeContext';
-import { useAuth } from '../../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Settings() {
   const { theme, toggleTheme } = useTheme();

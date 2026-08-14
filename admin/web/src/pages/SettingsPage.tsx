@@ -19,6 +19,7 @@ const SettingsPage: React.FC = () => {
     withdrawalMin: '10',
     withdrawalMax: '100000',
     txConfirmations: 12,
+    twoFARequired: false,
   });
 
   const handleSave = async () => {
@@ -256,8 +257,10 @@ const SettingsPage: React.FC = () => {
                   <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Require 2FA for all admins</p>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" className="sr-only peer" />
-                  <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-500 peer-checked:bg-red-600"></div>
+                  <input type="checkbox" className="sr-only peer" defaultChecked={config.twoFARequired} onChange={(e) => setConfig({ ...config, twoFARequired: e.target.checked })} />
+                  <div style={{ width: 44, height: 24, background: 'var(--bg-tertiary)', borderRadius: 999, position: 'relative', transition: 'background .2s' }} className="peer-checked:bg-[var(--accent-primary)]">
+                    <span style={{ position: 'absolute', top: 2, left: 2, width: 20, height: 20, background: '#fff', borderRadius: '50%', transition: 'transform .2s' }} className="peer-checked:after:translate-x-5 peer-checked:after:content-['']"></span>
+                  </div>
                 </label>
               </div>
 

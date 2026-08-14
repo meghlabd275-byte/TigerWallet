@@ -1,7 +1,7 @@
 // Layout - ProjectParty
 import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function Layout() {
   const { theme, toggleTheme } = useTheme();

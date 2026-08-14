@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tigerwallet/super-admin/internal/config"
+	"github.com/tigerwallet/super-admin/internal/database"
 )
 
 type IntegrationService struct {
@@ -161,7 +162,6 @@ func (s *IntegrationService) CreatePagerDutyIncident(ctx context.Context, incide
 			"urgency":     incident.Urgency,
 			"service":     map[string]string{"id": incident.ServiceID},
 			"body":        map[string]string{"type": "incident_body", "details": incident.Body},
-			"urgency":     incident.Urgency,
 		},
 	}
 
@@ -262,14 +262,14 @@ type CloudflareDNSRecord struct {
 }
 
 func (s *IntegrationService) CreateCloudflareDNSRecord(ctx context.Context, zoneID string, record *CloudflareDNSRecord) error {
-	if s.cfg.CloudflareAPIToken == "" {
+	if s.cfg.CloudflareAPIKey == "" {
 		return fmt.Errorf("Cloudflare API token not configured")
 	}
 
 	jsonData, _ := json.Marshal(record)
 	req, _ := http.NewRequest("POST", "https://api.cloudflare.com/client/v4/zones/"+zoneID+"/dns_records", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+s.cfg.CloudflareAPIToken)
+	req.Header.Set("Authorization", "Bearer "+s.cfg.CloudflareAPIKey)
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
@@ -286,12 +286,12 @@ func (s *IntegrationService) CreateCloudflareDNSRecord(ctx context.Context, zone
 }
 
 func (s *IntegrationService) DeleteCloudflareDNSRecord(ctx context.Context, zoneID, recordID string) error {
-	if s.cfg.CloudflareAPIToken == "" {
+	if s.cfg.CloudflareAPIKey == "" {
 		return fmt.Errorf("Cloudflare API token not configured")
 	}
 
 	req, _ := http.NewRequest("DELETE", "https://api.cloudflare.com/client/v4/zones/"+zoneID+"/dns_records/"+recordID, nil)
-	req.Header.Set("Authorization", "Bearer "+s.cfg.CloudflareAPIToken)
+	req.Header.Set("Authorization", "Bearer "+s.cfg.CloudflareAPIKey)
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
@@ -307,13 +307,13 @@ func (s *IntegrationService) DeleteCloudflareDNSRecord(ctx context.Context, zone
 }
 
 func (s *IntegrationService) GetCloudflareAnalytics(ctx context.Context, zoneID string, from, to time.Time) (interface{}, error) {
-	if s.cfg.CloudflareAPIToken == "" {
+	if s.cfg.CloudflareAPIKey == "" {
 		return nil, fmt.Errorf("Cloudflare API token not configured")
 	}
 
 	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/analytics/dashboard?since=%d&until=%d", zoneID, from.Unix(), to.Unix())
 	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("Authorization", "Bearer "+s.cfg.CloudflareAPIToken)
+	req.Header.Set("Authorization", "Bearer "+s.cfg.CloudflareAPIKey)
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)

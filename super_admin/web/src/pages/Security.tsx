@@ -88,7 +88,7 @@ export default function Security() {
     
     setTwoFALoading(true);
     try {
-      await superAdminApi.disable2FA('current_user', code);
+      await superAdminApi.adminDisable2FA('current_user', code);
       setTwoFAEnabled(false);
       setSetupStep(1);
       setBackupCodes([]);
@@ -199,13 +199,9 @@ export default function Security() {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
-              activeTab === tab.id
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
-            }`}
+            className="px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap"
             style={{
-              backgroundColor: activeTab === tab.id ? 'var(--accent-primary)' : undefined,
+              backgroundColor: activeTab === tab.id ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
               color: activeTab === tab.id ? '#fff' : 'var(--text-primary)',
             }}
           >
@@ -229,10 +225,11 @@ export default function Security() {
                 </p>
               </div>
               <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-                twoFAEnabled 
-                  ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                  : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-              }`}>
+                twoFAEnabled ? 'badge-success' : 'badge-warning'
+              }`} style={{
+                padding: '0.25rem 0.75rem',
+                fontSize: '0.875rem',
+              }}>
                 {twoFAEnabled ? 'Enabled' : 'Disabled'}
               </div>
             </div>
@@ -279,7 +276,7 @@ export default function Security() {
                       Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
                     </p>
                     <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
-                      Or enter this code manually: <code className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">{secret}</code>
+                      Or enter this code manually: <code className="font-mono" style={{ backgroundColor: 'var(--bg-tertiary)', padding: '0.125rem 0.25rem', borderRadius: '0.25rem' }}>{secret}</code>
                     </p>
                   </div>
                 </div>
@@ -314,16 +311,16 @@ export default function Security() {
             
             {setupStep === 3 && backupCodes.length > 0 && (
               <div className="py-4">
-                <div className="bg-yellow-50 dark:bg-yellow-900 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4 mb-4">
-                  <h3 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">
+                <div className="alert-warning rounded-lg p-4 mb-4">
+                  <h3 className="font-semibold mb-2">
                     ⚠️ Save Your Backup Codes
                   </h3>
-                  <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                  <p className="text-sm">
                     Save these codes in a secure place. You can use them to access your account if you lose your device.
                   </p>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-2 mb-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
+                <div className="grid grid-cols-2 gap-2 mb-4 p-4 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
                   {backupCodes.map((code, index) => (
                     <code key={index} className="font-mono text-lg">{code}</code>
                   ))}

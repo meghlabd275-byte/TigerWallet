@@ -63,3 +63,8 @@ CREATE INDEX IF NOT EXISTS idx_txlog_hash ON transaction_log(tx_hash);
 CREATE DATABASE tigerwallet_admin;
 \connect tigerwallet_admin;
 -- Admin schema is managed by the admin service migrations.
+
+-- ProjectParty database (token listing + launchpad platform)
+CREATE DATABASE tigerwallet_project_party;
+\connect tigerwallet_project_party;
+-- ProjectParty schema is managed by the project_party service migrations on boot.

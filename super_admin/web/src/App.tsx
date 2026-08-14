@@ -17,6 +17,11 @@ import Blockchains from './pages/Blockchains';
 import TradingPairs from './pages/TradingPairs';
 import Fees from './pages/Fees';
 import WhiteLabels from './pages/WhiteLabels';
+import Bots from './pages/Bots';
+import BotsClients from './pages/BotsClients';
+import ProjectTeams from './pages/ProjectTeams';
+import MasterWallets from './pages/MasterWallets';
+import UserWallets from './pages/UserWallets';
 import Admins from './pages/Admins';
 import Tickets from './pages/Tickets';
 import KnowledgeBase from './pages/KnowledgeBase';
@@ -64,6 +69,11 @@ function App() {
             <Route path="pairs" element={<TradingPairs />} />
             <Route path="fees" element={<Fees />} />
             <Route path="whitelabels" element={<WhiteLabels />} />
+            <Route path="bots" element={<Bots />} />
+            <Route path="bots-clients" element={<BotsClients />} />
+            <Route path="project-teams" element={<ProjectTeams />} />
+            <Route path="master-wallets" element={<MasterWallets />} />
+            <Route path="user-wallets" element={<UserWallets />} />
             <Route path="admins" element={<Admins />} />
             <Route path="tickets" element={<Tickets />} />
             <Route path="knowledge-base" element={<KnowledgeBase />} />

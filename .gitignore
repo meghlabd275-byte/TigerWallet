@@ -155,3 +155,9 @@ user_wallet/go/user_wallet
 # MasterWallet compiled backend binary
 master_wallet/backend/master-wallet-backend
 master_wallet/main
+
+# Admin / Super Admin / ProjectParty compiled backend binaries
+admin/go/admin-api
+super_admin/go/super-admin
+project_party/cmd
+project_party/go/project-party-api

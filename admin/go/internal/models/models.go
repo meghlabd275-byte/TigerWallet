@@ -745,5 +745,8 @@ type TradingPair struct {
 	MaxPrice          float64   `json:"max_price"`
 	IsActive          bool      `gorm:"default:true" json:"is_active"`
 	Status            string    `gorm:"not null;default:'active'" json:"status"`
+	LastPrice         float64   `json:"last_price"`
+	Volume24h         float64   `json:"volume_24h"`
+	PriceChange24h    float64   `json:"price_change_24h"`
 	CreatedBy         uint      `json:"created_by"`
 }

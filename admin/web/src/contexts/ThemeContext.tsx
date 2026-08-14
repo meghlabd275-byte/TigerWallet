@@ -5,10 +5,12 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-type Theme = 'light' | 'dark';
+type Theme = 'light' | 'dark' | 'system';
+type ResolvedTheme = 'light' | 'dark';
 
 interface ThemeContextType {
   theme: Theme;
+  resolvedTheme: ResolvedTheme;
   toggleTheme: () => void;
   setTheme: (theme: Theme) => void;
 }
@@ -19,36 +21,59 @@ interface ThemeProviderProps {
   children: ReactNode;
 }
 
+const getSystemTheme = (): ResolvedTheme => {
+  if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    return 'dark';
+  }
+  return 'light';
+};
+
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const [theme, setThemeState] = useState<Theme>(() => {
     // Check localStorage first
     const savedTheme = localStorage.getItem('tigerwallet-theme') as Theme;
-    if (savedTheme) {
+    if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system') {
       return savedTheme;
     }
     // Check system preference
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return 'dark';
-    }
-    return 'light';
+    return getSystemTheme();
   });
+
+  const resolvedTheme: ResolvedTheme = theme === 'system' ? getSystemTheme() : theme;
 
   useEffect(() => {
     // Update localStorage
     localStorage.setItem('tigerwallet-theme', theme);
-    
+
+    const effective: ResolvedTheme = theme === 'system' ? getSystemTheme() : theme;
+
     // Update document class
-    if (theme === 'dark') {
+    if (effective === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
-    
+
     // Update CSS variables
-    updateCSSVariables(theme);
+    updateCSSVariables(effective);
+
+    if (theme === 'system' && window.matchMedia) {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      const handler = () => {
+        const sys = getSystemTheme();
+        if (sys === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+        updateCSSVariables(sys);
+      };
+      mq.addEventListener('change', handler);
+      return () => mq.removeEventListener('change', handler);
+    }
   }, [theme]);
 
-  const updateCSSVariables = (currentTheme: Theme) => {
+  const updateCSSVariables = (currentTheme: ResolvedTheme) => {
     const root = document.documentElement;
     
     if (currentTheme === 'dark') {
@@ -97,7 +122,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   };
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>
+    <ThemeContext.Provider value={{ theme, resolvedTheme, toggleTheme, setTheme }}>
       {children}
     </ThemeContext.Provider>
   );

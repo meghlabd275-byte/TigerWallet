@@ -19,6 +19,10 @@ type LiquidityHandler struct {
 }
 
 func NewLiquidityHandler(db *gorm.DB) *LiquidityHandler {
+	if err := db.AutoMigrate(&LiquidityPool{}, &LiquidityPosition{}); err != nil {
+		// log but do not panic; tables may already exist
+		_ = err
+	}
 	return &LiquidityHandler{db: db}
 }
 

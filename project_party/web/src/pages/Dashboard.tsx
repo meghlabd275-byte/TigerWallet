@@ -1,6 +1,6 @@
 // Dashboard - ProjectParty
 import React, { useState, useEffect } from 'react';
-import { api } from '../../services/api';
+import { api } from '../services/api';
 
 export default function Dashboard() {
   const [market, setMarket] = useState<any>(null);

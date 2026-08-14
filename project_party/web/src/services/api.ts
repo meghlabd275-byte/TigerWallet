@@ -4,7 +4,25 @@ const API_URL = 'http://localhost:8106/api/v1';
 class ApiService {
   private token: string | null = null;
 
-  setToken(token: string) { this.token = token; }
+  constructor() {
+    if (typeof window !== 'undefined') {
+      this.token = localStorage.getItem('projectparty-token');
+    }
+  }
+
+  setToken(token: string) {
+    this.token = token;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('projectparty-token', token);
+    }
+  }
+
+  clearToken() {
+    this.token = null;
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('projectparty-token');
+    }
+  }
 
   private async request(endpoint: string, options: RequestInit = {}) {
     const headers: any = { 'Content-Type': 'application/json' };

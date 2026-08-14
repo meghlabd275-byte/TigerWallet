@@ -334,3 +334,80 @@ func (h *PairHandler) GetPairStats(c *gin.Context) {
 
 	c.JSON(http.StatusOK, stats)
 }
+
+// ImportPairs bulk-imports trading pairs from an external system.
+// Accepts an array of pairs in either snake_case (base_token/quote_token/chain)
+// or camelCase (baseToken/quoteToken/chainId) keys, matching the admin + super_admin frontends.
+func (h *PairHandler) ImportPairs(c *gin.Context) {
+	adminID := c.GetUint("admin_id")
+
+	var items []struct {
+		PairName          string  `json:"pair_name"`
+		BaseToken         string  `json:"base_token"`
+		QuoteToken        string  `json:"quote_token"`
+		Chain             string  `json:"chain"`
+		ChainID           string  `json:"chainId"`
+		Fee               float64 `json:"fee"`
+		MinTradeAmount    float64 `json:"min_trade_amount"`
+		MaxTradeAmount    float64 `json:"max_trade_amount"`
+		MakerFee          float64 `json:"maker_fee"`
+		TakerFee          float64 `json:"taker_fee"`
+		PricePrecision    int     `json:"price_precision"`
+		QuantityPrecision int     `json:"quantity_precision"`
+	}
+	if err := c.ShouldBindJSON(&items); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body, expected an array of pairs"})
+		return
+	}
+
+	imported := 0
+	failed := 0
+	for _, item := range items {
+		baseToken := item.BaseToken
+		quoteToken := item.QuoteToken
+		chain := item.Chain
+		if chain == "" {
+			chain = item.ChainID
+		}
+		if baseToken == "" || quoteToken == "" || chain == "" {
+			failed++
+			continue
+		}
+		pairName := item.PairName
+		if pairName == "" {
+			pairName = baseToken + "/" + quoteToken
+		}
+		// Skip duplicates
+		var existing models.TradingPair
+		if err := h.db.Where("base_token = ? AND quote_token = ? AND chain = ?", baseToken, quoteToken, chain).First(&existing).Error; err == nil {
+			failed++
+			continue
+		}
+		fee := item.MakerFee
+		if fee == 0 {
+			fee = item.Fee
+		}
+		pair := models.TradingPair{
+			PairName:          pairName,
+			BaseToken:         baseToken,
+			QuoteToken:        quoteToken,
+			Chain:             chain,
+			MinTradeAmount:    item.MinTradeAmount,
+			MaxTradeAmount:    item.MaxTradeAmount,
+			MakerFee:          fee,
+			TakerFee:          item.TakerFee,
+			PricePrecision:    item.PricePrecision,
+			QuantityPrecision: item.QuantityPrecision,
+			IsActive:          true,
+			Status:            "active",
+			CreatedBy:         adminID,
+		}
+		if err := h.db.Create(&pair).Error; err != nil {
+			failed++
+			continue
+		}
+		imported++
+	}
+	logAdminActivity(h.db, adminID, "import_pairs", "pair", "", "Imported trading pairs from external system", c.ClientIP(), c.Request.UserAgent())
+	c.JSON(http.StatusOK, gin.H{"imported": imported, "failed": failed})
+}

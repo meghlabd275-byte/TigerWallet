@@ -26,8 +26,8 @@ import type {
   PaginatedResponse, ApiResponse
 } from '../types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_SUPER_ADMIN_API || 'http://localhost:9090';
-const WS_BASE_URL = process.env.NEXT_PUBLIC_SUPER_ADMIN_WS || 'ws://localhost:9090';
+const API_BASE_URL = process.env.NEXT_PUBLIC_SUPER_ADMIN_API || 'http://localhost:8082';
+const WS_BASE_URL = process.env.NEXT_PUBLIC_SUPER_ADMIN_WS || 'ws://localhost:8082';
 
 class SuperAdminApiService {
   private baseURL: string;
@@ -724,11 +724,11 @@ class SuperAdminApiService {
   }
 
   async suspendWhiteLabel(id: string): Promise<WhiteLabel> {
-    return this.request(`/api/v1/whitelabels/${id}/suspend', { method: 'POST' });
+    return this.request(`/api/v1/whitelabels/${id}/suspend`, { method: 'POST' });
   }
 
   async activateWhiteLabel(id: string): Promise<WhiteLabel> {
-    return this.request(`/api/v1/whitelabels/${id}/activate', { method: 'POST' });
+    return this.request(`/api/v1/whitelabels/${id}/activate`, { method: 'POST' });
   }
 
   async updateWhiteLabelFee(id: string, feePercent: number): Promise<WhiteLabel> {
@@ -739,11 +739,11 @@ class SuperAdminApiService {
   }
 
   async regenerateWhiteLabelAPIKey(id: string): Promise<{ api_key: string }> {
-    return this.request(`/api/v1/whitelabels/${id}/regenerate-key', { method: 'POST' });
+    return this.request(`/api/v1/whitelabels/${id}/regenerate-key`, { method: 'POST' });
   }
 
   async verifyWhiteLabelDomain(id: string, domain: string): Promise<{ verified: boolean }> {
-    return this.request(`/api/v1/whitelabels/${id}/verify-domain', {
+    return this.request(`/api/v1/whitelabels/${id}/verify-domain`, {
       method: 'POST',
       body: JSON.stringify({ domain }),
     });
@@ -788,22 +788,22 @@ class SuperAdminApiService {
   }
 
   async deleteAdmin(id: string): Promise<void> {
-    return this.request(`/api/v1/admins/${id}', { method: 'DELETE' });
+    return this.request(`/api/v1/admins/${id}`, { method: 'DELETE' });
   }
 
   async suspendAdmin(id: string, reason: string): Promise<void> {
-    return this.request(`/api/v1/admins/${id}/suspend', {
+    return this.request(`/api/v1/admins/${id}/suspend`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
     });
   }
 
   async activateAdmin(id: string): Promise<void> {
-    return this.request(`/api/v1/admins/${id}/activate', { method: 'POST' });
+    return this.request(`/api/v1/admins/${id}/activate`, { method: 'POST' });
   }
 
   async updateAdminPermissions(id: string, permissions: string[]): Promise<Admin> {
-    return this.request(`/api/v1/admins/${id}/permissions', {
+    return this.request(`/api/v1/admins/${id}/permissions`, {
       method: 'PUT',
       body: JSON.stringify({ permissions }),
     });
@@ -876,7 +876,7 @@ class SuperAdminApiService {
   }
 
   async closeTicket(ticketId: string): Promise<Ticket> {
-    return this.request(`/api/v1/tickets/${ticketId}/close', { method: 'POST' });
+    return this.request(`/api/v1/tickets/${ticketId}/close`, { method: 'POST' });
   }
 
   // ==================== Knowledge Base ====================
@@ -918,15 +918,15 @@ class SuperAdminApiService {
   }
 
   async deleteArticle(id: string): Promise<void> {
-    return this.request(`/api/v1/knowledge-base/${id}', { method: 'DELETE' });
+    return this.request(`/api/v1/knowledge-base/${id}`, { method: 'DELETE' });
   }
 
   async publishArticle(id: string): Promise<Article> {
-    return this.request(`/api/v1/knowledge-base/${id}/publish', { method: 'POST' });
+    return this.request(`/api/v1/knowledge-base/${id}/publish`, { method: 'POST' });
   }
 
   async archiveArticle(id: string): Promise<Article> {
-    return this.request(`/api/v1/knowledge-base/${id}/archive', { method: 'POST' });
+    return this.request(`/api/v1/knowledge-base/${id}/archive`, { method: 'POST' });
   }
 
   // ==================== Approval Workflows ====================
@@ -954,7 +954,7 @@ class SuperAdminApiService {
   }
 
   async deleteApprovalWorkflow(id: string): Promise<void> {
-    return this.request(`/api/v1/workflows/${id}', { method: 'DELETE' });
+    return this.request(`/api/v1/workflows/${id}`, { method: 'DELETE' });
   }
 
   async getApprovalRequests(params?: {
@@ -986,7 +986,7 @@ class SuperAdminApiService {
   }
 
   async cancelApprovalRequest(requestId: string): Promise<ApprovalRequest> {
-    return this.request(`/api/v1/approvals/${requestId}/cancel', { method: 'POST' });
+    return this.request(`/api/v1/approvals/${requestId}/cancel`, { method: 'POST' });
   }
 
   // ==================== Reports ====================
@@ -1059,14 +1059,14 @@ class SuperAdminApiService {
   }
 
   async resolveSecurityAlert(id: string, resolution: string): Promise<SecurityAlert> {
-    return this.request(`/api/v1/security/alerts/${id}/resolve', {
+    return this.request(`/api/v1/security/alerts/${id}/resolve`, {
       method: 'POST',
       body: JSON.stringify({ resolution }),
     });
   }
 
   async markSecurityAlertAsFalsePositive(id: string): Promise<SecurityAlert> {
-    return this.request(`/api/v1/security/alerts/${id}/false-positive', { method: 'POST' });
+    return this.request(`/api/v1/security/alerts/${id}/false-positive`, { method: 'POST' });
   }
 
   // ==================== API Keys ====================
@@ -1103,11 +1103,11 @@ class SuperAdminApiService {
   }
 
   async revokeAPIKey(id: string): Promise<void> {
-    return this.request(`/api/v1/api-keys/${id}/revoke', { method: 'POST' });
+    return this.request(`/api/v1/api-keys/${id}/revoke`, { method: 'POST' });
   }
 
   async regenerateAPIKey(id: string): Promise<{ key: string }> {
-    return this.request(`/api/v1/api-keys/${id}/regenerate', { method: 'POST' });
+    return this.request(`/api/v1/api-keys/${id}/regenerate`, { method: 'POST' });
   }
 
   // ==================== Webhooks ====================
@@ -1147,19 +1147,19 @@ class SuperAdminApiService {
   }
 
   async deleteWebhook(id: string): Promise<void> {
-    return this.request(`/api/v1/webhooks/${id}', { method: 'DELETE' });
+    return this.request(`/api/v1/webhooks/${id}`, { method: 'DELETE' });
   }
 
   async testWebhook(id: string): Promise<{ success: boolean; response_time_ms: number }> {
-    return this.request(`/api/v1/webhooks/${id}/test', { method: 'POST' });
+    return this.request(`/api/v1/webhooks/${id}/test`, { method: 'POST' });
   }
 
   async activateWebhook(id: string): Promise<Webhook> {
-    return this.request(`/api/v1/webhooks/${id}/activate', { method: 'POST' });
+    return this.request(`/api/v1/webhooks/${id}/activate`, { method: 'POST' });
   }
 
   async deactivateWebhook(id: string): Promise<Webhook> {
-    return this.request(`/api/v1/webhooks/${id}/deactivate', { method: 'POST' });
+    return this.request(`/api/v1/webhooks/${id}/deactivate`, { method: 'POST' });
   }
 
   // ==================== Audit Logs ====================
@@ -1205,7 +1205,7 @@ class SuperAdminApiService {
   }
 
   async restartService(name: string): Promise<void> {
-    return this.request(`/api/v1/system/services/${name}/restart', { method: 'POST' });
+    return this.request(`/api/v1/system/services/${name}/restart`, { method: 'POST' });
   }
 
   async getSystemLogs(params?: {
@@ -1275,7 +1275,7 @@ class SuperAdminApiService {
   }
 
   async markNotificationRead(id: string): Promise<void> {
-    return this.request(`/api/v1/notifications/${id}/read', { method: 'PUT' });
+    return this.request(`/api/v1/notifications/${id}/read`, { method: 'PUT' });
   }
 
   async markAllNotificationsRead(): Promise<void> {
@@ -1283,7 +1283,7 @@ class SuperAdminApiService {
   }
 
   async deleteNotification(id: string): Promise<void> {
-    return this.request(`/api/v1/notifications/${id}', { method: 'DELETE' });
+    return this.request(`/api/v1/notifications/${id}`, { method: 'DELETE' });
   }
 
   async sendNotification(data: {
@@ -1318,7 +1318,7 @@ class SuperAdminApiService {
   }
 
   async revokeSession(sessionId: string): Promise<void> {
-    return this.request(`/api/v1/sessions/${sessionId}', { method: 'DELETE' });
+    return this.request(`/api/v1/sessions/${sessionId}`, { method: 'DELETE' });
   }
 
   async revokeAllSessions(): Promise<void> {
@@ -1527,14 +1527,14 @@ class SuperAdminApiService {
     });
   }
 
-  async verify2FA(user_id: string, code?: string, backup_code?: string): Promise<{ status: string; method: string }> {
+  async adminVerify2FA(user_id: string, code?: string, backup_code?: string): Promise<{ status: string; method: string }> {
     return this.request('/2fa/verify', {
       method: 'POST',
       body: JSON.stringify({ user_id, code, backup_code }),
     });
   }
 
-  async disable2FA(user_id: string, code: string): Promise<{ status: string }> {
+  async adminDisable2FA(user_id: string, code: string): Promise<{ status: string }> {
     return this.request('/2fa/disable', {
       method: 'POST',
       body: JSON.stringify({ user_id, code }),
@@ -1558,7 +1558,7 @@ class SuperAdminApiService {
 
   // ==================== Support Tickets ====================
 
-  async createTicket(data: {
+  async adminCreateTicket(data: {
     user_id: string;
     user_email: string;
     user_name?: string;
@@ -1574,7 +1574,7 @@ class SuperAdminApiService {
     });
   }
 
-  async getTicket(ticket_id: string): Promise<{ ticket: any; messages: any[] }> {
+  async adminGetTicket(ticket_id: string): Promise<{ ticket: any; messages: any[] }> {
     return this.request(`/tickets/${ticket_id}`);
   }
 
@@ -1589,7 +1589,7 @@ class SuperAdminApiService {
     return this.request(`/tickets/open?${params}`);
   }
 
-  async addTicketMessage(data: {
+  async adminAddTicketMessage(data: {
     ticket_id: string;
     sender_id: string;
     sender_name?: string;
@@ -2001,6 +2001,191 @@ class SuperAdminApiService {
 
   async unblockUser(user_id: string): Promise<{ status: string }> {
     return this.request(`/block/${user_id}`, { method: 'DELETE' });
+  }
+
+  // ---- Bots Management ----
+  async getBots(): Promise<{ bots: any[] }> {
+    return this.request('/api/v1/admin/bots');
+  }
+  async getBot(id: string): Promise<{ bot: any }> {
+    return this.request(`/api/v1/admin/bots/${id}`);
+  }
+  async createBot(data: { name: string; bot_type: string }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/bots', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateBot(id: string, data: { name?: string }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/bots/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deleteBot(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/bots/${id}`, { method: 'DELETE' });
+  }
+  async updateBotStatus(id: string, status: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/bots/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+  }
+  async getBotTiers(): Promise<{ tiers: any[] }> {
+    return this.request('/api/v1/admin/bots/tiers');
+  }
+  async createBotTier(data: any): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/bots/tiers', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateBotTier(id: string, data: any): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/bots/tiers/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deleteBotTier(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/bots/tiers/${id}`, { method: 'DELETE' });
+  }
+
+  // ---- BotsClients Management ----
+  async getBotsClients(): Promise<{ clients: any[] }> {
+    return this.request('/api/v1/admin/bots-clients');
+  }
+  async getBotsClient(id: string): Promise<{ client: any }> {
+    return this.request(`/api/v1/admin/bots-clients/${id}`);
+  }
+  async createBotsClient(data: { name: string; company?: string; email?: string; permission_level?: string }): Promise<any> {
+    return this.request('/api/v1/admin/bots-clients', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateBotsClient(id: string, data: { name?: string }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/bots-clients/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deleteBotsClient(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/bots-clients/${id}`, { method: 'DELETE' });
+  }
+  async updateBotsClientStatus(id: string, status: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/bots-clients/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+  }
+
+  // ---- Project Teams ----
+  async getProjectTeams(): Promise<{ teams: any[] }> {
+    return this.request('/api/v1/admin/project-teams');
+  }
+  async getProjectTeam(id: string): Promise<{ team: any }> {
+    return this.request(`/api/v1/admin/project-teams/${id}`);
+  }
+  async createProjectTeam(data: { name: string; description?: string }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/project-teams', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateProjectTeam(id: string, data: { name?: string }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/project-teams/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deleteProjectTeam(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/project-teams/${id}`, { method: 'DELETE' });
+  }
+  async getProjectTeamMembers(id: string): Promise<{ members: any[] }> {
+    return this.request(`/api/v1/admin/project-teams/${id}/members`);
+  }
+  async addProjectTeamMember(teamId: string, data: { user_id?: string; role?: string }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/project-teams/${teamId}/members`, { method: 'POST', body: JSON.stringify(data) });
+  }
+  async removeProjectTeamMember(teamId: string, memberId: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/project-teams/${teamId}/members/${memberId}`, { method: 'DELETE' });
+  }
+
+  // ---- MasterWallets ----
+  async getMasterWallets(): Promise<{ wallets: any[] }> {
+    return this.request('/api/v1/admin/master-wallets');
+  }
+  async getMasterWallet(id: string): Promise<{ wallet: any }> {
+    return this.request(`/api/v1/admin/master-wallets/${id}`);
+  }
+  async createMasterWallet(data: { name: string; address?: string; chain_id?: number }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/master-wallets', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateMasterWallet(id: string, data: { name?: string }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/master-wallets/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deleteMasterWallet(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/master-wallets/${id}`, { method: 'DELETE' });
+  }
+  async getMasterWalletBalance(id: string): Promise<{ balance: number }> {
+    return this.request(`/api/v1/admin/master-wallets/${id}/balance`);
+  }
+  async masterWalletTransfer(id: string, data: { amount: number; to_wallet_id: string }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/master-wallets/${id}/transfer`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  // ---- UserWallets ----
+  async getUserWallets(): Promise<{ wallets: any[] }> {
+    return this.request('/api/v1/admin/user-wallets');
+  }
+  async getUserWallet(id: string): Promise<{ wallet: any }> {
+    return this.request(`/api/v1/admin/user-wallets/${id}`);
+  }
+  async createUserWallet(data: { name: string; master_wallet_id?: string; address?: string; chain_id?: number }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/user-wallets', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateUserWallet(id: string, data: { name?: string }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/user-wallets/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deleteUserWallet(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/user-wallets/${id}`, { method: 'DELETE' });
+  }
+  async getUserWalletBalance(id: string): Promise<{ balance: number }> {
+    return this.request(`/api/v1/admin/user-wallets/${id}/balance`);
+  }
+
+  // ---- WL Clients ----
+  async getWLClients(): Promise<{ clients: any[] }> {
+    return this.request('/api/v1/admin/wl-clients');
+  }
+  async createWLClient(data: { name: string; domain?: string }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/wl-clients', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateWLClient(id: string, data: { name?: string }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/wl-clients/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deleteWLClient(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/wl-clients/${id}`, { method: 'DELETE' });
+  }
+  async updateWLClientStatus(id: string, status: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/wl-clients/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+  }
+
+  // ---- WL MasterWallets / UserWallets / Bots / BotsClients / ProjectTeams ----
+  async getWLMasterWallets(): Promise<{ wallets: any[] }> {
+    return this.request('/api/v1/admin/wl-master-wallets');
+  }
+  async createWLMasterWallet(data: { name: string; address?: string; chain_id?: number }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/wl-master-wallets', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async deleteWLMasterWallet(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/wl-master-wallets/${id}`, { method: 'DELETE' });
+  }
+  async getWLUserWallets(): Promise<{ wallets: any[] }> {
+    return this.request('/api/v1/admin/wl-user-wallets');
+  }
+  async createWLUserWallet(data: { name: string; master_wallet_id?: string; chain_id?: number }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/wl-user-wallets', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async deleteWLUserWallet(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/wl-user-wallets/${id}`, { method: 'DELETE' });
+  }
+  async getWLBots(): Promise<{ bots: any[] }> {
+    return this.request('/api/v1/admin/wl-bots');
+  }
+  async createWLBot(data: { name: string; bot_type: string }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/wl-bots', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async deleteWLBot(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/wl-bots/${id}`, { method: 'DELETE' });
+  }
+  async getWLBotsClients(): Promise<{ clients: any[] }> {
+    return this.request('/api/v1/admin/wl-bots-clients');
+  }
+  async createWLBotsClient(data: { name: string; company?: string }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/wl-bots-clients', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async deleteWLBotsClient(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/wl-bots-clients/${id}`, { method: 'DELETE' });
+  }
+  async getWLProjectTeams(): Promise<{ teams: any[] }> {
+    return this.request('/api/v1/admin/wl-project-teams');
+  }
+  async createWLProjectTeam(data: { name: string; description?: string }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/wl-project-teams', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async deleteWLProjectTeam(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/wl-project-teams/${id}`, { method: 'DELETE' });
   }
 }
 

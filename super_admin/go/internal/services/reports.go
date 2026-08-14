@@ -3,7 +3,6 @@ package services
 
 import (
 	"context"
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -63,8 +62,6 @@ func (s *ReportService) GenerateReport(ctx context.Context, config *ReportConfig
 
 	// Generate report data based on type
 	var data interface{}
-	var err error
-
 	switch config.ReportType {
 	case "compliance":
 		data, err = s.generateComplianceReport(ctx, config.Parameters)
@@ -149,9 +146,7 @@ func (s *ReportService) generateComplianceReport(ctx context.Context, params map
 			"kyc_status":  kycStatus,
 			"user_status": userStatus,
 			"doc_type":    docType,
-			"kyc_status":  kycStatus2,
 			"submitted_at": submittedAt,
-			"reviewed_at": reviewedAt,
 			"created_at":  createdAt,
 		})
 	}
@@ -316,7 +311,7 @@ func (s *ReportService) generateGenericReport(ctx context.Context, params map[st
 }
 
 func (s *ReportService) writeJSONReport(id string, data interface{}) (string, error) {
-	jsonData, err := json.MarshalIndent(data, "", "  ")
+	_, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return "", err
 	}

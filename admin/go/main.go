@@ -221,6 +221,7 @@ func main() {
 			{
 				pairs.GET("", pairHandler.ListPairs)
 				pairs.POST("", pairHandler.CreatePair)
+				pairs.POST("/import", pairHandler.ImportPairs)
 				pairs.GET("/:id", pairHandler.GetPair)
 				pairs.PUT("/:id", pairHandler.UpdatePair)
 				pairs.DELETE("/:id", pairHandler.DeletePair)
