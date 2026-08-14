@@ -804,14 +804,18 @@ impl SolanaCore {
         Pubkey::from_base58("ATokenGPvbdGVxr1b2hvZ1iqZ2UGeHoxfnF7z2texGEn").unwrap()
     }
     
-    /// Simulate a transaction
-    pub fn simulate_transaction(&self, tx: &Transaction) -> Result<SimulationResult, SolanaError> {
-        Ok(SimulationResult {
-            success: true,
-            logs: vec!["Simulation successful".to_string()],
-            units_consumed: 0,
-            error: None,
-        })
+    /// Simulate a transaction.
+    ///
+    /// Fail-closed: a real simulation requires an HTTP POST of the base64
+    /// wire-transaction to the Solana RPC `simulateTransaction` method
+    /// (`{"jsonrpc":"2.0","id":1,"method":"simulateTransaction","params":[<b64>]}`)
+    /// and parsing the returned `err`/`logs`/`unitsConsumed`. No HTTP client
+    /// (reqwest) is wired into this crate, so we refuse to fabricate a
+    /// "success" result. Wire the RPC call here before relying on this.
+    pub fn simulate_transaction(&self, _tx: &Transaction) -> Result<SimulationResult, SolanaError> {
+        Err(SolanaError::RpcFailed(
+            "transaction simulation requires an RPC client (reqwest) wired to the Solana node; refusing to fabricate a success result".to_string(),
+        ))
     }
 }
 

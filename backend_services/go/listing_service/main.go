@@ -25,30 +25,31 @@ import (
 
 const (
 	// JWT Configuration
-	JWT_SECRET_KEY = "tigerwallet-listing-secret-key-2024-production"
-	JWT_EXPIRY    = 24 * time.Hour * 7 // 7 days
+	JWT_EXPIRY = 24 * time.Hour * 7 // 7 days
+)
 
-	// Database Configuration
+// Configuration is loaded at runtime from environment variables so the binary
+// is portable across deployments. The JWT signing secret MUST be provided via
+// JWT_SECRET — it never falls back to an insecure hardcoded default.
+var (
 	DB_HOST     = getEnv("DB_HOST", "localhost")
 	DB_PORT     = getEnv("DB_PORT", "5432")
 	DB_USER     = getEnv("DB_USER", "tigerwallet")
 	DB_PASSWORD = getEnv("DB_PASSWORD", "")
 	DB_NAME     = getEnv("DB_NAME", "tigerwallet_listing")
 
-	// Redis Configuration
 	REDIS_HOST = getEnv("REDIS_HOST", "localhost")
 	REDIS_PORT = getEnv("REDIS_PORT", "6379")
 
-	// Server Configuration
 	SERVER_PORT = getEnv("SERVER_PORT", "8080")
 )
 
 var (
-	db           *sql.DB
-	redisClient  *redis.Client
-	jwtSecret    []byte
-	inMemoryDB   map[string]interface{}
-	dbMutex      sync.RWMutex
+	db          *sql.DB
+	redisClient *redis.Client
+	jwtSecret   []byte
+	inMemoryDB  map[string]interface{}
+	dbMutex     sync.RWMutex
 )
 
 type User struct {
@@ -117,7 +118,11 @@ type AdminAction struct {
 }
 
 func init() {
-	jwtSecret = []byte(JWT_SECRET_KEY)
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		log.Fatal("JWT_SECRET environment variable must be set; refusing to fall back to an insecure hardcoded secret")
+	}
+	jwtSecret = []byte(secret)
 	inMemoryDB = make(map[string]interface{})
 }
 
@@ -140,7 +145,7 @@ func initializeDatabase() error {
 
 	err = db.Ping()
 	if err != nil {
-		log.Printf("⚠️  PostgreSQL not available: %v - using in-memory storage", err)
+		log.Printf("  PostgreSQL not available: %v - using in-memory storage", err)
 		db = nil
 		return nil
 	}
@@ -214,12 +219,12 @@ func initializeDatabase() error {
 
 	_, err = db.Exec(schema)
 	if err != nil {
-		log.Printf("⚠️  Schema creation failed: %v", err)
+		log.Printf("  Schema creation failed: %v", err)
 		db = nil
 		return nil
 	}
 
-	log.Println("✅ Database connected successfully")
+	log.Println(" Database connected successfully")
 	return nil
 }
 
@@ -233,11 +238,11 @@ func initializeRedis() {
 	ctx := context.Background()
 	_, err := redisClient.Ping(ctx).Result()
 	if err != nil {
-		log.Printf("⚠️  Redis not available: %v", err)
+		log.Printf("  Redis not available: %v", err)
 		redisClient = nil
 		return
 	}
-	log.Println("✅ Redis connected successfully")
+	log.Println(" Redis connected successfully")
 }
 
 // ============================================================================
@@ -679,7 +684,7 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	log.Printf("📝 New user registered: %s (%s) - Role: %s", user.Email, user.Username, user.Role)
+	log.Printf(" New user registered: %s (%s) - Role: %s", user.Email, user.Username, user.Role)
 
 	c.JSON(http.StatusCreated, AuthResponse{
 		Token:     token,
@@ -717,7 +722,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	log.Printf("🔐 User logged in: %s (%s)", user.Email, user.Username)
+	log.Printf(" User logged in: %s (%s)", user.Email, user.Username)
 
 	c.JSON(http.StatusOK, AuthResponse{
 		Token:     token,
@@ -803,7 +808,7 @@ func CreateListing(c *gin.Context) {
 		redisClient.Set(context.Background(), "listing:"+listing.ID, listingJSON, time.Hour*24)
 	}
 
-	log.Printf("📋 New listing created: %s (%s) - Tier: %s, Fee: $%.2f",
+	log.Printf(" New listing created: %s (%s) - Tier: %s, Fee: $%.2f",
 		listing.TokenSymbol, listing.TokenName, listing.Tier, listing.FeeAmount)
 
 	c.JSON(http.StatusCreated, gin.H{
@@ -911,7 +916,7 @@ func ApproveListing(c *gin.Context) {
 		redisClient.Del(context.Background(), "listing:"+listingID)
 	}
 
-	log.Printf("✅ Listing approved: %s by admin %s", listingID, adminID)
+	log.Printf(" Listing approved: %s by admin %s", listingID, adminID)
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Listing approved successfully"})
 }
@@ -969,7 +974,7 @@ func RejectListing(c *gin.Context) {
 		redisClient.Del(context.Background(), "listing:"+listingID)
 	}
 
-	log.Printf("❌ Listing rejected: %s by admin %s - Reason: %s", listingID, adminID, req.Reason)
+	log.Printf(" Listing rejected: %s by admin %s - Reason: %s", listingID, adminID, req.Reason)
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Listing rejected"})
 }
@@ -1034,7 +1039,7 @@ func ProcessPayment(c *gin.Context) {
 		listing.UpdatedAt = time.Now()
 		updateListing(listing)
 
-		log.Printf("💰 Payment confirmed for listing: %s - Tx: %s", req.ListingID, req.TxHash)
+		log.Printf(" Payment confirmed for listing: %s - Tx: %s", req.ListingID, req.TxHash)
 	}()
 
 	c.JSON(http.StatusOK, gin.H{
@@ -1143,10 +1148,10 @@ func CORSMiddleware() gin.HandlerFunc {
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	log.Println("🚀 Starting TigerWallet Listing Service...")
+	log.Println(" Starting TigerWallet Listing Service...")
 
 	if err := initializeDatabase(); err != nil {
-		log.Printf("⚠️  Database initialization: %v", err)
+		log.Printf("  Database initialization: %v", err)
 	}
 
 	initializeRedis()
@@ -1182,7 +1187,7 @@ func main() {
 		admin.GET("/stats", GetListingStats)
 	}
 
-	log.Printf("✅ Server starting on port %s", SERVER_PORT)
+	log.Printf(" Server starting on port %s", SERVER_PORT)
 	if err := r.Run(":" + SERVER_PORT); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}

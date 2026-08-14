@@ -162,60 +162,42 @@ impl Fetcher for BlockchainFetcher {
 }
 
 impl BlockchainFetcher {
-    async fn fetch_evm_chain(&self, chain: &str, params: &FetchParams) -> Result<serde_json::Value> {
-        // In production, this would call actual RPC endpoints
-        // For now, return mock data structure
-        let rpc_url = format!("https://{}.infura.io/v3/YOUR_PROJECT_ID", chain);
-        
-        let result = serde_json::json!({
-            "chain": chain,
-            "block_number": 18000000u64,
-            "block_hash": "0x1234567890abcdef",
-            "timestamp": chrono::Utc::now().timestamp(),
-            "gas_price": "20000000000",
-            "network_id": 1,
-            "transactions": []
-        });
-        
-        Ok(result)
+    async fn fetch_evm_chain(&self, chain: &str, _params: &FetchParams) -> Result<serde_json::Value> {
+        // Fail-closed: a real fetch requires an HTTP JSON-RPC POST to the
+        // chain's RPC endpoint (eth_blockNumber / eth_getBlockByNumber /
+        // eth_gasPrice). No HTTP client (reqwest) is wired into this fetcher,
+        // so we refuse to return fabricated block data. Wire the RPC call
+        // (read the endpoint from FetcherConfig) before relying on this.
+        Err(anyhow::anyhow!(
+            "EVM chain '{}' block fetch requires an RPC client (reqwest) wired to the chain RPC endpoint; refusing to return fabricated block data",
+            chain
+        ))
     }
 
-    async fn fetch_solana(&self, params: &FetchParams) -> Result<serde_json::Value> {
-        // Solana RPC integration
-        let result = serde_json::json!({
-            "chain": "solana",
-            "slot": 180000000u64,
-            "blockhash": "1234567890abcdef",
-            "parent_slot": 179999999u64,
-            "transactions": []
-        });
-        
-        Ok(result)
+    async fn fetch_solana(&self, _params: &FetchParams) -> Result<serde_json::Value> {
+        // Fail-closed: a real fetch requires an HTTP JSON-RPC POST to the
+        // Solana RPC endpoint (getSlot / getBlock). No HTTP client is wired,
+        // so we refuse to fabricate block data.
+        Err(anyhow::anyhow!(
+            "Solana block fetch requires an RPC client (reqwest) wired to the Solana RPC endpoint; refusing to return fabricated block data"
+        ))
     }
 
-    async fn fetch_aptos(&self, params: &FetchParams) -> Result<serde_json::Value> {
-        // Aptos API integration
-        let result = serde_json::json!({
-            "chain": "aptos",
-            "version": 180000000u64,
-            "timestamp": chrono::Utc::now().timestamp_millis(),
-            "transactions": []
-        });
-        
-        Ok(result)
+    async fn fetch_aptos(&self, _params: &FetchParams) -> Result<serde_json::Value> {
+        // Fail-closed: a real fetch requires an HTTP GET to the Aptos REST
+        // API (/v1). No HTTP client is wired, so we refuse to fabricate data.
+        Err(anyhow::anyhow!(
+            "Aptos block fetch requires an HTTP client (reqwest) wired to the Aptos REST API; refusing to return fabricated data"
+        ))
     }
 
-    async fn fetch_ton(&self, params: &FetchParams) -> Result<serde_json::Value> {
-        // TON API integration
-        let result = serde_json::json!({
-            "chain": "ton",
-            "workchain": 0,
-            "shard": -9223372036854775808i64,
-            "seqno": 18000000u64,
-            "transactions": []
-        });
-        
-        Ok(result)
+    async fn fetch_ton(&self, _params: &FetchParams) -> Result<serde_json::Value> {
+        // Fail-closed: a real fetch requires an HTTP call to a TON API
+        // (toncenter / tonapi). No HTTP client is wired, so we refuse to
+        // fabricate data.
+        Err(anyhow::anyhow!(
+            "TON block fetch requires an HTTP client (reqwest) wired to a TON API endpoint; refusing to return fabricated data"
+        ))
     }
 
     pub async fn get_metrics(&self) -> FetcherMetrics {

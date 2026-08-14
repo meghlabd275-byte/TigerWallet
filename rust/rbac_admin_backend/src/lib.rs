@@ -298,15 +298,20 @@ impl RBACAdminService {
             external_connections: RwLock::new(HashMap::new()),
             token_listings: RwLock::new(HashMap::new()),
             stats: RwLock::new(PlatformStats {
-                total_users: 1250,
-                active_users: 890,
-                total_volume: 125000000.0,
-                total_transactions: 45000,
-                total_fees: 850000.0,
-                active_bots: 890,
-                total_bots: 3420,
-                active_cex_connections: 2100,
-                active_dex_connections: 450,
+                // Honest empty defaults — real platform statistics are
+                // aggregated from the canonical analytics backend
+                // (go/analytics_service) / PostgreSQL, never fabricated in the
+                // constructor. Zeroed here until a real data source populates
+                // them.
+                total_users: 0,
+                active_users: 0,
+                total_volume: 0.0,
+                total_transactions: 0,
+                total_fees: 0.0,
+                active_bots: 0,
+                total_bots: 0,
+                active_cex_connections: 0,
+                active_dex_connections: 0,
             }),
         };
         

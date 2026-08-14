@@ -2081,3 +2081,99 @@ All hit http://localhost:8450 with Bearer JWT — no stubs.
 - Rust 1.97.1 at `$HOME/.cargo/env` (minimal profile).
 - Foundry 1.7.1 at `$HOME/.foundry/bin` (foundryup).
 - cmake 3.31.6 + libcurl4-openssl-dev + libssl-dev (apt) for desktop_wallet.
+
+
+## Session 2026-08-14: backend_services fake-data elimination + misc fake-data fixes
+
+### backend_services (Go) -- fake backend -> reverse-proxy shim
+- `backend_services/go/main.go` was an in-memory MOCK backend: hardcoded
+  blockchains/tokens, hardcoded admin creds (admin@tigerwallet.com/admin123),
+  fake P-256+sha256 crypto (elliptic.GenerateKey wrong arity,
+  sha256.Sum256().Bytes() invalid), fabricated tx ids (tx-N), in-memory
+  maps, NO DB/RPC. True duplicate of canonical go/wallet_api (:8443).
+- REWROTE go/main.go as a clean stdlib net/http/httputil reverse-proxy shim
+  to canonical wallet_api (:8443) -- same proven pattern as user_wallet/go
+  and user_services/go. Port :8080 preserved. Legacy route rewrites:
+  /api/v1/blockchains -> /api/v1/chains, /api/v1/tokens ->
+  /api/v1/tokens/registry. NO key handling, NO fabricated data. go build +
+  go vet exit 0. go-ethereum dep removed.
+- DELETED backend_services/go/complete_services/blockchain_service.go: dead
+  demo main() (print loop + select{}) importing go-ethereum v1.17.5 (needs
+  Go 1.24; CI uses Go 1.21). NOT compiled by any target, NOT referenced by
+  go/main.go.
+- backend_services/go/listing_service/main.go (separate module): real
+  Gin+pgx+Redis+bcrypt+JWT service, fixed (1) const block using getEnv() as
+  const init -> moved to runtime var block; (2) hardcoded JWT secret ->
+  init() loads JWT_SECRET env, log.Fatal if unset (fail-closed); (3) cleaned
+  mojibake emoji log lines. go build + go vet exit 0; go.sum regenerated.
+
+### admin/cpp/include/admin_connection_pool.cpp -- simulated DB -> fail-closed
+- Was a FULLY SIMULATED PG/Redis pool (no libpq/hiredis linked): connect()
+  returned true ("simulated"), execute() returned "OK", Redis write ops
+  returned fabricated true. NOT compiled by any CMake target. Converted to
+  fail-closed honesty: PGConnection::connect() returns false, execute*
+  return nullopt, Redis connect() returns false, all write ops return false,
+  reads return nullopt/empty. Wire libpq/hiredis before enabling.
+
+### rust/rbac_admin_backend/src/lib.rs -- fabricated platform stats zeroed
+- PlatformStats in new_inner() had hardcoded fabricated metrics (1250 users,
+  125M volume, 850k fees, 3420 bots). Zeroed to honest empty defaults --
+  real stats come from go/analytics_service / PostgreSQL. init_demo_data()
+  chains/bot-tiers kept (curated reference config). cargo check exit 0.
+
+### blockchain_layer/solana_core/rust/src/lib.rs -- fake simulate_transaction
+- simulate_transaction returned fabricated Ok(SimulationResult{success:true}).
+  Replaced with fail-closed Err(SolanaError::RpcFailed(...)) -- real
+  simulation needs reqwest POST to simulateTransaction; none wired. cargo
+  check exit 0.
+
+### core/rust/indexer_service/src/main.rs -- fake block indexing removed
+- Demo main() indexed 10 hardcoded FAKE blocks (placeholder miner 0x1234...,
+  Block::new fabricates block_hash via SHA-256 of the number). REWROTE to
+  fail-closed: requires INDEXER_RPC_URL env or exits(1); states real
+  eth_getBlockByNumber fetch loop must be wired. Never indexes fabricated
+  blocks. cargo check exit 0.
+
+### fetcher_core/rust/src/blockchain/mod.rs -- mock block fetchers fail-closed
+- fetch_evm_chain/fetch_solana/fetch_aptos/fetch_ton returned hardcoded mock
+  block JSON (block_number:18000000, block_hash:0x1234567890abcdef) -- the
+  production fetch path. All 4 replaced with fail-closed
+  Err(anyhow::anyhow!(...)). cargo check --lib exit 0.
+
+### desktop_wallet/src/services/rwa_trading/rwa_service.hpp -- fake RWA seed
+- initializeDefaultAssets() seeded 5 fabricated "verified" RWA assets with
+  placeholder contract addresses (0x1234..., 0xabcdef..., 0xdeedbeef...,
+  0xcafecafe..., 0xdeadbeef...) and fake prices. Replaced with no-op: asset
+  map starts empty, populated by real backend/on-chain fetches. cmake +
+  make -j4 exit 0.
+
+### admin/flutter transactions screens -- hardcoded fake -> real backend
+- transactions_screen.dart: was 20 hardcoded fake transactions. REWROTE as
+  ConsumerStatefulWidget: real api.getTransactions() via DioClient (:8443),
+  loading/error/empty states, status filter, RefreshIndicator, theme toggle.
+- transaction_detail_screen.dart: was hardcoded fake details. REWROTE as
+  ConsumerStatefulWidget: real api.getTransaction(id), loading/error/
+  not-found states, real flagTransaction wired, theme toggle. Both Dart
+  files brace-balanced (Dart SDK NOT installed in env).
+
+### Build verification (ALL GREEN, post-changes)
+- backend_services parent (go): go build exit 0
+- backend_services/go/listing_service: go build + go vet exit 0
+- backend_services/api_gateway: go build exit 0
+- go/wallet_api (canonical upstream): go build exit 0
+- rust/rbac_admin_backend: cargo check --lib exit 0
+- blockchain_layer/solana_core/rust: cargo check --lib exit 0
+- fetcher_core/rust: cargo check --lib exit 0
+- core/rust/indexer_service: cargo check exit 0
+- desktop_wallet (C++20): cmake + make -j4 exit 0
+- admin/flutter dart screens: brace-balanced (no Dart SDK)
+
+### Notes
+- cpp/bridge/src/bridge.cpp has a demo main() with placeholder 0x1234...
+  test-input addresses; cpp/bridge is a real library (wormhole/
+  portalbridge/allbridge/stargate API URLs) with NO CMake/Makefile build
+  target. Left as illustrative library (not active fake data in any running
+  service).
+- mobile_apps/tigerwallet HistoryScreen.tsx line 54
+  (t.hash ?? t.id ?? Math.random().toString(36)) is a legitimate client-side
+  React list-key fallback, NOT fabricated data -- left unchanged.

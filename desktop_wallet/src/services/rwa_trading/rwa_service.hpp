@@ -279,80 +279,10 @@ private:
     }
     
     void initializeDefaultAssets() {
-        // Real Estate
-        RWAAsset real_estate;
-        real_estate.id = "rwa_re_001";
-        real_estate.name = "Manhattan Luxury Apartment";
-        real_estate.symbol = "MLXA";
-        real_estate.type = RWAType::REAL_ESTATE;
-        real_estate.description = "Luxury 3-bedroom apartment in Manhattan, NYC";
-        real_estate.contract_address = "0x1234567890abcdef1234567890abcdef12345678";
-        real_estate.price = 2500000.0;
-        real_estate.total_supply = 1000000.0;
-        real_estate.is_fractional = true;
-        real_estate.is_verified = true;
-        real_estate.created_at = getCurrentTimestamp();
-        assets[real_estate.id] = real_estate;
-        
-        // Commodities - Gold
-        RWAAsset gold;
-        gold.id = "rwa_gold_001";
-        gold.name = "Gold Bullion 1kg";
-        gold.symbol = "GBLK";
-        gold.type = RWAType::COMMODITIES;
-        gold.description = "1kg gold bullion from Swiss refiner";
-        gold.contract_address = "0xabcdef1234567890abcdef1234567890abcdef12";
-        gold.price = 65000.0;
-        gold.total_supply = 10000.0;
-        gold.is_fractional = true;
-        gold.is_verified = true;
-        gold.created_at = getCurrentTimestamp();
-        assets[gold.id] = gold;
-        
-        // Art
-        RWAAsset art;
-        art.id = "rwa_art_001";
-        art.name = "Contemporary Art Collection";
-        art.symbol = "CART";
-        art.type = RWAType::ART;
-        art.description = "Curated collection of contemporary digital art";
-        art.contract_address = "0xdeedbeef12345678deedbeef12345678deedbeef";
-        art.price = 500000.0;
-        art.total_supply = 100000.0;
-        art.is_fractional = true;
-        art.is_verified = true;
-        art.created_at = getCurrentTimestamp();
-        assets[art.id] = art;
-        
-        // Private Equity
-        RWAAsset private_equity;
-        private_equity.id = "rwa_pe_001";
-        private_equity.name = "Tech Startup Fund I";
-        private_equity.symbol = "TSF1";
-        private_equity.type = RWAType::PRIVATE_EQUITY;
-        private_equity.description = "Venture capital fund investing in early-stage tech startups";
-        private_equity.contract_address = "0xcafecafe12345678cafecafe12345678cafecafe";
-        private_equity.price = 10000.0;
-        private_equity.total_supply = 10000.0;
-        private_equity.is_fractional = false;
-        private_equity.is_verified = true;
-        private_equity.created_at = getCurrentTimestamp();
-        assets[private_equity.id] = private_equity;
-        
-        // Vintage Wine
-        RWAAsset wine;
-        wine.id = "rwa_wine_001";
-        wine.name = "Rare Wine Collection 1982";
-        wine.symbol = "RW82";
-        wine.type = RWAType::VINTAGE_WINE;
-        wine.description = "Authenticated 1982 vintage Bordeaux collection";
-        wine.contract_address = "0xdeadbeef12345678deadbeef12345678deadbeef";
-        wine.price = 25000.0;
-        wine.total_supply = 1000.0;
-        wine.is_fractional = true;
-        wine.is_verified = true;
-        wine.created_at = getCurrentTimestamp();
-        assets[wine.id] = wine;
+        // Fail-closed: do NOT seed fabricated "verified" RWA assets with
+        // placeholder contract addresses. A real RWA marketplace must fetch
+        // verified assets from the canonical backend / on-chain registry.
+        // The asset map starts empty and is populated by real fetches.
     }
     
 public:

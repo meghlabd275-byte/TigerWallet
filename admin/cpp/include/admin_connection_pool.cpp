@@ -21,11 +21,14 @@ PGConnection::~PGConnection() {
 }
 
 bool PGConnection::connect() {
-    // In production, use libpq
-    // For now, simulate connection
-    conn_ = nullptr; // Would be PGconn*
-    LOG_INFO("PostgreSQL connection established (simulated)");
-    return true;
+    // Fail-closed: no PostgreSQL client driver (libpq) is linked into this
+    // target, so a real connection cannot be established. We refuse to
+    // pretend a connection succeeded (which would let callers proceed
+    // against a no-op backend). Wire libpq + PQconnectdb here before
+    // enabling this path.
+    conn_ = nullptr;
+    LOG_ERROR("PostgreSQL connect failed: no libpq driver wired (fail-closed)");
+    return false;
 }
 
 void PGConnection::disconnect() {
@@ -44,8 +47,9 @@ std::optional<std::string> PGConnection::execute(const std::string& query) {
     if (!is_connected()) {
         return std::nullopt;
     }
-    // In production, execute query
-    return "OK";
+    // Fail-closed: no driver wired. Never return a fabricated "OK".
+    LOG_ERROR("PG execute rejected: no libpq driver wired (fail-closed)");
+    return std::nullopt;
 }
 
 std::optional<std::string> PGConnection::execute_params(
@@ -53,8 +57,9 @@ std::optional<std::string> PGConnection::execute_params(
     if (!is_connected()) {
         return std::nullopt;
     }
-    // In production, execute parameterized query
-    return "OK";
+    // Fail-closed: no driver wired. Never return a fabricated "OK".
+    LOG_ERROR("PG execute_params rejected: no libpq driver wired (fail-closed)");
+    return std::nullopt;
 }
 
 void PGConnection::begin() {
@@ -90,10 +95,13 @@ RedisConnection::~RedisConnection() {
 }
 
 bool RedisConnection::connect() {
-    // In production, use hiredis
-    conn_ = nullptr; // Would be redisContext*
-    LOG_INFO("Redis connection established (simulated)");
-    return true;
+    // Fail-closed: no Redis client library (hiredis) is linked into this
+    // target, so a real connection cannot be established. We refuse to
+    // pretend a connection succeeded. Wire hiredis + redisConnect here
+    // before enabling this path.
+    conn_ = nullptr;
+    LOG_ERROR("Redis connect failed: no hiredis driver wired (fail-closed)");
+    return false;
 }
 
 void RedisConnection::disconnect() {
@@ -109,17 +117,22 @@ bool RedisConnection::is_connected() const {
 
 bool RedisConnection::set(const std::string& key, const std::string& value,
                           std::optional<int> expiry) {
-    // In production, use redisCommand
-    return true;
+    if (!is_connected()) {
+        return false;
+    }
+    // Fail-closed: no driver wired. Never return fabricated success.
+    LOG_ERROR("Redis set rejected: no hiredis driver wired (fail-closed)");
+    return false;
 }
 
 std::optional<std::string> RedisConnection::get(const std::string& key) {
-    // In production, use redisCommand
+    // Fail-closed: no driver wired. Never fabricate a cached value.
     return std::nullopt;
 }
 
 bool RedisConnection::del(const std::string& key) {
-    return true;
+    // Fail-closed: no driver wired. Never report fabricated success.
+    return false;
 }
 
 bool RedisConnection::exists(const std::string& key) {
@@ -128,7 +141,8 @@ bool RedisConnection::exists(const std::string& key) {
 
 bool RedisConnection::hset(const std::string& key, const std::string& field,
                           const std::string& value) {
-    return true;
+    // Fail-closed: no driver wired. Never report fabricated success.
+    return false;
 }
 
 std::optional<std::string> RedisConnection::hget(const std::string& key,
@@ -142,11 +156,13 @@ std::map<std::string, std::string> RedisConnection::hgetall(
 }
 
 bool RedisConnection::hdel(const std::string& key, const std::string& field) {
-    return true;
+    // Fail-closed: no driver wired. Never report fabricated success.
+    return false;
 }
 
 bool RedisConnection::lpush(const std::string& key, const std::string& value) {
-    return true;
+    // Fail-closed: no driver wired. Never report fabricated success.
+    return false;
 }
 
 std::vector<std::string> RedisConnection::lrange(const std::string& key,
@@ -156,11 +172,13 @@ std::vector<std::string> RedisConnection::lrange(const std::string& key,
 
 bool RedisConnection::publish(const std::string& channel,
                               const std::string& message) {
-    return true;
+    // Fail-closed: no driver wired. Never report fabricated success.
+    return false;
 }
 
 bool RedisConnection::expire(const std::string& key, int seconds) {
-    return true;
+    // Fail-closed: no driver wired. Never report fabricated success.
+    return false;
 }
 
 // ============================================================================

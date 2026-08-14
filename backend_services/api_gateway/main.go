@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -28,6 +28,7 @@ import (
 var (
 	logger      zerolog.Logger
 	redisClient *redis.Client
+	cfg         Config
 	upgrader    = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
@@ -42,6 +43,8 @@ type Config struct {
 	PortfolioURL      string
 	SwapServiceURL    string
 	StakingServiceURL string
+	NFTServiceURL     string
+	BridgeServiceURL  string
 }
 
 // ============================================================================
@@ -54,14 +57,14 @@ func main() {
 	logger.Info().Msg("Starting TigerWallet API Gateway")
 
 	// Load configuration
-	cfg := loadConfig()
+	cfg = *loadConfig()
 
 	// Initialize Redis
 	redisClient = initRedis(cfg.RedisURL)
 	defer redisClient.Close()
 
 	// Setup router
-	router := setupRouter(cfg)
+	router := setupRouter(&cfg)
 
 	// Start server
 	srv := &http.Server{
@@ -326,39 +329,41 @@ type ImportWalletRequest struct {
 	ChainID    uint64 `json:"chain_id"`
 }
 
+// importWallet proxies to the canonical wallet service. It never fabricates
+// an address/mnemonic; if no upstream is configured or reachable it fails
+// closed with an honest error.
 func importWallet(c *gin.Context) {
-	var req ImportWalletRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	response := CreateWalletResponse{
-		Address:   "0x" + generateRandomHex(40),
-		PublicKey: "0x" + generateRandomHex(66),
-		ChainID:   req.ChainID,
-		CreatedAt: time.Now().Unix(),
-	}
-
-	c.JSON(http.StatusCreated, response)
-}
-
-func getWalletInfo(c *gin.Context) {
-	address := c.Param("address")
-
-	// Check cache
-	cacheKey := fmt.Sprintf("wallet:%s", address)
-	cached, err := redisClient.Get(context.Background(), cacheKey).Result()
-	if err == nil && cached != "" {
-		c.JSON(http.StatusOK, gin.H{
-			"address":    address,
-			"chain_id":   1,
-			"created_at": time.Now().Add(-30 * 24 * time.Hour).Unix(),
+	if cfg.WalletServiceURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "wallet service is not configured; refusing to fabricate an imported wallet",
 		})
 		return
 	}
+	proxyServicePOST(c, cfg.WalletServiceURL, "/wallet/import")
+}
 
-	c.JSON(http.StatusNotFound, gin.H{"error": "Wallet not found"})
+// exportWallet proxies a keystore-V3 export to the canonical wallet service.
+// The wallet service derives the encrypted keystore from the stored seed; this
+// gateway never fabricates export material.
+func exportWallet(c *gin.Context) {
+	if cfg.WalletServiceURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "wallet service is not configured; refusing to fabricate a wallet export",
+		})
+		return
+	}
+	proxyServicePOST(c, cfg.WalletServiceURL, "/wallet/export")
+}
+
+// getWalletInfo proxies wallet lookup to the canonical wallet service.
+func getWalletInfo(c *gin.Context) {
+	if cfg.WalletServiceURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "wallet service is not configured; refusing to return mock wallet info",
+		})
+		return
+	}
+	proxyServiceGET(c, cfg.WalletServiceURL, "/wallet/"+c.Param("address"))
 }
 
 type BalanceResponse struct {
@@ -376,27 +381,15 @@ type TokenBalance struct {
 	ValueUSD string `json:"value_usd"`
 }
 
+// getBalance proxies a live balance read to the canonical wallet service.
 func getBalance(c *gin.Context) {
-	address := c.Param("address")
-	chainID := c.Query("chain_id")
-
-	response := BalanceResponse{
-		Address:   address,
-		ChainID:   1,
-		Native:    "1000000000000000000", // 1 ETH in wei
-		Tokens:    make(map[string]TokenBalance),
-		Timestamp: time.Now().Unix(),
+	if cfg.WalletServiceURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "wallet service is not configured; refusing to return a fabricated balance",
+		})
+		return
 	}
-
-	// Add some sample tokens
-	response.Tokens["0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"] = TokenBalance{
-		Balance:  "1000000000", // 1000 USDC
-		Symbol:   "USDC",
-		Decimals: 6,
-		ValueUSD: "1000.00",
-	}
-
-	c.JSON(http.StatusOK, response)
+	proxyServiceGET(c, cfg.WalletServiceURL, "/wallet/"+c.Param("address")+"/balance")
 }
 
 type TransferRequest struct {
@@ -418,29 +411,17 @@ type TransferResponse struct {
 	Status  string `json:"status"`
 }
 
+// transfer proxies the signed+broadcast transfer to the canonical wallet
+// service. The wallet service is the sole key holder and returns the real
+// on-chain tx hash; this gateway never invents one.
 func transfer(c *gin.Context) {
-	var req TransferRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if cfg.WalletServiceURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "wallet service is not configured; refusing to fabricate a transfer tx hash",
+		})
 		return
 	}
-
-	// In production: sign and broadcast transaction
-	response := TransferResponse{
-		TxHash:  "0x" + generateRandomHex(64),
-		From:    req.From,
-		To:      req.To,
-		Amount:  req.Amount,
-		ChainID: req.ChainID,
-		Status:  "pending",
-	}
-
-	// Cache transaction
-	txKey := fmt.Sprintf("tx:%s", response.TxHash)
-	txJSON, _ := json.Marshal(response)
-	redisClient.Set(context.Background(), txKey, txJSON, 24*time.Hour)
-
-	c.JSON(http.StatusCreated, response)
+	proxyServicePOST(c, cfg.WalletServiceURL, "/wallet/transfer")
 }
 
 // ============================================================================
@@ -474,34 +455,15 @@ type SwapQuoteResponse struct {
 	PriceImpact float64     `json:"price_impact"`
 }
 
+// getSwapQuote proxies to the real swap service for a live DEX quote.
 func getSwapQuote(c *gin.Context) {
-	var req SwapQuoteRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if cfg.SwapServiceURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "swap service is not configured; refusing to return a fabricated quote",
+		})
 		return
 	}
-
-	// Mock quote - in production call swap service
-	response := SwapQuoteResponse{
-		FromToken:   req.FromToken,
-		ToToken:     req.ToToken,
-		FromAmount:  req.Amount,
-		ToAmount:    "1500000000000000000", // 1.5x output
-		MinReceived: "1485000000000000000", // with slippage
-		Route: []SwapRoute{
-			{
-				DEX:        "uniswap_v3",
-				FromToken:  req.FromToken,
-				ToToken:    req.ToToken,
-				FromAmount: req.Amount,
-				ToAmount:   "1500000000000000000",
-			},
-		},
-		GasEstimate: "150000",
-		PriceImpact: 0.5,
-	}
-
-	c.JSON(http.StatusOK, response)
+	proxyServicePOST(c, cfg.SwapServiceURL, "/swap/quote")
 }
 
 type ExecuteSwapRequest struct {
@@ -514,33 +476,27 @@ type ExecuteSwapRequest struct {
 	Slippage    float64 `json:"slippage"`
 }
 
+// executeSwap proxies swap execution to the real swap service, which returns
+// the on-chain action to broadcast via the canonical wallet service.
 func executeSwap(c *gin.Context) {
-	var req ExecuteSwapRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if cfg.SwapServiceURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "swap service is not configured; refusing to fabricate a swap tx hash",
+		})
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"tx_hash":    "0x" + generateRandomHex(64),
-		"from":       req.FromAddress,
-		"from_token": req.FromToken,
-		"to_token":   req.ToToken,
-		"status":     "pending",
-	})
+	proxyServicePOST(c, cfg.SwapServiceURL, "/swap/execute")
 }
 
+// getSwapRoutes proxies the available DEX routes from the real swap service.
 func getSwapRoutes(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"routes": []string{
-			"uniswap_v3",
-			"uniswap_v2",
-			"sushiswap",
-			"curve",
-			"balancer",
-			"pancakeswap",
-		},
-	})
+	if cfg.SwapServiceURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "swap service is not configured; refusing to return fabricated routes",
+		})
+		return
+	}
+	proxyServiceGET(c, cfg.SwapServiceURL, "/swap/routes")
 }
 
 // ============================================================================
@@ -556,32 +512,15 @@ type Validator struct {
 	Status       string  `json:"status"`
 }
 
+// getValidators proxies validator list to the real staking service.
 func getValidators(c *gin.Context) {
-	chain := c.Param("chain")
-
-	response := []Validator{
-		{
-			ID:           "validator_1",
-			Name:         "Lido",
-			Commission:   10.0,
-			StakedAmount: "1000000000000000000000",
-			APY:          4.5,
-			Status:       "active",
-		},
-		{
-			ID:           "validator_2",
-			Name:         "Rocket Pool",
-			Commission:   15.0,
-			StakedAmount: "500000000000000000000",
-			APY:          4.2,
-			Status:       "active",
-		},
+	if cfg.StakingServiceURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "staking service is not configured; refusing to return fabricated validators",
+		})
+		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"chain":      chain,
-		"validators": response,
-	})
+	proxyServiceGET(c, cfg.StakingServiceURL, "/staking/"+c.Param("chain")+"/validators")
 }
 
 type DelegateRequest struct {
@@ -590,38 +529,37 @@ type DelegateRequest struct {
 	ChainID     uint64 `json:"chain_id" binding:"required"`
 }
 
+// delegate proxies the stake delegation to the real staking service.
 func delegate(c *gin.Context) {
-	var req DelegateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if cfg.StakingServiceURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "staking service is not configured; refusing to fabricate a delegation tx hash",
+		})
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"tx_hash":      "0x" + generateRandomHex(64),
-		"validator_id": req.ValidatorID,
-		"amount":       req.Amount,
-		"status":       "pending",
-	})
+	proxyServicePOST(c, cfg.StakingServiceURL, "/staking/delegate")
 }
 
+// undelegate proxies the unstake to the real staking service.
 func undelegate(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"tx_hash": "0x" + generateRandomHex(64),
-		"status":  "pending",
-	})
+	if cfg.StakingServiceURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "staking service is not configured; refusing to fabricate an undelegation tx hash",
+		})
+		return
+	}
+	proxyServicePOST(c, cfg.StakingServiceURL, "/staking/undelegate")
 }
 
+// getStakingRewards proxies reward lookup to the real staking service.
 func getStakingRewards(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"rewards": []gin.H{
-			{
-				"amount":    "100000000000000000",
-				"timestamp": time.Now().Unix(),
-				"chain_id":  1,
-			},
-		},
-	})
+	if cfg.StakingServiceURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "staking service is not configured; refusing to return fabricated rewards",
+		})
+		return
+	}
+	proxyServiceGET(c, cfg.StakingServiceURL, "/staking/rewards")
 }
 
 // ============================================================================
@@ -638,46 +576,37 @@ type NFT struct {
 	Attributes []gin.H `json:"attributes"`
 }
 
+// getNFTs proxies NFT enumeration to the real NFT service (on-chain reads).
 func getNFTs(c *gin.Context) {
-	address := c.Param("address")
-
-	response := []NFT{
-		{
-			TokenID:  "1",
-			Contract: "0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D",
-			Name:     "Bored Ape Yacht Club",
-			Symbol:   "BAYC",
-			ImageURL: "https://ipfs.io/ipfs/QmRRPWG96cmgTn2qSzjwr2qvfNEuhunv6FNeMFGa9bx6mQ",
-			Owner:    address,
-			Attributes: []gin.H{
-				{"trait_type": "Background", "value": "Blue"},
-				{"trait_type": "Fur", "value": "Dark Brown"},
-			},
-		},
+	if cfg.NFTServiceURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "NFT service is not configured; refusing to return fabricated NFTs",
+		})
+		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"address": address,
-		"nfts":    response,
-		"total":   1,
-	})
+	proxyServiceGET(c, cfg.NFTServiceURL, "/nft/"+c.Param("address"))
 }
 
+// getNFTDetails proxies NFT metadata to the real NFT service.
 func getNFTDetails(c *gin.Context) {
-	tokenID := c.Param("token_id")
-
-	c.JSON(http.StatusOK, gin.H{
-		"token_id":  tokenID,
-		"name":      "Bored Ape #1",
-		"image_url": "https://ipfs.io/ipfs/QmRRPWG96cmgTn2qSzjwr2qvfNEuhunv6FNeMFGa9bx6mQ",
-	})
+	if cfg.NFTServiceURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "NFT service is not configured; refusing to return fabricated NFT metadata",
+		})
+		return
+	}
+	proxyServiceGET(c, cfg.NFTServiceURL, "/nft/"+c.Param("address")+"/"+c.Param("token_id"))
 }
 
+// transferNFT proxies the ERC-721 transfer to the real wallet service.
 func transferNFT(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"tx_hash": "0x" + generateRandomHex(64),
-		"status":  "pending",
-	})
+	if cfg.WalletServiceURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "wallet service is not configured; refusing to fabricate an NFT transfer tx hash",
+		})
+		return
+	}
+	proxyServicePOST(c, cfg.WalletServiceURL, "/nft/transfer")
 }
 
 // ============================================================================
@@ -691,30 +620,26 @@ type BridgeQuoteRequest struct {
 	Amount    string `json:"amount" binding:"required"`
 }
 
+// getBridgeQuote proxies a live bridge quote to the real bridge service.
 func getBridgeQuote(c *gin.Context) {
-	var req BridgeQuoteRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if cfg.BridgeServiceURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "bridge service is not configured; refusing to return a fabricated quote",
+		})
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"from_chain":     req.FromChain,
-		"to_chain":       req.ToChain,
-		"from_amount":    req.Amount,
-		"to_amount":      "980000000000000000", // 2% fee
-		"fee":            "20000000000000000",
-		"estimated_time": "15m",
-		"protocol":       "stargate",
-	})
+	proxyServicePOST(c, cfg.BridgeServiceURL, "/bridge/quote")
 }
 
+// executeBridge proxies bridge execution to the real bridge service.
 func executeBridge(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"tx_hash":      "0x" + generateRandomHex(64),
-		"status":       "pending",
-		"bridge_tx_id": generateRandomHex(32),
-	})
+	if cfg.BridgeServiceURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "bridge service is not configured; refusing to fabricate a bridge tx hash",
+		})
+		return
+	}
+	proxyServicePOST(c, cfg.BridgeServiceURL, "/bridge/execute")
 }
 
 // ============================================================================
@@ -861,7 +786,10 @@ func loadConfig() *Config {
 		WalletServiceURL: getEnv("WALLET_SERVICE_URL", "http://localhost:8081"),
 		MarketDataURL:    getEnv("MARKET_DATA_URL", ""),
 		PortfolioURL:     getEnv("PORTFOLIO_SERVICE_URL", ""),
-		SwapServiceURL:   getEnv("SWAP_SERVICE_URL", "http://localhost:8082"),
+		SwapServiceURL:   getEnv("SWAP_SERVICE_URL", ""),
+		StakingServiceURL: getEnv("STAKING_SERVICE_URL", ""),
+		NFTServiceURL:    getEnv("NFT_SERVICE_URL", ""),
+		BridgeServiceURL: getEnv("BRIDGE_SERVICE_URL", ""),
 	}
 }
 
@@ -927,6 +855,9 @@ func getEnv(key, defaultValue string) string {
 }
 
 func generateRandomHex(length int) string {
+	// Kept for any future non-cryptographic correlation-ID need. It is NEVER
+	// used for transaction hashes, signatures, or wallet secrets — the gateway
+	// only ever returns hashes it receives from a real upstream service.
 	bytes := make([]byte, length/2)
 	if _, err := cryptoRand.Read(bytes); err != nil {
 		panic(fmt.Sprintf("secure random generation failed: %v", err))
@@ -934,18 +865,39 @@ func generateRandomHex(length int) string {
 	return hex.EncodeToString(bytes)[:length]
 }
 
-func generateMnemonic() string {
-	words := []string{
-		"abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract",
-		"absurd", "abuse", "access", "accident", "account", "accuse", "achieve",
-		"acid", "acoustic", "acquire", "across", "act", "action", "actor", "actress",
+var _ = generateRandomHex // suppress unused-warning; retained for tracing IDs
+
+// proxyServicePOST forwards the inbound JSON body to an upstream canonical
+// service via POST and streams its JSON response (or an honest 5xx when the
+// upstream is unreachable). It never fabricates a response.
+func proxyServicePOST(c *gin.Context, baseURL, path string) {
+	if baseURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "required upstream service is not configured; refusing to return mock data",
+		})
+		return
 	}
-	mnemonic := ""
-	for i := 0; i < 24; i++ {
-		if i > 0 {
-			mnemonic += " "
-		}
-		mnemonic += words[i%len(words)]
+
+	targetURL := baseURL + path
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, targetURL, c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "upstream request could not be created"})
+		return
 	}
-	return mnemonic
+	req.Header.Set("Content-Type", "application/json")
+	if auth := c.GetHeader("Authorization"); auth != "" {
+		req.Header.Set("Authorization", auth)
+	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "upstream service unavailable"})
+		return
+	}
+	defer resp.Body.Close()
+
+	c.Status(resp.StatusCode)
+	c.Header("Content-Type", "application/json")
+	io.Copy(c.Writer, resp.Body)
 }

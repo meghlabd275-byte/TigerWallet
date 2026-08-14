@@ -1,38 +1,151 @@
 /**
  * TigerWallet Admin - Transactions Screen
+ * Real backend-backed list (wallet_api :8443 /api/v1/transactions).
  */
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/theme/app_theme.dart';
-import '../../../../core/constants/app_constants.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-class TransactionsScreen extends ConsumerWidget {
+import '../../../../core/constants/app_constants.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/network/dio_client.dart';
+import '../../../../core/theme/app_theme.dart';
+
+class TransactionsScreen extends ConsumerStatefulWidget {
   const TransactionsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  ConsumerState<TransactionsScreen> createState() => _TransactionsScreenState();
+}
+
+class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
+  List<Map<String, dynamic>> _transactions = [];
+  bool _loading = true;
+  String? _error;
+  String _statusFilter = 'all';
+  bool _isDark = false;
+
+  ApiClient? _api;
+
+  Future<ApiClient> _client() async {
+    if (_api != null) return _api!;
+    final prefs = await SharedPreferences.getInstance();
+    _api = DioClient.withPrefs(prefs);
+    return _api!;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTransactions();
+  }
+
+  Future<void> _loadTransactions() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final api = await _client();
+      final result = await api.getTransactions(
+        page: 1,
+        pageSize: 50,
+        status: _statusFilter == 'all' ? null : _statusFilter,
+      );
+      final data = result['data'];
+      _transactions = data is List
+          ? List<Map<String, dynamic>>.from(data)
+          : <Map<String, dynamic>>[];
+      setState(() {});
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _transactions = [];
+      });
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = _isDark;
     return Scaffold(
-      appBar: AppBar(title: const Text('Transactions')),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: 20,
-        itemBuilder: (context, index) => _buildTransactionCard(context, index, isDark),
+      appBar: AppBar(
+        title: const Text('Transactions'),
+        actions: [
+          IconButton(
+            icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode),
+            onPressed: () => setState(() => _isDark = !isDark),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: DropdownButton<String>(
+              value: _statusFilter,
+              isExpanded: true,
+              items: const [
+                DropdownMenuItem(value: 'all', child: Text('All statuses')),
+                DropdownMenuItem(value: 'pending', child: Text('Pending')),
+                DropdownMenuItem(value: 'completed', child: Text('Completed')),
+                DropdownMenuItem(value: 'failed', child: Text('Failed')),
+                DropdownMenuItem(value: 'flagged', child: Text('Flagged')),
+              ],
+              onChanged: (v) {
+                if (v == null) return;
+                _statusFilter = v;
+                _loadTransactions();
+              },
+            ),
+          ),
+          if (_loading)
+            const Expanded(child: Center(child: CircularProgressIndicator()))
+          else if (_error != null)
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text('Failed to load transactions: $_error',
+                      textAlign: TextAlign.center),
+                ),
+              ),
+            )
+          else if (_transactions.isEmpty)
+            const Expanded(child: Center(child: Text('No transactions found')))
+          else
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: _loadTransactions,
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _transactions.length,
+                  itemBuilder: (context, index) =>
+                      _buildTransactionCard(context, _transactions[index], isDark),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
 
-  Widget _buildTransactionCard(BuildContext context, int index, bool isDark) {
-    final types = ['Deposit', 'Withdraw', 'Transfer', 'Swap'];
-    final statuses = ['Completed', 'Pending', 'Failed', 'Flagged'];
+  Widget _buildTransactionCard(BuildContext context, Map<String, dynamic> tx, bool isDark) {
+    final id = (tx['id'] ?? tx['tx_hash'] ?? '').toString();
+    final type = (tx['type'] ?? 'Transaction').toString();
+    final status = (tx['status'] ?? 'unknown').toString();
+    final amount = (tx['amount'] ?? tx['value'] ?? 0).toString();
+    final from = (tx['from'] ?? tx['from_address'] ?? '-').toString();
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       color: isDark ? AppTheme.darkCard : AppTheme.lightCard,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
-        onTap: () => context.go('${AppConstants.transactionsRoute}/$index'),
+        onTap: id.isEmpty ? null : () => context.go('${AppConstants.transactionsRoute}/$id'),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -40,24 +153,25 @@ class TransactionsScreen extends ConsumerWidget {
             children: [
               CircleAvatar(
                 radius: 24,
-                backgroundColor: _getTypeColor(index % 4).withOpacity(0.1),
-                child: Icon(_getTypeIcon(index % 4), color: _getTypeColor(index % 4)),
+                backgroundColor: _getTypeColor(type).withOpacity(0.1),
+                child: Icon(_getTypeIcon(type), color: _getTypeColor(type)),
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(types[index % 4], style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                    Text('Tx: 0x${index.toRadixString(16).padLeft(10, '0')}', style: Theme.of(context).textTheme.bodySmall),
+                    Text(type, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    Text('Tx: ${_shortId(id)}', style: Theme.of(context).textTheme.bodySmall),
+                    Text('From: ${_shortId(from)}', style: Theme.of(context).textTheme.bodySmall),
                   ],
                 ),
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text('\$${(index + 1) * 100}.00', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                  Text(statuses[index % 4], style: TextStyle(color: _getStatusColor(index % 4), fontSize: 12)),
+                  Text(amount, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                  Text(status, style: TextStyle(color: _getStatusColor(status), fontSize: 12)),
                 ],
               ),
             ],
@@ -67,15 +181,35 @@ class TransactionsScreen extends ConsumerWidget {
     );
   }
 
-  IconData _getTypeIcon(int type) {
-    switch (type) { case 0: return Icons.arrow_downward; case 1: return Icons.arrow_upward; case 2: return Icons.swap_horiz; default: return Icons.swap_calls; }
+  String _shortId(String s) {
+    if (s.isEmpty) return '-';
+    if (s.length <= 14) return s;
+    return '${s.substring(0, 8)}...${s.substring(s.length - 6)}';
   }
 
-  Color _getTypeColor(int type) {
-    switch (type) { case 0: return AppTheme.successColor; case 1: return AppTheme.errorColor; case 2: return AppTheme.infoColor; default: return AppTheme.accentColor; }
+  IconData _getTypeIcon(String type) {
+    final t = type.toLowerCase();
+    if (t.contains('deposit')) return Icons.arrow_downward;
+    if (t.contains('withdraw')) return Icons.arrow_upward;
+    if (t.contains('swap')) return Icons.swap_horiz;
+    if (t.contains('transfer')) return Icons.swap_calls;
+    return Icons.receipt_long;
   }
 
-  Color _getStatusColor(int status) {
-    switch (status) { case 0: return AppTheme.successColor; case 1: return AppTheme.warningColor; case 2: return AppTheme.errorColor; default: return AppTheme.errorColor; }
+  Color _getTypeColor(String type) {
+    final t = type.toLowerCase();
+    if (t.contains('deposit')) return AppTheme.successColor;
+    if (t.contains('withdraw')) return AppTheme.errorColor;
+    if (t.contains('swap')) return AppTheme.infoColor;
+    return AppTheme.accentColor;
+  }
+
+  Color _getStatusColor(String status) {
+    final s = status.toLowerCase();
+    if (s.contains('completed') || s.contains('success')) return AppTheme.successColor;
+    if (s.contains('pending')) return AppTheme.warningColor;
+    if (s.contains('failed')) return AppTheme.errorColor;
+    if (s.contains('flagged')) return AppTheme.errorColor;
+    return Colors.grey;
   }
 }
