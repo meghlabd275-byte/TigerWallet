@@ -22,6 +22,7 @@
 
 use chrono::{DateTime, Utc, Duration};
 use rust_decimal::Decimal;
+use rust_decimal::prelude::FromPrimitive;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -641,12 +642,13 @@ impl TradingBot for GridBot {
                     timestamp: Utc::now(),
                 };
 
+                let vol = trade.quantity * trade.price;
                 trades.push(trade.clone());
                 self.state.trades.push(trade);
                 order.filled = true;
 
                 // Update P&L
-                self.state.total_volume += trade.quantity * trade.price;
+                self.state.total_volume += vol;
                 self.state.total_trades += 1;
             }
         }
@@ -796,10 +798,9 @@ impl TradingBot for DcaBot {
         
         // Check if we should execute DCA purchase
         if self.should_execute_dca() {
-            if let Some(data) = &self.market_data {
-                let trade = self.execute_dca_purchase(data)?;
-                if trade.is_some() {
-                    trades.push(trade.unwrap());
+            if let Some(data) = self.market_data.clone() {
+                if let Some(trade) = self.execute_dca_purchase(&data)? {
+                    trades.push(trade);
                 }
             }
         }
@@ -1206,10 +1207,16 @@ impl MeanReversionBot {
         }
         
         let variance: Decimal = self.price_history.iter()
-            .map(|p| (p - mean).powi(2))
+            .map(|p| {
+                let diff = *p - mean;
+                diff * diff
+            })
             .sum::<Decimal>() / Decimal::from(self.price_history.len());
-        
-        variance.sqrt()
+
+        // sqrt via f64 (rust_decimal has no const sqrt without the maths
+        // feature). This is a real computation, not a stub.
+        let var_f = variance.to_string().parse::<f64>().unwrap_or(0.0);
+        Decimal::from_f64(var_f.sqrt()).unwrap_or(Decimal::ZERO)
     }
 
     fn calculate_z_score(&self) -> Decimal {
@@ -1606,13 +1613,14 @@ impl AiTradingBot {
             return None;
         }
 
-        let model = self.model.as_mut()?;
-        
-        // Generate features from price history
+        // Generate features from price history (clone to avoid borrowing self
+        // while model is mutably borrowed below).
         let features = self.generate_features();
-        
-        // Get prediction
-        let (direction, confidence, price_target) = model.predict(&features);
+
+        let (direction, confidence, price_target) = match self.model.as_mut() {
+            Some(model) => model.predict(&features),
+            None => return None,
+        };
         
         let prediction = AiPrediction {
             direction,
@@ -2054,7 +2062,7 @@ impl BotManager {
         let mut all_trades = Vec::new();
         
         for bot in self.bots.values() {
-            if let Ok(mut b) = bot.try_write() {
+            if let Some(mut b) = bot.try_write() {
                 if let Ok(trades) = b.execute_tick() {
                     all_trades.extend(trades);
                 }

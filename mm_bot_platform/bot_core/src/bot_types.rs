@@ -668,6 +668,17 @@ fn main() {
             BotType::CrossChain => manager.create_cross_chain_bot(name.to_string()),
             BotType::PerpHedge => manager.create_perp_hedge_bot(name.to_string()),
             BotType::FrontRun => manager.create_mev_bot(name.to_string()), // Use MEV for front-run
+            // The 8 advanced bot types are created via the generic market-maker
+            // constructor (their strategy logic is selected at execution time by
+            // the strategy factory, not by the bot manager's create_* method).
+            BotType::GridTrading => manager.create_market_maker(name.to_string()),
+            BotType::DcaBot => manager.create_market_maker(name.to_string()),
+            BotType::MomentumBot => manager.create_market_maker(name.to_string()),
+            BotType::MeanReversion => manager.create_market_maker(name.to_string()),
+            BotType::ScalpingBot => manager.create_market_maker(name.to_string()),
+            BotType::AiTradingBot => manager.create_market_maker(name.to_string()),
+            BotType::SignalBot => manager.create_market_maker(name.to_string()),
+            BotType::CustomBot => manager.create_market_maker(name.to_string()),
         };
         
         // Configure bot with DEX/CEX connections

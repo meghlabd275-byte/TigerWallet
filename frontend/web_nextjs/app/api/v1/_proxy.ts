@@ -57,6 +57,8 @@ export const LEADERBOARD_SERVICE_URL = process.env.LEADERBOARD_SERVICE_URL || 'h
 export const INSURANCE_SERVICE_URL = process.env.INSURANCE_SERVICE_URL || 'http://localhost:8459';
 export const IEO_SERVICE_URL = process.env.IEO_SERVICE_URL || 'http://localhost:8460';
 export const BOTS_SERVICE_URL = process.env.BOTS_SERVICE_URL || 'http://localhost:8461';
+export const CONVERT_SERVICE_URL = process.env.CONVERT_SERVICE_URL || 'http://localhost:8472';
+export const BOT_API_SERVICE_URL = process.env.BOT_API_SERVICE_URL || 'http://localhost:8471';
 export const TWAP_SERVICE_URL = process.env.TWAP_SERVICE_URL || 'http://localhost:8462';
 export const POOL_SERVICE_URL = process.env.POOL_SERVICE_URL || 'http://localhost:8463';
 export const GRAPHQL_SERVICE_URL = process.env.GRAPHQL_SERVICE_URL || 'http://localhost:9003';
@@ -115,7 +117,7 @@ export async function proxyMutationFrom(
   req: NextRequest,
   baseUrl: string,
   path: string,
-  method: 'POST' | 'PUT' | 'DELETE'
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 ): Promise<NextResponse> {
   try {
     let body: string | undefined;
@@ -211,7 +213,7 @@ export async function serviceProxyMutation(
   req: NextRequest,
   baseUrl: string,
   path: string,
-  method: 'POST' | 'PUT' | 'DELETE'
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 ): Promise<NextResponse> {
   try {
     let body: string | undefined;

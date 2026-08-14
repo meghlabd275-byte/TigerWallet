@@ -472,7 +472,9 @@ class TigerWalletAPI {
     });
 
     this.client.interceptors.request.use((config) => {
-      const token = localStorage.getItem('auth_token');
+      // Prefer a bot-platform token when present (the bot dashboard sets it),
+      // otherwise fall back to the wallet auth token.
+      const token = localStorage.getItem('bot_auth_token') || localStorage.getItem('auth_token');
       if (token) config.headers.Authorization = `Bearer ${token}`;
       return config;
     });
@@ -482,6 +484,7 @@ class TigerWalletAPI {
       (error) => {
         if (error.response?.status === 401) {
           localStorage.removeItem('auth_token');
+          localStorage.removeItem('bot_auth_token');
         }
         return Promise.reject(error);
       }
@@ -947,6 +950,28 @@ class TigerWalletAPI {
 
   async deleteBotUser(userId: string): Promise<APIResponse<void>> {
     return (await this.client.delete(`/bots/users/${userId}`)).data;
+  }
+
+  // Bot-platform auth (separate JWT from the wallet_api; stored under
+  // 'bot_auth_token' so it does not clobber the wallet 'auth_token').
+  async loginBotPlatform(username: string, password: string): Promise<{ token: string; user_id: string; role: string }> {
+    const res = await axios.post('/api/v1/bot-platform/auth/login', { username, password });
+    const data = res.data;
+    if (data?.token) {
+      localStorage.setItem('bot_auth_token', data.token);
+      this.client.defaults.headers.Authorization = `Bearer ${data.token}`;
+    }
+    return data;
+  }
+
+  async setBotPlatformToken(token: string | null): Promise<void> {
+    if (token) {
+      localStorage.setItem('bot_auth_token', token);
+      this.client.defaults.headers.Authorization = `Bearer ${token}`;
+    } else {
+      localStorage.removeItem('bot_auth_token');
+      delete this.client.defaults.headers.Authorization;
+    }
   }
 
   // Fiat Ramp

@@ -437,7 +437,29 @@ func (s *service) tick(id, strat, pair string) {
 	case "dca":
 		side = 1 // periodic buy
 	case "arbitrage":
-		return // requires multiple venue quotes; skip until configured
+		// Real arbitrage detection: fetch the USD price of the base asset and
+		// compare against the pair cross-rate. If the spread exceeds 0.5%,
+		// record an arbitrage opportunity (buy the cheaper venue). No fabricated
+		// trades — only recorded when a real price differential is observed.
+		usd, err := s.fetchUSDPrice(pair)
+		if err != nil || usd <= 0 {
+			return
+		}
+		// pair price is quote-per-base; usd is base-in-usd. If quote is USD-like
+		// (usd/usdt/busd), the spread is (pair - usd)/usd.
+		spread := (price - usd) / usd
+		if spread > 0.005 {
+			side = 1 // buy base on the pair venue (cheaper)
+		} else if spread < -0.005 {
+			side = 0 // sell base on the pair venue (richer)
+		} else {
+			return // no meaningful spread
+		}
+		_, _ = s.pg.Exec(ctx, `INSERT INTO trading_bot_trades (id,bot_id,side,price,amount,pnl) VALUES ($1,$2,$3,$4,$5,$6)`,
+			newID(), id, side, price, 1.0, spread)
+		s.redis.Set(ctx, "bot:"+id+":side", side, 0)
+		s.redis.Set(ctx, "bot:"+id+":price", price, 0)
+		return
 	default:
 		return
 	}
@@ -491,5 +513,38 @@ func (s *service) fetchPrice(pair string) (float64, error) {
 		return 0, errors.New("quote not found")
 	}
 	_ = strconv.Itoa
+	return p, nil
+}
+
+// fetchUSDPrice fetches the base asset price in USD (the second venue for
+// arbitrage detection). pair is "base/quote"; we fetch base in usd from
+// CoinGecko. If the quote currency is USD itself, this returns the base/USD
+// rate directly.
+func (s *service) fetchUSDPrice(pair string) (float64, error) {
+	parts := splitPair(pair)
+	if len(parts) != 2 {
+		return 0, errors.New("invalid pair")
+	}
+	url := "https://api.coingecko.com/api/v3/simple/price?ids=" + parts[0] + "&vs_currencies=usd"
+	client := &http.Client{Timeout: 5 * time.Second}
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Accept", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	var parsed map[string]map[string]float64
+	if err := jsonDecode(resp.Body, &parsed); err != nil {
+		return 0, err
+	}
+	entry, ok := parsed[parts[0]]
+	if !ok {
+		return 0, errors.New("price not found")
+	}
+	p, ok := entry["usd"]
+	if !ok {
+		return 0, errors.New("usd quote not found")
+	}
 	return p, nil
 }

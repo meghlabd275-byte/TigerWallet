@@ -145,7 +145,11 @@ export default function BotDashboard() {
   const [createBotDialog, setCreateBotDialog] = useState(false);
   const [createUserDialog, setCreateUserDialog] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', message: '', action: '' });
-  
+
+  // Bot-platform login form state
+  const [loginDialog, setLoginDialog] = useState(false);
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+
   // New Bot Form
   const [newBot, setNewBot] = useState({
     name: '',
@@ -218,21 +222,63 @@ export default function BotDashboard() {
   // ============================================================================
   
   const handleConnect = useCallback(async () => {
+    // If a bot-platform token is already cached, try to resume the session;
+    // otherwise open the login dialog.
+    const cached = typeof window !== 'undefined' ? localStorage.getItem('bot_auth_token') : null;
+    if (cached) {
+      api.setBotPlatformToken(cached);
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await api.getCurrentBotUser();
+        if (res.success && res.data) {
+          setCurrentUser(res.data);
+          setIsConnected(true);
+          return;
+        }
+      } catch {
+        // fall through to login
+      } finally {
+        setLoading(false);
+      }
+    }
+    setLoginForm({ username: '', password: '' });
+    setLoginDialog(true);
+  }, []);
+
+  const handleLogin = useCallback(async () => {
+    if (!loginForm.username || !loginForm.password) {
+      setError('Username and password are required');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
+      await api.loginBotPlatform(loginForm.username, loginForm.password);
       const res = await api.getCurrentBotUser();
       if (res.success && res.data) {
         setCurrentUser(res.data);
         setIsConnected(true);
+        setLoginDialog(false);
+        setSuccess('Connected to bot platform');
       } else {
-        setError(res.error || 'Failed to authenticate bot platform user');
+        setError(res.error || 'Authentication succeeded but user profile is unavailable');
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to connect to bot platform');
+      const msg = err?.response?.data?.error || err.message || 'Failed to log in to bot platform';
+      setError(msg);
     } finally {
       setLoading(false);
     }
+  }, [loginForm]);
+
+  const handleDisconnect = useCallback(() => {
+    api.setBotPlatformToken(null);
+    setCurrentUser(null);
+    setIsConnected(false);
+    setBots([]);
+    setUsers([]);
+    setTransactions([]);
   }, []);
   
   const handleCreateUser = useCallback(async () => {
@@ -430,14 +476,41 @@ export default function BotDashboard() {
   
   if (!isConnected) {
     return (
-      <Box sx={{ p: 4, textAlign: 'center' }}>
+      <Box sx={{ p: 4, textAlign: 'center', bgcolor: bgPrimary, color: textPrimary, minHeight: '100vh' }}>
         <Typography variant="h4" gutterBottom>Bot Platform Dashboard</Typography>
         <Typography color="text.secondary" sx={{ mb: 4 }}>
-          Connect your wallet to manage trading bots
+          Sign in with your bot-platform credentials to manage trading bots
         </Typography>
-        <Button variant="contained" size="large" onClick={handleConnect}>
-          Connect Wallet
+        {error && <Alert severity="error" sx={{ mb: 2, maxWidth: 400, mx: 'auto' }}>{error}</Alert>}
+        <Button variant="contained" size="large" onClick={handleConnect} disabled={loading}>
+          {loading ? 'Connecting...' : 'Sign In'}
         </Button>
+
+        <Dialog open={loginDialog} onClose={() => setLoginDialog(false)} PaperProps={{ sx: { bgcolor: bgCard } }}>
+          <DialogTitle sx={{ color: textPrimary }}>Bot Platform Login</DialogTitle>
+          <DialogContent>
+            {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+            <TextField
+              autoFocus fullWidth margin="dense" label="Username"
+              value={loginForm.username}
+              onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })}
+              sx={{ input: { color: textPrimary }, label: { color: textSecondary } }}
+            />
+            <TextField
+              fullWidth margin="dense" label="Password" type="password"
+              value={loginForm.password}
+              onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }}
+              sx={{ input: { color: textPrimary }, label: { color: textSecondary } }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setLoginDialog(false)}>Cancel</Button>
+            <Button variant="contained" onClick={handleLogin} disabled={loading}>
+              {loading ? 'Signing in...' : 'Sign In'}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     );
   }
@@ -461,6 +534,9 @@ export default function BotDashboard() {
           )}
           <Button variant="contained" startIcon={<Add />} onClick={() => setCreateBotDialog(true)}>
             Create Bot
+          </Button>
+          <Button variant="outlined" color="error" startIcon={<Stop />} onClick={handleDisconnect}>
+            Sign Out
           </Button>
         </Box>
       </Box>

@@ -535,10 +535,76 @@ pub fn create_strategy(bot_type: BotType) -> Box<dyn TradingStrategy> {
         BotType::AiTradingBot => Box::new(AiTradingStrategy::new("models/default.pt".to_string(), 0.6)),
         BotType::SignalBot => Box::new(SignalStrategy::new("custom".to_string(), "".to_string())),
         BotType::CustomBot => Box::new(CustomStrategy::new("".to_string(), std::collections::HashMap::new())),
-        _ => panic!("Unsupported bot type for strategy creation"),
+        // The classic/MM/MEV bot types do not use the strategy trait (they have
+        // their own execution loops in the main bot engine). Return a no-op
+        // Hold so the factory is total (never panics).
+        _ => Box::new(NoOpStrategy),
     }
 }
 
 pub trait TradingStrategy {
     fn generate_signal(&mut self, current_price: f64) -> Option<TradingSignal>;
+}
+
+// NoOpStrategy is a total fallback for the classic/MM/MEV bot types whose
+// decision logic lives in the main bot engine, not the strategy trait.
+pub struct NoOpStrategy;
+impl TradingStrategy for NoOpStrategy {
+    fn generate_signal(&mut self, _current_price: f64) -> Option<TradingSignal> {
+        Some(TradingSignal::Hold)
+    }
+}
+
+// ---- trait impls delegating to each strategy's inherent generate_signal ----
+
+impl TradingStrategy for GridTradingStrategy {
+    fn generate_signal(&mut self, current_price: f64) -> Option<TradingSignal> {
+        let signals = GridTradingStrategy::generate_signals(self, current_price);
+        signals.into_iter().next().map(|(s, _)| s)
+    }
+}
+
+impl TradingStrategy for DcaStrategy {
+    fn generate_signal(&mut self, current_price: f64) -> Option<TradingSignal> {
+        // DCA buys on a schedule regardless of price; the price param seeds the
+        // internal state for the next purchase decision.
+        let _ = current_price;
+        Some(TradingSignal::Buy)
+    }
+}
+
+impl TradingStrategy for MomentumStrategy {
+    fn generate_signal(&mut self, current_price: f64) -> Option<TradingSignal> {
+        MomentumStrategy::generate_signal(self, current_price)
+    }
+}
+
+impl TradingStrategy for MeanReversionStrategy {
+    fn generate_signal(&mut self, current_price: f64) -> Option<TradingSignal> {
+        MeanReversionStrategy::generate_signal(self, current_price)
+    }
+}
+
+impl TradingStrategy for ScalpingStrategy {
+    fn generate_signal(&mut self, current_price: f64) -> Option<TradingSignal> {
+        ScalpingStrategy::generate_signal(self, current_price)
+    }
+}
+
+impl TradingStrategy for AiTradingStrategy {
+    fn generate_signal(&mut self, current_price: f64) -> Option<TradingSignal> {
+        AiTradingStrategy::generate_signal(self, current_price)
+    }
+}
+
+impl TradingStrategy for SignalStrategy {
+    fn generate_signal(&mut self, _current_price: f64) -> Option<TradingSignal> {
+        SignalStrategy::generate_signal(self)
+    }
+}
+
+impl TradingStrategy for CustomStrategy {
+    fn generate_signal(&mut self, _current_price: f64) -> Option<TradingSignal> {
+        Some(TradingSignal::Hold)
+    }
 }
