@@ -58,6 +58,25 @@ func handleAdminTransactions(c *gin.Context) {
 	c.JSON(http.StatusOK, txs)
 }
 
+// handleAdminUsers returns real user records (with per-user wallet counts and
+// 30-day trade volume aggregated from transaction_log) for the admin user
+// management dashboard. Never returns fabricated sample users.
+func handleAdminUsers(c *gin.Context) {
+	if store == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "storage unavailable"})
+		return
+	}
+	users, err := store.ListAllUsers(c.Request.Context(), 200)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load users"})
+		return
+	}
+	if users == nil {
+		users = []AdminUserRecord{}
+	}
+	c.JSON(http.StatusOK, users)
+}
+
 // handleAdminWalletDetail returns a single wallet record by id.
 func handleAdminWalletDetail(c *gin.Context) {
 	if store == nil {

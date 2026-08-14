@@ -18,6 +18,7 @@ interface Integration {
   is_active: boolean;
   last_sync_at: string;
   sync_status: string;
+  config?: Record<string, string>;
 }
 
 interface IntegrationsProps {

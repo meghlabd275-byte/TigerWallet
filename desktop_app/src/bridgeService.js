@@ -103,7 +103,7 @@ class BridgeService {
             return await response.json();
         } catch (error) {
             console.error('Failed to get bridge status:', error);
-            return { status: 'pending' };
+            return null;
         }
     }
 

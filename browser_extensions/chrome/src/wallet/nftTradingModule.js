@@ -126,17 +126,9 @@ class NFTTradingModule {
       return await response.json();
     } catch (error) {
       console.error('Failed to get collections:', error);
-      return this.getDefaultCollections();
+      // Do not fabricate collections with fake floor prices.
+      return [];
     }
-  }
-
-  getDefaultCollections() {
-    return [
-      { address: '0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d', name: 'Bored Ape Yacht Club', floorPrice: '45 ETH', image: '' },
-      { address: '0x23581767a106ae21c074b2276d25e5c3e136a68b', name: 'Moonbird', floorPrice: '3.5 ETH', image: '' },
-      { address: '0x49cf6f5d44e70224e2e23fdcdd2f053f3fa6f430', name: 'StepN', floorPrice: '2.8 ETH', image: '' },
-      { address: '0x8a90cab2b38dba80c64b7734e58e1cdb38f7f9d3', name: 'Azuki', floorPrice: '12 ETH', image: '' },
-    ];
   }
 
   /**

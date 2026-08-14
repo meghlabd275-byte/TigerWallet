@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 import { 
   Security as SecurityIcon, DarkMode, LightMode, Notifications,
-  Email, Sms, PushNotifications, Language, Backup, Delete
+  Email, Sms, PushPin, Language, Backup, Delete
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
@@ -346,7 +346,7 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, onThemeToggle }) => {
                 border: `1px solid ${darkMode ? '#333' : '#e0e0e0'}`
               }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <PushNotifications sx={{ mr: 2, color: '#f97316' }} />
+                  <PushPin sx={{ mr: 2, color: '#f97316' }} />
                   <Typography variant="h6">Push Notifications</Typography>
                 </Box>
                 <FormControlLabel control={<Switch />} label="Enabled" />

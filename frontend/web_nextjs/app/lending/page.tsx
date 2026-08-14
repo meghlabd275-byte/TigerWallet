@@ -93,12 +93,6 @@ interface SupplyResponse {
 // go/lending_service backend (see app/api/v1/lending/ routes).
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
-const DEFAULT_MARKETS: Market[] = [
-  { id: 1, asset_address: '0x0000000000000000000000000000000000000000', asset_symbol: 'ETH', asset_name: 'Ethereum', asset_decimals: 18, total_supply: '0', total_borrows: '0', supply_apy: 3.5, borrow_apy: 5.2, utilization_rate: 0.65, ltv: 0.80, liquidation_threshold: 0.85, liquidation_bonus: 0.05, is_active: true, chain_id: 1 },
-  { id: 2, asset_address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', asset_symbol: 'USDT', asset_name: 'Tether USD', asset_decimals: 6, total_supply: '0', total_borrows: '0', supply_apy: 4.2, borrow_apy: 5.8, utilization_rate: 0.72, ltv: 0.90, liquidation_threshold: 0.95, liquidation_bonus: 0.02, is_active: true, chain_id: 1 },
-  { id: 3, asset_address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', asset_symbol: 'USDC', asset_name: 'USD Coin', asset_decimals: 6, total_supply: '0', total_borrows: '0', supply_apy: 4.0, borrow_apy: 5.5, utilization_rate: 0.68, ltv: 0.90, liquidation_threshold: 0.95, liquidation_bonus: 0.02, is_active: true, chain_id: 1 },
-  { id: 4, asset_address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', asset_symbol: 'WBTC', asset_name: 'Wrapped Bitcoin', asset_decimals: 8, total_supply: '0', total_borrows: '0', supply_apy: 1.8, borrow_apy: 3.5, utilization_rate: 0.45, ltv: 0.70, liquidation_threshold: 0.80, liquidation_bonus: 0.05, is_active: true, chain_id: 1 },
-];
 
 // ============================================================================
 // Utility Functions
@@ -131,7 +125,7 @@ function shortenNumber(num: number): string {
 export default function LendingPage() {
   const { isDark } = useTheme();
   const [activeTab, setActiveTab] = useState(0);
-  const [markets, setMarkets] = useState<Market[]>(DEFAULT_MARKETS);
+  const [markets, setMarkets] = useState<Market[]>([]);
   const [userPosition, setUserPosition] = useState<UserPosition | null>(null);
   const [selectedMarket, setSelectedMarket] = useState<Market | null>(null);
   const [amount, setAmount] = useState('');
@@ -161,7 +155,7 @@ export default function LendingPage() {
         }
       }
     } catch (err) {
-      console.log('Using default markets');
+      // backend failure leaves markets honestly empty
     }
   }, []);
 
@@ -294,11 +288,26 @@ export default function LendingPage() {
     return '#d32f2f';
   };
 
-  // Set wallet address (simplified)
-  const handleConnectWallet = () => {
-    const address = '0x742d35Cc6634C0532925a3b844Bc9e7595f5eA1E'; // Demo address
-    localStorage.setItem('tigerwallet_address', address);
-    setWalletAddress(address);
+  // Connect the real EIP-1193 injected wallet (MetaMask/etc.). Never hardcode
+  // a demo address.
+  const handleConnectWallet = async () => {
+    try {
+      const eth = (window as unknown as { ethereum?: { request: (args: { method: string }) => Promise<string[]> } }).ethereum;
+      if (!eth) {
+        setError('No injected wallet found. Please install a browser wallet extension.');
+        return;
+      }
+      const accounts = await eth.request({ method: 'eth_requestAccounts' });
+      const address = accounts?.[0];
+      if (!address) {
+        setError('No account returned by the wallet.');
+        return;
+      }
+      localStorage.setItem('tigerwallet_address', address);
+      setWalletAddress(address);
+    } catch (err) {
+      setError('Wallet connection rejected or failed.');
+    }
   };
 
   return (

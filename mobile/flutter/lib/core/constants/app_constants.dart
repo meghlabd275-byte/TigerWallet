@@ -11,6 +11,8 @@ class AppConstants {
   // Override at build time with --dart-define=API_BASE_URL=... for production.
   static const String baseUrl =
       String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:8443');
+  static const String p2pServiceUrl =
+      String.fromEnvironment('P2P_SERVICE_URL', defaultValue: 'http://localhost:8007');
   static const String wsUrl =
       String.fromEnvironment('API_WS_URL', defaultValue: 'ws://localhost:8443/ws');
   

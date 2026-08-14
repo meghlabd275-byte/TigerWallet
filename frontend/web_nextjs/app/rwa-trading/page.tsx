@@ -64,15 +64,10 @@ export default function RWATradingPage() {
       setOrders(ordersData.orders || [])
     } catch (error) {
       console.error('Failed to fetch data:', error)
-      // Fallback data
-      setAssets([
-        { id: 'rwa1', name: 'Tesla Inc', symbol: 'TSLA', type: 'STOCK', price: 250.00, change24h: 1.5, volume24h: 50000000 },
-        { id: 'rwa2', name: 'Apple Inc', symbol: 'AAPL', type: 'STOCK', price: 180.00, change24h: 0.8, volume24h: 80000000 },
-        { id: 'rwa3', name: 'Gold', symbol: 'XAU', type: 'COMMODITY', price: 2000.00, change24h: 0.2, volume24h: 200000000 },
-        { id: 'rwa4', name: 'SPY ETF', symbol: 'SPY', type: 'ETF', price: 450.00, change24h: 0.5, volume24h: 100000000 }
-      ])
+      // Do NOT fabricate RWA asset prices or balances on failure.
+      setAssets([])
       setHoldings([])
-      setBalance({ balance: 50000, available: 50000 })
+      setBalance({ balance: 0, available: 0 })
       setOrders([])
     } finally {
       setLoading(false)

@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Container, Grid, Card, Button, Table, Modal, Form, 
+  Container, Card, Button, Table, Modal, Form, 
   Tabs, Tab, Badge, Alert, Spinner, Row, Col, 
   Dropdown, Navbar, Nav, Pagination, ProgressBar,
   Breadcrumb, ListGroup, Badge as RSBadge
@@ -14,7 +14,7 @@ import {
 import { 
   FaUsers, FaCog, FaShieldAlt, FaExchangeAlt, 
   FaChartLine, FaWallet, FaNetworkWired, FaRobot,
-  FaExchange, FaLayerGroup, FaUserShield, FaGlobe,
+  FaExchangeAlt as FaExchange, FaLayerGroup, FaUserShield, FaGlobe,
   FaPlus, FaEdit, FaTrash, FaPause, FaPlay, FaStop,
   FaCheck, FaTimes, FaSearch, FaFilter, FaDownload,
   FaUpload, FaKey, FaLink, FaUnlink, FaMoneyBill,
@@ -233,14 +233,14 @@ export const AdminDashboard: React.FC = () => {
       const response = await api.get('/admin/dashboard/stats');
       setStats(response.data);
     } catch (error) {
-      // Demo data
+      // Do NOT fabricate stats on failure — keep the zero-default state.
       setStats({
-        total_users: 125430,
-        total_volume_24h: 45678900,
-        active_white_labels: 23,
-        pending_kyc: 156,
-        total_transactions: 2567890,
-        gas_fees_collected: 1234567
+        total_users: 0,
+        total_volume_24h: 0,
+        active_white_labels: 0,
+        pending_kyc: 0,
+        total_transactions: 0,
+        gas_fees_collected: 0
       });
     } finally {
       setLoading(false);
@@ -370,6 +370,7 @@ export const AdminDashboard: React.FC = () => {
 // 3. Recent Transactions Component
 const RecentTransactions: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadTransactions();
@@ -378,13 +379,12 @@ const RecentTransactions: React.FC = () => {
   const loadTransactions = async () => {
     try {
       const response = await api.get('/admin/transactions/recent');
-      setTransactions(response.data);
-    } catch (error) {
-      setTransactions([
-        { id: '1', hash: '0x1234...', from: '0xabcd', to: '0xefgh', amount: 1.5, token: 'ETH', status: 'confirmed', timestamp: new Date().toISOString() },
-        { id: '2', hash: '0x5678...', from: '0xijkl', to: '0xmnop', amount: 2500, token: 'USDT', status: 'confirmed', timestamp: new Date().toISOString() },
-        { id: '3', hash: '0x9012...', from: '0xqrst', to: '0xuvwx', amount: 0.5, token: 'BTC', status: 'pending', timestamp: new Date().toISOString() },
-      ]);
+      setTransactions(response.data || []);
+      setError(null);
+    } catch (err) {
+      // Do NOT fabricate transactions on failure — show an honest error.
+      setTransactions([]);
+      setError('Failed to load recent transactions.');
     }
   };
 
@@ -398,30 +398,35 @@ const RecentTransactions: React.FC = () => {
   };
 
   return (
-    <Table responsive hover>
-      <thead>
-        <tr>
-          <th>Hash</th>
-          <th>From</th>
-          <th>To</th>
-          <th>Amount</th>
-          <th>Status</th>
-          <th>Time</th>
-        </tr>
-      </thead>
-      <tbody>
-        {transactions.map((tx) => (
-          <tr key={tx.id}>
-            <td><code>{tx.hash}</code></td>
-            <td><code>{tx.from}</code></td>
-            <td><code>{tx.to}</code></td>
-            <td>{tx.amount} {tx.token}</td>
-            <td>{getStatusBadge(tx.status)}</td>
-            <td>{new Date(tx.timestamp).toLocaleTimeString()}</td>
+    <div>
+      {error && <Alert variant="danger" className="mb-3">{error}</Alert>}
+      <Table responsive hover>
+        <thead>
+          <tr>
+            <th>Hash</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Amount</th>
+            <th>Status</th>
+            <th>Time</th>
           </tr>
-        ))}
-      </tbody>
-    </Table>
+        </thead>
+        <tbody>
+          {transactions.length === 0 ? (
+            <tr><td colSpan={6} className="text-center text-muted py-4">No recent transactions.</td></tr>
+          ) : transactions.map((tx) => (
+            <tr key={tx.id}>
+              <td><code>{tx.hash}</code></td>
+              <td><code>{tx.from}</code></td>
+              <td><code>{tx.to}</code></td>
+              <td>{tx.amount} {tx.token}</td>
+              <td>{getStatusBadge(tx.status)}</td>
+              <td>{new Date(tx.timestamp).toLocaleTimeString()}</td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </div>
   );
 };
 
@@ -433,6 +438,8 @@ export const UserManagement: React.FC = () => {
   const [showKycModal, setShowKycModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     loadUsers();
   }, []);
@@ -440,13 +447,12 @@ export const UserManagement: React.FC = () => {
   const loadUsers = async () => {
     try {
       const response = await api.get('/admin/users');
-      setUsers(response.data);
+      setUsers(response.data || []);
+      setError(null);
     } catch (error) {
-      setUsers([
-        { id: '1', email: 'user1@example.com', username: 'user1', kyc_status: 'approved', wallet_addresses: ['0x123'], total_volume: 50000, created_at: '2024-01-01' },
-        { id: '2', email: 'user2@example.com', username: 'user2', kyc_status: 'pending', wallet_addresses: ['0x456'], total_volume: 10000, created_at: '2024-01-15' },
-        { id: '3', email: 'user3@example.com', username: 'user3', kyc_status: 'rejected', wallet_addresses: ['0x789'], total_volume: 0, created_at: '2024-01-20' },
-      ]);
+      // Do NOT fabricate users on failure — show an honest error.
+      setUsers([]);
+      setError('Failed to load users.');
     } finally {
       setLoading(false);
     }
@@ -605,13 +611,10 @@ export const WhiteLabelManagement: React.FC = () => {
   const loadWhiteLabels = async () => {
     try {
       const response = await api.get('/admin/whitelabels');
-      setWhiteLabels(response.data);
+      setWhiteLabels(response.data || []);
     } catch (error) {
-      setWhiteLabels([
-        { id: '1', name: 'CryptoPro', domain: 'cryptopro.io', branding: { logo: '', primary_color: '#000', secondary_color: '#fff' }, features: ['wallet', 'swap', 'staking'], status: 'active', created_at: '2024-01-01' },
-        { id: '2', name: 'BlockFinance', domain: 'blockfinance.com', branding: { logo: '', primary_color: '#1a1a2e', secondary_color: '#16213e' }, features: ['wallet', 'defi'], status: 'active', created_at: '2024-02-01' },
-        { id: '3', name: 'TokenVault', domain: 'tokenvault.io', branding: { logo: '', primary_color: '#2c3e50', secondary_color: '#34495e' }, features: ['wallet', 'nft'], status: 'paused', created_at: '2024-03-01' },
-      ]);
+      // Do NOT fabricate white-labels on failure — show empty.
+      setWhiteLabels([]);
     } finally {
       setLoading(false);
     }
@@ -784,15 +787,11 @@ export const BlockchainManagement: React.FC = () => {
   const loadBlockchains = async () => {
     try {
       const response = await api.get('/admin/blockchains');
-      setBlockchains(response.data);
+      setBlockchains(response.data || []);
     } catch (error) {
-      setBlockchains([
-        { id: '1', name: 'Ethereum', symbol: 'ETH', chain_id: 1, rpc_url: 'https://eth.llamarpc.com', explorer_url: 'https://etherscan.io', status: 'active', type: 'evm' },
-        { id: '2', name: 'BNB Chain', symbol: 'BNB', chain_id: 56, rpc_url: 'https://bsc-dataseed.binance.org', explorer_url: 'https://bscscan.com', status: 'active', type: 'evm' },
-        { id: '3', name: 'Polygon', symbol: 'MATIC', chain_id: 137, rpc_url: 'https://polygon-rpc.com', explorer_url: 'https://polygonscan.com', status: 'active', type: 'evm' },
-        { id: '4', name: 'Solana', symbol: 'SOL', chain_id: 101, rpc_url: 'https://api.mainnet-beta.solana.com', explorer_url: 'https://explorer.solana.com', status: 'active', type: 'non-evm' },
-        { id: '5', name: 'Arbitrum', symbol: 'ETH', chain_id: 42161, rpc_url: 'https://arb1.arbitrum.io/rpc', explorer_url: 'https://arbiscan.io', status: 'active', type: 'evm' },
-      ]);
+      // Do NOT fabricate blockchain configs on failure — show empty. The
+      // canonical chain list is served by GET /api/v1/chains (wallet_api).
+      setBlockchains([]);
     } finally {
       setLoading(false);
     }
@@ -879,13 +878,8 @@ export const TokenManagement: React.FC = () => {
       const response = await api.get('/admin/tokens');
       setTokens(response.data);
     } catch (error) {
-      setTokens([
-        { id: '1', name: 'Ethereum', symbol: 'ETH', address: '0x000...', decimals: 18, chain: 'Ethereum', total_supply: 120000000, status: 'active' },
-        { id: '2', name: 'Tether', symbol: 'USDT', address: '0xdAC17...', decimals: 6, chain: 'Ethereum', total_supply: 83000000000, status: 'active' },
-        { id: '3', name: 'USD Coin', symbol: 'USDC', address: '0xA0b86...', decimals: 6, chain: 'Ethereum', total_supply: 42000000000, status: 'active' },
-        { id: '4', name: 'BNB', symbol: 'BNB', address: '0x000...', decimals: 18, chain: 'BNB Chain', total_supply: 198000000, status: 'active' },
-        { id: '5', name: 'Solana', symbol: 'SOL', address: 'So11111...', decimals: 9, chain: 'Solana', total_supply: 580000000, status: 'active' },
-      ]);
+      // Do NOT fabricate token data on failure.
+      setTokens([]);
     } finally {
       setLoading(false);
     }
@@ -953,15 +947,10 @@ export const PairsManagement: React.FC = () => {
   const loadPairs = async () => {
     try {
       const response = await api.get('/admin/pairs');
-      setPairs(response.data);
+      setPairs(response.data || []);
     } catch (error) {
-      setPairs([
-        { id: '1', base_token: 'ETH', quote_token: 'USDT', price: 2500.50, volume_24h: 15000000, status: 'active' },
-        { id: '2', base_token: 'BTC', quote_token: 'USDT', price: 45000.00, volume_24h: 25000000, status: 'active' },
-        { id: '3', base_token: 'BNB', quote_token: 'USDT', price: 350.25, volume_24h: 5000000, status: 'active' },
-        { id: '4', base_token: 'SOL', quote_token: 'USDT', price: 100.75, volume_24h: 3000000, status: 'paused' },
-        { id: '5', base_token: 'ETH', quote_token: 'USDC', price: 2500.25, volume_24h: 8000000, status: 'active' },
-      ]);
+      // Do NOT fabricate trading pairs on failure — show empty + error.
+      setPairs([]);
     } finally {
       setLoading(false);
     }

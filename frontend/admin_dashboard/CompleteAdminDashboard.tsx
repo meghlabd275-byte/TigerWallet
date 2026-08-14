@@ -46,7 +46,7 @@ import {
 // Theme Context
 // ============================================================================
 
-const ThemeContext = createContext();
+const ThemeContext = createContext<{ theme: string; toggleTheme: () => void; isDark: boolean } | undefined>(undefined);
 
 export const ThemeProvider = ({ children }) => {
   const [theme, setTheme] = useState('dark');
@@ -1053,11 +1053,7 @@ const Sidebar = ({ isOpen, onClose, activePage, setActivePage }) => {
 // Header Component
 const Header = ({ onMenuClick }) => {
   const { theme, toggleTheme } = useTheme();
-  const [notifications] = useState([
-    { id: 1, title: 'New KYC Request', message: 'User John Doe submitted KYC documents', time: '2 min ago', unread: true },
-    { id: 2, title: 'Withdrawal Approved', message: 'Withdrawal of 1.5 BTC has been approved', time: '15 min ago', unread: true },
-    { id: 3, title: 'System Alert', message: 'Server CPU usage above 80%', time: '1 hour ago', unread: false },
-  ]);
+  const [notifications] = useState([]);
 
   return (
     <header className="header">
@@ -1096,46 +1092,64 @@ const Header = ({ onMenuClick }) => {
 
 // Dashboard Page
 const DashboardPage = () => {
-  const [stats] = useState({
-    totalUsers: 125843,
-    activeUsers: 98234,
-    totalVolume: '$4.2B',
-    dailyVolume: '$128.5M',
-    pendingKYC: 23,
-    pendingWithdrawals: 15,
-    totalTransactions: 2847293,
-    todayTransactions: 45231,
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    activeUsers: 0,
+    totalVolume: '0',
+    dailyVolume: '0',
+    pendingKYC: 0,
+    pendingWithdrawals: 0,
+    totalTransactions: 0,
+    todayTransactions: 0,
   });
+  const [recentTransactions, setRecentTransactions] = useState<Array<{ id: string; user: string; type: string; amount: string; status: string; time: string }>>([]);
+  const [error, setError] = useState<string | null>(null);
+  // No backend time-series endpoint exists yet — charts render honestly empty.
+  const volumeData: Array<{ name: string; volume: number }> = [];
+  const userGrowthData: Array<{ name: string; users: number }> = [];
 
-  const [volumeData] = useState([
-    { name: 'Mon', volume: 42000000 },
-    { name: 'Tue', volume: 38000000 },
-    { name: 'Wed', volume: 51000000 },
-    { name: 'Thu', volume: 47000000 },
-    { name: 'Fri', volume: 55000000 },
-    { name: 'Sat', volume: 62000000 },
-    { name: 'Sun', volume: 58000000 },
-  ]);
-
-  const [userGrowthData] = useState([
-    { name: 'Jan', users: 45000 },
-    { name: 'Feb', users: 52000 },
-    { name: 'Mar', users: 61000 },
-    { name: 'Apr', users: 72000 },
-    { name: 'May', users: 85000 },
-    { name: 'Jun', users: 98000 },
-  ]);
-
-  const [recentTransactions] = useState([
-    { id: 'TX001', user: 'johndoe@example.com', type: 'Deposit', amount: '2.5 BTC', status: 'completed', time: '2 min ago' },
-    { id: 'TX002', user: 'janedoe@example.com', type: 'Withdraw', amount: '1.2 ETH', status: 'pending', time: '5 min ago' },
-    { id: 'TX003', user: 'bobsmith@example.com', type: 'Swap', amount: '5000 USDT', status: 'completed', time: '10 min ago' },
-    { id: 'TX004', user: 'alice@example.com', type: 'Deposit', amount: '10 ETH', status: 'completed', time: '15 min ago' },
-    { id: 'TX005', user: 'charlie@example.com', type: 'Withdraw', amount: '2500 USDC', status: 'flagged', time: '20 min ago' },
-  ]);
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const token = localStorage.getItem('admin_token');
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const [statsRes, txRes] = await Promise.all([
+          fetch('/api/v1/admin/stats', { headers }).then((r) => r.ok ? r.json() : { totalUsers: 0, activeUsers: 0, totalVolume: 0, totalTransactions: 0 }),
+          fetch('/api/v1/admin/transactions', { headers }).then((r) => r.ok ? r.json() : []),
+        ]);
+        setStats({
+          totalUsers: statsRes.totalUsers || 0,
+          activeUsers: statsRes.activeUsers || 0,
+          totalVolume: String(statsRes.totalVolume || 0),
+          dailyVolume: String(statsRes.dailyRevenue || 0),
+          pendingKYC: statsRes.pendingKYC || 0,
+          pendingWithdrawals: 0,
+          totalTransactions: statsRes.totalTransactions || 0,
+          todayTransactions: statsRes.activeUsers || 0,
+        });
+        const txs = Array.isArray(txRes) ? txRes : (txRes?.transactions || []);
+        setRecentTransactions((txs as Array<Record<string, unknown>>).slice(0, 6).map((t) => ({
+          id: String(t.id || t.tx_hash || ''),
+          user: String(t.user_id || ''),
+          type: t.value ? 'Transfer' : 'Unknown',
+          amount: String(t.value || '0'),
+          status: String(t.status || 'unknown'),
+          time: t.created_at ? new Date(String(t.created_at)).toLocaleString() : '',
+        })));
+        setError(null);
+      } catch (err) {
+        // Do NOT fabricate data on failure.
+        setError('Failed to load dashboard data.');
+        setRecentTransactions([]);
+      }
+    };
+    load();
+  }, []);
 
   return (
     <div className="page-content">
+      {error && <div style={{ padding: '12px', background: '#fee', color: '#c33', borderRadius: 8, marginBottom: 16 }}>{error}</div>}
       <div className="page-header">
         <div>
           <h1 className="page-title">Dashboard</h1>
@@ -1315,13 +1329,33 @@ const DashboardPage = () => {
 
 // Users Page
 const UsersPage = () => {
-  const [users] = useState([
-    { id: 1, email: 'johndoe@example.com', username: 'johndoe', status: 'active', kyc: 'verified', volume: '$125,000', joined: '2024-01-15' },
-    { id: 2, email: 'janedoe@example.com', username: 'janedoe', status: 'active', kyc: 'pending', volume: '$45,000', joined: '2024-02-20' },
-    { id: 3, email: 'bobsmith@example.com', username: 'bobsmith', status: 'suspended', kyc: 'rejected', volume: '$12,000', joined: '2024-03-05' },
-    { id: 4, email: 'alice@example.com', username: 'alice_wallet', status: 'active', kyc: 'verified', volume: '$890,000', joined: '2024-01-10' },
-    { id: 5, email: 'charlie@example.com', username: 'charlie', status: 'active', kyc: 'verified', volume: '$67,000', joined: '2024-04-12' },
-  ]);
+  const [users, setUsers] = useState<Array<{ id: string; email: string; username: string; status: string; kyc: string; volume: string; joined: string }>>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const token = localStorage.getItem('admin_token');
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch('/api/v1/admin/users', { headers });
+        if (!res.ok) { setUsers([]); return; }
+        const data = await res.json();
+        const rows = Array.isArray(data) ? data : (data?.users || []);
+        setUsers((rows as Array<Record<string, unknown>>).map((u) => ({
+          id: String(u.id || ''),
+          email: String(u.email || ''),
+          username: String(u.username || ''),
+          status: String(u.status || 'active'),
+          kyc: String(u.kyc_status || 'unverified'),
+          volume: String(u.volume || '0'),
+          joined: u.created_at ? String(u.created_at).slice(0, 10) : '',
+        })));
+      } catch {
+        setUsers([]);
+      }
+    };
+    load();
+  }, []);
 
   return (
     <div className="page-content">
@@ -1435,12 +1469,35 @@ const UsersPage = () => {
 
 // KYC Page
 const KycPage = () => {
-  const [kycRequests] = useState([
-    { id: 'KYC001', user: 'johndoe@example.com', type: 'ID Verification', submitted: '2024-06-15 10:30', status: 'pending', risk: 'low' },
-    { id: 'KYC002', user: 'janedoe@example.com', type: 'Selfie Verification', submitted: '2024-06-15 09:45', status: 'pending', risk: 'medium' },
-    { id: 'KYC003', user: 'bobsmith@example.com', type: 'ID Verification', submitted: '2024-06-14 16:20', status: 'approved', risk: 'low' },
-    { id: 'KYC004', user: 'alice@example.com', type: 'Address Proof', submitted: '2024-06-14 14:10', status: 'rejected', risk: 'high' },
-  ]);
+  const [kycRequests, setKycRequests] = useState<Array<{ id: string; user: string; type: string; submitted: string; status: string; risk: string }>>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const token = localStorage.getItem('admin_token');
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch('/api/v1/admin/users', { headers });
+        if (!res.ok) { setKycRequests([]); return; }
+        const data = await res.json();
+        const rows = Array.isArray(data) ? data : (data?.users || []);
+        // Derive KYC requests from users whose kyc_status is not yet verified.
+        setKycRequests((rows as Array<Record<string, unknown>>)
+          .filter((u) => u.kyc_status && String(u.kyc_status) !== 'verified' && String(u.kyc_status) !== 'approved')
+          .map((u) => ({
+            id: String(u.id || ''),
+            user: String(u.email || ''),
+            type: 'KYC Verification',
+            submitted: u.created_at ? String(u.created_at).slice(0, 16).replace('T', ' ') : '',
+            status: String(u.kyc_status || 'pending'),
+            risk: 'low',
+          })));
+      } catch {
+        setKycRequests([]);
+      }
+    };
+    load();
+  }, []);
 
   return (
     <div className="page-content">
@@ -1533,12 +1590,34 @@ const KycPage = () => {
 
 // Transactions Page
 const TransactionsPage = () => {
-  const [transactions] = useState([
-    { id: 'TX001', type: 'Deposit', chain: 'Bitcoin', amount: '2.5 BTC', usdValue: '$162,500', fee: '0.0005 BTC', status: 'completed', time: '2024-06-15 10:30:00' },
-    { id: 'TX002', type: 'Withdraw', chain: 'Ethereum', amount: '15 ETH', usdValue: '$45,000', fee: '0.005 ETH', status: 'pending', time: '2024-06-15 10:25:00' },
-    { id: 'TX003', type: 'Swap', chain: 'BSC', amount: '10,000 USDT', usdValue: '$10,000', fee: '3 USDT', status: 'completed', time: '2024-06-15 10:20:00' },
-    { id: 'TX004', type: 'Transfer', chain: 'Solana', amount: '500 SOL', usdValue: '$62,500', fee: '0.0001 SOL', status: 'flagged', time: '2024-06-15 10:15:00' },
-  ]);
+  const [transactions, setTransactions] = useState<Array<{ id: string; type: string; chain: string; amount: string; usdValue: string; fee: string; status: string; time: string }>>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const token = localStorage.getItem('admin_token');
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch('/api/v1/admin/transactions', { headers });
+        if (!res.ok) { setTransactions([]); return; }
+        const data = await res.json();
+        const rows = Array.isArray(data) ? data : (data?.transactions || []);
+        setTransactions((rows as Array<Record<string, unknown>>).map((t) => ({
+          id: String(t.tx_hash || t.id || ''),
+          type: 'Transfer',
+          chain: String(t.chain_id || ''),
+          amount: String(t.value || '0'),
+          usdValue: '',
+          fee: '',
+          status: String(t.status || 'unknown'),
+          time: t.created_at ? new Date(String(t.created_at)).toLocaleString() : '',
+        })));
+      } catch {
+        setTransactions([]);
+      }
+    };
+    load();
+  }, []);
 
   return (
     <div className="page-content">
@@ -1735,13 +1814,7 @@ const SettingsPage = () => {
                   </thead>
                   <tbody>
                     <tr>
-                      <td>Production API</td>
-                      <td>tw_live_****************************</td>
-                      <td>2024-01-15</td>
-                      <td>2024-06-15</td>
-                      <td>
-                        <button className="btn btn-icon btn-danger btn-sm"><Trash2 size={16} /></button>
-                      </td>
+                      <td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>No API keys configured.</td>
                     </tr>
                   </tbody>
                 </table>
@@ -1774,12 +1847,7 @@ const SettingsPage = () => {
 
 // Notifications Panel
 const NotificationsPanel = () => {
-  const [notifications] = useState([
-    { id: 1, type: 'kyc', title: 'New KYC Request', message: 'User John Doe submitted KYC documents', time: '2 min ago', unread: true },
-    { id: 2, type: 'withdrawal', title: 'Withdrawal Request', message: 'Pending approval - 2.5 BTC', time: '5 min ago', unread: true },
-    { id: 3, type: 'security', title: 'Security Alert', message: 'Multiple failed login attempts detected', time: '15 min ago', unread: true },
-    { id: 4, type: 'system', title: 'System Update', message: 'Server maintenance scheduled for tonight', time: '1 hour ago', unread: false },
-  ]);
+  const [notifications] = useState([]);
 
   const getIcon = (type) => {
     switch(type) {

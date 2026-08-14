@@ -14,7 +14,11 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Modal,
+  PermissionsAndroid,
+  Linking,
 } from 'react-native';
+import { RNCamera } from 'react-native-camera';
 import { useThemeStore } from '../stores/ThemeStore';
 import { walletService } from '../services/WalletService';
 import { blockchainService } from '../services/BlockchainService';
@@ -30,8 +34,55 @@ const SendScreen: React.FC = () => {
   const [selectedChain, setSelectedChain] = useState(1);
   const [selectedToken, setSelectedToken] = useState('native');
   const [loading, setLoading] = useState(false);
+  const [scanning, setScanning] = useState(false);
 
   const activeWallet = walletService.getActiveWallet();
+
+  const requestCameraPermission = async (): Promise<boolean> => {
+    if (Platform.OS === 'ios') return true; // iOS permission requested by RNCamera
+    try {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.CAMERA,
+        {
+          title: 'Camera Permission',
+          message: 'TigerWallet needs camera access to scan QR codes.',
+          buttonNeutral: 'Ask Me Later',
+          buttonNegative: 'Cancel',
+          buttonPositive: 'OK',
+        },
+      );
+      return granted === PermissionsAndroid.RESULTS.GRANTED;
+    } catch (_) {
+      return false;
+    }
+  };
+
+  const openQRScanner = async () => {
+    const ok = await requestCameraPermission();
+    if (!ok) {
+      Alert.alert(
+        'Camera Permission Denied',
+        'Camera permission is required to scan QR codes. Please enable it in app settings.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ],
+      );
+      return;
+    }
+    setScanning(true);
+  };
+
+  const onBarcodeRead = ({ data }: { data: string }) => {
+    if (!data) return;
+    // Parse bare 0x addresses, ethereum: URIs, EIP-681 payment URIs.
+    let addr = data;
+    if (addr.startsWith('ethereum:')) {
+      addr = addr.slice('ethereum:'.length).split(/[?@]/)[0];
+    }
+    setRecipient(addr.trim());
+    setScanning(false);
+  };
 
   const sendTransaction = async () => {
     if (!activeWallet) {
@@ -152,20 +203,12 @@ const SendScreen: React.FC = () => {
               autoCapitalize="none"
             />
             <TouchableOpacity 
-              style={[styles.qrButton, { backgroundColor: theme.colors.primary }]}
-              onPress={() => {
-                // For demo - in production would open camera QR scanner
-                Alert.alert(
-                  'QR Scanner',
-                  'Camera QR scanning would open here.\n\nSupported chains:\n• Ethereum\n• Bitcoin\n• Solana\n• TRON\n• And more...',
-                  [
-                    { text: 'Cancel', style: 'cancel' }
-                  ]
-                );
-              }}
-            >
-              <Text style={styles.qrButtonText}>📷</Text>
-            </TouchableOpacity>
+            <TouchableOpacity
+                          style={[styles.qrButton, { backgroundColor: theme.colors.primary }]}
+                          onPress={openQRScanner}
+                        >
+                          <Text style={styles.qrButtonText}>📷</Text>
+                        </TouchableOpacity>
           </View>
         </View>
 
@@ -215,6 +258,34 @@ const SendScreen: React.FC = () => {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+      {/* Real camera QR scanner modal */}
+      <Modal visible={scanning} animationType="slide" onRequestClose={() => setScanning(false)}>
+        <View style={styles.scannerContainer}>
+          <RNCamera
+            style={styles.scannerPreview}
+            type={RNCamera.Constants.Type.Back}
+            captureAudio={false}
+            androidCameraPermissionOptions={{
+              title: 'Camera Permission',
+              message: 'TigerWallet needs camera access to scan QR codes.',
+              buttonPositive: 'OK',
+              buttonNegative: 'Cancel',
+            }}
+            onBarCodeRead={(e: { data: string }) => onBarcodeRead(e)}
+          />
+          <View style={[styles.scannerOverlay, { backgroundColor: theme.colors.surface }]}>
+            <Text style={[styles.scannerHint, { color: theme.colors.textPrimary }]}>
+              Point the camera at a QR code
+            </Text>
+            <TouchableOpacity
+              style={[styles.scannerCloseBtn, { backgroundColor: theme.colors.primary }]}
+              onPress={() => setScanning(false)}
+            >
+              <Text style={styles.scannerCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
@@ -247,6 +318,12 @@ const styles = StyleSheet.create({
   sendButtonText: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
   qrButton: { marginLeft: 12, padding: 14, borderRadius: 12, width: 50, height: 50, justifyContent: 'center', alignItems: 'center' },
   qrButtonText: { fontSize: 20 },
+  scannerContainer: { flex: 1, backgroundColor: '#000' },
+  scannerPreview: { flex: 1 },
+  scannerOverlay: { padding: 24, alignItems: 'center' },
+  scannerHint: { fontSize: 16, marginBottom: 16, textAlign: 'center' },
+  scannerCloseBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 },
+  scannerCloseText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });
 
 export default SendScreen;

@@ -8,7 +8,7 @@ import {
   Avatar
 } from '@mui/material';
 import { 
-  Add, Send, Refresh, Email, Sms, PushNotifications, Broadcast
+  Add, Send, Refresh, Email, Sms, PushPin, Campaign
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
@@ -213,7 +213,7 @@ const Notifications: React.FC<NotificationsProps> = ({ darkMode }) => {
           <Grid item xs={12} sm={6} md={3}>
             <Card sx={{ bgcolor: cardBg }}>
               <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Avatar sx={{ bgcolor: 'success.main' }}><Broadcast /></Avatar>
+                <Avatar sx={{ bgcolor: 'success.main' }}><Campaign /></Avatar>
                 <Box>
                   <Typography variant="h5" sx={{ color: textPrimary }}>{stats?.today_count || 0}</Typography>
                   <Typography variant="body2" sx={{ color: textSecondary }}>Today</Typography>
@@ -277,7 +277,7 @@ const Notifications: React.FC<NotificationsProps> = ({ darkMode }) => {
               }}
             >
               <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <PushNotifications sx={{ color: '#f97316', fontSize: 40 }} />
+                <PushPin sx={{ color: '#f97316', fontSize: 40 }} />
                 <Box>
                   <Typography variant="h6" sx={{ color: textPrimary }}>Push Notification</Typography>
                   <Typography variant="body2" sx={{ color: textSecondary }}>

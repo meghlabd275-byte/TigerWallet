@@ -166,6 +166,7 @@ func main() {
 			admin.GET("/stats", handleAdminStats)
 			admin.GET("/wallets", handleAdminWallets)
 			admin.GET("/transactions", handleAdminTransactions)
+			admin.GET("/users", handleAdminUsers)
 
 			admin.GET("/wallets/:id", handleAdminWalletDetail)
 			admin.PUT("/wallets/:id", handleAdminUpdateWallet)

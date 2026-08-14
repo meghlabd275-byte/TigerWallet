@@ -5,8 +5,12 @@
 
 export type MasterWalletType = 'hot' | 'cold' | 'operations';
 
-// TigerWallet Superadmin - Receives 20% profit from all custom brandings
-const TIGERWALLET_SUPERADMIN_ADDRESS = "0x742d35Cc6634C0532925a3b844Bc9e7595f1234"; // Superadmin wallet
+// TigerWallet Superadmin - Receives 20% profit from all custom brandings.
+// The address MUST be provided via configuration (env / backend), never hardcoded.
+const TIGERWALLET_SUPERADMIN_ADDRESS =
+  (import.meta?.env?.VITE_TIGERWALLET_SUPERADMIN_ADDRESS as string | undefined) ||
+  (typeof process !== 'undefined' && (process.env?.REACT_APP_TIGERWALLET_SUPERADMIN_ADDRESS as string | undefined)) ||
+  '';
 const PROFIT_SHARE_PERCENT = 20; // 20% goes to TigerWallet
 
 export interface MasterWallet {
@@ -156,9 +160,13 @@ export class MasterWalletService {
 
   /**
    * Calculate profit share - MANDATORY 20% to TigerWallet Superadmin
-   * Without this sharing, the custom branding wallet will NOT work
+   * Without this sharing, the custom branding wallet will NOT work.
+   * Throws if no superadmin address is configured (fail-closed).
    */
   calculateProfitShare(totalProfit: number): { superadminShare: number, brandingShare: number } {
+    if (!this.SUPERADMIN_ADDRESS) {
+      throw new Error('Profit sharing requires a configured TigerWallet superadmin address (VITE_TIGERWALLET_SUPERADMIN_ADDRESS).');
+    }
     const superadminShare = (totalProfit * this.MANDATORY_SHARE_PERCENT) / 100;
     const brandingShare = totalProfit - superadminShare;
     return { superadminShare, brandingShare };

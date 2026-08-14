@@ -41,18 +41,8 @@ class BridgeModule {
       return await response.json();
     } catch (error) {
       console.error('Quote failed:', error);
-      // Return mock quote
-      const fee = amount * 0.001;
-      return {
-        fromChain,
-        toChain,
-        token,
-        sendAmount: amount.toString(),
-        receiveAmount: (amount - fee).toString(),
-        bridgeFee: fee.toString(),
-        provider: 'Stargate',
-        estimatedTime: '15-20m'
-      };
+      // Do not fabricate a bridge quote. Signal failure to the caller.
+      return null;
     }
   }
 

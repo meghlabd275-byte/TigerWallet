@@ -1,6 +1,10 @@
 // P2P Merchant Service - Flutter Implementation
 // Merchant system with collateral and security deposits
 
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../../core/constants/app_constants.dart';
+
 class P2PMerchant {
   final String id;
   final String userId;
@@ -252,22 +256,64 @@ class P2PMerchantService {
     return _collaterals[merchantId];
   }
 
-  // Get merchant trading statistics
+  // Get merchant trading statistics — computed from REAL p2p orders fetched
+  // from the p2p_trading backend. No fabricated ratings/volumes.
   static Future<MerchantStats> getMerchantStats(String userId) async {
-    // Generate mock stats
-    final level = AntiFraudProtection.getTraderLevel(50000 + (DateTime.now().millisecond * 1000));
-    
+    try {
+      final res = await http.get(
+        Uri.parse(
+            '${AppConstants.p2pServiceUrl}/api/v1/p2p/orders?taker_id=$userId'),
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(AppConstants.apiTimeout);
+      if (res.statusCode != 200) {
+        return _emptyStats();
+      }
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final orders = (body['orders'] as List<dynamic>?) ?? [];
+      double totalTrades = orders.length.toDouble();
+      double completed = 0, cancelled = 0, disputed = 0, volume = 0;
+      for (final raw in orders) {
+        final o = raw as Map<String, dynamic>;
+        final st = '${o['status'] ?? ''}';
+        if (st == 'confirmed') {
+          completed++;
+          volume += (o['fiat_amount'] as num?)?.toDouble() ?? 0;
+        } else if (st == 'cancelled') {
+          cancelled++;
+        } else if (st == 'disputed') {
+          disputed++;
+        }
+      }
+      final level = AntiFraudProtection.getTraderLevel(volume);
+      return MerchantStats(
+        totalTrades: totalTrades,
+        totalVolume: volume,
+        completedTrades: completed,
+        cancelledTrades: cancelled,
+        disputeCount: disputed,
+        avgRating: 0,
+        totalReviews: 0,
+        avgResponseTime: 0,
+        avgReleaseTime: 0,
+        traderLevel: level,
+      );
+    } catch (_) {
+      return _emptyStats();
+    }
+  }
+
+  static MerchantStats _emptyStats() {
     return MerchantStats(
-      totalTrades: 150 + DateTime.now().millisecond,
-      totalVolume: 50000 + (DateTime.now().millisecond * 100),
-      completedTrades: 145,
-      cancelledTrades: 3,
-      disputeCount: 2,
-      avgRating: 4.8,
-      totalReviews: 120,
-      avgResponseTime: 2.5,
-      avgReleaseTime: 3.2,
-      traderLevel: level,
+      totalTrades: 0,
+      totalVolume: 0,
+      completedTrades: 0,
+      cancelledTrades: 0,
+      disputeCount: 0,
+      avgRating: 0,
+      totalReviews: 0,
+      avgResponseTime: 0,
+      avgReleaseTime: 0,
+      traderLevel: AntiFraudProtection.getTraderLevel(0),
     );
   }
 

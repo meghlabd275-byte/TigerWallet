@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -366,6 +367,67 @@ func (s *Store) ListAllTransactions(ctx context.Context, limit int) ([]TxLogReco
 			return nil, err
 		}
 		out = append(out, t)
+	}
+	return out, nil
+}
+
+// AdminUserRecord is a user row augmented with aggregate activity metrics
+// for the admin dashboard. Volume/trades are computed from transaction_log.
+type AdminUserRecord struct {
+	ID            uuid.UUID `json:"id"`
+	Email         string    `json:"email"`
+	Username      string    `json:"username"`
+	Role          string    `json:"role"`
+	KYCStatus     string    `json:"kyc_status"`
+	Status        string    `json:"status"` // derived: "active" if last_login within 24h else "inactive"
+	WalletCount   int       `json:"wallet_count"`
+	TradeCount    int       `json:"trades"`
+	Volume30d     string    `json:"volume"` // numeric as text (wei-scale); "0" when none
+	CreatedAt     string    `json:"created_at"`
+	LastLoginAt   *string   `json:"last_login_at"`
+}
+
+// ListAllUsers returns up to `limit` users with per-user wallet counts and
+// 30-day trade volume/counts aggregated from transaction_log. Real PostgreSQL
+// query — never fabricated.
+func (s *Store) ListAllUsers(ctx context.Context, limit int) ([]AdminUserRecord, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	rows, err := s.PG.Query(ctx, `
+		SELECT u.id, u.email, u.username, u.role,
+		       COALESCE(u.kyc_status, '') AS kyc_status,
+		       CASE WHEN u.last_login_at > NOW() - INTERVAL '24 hours'
+		            THEN 'active' ELSE 'inactive' END AS status,
+		       COUNT(DISTINCT w.id) AS wallet_count,
+		       COUNT(DISTINCT t.id) AS trade_count,
+		       COALESCE(SUM(CASE WHEN t.created_at >= NOW() - INTERVAL '30 days'
+		                        THEN t.value::numeric ELSE 0 END), 0)::text AS volume_30d,
+		       to_char(u.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF') AS created_at,
+		       to_char(u.last_login_at, 'YYYY-MM-DD"T"HH24:MI:SSOF') AS last_login_at
+		FROM users u
+		LEFT JOIN wallets w ON w.user_id = u.id
+		LEFT JOIN transaction_log t ON t.user_id = u.id
+		GROUP BY u.id
+		ORDER BY u.created_at DESC
+		LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AdminUserRecord
+	for rows.Next() {
+		var u AdminUserRecord
+		var lastLogin sql.NullString
+		if err := rows.Scan(&u.ID, &u.Email, &u.Username, &u.Role, &u.KYCStatus,
+			&u.Status, &u.WalletCount, &u.TradeCount, &u.Volume30d, &u.CreatedAt, &lastLogin); err != nil {
+			return nil, err
+		}
+		if lastLogin.Valid {
+			s := lastLogin.String
+			u.LastLoginAt = &s
+		}
+		out = append(out, u)
 	}
 	return out, nil
 }

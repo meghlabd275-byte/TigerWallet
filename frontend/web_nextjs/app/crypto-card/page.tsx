@@ -43,28 +43,23 @@ export default function CryptoCardPage() {
       ])
       const cardsData = await cardsRes.json()
       const txData = await txRes.json()
+      // Use only real fields returned by the card backend. Do not fabricate
+      // card id / last4 / type — display them as unknown when the backend
+      // has no card-metadata endpoint.
       setCards([{
-        id: 'card_001',
-        last4: '1111',
+        id: '',
+        last4: '—',
         status: 'ACTIVE',
         type: 'VIRTUAL',
-        dailyLimit: cardsData.daily_limit || 10000,
-        usedToday: cardsData.used_today || 500,
-        balance: cardsData.balance || 5000
+        dailyLimit: Number(cardsData.daily_limit) || 0,
+        usedToday: Number(cardsData.used_today) || 0,
+        balance: Number(cardsData.balance) || 0
       }])
       setTransactions(txData.transactions || [])
     } catch (error) {
-      console.error('Failed to fetch card data:', error)
-      // Fallback data
-      setCards([{
-        id: 'card_001',
-        last4: '1111',
-        status: 'ACTIVE',
-        type: 'VIRTUAL',
-        dailyLimit: 10000,
-        usedToday: 500,
-        balance: 5000
-      }])
+      // Do NOT fabricate card data on failure.
+      setCards([])
+      setTransactions([])
     } finally {
       setLoading(false)
     }

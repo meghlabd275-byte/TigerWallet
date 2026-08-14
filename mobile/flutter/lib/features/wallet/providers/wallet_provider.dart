@@ -238,11 +238,17 @@ class WalletProvider extends ChangeNotifier {
   }
   
   double _calculate24hChange() {
-    // In production, this would calculate from actual price changes
-    if (_totalBalanceUSD == 0) return 0;
-    
-    // Mock calculation - in production would fetch from price API
-    return 2.5; // 2.5% change
+    // Portfolio-weighted 24h change derived from real per-token price changes.
+    if (_totalBalanceUSD == 0 || _tokens.isEmpty) return 0;
+    double weightedSum = 0;
+    double totalWeight = 0;
+    for (final t in _tokens) {
+      final w = t.balanceUSD;
+      weightedSum += t.priceChange24h * w;
+      totalWeight += w;
+    }
+    if (totalWeight == 0) return 0;
+    return weightedSum / totalWeight;
   }
   
   // Get address for specific chain

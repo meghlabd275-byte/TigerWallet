@@ -6,7 +6,7 @@ import {
   Switch, FormControlLabel, IconButton, Snackbar, Alert, LinearProgress, Card, CardContent
 } from '@mui/material';
 import { 
-  Add, Block, CheckCircle, Refresh, Security, Warning, Shield
+  Add, Block, CheckCircle, Refresh, VerifiedUser, Warning, Shield
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
