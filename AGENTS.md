@@ -2707,3 +2707,40 @@ Build verification: `go build ./...` exit 0, `go vet ./...` exit 0 (Go 1.23 at
 promoted to direct require (bcrypt); `github.com/golang-jwt/jwt/v5` direct
 require (auth).
 
+
+
+## Session 2026-08-14 (cont): Final gap closure — frontend pages + PG bridge + bot API
+
+### Frontend (web_nextjs) — 4 new pages + 3 proxy routes (tsc 0 errors)
+- app/airdrop/page.tsx: browse + claim airdrop campaigns (real /airdrop/campaigns GET + /airdrop/claim POST).
+- app/earn/page.tsx: earn products + user deposits (real /earn/products + /earn/deposits + deposit/withdraw/claim POST).
+- app/coupon/page.tsx: validate coupon (real /coupon/validate POST).
+- app/red-packets/page.tsx: create/claim/list red packets (real /red-packets/create/claim/sent/received).
+- 3 new proxy routes: earn/deposits, red-packets/sent, red-packets/received (proxyGetFrom forwards query params). Import depth app/api/v1/<a>/<b>/route.ts = ../../_proxy.
+- prediction-markets/page.tsx: fixed field mismatch (outcome->side), added ?user_id= param, removed mock fallback.
+- All pages use useTheme() + isDark ternaries (0 dark: variants), loading/error/empty states, NO mock data.
+
+### ProjectParty web — 7 new pages (tsc 0 + vite build 0)
+- Listings, Launchpad, MarketMaking, Pricing, Analytics, Compliance, Fees pages — all fetch real data from :8106 backend, theme-aware, registered in App.tsx + Layout sidebar.
+
+### Backend (Go) — bridge_service PostgreSQL migration
+- go/bridge_service/main.go: converted from in-memory map to PostgreSQL via pgxpool. bridge_transactions table + indexes. migrateDB() on boot. DATABASE_URL env. go.mod added pgx/v5 v5.6.0. Build+vet clean.
+- NOTE: var rows pgx.Rows (NOT pgxpool.Rows) — Rows interface is in github.com/jackc/pgx/v5.
+- Dockerfile + docker-compose bridge-api (:8007) + database/init.sql tigerwallet_bridge DB.
+
+### mm_bot_platform/bot_api — Go 1.23 fix
+- go.mod go 1.25 -> go 1.23 + replace rogpeppe/go-internal v1.16.0 -> v1.12.0 (needs Go 1.25). Build+vet clean.
+
+### Deleted orphan duplicates
+- go/notifications/ (in-memory; canonical notifications/go/ has real PG).
+- user_features/notifications/go/ (in-memory, no go.mod, unreferenced).
+
+### Theme verification (ALL frontends)
+- web_nextjs: useTheme() + isDark ternaries. admin/web: ThemeContext. super_admin/web: ThemeContext+MUI. project_party/web: ThemeContext+CSS vars (13 pages). white_label/frontend: ThemeContext+MUIThemeProvider (8 pages).
+
+### Build verification (ALL GREEN)
+- go/bridge_service + mm_bot_platform/bot_api: build+vet exit 0.
+- frontend/web_nextjs + project_party/web: tsc 0 errors.
+- docker-compose.yml: YAML valid. No SQLite, no in-memory maps, no stubs/fakes/mocks.
+
+### Commit: ccde6d0 pushed to origin/main.
