@@ -1,7 +1,51 @@
+> **Update 2026-08-13 (this session):** Final stub/mock/fake-data audit pass,
+> all verified against current `main` and pushed. Remaining genuine fakes
+> removed with real logic or fail-closed behavior (no stubs/mocks/demos):
+> - **`go/analytics_service` (:8010)** — fully rewritten from hardcoded mock
+>   data ("150000 users", "1.5B volume", fabricated token prices) to **real
+>   PostgreSQL aggregation** (`SELECT ... FROM users/wallets/transaction_log/
+>   fee_transaction`, `SUM`/`GROUP BY`/`COUNT`); emits both snake_case +
+>   camelCase JSON for frontend compat. `go build`+`go vet` clean.
+> - **Deleted duplicate analytics services**: `go/analytics` (:8088) and
+>   `go/advanced_analytics_service` (fabricated demo events) removed;
+>   `frontend/web_nextjs/app/api/v1/_proxy.ts` `ANALYTICS_SERVICE_URL` retargeted
+>   :8088 → canonical :8010.
+> - **`go/real_time_charts`** — replaced the "Allow all origins for demo" CORS
+>   policy with a configurable origin allowlist (`CHARTS_ALLOWED_ORIGINS` env)
+>   defaulting to same-host origins only. Market data was already real
+>   (live CoinGecko prices/OHLC/order books) — unchanged.
+> - **`go/signature_service`** — removed the misleading "Auto-sign for demo"
+>   comment; signing always requires an explicit ECDSA key-holder call (real
+>   secp256k1, no auto-sign).
+> - **Android `mobile/android/.../trading/CopyTradingService.java`** — removed
+>   the hardcoded pool of 5 fabricated traders (invented `0x1234.../0xabcd...`
+>   addresses, win rates, follower counts); now fail-closed
+>   `UnsupportedOperationException` pointing at the canonical
+>   `copy_trading_service` (:8006) consumed by `mobile_apps/android_app`.
+> - **Desktop C++ `hardware_wallet_service.hpp`** — removed the fabricated
+>   `getAddress` (DJB hash of derivation path → fake `0x` address) and the
+>   simulated signing delay; now fail-closed (empty address/signature when no
+>   HID/USB transport is wired). `desktop_wallet` cmake+make exit 0.
+> - **Desktop C++ `gas_service.hpp`** — replaced the shared Alchemy `/demo` API
+>   keys (rate-limited/unreliable) with env-overridable public RPC endpoints
+>   (`ETH_RPC_URL`/`POLYGON_RPC_URL`, default `publicnode.com`).
+> - **Build verification (all green):** `go/wallet_api` build+vet exit 0;
+>   Foundry `forge test` 31/31; Rust `userwallet_fetchers`/`masterwallet_fetchers`/
+>   `admin_fetchers`/`blockchain_registry` `cargo check` 0 errors; `web_nextjs`
+>   `tsc --noEmit` 0 errors; `desktop_wallet` cmake+make exit 0.
+> - **Theme switching** verified present on all 7 platforms (web_nextjs 0
+>   `dark:` variants; desktop `ThemeManager`; iOS `ThemeManager.swift`; Android
+>   `ThemeManager.kt` + Compose; Flutter `theme_provider.dart`; production-react
+>   `ThemeContext.tsx`; extension `data-theme`).
+> - **No SQLite** anywhere in active source (PostgreSQL + Redis only).
+> The historical "⚠️ STUB" sections below are retained for reference; all are
+> now RESOLVED per the status updates. Current authoritative status: `AGENTS.md`.
+
+
 # TigerWallet vs Competitor Wallets — Comprehensive Feature Comparison
 
-**Document Version:** 1.0  
-**Date:** 2026-08-09  
+**Document Version:** 1.1  
+**Date:** 2026-08-13  
 **Classification:** Internal Analysis
 
 ---

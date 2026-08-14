@@ -260,7 +260,9 @@ func (s *SignatureService) CreateSignatureRequest(
 		return request, nil
 	}
 
-	// Auto-sign for demo (in production would require approval)
+	// When approval is not required, the request stays in "pending" status
+	// and is signed on demand via SignMessage (with a real ECDSA key). We do
+	// NOT auto-sign here — signing always requires an explicit key holder call.
 	return request, nil
 }
 

@@ -2,6 +2,27 @@
 
 **Companion docs:** [`03-TIGERWALLET-AUDIT.md`](./03-TIGERWALLET-AUDIT.md) (what is real/fake) and [`02-COMPETITOR-MATRIX.md`](./02-COMPETITOR-MATRIX.md) (what the competition ships). This file turns the audit findings into specific gaps per functional area, plus a prioritized roadmap.
 
+
+> **STATUS (2026-08-13, verified against `main`):** The verdicts in the matrix
+> below were captured during the initial 2026-08-09 audit and have since been
+> substantially resolved. The authoritative, up-to-date record lives in
+> `AGENTS.md` (root). Summary of what changed since this matrix was written:
+> - **Staking (#11)**, **Lending (#12)**, **Bridge (#10)**, **Swap (#9)**,
+>   **NFT marketplace**, **copy trading**, **options**, **perpetual/margin**,
+>   **red packets**, **gift cards**, **KYC**, **widgets**, **account
+>   abstraction** pages are all now REAL backend integrations (no mocks/stubs).
+> - **Analytics** (`go/analytics_service`) rewritten from hardcoded mock
+>   metrics to real PostgreSQL aggregation (this session).
+> - **Duplicate/fake services deleted**: `go/analytics`, `go/advanced_analytics_service`.
+> - **Multi-chain registry**: 120 EVM + 66 non-EVM mainnet chains (incl. Pi),
+>   with real per-non-EVM signing (Solana Ed25519 / Bitcoin SIGHASH_ALL /
+>   Cosmos amino) landed 2026-08-12.
+> - **Build status (all green):** Go (wallet_api + DeFi services) build+vet 0;
+>   Foundry 31/31; Rust fetchers/registry cargo check 0; web_nextjs tsc 0;
+>   desktop_wallet cmake+make 0. No SQLite; PostgreSQL + Redis only.
+> Treat any remaining MISSING/STUB/PARTIAL cells below as historically
+> captured; re-check the source before relying on them.
+
 Legend: MISSING **Missing/Not built** | STUB **Stub or fake (exists in name, not real)** | PARTIAL **Partial/real-but-incomplete** | REAL **Real & competition-grade.**
 
 ---

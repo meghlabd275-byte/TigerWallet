@@ -148,7 +148,28 @@ func NewChartService() *ChartService {
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 			CheckOrigin: func(r *http.Request) bool {
-				return true // Allow all origins for demo
+				origin := r.Header.Get("Origin")
+				if origin == "" {
+					return true // non-browser clients have no origin header
+				}
+				allowed := strings.Split(os.Getenv("CHARTS_ALLOWED_ORIGINS"), ",")
+				configured := false
+				for _, a := range allowed {
+					a = strings.TrimSpace(a)
+					if a == "" {
+						continue
+					}
+					configured = true
+					if a == origin {
+						return true
+					}
+				}
+				if !configured {
+					// No allowlist configured: permit same-host origins only.
+					host := r.Host
+					return strings.HasPrefix(origin, "http://"+host) || strings.HasPrefix(origin, "https://"+host)
+				}
+				return false
 			},
 		},
 	}

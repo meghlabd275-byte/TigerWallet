@@ -25,7 +25,7 @@ export const COPY_TRADING_SERVICE_URL = process.env.COPY_TRADING_SERVICE_URL || 
 // Each runs as its own process on the documented default port. Ports are
 // overridable via env so co-located deployments can resolve collisions.
 export const ADMIN_SERVICE_URL = process.env.ADMIN_SERVICE_URL || 'http://localhost:8002';
-export const ANALYTICS_SERVICE_URL = process.env.ANALYTICS_SERVICE_URL || 'http://localhost:8088';
+export const ANALYTICS_SERVICE_URL = process.env.ANALYTICS_SERVICE_URL || 'http://localhost:8010';
 export const ANALYTICS_SERVICE_ALT_URL = process.env.ANALYTICS_SERVICE_ALT_URL || 'http://localhost:8010';
 export const API_GATEWAY_URL = process.env.API_GATEWAY_URL || 'http://localhost:8000';
 export const APPROVAL_MANAGER_URL = process.env.APPROVAL_MANAGER_URL || 'http://localhost:8449';

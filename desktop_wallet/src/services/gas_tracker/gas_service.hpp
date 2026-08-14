@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
+#include <cstdlib>
 
 // Forward declaration for curl
 struct Curl;
@@ -112,7 +113,10 @@ struct ChainGasConfig {
         configs["ethereum"] = []{
             ChainGasConfig c;
             c.name = "Ethereum";
-            c.rpc_url = "https://eth-mainnet.g.alchemy.com/v2/demo";
+            // Env-overridable RPC; default to a public endpoint (not a shared
+            // Alchemy demo key, which is rate-limited and unreliable).
+            const char* rpc = std::getenv("ETH_RPC_URL");
+            c.rpc_url = rpc ? rpc : "https://ethereum-rpc.publicnode.com";
             c.chain_id = "1";
             c.supports_eip1559 = true;
             c.default_gas_limit = 21000;
@@ -125,7 +129,8 @@ struct ChainGasConfig {
         configs["polygon"] = []{
             ChainGasConfig c;
             c.name = "Polygon";
-            c.rpc_url = "https://polygon-mainnet.g.alchemy.com/v2/demo";
+            const char* rpc = std::getenv("POLYGON_RPC_URL");
+            c.rpc_url = rpc ? rpc : "https://polygon-bor-rpc.publicnode.com";
             c.chain_id = "137";
             c.supports_eip1559 = true;
             c.default_gas_limit = 21000;

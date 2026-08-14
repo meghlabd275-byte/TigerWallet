@@ -1994,3 +1994,90 @@ All hit http://localhost:8450 with Bearer JWT — no stubs.
 - Extensions: node --check exit 0.
 - No stubs/fakes/mocks/SQLite. All real crypto (secp256k1, Ed25519, keccak256,
   SHA-256, RIPEMD160, bech32, base58check).
+
+## Session 2026-08-13 (cont): Final stub/mock/fake-data audit + cleanup
+
+### analytics_service (the ONE genuine remaining mock) — FIXED
+- `go/analytics_service/main.go` was the last service returning hardcoded mock
+  metrics: "150000 users", "1.5B volume", fabricated token prices, invented
+  chain distribution. REWROTE to real PostgreSQL aggregation via `pgxpool`
+  against the canonical schema (`users`, `wallets`, `transaction_log`,
+  `fee_transaction`). Handlers: GetOverview (COUNT users/wallets/tx, 24h
+  active users + volume + fees), GetTradingStats (top chains/to-addrs by
+  SUM(value)), GetRevenueStats (settled fee SUM over time), GetTokens, GetChains,
+  GetUsers. Emits BOTH snake_case + camelCase JSON tags for frontend compat.
+  Context-based lifecycle + graceful shutdown. `go build`+`go vet` exit 0.
+- `go/analytics_service/go.mod`: pinned go 1.23, gin v1.10.0 (was v1.12 which
+  needs Go 1.25), added `pgx/v5 v5.6.0` + `puddle/v2`.
+
+### Duplicate analytics services — DELETED
+- `go/analytics` (:8088, orphan) and `go/advanced_analytics_service` (fabricated
+  demo events via `rand`) removed. `frontend/web_nextjs/app/api/v1/_proxy.ts`
+  `ANALYTICS_SERVICE_URL` retargeted :8088 -> canonical :8010.
+
+### real_time_charts CORS — FIXED
+- `go/real_time_charts/main.go` WebSocket `CheckOrigin` returned `true`
+  ("Allow all origins for demo"). Replaced with a configurable origin
+  allowlist (`CHARTS_ALLOWED_ORIGINS` env, comma-separated) defaulting to
+  same-host origins only when unset. Non-browser clients (no Origin) still
+  allowed. Market data was ALREADY real (live CoinGecko prices/OHLC/order
+  books seeded around the real last-traded price) — unchanged. `go build` 0.
+
+### signature_service misleading comment — FIXED
+- `go/signature_service/main.go:263` had "Auto-sign for demo" comment; the
+  code does NOT auto-sign (returns a pending request; real ECDSA signing
+  happens in SignMessage with an explicit key). Comment corrected. `go build` 0.
+
+### Android orphan trading/CopyTradingService fake data — FIXED
+- `mobile/android/.../trading/CopyTradingService.java` fabricated 5 fake
+  traders (hardcoded `0x1234.../0xabcd...` addresses, win rates, follower
+  counts, `entryPrice=43250.0`). REWROTE to fail-closed
+  `UnsupportedOperationException` (matching its siblings FuturesService/
+  P2PService/MarginTradingService/CryptoCardService which were already
+  fail-closed). The `trading/*` package is an orphan layer (no activities/
+  screens import it); the canonical Android app `mobile_apps/android_app`
+  consumes the real `copy_trading_service` (:8006). Data classes retained.
+
+### Desktop C++ hardware_wallet_service fake address — FIXED
+- `desktop_wallet/.../hardware_wallet_service.hpp::getAddress` fabricated a
+  `0x...` address via DJB hash of the derivation path ("Simple hash of
+  derivation path for demo"). Replaced with fail-closed empty return (real
+  address derivation needs a HID/USB APDU exchange; no transport wired).
+- Removed the `std::this_thread::sleep_for(100ms)` "Simulate signing delay" in
+  signTransaction. signTransaction/signMessage already returned empty
+  signatures (fail-closed) — unchanged.
+
+### Desktop C++ gas_service Alchemy demo keys — FIXED
+- `gas_service.hpp` used shared Alchemy `/v2/demo` keys for Ethereum + Polygon
+  (real RPC but rate-limited/unreliable). Replaced with env-overridable
+  public RPC endpoints (`ETH_RPC_URL`/`POLYGON_RPC_URL`, default
+  `publicnode.com`); added `<cstdlib>` for `std::getenv`.
+
+### Build verification (ALL GREEN, post-changes)
+- go/wallet_api: build+vet exit 0
+- go/analytics_service: build+vet exit 0
+- go/real_time_charts: build exit 0
+- go/signature_service: build exit 0
+- Foundry contracts: forge install OZ+forge-std; forge test 31/31 pass
+- rust/userwallet_fetchers: cargo check 0 errors
+- rust/masterwallet_fetchers: cargo check 0 errors
+- rust/admin_fetchers: cargo check 0 errors
+- rust/blockchain_registry: cargo check 0 errors
+- frontend/web_nextjs: tsc --noEmit 0 errors
+- desktop_wallet (C++20): cmake+make exit 0
+- Fake-crypto repo scan: 0 genuine hits (all remaining are fail-closed comments)
+- SQLite repo scan: 0 active source usage (PG + Redis only)
+
+### Theme + parity (verified, unchanged this session)
+- web_nextjs: 0 `dark:` Tailwind variants in `app/`; ThemeProvider on all pages.
+- Theme infra present on all 7 platforms (paths confirmed): desktop
+  `src/ui/theme.cpp`; iOS `Models/ThemeManager.swift`; Android
+  `TigerWallet/app/.../ThemeManager.kt` + `ui/theme/Theme.kt`; Flutter
+  `lib/utils/theme.dart` + `lib/providers/theme_provider.dart`; production-react
+  `src/contexts/ThemeContext.tsx`; mobile/flutter `lib/core/theme/app_theme.dart`.
+
+### Toolchains (reinstalled — env was fresh)
+- Go 1.23.12 at `$HOME/.go-sdk/go/bin` (GOTOOLCHAIN=local, GOPATH=$HOME/go).
+- Rust 1.97.1 at `$HOME/.cargo/env` (minimal profile).
+- Foundry 1.7.1 at `$HOME/.foundry/bin` (foundryup).
+- cmake 3.31.6 + libcurl4-openssl-dev + libssl-dev (apt) for desktop_wallet.

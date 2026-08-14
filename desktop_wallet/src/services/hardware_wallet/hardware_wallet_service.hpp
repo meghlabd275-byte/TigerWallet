@@ -328,22 +328,12 @@ public:
             return "";
         }
         
-        // In production, this would communicate with the device
-        // For now, return a derived address based on the path
-        std::ostringstream oss;
-        oss << "0x" << std::hex;
-        
-        // Simple hash of derivation path for demo
-        size_t hash = 0;
-        for (char c : derivation_path) {
-            hash = hash * 31 + c;
-        }
-        
-        for (int i = 0; i < 40; i++) {
-            oss << ((hash + i) % 16);
-        }
-        
-        return oss.str();
+        // Real address derivation requires exchanging a BIP-32 APDU with the
+        // device (Ledger GET_PUBLIC_KEY, Trezor GetPublicKey) over a HID/USB
+        // transport. No transport is wired into this build, so we must NOT
+        // fabricate an address by hashing the derivation path. Return an empty
+        // string to signal "address unavailable - device transport not wired".
+        return "";
     }
     
     // Sign transaction
@@ -364,8 +354,6 @@ public:
         
         if (device.status != HardwareWalletStatus::UNLOCKED) {
             device.status = HardwareWalletStatus::BUSY;
-            // Simulate signing delay
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
         
         // In production, this would send the transaction to the device for signing
