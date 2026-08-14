@@ -2231,3 +2231,60 @@ Cosmos chain.
 - wallet_api `non_evm_signing.go` `CosmosAddressFromSeed(seed, path, prefix)`
   takes the prefix as a param (caller-controlled) -> correct; the per-chain
   resolution is the MasterWallet governance layer's job (now fixed).
+
+## Session 2026-08-13 (cont): Device-sync real backend + blockchain_registry theme
+
+### Device sync -- real PostgreSQL backend (was fake hardcoded device list)
+- **go/wallet_api/devices.go** (NEW): 4 real JWT-authenticated handlers --
+  handleListDevices (GET /devices), handleRegisterDevice (POST /devices),
+  handleSyncDevice (POST /devices/:id/sync -- sets status=online + last_sync),
+  handleDeleteDevice (DELETE /devices/:id). All query PostgreSQL; no mock data.
+- **go/wallet_api/store.go**: added devices table (id UUID PK, user_id FK,
+  name, device_type, status, last_sync, created_at) + idx_devices_user to
+  schemaSQL (auto-migrates on boot).
+- **go/wallet_api/main.go**: 4 routes registered in the protected wallet group.
+- **Frontend**: frontend/web_nextjs/app/device-sync/page.tsx rewritten --
+  removed fake hardcoded device array ("iPhone 15 Pro", "MacBook Pro", etc.)
+  + fake setTimeout "sync"; now fetches from real /api/v1/devices with
+  loading/error/empty states. 3 Next.js proxy routes added:
+  app/api/v1/devices/route.ts (GET), devices/[id]/route.ts (DELETE),
+  devices/[id]/sync/route.ts (POST). Import depth: top-level devices/route.ts
+  uses ../_proxy; devices/[id]/route.ts uses ../../_proxy;
+  devices/[id]/sync/route.ts uses ../../../_proxy (matches the existing
+  bots/[id]/pause/route.ts convention -- 4-level-deep routes use 3 ups).
+- Frontend<->backend device-sync parity is now 100/100.
+- Build: go build + go vet + go test ./... all exit 0; tsc --noEmit 0 errors.
+
+### blockchain_registry/frontend -- light/dark theme toggle + real backend fetch
+- Was a single-page Next.js app with a fixed dark gradient + no layout.tsx +
+  no tailwind config + no globals.css. Now has:
+  - src/app/layout.tsx (RootLayout with metadata)
+  - src/app/globals.css (Tailwind directives)
+  - tailwind.config.js + postcss.config.js
+- src/app/multi-chain/page.tsx: added theme state ("dark"|"light") +
+  toggleTheme() (persists to localStorage 'tw-theme') + isDark derived.
+  Theme-aware classes applied to: root container, header, stat cards, filter
+  inputs/selects, grid cards, table container/header/rows, quick-stats. A
+  theme toggle button added to the header. All dark-only classes converted
+  to isDark ternaries.
+- JSX GOTCHA: when converting a static className div to a template-literal
+  className, the closing > of the JSX tag must remain -- a Python batch-replace
+  dropped it on the table-container + stats divs, causing TS2657/TS1005. Always
+  verify backtick + > balance after batch class replacements.
+- Build: tsc --noEmit 0 errors.
+
+### COMPETITOR_WALLET_COMPARISON_REPORT.md -- stale markings fixed
+- wallet_core/src/key_vault/mod.rs was mislabeled "STUB - module exists but
+  no impl" in Appendix B + "exists but NO implementation" in Appendix D.
+  Re-verified: 644 lines, 38 functions, real AES-256-GCM (encrypt/decrypt at
+  rest, access control, audit log, key rotation, expiry). Marked REAL.
+- Appendix E stale rows marked RESOLVED: admin/web pages (real adminApi
+  fetches, || 0 fallbacks, no fake data), account_abstraction/frontend
+  (621-line real UI; placeholder="0x..." are HTML input attrs not stubs),
+  blockchain_registry/frontend (real backend + theme), device-sync (real PG).
+- Status banner updated with device-sync + key_vault + theme verification.
+
+### Commits on main
+- 617de71 Real device-sync backend + frontend, blockchain_registry theme toggle
+- fb117d8 Update COMPETITOR report: fix stale key_vault STUB mark, mark
+  device-sync/theme/admin/AA resolved
