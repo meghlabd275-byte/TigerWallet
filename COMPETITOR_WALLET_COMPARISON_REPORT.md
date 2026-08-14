@@ -29,14 +29,26 @@
 > - **Desktop C++ `gas_service.hpp`** — replaced the shared Alchemy `/demo` API
 >   keys (rate-limited/unreliable) with env-overridable public RPC endpoints
 >   (`ETH_RPC_URL`/`POLYGON_RPC_URL`, default `publicnode.com`).
-> - **Build verification (all green):** `go/wallet_api` build+vet exit 0;
->   Foundry `forge test` 31/31; Rust `userwallet_fetchers`/`masterwallet_fetchers`/
+> - **Build verification (all green):** `go/wallet_api` build+vet+test exit 0
+>   (BIP-44 vector + 8 non-EVM crypto tests + chain registry); Foundry
+>   `forge test` 31/31; Rust `userwallet_fetchers`/`masterwallet_fetchers`/
 >   `admin_fetchers`/`blockchain_registry` `cargo check` 0 errors; `web_nextjs`
 >   `tsc --noEmit` 0 errors; `desktop_wallet` cmake+make exit 0.
+> - **Device sync (real backend):** `go/wallet_api/devices.go` +
+>   PostgreSQL `devices` table — `GET/POST/DELETE /api/v1/devices`,
+>   `POST /devices/:id/sync` (JWT-authenticated, no mock data).
+>   `frontend/web_nextjs/app/device-sync/page.tsx` rewritten from fake
+>   hardcoded device list → real backend fetch with loading/error/empty states.
+> - **`wallet_core/src/key_vault/mod.rs`** — re-verified as REAL (644 lines,
+>   38 functions: AES-256-GCM encrypt/decrypt at rest, access control, audit
+>   log, key rotation, expiry). Was previously mislabeled "STUB" in Appendix B.
+> - **`blockchain_registry/frontend` multi-chain page** — real backend fetch
+>   (`GET /api/v1/chains`) + light/dark theme toggle (localStorage persisted,
+>   theme-aware classes on all elements).
 > - **Theme switching** verified present on all 7 platforms (web_nextjs 0
 >   `dark:` variants; desktop `ThemeManager`; iOS `ThemeManager.swift`; Android
 >   `ThemeManager.kt` + Compose; Flutter `theme_provider.dart`; production-react
->   `ThemeContext.tsx`; extension `data-theme`).
+>   `ThemeContext.tsx`; extension `data-theme`; blockchain_registry theme toggle).
 > - **No SQLite** anywhere in active source (PostgreSQL + Redis only).
 > The historical "⚠️ STUB" sections below are retained for reference; all are
 > now RESOLVED per the status updates. Current authoritative status: `AGENTS.md`.
@@ -623,7 +635,7 @@ Repo-wide grep for fake-crypto patterns (12 patterns) returns 0 real hits.
 | `wallet_core/src/evm.rs` | EVM address derivation | secp256k1 via `k256` crate |
 | `wallet_core/src/bitcoin.rs` | Bitcoin addresses | RIPEMD160 + Base58Check |
 | `wallet_core/src/hardware_wallet/` | Hardware wallet support | ✅ Implemented (Ledger/Trezor/YubiKey/KMS device trait + fail-closed) |
-| `wallet_core/src/key_vault/` | Key vault | **STUB** - module exists but no impl |
+| `wallet_core/src/key_vault/` | Key vault | ✅ REAL — 644-line AES-256-GCM vault (encrypt/decrypt at rest, access control, audit log, key rotation, expiry) |
 
 ---
 
@@ -649,10 +661,10 @@ The repository contains a second, independent wallet core implementation in Rust
    - Go implementation in `go/wallet_api/` 
    - Rust implementation in `wallet_core/`
 
-2. **Rust HW/Signing modules are EMPTY**:
+2. **Rust HW/Signing modules**:
    ```
    wallet_core/src/hardware_wallet/mod.rs   — 548-line real Ledger/Trezor/YubiKey/KMS device-trait + APDU layer (fail-closed)
-   wallet_core/src/key_vault/mod.rs        — exists but NO implementation
+   wallet_core/src/key_vault/mod.rs        — 644-line REAL AES-256-GCM key vault (encrypt/decrypt, access control, audit log, rotation, expiry)
    ```
 
 3. **Tests exist** for mnemonic module:
@@ -678,10 +690,11 @@ The following files contain `setTimeout`, mock data, or placeholder implementati
 | `user_app/react/...` | (path no longer exists) | N/A — stale ref; canonical clients are `user_wallet/*` + `mobile_apps/*` |
 | `user_app/react/...` | (path no longer exists) | N/A — stale ref |
 | `user_app/react/...` | (path no longer exists) | N/A — stale ref |
-| `admin/web/src/pages/*.tsx` | Admin UI stubs | LOW |
+| `admin/web/src/pages/*.tsx` | Was "Admin UI stubs" | ✅ RESOLVED — real `adminApi.getAnalytics/getSystemStatus` fetches with null-safe fallbacks (`|| 0`); no hardcoded fake data |
 | `solana/frontend/.../solana-wallet/page.tsx` | Was a send/swap stub | ✅ Real: Phantom sign+broadcast, Metaplex NFT fetch, Jupiter swap, getProgramAccounts stakes |
-| `blockchain_registry/frontend/src/app/multi-chain/page.tsx` | Chain config | MEDIUM |
-| `account_abstraction/frontend/src/app/account-abstraction/page.tsx` | UI only | MEDIUM |
+| `blockchain_registry/frontend/src/app/multi-chain/page.tsx` | Chain config | ✅ RESOLVED — real backend fetch (`GET /api/v1/chains`) + light/dark theme toggle (localStorage persisted) |
+| `account_abstraction/frontend/src/app/account-abstraction/page.tsx` | Was "UI only" | ✅ RESOLVED — 621-line real UI (UserOperation builder, bundler submit, paymaster sponsor); `placeholder="0x..."` are HTML input attrs, not stubs |
+| `frontend/web_nextjs/app/device-sync/page.tsx` | Was fake device list | ✅ RESOLVED — real `GET/POST/DELETE /api/v1/devices` (PostgreSQL-backed) with loading/error/empty states |
 
 **Note**: This repository appears to have been built from multiple independent teams/projects that were merged. There is significant duplication (e.g., both Go and Rust wallet cores) and inconsistent implementation quality across modules.
 
