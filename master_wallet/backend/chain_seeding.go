@@ -76,6 +76,124 @@ func seedDefaultUserChains(ctx context.Context, s *Store) {
 	}
 }
 
+// bech32PrefixForChainID returns the Cosmos-SDK bech32 account address prefix
+// for a registered non-EVM chain identified by its chain_id (namespace
+// >= 9,000,000,000). All 23 Cosmos-SDK chains share ChainType "cosmos" in the
+// registry, so the per-chain bech32 prefix MUST be resolved by chain_id
+// (not by chain_type, which is generic "cosmos"). Using chain_type alone
+// would force the "cosmos" prefix onto Osmosis/Injective/Terra/etc. and
+// produce wrong addresses. Falls back to "cosmos" for unmapped chains.
+func bech32PrefixForChainID(chainID int64) string {
+	switch chainID {
+	case 9000000118:
+		return "cosmos" // Cosmos Hub
+	case 9000026317:
+		return "osmo" // Osmosis
+	case 9000000330:
+		return "terra" // Terra Classic
+	case 9000073068:
+		return "inj" // Injective
+	case 9000014648:
+		return "celestia" // Celestia
+	case 9000049823:
+		return "dydx" // dYdX
+	case 9000073741:
+		return "sei" // Sei
+	case 9000041857:
+		return "kujira" // Kujira
+	case 9000012099:
+		return "stride" // Stride
+	case 9000090063:
+		return "neutron" // Neutron
+	case 9000005267:
+		return "juno" // Juno
+	case 9000007183:
+		return "akash" // Akash
+	case 9000018759:
+		return "persistence" // Persistence
+	case 9000034677:
+		return "evmos" // Evmos
+	case 9000054841:
+		return "canto" // Canto
+	case 9000003318:
+		return "kava" // Kava
+	case 9000062954:
+		return "cro" // Cronos (crypto.org chain)
+	case 9000016892:
+		return "stars" // Stargaze
+	case 9000021252:
+		return "saga" // Saga
+	case 9000086660:
+		return "noble" // Noble
+	case 9000040572:
+		return "axelar" // Axelar
+	case 9000007153:
+		return "umee" // UMEE
+	case 9000000529:
+		return "secret" // Secret Network
+	default:
+		return "cosmos" // unknown Cosmos-SDK chain -> canonical prefix
+	}
+}
+
+// cosmosChainMeta returns the canonical chain_id string and base fee denom for
+// a Cosmos-SDK chain identified by its numeric TigerWallet chain_id. The SignDoc
+// MUST carry the correct chain_id string and denom for the signature to be
+// valid on the target chain (Osmosis uses "osmosis-1" + "uosmo", Injective uses
+// "injective-1" + "inj", etc.). Falls back to cosmoshub-4/uatom.
+func cosmosChainMeta(chainID int64) (chainIDStr, denom string) {
+	switch chainID {
+	case 9000000118:
+		return "cosmoshub-4", "uatom" // Cosmos Hub
+	case 9000026317:
+		return "osmosis-1", "uosmo" // Osmosis
+	case 9000000330:
+		return "columbus-5", "ulunc" // Terra Classic
+	case 9000073068:
+		return "injective-1", "inj" // Injective
+	case 9000014648:
+		return "mocha-4", "utia" // Celestia (test mainnet mocha; mainnet celestia)
+	case 9000049823:
+		return "dydx-chain-1", "adydx" // dYdX
+	case 9000073741:
+		return "atlantic-2", "usei" // Sei
+	case 9000041857:
+		return "kaiyo-1", "ukuji" // Kujira
+	case 9000012099:
+		return "stride-1", "ustrd" // Stride
+	case 9000090063:
+		return "pion-1", "untrn" // Neutron
+	case 9000005267:
+		return "juno-1", "ujuno" // Juno
+	case 9000007183:
+		return "akashnet-2", "uakt" // Akash
+	case 9000018759:
+		return "core-1", "uxprt" // Persistence
+	case 9000034677:
+		return "evmos_9001-2", "aevmos" // Evmos
+	case 9000054841:
+		return "canto_7700-1", "acanto" // Canto
+	case 9000003318:
+		return "kava_2222-10", "ukava" // Kava
+	case 9000062954:
+		return "crypto-org-chain-mainnet-1", "basecro" // Cronos (crypto.org)
+	case 9000016892:
+		return "stargaze-1", "ustars" // Stargaze
+	case 9000021252:
+		return "ssc-1", "usaga" // Saga
+	case 9000086660:
+		return "noble-1", "uusdc" // Noble
+	case 9000040572:
+		return "axelar-dojo-1", "uaxl" // Axelar
+	case 9000007153:
+		return "umee-1", "uumee" // UMEE
+	case 9000000529:
+		return "secret-4", "uscrt" // Secret Network
+	default:
+		return "cosmoshub-4", "uatom"
+	}
+}
+
 // bech32PrefixForChainType returns the Cosmos-SDK bech32 address prefix for a
 // given non-EVM chain type. Returns "" for non-Cosmos chains (Bitcoin/Solana
 // use their own address formats — base58check / base58, not bech32).

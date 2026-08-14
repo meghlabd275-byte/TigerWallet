@@ -2177,3 +2177,57 @@ All hit http://localhost:8450 with Bearer JWT — no stubs.
 - mobile_apps/tigerwallet HistoryScreen.tsx line 54
   (t.hash ?? t.id ?? Math.random().toString(36)) is a legitimate client-side
   React list-key fallback, NOT fabricated data -- left unchanged.
+
+
+## Session 2026-08-14 (cont): Cosmos per-chain bech32 prefix + SignDoc meta fix
+
+### Problem (genuine gap)
+All 23 registered Cosmos-SDK chains (Osmosis, Injective, Terra, Celestia,
+Kava, dYdX, Sei, Kujira, Stride, Neutron, Juno, Akash, Persistence, Evmos,
+Canto, Cronos, Stargaze, Saga, Noble, Axelar, UMEE, Secret, Cosmos Hub) are
+stored in `chain_registry_data.go` with generic `ChainType: "cosmos"` (NOT
+their specific subtype). The auto-sign / derive-address Cosmos dispatch
+branched on `chainType` and used `prefix="cosmos"` for ALL of them -> WRONG
+bech32 addresses (an Osmosis wallet got a `cosmos1...` addr instead of
+`osmo1...`). Likewise `autoSignCosmos` hardcoded `chain_id:"cosmoshub-4"`
+and `denom:"uatom"` in the SignDoc -> invalid signatures on every non-Hub
+Cosmos chain.
+
+### Fix (`master_wallet/backend/`)
+- `chain_seeding.go`: added `bech32PrefixForChainID(chainID int64) string`
+  mapping each of the 23 cosmos chain_ids to its correct bech32 prefix
+  (cosmos/osmo/terra/inj/celestia/dydx/sei/kujira/stride/neutron/juno/akash/
+  persistence/evmos/canto/kava/cro/stars/saga/noble/axelar/umee/secret;
+  default "cosmos" fallback). Added `cosmosChainMeta(chainID int64)
+  (chainIDStr, denom string)` mapping each cosmos chain_id to its canonical
+  chain_id string + base fee denom (e.g. Osmosis -> "osmosis-1"/"uosmo",
+  Injective -> "injective-1"/"inj"; default cosmoshub-4/uatom).
+- `user_wallet_management.go`: 3 Cosmos dispatch paths (DeriveUserAddress,
+  deriveUserAddressForLog, autoSignCosmos) now resolve the prefix +
+  SignDoc meta from `req.ChainID` (AutoSignRequest carries ChainID int64),
+  NOT from the generic chain_type. EVM dispatch already handled all 120 EVM
+  chains via the generic "evm" case + `rpcEndpointForChain`/`getUserChainRPC`
+  RPC resolution (unchanged, correct).
+- `chain_seeding_test.go`: +2 tests (TestBech32PrefixForChainID asserts all
+  23 mappings + fallback; TestCosmosChainMeta asserts Osmosis/Injective/
+  Cosmos-Hub meta). `go test ./...` all pass; `go build`+`go vet` exit 0.
+
+### Confirmed already-correct (verified, not changed)
+- Chain registry: 120 EVM + 66 non-EVM = 186 chains, all mainnet, no
+  testnets (TestEVMChainCount120 + TestNonEVMChainCount50 pass).
+- EVM auto-sign covers ALL 120 EVM chains via generic "evm" case +
+  `rpcEndpointForChain(req.ChainID)` (built-in map) with fallback to
+  `getUserChainRPC` (admin-added user_chains_evm DB table). Real nonce
+  (eth_getTransactionCount), real gas (eth_feeHistory), real secp256k1
+  SignTx, real ERC-20 decimals fetch (eth_call).
+- Bitcoin auto-sign: real UTXOs from blockstream.info, real P2PKH tx +
+  SIGHASH_ALL secp256k1, raw signed tx hex.
+- Solana auto-sign: real SLIP-0010 Ed25519 transfer message.
+- Master wallet owner can add/remove/update any EVM + non-EVM chain
+  (user_chains_evm / user_chains_nonevm DB tables) and any token
+  (user_tokens table); 24-word seed derives ALL EVM + non-EVM wallets;
+  auto-sign dispatches by chain_type; all 6 chains of auto-sign + all
+  upcoming chains (admin-added) work via the DB-backed RPC + derivation.
+- wallet_api `non_evm_signing.go` `CosmosAddressFromSeed(seed, path, prefix)`
+  takes the prefix as a param (caller-controlled) -> correct; the per-chain
+  resolution is the MasterWallet governance layer's job (now fixed).

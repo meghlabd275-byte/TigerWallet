@@ -75,7 +75,18 @@ The master wallet owner governs the UserWallet ecosystem:
   (EVM via BIP-44 secp256k1+keccak256, Solana via SLIP-0010 Ed25519, Bitcoin via secp256k1
   P2PKH base58check, Cosmos via secp256k1+bech32). One master wallet owns billions of addresses.
 - **Auto-sign**: automatically sign + approve ALL UserWallet transactions (send/claim/swap/trade)
-  using the user's seed — real secp256k1/Ed25519 signing + real broadcast
+  using the user's seed — real secp256k1/Ed25519 signing + real broadcast.
+  - EVM: ALL 120 EVM chains auto-signable via generic "evm" dispatch + per-chain
+    RPC resolution (`rpcEndpointForChain` built-in map -> `getUserChainRPC`
+    DB fallback). Real nonce/gas/secp256k1/ERC-20-decimals.
+  - Bitcoin: real UTXO fetch (blockstream.info) + real P2PKH SIGHASH_ALL tx.
+  - Solana: real SLIP-0010 Ed25519 transfer message.
+  - Cosmos: ALL 23 Cosmos-SDK chains auto-signable — per-chain bech32 prefix
+    (`bech32PrefixForChainID`) + per-chain SignDoc chain_id string + denom
+    (`cosmosChainMeta`) resolved by `req.ChainID` (e.g. Osmosis -> osmo1.../
+    osmosis-1/uosmo, Injective -> inj1.../injective-1/inj). Generic chain_type
+    "cosmos" no longer forces the cosmos1.../cosmoshub-4/uatom default.
+  - Admin-added (upcoming) chains work via the DB-backed RPC + derivation.
 - **Feature-flag governance**: SuperAdmin controls which features are enabled; master wallet
   owner has full control of enabled features
 

@@ -594,9 +594,14 @@ func (svc *Service) DeriveUserAddress(c *gin.Context) {
 		if derivationPath == "" {
 			derivationPath = fmt.Sprintf("m/44'/118'/0'/0/%d", req.AccountIndex)
 		}
+		// Resolve the per-chain bech32 prefix by chain_id (all 23 Cosmos-SDK
+		// chains share ChainType "cosmos" in the registry, so the prefix
+		// must come from chain_id, not chain_type).
 		prefix := "cosmos"
 		if chainType == "osmosis" {
 			prefix = "osmo"
+		} else if req.ChainID != 0 {
+			prefix = bech32PrefixForChainID(req.ChainID)
 		}
 		address, err = mwCosmosAddressFromSeed(seed, derivationPath, prefix)
 	default:
@@ -1082,9 +1087,13 @@ func (svc *Service) autoSignCosmos(seed []byte, req *AutoSignRequest) (string, s
 	if derivationPath == "" {
 		derivationPath = fmt.Sprintf("m/44'/118'/0'/0/%d", req.AccountIndex)
 	}
+	// Resolve the per-chain chain_id string + denom so the SignDoc is valid
+	// on the target chain (Osmosis -> "osmosis-1"/"uosmo", etc.). Falls back
+	// to cosmoshub-4/uatom for unknown chains.
+	chainIDStr, denom := cosmosChainMeta(req.ChainID)
 	// Build the canonical amino JSON SignDoc for a Cosmos transfer (MsgSend).
-	signDoc := fmt.Sprintf(`{"account_number":"0","chain_id":"cosmoshub-4","fee":{"amount":[{"denom":"uatom","amount":"5000"}],"gas":"200000"},"memo":"","msgs":[{"type":"cosmos-sdk/MsgSend","value":{"amount":[{"denom":"uatom","amount":"%s"}],"from_address":"%s","to_address":"%s"}}],"sequence":"0"}`,
-		req.Value, req.ContractAddress, req.ToAddress)
+	signDoc := fmt.Sprintf(`{"account_number":"0","chain_id":"%s","fee":{"amount":[{"denom":"%s","amount":"5000"}],"gas":"200000"},"memo":"","msgs":[{"type":"cosmos-sdk/MsgSend","value":{"amount":[{"denom":"%s","amount":"%s"}],"from_address":"%s","to_address":"%s"}}],"sequence":"0"}`,
+		chainIDStr, denom, denom, req.Value, req.ContractAddress, req.ToAddress)
 	sig, _, err := mwCosmosSign(seed, derivationPath, signDoc)
 	if err != nil {
 		return "", "failed", err
@@ -1124,9 +1133,12 @@ func (svc *Service) deriveUserAddressForLog(seed []byte, req *AutoSignRequest) (
 		if derivationPath == "" {
 			derivationPath = fmt.Sprintf("m/44'/118'/0'/0/%d", req.AccountIndex)
 		}
+		// Resolve the per-chain bech32 prefix by chain_id (not chain_type).
 		prefix := "cosmos"
 		if chainType == "osmosis" {
 			prefix = "osmo"
+		} else if req.ChainID != 0 {
+			prefix = bech32PrefixForChainID(req.ChainID)
 		}
 		return mwCosmosAddressFromSeed(seed, derivationPath, prefix)
 	}

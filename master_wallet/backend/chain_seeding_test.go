@@ -139,3 +139,71 @@ func TestCosmosSignReal(t *testing.T) {
 		t.Error("cosmos signature is all zeros (fake)")
 	}
 }
+
+// TestBech32PrefixForChainID verifies each of the 23 registered Cosmos-SDK
+// chains resolves to its correct per-chain bech32 prefix by chain_id (not the
+// generic "cosmos" prefix). This is critical: Osmosis must yield "osmo",
+// Injective must yield "inj", etc.
+func TestBech32PrefixForChainID(t *testing.T) {
+	cases := map[int64]string{
+		9000000118: "cosmos",
+		9000026317: "osmo",
+		9000000330: "terra",
+		9000073068: "inj",
+		9000014648: "celestia",
+		9000049823: "dydx",
+		9000073741: "sei",
+		9000041857: "kujira",
+		9000012099: "stride",
+		9000090063: "neutron",
+		9000005267: "juno",
+		9000007183: "akash",
+		9000018759: "persistence",
+		9000034677: "evmos",
+		9000054841: "canto",
+		9000003318: "kava",
+		9000062954: "cro",
+		9000016892: "stars",
+		9000021252: "saga",
+		9000086660: "noble",
+		9000040572: "axelar",
+		9000007153: "umee",
+		9000000529: "secret",
+	}
+	if len(cases) != 23 {
+		t.Fatalf("expected 23 cosmos chain->prefix mappings, got %d", len(cases))
+	}
+	for chainID, want := range cases {
+		if got := bech32PrefixForChainID(chainID); got != want {
+			t.Errorf("chain %d prefix = %s, want %s", chainID, got, want)
+		}
+	}
+	// Unknown chain falls back to canonical cosmos prefix.
+	if got := bech32PrefixForChainID(9999999999); got != "cosmos" {
+		t.Errorf("unknown chain prefix = %s, want cosmos fallback", got)
+	}
+}
+
+// TestCosmosChainMeta verifies the per-chain chain_id string + denom used in
+// the SignDoc, so signatures are valid on the target chain.
+func TestCosmosChainMeta(t *testing.T) {
+	cidStr, denom := cosmosChainMeta(9000026317) // Osmosis
+	if cidStr != "osmosis-1" {
+		t.Errorf("osmosis chain_id string = %s, want osmosis-1", cidStr)
+	}
+	if denom != "uosmo" {
+		t.Errorf("osmosis denom = %s, want uosmo", denom)
+	}
+	cidStr, denom = cosmosChainMeta(9000073068) // Injective
+	if cidStr != "injective-1" {
+		t.Errorf("injective chain_id string = %s, want injective-1", cidStr)
+	}
+	if denom != "inj" {
+		t.Errorf("injective denom = %s, want inj", denom)
+	}
+	// Cosmos Hub fallback.
+	cidStr, denom = cosmosChainMeta(9000000118)
+	if cidStr != "cosmoshub-4" || denom != "uatom" {
+		t.Errorf("cosmos hub meta = %s/%s, want cosmoshub-4/uatom", cidStr, denom)
+	}
+}
