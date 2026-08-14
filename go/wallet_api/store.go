@@ -174,6 +174,17 @@ CREATE TABLE IF NOT EXISTS fee_transaction (
 CREATE INDEX IF NOT EXISTS idx_fee_tier_type ON fee_tier(fee_type);
 CREATE INDEX IF NOT EXISTS idx_fee_tx_type ON fee_transaction(fee_type);
 CREATE INDEX IF NOT EXISTS idx_fee_tx_created ON fee_transaction(created_at);
+
+CREATE TABLE IF NOT EXISTS devices (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    device_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'offline',
+    last_sync TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(user_id);
 ` + portfolioSchemaSQL
 
 // ---- User operations ----

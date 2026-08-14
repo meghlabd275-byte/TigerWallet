@@ -138,6 +138,12 @@ func main() {
 		wallet.PUT("/address-book/contacts/:id", handleUpdateContact)
 		wallet.DELETE("/address-book/contacts/:id", handleDeleteContact)
 
+                // ---- Multi-device sync (PostgreSQL-backed, no mock data) ----
+                wallet.GET("/devices", handleListDevices)
+                wallet.POST("/devices", handleRegisterDevice)
+                wallet.POST("/devices/:id/sync", handleSyncDevice)
+                wallet.DELETE("/devices/:id", handleDeleteDevice)
+
 		// ---- Portfolio features (PostgreSQL-backed, no mock data) ----
 		wallet.GET("/approvals", handleListApprovals)
 		wallet.DELETE("/approvals/:id", handleRevokeApproval)
