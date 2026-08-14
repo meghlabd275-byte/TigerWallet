@@ -68,3 +68,8 @@ CREATE DATABASE tigerwallet_admin;
 CREATE DATABASE tigerwallet_project_party;
 \connect tigerwallet_project_party;
 -- ProjectParty schema is managed by the project_party service migrations on boot.
+
+-- Bridge database (cross-chain bridge transactions)
+CREATE DATABASE tigerwallet_bridge;
+\connect tigerwallet_bridge;
+-- Bridge schema is managed by the bridge service migrations on boot.

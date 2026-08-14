@@ -8,6 +8,10 @@ RUN npm ci
 
 COPY . .
 
+# Build-time API URL (consumed via import.meta.env.VITE_API_URL in api.ts).
+ARG VITE_API_URL=http://localhost:8095/api/v1
+ENV VITE_API_URL=${VITE_API_URL}
+
 RUN npm run build
 
 # Final stage

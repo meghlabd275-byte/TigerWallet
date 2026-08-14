@@ -13,6 +13,13 @@ export default function Layout() {
     { path: '/tokens', label: 'Tokens' },
     { path: '/favorites', label: 'Favorites' },
     { path: '/submit', label: 'Submit' },
+    { path: '/listings', label: 'Listings' },
+    { path: '/launchpad', label: 'Launchpad' },
+    { path: '/market-making', label: 'Market Making' },
+    { path: '/pricing', label: 'Pricing' },
+    { path: '/analytics', label: 'Analytics' },
+    { path: '/compliance', label: 'Compliance' },
+    { path: '/fees', label: 'Fees' },
     { path: '/settings', label: 'Settings' }
   ];
 

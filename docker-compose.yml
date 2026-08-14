@@ -146,14 +146,60 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Bridge Service — cross-chain bridge (Go/Gin + pgx). Port 8007.
+  bridge-api:
+    build:
+      context: ./go/bridge_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-bridge-api
+    ports:
+      - "8007:8007"
+    environment:
+      DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet_bridge?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # White Label API — backend (Go/Gin + pgx + Redis). Serves the
+  # /api/v1/* contract consumed by white-label-frontend (auth, dashboard,
+  # clients, admins, products, pairs, blockchains, audit-logs, notifications)
+  # plus the legacy /api/v1/white-label/* CRUD routes. Port 8095 is chosen to
+  # avoid the admin-frontend nginx port (8090) collision.
+  white-label-api:
+    build:
+      context: ./white_label/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-white-label-api
+    ports:
+      - "8095:8095"
+    environment:
+      PORT: "8095"
+      DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
+      REDIS_URL: "redis://redis:6379"
+      JWT_SECRET: "tigerwallet-white-label-jwt-secret-change-in-production"
+      SUPER_ADMIN: "admin"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   # White Label Frontend (has Dockerfile)
   white-label-frontend:
     build:
       context: ./white_label/frontend
       dockerfile: Dockerfile
+      args:
+        # Build-time API URL baked into the SPA. Browser reaches the API via
+        # the host port (3001 frontend, 8095 API); both are published below.
+        VITE_API_URL: "http://localhost:8095/api/v1"
     container_name: tigerwallet-white-label-frontend
     ports:
       - "3001:80"
+    depends_on:
+      - white-label-api
     restart: unless-stopped
 
   # Admin Panel Frontend (Vite + React)
@@ -332,6 +378,49 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
+
+  # TigerWallet Bot Platform API — canonical bot backend (Go). Real PostgreSQL +
+  # Redis bot lifecycle (create/start/stop/pause/delete), 18 bot types, 4
+  # subscription tiers, fee configs, admin fee addresses, CEX/DEX connectors,
+  # per-user API keys, admin management + platform stats. JWT auth with RBAC.
+  # No in-memory stubs, no fake data. Runs on port 8471.
+  bot-api:
+    build:
+      context: ./mm_bot_platform/bot_api
+      dockerfile: Dockerfile
+    container_name: tigerwallet-bot-api
+    ports:
+      - "8471:8471"
+    environment:
+      PORT: "8471"
+      DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      JWT_SECRET: "tigerwallet-jwt-secret-change-in-production"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # TigerWallet Bots Service — DEPRECATED reverse-proxy shim to bot-api.
+  # Proxies every request to the canonical bot_api (bot-api:8471). Serves a
+  # local /health deprecation notice. Unique port 8108 (NOT 8107, which is
+  # already mapped by project-party-frontend). No fake data; every response is
+  # the real bot_api response.
+  bots-service:
+    build:
+      context: ./bots/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-bots-service
+    ports:
+      - "8108:8108"
+    environment:
+      BOTS_PORT: "8108"
+      BOT_API_URL: "http://bot-api:8471"
+    depends_on:
+      - bot-api
     restart: unless-stopped
 
 volumes:

@@ -1,6 +1,6 @@
 module github.com/tigerwallet/mm_bot_platform/bot_api
 
-go 1.25
+go 1.23
 
 require (
 	github.com/gin-gonic/gin v1.10.0
@@ -46,3 +46,5 @@ require (
 	google.golang.org/protobuf v1.36.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/rogpeppe/go-internal => github.com/rogpeppe/go-internal v1.12.0

@@ -2605,3 +2605,105 @@ cache) is untouched; it's a cache by design.
 - go.sum regenerated via the `GOFLAGS=-mod=mod go build ./...` workaround above
   (NOT `go mod tidy` -- pgx test deps need Go 1.25). `go build ./...` exit 0,
   `go vet ./...` exit 0 (both read-only, no GOFLAGS).
+
+## Bots platform: `bots/go` vs `mm_bot_platform/bot_api`
+
+- The CANONICAL bot API is `mm_bot_platform/bot_api/main.go` (1262 lines, port
+  8471, module `github.com/tigerwallet/bots_service`): full bot lifecycle
+  (create/start/stop/pause/delete), 18 bot types, 4 subscription tiers, fee
+  configs, admin fee addresses, CEX/DEX connectors, per-user API keys, admin
+  management + platform stats, JWT auth with RBAC, real PostgreSQL + Redis.
+  Env vars: `PORT`, `DATABASE_URL` (PG), `REDIS_ADDR` (host:port, NOT a redis
+  URL), `JWT_SECRET`. Builds/vets clean (exit 0).
+- `bots/go` was an orphan duplicate / broken incomplete Gin service with NO
+  `go.mod`, NO Dockerfile, and compile errors (missing `c.JSON(...)` prefixes,
+  incomplete `api.GET`/`api.POST` route registrations, half-written handlers
+  mixing stub DB/Redis code). It is NOT canonical -- do not add bot logic here.
+  It was rewritten as a DEPRECATED stdlib reverse-proxy shim (modeled on the
+  `go/wallet_service` shim) that proxies every request to `bot-api:8471`.
+  Layout: `bots/go/cmd/bots-service/main.go` (NOT `cmd/main.go` -- a top-level
+  `cmd/` dir makes `go build ./...` write a binary literally named `cmd`, which
+  collides with the directory and fails with "build output 'cmd' already exists
+  and is a directory"). Module: `github.com/tigerwallet/bots-go` (go 1.22, std
+  only, no deps). Env: `BOTS_PORT` (default 8108), `BOT_API_URL` (default
+  `http://localhost:8471`). Serves a local `/health` deprecation notice; all
+  other paths proxy to bot_api. `go build ./...` exit 0, `go vet ./...` exit 0.
+- PORT COLLISION: `project-party-frontend` maps host `8107:80`. The bots
+  frontend (`bots/web`) used to hardcode `localhost:8107` (AuthContext.tsx login
+  + api.ts base URL). Fixed to use `process.env.REACT_APP_API_URL` defaulting
+  to `http://localhost:8471` (the real bot_api port). `bots-service` (the shim)
+  is on host port `8108`, NOT 8107.
+- `bots/web` has ONLY `src/` -- NO package.json, NO Dockerfile. It is not a
+  buildable standalone frontend, so NO `bot-frontend`/`bot-dashboard` service
+  was added to docker-compose (only `bot-api` and `bots-service` were added).
+  If a buildable bots frontend is needed later, add package.json + Dockerfile
+  first (mirror `admin/web`).
+- docker-compose.yml: added `bot-api` (8471:8471, PG + REDIS_ADDR + JWT_SECRET,
+  depends on postgres/redis healthchecks) and `bots-service` (8108:8108,
+  BOTS_PORT + BOT_API_URL=http://bot-api:8471, depends_on bot-api). Dockerfile
+  for each: multi-stage `golang:1.23-alpine` -> `alpine:3.19`, non-root
+  `appuser`, healthcheck.
+
+## Session 2026-08-14: white_label backend-frontend route mismatch + docker-compose
+
+The white_label service had a backend/frontend contract mismatch: the Go/Gin
+backend (`white_label/go/main.go`, module `github.com/tigerwallet/white-label`,
+single `main.go`) exposed only `/api/v1/white-label/*` CRUD routes for the 7
+entities (clients, admins, products, trading_pairs, liquidity_pools,
+token_configs, market_maker_bots) with REAL pgx persistence (31 SQL calls), but
+the React frontend (`white_label/frontend/src/services/api.ts`) called
+`/api/v1/auth/login`, `/auth/logout`, `/dashboard`, `/admins`, `/audit-logs`,
+`/notifications`, `/clients/:id/approve|halt|resume|suspend`,
+`/products/:id/toggle`, `/pairs/:id/halt|resume|suspend`,
+`/blockchains/:id/enable|disable` -- routes that did NOT exist. The backend ran
+on :8090 which collided with `admin-frontend` nginx (8090:80), and the Go
+service was absent from docker-compose.
+
+Fix applied (option (a) -- frontend is source of truth, backend extended):
+
+- **Port**: backend now defaults to :8095 (`Config.Port` default "8095"; `PORT`
+  env overrides). No collision: admin-frontend keeps 8090:80, white-label-api
+  is 8095:8095, white-label-frontend is 3001:80.
+- **Auth (real PostgreSQL)**: `Config` gained `JWTSecret` (env `JWT_SECRET`);
+  global `jwtSecret` set in `main()`. `wl_admins` gained `password_hash`
+  (bcrypt). `authMiddleware` validates `Authorization: Bearer <jwt>` via
+  `github.com/golang-jwt/jwt/v5`. New routes under top-level `/api/v1` group:
+  `POST /auth/login` (bcrypt verify, returns `{token, admin, expiresAt}`),
+  `POST /auth/logout` (client discards token). Bootstrap super-admin
+  (`SUPER_ADMIN` env, default `admin`) seeded with a bcrypt hash if no admins
+  exist on startup.
+- **Dashboard**: `GET /dashboard` aggregates REAL counts via `countRows(ctx,
+  table)` over clients/admins/products/trading_pairs/liquidity_pools/
+  token_configs/market_maker_bots + derived active/pending client counts.
+  Returns `DashboardStats` JSON matching the frontend interface exactly.
+- **Audit logs**: `GET /audit-logs` reads real `wl_audit_logs` table (created in
+  `Migrate`) with pagination -> `PaginatedResponse<AuditLog>`. Mutating handlers
+  call `recordAudit`.
+- **Notifications**: `GET /notifications` reads real `wl_notifications` table
+  (paginated). `POST /notifications/:id/read` marks read. No fake data.
+- **Status/control routes**: `POST /clients/:id/approve|halt|resume|suspend`,
+  `POST /products/:id/toggle`, `POST /pairs/:id/halt|resume|suspend`,
+  `POST /blockchains/:id/enable|disable` run real UPDATEs + record audit.
+- **Legacy routes preserved**: original 7-entity CRUD under
+  `/api/v1/white-label/*` and `authMiddleware` unchanged.
+- Frontend `api.ts`: `API_BASE_URL` = `import.meta.env.VITE_API_URL` (default
+  `http://localhost:8095/api/v1`) -- env-configurable. `vite.config.ts` dev
+  proxy target -> `http://localhost:8095`.
+- `white_label/go/Dockerfile` (NEW): multi-stage `golang:1.23-alpine` ->
+  `alpine:3.19`, non-root `app`, EXPOSE 8095, `/health` healthcheck.
+- `white_label/frontend/Dockerfile`: added `ARG VITE_API_URL` so the build-time
+  API URL propagates to `import.meta.env.VITE_API_URL`.
+- docker-compose.yml: added `white-label-api` (8095:8095; env PORT, DATABASE_URL
+  -> postgres, REDIS_URL -> redis, JWT_SECRET, SUPER_ADMIN; depends_on
+  postgres/redis healthchecks) and rewired `white-label-frontend` (3001:80,
+  build arg VITE_API_URL, depends_on white-label-api). `docker compose config
+  --quiet` exit 0.
+
+Env vars Go service reads: `PORT` (8095), `DATABASE_URL`, `REDIS_URL`,
+`JWT_SECRET` (default `white-label-secret-change-me`), `SUPER_ADMIN` (admin).
+
+Build verification: `go build ./...` exit 0, `go vet ./...` exit 0 (Go 1.23 at
+`$HOME/.go-sdk/go/bin`, GOTOOLCHAIN=local). `go.mod`: `golang.org/x/crypto`
+promoted to direct require (bcrypt); `github.com/golang-jwt/jwt/v5` direct
+require (auth).
+

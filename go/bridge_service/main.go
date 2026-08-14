@@ -4,20 +4,38 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
 )
 
 type Config struct {
-	Port int
+	Port        int
+	DatabaseURL string
 }
 
-var cfg = Config{Port: 8007}
+var cfg = Config{
+	Port:        8007,
+	DatabaseURL: getEnv("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet_bridge?sslmode=disable"),
+}
+
+func getEnv(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	if v := os.Getenv("BRIDGE_" + key); v != "" {
+		return v
+	}
+	return def
+}
 
 type BridgeTransaction struct {
 	ID            string    `json:"id"`
@@ -36,7 +54,7 @@ type BridgeTransaction struct {
 }
 
 type BridgeService struct {
-	transactions map[string]*BridgeTransaction
+	pg *pgxpool.Pool
 }
 
 // bridgeChain is a lightweight chain descriptor used by the bridge routes
@@ -94,11 +112,35 @@ func bridgeTokens(chainID int64) []string {
 	}
 }
 
-func NewBridgeService() *BridgeService {
-	bs := &BridgeService{
-		transactions: make(map[string]*BridgeTransaction),
+func NewBridgeService(pg *pgxpool.Pool) *BridgeService {
+	return &BridgeService{pg: pg}
+}
+
+// migrateDB creates the bridge_transactions table if it does not exist.
+func (bs *BridgeService) migrateDB() error {
+	if bs.pg == nil {
+		return fmt.Errorf("database not configured")
 	}
-	return bs
+	_, err := bs.pg.Exec(context.Background(), `
+CREATE TABLE IF NOT EXISTS bridge_transactions (
+	id              TEXT PRIMARY KEY,
+	user_id         TEXT NOT NULL,
+	from_chain      TEXT NOT NULL,
+	to_chain        TEXT NOT NULL,
+	token           TEXT NOT NULL,
+	amount          TEXT NOT NULL,
+	recipient       TEXT NOT NULL,
+	status          TEXT NOT NULL DEFAULT 'pending',
+	from_tx_hash    TEXT NOT NULL DEFAULT '',
+	to_tx_hash      TEXT NOT NULL DEFAULT '',
+	fee             TEXT NOT NULL DEFAULT '',
+	estimated_time  INTEGER NOT NULL DEFAULT 0,
+	timestamp       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_bridge_tx_user ON bridge_transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_bridge_tx_status ON bridge_transactions(status);
+	`)
+	return err
 }
 
 func (bs *BridgeService) GetQuote(c *gin.Context) {
@@ -143,37 +185,48 @@ func (bs *BridgeService) InitiateTransfer(c *gin.Context) {
 		return
 	}
 
-	tx := &BridgeTransaction{
-		ID:            uuid.New().String(),
-		UserID:        req.UserID,
-		FromChain:     req.FromChain,
-		ToChain:       req.ToChain,
-		Token:         req.Token,
-		Amount:        req.Amount,
-		Recipient:     req.Recipient,
-		Status:        "pending",
-		Fee:           "0.3%",
-		EstimatedTime: 600,
-		Timestamp:     time.Now(),
+	txID := uuid.New().String()
+	status := "pending"
+	fee := "0.3%"
+	estimatedTime := 600
+
+	if bs.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
 	}
 
-	bs.transactions[tx.ID] = tx
+	_, err := bs.pg.Exec(context.Background(), `
+INSERT INTO bridge_transactions (id, user_id, from_chain, to_chain, token, amount, recipient, status, fee, estimated_time, timestamp)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+	`, txID, req.UserID, req.FromChain, req.ToChain, req.Token, req.Amount, req.Recipient, status, fee, estimatedTime)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create bridge transaction: " + err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusCreated, gin.H{
 		"success":    true,
-		"tx_id":      tx.ID,
+		"tx_id":      txID,
 		"from_chain": req.FromChain,
 		"to_chain":   req.ToChain,
 		"amount":     req.Amount,
-		"fee":        tx.Fee,
-		"status":     tx.Status,
+		"fee":        fee,
+		"status":     status,
 	})
 }
 
 func (bs *BridgeService) GetStatus(c *gin.Context) {
 	txID := c.Param("id")
-	tx, ok := bs.transactions[txID]
-	if !ok {
+	if bs.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
+	}
+	var tx BridgeTransaction
+	err := bs.pg.QueryRow(context.Background(), `
+SELECT id, user_id, from_chain, to_chain, token, amount, recipient, status, from_tx_hash, to_tx_hash, fee, estimated_time, timestamp
+FROM bridge_transactions WHERE id = $1
+	`, txID).Scan(&tx.ID, &tx.UserID, &tx.FromChain, &tx.ToChain, &tx.Token, &tx.Amount, &tx.Recipient, &tx.Status, &tx.FromTxHash, &tx.ToTxHash, &tx.Fee, &tx.EstimatedTime, &tx.Timestamp)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "transaction not found"})
 		return
 	}
@@ -208,24 +261,39 @@ func (bs *BridgeService) GetRoutes(c *gin.Context) {
 }
 
 // GetHistory returns the bridge transactions for a user. The user_id is read
-// from the query string (consistent with GET endpoints elsewhere in the
-// project). Transactions are stored in-memory for this standalone service; a
-// persisted deployment would query PostgreSQL.
+// from the query string. Transactions are persisted in PostgreSQL.
 func (bs *BridgeService) GetHistory(c *gin.Context) {
 	userID := c.Query("user_id")
-	var result []*BridgeTransaction
-	for _, tx := range bs.transactions {
-		if userID == "" || tx.UserID == userID {
-			result = append(result, tx)
-		}
+	if bs.pg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
+		return
 	}
-	// Sort newest-first by timestamp.
-	for i := len(result) - 1; i > 0; i-- {
-		for j := 0; j < i; j++ {
-			if result[j].Timestamp.Before(result[j+1].Timestamp) {
-				result[j], result[j+1] = result[j+1], result[j]
-			}
+	var rows pgx.Rows
+	var err error
+	if userID == "" {
+		rows, err = bs.pg.Query(context.Background(), `
+SELECT id, user_id, from_chain, to_chain, token, amount, recipient, status, from_tx_hash, to_tx_hash, fee, estimated_time, timestamp
+FROM bridge_transactions ORDER BY timestamp DESC LIMIT 100
+		`)
+	} else {
+		rows, err = bs.pg.Query(context.Background(), `
+SELECT id, user_id, from_chain, to_chain, token, amount, recipient, status, from_tx_hash, to_tx_hash, fee, estimated_time, timestamp
+FROM bridge_transactions WHERE user_id = $1 ORDER BY timestamp DESC LIMIT 100
+		`, userID)
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to query transactions: " + err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var result []*BridgeTransaction
+	for rows.Next() {
+		var tx BridgeTransaction
+		if err := rows.Scan(&tx.ID, &tx.UserID, &tx.FromChain, &tx.ToChain, &tx.Token, &tx.Amount, &tx.Recipient, &tx.Status, &tx.FromTxHash, &tx.ToTxHash, &tx.Fee, &tx.EstimatedTime, &tx.Timestamp); err != nil {
+			continue
 		}
+		result = append(result, &tx)
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "transactions": result, "count": len(result)})
 }
@@ -234,7 +302,21 @@ func main() {
 	log.Println("TigerWallet Bridge Service")
 	log.Printf("Starting on port %d", cfg.Port)
 
-	bs := NewBridgeService()
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer pool.Close()
+
+	if err := pool.Ping(ctx); err != nil {
+		log.Fatalf("Database ping failed: %v", err)
+	}
+
+	bs := NewBridgeService(pool)
+	if err := bs.migrateDB(); err != nil {
+		log.Fatalf("Failed to migrate database: %v", err)
+	}
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()

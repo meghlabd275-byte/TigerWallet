@@ -4,6 +4,16 @@ import { useState, useEffect } from 'react'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { useTheme } from '../components/ThemeProvider'
 
+function getUserIdFromToken(token: string | null): string {
+  if (!token) return ''
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1] || ''))
+    return payload.user_id || payload.sub || payload.userId || ''
+  } catch {
+    return ''
+  }
+}
+
 interface Market {
   id: string
   question: string
@@ -36,21 +46,20 @@ export default function PredictionMarketsPage() {
 
   const fetchData = async () => {
     try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null
+      const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {}
       const [marketsRes, betsRes] = await Promise.all([
-        fetch('/api/v1/prediction/markets'),
-        fetch('/api/v1/prediction/bets')
+        fetch('/api/v1/prediction/markets', { headers: authHeaders }),
+        fetch('/api/v1/prediction/bets?user=' + encodeURIComponent(getUserIdFromToken(token)), { headers: authHeaders })
       ])
       const marketsData = await marketsRes.json()
       const betsData = await betsRes.json()
       setMarkets(marketsData.markets || [])
-      setBets(betsData.bets || [])
+      setBets(betsData.bets || betsData.positions || [])
     } catch (error) {
       console.error('Failed to fetch data:', error)
-      // Fallback data
-      setMarkets([
-        { id: 'pm1', question: 'Will ETH reach $5000 by Dec 2026?', yes_price: 0.45, no_price: 0.55, volume: 500000, end_time: 1767225600 },
-        { id: 'pm2', question: 'Will BTC reach $100k by June 2026?', yes_price: 0.60, no_price: 0.40, volume: 1200000, end_time: 1759300800 }
-      ])
+      setMarkets([])
+      setBets([])
     } finally {
       setLoading(false)
     }
@@ -65,7 +74,7 @@ export default function PredictionMarketsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           market_id: selectedMarket.id,
-          outcome: betOutcome,
+          side: betOutcome === 'YES' ? 1 : 0,
           amount: parseFloat(betAmount)
         })
       })
