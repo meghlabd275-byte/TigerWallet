@@ -9,6 +9,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,6 +23,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -126,6 +129,7 @@ type ActionResponse struct {
 
 type LendingService struct {
 	redis *redis.Client
+	pg    *pgxpool.Pool
 	mu    sync.RWMutex
 	cache map[string]cachedMarkets
 }
@@ -135,13 +139,74 @@ type cachedMarkets struct {
 	fetched time.Time
 }
 
+// LendingPosition is a user's supply or borrow position, persisted to
+// PostgreSQL so it survives restarts. The on-chain Aave V3 transaction is
+// still constructed and returned to wallet_api for signing/broadcast; this
+// record tracks the wallet-side view of what was supplied/borrowed.
+type LendingPosition struct {
+	ID             string  `json:"id"`
+	UserID         string  `json:"user_id"`
+	UserAddress    string  `json:"user_address"`
+	Asset          string  `json:"asset"`
+	AssetSymbol    string  `json:"asset_symbol"`
+	ChainID        int     `json:"chain_id"`
+	PositionType   string  `json:"position_type"` // "supply" or "borrow"
+	Amount         string  `json:"amount"`        // human-readable decimal string
+	InterestAccrued float64 `json:"interest_accrued"`
+	APY            float64 `json:"apy"`
+	CreatedAt      int64   `json:"created_at"`
+	UpdatedAt      int64   `json:"updated_at"`
+}
+
 func NewLendingService() *LendingService {
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     cfg.RedisAddr,
 		Password: "",
 		DB:       0,
 	})
-	return &LendingService{redis: rdb, cache: make(map[string]cachedMarkets)}
+
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		dbURL = "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable"
+	}
+	pool, err := pgxpool.New(context.Background(), dbURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
+	}
+
+	svc := &LendingService{redis: rdb, pg: pool, cache: make(map[string]cachedMarkets)}
+	if err := svc.Migrate(context.Background()); err != nil {
+		log.Fatalf("Migration failed: %v", err)
+	}
+	return svc
+}
+
+const lendingSchema = `
+CREATE TABLE IF NOT EXISTS lending_positions (
+    id               TEXT PRIMARY KEY,
+    user_id          TEXT NOT NULL DEFAULT '',
+    user_address     TEXT NOT NULL DEFAULT '',
+    asset            TEXT NOT NULL DEFAULT '',
+    asset_symbol     TEXT NOT NULL DEFAULT '',
+    chain_id         BIGINT NOT NULL DEFAULT 1,
+    position_type    TEXT NOT NULL DEFAULT 'supply',
+    amount           TEXT NOT NULL DEFAULT '0',
+    interest_accrued DOUBLE PRECISION NOT NULL DEFAULT 0,
+    apy              DOUBLE PRECISION NOT NULL DEFAULT 0,
+    created_at       BIGINT NOT NULL DEFAULT 0,
+    updated_at       BIGINT NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_lending_positions_user ON lending_positions(user_id);
+CREATE INDEX IF NOT EXISTS idx_lending_positions_user_addr ON lending_positions(user_address);
+`
+
+// Migrate creates the lending_positions table if it does not exist.
+func (ls *LendingService) Migrate(ctx context.Context) error {
+	if ls.pg == nil {
+		return fmt.Errorf("database not configured")
+	}
+	_, err := ls.pg.Exec(ctx, lendingSchema)
+	return err
 }
 
 // ============================================================================
@@ -215,6 +280,8 @@ var selectors = map[string]string{
 	"getUserAccountData(address)":                    "bf92857c",
 	"supply(address,uint256,address,uint16)":         "617ba037",
 	"borrow(address,uint256,uint256,uint16,address)": "a415bcad",
+	"withdraw(address,uint256,address)":             "69328dec",
+	"repay(address,uint256,uint256,address)":        "573ade81",
 }
 
 func ethCallSelector(sig string) string {
@@ -513,6 +580,8 @@ func (ls *LendingService) Supply(c *gin.Context) {
 		encodeAddress(req.UserAddress) +
 		encodeUint256(big.NewInt(0))
 
+	supplyAPY := ls.assetAPY(asset, true)
+
 	resp := ActionResponse{
 		Success:        true,
 		ActionRequired: true,
@@ -523,8 +592,27 @@ func (ls *LendingService) Supply(c *gin.Context) {
 		UserAddress:    req.UserAddress,
 		Amount:         req.Amount,
 		NewBalance:     req.Amount,
-		APY:            0,
+		APY:            supplyAPY,
 	}
+
+	// Persist the wallet-side view of this supply position to PostgreSQL so it
+	// survives restarts. On-chain state is still owned by Aave V3; this record
+	// tracks what the wallet submitted for signing/broadcast.
+	pos := &LendingPosition{
+		UserID:         req.UserAddress,
+		UserAddress:    req.UserAddress,
+		Asset:          asset,
+		AssetSymbol:    assetSymbolFor(asset),
+		ChainID:        chainID,
+		PositionType:   "supply",
+		Amount:         req.Amount,
+		InterestAccrued: 0,
+		APY:            supplyAPY,
+	}
+	if err := ls.persistPosition(c.Request.Context(), pos); err != nil {
+		log.Printf("persist supply position failed: %v", err)
+	}
+
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -561,6 +649,8 @@ func (ls *LendingService) Borrow(c *gin.Context) {
 		encodeUint256(big.NewInt(0)) +
 		encodeAddress(req.UserAddress)
 
+	borrowAPY := ls.assetAPY(asset, false)
+
 	resp := ActionResponse{
 		Success:        true,
 		ActionRequired: true,
@@ -570,8 +660,25 @@ func (ls *LendingService) Borrow(c *gin.Context) {
 		ChainID:        chainID,
 		UserAddress:    req.UserAddress,
 		Amount:         req.Amount,
-		APY:            0,
+		APY:            borrowAPY,
 	}
+
+	// Persist the wallet-side view of this borrow position to PostgreSQL.
+	pos := &LendingPosition{
+		UserID:         req.UserAddress,
+		UserAddress:    req.UserAddress,
+		Asset:          asset,
+		AssetSymbol:    assetSymbolFor(asset),
+		ChainID:        chainID,
+		PositionType:   "borrow",
+		Amount:         req.Amount,
+		InterestAccrued: 0,
+		APY:            borrowAPY,
+	}
+	if err := ls.persistPosition(c.Request.Context(), pos); err != nil {
+		log.Printf("persist borrow position failed: %v", err)
+	}
+
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -641,6 +748,160 @@ func (ls *LendingService) GetUserPosition(c *gin.Context) {
 	})
 }
 
+// Withdraw constructs the REAL Aave V3 withdraw(address asset, uint256 amount,
+// address to) calldata for wallet_api to sign and broadcast, and records a
+// negative supply position (a withdrawal) so the wallet-side ledger persists.
+func (ls *LendingService) Withdraw(c *gin.Context) {
+	var req SupplyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+	chainID := req.ChainID
+	if chainID == 0 {
+		chainID = 1
+	}
+
+	asset := req.AssetAddress
+	if strings.EqualFold(asset, "0x0000000000000000000000000000000000000000") {
+		asset = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+	}
+
+	decimals := decimalsFor(asset)
+	amountBig, ok := parseAmount(req.Amount, decimals)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid amount"})
+		return
+	}
+
+	// withdraw(address asset, uint256 amount, address to)
+	selector := ethCallSelector("withdraw(address,uint256,address)")
+	data := selector +
+		encodeAddress(asset) +
+		encodeUint256(amountBig) +
+		encodeAddress(req.UserAddress)
+
+	supplyAPY := ls.assetAPY(asset, true)
+
+	resp := ActionResponse{
+		Success:        true,
+		ActionRequired: true,
+		To:             AAVE_V3_POOL,
+		Data:           "0x" + data,
+		Value:          "0",
+		ChainID:        chainID,
+		UserAddress:    req.UserAddress,
+		Amount:         req.Amount,
+		APY:            supplyAPY,
+	}
+
+	pos := &LendingPosition{
+		UserID:         req.UserAddress,
+		UserAddress:    req.UserAddress,
+		Asset:          asset,
+		AssetSymbol:    assetSymbolFor(asset),
+		ChainID:        chainID,
+		PositionType:   "withdraw",
+		Amount:         req.Amount,
+		InterestAccrued: 0,
+		APY:            supplyAPY,
+	}
+	if err := ls.persistPosition(c.Request.Context(), pos); err != nil {
+		log.Printf("persist withdraw position failed: %v", err)
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// Repay constructs the REAL Aave V3 repay(address asset, uint256 amount,
+// uint256 interestRateMode, address onBehalfOf) calldata for wallet_api to sign
+// and broadcast, and records a negative borrow position (a repayment).
+func (ls *LendingService) Repay(c *gin.Context) {
+	var req SupplyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+	chainID := req.ChainID
+	if chainID == 0 {
+		chainID = 1
+	}
+
+	asset := req.AssetAddress
+	if strings.EqualFold(asset, "0x0000000000000000000000000000000000000000") {
+		asset = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+	}
+
+	decimals := decimalsFor(asset)
+	amountBig, ok := parseAmount(req.Amount, decimals)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid amount"})
+		return
+	}
+
+	// repay(address asset, uint256 amount, uint256 interestRateMode, address onBehalfOf)
+	// interestRateMode: 2 = variable. amount = type(uint256).max would repay all;
+	// here we repay the requested amount.
+	selector := ethCallSelector("repay(address,uint256,uint256,address)")
+	data := selector +
+		encodeAddress(asset) +
+		encodeUint256(amountBig) +
+		encodeUint256(big.NewInt(2)) +
+		encodeAddress(req.UserAddress)
+
+	borrowAPY := ls.assetAPY(asset, false)
+
+	resp := ActionResponse{
+		Success:        true,
+		ActionRequired: true,
+		To:             AAVE_V3_POOL,
+		Data:           "0x" + data,
+		Value:          "0",
+		ChainID:        chainID,
+		UserAddress:    req.UserAddress,
+		Amount:         req.Amount,
+		APY:            borrowAPY,
+	}
+
+	pos := &LendingPosition{
+		UserID:         req.UserAddress,
+		UserAddress:    req.UserAddress,
+		Asset:          asset,
+		AssetSymbol:    assetSymbolFor(asset),
+		ChainID:        chainID,
+		PositionType:   "repay",
+		Amount:         req.Amount,
+		InterestAccrued: 0,
+		APY:            borrowAPY,
+	}
+	if err := ls.persistPosition(c.Request.Context(), pos); err != nil {
+		log.Printf("persist repay position failed: %v", err)
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// GetUserPositions returns the persisted lending positions for a user from
+// PostgreSQL (survives restarts). This is the wallet-side ledger; the on-chain
+// source of truth remains Aave V3 (see GetUserPosition for live account data).
+func (ls *LendingService) GetUserPositions(c *gin.Context) {
+	userID := c.Query("user_id")
+	if userID == "" {
+		userID = c.Query("user_address")
+	}
+	if userID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "user_id required"})
+		return
+	}
+
+	positions, err := ls.queryPositions(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": true, "positions": []LendingPosition{}, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "positions": positions, "total": len(positions)})
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -666,6 +927,87 @@ func parseAmount(amount string, decimals int) (*big.Int, bool) {
 	return val, true
 }
 
+// assetSymbolFor maps an asset address to its tracked symbol (or the raw
+// address when unknown, matching the existing honest-no-fabrication approach).
+func assetSymbolFor(asset string) string {
+	for _, r := range reserveAssets {
+		if strings.EqualFold(r.Address, asset) {
+			return r.Symbol
+		}
+	}
+	return asset
+}
+
+// assetAPY reads the REAL on-chain Aave V3 reserve data for an asset and
+// returns the supply APY (supply=true) or the variable borrow APY (supply=false).
+// On any RPC/decode failure it returns 0 (honest, never a fabricated rate).
+func (ls *LendingService) assetAPY(asset string, supply bool) float64 {
+	addr := asset
+	if strings.EqualFold(addr, "0x0000000000000000000000000000000000000000") {
+		addr = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+	}
+	data := ethCallSelector("getReserveData(address)") + encodeAddress(addr)
+	result, err := ethCall(AAVE_V3_POOL_DATA_PROVIDER, data)
+	if err != nil {
+		return 0
+	}
+	fields, err := decodeReserveData(result)
+	if err != nil {
+		return 0
+	}
+	if supply {
+		return parseAPY(fields.liquidityRate)
+	}
+	return parseAPY(fields.variableBorrowRate)
+}
+
+// persistPosition inserts a lending position into PostgreSQL. Failures are
+// logged by the caller; the on-chain action response is still returned.
+func (ls *LendingService) persistPosition(ctx context.Context, pos *LendingPosition) error {
+	if ls.pg == nil {
+		return fmt.Errorf("database not configured")
+	}
+	if pos.ID == "" {
+		pos.ID = "pos_" + uuid.New().String()
+	}
+	now := time.Now().Unix()
+	pos.CreatedAt = now
+	pos.UpdatedAt = now
+	_, err := ls.pg.Exec(ctx, `INSERT INTO lending_positions
+		(id,user_id,user_address,asset,asset_symbol,chain_id,position_type,amount,interest_accrued,apy,created_at,updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		pos.ID, pos.UserID, pos.UserAddress, pos.Asset, pos.AssetSymbol, pos.ChainID,
+		pos.PositionType, pos.Amount, pos.InterestAccrued, pos.APY, pos.CreatedAt, pos.UpdatedAt)
+	return err
+}
+
+// queryPositions reads all persisted lending positions for a user, ordered
+// newest-first.
+func (ls *LendingService) queryPositions(ctx context.Context, userID string) ([]LendingPosition, error) {
+	if ls.pg == nil {
+		return nil, fmt.Errorf("database not configured")
+	}
+	rows, err := ls.pg.Query(ctx, `SELECT id,user_id,user_address,asset,asset_symbol,chain_id,position_type,amount,interest_accrued,apy,created_at,updated_at
+		FROM lending_positions WHERE user_id=$1 ORDER BY created_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	positions := make([]LendingPosition, 0)
+	for rows.Next() {
+		var p LendingPosition
+		var chainID int64
+		if err := rows.Scan(&p.ID, &p.UserID, &p.UserAddress, &p.Asset, &p.AssetSymbol,
+			&chainID, &p.PositionType, &p.Amount, &p.InterestAccrued, &p.APY,
+			&p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		p.ChainID = int(chainID)
+		positions = append(positions, p)
+	}
+	return positions, rows.Err()
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -683,8 +1025,11 @@ func main() {
 	{
 		v1.GET("/markets", ls.GetMarkets)
 		v1.GET("/position", ls.GetUserPosition)
+		v1.GET("/positions", ls.GetUserPositions)
 		v1.POST("/supply", ls.Supply)
 		v1.POST("/borrow", ls.Borrow)
+		v1.POST("/withdraw", ls.Withdraw)
+		v1.POST("/repay", ls.Repay)
 	}
 
 	log.Printf("TigerWallet Lending Service starting on port %d (Aave V3 pool %s)", cfg.Port, AAVE_V3_POOL)

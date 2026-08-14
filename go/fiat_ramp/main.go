@@ -23,6 +23,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Config struct {
@@ -81,7 +82,7 @@ type Order struct {
 type FiatRampService struct {
 	config    *Config
 	redis     *redis.Client
-	orders    map[string]*Order
+	pg        *pgxpool.Pool
 	providers map[string]Provider
 	// providerKeys holds admin-configured provider API keys at runtime
 	// (set via POST /api/v1/ramp/admin/providers/:id/key). When a key is
@@ -101,7 +102,20 @@ func NewFiatRampService(cfg *Config) *FiatRampService {
 		"simplex":  {ID: "simplex", Name: "Simplex", Logo: "https://cryptologos.cc/logos/simplex-logo.png", FiatCurrency: "USD", CryptoCurrency: "USDT", MinAmount: 50, MaxAmount: 100000, FeePercent: 3.9, ProcessingTime: "5-20 minutes", SupportedCountries: []string{"US", "UK", "EU", "AU"}, PaymentMethods: []string{"card"}},
 	}
 
-	return &FiatRampService{config: cfg, redis: redisClient, orders: make(map[string]*Order), providers: providers, providerKeys: make(map[string]string)}
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		dbURL = "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable"
+	}
+	pool, err := pgxpool.New(context.Background(), dbURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
+	}
+
+	svc := &FiatRampService{config: cfg, redis: redisClient, pg: pool, providers: providers, providerKeys: make(map[string]string)}
+	if err := svc.Migrate(context.Background()); err != nil {
+		log.Fatalf("Migration failed: %v", err)
+	}
+	return svc
 }
 
 // GetQuote returns a real fiat<->crypto quote. The exchange rate is fetched
@@ -310,6 +324,7 @@ func (s *FiatRampService) CreateOrder(userID, providerID, amount, fiatCurr, cryp
 	feeAmt := amt * (provider.FeePercent / 100)
 	networkFee := 0.50
 	totalAmt := amt + feeAmt + networkFee
+	now := time.Now().Unix()
 
 	order := &Order{
 		ID:     "ramp-" + randomID(),
@@ -317,29 +332,61 @@ func (s *FiatRampService) CreateOrder(userID, providerID, amount, fiatCurr, cryp
 		FiatCurrency: fiatCurr, CryptoCurrency: cryptoCurr, ExchangeRate: price,
 		FeeAmount: feeAmt, NetworkFee: networkFee, TotalAmount: totalAmt,
 		RecipientAddress: recipient, Status: "pending", PaymentMethod: payMethod,
-		KYCStatus: "pending", CreatedAt: time.Now().Unix(), UpdatedAt: time.Now().Unix(),
+		KYCStatus: "pending", CreatedAt: now, UpdatedAt: now,
 	}
 
-	s.mu.Lock()
-	s.orders[order.ID] = order
-	s.mu.Unlock()
+	if s.pg == nil {
+		return nil, fmt.Errorf("database not configured")
+	}
+	_, err = s.pg.Exec(context.Background(), `INSERT INTO fiat_ramp_orders
+		(id,user_id,provider_id,fiat_amount,crypto_amount,fiat_currency,crypto_currency,exchange_rate,fee_amount,network_fee,total_amount,recipient_address,status,payment_method,kyc_status,created_at,updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+		order.ID, order.UserID, order.ProviderID, order.FiatAmount, order.CryptoAmount,
+		order.FiatCurrency, order.CryptoCurrency, order.ExchangeRate, order.FeeAmount,
+		order.NetworkFee, order.TotalAmount, order.RecipientAddress, order.Status,
+		order.PaymentMethod, order.KYCStatus, order.CreatedAt, order.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
 	return order, nil
 }
 
 func (s *FiatRampService) GetOrder(orderID string) *Order {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.orders[orderID]
+	if s.pg == nil {
+		return nil
+	}
+	row := s.pg.QueryRow(context.Background(), `SELECT id,user_id,provider_id,fiat_amount,crypto_amount,fiat_currency,crypto_currency,exchange_rate,fee_amount,network_fee,total_amount,recipient_address,status,payment_method,kyc_status,created_at,updated_at
+		FROM fiat_ramp_orders WHERE id=$1`, orderID)
+	var o Order
+	if err := row.Scan(&o.ID, &o.UserID, &o.ProviderID, &o.FiatAmount, &o.CryptoAmount,
+		&o.FiatCurrency, &o.CryptoCurrency, &o.ExchangeRate, &o.FeeAmount,
+		&o.NetworkFee, &o.TotalAmount, &o.RecipientAddress, &o.Status,
+		&o.PaymentMethod, &o.KYCStatus, &o.CreatedAt, &o.UpdatedAt); err != nil {
+		return nil
+	}
+	return &o
 }
 
 func (s *FiatRampService) GetUserOrders(userID string) []*Order {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	if s.pg == nil {
+		return nil
+	}
+	rows, err := s.pg.Query(context.Background(), `SELECT id,user_id,provider_id,fiat_amount,crypto_amount,fiat_currency,crypto_currency,exchange_rate,fee_amount,network_fee,total_amount,recipient_address,status,payment_method,kyc_status,created_at,updated_at
+		FROM fiat_ramp_orders WHERE user_id=$1 ORDER BY created_at DESC`, userID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
 	list := []*Order{}
-	for _, o := range s.orders {
-		if o.UserID == userID {
-			list = append(list, o)
+	for rows.Next() {
+		var o Order
+		if err := rows.Scan(&o.ID, &o.UserID, &o.ProviderID, &o.FiatAmount, &o.CryptoAmount,
+			&o.FiatCurrency, &o.CryptoCurrency, &o.ExchangeRate, &o.FeeAmount,
+			&o.NetworkFee, &o.TotalAmount, &o.RecipientAddress, &o.Status,
+			&o.PaymentMethod, &o.KYCStatus, &o.CreatedAt, &o.UpdatedAt); err != nil {
+			return nil
 		}
+		list = append(list, &o)
 	}
 	return list
 }
@@ -353,6 +400,38 @@ func randomID() string {
 		binary.BigEndian.PutUint64(b, uint64(time.Now().UnixNano()))
 	}
 	return hex.EncodeToString(b)
+}
+
+const fiatRampSchema = `
+CREATE TABLE IF NOT EXISTS fiat_ramp_orders (
+    id                TEXT PRIMARY KEY,
+    user_id           TEXT NOT NULL DEFAULT '',
+    provider_id       TEXT NOT NULL DEFAULT '',
+    fiat_amount       DOUBLE PRECISION NOT NULL DEFAULT 0,
+    crypto_amount     TEXT NOT NULL DEFAULT '',
+    fiat_currency     TEXT NOT NULL DEFAULT '',
+    crypto_currency   TEXT NOT NULL DEFAULT '',
+    exchange_rate     DOUBLE PRECISION NOT NULL DEFAULT 0,
+    fee_amount        DOUBLE PRECISION NOT NULL DEFAULT 0,
+    network_fee       DOUBLE PRECISION NOT NULL DEFAULT 0,
+    total_amount      DOUBLE PRECISION NOT NULL DEFAULT 0,
+    recipient_address TEXT NOT NULL DEFAULT '',
+    status            TEXT NOT NULL DEFAULT 'pending',
+    payment_method    TEXT NOT NULL DEFAULT '',
+    kyc_status        TEXT NOT NULL DEFAULT 'pending',
+    created_at        BIGINT NOT NULL DEFAULT 0,
+    updated_at        BIGINT NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_fiat_ramp_orders_user ON fiat_ramp_orders(user_id);
+`
+
+// Migrate creates the fiat_ramp_orders table if it does not exist.
+func (s *FiatRampService) Migrate(ctx context.Context) error {
+	if s.pg == nil {
+		return fmt.Errorf("database not configured")
+	}
+	_, err := s.pg.Exec(ctx, fiatRampSchema)
+	return err
 }
 
 func (s *FiatRampService) RegisterRoutes(r *gin.Engine) {

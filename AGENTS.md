@@ -2514,3 +2514,94 @@ fixed for real (no stubs), report updated to all RESOLVED.
 - frontend/web_nextjs/app/staking/page.tsx (amount sanity checks)
 - COMPETITOR_WALLET_COMPARISON_REPORT.md (Security Concerns all RESOLVED +
   top banner 2026-08-14 update)
+
+## Session 2026-08-14: fiat_ramp order persistence -> PostgreSQL
+
+Converted the in-memory `orders map[string]*Order` in `go/fiat_ramp/main.go`
+to PostgreSQL-backed persistence (real pgx, real Redis + CoinGecko preserved).
+
+- `FiatRampService` gained `pg *pgxpool.Pool` (import
+  `github.com/jackc/pgx/v5/pgxpool`; `context` was already imported). The dead
+  `orders` map field was removed. `providers`/`providerKeys` config maps and the
+  `mu` RWMutex (still guards providerKeys) are untouched. authMiddleware /
+  adminMiddleware, GetQuote, getCryptoPrice, buildProviderURL, getProviderKey,
+  SetProviderKey, ClearProviderKey, GetProviders NOT changed.
+- `Migrate(ctx)` creates `fiat_ramp_orders` (CREATE TABLE IF NOT EXISTS) +
+  `idx_fiat_ramp_orders_user` on user_id. float64 -> DOUBLE PRECISION, int64
+  timestamps -> BIGINT, strings -> TEXT.
+- CreateOrder (INSERT), GetOrder (SELECT WHERE id), GetUserOrders (SELECT
+  WHERE user_id ORDER BY created_at DESC) now use real SQL; all three
+  fail-closed (`if s.pg == nil { return ... error }`). Public method signatures
+  + JSON tags unchanged.
+- `NewFiatRampService` builds the pool from `DATABASE_URL` (default
+  `postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable`)
+  and calls `Migrate(context.Background())`; both pool-connect and migrate
+  failures `log.Fatalf` (fail-closed, consistent with airdrop_service).
+- go.mod: `go 1.23` directive kept; added `github.com/jackc/pgx/v5 v5.6.0` +
+  indirect `pgpassfile`, `pgservicefile`, `puddle/v2`, `golang.org/x/sync
+  v0.5.0`. Existing `golang.org/x/crypto v0.23.0`, `sys v0.20.0`, `text
+  v0.15.0`, `net v0.25.0` kept (they are >= pgx's minimums and satisfy it via
+  MVS).
+- `go mod tidy` FAILS under Go 1.23 here because pgx's TEST deps
+  (`rogpeppe/go-internal` v1.16.0) require Go 1.25 -- but build/vet don't need
+  test deps. Workaround: regenerated go.sum via `go mod download <explicit full
+  transitive module list>` (NOT `go mod tidy`). After that, `go build ./...`
+  exit 0 and `go vet ./...` exit 0.
+  - SIMPLER go.sum workaround (verified lending_service): `go mod download
+    <modules>` alone does NOT populate the transitive `/go.mod` hash entries
+    that the build-graph walk needs (e.g. sonic's dep on davecgh/go-spew).
+    Instead run `GOFLAGS=-mod=mod go build ./...` ONCE -- it auto-adds all
+    missing go.sum entries (including testify test-only deps like
+    davecgh/go-spew/pmezard/objx) without needing the Go-1.25 test deps. Then
+    a plain `go build ./...` + `go vet ./...` (no GOFLAGS, read-only) both
+    exit 0.
+
+## Session 2026-08-14: lending_service user-position persistence -> PostgreSQL
+
+Converted `go/lending_service/main.go` (market-data cache stays in Redis, real
+on-chain Aave V3 rate fetching + tx construction preserved) to persist user
+lending positions (supply/borrow/withdraw/repay) to PostgreSQL so they survive
+restarts. The in-memory `cache map[string]cachedMarkets` (Redis-backed market
+cache) is untouched; it's a cache by design.
+
+- `LendingService` gained `pg *pgxpool.Pool` (imports `context`,
+  `github.com/google/uuid`, `github.com/jackc/pgx/v5/pgxpool` added; existing
+  `redis *redis.Client` + `mu sync.RWMutex` + `cache` kept). New
+  `LendingPosition` struct (id, user_id, user_address, asset, asset_symbol,
+  chain_id, position_type [supply/borrow/withdraw/repay], amount, interest_accrued,
+  apy, created_at, updated_at -- float64->DOUBLE PRECISION, int64->BIGINT,
+  strings->TEXT).
+- `Migrate(ctx)` creates `lending_positions` (CREATE TABLE IF NOT EXISTS) +
+  `idx_lending_positions_user` (user_id) + `idx_lending_positions_user_addr`
+  (user_address). Fail-closed (`if ls.pg == nil return error`).
+- `NewLendingService` builds the pool from `DATABASE_URL` (default
+  `postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable`)
+  and calls `Migrate(context.Background())`; both pool-connect and migrate
+  failures `log.Fatalf` (fail-closed, matches airdrop_service / fiat_ramp).
+- New handlers + routes (signatures unchanged for existing ones):
+  - `Withdraw` (POST /api/v1/lending/withdraw): REAL Aave V3
+    `withdraw(address,uint256,address)` calldata (selector 69328dec) + persists a
+    "withdraw" position. APY from real on-chain supply rate.
+  - `Repay` (POST /api/v1/lending/repay): REAL Aave V3
+    `repay(address,uint256,uint256,address)` calldata (selector 573ade81,
+    interestRateMode=2 variable) + persists a "repay" position. APY from real
+    on-chain variable borrow rate.
+  - `GetUserPositions` (GET /api/v1/lending/positions): lists persisted
+    positions for `user_id`/`user_address` from PG (newest-first).
+  - Existing `Supply`/`Borrow` now also persist positions (supply/borrow) with
+    real on-chain APY via new `assetAPY(asset, supply bool)` (reads
+    getReserveData -> decodeReserveData -> parseAPY; returns 0 on any RPC/decode
+    failure -- honest, never fabricated).
+- New helpers: `assetAPY` (real on-chain rate), `assetSymbolFor` (maps
+  reserveAssets address->symbol, falls back to raw address), `persistPosition`
+  (INSERT, uuid-prefixed id), `queryPositions` (SELECT WHERE user_id ORDER BY
+  created_at DESC). Selectors map gained `withdraw`/`repay` entries
+  (precomputed keccak256 selectors).
+- go.mod: `go 1.22` directive kept; added direct `github.com/jackc/pgx/v5
+  v5.6.0` + `github.com/google/uuid v1.6.0`; indirect `pgpassfile v1.0.0`,
+  `pgservicefile v0.0.0-20221227161230-091c0ba34f0a`, `puddle/v2 v2.2.1`;
+  bumped `golang.org/x/crypto v0.23.0`, `net v0.25.0`; pinned `golang.org/x/sync
+  v0.5.0`, `sys v0.19.0`, `text v0.14.0` (>= pgx v5.6.0 minimums, satisfy MVS).
+- go.sum regenerated via the `GOFLAGS=-mod=mod go build ./...` workaround above
+  (NOT `go mod tidy` -- pgx test deps need Go 1.25). `go build ./...` exit 0,
+  `go vet ./...` exit 0 (both read-only, no GOFLAGS).

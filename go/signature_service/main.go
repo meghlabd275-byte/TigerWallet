@@ -21,6 +21,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // ============================================================================
@@ -138,24 +139,86 @@ type AuditLog struct {
 type SignatureService struct {
 	config      *Config
 	redis       *redis.Client
-	requests    map[string]*SignatureRequest
-	approvals   map[string]*SignatureApproval
-	rotations   map[string]*KeyRotation
+	pg          *pgxpool.Pool
 	auditLogs   []AuditLog
 	mu          sync.RWMutex
 	rateLimiter *RateLimiter
 }
 
 func NewSignatureService(config *Config, redisClient *redis.Client) *SignatureService {
-	return &SignatureService{
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		dbURL = "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable"
+	}
+	pool, err := pgxpool.New(context.Background(), dbURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
+	}
+
+	svc := &SignatureService{
 		config:      config,
 		redis:       redisClient,
-		requests:    make(map[string]*SignatureRequest),
-		approvals:   make(map[string]*SignatureApproval),
-		rotations:   make(map[string]*KeyRotation),
+		pg:          pool,
 		auditLogs:   make([]AuditLog, 0),
 		rateLimiter: NewRateLimiter(config.Security.MaxSignaturesPerHour),
 	}
+	if err := svc.Migrate(context.Background()); err != nil {
+		log.Fatalf("Migration failed: %v", err)
+	}
+	return svc
+}
+
+const signatureSchema = `
+CREATE TABLE IF NOT EXISTS signature_requests (
+    id              TEXT PRIMARY KEY,
+    user_id         TEXT NOT NULL,
+    wallet_address  TEXT NOT NULL,
+    chain_id        BIGINT NOT NULL,
+    message         TEXT NOT NULL,
+    message_hash    TEXT NOT NULL,
+    signature       TEXT NOT NULL DEFAULT '',
+    status          TEXT NOT NULL,
+    signature_type  TEXT NOT NULL,
+    ip_address      TEXT NOT NULL DEFAULT '',
+    user_agent      TEXT NOT NULL DEFAULT '',
+    approved_by      TEXT NOT NULL DEFAULT '',
+    approved_at      TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL,
+    completed_at    TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_signature_requests_user ON signature_requests(user_id);
+
+CREATE TABLE IF NOT EXISTS signature_approvals (
+    id              TEXT PRIMARY KEY,
+    request_id      TEXT NOT NULL,
+    approver_id      TEXT NOT NULL,
+    approver_email   TEXT NOT NULL,
+    status          TEXT NOT NULL,
+    notes           TEXT NOT NULL DEFAULT '',
+    created_at      TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_signature_approvals_request ON signature_approvals(request_id);
+
+CREATE TABLE IF NOT EXISTS key_rotations (
+    id               TEXT PRIMARY KEY,
+    user_id          TEXT NOT NULL,
+    old_public_key   TEXT NOT NULL,
+    new_public_key   TEXT NOT NULL,
+    status           TEXT NOT NULL,
+    rotation_type    TEXT NOT NULL,
+    created_at       TIMESTAMPTZ NOT NULL,
+    completed_at     TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_key_rotations_user ON key_rotations(user_id);
+`
+
+// Migrate creates the signature/approval/rotation tables if they do not exist.
+func (s *SignatureService) Migrate(ctx context.Context) error {
+	if s.pg == nil {
+		return fmt.Errorf("database not configured")
+	}
+	_, err := s.pg.Exec(ctx, signatureSchema)
+	return err
 }
 
 // ============================================================================
@@ -246,9 +309,19 @@ func (s *SignatureService) CreateSignatureRequest(
 		CreatedAt:     time.Now(),
 	}
 
-	s.mu.Lock()
-	s.requests[request.ID] = request
-	s.mu.Unlock()
+	if s.pg == nil {
+		return nil, fmt.Errorf("database not configured")
+	}
+	_, err := s.pg.Exec(context.Background(), `INSERT INTO signature_requests
+		(id,user_id,wallet_address,chain_id,message,message_hash,signature,status,signature_type,ip_address,user_agent,approved_by,approved_at,created_at,completed_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+		request.ID, request.UserID, request.WalletAddress, request.ChainID, request.Message,
+		request.MessageHash, request.Signature, request.Status, request.SignatureType,
+		request.IPAddress, request.UserAgent, request.ApprovedBy, request.ApprovedAt,
+		request.CreatedAt, request.CompletedAt)
+	if err != nil {
+		return nil, err
+	}
 
 	// Log audit
 	s.logAudit(userID, "CREATE_SIGNATURE_REQUEST", "signature_request", request.ID,
@@ -270,11 +343,24 @@ func (s *SignatureService) SignMessage(
 	requestID string,
 	privateKey *ecdsa.PrivateKey,
 ) (*SignatureRequest, error) {
-	s.mu.RLock()
-	request, ok := s.requests[requestID]
-	s.mu.RUnlock()
+	if s.pg == nil {
+		return nil, fmt.Errorf("database not configured")
+	}
+	ctx := context.Background()
+	tx, err := s.pg.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
 
-	if !ok {
+	var request SignatureRequest
+	if err := tx.QueryRow(ctx, `SELECT id,user_id,wallet_address,chain_id,message,message_hash,
+		signature,status,signature_type,ip_address,user_agent,approved_by,approved_at,created_at,completed_at
+		FROM signature_requests WHERE id=$1 FOR UPDATE`, requestID).
+		Scan(&request.ID, &request.UserID, &request.WalletAddress, &request.ChainID, &request.Message,
+			&request.MessageHash, &request.Signature, &request.Status, &request.SignatureType,
+			&request.IPAddress, &request.UserAgent, &request.ApprovedBy, &request.ApprovedAt,
+			&request.CreatedAt, &request.CompletedAt); err != nil {
 		return nil, fmt.Errorf("request not found")
 	}
 
@@ -284,21 +370,24 @@ func (s *SignatureService) SignMessage(
 
 	// Sign the message
 	var signature []byte
-	var err error
+	var signErr error
 
 	switch request.SignatureType {
 	case "personal_sign":
-		signature, err = crypto.Sign(accounts.TextHash([]byte(request.Message)), privateKey)
+		signature, signErr = crypto.Sign(accounts.TextHash([]byte(request.Message)), privateKey)
 	case "eth_sign":
 		// eth_sign signs the raw keccak256 hash of the message (no Ethereum prefix).
-		signature, err = crypto.Sign(crypto.Keccak256([]byte(request.Message)), privateKey)
+		signature, signErr = crypto.Sign(crypto.Keccak256([]byte(request.Message)), privateKey)
 	default:
-		signature, err = crypto.Sign(accounts.TextHash([]byte(request.Message)), privateKey)
+		signature, signErr = crypto.Sign(accounts.TextHash([]byte(request.Message)), privateKey)
 	}
 
-	if err != nil {
-		request.Status = "failed"
-		return nil, fmt.Errorf("signing failed: %w", err)
+	if signErr != nil {
+		if _, e := tx.Exec(ctx, `UPDATE signature_requests SET status='failed' WHERE id=$1`, requestID); e != nil {
+			return nil, fmt.Errorf("signing failed: %w", signErr)
+		}
+		_ = tx.Commit(ctx)
+		return nil, fmt.Errorf("signing failed: %w", signErr)
 	}
 
 	request.Signature = hexutil.Encode(signature)
@@ -306,52 +395,86 @@ func (s *SignatureService) SignMessage(
 	now := time.Now()
 	request.CompletedAt = &now
 
+	if _, err := tx.Exec(ctx, `UPDATE signature_requests
+		SET signature=$1, status=$2, completed_at=$3 WHERE id=$4`,
+		request.Signature, request.Status, request.CompletedAt, request.ID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
 	// Log audit
 	s.logAudit(request.UserID, "SIGN_MESSAGE", "signature_request", request.ID,
 		fmt.Sprintf("Signed message with hash %s", request.MessageHash),
 		request.IPAddress, request.UserAgent)
 
-	return request, nil
+	return &request, nil
 }
 
 func (s *SignatureService) GetSignatureRequest(id string) (*SignatureRequest, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	request, ok := s.requests[id]
-	if !ok {
+	if s.pg == nil {
+		return nil, fmt.Errorf("database not configured")
+	}
+	var request SignatureRequest
+	err := s.pg.QueryRow(context.Background(), `SELECT id,user_id,wallet_address,chain_id,message,message_hash,
+		signature,status,signature_type,ip_address,user_agent,approved_by,approved_at,created_at,completed_at
+		FROM signature_requests WHERE id=$1`, id).
+		Scan(&request.ID, &request.UserID, &request.WalletAddress, &request.ChainID, &request.Message,
+			&request.MessageHash, &request.Signature, &request.Status, &request.SignatureType,
+			&request.IPAddress, &request.UserAgent, &request.ApprovedBy, &request.ApprovedAt,
+			&request.CreatedAt, &request.CompletedAt)
+	if err != nil {
 		return nil, fmt.Errorf("request not found")
 	}
-
-	return request, nil
+	return &request, nil
 }
 
 func (s *SignatureService) GetUserSignatureRequests(userID string, limit int) ([]SignatureRequest, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	if s.pg == nil {
+		return nil, fmt.Errorf("database not configured")
+	}
+	rows, err := s.pg.Query(context.Background(), `SELECT id,user_id,wallet_address,chain_id,message,message_hash,
+		signature,status,signature_type,ip_address,user_agent,approved_by,approved_at,created_at,completed_at
+		FROM signature_requests WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2`, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
 	var requests []SignatureRequest
-	count := 0
-
-	for _, req := range s.requests {
-		if req.UserID == userID {
-			requests = append(requests, *req)
-			count++
-			if count >= limit {
-				break
-			}
+	for rows.Next() {
+		var req SignatureRequest
+		if err := rows.Scan(&req.ID, &req.UserID, &req.WalletAddress, &req.ChainID, &req.Message,
+			&req.MessageHash, &req.Signature, &req.Status, &req.SignatureType,
+			&req.IPAddress, &req.UserAgent, &req.ApprovedBy, &req.ApprovedAt,
+			&req.CreatedAt, &req.CompletedAt); err != nil {
+			return nil, err
 		}
+		requests = append(requests, req)
 	}
-
-	return requests, nil
+	return requests, rows.Err()
 }
 
 func (s *SignatureService) CancelSignatureRequest(id, userID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if s.pg == nil {
+		return fmt.Errorf("database not configured")
+	}
+	ctx := context.Background()
+	tx, err := s.pg.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
 
-	request, ok := s.requests[id]
-	if !ok {
+	var request SignatureRequest
+	if err := tx.QueryRow(ctx, `SELECT id,user_id,wallet_address,chain_id,message,message_hash,
+		signature,status,signature_type,ip_address,user_agent,approved_by,approved_at,created_at,completed_at
+		FROM signature_requests WHERE id=$1 FOR UPDATE`, id).
+		Scan(&request.ID, &request.UserID, &request.WalletAddress, &request.ChainID, &request.Message,
+			&request.MessageHash, &request.Signature, &request.Status, &request.SignatureType,
+			&request.IPAddress, &request.UserAgent, &request.ApprovedBy, &request.ApprovedAt,
+			&request.CreatedAt, &request.CompletedAt); err != nil {
 		return fmt.Errorf("request not found")
 	}
 
@@ -363,7 +486,12 @@ func (s *SignatureService) CancelSignatureRequest(id, userID string) error {
 		return fmt.Errorf("request cannot be cancelled")
 	}
 
-	request.Status = "cancelled"
+	if _, err := tx.Exec(ctx, `UPDATE signature_requests SET status='cancelled' WHERE id=$1`, id); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
 
 	// Log audit
 	s.logAudit(userID, "CANCEL_SIGNATURE_REQUEST", "signature_request", id,
@@ -382,11 +510,24 @@ func (s *SignatureService) ApproveSignatureRequest(
 	approverEmail,
 	notes string,
 ) (*SignatureApproval, error) {
-	s.mu.RLock()
-	request, ok := s.requests[requestID]
-	s.mu.RUnlock()
+	if s.pg == nil {
+		return nil, fmt.Errorf("database not configured")
+	}
+	ctx := context.Background()
+	tx, err := s.pg.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
 
-	if !ok {
+	var request SignatureRequest
+	if err := tx.QueryRow(ctx, `SELECT id,user_id,wallet_address,chain_id,message,message_hash,
+		signature,status,signature_type,ip_address,user_agent,approved_by,approved_at,created_at,completed_at
+		FROM signature_requests WHERE id=$1 FOR UPDATE`, requestID).
+		Scan(&request.ID, &request.UserID, &request.WalletAddress, &request.ChainID, &request.Message,
+			&request.MessageHash, &request.Signature, &request.Status, &request.SignatureType,
+			&request.IPAddress, &request.UserAgent, &request.ApprovedBy, &request.ApprovedAt,
+			&request.CreatedAt, &request.CompletedAt); err != nil {
 		return nil, fmt.Errorf("request not found")
 	}
 
@@ -404,13 +545,22 @@ func (s *SignatureService) ApproveSignatureRequest(
 		CreatedAt:     time.Now(),
 	}
 
-	request.ApprovedBy = approverID
 	now := time.Now()
-	request.ApprovedAt = &now
+	if _, err := tx.Exec(ctx, `UPDATE signature_requests SET approved_by=$1, approved_at=$2 WHERE id=$3`,
+		approverID, &now, requestID); err != nil {
+		return nil, err
+	}
 
-	s.mu.Lock()
-	s.approvals[approval.ID] = approval
-	s.mu.Unlock()
+	if _, err := tx.Exec(ctx, `INSERT INTO signature_approvals
+		(id,request_id,approver_id,approver_email,status,notes,created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		approval.ID, approval.RequestID, approval.ApproverID, approval.ApproverEmail,
+		approval.Status, approval.Notes, approval.CreatedAt); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
 
 	// Log audit
 	s.logAudit(approverID, "APPROVE_SIGNATURE", "signature_request", requestID,
@@ -426,15 +576,26 @@ func (s *SignatureService) RejectSignatureRequest(
 	approverEmail,
 	notes string,
 ) error {
-	s.mu.RLock()
-	request, ok := s.requests[requestID]
-	s.mu.RUnlock()
+	if s.pg == nil {
+		return fmt.Errorf("database not configured")
+	}
+	ctx := context.Background()
+	tx, err := s.pg.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
 
-	if !ok {
+	var request SignatureRequest
+	if err := tx.QueryRow(ctx, `SELECT id,user_id,wallet_address,chain_id,message,message_hash,
+		signature,status,signature_type,ip_address,user_agent,approved_by,approved_at,created_at,completed_at
+		FROM signature_requests WHERE id=$1 FOR UPDATE`, requestID).
+		Scan(&request.ID, &request.UserID, &request.WalletAddress, &request.ChainID, &request.Message,
+			&request.MessageHash, &request.Signature, &request.Status, &request.SignatureType,
+			&request.IPAddress, &request.UserAgent, &request.ApprovedBy, &request.ApprovedAt,
+			&request.CreatedAt, &request.CompletedAt); err != nil {
 		return fmt.Errorf("request not found")
 	}
-
-	request.Status = "rejected"
 
 	approval := &SignatureApproval{
 		ID:            uuid.New().String(),
@@ -446,9 +607,19 @@ func (s *SignatureService) RejectSignatureRequest(
 		CreatedAt:     time.Now(),
 	}
 
-	s.mu.Lock()
-	s.approvals[approval.ID] = approval
-	s.mu.Unlock()
+	if _, err := tx.Exec(ctx, `UPDATE signature_requests SET status='rejected' WHERE id=$1`, requestID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO signature_approvals
+		(id,request_id,approver_id,approver_email,status,notes,created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		approval.ID, approval.RequestID, approval.ApproverID, approval.ApproverEmail,
+		approval.Status, approval.Notes, approval.CreatedAt); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
 
 	// Log audit
 	s.logAudit(approverID, "REJECT_SIGNATURE", "signature_request", requestID,
@@ -468,6 +639,9 @@ func (s *SignatureService) InitiateKeyRotation(
 	newPublicKey,
 	rotationType string,
 ) (*KeyRotation, error) {
+	if s.pg == nil {
+		return nil, fmt.Errorf("database not configured")
+	}
 	rotation := &KeyRotation{
 		ID:           uuid.New().String(),
 		UserID:       userID,
@@ -478,9 +652,13 @@ func (s *SignatureService) InitiateKeyRotation(
 		CreatedAt:    time.Now(),
 	}
 
-	s.mu.Lock()
-	s.rotations[rotation.ID] = rotation
-	s.mu.Unlock()
+	if _, err := s.pg.Exec(context.Background(), `INSERT INTO key_rotations
+		(id,user_id,old_public_key,new_public_key,status,rotation_type,created_at,completed_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		rotation.ID, rotation.UserID, rotation.OldPublicKey, rotation.NewPublicKey,
+		rotation.Status, rotation.RotationType, rotation.CreatedAt, rotation.CompletedAt); err != nil {
+		return nil, err
+	}
 
 	// Log audit
 	s.logAudit(userID, "INITIATE_KEY_ROTATION", "key_rotation", rotation.ID,
@@ -491,11 +669,21 @@ func (s *SignatureService) InitiateKeyRotation(
 }
 
 func (s *SignatureService) CompleteKeyRotation(rotationID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if s.pg == nil {
+		return fmt.Errorf("database not configured")
+	}
+	ctx := context.Background()
+	tx, err := s.pg.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
 
-	rotation, ok := s.rotations[rotationID]
-	if !ok {
+	var rotation KeyRotation
+	if err := tx.QueryRow(ctx, `SELECT id,user_id,old_public_key,new_public_key,status,rotation_type,created_at,completed_at
+		FROM key_rotations WHERE id=$1 FOR UPDATE`, rotationID).
+		Scan(&rotation.ID, &rotation.UserID, &rotation.OldPublicKey, &rotation.NewPublicKey,
+			&rotation.Status, &rotation.RotationType, &rotation.CreatedAt, &rotation.CompletedAt); err != nil {
 		return fmt.Errorf("rotation not found")
 	}
 
@@ -503,9 +691,14 @@ func (s *SignatureService) CompleteKeyRotation(rotationID string) error {
 		return fmt.Errorf("rotation already processed")
 	}
 
-	rotation.Status = "completed"
 	now := time.Now()
-	rotation.CompletedAt = &now
+	if _, err := tx.Exec(ctx, `UPDATE key_rotations SET status='completed', completed_at=$1 WHERE id=$2`,
+		&now, rotationID); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
 
 	// Log audit
 	s.logAudit(rotation.UserID, "COMPLETE_KEY_ROTATION", "key_rotation", rotationID,
