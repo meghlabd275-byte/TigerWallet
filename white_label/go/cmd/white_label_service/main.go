@@ -9,13 +9,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -417,7 +415,7 @@ func (s *WhiteLabelService) CreateClientAdmin(clientID string, admin *WhiteLabel
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	client, ok := s.clients[clientID]
+	_, ok := s.clients[clientID]
 	if !ok {
 		return fmt.Errorf("client not found")
 	}

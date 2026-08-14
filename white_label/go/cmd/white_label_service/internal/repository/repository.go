@@ -13,7 +13,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 
-	"white_label_service/internal/models"
+	"github.com/tigerwallet/white_label_service/cmd/white_label_service/internal/models"
 )
 
 type Repository struct {
