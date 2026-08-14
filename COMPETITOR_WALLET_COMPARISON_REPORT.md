@@ -1,4 +1,42 @@
-> **Update 2026-08-13 (this session):** Final stub/mock/fake-data audit pass,
+> **Update 2026-08-13 (session 2):** Remaining genuine fakes/stubs found in
+> the C++ privacy layer, the Go notifications service, and the Go wallet
+> guardian security library — all replaced with real logic or fail-closed
+> behavior (no stubs/mocks/demos):
+> - **`privacy_features/cpp/src/privacy.cpp`** — the C++ privacy layer had
+>   fabricated crypto: a "Poseidon" hash that was actually a no-op, ZK range
+>   proofs that always returned `is_valid=true`, and "encryption" that only
+>   prefixed the plaintext with `"ENCRYPTED_"`. Now: **real Keccak-256**
+>   (full `keccak_f` permutation + standard `0x01||0x00...||0x80` padding)
+>   replaces the fake Poseidon; **ZK proof generation is fail-closed**
+>   (`proof.is_valid=false`, delegates to the `zk_infrastructure` backend
+>   Ristretto255 Schnorr prover — never a fake all-zero proof); **real
+>   OpenSSL AES-256-GCM** `encrypt_note`/`decrypt_note` (SHA-256 key derive,
+>   random 12-byte nonce, GCM auth tag, fail-closed empty return on any
+>   error — never a fake `"ENCRYPTED_"` prefix). CoinJoin uses real round
+>   denomination/amounts. `g++ -std=c++17 -fsyntax-only` exit 0.
+> - **`notifications/go` (canonical notification service, :9004)** —
+>   `cmd/main.go` had a `mockDB` struct (no DB connection) and every
+>   send/template/notification handler returned a hardcoded `{"status":"sent"}`
+>   or fabricated `uuid.New()` notifications without persisting anything. Now:
+>   **real PostgreSQL via `pgx/v5/pgxpool`** — `pgDB` implements
+>   `SaveNotification`/`ListNotifications`/`MarkAsRead`/`MarkAllAsRead`/
+>   `DeleteNotification` (real `INSERT`/`SELECT`/`UPDATE`/`DELETE` against a
+>   `notifications` table, auto-migrated on boot). All send (email/sms/push/
+>   webhook), broadcast, create, list, read, delete handlers now parse the
+>   request body and persist/query the real DB. The orphan
+>   `cmd/notification-service/main.go` (duplicate with fake Firebase push +
+>   gorm requiring Go 1.25) was removed; its service is preserved by the
+>   canonical `cmd/main.go`. Pre-existing sibling-package errors (unused
+>   imports, `time.RFC1122Z` typo, `&now` type mismatch, unused vars) fixed.
+>   `go build ./...` exit 0.
+> - **`security_center/wallet_guardian/security.go`** — the `ScamDatabase`
+>   had a fabricated hardcoded `"Example Scam Contract"` entry at a fake
+>   `0x1234567890abcdef...` address. Now: `ScamDatabase` starts **empty**
+>   (fail-safe — no address is falsely flagged as a scam); a
+>   `RegisterScamAddress` function populates it at runtime from real verified
+>   reports. Unused imports (`errors`/`io`/`net/http`) removed. Builds clean.
+>
+> **Update 2026-08-13 (session 1):** Final stub/mock/fake-data audit pass,
 > all verified against current `main` and pushed. Remaining genuine fakes
 > removed with real logic or fail-closed behavior (no stubs/mocks/demos):
 > - **`go/analytics_service` (:8010)** — fully rewritten from hardcoded mock

@@ -7,17 +7,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"html/template"
-	"io"
 	"log"
 	"math/rand"
 	"net"
 	"net/smtp"
 	"os"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -539,7 +535,7 @@ func (s *EmailService) buildEmail(buf *bytes.Buffer, messageID, toEmail, toName,
 	buf.WriteString(fmt.Sprintf("To: %s <%s>\r\n", toName, toEmail))
 	buf.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
 	buf.WriteString(fmt.Sprintf("Message-ID: %s\r\n", messageID))
-	buf.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1122Z)))
+	buf.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z)))
 	buf.WriteString(fmt.Sprintf("MIME-Version: 1.0\r\n"))
 	
 	if opts.ReplyTo != "" {
@@ -658,7 +654,7 @@ func (s *EmailService) logEmail(messageID, toEmail, toName, subject, templateID,
 	
 	if status == "sent" {
 		now := time.Now()
-		log.SentAt = &now
+		log.SentAt = now
 	}
 	
 	s.db.Create(log)

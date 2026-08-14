@@ -18,6 +18,7 @@
 #include <chrono>
 #include <thread>
 #include <mutex>
+#include <condition_variable>
 #include <atomic>
 #include <array>
 #include <cstdint>
@@ -87,12 +88,13 @@ struct CoinJoinRound {
     std::string input_commitments;
     std::string output_commitments;
     std::string mixed_output;
-    std::string status; // pending, collecting, processing, completed, failed
+    std::string denomination; // per-participant contribution amount
+    std::string status; // pending, collecting, processing, mixed, completed, failed
     int required_participants;
     int current_participants;
     std::chrono::system_clock::time_point started_at;
     std::chrono::system_clock::time_point completed_at;
-}
+};
 
 /**
  * ZK Proof
@@ -104,7 +106,7 @@ struct ZKProof {
     std::string protocol; // groth16, plonk, starks
     bool is_valid;
     std::chrono::milliseconds generation_time;
-}
+};
 
 /**
  * Note (for UTXO-based privacy)
@@ -118,7 +120,7 @@ struct PrivacyNote {
     std::string encrypted_note;
     bool spent;
     std::chrono::system_clock::time_point created_at;
-}
+};
 
 /**
  * Mixed output result
@@ -130,7 +132,7 @@ struct MixedOutput {
     std::string denomination;
     std::string status;
     std::chrono::system_clock::time_point timestamp;
-}
+};
 
 // ============================================================================
 // Cryptographic Primitives

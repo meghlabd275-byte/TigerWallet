@@ -34,7 +34,7 @@
 #include <asio.hpp>
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
-#include <curl/curl.h>
+#include <curl/curl.h>\n#include <cctype>\n#include <cstdlib>
 
 using namespace std::chrono;
 
@@ -652,25 +652,66 @@ public:
 
 private:
     Quote fetch_quote_from_rpc(const TokenPair& pair, double amount_in) {
-        // Build RPC request for quote
-        // Using Multicall contract for better performance
-        
+        // Fetch a real quote from the canonical wallet_api AMM router, which
+        // performs a real on-chain getAmountsOut against per-chain V2 routers.
+        // Fail-closed: throws NetworkException on any failure (no mock price).
+        std::string backend = "http://localhost:8443";
+        const char* env = std::getenv("WALLET_API_URL");
+        if (env && *env) backend = env;
+        std::string url = backend + "/api/v1/amm/quote?from=" + pair.base_token +
+                          "&to=" + pair.quote_token + "&amount=" + std::to_string(amount_in);
+
+        CURL* curl = curl_easy_init();
+        if (!curl) throw NetworkException("Failed to init CURL for AMM quote");
+        std::string resp;
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
+            [](char* data, size_t size, size_t nmemb, void* userp) {
+                ((std::string*)userp)->append(data, size * nmemb);
+                return size * nmemb;
+            });
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+        CURLcode rc = curl_easy_perform(curl);
+        long http = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http);
+        curl_easy_cleanup(curl);
+        if (rc != CURLE_OK) throw NetworkException(std::string("AMM quote fetch failed: ") + curl_easy_strerror(rc));
+        if (http != 200) throw NetworkException("AMM quote HTTP error: " + std::to_string(http));
+
+        double price = extract_json_double(resp, "price_out");
+        if (price == 0.0) price = extract_json_double(resp, "expected_out");
+        double amount_out = extract_json_double(resp, "amount_out");
+        if (price <= 0.0) throw NetworkException("AMM quote returned no price");
+
         Quote q;
         q.pair = pair;
+        q.price = price;
         q.amount_in = amount_in;
-        
-        // Simplified - actual implementation would:
-        // 1. Get pool address for token pair
-        // 2. Get slot0 data (current price)
-        // 3. Calculate output with fee deduction
-        
-        // Mock response for compilation
-        q.price = 1.0; // Would be fetched from RPC
-        q.amount_out = amount_in * q.price;
+        q.amount_out = (amount_out > 0.0) ? amount_out : (amount_in * price);
         q.dex = dex_type;
         q.timestamp = CachedPrice::current_timestamp_ms();
-        
+
         return q;
+    }
+
+    // Minimal JSON value extractor (avoids a nlohmann/json dependency here).
+    static double extract_json_double(const std::string& json, const std::string& key) {
+        std::string needle = "\"" + key + "\"";
+        size_t k = json.find(needle);
+        if (k == std::string::npos) return 0.0;
+        k = json.find(':', k + needle.size());
+        if (k == std::string::npos) return 0.0;
+        k++;
+        while (k < json.size() && (json[k] == ' ' || json[k] == '\t' || json[k] == '"')) k++;
+        size_t start = k;
+        while (k < json.size() && (std::isdigit((unsigned char)json[k]) || json[k] == '.' || json[k] == '-' || json[k] == 'e' || json[k] == 'E' || json[k] == '+')) k++;
+        if (k == start) return 0.0;
+        try {
+            return std::stod(json.substr(start, k - start));
+        } catch (...) {
+            return 0.0;
+        }
     }
 
     std::string get_pool_address(const TokenPair& pair) {

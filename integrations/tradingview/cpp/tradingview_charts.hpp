@@ -26,6 +26,8 @@
 #include <thread>
 #include <chrono>
 #include <curl/curl.h>
+#include <random>
+#include <cctype>
 #include <nlohmann/json.hpp>
 
 namespace tiger {
@@ -89,6 +91,7 @@ struct ChartConfig {
     int width;
     int height;
     std::string timezone;
+    std::vector<IndicatorConfig> indicators_; // active indicators
 };
 
 // Drawing Tool
@@ -247,55 +250,91 @@ private:
     std::map<std::string, Drawing> drawings_;
     std::vector<std::function<void(const Candle&)>> updateCallbacks_;
     
-    // Load historical data from API
+    // Load historical OHLCV from a real exchange API (Binance public klines).
+    // Fail-closed: returns an empty vector on any fetch/parse failure.
     void loadHistoricalData() {
-        // In production, fetch from exchange APIs
-        // For now, generate mock data
-        historicalData_ = generateMockData(500);
-        
-        // Notify subscribers
+        historicalData_ = fetchKlines(config_.symbol, config_.interval, 500);
         for (const auto& candle : historicalData_) {
             for (const auto& callback : updateCallbacks_) {
                 callback(candle);
             }
         }
     }
-    
-    // Generate mock OHLCV data
-    std::vector<Candle> generateMockData(int count) {
+
+    static size_t curlWriteCb(char* ptr, size_t size, size_t nmemb, void* userdata) {
+        auto* buf = static_cast<std::string*>(userdata);
+        buf->append(ptr, size * nmemb);
+        return size * nmemb;
+    }
+
+    static std::string binanceSymbol(const std::string& sym) {
+        std::string out;
+        for (char c : sym) if (c != '/' && c != '-' && c != '_') out += static_cast<char>(toupper(c));
+        return out;
+    }
+
+    static std::string binanceInterval(const std::string& iv) {
+        if (iv == "1m" || iv == "5m" || iv == "15m" || iv == "30m" ||
+            iv == "1h" || iv == "4h" || iv == "1D" || iv == "1W" || iv == "1M") return iv;
+        if (iv == "1") return "1m";
+        if (iv == "60") return "1h";
+        if (iv == "240") return "4h";
+        if (iv == "D" || iv == "1d") return "1D";
+        return "1h";
+    }
+
+    // Real Binance klines fetch via libcurl. Returns empty on any error.
+    std::vector<Candle> fetchKlines(const Symbol& symbol, const Interval& interval, int limit) {
         std::vector<Candle> candles;
-        
-        double basePrice = 3500.0;
-        uint64_t baseTime = time(nullptr) - (count * 3600); // 1 hour intervals
-        
-        for (int i = 0; i < count; i++) {
-            Candle candle;
-            candle.time = baseTime + (i * 3600);
-            candle.open = basePrice + (rand() % 100 - 50);
-            candle.high = candle.open + (rand() % 50);
-            candle.low = candle.open - (rand() % 50);
-            candle.close = candle.low + (rand() % (int)(candle.high - candle.low));
-            candle.volume = 1000000 + (rand() % 500000);
-            
-            candles.push_back(candle);
-            
-            // Next candle based on previous close
-            basePrice = candle.close;
+        std::string url = "https://api.binance.com/api/v3/klines?symbol=" + binanceSymbol(symbol) +
+                          "&interval=" + binanceInterval(interval) +
+                          "&limit=" + std::to_string(limit > 1000 ? 1000 : limit);
+        CURL* curl = curl_easy_init();
+        if (!curl) return candles;
+        std::string resp;
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlWriteCb);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
+        CURLcode rc = curl_easy_perform(curl);
+        long http = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http);
+        curl_easy_cleanup(curl);
+        if (rc != CURLE_OK || http != 200) return candles;
+        try {
+            json j = json::parse(resp);
+            if (!j.is_array()) return candles;
+            for (const auto& k : j) {
+                if (!k.is_array() || k.size() < 6) continue;
+                Candle c;
+                c.time = k[0].get<uint64_t>() / 1000;
+                c.open = std::stod(k[1].get<std::string>());
+                c.high = std::stod(k[2].get<std::string>());
+                c.low = std::stod(k[3].get<std::string>());
+                c.close = std::stod(k[4].get<std::string>());
+                c.volume = std::stod(k[5].get<std::string>());
+                candles.push_back(c);
+            }
+        } catch (...) {
+            return candles;
         }
-        
         return candles;
     }
-    
+
+    // CSPRNG-based hex ID (replaces rand()-based generation).
     std::string generateId() {
         const char* hex = "0123456789abcdef";
+        std::random_device rd;
         std::string id;
         for (int i = 0; i < 16; i++) {
-            id += hex[rand() % 16];
+            id += hex[rd() % 16];
         }
         return id;
     }
     
     static std::map<std::string, TradingViewChart*> widgets_;
+    friend class ChartManager;
 };
 
 // =============================================================================
@@ -551,7 +590,8 @@ private:
             ema.push_back(newEma);
         }
         
-        return ema }
+        return ema;
+    }
 };
 
 // =============================================================================
@@ -568,15 +608,14 @@ public:
         if (curl_) curl_easy_cleanup(curl_);
     }
     
-    // Fetch historical candles
+    // Fetch historical candles from a real exchange API (Binance klines).
+    // Fail-closed: returns an empty vector on any HTTP/parse failure.
     std::vector<Candle> fetchCandles(
         const Symbol& symbol,
         const Interval& interval,
         int limit = 500
     ) {
-        // In production, fetch from exchange APIs
-        // For now, return mock data
-        return generateMockCandles(symbol, interval, limit);
+        return fetchBinanceKlines(symbol, interval, limit);
     }
     
     // Fetch real-time candle
@@ -629,31 +668,63 @@ private:
         });
     }
     
-    std::vector<Candle> generateMockCandles(
+std::vector<Candle> fetchBinanceKlines(
         const Symbol& symbol,
         const Interval& interval,
         int count
     ) {
         std::vector<Candle> candles;
-        
-        double basePrice = 3500.0;
-        uint64_t intervalSeconds = getIntervalSeconds(interval);
-        uint64_t baseTime = time(nullptr) - (count * intervalSeconds);
-        
-        for (int i = 0; i < count; i++) {
-            Candle candle;
-            candle.time = baseTime + (i * intervalSeconds);
-            candle.open = basePrice + (rand() % 100 - 50);
-            candle.high = candle.open + (rand() % 50);
-            candle.low = candle.open - (rand() % 50);
-            candle.close = candle.low + (rand() % (int)(candle.high - candle.low + 1));
-            candle.volume = 1000000 + (rand() % 500000);
-            
-            candles.push_back(candle);
-            basePrice = candle.close;
+        if (!curl_) return candles;
+        std::string sym;
+        for (char c : symbol) if (c != '/' && c != '-' && c != '_') sym += static_cast<char>(toupper(c));
+        std::string iv = binanceInterval(interval);
+        int limit = count > 1000 ? 1000 : count;
+        std::string url = "https://api.binance.com/api/v3/klines?symbol=" + sym +
+                          "&interval=" + iv + "&limit=" + std::to_string(limit);
+        std::string resp;
+        curl_easy_setopt(curl_, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, &ChartDataProvider::curlWriteCb);
+        curl_easy_setopt(curl_, CURLOPT_WRITEDATA, &resp);
+        curl_easy_setopt(curl_, CURLOPT_TIMEOUT, 10L);
+        curl_easy_setopt(curl_, CURLOPT_CONNECTTIMEOUT, 5L);
+        CURLcode rc = curl_easy_perform(curl_);
+        long http = 0;
+        curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &http);
+        if (rc != CURLE_OK || http != 200) return candles;
+        try {
+            json j = json::parse(resp);
+            if (!j.is_array()) return candles;
+            for (const auto& k : j) {
+                if (!k.is_array() || k.size() < 6) continue;
+                Candle c;
+                c.time = k[0].get<uint64_t>() / 1000;
+                c.open = std::stod(k[1].get<std::string>());
+                c.high = std::stod(k[2].get<std::string>());
+                c.low = std::stod(k[3].get<std::string>());
+                c.close = std::stod(k[4].get<std::string>());
+                c.volume = std::stod(k[5].get<std::string>());
+                candles.push_back(c);
+            }
+        } catch (...) {
+            return candles;
         }
-        
         return candles;
+    }
+
+    static size_t curlWriteCb(char* ptr, size_t size, size_t nmemb, void* userdata) {
+        auto* buf = static_cast<std::string*>(userdata);
+        buf->append(ptr, size * nmemb);
+        return size * nmemb;
+    }
+
+    static std::string binanceInterval(const std::string& iv) {
+        if (iv == "1m" || iv == "5m" || iv == "15m" || iv == "30m" ||
+            iv == "1h" || iv == "4h" || iv == "1D" || iv == "1W" || iv == "1M") return iv;
+        if (iv == "1") return "1m";
+        if (iv == "60") return "1h";
+        if (iv == "240") return "4h";
+        if (iv == "D" || iv == "1d") return "1D";
+        return "1h";
     }
     
     uint64_t getIntervalSeconds(const Interval& interval) {

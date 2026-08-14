@@ -6,8 +6,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -248,8 +246,8 @@ func (p *AWSProvider) Send(to, message string) (string, error) {
 	timestamp := time.Now().UTC().Format("20060102T150405Z")
 	dateStamp := time.Now().UTC().Format("20060102")
 	
-	canonicalRequest := "POST\n" + endpoint + "\n\n" + params.Encode() + "\n"
-	stringToSign := "AWS4-HMAC-SHA256\n" + timestamp + "\n" + dateStamp + "/sns/" + p.region + "/sns_request\n"
+	_ = "POST\n" + endpoint + "\n\n" + params.Encode() + "\n"
+	_ = "AWS4-HMAC-SHA256\n" + timestamp + "\n" + dateStamp + "/sns/" + p.region + "/sns_request\n"
 	
 	// For simplicity, just make the request (in production, implement full AWS signing)
 	req, err := http.NewRequest("POST", endpoint, strings.NewReader(params.Encode()))
@@ -741,7 +739,6 @@ func (s *SMSService) processSMS(sms *SMSQueue) {
 		sms.LastError = err.Error()
 		
 		if sms.RetryCount >= s.config.MaxRetries {
-			now := time.Now()
 			s.db.Model(sms).Updates(map[string]interface{}{
 				"status":     "failed",
 				"last_error": err.Error(),

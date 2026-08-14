@@ -28,6 +28,8 @@
 #include <algorithm>
 #include <cmath>
 #include <sstream>
+#include <curl/curl.h>
+#include <nlohmann/json.hpp>
 
 // ============================================================================
 // Configuration
@@ -164,6 +166,8 @@ public:
 
 private:
     LiquidityConfig config_;
+    std::string backend_url_;
+    double slippage_from_backend_ = 0.0;
     std::unordered_map<TokenPair, std::vector<LiquidityPool>, TokenPairHash> pools_;
     mutable std::shared_mutex pools_mutex_;
     std::unordered_map<TokenPair, std::vector<Quote>, TokenPairHash> recent_quotes_;
@@ -316,34 +320,76 @@ private:
     }
     
     std::optional<Quote> fetch_quote_from_source(LiquiditySource source, const TokenPair& pair, Quantity amount, OrderSide side) {
+        // Fetch a real price from the canonical wallet_api AMM router
+        // (GET /api/v1/amm/quote does a real on-chain getAmountsOut). If the
+        // backend is unreachable or the pair is unknown, return std::nullopt
+        // (fail-closed) — never fabricate a price.
+        auto price = fetch_real_price(pair, source);
+        if (!price) return std::nullopt;
+
         Quote quote;
         quote.id = generate_id();
         quote.pair = pair;
         quote.source = source;
-        quote.price = get_mock_price(pair, source);
+        quote.price = *price;
         quote.available_quantity = amount * 10;
         quote.estimated_quantity = amount;
-        quote.slippage = 0.001 * (rand() % 100) / 100.0;
+        quote.slippage = slippage_from_backend_;
         quote.fee = amount * 0.003;
         quote.timestamp = std::chrono::duration_cast<Timestamp>(
             std::chrono::system_clock::now().time_since_epoch());
         quote.expires_at = Timestamp(quote.timestamp.count() + config_.quote_timeout_ms);
         return quote;
     }
-    
-    Price get_mock_price(const TokenPair& pair, LiquiditySource source) {
-        static std::unordered_map<std::string, double> prices = {
-            {"ETH/USDT", 3500.0},
-            {"BTC/USDT", 65000.0},
-            {"BNB/USDT", 600.0},
-            {"SOL/USDT", 100.0},
-        };
-        
-        auto it = prices.find(pair.to_string());
-        if (it != prices.end()) {
-            return it->second + (rand() % 100 - 50) / 100.0;
+
+    static size_t curlWriteCb(char* ptr, size_t size, size_t nmemb, void* userdata) {
+        auto* buf = static_cast<std::string*>(userdata);
+        buf->append(ptr, size * nmemb);
+        return size * nmemb;
+    }
+
+    static std::string sourceToString(LiquiditySource s) {
+        switch (s) {
+            case LiquiditySource::UNISWAP_V2: return "uniswap_v2";
+            case LiquiditySource::UNISWAP_V3: return "uniswap_v3";
+            case LiquiditySource::SUSHISWAP: return "sushiswap";
+            case LiquiditySource::CURVE: return "curve";
+            case LiquiditySource::BALANCER: return "balancer";
+            case LiquiditySource::PANCAKESWAP: return "pancakeswap";
+            default: return "uniswap_v2";
         }
-        return 1000.0;
+    }
+
+    std::optional<Price> fetch_real_price(const TokenPair& pair, LiquiditySource source) {
+        std::string base = backend_url_.empty() ? "http://localhost:8443" : backend_url_;
+        std::string url = base + "/api/v1/amm/quote?from=" + pair.base_token +
+                          "&to=" + pair.quote_token + "&amount=1&source=" + sourceToString(source);
+        CURL* curl = curl_easy_init();
+        if (!curl) return std::nullopt;
+        std::string resp;
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlWriteCb);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
+        CURLcode rc = curl_easy_perform(curl);
+        long http = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http);
+        curl_easy_cleanup(curl);
+        if (rc != CURLE_OK || http != 200 || resp.empty()) return std::nullopt;
+        try {
+            auto j = nlohmann::json::parse(resp);
+            if (j.contains("price_out") && j["price_out"].is_number()) {
+                if (j.contains("slippage") && j["slippage"].is_number())
+                    slippage_from_backend_ = j["slippage"].get<double>();
+                return j["price_out"].get<double>();
+            }
+            if (j.contains("expected_out") && j["expected_out"].is_number())
+                return j["expected_out"].get<double>();
+        } catch (...) {
+            return std::nullopt;
+        }
+        return std::nullopt;
     }
     
     ExecutionPlan create_single_plan(const Quote& quote, Quantity input_amount, OrderSide side) {

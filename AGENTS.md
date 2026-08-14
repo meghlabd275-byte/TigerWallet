@@ -2288,3 +2288,67 @@ Cosmos chain.
 - 617de71 Real device-sync backend + frontend, blockchain_registry theme toggle
 - fb117d8 Update COMPETITOR report: fix stale key_vault STUB mark, mark
   device-sync/theme/admin/AA resolved
+
+## Session 2026-08-13 (session 2): privacy.cpp / notifications / security.go real-crypto pass
+
+### privacy_features/cpp (C++ privacy layer — real crypto, fail-closed)
+- `privacy.cpp` had THREE fabricated-crypto paths, all now real/fail-closed:
+  1. **Poseidon hash was a no-op** -> replaced with **real Keccak-256**
+     (`PoseidonKeccakImpl`: full `keccak_f` 24-round permutation + standard
+     multi-rate padding `0x01 || 0x00... || 0x80`). Used by the Merkle tree
+     and nullifier. `pi_perm`/`rho`/`theta`/`rho_pi`/`chi`/`iota` all real.
+  2. **ZK range proof always `is_valid=true`** -> `generate_range_proof` now
+     sets `proof.is_valid = false` (fail-closed; delegates to the
+     `zk_infrastructure` backend Ristretto255 Schnorr prover — never a fake
+     all-zero proof). `verify_proof` checks the real signature field, not the
+     `is_valid` flag.
+  3. **`encrypt_note`/`decrypt_note` were no-ops** (only prefixed plaintext
+     with `"ENCRYPTED_"`) -> **real OpenSSL AES-256-GCM**: SHA-256 key derive
+     from viewing key, random 12-byte nonce (`RAND_bytes`), GCM auth tag,
+     output `nonce(12)||ciphertext||tag(16)` as hex. `decrypt_note` hex-decodes
+     (via `hexval` helper), verifies the GCM tag, returns plaintext or empty
+     on any error (fail-closed — never a fake prefix).
+- CoinJoin `process_round` uses the real round denomination/amounts (was
+  fabricated `100`).
+- `privacy.hpp`: added `<condition_variable>` include; `MerkleTree::Impl::mtx`
+  is `mutable` (locked from const getters).
+- Build: `g++ -std=c++17 -fsyntax-only -Iprivacy_features/cpp/include` exit 0.
+
+### notifications/go (canonical notification service, :9004 — real PostgreSQL)
+- `cmd/main.go` had a `mockDB` struct (no DB connection) + stub handlers that
+  returned `{"status":"sent"}` or fabricated `uuid.New()` notifications
+  without persisting. Now:
+  - **real PostgreSQL via `pgx/v5/pgxpool`**: `pgDB` implements
+    `SaveNotification`/`ListNotifications`/`MarkAsRead`/`MarkAllAsRead`/
+    `DeleteNotification` (real `INSERT`/`SELECT`/`UPDATE`/`DELETE` against a
+    `notifications` table, auto-migrated on boot with an index on
+    `(user_id, created_at DESC)`).
+  - All send (email/sms/push/webhook), broadcast, create, list, read, delete
+    handlers now parse the request body + persist/query the real DB. Template
+    handlers return 501 (no template table) — honest, not fabricated.
+    Preferences GET returns honest channel defaults; PUT returns 501.
+  - Pre-existing `for i := 0; i cfg.WorkerCount` syntax typo fixed.
+  - Created `go.mod` (gin/uuid/pgx v5/redis v9 + gorm v1.25.12/driver
+    postgres v1.5.11 pinned for the gorm sibling packages).
+  - Removed orphan `cmd/notification-service/main.go` (duplicate with fake
+    Firebase push + gorm requiring Go 1.25 — incompatible; service preserved
+    by canonical `cmd/main.go`). Created the missing
+    `infrastructure/docker/notifications/Dockerfile` context.
+  - Sibling packages (`notification_service.go`, `email/`, `sms/`, `push/`)
+    pre-existing errors fixed: unused imports removed, `time.RFC1122Z`->
+    `RFC1123Z`, `&now`->`now`, unused vars blanked.
+  - Build: `cd notifications/go && go build ./...` exit 0.
+
+### security_center/wallet_guardian/security.go (scam DB — fail-safe)
+- `ScamDatabase` had a fabricated hardcoded `"Example Scam Contract"` at fake
+  `0x1234567890abcdef...`. Now starts **empty** (fail-safe — no address is
+  falsely flagged as a scam). `RegisterScamAddress` populates it at runtime
+  from real verified reports.
+- Removed unused imports (`errors`/`io`/`net/http`). Builds clean.
+
+### Build verification (all green)
+| Component | Result |
+|-----------|--------|
+| privacy_features/cpp/src/privacy.cpp | `g++ -std=c++17 -fsyntax-only` exit 0 |
+| notifications/go | `go build ./...` exit 0 |
+| security_center/wallet_guardian/security.go | `go build` exit 0 (temp module) |

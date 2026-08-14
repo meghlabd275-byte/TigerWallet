@@ -10,10 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 )
@@ -69,14 +66,11 @@ type RiskFactor struct {
 	Weight     int    `json:"weight"`
 }
 
-// ScamDatabase contains known scam addresses
-var ScamDatabase = map[string]ScamInfo{
-	"0x1234567890abcdef1234567890abcdef12345678": {
-		Name:        "Example Scam Contract",
-		Category:   "Rug Pull",
-		ReportedAt: time.Now().Unix(),
-	},
-}
+// ScamDatabase holds known scam addresses populated at runtime from the
+// backend security service / external scam-address feeds. It starts EMPTY
+// (no fabricated entries) — an address is only flagged when a real report
+// has been registered via RegisterScamAddress or loaded from PostgreSQL.
+var ScamDatabase = map[string]ScamInfo{}
 
 // ScamInfo holds information about a scam
 type ScamInfo struct {
@@ -85,6 +79,12 @@ type ScamInfo struct {
 	ReportedAt int64  `json:"reported_at"`
 	Website    string `json:"website,omitempty"`
 	Socials    string `json:"socials,omitempty"`
+}
+
+// RegisterScamAddress adds a real scam report to the in-memory database.
+// Used by the backend security service after a verified report is received.
+func RegisterScamAddress(address string, info ScamInfo) {
+	ScamDatabase[strings.ToLower(address)] = info
 }
 
 // WalletGuardian protects users from malicious transactions
