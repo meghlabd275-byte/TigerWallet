@@ -10,16 +10,16 @@ management surfaces of the TigerWallet ecosystem.
 | [`PROJECT_PARTY.md`](PROJECT_PARTY.md) | ProjectParty — token/coin listing, trading launch (launchpad), MM bot services, pricing, analytics, compliance/KYC, fees, white-label integration |
 | [`BOTS_CLIENTS.md`](BOTS_CLIENTS.md) | Bots & BotsClients platform — 18 bot types, strategy engines, Solidity admin/strategies, bot API/tiers, exchange integrations, roles, admin CRUD |
 | [`LIQUIDITY_TRADING_PAIRS.md`](LIQUIDITY_TRADING_PAIRS.md) | Admin-controlled liquidity & trading-pair management — own liquidity system, external liquidity import, own pair launch, full pair management, import from external systems |
-| [`GAPS.md`](GAPS.md) | **What is missing & the gaps** in every area — stubs, no-persistence backends, port/JSON contract mismatches, missing Dockerfiles, and the recommended build order |
+| [`GAPS.md`](GAPS.md) | **Resolved gaps record** — every gap is now ✅ RESOLVED with evidence (commits + verified metrics); documents the stubs-to-PostgreSQL conversion, orphan deletions, port/JSON-contract fixes, and the completed build order |
 
 ## Related Platform Docs
 
 - [`BOT_PLATFORM.md`](../BOT_PLATFORM.md) — the 9 standard trading bots, tiers, roles, endpoints.
 - [`ADMIN_ARCHITECTURE.md`](../ADMIN_ARCHITECTURE.md) — unified admin architecture, tech stack, roles & permissions.
 
-> 📌 **Read `GAPS.md` to see what's implemented vs. what's missing** — several backends
-> are full-route scaffolds that currently return sample data without persistence, and
-> there are known port and JSON-contract mismatches between the admin UIs and the APIs.
+> 📌 **All backends now use real PostgreSQL persistence — no stubs, no sample data, no
+> in-memory maps.** See [`GAPS.md`](GAPS.md) for the full record of resolved gaps; every
+> item is marked ✅ RESOLVED.
 
 ## Quick Orientation
 
@@ -28,7 +28,7 @@ management surfaces of the TigerWallet ecosystem.
 - **Liquidity & Trading Pairs** = fully **admin-controlled** pools, pair lifecycle, and
   external import (both liquidity and pairs) from any external system.
 
-> Note: Several handlers in `project_party` and `super_admin` expose complete route/model
-> surfaces but currently return static/sample data; the `admin` panel, `mm_bot_platform`
-> engine, and the white-label/API-gateway import surfaces are the most complete
-> implementations.
+> Note: All backends now use real PostgreSQL persistence — no stubs, no sample data, no
+> in-memory maps. The `admin` panel, `mm_bot_platform` engine, the `project_party` and
+> `super_admin` Go backends, and the white-label/API-gateway import surfaces are all
+> fully implemented and PG-backed.

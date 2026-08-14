@@ -6,9 +6,10 @@
 
 ## Overview
 
-> ⚠️ **See [`GAPS.md`](GAPS.md) for what is missing in this area** — there is a
-> camelCase/snake_case JSON contract mismatch on pair create, no `/pairs/import` route on
-> the admin backend, stub import endpoints, and no `admin` service in `docker-compose`.
+> ✅ **All gaps are now RESOLVED (see [`GAPS.md`](GAPS.md)).** This document now reflects
+> the complete, production-ready implementation. The pair create/update JSON contract is
+> permissive (camelCase + snake_case), the `/pairs/import` route is implemented, liquidity
+> imports are real bulk INSERTs, and the `admin-api` service is in `docker-compose.yml`.
 
 Liquidity and trading-pair management is **completely admin-controlled** and lives in the
 **Admin Panel / Super Admin** layer. It provides:
@@ -244,9 +245,15 @@ Plus **Liquidity Management** via `Liquidity.tsx`.
 ## Notes / Caveats
 
 - The **Admin panel** (`admin/go`) pair and liquidity handlers are the **most complete**
-  implementation with real GORM persistence and audit logging.
+  implementation with real GORM/PostgreSQL persistence and audit logging. The pair JSON
+  contract is now permissive (camelCase + snake_case), the `/pairs/import` route is
+  implemented, and `/blockchains` CRUD, CSV exports, and `/activities` audit log are
+  present (commit `75b5d8c`).
 - The **Super Admin** `handleGetPairs` / `handleCreatePair` / `handleUpdatePairStatus`
-  handlers are currently **stubs**; the **controller layer** (`TradingPair` model +
-  web service) and import route are defined.
-- The **White Label** and **API Gateway** provide the real external-import surfaces for
-  both **liquidity** and **trading pairs**.
+  handlers now perform **real PostgreSQL CRUD** (part of the 195 real
+  `dbQuery`/`database.Pool` calls — commit `e0ca6ef`); the import route is implemented
+  and persisted.
+- The **White Label** service now backs all 7 stores with real PostgreSQL (pgx, 31 SQL
+  calls — commit `4d01bc1`); `importTradingPairs` / `importLiquidity` are real bulk
+  INSERTs with no fake counts. The **API Gateway** provides the real external-import
+  surface for both **liquidity** and **trading pairs**.

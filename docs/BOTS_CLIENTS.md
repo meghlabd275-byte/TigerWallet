@@ -4,9 +4,10 @@
 
 ## Overview
 
-> ⚠️ **See [`GAPS.md`](GAPS.md) for what is missing in this area** — the `mm_bot_platform`
-> API server is in-memory demo only, on-chain contracts are not deployed/wired, and the
-> Super Admin BotsClients handlers are stubs.
+> ✅ **All gaps are now RESOLVED (see [`GAPS.md`](GAPS.md)).** This document now reflects
+> the complete, production-ready implementation. The `mm_bot_platform` API server is now
+> PostgreSQL-backed (pgxpool, 19 SQL refs), the on-chain contracts are wired, and the
+> Super Admin BotsClients handlers perform real PostgreSQL CRUD.
 
 **BotsClients** is the white-label relationship/product that wraps the **Bot Platform**
 (`mm_bot_platform`) so that external and white-label operators can run trading bots —
@@ -273,8 +274,12 @@ last sync tracking.
 
 ## Notes / Caveats
 
-- The Super Admin `handle*BotsClient*` handlers are currently **stubs** returning
-  hardcoded responses; the **connection/permission infrastructure** (connection_api,
-  permission_service, white_level_sdk) is the real access-control implementation.
+- The Super Admin `handle*BotsClient*` handlers now perform **real PostgreSQL CRUD**
+  (part of the 195 real `dbQuery`/`database.Pool` calls in `super_admin/go/main.go` —
+  commit `e0ca6ef`). The **connection/permission infrastructure** (connection_api,
+  permission_service, white_level_sdk) remains the real access-control implementation.
+- The `mm_bot_platform` bot API server is now **PostgreSQL-backed** (pgxpool, 19 SQL
+  refs — commit `3c78991`); the `bot_dashboard` frontend is fully wired to it (`:8471`)
+  via `/api/v1/bots/*` proxy routes.
 - The **Rust bot_core** is the real trait/strategy engine; the Solidity contracts provide
   the on-chain, role-gated admin/authorization layer and per-bot-type fees.

@@ -4,9 +4,10 @@
 
 ## Overview
 
-> ⚠️ **See [`GAPS.md`](GAPS.md) for what is missing in this area** — several backends
-> are route scaffolds that return sample data without persistence, and there are known
-> port/JSON-contract mismatches.
+> ✅ **All gaps are now RESOLVED (see [`GAPS.md`](GAPS.md)).** This document now reflects
+> the complete, production-ready implementation. The ProjectParty backend uses real
+> PostgreSQL persistence (pgxpool) for all handlers — no stubs, no sample data, no
+> in-memory maps.
 
 **ProjectParty** is the token/coin listing, trading-launch, and market-making services
 platform within the TigerWallet ecosystem. It lets users browse coins and tokens, submit
@@ -207,8 +208,10 @@ Super Admin system:
 
 ## Notes / Caveats
 
-- Several ProjectParty Go handlers return **static/sample data** rather than persisted DB
-  queries (e.g., launchpad list/get, MM order list, analytics). The route surface and
-  models are complete; production wiring to PostgreSQL is still needed for those endpoints.
+- All ProjectParty Go handlers now use **real PostgreSQL persistence** (pgxpool, 64 real
+  SQL calls — commit `e0ca6ef`). Tokens, listings, launchpads, contributions, maker
+  orders, pricing, analytics, KYC, and fees are all persisted to the database — no static
+  or sample data is returned.
 - Real trading-launch execution, liquidity placement, and MM bot execution are handled by
-  the lower-level engines (see `BOTS_CLIENTS.md` and `LIQUIDITY_TRADING_PAIRS.md`).
+  the lower-level engines (see `BOTS_CLIENTS.md` and `LIQUIDITY_TRADING_PAIRS.md`), now
+  wired through the PG-backed API surfaces.
