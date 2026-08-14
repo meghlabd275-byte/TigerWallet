@@ -1,3 +1,23 @@
+> **Update 2026-08-13 (session 3):** `wallet_core/src/hardware_wallet/mod.rs`
+> (Rust) — the report's Appendix B/D flagged `hardware_wallet/` and `key_vault/`
+> as "EMPTY/STUB". Re-verification showed `key_vault/` is real (AES-256-GCM
+> at-rest encryption, access control, audit log, key rotation — no fakes; the
+> "STUB" mark was stale). `hardware_wallet/mod.rs` was NOT empty (17 KB) but
+> contained TWO genuine fakes now made **fail-closed**:
+> - **`simulated_sign`** produced a fake 65-byte signature (`r = s =
+>   simple_hash(data)` via DJB FNV hash, `v = 0`) — NOT real ECDSA. Now returns
+>   `SigningFailed` ("connected but no signing transport is wired; real hardware
+>   signing requires a HID/BLE or KMS transport backend") — NEVER fabricates a
+>   signature.
+> - **`get_address`** returned `0x{:040x}` of `device_id.len()` — a fake address
+>   derived from the *length* of the device-id string, NOT a real public key.
+>   Now returns `DeviceNotFound` — NEVER fabricates an address.
+> - All 4 device types (Ledger/Trezor/YubiKey/AwsKms) fixed. Tests updated to
+>   assert fail-closed behavior. `cargo test --lib` → 64/64 pass.
+> - All frontend DeFi stubs (staking/lending/swap/NFT/bridge) re-verified
+>   RESOLVED (0 matches for the fake patterns flagged in the historical
+>   ⚠️ STUB sections below).
+>
 > **Update 2026-08-13 (session 2):** Remaining genuine fakes/stubs found in
 > the C++ privacy layer, the Go notifications service, and the Go wallet
 > guardian security library — all replaced with real logic or fail-closed

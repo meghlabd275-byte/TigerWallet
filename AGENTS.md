@@ -2289,7 +2289,45 @@ Cosmos chain.
 - fb117d8 Update COMPETITOR report: fix stale key_vault STUB mark, mark
   device-sync/theme/admin/AA resolved
 
-## Session 2026-08-13 (session 2): privacy.cpp / notifications / security.go real-crypto pass
+## Session 2026-08-13 (session 3): wallet_core hardware_wallet fail-closed
+
+### wallet_core/src/hardware_wallet/mod.rs (Rust — fail-closed, no fake sigs/addrs)
+- The 4 device types (LedgerWallet, TrezorWallet, YubiKeyWallet, AwsKmsWallet)
+  had TWO genuine fakes:
+  1. **`simulated_sign`** produced a fake 65-byte signature
+     (`r = s = simple_hash(data)` via DJB FNV hash, `v = 0`) — NOT real ECDSA.
+  2. **`get_address`** returned `0x{:040x}` of `device_id.len()` — a fake address
+     derived from the *length* of the device-id string, NOT a real public key.
+- Both are now **fail-closed**:
+  - `simulated_sign` returns `SigningFailed` ("connected but no signing transport
+    is wired; real hardware signing requires a HID/BLE or KMS transport backend")
+    — NEVER fabricates a signature.
+  - `get_address` returns `DeviceNotFound` ("connected but no
+    address-derivation transport is wired") — NEVER fabricates an address.
+- This matches the canonical `hardware_wallet/rust/src/ledger/mod.rs` APDU
+  layer pattern (real protocol + fail-closed `ApduTransport` trait).
+- Tests updated: `test_sign_transaction_fail_closed` + `test_connect_then_sign_
+  fail_closed` assert the fail-closed behavior (was asserting fake 65-byte sigs).
+- `cargo test --lib`: **64/64 pass** (7 hardware_wallet tests incl. the 2 new
+  fail-closed ones); `cargo check --lib` exit 0 (warnings only — pre-existing
+  snake_case naming).
+
+### Report-verified status (re-checked this session)
+- All frontend DeFi stubs the `COMPETITOR_WALLET_COMPARISON_REPORT.md` flagged
+  are confirmed RESOLVED (0 matches): staking `MOCK_POSITIONS`/`setTimeout`,
+  lending `DEFAULT_MARKETS`/fake-success, swap hardcoded gas, NFT/bridge
+  "unavailable until" throws.
+- `wallet_core/src/key_vault/mod.rs` is real (AES-256-GCM at-rest encryption,
+  access control, audit log, key rotation) — no fakes (the report's "STUB"
+  mark was stale).
+- `multisig/rust/src/main.rs` `0x1234...` is example-usage input in a library
+  demo binary (real multisig SERVICE is `go/multisig_service` :8450); the
+  `create_wallet` call is real.
+
+### Build verification (all green)
+| Component | Result |
+|-----------|--------|
+| wallet_core (Rust) | `cargo check --lib` exit 0; `cargo test --lib` 64/64 pass |
 
 ### privacy_features/cpp (C++ privacy layer — real crypto, fail-closed)
 - `privacy.cpp` had THREE fabricated-crypto paths, all now real/fail-closed:

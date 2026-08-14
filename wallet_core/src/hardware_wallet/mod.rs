@@ -104,38 +104,23 @@ pub trait HardwareWallet: Send + Sync {
 }
 
 
-/// Simulated signing used by mock/stub hardware wallets in tests.
-/// Returns `SigningFailed` when the device is not connected; otherwise a
-/// deterministic 65-byte (r||s||v) signature derived from a simple hash of the data.
+/// Fail-closed signing used by hardware wallets with no connected transport.
+/// Returns `SigningFailed` — NEVER fabricates a signature. A real hardware
+/// wallet signs on-device via its secure element (Ledger/Trezor over HID/BLE,
+/// AWS KMS via the KMS API, etc.); without a real transport wired we cannot
+/// produce a valid signature, so we fail honestly rather than return a fake.
 pub fn simulated_sign(
     status: ConnectionStatus,
     device_id: &str,
-    data: &[u8],
+    _data: &[u8],
 ) -> Result<HardwareSignature, HardwareError> {
     if status != ConnectionStatus::Connected {
         return Err(HardwareError::SigningFailed(format!("device {} not connected", device_id)));
     }
-    let mut sig = vec![0u8; 65];
-    let h = simple_hash(data);
-    sig[..32].copy_from_slice(&h);
-    sig[32..64].copy_from_slice(&h);
-    sig[64] = 0;
-    Ok(HardwareSignature {
-        device_id: device_id.to_string(),
-        signature: sig,
-        recovery_param: Some(0),
-    })
-}
-
-/// Simple non-cryptographic hash used only to produce deterministic mock signatures.
-fn simple_hash(data: &[u8]) -> [u8; 32] {
-    let mut h = [0u8; 32];
-    let mut acc: u64 = 0xcbf29ce484222325;
-    for (i, &b) in data.iter().enumerate() {
-        acc = acc.wrapping_mul(0x100000001b3).wrapping_add(b as u64);
-        h[i % 32] ^= (acc >> 24) as u8;
-    }
-    h
+    Err(HardwareError::SigningFailed(format!(
+        "device {} connected but no signing transport is wired; real hardware signing requires a HID/BLE (Ledger/Trezor) or KMS transport backend",
+        device_id
+    )))
 }
 
 // ============================================================================
@@ -203,7 +188,10 @@ impl HardwareWallet for LedgerWallet {
         if self.status != ConnectionStatus::Connected {
             return Err(HardwareError::ConnectionFailed(format!("device {} not connected", self.device_id)));
         }
-        Ok(format!("0x{:040x}", self.device_id.len() as u64))
+        Err(HardwareError::DeviceNotFound(format!(
+            "device {} connected but no address-derivation transport is wired; a real hardware wallet derives the address from the on-device public key",
+            self.device_id
+        )))
     }
 
     fn sign_transaction(&self, tx: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
@@ -270,7 +258,10 @@ impl HardwareWallet for TrezorWallet {
         if self.status != ConnectionStatus::Connected {
             return Err(HardwareError::ConnectionFailed(format!("device {} not connected", self.device_id)));
         }
-        Ok(format!("0x{:040x}", self.device_id.len() as u64))
+        Err(HardwareError::DeviceNotFound(format!(
+            "device {} connected but no address-derivation transport is wired; a real hardware wallet derives the address from the on-device public key",
+            self.device_id
+        )))
     }
 
     fn sign_transaction(&self, tx: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
@@ -333,7 +324,10 @@ impl HardwareWallet for YubiKeyWallet {
         if self.status != ConnectionStatus::Connected {
             return Err(HardwareError::ConnectionFailed(format!("device {} not connected", self.device_id)));
         }
-        Ok(format!("0x{:040x}", self.device_id.len() as u64))
+        Err(HardwareError::DeviceNotFound(format!(
+            "device {} connected but no address-derivation transport is wired; a real hardware wallet derives the address from the on-device public key",
+            self.device_id
+        )))
     }
 
     fn sign_transaction(&self, tx: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
@@ -398,7 +392,10 @@ impl HardwareWallet for AwsKmsWallet {
         if self.status != ConnectionStatus::Connected {
             return Err(HardwareError::ConnectionFailed(format!("device {} not connected", self.key_id)));
         }
-        Ok(format!("0x{:040x}", self.key_id.len() as u64))
+        Err(HardwareError::DeviceNotFound(format!(
+            "KMS key {} connected but no KMS public-key fetch transport is wired; a real AWS KMS wallet derives the address from the KMS public key",
+            self.key_id
+        )))
     }
 
     fn sign_transaction(&self, tx: &[u8], _path: &str) -> Result<HardwareSignature, HardwareError> {
@@ -482,14 +479,16 @@ mod tests {
     }
 
     #[test]
-    fn test_sign_transaction() {
+    fn test_sign_transaction_fail_closed() {
+        // Even when "connected", signing fails closed - there is no real
+        // hardware transport wired, so a valid signature cannot be produced.
         let ledger = LedgerWallet::new("ledger-1".to_string());
         let ledger = ledger.connect().unwrap();
-        
+
         let tx = vec![0u8; 100];
-        let sig = ledger.sign_transaction(&tx, "m/44'/60'/0'/0/0").unwrap();
-        
-        assert_eq!(sig.signature.len(), 65);
+        let sig = ledger.sign_transaction(&tx, "m/44'/60'/0'/0/0");
+        assert!(sig.is_err());
+        assert!(matches!(sig, Err(HardwareError::SigningFailed(_))));
     }
 
     #[test]
@@ -528,22 +527,20 @@ mod tests {
     }
 
     #[test]
-    fn test_connect_then_sign_succeeds() {
-        // After connecting, signing succeeds and produces a deterministic signature
+    fn test_connect_then_sign_fail_closed() {
+        // After connecting, signing still fails closed - no real transport
+        // is wired, so the connected device cannot produce a valid signature.
         let ledger = LedgerWallet::new("ledger-1".to_string()).connect().unwrap();
         assert_eq!(ledger.status(), ConnectionStatus::Connected);
 
         let tx = b"some transaction payload";
-        let sig_a = ledger.sign_transaction(tx, "m/44'/60'/0'/0/0").unwrap();
-        let sig_b = ledger.sign_transaction(tx, "m/44'/60'/0'/0/0").unwrap();
+        let sig = ledger.sign_transaction(tx, "m/44'/60'/0'/0/0");
+        assert!(sig.is_err());
+        assert!(matches!(sig, Err(HardwareError::SigningFailed(_))));
 
-        assert_eq!(sig_a.signature.len(), 65);
-        assert_eq!(sig_a.device_id, "ledger-1");
-        // Signing the same payload twice yields the same signature (deterministic stub)
-        assert_eq!(sig_a.signature, sig_b.signature);
-
-        // Different payloads yield different signatures
-        let other = ledger.sign_transaction(b"different", "m/44'/60'/0'/0/0").unwrap();
-        assert_ne!(sig_a.signature, other.signature);
+        // get_address also fails closed once connected (no pubkey transport)
+        let addr = ledger.get_address("m/44'/60'/0'/0/0");
+        assert!(addr.is_err());
+        assert!(matches!(addr, Err(HardwareError::DeviceNotFound(_))));
     }
 }
