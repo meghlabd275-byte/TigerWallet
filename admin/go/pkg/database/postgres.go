@@ -76,6 +76,7 @@ func NewPostgresDB(cfg *config.Config) (*PostgresDB, error) {
 	// Migrate liquidity/pair models that live in the handlers package
 	if err := db.AutoMigrate(
 		&models.TradingPair{},
+		&models.Blockchain{},
 	); err != nil {
 		return nil, fmt.Errorf("failed to migrate trading pair: %w", err)
 	}
@@ -99,6 +100,7 @@ func autoMigrate(db *gorm.DB) error {
 		&models.APIKey{},
 		&models.AuditLog{},
 		&models.Notification{},
+		&models.Blockchain{},
 	)
 }
 

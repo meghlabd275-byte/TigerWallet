@@ -750,3 +750,29 @@ type TradingPair struct {
 	PriceChange24h    float64   `json:"price_change_24h"`
 	CreatedBy         uint      `json:"created_by"`
 }
+
+// Blockchain represents a supported blockchain/chain managed from the admin UI.
+// Persisted in PostgreSQL via GORM (replaces the orphan admin_service in-memory map).
+type Blockchain struct {
+	ID            uint      `gorm:"primarykey" json:"id"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	Name          string    `gorm:"not null;uniqueIndex" json:"name"`
+	Symbol        string    `gorm:"not null;index" json:"symbol"`
+	ChainID       int64     `gorm:"not null;uniqueIndex" json:"chainId"`
+	Type          string    `json:"type"`
+	RPCURL        string    `gorm:"column:rpc_url" json:"rpcUrl"`
+	WSRPCURL      string    `gorm:"column:ws_rpc_url" json:"wsRpcUrl"`
+	ExplorerURL   string    `gorm:"column:explorer_url" json:"explorerUrl"`
+	ExplorerAPI   string    `gorm:"column:explorer_api" json:"explorerApi"`
+	NativeToken   string    `json:"nativeToken"`
+	Decimals      int       `gorm:"default:18" json:"decimals"`
+	LogoURL       string    `json:"logoUrl"`
+	IsTestnet     bool      `gorm:"default:false" json:"isTestnet"`
+	IsActive      bool      `gorm:"default:true" json:"isActive"`
+	Status        string    `gorm:"not null;default:'active'" json:"status"` // active, inactive, maintenance
+	AvgBlockTime  int       `gorm:"column:avg_block_time" json:"avgBlockTime"` // milliseconds
+	GasToken      string    `json:"gasToken"`
+	IsDefault     bool      `gorm:"default:false" json:"isDefault"`
+	CreatedBy     uint      `json:"createdBy"`
+}

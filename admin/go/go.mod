@@ -1,6 +1,8 @@
 module github.com/tigerwallet/admin
 
-go 1.25.0
+go 1.23.0
+
+toolchain go1.23.12
 
 require (
 	github.com/gin-gonic/gin v1.9.1
@@ -11,7 +13,7 @@ require (
 	github.com/pquerna/otp v1.4.0
 	github.com/redis/go-redis/v9 v9.3.1
 	golang.org/x/crypto v0.18.0
-	golang.org/x/oauth2 v0.36.0
+	golang.org/x/oauth2 v0.27.0
 	gorm.io/driver/postgres v1.5.4
 	gorm.io/gorm v1.25.7
 	nhooyr.io/websocket v1.8.17

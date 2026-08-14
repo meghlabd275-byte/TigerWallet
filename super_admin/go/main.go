@@ -125,6 +125,11 @@ func main() {
 			admin.PUT("/feature-flags/:id", handleUpdateFeatureFlag)
 			admin.DELETE("/feature-flags/:id", handleDeleteFeatureFlag)
 
+			// /features mirrors the admin/web frontend contract:
+			// GET /features -> [{name, enabled, description}], PUT /features/:name {enabled}.
+			admin.GET("/features", handleGetFeatures)
+			admin.PUT("/features/:name", handleSetFeature)
+
 			admin.GET("/ip-whitelist", handleGetIPWhitelist)
 			admin.POST("/ip-whitelist", handleAddIPWhitelist)
 			admin.DELETE("/ip-whitelist/:id", handleRemoveIPWhitelist)
@@ -1107,6 +1112,55 @@ func handleDeleteFeatureFlag(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "feature flag deleted"})
+}
+
+// handleGetFeatures returns the feature flags in the shape the admin/web
+// frontend expects: a bare array of {name, enabled, description}.
+func handleGetFeatures(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT name, description, is_enabled FROM feature_flags ORDER BY created_at DESC`)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	features := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var name, description string
+		var isEnabled bool
+		if err := rows.Scan(&name, &description, &isEnabled); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		features = append(features, map[string]interface{}{
+			"name":        name,
+			"enabled":     isEnabled,
+			"description": description,
+		})
+	}
+	c.JSON(http.StatusOK, features)
+}
+
+// handleSetFeature toggles a feature flag by name, matching the frontend's
+// PUT /features/:name {enabled} contract.
+func handleSetFeature(c *gin.Context) {
+	var req struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	isEnabled := true
+	if req.Enabled != nil {
+		isEnabled = *req.Enabled
+	}
+	name := c.Param("name")
+	if _, err := dbExec(c, `UPDATE feature_flags SET is_enabled=$1, updated_by=$2 WHERE name=$3`, isEnabled, c.GetString("user_id"), name); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"name": name, "enabled": isEnabled})
 }
 
 // ---- IP Whitelist ----

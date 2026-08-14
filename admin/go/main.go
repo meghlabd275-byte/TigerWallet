@@ -82,6 +82,9 @@ func main() {
 	marginTradingHandler := handlers.NewMarginTradingHandler(db.DB)
 	p2pMerchantHandler := handlers.NewP2PMerchantHandler(db.DB)
 
+	blockchainHandler := handlers.NewBlockchainHandler(db)
+	exportHandler := handlers.NewExportHandler(db)
+
 	// --- Gin router ---
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
@@ -480,6 +483,29 @@ func main() {
 
 			// Audit logs
 			protected.GET("/audit-logs", superAdminHandler.GetAuditLogs)
+
+			// Activities (admin action audit log from admin_activities table)
+			protected.GET("/activities", blockchainHandler.ListActivities)
+
+			// Blockchains (registry CRUD)
+			blockchains := protected.Group("/blockchains")
+			{
+				blockchains.GET("", blockchainHandler.ListBlockchains)
+				blockchains.POST("", blockchainHandler.CreateBlockchain)
+				blockchains.GET("/:id", blockchainHandler.GetBlockchain)
+				blockchains.PUT("/:id", blockchainHandler.UpdateBlockchain)
+				blockchains.DELETE("/:id", blockchainHandler.DeleteBlockchain)
+				blockchains.POST("/:id/test-rpc", blockchainHandler.TestBlockchainRpc)
+			}
+
+			// Data exports (CSV)
+			export := protected.Group("/export")
+			{
+				export.GET("/users", exportHandler.ExportUsers)
+				export.GET("/tokens", exportHandler.ExportTokens)
+				export.GET("/withdrawals", exportHandler.ExportWithdrawals)
+				export.GET("/transactions", exportHandler.ExportTransactions)
+			}
 		}
 	}
 
