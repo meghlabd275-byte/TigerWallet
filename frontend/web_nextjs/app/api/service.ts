@@ -509,23 +509,35 @@ export const api = new APIClient(API_CONFIG.baseURL);
 // ============================================================================
 
 export class BlockchainService {
+  private async httpError(res: Response, fallback: string): Promise<Error> {
+    let detail = '';
+    try {
+      const body = await res.json();
+      detail = body?.error || body?.message || '';
+    } catch {
+      // Non-JSON body — fall back below.
+    }
+    if (!detail) detail = fallback;
+    return new Error(`${detail} (HTTP ${res.status})`);
+  }
+
   async getBalance(address: string, chainId: number): Promise<string> {
     const res = await fetch(`${API_CONFIG.baseURL}/api/v1/public/balance?address=${address}&chain_id=${chainId}`);
-    if (!res.ok) throw new Error('Failed to fetch balance');
+    if (!res.ok) throw await this.httpError(res, 'Failed to fetch balance');
     const data = await res.json();
     return data.balance ?? '0';
   }
 
   async getGasPrice(chainId: number): Promise<string> {
     const res = await fetch(`${API_CONFIG.baseURL}/api/v1/gas?chain_id=${chainId}`);
-    if (!res.ok) throw new Error('Failed to fetch gas price');
+    if (!res.ok) throw await this.httpError(res, 'Failed to fetch gas price');
     const data = await res.json();
     return data.gas_price ?? '0';
   }
 
   async getTransactionReceipt(txHash: string, chainId: number): Promise<unknown> {
     const res = await fetch(`${API_CONFIG.baseURL}/api/v1/public/transactions?address=&chain_id=${chainId}`);
-    if (!res.ok) throw new Error('Failed to fetch transactions');
+    if (!res.ok) throw await this.httpError(res, 'Failed to fetch transactions');
     const data = await res.json();
     return (data.transactions ?? []).find((t: { hash: string }) => t.hash === txHash) ?? null;
   }
@@ -564,11 +576,27 @@ export class WalletService {
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify(params),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Failed to create wallet');
-    }
+    if (!res.ok) throw await this.httpError(res, 'Failed to create wallet');
     return res.json();
+  }
+
+  /**
+   * Parse a non-2xx fetch response into a descriptive Error that surfaces the
+   * backend's JSON `error` message (if any) plus the HTTP status, instead of a
+   * generic "Failed to ..." string. This lets callers distinguish network
+   * failures, validation errors (400), auth errors (401/403), not-found (404),
+   * unavailable-upstream (502/503) and rate-limit (429) at the UI layer.
+   */
+  private async httpError(res: Response, fallback: string): Promise<Error> {
+    let detail = '';
+    try {
+      const body = await res.json();
+      detail = body?.error || body?.message || '';
+    } catch {
+      // Non-JSON body (e.g. plain text / empty) — fall back to status text.
+    }
+    if (!detail) detail = fallback;
+    return new Error(`${detail} (HTTP ${res.status})`);
   }
 
   async listWallets(): Promise<{ wallets: WalletInfo[] }> {
@@ -576,7 +604,7 @@ export class WalletService {
     const res = await fetch(`${API_CONFIG.baseURL}/api/v1/wallets`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-    if (!res.ok) throw new Error('Failed to list wallets');
+    if (!res.ok) throw await this.httpError(res, 'Failed to list wallets');
     return res.json();
   }
 
@@ -584,7 +612,7 @@ export class WalletService {
     const res = await fetch(
       `${API_CONFIG.baseURL}/api/v1/public/balance?address=${address}&chain_id=${chainId}`
     );
-    if (!res.ok) throw new Error('Failed to fetch balance');
+    if (!res.ok) throw await this.httpError(res, 'Failed to fetch balance');
     return res.json();
   }
 
@@ -592,7 +620,7 @@ export class WalletService {
     const res = await fetch(
       `${API_CONFIG.baseURL}/api/v1/public/tokens?address=${address}&chain_id=${chainId}`
     );
-    if (!res.ok) throw new Error('Failed to fetch token balances');
+    if (!res.ok) throw await this.httpError(res, 'Failed to fetch token balances');
     return res.json();
   }
 
@@ -600,7 +628,7 @@ export class WalletService {
     const res = await fetch(
       `${API_CONFIG.baseURL}/api/v1/public/transactions?address=${address}&chain_id=${chainId}`
     );
-    if (!res.ok) throw new Error('Failed to fetch transactions');
+    if (!res.ok) throw await this.httpError(res, 'Failed to fetch transactions');
     return res.json();
   }
 
@@ -608,7 +636,7 @@ export class WalletService {
     const res = await fetch(
       `${API_CONFIG.baseURL}/api/v1/public/nfts?address=${address}&chain_id=${chainId}`
     );
-    if (!res.ok) throw new Error('Failed to fetch NFTs');
+    if (!res.ok) throw await this.httpError(res, 'Failed to fetch NFTs');
     return res.json();
   }
 
@@ -627,10 +655,7 @@ export class WalletService {
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify(params),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Failed to send transaction');
-    }
+    if (!res.ok) throw await this.httpError(res, 'Failed to send transaction');
     return res.json();
   }
 
@@ -641,10 +666,7 @@ export class WalletService {
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify(params),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Failed to sign message');
-    }
+    if (!res.ok) throw await this.httpError(res, 'Failed to sign message');
     return res.json();
   }
 
@@ -656,19 +678,19 @@ export class WalletService {
     gas_price_gwei: number;
   }> {
     const res = await fetch(`${API_CONFIG.baseURL}/api/v1/gas?chain_id=${chainId}`);
-    if (!res.ok) throw new Error('Failed to fetch gas price');
+    if (!res.ok) throw await this.httpError(res, 'Failed to fetch gas price');
     return res.json();
   }
 
   async getPrice(coin?: string): Promise<{ usd: number; usd_24h_change: number }> {
     const res = await fetch(`${API_CONFIG.baseURL}/api/v1/price?coin=${coin || 'ethereum'}`);
-    if (!res.ok) throw new Error('Failed to fetch price');
+    if (!res.ok) throw await this.httpError(res, 'Failed to fetch price');
     return res.json();
   }
 
   async getSupportedChains(): Promise<{ chains: ChainInfo[] }> {
     const res = await fetch(`${API_CONFIG.baseURL}/api/v1/chains`);
-    if (!res.ok) throw new Error('Failed to fetch supported chains');
+    if (!res.ok) throw await this.httpError(res, 'Failed to fetch supported chains');
     return res.json();
   }
 
@@ -678,10 +700,7 @@ export class WalletService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Login failed');
-    }
+    if (!res.ok) throw await this.httpError(res, 'Login failed');
     const data = await res.json();
     if (data.token) localStorage.setItem('tigerwallet_token', data.token);
     return data;
@@ -693,10 +712,7 @@ export class WalletService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, username, password }),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Registration failed');
-    }
+    if (!res.ok) throw await this.httpError(res, 'Registration failed');
     const data = await res.json();
     if (data.token) localStorage.setItem('tigerwallet_token', data.token);
     return data;

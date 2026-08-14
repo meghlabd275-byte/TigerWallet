@@ -192,6 +192,29 @@ export default function SwapPage() {
       setError('Please connect wallet first');
       return;
     }
+    // ---- Client-side input validation (defense in depth; server validates
+    // slippage/amount too) ----
+    const slippageNum = Number(slippage);
+    if (!Number.isFinite(slippageNum) || slippageNum <= 0) {
+      setError('Slippage tolerance must be greater than 0%');
+      return;
+    }
+    if (slippageNum > 50) {
+      setError('Slippage tolerance above 50% is unsafe. Use a smaller value.');
+      return;
+    }
+    const inAmount = parseFloat(amountIn);
+    if (!Number.isFinite(inAmount) || inAmount <= 0) {
+      setError('Enter a valid positive amount to swap');
+      return;
+    }
+    if (inAmount > 1e9) {
+      // Sanity cap to reject fat-finger / overflow inputs before they reach the
+      // backend. The backend re-validates, but failing early gives a clearer
+      // message and avoids building a huge unsigned-integer amount.
+      setError('Amount is unreasonably large; please check your input');
+      return;
+    }
 
     setLoadingTx(true);
     setError(null);
@@ -424,7 +447,7 @@ export default function SwapPage() {
         <DialogTitle>Swap Settings</DialogTitle>
         <DialogContent>
           <Typography variant="subtitle2" className="mb-2">Slippage Tolerance</Typography>
-          <div className="flex gap-2 mb-4">
+          <div className="flex gap-2 mb-2">
             {[0.1, 0.5, 1.0].map((val) => (
               <Button
                 key={val}
@@ -436,7 +459,30 @@ export default function SwapPage() {
               </Button>
             ))}
           </div>
-          <Typography variant="caption" className={isDark ? 'text-gray-400' : 'text-gray-500'}>
+          <input
+            type="number"
+            min={0.01}
+            max={50}
+            step={0.1}
+            value={slippage}
+            onChange={(e) => setSlippage(parseFloat(e.target.value))}
+            className={`w-full px-3 py-2 rounded-lg border ${isDark ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-900 border-gray-300'}`}
+            placeholder="0.5"
+          />
+          {(() => {
+            const s = Number(slippage);
+            if (!Number.isFinite(s) || s <= 0) {
+              return <Typography variant="caption" color="error" className="mt-1 block">Slippage must be greater than 0%.</Typography>;
+            }
+            if (s > 50) {
+              return <Typography variant="caption" color="error" className="mt-1 block">Slippage above 50% is unsafe; your swap will likely revert or be front-run.</Typography>;
+            }
+            if (s > 5) {
+              return <Typography variant="caption" color="warning.main" className="mt-1 block">High slippage — your swap may execute at an unfavorable price.</Typography>;
+            }
+            return null;
+          })()}
+          <Typography variant="caption" className={`${isDark ? 'text-gray-400' : 'text-gray-500'} mt-2 block`}>
             Your transaction will revert if the price changes unfavorably by more than this percentage.
           </Typography>
         </DialogContent>
