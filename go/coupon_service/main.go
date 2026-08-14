@@ -1,17 +1,20 @@
 /**
  * TigerWallet Coupon Service — HTTP server
  *
- * Exposes the CouponService as a REST API on port :8460.
- * Real coupon validation and management — no fake data, no stubs.
+ * Exposes the CouponService as a REST API on port :8467.
+ * PostgreSQL-backed — real coupon persistence, no in-memory state.
  */
 
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tigerwallet/coupon-service/coupon"
 )
 
@@ -30,7 +33,24 @@ func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 }
 
 func main() {
+	ctx := context.Background()
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		dbURL = "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable"
+	}
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
+	}
+	defer pool.Close()
+
+	coupon.SetCouponService(pool)
 	svc := coupon.GetCouponService()
+	if err := svc.Migrate(ctx); err != nil {
+		log.Fatalf("Migration failed: %v", err)
+	}
+	log.Println("Coupon service connected to PostgreSQL on", dbURL)
+
 	mux := http.NewServeMux()
 
 	// POST /api/v1/coupon/validate — validate a coupon code

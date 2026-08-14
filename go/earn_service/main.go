@@ -1,17 +1,20 @@
 /**
  * TigerWallet Earn Service — HTTP server
  *
- * Exposes the EarnService as a REST API on port :8458.
- * Real earn product management and deposits — no fake data, no stubs.
+ * Exposes the EarnService as a REST API on port :8466.
+ * PostgreSQL-backed — real earn product persistence, no in-memory state.
  */
 
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tigerwallet/earn-service/earn"
 )
 
@@ -30,7 +33,24 @@ func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 }
 
 func main() {
+	ctx := context.Background()
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		dbURL = "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable"
+	}
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
+	}
+	defer pool.Close()
+
+	earn.SetEarnService(pool)
 	svc := earn.GetEarnService()
+	if err := svc.Migrate(ctx); err != nil {
+		log.Fatalf("Migration failed: %v", err)
+	}
+	log.Println("Earn service connected to PostgreSQL on", dbURL)
+
 	mux := http.NewServeMux()
 
 	// GET /api/v1/earn/products — list all products (optional ?type=&status=)

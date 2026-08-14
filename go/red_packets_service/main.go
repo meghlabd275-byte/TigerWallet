@@ -1,17 +1,20 @@
 /**
  * TigerWallet Red Packets Service — HTTP server
  *
- * Exposes the RedPacketService as a REST API on port :8461.
- * Real red packet creation and claiming — no fake data, no stubs.
+ * Exposes the RedPacketService as a REST API on port :8468.
+ * PostgreSQL-backed — real red packet persistence, no in-memory state.
  */
 
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	redpackets "github.com/tigerwallet/red-packets-service/redpacket"
 )
 
@@ -30,7 +33,24 @@ func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 }
 
 func main() {
+	ctx := context.Background()
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		dbURL = "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable"
+	}
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
+	}
+	defer pool.Close()
+
+	redpackets.SetRedPacketService(pool)
 	svc := redpackets.GetRedPacketService()
+	if err := svc.Migrate(ctx); err != nil {
+		log.Fatalf("Migration failed: %v", err)
+	}
+	log.Println("Red packets service connected to PostgreSQL on", dbURL)
+
 	mux := http.NewServeMux()
 
 	// POST /api/v1/red-packets/create — create a red packet

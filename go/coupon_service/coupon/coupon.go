@@ -3,6 +3,7 @@
  *
  * Promo codes and discounts management.
  * Built with Go for high-load distributed operations.
+ * PostgreSQL-backed — all coupons and usages are persisted.
  */
 
 package coupon
@@ -12,10 +13,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Coupon represents a coupon
@@ -45,37 +46,74 @@ type CouponUsage struct {
 	UsedAt   int64  `json:"used_at"`
 }
 
-// CouponService manages coupon operations
+// CouponService manages coupon operations backed by PostgreSQL.
 type CouponService struct {
-	mu      sync.RWMutex
-	coupons map[string]*Coupon
-	usages  map[string]*CouponUsage
+	pg *pgxpool.Pool
 }
 
-var (
-	couponService     *CouponService
-	couponServiceOnce sync.Once
-)
+var couponService *CouponService
+
+func NewCouponService(pg *pgxpool.Pool) *CouponService {
+	return &CouponService{pg: pg}
+}
 
 func GetCouponService() *CouponService {
-	couponServiceOnce.Do(func() {
-		couponService = &CouponService{
-			coupons: make(map[string]*Coupon),
-			usages:  make(map[string]*CouponUsage),
-		}
-	})
-	return couponService
+	if couponService != nil {
+		return couponService
+	}
+	return &CouponService{}
+}
+
+func SetCouponService(pg *pgxpool.Pool) {
+	couponService = NewCouponService(pg)
+}
+
+const couponSchema = `
+CREATE TABLE IF NOT EXISTS coupons (
+    id                TEXT PRIMARY KEY,
+    code              TEXT NOT NULL UNIQUE,
+    type              TEXT NOT NULL DEFAULT 'fixed',
+    value             TEXT NOT NULL DEFAULT '0',
+    min_amount        TEXT NOT NULL DEFAULT '0',
+    max_uses          INTEGER NOT NULL DEFAULT 0,
+    used_count        INTEGER NOT NULL DEFAULT 0,
+    valid_from        BIGINT NOT NULL DEFAULT 0,
+    valid_until       BIGINT NOT NULL DEFAULT 0,
+    applicable_chains JSONB NOT NULL DEFAULT '[]'::jsonb,
+    applicable_pairs  JSONB NOT NULL DEFAULT '[]'::jsonb,
+    status            TEXT NOT NULL DEFAULT 'active',
+    created_at        BIGINT NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS coupon_usages (
+    id        TEXT PRIMARY KEY,
+    coupon_id TEXT NOT NULL REFERENCES coupons(id) ON DELETE CASCADE,
+    user_id   TEXT NOT NULL DEFAULT '',
+    order_id  TEXT NOT NULL DEFAULT '',
+    discount  TEXT NOT NULL DEFAULT '0',
+    used_at   BIGINT NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_coupon_usages_user ON coupon_usages(user_id);
+`
+
+func (s *CouponService) Migrate(ctx context.Context) error {
+	if s.pg == nil {
+		return fmt.Errorf("database not configured")
+	}
+	_, err := s.pg.Exec(ctx, couponSchema)
+	return err
 }
 
 func (s *CouponService) CreateCoupon(ctx context.Context, coupon *Coupon) (*Coupon, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Check if code exists
-	for _, c := range s.coupons {
-		if c.Code == coupon.Code {
-			return nil, fmt.Errorf("coupon code already exists")
-		}
+	if s.pg == nil {
+		return nil, fmt.Errorf("database not configured")
+	}
+	var exists bool
+	err := s.pg.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM coupons WHERE code=$1)`, coupon.Code).Scan(&exists)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, fmt.Errorf("coupon code already exists")
 	}
 
 	coupon.ID = "coupon_" + uuid.New().String()
@@ -83,34 +121,57 @@ func (s *CouponService) CreateCoupon(ctx context.Context, coupon *Coupon) (*Coup
 	coupon.Status = "active"
 	coupon.CreatedAt = time.Now().Unix()
 
-	s.coupons[coupon.ID] = coupon
+	chainsJSON, _ := json.Marshal(coupon.ApplicableChains)
+	pairsJSON, _ := json.Marshal(coupon.ApplicablePairs)
+	_, err = s.pg.Exec(ctx, `INSERT INTO coupons
+		(id,code,type,value,min_amount,max_uses,used_count,valid_from,valid_until,applicable_chains,applicable_pairs,status,created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		coupon.ID, coupon.Code, coupon.Type, coupon.Value, coupon.MinAmount, coupon.MaxUses, coupon.UsedCount,
+		coupon.ValidFrom, coupon.ValidUntil, chainsJSON, pairsJSON, coupon.Status, coupon.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
 	return coupon, nil
 }
 
-func (s *CouponService) GetCoupon(ctx context.Context, code string) (*Coupon, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	for _, coupon := range s.coupons {
-		if coupon.Code == code {
-			// Check if valid
-			now := time.Now().Unix()
-			if coupon.ValidFrom > 0 && now < coupon.ValidFrom {
-				return nil, fmt.Errorf("coupon not yet valid")
-			}
-			if coupon.ValidUntil > 0 && now > coupon.ValidUntil {
-				return nil, fmt.Errorf("coupon expired")
-			}
-			if coupon.Status != "active" {
-				return nil, fmt.Errorf("coupon not active")
-			}
-			if coupon.MaxUses > 0 && coupon.UsedCount >= coupon.MaxUses {
-				return nil, fmt.Errorf("coupon usage limit reached")
-			}
-			return coupon, nil
-		}
+func (s *CouponService) scanCoupon(row interface {
+	Scan(dest ...interface{}) error
+}) (*Coupon, error) {
+	var c Coupon
+	var chainsJSON, pairsJSON []byte
+	if err := row.Scan(&c.ID, &c.Code, &c.Type, &c.Value, &c.MinAmount, &c.MaxUses, &c.UsedCount,
+		&c.ValidFrom, &c.ValidUntil, &chainsJSON, &pairsJSON, &c.Status, &c.CreatedAt); err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("coupon not found")
+	_ = json.Unmarshal(chainsJSON, &c.ApplicableChains)
+	_ = json.Unmarshal(pairsJSON, &c.ApplicablePairs)
+	return &c, nil
+}
+
+func (s *CouponService) GetCoupon(ctx context.Context, code string) (*Coupon, error) {
+	if s.pg == nil {
+		return nil, fmt.Errorf("database not configured")
+	}
+	row := s.pg.QueryRow(ctx, `SELECT id,code,type,value,min_amount,max_uses,used_count,valid_from,valid_until,
+		applicable_chains,applicable_pairs,status,created_at FROM coupons WHERE code=$1`, code)
+	coupon, err := s.scanCoupon(row)
+	if err != nil {
+		return nil, fmt.Errorf("coupon not found")
+	}
+	now := time.Now().Unix()
+	if coupon.ValidFrom > 0 && now < coupon.ValidFrom {
+		return nil, fmt.Errorf("coupon not yet valid")
+	}
+	if coupon.ValidUntil > 0 && now > coupon.ValidUntil {
+		return nil, fmt.Errorf("coupon expired")
+	}
+	if coupon.Status != "active" {
+		return nil, fmt.Errorf("coupon not active")
+	}
+	if coupon.MaxUses > 0 && coupon.UsedCount >= coupon.MaxUses {
+		return nil, fmt.Errorf("coupon usage limit reached")
+	}
+	return coupon, nil
 }
 
 func (s *CouponService) ValidateCoupon(ctx context.Context, code, chainID, pair string) (*Coupon, error) {
@@ -118,8 +179,6 @@ func (s *CouponService) ValidateCoupon(ctx context.Context, code, chainID, pair 
 	if err != nil {
 		return nil, err
 	}
-
-	// Check chain applicability
 	if len(coupon.ApplicableChains) > 0 {
 		found := false
 		for _, chain := range coupon.ApplicableChains {
@@ -132,8 +191,6 @@ func (s *CouponService) ValidateCoupon(ctx context.Context, code, chainID, pair 
 			return nil, fmt.Errorf("coupon not applicable for this chain")
 		}
 	}
-
-	// Check pair applicability
 	if len(coupon.ApplicablePairs) > 0 {
 		found := false
 		for _, p := range coupon.ApplicablePairs {
@@ -146,71 +203,81 @@ func (s *CouponService) ValidateCoupon(ctx context.Context, code, chainID, pair 
 			return nil, fmt.Errorf("coupon not applicable for this pair")
 		}
 	}
-
 	return coupon, nil
 }
 
 func (s *CouponService) ApplyCoupon(ctx context.Context, code, userID, orderID, orderAmount string) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	coupon, err := s.GetCoupon(ctx, code)
+	if s.pg == nil {
+		return "", fmt.Errorf("database not configured")
+	}
+	tx, err := s.pg.Begin(ctx)
 	if err != nil {
 		return "", err
 	}
+	defer tx.Rollback(ctx)
 
-	// Check min amount
-	if coupon.MinAmount != "" {
-		minAmt, _ := new(big.Int).SetString(coupon.MinAmount, 10)
+	var couponID, ctype, value, minAmount string
+	var maxUses, usedCount int
+	row := tx.QueryRow(ctx, `SELECT id,type,value,min_amount,max_uses,used_count FROM coupons WHERE code=$1 AND status='active' FOR UPDATE`, code)
+	if err := row.Scan(&couponID, &ctype, &value, &minAmount, &maxUses, &usedCount); err != nil {
+		return "", fmt.Errorf("coupon not found or not active")
+	}
+	if maxUses > 0 && usedCount >= maxUses {
+		return "", fmt.Errorf("coupon usage limit reached")
+	}
+	if minAmount != "" {
+		minAmt, _ := new(big.Int).SetString(minAmount, 10)
 		orderAmt, _ := new(big.Int).SetString(orderAmount, 10)
-		if orderAmt.Cmp(minAmt) < 0 {
+		if minAmt != nil && orderAmt != nil && orderAmt.Cmp(minAmt) < 0 {
 			return "", fmt.Errorf("order amount below minimum")
 		}
 	}
 
-	// Calculate discount
 	var discount string
-	switch coupon.Type {
+	switch ctype {
 	case "percentage":
 		orderAmt, _ := new(big.Int).SetString(orderAmount, 10)
-		value, _ := new(big.Int).SetString(coupon.Value, 10)
-		discount = new(big.Int).Div(new(big.Int).Mul(orderAmt, value), big.NewInt(10000)).String()
-	case "fixed":
-		discount = coupon.Value
-	case "fee_discount":
-		discount = coupon.Value
+		val, _ := new(big.Int).SetString(value, 10)
+		discount = new(big.Int).Div(new(big.Int).Mul(orderAmt, val), big.NewInt(10000)).String()
+	case "fixed", "fee_discount":
+		discount = value
 	default:
 		discount = "0"
 	}
 
-	// Record usage
-	usage := &CouponUsage{
-		ID:       "usage_" + uuid.New().String(),
-		CouponID: coupon.ID,
-		UserID:   userID,
-		OrderID:  orderID,
-		Discount: discount,
-		UsedAt:   time.Now().Unix(),
+	usageID := "usage_" + uuid.New().String()
+	if _, err := tx.Exec(ctx, `INSERT INTO coupon_usages (id,coupon_id,user_id,order_id,discount,used_at)
+		VALUES ($1,$2,$3,$4,$5,$6)`, usageID, couponID, userID, orderID, discount, time.Now().Unix()); err != nil {
+		return "", err
 	}
-	s.usages[usage.ID] = usage
-
-	// Update coupon
-	coupon.UsedCount++
-
+	if _, err := tx.Exec(ctx, `UPDATE coupons SET used_count=used_count+1 WHERE id=$1`, couponID); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
 	return discount, nil
 }
 
 func (s *CouponService) GetUserUsages(ctx context.Context, userID string) ([]*CouponUsage, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	result := make([]*CouponUsage, 0)
-	for _, usage := range s.usages {
-		if usage.UserID == userID {
-			result = append(result, usage)
-		}
+	if s.pg == nil {
+		return []*CouponUsage{}, fmt.Errorf("database not configured")
 	}
-	return result, nil
+	rows, err := s.pg.Query(ctx, `SELECT id,coupon_id,user_id,order_id,discount,used_at
+		FROM coupon_usages WHERE user_id=$1 ORDER BY used_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]*CouponUsage, 0)
+	for rows.Next() {
+		var u CouponUsage
+		if err := rows.Scan(&u.ID, &u.CouponID, &u.UserID, &u.OrderID, &u.Discount, &u.UsedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, &u)
+	}
+	return result, rows.Err()
 }
 
 func (c *Coupon) ToJSON() (string, error) {

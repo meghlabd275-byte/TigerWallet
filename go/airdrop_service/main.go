@@ -1,19 +1,22 @@
 /**
  * TigerWallet Airdrop Service — HTTP server
  *
- * Exposes the AirdropService as a REST API on port :8451.
+ * Exposes the AirdropService as a REST API on port :8465.
  * Uses Go stdlib net/http for high-load distributed operation.
- * Real campaign/claim management — no fake data, no stubs.
+ * PostgreSQL-backed — real campaign/claim persistence, no in-memory state.
  */
 
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tigerwallet/airdrop-service/airdrop"
 )
 
@@ -32,7 +35,24 @@ func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 }
 
 func main() {
+	ctx := context.Background()
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		dbURL = "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable"
+	}
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
+	}
+	defer pool.Close()
+
+	airdrop.SetAirdropService(pool)
 	svc := airdrop.GetAirdropService()
+	if err := svc.Migrate(ctx); err != nil {
+		log.Fatalf("Migration failed: %v", err)
+	}
+	log.Println("Airdrop service connected to PostgreSQL on", dbURL)
+
 	mux := http.NewServeMux()
 
 	// GET /api/v1/airdrop/campaigns — list all campaigns
