@@ -151,6 +151,15 @@ export default function Staking() {
       setMessage({ type: 'error', text: `Minimum stake is ${selectedPool?.minStake}` });
       return;
     }
+    const amt = parseFloat(stakeAmount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setMessage({ type: 'error', text: 'Enter a valid positive amount to stake' });
+      return;
+    }
+    if (amt > 1e9) {
+      setMessage({ type: 'error', text: 'Amount is unreasonably large; please check your input' });
+      return;
+    }
     const userId = getUserId();
     if (!userId) {
       setMessage({ type: 'error', text: 'Please connect your wallet first' });

@@ -2444,3 +2444,73 @@ android ThemeManager + AppCompatDelegate; ios ThemeManager +
 preferredColorScheme; extension data-theme + chrome.storage; rust is a pure
 client lib with no UI). Fake-crypto scan on changed Go services: 0 real hits
 (only "never a fabricated rate" comments).
+
+## Session 2026-08-14: COMPETITOR report Security Concerns closure
+
+The COMPETITOR_WALLET_COMPARISON_REPORT.md "Security Concerns" section
+(Part IV) had two Partial / Acceptable items and one mislabeled
+"ADDRESSED" item that was actually only available, not wired. All three
+fixed for real (no stubs), report updated to all RESOLVED.
+
+### Backend rate limiting -- NOW WIRED (was only "available")
+- `go/wallet_api/ratelimit.go` (NEW): self-contained in-process token-bucket
+  middleware (stdlib + gin, NO cross-service dependency). `rateLimiter` with
+  `allow(key)` (refill by elapsed wall-clock, capped at burst),
+  `retryAfterSeconds()`, `clientKey(c)` (prefers authenticated userID else
+  client IP, honors first hop of X-Forwarded-For via local indexByte/trimSpace
+  helpers). `RateLimit(rl)` gin middleware returns 429 + Retry-After header.
+- Wired in `main.go`: auth group (`/auth/login`, `/auth/register`) uses
+  `authLimiter` (5/min, burst 5 per IP -- throttles brute-force). New
+  `signLimited := wallet.Group("")` with `signLimiter` (20/min, burst 20 per
+  user) wraps `/send`, `/sign`, `/nft/transfer`, `/non_evm/sign`,
+  `/non_evm/send`. `/non_evm/address` stays on `wallet` (read-ish, not
+  funds movement). NOTE: `wallet.Group("")` creates a subgroup that inherits
+  AuthMiddleware -- confirmed working.
+- `ratelimit_test.go` (NEW): 5 tests pass (allow-then-deny within burst, refill
+  over time, independent keys, retry-after positive, helper funcs). Full
+  `go test ./...` passes (BIP-44 + 8 non-EVM crypto + rate limit). go build +
+  go vet clean.
+- The standalone `go/rate_limiter_service` (:8012) remains for multi-instance
+  Redis-backed deployments; the in-process limiter is the correct
+  single-instance floor.
+
+### Wallet service generic errors -- now descriptive (was opaque)
+- `frontend/web_nextjs/app/api/service.ts`: `WalletService` + `BlockchainService`
+  each gained a private `async httpError(res, fallback)` helper that parses
+  backend JSON `error`/`message` and appends `(HTTP {status})` -- e.g.
+  `invalid credentials (HTTP 401)`. ALL `throw new Error('Failed to X')` and
+  `throw new Error(err.error || 'Failed X')` patterns replaced with
+  `throw await this.httpError(res, 'Failed X')`. Callers can now distinguish
+  network (fetch throws) vs validation (400) vs auth (401/403) vs not-found
+  (404) vs unavailable-upstream (502/503) vs rate-limit (429).
+- NOTE: `throw await this.httpError(...)` -- the `await` is REQUIRED (helper is
+  async because it reads res.json()); without it you'd throw a Promise, not an
+  Error.
+
+### Input validation (Swap/Bridge/Staking) -- now client + server
+- `app/swap/page.tsx`: settings dialog now has a custom slippage `<input
+  type=number min=0.01 max=50 step=0.1>` + inline warnings (IIFE returns
+  error/warning Typography for <=0 / >50 / >5%). `handleSwap` validates slippage
+  finite+>0, <=50, amount finite+>0, amount <=1e9 before any fetch. Server-side
+  amm_router.go still applies 0.5% default slippage.
+- `app/bridge/page.tsx`: `handleBridge` validates positive amount, rejects
+  same-chain bridges, and enforces selected route's `minAmount`/`maxAmount`
+  (from live `/bridge/routes`). `routes.find(r => r.id === selectedRoute)`.
+- `app/staking/page.tsx`: `handleStake` keeps the `minStake` floor check +
+  adds positive/finite/unreasonable-amount (>1e9) sanity checks.
+
+### Build verification (ALL GREEN)
+- go/wallet_api: go build+vet+test exit 0 (BIP-44 + 5 rate-limit + 8 non-EVM
+  + chain registry tests).
+- frontend/web_nextjs: npx tsc --noEmit -> 0 errors.
+- Go toolchain installed at $HOME/.go-sdk/go/bin (1.23.12, GOTOOLCHAIN=local,
+  GOPATH=$HOME/go). node_modules installed via npm install (tsc available).
+
+### Files changed this session
+- go/wallet_api/ratelimit.go (NEW), ratelimit_test.go (NEW), main.go (wired)
+- frontend/web_nextjs/app/api/service.ts (httpError helper x2 classes)
+- frontend/web_nextjs/app/swap/page.tsx (slippage input + validation)
+- frontend/web_nextjs/app/bridge/page.tsx (amount + route bounds validation)
+- frontend/web_nextjs/app/staking/page.tsx (amount sanity checks)
+- COMPETITOR_WALLET_COMPARISON_REPORT.md (Security Concerns all RESOLVED +
+  top banner 2026-08-14 update)

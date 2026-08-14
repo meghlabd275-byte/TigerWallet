@@ -1,3 +1,18 @@
+> **Update 2026-08-14:** Closed the last ⚠️ Partial / ⚠️ Acceptable items in
+> the "⚠️ Security Concerns" section (Part IV) — all 5 are now ✅ RESOLVED:
+> - **Input validation (Swap/Bridge/Staking)** — added client-side bounds
+>   (slippage 0–50% with warnings, positive/finite/unreasonable-amount checks,
+>   bridge route min/max, staking minStake) complementing the server-side AMM
+>   slippage.
+> - **Wallet service generic errors** — `WalletService`/`BlockchainService` now
+>   surface the backend JSON `error` + HTTP status via a shared `httpError()`
+>   helper (e.g. `invalid credentials (HTTP 401)`), replacing opaque
+>   `'Failed to fetch X'`.
+> - **Backend rate limiting** — `go/wallet_api/ratelimit.go` adds a real
+>   in-process token-bucket middleware, now WIRED (not just "available"): auth
+>   5/min + signing/funds-movement 20/min per user/IP, `429` + `Retry-After`.
+>   5 tests pass. `go build`+`go vet`+`go test` + `tsc --noEmit` all green.
+>
 > **Update 2026-08-13 (session 3):** `wallet_core/src/hardware_wallet/mod.rs`
 > (Rust) — the report's Appendix B/D flagged `hardware_wallet/` and `key_vault/`
 > as "EMPTY/STUB". Re-verification showed `key_vault/` is real (AES-256-GCM
@@ -595,27 +610,55 @@ const mnemonic = generateMnemonic(wordlist, 256);  // 256-bit entropy
 
 ### ⚠️ Security Concerns
 
-> **Re-verified 2026-08-13.** The historical concerns below are addressed;
-> each is marked with its resolution.
+> **Re-verified 2026-08-14.** ALL historical concerns below are now addressed
+> (none remain ⚠️ Partial / ⚠️ Acceptable). Each is marked with its resolution.
 
 1. **Lending/Swap UI fake success** — ✅ RESOLVED. The lending catch block now
    calls `setError(...)` (line 222); the "Simulate success for demo"
    `setSuccess`-on-API-failure is removed. Swap surfaces the backend quote
    result or error.
-2. **Input validation on Swap/Bridge/Staking** — ⚠️ Partial. Slippage/amount
-   bounds are validated server-side in the AMM router (0.5% default slippage);
-   client-side min/max warnings are an open polish item, not a funds-loss path.
-3. **Wallet service generic errors** — ⚠️ Acceptable. `service.ts` rethrows
-   `err.error || 'Failed …'`; backend distinguishes network vs validation
-   errors via HTTP status codes (400/401/404/503).
-4. **Backend rate limiting** — ✅ ADDRESSED. `go/rate_limiter_service` exists;
-   auth endpoints enforce failed-attempt handling via JWT + role middleware
-   (`RequireAdmin()`). Per-route throttling can be wired via the rate-limiter
-   service middleware.
+2. **Input validation on Swap/Bridge/Staking** — ✅ RESOLVED. Slippage/amount
+   bounds are validated **both** client- and server-side:
+   - **Swap** (`app/swap/page.tsx`): a custom slippage input clamps to `0–50%`
+     with inline warnings (>5% warns "unfavorable price"; >50% / ≤0 are
+     rejected), and `handleSwap` rejects non-positive, non-finite, or
+     unreasonably large (`>1e9`) amounts before any fetch. Server-side the AMM
+     router (`amm_router.go`) applies a 0.5% default slippage to `getAmountsOut`.
+   - **Bridge** (`app/bridge/page.tsx`): `handleBridge` validates a positive
+     amount, rejects same-chain bridges, and enforces the selected route's
+     `minAmount`/`maxAmount` bounds (read from the live `/bridge/routes` fetch).
+   - **Staking** (`app/staking/page.tsx`): `handleStake` enforces the pool's
+     `minStake` floor plus positive/finite/unreasonable-amount sanity checks.
+3. **Wallet service generic errors** — ✅ RESOLVED. `service.ts`'s
+   `WalletService` and `BlockchainService` now share a private `httpError()`
+   helper that parses the backend JSON `error`/`message` and appends the HTTP
+   status — e.g. `invalid credentials (HTTP 401)` — replacing the opaque
+   `'Failed to fetch X'` strings. Callers can now distinguish network (fetch
+   throws), validation (400), auth (401/403), not-found (404),
+   unavailable-upstream (502/503) and rate-limit (429) failures.
+4. **Backend rate limiting** — ✅ RESOLVED (wired, not just available).
+   `go/wallet_api/ratelimit.go` adds a self-contained in-process token-bucket
+   middleware (stdlib + gin, no cross-service dependency) keyed by
+   authenticated user ID (else client IP, honoring `X-Forwarded-For`):
+   - **Auth** (`/api/v1/auth/{login,register}`): 5 req/min, burst 5 per IP —
+     throttles brute-force credential guessing.
+   - **Signing/funds-movement** (`/api/v1/{send,sign,nft/transfer,
+     non_evm/sign,non_evm/send}`): 20 req/min, burst 20 per user — caps
+     automated drain attempts while staying generous for normal use.
+   On limit exceeded the middleware responds `429` with a `Retry-After`
+   header. 5 unit tests pass (`ratelimit_test.go`); the full `go test ./...`
+   suite (incl. the BIP-44 vector + 8 non-EVM crypto tests) passes. The
+   standalone `go/rate_limiter_service` remains available for multi-instance
+   Redis-backed deployments.
 5. **Missing security features vs competitors** — ✅ RESOLVED. Token approval
    scanner (`/approvals`), MEV protection (`core/rust/mev`), social recovery
    (`go/social_recovery_service`), and biometric app lock (mobile
    `BiometricService` real PBKDF2 + lockout) all exist.
+
+> **Build verification (2026-08-14):** `go/wallet_api` build+vet+test exit 0
+> (BIP-44 vector + 5 rate-limit tests + 8 non-EVM crypto tests + chain registry
+> tests); `frontend/web_nextjs` `npx tsc --noEmit` → 0 errors.
+
 
 ## Part V: Recommendations (Priority Order)
 

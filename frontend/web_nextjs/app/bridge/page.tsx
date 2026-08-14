@@ -311,7 +311,37 @@ export default function BridgePage() {
       setSnackbar({ open: true, message: 'Please connect your wallet first', severity: 'error' });
       return;
     }
-    
+    // ---- Client-side input validation (defense in depth) ----
+    const amt = parseFloat(amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setSnackbar({ open: true, message: 'Enter a valid positive amount to bridge', severity: 'error' });
+      return;
+    }
+    if (fromChain === toChain) {
+      setSnackbar({ open: true, message: 'Source and destination chains must differ', severity: 'error' });
+      return;
+    }
+    // Validate against the selected route's min/max bounds when available.
+    const activeRoute = routes.find((r) => r.id === selectedRoute);
+    if (activeRoute) {
+      if (amt < activeRoute.minAmount) {
+        setSnackbar({
+          open: true,
+          message: `Amount is below ${activeRoute.name}'s minimum (${activeRoute.minAmount} ${token})`,
+          severity: 'error',
+        });
+        return;
+      }
+      if (amt > activeRoute.maxAmount) {
+        setSnackbar({
+          open: true,
+          message: `Amount exceeds ${activeRoute.name}'s maximum (${activeRoute.maxAmount} ${token})`,
+          severity: 'error',
+        });
+        return;
+      }
+    }
+
     setLoading(true);
     setSnackbar({ open: true, message: 'Processing bridge transfer...', severity: 'info' });
 

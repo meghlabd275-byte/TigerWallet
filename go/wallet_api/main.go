@@ -90,7 +90,10 @@ func main() {
 	r.GET("/api/v1/tokens/registry", handleTokenRegistry)
 
 	// ---- Auth routes ----
+	// Rate-limited per IP (throttles brute-force credential guessing). 5/min,
+	// burst 5 — generous for normal use, caps automated attempts.
 	auth := r.Group("/api/v1/auth")
+	auth.Use(RateLimit(authLimiter))
 	{
 		auth.POST("/register", handleRegister)
 		auth.POST("/login", handleLogin)
@@ -106,14 +109,19 @@ func main() {
 		wallet.GET("/tokens", handleTokenBalances)
 		wallet.GET("/transactions", handleTransactions)
 		wallet.GET("/nfts", handleNFTs)
-		wallet.POST("/send", handleSendTransaction)
-		wallet.POST("/sign", handleSignMessage)
-		wallet.POST("/nft/transfer", handleNFTTransfer)
+		// ---- Signing/funds-movement routes are rate-limited per user ----
+		// (~20/min, burst 20): generous for normal use, caps automated drain.
+		signLimited := wallet.Group("")
+		signLimited.Use(RateLimit(signLimiter))
+		signLimited.POST("/send", handleSendTransaction)
+		signLimited.POST("/sign", handleSignMessage)
+		signLimited.POST("/nft/transfer", handleNFTTransfer)
 
 		// ---- Non-EVM signing (Solana Ed25519, Bitcoin secp256k1, Cosmos secp256k1) ----
 		// Real key derivation + signing; mainnet only. See non_evm_signing.go.
-		wallet.POST("/non_evm/sign", handleNonEvmSign)
-		wallet.POST("/non_evm/send", handleNonEvmSend)
+		// Also funds-movement, so share the signing rate limit.
+		signLimited.POST("/non_evm/sign", handleNonEvmSign)
+		signLimited.POST("/non_evm/send", handleNonEvmSend)
 		wallet.POST("/non_evm/address", handleNonEvmAddress)
 
 		// ---- Web3 Secret Storage V3 keystore import/export (geth/MetaMask interop) ----
