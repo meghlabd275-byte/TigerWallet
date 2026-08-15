@@ -5,27 +5,14 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Container, Grid, Card, Button, TextField, Select, MenuItem,
+  Container, Grid, Card, Button,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab,
-  Chip, Typography, Box, Avatar, IconButton, Switch, FormControlLabel,
-  CircularProgress, Alert, Snackbar, Drawer, List, ListItem, ListItemIcon, 
-  ListItemText, ListItemButton, AppBar, Toolbar
+  Chip, Typography, Box, Avatar, IconButton,
+  Alert, Snackbar
 } from '@mui/material';
 import { 
-  Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
-  Visibility as ViewIcon, Security as SecurityIcon, Dashboard, People,
-  Inventory, CurrencyBitcoin, TrendingUp, Assessment, Settings, Notifications,
-  DarkMode, LightMode, Menu as MenuIcon, AccountTree, BugReport
+  Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon
 } from '@mui/icons-material';
-import { useTheme, ThemeProvider } from '../context/ThemeContext';
-import AdminManagement from './AdminManagement';
-import ProductManagement from './ProductManagement';
-import TradingPairsPage from './TradingPairsPage';
-import BlockchainManagement from './BlockchainManagement';
-import AuditLogsPage from './AuditLogsPage';
-import NotificationsPage from './NotificationsPage';
-import SettingsPage from './SettingsPage';
 
 interface WhiteLabelClient {
   id: string;
@@ -42,12 +29,11 @@ interface WhiteLabelClient {
 }
 
 export const WhiteLabelDashboard: React.FC = () => {
-  const [tabValue, setTabValue] = useState(0);
   const [clients, setClients] = useState<WhiteLabelClient[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedClient, setSelectedClient] = useState<WhiteLabelClient | null>(null);
-  const [openDialog, setOpenDialog] = useState(false);
-  const [dialogMode, setDialogMode] = useState<'create' | 'edit' | 'view'>('create');
+  const [, setLoading] = useState(true);
+  const [, setSelectedClient] = useState<WhiteLabelClient | null>(null);
+  const [, setOpenDialog] = useState(false);
+  const [, setDialogMode] = useState<'create' | 'edit' | 'view'>('create');
   const [snackbar, setSnackbar] = useState<{open: boolean; message: string; severity: 'success' | 'error'}>({
     open: false, message: '', severity: 'success'
   });

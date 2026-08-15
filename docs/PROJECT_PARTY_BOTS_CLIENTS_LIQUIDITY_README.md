@@ -18,8 +18,9 @@ management surfaces of the TigerWallet ecosystem.
 - [`ADMIN_ARCHITECTURE.md`](../ADMIN_ARCHITECTURE.md) — unified admin architecture, tech stack, roles & permissions.
 
 > 📌 **All backends now use real PostgreSQL persistence — no stubs, no sample data, no
-> in-memory maps.** See [`GAPS.md`](GAPS.md) for the full record of resolved gaps; every
-> item is marked ✅ RESOLVED.
+> in-memory maps.** All frontends are buildable (tsc 0 errors) with working light/dark
+> theme on every page. See [`GAPS.md`](GAPS.md) for the full record of resolved gaps;
+> every item is marked ✅ RESOLVED with build verification evidence.
 
 ## Quick Orientation
 
@@ -31,4 +32,6 @@ management surfaces of the TigerWallet ecosystem.
 > Note: All backends now use real PostgreSQL persistence — no stubs, no sample data, no
 > in-memory maps. The `admin` panel, `mm_bot_platform` engine, the `project_party` and
 > `super_admin` Go backends, and the white-label/API-gateway import surfaces are all
-> fully implemented and PG-backed.
+> fully implemented and PG-backed. All 6 frontends (web_nextjs, admin/web,
+> super_admin/web, project_party/web, white_label/frontend, bots/web) build with 0 tsc
+> errors and have working light/dark theme switching on every page.

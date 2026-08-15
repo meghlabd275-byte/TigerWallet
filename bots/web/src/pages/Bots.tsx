@@ -1,8 +1,10 @@
 // Bots Page - Manage Bots
 import React, { useState, useEffect } from 'react';
-import { api } from '../../services/api';
+import { api } from '../services/api';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function Bots() {
+  const { isDark } = useTheme();
   const [bots, setBots] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -44,7 +46,9 @@ export default function Bots() {
     <div className="bots-page">
       <header className="page-header">
         <h1>My Bots</h1>
-        <button onClick={() => setShowCreate(!showCreate)}>+ Create Bot</button>
+        <button className="btn-primary" onClick={() => setShowCreate(!showCreate)}>
+          {isDark ? '🌙' : '☀️'} + Create Bot
+        </button>
       </header>
 
       {showCreate && (

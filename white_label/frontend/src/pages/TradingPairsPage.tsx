@@ -2,16 +2,16 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Container, Grid, Card, Button, TextField, Select, MenuItem, FormControl, InputLabel,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
-  Dialog, DialogTitle, DialogContent, DialogActions, Chip, Typography, Box, Avatar,
+  Dialog, DialogTitle, DialogContent, DialogActions, Chip, Typography, Box,
   IconButton, CircularProgress, Alert, Snackbar, InputAdornment
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon,
-  Visibility as ViewIcon, Block as BlockIcon, PlayArrow as ResumeIcon,
+  Visibility as ViewIcon, PlayArrow as ResumeIcon,
   Pause as SuspendIcon, Warning as HaltIcon, DarkMode, LightMode, ShowChart
 } from '@mui/icons-material';
 import { api, TradingPair, PaginatedResponse, Blockchain } from '../services/api';
-import { useTheme } from '../../context/ThemeContext';
+import { useTheme } from '../context/ThemeContext';
 
 const TradingPairsPage: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
@@ -344,7 +344,7 @@ const TradingPairsPage: React.FC = () => {
             component="div"
             count={total}
             page={page}
-            onPageChange={(event, newPage) => setPage(newPage)}
+            onPageChange={(_event, newPage) => setPage(newPage)}
             rowsPerPage={rowsPerPage}
             onRowsPerPageChange={(event) => {
               setRowsPerPage(parseInt(event.target.value, 10));

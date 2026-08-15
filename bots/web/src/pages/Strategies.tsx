@@ -1,8 +1,10 @@
 // Strategies Page
 import React, { useState, useEffect } from 'react';
-import { api } from '../../services/api';
+import { api } from '../services/api';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function Strategies() {
+  const { isDark } = useTheme();
   const [strategies, setStrategies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -13,11 +15,11 @@ export default function Strategies() {
     }).catch(() => setLoading(false));
   }, []);
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) return <div className="strategies-page">Loading...</div>;
 
   return (
     <div className="strategies-page">
-      <h1>Trading Strategies</h1>
+      <h1>Trading Strategies ({isDark ? 'Dark' : 'Light'})</h1>
       <div className="strategies-grid">
         {strategies.map((s: any) => (
           <div key={s.id} className="strategy-card">

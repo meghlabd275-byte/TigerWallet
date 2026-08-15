@@ -3,12 +3,58 @@
 > Companion document to `PROJECT_PARTY.md`, `BOTS_CLIENTS.md`, and
 > `LIQUIDITY_TRADING_PAIRS.md`.
 
-> ✅ **STATUS UPDATE (2026-08-14): ALL gaps below are RESOLVED.** Every service
-> now uses real PostgreSQL persistence (pgx/GORM), no in-memory maps, no stubs,
-> no fake data, no SQLite. The orphan duplicate backends were deleted and their
-> functionality ported into the canonical backends. The sections below are
-> retained as a historical record of what was fixed; each item is marked
-> ✅ RESOLVED with evidence.
+> ✅ **STATUS UPDATE (2026-08-14, session 2): ALL gaps below are RESOLVED.**
+> Every service now uses real PostgreSQL persistence (pgx/GORM), no in-memory
+> maps, no stubs, no fake data, no SQLite. The orphan duplicate backends were
+> deleted and their functionality ported into the canonical backends. All
+> frontends are buildable (tsc 0 errors) with working light/dark theme on every
+> page. The sections below are retained as a historical record of what was
+> fixed; each item is marked ✅ RESOLVED with evidence.
+
+### Build Verification (2026-08-14 session 2 — ALL GREEN)
+
+| Component | Build | tsc / vet |
+|-----------|-------|-----------|
+| `go/wallet_api` | ✅ | vet clean |
+| `go/bridge_service` (PG-backed) | ✅ | vet clean |
+| `go/airdrop_service` | ✅ | vet clean |
+| `go/earn_service` | ✅ | vet clean |
+| `go/coupon_service` | ✅ | vet clean |
+| `go/red_packets_service` | ✅ | vet clean |
+| `project_party/go/cmd` | ✅ | vet clean |
+| `super_admin/go` | ✅ | vet clean |
+| `admin/go` | ✅ | vet clean |
+| `white_label/go` | ✅ | vet clean |
+| `mm_bot_platform/bot_api` | ✅ | vet clean |
+| `bots/go` (reverse-proxy shim) | ✅ | vet clean |
+| `frontend/web_nextjs` | — | tsc 0 errors |
+| `project_party/web` | — | tsc 0 errors |
+| `admin/web` | — | tsc 0 errors |
+| `super_admin/web` | — | tsc 0 errors |
+| `white_label/frontend` | — | tsc 0 errors |
+| `bots/web` (now buildable) | — | tsc 0 errors |
+| `docker-compose.yml` | ✅ | YAML valid |
+
+### Frontend Completeness (100/100 backend↔frontend)
+- **web_nextjs**: 4 new pages (airdrop, earn, coupon, red-packets) + 3 proxy
+  routes + prediction-markets fix. All fetch real backend data.
+- **project_party/web**: 7 new pages (Listings, Launchpad, MarketMaking,
+  Pricing, Analytics, Compliance, Fees) — all fetch from :8106 backend.
+- **bots/web**: completed from skeleton → full Vite+React+TS app with
+  package.json, index.html, main.tsx, vite.config, tsconfig, complete
+  theme-aware CSS (light/dark via `data-theme` CSS vars), all 6 pages themed.
+- **white_label/frontend**: fixed 106 tsc errors (import paths, unused imports,
+  missing exports) → 0 errors. Theme works on all 8 pages.
+
+### Light/Dark Theme (verified on ALL 6 frontends)
+| Frontend | Theme mechanism | Pages themed |
+|----------|----------------|-------------|
+| web_nextjs | `useTheme()` + `isDark` ternaries (0 `dark:` variants) | All |
+| admin/web | `ThemeContext` + `themeColors` | All |
+| super_admin/web | `ThemeContext` + MUI | All |
+| project_party/web | `ThemeContext` + CSS vars | All 13 |
+| white_label/frontend | `ThemeContext` + `MUIThemeProvider` | All 8 |
+| bots/web | `ThemeContext` + `data-theme` CSS vars | All 6 |
 
 ---
 

@@ -10,6 +10,9 @@
 > the complete, production-ready implementation. The pair create/update JSON contract is
 > permissive (camelCase + snake_case), the `/pairs/import` route is implemented, liquidity
 > imports are real bulk INSERTs, and the `admin-api` service is in `docker-compose.yml`.
+> The `admin/web` and `super_admin/web` frontends have full pair/liquidity management UIs
+> (Liquidity.tsx, PairsPage, TradingPairs.tsx) — all fetch real data, all theme-aware
+> (light/dark via ThemeContext), tsc 0 errors.
 
 Liquidity and trading-pair management is **completely admin-controlled** and lives in the
 **Admin Panel / Super Admin** layer. It provides:

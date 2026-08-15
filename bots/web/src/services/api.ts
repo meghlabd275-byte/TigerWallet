@@ -1,5 +1,7 @@
-// API Service - Connects to Bots Backend
-const API_BASE_URL = process.env.REACT_APP_API_URL ? `${process.env.REACT_APP_API_URL}/api/v1` : 'http://localhost:8471/api/v1';
+// API Service - Connects to Bots Backend (mm_bot_platform/bot_api on :8471)
+const API_BASE_URL = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api/v1`
+  : 'http://localhost:8471/api/v1';
 
 class ApiService {
   private token: string | null = null;

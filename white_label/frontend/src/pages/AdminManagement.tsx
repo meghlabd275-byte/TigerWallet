@@ -3,15 +3,15 @@ import {
   Container, Grid, Card, Button, TextField, Select, MenuItem, FormControl, InputLabel,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
   Dialog, DialogTitle, DialogContent, DialogActions, Chip, Typography, Box, Avatar,
-  IconButton, Switch, FormControlLabel, CircularProgress, Alert, Snackbar, InputAdornment
+  IconButton, CircularProgress, Alert, Snackbar, InputAdornment
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon,
-  Visibility as ViewIcon, Block as BlockIcon, CheckCircle as ActivateIcon,
-  Email as EmailIcon, Security as SecurityIcon, DarkMode, LightMode
+  Visibility as ViewIcon, Block as BlockIcon, CheckCircle,
+  DarkMode, LightMode
 } from '@mui/icons-material';
 import { api, WhiteLabelAdmin, PaginatedResponse } from '../services/api';
-import { useTheme } from '../../context/ThemeContext';
+import { useTheme } from '../context/ThemeContext';
 
 const AdminManagement: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
@@ -271,7 +271,7 @@ const AdminManagement: React.FC = () => {
             component="div"
             count={total}
             page={page}
-            onPageChange={(event, newPage) => setPage(newPage)}
+            onPageChange={(_event, newPage) => setPage(newPage)}
             rowsPerPage={rowsPerPage}
             onRowsPerPageChange={(event) => {
               setRowsPerPage(parseInt(event.target.value, 10));

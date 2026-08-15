@@ -3,16 +3,14 @@ import {
   Container, Grid, Card, Button, TextField, Select, MenuItem, FormControl, InputLabel,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
   Dialog, DialogTitle, DialogContent, DialogActions, Chip, Typography, Box, Avatar,
-  IconButton, Switch, CircularProgress, Alert, Snackbar, InputAdornment, Slider, Collapse
+  IconButton, CircularProgress, Alert, Snackbar, InputAdornment
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon,
-  Visibility as ViewIcon, Block as BlockIcon, CheckCircle as ActivateIcon,
-  ExpandMore as ExpandIcon, ExpandLess as CollapseIcon, DarkMode, LightMode,
-  Settings as SettingsIcon, AttachMoney as MoneyIcon
+  Visibility as ViewIcon, DarkMode, LightMode, AttachMoney as MoneyIcon
 } from '@mui/icons-material';
 import { api, Product, PaginatedResponse } from '../services/api';
-import { useTheme } from '../../context/ThemeContext';
+import { useTheme } from '../context/ThemeContext';
 
 const ProductManagement: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
@@ -29,7 +27,6 @@ const ProductManagement: React.FC = () => {
   const [snackbar, setSnackbar] = useState<{open: boolean; message: string; severity: 'success' | 'error'}>({
     open: false, message: '', severity: 'success'
   });
-  const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -336,7 +333,7 @@ const ProductManagement: React.FC = () => {
             component="div"
             count={total}
             page={page}
-            onPageChange={(event, newPage) => setPage(newPage)}
+            onPageChange={(_event, newPage) => setPage(newPage)}
             rowsPerPage={rowsPerPage}
             onRowsPerPageChange={(event) => {
               setRowsPerPage(parseInt(event.target.value, 10));

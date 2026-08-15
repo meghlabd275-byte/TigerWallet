@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Container, Grid, Card, Button, TextField, Chip, Typography, Box, IconButton,
-  CircularProgress, Alert, Snackbar, Switch, FormControlLabel, Avatar
+  Container, Grid, Card, Button, Chip, Typography, Box, IconButton,
+  CircularProgress, Alert, Snackbar, Avatar
 } from '@mui/material';
 import {
-  DarkMode, LightMode, Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
+  DarkMode, LightMode,
   CheckCircle as EnableIcon, Block as DisableIcon, Security as ChainIcon
 } from '@mui/icons-material';
 import { api, Blockchain } from '../services/api';
-import { useTheme } from '../../context/ThemeContext';
+import { useTheme } from '../context/ThemeContext';
 
 const BlockchainManagement: React.FC = () => {
   const { theme, toggleTheme } = useTheme();

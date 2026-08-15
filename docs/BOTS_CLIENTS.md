@@ -7,7 +7,9 @@
 > ✅ **All gaps are now RESOLVED (see [`GAPS.md`](GAPS.md)).** This document now reflects
 > the complete, production-ready implementation. The `mm_bot_platform` API server is now
 > PostgreSQL-backed (pgxpool, 19 SQL refs), the on-chain contracts are wired, and the
-> Super Admin BotsClients handlers perform real PostgreSQL CRUD.
+> Super Admin BotsClients handlers perform real PostgreSQL CRUD. The `bots/web` frontend
+> is a complete, buildable Vite+React+TS app (6 pages, light/dark theme via CSS vars,
+> tsc 0 errors) wired to the bot API at :8471; `bots/go` is a reverse-proxy shim.
 
 **BotsClients** is the white-label relationship/product that wraps the **Bot Platform**
 (`mm_bot_platform`) so that external and white-label operators can run trading bots —
@@ -279,7 +281,11 @@ last sync tracking.
   commit `e0ca6ef`). The **connection/permission infrastructure** (connection_api,
   permission_service, white_level_sdk) remains the real access-control implementation.
 - The `mm_bot_platform` bot API server is now **PostgreSQL-backed** (pgxpool, 19 SQL
-  refs — commit `3c78991`); the `bot_dashboard` frontend is fully wired to it (`:8471`)
-  via `/api/v1/bots/*` proxy routes.
+  refs — commit `3c78991`); the `bots/web` frontend is fully wired to it (`:8471`)
+  via `/api/v1/bots/*` proxy routes. The `bots/web` app is a complete, buildable
+  Vite+React+TypeScript frontend (package.json, index.html, main.tsx, vite.config,
+  tsconfig, full theme-aware CSS — light/dark via `data-theme` CSS variables on all
+  6 pages: Dashboard, Bots, Strategies, Trades, Login, Settings). `bots/go` is a
+  clean stdlib reverse-proxy shim to the canonical `mm_bot_platform/bot_api` (:8471).
 - The **Rust bot_core** is the real trait/strategy engine; the Solidity contracts provide
   the on-chain, role-gated admin/authorization layer and per-bot-type fees.

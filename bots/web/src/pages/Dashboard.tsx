@@ -1,8 +1,10 @@
 // Dashboard Page - Bots
 import React, { useState, useEffect } from 'react';
-import { api } from '../../services/api';
+import { api } from '../services/api';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function Dashboard() {
+  const { isDark } = useTheme();
   const [stats, setStats] = useState({ totalBots: 0, activeBots: 0, totalProfit: '$0', totalTrades: 0 });
   const [loading, setLoading] = useState(true);
 
@@ -19,11 +21,11 @@ export default function Dashboard() {
     }).catch(() => setLoading(false));
   }, []);
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) return <div className="dashboard">Loading...</div>;
 
   return (
     <div className="dashboard">
-      <h1>Trading Bots Dashboard</h1>
+      <h1>Trading Bots Dashboard ({isDark ? 'Dark' : 'Light'} mode)</h1>
       <div className="stats-grid">
         <div className="stat-card">
           <h3>Total Bots</h3>

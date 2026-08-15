@@ -1,8 +1,10 @@
 // Trades Page
 import React, { useState, useEffect } from 'react';
-import { api } from '../../services/api';
+import { api } from '../services/api';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function Trades() {
+  const { isDark } = useTheme();
   const [trades, setTrades] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -13,11 +15,11 @@ export default function Trades() {
     }).catch(() => setLoading(false));
   }, []);
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) return <div className="trades-page">Loading...</div>;
 
   return (
     <div className="trades-page">
-      <h1>Trade History</h1>
+      <h1>Trade History ({isDark ? 'Dark' : 'Light'})</h1>
       {trades.length === 0 ? (
         <p>No trades yet.</p>
       ) : (

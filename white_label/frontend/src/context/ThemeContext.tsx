@@ -103,4 +103,21 @@ export const themeVariables = {
   },
 };
 
+export const themeColors = {
+  light: {
+    background: '#f8fafc',
+    backgroundSecondary: '#f1f5f9',
+    text: '#0f172a',
+    textSecondary: '#475569',
+    border: '#e2e8f0',
+  },
+  dark: {
+    background: '#0f172a',
+    backgroundSecondary: '#1e293b',
+    text: '#f8fafc',
+    textSecondary: '#cbd5e1',
+    border: '#334155',
+  },
+};
+
 export default ThemeProvider;

@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Container, Grid, Card, Button, TextField, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, TablePagination, Chip, Typography, Box, IconButton, 
-  InputAdornment, CircularProgress, Avatar
+  Container, Grid, Card, Button, Table, TableBody, TableCell, TableContainer,
+  TableHead, TableRow, TablePagination, Chip, Typography, Box, IconButton,
+  CircularProgress
 } from '@mui/material';
 import {
-  Search as SearchIcon, DarkMode, LightMode, Notifications as NotifIcon,
-  CheckCircle, CircleOutlined, Delete as DeleteIcon
+  DarkMode, LightMode, Notifications as NotifIcon,
+  CheckCircle, CircleOutlined
 } from '@mui/icons-material';
 import { api, Notification, PaginatedResponse } from '../services/api';
-import { useTheme } from '../../context/ThemeContext';
+import { useTheme } from '../context/ThemeContext';
 
 const NotificationsPage: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
@@ -159,7 +159,7 @@ const NotificationsPage: React.FC = () => {
             component="div"
             count={total}
             page={page}
-            onPageChange={(event, newPage) => setPage(newPage)}
+            onPageChange={(_event, newPage) => setPage(newPage)}
             rowsPerPage={rowsPerPage}
             onRowsPerPageChange={(event) => {
               setRowsPerPage(parseInt(event.target.value, 10));

@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
 import {
   Container, Grid, Card, Button, TextField, Typography, Box, IconButton, 
-  Switch, FormControlLabel, Divider, Alert, Snackbar, Avatar
+  Switch, FormControlLabel, Divider, Alert, Snackbar
 } from '@mui/material';
 import {
   DarkMode, LightMode, Settings as SettingsIcon, Security, Notifications as NotifIcon,
   Language, Palette, Save
 } from '@mui/icons-material';
-import { useTheme } from '../../context/ThemeContext';
+import { useTheme } from '../context/ThemeContext';
 
 const SettingsPage: React.FC = () => {
-  const { theme, toggleTheme, setTheme } = useTheme();
+  const { theme, toggleTheme } = useTheme();
   const [settings, setSettings] = useState({
     siteName: 'TigerWallet',
     supportEmail: 'support@tigerwallet.com',

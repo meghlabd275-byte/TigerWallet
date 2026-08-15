@@ -5,15 +5,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  Container, Box, AppBar, Toolbar, Typography, Drawer, List, ListItem, 
-  ListItemButton, ListItemIcon, ListItemText, IconButton, useTheme as useMUITheme,
-  createTheme, ThemeProvider as MUIThemeProvider, CssBaseline, Divider,
-  Chip, Avatar, Menu, MenuItem, Badge
+  Box, AppBar, Toolbar, Typography, Drawer, List, ListItem, 
+  ListItemButton, ListItemIcon, ListItemText, IconButton,
+  CssBaseline, Divider, Chip, Avatar, Menu, MenuItem, Badge
 } from '@mui/material';
 import {
-  Menu as MenuIcon, Dashboard, People, Business, Store, Settings,
-  Notifications, Security, Brightness4, Brightness7, ChevronLeft,
-  AccountTree, Poll, Payment, Layers, SwapHoriz, Hexagon
+  Menu as MenuIcon, Dashboard, People, Store, Settings,
+  Notifications, Security, Brightness4, Brightness7,
+  SwapHoriz, Hexagon
 } from '@mui/icons-material';
 import { useTheme, themeColors } from './context/ThemeContext';
 import WhiteLabelDashboard from './pages/WhiteLabelDashboard';
@@ -24,7 +23,6 @@ import BlockchainManagement from './pages/BlockchainManagement';
 import AuditLogsPage from './pages/AuditLogsPage';
 import NotificationsPage from './pages/NotificationsPage';
 import SettingsPage from './pages/SettingsPage';
-import { api } from './services/api';
 
 const drawerWidth = 260;
 

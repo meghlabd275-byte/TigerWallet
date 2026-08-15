@@ -8,7 +8,7 @@ import {
   AccessTime as TimeIcon, Computer as IPCIcon
 } from '@mui/icons-material';
 import { api, AuditLog, PaginatedResponse } from '../services/api';
-import { useTheme } from '../../context/ThemeContext';
+import { useTheme } from '../context/ThemeContext';
 
 const AuditLogsPage: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
@@ -186,7 +186,7 @@ const AuditLogsPage: React.FC = () => {
             component="div"
             count={total}
             page={page}
-            onPageChange={(event, newPage) => setPage(newPage)}
+            onPageChange={(_event, newPage) => setPage(newPage)}
             rowsPerPage={rowsPerPage}
             onRowsPerPageChange={(event) => {
               setRowsPerPage(parseInt(event.target.value, 10));

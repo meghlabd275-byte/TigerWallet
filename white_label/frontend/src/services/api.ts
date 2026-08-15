@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+/// <reference types="vite/client" />
 
 // ============================================================================
 // TYPES

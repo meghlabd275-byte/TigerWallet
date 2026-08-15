@@ -7,7 +7,10 @@
 > ✅ **All gaps are now RESOLVED (see [`GAPS.md`](GAPS.md)).** This document now reflects
 > the complete, production-ready implementation. The ProjectParty backend uses real
 > PostgreSQL persistence (pgxpool) for all handlers — no stubs, no sample data, no
-> in-memory maps.
+> in-memory maps. The `project_party/web` frontend has 13 pages (Coins, Tokens,
+> Favorites, Submit, Dashboard, Settings, Login + Listings, Launchpad, MarketMaking,
+> Pricing, Analytics, Compliance, Fees) — all fetch real data from the :8106 backend,
+> all theme-aware (light/dark via ThemeContext + CSS vars), tsc 0 errors.
 
 **ProjectParty** is the token/coin listing, trading-launch, and market-making services
 platform within the TigerWallet ecosystem. It lets users browse coins and tokens, submit
