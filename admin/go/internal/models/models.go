@@ -247,7 +247,8 @@ type WhiteLabel struct {
 	Description    string          `json:"description"`
 	CustomCSS      sql.NullString  `gorm:"type:text" json:"custom_css"`
 	CustomJS       sql.NullString  `gorm:"type:text" json:"custom_js"`
-	Features       json.RawMessage `gorm:"type:jsonb" json:"features"`
+	Features        json.RawMessage `gorm:"type:jsonb" json:"features"`
+	AllowedProducts json.RawMessage `gorm:"type:jsonb;default:'[]'" json:"allowed_products"` // SuperAdmin-governed: which WL products (master_wallet, user_wallet, bots, project_party) this client may run
 	FeeStructure   json.RawMessage `gorm:"type:jsonb" json:"fee_structure"`
 	ApprovedAt     *time.Time      `json:"approved_at"`
 	ApprovedBy     *uint           `json:"approved_by"`

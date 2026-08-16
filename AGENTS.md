@@ -3168,3 +3168,93 @@ admin->9093, super_admin->8082, white_label_admin->8082.
 
 ### Builds ALL GREEN
 4 Go backends build+vet 0; 3 rust cargo check 0; 3 cpp g++ syntax 0; 3 web tsc 0; all extensions+desktop node --check 0.
+
+## Session 2026-08-16 (cont): White-label governance — stale-analysis audit + final gap closure
+
+A large user-pasted "Detailed White-Label Gap Analysis" claimed all 5 pillars
+of the WL governance system were broken/stubbed (license_service hardcodes
+`valid:true`, white_label_admin/go is 100% stubs, no scoped roles, no
+two-party gate, UserWallet not hostable, etc.). A fresh source re-verification
+against the actual repo showed the analysis was **ALMOST ENTIRELY STALE** —
+the "Session 2026-08-16: Complete white-label governance system (5 pillars)"
+work was already done and merged. **Always verify pasted analysis against
+actual source before acting.**
+
+### Verification result: 16/20 claims STALE (already fixed), 4 TRUE + 2 minor
+- STALE (already real): license_service ValidateLicense does fail-closed DB
+  checks + mints signed tokens (NOT hardcoded valid:true); kill_switch
+  heartbeat has real subscribers (all wl_* backends phone home via
+  wlgate.HeartbeatLoop -> /api/v1/license/validate); fail-closed gate
+  middleware exists on every wl_* backend; license_service + kill_switch
+  ARE in docker-compose; per-fetcher granularity exists (product\x1ffetcher
+  flag keys); white_label_admin/go has REAL PostgreSQL handlers in
+  internal/handlers/ (NOT stubs); all 13 scoped roles exist
+  (white_label_admin/go/internal/roles/roles.go) + 13 frontend pages
+  (Trading/P2PFiat/BotsManagement/Listings/Liquidity/WalletManagement/
+  CustomerService/Marketing/KYC/CryptoCard/Rewards/Security/Compliance);
+  admin_users has white_label_id tenant column + RequireScope middleware;
+  two-party SuperAdmin gate is real (license_gate.go IsWithdrawalApproved,
+  enforced fail-closed in SignTransaction + RevenuePayout); approval
+  threshold enforced; wl_user_wallet/go is a REAL standalone backend with
+  own BIP-39/32/44 (NOT a reverse-proxy shim); all wl_* backends phone home
+  to SuperAdmin via /api/v1/license/validate.
+
+### Genuine gaps FIXED this session (all real, no stubs)
+1. **white_label/go unauthenticated self-resume backdoor (GAP #4):** the
+   `/api/v1/white-label/*` v1 route group had NO authMiddleware (every CRUD
+   route was unauthenticated), and `resumeClient` let a WL client self-resume
+   a halted product — violating "WL client never resume any product." FIXED:
+   applied `authMiddleware` to the v1 group (closes the unauth backdoor for
+   ALL routes); `resumeClient` now returns 403 pointing to the canonical
+   SuperAdmin-only `license_service /super-admin/wl-clients/:id/resume`
+   (RequireSuperAdmin). The WL client may suspend/halt but NEVER resume.
+2. **master_wallet public register privilege escalation (GAP A):**
+   `/api/v1/auth/register` was PUBLIC and accepted `admin`/`treasury`/
+   `operator` from the request body -> self-privilege-escalation. FIXED:
+   Register now ALWAYS assigns `role="user"` (body role field ignored);
+   privileged roles assigned exclusively via the protected admin path
+   `POST /master-wallet/:id/users` (CreateUser, master-wallet-scoped).
+3. **admin/go /features under-gated (GAP #7):** feature-flag routes were
+   any-authenticated-admin. FIXED: added `SuperAdminMiddleware()` to the
+   `/features` group (platform-wide flags are SuperAdmin-only).
+4. **master_wallet /feature-flags under-gated (GAP #7):** feature-flag
+   routes were any-authenticated-user. FIXED: moved into a `ff` subgroup
+   with `RequireRole("admin", "super_admin")` (product owner / SuperAdmin).
+5. **admin/go WhiteLabel lacked allowed_products (GAP #9):** FIXED: added
+   `AllowedProducts json.RawMessage` (jsonb, default '[]') to the WhiteLabel
+   model; new `SetAllowedProducts` handler (validates closed product set
+   {master_wallet, user_wallet, bots, project_party}, dedups) + SuperAdmin-
+   gated route `POST /api/v1/white-labels/:id/allowed-products`; gated the
+   whole `/white-labels` group with `SuperAdminMiddleware()` (WL client
+   lifecycle is SuperAdmin-only).
+6. **Frontend route mismatch (frontend/backend != 100/100):** admin/web
+   called `/api/v1/whitelabels` but admin/go registers `/api/v1/white-labels`
+   (hyphen) -> 404s; `rejectWhiteLabel` called nonexistent `/reject`. FIXED:
+   all frontend WL methods retargeted to `/white-labels`; added
+   `suspendWhiteLabel` (canonical) + `setAllowedProducts` + `getWhiteLabelStats`;
+   `rejectWhiteLabel` kept as backward-compat alias -> suspend. Added an
+   "Allowed Products" management modal to WhiteLabelsPage.tsx (SuperAdmin
+   toggles which WL products a client may run).
+
+### Build verification (ALL GREEN)
+| Component | Result |
+|-----------|--------|
+| 10 Go backends (license_service, admin, white_label, white_label_admin, master_wallet, wl_user_wallet, wl_master_wallet, wl_project_party, wl_bots, super_admin) | go build exit 0 |
+| master_wallet/backend | go test exit 0 (BIP-44 + non-EVM); go vet exit 0 |
+| license_service/go | go build + vet exit 0 |
+| wl_user_wallet/go crypto | go test exit 0 (real BIP-39/32/44) |
+| white_level_sdk/rust | cargo check --lib exit 0 (1 warning) |
+| admin/web | npx tsc --noEmit 0 errors |
+| white_label_admin/web | npx tsc --noEmit 0 errors |
+| white_label/frontend | npx tsc --noEmit 0 errors |
+| super_admin/web | npx tsc --noEmit 0 errors |
+
+### Note on feature-flag store consolidation (GAP #6)
+The 3 feature-flag stores (admin/go global GORM, master_wallet per-MW,
+license_service per-WL-client+product+fetcher) remain separate by design:
+license_service is the AUTHORITATIVE live source (wl_* products consult it
+at runtime via the fail-closed heartbeat + gate). admin/go + master_wallet
+flag tables are governance UIs now correctly SuperAdmin/admin-gated. The
+gating (not consolidation) is what closes the security gap; consolidation
+into a single store would be a larger refactor with no additional security
+benefit since the live enforcement already flows through license_service.

@@ -193,11 +193,17 @@ func main() {
 				uwm.POST("/auto-sign-transaction", svc.AutoSignTransaction)
 				uwm.GET("/auto-sign-logs", svc.ListAutoSignLogs)
 
-				// SuperAdmin feature-flag governance
-				uwm.GET("/feature-flags", svc.ListFeatureFlags)
-				uwm.POST("/feature-flags", svc.AddFeatureFlag)
-				uwm.PUT("/feature-flags/:flagId", svc.UpdateFeatureFlag)
-				uwm.DELETE("/feature-flags/:flagId", svc.RemoveFeatureFlag)
+				// Feature-flag governance — product owner (admin) or SuperAdmin
+				// only. A plain user must not flip flags. The authoritative live
+				// source the WL product consults at runtime is the license control
+				// plane (license_service /super-admin/feature-flags); these
+				// per-master-wallet flags are the product-owner governance layer.
+				ff := uwm.Group("/feature-flags")
+				ff.Use(RequireRole("admin", "super_admin"))
+				ff.GET("", svc.ListFeatureFlags)
+				ff.POST("", svc.AddFeatureFlag)
+				ff.PUT("/:flagId", svc.UpdateFeatureFlag)
+				ff.DELETE("/:flagId", svc.RemoveFeatureFlag)
 			}
 		}
 	}

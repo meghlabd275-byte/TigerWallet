@@ -33,6 +33,9 @@ const WhiteLabelsPage: React.FC = () => {
     primaryColor: '#dc2626',
   });
   const [processing, setProcessing] = useState<string | null>(null);
+  const [allowedProductsWl, setAllowedProductsWl] = useState<WhiteLabel | null>(null);
+  const [allowedProducts, setAllowedProducts] = useState<string[]>([]);
+  const allProducts = ['master_wallet', 'user_wallet', 'bots', 'project_party'];
 
   useEffect(() => {
     loadWhiteLabels();
@@ -90,6 +93,36 @@ const WhiteLabelsPage: React.FC = () => {
       loadWhiteLabels();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reject white label');
+    }
+  };
+
+  const openAllowedProducts = async (wl: WhiteLabel) => {
+    try {
+      const detail = await adminApi.getWhiteLabel(wl.id);
+      setAllowedProductsWl(wl);
+      setAllowedProducts(Array.isArray(detail?.allowed_products) ? detail.allowed_products : []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load allowed products');
+    }
+  };
+
+  const toggleProduct = (product: string) => {
+    setAllowedProducts((prev) =>
+      prev.includes(product) ? prev.filter((p) => p !== product) : [...prev, product]
+    );
+  };
+
+  const saveAllowedProducts = async () => {
+    if (!allowedProductsWl) return;
+    try {
+      setProcessing(allowedProductsWl.id);
+      await adminApi.setAllowedProducts(allowedProductsWl.id, allowedProducts);
+      setAllowedProductsWl(null);
+      loadWhiteLabels();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to set allowed products');
+    } finally {
+      setProcessing(null);
     }
   };
 
@@ -214,9 +247,17 @@ const WhiteLabelsPage: React.FC = () => {
                   </>
                 )}
                 {wl.status === 'active' && (
-                  <button className="btn btn-sm btn-outline flex-1">
-                    Manage
-                  </button>
+                  <>
+                    <button className="btn btn-sm btn-outline flex-1">
+                      Manage
+                    </button>
+                    <button
+                      className="btn btn-sm btn-outline flex-1"
+                      onClick={() => openAllowedProducts(wl)}
+                    >
+                      Products
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -321,6 +362,53 @@ const WhiteLabelsPage: React.FC = () => {
               </button>
               <button className="btn btn-primary" onClick={handleCreate}>
                 Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Allowed Products Modal — SuperAdmin governs which WL products a client may run */}
+      {allowedProductsWl && (
+        <div className="modal-overlay" onClick={() => setAllowedProductsWl(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                Allowed Products — {allowedProductsWl.name}
+              </h2>
+            </div>
+            <div className="modal-body">
+              <p className="mb-4" style={{ color: 'var(--text-secondary)' }}>
+                Select which white-label products this client is permitted to run.
+                Revoking a product halts it in the license control plane.
+              </p>
+              <div className="space-y-2">
+                {allProducts.map((product) => (
+                  <label
+                    key={product}
+                    className="flex items-center gap-3 p-3 rounded-lg cursor-pointer"
+                    style={{ backgroundColor: 'var(--bg-secondary)' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={allowedProducts.includes(product)}
+                      onChange={() => toggleProduct(product)}
+                    />
+                    <span style={{ color: 'var(--text-primary)' }}>{product}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setAllowedProductsWl(null)}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={saveAllowedProducts}
+                disabled={processing === allowedProductsWl.id}
+              >
+                {processing === allowedProductsWl.id ? 'Saving...' : 'Save'}
               </button>
             </div>
           </div>

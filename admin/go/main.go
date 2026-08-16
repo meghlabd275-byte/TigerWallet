@@ -240,8 +240,11 @@ func main() {
 				withdrawals.POST("/bulk-approve", withdrawalHandler.BulkApproveWithdrawals)
 			}
 
-			// White labels
+			// White labels — SuperAdmin-only lifecycle governance (create,
+			// approve, suspend, set allowed products). A WL client's own
+			// existence/products are governed exclusively by SuperAdmin.
 			whiteLabels := protected.Group("/white-labels")
+			whiteLabels.Use(middleware.SuperAdminMiddleware())
 			{
 				whiteLabels.GET("", whitelabelHandler.ListWhiteLabels)
 				whiteLabels.POST("", whitelabelHandler.CreateWhiteLabel)
@@ -250,6 +253,7 @@ func main() {
 				whiteLabels.DELETE("/:id", whitelabelHandler.DeleteWhiteLabel)
 				whiteLabels.POST("/:id/approve", whitelabelHandler.ApproveWhiteLabel)
 				whiteLabels.POST("/:id/suspend", whitelabelHandler.SuspendWhiteLabel)
+				whiteLabels.POST("/:id/allowed-products", whitelabelHandler.SetAllowedProducts)
 				whiteLabels.GET("/stats", whitelabelHandler.GetWhiteLabelStats)
 			}
 
@@ -469,8 +473,10 @@ func main() {
 				cryptoCards.PUT("/:id/limit", cryptoCardHandler.SetLimit)
 			}
 
-			// Features
+			// Features — SuperAdmin-only governance (feature flags are a
+			// platform-wide control; a plain admin must not flip them).
 			features := protected.Group("/features")
+			features.Use(middleware.SuperAdminMiddleware())
 			{
 				features.GET("", featuresHandler.GetAll)
 				features.POST("", featuresHandler.Create)

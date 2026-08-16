@@ -437,6 +437,7 @@ func setupRouter(cfg *Config) *gin.Engine {
 
 	// API v1
 	v1 := router.Group("/api/v1/white-label")
+	v1.Use(authMiddleware) // require authenticated admin (was unauthenticated)
 	{
 		// Client management
 		clients := v1.Group("/clients")
@@ -1942,7 +1943,16 @@ func setClientStatus(c *gin.Context, status string) {
 }
 
 func suspendClient(c *gin.Context) { setClientStatus(c, "suspended") }
-func resumeClient(c *gin.Context)  { setClientStatus(c, "active") }
+func resumeClient(c *gin.Context) {
+	// Per governance: a halted/suspended product can ONLY be resumed by the
+	// TigerWallet SuperAdmin via the license control plane
+	// (POST /api/v1/super-admin/wl-clients/:id/resume or
+	// /super-admin/licenses/:id/resume, both RequireSuperAdmin). The WL
+	// client/admin may suspend/halt but must NEVER resume on its own.
+	c.JSON(http.StatusForbidden, gin.H{
+		"error": "product resume requires TigerWallet SuperAdmin approval via the license control plane",
+	})
+}
 func haltClient(c *gin.Context)    { setClientStatus(c, "halted") }
 
 // ============================================================================

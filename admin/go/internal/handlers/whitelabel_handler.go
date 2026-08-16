@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tigerwallet/admin/internal/models"
@@ -350,4 +352,66 @@ func (h *WhiteLabelHandler) GetWhiteLabelStats(c *gin.Context) {
 	h.db.Model(&models.WhiteLabel{}).Where("status = ?", "suspended").Count(&stats.Suspended)
 
 	c.JSON(http.StatusOK, stats)
+}
+
+// validAllowedProducts is the closed set of WL products a SuperAdmin may
+// grant to a white-label client. Anything outside this set is rejected.
+var validAllowedProducts = map[string]bool{
+	"master_wallet": true,
+	"user_wallet":   true,
+	"bots":          true,
+	"project_party": true,
+}
+
+// SetAllowedProducts lets a SuperAdmin govern exactly which WL products a
+// white-label client is permitted to run. This is the admin-panel surface for
+// the "allowed products" requirement; the live enforcement happens in the
+// license control plane (license_service), which the WL product phones home
+// to. Must be SuperAdmin-gated at the route level.
+func (h *WhiteLabelHandler) SetAllowedProducts(c *gin.Context) {
+	adminID := c.GetUint("admin_id")
+	whiteLabelID := c.Param("id")
+
+	var req struct {
+		AllowedProducts []string `json:"allowed_products" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+	// Validate the closed product set.
+	normalized := make([]string, 0, len(req.AllowedProducts))
+	seen := map[string]bool{}
+	for _, p := range req.AllowedProducts {
+		if !validAllowedProducts[p] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "unknown product: " + p})
+			return
+		}
+		if !seen[p] {
+			seen[p] = true
+			normalized = append(normalized, p)
+		}
+	}
+
+	var whiteLabel models.WhiteLabel
+	if err := h.db.First(&whiteLabel, whiteLabelID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "White label not found"})
+		return
+	}
+
+	// Encode as a JSON array for the jsonb column.
+	enc, err := json.Marshal(normalized)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encode allowed products"})
+		return
+	}
+	if err := h.db.Model(&whiteLabel).Update("allowed_products", json.RawMessage(enc)).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update allowed products"})
+		return
+	}
+
+	logAdminActivity(h.db, adminID, "set_allowed_products", "whitelabel", whiteLabelID,
+		"Set allowed products: "+strings.Join(normalized, ","), c.ClientIP(), c.Request.UserAgent())
+
+	c.JSON(http.StatusOK, gin.H{"id": whiteLabelID, "allowed_products": normalized})
 }

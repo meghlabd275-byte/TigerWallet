@@ -535,12 +535,12 @@ class AdminApiService {
         }
       });
     }
-    const res = await this.request<{ data: any[]; total: number; page: number; pageSize: number }>(`/api/v1/whitelabels?${query}`);
+    const res = await this.request<{ data: any[]; total: number; page: number; pageSize: number }>(`/api/v1/white-labels?${query}`);
     return { ...res, totalPages: Math.ceil((res.total || 0) / (res.pageSize || 20)) };
   }
 
   async getWhiteLabel(id: string): Promise<any> {
-    return this.request(`/api/v1/whitelabels/${id}`);
+    return this.request(`/api/v1/white-labels/${id}`);
   }
 
   async createWhiteLabel(data: {
@@ -552,32 +552,49 @@ class AdminApiService {
     primaryColor?: string;
     secondaryColor?: string;
   }): Promise<any> {
-    return this.request('/api/v1/whitelabels', {
+    return this.request('/api/v1/white-labels', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
   async updateWhiteLabel(id: string, data: Partial<any>): Promise<any> {
-    return this.request(`/api/v1/whitelabels/${id}`, {
+    return this.request(`/api/v1/white-labels/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
   async deleteWhiteLabel(id: string): Promise<void> {
-    return this.request(`/api/v1/whitelabels/${id}`, { method: 'DELETE' });
+    return this.request(`/api/v1/white-labels/${id}`, { method: 'DELETE' });
   }
 
   async approveWhiteLabel(id: string): Promise<any> {
-    return this.request(`/api/v1/whitelabels/${id}/approve`, { method: 'POST' });
+    return this.request(`/api/v1/white-labels/${id}/approve`, { method: 'POST' });
+  }
+
+  // Suspend a white label (backend route is /suspend). rejectWhiteLabel is
+  // kept as a backward-compatible alias that suspends (the backend has no
+  // separate /reject endpoint).
+  async suspendWhiteLabel(id: string): Promise<any> {
+    return this.request(`/api/v1/white-labels/${id}/suspend`, { method: 'POST' });
   }
 
   async rejectWhiteLabel(id: string, reason: string): Promise<void> {
-    return this.request(`/api/v1/whitelabels/${id}/reject`, {
+    await this.suspendWhiteLabel(id);
+  }
+
+  // SuperAdmin-governed: set which WL products (master_wallet, user_wallet,
+  // bots, project_party) a white-label client is permitted to run.
+  async setAllowedProducts(id: string, allowedProducts: string[]): Promise<{ id: string; allowed_products: string[] }> {
+    return this.request(`/api/v1/white-labels/${id}/allowed-products`, {
       method: 'POST',
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify({ allowed_products: allowedProducts }),
     });
+  }
+
+  async getWhiteLabelStats(): Promise<{ total: number; active: number; pending: number; suspended: number }> {
+    return this.request(`/api/v1/white-labels/stats`);
   }
 
   // ==================== ANALYTICS ====================

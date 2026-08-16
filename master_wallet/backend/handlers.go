@@ -46,14 +46,13 @@ func (svc *Service) Register(c *gin.Context) {
 	if req.Name == "" {
 		req.Name = req.Email
 	}
-	role := req.Role
-	if role == "" {
-		role = "user"
-	}
-	if role != "user" && role != "admin" && role != "treasury" && role != "operator" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid role"})
-		return
-	}
+	// Public self-registration may ONLY create a plain "user" account.
+	// Privileged roles (admin/treasury/operator/super_admin) are assigned
+	// exclusively by an existing SuperAdmin/admin via the admin user-management
+	// path — never accepted from an unauthenticated request body (privilege
+	// escalation). The body role field is intentionally ignored here.
+	role := "user"
+	_ = req.Role
 	hash, err := hashPassword(req.Password)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to hash password"})
