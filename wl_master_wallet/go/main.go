@@ -54,6 +54,16 @@ func main() {
 	router.Use(cors.Default())
 	router.GET("/health", svc.Health)
 
+	// Public (read-only) market-data endpoints — no license gate, no auth.
+	router.GET("/api/v1/health", svc.PublicHealth)
+	router.GET("/api/v1/chains", svc.PublicChains)
+	router.GET("/api/v1/gas", svc.PublicGas)
+	router.GET("/api/v1/price", svc.PublicPrice)
+	router.GET("/api/v1/transactions/history", svc.PublicTransactionHistory)
+
+	// WebSocket — real gorilla/websocket (JWT verified per-connection).
+	router.GET("/ws", svc.WebSocket)
+
 	api := router.Group("/api/v1")
 	{
 		api.POST("/auth/register", svc.Register)
@@ -65,23 +75,88 @@ func main() {
 		mw.Use(wlgate.JWTAuth(cfg.JWTSecret))
 		mw.Use(gate.Middleware(cfg.Product, wlgate.SimpleFetcher))
 		{
+			// Master-wallet CRUD + core operations.
 			mw.POST("/master-wallet", svc.CreateMasterWallet)
 			mw.GET("/master-wallet", svc.ListMasterWallets)
 			mw.GET("/master-wallet/:id", svc.GetMasterWallet)
 			mw.DELETE("/master-wallet/:id", svc.DeleteMasterWallet)
 			mw.GET("/master-wallet/:id/balance", svc.GetBalance)
 			mw.POST("/master-wallet/:id/sign", svc.SignTransaction)
+			mw.POST("/master-wallet/:id/sign-message", svc.SignMessage)
 			mw.POST("/master-wallet/:id/revenue-payout", svc.RevenuePayout)
 			mw.POST("/master-wallet/:id/withdrawal-request", svc.WithdrawalRequest)
+
+			// Transactions.
 			mw.GET("/master-wallet/:id/transactions", svc.ListTransactions)
+			mw.POST("/master-wallet/:id/transactions", svc.CreatePendingTransaction)
+			mw.POST("/master-wallet/:id/transactions/:tid/approve", svc.ApproveTransaction)
+			mw.POST("/master-wallet/:id/transactions/:tid/reject", svc.RejectTransaction)
+			mw.POST("/transactions/:tid/execute", svc.ExecuteTransaction)
+			mw.POST("/transactions/:tid/sign", svc.SignPendingTransaction)
+
+			// Sub-wallets (balance + transfer use real ethclient + EIP-1559).
 			mw.POST("/master-wallet/:id/sub-wallets", svc.CreateSubWallet)
 			mw.GET("/master-wallet/:id/sub-wallets", svc.ListSubWallets)
+			mw.GET("/master-wallet/:id/sub-wallets/:sid/balance", svc.GetSubWalletBalance)
+			mw.POST("/master-wallet/:id/sub-wallets/:sid/transfer", svc.TransferFromSubWallet)
+
+			// Policies / fees / auto-sign rules.
 			mw.POST("/master-wallet/:id/policies", svc.CreatePolicy)
 			mw.GET("/master-wallet/:id/policies", svc.ListPolicies)
+			mw.DELETE("/master-wallet/:id/policies/:pid", svc.DeletePolicy)
 			mw.POST("/master-wallet/:id/fees", svc.CreateFeeConfig)
 			mw.GET("/master-wallet/:id/fees", svc.ListFeeConfigs)
+			mw.DELETE("/master-wallet/:id/fees/:fid", svc.DeleteFeeConfig)
 			mw.POST("/master-wallet/:id/auto-sign", svc.CreateAutoSignRule)
 			mw.GET("/master-wallet/:id/auto-sign", svc.ListAutoSignRules)
+			mw.DELETE("/master-wallet/:id/auto-sign/:rid", svc.DeleteAutoSignRule)
+
+			// Users (admin-only writes — role gate enforces).
+			mw.GET("/master-wallet/:id/users", svc.ListMasterWalletUsers)
+			mw.POST("/master-wallet/:id/users", svc.CreateMasterWalletUser)
+			mw.DELETE("/master-wallet/:id/users/:uid", svc.DeleteMasterWalletUser)
+
+			// Analytics (real SQL aggregates).
+			mw.GET("/master-wallet/:id/analytics/transactions", svc.AnalyticsTransactions)
+			mw.GET("/master-wallet/:id/analytics/volume", svc.AnalyticsVolume)
+			mw.GET("/master-wallet/:id/analytics/wallets", svc.AnalyticsWallets)
+
+			// Notifications / Webhooks / Audit.
+			mw.GET("/master-wallet/:id/notifications", svc.ListNotifications)
+			mw.POST("/master-wallet/:id/notifications", svc.CreateNotification)
+			mw.GET("/master-wallet/:id/webhooks", svc.ListWebhooks)
+			mw.POST("/master-wallet/:id/webhooks", svc.CreateWebhook)
+			mw.DELETE("/master-wallet/:id/webhooks/:wid", svc.DeleteWebhook)
+			mw.GET("/master-wallet/:id/audit", svc.AuditLog)
+
+			// Auto-sign (transaction execution + logs).
+			mw.POST("/auto-sign-transaction", svc.AutoSignTransaction)
+			mw.GET("/auto-sign-logs", svc.ListAutoSignLogs)
+
+			// Treasury (two-party gate REQUIRED before broadcast — fail-closed).
+			mw.POST("/transfer", svc.TreasuryTransfer)
+			mw.POST("/sweep", svc.TreasurySweep)
+
+			// UserWallet-management governance layer.
+			mw.GET("/user-chains/evm", svc.ListUserChainsEVM)
+			mw.POST("/user-chains/evm", svc.CreateUserChainEVM)
+			mw.PUT("/user-chains/evm/:chainId", svc.UpdateUserChainEVM)
+			mw.DELETE("/user-chains/evm/:chainId", svc.DeleteUserChainEVM)
+			mw.GET("/user-chains/nonevm", svc.ListUserChainsNonEVM)
+			mw.POST("/user-chains/nonevm", svc.CreateUserChainNonEVM)
+			mw.PUT("/user-chains/nonevm/:chainId", svc.UpdateUserChainNonEVM)
+			mw.DELETE("/user-chains/nonevm/:chainId", svc.DeleteUserChainNonEVM)
+			mw.GET("/user-tokens", svc.ListUserTokens)
+			mw.POST("/user-tokens", svc.CreateUserToken)
+			mw.PUT("/user-tokens/:tokenId", svc.UpdateUserToken)
+			mw.DELETE("/user-tokens/:tokenId", svc.DeleteUserToken)
+			mw.GET("/user-wallet-addresses", svc.ListUserWalletAddresses)
+			mw.POST("/derive-user-address", svc.DeriveUserAddress)
+
+			// Feature-flag governance (full CRUD).
+			mw.GET("/feature-flags/:flagId", svc.GetFeatureFlag)
+			mw.PUT("/feature-flags/:flagId", svc.UpsertFeatureFlag)
+			mw.DELETE("/feature-flags/:flagId", svc.DeleteFeatureFlag)
 		}
 	}
 

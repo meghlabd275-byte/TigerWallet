@@ -3,6 +3,7 @@ module github.com/tigerwallet/wl-user-wallet
 go 1.23
 
 require (
+	github.com/btcsuite/btcd/btcec/v2 v2.2.0
 	github.com/ethereum/go-ethereum v1.13.15
 	github.com/gin-contrib/cors v1.5.0
 	github.com/gin-gonic/gin v1.9.1
@@ -19,6 +20,7 @@ require (
 	github.com/consensys/gnark-crypto v0.12.1 // indirect
 	github.com/crate-crypto/go-kzg-4844 v0.7.0 // indirect
 	github.com/deckarep/golang-set/v2 v2.1.0 // indirect
+	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect

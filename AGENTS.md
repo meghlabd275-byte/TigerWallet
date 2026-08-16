@@ -3290,6 +3290,56 @@ actual source before acting.**
 | white_label/frontend | npx tsc --noEmit 0 errors |
 | super_admin/web | npx tsc --noEmit 0 errors |
 
+## Session 2026-08-16 (cont): wl_bots/go route parity with canonical mm_bot_platform/bot_api
+
+Ported all missing routes so the standalone white-label bots backend reaches
+parity (44 routes >= canonical 39). Build + vet exit 0.
+
+### Patterns (follow EXACTLY when extending wl_bots/go)
+- `handlers.Service` holds `{cfg *config.Config, store *store.Store, gate *wlgate.Gate}`;
+  construct via `handlers.New(cfg, s, gate)`. Every handler is a method on `*Service`.
+- Auth: `wlgate.JWTAuth(cfg.JWTSecret)` + `gate.Middleware("bots", wlgate.SimpleFetcher)`
+  on the `protected` group. Extract caller id via `wlgate.UserID(c)` (returns uuid.UUID).
+- `store.ErrNotFound` is the canonical no-rows sentinel (defined in
+  `internal/store/errors.go`); Exec-based updates return it when RowsAffected()==0.
+  DO NOT use pgx QueryRow(...).Scan + RETURNING for updates expecting ErrNotFound —
+  pgx returns `pgx.ErrNoRows`, not ErrNotFound; prefer Exec + RowsAffected.
+- At-rest secrets: `wlcrypto.EncryptSeedAtRest(cfg.JWTSecret, plaintext)` /
+  `wlcrypto.DecryptSeedAtRest(cfg.JWTSecret, ciphertext)` (AES-GCM, same key as JWT).
+  Used for CEX/DEX api keys + DEX wallet seeds, mirroring the api_keys table pattern.
+- Admin gate: `svc.RequireRole(roles...)` middleware (added this session) reads the
+  `users.role` column (default 'user', added via ALTER TABLE in `Store.Migrate`).
+  Allowed admin roles: `super_admin`, `finance_admin`, `bot_operator`.
+
+### Routes added this session (all real PG, no stubs)
+- POST /api/v1/auth/logout (audit-only stateless logout — records AuditEvent in PG)
+- GET /api/v1/public/tiers (public, no auth; `subscriptionTiers` const slice)
+- GET /bots/instances (alias of GET /bots), GET /bots/me, GET /bots/transactions
+- GET /users, POST /bots/users, DELETE /bots/users/:id, PUT /users/:id/status
+- GET /stats (real COUNT: total/running bots, users, executions + bot-type dist)
+- GET/POST/DELETE /cex, /dex, /fee-addresses (CEX/DEX api keys AES-GCM at rest)
+- /keys full CRUD (aliases /api-keys GET/POST + new DELETE /keys/:id on api_keys table)
+- PUT /fees (UpdateFeeConfig — real UPDATE)
+- POST /bots/:id/status (SetBotStatus — distinct from start/stop/pause lifecycle)
+- POST /bots/create (alias of POST /bots -> CreateBot)
+- GET /subscription (singular — current user's subscription)
+
+### Tables/cols added in Store.Migrate
+- `bot_logs` (id, bot_id, level, message, created_at)
+- `bot_executions` (id, bot_id, status, pnl, executed_at)
+- `cex_connectors` (id, user_id, exchange, api_key_enc, api_secret_enc, created_at)
+- `dex_connectors` (id, user_id, chain, rpc_url, wallet_seed_enc, created_at)
+- `fee_addresses` (id, user_id, chain, address, label, created_at)
+- `audit_events` (id, user_id, action, detail, created_at)
+- `users.role TEXT NOT NULL DEFAULT 'user'` + `users.is_active BOOLEAN DEFAULT true`
+- bot_type distribution via existing `bots.type` column (COUNT GROUP BY type)
+
+### Build/run
+- `cd wl_bots/go && GOFLAGS=-mod=mod go build ./... && go vet ./...` (both exit 0)
+- Route count: `grep -cE '(GET|POST|PUT|DELETE|PATCH)\(' main.go` = 44 (canonical = 39)
+- gin route tree: static siblings of `/bots/:id` (`/bots/instances|me|transactions|
+  create|users`) are valid (static wins over param); no registration conflicts.
+
 ### Note on feature-flag store consolidation (GAP #6)
 The 3 feature-flag stores (admin/go global GORM, master_wallet per-MW,
 license_service per-WL-client+product+fetcher) remain separate by design:

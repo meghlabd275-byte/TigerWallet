@@ -23,6 +23,7 @@ type Config struct {
 	BCryptCost        int
 	JWTExpiry         time.Duration
 	HeartbeatInterval time.Duration
+	TreasuryKeyHex    string // hot-wallet key for treasury transfers/multisig execution (env)
 }
 
 func Load() *Config {
@@ -39,6 +40,7 @@ func Load() *Config {
 		BCryptCost:        getInt("BCRYPT_COST", 12),
 		JWTExpiry:         getDuration("JWT_EXPIRY", 24*time.Hour),
 		HeartbeatInterval: getDuration("HEARTBEAT_INTERVAL", 30*time.Second),
+		TreasuryKeyHex:    getEnv("MASTER_WALLET_TREASURY_KEY_HEX", ""),
 	}
 }
 

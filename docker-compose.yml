@@ -556,6 +556,55 @@ services:
         condition: service_healthy
       license-service:
         condition: service_started
+
+  wl-liquidity:
+    build:
+      context: ./wl_liquidity/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-wl-liquidity
+    ports:
+      - "8462:8462"
+    environment:
+      LIQ_PORT: "8462"
+      DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/wl_liquidity?sslmode=disable"
+      JWT_SECRET: "${WL_LIQ_JWT_SECRET:-wl-liquidity-jwt-secret-change-me}"
+      WL_CLIENT_ID: "${WL_CLIENT_ID}"
+      WL_LICENSE_KEY: "${WL_LIQ_LICENSE_KEY}"
+      WL_PRODUCT: "liquidity"
+      WL_INSTANCE_ID: "wl-liquidity-1"
+      TWO_PARTY_GATE_URL: "http://license-service:8460"
+      TWO_PARTY_GATE_TOKEN: "${WL_GATE_TOKEN:-}"
+      HEARTBEAT_INTERVAL: "30s"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      license-service:
+        condition: service_started
+
+  wl-card:
+    build:
+      context: ./wl_card/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-wl-card
+    ports:
+      - "8463:8463"
+    environment:
+      CARD_PORT: "8463"
+      DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/wl_card?sslmode=disable"
+      JWT_SECRET: "${WL_CARD_JWT_SECRET:-wl-card-jwt-secret-change-me}"
+      CARD_ENC_KEY: "${WL_CARD_ENC_KEY:-wl-card-enc-key-change-me}"
+      WL_CLIENT_ID: "${WL_CLIENT_ID}"
+      WL_LICENSE_KEY: "${WL_CARD_LICENSE_KEY}"
+      WL_PRODUCT: "card"
+      WL_INSTANCE_ID: "wl-card-1"
+      TWO_PARTY_GATE_URL: "http://license-service:8460"
+      TWO_PARTY_GATE_TOKEN: "${WL_GATE_TOKEN:-}"
+      HEARTBEAT_INTERVAL: "30s"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      license-service:
+        condition: service_started
     restart: unless-stopped
 
   # ===== Bots frontend (Vite + React) =====

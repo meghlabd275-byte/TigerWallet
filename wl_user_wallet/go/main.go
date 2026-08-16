@@ -59,12 +59,68 @@ func main() {
 		wallet.Use(middleware.JWTAuth(cfg.JWTSecret))
 		wallet.Use(middleware.Gate("user_wallet", middleware.SimpleFetcher))
 		{
+			// Existing wallet-scoped routes (back-compat).
 			wallet.POST("/wallets", svc.CreateWallet)
 			wallet.GET("/wallets", svc.ListWallets)
 			wallet.GET("/wallets/:id/balance", svc.GetBalance)
 			wallet.POST("/wallets/:id/send", svc.SendTransaction)
 			wallet.POST("/wallets/:id/sign", svc.SignMessage)
 			wallet.GET("/wallets/:id/transactions", svc.ListTransactions)
+
+			// ---- Canonical flat routes (parity with TigerWallet wallet_api) ----
+			// Read-only chain / market data.
+			wallet.GET("/balance", svc.FlatBalance)
+			wallet.GET("/tokens", svc.GetTokens)
+			wallet.GET("/nfts", svc.GetNFTs)
+			wallet.GET("/gas", svc.GetGas)
+			wallet.GET("/price", svc.GetPrice)
+			wallet.GET("/chains", svc.GetChains)
+
+			// Send / sign (flat, wallet_id in body/query).
+			wallet.POST("/send", svc.FlatSend)
+			wallet.POST("/sign", svc.FlatSign)
+			wallet.GET("/transactions", svc.FlatTransactions)
+			wallet.GET("/transactions/:txHash", svc.GetTransaction)
+
+			// Swap (real CoinGecko cross-rate + on-chain V2 router calldata).
+			wallet.GET("/swap/quote", svc.SwapQuote)
+			wallet.POST("/swap/execute", svc.SwapExecute)
+
+			// Staking (real on-chain stake/unstake/claim calldata).
+			wallet.GET("/staking/quote", svc.StakingQuote)
+			wallet.POST("/staking/stake", svc.StakingStake)
+			wallet.POST("/staking/unstake", svc.StakingUnstake)
+			wallet.POST("/staking/claim", svc.StakingClaim)
+
+			// Non-EVM signing (real Solana/Bitcoin/Cosmos crypto).
+			wallet.POST("/non_evm/sign", svc.NonEvmSign)
+			wallet.POST("/non_evm/send", svc.NonEvmSend)
+			wallet.POST("/non_evm/address", svc.NonEvmAddress)
+
+			// Address book (real PG CRUD).
+			wallet.GET("/address-book", svc.ListAddressBook)
+			wallet.POST("/address-book", svc.CreateAddressBook)
+			wallet.PUT("/address-book/:id", svc.UpdateAddressBook)
+			wallet.DELETE("/address-book/:id", svc.DeleteAddressBook)
+
+			// Device sync (real PG CRUD).
+			wallet.GET("/devices", svc.ListDevices)
+			wallet.POST("/devices", svc.RegisterDevice)
+			wallet.POST("/devices/:id/sync", svc.SyncDevice)
+			wallet.DELETE("/devices/:id", svc.DeleteDevice)
+
+			// Keystore V3 (real Web3 Secret Storage scrypt+AES-CTR+keccak MAC).
+			wallet.POST("/keystore/export", svc.ExportKeystore)
+			wallet.POST("/keystore/import", svc.ImportKeystore)
+		}
+
+		// Public unauthenticated reads (same real logic, no auth gate).
+		public := api.Group("/public")
+		{
+			public.GET("/balance", svc.PublicBalance)
+			public.GET("/tokens", svc.PublicTokens)
+			public.GET("/transactions", svc.PublicTransactions)
+			public.GET("/nfts", svc.PublicNFTs)
 		}
 	}
 

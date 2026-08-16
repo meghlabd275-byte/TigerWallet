@@ -7,6 +7,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -34,6 +35,22 @@ func validBotType(t string) bool {
 		}
 	}
 	return false
+}
+
+// subscriptionTiers mirrors the canonical bot_api defaultTiers (4 tiers). These
+// are config constants — the WL deployment's subscription offering.
+var subscriptionTiers = []gin.H{
+	{"id": "free", "name": "Free", "max_bots": 1, "max_dex": 1, "max_cex": 0, "latency_ms": 5000, "monthly_fee": "0"},
+	{"id": "basic", "name": "Basic", "max_bots": 3, "max_dex": 5, "max_cex": 3, "latency_ms": 2000, "monthly_fee": "49"},
+	{"id": "pro", "name": "Pro", "max_bots": 10, "max_dex": 15, "max_cex": 10, "latency_ms": 500, "monthly_fee": "299"},
+	{"id": "enterprise", "name": "Enterprise", "max_bots": 50, "max_dex": 50, "max_cex": 30, "latency_ms": 100, "monthly_fee": "1499"},
+}
+
+// validRoles mirrors the canonical bot_api UserRole set.
+func validRoles() map[string]bool {
+	return map[string]bool{
+		"super_admin": true, "bot_operator": true, "finance_admin": true, "client": true,
+	}
 }
 
 type Svc struct {
@@ -81,7 +98,7 @@ func (s *Svc) Login(c *gin.Context) {
 		return
 	}
 	u, err := s.store.GetUserByEmail(c.Request.Context(), req.Email)
-	if err != nil || bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)) != nil {
+	if err != nil || !u.IsActive || bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)) != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
@@ -96,6 +113,44 @@ func (s *Svc) Login(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"token": tok, "user_id": u.ID, "email": u.Email, "role": u.Role})
+}
+
+// Logout is audit-only and stateless: wl-bots uses stateless HS256 JWTs (no
+// server-side session table that gates auth), so the token itself is NOT
+// invalidated. We record a real audit event in PostgreSQL (the honest record
+// that the user requested logout) and return success — mirroring canonical's
+// stateless logout intent.
+func (s *Svc) Logout(c *gin.Context) {
+	uid := wlgate.UserID(c)
+	if uid != uuid.Nil {
+		_ = s.store.RecordAuditEvent(c.Request.Context(), uid, "logout", "user requested logout")
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "logged out"})
+}
+
+// RequireRole is the admin gate. The wl-bots JWT (wlgate.Claims) does not carry
+// a role, so the role is loaded fresh from the users table on each request —
+// fail-closed (403) if the user is missing or lacks one of the allowed roles.
+// Mirrors canonical bot_api requireRole.
+func (s *Svc) RequireRole(roles ...string) gin.HandlerFunc {
+	allowed := make(map[string]bool, len(roles))
+	for _, r := range roles {
+		allowed[r] = true
+	}
+	return func(c *gin.Context) {
+		uid := wlgate.UserID(c)
+		if uid == uuid.Nil {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "insufficient privileges"})
+			return
+		}
+		u, err := s.store.GetUserByID(c.Request.Context(), uid)
+		if err != nil || !u.IsActive || !allowed[u.Role] {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "insufficient privileges"})
+			return
+		}
+		c.Set("role", u.Role)
+		c.Next()
+	}
 }
 
 // ==================== Bots ====================
@@ -404,6 +459,449 @@ func (s *Svc) ListApiKeys(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"api_keys": out, "count": len(out)})
 }
 
+// ==================== Public ====================
+
+// PublicTiers returns the subscription tiers + bot types (no auth).
+func (s *Svc) PublicTiers(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"tiers": subscriptionTiers, "bot_types": botTypes})
+}
+
+// ==================== Bot operator aliases (frontend-compat) ====================
+
+// ListBotInstances is an alias of ListBots (GET /bots/instances).
+func (s *Svc) ListBotInstances(c *gin.Context) { s.ListBots(c) }
+
+// CurrentBotUser returns the authenticated user's profile (GET /bots/me).
+func (s *Svc) CurrentBotUser(c *gin.Context) {
+	uid := wlgate.UserID(c)
+	u, err := s.store.GetUserByID(c.Request.Context(), uid)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	c.JSON(http.StatusOK, userJSON(u))
+}
+
+// ListBotTransactions returns executions across the caller's bots (real PG
+// query filtered by the authenticated user).
+func (s *Svc) ListBotTransactions(c *gin.Context) {
+	uid := wlgate.UserID(c)
+	txs, err := s.store.ListBotTransactions(c.Request.Context(), uid)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(txs))
+	for i := range txs {
+		t := &txs[i]
+		out = append(out, gin.H{
+			"id":         t.ID,
+			"bot_id":     t.BotID,
+			"status":     t.Status,
+			"pnl":        t.PNL,
+			"started_at": t.StartedAt,
+			"ended_at":   t.EndedAt,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"transactions": out, "count": len(out)})
+}
+
+// SetBotStatus sets a bot's status directly (POST /bots/:id/status). Distinct
+// from start/stop/pause lifecycle endpoints — accepts any status string.
+func (s *Svc) SetBotStatus(c *gin.Context) {
+	b, ok := s.fetchOwnedBot(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := s.store.SetBotStatus(c.Request.Context(), b.ID, req.Status); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "bot not found"})
+		return
+	}
+	_ = s.store.AppendBotLog(c.Request.Context(), b.ID, "info", "status set to "+req.Status)
+	b.Status = req.Status
+	c.JSON(http.StatusOK, botJSON(b))
+}
+
+// ==================== User management (admin/operator surface) ====================
+
+// ListUsers returns all users (admin). Mirrors canonical adminListUsers.
+func (s *Svc) ListUsers(c *gin.Context) {
+	users, err := s.store.ListUsers(c.Request.Context(), 500)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(users))
+	for i := range users {
+		out = append(out, userJSON(&users[i]))
+	}
+	c.JSON(http.StatusOK, gin.H{"users": out, "count": len(out)})
+}
+
+// CreateBotUser creates a new bot-platform user (admin/operator only). Mirrors
+// canonical createBotUser.
+func (s *Svc) CreateBotUser(c *gin.Context) {
+	var req struct {
+		Email string `json:"email" binding:"required,email"`
+		Role  string `json:"role"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Role == "" {
+		req.Role = "client"
+	}
+	if !validRoles()[req.Role] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid role", "valid_roles": []string{"super_admin", "bot_operator", "finance_admin", "client"}})
+		return
+	}
+	u, err := s.store.CreateBotUser(c.Request.Context(), req.Email, req.Role)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, userJSON(u))
+}
+
+// DeleteBotUser removes a bot-platform user (admin only). Mirrors canonical
+// deleteBotUser.
+func (s *Svc) DeleteBotUser(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	if err := s.store.DeleteUser(c.Request.Context(), id); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": id, "status": "deleted"})
+}
+
+// UpdateUserStatus sets is_active and (optionally) role. Mirrors canonical
+// adminUserStatus.
+func (s *Svc) UpdateUserStatus(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	var req struct {
+		IsActive bool   `json:"is_active"`
+		Role     string `json:"role"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Role != "" && !validRoles()[req.Role] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid role"})
+		return
+	}
+	if err := s.store.UpdateUserStatus(c.Request.Context(), id, req.IsActive, req.Role); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": id, "is_active": req.IsActive, "role": req.Role})
+}
+
+// ==================== Platform stats (real COUNTs) ====================
+
+func (s *Svc) Stats(c *gin.Context) {
+	st, err := s.store.Stats(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	dist, _ := s.store.BotTypeDistribution(c.Request.Context())
+	typeDist := make([]gin.H, 0, len(dist))
+	for i := range dist {
+		typeDist = append(typeDist, gin.H{"bot_type": dist[i].BotType, "count": dist[i].Count})
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"total_users":      st.TotalUsers,
+		"total_bots":       st.TotalBots,
+		"running_bots":     st.RunningBots,
+		"total_executions": st.TotalExecutions,
+		"bot_type_distribution": typeDist,
+	})
+}
+
+// ==================== Fee config update ====================
+
+// UpdateFeeConfig updates an existing fee config by id (real PG UPDATE).
+func (s *Svc) UpdateFeeConfig(c *gin.Context) {
+	var req struct {
+		ID         string `json:"id" binding:"required"`
+		Name       string `json:"name" binding:"required"`
+		Percentage string `json:"percentage" binding:"required"`
+		Enabled    *bool  `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	id, err := uuid.Parse(req.ID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+	if err := s.store.UpdateFeeConfig(c.Request.Context(), id, req.Name, req.Percentage, enabled); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "fee config not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"id":         id,
+		"name":       req.Name,
+		"percentage": req.Percentage,
+		"enabled":    enabled,
+	})
+}
+
+// ==================== API key DELETE (/keys full CRUD) ====================
+
+// DeleteApiKey removes one of the caller's API keys (DELETE /keys/:id). Backed
+// by the same api_keys table as /api-keys.
+func (s *Svc) DeleteApiKey(c *gin.Context) {
+	uid := wlgate.UserID(c)
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	if err := s.store.DeleteAPIKey(c.Request.Context(), id, uid); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "key not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": id, "status": "deleted"})
+}
+
+// ==================== CEX connector configs (AES-GCM at rest) ====================
+
+func (s *Svc) ListCEX(c *gin.Context) {
+	conns, err := s.store.ListCEX(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(conns))
+	for i := range conns {
+		cn := &conns[i]
+		out = append(out, gin.H{
+			"id":         cn.ID,
+			"exchange":   cn.Exchange,
+			"is_active":  cn.IsActive,
+			"created_at": cn.CreatedAt,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"connections": out, "count": len(out)})
+}
+
+func (s *Svc) CreateCEX(c *gin.Context) {
+	var req struct {
+		Exchange  string `json:"exchange" binding:"required"`
+		APIKey    string `json:"api_key" binding:"required"`
+		APISecret string `json:"api_secret" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	encKey, err := wlcrypto.EncryptSeedAtRest([]byte(req.APIKey), s.cfg.JWTSecret)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption failed"})
+		return
+	}
+	encSecret, err := wlcrypto.EncryptSeedAtRest([]byte(req.APISecret), s.cfg.JWTSecret)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption failed"})
+		return
+	}
+	cn, err := s.store.CreateCEX(c.Request.Context(), req.Exchange, encKey, encSecret)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{
+		"id":        cn.ID,
+		"exchange":  cn.Exchange,
+		"is_active": cn.IsActive,
+	})
+}
+
+func (s *Svc) DeleteCEX(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	if err := s.store.DeleteCEX(c.Request.Context(), id); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "connection not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": id, "status": "deleted"})
+}
+
+// ==================== DEX connector configs ====================
+
+func (s *Svc) ListDEX(c *gin.Context) {
+	conns, err := s.store.ListDEX(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(conns))
+	for i := range conns {
+		d := &conns[i]
+		out = append(out, gin.H{
+			"id":         d.ID,
+			"dex":        d.DEX,
+			"chain_id":   d.ChainID,
+			"rpc_url":    d.RPCURL,
+			"is_active":  d.IsActive,
+			"created_at": d.CreatedAt,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"connections": out, "count": len(out)})
+}
+
+func (s *Svc) CreateDEX(c *gin.Context) {
+	var req struct {
+		DEX     string `json:"dex" binding:"required"`
+		ChainID int64  `json:"chain_id" binding:"required"`
+		RPCURL  string `json:"rpc_url"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	d, err := s.store.CreateDEX(c.Request.Context(), req.DEX, req.ChainID, req.RPCURL)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{
+		"id":       d.ID,
+		"dex":      d.DEX,
+		"chain_id": d.ChainID,
+		"rpc_url":  d.RPCURL,
+	})
+}
+
+func (s *Svc) DeleteDEX(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	if err := s.store.DeleteDEX(c.Request.Context(), id); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "connection not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": id, "status": "deleted"})
+}
+
+// ==================== Admin fee addresses ====================
+
+func (s *Svc) ListFeeAddresses(c *gin.Context) {
+	addrs, err := s.store.ListFeeAddresses(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(addrs))
+	for i := range addrs {
+		a := &addrs[i]
+		out = append(out, gin.H{
+			"id":         a.ID,
+			"label":      a.Label,
+			"address":    a.Address,
+			"chain_id":   a.ChainID,
+			"is_active":  a.IsActive,
+			"created_at": a.CreatedAt,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"addresses": out, "count": len(out)})
+}
+
+func (s *Svc) CreateFeeAddress(c *gin.Context) {
+	var req struct {
+		Label   string `json:"label" binding:"required"`
+		Address string `json:"address" binding:"required"`
+		ChainID int64  `json:"chain_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	a, err := s.store.CreateFeeAddress(c.Request.Context(), req.Label, req.Address, req.ChainID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{
+		"id":       a.ID,
+		"label":    a.Label,
+		"address":  a.Address,
+		"chain_id": a.ChainID,
+	})
+}
+
+func (s *Svc) DeleteFeeAddress(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	if err := s.store.DeleteFeeAddress(c.Request.Context(), id); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "address not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": id, "status": "deleted"})
+}
+
+// ==================== Subscription (singular alias) ====================
+
+// GetSubscription is an alias of ListSubscriptions filtered to the current
+// user (GET /subscription). Returns the caller's subscriptions.
+func (s *Svc) GetSubscription(c *gin.Context) { s.ListSubscriptions(c) }
+
 // ==================== Health ====================
 
 func (s *Svc) Health(c *gin.Context) {
@@ -449,6 +947,17 @@ func botJSON(b *store.Bot) gin.H {
 		"exchange":   b.Exchange,
 		"pair":       b.Pair,
 		"created_at": b.CreatedAt,
+	}
+}
+
+// userJSON projects a user for API responses (never leaks password_hash).
+func userJSON(u *store.User) gin.H {
+	return gin.H{
+		"id":         u.ID,
+		"email":      u.Email,
+		"role":       u.Role,
+		"is_active":  u.IsActive,
+		"created_at": u.CreatedAt,
 	}
 }
 

@@ -283,6 +283,86 @@ func runMigrations(ctx context.Context) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_admin_permissions_white_label ON admin_permissions(white_label_id)`,
+
+		// ---- WL product governance tables ----
+		// GOVERNANCE/RECORD tables in the WL-admin's own DB so a WL client can
+		// administer the independently-deployed WL bot/liquidity/card products from
+		// one panel. Each carries white_label_id for tenant isolation (filtered via
+		// middleware.TenantID). Real product state lives in the respective product
+		// backends (wl_bots, wl_liquidity, wl_card); these rows record the WL
+		// client's governance decisions.
+
+		`CREATE TABLE IF NOT EXISTS wl_bot_operators (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name TEXT NOT NULL,
+			strategy TEXT NOT NULL DEFAULT 'mm',
+			status TEXT NOT NULL DEFAULT 'active',
+			config JSONB DEFAULT '{}',
+			white_label_id UUID NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_wl_bot_operators_white_label ON wl_bot_operators(white_label_id)`,
+		`CREATE TABLE IF NOT EXISTS wl_bot_config (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			key TEXT NOT NULL,
+			value TEXT NOT NULL,
+			white_label_id UUID NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE (key, white_label_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_wl_bot_config_white_label ON wl_bot_config(white_label_id)`,
+		`CREATE TABLE IF NOT EXISTS wl_liquidity_sources (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name TEXT NOT NULL,
+			chain TEXT NOT NULL,
+			dex TEXT NOT NULL,
+			pool_address TEXT NOT NULL,
+			token_a TEXT NOT NULL,
+			token_b TEXT NOT NULL,
+			reserve_a NUMERIC NOT NULL DEFAULT 0,
+			reserve_b NUMERIC NOT NULL DEFAULT 0,
+			fee_pct NUMERIC NOT NULL DEFAULT 0,
+			is_active BOOLEAN NOT NULL DEFAULT TRUE,
+			white_label_id UUID NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_wl_liquidity_sources_white_label ON wl_liquidity_sources(white_label_id)`,
+		`CREATE TABLE IF NOT EXISTS wl_liquidity_allocations (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name TEXT NOT NULL,
+			fee_share_pct NUMERIC NOT NULL DEFAULT 0,
+			destination TEXT NOT NULL DEFAULT '',
+			is_active BOOLEAN NOT NULL DEFAULT TRUE,
+			white_label_id UUID NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_wl_liquidity_allocations_white_label ON wl_liquidity_allocations(white_label_id)`,
+		`CREATE TABLE IF NOT EXISTS wl_cards (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID,
+			holder_name TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'active',
+			balance NUMERIC NOT NULL DEFAULT 0,
+			currency TEXT NOT NULL DEFAULT 'USD',
+			white_label_id UUID NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_wl_cards_white_label ON wl_cards(white_label_id)`,
+		`CREATE TABLE IF NOT EXISTS wl_card_transactions (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			card_id UUID NOT NULL REFERENCES wl_cards(id) ON DELETE CASCADE,
+			amount NUMERIC NOT NULL,
+			merchant TEXT NOT NULL DEFAULT '',
+			category TEXT NOT NULL DEFAULT 'general',
+			status TEXT NOT NULL DEFAULT 'settled',
+			white_label_id UUID NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_wl_card_transactions_white_label ON wl_card_transactions(white_label_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_wl_card_transactions_card ON wl_card_transactions(card_id)`,
 	}
 
 	for _, migration := range migrations {

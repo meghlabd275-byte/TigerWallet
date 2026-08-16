@@ -42,6 +42,7 @@ type Handlers struct {
 	gate         *wlgate.Gate
 	twoPartyGate *wlgate.TwoPartyGate
 	wlClientID   uuid.UUID
+	wsHub        *wsHub
 }
 
 // New builds a Handlers bound to a fail-closed license gate + two-party gate.
@@ -56,6 +57,7 @@ func New(cfg *config.Config, st *store.Store, gate *wlgate.Gate) *Handlers {
 		gate:         gate,
 		twoPartyGate: wlgate.NewTwoPartyGate(cfg.ControlPlaneURL, cfg.ControlPlaneToken),
 		wlClientID:   wlID,
+		wsHub:        newWSHub(),
 	}
 }
 

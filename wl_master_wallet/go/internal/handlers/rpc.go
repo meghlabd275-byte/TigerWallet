@@ -18,7 +18,8 @@ func rpcForChain(chainID int64) string {
 	if r, ok := rpcByChain[chainID]; ok {
 		return r
 	}
-	return ""
+	// Fall back to the 186-chain registry (env override or registry endpoint).
+	return rpcEndpointForChain(chainID)
 }
 
 func firstNonEmpty(a, b string) string {

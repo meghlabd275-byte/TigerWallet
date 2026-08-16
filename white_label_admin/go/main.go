@@ -263,6 +263,32 @@ func main() {
 			admin.DELETE("/admins/:id/role/:roleId", middleware.RequireScope(roles.WLClient), svc.RevokeAdminRole)
 			admin.GET("/admins/:id/permissions", middleware.RequireScope(roles.WLClient), svc.GetAdminPermissions)
 
+			// ---- WL product governance ----
+			// Governance/record endpoints (in the WL-admin's own DB) for the
+			// independently-deployed wl_bots / wl_liquidity / wl_card products.
+			// bot_admin scope
+			admin.GET("/wl-bots/operators", middleware.RequireScope(roles.BotAdmin), svc.ListWLBotOperators)
+			admin.POST("/wl-bots/operators", middleware.RequireScope(roles.BotAdmin), svc.RegisterWLBotOperator)
+			admin.PUT("/wl-bots/operators/:id/status", middleware.RequireScope(roles.BotAdmin), svc.UpdateWLBotOperatorStatus)
+			admin.GET("/wl-bots/config", middleware.RequireScope(roles.BotAdmin), svc.GetWLBotConfig)
+			admin.GET("/wl-bots/stats", middleware.RequireScope(roles.BotAdmin), svc.WLBotStats)
+
+			// liquidity_admin scope
+			admin.GET("/wl-liquidity/sources", middleware.RequireScope(roles.LiquidityAdmin), svc.ListWLLiquiditySources)
+			admin.POST("/wl-liquidity/sources", middleware.RequireScope(roles.LiquidityAdmin), svc.CreateWLLiquiditySource)
+			admin.PUT("/wl-liquidity/sources/:id", middleware.RequireScope(roles.LiquidityAdmin), svc.UpdateWLLiquiditySource)
+			admin.DELETE("/wl-liquidity/sources/:id", middleware.RequireScope(roles.LiquidityAdmin), svc.DeleteWLLiquiditySource)
+			admin.GET("/wl-liquidity/allocations", middleware.RequireScope(roles.LiquidityAdmin), svc.ListWLLiquidityAllocations)
+			admin.POST("/wl-liquidity/allocations", middleware.RequireScope(roles.LiquidityAdmin), svc.SetWLLiquidityAllocation)
+			admin.GET("/wl-liquidity/stats", middleware.RequireScope(roles.LiquidityAdmin), svc.WLLiquidityStats)
+
+			// card_admin scope
+			admin.GET("/wl-cards", middleware.RequireScope(roles.CardAdmin), svc.ListWLCards)
+			admin.POST("/wl-cards", middleware.RequireScope(roles.CardAdmin), svc.IssueWLCard)
+			admin.PUT("/wl-cards/:id/status", middleware.RequireScope(roles.CardAdmin), svc.UpdateWLCardStatus)
+			admin.GET("/wl-cards/transactions", middleware.RequireScope(roles.CardAdmin), svc.ListWLCardTransactions)
+			admin.GET("/wl-cards/stats", middleware.RequireScope(roles.CardAdmin), svc.WLCardStats)
+
 			admin.GET("/stats", svc.Stats)
 		}
 	}

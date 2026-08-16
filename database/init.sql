@@ -99,3 +99,15 @@ CREATE DATABASE wl_projectparty;
 -- WL-ProjectParty schema is managed by the service's own migrations on boot
 -- (users, tokens, listings, launchpad_projects, participations,
 --  market_making_configs, fee_configs, favorites).
+
+-- Standalone WL-Liquidity database (independent of TigerWallet cloud).
+CREATE DATABASE wl_liquidity;
+\connect wl_liquidity;
+-- WL-Liquidity schema is managed by the service's own migrations on boot
+-- (users, liquidity_sources, liquidity_routes).
+
+-- Standalone WL-Card (WL-branded CryptoCard) database.
+CREATE DATABASE wl_card;
+\connect wl_card;
+-- WL-Card schema is managed by the service's own migrations on boot
+-- (users, cards with encrypted PAN/CVV, card_transactions).

@@ -1,0 +1,752 @@
+package handlers
+
+// chains_data.go — The full 186-chain mainnet registry (120 EVM + 66 non-EVM),
+// ported verbatim from go/wallet_api/chains_evm_data.go + chains_nonevm_data.go.
+// This is REAL chain metadata (chain id, name, symbol, RPC endpoint, BIP-44
+// derivation path, explorer URLs, decimals, SLIP-44 coin type) used by the
+// WL-MasterWallet public market-data routes (/api/v1/chains) and address
+// derivation. No fabricated chains.
+
+import (
+	"os"
+	"strings"
+)
+
+// ChainConfig describes one supported mainnet chain.
+type ChainConfig struct {
+	ID             int64    `json:"id"`
+	Name           string   `json:"name"`
+	Symbol         string   `json:"symbol"`
+	RPCEndpoint    string   `json:"rpc_endpoint"`
+	DerivationPath string   `json:"derivation_path"`
+	ExplorerAPI    string   `json:"explorer_api"`
+	ExplorerURL    string   `json:"explorer_url"`
+	ChainType      string   `json:"chain_type"` // "evm" | "bitcoin" | "solana" | "cosmos" | ...
+	Decimals       int      `json:"decimals"`
+	CoinType       uint32   `json:"coin_type"` // BIP-44 SLIP-44 registered coin type
+	IsTestnet      bool     `json:"is_testnet"`
+	RPCAlternates  []string `json:"rpc_alternates,omitempty"`
+	NativeID       int64    `json:"native_id,omitempty"`
+}
+
+// evmChains returns the EVM mainnet chain list.
+func evmChains() []ChainConfig { return evmMainnet }
+
+// nonEVMChains returns the non-EVM mainnet chain list.
+func nonEVMChains() []ChainConfig { return nonEVMMainnet }
+
+// allChains returns the full 186-chain mainnet registry.
+func allChains() []ChainConfig {
+	out := make([]ChainConfig, 0, len(evmMainnet)+len(nonEVMMainnet))
+	out = append(out, evmMainnet...)
+	out = append(out, nonEVMMainnet...)
+	return out
+}
+
+// chainByID looks up a chain by id across the full registry.
+func chainByID(chainID int64) (ChainConfig, bool) {
+	for _, c := range evmMainnet {
+		if c.ID == chainID {
+			return c, true
+		}
+	}
+	for _, c := range nonEVMMainnet {
+		if c.ID == chainID {
+			return c, true
+		}
+	}
+	return ChainConfig{}, false
+}
+
+// chainByBlockchain looks up an EVM chain by its lowercase name/symbol.
+func chainByBlockchain(name string) (ChainConfig, bool) {
+	n := normalizeChain(name)
+	for _, c := range evmMainnet {
+		if normalizeChain(c.Name) == n || normalizeChain(c.Symbol) == n || normalizeChain(c.ChainType) == n {
+			return c, true
+		}
+	}
+	return ChainConfig{}, false
+}
+
+func normalizeChain(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
+
+// rpcEndpointForChain resolves the RPC URL for a chain id, preferring an env
+// override (<SYMBOL>_RPC_URL or the canonical master_wallet env name) and
+// falling back to the registry's RPCEndpoint. Returns "" when none configured.
+func rpcEndpointForChain(chainID int64) string {
+	c, ok := chainByID(chainID)
+	if !ok {
+		return ""
+	}
+	if env := rpcEnvOverride(c); env != "" {
+		return env
+	}
+	return c.RPCEndpoint
+}
+
+// rpcEnvOverride checks canonical env names + a per-symbol override.
+func rpcEnvOverride(c ChainConfig) string {
+	canon := map[int64]string{
+		1: "ETH_RPC_URL", 56: "BSC_RPC_URL", 137: "POLYGON_RPC_URL", 42161: "ARBITRUM_RPC_URL",
+		10: "OPTIMISM_RPC_URL", 43114: "AVALANCHE_RPC_URL", 8453: "BASE_RPC_URL",
+		42220: "CELO_RPC_URL", 250: "FANTOM_RPC_URL", 25: "CRONOS_RPC_URL",
+	}
+	if v, ok := canon[c.ID]; ok {
+		if s := os.Getenv(v); s != "" {
+			return s
+		}
+	}
+	if s := os.Getenv(strings.ToUpper(strings.ReplaceAll(c.Symbol, " ", "_")) + "_RPC_URL"); s != "" {
+		return s
+	}
+	return ""
+}
+
+// chainExplorerAPI returns the Etherscan-compatible explorer base URL + API key
+// env var name for a chain id. Used for real transaction history fetches.
+func chainExplorerAPI(chainID int64) (baseURL, apiKeyEnv string) {
+	if c, ok := chainByID(chainID); ok && c.ExplorerAPI != "" {
+		keyEnv := "EXPLORER_API_KEY"
+		switch chainID {
+		case 1:
+			keyEnv = "ETHERSCAN_API_KEY"
+		case 56:
+			keyEnv = "BSCSCAN_API_KEY"
+		case 137:
+			keyEnv = "POLYGONSCAN_API_KEY"
+		case 42161:
+			keyEnv = "ARBISCAN_API_KEY"
+		case 10:
+			keyEnv = "OPTIMISM_API_KEY"
+		case 43114:
+			keyEnv = "SNOWTRACE_API_KEY"
+		case 8453:
+			keyEnv = "BASESCAN_API_KEY"
+		}
+		return c.ExplorerAPI, keyEnv
+	}
+	return "", ""
+}
+
+// chainCoinGeckoID maps an EVM chain id to the CoinGecko coin id used for price
+// lookups (native asset price).
+func chainCoinGeckoID(chainID int64) string {
+	switch chainID {
+	case 1:
+		return "ethereum"
+	case 56:
+		return "binancecoin"
+	case 137:
+		return "matic-network"
+	case 42161:
+		return "arbitrum"
+	case 10:
+		return "optimism"
+	case 43114:
+		return "avalanche-2"
+	case 8453:
+		return "base"
+	case 42220:
+		return "celo"
+	case 250:
+		return "fantom"
+	case 25:
+		return "crypto-com-chain"
+	case 42766:
+		return "zksync"
+	case 59144:
+		return "linea"
+	case 534352:
+		return "scroll"
+	case 324:
+		return "zksync-era"
+	}
+	return ""
+}
+
+// ---- EVM mainnet chains (ported from go/wallet_api/chains_evm_data.go) ----
+
+// Code generated by /tmp/gen_go.py from the canonical ethereum-lists/chains
+// registry (chainid.network/chains.json). DO NOT EDIT by hand. Each entry
+// is a verified mainnet EVM chain with a public RPC and a block explorer.
+// Re-generate with the generator script; admins can add/override via the
+// admin_chain_config PostgreSQL table at runtime.
+
+var evmMainnet = []ChainConfig{
+	{
+		ID: 1, Name: "Ethereum Mainnet", Symbol: "ETH", RPCEndpoint: "https://api.mycryptoapi.com/eth", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://etherscan.io", ExplorerURL: "https://etherscan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 8, Name: "Ubiq", Symbol: "UBQ", RPCEndpoint: "https://rpc.octano.dev", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://ubiqscan.io", ExplorerURL: "https://ubiqscan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 30, Name: "Rootstock Mainnet", Symbol: "RBTC", RPCEndpoint: "https://public-node.rsk.co", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.rsk.co", ExplorerURL: "https://explorer.rsk.co", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 56, Name: "BNB Smart Chain Mainnet", Symbol: "BNB", RPCEndpoint: "https://bsc-dataseed1.bnbchain.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://bscscan.com", ExplorerURL: "https://bscscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 60, Name: "GoChain", Symbol: "GO", RPCEndpoint: "https://rpc.gochain.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.gochain.io", ExplorerURL: "https://explorer.gochain.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 61, Name: "Ethereum Classic", Symbol: "ETC", RPCEndpoint: "https://etc.rivet.link", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://etc.blockscout.com", ExplorerURL: "https://etc.blockscout.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 70, Name: "Hoo Smart Chain", Symbol: "HOO", RPCEndpoint: "https://http-mainnet.hoosmartchain.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://www.hooscan.com", ExplorerURL: "https://www.hooscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 99, Name: "POA Network Core", Symbol: "POA", RPCEndpoint: "https://core.poa.network", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://blockscout.com/poa/core", ExplorerURL: "https://blockscout.com/poa/core", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 100, Name: "Gnosis", Symbol: "XDAI", RPCEndpoint: "https://rpc.gnosischain.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://gnosisscan.io", ExplorerURL: "https://gnosisscan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 108, Name: "ThunderCore Mainnet", Symbol: "TT", RPCEndpoint: "https://mainnet-rpc.thundercore.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://viewblock.io/thundercore", ExplorerURL: "https://viewblock.io/thundercore", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 113, Name: "Dehvo", Symbol: "Deh", RPCEndpoint: "https://connect.dehvo.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.dehvo.com", ExplorerURL: "https://explorer.dehvo.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 121, Name: "Realchain Mainnet", Symbol: "REAL", RPCEndpoint: "https://rcl-dataseed1.rclsidechain.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://rclscan.com", ExplorerURL: "https://rclscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 126, Name: "OYchain Mainnet", Symbol: "OY", RPCEndpoint: "https://rpc.mainnet.oychain.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.oychain.io", ExplorerURL: "https://explorer.oychain.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 128, Name: "Huobi ECO Chain Mainnet", Symbol: "HT", RPCEndpoint: "https://http-mainnet.hecochain.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://hecoinfo.com", ExplorerURL: "https://hecoinfo.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 137, Name: "Polygon Mainnet", Symbol: "POL", RPCEndpoint: "https://polygon.drpc.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://polygonscan.com", ExplorerURL: "https://polygonscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 138, Name: "Defi Oracle Meta Mainnet", Symbol: "ETH", RPCEndpoint: "https://rpc-http-pub.d-bis.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.d-bis.org", ExplorerURL: "https://explorer.d-bis.org", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 143, Name: "Monad", Symbol: "MON", RPCEndpoint: "https://rpc.monad.xyz", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://monadvision.com", ExplorerURL: "https://monadvision.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 151, Name: "Redbelly Network Mainnet", Symbol: "RBNT", RPCEndpoint: "https://governors.mainnet.redbelly.network", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://redbelly.routescan.io", ExplorerURL: "https://redbelly.routescan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 166, Name: "Nomina", Symbol: "NOM", RPCEndpoint: "https://mainnet.nomina.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://nomscan.io", ExplorerURL: "https://nomscan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 168, Name: "AIOZ Network", Symbol: "AIOZ", RPCEndpoint: "https://eth-dataseed.aioz.network", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.aioz.network", ExplorerURL: "https://explorer.aioz.network", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 182, Name: "IOST Mainnet", Symbol: "BNB", RPCEndpoint: "https://l2-mainnet.iost.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://l2-scan.iost.io", ExplorerURL: "https://l2-scan.iost.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 204, Name: "opBNB Mainnet", Symbol: "BNB", RPCEndpoint: "https://opbnb-mainnet-rpc.bnbchain.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://mainnet.opbnbscan.com", ExplorerURL: "https://mainnet.opbnbscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 239, Name: "TAC Mainnet", Symbol: "TAC", RPCEndpoint: "https://rpc.tac.build", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.tac.build", ExplorerURL: "https://explorer.tac.build", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 246, Name: "Energy Web Chain", Symbol: "EWT", RPCEndpoint: "https://rpc.energyweb.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.energyweb.org", ExplorerURL: "https://explorer.energyweb.org", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 269, Name: "High Performance Blockchain", Symbol: "HPB", RPCEndpoint: "https://hpbnode.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://hscan.org", ExplorerURL: "https://hscan.org", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 273, Name: "XR One", Symbol: "XR1", RPCEndpoint: "https://xr1.calderachain.xyz/http", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://xr1.calderaexplorer.xyz", ExplorerURL: "https://xr1.calderaexplorer.xyz", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 295, Name: "Hedera Mainnet", Symbol: "HBAR", RPCEndpoint: "https://mainnet.hashio.io/api", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.arkhia.io", ExplorerURL: "https://explorer.arkhia.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 314, Name: "Filecoin - Mainnet", Symbol: "FIL", RPCEndpoint: "https://api.node.glif.io/", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://filfox.info/en", ExplorerURL: "https://filfox.info/en", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 321, Name: "KCC Mainnet", Symbol: "KCS", RPCEndpoint: "https://rpc-mainnet.kcc.network", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.kcc.io/en", ExplorerURL: "https://explorer.kcc.io/en", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 369, Name: "PulseChain", Symbol: "PLS", RPCEndpoint: "https://rpc.pulsechain.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://ipfs.scan.pulsechain.com", ExplorerURL: "https://ipfs.scan.pulsechain.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 480, Name: "World Chain", Symbol: "ETH", RPCEndpoint: "https://worldchain-mainnet.g.alchemy.com/public", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://worldscan.org", ExplorerURL: "https://worldscan.org", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 484, Name: "Camp Network Mainnet", Symbol: "CAMP", RPCEndpoint: "https://rpc.camp.raas.gelato.cloud", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://camp.cloud.blockscout.com", ExplorerURL: "https://camp.cloud.blockscout.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 499, Name: "Rupaya", Symbol: "RUPX", RPCEndpoint: "https://rpc.rupaya.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://scan.rupaya.io", ExplorerURL: "https://scan.rupaya.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 512, Name: "Double-A Chain Mainnet", Symbol: "AAC", RPCEndpoint: "https://rpc.acuteangle.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://scan.acuteangle.com", ExplorerURL: "https://scan.acuteangle.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 534, Name: "Candle", Symbol: "CNDL", RPCEndpoint: "https://candle-rpc.com/", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://candleexplorer.com", ExplorerURL: "https://candleexplorer.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 571, Name: "MetaChain Mainnet", Symbol: "MTC", RPCEndpoint: "https://rpc.metatime.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.metatime.com", ExplorerURL: "https://explorer.metatime.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 686, Name: "Karura Network", Symbol: "KAR", RPCEndpoint: "https://eth-rpc-karura.aca-api.network", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://blockscout.karura.network", ExplorerURL: "https://blockscout.karura.network", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 698, Name: "Matchain", Symbol: "BNB", RPCEndpoint: "https://rpc.matchain.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://matchscan.io", ExplorerURL: "https://matchscan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 711, Name: "Tucana", Symbol: "TUC", RPCEndpoint: "https://evm-rpc.tucana.zone", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.tucana.zone", ExplorerURL: "https://explorer.tucana.zone", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 712, Name: "Birdee-2", Symbol: "TUC", RPCEndpoint: "https://evm-rpc.birdee-2.tucana.zone", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.birdee-2.tucana.zone", ExplorerURL: "https://explorer.birdee-2.tucana.zone", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 787, Name: "Acala Network", Symbol: "ACA", RPCEndpoint: "https://eth-rpc-acala.aca-api.network", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://blockscout.acala.network", ExplorerURL: "https://blockscout.acala.network", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 813, Name: "Qitmeer Network Mainnet", Symbol: "MEER", RPCEndpoint: "https://evm-dataseed1.meerscan.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://qng.qitmeer.io", ExplorerURL: "https://qng.qitmeer.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 818, Name: "BeOne Chain Mainnet", Symbol: "BOC", RPCEndpoint: "https://dataseed1.beonechain.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://beonescan.com", ExplorerURL: "https://beonescan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 820, Name: "Callisto Mainnet", Symbol: "CLO", RPCEndpoint: "https://rpc.callistodao.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.callistodao.org", ExplorerURL: "https://explorer.callistodao.org", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 841, Name: "Taraxa Mainnet", Symbol: "TARA", RPCEndpoint: "https://rpc.mainnet.taraxa.io/", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://tara.to", ExplorerURL: "https://tara.to", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 888, Name: "Wanchain", Symbol: "WAN", RPCEndpoint: "https://gwan-ssl.wandevs.org:56891/", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://wanscan.org", ExplorerURL: "https://wanscan.org", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 917, Name: "Rinia", Symbol: "FIRE", RPCEndpoint: "https://rinia-rpc1.thefirechain.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://rinia.firescan.io", ExplorerURL: "https://rinia.firescan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 1009, Name: "Jumbochain Mainnet", Symbol: "JNFTC", RPCEndpoint: "https://rpcpriv.jumbochain.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://jumboscan.jumbochain.org", ExplorerURL: "https://jumboscan.jumbochain.org", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 1029, Name: "BitTorrent Chain Donau", Symbol: "BTT", RPCEndpoint: "https://pre-rpc.bt.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://testnet.bttcscan.com", ExplorerURL: "https://testnet.bttcscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 1134, Name: "StateMesh", Symbol: "MESH", RPCEndpoint: "https://rpc.statemesh.net", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://scan.statemesh.net", ExplorerURL: "https://scan.statemesh.net", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 1135, Name: "Lisk", Symbol: "ETH", RPCEndpoint: "https://rpc.api.lisk.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://blockscout.lisk.com", ExplorerURL: "https://blockscout.lisk.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 1329, Name: "Sei Network", Symbol: "SEI", RPCEndpoint: "https://evm-rpc.sei-apis.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://seiscan.io", ExplorerURL: "https://seiscan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 1453, Name: "MetaChain Istanbul", Symbol: "MTC", RPCEndpoint: "https://istanbul-rpc.metachain.dev", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://istanbul-explorer.metachain.dev", ExplorerURL: "https://istanbul-explorer.metachain.dev", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 1456, Name: "ZKBase Mainnet", Symbol: "ETH", RPCEndpoint: "https://mainnet-rpc.zkbase.app", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.zkbase.app", ExplorerURL: "https://explorer.zkbase.app", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 1689, Name: "NERO Mainnet", Symbol: "NERO", RPCEndpoint: "https://rpc.nerochain.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://www.neroscan.io", ExplorerURL: "https://www.neroscan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 1776, Name: "Injective", Symbol: "INJ", RPCEndpoint: "https://sentry.evm-rpc.injective.network", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://blockscout.injective.network", ExplorerURL: "https://blockscout.injective.network", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 1804, Name: "Kerleano", Symbol: "CRC", RPCEndpoint: "https://rpc1.kerleano.ca-dag.work", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://ethereum-pocr.github.io/explorer/kerleano", ExplorerURL: "https://ethereum-pocr.github.io/explorer/kerleano", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 1818, Name: "Cube Chain Mainnet", Symbol: "CUBE", RPCEndpoint: "https://http-mainnet.cube.network", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://cubescan.network", ExplorerURL: "https://cubescan.network", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 1821, Name: "Ruby Smart Chain MAINNET", Symbol: "RUBY", RPCEndpoint: "https://mainnet-data.rubychain.io/", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://rubyscan.net", ExplorerURL: "https://rubyscan.net", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 1829, Name: "PlayBlock", Symbol: "PBG", RPCEndpoint: "https://rpc.playblock.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.playblock.io", ExplorerURL: "https://explorer.playblock.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 1848, Name: "Swisstronik Mainnet", Symbol: "SWTR", RPCEndpoint: "https://json-rpc.mainnet.swisstronik.com/unencrypted/", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer-evm.mainnet.swisstronik.com", ExplorerURL: "https://explorer-evm.mainnet.swisstronik.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 1899, Name: "ReDeFi Layer 2", Symbol: "RED", RPCEndpoint: "https://layer2.redefi.world", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://scanlayer2.redefi.world", ExplorerURL: "https://scanlayer2.redefi.world", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 1967, Name: "Eleanor", Symbol: "MTC", RPCEndpoint: "https://rpc.metatime.com/eleanor", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.metatime.com/eleanor", ExplorerURL: "https://explorer.metatime.com/eleanor", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 1997, Name: "Kyoto", Symbol: "KYOTO", RPCEndpoint: "https://rpc.kyotochain.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://kyotoscan.io", ExplorerURL: "https://kyotoscan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 2017, Name: "Adiri", Symbol: "TEL", RPCEndpoint: "https://rpc.telcoin.network", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://telscan.io", ExplorerURL: "https://telscan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 2021, Name: "Edgeware EdgeEVM Mainnet", Symbol: "EDG", RPCEndpoint: "https://edgeware-evm.jelliedowl.net", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://edgscan.live", ExplorerURL: "https://edgscan.live", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 2025, Name: "Rangers Protocol Mainnet", Symbol: "RPG", RPCEndpoint: "https://mainnet.rangersprotocol.com/api/jsonrpc", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://scan.rangersprotocol.com", ExplorerURL: "https://scan.rangersprotocol.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 2049, Name: "Movo Smart Chain Mainnet", Symbol: "MOVO", RPCEndpoint: "https://msc-rpc.movoscan.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://movoscan.com", ExplorerURL: "https://movoscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 2109, Name: "Exosama Network", Symbol: "SAMA", RPCEndpoint: "https://rpc.exosama.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.exosama.com", ExplorerURL: "https://explorer.exosama.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 2199, Name: "Moonsama Network", Symbol: "SAMA", RPCEndpoint: "https://rpc.moonsama.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.moonsama.com", ExplorerURL: "https://explorer.moonsama.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 2366, Name: "KiteAI", Symbol: "KITE", RPCEndpoint: "https://rpc.gokite.ai", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://kitescan.ai", ExplorerURL: "https://kitescan.ai", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 2390, Name: "TAC Turin", Symbol: "TAC", RPCEndpoint: "https://turin.rpc.tac.build", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://turin.explorer.tac.build", ExplorerURL: "https://turin.explorer.tac.build", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 2391, Name: "TAC Saint Petersburg", Symbol: "TAC", RPCEndpoint: "https://spb.rpc.tac.build", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://spb.explorer.tac.build", ExplorerURL: "https://spb.explorer.tac.build", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 2425, Name: "King Of Legends Mainnet", Symbol: "KCC", RPCEndpoint: "https://rpc-mainnet.kinggamer.org/", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://kingscan.org", ExplorerURL: "https://kingscan.org", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 2440, Name: "Atleta Network", Symbol: "ATLA", RPCEndpoint: "https://rpc.mainnet.atleta.network", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://blockscout.atleta.network", ExplorerURL: "https://blockscout.atleta.network", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 2748, Name: "Nanon", Symbol: "ETH", RPCEndpoint: "https://rpc.nanon.network", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.nanon.network", ExplorerURL: "https://explorer.nanon.network", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 2818, Name: "Morph", Symbol: "ETH", RPCEndpoint: "https://rpc.morphl2.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.morphl2.io", ExplorerURL: "https://explorer.morphl2.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 3111, Name: "Alpha Chain Mainnet", Symbol: "ETH", RPCEndpoint: "https://rpc.goalpha.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://scan.goalpha.org", ExplorerURL: "https://scan.goalpha.org", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 3490, Name: "GTCSCAN", Symbol: "GTC", RPCEndpoint: "https://gtc-dataseed.gtcscan.io/", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://gtcscan.io", ExplorerURL: "https://gtcscan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 4003, Name: "X1 Fastnet", Symbol: "XN", RPCEndpoint: "https://x1-fastnet.xen.network", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.x1-fastnet.xen.network", ExplorerURL: "https://explorer.x1-fastnet.xen.network", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 4158, Name: "CrossFi Mainnet", Symbol: "XFI", RPCEndpoint: "https://rpc.mainnet.ms/", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://xfiscan.com", ExplorerURL: "https://xfiscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 4242, Name: "Nexi Mainnet", Symbol: "NEXI", RPCEndpoint: "https://rpc.chain.nexi.technology/", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://www.nexiscan.com", ExplorerURL: "https://www.nexiscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 4243, Name: "Nexi V2 Mainnet", Symbol: "NEXI", RPCEndpoint: "https://chain.nexiv2.nexilix.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://www.nexiscan.com", ExplorerURL: "https://www.nexiscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 4646, Name: "MST Mainnet", Symbol: "MSTC", RPCEndpoint: "https://mariorpc.mstblockchain.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://mstscan.com", ExplorerURL: "https://mstscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 5232, Name: "LiterMark Chain", Symbol: "LMK", RPCEndpoint: "https://litermark.org/rpc", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://litermark.org", ExplorerURL: "https://litermark.org", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 5330, Name: "Superseed", Symbol: "ETH", RPCEndpoint: "https://mainnet.superseed.xyz", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.superseed.xyz", ExplorerURL: "https://explorer.superseed.xyz", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 5424, Name: "edeXa Mainnet", Symbol: "EDX", RPCEndpoint: "https://rpc.edexa.network", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.edexa.network", ExplorerURL: "https://explorer.edexa.network", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 5888, Name: "MANTRA Chain", Symbol: "MANTRA", RPCEndpoint: "https://evm.mantrachain.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://blockscout.mantrascan.io", ExplorerURL: "https://blockscout.mantrascan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 6278, Name: "Rails", Symbol: "STEAMX", RPCEndpoint: "https://mainnet.steamexchange.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explore.steamexchange.io", ExplorerURL: "https://explore.steamexchange.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 6322, Name: "Aura Mainnet", Symbol: "AURA", RPCEndpoint: "https://jsonrpc.aura.network", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://aurascan.io", ExplorerURL: "https://aurascan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 6779, Name: "Compverse Mainnet", Symbol: "CPV", RPCEndpoint: "https://rpc.compverse.io/", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://scan.compverse.io", ExplorerURL: "https://scan.compverse.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 6805, Name: "RACE Mainnet", Symbol: "ETH", RPCEndpoint: "https://racemainnet.io/", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://racescan.io", ExplorerURL: "https://racescan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 6868, Name: "Pools Mainnet", Symbol: "POOLS", RPCEndpoint: "https://rpc.poolsmobility.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://scan.poolsmobility.com", ExplorerURL: "https://scan.poolsmobility.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 6941, Name: "Monolythium", Symbol: "LYTH", RPCEndpoint: "https://evm.mainnet.mononodes.xyz", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://monoscan.xyz", ExplorerURL: "https://monoscan.xyz", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 7341, Name: "Shyft Mainnet", Symbol: "SHYFT", RPCEndpoint: "https://rpc.shyft.network/", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://bx.shyft.network", ExplorerURL: "https://bx.shyft.network", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 7778, Name: "Orenium Mainnet Protocol", Symbol: "ORE", RPCEndpoint: "https://validator-mainnet.orenium.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://oreniumscan.org", ExplorerURL: "https://oreniumscan.org", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 7897, Name: "arena-z", Symbol: "ETH", RPCEndpoint: "https://rpc.arena-z.gg", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.arena-z.gg", ExplorerURL: "https://explorer.arena-z.gg", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 8017, Name: "iSunCoin Mainnet", Symbol: "ISC", RPCEndpoint: "https://mainnet.isuncoin.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://baifa.io/app/chains/8017", ExplorerURL: "https://baifa.io/app/chains/8017", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 8047, Name: "BOAT Mainnet", Symbol: "BOAT", RPCEndpoint: "https://rpc0.come.boat/", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://scan.come.boats", ExplorerURL: "https://scan.come.boats", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 8217, Name: "Kaia Mainnet", Symbol: "KAIA", RPCEndpoint: "https://public-en.node.kaia.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://kaiascope.com", ExplorerURL: "https://kaiascope.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 8723, Name: "TOOL Global Mainnet", Symbol: "OLO", RPCEndpoint: "https://mainnet-web3.wolot.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://www.olo.network", ExplorerURL: "https://www.olo.network", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 8732, Name: "Bullions Smart Chain", Symbol: "BLN", RPCEndpoint: "https://rpc.bullionsx.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://bullionscan.org", ExplorerURL: "https://bullionscan.org", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 9898, Name: "Larissa Chain", Symbol: "LRS", RPCEndpoint: "https://rpc.larissa.network", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://scan.larissa.network", ExplorerURL: "https://scan.larissa.network", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 9922, Name: "JingleX L2", Symbol: "JNX", RPCEndpoint: "https://rpc.jinglex.net", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://jinglex.net/explorer", ExplorerURL: "https://jinglex.net/explorer", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 9982, Name: "MFEV CHAIN MAINNET", Symbol: "MFEV", RPCEndpoint: "https://rpc.mfevscan.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://mfevscan.com", ExplorerURL: "https://mfevscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 18888, Name: "Titan (TKX)", Symbol: "TKX", RPCEndpoint: "https://titan-json-rpc.titanlab.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://tkxscan.io/Titan", ExplorerURL: "https://tkxscan.io/Titan", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 30088, Name: "MiYou Mainnet", Symbol: "MY", RPCEndpoint: "https://blockchain.miyou.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://myscan.miyou.io", ExplorerURL: "https://myscan.miyou.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 36969, Name: "AMA Mainnet", Symbol: "AMA", RPCEndpoint: "https://mainnet-rpc.ama.one", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://ama-explorer.ddns.net", ExplorerURL: "https://ama-explorer.ddns.net", ChainType: "evm", Decimals: 9, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 43114, Name: "Avalanche C-Chain", Symbol: "AVAX", RPCEndpoint: "https://api.avax.network/ext/bc/C/rpc", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://snowscan.xyz", ExplorerURL: "https://snowscan.xyz", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 43522, Name: "Insectarium", Symbol: "M", RPCEndpoint: "https://rpc.insectarium.memecore.net", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://insectarium.memecorescan.io", ExplorerURL: "https://insectarium.memecorescan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 77001, Name: "BORAchain mainnet", Symbol: "BORA", RPCEndpoint: "https://public-node.api.boraportal.com/bora/mainnet", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://scope.boraportal.com", ExplorerURL: "https://scope.boraportal.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 84841, Name: "O Chain", Symbol: "O", RPCEndpoint: "https://rpc.o.xyz", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.o.xyz", ExplorerURL: "https://explorer.o.xyz", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 96370, Name: "Lumoz Chain Mainnet", Symbol: "MOZ", RPCEndpoint: "https://rpc.lumoz.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://scan.lumoz.info", ExplorerURL: "https://scan.lumoz.info", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 111188, Name: "re.al", Symbol: "reETH", RPCEndpoint: "https://rpc.realforreal.gelato.digital", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.re.al", ExplorerURL: "https://explorer.re.al", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 200901, Name: "Bitlayer Mainnet", Symbol: "BTC", RPCEndpoint: "https://rpc.bitlayer.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://www.btrscan.com", ExplorerURL: "https://www.btrscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 955305, Name: "Eluvio Content Fabric", Symbol: "ELV", RPCEndpoint: "https://host-76-74-28-226.contentfabric.io/eth/", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.eluv.io", ExplorerURL: "https://explorer.eluv.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 65000000, Name: "Autonity Mainnet", Symbol: "ATN", RPCEndpoint: "https://rpc.autonity-apis.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://autonityscan.org", ExplorerURL: "https://autonityscan.org", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 728126428, Name: "Tron Mainnet", Symbol: "TRX", RPCEndpoint: "https://rpc.ankr.com/tron_jsonrpc", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://tronscan.org", ExplorerURL: "https://tronscan.org", ChainType: "evm", Decimals: 6, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 1666600000, Name: "Harmony Mainnet Shard 0", Symbol: "ONE", RPCEndpoint: "https://api.harmony.one", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.harmony.one", ExplorerURL: "https://explorer.harmony.one", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 1666600001, Name: "Harmony Mainnet Shard 1", Symbol: "ONE", RPCEndpoint: "https://api.s1.t.hmny.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.harmony.one/blocks/shard/1", ExplorerURL: "https://explorer.harmony.one/blocks/shard/1", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+}
+
+const evmMainnetCount = 120
+
+// ---- Non-EVM mainnet chains (ported from go/wallet_api/chains_nonevm_data.go) ----
+
+// Code generated by /tmp/gen_go.py from curated public mainnet RPC
+// documentation for non-EVM chains. DO NOT EDIT by hand. Each entry uses a
+// REAL publicly documented mainnet endpoint; none are testnets/stubs.
+// Pi Network is included with an empty rpc_endpoint because its enclosed
+// mainnet does not publish a public community JSON-RPC — the operator must
+// configure the node RPC via CHAIN_<ID>_RPC or the admin_chain_config table,
+// and the runtime honestly reports the chain as RPC-unconfigured otherwise.
+
+var nonEVMMainnet = []ChainConfig{
+	{
+		ID: 9000000000, Name: "Bitcoin", Symbol: "BTC", RPCEndpoint: "https://blockstream.info/api", DerivationPath: "m/44'/0'/0'/0/0", ExplorerAPI: "https://mempool.space", ExplorerURL: "https://mempool.space", ChainType: "bitcoin", Decimals: 8, CoinType: 0, IsTestnet: false,
+	},
+	{
+		ID: 9000000002, Name: "Litecoin", Symbol: "LTC", RPCEndpoint: "https://litecoinspace.org/api", DerivationPath: "m/44'/2'/0'/0/0", ExplorerAPI: "https://blockchair.com/litecoin", ExplorerURL: "https://blockchair.com/litecoin", ChainType: "litecoin", Decimals: 8, CoinType: 2, IsTestnet: false,
+	},
+	{
+		ID: 9000000003, Name: "Dogecoin", Symbol: "DOGE", RPCEndpoint: "https://dogechain.info/api/v1", DerivationPath: "m/44'/3'/0'/0/0", ExplorerAPI: "https://blockchair.com/dogecoin", ExplorerURL: "https://blockchair.com/dogecoin", ChainType: "dogecoin", Decimals: 8, CoinType: 3, IsTestnet: false,
+	},
+	{
+		ID: 9000000005, Name: "Dash", Symbol: "DASH", RPCEndpoint: "https://insight.dash.org/insight-api", DerivationPath: "m/44'/5'/0'/0/0", ExplorerAPI: "https://blockchair.com/dash", ExplorerURL: "https://blockchair.com/dash", ChainType: "dash", Decimals: 8, CoinType: 5, IsTestnet: false,
+	},
+	{
+		ID: 9000000145, Name: "Bitcoin Cash", Symbol: "BCH", RPCEndpoint: "https://api.blockchair.com/bitcoin-cash", DerivationPath: "m/44'/145'/0'/0/0", ExplorerAPI: "https://blockchair.com/bitcoin-cash", ExplorerURL: "https://blockchair.com/bitcoin-cash", ChainType: "bitcoincash", Decimals: 8, CoinType: 145, IsTestnet: false,
+	},
+	{
+		ID: 9000000236, Name: "Bitcoin SV", Symbol: "BSV", RPCEndpoint: "https://api.blockchair.com/bitcoin-sv", DerivationPath: "m/44'/236'/0'/0/0", ExplorerAPI: "https://blockchair.com/bitcoin-sv", ExplorerURL: "https://blockchair.com/bitcoin-sv", ChainType: "bitcoinsv", Decimals: 8, CoinType: 236, IsTestnet: false,
+	},
+	{
+		ID: 9000000899, Name: "eCash", Symbol: "XEC", RPCEndpoint: "https://explorer.e.cash/api", DerivationPath: "m/44'/899'/0'/0/0", ExplorerAPI: "https://explorer.e.cash", ExplorerURL: "https://explorer.e.cash", ChainType: "ecash", Decimals: 2, CoinType: 899, IsTestnet: false,
+	},
+	{
+		ID: 9000000175, Name: "Ravencoin", Symbol: "RVN", RPCEndpoint: "https://ravencoin.network/api", DerivationPath: "m/44'/175'/0'/0/0", ExplorerAPI: "https://ravencoin.network", ExplorerURL: "https://ravencoin.network", ChainType: "raven", Decimals: 8, CoinType: 175, IsTestnet: false,
+	},
+	{
+		ID: 9000000133, Name: "Zcash", Symbol: "ZEC", RPCEndpoint: "https://lwdv3.zecwallet.co", DerivationPath: "m/44'/133'/0'/0/0", ExplorerAPI: "https://blockchair.com/zcash", ExplorerURL: "https://blockchair.com/zcash", ChainType: "zcash", Decimals: 8, CoinType: 133, IsTestnet: false,
+	},
+	{
+		ID: 9000000017, Name: "Groestlcoin", Symbol: "GRS", RPCEndpoint: "https://groestlsight.groestlcoin.org/api", DerivationPath: "m/44'/17'/0'/0/0", ExplorerAPI: "https://groestlsight.groestlcoin.org", ExplorerURL: "https://groestlsight.groestlcoin.org", ChainType: "groestlcoin", Decimals: 8, CoinType: 17, IsTestnet: false,
+	},
+	{
+		ID: 9000000020, Name: "DigiByte", Symbol: "DGB", RPCEndpoint: "https://digiexplorer.info/api/v2", DerivationPath: "m/44'/20'/0'/0/0", ExplorerAPI: "https://digiexplorer.info", ExplorerURL: "https://digiexplorer.info", ChainType: "digibyte", Decimals: 8, CoinType: 20, IsTestnet: false,
+	},
+	{
+		ID: 9000002301, Name: "Qtum", Symbol: "QTUM", RPCEndpoint: "https://qtum.info/api", DerivationPath: "m/44'/2301'/0'/0/0", ExplorerAPI: "https://qtum.info", ExplorerURL: "https://qtum.info", ChainType: "qtum", Decimals: 8, CoinType: 2301, IsTestnet: false,
+	},
+	{
+		ID: 9000000077, Name: "Verge", Symbol: "XVG", RPCEndpoint: "https://api.vergecurrency.network", DerivationPath: "m/44'/77'/0'/0/0", ExplorerAPI: "https://verge-blockchain.info", ExplorerURL: "https://verge-blockchain.info", ChainType: "verge", Decimals: 6, CoinType: 77, IsTestnet: false,
+	},
+	{
+		ID: 9000000007, Name: "Namecoin", Symbol: "NMC", RPCEndpoint: "https://namecoin.info/api", DerivationPath: "m/44'/7'/0'/0/0", ExplorerAPI: "https://namecoin.info", ExplorerURL: "https://namecoin.info", ChainType: "namecoin", Decimals: 8, CoinType: 7, IsTestnet: false,
+	},
+	{
+		ID: 9000000022, Name: "Monacoin", Symbol: "MONA", RPCEndpoint: "https://mona.chainsight.info/api", DerivationPath: "m/44'/22'/0'/0/0", ExplorerAPI: "https://mona.chainsight.info", ExplorerURL: "https://mona.chainsight.info", ChainType: "monacoin", Decimals: 8, CoinType: 22, IsTestnet: false,
+	},
+	{
+		ID: 9000000010, Name: "BlackCoin", Symbol: "BLK", RPCEndpoint: "https://cryptoid.info/blk/api", DerivationPath: "m/44'/10'/0'/0/0", ExplorerAPI: "https://chainz.cryptoid.org/blk", ExplorerURL: "https://chainz.cryptoid.org/blk", ChainType: "blackcoin", Decimals: 8, CoinType: 10, IsTestnet: false,
+	},
+	{
+		ID: 9000000141, Name: "Komodo", Symbol: "KMD", RPCEndpoint: "https://kmdexplorer.io/api", DerivationPath: "m/44'/141'/0'/0/0", ExplorerAPI: "https://kmdexplorer.io", ExplorerURL: "https://kmdexplorer.io", ChainType: "komodo", Decimals: 8, CoinType: 141, IsTestnet: false,
+	},
+	{
+		ID: 9000000501, Name: "Solana", Symbol: "SOL", RPCEndpoint: "https://api.mainnet-beta.solana.com", DerivationPath: "m/44'/501'/0'/0'/0'", ExplorerAPI: "https://solscan.io", ExplorerURL: "https://solscan.io", ChainType: "solana", Decimals: 9, CoinType: 501, IsTestnet: false,
+	},
+	{
+		ID: 9000000637, Name: "Aptos", Symbol: "APT", RPCEndpoint: "https://fullnode.mainnet.aptoslabs.com", DerivationPath: "m/44'/637'/0'/0/0", ExplorerAPI: "https://aptoscan.com", ExplorerURL: "https://aptoscan.com", ChainType: "aptos", Decimals: 8, CoinType: 637, IsTestnet: false,
+	},
+	{
+		ID: 9000000784, Name: "Sui", Symbol: "SUI", RPCEndpoint: "https://fullnode.mainnet.sui.io", DerivationPath: "m/44'/784'/0'/0/0", ExplorerAPI: "https://suiscan.xyz", ExplorerURL: "https://suiscan.xyz", ChainType: "sui", Decimals: 9, CoinType: 784, IsTestnet: false,
+	},
+	{
+		ID: 9000000607, Name: "TON", Symbol: "TON", RPCEndpoint: "https://toncenter.com/api/v2/jsonRPC", DerivationPath: "m/44'/607'/0'/0/0", ExplorerAPI: "https://tonscan.org", ExplorerURL: "https://tonscan.org", ChainType: "ton", Decimals: 9, CoinType: 607, IsTestnet: false,
+	},
+	{
+		ID: 9000000118, Name: "Cosmos Hub", Symbol: "ATOM", RPCEndpoint: "https://rpc.cosmos.directory/cosmoshub", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/cosmos", ExplorerURL: "https://www.mintscan.io/cosmos", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000000529, Name: "Secret Network", Symbol: "SCRT", RPCEndpoint: "https://rpc.cosmos.directory/secret", DerivationPath: "m/44'/529'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/secret", ExplorerURL: "https://www.mintscan.io/secret", ChainType: "cosmos", Decimals: 6, CoinType: 529, IsTestnet: false,
+	},
+	{
+		ID: 9000000330, Name: "Terra Classic", Symbol: "LUNC", RPCEndpoint: "https://terra-classic-rpc.publicnode.com", DerivationPath: "m/44'/330'/0'/0/0", ExplorerAPI: "https://finder.terra.money/classic", ExplorerURL: "https://finder.terra.money/classic", ChainType: "cosmos", Decimals: 6, CoinType: 330, IsTestnet: false,
+	},
+	{
+		ID: 9000073068, Name: "Injective", Symbol: "INJ", RPCEndpoint: "https://injective-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/injective", ExplorerURL: "https://www.mintscan.io/injective", ChainType: "cosmos", Decimals: 18, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000014648, Name: "Celestia", Symbol: "TIA", RPCEndpoint: "https://celestia-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/celestia", ExplorerURL: "https://www.mintscan.io/celestia", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000026317, Name: "Osmosis", Symbol: "OSMO", RPCEndpoint: "https://osmosis-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/osmosis", ExplorerURL: "https://www.mintscan.io/osmosis", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000049823, Name: "dYdX", Symbol: "DYDX", RPCEndpoint: "https://dydx-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/dydx", ExplorerURL: "https://www.mintscan.io/dydx", ChainType: "cosmos", Decimals: 18, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000073741, Name: "Sei", Symbol: "SEI", RPCEndpoint: "https://sei-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/sei", ExplorerURL: "https://www.mintscan.io/sei", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000041857, Name: "Kujira", Symbol: "KUJI", RPCEndpoint: "https://kujira-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/kujira", ExplorerURL: "https://www.mintscan.io/kujira", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000012099, Name: "Stride", Symbol: "STRD", RPCEndpoint: "https://stride-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/stride", ExplorerURL: "https://www.mintscan.io/stride", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000090063, Name: "Neutron", Symbol: "NTRN", RPCEndpoint: "https://neutron-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/neutron", ExplorerURL: "https://www.mintscan.io/neutron", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000005267, Name: "Juno", Symbol: "JUNO", RPCEndpoint: "https://juno-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/juno", ExplorerURL: "https://www.mintscan.io/juno", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000007183, Name: "Akash", Symbol: "AKT", RPCEndpoint: "https://akash-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/akash", ExplorerURL: "https://www.mintscan.io/akash", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000018759, Name: "Persistence", Symbol: "XPRT", RPCEndpoint: "https://persistence-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/persistence", ExplorerURL: "https://www.mintscan.io/persistence", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000034677, Name: "Evmos (cosmos)", Symbol: "EVMOS", RPCEndpoint: "https://evmos-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/evmos", ExplorerURL: "https://www.mintscan.io/evmos", ChainType: "cosmos", Decimals: 18, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000054841, Name: "Canto (cosmos)", Symbol: "CANTO", RPCEndpoint: "https://canto-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/canto", ExplorerURL: "https://www.mintscan.io/canto", ChainType: "cosmos", Decimals: 18, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000003318, Name: "Kava (cosmos)", Symbol: "KAVA", RPCEndpoint: "https://kava-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/kava", ExplorerURL: "https://www.mintscan.io/kava", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000062954, Name: "Cronos (cosmos)", Symbol: "CRO", RPCEndpoint: "https://cronos-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/cronos", ExplorerURL: "https://www.mintscan.io/cronos", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000016892, Name: "Stargaze", Symbol: "STARS", RPCEndpoint: "https://stargaze-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/stargaze", ExplorerURL: "https://www.mintscan.io/stargaze", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000021252, Name: "Saga", Symbol: "SAGA", RPCEndpoint: "https://saga-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/saga", ExplorerURL: "https://www.mintscan.io/saga", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000086660, Name: "Noble", Symbol: "USDC", RPCEndpoint: "https://noble-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/noble", ExplorerURL: "https://www.mintscan.io/noble", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000040572, Name: "Axelar", Symbol: "AXL", RPCEndpoint: "https://axelar-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/axelar", ExplorerURL: "https://www.mintscan.io/axelar", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000007153, Name: "UMEE", Symbol: "UMEE", RPCEndpoint: "https://umee-rpc.publicnode.com", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://www.mintscan.io/umee", ExplorerURL: "https://www.mintscan.io/umee", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000000354, Name: "Polkadot", Symbol: "DOT", RPCEndpoint: "https://rpc.polkadot.io", DerivationPath: "m/44'/354'/0'/0/0", ExplorerAPI: "https://polkadot.subscan.io", ExplorerURL: "https://polkadot.subscan.io", ChainType: "polkadot", Decimals: 10, CoinType: 354, IsTestnet: false,
+	},
+	{
+		ID: 9000000434, Name: "Kusama", Symbol: "KSM", RPCEndpoint: "https://kusama-rpc.polkadot.io", DerivationPath: "m/44'/434'/0'/0/0", ExplorerAPI: "https://kusama.subscan.io", ExplorerURL: "https://kusama.subscan.io", ChainType: "polkadot", Decimals: 12, CoinType: 434, IsTestnet: false,
+	},
+	{
+		ID: 9000000397, Name: "NEAR", Symbol: "NEAR", RPCEndpoint: "https://rpc.mainnet.near.org", DerivationPath: "m/44'/397'/0'/0/0", ExplorerAPI: "https://nearblocks.io", ExplorerURL: "https://nearblocks.io", ChainType: "near", Decimals: 24, CoinType: 397, IsTestnet: false,
+	},
+	{
+		ID: 9000000283, Name: "Algorand", Symbol: "ALGO", RPCEndpoint: "https://mainnet-api.algonode.cloud", DerivationPath: "m/44'/283'/0'/0/0", ExplorerAPI: "https://lora.algokit.io/mainnet", ExplorerURL: "https://lora.algokit.io/mainnet", ChainType: "algorand", Decimals: 6, CoinType: 283, IsTestnet: false,
+	},
+	{
+		ID: 9000001815, Name: "Cardano", Symbol: "ADA", RPCEndpoint: "https://cardano-mainnet.blockfrost.io/api/v0", DerivationPath: "m/1852'/1815'/0'/0/0", ExplorerAPI: "https://cardanoscan.io", ExplorerURL: "https://cardanoscan.io", ChainType: "cardano", Decimals: 6, CoinType: 1815, IsTestnet: false,
+	},
+	{
+		ID: 9000000144, Name: "XRP Ledger", Symbol: "XRP", RPCEndpoint: "https://xrplcluster.com", DerivationPath: "m/44'/144'/0'/0/0", ExplorerAPI: "https://livenet.xrpl.org", ExplorerURL: "https://livenet.xrpl.org", ChainType: "ripple", Decimals: 6, CoinType: 144, IsTestnet: false,
+	},
+	{
+		ID: 9000000148, Name: "Stellar", Symbol: "XLM", RPCEndpoint: "https://horizon.stellar.org", DerivationPath: "m/44'/148'/0'/0/0", ExplorerAPI: "https://stellar.expert/explorer/public", ExplorerURL: "https://stellar.expert/explorer/public", ChainType: "stellar", Decimals: 7, CoinType: 148, IsTestnet: false,
+	},
+	{
+		ID: 9000003030, Name: "Hedera", Symbol: "HBAR", RPCEndpoint: "https://mainnet.mirrornode.hedera.com", DerivationPath: "m/44'/3030'/0'/0/0", ExplorerAPI: "https://hashscan.io/mainnet", ExplorerURL: "https://hashscan.io/mainnet", ChainType: "hedera", Decimals: 8, CoinType: 3030, IsTestnet: false,
+	},
+	{
+		ID: 9000001729, Name: "Tezos", Symbol: "XTZ", RPCEndpoint: "https://mainnet.api.tez.ie", DerivationPath: "m/44'/1729'/0'/0/0", ExplorerAPI: "https://tzkt.io", ExplorerURL: "https://tzkt.io", ChainType: "tezos", Decimals: 6, CoinType: 1729, IsTestnet: false,
+	},
+	{
+		ID: 9000000539, Name: "Flow", Symbol: "FLOW", RPCEndpoint: "https://rest-mainnet.onflow.org", DerivationPath: "m/44'/539'/0'/0/0", ExplorerAPI: "https://flowscan.org", ExplorerURL: "https://flowscan.org", ChainType: "flow", Decimals: 8, CoinType: 539, IsTestnet: false,
+	},
+	{
+		ID: 9000111111, Name: "Kaspa", Symbol: "KAS", RPCEndpoint: "https://api.kaspa.org", DerivationPath: "m/44'/111111'/0'/0/0", ExplorerAPI: "https://kaspa.fyi", ExplorerURL: "https://kaspa.fyi", ChainType: "kaspa", Decimals: 2, CoinType: 111111, IsTestnet: false,
+	},
+	{
+		ID: 9000000165, Name: "Nano", Symbol: "XNO", RPCEndpoint: "https://node.somenano.com/api", DerivationPath: "m/44'/165'/0'/0/0", ExplorerAPI: "https://nanolooker.com", ExplorerURL: "https://nanolooker.com", ChainType: "nano", Decimals: 30, CoinType: 165, IsTestnet: false,
+	},
+	{
+		ID: 9000000195, Name: "Tron", Symbol: "TRX", RPCEndpoint: "https://api.trongrid.io", DerivationPath: "m/44'/195'/0'/0/0", ExplorerAPI: "https://tronscan.org", ExplorerURL: "https://tronscan.org", ChainType: "tron", Decimals: 6, CoinType: 195, IsTestnet: false,
+	},
+	{
+		ID: 9000000818, Name: "VeChain", Symbol: "VET", RPCEndpoint: "https://mainnet.vechain.org", DerivationPath: "m/44'/818'/0'/0/0", ExplorerAPI: "https://explore.vechain.org", ExplorerURL: "https://explore.vechain.org", ChainType: "vechain", Decimals: 18, CoinType: 818, IsTestnet: false,
+	},
+	{
+		ID: 9005741564, Name: "Waves", Symbol: "WAVES", RPCEndpoint: "https://nodes.wavesnodes.com", DerivationPath: "m/44'/5741564'/0'/0/0", ExplorerAPI: "https://wavesexplorer.com", ExplorerURL: "https://wavesexplorer.com", ChainType: "waves", Decimals: 8, CoinType: 5741564, IsTestnet: false,
+	},
+	{
+		ID: 9000000508, Name: "Elrond", Symbol: "EGLD", RPCEndpoint: "https://api.elrond.com", DerivationPath: "m/44'/508'/0'/0/0", ExplorerAPI: "https://explorer.multiversx.com", ExplorerURL: "https://explorer.multiversx.com", ChainType: "elrond", Decimals: 18, CoinType: 508, IsTestnet: false,
+	},
+	{
+		ID: 9000000313, Name: "Zilliqa", Symbol: "ZIL", RPCEndpoint: "https://api.zilliqa.com", DerivationPath: "m/44'/313'/0'/0/0", ExplorerAPI: "https://devex.zilliqa.com", ExplorerURL: "https://devex.zilliqa.com", ChainType: "zilliqa", Decimals: 12, CoinType: 313, IsTestnet: false,
+	},
+	{
+		ID: 9000000461, Name: "Filecoin", Symbol: "FIL", RPCEndpoint: "https://api.node.glif.io/rpc/v0", DerivationPath: "m/44'/461'/0'/0/0", ExplorerAPI: "https://filfox.info/en", ExplorerURL: "https://filfox.info/en", ChainType: "filecoin", Decimals: 18, CoinType: 461, IsTestnet: false,
+	},
+	{
+		ID: 9000000223, Name: "Internet Computer", Symbol: "ICP", RPCEndpoint: "https://ic0.app/api", DerivationPath: "m/44'/223'/0'/0/0", ExplorerAPI: "https://dashboard.internetcomputer.org", ExplorerURL: "https://dashboard.internetcomputer.org", ChainType: "internetcomputer", Decimals: 8, CoinType: 223, IsTestnet: false,
+	},
+	{
+		ID: 9000042554, Name: "Aleo", Symbol: "ALEO", RPCEndpoint: "https://api.aleo.network", DerivationPath: "m/44'/42554'/0'/0/0", ExplorerAPI: "https://explorer.aleo.org", ExplorerURL: "https://explorer.aleo.org", ChainType: "aleo", Decimals: 6, CoinType: 42554, IsTestnet: false,
+	},
+	{
+		ID: 9000000309, Name: "Nervos CKB", Symbol: "CKB", RPCEndpoint: "https://mainnet.ckb.dev/rpc", DerivationPath: "m/44'/309'/0'/0/0", ExplorerAPI: "https://explorer.nervos.org", ExplorerURL: "https://explorer.nervos.org", ChainType: "nervos", Decimals: 8, CoinType: 309, IsTestnet: false,
+	},
+	{
+		ID: 9000004242, Name: "Pi Network", Symbol: "PI", RPCEndpoint: "", DerivationPath: "m/44'/4242'/0'/0/0", ExplorerAPI: "https://blockexplorer.minepi.com", ExplorerURL: "https://blockexplorer.minepi.com", ChainType: "pi", Decimals: 8, CoinType: 4242, IsTestnet: false,
+	},
+}
+
+const nonEVMMainnetCount = 66

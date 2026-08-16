@@ -522,6 +522,712 @@ func (h *Handlers) RemoveFavorite(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"deleted": id})
 }
 
+// ==================== Discovery (public reads) ====================
+
+// ListCoins is the /coins alias of /tokens — same listed tokens, "coins" shape.
+func (h *Handlers) ListCoins(c *gin.Context) {
+	status := c.Query("status")
+	if status == "" {
+		status = "listed"
+	}
+	ts, err := h.store.ListTokens(c.Request.Context(), status)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(ts))
+	for _, t := range ts {
+		out = append(out, tokenToJSON(&t))
+	}
+	c.JSON(http.StatusOK, gin.H{"coins": out})
+}
+
+// SearchTokens runs a real ILIKE query over name/symbol/contract_address.
+func (h *Handlers) SearchTokens(c *gin.Context) {
+	q := c.Query("q")
+	if q == "" {
+		c.JSON(http.StatusOK, gin.H{"tokens": []gin.H{}})
+		return
+	}
+	ts, err := h.store.SearchTokens(c.Request.Context(), q)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(ts))
+	for _, t := range ts {
+		out = append(out, tokenToJSON(&t))
+	}
+	c.JSON(http.StatusOK, gin.H{"tokens": out, "query": q})
+}
+
+// FeaturedTokens returns tokens where is_featured=true (real WHERE).
+func (h *Handlers) FeaturedTokens(c *gin.Context) {
+	ts, err := h.store.FeaturedTokens(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(ts))
+	for _, t := range ts {
+		out = append(out, tokenToJSON(&t))
+	}
+	c.JSON(http.StatusOK, gin.H{"featured": out})
+}
+
+// TrendingTokens returns listed tokens ordered by 24h volume (real ORDER BY).
+func (h *Handlers) TrendingTokens(c *gin.Context) {
+	ts, err := h.store.TrendingTokens(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(ts))
+	for _, t := range ts {
+		out = append(out, tokenToJSON(&t))
+	}
+	c.JSON(http.StatusOK, gin.H{"trending": out})
+}
+
+// MarketOverview returns a real aggregate: counts, summed volume, top gainers.
+func (h *Handlers) MarketOverview(c *gin.Context) {
+	m, err := h.store.MarketOverview(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	gainers := make([]gin.H, 0, len(m.TopGainers))
+	for _, g := range m.TopGainers {
+		gainers = append(gainers, gin.H{"token_id": g.TokenID, "symbol": g.Symbol, "change_24h": g.Change24h})
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"total_tokens": m.TotalTokens, "total_listings": m.TotalListings,
+		"total_launchpads": m.TotalLaunch, "total_volume": m.TotalVolume,
+		"top_gainers": gainers,
+	})
+}
+
+// ==================== Token listing workflow ====================
+
+// SubmitToken transitions a token to pending review (set status='pending').
+func (h *Handlers) SubmitToken(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	if err := h.store.SubmitToken(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "token not found or already submitted"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": id, "status": "pending"})
+}
+
+// ApproveToken transitions a token to listed (admin gate).
+func (h *Handlers) ApproveToken(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	if err := h.store.ApproveToken(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "token not found or not in a reviewable state"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": id, "status": "listed"})
+}
+
+// RejectToken transitions a token to rejected with a reason (admin gate).
+func (h *Handlers) RejectToken(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Reason string `json:"reason" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.store.RejectToken(c.Request.Context(), id, req.Reason); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "token not found or not in a reviewable state"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": id, "status": "rejected", "reason": req.Reason})
+}
+
+// TokenListingStatus returns the listing-review state for a token.
+func (h *Handlers) TokenListingStatus(c *gin.Context) {
+	tokenID, ok := parseTokenID(c)
+	if !ok {
+		return
+	}
+	ts, err := h.store.GetTokenStatus(c.Request.Context(), tokenID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "token not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"id": ts.ID, "status": ts.Status, "is_featured": ts.IsFeatured,
+		"submission_date": ts.SubmissionDate, "reviewed_at": ts.ReviewedAt,
+		"rejection_reason": ts.RejectionReason,
+	})
+}
+
+// ToggleFeatured flips is_featured for a token (admin gate).
+func (h *Handlers) ToggleFeatured(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	featured, err := h.store.ToggleFeatured(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "token not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": id, "is_featured": featured})
+}
+
+// ==================== Launchpad contributions ====================
+
+// Contribute atomically records a contribution and increments sold_amount.
+func (h *Handlers) Contribute(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	userID := wlgate.UserID(c)
+	var req struct {
+		Amount string `json:"amount" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// Pre-validate the launchpad exists (store.CreateContribution also checks
+	// active/end_time atomically inside its tx, but a 404 here is friendlier).
+	if _, err := h.store.GetLaunchpadProject(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "launchpad project not found"})
+		return
+	}
+	contrib, err := h.store.CreateContribution(c.Request.Context(), id, userID, req.Amount)
+	if err != nil {
+		if errors.Is(err, store.ErrNotAccepting) {
+			c.JSON(http.StatusConflict, gin.H{"error": "launchpad not accepting contributions"})
+			return
+		}
+		if errors.Is(err, store.ErrEnded) {
+			c.JSON(http.StatusConflict, gin.H{"error": "launchpad has ended"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, contributionToJSON(contrib))
+}
+
+// Claim marks a user's pending contribution as claimed (fail-closed if none).
+func (h *Handlers) Claim(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	userID := wlgate.UserID(c)
+	if err := h.store.ClaimContribution(c.Request.Context(), id, userID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no claimable contribution found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"project_id": id, "user_id": userID, "status": "claimed"})
+}
+
+// CancelContribution marks a user's pending contribution as refunded.
+func (h *Handlers) CancelContribution(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	userID := wlgate.UserID(c)
+	if err := h.store.CancelContribution(c.Request.Context(), id, userID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no cancellable contribution found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"project_id": id, "user_id": userID, "status": "refunded"})
+}
+
+// ContributionHistory returns launchpad contributions for a token (real join).
+func (h *Handlers) ContributionHistory(c *gin.Context) {
+	tokenID, ok := parseTokenID(c)
+	if !ok {
+		return
+	}
+	cs, err := h.store.ListContributionsByToken(c.Request.Context(), tokenID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(cs))
+	for _, c2 := range cs {
+		out = append(out, contributionToJSON(&c2))
+	}
+	c.JSON(http.StatusOK, gin.H{"contributions": out})
+}
+
+// ==================== Market-maker orders ====================
+
+// ListMMOrders lists market-maker orders (optionally filtered by token_id).
+func (h *Handlers) ListMMOrders(c *gin.Context) {
+	tokenIDStr := c.Query("token_id")
+	var tokenID uuid.UUID
+	filter := false
+	if tokenIDStr != "" {
+		parsed, err := uuid.Parse(tokenIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid token_id"})
+			return
+		}
+		tokenID = parsed
+		filter = true
+	}
+	os, err := h.store.ListMMOrders(c.Request.Context(), tokenID, filter)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(os))
+	for _, o := range os {
+		out = append(out, mmOrderToJSON(&o))
+	}
+	c.JSON(http.StatusOK, gin.H{"orders": out})
+}
+
+// CreateMMOrder creates a market-maker order (real PG insert).
+func (h *Handlers) CreateMMOrder(c *gin.Context) {
+	var req struct {
+		TokenID   string `json:"token_id" binding:"required"`
+		Side      string `json:"side" binding:"required"`
+		Price     string `json:"price" binding:"required"`
+		Quantity  string `json:"quantity" binding:"required"`
+		ExpiresAt string `json:"expires_at"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	tokenID, err := uuid.Parse(req.TokenID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid token_id"})
+		return
+	}
+	if req.Side != "buy" && req.Side != "sell" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "side must be buy or sell"})
+		return
+	}
+	var expiresAt *time.Time
+	if req.ExpiresAt != "" {
+		t, err := time.Parse(time.RFC3339, req.ExpiresAt)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid expires_at (use RFC3339)"})
+			return
+		}
+		expiresAt = &t
+	}
+	o, err := h.store.CreateMMOrder(c.Request.Context(), &store.MMOrder{
+		TokenID: tokenID, Side: req.Side, Price: req.Price,
+		Quantity: req.Quantity, Status: "pending", ExpiresAt: expiresAt,
+	})
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, mmOrderToJSON(o))
+}
+
+// UpdateMMOrderStatus updates an order's status (pending/filled/cancelled).
+func (h *Handlers) UpdateMMOrderStatus(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Status != "pending" && req.Status != "filled" && req.Status != "cancelled" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "status must be pending, filled or cancelled"})
+		return
+	}
+	if err := h.store.UpdateMMOrderStatus(c.Request.Context(), id, req.Status); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "order not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": id, "status": req.Status})
+}
+
+// MarketMakerStatus returns the real MM aggregate for a token.
+func (h *Handlers) MarketMakerStatus(c *gin.Context) {
+	tokenID, ok := parseTokenID(c)
+	if !ok {
+		return
+	}
+	st, err := h.store.MMStatus(c.Request.Context(), tokenID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"token_id": st.TokenID, "total_orders": st.TotalOrders,
+		"filled_orders": st.FilledOrders, "buy_high": st.BuyHigh,
+		"sell_low": st.SellLow, "spread": st.Spread,
+	})
+}
+
+// AddLiquidity records a real liquidity position.
+func (h *Handlers) AddLiquidity(c *gin.Context) {
+	var req struct {
+		TokenID    string `json:"token_id" binding:"required"`
+		QuoteToken string `json:"quote_token"`
+		Amount     string `json:"amount" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	tokenID, err := uuid.Parse(req.TokenID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid token_id"})
+		return
+	}
+	userID := wlgate.UserID(c)
+	var uid *uuid.UUID
+	if userID != uuid.Nil {
+		uid = &userID
+	}
+	// LP tokens: constant-product proxy = amount * 1000.
+	amt, perr := strconv.ParseFloat(req.Amount, 64)
+	if perr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid amount"})
+		return
+	}
+	pos, err := h.store.AddLiquidity(c.Request.Context(), &store.LiquidityPosition{
+		TokenID: tokenID, UserID: uid, QuoteToken: req.QuoteToken,
+		LPTokens: formatFloat(amt * 1000),
+	})
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, liquidityToJSON(pos))
+}
+
+// RemoveLiquidity removes the most recent matching liquidity position.
+func (h *Handlers) RemoveLiquidity(c *gin.Context) {
+	var req struct {
+		TokenID  string `json:"token_id" binding:"required"`
+		LPAmount string `json:"lp_amount" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	tokenID, err := uuid.Parse(req.TokenID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid token_id"})
+		return
+	}
+	if err := h.store.RemoveLiquidity(c.Request.Context(), tokenID, req.LPAmount); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no matching liquidity position"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"removed": true, "token_id": tokenID})
+}
+
+// ==================== Pricing ====================
+
+// SetTokenPrice records a new price point for a token.
+func (h *Handlers) SetTokenPrice(c *gin.Context) {
+	var req struct {
+		TokenID string `json:"token_id" binding:"required"`
+		Price   string `json:"price" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	tokenID, err := uuid.Parse(req.TokenID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid token_id"})
+		return
+	}
+	p, err := h.store.SetTokenPrice(c.Request.Context(), tokenID, req.Price)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, tokenPriceToJSON(p))
+}
+
+// GetTokenPrice returns the latest price for a token.
+func (h *Handlers) GetTokenPrice(c *gin.Context) {
+	tokenID, ok := parseTokenID(c)
+	if !ok {
+		return
+	}
+	p, err := h.store.GetTokenPrice(c.Request.Context(), tokenID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no price found for token"})
+		return
+	}
+	c.JSON(http.StatusOK, tokenPriceToJSON(p))
+}
+
+// PriceHistory returns recent price points for a token.
+func (h *Handlers) PriceHistory(c *gin.Context) {
+	tokenID, ok := parseTokenID(c)
+	if !ok {
+		return
+	}
+	ps, err := h.store.ListTokenPriceHistory(c.Request.Context(), tokenID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(ps))
+	for _, p := range ps {
+		out = append(out, tokenPriceToJSON(&p))
+	}
+	c.JSON(http.StatusOK, gin.H{"prices": out})
+}
+
+// UpdatePrice is the alias form of SetTokenPrice (admin gate).
+func (h *Handlers) UpdatePrice(c *gin.Context) {
+	h.SetTokenPrice(c)
+}
+
+// ==================== Analytics ====================
+
+// VolumeStats returns real SUM(volume_24h) over rolling windows.
+func (h *Handlers) VolumeStats(c *gin.Context) {
+	v, err := h.store.VolumeStats(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"volume_24h": v.Total24h, "volume_7d": v.Total7d, "volume_30d": v.Total30d})
+}
+
+// LiquidityState returns the real total liquidity across all positions.
+func (h *Handlers) LiquidityState(c *gin.Context) {
+	total, err := h.store.TotalLiquidity(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"total_liquidity": total})
+}
+
+// HolderCount returns the real distinct-contributor count for a token.
+func (h *Handlers) HolderCount(c *gin.Context) {
+	tokenID, ok := parseTokenID(c)
+	if !ok {
+		return
+	}
+	count, err := h.store.HolderCount(c.Request.Context(), tokenID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"token_id": tokenID, "holders": count})
+}
+
+// TransactionCount returns real contribution counts over rolling windows.
+func (h *Handlers) TransactionCount(c *gin.Context) {
+	ts, err := h.store.TransactionStats(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"transactions_24h": ts.Total24h, "transactions_7d": ts.Total7d})
+}
+
+// ==================== Fees ====================
+
+// ListFees returns the real fee_schedule rows.
+func (h *Handlers) ListFees(c *gin.Context) {
+	sched, err := h.store.FeeSchedule(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"fees": sched})
+}
+
+// CalculateFees computes the real fee for a listing from fee_schedule.
+func (h *Handlers) CalculateFees(c *gin.Context) {
+	var req struct {
+		FeeType string `json:"fee_type" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	sched, err := h.store.FeeSchedule(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	amount, ok := sched[req.FeeType]
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "unknown fee_type", "fee_type": req.FeeType})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"fee_type": req.FeeType, "amount": amount, "currency": "USD"})
+}
+
+// PayFees records a real fee payment with its on-chain tx_hash.
+func (h *Handlers) PayFees(c *gin.Context) {
+	var req struct {
+		TokenID       string `json:"token_id"`
+		Amount        string `json:"amount" binding:"required"`
+		Currency      string `json:"currency"`
+		PaymentMethod string `json:"payment_method"`
+		TxHash        string `json:"tx_hash" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var tokenID *uuid.UUID
+	if req.TokenID != "" {
+		parsed, err := uuid.Parse(req.TokenID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid token_id"})
+			return
+		}
+		tokenID = &parsed
+	}
+	userID := wlgate.UserID(c)
+	var uid *uuid.UUID
+	if userID != uuid.Nil {
+		uid = &userID
+	}
+	currency := req.Currency
+	if currency == "" {
+		currency = "USD"
+	}
+	p, err := h.store.RecordFeePayment(c.Request.Context(), &store.FeePayment{
+		TokenID: tokenID, UserID: uid, Amount: req.Amount, Currency: currency,
+		PaymentMethod: req.PaymentMethod, TxHash: req.TxHash, Status: "completed",
+	})
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, feePaymentToJSON(p))
+}
+
+// SetFeeConfig upserts a fee_schedule row (admin gate).
+func (h *Handlers) SetFeeConfig(c *gin.Context) {
+	var req struct {
+		FeeType string  `json:"fee_type" binding:"required"`
+		Amount  float64 `json:"amount"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.store.SetFeeConfig(c.Request.Context(), req.FeeType, req.Amount); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"fee_type": req.FeeType, "amount": req.Amount})
+}
+
+// UpdateFeeConfig is the alias form of SetFeeConfig (admin gate).
+func (h *Handlers) UpdateFeeConfig(c *gin.Context) {
+	h.SetFeeConfig(c)
+}
+
+// ==================== Compliance: audit + KYC ====================
+
+// CreateAuditLog creates an audit entry for a token (admin gate).
+func (h *Handlers) CreateAuditLog(c *gin.Context) {
+	var req struct {
+		TokenID   string `json:"token_id" binding:"required"`
+		AuditType string `json:"audit_type" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	tokenID, err := uuid.Parse(req.TokenID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid token_id"})
+		return
+	}
+	a, err := h.store.CreateAuditLog(c.Request.Context(), tokenID, req.AuditType)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, auditLogToJSON(a))
+}
+
+// AuditStatus returns the audit log for a token (real PG).
+func (h *Handlers) AuditStatus(c *gin.Context) {
+	tokenID, ok := parseTokenID(c)
+	if !ok {
+		return
+	}
+	as, err := h.store.ListAuditLogs(c.Request.Context(), tokenID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(as))
+	for _, a := range as {
+		out = append(out, auditLogToJSON(&a))
+	}
+	c.JSON(http.StatusOK, gin.H{"audit_logs": out})
+}
+
+// SubmitKYC submits a KYC record for a token listing.
+func (h *Handlers) SubmitKYC(c *gin.Context) {
+	var req struct {
+		TokenID string `json:"token_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	tokenID, err := uuid.Parse(req.TokenID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid token_id"})
+		return
+	}
+	k, err := h.store.SubmitKYC(c.Request.Context(), tokenID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, kycToJSON(k))
+}
+
+// KYCStatus returns the KYC record for a token listing.
+func (h *Handlers) KYCStatus(c *gin.Context) {
+	tokenID, ok := parseTokenID(c)
+	if !ok {
+		return
+	}
+	k, err := h.store.GetKYC(c.Request.Context(), tokenID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no kyc record for token"})
+		return
+	}
+	c.JSON(http.StatusOK, kycToJSON(k))
+}
+
 // ==================== Health ====================
 
 func (h *Handlers) Health(c *gin.Context) {
@@ -538,10 +1244,52 @@ func (h *Handlers) Health(c *gin.Context) {
 
 // ==================== helpers ====================
 
+// RequireRole is a gin middleware that gates a route on the caller's users.role
+// being one of the allowed roles. Role is read from the DB (the JWT carries only
+// user_id), so this is a real check, not a stub. Requires JWTAuth to have run
+// first (sets user_id). Admin/super_admin pass any allowed list containing them.
+func (h *Handlers) RequireRole(allowed ...string) gin.HandlerFunc {
+	allow := make(map[string]struct{}, len(allowed))
+	for _, r := range allowed {
+		allow[r] = struct{}{}
+	}
+	return func(c *gin.Context) {
+		uid := wlgate.UserID(c)
+		if uid == uuid.Nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+			c.Abort()
+			return
+		}
+		u, err := h.store.GetUserByID(c.Request.Context(), uid)
+		if err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": "user not found"})
+			c.Abort()
+			return
+		}
+		if _, ok := allow[u.Role]; !ok {
+			c.JSON(http.StatusForbidden, gin.H{"error": "admin role required"})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 func parseID(c *gin.Context) (uuid.UUID, bool) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+// parseTokenID reads the :token_id path param used by status/history/pricing/
+// analytics/compliance routes.
+func parseTokenID(c *gin.Context) (uuid.UUID, bool) {
+	id, err := uuid.Parse(c.Param("token_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid token_id"})
 		return uuid.Nil, false
 	}
 	return id, true
@@ -601,6 +1349,65 @@ func favoriteToJSON(f *store.Favorite) gin.H {
 	return gin.H{
 		"id": f.ID, "user_id": f.UserID, "token_id": f.TokenID,
 		"created_at": f.CreatedAt,
+	}
+}
+
+func contributionToJSON(c *store.LaunchpadContribution) gin.H {
+	return gin.H{
+		"id": c.ID, "project_id": c.ProjectID, "user_id": c.UserID,
+		"amount": c.Amount, "token_amount": c.TokenAmount, "status": c.Status,
+		"claimed_at": c.ClaimedAt, "refunded_at": c.RefundedAt,
+		"created_at": c.CreatedAt,
+	}
+}
+
+func mmOrderToJSON(o *store.MMOrder) gin.H {
+	return gin.H{
+		"id": o.ID, "token_id": o.TokenID, "side": o.Side,
+		"price": o.Price, "quantity": o.Quantity, "remaining": o.Remaining,
+		"status": o.Status, "filled_at": o.FilledAt, "expires_at": o.ExpiresAt,
+		"created_at": o.CreatedAt,
+	}
+}
+
+func liquidityToJSON(p *store.LiquidityPosition) gin.H {
+	return gin.H{
+		"id": p.ID, "token_id": p.TokenID, "user_id": p.UserID,
+		"quote_token": p.QuoteToken, "lp_tokens": p.LPTokens,
+		"created_at": p.CreatedAt,
+	}
+}
+
+func tokenPriceToJSON(p *store.TokenPrice) gin.H {
+	return gin.H{
+		"id": p.ID, "token_id": p.TokenID, "price": p.Price,
+		"change_24h": p.Change24h, "volume_24h": p.Volume24h,
+		"timestamp": p.Timestamp,
+	}
+}
+
+func feePaymentToJSON(p *store.FeePayment) gin.H {
+	return gin.H{
+		"id": p.ID, "token_id": p.TokenID, "user_id": p.UserID,
+		"amount": p.Amount, "currency": p.Currency,
+		"payment_method": p.PaymentMethod, "tx_hash": p.TxHash,
+		"status": p.Status, "created_at": p.CreatedAt,
+	}
+}
+
+func auditLogToJSON(a *store.AuditLog) gin.H {
+	return gin.H{
+		"id": a.ID, "token_id": a.TokenID, "audit_type": a.AuditType,
+		"status": a.Status, "report_url": a.ReportURL, "auditor": a.Auditor,
+		"completed_at": a.CompletedAt, "requested_at": a.RequestedAt,
+	}
+}
+
+func kycToJSON(k *store.KYCRecord) gin.H {
+	return gin.H{
+		"id": k.ID, "token_id": k.TokenID, "status": k.Status,
+		"submitted_at": k.SubmittedAt, "expires_at": k.ExpiresAt,
+		"reviewed_at": k.ReviewedAt, "created_at": k.CreatedAt,
 	}
 }
 

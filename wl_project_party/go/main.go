@@ -51,47 +51,7 @@ func main() {
 
 	svc := handlers.New(cfg, st, gate)
 
-	router := gin.Default()
-	router.Use(cors.Default())
-	router.GET("/health", svc.Health)
-
-	api := router.Group("/api/v1")
-	{
-		api.POST("/auth/register", svc.Register)
-		api.POST("/auth/login", svc.Login)
-
-		// Every protected route is gated by JWT auth + the fail-closed license
-		// gate (503 when the product is not authorized or a fetcher is disabled).
-		mw := api.Group("")
-		mw.Use(wlgate.JWTAuth(cfg.JWTSecret))
-		mw.Use(gate.Middleware(cfg.Product, wlgate.SimpleFetcher))
-		{
-			mw.POST("/tokens", svc.CreateToken)
-			mw.GET("/tokens", svc.ListTokens)
-			mw.GET("/tokens/:id", svc.GetToken)
-			mw.PUT("/tokens/:id", svc.UpdateToken)
-			mw.DELETE("/tokens/:id", svc.DeleteToken)
-
-			mw.POST("/listings", svc.CreateListing)
-			mw.GET("/listings", svc.ListListings)
-
-			mw.POST("/launchpad", svc.CreateLaunchpadProject)
-			mw.GET("/launchpad", svc.ListLaunchpadProjects)
-			mw.GET("/launchpad/:id", svc.GetLaunchpadProject)
-			mw.POST("/launchpad/:id/participate", svc.ParticipateInLaunchpad)
-			mw.GET("/launchpad/:id/participations", svc.ListParticipations)
-
-			mw.POST("/market-making", svc.CreateMarketMakingConfig)
-			mw.GET("/market-making", svc.ListMarketMakingConfigs)
-
-			mw.POST("/fees", svc.CreateFeeConfig)
-			mw.GET("/fees", svc.ListFeeConfigs)
-
-			mw.POST("/favorites", svc.AddFavorite)
-			mw.GET("/favorites", svc.ListFavorites)
-			mw.DELETE("/favorites/:id", svc.RemoveFavorite)
-		}
-	}
+	router := buildRouter(cfg, svc, gate)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
@@ -115,4 +75,145 @@ func main() {
 	defer shutCancel()
 	_ = srv.Shutdown(shutCtx)
 	log.Println("Server exited")
+}
+
+// buildRouter wires the full REST route tree. Extracted from main so it can be
+// exercised by tests without a live PostgreSQL connection — route registration
+// (and any httprouter conflict panics) happen here, before any DB call.
+func buildRouter(cfg *config.Config, svc *handlers.Handlers, gate *wlgate.Gate) *gin.Engine {
+	router := gin.Default()
+	router.Use(cors.Default())
+	router.GET("/health", svc.Health)
+
+	api := router.Group("/api/v1")
+	{
+		api.POST("/auth/register", svc.Register)
+		api.POST("/auth/login", svc.Login)
+
+		// Public discovery reads (no JWT required, matching the canonical
+		// frontend's public market pages). Real PostgreSQL queries only.
+		api.GET("/coins", svc.ListCoins)
+		api.GET("/search", svc.SearchTokens)
+		api.GET("/featured", svc.FeaturedTokens)
+		api.GET("/trending", svc.TrendingTokens)
+		api.GET("/market", svc.MarketOverview)
+
+		// Every protected route is gated by JWT auth + the fail-closed license
+		// gate (503 when the product is not authorized or a fetcher is disabled).
+		mw := api.Group("")
+		mw.Use(wlgate.JWTAuth(cfg.JWTSecret))
+		mw.Use(gate.Middleware(cfg.Product, wlgate.SimpleFetcher))
+		{
+			mw.POST("/tokens", svc.CreateToken)
+			mw.GET("/tokens", svc.ListTokens)
+			mw.GET("/tokens/:id", svc.GetToken)
+			mw.PUT("/tokens/:id", svc.UpdateToken)
+			mw.DELETE("/tokens/:id", svc.DeleteToken)
+
+			// Token listing workflow (canonical tokens/:id/* path shapes).
+			// submit + status are user-facing; approve/reject/featured are
+			// admin-gated and registered in the admin group below.
+			mw.POST("/tokens/:id/submit", svc.SubmitToken)
+			// Flat aliases the rebranded frontend also hits.
+			mw.GET("/status/:token_id", svc.TokenListingStatus)
+			mw.GET("/:id", svc.GetToken)
+
+			mw.POST("/listings", svc.CreateListing)
+			mw.GET("/listings", svc.ListListings)
+
+			mw.POST("/launchpad", svc.CreateLaunchpadProject)
+			mw.GET("/launchpad", svc.ListLaunchpadProjects)
+			mw.GET("/launchpad/:id", svc.GetLaunchpadProject)
+			mw.POST("/launchpad/:id/participate", svc.ParticipateInLaunchpad)
+			mw.GET("/launchpad/:id/participations", svc.ListParticipations)
+
+			// Launchpad contribution workflow (canonical launchpad/:id/* shapes).
+			mw.POST("/launchpad/:id/contribute", svc.Contribute)
+			mw.POST("/launchpad/:id/claim", svc.Claim)
+			mw.POST("/launchpad/:id/cancel", svc.CancelContribution)
+			// Flat alias: contribution history for a token.
+			mw.GET("/history/:token_id", svc.ContributionHistory)
+
+			// Market-making (canonical marketmaking/* + flat /orders aliases).
+			mw.GET("/orders", svc.ListMMOrders)
+			mw.POST("/orders", svc.CreateMMOrder)
+			mw.PUT("/orders/:id/status", svc.UpdateMMOrderStatus)
+			mw.GET("/marketmaking/orders", svc.ListMMOrders)
+			mw.POST("/marketmaking/orders", svc.CreateMMOrder)
+			mw.PUT("/marketmaking/orders/:id/status", svc.UpdateMMOrderStatus)
+			mw.GET("/marketmaking/status/:token_id", svc.MarketMakerStatus)
+			mw.POST("/marketmaking/liquidity/add", svc.AddLiquidity)
+			mw.POST("/marketmaking/liquidity/remove", svc.RemoveLiquidity)
+
+			// Flat liquidity aliases.
+			mw.GET("/liquidity", svc.LiquidityState)
+			mw.POST("/liquidity/add", svc.AddLiquidity)
+			mw.POST("/liquidity/remove", svc.RemoveLiquidity)
+
+			// Pricing (canonical pricing/* shapes). set/update are admin-gated
+			// (admin group); get + history are open to authenticated users.
+			mw.GET("/pricing/:token_id", svc.GetTokenPrice)
+			mw.GET("/pricing/history/:token_id", svc.PriceHistory)
+
+			// Analytics (canonical analytics/* shapes + flat aliases).
+			mw.GET("/volume", svc.VolumeStats)
+			mw.GET("/transactions", svc.TransactionCount)
+			mw.GET("/holders", svc.HolderCount)
+			mw.GET("/analytics/volume", svc.VolumeStats)
+			mw.GET("/analytics/liquidity", svc.LiquidityState)
+			mw.GET("/analytics/holders", svc.HolderCount)
+			mw.GET("/analytics/transactions", svc.TransactionCount)
+
+			// Compliance: audit + KYC (canonical compliance/* shapes).
+			// audit-create is admin-gated (admin group); reads + kyc/submit are open.
+			mw.GET("/audit/:token_id", svc.AuditStatus)
+			mw.POST("/kyc/submit", svc.SubmitKYC)
+			mw.GET("/kyc/:token_id", svc.KYCStatus)
+			mw.GET("/compliance/audit/:token_id", svc.AuditStatus)
+			mw.POST("/compliance/kyc/submit", svc.SubmitKYC)
+			mw.GET("/compliance/kyc/:token_id", svc.KYCStatus)
+
+			// Fees (canonical fees/* shapes + flat aliases).
+			// set/update are admin-gated (admin group); calculate/pay/list are open.
+			mw.GET("/fees", svc.ListFees)
+			mw.POST("/fees/calculate", svc.CalculateFees)
+			mw.POST("/fees/pay", svc.PayFees)
+			mw.GET("/calculate", svc.CalculateFees)
+			mw.POST("/pay", svc.PayFees)
+
+			mw.POST("/market-making", svc.CreateMarketMakingConfig)
+			mw.GET("/market-making", svc.ListMarketMakingConfigs)
+
+			mw.POST("/fees", svc.CreateFeeConfig)
+			mw.GET("/fees/configs", svc.ListFeeConfigs)
+
+			mw.POST("/favorites", svc.AddFavorite)
+			mw.GET("/favorites", svc.ListFavorites)
+			mw.DELETE("/favorites/:id", svc.RemoveFavorite)
+		}
+
+		// Admin-gated routes: JWT + license gate + RequireRole("admin","super_admin").
+		// Role is read from the real users.role column (no stub). Registered on a
+		// sibling group so the role middleware composes after JWTAuth + gate.
+		admin := api.Group("")
+		admin.Use(wlgate.JWTAuth(cfg.JWTSecret))
+		admin.Use(gate.Middleware(cfg.Product, wlgate.SimpleFetcher))
+		admin.Use(svc.RequireRole("admin", "super_admin"))
+		{
+			admin.POST("/tokens/:id/approve", svc.ApproveToken)
+			admin.POST("/tokens/:id/reject", svc.RejectToken)
+			admin.POST("/tokens/:id/featured", svc.ToggleFeatured)
+			admin.POST("/fees/set", svc.SetFeeConfig)
+			admin.PUT("/fees/set", svc.SetFeeConfig)
+			admin.POST("/fees/update", svc.UpdateFeeConfig)
+			admin.PUT("/fees/update", svc.UpdateFeeConfig)
+			admin.POST("/set", svc.SetFeeConfig)
+			admin.POST("/update", svc.UpdateFeeConfig)
+			admin.POST("/audit", svc.CreateAuditLog)
+			admin.POST("/compliance/audit", svc.CreateAuditLog)
+			admin.POST("/pricing/set", svc.SetTokenPrice)
+			admin.POST("/pricing/update", svc.UpdatePrice)
+		}
+	}
+	return router
 }

@@ -67,11 +67,20 @@ func main() {
 
 	r.GET("/health", svc.Health)
 
+	// Public surface (no auth, no license gate) — mirrors canonical /api/v1/public.
+	pub := r.Group("/api/v1/public")
+	{
+		pub.GET("/tiers", svc.PublicTiers)
+	}
+
 	api := r.Group("/api/v1")
 	auth := api.Group("/auth")
 	{
 		auth.POST("/register", svc.Register)
 		auth.POST("/login", svc.Login)
+		// POST /auth/logout — audit-only stateless logout (records a real PG
+		// audit event; JWT is not server-side invalidated). License-gated like
+		// the other protected auth actions.
 	}
 
 	// Protected routes: every request must present a valid JWT AND pass the
@@ -81,24 +90,72 @@ func main() {
 	protected.Use(wlgate.JWTAuth(cfg.JWTSecret))
 	protected.Use(gate.Middleware("bots", wlgate.SimpleFetcher))
 	{
+		// Stateless logout (audit-only) — sits under protected so the JWT is
+		// validated and the license gate enforced before we record the event.
+		protected.POST("/auth/logout", svc.Logout)
+
+		// Bot CRUD + lifecycle (existing).
 		protected.POST("/bots", svc.CreateBot)
+		protected.POST("/bots/create", svc.CreateBot) // canonical alias of POST /bots
 		protected.GET("/bots", svc.ListBots)
+		protected.GET("/bots/instances", svc.ListBotInstances) // canonical alias of GET /bots
+		protected.GET("/bots/me", svc.CurrentBotUser)
+		protected.GET("/bots/transactions", svc.ListBotTransactions)
 		protected.GET("/bots/:id", svc.GetBot)
 		protected.DELETE("/bots/:id", svc.DeleteBot)
 		protected.POST("/bots/:id/start", svc.StartBot)
 		protected.POST("/bots/:id/stop", svc.StopBot)
 		protected.POST("/bots/:id/pause", svc.PauseBot)
+		protected.POST("/bots/:id/status", svc.SetBotStatus) // direct status set (distinct from lifecycle)
 		protected.GET("/bots/:id/executions", svc.ListBotExecutions)
 		protected.GET("/bots/:id/logs", svc.ListBotLogs)
 
 		protected.POST("/subscriptions", svc.CreateSubscription)
 		protected.GET("/subscriptions", svc.ListSubscriptions)
+		protected.GET("/subscription", svc.GetSubscription) // canonical singular alias (current user)
 
 		protected.POST("/fees", svc.CreateFeeConfig)
 		protected.GET("/fees", svc.ListFeeConfigs)
+		protected.PUT("/fees", svc.UpdateFeeConfig)
 
+		// Per-user API keys — full CRUD. /api-keys and /keys both map to the
+		// same api_keys table.
 		protected.POST("/api-keys", svc.CreateApiKey)
 		protected.GET("/api-keys", svc.ListApiKeys)
+		protected.POST("/keys", svc.CreateApiKey)
+		protected.GET("/keys", svc.ListApiKeys)
+		protected.DELETE("/keys/:id", svc.DeleteApiKey)
+	}
+
+	// Admin/operator routes — protected (JWT + license gate) AND role-gated.
+	// Mirrors canonical requireRole: stats, fee-addresses, cex/dex CRUD, and
+	// user management require an admin role (super_admin / finance_admin /
+	// bot_operator, depending on surface).
+	admin := protected.Group("")
+	{
+		// Platform stats — real COUNT queries (super_admin / finance_admin).
+		admin.GET("/stats", svc.RequireRole("super_admin", "finance_admin"), svc.Stats)
+
+		// User management (super_admin / bot_operator).
+		admin.GET("/users", svc.RequireRole("super_admin", "bot_operator"), svc.ListUsers)
+		admin.POST("/bots/users", svc.RequireRole("super_admin", "bot_operator"), svc.CreateBotUser)
+		admin.DELETE("/bots/users/:id", svc.RequireRole("super_admin"), svc.DeleteBotUser)
+		admin.PUT("/users/:id/status", svc.RequireRole("super_admin", "bot_operator"), svc.UpdateUserStatus)
+
+		// CEX connector configs — AES-GCM at rest (super_admin / finance_admin).
+		admin.GET("/cex", svc.RequireRole("super_admin", "finance_admin"), svc.ListCEX)
+		admin.POST("/cex", svc.RequireRole("super_admin", "finance_admin"), svc.CreateCEX)
+		admin.DELETE("/cex/:id", svc.RequireRole("super_admin", "finance_admin"), svc.DeleteCEX)
+
+		// DEX connector configs (super_admin / finance_admin).
+		admin.GET("/dex", svc.RequireRole("super_admin", "finance_admin"), svc.ListDEX)
+		admin.POST("/dex", svc.RequireRole("super_admin", "finance_admin"), svc.CreateDEX)
+		admin.DELETE("/dex/:id", svc.RequireRole("super_admin", "finance_admin"), svc.DeleteDEX)
+
+		// Admin fee-collection addresses (super_admin / finance_admin).
+		admin.GET("/fee-addresses", svc.RequireRole("super_admin", "finance_admin"), svc.ListFeeAddresses)
+		admin.POST("/fee-addresses", svc.RequireRole("super_admin", "finance_admin"), svc.CreateFeeAddress)
+		admin.DELETE("/fee-addresses/:id", svc.RequireRole("super_admin", "finance_admin"), svc.DeleteFeeAddress)
 	}
 
 	srv := &http.Server{

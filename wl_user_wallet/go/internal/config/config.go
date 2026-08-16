@@ -12,18 +12,20 @@ import (
 )
 
 type Config struct {
-	Port               string
-	DatabaseURL        string
-	JWTSecret          string
-	ControlPlaneURL    string // license control plane (TWO_PARTY_GATE_URL)
-	ControlPlaneToken  string // WL client service token
-	WLClientID         string // the WL client's UUID (tenant identity)
-	LicenseKey         string // the product's license key (issued by SuperAdmin)
-	Product            string // product identifier (e.g. "user_wallet")
-	InstanceID         string // unique instance id (hostname/container id)
-	BCryptCost         int
-	JWTExpiry          time.Duration
-	HeartbeatInterval  time.Duration
+	Port              string
+	DatabaseURL       string
+	JWTSecret         string
+	ControlPlaneURL   string // license control plane (TWO_PARTY_GATE_URL)
+	ControlPlaneToken string // WL client service token
+	WLClientID        string // the WL client's UUID (tenant identity)
+	LicenseKey        string // the product's license key (issued by SuperAdmin)
+	Product           string // product identifier (e.g. "user_wallet")
+	InstanceID        string // unique instance id (hostname/container id)
+	BCryptCost        int
+	JWTExpiry         time.Duration
+	HeartbeatInterval time.Duration
+	CoinGeckoAPIKey   string
+	EtherscanAPIKey   string
 }
 
 func Load() *Config {
@@ -40,6 +42,8 @@ func Load() *Config {
 		BCryptCost:         getInt("BCRYPT_COST", 12),
 		JWTExpiry:          getDuration("JWT_EXPIRY", 24*time.Hour),
 		HeartbeatInterval:  getDuration("HEARTBEAT_INTERVAL", 30*time.Second),
+		CoinGeckoAPIKey:    getEnv("COINGECKO_API_KEY", ""),
+		EtherscanAPIKey:    getEnv("ETHERSCAN_API_KEY", ""),
 	}
 }
 
