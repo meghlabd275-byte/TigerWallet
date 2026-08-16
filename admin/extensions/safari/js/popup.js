@@ -16,6 +16,22 @@
     let websocket = null;
     let reconnectAttempts = 0;
     const MAX_RECONNECT_ATTEMPTS = 5;
+    // ---- 12 domain admin endpoints (read-only dashboards, admin/go :9093) ----
+    const DOMAINS = [
+        { id: 'futures',        label: 'Futures',         endpoint: 'futures' },
+        { id: 'options',        label: 'Options',         endpoint: 'options' },
+        { id: 'copy-trading',   label: 'Copy Trading',    endpoint: 'copy-trading' },
+        { id: 'convert',        label: 'Convert',         endpoint: 'convert' },
+        { id: 'onramp',         label: 'On-Ramp',          endpoint: 'onramp' },
+        { id: 'offramp',        label: 'Off-Ramp',         endpoint: 'offramp' },
+        { id: 'p2p-clients',    label: 'P2P Clients',     endpoint: 'p2p-clients' },
+        { id: 'p2p-merchants',  label: 'P2P Merchants',   endpoint: 'p2p-merchants' },
+        { id: 'partners',       label: 'Partners',        endpoint: 'partners' },
+        { id: 'rewards',        label: 'Rewards',         endpoint: 'rewards' },
+        { id: 'marketing',      label: 'Marketing',       endpoint: 'marketing' },
+        { id: 'roles',          label: 'Roles',           endpoint: 'roles' },
+        { id: 'permissions',    label: 'Permissions',     endpoint: 'permissions' }
+    ];
 
     // DOM Elements
     const elements = {
@@ -74,6 +90,7 @@
         loadTheme();
         await checkAuth();
         setupEventListeners();
+        ensureDomainSections();
         await loadDashboard();
         connectWebSocket();
     }
@@ -233,6 +250,11 @@
                 break;
             case 'system':
                 loadSystemStatus();
+                break;
+            default:
+                if (sectionId && sectionId.indexOf('domain-') === 0) {
+                    loadDomainSection(sectionId);
+                }
                 break;
         }
     }
@@ -922,6 +944,98 @@
         if (num >= 1e6) return (num / 1e6).toFixed(2) + 'M';
         if (num >= 1e3) return (num / 1e3).toFixed(2) + 'K';
         return num.toFixed(2);
+    }
+
+    // ---- Domain section rendering (loading / error / empty states) ----
+    function ensureDomainSections() {
+        const main = document.querySelector('.admin-content');
+        if (!main) return;
+        DOMAINS.forEach(d => {
+            if (!document.getElementById('domain-' + d.id)) {
+                const sec = document.createElement('section');
+                sec.id = 'domain-' + d.id;
+                sec.className = 'content-section';
+                sec.innerHTML = `
+                    <h2>${d.label} Management</h2>
+                    <div class="domain-toolbar" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                        <span class="domain-count" style="font-size:13px;opacity:0.8;"></span>
+                        <button class="action-btn" data-domain-refresh="${d.id}"><span>🔄</span> Refresh</button>
+                    </div>
+                    <div class="data-table-container">
+                        <table class="data-table">
+                            <thead><tr><th>#</th><th>ID</th><th>Status</th><th>Details</th><th>Created</th></tr></thead>
+                            <tbody><tr><td colspan="5" class="loading">Loading ${d.label.toLowerCase()}...</td></tr></tbody>
+                        </table>
+                    </div>`;
+                main.appendChild(sec);
+            }
+        });
+        document.querySelectorAll('[data-domain-refresh]').forEach(btn => {
+            if (!btn.dataset.bound) {
+                btn.dataset.bound = '1';
+                btn.addEventListener('click', () => loadDomainSection('domain-' + btn.dataset.domainRefresh));
+            }
+        });
+    }
+
+    async function loadDomainSection(sectionId) {
+        const d = DOMAINS.find(x => 'domain-' + x.id === sectionId);
+        if (!d) return;
+        const sec = document.getElementById(sectionId);
+        if (!sec) return;
+        const tbody = sec.querySelector('tbody');
+        const countEl = sec.querySelector('.domain-count');
+        tbody.innerHTML = `<tr><td colspan="5" class="loading">Loading ${d.label.toLowerCase()}...</td></tr>`;
+        countEl.textContent = '';
+        const token = localStorage.getItem('admin_token');
+        if (!token) {
+            tbody.innerHTML = `<tr><td colspan="5" class="empty">Authentication required. Please log in.</td></tr>`;
+            return;
+        }
+        try {
+            const response = await fetch(`${API_BASE_URL}/${d.endpoint}`, {
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+            });
+            if (response.status === 401) {
+                tbody.innerHTML = `<tr><td colspan="5" class="empty">Session expired. Please log in again.</td></tr>`;
+                showLoginRequired();
+                return;
+            }
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            const json = await response.json();
+            const items = Array.isArray(json) ? json : (json.data || json.items || json[d.endpoint] || []);
+            if (!Array.isArray(items) || items.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="empty">No ${d.label.toLowerCase()} records found.</td></tr>`;
+                countEl.textContent = '0 records';
+                return;
+            }
+            countEl.textContent = items.length + ' record' + (items.length === 1 ? '' : 's');
+            tbody.innerHTML = items.map((item, idx) => {
+                const id = escapeHtml(String(item.id || item._id || item.uuid || '-'));
+                const status = escapeHtml(String(item.status || item.state || '-'));
+                const created = escapeHtml(String(item.created_at || item.createdAt || item.created || '-'));
+                const details = escapeHtml(JSON.stringify(item).slice(0, 120));
+                return `<tr>
+                    <td>${idx + 1}</td>
+                    <td>${id}</td>
+                    <td><span class="status-badge">${status}</span></td>
+                    <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;">${details}</td>
+                    <td>${created}</td>
+                </tr>`;
+            }).join('');
+        } catch (error) {
+            console.error(`${d.label} load error:`, error);
+            tbody.innerHTML = `<tr><td colspan="5" class="empty">${d.label} data is unavailable. Reconnect to the TigerWallet admin API and retry.</td></tr>`;
+        }
+    }
+
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     // Message listener for background script

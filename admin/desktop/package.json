@@ -2,7 +2,7 @@
   "name": "tiger-admin-desktop",
   "version": "1.0.0",
   "description": "TigerWallet Admin Desktop Application - Complete Dark/Light Theme Support",
-  "main": "src/main/main.js",
+  "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --enable-logging",

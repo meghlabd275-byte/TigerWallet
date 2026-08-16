@@ -3065,3 +3065,33 @@ nav links registered. Loading/error/empty states. No fund-movement UI.
 - **Auth:** JWT bearer token stored in `localStorage` as `bots-token`;
   `AuthContext` calls `api.setToken()` on load. Protected routes will return
   401/402/503 if the token is missing or the WL license gate is down (fail-closed).
+
+## Admin Domain API Contract (canonical — drives admin/go on :9093)
+
+All endpoints under `/api/v1/`, JWT Bearer auth. Verified against admin/go main.go
+route registrations and admin/web/src/services/api.ts (reference client, tsc 0).
+
+Per-domain methods (native clients MUST mirror exactly):
+- futures         /futures          : CRUD + PUT /:id/status {status}
+- options         /options          : CRUD + PUT /:id/status
+- copy-trading    /copy-trading     : CRUD + PUT /:id/status   (note the hyphen)
+- convert         /convert          : CRUD + PUT /:id/status
+- onramp          /onramp           : CRUD + POST /:id/approve {} + POST /:id/reject {reason}  (NO status)
+- offramp         /offramp          : CRUD + POST /:id/approve + POST /:id/reject  (NO status)
+- p2p-clients     /p2p-clients      : CRUD + PUT /:id/status
+- partners        /partners         : CRUD + PUT /:id/status + POST /:id/approve + POST /:id/reject
+- rewards         /rewards          : CRUD + PUT /:id/status
+- marketing       /marketing        : CRUD + PUT /:id/status
+- roles (RBAC)    /roles            : roles CRUD
+                  /permissions      : permissions CRUD (list/get/create/update/delete)
+                  /admins/:id/roles : GET (list) + POST {roleId} (assign) + DELETE /:roleId (revoke)
+                  /admins/:id/permissions : GET (effective)
+                  (RBAC is NOT under /roles/* — it lives at /permissions and /admins/:id/*)
+- p2p-merchants   /p2p-merchants    : CRUD (NO delete, NO status) + POST /:id/approve + POST /:id/reject
+                  /p2p-merchants/:id/transactions : GET (sub-resource)
+
+CRUD = GET /, POST /, GET /:id, PUT /:id, DELETE /:id
+"record-only" approve/reject on Go = governance record change, NO fund movement (do NOT add fund movement).
+
+Native client status: admin/rust (cargo check 0), admin/cpp (g++ syntax-only 0),
+admin/go (verified, do NOT touch), admin/web (done). TODO: android, ios, desktop, extensions.

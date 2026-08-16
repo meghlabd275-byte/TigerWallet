@@ -63,10 +63,21 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.main_menu, menu)
+        // Add a "Domains" submenu for the 12 admin domain screens.
+        val domains = menu.addSubMenu(0, MENU_DOMAINS_GROUP, 0, "Domains")
+        domainFragments.forEachIndexed { index, entry ->
+            domains.add(0, MENU_DOMAIN_BASE + index, 0, entry.first)
+        }
         return true
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        val domainIndex = item.itemId - MENU_DOMAIN_BASE
+        if (domainIndex in domainFragments.indices) {
+            loadFragment(domainFragments[domainIndex].second.invoke())
+            supportActionBar?.title = domainFragments[domainIndex].first
+            return true
+        }
         return when (item.itemId) {
             R.id.action_notifications -> {
                 // Open notifications
@@ -82,6 +93,28 @@ class MainActivity : AppCompatActivity() {
             }
             else -> super.onOptionsItemSelected(item)
         }
+    }
+
+    companion object {
+        private const val MENU_DOMAINS_GROUP = 1001
+        private const val MENU_DOMAIN_BASE = 2000
+
+        // Domain title -> fragment factory. Wired into the toolbar "Domains" submenu.
+        private val domainFragments: List<Pair<String, () -> Fragment>> = listOf(
+            "Futures" to { FuturesFragment() },
+            "Options" to { OptionsFragment() },
+            "Copy Trading" to { CopyTradingFragment() },
+            "Convert" to { ConvertFragment() },
+            "On-Ramp" to { OnRampFragment() },
+            "Off-Ramp" to { OffRampFragment() },
+            "P2P Clients" to { P2PClientsFragment() },
+            "P2P Merchants" to { P2PMerchantsFragment() },
+            "Partners" to { PartnersFragment() },
+            "Rewards" to { RewardsFragment() },
+            "Marketing" to { MarketingFragment() },
+            "Roles" to { RolesFragment() },
+            "Permissions" to { PermissionsFragment() }
+        )
     }
 
     private fun logout() {

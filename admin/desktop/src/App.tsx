@@ -2,8 +2,9 @@
 // Complete implementation with API connection and light/dark theme
 
 import React, { useState, useEffect } from 'react';
+import { DomainPage, DOMAIN_PAGES } from './DomainPage';
 
-const API_BASE_URL = process.env.REACT_APP_ADMIN_API || 'http://localhost:8080';
+const API_BASE_URL = process.env.REACT_APP_ADMIN_API || 'http://localhost:9093';
 
 // API Service
 class DesktopAdminAPI {
@@ -59,17 +60,54 @@ class DesktopAdminAPI {
     return this.request(`/api/v1/withdrawals/${id}/approve`, { method: 'POST' });
   }
   async getFeeConfig() { return this.request('/api/v1/fees'); }
-  async updateFeeConfig(config: any) { 
+  async updateFeeConfig(config: any) {
     return this.request('/api/v1/fees', { method: 'PUT', body: JSON.stringify(config) });
+  }
+  // ---- 12 domain endpoints (admin/go backend, /api/v1/<domain>) ----
+  async listDomain(domain: string) { return this.request(`/api/v1/${domain}`); }
+  async createDomain(domain: string, body: any) {
+    return this.request(`/api/v1/${domain}`, { method: 'POST', body: JSON.stringify(body) });
+  }
+  async updateDomain(domain: string, id: string, body: any) {
+    return this.request(`/api/v1/${domain}/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+  }
+  async deleteDomain(domain: string, id: string) {
+    return this.request(`/api/v1/${domain}/${id}`, { method: 'DELETE' });
+  }
+  async setDomainStatus(domain: string, id: string, status: string) {
+    return this.request(`/api/v1/${domain}/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+  }
+  async approveDomain(domain: string, id: string) {
+    return this.request(`/api/v1/${domain}/${id}/approve`, { method: 'POST' });
+  }
+  async rejectDomain(domain: string, id: string, reason: string) {
+    return this.request(`/api/v1/${domain}/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) });
+  }
+  // RBAC
+  async assignRole(adminId: string, roleId: string) {
+    return this.request(`/api/v1/admins/${adminId}/roles`, { method: 'POST', body: JSON.stringify({ role_id: roleId }) });
+  }
+  async revokeRole(adminId: string, roleId: string) {
+    return this.request(`/api/v1/admins/${adminId}/roles/${roleId}`, { method: 'DELETE' });
+  }
+  async getAdminPermissions(adminId: string) {
+    return this.request(`/api/v1/admins/${adminId}/permissions`);
+  }
+  async getAdminRoles(adminId: string) {
+    return this.request(`/api/v1/admins/${adminId}/roles`);
+  }
+  // p2p-merchants exposes a transactions sub-resource (no delete/status on backend).
+  async listP2PMerchantTransactions(id: string) {
+    return this.request(`/api/v1/p2p-merchants/${id}/transactions`);
   }
 }
 
-const api = new DesktopAdminAPI();
+export const api = new DesktopAdminAPI();
 
 // Theme System
-type Theme = 'light' | 'dark';
+export type Theme = 'light' | 'dark';
 
-const getColors = (theme: Theme) => ({
+export const getColors = (theme: Theme) => ({
   bg: theme === 'dark' ? '#0f172a' : '#f9fafb',
   bgCard: theme === 'dark' ? '#1e293b' : '#ffffff',
   bgHover: theme === 'dark' ? '#334155' : '#f3f4f6',
@@ -98,6 +136,19 @@ const AdminSidebar: React.FC<{ currentPage: string; setCurrentPage: (page: strin
     { id: 'withdrawals', label: 'Withdrawals', icon: '💸' },
     { id: 'fees', label: 'Fees', icon: '💰' },
     { id: 'system', label: 'System', icon: '🖥️' },
+    { id: 'futures', label: 'Futures', icon: '📈' },
+    { id: 'options', label: 'Options', icon: '🎚️' },
+    { id: 'copy-trading', label: 'Copy Trading', icon: '🧑‍🤝‍🧑' },
+    { id: 'convert', label: 'Convert', icon: '🔄' },
+    { id: 'onramp', label: 'On-Ramp', icon: '⬇️' },
+    { id: 'offramp', label: 'Off-Ramp', icon: '⬆️' },
+    { id: 'p2p-clients', label: 'P2P Clients', icon: '🧑' },
+    { id: 'p2p-merchants', label: 'P2P Merchants', icon: '🏪' },
+    { id: 'partners', label: 'Partners', icon: '🤝' },
+    { id: 'rewards', label: 'Rewards', icon: '🎁' },
+    { id: 'marketing', label: 'Marketing', icon: '📣' },
+    { id: 'roles', label: 'Roles', icon: '🛡️' },
+    { id: 'permissions', label: 'Permissions', icon: '🔐' },
     { id: 'settings', label: 'Settings', icon: '⚙️' },
   ];
   
@@ -647,7 +698,11 @@ const AdminDesktopApp: React.FC = () => {
       case 'fees': return <AdminFees {...props} />;
       case 'system': return <AdminSystem {...props} />;
       case 'settings': return <AdminSettings {...props} theme={theme} setTheme={setTheme} />;
-      default: return <AdminDashboard {...props} />;
+      default: {
+        const dp = DOMAIN_PAGES.find(p => p.id === currentPage);
+        if (dp) return <DomainPage config={dp} theme={theme} />;
+        return <AdminDashboard {...props} />;
+      }
     }
   };
 

@@ -9,11 +9,10 @@ class AdminAPIService {
     private let baseURL: String
 
     init(baseURL: String? = nil) {
-        // Use ADMIN_API_URL env (canonical wallet_api admin surface) instead of the
-        // removed api.tigerwallet.io placeholder.
+        // admin/go backend (port 9093). ADMIN_API_URL env overrides when present.
         self.baseURL = baseURL
             ?? ProcessInfo.processInfo.environment["ADMIN_API_URL"]
-            ?? "http://localhost:8443"
+            ?? "http://localhost:9093"
     }
     
     // MARK: - User Management APIs
@@ -129,6 +128,291 @@ class AdminAPIService {
         let _: EmptyResponse = try await request(endpoint: "/api/v1/admin/admins/\(id)", method: "DELETE")
     }
     
+    // MARK: - Domain APIs (admin/go backend, /api/v1/<domain>)
+    // Each domain: CRUD + status (or approve/reject) against port 9093.
+
+    func listFutures() async throws -> [DomainRecord] {
+        try await request(endpoint: "/api/v1/futures")
+    }
+    func getFutures(id: String) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/futures/\(id)")
+    }
+    func createFutures(_ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/futures", method: "POST", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func updateFutures(id: String, _ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/futures/\(id)", method: "PUT", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func deleteFutures(id: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/futures/\(id)", method: "DELETE")
+    }
+    func setFuturesStatus(id: String, status: String) async throws -> DomainRecord {
+        let body = try JSONSerialization.data(withJSONObject: ["status": status])
+        return try await request(endpoint: "/api/v1/futures/\(id)/status", method: "PUT", body: body)
+    }
+
+    func listOptions() async throws -> [DomainRecord] {
+        try await request(endpoint: "/api/v1/options")
+    }
+    func getOptions(id: String) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/options/\(id)")
+    }
+    func createOptions(_ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/options", method: "POST", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func updateOptions(id: String, _ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/options/\(id)", method: "PUT", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func deleteOptions(id: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/options/\(id)", method: "DELETE")
+    }
+    func setOptionsStatus(id: String, status: String) async throws -> DomainRecord {
+        let body = try JSONSerialization.data(withJSONObject: ["status": status])
+        return try await request(endpoint: "/api/v1/options/\(id)/status", method: "PUT", body: body)
+    }
+
+    func listCopyTrading() async throws -> [DomainRecord] {
+        try await request(endpoint: "/api/v1/copy-trading")
+    }
+    func getCopyTrading(id: String) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/copy-trading/\(id)")
+    }
+    func createCopyTrading(_ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/copy-trading", method: "POST", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func updateCopyTrading(id: String, _ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/copy-trading/\(id)", method: "PUT", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func deleteCopyTrading(id: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/copy-trading/\(id)", method: "DELETE")
+    }
+    func setCopyTradingStatus(id: String, status: String) async throws -> DomainRecord {
+        let body = try JSONSerialization.data(withJSONObject: ["status": status])
+        return try await request(endpoint: "/api/v1/copy-trading/\(id)/status", method: "PUT", body: body)
+    }
+
+    func listConvert() async throws -> [DomainRecord] {
+        try await request(endpoint: "/api/v1/convert")
+    }
+    func getConvert(id: String) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/convert/\(id)")
+    }
+    func createConvert(_ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/convert", method: "POST", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func updateConvert(id: String, _ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/convert/\(id)", method: "PUT", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func deleteConvert(id: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/convert/\(id)", method: "DELETE")
+    }
+    func setConvertStatus(id: String, status: String) async throws -> DomainRecord {
+        let body = try JSONSerialization.data(withJSONObject: ["status": status])
+        return try await request(endpoint: "/api/v1/convert/\(id)/status", method: "PUT", body: body)
+    }
+
+    func listOnRamp() async throws -> [DomainRecord] {
+        try await request(endpoint: "/api/v1/onramp")
+    }
+    func getOnRamp(id: String) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/onramp/\(id)")
+    }
+    func createOnRamp(_ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/onramp", method: "POST", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func updateOnRamp(id: String, _ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/onramp/\(id)", method: "PUT", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func deleteOnRamp(id: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/onramp/\(id)", method: "DELETE")
+    }
+    func approveOnRamp(id: String) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/onramp/\(id)/approve", method: "POST")
+    }
+    func rejectOnRamp(id: String, reason: String) async throws -> DomainRecord {
+        let body = try JSONSerialization.data(withJSONObject: ["reason": reason])
+        return try await request(endpoint: "/api/v1/onramp/\(id)/reject", method: "POST", body: body)
+    }
+
+    func listOffRamp() async throws -> [DomainRecord] {
+        try await request(endpoint: "/api/v1/offramp")
+    }
+    func getOffRamp(id: String) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/offramp/\(id)")
+    }
+    func createOffRamp(_ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/offramp", method: "POST", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func updateOffRamp(id: String, _ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/offramp/\(id)", method: "PUT", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func deleteOffRamp(id: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/offramp/\(id)", method: "DELETE")
+    }
+    func approveOffRamp(id: String) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/offramp/\(id)/approve", method: "POST")
+    }
+    func rejectOffRamp(id: String, reason: String) async throws -> DomainRecord {
+        let body = try JSONSerialization.data(withJSONObject: ["reason": reason])
+        return try await request(endpoint: "/api/v1/offramp/\(id)/reject", method: "POST", body: body)
+    }
+
+    func listP2PClients() async throws -> [DomainRecord] {
+        try await request(endpoint: "/api/v1/p2p-clients")
+    }
+    func getP2PClient(id: String) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/p2p-clients/\(id)")
+    }
+    func createP2PClient(_ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/p2p-clients", method: "POST", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func updateP2PClient(id: String, _ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/p2p-clients/\(id)", method: "PUT", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func deleteP2PClient(id: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/p2p-clients/\(id)", method: "DELETE")
+    }
+    func setP2PClientStatus(id: String, status: String) async throws -> DomainRecord {
+        let body = try JSONSerialization.data(withJSONObject: ["status": status])
+        return try await request(endpoint: "/api/v1/p2p-clients/\(id)/status", method: "PUT", body: body)
+    }
+
+    func listP2PMerchants() async throws -> [DomainRecord] {
+        try await request(endpoint: "/api/v1/p2p-merchants")
+    }
+    func getP2PMerchant(id: String) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/p2p-merchants/\(id)")
+    }
+    func createP2PMerchant(_ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/p2p-merchants", method: "POST", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func updateP2PMerchant(id: String, _ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/p2p-merchants/\(id)", method: "PUT", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    // p2p-merchants has no delete / status on admin/go — expose approve/reject + transactions.
+    func approveP2PMerchant(id: String) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/p2p-merchants/\(id)/approve", method: "POST")
+    }
+    func rejectP2PMerchant(id: String, reason: String) async throws -> DomainRecord {
+        let body = try JSONSerialization.data(withJSONObject: ["reason": reason])
+        return try await request(endpoint: "/api/v1/p2p-merchants/\(id)/reject", method: "POST", body: body)
+    }
+    func listP2PMerchantTransactions(id: String) async throws -> [DomainRecord] {
+        try await request(endpoint: "/api/v1/p2p-merchants/\(id)/transactions")
+    }
+
+    func listPartners() async throws -> [DomainRecord] {
+        try await request(endpoint: "/api/v1/partners")
+    }
+    func getPartner(id: String) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/partners/\(id)")
+    }
+    func createPartner(_ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/partners", method: "POST", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func updatePartner(id: String, _ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/partners/\(id)", method: "PUT", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func deletePartner(id: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/partners/\(id)", method: "DELETE")
+    }
+    func setPartnerStatus(id: String, status: String) async throws -> DomainRecord {
+        let body = try JSONSerialization.data(withJSONObject: ["status": status])
+        return try await request(endpoint: "/api/v1/partners/\(id)/status", method: "PUT", body: body)
+    }
+    func approvePartner(id: String) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/partners/\(id)/approve", method: "POST")
+    }
+    func rejectPartner(id: String, reason: String) async throws -> DomainRecord {
+        let body = try JSONSerialization.data(withJSONObject: ["reason": reason])
+        return try await request(endpoint: "/api/v1/partners/\(id)/reject", method: "POST", body: body)
+    }
+
+    func listRewards() async throws -> [DomainRecord] {
+        try await request(endpoint: "/api/v1/rewards")
+    }
+    func getReward(id: String) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/rewards/\(id)")
+    }
+    func createReward(_ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/rewards", method: "POST", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func updateReward(id: String, _ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/rewards/\(id)", method: "PUT", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func deleteReward(id: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/rewards/\(id)", method: "DELETE")
+    }
+    func setRewardStatus(id: String, status: String) async throws -> DomainRecord {
+        let body = try JSONSerialization.data(withJSONObject: ["status": status])
+        return try await request(endpoint: "/api/v1/rewards/\(id)/status", method: "PUT", body: body)
+    }
+
+    func listMarketing() async throws -> [DomainRecord] {
+        try await request(endpoint: "/api/v1/marketing")
+    }
+    func getMarketing(id: String) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/marketing/\(id)")
+    }
+    func createMarketing(_ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/marketing", method: "POST", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func updateMarketing(id: String, _ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/marketing/\(id)", method: "PUT", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func deleteMarketing(id: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/marketing/\(id)", method: "DELETE")
+    }
+    func setMarketingStatus(id: String, status: String) async throws -> DomainRecord {
+        let body = try JSONSerialization.data(withJSONObject: ["status": status])
+        return try await request(endpoint: "/api/v1/marketing/\(id)/status", method: "PUT", body: body)
+    }
+
+    // MARK: - RBAC (Roles & Permissions)
+    func listRoles() async throws -> [DomainRecord] {
+        try await request(endpoint: "/api/v1/roles")
+    }
+    func getRole(id: String) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/roles/\(id)")
+    }
+    func createRole(_ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/roles", method: "POST", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func updateRole(id: String, _ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/roles/\(id)", method: "PUT", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func deleteRole(id: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/roles/\(id)", method: "DELETE")
+    }
+    func listPermissions() async throws -> [DomainRecord] {
+        try await request(endpoint: "/api/v1/permissions")
+    }
+    func getPermission(id: String) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/permissions/\(id)")
+    }
+    func createPermission(_ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/permissions", method: "POST", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func updatePermission(id: String, _ payload: [String: Any]) async throws -> DomainRecord {
+        try await request(endpoint: "/api/v1/permissions/\(id)", method: "PUT", body: try JSONSerialization.data(withJSONObject: payload))
+    }
+    func deletePermission(id: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/permissions/\(id)", method: "DELETE")
+    }
+    func getAdminRoles(adminId: String) async throws -> [DomainRecord] {
+        try await request(endpoint: "/api/v1/admins/\(adminId)/roles")
+    }
+    func assignRole(adminId: String, roleId: String) async throws -> DomainRecord {
+        let body = try JSONSerialization.data(withJSONObject: ["role_id": roleId])
+        return try await request(endpoint: "/api/v1/admins/\(adminId)/roles", method: "POST", body: body)
+    }
+    func revokeRole(adminId: String, roleId: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/admins/\(adminId)/roles/\(roleId)", method: "DELETE")
+    }
+    func getAdminPermissions(adminId: String) async throws -> [DomainRecord] {
+        try await request(endpoint: "/api/v1/admins/\(adminId)/permissions")
+    }
+
     // MARK: - Generic Request
     private func request<T: Decodable>(_ endpoint: String, method: String = "GET", body: Data? = nil) async throws -> T {
         guard let url = URL(string: "\(baseURL)\(endpoint)") else {
@@ -138,6 +422,11 @@ class AdminAPIService {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        // JWT bearer auth (real token from AuthService keychain; never mocked).
+        if let token = AuthService.shared.token, !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         
         if let body = body {
             request.httpBody = body

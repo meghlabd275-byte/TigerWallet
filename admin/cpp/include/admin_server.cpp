@@ -4,6 +4,7 @@
 
 #include "admin_server.hpp"
 #include "admin_logger.hpp"
+#include "admin_domains.hpp"
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -289,11 +290,12 @@ void AdminServer::accept_connections() {
         active_connections_++;
         
         // Handle request in separate thread or queue
-        std::thread(&AdminServer::handle_request, this, client_socket).detach();
+        std::thread(&AdminServer::handle_request, this, client_socket,
+                    std::string(inet_ntoa(client_addr.sin_addr))).detach();
     }
 }
 
-void AdminServer::handle_request(int client_socket) {
+void AdminServer::handle_request(int client_socket, const std::string& client_ip) {
     char buffer[8192] = {0};
     ssize_t bytes_read = read(client_socket, buffer, sizeof(buffer) - 1);
     
@@ -302,7 +304,7 @@ void AdminServer::handle_request(int client_socket) {
         
         // Parse HTTP request
         HttpRequest request;
-        request.ip_address = inet_ntoa(client_addr.sin_addr);
+        request.ip_address = client_ip;
         
         // Simple HTTP parsing
         std::string request_str(buffer);
@@ -371,7 +373,10 @@ void AdminServer::process_request(const HttpRequest& request) {
 }
 
 void AdminServer::register_routes() {
-    // Will be populated by AdminHandler
+    // Wire the 12 admin domain handlers (futures, options, copy-trading,
+    // convert, onramp, offramp, p2p-clients, partners, rewards, marketing,
+    // roles, p2p-merchants) against the admin/go backend on port 9093.
+    register_domain_routes(router_);
 }
 
 void AdminServer::register_middleware() {

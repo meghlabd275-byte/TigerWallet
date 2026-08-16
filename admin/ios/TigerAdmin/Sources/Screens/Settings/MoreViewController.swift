@@ -15,6 +15,21 @@ class MoreViewController: UIViewController, UITableViewDelegate, UITableViewData
             ("arrow.left.arrow.right", "Trading Pairs"),
             ("link", "Blockchains")
         ]),
+        ("Domains", [
+            ("chart.line.uptrend.xyaxis", "Futures"),
+            ("slider.horizontal.3", "Options"),
+            ("person.2.crop.square.stack", "Copy Trading"),
+            ("arrow.left.arrow.right.circle", "Convert"),
+            ("arrow.down.circle", "On-Ramp"),
+            ("arrow.up.circle", "Off-Ramp"),
+            ("person.3", "P2P Clients"),
+            ("storefront", "P2P Merchants"),
+            ("hand.raised", "Partners"),
+            ("gift", "Rewards"),
+            ("megaphone", "Marketing"),
+            ("shield.lefthalf.filled", "Roles"),
+            ("checkmark.lock", "Permissions")
+        ]),
         ("Management", [
             ("building.2", "White Labels"),
             ("questionmark.circle", "Support Tickets")
@@ -87,6 +102,32 @@ class MoreViewController: UIViewController, UITableViewDelegate, UITableViewData
             targetVC = PairsListViewController()
         case "Blockchains":
             targetVC = BlockchainsListViewController()
+        case "Futures":
+            targetVC = FuturesViewController()
+        case "Options":
+            targetVC = OptionsViewController()
+        case "Copy Trading":
+            targetVC = CopyTradingViewController()
+        case "Convert":
+            targetVC = ConvertViewController()
+        case "On-Ramp":
+            targetVC = OnRampViewController()
+        case "Off-Ramp":
+            targetVC = OffRampViewController()
+        case "P2P Clients":
+            targetVC = P2PClientsViewController()
+        case "P2P Merchants":
+            targetVC = P2PMerchantsViewController()
+        case "Partners":
+            targetVC = PartnersViewController()
+        case "Rewards":
+            targetVC = RewardsViewController()
+        case "Marketing":
+            targetVC = MarketingViewController()
+        case "Roles":
+            targetVC = RolesViewController()
+        case "Permissions":
+            targetVC = PermissionsViewController()
         case "White Labels":
             targetVC = WhiteLabelsListViewController()
         case "Support Tickets":

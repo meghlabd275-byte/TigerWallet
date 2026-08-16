@@ -64,6 +64,20 @@ set(HEADERS
     include/admin_config.hpp
     include/admin_logger.hpp
     include/admin_connection_pool.hpp
+    include/admin_domain.hpp
+    include/admin_domains.hpp
+    include/admin_futures.cpp
+    include/admin_options.cpp
+    include/admin_copy_trading.cpp
+    include/admin_convert.cpp
+    include/admin_onramp.cpp
+    include/admin_offramp.cpp
+    include/admin_p2p_clients.cpp
+    include/admin_partners.cpp
+    include/admin_rewards.cpp
+    include/admin_marketing.cpp
+    include/admin_roles.cpp
+    include/admin_p2p_merchants.cpp
 )
 
 # Create executable

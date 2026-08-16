@@ -21,8 +21,8 @@ import java.util.concurrent.TimeUnit
 class TigerAdminApplication : Application(), ImageLoaderFactory {
 
     companion object {
-        const val BASE_URL = "https://api.tigerwallet.io/admin/v1/"
-        const val WS_URL = "wss://ws.tigerwallet.io/admin"
+        const val BASE_URL = "http://localhost:9093/api/v1/"
+        const val WS_URL = "ws://localhost:9093/ws"
         
         // Redis configuration
         const val REDIS_HOST = "redis.tigerwallet.io"

@@ -8,6 +8,7 @@ use axum::{
     Json, Extension,
 };
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tower_http::cors::{CorsLayer, Any};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -16,8 +17,10 @@ mod handlers;
 mod db;
 mod auth;
 mod error;
+mod domain;
 
 use handlers::*;
+use domain::domain_routes;
 use db::DbPool;
 use auth::AuthState;
 
@@ -193,7 +196,13 @@ async fn main() {
         
         // Middleware
         .layer(cors)
-        .layer(Extension(state));
+        .layer(Extension(Arc::new(state)));
+
+    // Merge the 12 admin domain proxy routes (futures, options, copy-trading,
+    // convert, onramp, offramp, p2p-clients, p2p-merchants, partners, rewards,
+    // marketing, roles) which forward every call to the admin/go backend on
+    // localhost:9093 with the inbound Bearer JWT.
+    let app = app.merge(domain_routes());
 
     // Start server
     let addr = SocketAddr::from(([0, 0, 0, 0], 9095));

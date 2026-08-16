@@ -15,9 +15,10 @@ use std::sync::Arc;
 // Auth Handlers
 // ============================================================================
 
+#[axum::debug_handler]
 pub async fn login(
-    Json(payload): Json<LoginRequest>,
     Extension(state): Extension<Arc<AppState>>,
+    Json(payload): Json<LoginRequest>,
 ) -> AppResult<Json<LoginResponse>> {
     // In production, validate credentials against database
     let admin = Admin {

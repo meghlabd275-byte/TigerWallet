@@ -528,6 +528,295 @@ interface AdminApiService {
         @Path("key") key: String,
         @Body request: UpdateSettingRequest
     ): Response<SettingResponse>
+
+    // ========== Futures ==========
+
+    @GET("futures")
+    suspend fun getFutures(): Response<List<FuturesRecord>>
+
+    @GET("futures/{id}")
+    suspend fun getFuturesRecord(@Path("id") id: String): Response<FuturesRecord>
+
+    @POST("futures")
+    suspend fun createFutures(@Body request: FuturesRequest): Response<FuturesRecord>
+
+    @PUT("futures/{id}")
+    suspend fun updateFutures(@Path("id") id: String, @Body request: FuturesRequest): Response<FuturesRecord>
+
+    @DELETE("futures/{id}")
+    suspend fun deleteFutures(@Path("id") id: String): Response<Unit>
+
+    @PUT("futures/{id}/status")
+    suspend fun setFuturesStatus(@Path("id") id: String, @Body request: StatusUpdateRequest): Response<FuturesRecord>
+
+    // ========== Options ==========
+
+    @GET("options")
+    suspend fun getOptions(): Response<List<OptionsRecord>>
+
+    @GET("options/{id}")
+    suspend fun getOptionsRecord(@Path("id") id: String): Response<OptionsRecord>
+
+    @POST("options")
+    suspend fun createOptions(@Body request: OptionsRequest): Response<OptionsRecord>
+
+    @PUT("options/{id}")
+    suspend fun updateOptions(@Path("id") id: String, @Body request: OptionsRequest): Response<OptionsRecord>
+
+    @DELETE("options/{id}")
+    suspend fun deleteOptions(@Path("id") id: String): Response<Unit>
+
+    @PUT("options/{id}/status")
+    suspend fun setOptionsStatus(@Path("id") id: String, @Body request: StatusUpdateRequest): Response<OptionsRecord>
+
+    // ========== Copy Trading ==========
+
+    @GET("copy-trading")
+    suspend fun getCopyTrading(): Response<List<CopyTradingRecord>>
+
+    @GET("copy-trading/{id}")
+    suspend fun getCopyTradingRecord(@Path("id") id: String): Response<CopyTradingRecord>
+
+    @POST("copy-trading")
+    suspend fun createCopyTrading(@Body request: CopyTradingRequest): Response<CopyTradingRecord>
+
+    @PUT("copy-trading/{id}")
+    suspend fun updateCopyTrading(@Path("id") id: String, @Body request: CopyTradingRequest): Response<CopyTradingRecord>
+
+    @DELETE("copy-trading/{id}")
+    suspend fun deleteCopyTrading(@Path("id") id: String): Response<Unit>
+
+    @PUT("copy-trading/{id}/status")
+    suspend fun setCopyTradingStatus(@Path("id") id: String, @Body request: StatusUpdateRequest): Response<CopyTradingRecord>
+
+    // ========== Convert ==========
+
+    @GET("convert")
+    suspend fun getConvert(): Response<List<ConvertRecord>>
+
+    @GET("convert/{id}")
+    suspend fun getConvertRecord(@Path("id") id: String): Response<ConvertRecord>
+
+    @POST("convert")
+    suspend fun createConvert(@Body request: ConvertRequest): Response<ConvertRecord>
+
+    @PUT("convert/{id}")
+    suspend fun updateConvert(@Path("id") id: String, @Body request: ConvertRequest): Response<ConvertRecord>
+
+    @DELETE("convert/{id}")
+    suspend fun deleteConvert(@Path("id") id: String): Response<Unit>
+
+    @PUT("convert/{id}/status")
+    suspend fun setConvertStatus(@Path("id") id: String, @Body request: StatusUpdateRequest): Response<ConvertRecord>
+
+    // ========== OnRamp ==========
+
+    @GET("onramp")
+    suspend fun getOnRamp(): Response<List<OnRampRecord>>
+
+    @GET("onramp/{id}")
+    suspend fun getOnRampRecord(@Path("id") id: String): Response<OnRampRecord>
+
+    @POST("onramp")
+    suspend fun createOnRamp(@Body request: OnRampRequest): Response<OnRampRecord>
+
+    @PUT("onramp/{id}")
+    suspend fun updateOnRamp(@Path("id") id: String, @Body request: OnRampRequest): Response<OnRampRecord>
+
+    @DELETE("onramp/{id}")
+    suspend fun deleteOnRamp(@Path("id") id: String): Response<Unit>
+
+    @PUT("onramp/{id}/status")
+    suspend fun setOnRampStatus(@Path("id") id: String, @Body request: StatusUpdateRequest): Response<OnRampRecord>
+
+    @POST("onramp/{id}/approve")
+    suspend fun approveOnRamp(@Path("id") id: String): Response<OnRampRecord>
+
+    @POST("onramp/{id}/reject")
+    suspend fun rejectOnRamp(@Path("id") id: String, @Body request: RejectRequest): Response<OnRampRecord>
+
+    // ========== OffRamp ==========
+
+    @GET("offramp")
+    suspend fun getOffRamp(): Response<List<OffRampRecord>>
+
+    @GET("offramp/{id}")
+    suspend fun getOffRampRecord(@Path("id") id: String): Response<OffRampRecord>
+
+    @POST("offramp")
+    suspend fun createOffRamp(@Body request: OffRampRequest): Response<OffRampRecord>
+
+    @PUT("offramp/{id}")
+    suspend fun updateOffRamp(@Path("id") id: String, @Body request: OffRampRequest): Response<OffRampRecord>
+
+    @DELETE("offramp/{id}")
+    suspend fun deleteOffRamp(@Path("id") id: String): Response<Unit>
+
+    @PUT("offramp/{id}/status")
+    suspend fun setOffRampStatus(@Path("id") id: String, @Body request: StatusUpdateRequest): Response<OffRampRecord>
+
+    @POST("offramp/{id}/approve")
+    suspend fun approveOffRamp(@Path("id") id: String): Response<OffRampRecord>
+
+    @POST("offramp/{id}/reject")
+    suspend fun rejectOffRamp(@Path("id") id: String, @Body request: RejectRequest): Response<OffRampRecord>
+
+    // ========== P2P Clients ==========
+
+    @GET("p2p-clients")
+    suspend fun getP2PClients(): Response<List<P2PClientRecord>>
+
+    @GET("p2p-clients/{id}")
+    suspend fun getP2PClientRecord(@Path("id") id: String): Response<P2PClientRecord>
+
+    @POST("p2p-clients")
+    suspend fun createP2PClient(@Body request: P2PClientRequest): Response<P2PClientRecord>
+
+    @PUT("p2p-clients/{id}")
+    suspend fun updateP2PClient(@Path("id") id: String, @Body request: P2PClientRequest): Response<P2PClientRecord>
+
+    @DELETE("p2p-clients/{id}")
+    suspend fun deleteP2PClient(@Path("id") id: String): Response<Unit>
+
+    @PUT("p2p-clients/{id}/status")
+    suspend fun setP2PClientStatus(@Path("id") id: String, @Body request: StatusUpdateRequest): Response<P2PClientRecord>
+
+    // ========== P2P Merchants ==========
+
+    @GET("p2p-merchants")
+    suspend fun getP2PMerchants(): Response<List<P2PMerchantRecord>>
+
+    @GET("p2p-merchants/{id}")
+    suspend fun getP2PMerchantRecord(@Path("id") id: String): Response<P2PMerchantRecord>
+
+    @POST("p2p-merchants")
+    suspend fun createP2PMerchant(@Body request: P2PMerchantRequest): Response<P2PMerchantRecord>
+
+    @PUT("p2p-merchants/{id}")
+    suspend fun updateP2PMerchant(@Path("id") id: String, @Body request: P2PMerchantRequest): Response<P2PMerchantRecord>
+
+    @POST("p2p-merchants/{id}/approve")
+    suspend fun approveP2PMerchant(@Path("id") id: String): Response<P2PMerchantRecord>
+
+    @POST("p2p-merchants/{id}/reject")
+    suspend fun rejectP2PMerchant(@Path("id") id: String, @Body request: RejectRequest): Response<P2PMerchantRecord>
+
+    @GET("p2p-merchants/{id}/transactions")
+    suspend fun getP2PMerchantTransactions(@Path("id") id: String): Response<List<Map<String, Any>>>
+
+    // ========== Partners ==========
+
+    @GET("partners")
+    suspend fun getPartners(): Response<List<PartnerRecord>>
+
+    @GET("partners/{id}")
+    suspend fun getPartnerRecord(@Path("id") id: String): Response<PartnerRecord>
+
+    @POST("partners")
+    suspend fun createPartner(@Body request: PartnerRequest): Response<PartnerRecord>
+
+    @PUT("partners/{id}")
+    suspend fun updatePartner(@Path("id") id: String, @Body request: PartnerRequest): Response<PartnerRecord>
+
+    @DELETE("partners/{id}")
+    suspend fun deletePartner(@Path("id") id: String): Response<Unit>
+
+    @PUT("partners/{id}/status")
+    suspend fun setPartnerStatus(@Path("id") id: String, @Body request: StatusUpdateRequest): Response<PartnerRecord>
+
+    @POST("partners/{id}/approve")
+    suspend fun approvePartner(@Path("id") id: String): Response<PartnerRecord>
+
+    @POST("partners/{id}/reject")
+    suspend fun rejectPartner(@Path("id") id: String, @Body request: RejectRequest): Response<PartnerRecord>
+
+    // ========== Rewards ==========
+
+    @GET("rewards")
+    suspend fun getRewards(): Response<List<RewardRecord>>
+
+    @GET("rewards/{id}")
+    suspend fun getRewardRecord(@Path("id") id: String): Response<RewardRecord>
+
+    @POST("rewards")
+    suspend fun createReward(@Body request: RewardRequest): Response<RewardRecord>
+
+    @PUT("rewards/{id}")
+    suspend fun updateReward(@Path("id") id: String, @Body request: RewardRequest): Response<RewardRecord>
+
+    @DELETE("rewards/{id}")
+    suspend fun deleteReward(@Path("id") id: String): Response<Unit>
+
+    @PUT("rewards/{id}/status")
+    suspend fun setRewardStatus(@Path("id") id: String, @Body request: StatusUpdateRequest): Response<RewardRecord>
+
+    // ========== Marketing ==========
+
+    @GET("marketing")
+    suspend fun getMarketing(): Response<List<MarketingRecord>>
+
+    @GET("marketing/{id}")
+    suspend fun getMarketingRecord(@Path("id") id: String): Response<MarketingRecord>
+
+    @POST("marketing")
+    suspend fun createMarketing(@Body request: MarketingRequest): Response<MarketingRecord>
+
+    @PUT("marketing/{id}")
+    suspend fun updateMarketing(@Path("id") id: String, @Body request: MarketingRequest): Response<MarketingRecord>
+
+    @DELETE("marketing/{id}")
+    suspend fun deleteMarketing(@Path("id") id: String): Response<Unit>
+
+    @PUT("marketing/{id}/status")
+    suspend fun setMarketingStatus(@Path("id") id: String, @Body request: StatusUpdateRequest): Response<MarketingRecord>
+
+    // ========== RBAC: Roles ==========
+
+    @GET("roles")
+    suspend fun getRoles(): Response<List<RoleRecord>>
+
+    @GET("roles/{id}")
+    suspend fun getRole(@Path("id") id: String): Response<RoleRecord>
+
+    @POST("roles")
+    suspend fun createRole(@Body request: RoleRequest): Response<RoleRecord>
+
+    @PUT("roles/{id}")
+    suspend fun updateRole(@Path("id") id: String, @Body request: RoleRequest): Response<RoleRecord>
+
+    @DELETE("roles/{id}")
+    suspend fun deleteRole(@Path("id") id: String): Response<Unit>
+
+    // ========== RBAC: Permissions ==========
+
+    @GET("permissions")
+    suspend fun getPermissions(): Response<List<PermissionRecord>>
+
+    @GET("permissions/{id}")
+    suspend fun getPermission(@Path("id") id: String): Response<PermissionRecord>
+
+    @POST("permissions")
+    suspend fun createPermission(@Body request: PermissionRequest): Response<PermissionRecord>
+
+    @PUT("permissions/{id}")
+    suspend fun updatePermission(@Path("id") id: String, @Body request: PermissionRequest): Response<PermissionRecord>
+
+    @DELETE("permissions/{id}")
+    suspend fun deletePermission(@Path("id") id: String): Response<Unit>
+
+    // ========== RBAC: Admin role/permission assignments ==========
+
+    @GET("admins/{adminId}/roles")
+    suspend fun getAdminRoles(@Path("adminId") adminId: String): Response<List<RoleRecord>>
+
+    @POST("admins/{adminId}/roles")
+    suspend fun assignRole(@Path("adminId") adminId: String, @Body request: AssignRoleRequest): Response<Unit>
+
+    @DELETE("admins/{adminId}/roles/{roleId}")
+    suspend fun revokeRole(@Path("adminId") adminId: String, @Path("roleId") roleId: String): Response<Unit>
+
+    @GET("admins/{adminId}/permissions")
+    suspend fun getAdminPermissions(@Path("adminId") adminId: String): Response<List<PermissionRecord>>
 }
 
 // ========== Request Models ==========
