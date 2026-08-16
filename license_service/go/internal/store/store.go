@@ -255,6 +255,25 @@ func (s *Store) GetWLClient(ctx context.Context, id uuid.UUID) (*WLClient, error
 	return c, nil
 }
 
+// GetWLClientBySlug resolves a WL client by its public slug. Used by the
+// public branding endpoint so a WL-branded app can fetch its branding config
+// on startup without any credentials. Returns ErrWLClientNotFound when no row
+// matches so the handler can return a clean 404 and the app can fall back to
+// TigerWallet defaults.
+func (s *Store) GetWLClientBySlug(ctx context.Context, slug string) (*WLClient, error) {
+	c := &WLClient{}
+	var branding []byte
+	err := s.db.QueryRow(ctx,
+		`SELECT id, name, slug, contact_email, tier, status, branding, allowed_products, created_at, updated_at
+		 FROM wl_clients WHERE slug=$1`, slug).
+		Scan(&c.ID, &c.Name, &c.Slug, &c.ContactEmail, &c.Tier, &c.Status, &branding, &c.AllowedProducts, &c.CreatedAt, &c.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	_ = json.Unmarshal(branding, &c.Branding)
+	return c, nil
+}
+
 func (s *Store) ListWLClients(ctx context.Context) ([]*WLClient, error) {
 	rows, err := s.db.Query(ctx,
 		`SELECT id, name, slug, contact_email, tier, status, branding, allowed_products, created_at, updated_at
@@ -308,6 +327,19 @@ func (s *Store) SetWLClientStatus(ctx context.Context, id uuid.UUID, status, adm
 
 func (s *Store) UpdateWLClient(ctx context.Context, id uuid.UUID, tier string, products []string) error {
 	_, err := s.db.Exec(ctx, `UPDATE wl_clients SET tier=$1, allowed_products=$2, updated_at=NOW() WHERE id=$3`, tier, products, id)
+	return err
+}
+
+// UpdateWLClientBranding persists the white-label branding JSONB for a WL
+// client. SuperAdmin sets this when onboarding/rebranding a WL client; the
+// public branding endpoint projects it to WL-branded apps on startup. A nil
+// map clears branding (app falls back to TigerWallet defaults).
+func (s *Store) UpdateWLClientBranding(ctx context.Context, id uuid.UUID, branding map[string]any) error {
+	bj, err := json.Marshal(branding)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(ctx, `UPDATE wl_clients SET branding=$1, updated_at=NOW() WHERE id=$2`, bj, id)
 	return err
 }
 

@@ -5,6 +5,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import '../branding_config.dart';
 
 enum AppThemeMode {
   system,
@@ -28,6 +29,25 @@ class ThemeProvider extends ChangeNotifier {
     return brightness == Brightness.dark;
   }
   
+  // White-label primary/secondary colors, overlayed onto the theme's accent
+  // slot. When no WL branding is present these are the TigerWallet defaults
+  // (backward compatible). Updated whenever BrandingConfig refreshes.
+  Color get primaryColor => BrandingConfig.instance.primarySwatch;
+  Color get secondaryColor => BrandingConfig.instance.secondarySwatch;
+
+  ThemeProvider() {
+    // React to async branding refreshes from the control plane.
+    BrandingConfig.instance.addListener(_onBrandingChanged);
+  }
+
+  void _onBrandingChanged() => notifyListeners();
+
+  @override
+  void dispose() {
+    BrandingConfig.instance.removeListener(_onBrandingChanged);
+    super.dispose();
+  }
+
   void setThemeMode(AppThemeMode mode) {
     _themeMode = mode;
     

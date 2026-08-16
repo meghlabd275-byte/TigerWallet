@@ -21,6 +21,14 @@ android {
         vectorDrawables {
             useSupportLibrary true
         }
+
+        // ---- White-label branding injection ----
+        // A WL-client build sets WL_BRANDING_SLUG (+ WL_CONTROL_PLANE_URL) via
+        // gradle properties / env at build time. Empty => stock TigerWallet
+        // build (BrandingConfig falls back to TigerWallet defaults). The app
+        // then fetches GET /api/v1/branding/{slug} on startup (public, no auth).
+        buildConfigField "String", "WL_BRANDING_SLUG", "\"${project.findProperty('wlBrandingSlug') ?: ''}\""
+        buildConfigField "String", "WL_CONTROL_PLANE_URL", "\"${project.findProperty('wlControlPlaneUrl') ?: ''}\""
     }
 
     buildTypes {

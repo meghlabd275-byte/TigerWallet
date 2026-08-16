@@ -14,17 +14,37 @@ class TigerWalletApp {
     }
     
     async init() {
+        // Apply white-label branding (cache first, then async refresh from
+        // the control plane). Stock TigerWallet builds fall back to defaults
+        // when no WL_BRANDING_SLUG is present.
+        if (typeof BrandingConfig !== 'undefined') {
+            BrandingConfig.bootstrap();
+            BrandingConfig.onChange(() => this.applyBranding());
+        }
+
         // Load theme from storage
         this.loadTheme();
-        
+        this.applyBranding();
+
         // Set up event listeners
         this.setupEventListeners();
-        
+
         // Load supported chains
         await this.loadChains();
-        
+
         // Check if wallet exists
         await this.checkWalletStatus();
+    }
+
+    // Apply the WL app name to in-app displayed titles (logo headings, etc).
+    // The OS window title + CSS vars are handled by branding.js.
+    applyBranding() {
+        if (typeof BrandingConfig === 'undefined') return;
+        const name = BrandingConfig.appName;
+        document.querySelectorAll('[data-app-name]').forEach(el => { el.textContent = name; });
+        document.querySelectorAll('.logo h1, .sidebar-header h2').forEach(el => {
+            if (/TigerWallet/i.test(el.textContent)) el.textContent = '🐯 ' + name;
+        });
     }
     
     loadTheme() {

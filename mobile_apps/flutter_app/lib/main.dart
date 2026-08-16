@@ -15,6 +15,7 @@ import 'services/wallet_service.dart';
 import 'services/chain_service.dart';
 import 'services/api_service.dart';
 import 'utils/theme.dart';
+import 'branding_config.dart';
 import 'utils/constants.dart';
 
 void main() async {
@@ -36,6 +37,9 @@ void main() async {
     ),
   );
   
+  // Initialize white-label branding (no-op for stock TigerWallet).
+  await BrandingConfig.instance.init();
+
   runApp(const TigerWalletApp());
 }
 

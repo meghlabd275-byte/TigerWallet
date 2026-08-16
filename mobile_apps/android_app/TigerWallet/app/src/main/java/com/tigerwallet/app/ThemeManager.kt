@@ -54,7 +54,14 @@ class ThemeManager(private val context: Context) {
                 ThemeType.SYSTEM -> (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
             }
 
-            return if (isDark) darkColors else lightColors
+            val base = if (isDark) darkColors else lightColors
+            // Overlay the white-label primary/secondary colors onto the theme's
+            // accent slot when a WL branding config is present. When the app is
+            // a stock TigerWallet build, BrandingConfig returns the TigerWallet
+            // defaults so this is a no-op (backward compatible).
+            return base.copy(
+                accent = BrandingConfig.primaryColorInt().takeIf { it != 0 } ?: base.accent
+            )
         }
     }
 

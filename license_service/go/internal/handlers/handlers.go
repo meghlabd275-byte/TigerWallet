@@ -234,6 +234,7 @@ func (h *Handlers) UpdateWLClient(c *gin.Context) {
 	var req struct {
 		Tier     string   `json:"tier"`
 		Products []string `json:"products"`
+		Branding map[string]any `json:"branding"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -244,7 +245,15 @@ func (h *Handlers) UpdateWLClient(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	h.store.Audit(ctx, adminID(c), "wl_client.update", "wl_client", id.String(), gin.H{"tier": req.Tier, "products": req.Products})
+	// Branding is optional on update; only persist when the key was provided
+	// (a nil map with the key present clears branding -> TigerWallet fallback).
+	if req.Branding != nil {
+		if err := h.store.UpdateWLClientBranding(ctx, id, req.Branding); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+	h.store.Audit(ctx, adminID(c), "wl_client.update", "wl_client", id.String(), gin.H{"tier": req.Tier, "products": req.Products, "branding": req.Branding})
 	c.JSON(http.StatusOK, gin.H{"updated": id})
 }
 

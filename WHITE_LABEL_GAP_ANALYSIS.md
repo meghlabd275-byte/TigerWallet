@@ -467,6 +467,37 @@ of their routes. Frontend→backend and backend→frontend parity is 100/100.
 - All 4 WL backends + license-service + 4 WL frontends wired with healthchecks
   + depends_on + fail-closed gate env vars.
 
+### WL mobile/desktop rebranding (2026-08-16)
+ALL mobile/desktop apps are now WL-rebrandable. The license control plane exposes
+a PUBLIC `GET /api/v1/branding/:slug` endpoint returning the WL client's branding
+JSON (app_name, logo_url, primary/secondary_color, domain, support_email,
+terms_url, privacy_url). Each app loads branding on startup:
+
+| Platform | Branding module | Config source | Fallback |
+|----------|----------------|---------------|----------|
+| Android | `BrandingConfig.kt` | `BuildConfig.WL_BRANDING_SLUG` (gradle) | TigerWallet defaults |
+| iOS | `Models/BrandingConfig.swift` | `Info.plist` WL_BRANDING_SLUG | TigerWallet defaults |
+| Desktop (Tauri) | `src/branding.js` | env/window-global/wl-branding.json | TigerWallet defaults |
+| Flutter | `lib/branding_config.dart` | `--dart-define=WL_BRANDING_SLUG` | TigerWallet defaults |
+
+- Branding is fetched from the control plane, cached locally (SharedPreferences /
+  UserDefaults / localStorage), and applied to the app theme + displayed name.
+- Backward compatible: no slug set → TigerWallet defaults, no network call.
+- A WL client builds the app with their slug → app fetches their branding →
+  displays their logo/name/colors/domain.
+
+### Duplicate cleanup (2026-08-16)
+Deleted 2 orphaned duplicates (functionality fully preserved in replacements):
+- `kill_switch/go` — superseded by `license_service/go` (command/flag/heartbeat/
+  suspend/halt/resume/revoke all in license_service). Not in docker-compose, no
+  Go imports (only comment references).
+- `wl_control_plane/go` — cgo Go binding to the C++ gate, NEVER imported. All 4
+  WL Go backends use the pure-Go `wl_shared/go/wlgate`. The C++
+  `wl_control_plane/cpp` (ultra-low-latency gate) is KEPT (separate, used).
+- `white_label/go` is NOT a duplicate — it's the WL client management backend
+  (distinct from `white_label_admin/go` = scoped-admin panel, and
+  `license_service/go` = license control plane). All 3 are separate services.
+
 ---
 
 *This document was prepared by an AI agent (OpenHands) on behalf of the TigerWallet project as part of a white-label architecture gap audit.*

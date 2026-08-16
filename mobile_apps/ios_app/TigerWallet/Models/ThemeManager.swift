@@ -1,20 +1,38 @@
 import SwiftUI
+import Combine
 
 // MARK: - Theme Manager
 
 class ThemeManager: ObservableObject {
     static let shared = ThemeManager()
-    
+
     @Published var isDarkMode: Bool {
         didSet {
             UserDefaults.standard.set(isDarkMode, forKey: "isDarkMode")
         }
     }
-    
+
+    /// White-label primary/secondary colors, overlayed onto the theme accent
+    /// slot. When no WL branding is present these are the TigerWallet defaults
+    /// (backward compatible). Updated whenever BrandingConfig refreshes.
+    @Published private(set) var primaryColor: Color
+    @Published private(set) var secondaryColor: Color
+
+    private var brandingObserver: AnyCancellable?
+
     private init() {
         self.isDarkMode = UserDefaults.standard.bool(forKey: "isDarkMode")
+        let b = BrandingConfig.shared.branding
+        self.primaryColor = Color(hex: b.primaryColor) ?? Color(hex: Branding.defaults.primaryColor)!
+        self.secondaryColor = Color(hex: b.secondaryColor) ?? Color(hex: Branding.defaults.secondaryColor)!
+        self.brandingObserver = BrandingConfig.shared.$branding
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] b in
+                self?.primaryColor = Color(hex: b.primaryColor) ?? Color(hex: Branding.defaults.primaryColor)!
+                self?.secondaryColor = Color(hex: b.secondaryColor) ?? Color(hex: Branding.defaults.secondaryColor)!
+            }
     }
-    
+
     func toggleTheme() {
         isDarkMode.toggle()
     }

@@ -64,6 +64,10 @@
 	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>WL_BRANDING_SLUG</key>
+	<string></string>
+	<key>WL_CONTROL_PLANE_URL</key>
+	<string></string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

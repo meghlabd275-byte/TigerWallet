@@ -74,6 +74,11 @@ func main() {
 		api.POST("/auth/login", h.Login)               // SuperAdmin login
 		api.POST("/auth/wl-login", h.WLClientLogin)    // WL client login (scoped JWT)
 
+		// PUBLIC branding endpoint — no auth. A WL-branded app fetches its
+		// branding config on startup by slug (injected at build time). Returns
+		// 404 when no WL client matches so the app falls back to TigerWallet.
+		api.GET("/branding/:slug", h.GetBrandingBySlug)
+
 		// WL-product-facing endpoints (called by the Rust SDK / C++ checker).
 		// These authenticate via the license_key in the body, not a JWT.
 		api.POST("/license/validate", h.ValidateLicense)

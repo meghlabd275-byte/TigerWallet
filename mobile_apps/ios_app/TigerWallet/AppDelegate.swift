@@ -10,7 +10,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         
         // Initialize services
         ServiceLocator.shared.register()
-        
+
+        // Load WL branding (from cache, then async-refresh from the control
+        // plane). Stock TigerWallet builds fall back to defaults when no slug
+        // is present in Info.plist.
+        BrandingConfig.shared.bootstrap()
+
         // Configure appearance
         configureAppearance()
         
