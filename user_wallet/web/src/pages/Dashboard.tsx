@@ -28,9 +28,9 @@ export default function Dashboard() {
 
       <div className="stats-grid">
         <div className="stat-card">
-          <h3>Total Balance</h3>
+          <h3>Total Balance (native)</h3>
           <p className="stat-value">
-            ${balances.reduce((sum: number, b: BalanceResult) => sum + (b.usd_value || 0), 0).toFixed(2)}
+            {balances.reduce((sum: number, b: BalanceResult) => sum + (b.balance_f || 0), 0).toFixed(6)}
           </p>
         </div>
         <div className="stat-card">
@@ -54,8 +54,8 @@ export default function Dashboard() {
                 <tr>
                   <th>Token</th>
                   <th>Network</th>
+                  <th>Address</th>
                   <th>Balance</th>
-                  <th>USD Value</th>
                 </tr>
               </thead>
               <tbody>
@@ -63,8 +63,8 @@ export default function Dashboard() {
                   <tr key={i}>
                     <td>{b.symbol}</td>
                     <td>Chain #{b.chain_id}</td>
+                    <td className="mono">{b.address.slice(0, 10)}…{b.address.slice(-6)}</td>
                     <td>{b.balance_f.toFixed(6)}</td>
-                    <td>${(b.usd_value || 0).toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>

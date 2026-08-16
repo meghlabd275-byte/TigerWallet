@@ -1,11 +1,12 @@
-// Auth Context - ProjectParty
+// Auth Context — WL-ProjectParty. Real register/login through the API service
+// (proxied to the WL standalone backend). No hardcoded hosts.
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { api } from '../services/api';
 
-const API_URL = 'http://localhost:8106/api/v1';
-
 interface AuthContextType {
   token: string | null;
+  email: string | null;
+  register: (email: string, password: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
 }
@@ -19,28 +20,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (t) api.setToken(t);
     return t;
   });
+  const [email, setEmail] = useState<string | null>(() =>
+    typeof window === 'undefined' ? null : localStorage.getItem('projectparty-email')
+  );
 
   const login = async (email: string, password: string) => {
-    const res = await fetch(`${API_URL}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: email, password })
-    });
-    if (!res.ok) throw new Error('Login failed');
-    const data = await res.json();
+    const data = await api.login(email, password);
+    if (!data?.token) throw new Error('Login failed: no token returned');
     localStorage.setItem('projectparty-token', data.token);
+    localStorage.setItem('projectparty-email', data.email || email);
     api.setToken(data.token);
     setToken(data.token);
+    setEmail(data.email || email);
+  };
+
+  const register = async (email: string, password: string) => {
+    await api.register(email, password);
+    await login(email, password);
   };
 
   const logout = () => {
     localStorage.removeItem('projectparty-token');
+    localStorage.removeItem('projectparty-email');
     api.clearToken();
     setToken(null);
+    setEmail(null);
   };
 
   return (
-    <AuthContext.Provider value={{ token, login, logout }}>
+    <AuthContext.Provider value={{ token, email, register, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

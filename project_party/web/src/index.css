@@ -206,6 +206,25 @@ section {
   color: var(--text-secondary);
 }
 
+.settings-page {
+  color: var(--text-primary);
+  max-width: 720px;
+}
+
+.settings-page section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+  box-shadow: var(--shadow);
+}
+
+.settings-page h2 {
+  margin-bottom: 0.75rem;
+  color: var(--text-primary);
+}
+
 .subtitle {
   color: var(--text-secondary);
   margin-bottom: 1rem;
@@ -247,6 +266,14 @@ section {
   font-size: 0.85rem;
   font-weight: 400;
   margin-top: 0.25rem;
+}
+
+.stat-value {
+  color: var(--text-primary);
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0.25rem 0;
+  line-height: 1.1;
 }
 
 /* Generic card grid */
@@ -461,4 +488,206 @@ button:disabled {
   .two-col {
     grid-template-columns: 1fr;
   }
+}
+
+/* ============== Auth / standalone pages (login, register) ============== */
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  padding: 1.5rem;
+}
+
+.auth-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2rem;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: var(--shadow);
+}
+
+.auth-card h1 {
+  margin-bottom: 0.35rem;
+  font-size: 1.6rem;
+}
+
+.auth-card .subtitle {
+  margin-bottom: 1.25rem;
+}
+
+.auth-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.auth-card form button {
+  margin-top: 0.4rem;
+}
+
+.auth-links {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1.1rem;
+  font-size: 0.88rem;
+}
+
+.auth-links a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.auth-links a:hover {
+  text-decoration: underline;
+}
+
+/* legacy alias used by some pages */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  padding: 1.5rem;
+}
+
+.login-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2rem;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: var(--shadow);
+}
+
+.login-card h1 {
+  margin-bottom: 1rem;
+  font-size: 1.6rem;
+}
+
+.login-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.login-card .error,
+.login-card .message {
+  color: var(--error);
+  font-size: 0.88rem;
+  margin-bottom: 0.25rem;
+}
+
+/* ============== Token / coin grids & cards ============== */
+
+.tokens-grid,
+.cards-grid,
+.coins-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.token-card,
+.coin-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.token-card img,
+.coin-card img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--bg-secondary);
+}
+
+.token-card h3,
+.coin-card h3 {
+  margin: 0;
+}
+
+.token-card .verified {
+  color: var(--success);
+  font-size: 0.85rem;
+}
+
+.token-card .row-actions,
+.coin-card .row-actions {
+  margin-top: 0.5rem;
+}
+
+/* ============== Forms on standalone pages (submit) ============== */
+
+.submit-page form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 520px;
+}
+
+.submit-page .message {
+  color: var(--success);
+  margin-bottom: 0.5rem;
+}
+
+/* ============== Dashboard market stats ============== */
+
+.dashboard .market-stats,
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.coins-table {
+  overflow-x: auto;
+}
+
+.coins-table td img {
+  width: 22px;
+  height: 22px;
+  vertical-align: middle;
+  border-radius: 50%;
+  margin-right: 0.4rem;
+  background: var(--bg-secondary);
+}
+
+/* ============== Misc ============== */
+
+.full-width-input {
+  width: 100%;
+}
+
+.inline-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-primary);
+}
+
+.checkbox-row input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
 }

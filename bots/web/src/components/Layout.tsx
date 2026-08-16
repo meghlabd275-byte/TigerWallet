@@ -10,10 +10,14 @@ export default function Layout() {
   const navItems = [
     { path: '/dashboard', label: 'Dashboard' },
     { path: '/bots', label: 'Bots' },
-    { path: '/strategies', label: 'Strategies' },
-    { path: '/trades', label: 'Trades' },
-    { path: '/settings', label: 'Settings' }
+    { path: '/subscriptions', label: 'Subscriptions' },
+    { path: '/fees', label: 'Fees' },
+    { path: '/api-keys', label: 'API Keys' },
+    { path: '/settings', label: 'Settings' },
   ];
+
+  const isActive = (path: string) =>
+    location.pathname === path || location.pathname.startsWith(`${path}/`);
 
   return (
     <div className={`layout ${theme}`}>
@@ -22,7 +26,7 @@ export default function Layout() {
         <ul>
           {navItems.map(item => (
             <li key={item.path}>
-              <Link to={item.path} className={location.pathname === item.path ? 'active' : ''}>
+              <Link to={item.path} className={isActive(item.path) ? 'active' : ''}>
                 {item.label}
               </Link>
             </li>
@@ -31,7 +35,7 @@ export default function Layout() {
       </nav>
       <main className="main-content">
         <header className="top-bar">
-          <button onClick={toggleTheme} className="theme-toggle">
+          <button onClick={toggleTheme} className="theme-toggle" aria-label="Toggle theme">
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
         </header>

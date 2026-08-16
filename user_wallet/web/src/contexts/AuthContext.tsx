@@ -40,11 +40,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const register = async (email: string, username: string, password: string) => {
-    const { token: newToken } = await api.register(email, username, password);
+    // The WL /auth/register endpoint does NOT return a JWT (only { id, email }).
+    // Create the account, then perform a real login to obtain a token so the
+    // session is authenticated immediately.
+    await api.register(email, username, password);
+    const { token: newToken, user: newUser } = await api.login(email, password);
     localStorage.setItem('userwallet-token', newToken);
     setToken(newToken);
+    setUser(newUser);
     api.setToken(newToken);
-    setUser({ id: '', email, username });
   };
 
   const logout = () => {

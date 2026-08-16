@@ -1715,6 +1715,18 @@ source before acting.
   not type-checked). Uint8Array<ArrayBuffer> used to satisfy BufferSource.
 - Syntax fixes this session: TaxAnalyticsService missing `{` (line ~120),
   App.tsx `;`->`,` in useState, removed unused setApiUrl/toggleTheme/id.
+- **Two-party revenue gate (treasury UI):** added `requestWithdrawal` +
+  `revenuePayout` to `src/api.ts` and a `TreasuryPage` ("🏛️ Treasury" tab) to
+  `App.tsx`. The Go handlers (`backend/handlers.go` WithdrawalRequest /
+  RevenuePayout) use DIFFERENT field names than the task spec described:
+  WithdrawalRequest body is `{to_address, amount_wei, currency, chain_id}`
+  (NOT `to`/`amount`); RevenuePayout body is `{to, amount, password,
+  gas_limit, withdrawal_id}`. The API client + types match the actual Go
+  struct tags, so the fetches are real (no stubs). Withdrawal returns 202
+  `{withdrawal_id, status:"pending_two_party_approval"}`; payout returns 200
+  `{transaction_hash, status:"broadcast", withdrawal_id, from, chain_id}`.
+  The gate is fail-closed server-side (`IsWithdrawalApproved` before broadcast).
+  UI wires the returned `withdrawal_id` into the payout form via a button.
 
 ## Android master_wallet client remediation (2026-08-13)
 
@@ -3014,3 +3026,42 @@ nav links registered. Loading/error/empty states. No fund-movement UI.
   don't yet consult the admin flag store to halt operations at runtime.
 - Dedicated liquidity-source management admin CRUD not yet present.
 - Three feature-flag systems need consolidation.
+
+
+---
+
+## bots/web — TigerBots frontend (Vite + React + TS)
+
+- **Stack:** Vite 5 + React 18 + react-router-dom 6 + plain CSS (no Tailwind).
+  TypeScript strict. Build: `npm install && npx tsc --noEmit -p tsconfig.json`
+  (0 errors) and `npx vite build` (0 errors).
+- **Backend target:** the standalone WL-Bots backend at `wl_bots/go/` — runs on
+  port **8471** internally, mapped to **8463** externally. The Vite dev proxy
+  (`vite.config.ts`) forwards `/api` AND `/health` -> `http://localhost:8463`.
+  `src/services/api.ts` uses a relative base (`/api/v1`) by default;
+  `VITE_API_URL` overrides it for production builds (must point at the WL
+  backend, NOT the old `localhost:8471` TigerWallet platform).
+- **All 17 backend routes have real consumers (100% parity):** `/health`
+  (Settings page), `/auth/register` + `/auth/login` (AuthContext), and the 14
+  protected routes via `api.*` methods — bots CRUD + start/stop/pause +
+  executions + logs, subscriptions, fees, api-keys. NO stubs/fakes/mocks.
+- **Backend field names (from `internal/handlers/handlers.go`):** bots use
+  `bot_type` (NOT `strategy`), `pair` (NOT `trading_pairs`), `exchange`,
+  `config` (map). List endpoints wrap arrays: `{bots, count}`,
+  `{executions, count}`, `{logs, count}`, `{subscriptions, count}`,
+  `{fee_configs, count}`, `{api_keys, count}`. Register returns
+  `{id, email, role}`; login returns `{token, user_id, email, role}`.
+  `bot_type` must be one of the 18 values in `botTypes` (handlers.go).
+- **Theme:** `ThemeContext` sets `data-theme="light|dark"` on `<html>`; all
+  styling uses CSS variables defined in `src/index.css` under
+  `:root,[data-theme='light']` and `[data-theme='dark']`. Use the CSS vars
+  (e.g. `var(--card-bg)`) for new components — they automatically theme. Pages
+  can also read `useTheme().isDark` for conditional content. Toggle button in
+  `Layout.tsx` top bar.
+- **Routes (App.tsx):** `/login`, `/register`, `/dashboard`, `/bots`,
+  `/bots/:id` (BotDetail with Executions/Logs tabs), `/subscriptions`, `/fees`,
+  `/api-keys`, `/settings`. Nav in `Layout.tsx`. There is NO `/strategies` or
+  `/trades` route (those were non-WL routes; their pages were removed).
+- **Auth:** JWT bearer token stored in `localStorage` as `bots-token`;
+  `AuthContext` calls `api.setToken()` on load. Protected routes will return
+  401/402/503 if the token is missing or the WL license gate is down (fail-closed).

@@ -436,7 +436,36 @@ the WL client's own cloud with own PG + own signing + fail-closed phone-home:
 | wl_control_plane/cpp | cmake+make+test 6/6 pass |
 | white_label_admin/web | tsc 0 errors |
 | super_admin/web | tsc 0 errors |
+| bots/web | tsc 0 errors (100% backend parity) |
+| project_party/web | tsc 0 errors (100% backend parity) |
+| user_wallet/web | tsc 0 errors (100% backend parity) |
+| master_wallet/web | tsc 0 errors (100% backend parity) |
 | docker-compose.yml | YAML valid |
+
+### Frontend/backend parity (100/100 — 2026-08-16)
+ALL 4 standalone WL backends now have WL-branded frontends consuming 100%
+of their routes. Frontend→backend and backend→frontend parity is 100/100.
+
+| WL backend | Frontend | Routes | Parity | Dockerfile |
+|-----------|----------|--------|--------|------------|
+| wl_user_wallet/go (:8461) | user_wallet/web | 8/8 | 100% | ✅ |
+| wl_master_wallet/go (:8462) | master_wallet/web | 20/20 | 100% | ✅ (new) |
+| wl_bots/go (:8463) | bots/web | 17/17 | 100% | ✅ (new) |
+| wl_project_party/go (:8464) | project_party/web | 22/22 | 100% | ✅ |
+
+- bots/web: rewired to :8463 + added Subscriptions, Fees, ApiKeys, BotDetail,
+  Register pages. All 17 routes consumed. Vite build succeeds.
+- project_party/web: rewired to :8464 + fixed duplicate getToken + added
+  themed CSS rules. All 22 routes consumed. Vite build succeeds.
+- user_wallet/web: rewired to :8461 RESTful /wallets/:id/* routes + added
+  Register + Sign Message UI. All 8 routes consumed. tsc 0 errors.
+- master_wallet/web: added Treasury page with Withdrawal Request +
+  Revenue Payout forms (two-party gate UI). All 20 routes consumed. tsc 0 errors.
+
+### Docker-compose (complete — 2026-08-16)
+- bots-frontend (:8472) + master-wallet-frontend (:8452) added.
+- All 4 WL backends + license-service + 4 WL frontends wired with healthchecks
+  + depends_on + fail-closed gate env vars.
 
 ---
 

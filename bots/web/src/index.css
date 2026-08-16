@@ -736,3 +736,317 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+
+/* ============================================================
+   New pages: BotDetail, Subscriptions, Fees, ApiKeys, Register
+   ============================================================ */
+
+/* ---- Mode pill (light/dark indicator) ---- */
+.mode-pill {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--badge-bg);
+  color: var(--badge-text);
+  vertical-align: middle;
+}
+
+/* ---- Auth pages: register note + switch link ---- */
+.auth-mode-note {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.auth-switch {
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+}
+
+.auth-switch a {
+  color: var(--sidebar-active);
+  font-weight: 600;
+}
+
+/* ---- Bots page extras ---- */
+.bot-created {
+  font-size: 0.78rem !important;
+  color: var(--text-muted);
+}
+
+.bot-card h3 a {
+  color: var(--text);
+}
+
+.bot-card h3 a:hover {
+  color: var(--sidebar-active);
+}
+
+.btn-danger {
+  background: var(--status-stopped-bg) !important;
+  color: var(--status-stopped-text) !important;
+  border-color: var(--status-stopped-text) !important;
+}
+
+.btn-danger:hover {
+  filter: brightness(0.95);
+}
+
+.btn-danger:disabled,
+.bot-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ---- Resource page (subscriptions / fees / api-keys) ---- */
+.resource-page {
+  color: var(--text);
+}
+
+.resource-page h1 {
+  font-size: 1.6rem;
+}
+
+.hint {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+/* ---- Generic data table ---- */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--card-shadow);
+}
+
+.data-table thead th {
+  background: var(--table-header-bg);
+  color: var(--text-muted);
+  text-align: left;
+  padding: 0.85rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+}
+
+.data-table tbody td {
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table tbody tr:hover {
+  background: var(--table-row-hover);
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--badge-bg);
+  color: var(--badge-text);
+  text-transform: capitalize;
+}
+
+/* ---- Bot detail page ---- */
+.bot-detail-page {
+  color: var(--text);
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 1rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.back-link:hover {
+  color: var(--sidebar-active);
+}
+
+.detail-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--card-shadow);
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.detail-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.detail-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.config-block {
+  margin-top: 1.25rem;
+}
+
+.config-block pre {
+  margin-top: 0.4rem;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.85rem;
+  font-size: 0.8rem;
+  overflow-x: auto;
+  color: var(--text);
+}
+
+/* ---- Tabs ---- */
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+
+.tabs button {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.6rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.tabs button:hover {
+  color: var(--text);
+}
+
+.tabs button.active {
+  color: var(--sidebar-active);
+  border-bottom-color: var(--sidebar-active);
+}
+
+.tab-panel {
+  color: var(--text);
+}
+
+.tab-panel p {
+  color: var(--text-muted);
+}
+
+/* ---- Log list ---- */
+.log-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: var(--card-shadow);
+}
+
+.log-entry {
+  display: grid;
+  grid-template-columns: 180px 80px 1fr;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  align-items: baseline;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.log-entry:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.log-time {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.log-level {
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.log-info .log-level { color: var(--sidebar-active); }
+.log-warn .log-level { color: var(--risk-medium-text); }
+.log-error .log-level { color: var(--loss-text); }
+.log-debug .log-level { color: var(--text-muted); }
+
+.log-message {
+  color: var(--text);
+}
+
+/* ---- API key cell ---- */
+.api-key-cell {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-link {
+  background: transparent !important;
+  border: none !important;
+  color: var(--sidebar-active);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.1rem 0.35rem !important;
+  text-decoration: underline;
+}
+
+.btn-link:hover {
+  opacity: 0.8;
+}
+
+/* ---- Responsive detail/log layouts ---- */
+@media (max-width: 640px) {
+  .log-entry {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+  }
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}

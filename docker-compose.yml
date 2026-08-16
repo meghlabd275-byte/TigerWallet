@@ -558,6 +558,34 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  # ===== Bots frontend (Vite + React) =====
+  bots-frontend:
+    build:
+      context: ./bots/web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ""
+    container_name: tigerwallet-bots-frontend
+    ports:
+      - "8472:80"
+    depends_on:
+      - wl-bots
+    restart: unless-stopped
+
+  # ===== MasterWallet frontend (Vite + React) =====
+  master-wallet-frontend:
+    build:
+      context: ./master_wallet/web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ""
+    container_name: tigerwallet-master-wallet-frontend
+    ports:
+      - "8452:80"
+    depends_on:
+      - wl-master-wallet
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:

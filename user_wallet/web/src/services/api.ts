@@ -1,15 +1,23 @@
-// API Service - Connects to the canonical TigerWallet Go wallet-api backend.
+// API Service - Connects to the standalone WL-UserWallet backend (port 8461).
 //
-// The single source of truth for UserWallet data is go/wallet_api (port 8443),
-// which performs REAL on-chain RPC (eth_getBalance / eth_call / Etherscan),
-// real BIP-39/BIP-32/BIP-44 HD key derivation, real secp256k1 transaction
-// signing + broadcast, and AES-256-GCM encrypted-seed persistence in
-// PostgreSQL with Redis caching. No stubs, no fabricated data.
+// WL-UserWallet runs INDEPENDENTLY in the WL client's own environment: own
+// PostgreSQL, own BIP-39/32/44 EVM key derivation, real secp256k1 signing +
+// on-chain broadcast, AES-256-GCM encrypted-seed persistence, and a
+// fail-closed license gate. RESTful /wallets/:id/* routes. No stubs, no
+// fabricated data — every value comes from a real WL backend fetch.
 import axios, { AxiosInstance, AxiosError } from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8443/api/v1';
+// CRA (react-scripts) exposes REACT_APP_* env vars. Default to the WL
+// standalone backend host port (docker-compose maps 8461:8443).
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8461/api/v1';
 
-// Chain id map for the human-readable network keys used by the UI.
+// /health lives at the server root (outside /api/v1). Derive it by stripping
+// the /api/v1 suffix from the configured base, falling back to the WL host.
+const HEALTH_URL = (API_BASE_URL.replace(/\/api\/v1\/?$/, '') || 'http://localhost:8461') + '/health';
+
+// Chain id map for the human-readable network keys used by the UI. The WL
+// backend derives the native symbol from chain_id; we mirror that mapping
+// client-side for display only (no price feed — usd values stay 0, honestly).
 const CHAIN_IDS: Record<string, number> = {
   ethereum: 1,
   bsc: 56,
@@ -20,8 +28,35 @@ const CHAIN_IDS: Record<string, number> = {
   avalanche: 43114,
 };
 
+const CHAIN_SYMBOLS: Record<number, string> = {
+  1: 'ETH',
+  56: 'BNB',
+  137: 'MATIC',
+  42161: 'ETH',
+  10: 'ETH',
+  8453: 'ETH',
+  43114: 'AVAX',
+};
+
 function chainIdFor(network: string): number {
   return CHAIN_IDS[network] ?? (parseInt(network, 10) || 1);
+}
+
+function symbolFor(chainId: number): string {
+  return CHAIN_SYMBOLS[chainId] ?? 'ETH';
+}
+
+// Convert a wei string (balance_wei from the WL /balance endpoint) to a
+// human-readable float in native units. Big-number safe via string parsing.
+function weiToFloat(wei: string): number {
+  if (!wei) return 0;
+  const neg = wei.startsWith('-');
+  const digits = neg ? wei.slice(1) : wei;
+  const padded = digits.padStart(19, '0');
+  const whole = padded.slice(0, -18);
+  const frac = padded.slice(-18).replace(/0+$/, '');
+  const num = parseFloat(`${whole}.${frac}`);
+  return neg ? -num : num;
 }
 
 export interface WalletRecord {
@@ -29,50 +64,34 @@ export interface WalletRecord {
   label: string;
   chain_id: number;
   address: string;
-  derivation_path: string;
-  mnemonic?: string;
+  created_at?: string;
+  mnemonic?: string; // only present on the create response (generated mnemonic)
 }
 
 export interface BalanceResult {
+  wallet_id: string;
   chain_id: number;
   symbol: string;
   address: string;
-  balance: string;
+  balance_wei: string;
   balance_f: number;
-  usd_value: number;
-}
-
-export interface TokenBalance {
-  symbol: string;
-  name: string;
-  balance: string;
-  balance_f: number;
-  decimals: number;
+  // The WL backend exposes no price feed; usd_value stays 0 (honest, never
+  // fabricated). Kept in the interface for UI compatibility.
   usd_value: number;
 }
 
 export interface TransactionRecord {
-  hash: string;
+  id: string;
+  tx_hash: string;
+  type: string;
+  status: string;
   from: string;
   to: string;
-  value: string;
-  timeStamp: string;
-  isError: string;
+  amount: string;
+  token: string;
+  chain_id: number;
+  created_at: string;
   [key: string]: unknown;
-}
-
-export interface ChainInfo {
-  id: number;
-  name: string;
-  symbol: string;
-  rpc_endpoint: string;
-  derivation_path?: string;
-  explorer_api?: string;
-  explorer_url?: string;
-  chain_type?: string;
-  decimals?: number;
-  coin_type?: number;
-  is_testnet?: boolean;
 }
 
 class ApiService {
@@ -110,14 +129,14 @@ class ApiService {
   }
 
   // ---- Auth ----
-  // wallet_api handleLogin -> { token, user: { id, email, username } }
+  // WL POST /auth/login -> { token, user_id, email }
   async login(email: string, password: string) {
     try {
       const { data } = await this.client.post('/auth/login', { email, password });
       const user = {
-        id: data.user?.id || data.user_id || '',
-        email: data.user?.email || email,
-        username: data.user?.username || email,
+        id: data.user_id || '',
+        email: data.email || email,
+        username: data.email || email,
       };
       return { token: data.token as string, user };
     } catch (err) {
@@ -125,24 +144,26 @@ class ApiService {
     }
   }
 
-  // wallet_api handleRegister accepts {email, password} only (see route table).
+  // WL POST /auth/register accepts {email, password} and returns { id, email }
+  // — it does NOT return a JWT. Callers must login afterwards to obtain a
+  // token (handled by AuthContext.register).
   async register(email: string, _username: string, password: string) {
     try {
       const { data } = await this.client.post('/auth/register', { email, password });
       return {
-        user_id: data.user_id as string,
-        token: data.token as string,
-        user: { id: data.user_id, email, username: _username },
+        user_id: data.id as string,
+        email: data.email as string,
+        token: '',
+        user: { id: data.id, email: data.email, username: data.email },
       };
     } catch (err) {
       throw new Error(this.errMsg(err, 'Registration failed'));
     }
   }
 
-  // No /profile endpoint on wallet_api; the login/register responses already
-  // include the user identity. Decode the JWT payload locally (no network call
-  // to a non-existent route) so the AuthContext can hydrate the user from a
-  // stored token on reload.
+  // The WL backend has no /profile route. The login/register responses
+  // already include the user identity; decode the JWT payload locally (no
+  // network call) so AuthContext can hydrate the user from a stored token.
   async getProfile() {
     if (!this.token) throw new Error('Not authenticated');
     const payload = this.token.split('.')[1];
@@ -150,18 +171,26 @@ class ApiService {
     return {
       id: decoded.sub || decoded.user_id || '',
       email: decoded.email || '',
-      username: decoded.username || decoded.email || '',
+      username: decoded.email || decoded.username || '',
     };
   }
 
+  // ---- Health ----
+  // WL GET /health (server root) -> { status, service, licensed, wl_client_id }
+  async health(): Promise<{ status: string; service: string; licensed: boolean; wl_client_id: string }> {
+    const { data } = await this.client.get(HEALTH_URL);
+    return data;
+  }
+
   // ---- Wallets ----
-  // wallet_api handleListWallets -> { wallets: WalletRecord[] }
+  // WL GET /wallets -> { wallets: WalletRecord[] }
   async getWallets(): Promise<{ wallets: WalletRecord[] }> {
     const { data } = await this.client.get('/wallets');
     return data;
   }
 
-  // wallet_api handleCreateWallet requires { password(min 8), label, chain_id, mnemonic?, ... }
+  // WL POST /wallets { label, password, chain_id, mnemonic?, passphrase? }
+  // -> 201 { id, label, address, chain_id, mnemonic? }
   async createWallet(name: string, walletType: string, _networks: string[]): Promise<WalletRecord> {
     const password = window.prompt('Enter a wallet password (min 8 chars) to encrypt your seed:') || '';
     if (password.length < 8) throw new Error('Password must be at least 8 characters');
@@ -173,30 +202,44 @@ class ApiService {
     return data;
   }
 
-  // Full createWallet for the typed call path used by pages that already know
-  // the password / chain id (e.g. import flow).
+  // Typed create path used by pages that already know the password / chain id.
   async createWalletTyped(params: {
     label: string;
     password: string;
     chainId: number;
     mnemonic?: string;
-    accountIndex?: number;
-    entropyBits?: number;
+    passphrase?: string;
   }): Promise<WalletRecord> {
-    const { data } = await this.client.post('/wallets', params);
+    const { data } = await this.client.post('/wallets', {
+      label: params.label,
+      password: params.password,
+      chain_id: params.chainId,
+      mnemonic: params.mnemonic,
+      passphrase: params.passphrase,
+    });
     return data;
   }
 
   // ---- Balances ----
-  // Aggregated balances across all of the user's wallets via the auth
-  // /balance endpoint (real eth_getBalance through the backend).
+  // Aggregated balances across all of the user's wallets. WL exposes balance
+  // per wallet id (GET /wallets/:id/balance -> { address, balance_wei,
+  // chain_id }), so we list wallets then fan out one real balance fetch each.
   async getBalances(): Promise<{ balances: BalanceResult[] }> {
     const { wallets } = await this.getWallets();
     const results = await Promise.allSettled(
       wallets.map((w) =>
         this.client
-          .get<BalanceResult>('/balance', { params: { address: w.address, chain_id: w.chain_id } })
-          .then((r) => r.data),
+          .get<{ address: string; balance_wei: string; chain_id: number }>(`/wallets/${w.id}/balance`)
+          .then((r) => r.data)
+          .then((b) => ({
+            wallet_id: w.id,
+            chain_id: b.chain_id,
+            symbol: symbolFor(b.chain_id),
+            address: b.address,
+            balance_wei: b.balance_wei,
+            balance_f: weiToFloat(b.balance_wei),
+            usd_value: 0,
+          })),
       ),
     );
     const balances: BalanceResult[] = [];
@@ -206,35 +249,49 @@ class ApiService {
     return { balances };
   }
 
-  async getBalance(address: string, chainId: number): Promise<BalanceResult> {
-    const { data } = await this.client.get('/balance', { params: { address, chain_id: chainId } });
-    return data;
-  }
-
-  // ---- Tokens ----
-  async getTokenBalances(address: string, chainId: number): Promise<{ tokens: TokenBalance[] }> {
-    const { data } = await this.client.get('/tokens', { params: { address, chain_id: chainId } });
-    return data;
+  // WL GET /wallets/:id/balance -> { address, balance_wei, chain_id }
+  async getBalance(walletId: string, _chainId?: number): Promise<BalanceResult> {
+    const { data } = await this.client.get<{ address: string; balance_wei: string; chain_id: number }>(
+      `/wallets/${walletId}/balance`,
+    );
+    return {
+      wallet_id: walletId,
+      chain_id: data.chain_id,
+      symbol: symbolFor(data.chain_id),
+      address: data.address,
+      balance_wei: data.balance_wei,
+      balance_f: weiToFloat(data.balance_wei),
+      usd_value: 0,
+    };
   }
 
   // ---- Transactions ----
-  // wallet_api handleTransactions -> { transactions: TransactionRecord[] }
-  async getTransactions(params?: { network?: string; token?: string; address?: string }): Promise<{
+  // WL GET /wallets/:id/transactions -> { transactions: TransactionRecord[] }
+  async getTransactions(params?: { walletId: string; network?: string; token?: string }): Promise<{
     transactions: TransactionRecord[];
   }> {
-    const query: Record<string, string | number> = {};
-    if (params?.address) query.address = params.address;
-    else if (this.token) {
-      const { wallets } = await this.getWallets();
-      if (wallets.length > 0) query.address = wallets[0].address;
+    if (!params?.walletId) {
+      // No wallet selected — return an empty list honestly (no fabricated txs).
+      return { transactions: [] };
     }
-    if (params?.network) query.chain_id = chainIdFor(params.network);
-    else query.chain_id = 1;
-    const { data } = await this.client.get('/transactions', { params: query });
-    return data;
+    const { data } = await this.client.get<{ transactions: TransactionRecord[] }>(
+      `/wallets/${params.walletId}/transactions`,
+    );
+    let txs = data.transactions || [];
+    if (params.network) {
+      const cid = chainIdFor(params.network);
+      txs = txs.filter((t) => t.chain_id === cid);
+    }
+    if (params.token) {
+      const tok = params.token.toUpperCase();
+      txs = txs.filter((t) => (t.token || '').toUpperCase() === tok || (!t.token && tok === 'ETH'));
+    }
+    return { transactions: txs };
   }
 
-  // ---- Send (real on-chain broadcast via wallet_api /send) ----
+  // ---- Send (real EVM signing + broadcast via WL POST /wallets/:id/send) ----
+  // WL expects { to, amount (human-readable native units), password, gas_limit }
+  // -> { transaction_hash, status, from }
   async sendTransaction(params: {
     walletId: string;
     password: string;
@@ -243,143 +300,27 @@ class ApiService {
     chainId?: number;
     gasLimit?: number;
     data?: string;
-  }): Promise<{ tx_hash: string; raw_tx: string; nonce: number }> {
-    const { data } = await this.client.post('/send', {
-      wallet_id: params.walletId,
-      password: params.password,
+  }): Promise<{ transaction_hash: string; status: string; from: string }> {
+    const { data } = await this.client.post(`/wallets/${params.walletId}/send`, {
       to: params.to,
-      value: params.value,
-      chain_id: params.chainId ?? 1,
+      amount: params.value,
+      password: params.password,
       gas_limit: params.gasLimit,
-      data: params.data,
     });
     return data;
   }
 
-  // ---- Sign (real EIP-191 personal_sign via wallet_api /sign) ----
+  // ---- Sign (real EIP-191 personal_sign via WL POST /wallets/:id/sign) ----
+  // WL expects { message, password } -> { signature, address }
   async signMessage(params: { walletId: string; password: string; message: string }): Promise<{
     signature: string;
+    address: string;
   }> {
-    const { data } = await this.client.post('/sign', {
-      wallet_id: params.walletId,
-      password: params.password,
+    const { data } = await this.client.post(`/wallets/${params.walletId}/sign`, {
       message: params.message,
+      password: params.password,
     });
     return data;
-  }
-
-  // ---- Price (real CoinGecko via wallet_api /price) ----
-  // wallet_api accepts ?symbol= (e.g. "eth") or ?ids= (CoinGecko coin id).
-  async getTokenPrice(token: string, _network?: string): Promise<{ usd: number; usd_24h_change: number }> {
-    const symbol = token.toLowerCase() === 'btc' ? 'btc' : token.toLowerCase();
-    const { data } = await this.client.get('/price', { params: { symbol } });
-    return data;
-  }
-
-  // ---- Chains ----
-  async getNetworks(): Promise<{ chains: ChainInfo[] }> {
-    const { data } = await this.client.get('/chains');
-    return data;
-  }
-
-  // ---- Gas (real eth_gasPrice + feeHistory via wallet_api /gas) ----
-  async getGasPrice(network: string): Promise<{
-    chain_id: number;
-    gas_price: string;
-    max_fee_per_gas: string;
-    max_priority_fee: string;
-    gas_price_gwei: number;
-  }> {
-    const { data } = await this.client.get('/gas', { params: { chain_id: chainIdFor(network) } });
-    return data;
-  }
-
-  // ---- Network Status (live RPC chain id + connection status) ----
-  // The backend exposes the chains registry but no dedicated block-height
-  // endpoint; block_number is honestly 0 (never a fabricated height) and
-  // connected reflects whether the chain is present in the registry.
-  async getNetworkStatus(network: string): Promise<{ chain_id: number; block_number: number; connected: boolean }> {
-    const { data } = await this.client.get('/chains');
-    const chain = (data.chains as ChainInfo[]).find((c) => c.id === chainIdFor(network));
-    return {
-      chain_id: chain?.id ?? chainIdFor(network),
-      block_number: 0,
-      connected: !!chain,
-    };
-  }
-
-  // ---- NFTs (real Etherscan NFT inventory via wallet_api /nfts) ----
-  async getNFTs(address: string, chainId: number): Promise<{ nfts: unknown[] }> {
-    const { data } = await this.client.get('/nfts', { params: { address, chain_id: chainId } });
-    return data;
-  }
-
-  // ---- Swap (real CoinGecko cross-rate + on-chain via wallet_api) ----
-  async getSwapQuote(params: { fromToken: string; toToken: string; fromAmount: string; chainId?: number }): Promise<{
-    from_token: string; to_token: string; from_amount: string; to_amount: string; price_impact: number; route: string;
-  }> {
-    const { data } = await this.client.get('/swap/quote', {
-      params: { from_token: params.fromToken, to_token: params.toToken, from_amount: params.fromAmount, chain_id: params.chainId ?? 1 },
-    });
-    return data;
-  }
-
-  // ---- Staking (real on-chain action via wallet_api /send) ----
-  // The backend returns the full supported-asset list (ignores ?asset=); the
-  // response shape is { success, assets[], apy, min_stake, lock_period }. We
-  // return the raw response so callers can read assets[] directly.
-  async getStakingQuote(_asset?: string): Promise<{
-    success: boolean; assets: Array<{ symbol: string; chain_id: number; apy: number; min_stake: number; lock_period: number; verified: boolean }>;
-    apy: number; min_stake: number; lock_period: number;
-  }> {
-    const { data } = await this.client.get('/staking/quote');
-    return data;
-  }
-
-  // ---- Auxiliary DeFi (fiat ramp, crypto card, P2P, convert) ----
-  // All delegate to the canonical backend proxy routes (real CoinGecko prices,
-  // real provider checkout URLs, real PostgreSQL-backed listings). The client
-  // returns the raw response; callers map per the service API.
-
-  async getFiatProviders(): Promise<{ providers: unknown[] }> {
-    const { data } = await this.client.get('/ramp/providers');
-    return data;
-  }
-
-  async getFiatQuote(providerId: string, amount: string, fiat: string, crypto: string, method: string): Promise<Record<string, unknown>> {
-    const { data } = await this.client.post('/ramp/quote', { providerId, amount, fiatCurrency: fiat, cryptoCurrency: crypto, paymentMethod: method });
-    return data;
-  }
-
-  async getFiatOfframpQuote(providerId: string, amount: string, fiat: string, crypto: string): Promise<Record<string, unknown>> {
-    const { data } = await this.client.post('/ramp/offramp-quote', { providerId, amount, fiatCurrency: fiat, cryptoCurrency: crypto });
-    return data;
-  }
-
-  async getCryptoCardRates(): Promise<Record<string, unknown>> {
-    // The canonical card service (go/card_service :8457) exposes an
-    // auth-protected card balance endpoint backed by PostgreSQL — no
-    // fabricated rates. /card/balance returns the user's card balance.
-    const { data } = await this.client.get('/card/balance');
-    return data;
-  }
-
-  async getCardTransactions(): Promise<{ transactions: unknown[] }> {
-    const { data } = await this.client.get('/card/transactions');
-    return data;
-  }
-
-  async getP2PListings(): Promise<{ adverts: unknown[] }> {
-    // The canonical p2p trading service exposes /api/v1/p2p/adverts
-    // (PostgreSQL-backed). The proxy route forwards to it.
-    const { data } = await this.client.get('/p2p/adverts');
-    return data;
-  }
-
-  // Convert is the same path as swap (cross-token conversion). Provided as a
-  // distinct method for client parity + semantic clarity.
-  async getConvertQuote(params: { fromToken: string; toToken: string; fromAmount: string; chainId?: number }): Promise<Record<string, unknown>> {
-    return this.getSwapQuote(params);
   }
 }
 

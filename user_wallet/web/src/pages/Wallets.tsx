@@ -1,9 +1,10 @@
 // Wallets Page
 import React, { useState, useEffect } from 'react';
-import { api, WalletRecord } from '../services/api';
+import { api, WalletRecord, BalanceResult } from '../services/api';
 
 export default function Wallets() {
   const [wallets, setWallets] = useState<WalletRecord[]>([]);
+  const [balances, setBalances] = useState<Record<string, BalanceResult | null>>({});
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
@@ -20,6 +21,12 @@ export default function Wallets() {
     api.getWallets().then((data) => {
       setWallets(data.wallets || []);
       setLoading(false);
+      // Fan out a real balance fetch per wallet (GET /wallets/:id/balance).
+      (data.wallets || []).forEach((w) => {
+        api.getBalance(w.id).then((b) => setBalances((prev) => ({ ...prev, [w.id]: b }))).catch(() => {
+          setBalances((prev) => ({ ...prev, [w.id]: null }));
+        });
+      });
     }).catch(() => setLoading(false));
   };
 
@@ -90,13 +97,22 @@ export default function Wallets() {
         <p>No wallets yet. Create one to get started!</p>
       ) : (
         <div className="wallets-grid">
-          {wallets.map((wallet) => (
-            <div key={wallet.id} className="wallet-card">
-              <h3>{wallet.label}</h3>
-              <p className="wallet-type">Chain #{wallet.chain_id}</p>
-              <p className="wallet-address">{wallet.address}</p>
-            </div>
-          ))}
+          {wallets.map((wallet) => {
+            const bal = balances[wallet.id];
+            return (
+              <div key={wallet.id} className="wallet-card">
+                <h3>{wallet.label || 'Untitled'}</h3>
+                <p className="wallet-type">Chain #{wallet.chain_id}{bal ? ` · ${bal.symbol}` : ''}</p>
+                <p className="wallet-address">{wallet.address}</p>
+                <p className="wallet-type">
+                  Balance: {bal ? `${bal.balance_f.toFixed(6)} ${bal.symbol}` : '…'}
+                </p>
+                {wallet.created_at && (
+                  <p className="wallet-type">Created {new Date(wallet.created_at).toLocaleString()}</p>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

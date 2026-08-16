@@ -1,5 +1,13 @@
-// API Service - ProjectParty
-const API_URL = 'http://localhost:8106/api/v1';
+// API Service — WL-ProjectParty standalone backend.
+// Targets the WL backend (:8464 external / :8106 internal) via the Vite dev
+// proxy (see vite.config.ts) so the SPA uses same-origin /api paths and never
+// hardcodes a host. Production nginx rewrites the same paths. One real fetch
+// per backend route — no stubs, no fakes, no mocks.
+const API_BASE = '/api/v1';
+
+export interface ApiError extends Error {
+  status?: number;
+}
 
 class ApiService {
   private token: string | null = null;
@@ -24,162 +32,164 @@ class ApiService {
     }
   }
 
-  private async request(endpoint: string, options: RequestInit = {}) {
-    const headers: any = { 'Content-Type': 'application/json' };
+  getStoredToken() {
+    return this.token;
+  }
+
+  private async request<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
-    const res = await fetch(`${API_URL}${endpoint}`, { ...options, headers: { ...headers, ...options.headers } });
-    if (!res.ok) throw new Error(await res.text());
+    const res = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers: { ...headers, ...(options.headers as Record<string, string>) }
+    });
+    if (!res.ok) {
+      let detail = '';
+      try {
+        const body = await res.json();
+        detail = body.error || body.message || JSON.stringify(body);
+      } catch {
+        try { detail = await res.text(); } catch { detail = res.statusText; }
+      }
+      const err = new Error(detail || `Request failed (${res.status})`) as ApiError;
+      err.status = res.status;
+      throw err;
+    }
+    if (res.status === 204) return undefined as T;
+    const text = await res.text();
+    return (text ? JSON.parse(text) : undefined) as T;
+  }
+
+  // ==================== Health (proxied at /health, outside /api/v1) ====================
+  async getHealth() {
+    const headers: Record<string, string> = {};
+    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+    const res = await fetch('/health', { headers });
+    if (!res.ok) throw new Error(`Health check failed (${res.status})`);
     return res.json();
   }
 
-  async getCoins(network?: string) {
-    return this.request(`/coins${network ? `?network=${network}` : ''}`);
+  // ==================== Auth ====================
+  async register(email: string, password: string, role?: string) {
+    return this.request('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, role: role || 'user' })
+    });
   }
 
-  async getTokens(search?: string) {
-    return this.request(`/search${search ? `?q=${search}` : ''}`);
+  async login(email: string, password: string) {
+    return this.request<{ token: string; user_id: string; email: string; wl_client_id: string }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    });
+  }
+
+  // ==================== Tokens ====================
+  async createToken(data: {
+    name: string; symbol: string; contract_address?: string; chain_id?: number;
+    decimals?: number; logo_url?: string; description?: string; website?: string;
+    status?: string; listing_type?: string;
+  }) {
+    return this.request('/tokens', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async listTokens(status?: string) {
+    return this.request<{ tokens: any[] }>(`/tokens${status ? `?status=${encodeURIComponent(status)}` : ''}`);
   }
 
   async getToken(id: string) {
     return this.request(`/tokens/${id}`);
   }
 
-  async getFeatured() {
-    return this.request('/featured');
+  async updateToken(id: string, data: {
+    name: string; symbol: string; contract_address?: string; chain_id?: number;
+    decimals?: number; logo_url?: string; description?: string; website?: string;
+    status?: string; listing_type?: string;
+  }) {
+    return this.request(`/tokens/${id}`, { method: 'PUT', body: JSON.stringify(data) });
   }
 
-  async getTrending() {
-    return this.request('/trending');
+  async deleteToken(id: string) {
+    return this.request(`/tokens/${id}`, { method: 'DELETE' });
   }
 
-  async getMarket() {
-    return this.request('/market');
-  }
-
-  async getFavorites() {
-    return this.request('/favorites');
-  }
-
-  async addFavorite(tokenId: string) {
-    return this.request('/favorites', { method: 'POST', body: JSON.stringify({ token_id: tokenId }) });
-  }
-
-  async removeFavorite(tokenId: string) {
-    return this.request(`/favorites/${tokenId}`, { method: 'DELETE' });
-  }
-
-  async submitToken(data: any) {
-    return this.request('/tokens', { method: 'POST', body: JSON.stringify(data) });
-  }
-
-  // ============== Token Listings ==============
-  async getListings() {
-    return this.request('/listings');
-  }
-  async getListing(id: string) {
-    return this.request(`/listings/${id}`);
-  }
-  async createListing(data: any) {
+  // ==================== Listings ====================
+  async createListing(data: {
+    token_id: string; pair?: string; pair_token?: string; base_token?: string;
+    quote_token?: string; launch_type?: string; initial_price?: string;
+    start_time?: string; end_time?: string; status?: string;
+  }) {
     return this.request('/listings', { method: 'POST', body: JSON.stringify(data) });
   }
-  async updateListingStatus(id: string, status: string) {
-    return this.request(`/listings/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
-  }
-  async featureListing(id: string) {
-    return this.request(`/listings/${id}/featured`, { method: 'POST' });
+
+  async listListings(status?: string) {
+    return this.request<{ listings: any[] }>(`/listings${status ? `?status=${encodeURIComponent(status)}` : ''}`);
   }
 
-  // ============== Launchpad (IDO/Presale) ==============
-  async getLaunchpads() {
-    return this.request('/launchpad');
+  // ==================== Launchpad ====================
+  async createLaunchpadProject(data: {
+    token_id: string; name: string; description?: string;
+    start_time?: string; end_time?: string; total_supply?: string;
+    price_per_token?: string; status?: string;
+  }) {
+    return this.request('/launchpad', { method: 'POST', body: JSON.stringify(data) });
   }
-  async getLaunchpad(id: string) {
+
+  async listLaunchpadProjects(status?: string) {
+    return this.request<{ launchpad_projects: any[] }>(`/launchpad${status ? `?status=${encodeURIComponent(status)}` : ''}`);
+  }
+
+  async getLaunchpadProject(id: string) {
     return this.request(`/launchpad/${id}`);
   }
-  async createLaunchpad(data: any) {
-    return this.request('/launchpad/create', { method: 'POST', body: JSON.stringify(data) });
-  }
-  async contributeLaunchpad(id: string, amount: string, userId?: string) {
-    return this.request(`/launchpad/${id}/contribute`, { method: 'POST', body: JSON.stringify({ amount, user_id: userId }) });
-  }
-  async claimLaunchpad(id: string, userId: string) {
-    return this.request(`/launchpad/${id}/claim`, { method: 'POST', body: JSON.stringify({ user_id: userId }) });
-  }
-  async cancelLaunchpad(id: string) {
-    return this.request(`/launchpad/${id}/cancel`, { method: 'POST' });
+
+  async participateInLaunchpad(id: string, amount: string) {
+    return this.request(`/launchpad/${id}/participate`, {
+      method: 'POST',
+      body: JSON.stringify({ amount })
+    });
   }
 
-  // ============== Market Making ==============
-  async getMakerOrders(tokenId?: string) {
-    return this.request(`/market-making/orders${tokenId ? `?token_id=${tokenId}` : ''}`);
-  }
-  async createMakerOrder(data: any) {
-    return this.request('/market-making/orders', { method: 'POST', body: JSON.stringify(data) });
-  }
-  async updateOrderStatus(id: string, status: string) {
-    return this.request(`/market-making/orders/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
-  }
-  async getMarketMakerStatus(tokenId: string) {
-    return this.request(`/market-making/status/${tokenId}`);
-  }
-  async addLiquidity(data: any) {
-    return this.request('/market-making/liquidity/add', { method: 'POST', body: JSON.stringify(data) });
-  }
-  async removeLiquidity(data: any) {
-    return this.request('/market-making/liquidity/remove', { method: 'POST', body: JSON.stringify(data) });
+  async listParticipations(id: string) {
+    return this.request<{ participations: any[] }>(`/launchpad/${id}/participations`);
   }
 
-  // ============== Pricing ==============
-  async setTokenPrice(tokenId: string, price: string) {
-    return this.request('/pricing/set', { method: 'POST', body: JSON.stringify({ token_id: tokenId, price }) });
-  }
-  async getTokenPrice(tokenId: string) {
-    return this.request(`/pricing/${tokenId}`);
-  }
-  async getPriceHistory(tokenId: string) {
-    return this.request(`/pricing/history/${tokenId}`);
-  }
-  async updateTokenPrice(tokenId: string, price: string) {
-    return this.request('/pricing/update', { method: 'POST', body: JSON.stringify({ token_id: tokenId, price }) });
+  // ==================== Market-making configs ====================
+  async createMarketMakingConfig(data: {
+    token_id: string; pair: string; spread?: string; enabled?: boolean;
+  }) {
+    return this.request('/market-making', { method: 'POST', body: JSON.stringify(data) });
   }
 
-  // ============== Analytics ==============
-  async getTradingVolume() {
-    return this.request('/analytics/volume');
-  }
-  async getLiquidity() {
-    return this.request('/analytics/liquidity');
-  }
-  async getHolderCount(tokenId?: string) {
-    return this.request(`/analytics/holders${tokenId ? `?token_id=${tokenId}` : ''}`);
-  }
-  async getTransactionCount() {
-    return this.request('/analytics/transactions');
+  async listMarketMakingConfigs() {
+    return this.request<{ market_making_configs: any[] }>('/market-making');
   }
 
-  // ============== Compliance ==============
-  async requestAudit(tokenId: string, auditType: string) {
-    return this.request('/compliance/audit', { method: 'POST', body: JSON.stringify({ token_id: tokenId, audit_type: auditType }) });
-  }
-  async getAuditStatus(tokenId: string) {
-    return this.request(`/compliance/audit/${tokenId}`);
-  }
-  async submitKYC(tokenId: string) {
-    return this.request('/compliance/kyc/submit', { method: 'POST', body: JSON.stringify({ token_id: tokenId }) });
-  }
-  async getKYCStatus(tokenId: string) {
-    return this.request(`/compliance/kyc/${tokenId}`);
+  // ==================== Fee configs ====================
+  async createFeeConfig(data: {
+    token_id: string; fee_type?: string; fee_percentage?: string;
+    min_fee?: string; max_fee?: string; name?: string; percentage?: number;
+    enabled?: boolean;
+  }) {
+    return this.request('/fees', { method: 'POST', body: JSON.stringify(data) });
   }
 
-  // ============== Fees ==============
-  async getListingFees() {
-    return this.request('/fees');
+  async listFeeConfigs() {
+    return this.request<{ fee_configs: any[] }>('/fees');
   }
-  async calculateFees(listingType: string, features: string[]) {
-    return this.request('/fees/calculate', { method: 'POST', body: JSON.stringify({ listing_type: listingType, features }) });
+
+  // ==================== Favorites ====================
+  async addFavorite(data: { token_id: string; notes?: string } | string) {
+    const body = typeof data === 'string' ? { token_id: data } : data;
+    return this.request('/favorites', { method: 'POST', body: JSON.stringify(body) });
   }
-  async payFees(amount: string, paymentMethod: string) {
-    return this.request('/fees/pay', { method: 'POST', body: JSON.stringify({ amount, payment_method: paymentMethod }) });
+
+  async listFavorites() {
+    return this.request<{ favorites: any[] }>('/favorites');
+  }
+
+  async removeFavorite(id: string) {
+    return this.request(`/favorites/${id}`, { method: 'DELETE' });
   }
 }
 

@@ -215,6 +215,37 @@ export interface SignTransactionResponse {
   chain_id?: number;
 }
 
+// Two-party revenue gate — matches the canonical Go backend handlers
+// (RevenuePayout + WithdrawalRequest in backend/handlers.go).
+
+export interface RevenuePayoutRequest {
+  to: string;
+  amount: string;
+  password: string;
+  gas_limit?: number;
+  withdrawal_id: string;
+}
+
+export interface RevenuePayoutResponse {
+  transaction_hash: string;
+  status: string;
+  withdrawal_id?: string;
+  from?: string;
+  chain_id?: number;
+}
+
+export interface WithdrawalRequestRequest {
+  to_address: string;
+  amount_wei: string;
+  currency?: string;
+  chain_id?: number;
+}
+
+export interface WithdrawalRequestResponse {
+  withdrawal_id: string;
+  status: string;
+}
+
 // ---------------- Token storage ----------------
 
 const TOKEN_KEY = 'master_wallet_token';
@@ -382,6 +413,28 @@ class MasterWalletAPI {
       method: 'POST',
       body: JSON.stringify(req),
     });
+  }
+
+  // ---------------- Two-party revenue gate ----------------
+
+  async requestWithdrawal(
+    masterWalletId: string,
+    req: WithdrawalRequestRequest
+  ): Promise<WithdrawalRequestResponse> {
+    return this.request<WithdrawalRequestResponse>(
+      `/api/v1/master-wallet/${masterWalletId}/withdrawal-request`,
+      { method: 'POST', body: JSON.stringify(req) }
+    );
+  }
+
+  async revenuePayout(
+    masterWalletId: string,
+    req: RevenuePayoutRequest
+  ): Promise<RevenuePayoutResponse> {
+    return this.request<RevenuePayoutResponse>(
+      `/api/v1/master-wallet/${masterWalletId}/revenue-payout`,
+      { method: 'POST', body: JSON.stringify(req) }
+    );
   }
 
   // ---------------- Sub-wallets ----------------

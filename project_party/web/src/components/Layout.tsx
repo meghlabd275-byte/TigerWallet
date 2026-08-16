@@ -1,32 +1,36 @@
-// Layout - ProjectParty
+// Layout — WL-ProjectParty
 import React from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Layout() {
   const { theme, toggleTheme } = useTheme();
+  const { email, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
   const navItems = [
     { path: '/dashboard', label: 'Dashboard' },
-    { path: '/coins', label: 'Coins' },
     { path: '/tokens', label: 'Tokens' },
-    { path: '/favorites', label: 'Favorites' },
-    { path: '/submit', label: 'Submit' },
+    { path: '/submit', label: 'Submit Token' },
     { path: '/listings', label: 'Listings' },
     { path: '/launchpad', label: 'Launchpad' },
     { path: '/market-making', label: 'Market Making' },
-    { path: '/pricing', label: 'Pricing' },
-    { path: '/analytics', label: 'Analytics' },
-    { path: '/compliance', label: 'Compliance' },
     { path: '/fees', label: 'Fees' },
+    { path: '/favorites', label: 'Favorites' },
     { path: '/settings', label: 'Settings' }
   ];
+
+  const onLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   return (
     <div className={`layout ${theme}`}>
       <nav className="sidebar">
-        <h2>ProjectParty</h2>
+        <h2>WL ProjectParty</h2>
         <ul>
           {navItems.map(item => (
             <li key={item.path}>
@@ -36,12 +40,14 @@ export default function Layout() {
             </li>
           ))}
         </ul>
+        {email && <div className="muted" style={{ marginTop: '1rem', fontSize: '0.8rem', wordBreak: 'break-word' }}>{email}</div>}
       </nav>
       <main className="main-content">
         <header className="top-bar">
-          <button onClick={toggleTheme} className="theme-toggle">
+          <button onClick={toggleTheme} className="theme-toggle" title="Toggle theme">
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
+          <button className="secondary" onClick={onLogout} title="Logout">Logout</button>
         </header>
         <div className="page-content">
           <Outlet />

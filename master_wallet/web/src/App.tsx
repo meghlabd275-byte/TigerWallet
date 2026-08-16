@@ -15,6 +15,8 @@ import {
   AutoSignRule,
   ChainConfig,
   BalanceResponse,
+  RevenuePayoutResponse,
+  WithdrawalRequestResponse,
 } from './api';
 import { webSocketService } from './services/webSocketService';
 
@@ -22,6 +24,7 @@ type Page =
   | 'dashboard'
   | 'wallets'
   | 'transactions'
+  | 'treasury'
   | 'auto-sign'
   | 'users'
   | 'analytics'
@@ -162,6 +165,7 @@ const Sidebar = ({ currentPage, setCurrentPage, isDark, masterAddress, onLogout 
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'wallets', label: 'Sub-Wallets', icon: '💼' },
     { id: 'transactions', label: 'Transactions', icon: '📜' },
+    { id: 'treasury', label: 'Treasury', icon: '🏛️' },
     { id: 'auto-sign', label: 'Auto Sign', icon: '🔑' },
     { id: 'users', label: 'Users', icon: '👥' },
     { id: 'analytics', label: 'Analytics', icon: '📈' },
@@ -542,6 +546,217 @@ const Transactions = ({ isDark, masterId, transactions, loading, error, onRefres
             )}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+};
+
+// ---------------- Treasury page (two-party revenue gate) ----------------
+
+interface TreasuryPageProps {
+  isDark: boolean;
+  masterId: string | undefined;
+}
+
+const TreasuryPage = ({ isDark, masterId }: TreasuryPageProps) => {
+  // Withdrawal Request form state (WL-side half of the two-party gate)
+  const [wrTo, setWrTo] = useState('');
+  const [wrAmount, setWrAmount] = useState('');
+  const [wrCurrency, setWrCurrency] = useState('ETH');
+  const [wrChainId, setWrChainId] = useState<number>(1);
+  const [wrBusy, setWrBusy] = useState(false);
+  const [wrError, setWrError] = useState<string | null>(null);
+  const [wrResult, setWrResult] = useState<WithdrawalRequestResponse | null>(null);
+
+  // Revenue Payout form state (requires SuperAdmin co-signed withdrawal_id)
+  const [rpTo, setRpTo] = useState('');
+  const [rpAmount, setRpAmount] = useState('');
+  const [rpPassword, setRpPassword] = useState('');
+  const [rpGasLimit, setRpGasLimit] = useState('');
+  const [rpWithdrawalId, setRpWithdrawalId] = useState('');
+  const [rpBusy, setRpBusy] = useState(false);
+  const [rpError, setRpError] = useState<string | null>(null);
+  const [rpResult, setRpResult] = useState<RevenuePayoutResponse | null>(null);
+
+  const [chains, setChains] = useState<ChainConfig[]>([]);
+
+  useEffect(() => {
+    masterWalletAPI.getSupportedChains().then(setChains).catch(() => setChains([]));
+  }, []);
+
+  const submitWithdrawal = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!masterId) return;
+    setWrBusy(true);
+    setWrError(null);
+    setWrResult(null);
+    try {
+      const res = await masterWalletAPI.requestWithdrawal(masterId, {
+        to_address: wrTo,
+        amount_wei: wrAmount,
+        currency: wrCurrency || undefined,
+        chain_id: wrChainId || undefined,
+      });
+      setWrResult(res);
+      setWrTo('');
+      setWrAmount('');
+    } catch (err) {
+      setWrError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setWrBusy(false);
+    }
+  };
+
+  const submitPayout = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!masterId) return;
+    setRpBusy(true);
+    setRpError(null);
+    setRpResult(null);
+    try {
+      const gasLimitNum = rpGasLimit ? Number(rpGasLimit) : undefined;
+      const res = await masterWalletAPI.revenuePayout(masterId, {
+        to: rpTo,
+        amount: rpAmount,
+        password: rpPassword,
+        gas_limit: gasLimitNum && Number.isFinite(gasLimitNum) ? gasLimitNum : undefined,
+        withdrawal_id: rpWithdrawalId,
+      });
+      setRpResult(res);
+      setRpTo('');
+      setRpAmount('');
+      setRpPassword('');
+      setRpGasLimit('');
+      setRpWithdrawalId('');
+    } catch (err) {
+      setRpError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setRpBusy(false);
+    }
+  };
+
+  const card = isDark ? 'bg-gray-800' : 'bg-white border border-gray-200';
+  const heading = isDark ? 'text-white' : 'text-gray-900';
+  const subtext = isDark ? 'text-gray-400' : 'text-gray-500';
+  const input = isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300 text-gray-900';
+  const label = isDark ? 'text-gray-300' : 'text-gray-700';
+
+  const useWithdrawalId = (id: string) => {
+    setRpWithdrawalId(id);
+    setRpError(null);
+  };
+
+  return (
+    <div className="space-y-6">
+      <h1 className={`text-2xl font-bold ${heading}`}>Treasury</h1>
+
+      <div className={`${card} rounded-xl p-4`}>
+        <div className={`flex items-start space-x-3 ${subtext} text-sm`}>
+          <span className="text-lg">🔐</span>
+          <p>
+            Revenue payout requires <span className={`font-semibold ${heading}`}>SuperAdmin co-signature (two-party gate)</span>.
+            Submit a withdrawal request first, then have SuperAdmin approve it, then enter the{' '}
+            <span className={`font-mono ${heading}`}>withdrawal_id</span> in the Revenue Payout form below.
+            Revenue never moves without both approvals.
+          </p>
+        </div>
+      </div>
+
+      {!masterId && (
+        <div className="p-3 rounded-lg bg-orange-500/10 text-orange-500 text-sm">
+          Create a master wallet first to use the treasury gate.
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Withdrawal Request form */}
+        <div className={`${card} rounded-xl p-6 space-y-4`}>
+          <div>
+            <h2 className={`text-lg font-semibold ${heading}`}>1. Withdrawal Request</h2>
+            <p className={`text-sm ${subtext}`}>Creates a two-party withdrawal request (WL-side half). SuperAdmin must co-approve before payout.</p>
+          </div>
+          <form onSubmit={submitWithdrawal} className="space-y-3">
+            <div>
+              <label className={`block text-xs mb-1 ${label}`}>Recipient address</label>
+              <input required placeholder="0x…" value={wrTo} onChange={(e) => setWrTo(e.target.value)} className={`w-full px-3 py-2 border rounded-lg font-mono text-sm ${input}`} />
+            </div>
+            <div>
+              <label className={`block text-xs mb-1 ${label}`}>Amount (wei)</label>
+              <input required placeholder="e.g. 1000000000000000000" value={wrAmount} onChange={(e) => setWrAmount(e.target.value)} className={`w-full px-3 py-2 border rounded-lg font-mono text-sm ${input}`} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={`block text-xs mb-1 ${label}`}>Currency</label>
+                <input placeholder="ETH" value={wrCurrency} onChange={(e) => setWrCurrency(e.target.value)} className={`w-full px-3 py-2 border rounded-lg ${input}`} />
+              </div>
+              <div>
+                <label className={`block text-xs mb-1 ${label}`}>Chain ID</label>
+                <select value={wrChainId} onChange={(e) => setWrChainId(Number(e.target.value))} className={`w-full px-3 py-2 border rounded-lg ${input}`}>
+                  {chains.map((c) => (
+                    <option key={c.chain_id} value={c.chain_id}>{c.name} ({c.chain_id})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {wrError && <div className="text-sm text-red-500">{wrError}</div>}
+            {wrResult && (
+              <div className="p-3 rounded-lg bg-green-500/10 text-green-500 text-sm space-y-1">
+                <div>✅ Withdrawal request created — pending SuperAdmin approval.</div>
+                <div className="font-mono break-all">withdrawal_id: {wrResult.withdrawal_id}</div>
+                <div>Status: {wrResult.status}</div>
+                <button type="button" onClick={() => useWithdrawalId(wrResult.withdrawal_id)} className="mt-1 text-xs underline">
+                  Use this withdrawal_id in the Revenue Payout form →
+                </button>
+              </div>
+            )}
+            <button type="submit" disabled={wrBusy || !masterId} className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              {wrBusy ? 'Submitting…' : 'Submit Withdrawal Request'}
+            </button>
+          </form>
+        </div>
+
+        {/* Revenue Payout form */}
+        <div className={`${card} rounded-xl p-6 space-y-4`}>
+          <div>
+            <h2 className={`text-lg font-semibold ${heading}`}>2. Revenue Payout</h2>
+            <p className={`text-sm ${subtext}`}>Broadcasts revenue funds. Requires a SuperAdmin-approved withdrawal_id; the gate is checked fail-closed.</p>
+          </div>
+          <form onSubmit={submitPayout} className="space-y-3">
+            <div>
+              <label className={`block text-xs mb-1 ${label}`}>Recipient address</label>
+              <input required placeholder="0x…" value={rpTo} onChange={(e) => setRpTo(e.target.value)} className={`w-full px-3 py-2 border rounded-lg font-mono text-sm ${input}`} />
+            </div>
+            <div>
+              <label className={`block text-xs mb-1 ${label}`}>Amount</label>
+              <input required placeholder="e.g. 1.0" value={rpAmount} onChange={(e) => setRpAmount(e.target.value)} className={`w-full px-3 py-2 border rounded-lg ${input}`} />
+            </div>
+            <div>
+              <label className={`block text-xs mb-1 ${label}`}>Encryption password</label>
+              <input required type="password" placeholder="Master wallet password" value={rpPassword} onChange={(e) => setRpPassword(e.target.value)} className={`w-full px-3 py-2 border rounded-lg ${input}`} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={`block text-xs mb-1 ${label}`}>Gas limit (optional)</label>
+                <input placeholder="21000" value={rpGasLimit} onChange={(e) => setRpGasLimit(e.target.value)} className={`w-full px-3 py-2 border rounded-lg font-mono text-sm ${input}`} />
+              </div>
+              <div>
+                <label className={`block text-xs mb-1 ${label}`}>Withdrawal ID *</label>
+                <input required placeholder="from approved request" value={rpWithdrawalId} onChange={(e) => setRpWithdrawalId(e.target.value)} className={`w-full px-3 py-2 border rounded-lg font-mono text-sm ${input}`} />
+              </div>
+            </div>
+            {rpError && <div className="text-sm text-red-500">{rpError}</div>}
+            {rpResult && (
+              <div className="p-3 rounded-lg bg-green-500/10 text-green-500 text-sm space-y-1">
+                <div>✅ Revenue payout broadcast.</div>
+                <div className="font-mono break-all">tx_hash: {rpResult.transaction_hash}</div>
+                <div>Status: {rpResult.status}{rpResult.from ? ` • from: ${rpResult.from}` : ''}{rpResult.chain_id ? ` • chain: ${rpResult.chain_id}` : ''}</div>
+              </div>
+            )}
+            <button type="submit" disabled={rpBusy || !masterId} className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              {rpBusy ? 'Broadcasting…' : 'Submit Revenue Payout'}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );
@@ -1094,6 +1309,9 @@ const App = () => {
           )}
           {currentPage === 'transactions' && (
             <Transactions isDark={isDark} masterId={masterId} transactions={transactions} loading={loading} error={error} onRefresh={loadAll} />
+          )}
+          {currentPage === 'treasury' && (
+            <TreasuryPage isDark={isDark} masterId={masterId} />
           )}
           {currentPage === 'auto-sign' && (
             <AutoSignPage isDark={isDark} masterId={masterId} rules={autoSignRules} loading={loading} error={error} onRefresh={loadAll} />
