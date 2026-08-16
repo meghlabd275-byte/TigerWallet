@@ -877,12 +877,4 @@ class DioClient implements ApiClient {
   Future<void> liquidateMarginPosition(String id) async {
     await _dio.post('/admin/margin/positions/$id/liquidate');
   }
-
-  @override
-  Future<void> transferMasterWallet(String walletId, String toAddress, double amount) async {
-    await _dio.post(
-      '/admin/master-wallets/$walletId/transfer',
-      data: {'to_address': toAddress, 'amount': amount},
-    );
-  }
 }

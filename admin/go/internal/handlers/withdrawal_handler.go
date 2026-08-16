@@ -37,37 +37,22 @@ type TransactionRequest struct {
 	GasLimit    string `json:"gas_limit"`
 }
 
-// BroadcastWithdrawal broadcasts a withdrawal transaction to the blockchain
+// BroadcastWithdrawal is intentionally DISABLED. The admin service must never
+// broadcast blockchain transactions or move crypto assets — that is the wallet
+// owner's action via the canonical wallet backend (go/wallet_api). This method
+// always returns an error so any caller is fail-closed rather than silently
+// fabricating a transaction hash.
 func (s *BlockchainService) BroadcastWithdrawal(ctx context.Context, tx *TransactionRequest) (string, error) {
-	// In production, this would connect to actual blockchain nodes
-	// Using RPC calls to broadcast transactions
-
-	// Simulate transaction broadcast
-	txHash := fmt.Sprintf("0x%x", time.Now().UnixNano())
-
-	// Store transaction in Redis for tracking
-	key := fmt.Sprintf("tx:%s", txHash)
-	s.redis.HSet(ctx, key, map[string]interface{}{
-		"from":    tx.FromAddress,
-		"to":      tx.ToAddress,
-		"amount":  tx.Amount,
-		"token":   tx.Token,
-		"chain":   tx.Chain,
-		"status":  "broadcast",
-		"created": time.Now().Unix(),
-	})
-	s.redis.Expire(ctx, key, 24*time.Hour)
-
-	return txHash, nil
+	return "", fmt.Errorf("admin service must not broadcast transactions; crypto asset movement is performed only by the canonical wallet backend")
 }
 
-// GetTransactionStatus gets the status of a blockchain transaction
+// GetTransactionStatus queries the locally-tracked withdrawal record status.
+// It does NOT fabricate a "confirmed" status; unknown hashes return an error.
 func (s *BlockchainService) GetTransactionStatus(ctx context.Context, txHash string) (string, error) {
 	key := fmt.Sprintf("tx:%s", txHash)
 	status, err := s.redis.HGet(ctx, key, "status").Result()
 	if err == redis.Nil {
-		// In production, query actual blockchain node
-		return "confirmed", nil
+		return "", fmt.Errorf("transaction %s not found", txHash)
 	}
 	return status, err
 }
@@ -274,54 +259,30 @@ func (h *WithdrawalHandler) ApproveWithdrawal(c *gin.Context) {
 
 	now := time.Now()
 
-	// Debit user's balance first
-	if err := h.walletBalanceSvc.DebitBalance(c.Request.Context(), withdrawal.UserID, withdrawal.Token, withdrawal.Amount); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to debit user balance: " + err.Error()})
-		return
-	}
+	// Admin approval is a GOVERNANCE action only: it records that an admin has
+	// authorized the withdrawal. It must NOT debit the user's balance and must NOT
+	// broadcast any blockchain transaction. Crypto asset movement is performed
+	// exclusively by the wallet owner via the canonical wallet backend
+	// (go/wallet_api), which debits the balance and broadcasts the signed tx after
+	// it observes the admin "approved" status. Keeping fund movement out of the
+	// admin service enforces the invariant that no admin can withdraw crypto.
 
-	// Get master wallet address (in production, fetch from secure vault)
-	masterWalletAddr := "0x742d35Cc6634C0532925a3b844Bc9e7595f5eD5e"
-
-	// Initiate blockchain transaction
-	tx := &TransactionRequest{
-		FromAddress: masterWalletAddr,
-		ToAddress:   withdrawal.ToAddress,
-		Amount:      withdrawal.Amount,
-		Token:       withdrawal.Token,
-		Chain:       withdrawal.Chain,
-	}
-
-	txHash, err := h.blockchainSvc.BroadcastWithdrawal(c.Request.Context(), tx)
-	if err != nil {
-		// Rollback balance debit on failure
-		h.walletBalanceSvc.CreditBalance(c.Request.Context(), withdrawal.UserID, withdrawal.Token, withdrawal.Amount)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to broadcast transaction: " + err.Error()})
-		return
-	}
-
-	// Update withdrawal with transaction hash
 	if err := h.db.Model(&withdrawal).Updates(map[string]interface{}{
 		"status":      "approved",
 		"approved_at": now,
 		"approved_by": adminID,
 		"notes":       req.Notes,
-		"tx_hash":     txHash,
 	}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to approve withdrawal"})
 		return
 	}
 
-	// Log the transaction
-	h.walletBalanceSvc.LogTransaction(c.Request.Context(), withdrawal.UserID, "withdrawal", withdrawal.Token, withdrawal.Amount, txHash, "broadcast")
-
-	// Log activity
-	logAdminActivity(h.db, adminID, "approve_withdrawal", "withdrawal", withdrawalID, "Withdrawal approved and broadcast: "+txHash, c.ClientIP(), c.Request.UserAgent())
+	// Log activity (governance record only — no tx_hash, no broadcast)
+	logAdminActivity(h.db, adminID, "approve_withdrawal", "withdrawal", withdrawalID, "Withdrawal approved (governance record; fund movement handled by canonical wallet backend)", c.ClientIP(), c.Request.UserAgent())
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Withdrawal approved successfully",
-		"tx_hash": txHash,
-		"status":  "broadcast",
+		"message": "Withdrawal approved successfully. The wallet owner's canonical wallet backend will perform the on-chain fund movement.",
+		"status":  "approved",
 	})
 }
 
@@ -352,14 +313,10 @@ func (h *WithdrawalHandler) RejectWithdrawal(c *gin.Context) {
 
 	now := time.Now()
 
-	// Refund user's balance (credit back the amount)
-	if err := h.walletBalanceSvc.CreditBalance(c.Request.Context(), withdrawal.UserID, withdrawal.Token, withdrawal.Amount); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to refund balance: " + err.Error()})
-		return
-	}
-
-	// Log the refund transaction
-	h.walletBalanceSvc.LogTransaction(c.Request.Context(), withdrawal.UserID, "withdrawal_refund", withdrawal.Token, withdrawal.Amount, "", "refunded")
+	// Governance record only: do NOT credit the user's balance here. Balance
+	// adjustments are the canonical wallet backend's responsibility; it observes
+	// the admin "rejected" status and reconciles any held/locked funds. The admin
+	// service must never touch balances or broadcast transactions.
 
 	// Update withdrawal
 	if err := h.db.Model(&withdrawal).Updates(map[string]interface{}{

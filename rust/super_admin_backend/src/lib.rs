@@ -1004,7 +1004,7 @@ impl SuperAdminService {
         let config = ProfitShareConfig {
             id: Uuid::new_v4().to_string(),
             white_label_id: white_label_id.to_string(),
-            super_admin_wallet: "0xSuperAdminWallet".to_string(),
+            super_admin_wallet: String::new(), // resolved by canonical wallet backend at settlement
             master_wallet_address: None,
             profit_percentage: percentage,
             min_percentage: 0.0,
@@ -1056,22 +1056,24 @@ impl SuperAdminService {
         let tx = ProfitTransaction {
             id: Uuid::new_v4().to_string(),
             white_label_id: white_label_id.to_string(),
-            super_admin_wallet: "0xSuperAdminWallet".to_string(),
+            super_admin_wallet: String::new(), // resolved by canonical wallet backend at settlement
             amount: super_admin_share,
             percentage: super_admin_share / amount * 100.0,
             gross_revenue: amount,
             net_revenue: white_label_share,
             token: token.to_string(),
-            tx_hash: Some(format!("0x{}", Uuid::new_v4().to_string().replace("-", ""))),
-            status: "completed".to_string(),
+            tx_hash: None, // no fabricated hash; set by wallet backend after real on-chain settlement
+            status: "pending_settlement".to_string(), // governance record only; no on-chain movement
             created_at: Utc::now().timestamp(),
         };
         
-        // Update total transferred
+        // Record pending settlement intent only (no on-chain movement).
         {
             let mut configs = self.profit_configs.write().await;
             if let Some(config) = configs.get_mut(white_label_id) {
-                config.total_transferred += super_admin_share;
+                // Do NOT increment total_transferred here — no on-chain settlement
+                // has occurred. total_transferred is advanced by the wallet backend
+                // callback once the real broadcast confirms. Only record the intent.
                 config.last_transfer = Utc::now().timestamp();
             }
         }
@@ -1081,8 +1083,8 @@ impl SuperAdminService {
             transactions.push(tx.clone());
         }
         
-        self.log_audit(executor_id, "PROFIT_TRANSFER", 
-            &format!("Transferred {} to super admin", super_admin_share), "", "").await;
+        self.log_audit(executor_id, "PROFIT_TRANSFER_RECORDED", 
+            &format!("Recorded pending profit-share settlement of {} (no on-chain movement)", super_admin_share), "", "").await;
         
         Ok(tx)
     }

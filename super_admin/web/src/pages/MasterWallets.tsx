@@ -13,8 +13,6 @@ export default function MasterWallets() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', address: '', chain_id: '' });
   const [balances, setBalances] = useState<Record<string, number | null>>({});
-  const [transferTarget, setTransferTarget] = useState<any | null>(null);
-  const [transferForm, setTransferForm] = useState({ amount: '', to_wallet_id: '' });
 
   const load = async () => {
     try {
@@ -71,19 +69,6 @@ export default function MasterWallets() {
     }, false);
   };
 
-  const handleTransfer = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!transferTarget) return;
-    await run(async () => {
-      await superAdminApi.masterWalletTransfer(transferTarget.id, {
-        amount: Number(transferForm.amount),
-        to_wallet_id: transferForm.to_wallet_id,
-      });
-    });
-    setTransferTarget(null);
-    setTransferForm({ amount: '', to_wallet_id: '' });
-  };
-
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold text-primary mb-6">Master Wallets</h1>
@@ -126,26 +111,12 @@ export default function MasterWallets() {
                   <td className="text-secondary">{balances[w.id] != null ? balances[w.id] : '-'}</td>
                   <td><div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
                     <button className="btn btn-secondary" disabled={actionLoading} onClick={() => fetchBalance(w)}>Balance</button>
-                    <button className="btn btn-primary" disabled={actionLoading} onClick={() => { setTransferTarget(w); setTransferForm({ amount: '', to_wallet_id: '' }); }}>Transfer</button>
                     <button className="btn btn-danger" disabled={actionLoading} onClick={() => { if (confirm('Delete this wallet?')) run(() => superAdminApi.deleteMasterWallet(w.id)); }}>Delete</button>
                   </div></td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div></div>
-      )}
-
-      {transferTarget && (
-        <div className="card mt-4"><div className="card-body">
-          <h3 className="text-primary mb-2">Transfer from {transferTarget.name}</h3>
-          <form onSubmit={handleTransfer} className="flex flex-col gap-3">
-            <div className="flex gap-3">
-              <div className="form-group flex-1"><label className="text-secondary">Amount</label><input className="input w-full" type="number" value={transferForm.amount} onChange={(e) => setTransferForm({ ...transferForm, amount: e.target.value })} required /></div>
-              <div className="form-group flex-1"><label className="text-secondary">To Wallet ID</label><input className="input w-full" value={transferForm.to_wallet_id} onChange={(e) => setTransferForm({ ...transferForm, to_wallet_id: e.target.value })} required /></div>
-            </div>
-            <div className="flex gap-2"><button className="btn btn-primary" disabled={actionLoading} type="submit">Transfer</button><button className="btn btn-secondary" type="button" onClick={() => setTransferTarget(null)}>Cancel</button></div>
-          </form>
         </div></div>
       )}
     </div>

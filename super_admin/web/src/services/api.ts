@@ -2100,9 +2100,6 @@ class SuperAdminApiService {
   async getMasterWalletBalance(id: string): Promise<{ balance: number }> {
     return this.request(`/api/v1/admin/master-wallets/${id}/balance`);
   }
-  async masterWalletTransfer(id: string, data: { amount: number; to_wallet_id: string }): Promise<{ message: string }> {
-    return this.request(`/api/v1/admin/master-wallets/${id}/transfer`, { method: 'POST', body: JSON.stringify(data) });
-  }
 
   // ---- UserWallets ----
   async getUserWallets(): Promise<{ wallets: any[] }> {

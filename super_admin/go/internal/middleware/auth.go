@@ -49,7 +49,12 @@ func JWTAuth(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
+		// Set both the structured admin_id (uuid.UUID) and the legacy
+		// string "user_id" context key that the majority of handlers read
+		// for audit attribution (approved_by/created_by/updated_by).
+		// Without "user_id" being set, every audit column was empty.
 		c.Set("admin_id", claims.AdminID)
+		c.Set("user_id", claims.AdminID.String())
 		c.Set("username", claims.Username)
 		c.Set("email", claims.Email)
 		c.Set("role", claims.Role)

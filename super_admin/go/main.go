@@ -145,6 +145,7 @@ func main() {
 			admin.POST("/white-labels", handleCreateWhiteLabel)
 			admin.PUT("/white-labels/:id", handleUpdateWhiteLabel)
 			admin.DELETE("/white-labels/:id", handleDeleteWhiteLabel)
+			admin.PUT("/white-labels/:id/status", handleUpdateWhiteLabelStatus)
 
 			admin.GET("/stats", handleGetStats)
 
@@ -178,6 +179,7 @@ func main() {
 			admin.GET("/project-teams/:id/members", handleGetProjectTeamMembers)
 			admin.POST("/project-teams/:id/members", handleAddProjectTeamMember)
 			admin.DELETE("/project-teams/:id/members/:memberId", handleRemoveProjectTeamMember)
+			admin.PUT("/project-teams/:id/status", handleUpdateProjectTeamStatus)
 
 			// White Level Client Management
 			admin.GET("/wl-clients", handleGetWLClients)
@@ -225,22 +227,33 @@ func main() {
 			admin.POST("/wl-project-teams", handleCreateWLProjectTeam)
 			admin.PUT("/wl-project-teams/:id", handleUpdateWLProjectTeam)
 			admin.DELETE("/wl-project-teams/:id", handleDeleteWLProjectTeam)
+			admin.PUT("/wl-project-teams/:id/status", handleUpdateWLProjectTeamStatus)
 
 			// MasterWallet Management
 			admin.GET("/master-wallets", handleGetMasterWallets)
 			admin.GET("/master-wallets/:id", handleGetMasterWallet)
-			admin.POST("/master-wallets", handleCreateMasterWallet)
-			admin.PUT("/master-wallets/:id", handleUpdateMasterWallet)
-			admin.DELETE("/master-wallets/:id", handleDeleteMasterWallet)
 			admin.GET("/master-wallets/:id/balance", handleGetMasterWalletBalance)
-			admin.POST("/master-wallets/:id/transfer", handleMasterWalletTransfer)
+			// No /transfer endpoint: admins must NOT move crypto assets. Fund movement is
+			// performed exclusively by the wallet owner via the canonical wallet backend.
+
+			// MasterWallet/UserWallet CRUD (create/update/delete) — SuperAdmin only.
+			// Governance records only; never moves funds.
+			walletMgmt := admin.Group("")
+			walletMgmt.Use(middleware.RoleAuth("super_admin"))
+			{
+				walletMgmt.POST("/master-wallets", handleCreateMasterWallet)
+				walletMgmt.PUT("/master-wallets/:id", handleUpdateMasterWallet)
+				walletMgmt.DELETE("/master-wallets/:id", handleDeleteMasterWallet)
+				walletMgmt.POST("/user-wallets", handleCreateUserWallet)
+				walletMgmt.PUT("/user-wallets/:id", handleUpdateUserWallet)
+				walletMgmt.DELETE("/user-wallets/:id", handleDeleteUserWallet)
+				walletMgmt.PUT("/master-wallets/:id/status", handleUpdateMasterWalletStatus)
+				walletMgmt.PUT("/user-wallets/:id/status", handleUpdateUserWalletStatus)
+			}
 
 			// UserWallet Management
 			admin.GET("/user-wallets", handleGetUserWallets)
 			admin.GET("/user-wallets/:id", handleGetUserWallet)
-			admin.POST("/user-wallets", handleCreateUserWallet)
-			admin.PUT("/user-wallets/:id", handleUpdateUserWallet)
-			admin.DELETE("/user-wallets/:id", handleDeleteUserWallet)
 			admin.GET("/user-wallets/:id/balance", handleGetUserWalletBalance)
 
 			admin.POST("/logout", handleLogout)
@@ -248,12 +261,17 @@ func main() {
 			admin.POST("/2fa/enable", handleEnable2FA)
 			admin.POST("/2fa/disable", handleDisable2FA)
 
-			admin.GET("/admins", handleGetAdmins)
-			admin.GET("/admins/:id", handleGetAdmin)
-			admin.PUT("/admins/:id", handleUpdateAdmin)
-			admin.DELETE("/admins/:id", handleDeleteAdmin)
-			admin.POST("/admins/:id/suspend", handleSuspendAdmin)
-			admin.POST("/admins/:id/activate", handleActivateAdmin)
+			// Admin user management — SuperAdmin only (role assignment, suspend, delete)
+			adminAdmins := admin.Group("")
+			adminAdmins.Use(middleware.RoleAuth("super_admin"))
+			{
+				adminAdmins.GET("/admins", handleGetAdmins)
+				adminAdmins.GET("/admins/:id", handleGetAdmin)
+				adminAdmins.PUT("/admins/:id", handleUpdateAdmin)
+				adminAdmins.DELETE("/admins/:id", handleDeleteAdmin)
+				adminAdmins.POST("/admins/:id/suspend", handleSuspendAdmin)
+				adminAdmins.POST("/admins/:id/activate", handleActivateAdmin)
+			}
 
 			admin.GET("/workflows", handleGetWorkflows)
 			admin.POST("/workflows", handleCreateWorkflow)
@@ -410,11 +428,20 @@ func handleLogin(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":      id,
-		"username": username,
-		"role":     role,
-		"exp":      time.Now().Add(appCfg.JWTExpiry).Unix(),
+	adminUUID, err := uuid.Parse(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid admin id"})
+		return
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, middleware.Claims{
+		AdminID:  adminUUID,
+		Username: username,
+		Email:    req.Email,
+		Role:     role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(appCfg.JWTExpiry)),
+			Subject:   id,
+		},
 	})
 	tokenStr, err := token.SignedString([]byte(appCfg.JWTSecret))
 	if err != nil {
@@ -452,14 +479,32 @@ func handleRegister(c *gin.Context) {
 func handleRefreshToken(c *gin.Context) {
 	userID := c.GetString("user_id")
 	role := c.GetString("role")
+	username := c.GetString("username")
+	email := c.GetString("email")
 	if userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "no session"})
 		return
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": userID, "role": role, "exp": time.Now().Add(appCfg.JWTExpiry).Unix(),
+	adminUUID, err := uuid.Parse(userID)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid session"})
+		return
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, middleware.Claims{
+		AdminID:  adminUUID,
+		Username: username,
+		Email:    email,
+		Role:     role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(appCfg.JWTExpiry)),
+			Subject:   userID,
+		},
 	})
-	tokenStr, _ := token.SignedString([]byte(appCfg.JWTSecret))
+	tokenStr, err := token.SignedString([]byte(appCfg.JWTSecret))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to sign token"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"token": tokenStr})
 }
 
@@ -2330,6 +2375,101 @@ func handleUpdateWLClientStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "WL client status updated"})
 }
 
+// ---- Additional per-product status controls (SuperAdmin governance) ----
+// These let SuperAdmin start/stop/pause/resume each product via a status
+// field. Status is a free-form string (active/paused/suspended/halted) so
+// all lifecycle transitions are expressible. These are governance records
+// only — they never move crypto assets.
+
+func handleUpdateWhiteLabelStatus(c *gin.Context) {
+	var req struct {
+		IsActive *bool  `json:"is_active"`
+		Status   string `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// white_labels uses is_active (bool). Map status string -> is_active when provided.
+	if req.Status != "" {
+		req.IsActive = ptrBool(req.Status == "active" || req.Status == "resumed" || req.Status == "started")
+	}
+	if req.IsActive == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "is_active or status is required"})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE white_labels SET is_active=$1, updated_at=NOW() WHERE id=$2`, *req.IsActive, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "white label status updated"})
+}
+
+func handleUpdateProjectTeamStatus(c *gin.Context) {
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE project_teams SET status=$1, updated_at=NOW() WHERE id=$2`, req.Status, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "project team status updated"})
+}
+
+func handleUpdateWLProjectTeamStatus(c *gin.Context) {
+	// WL project teams reuse the project_teams table.
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE project_teams SET status=$1, updated_at=NOW() WHERE id=$2`, req.Status, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "WL project team status updated"})
+}
+
+func handleUpdateMasterWalletStatus(c *gin.Context) {
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE master_wallets SET status=$1, updated_at=NOW() WHERE id=$2`, req.Status, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "master wallet status updated"})
+}
+
+func handleUpdateUserWalletStatus(c *gin.Context) {
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE user_wallets SET status=$1, updated_at=NOW() WHERE id=$2`, req.Status, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "user wallet status updated"})
+}
+
+// ptrBool returns a pointer to b (helper for optional bool binding).
+func ptrBool(b bool) *bool { return &b }
+
+
 // ---- WL MasterWallets (reuse master_wallets table with status filter) ----
 
 func handleGetWLMasterWallets(c *gin.Context) {
@@ -2803,27 +2943,11 @@ func handleGetMasterWalletBalance(c *gin.Context) {
 }
 
 func handleMasterWalletTransfer(c *gin.Context) {
-	var req struct {
-		Amount float64 `json:"amount" binding:"required"`
-		ToID   string  `json:"to_wallet_id" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	if req.Amount <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "amount must be positive"})
-		return
-	}
-	if _, err := dbExec(c, `UPDATE master_wallets SET balance=balance-$1, updated_at=NOW() WHERE id=$2 AND balance>=$1`, req.Amount, c.Param("id")); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	if _, err := dbExec(c, `UPDATE master_wallets SET balance=balance+$1, updated_at=NOW() WHERE id=$2`, req.Amount, req.ToID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "transfer completed"})
+	// DISABLED: admins must not move crypto assets. Fund movement is the wallet
+	// owner's action via the canonical wallet backend (go/wallet_api), never an admin
+	// action. Retained only to return an explicit 403 so any stale client call is
+	// clearly rejected instead of receiving a 404.
+	c.JSON(http.StatusForbidden, gin.H{"error": "admin fund transfer is prohibited; crypto asset movement is performed only by the wallet owner via the canonical wallet backend"})
 }
 
 // ---- UserWallet Management ----

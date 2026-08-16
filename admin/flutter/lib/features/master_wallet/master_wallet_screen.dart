@@ -64,20 +64,6 @@ class _MasterWalletScreenState extends State<MasterWalletScreen> {
     }
   }
 
-  Future<void> _transfer(String walletId, String toAddress, double amount) async {
-    try {
-      final api = await _client();
-      await api.transferMasterWallet(walletId, toAddress, amount);
-      _loadData();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Transfer failed: $e')),
-        );
-      }
-    }
-  }
-
   void _toggleTheme() => setState(() => _isDark = !_isDark);
 
   @override
@@ -229,12 +215,6 @@ class _MasterWalletScreenState extends State<MasterWalletScreen> {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.send),
-                      label: const Text('Transfer'),
-                      onPressed: () => _showTransferDialog(wallet),
-                    ),
-                    const SizedBox(width: 8),
                     OutlinedButton.icon(
                       icon: const Icon(Icons.refresh),
                       label: const Text('Refresh'),
@@ -256,42 +236,6 @@ class _MasterWalletScreenState extends State<MasterWalletScreen> {
         children: [
           Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
           Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
-        ],
-      ),
-    );
-  }
-
-  void _showTransferDialog(Map<String, dynamic> wallet) {
-    final addressController = TextEditingController();
-    final amountController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Transfer'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: addressController,
-              decoration: const InputDecoration(labelText: 'To Address'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: amountController,
-              decoration: const InputDecoration(labelText: 'Amount'),
-              keyboardType: TextInputType.number,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _transfer(wallet['id'].toString(), addressController.text, double.tryParse(amountController.text) ?? 0);
-            },
-            child: const Text('Transfer'),
-          ),
         ],
       ),
     );

@@ -152,5 +152,4 @@ abstract class ApiClient {
   Future<List<Map<String, dynamic>>> getAdminMarginPositions();
   Future<Map<String, dynamic>> getAdminMarginLiquidationStats();
   Future<void> liquidateMarginPosition(String id);
-  Future<void> transferMasterWallet(String walletId, String toAddress, double amount);
 }
