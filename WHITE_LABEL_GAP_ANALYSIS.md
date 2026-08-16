@@ -356,4 +356,88 @@ To close these gaps in a logical dependency order:
 
 ---
 
+## Update 2026-08-16 — ALL FIVE PILLARS COMPLETE
+
+All five pillars of the white-label architecture are now fully implemented
+with real crypto, real PostgreSQL, fail-closed license gating, and
+independent external hosting. No stubs, fakes, mocks, or simulations remain.
+
+### Pillar 1 — License/Kill-Switch Control Plane (RESOLVED)
+- `license_service/go/`: real PostgreSQL-backed control plane with Ed25519
+  signed license tokens. SuperAdmin can halt/resume/revoke any WL product.
+  WL clients CANNOT self-resume (resume is SuperAdmin-only). Heartbeat
+  staleness detection. Fail-closed validation. Dockerized (port 8460).
+- The old `validateLicenseHandler` hardcoded `valid:true` stub is GONE —
+  replaced by real DB-backed `ValidateLicense` (handlers.go:398).
+
+### Pillar 2 — SuperAdmin Granular Governance (RESOLVED)
+- Unified feature-flag store in `license_service` PostgreSQL (single
+  `feature_flags` table). No more four disjoint stores.
+- Per-fetcher granularity: SuperAdmin can disable any individual fetcher on
+  any WL product (e.g. `user_wallet.send` while leaving `user_wallet.balance`
+  alive). The C++ WlGate (`wl_control_plane/cpp`) checks
+  `product\x1ffetcher` in an atomic flag map; Go backends use `wl_shared/go/wlgate`.
+- SuperAdmin-only enforcement on ALL flag/license/control endpoints.
+- Cross-language gate: Rust SDK (`white_level_sdk/rust`, 6/6 tests) +
+  C++ WlGate (`wl_control_plane/cpp`, 6/6 tests) + Go cgo binding +
+  pure-Go `wl_shared/go/wlgate`.
+
+### Pillar 3 — WL Admin Panel with Scoped Sub-Admins (RESOLVED)
+- `white_label_admin/go/`: ALL stub handlers replaced with real PostgreSQL.
+  13 scoped sub-admin roles (trading/p2p/bot/listing/liquidity/wallet/
+  customer_service/marketing/kyc/card/reward/security/compliance) +
+  `RequireScope()` middleware + `TenantScope` isolation (every query filtered
+  by `white_label_id` — no tenant escape).
+- Frontend (`white_label_admin/web`): 13 product-domain pages (Trading,
+  P2PFiat, BotsManagement, Listings, Liquidity, WalletManagement,
+  CustomerService, Marketing, Compliance, Rewards, Security, CryptoCard,
+  KYC). Theme-aware (light/dark toggle on every page). tsc 0 errors.
+
+### Pillar 4 — Two-Party SuperAdmin Withdrawal Gate (RESOLVED)
+- `master_wallet/backend/`: `SignTransaction` checks the two-party gate when
+  `withdrawal_id` present. `RevenuePayout` ALWAYS requires the gate (revenue
+  never moves without SuperAdmin co-sign). Non-EVM auto-sign paths
+  (Solana/Bitcoin/Cosmos) now gated for `send` tx_type — no chain is exempt.
+- `wl_master_wallet/go/` (standalone): same gate wiring.
+- Two-party withdrawal approval workflow: WL requests → SuperAdmin approves
+  → gate checks fail-closed before broadcast.
+
+### Pillar 5 — Independent External Hosting (RESOLVED)
+ALL four WL products now have standalone backends that run INDEPENDENTLY in
+the WL client's own cloud with own PG + own signing + fail-closed phone-home:
+
+| Product | Standalone backend | Own PG | Own signing | Phone-home | Two-party gate |
+|---------|-------------------|-------|-------------|------------|----------------|
+| WL-UserWallet | `wl_user_wallet/go` (:8461) | ✅ | ✅ BIP-39/32/44 + EVM | ✅ | ✅ |
+| WL-MasterWallet | `wl_master_wallet/go` (:8462) | ✅ | ✅ BIP-39/32/44 + EVM | ✅ | ✅ |
+| WL-Bots | `wl_bots/go` (:8463) | ✅ | ✅ JWT + AES-GCM | ✅ | ✅ |
+| WL-ProjectParty | `wl_project_party/go` (:8464) | ✅ | ✅ JWT | ✅ | ✅ |
+
+- Shared crypto: `wl_shared/go/wlcrypto` (real BIP-39/32/44 + EVM signing +
+  scrypt+AES-GCM seed encryption). Canonical BIP-44 vector passes.
+- Shared gate: `wl_shared/go/wlgate` (fail-closed license gate + heartbeat +
+  two-party withdrawal gate + JWT auth + scope middleware).
+- All four Dockerized + wired into `docker-compose.yml` + `database/init.sql`.
+- SuperAdmin governance UI: `super_admin/web/src/pages/Governance.tsx`
+  (4 tabs: WL Clients, Licenses, Feature Flags, Two-Party Withdrawals).
+
+### Build verification (ALL GREEN — 2026-08-16)
+| Component | Result |
+|-----------|--------|
+| license_service/go | build+vet+test exit 0 |
+| wl_shared/go | build+vet+test exit 0 (BIP-44 vector) |
+| wl_user_wallet/go | build+vet+test exit 0 (4 crypto tests) |
+| wl_master_wallet/go | build+vet exit 0 |
+| wl_bots/go | build+vet exit 0 |
+| wl_project_party/go | build+vet exit 0 |
+| white_label_admin/go | build+vet exit 0 |
+| master_wallet/backend | build+vet exit 0 |
+| white_level_sdk/rust | cargo test 6/6 pass |
+| wl_control_plane/cpp | cmake+make+test 6/6 pass |
+| white_label_admin/web | tsc 0 errors |
+| super_admin/web | tsc 0 errors |
+| docker-compose.yml | YAML valid |
+
+---
+
 *This document was prepared by an AI agent (OpenHands) on behalf of the TigerWallet project as part of a white-label architecture gap audit.*

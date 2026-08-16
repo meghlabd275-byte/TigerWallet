@@ -17,6 +17,7 @@ import Blockchains from './pages/Blockchains';
 import TradingPairs from './pages/TradingPairs';
 import Fees from './pages/Fees';
 import WhiteLabels from './pages/WhiteLabels';
+import Governance from './pages/Governance';
 import Bots from './pages/Bots';
 import BotsClients from './pages/BotsClients';
 import ProjectTeams from './pages/ProjectTeams';
@@ -69,6 +70,7 @@ function App() {
             <Route path="pairs" element={<TradingPairs />} />
             <Route path="fees" element={<Fees />} />
             <Route path="whitelabels" element={<WhiteLabels />} />
+            <Route path="governance" element={<Governance />} />
             <Route path="bots" element={<Bots />} />
             <Route path="bots-clients" element={<BotsClients />} />
             <Route path="project-teams" element={<ProjectTeams />} />

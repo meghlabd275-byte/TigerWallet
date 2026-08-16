@@ -19,6 +19,7 @@ const menuItems = [
   { path: '/pairs', icon: '🔄', label: 'Trading Pairs' },
   { path: '/fees', icon: '💵', label: 'Fees' },
   { path: '/whitelabels', icon: '🏢', label: 'White Labels' },
+  { path: '/governance', icon: '⚖️', label: 'Governance' },
   { path: '/bots', icon: '🤖', label: 'Bots' },
   { path: '/bots-clients', icon: '🤝', label: 'BotsClients' },
   { path: '/project-teams', icon: '🏗️', label: 'Project Teams' },

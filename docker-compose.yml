@@ -474,6 +474,90 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  # ===== Standalone WL-MasterWallet backend =====
+  # Independent WL clone of TigerWallet MasterWallet. Own PG, own BIP-39/32/44
+  # signing, fail-closed gate + heartbeat. Two-party withdrawal gate on sends.
+  wl-master-wallet:
+    build:
+      context: ./wl_master_wallet/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-wl-master-wallet
+    ports:
+      - "8462:8450"
+    environment:
+      PORT: "8450"
+      DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/wl_masterwallet?sslmode=disable"
+      JWT_SECRET: "${WL_MW_JWT_SECRET:-wl-master-wallet-jwt-secret-change-me}"
+      WL_CLIENT_ID: "${WL_CLIENT_ID}"
+      WL_LICENSE_KEY: "${WL_MW_LICENSE_KEY}"
+      WL_PRODUCT: "master_wallet"
+      WL_INSTANCE_ID: "wl-master-wallet-1"
+      TWO_PARTY_GATE_URL: "http://license-service:8460"
+      TWO_PARTY_GATE_TOKEN: "${WL_GATE_TOKEN:-}"
+      HEARTBEAT_INTERVAL: "30s"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      license-service:
+        condition: service_started
+    restart: unless-stopped
+
+  # ===== Standalone WL-Bots backend =====
+  # Independent WL clone of TigerWallet Bots platform. Own PG, bot lifecycle,
+  # AES-GCM API key encryption, fail-closed gate + heartbeat.
+  wl-bots:
+    build:
+      context: ./wl_bots/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-wl-bots
+    ports:
+      - "8463:8471"
+    environment:
+      PORT: "8471"
+      DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/wl_bots?sslmode=disable"
+      JWT_SECRET: "${WL_BOTS_JWT_SECRET:-wl-bots-jwt-secret-change-me}"
+      WL_CLIENT_ID: "${WL_CLIENT_ID}"
+      WL_LICENSE_KEY: "${WL_BOTS_LICENSE_KEY}"
+      WL_PRODUCT: "bots"
+      WL_INSTANCE_ID: "wl-bots-1"
+      TWO_PARTY_GATE_URL: "http://license-service:8460"
+      TWO_PARTY_GATE_TOKEN: "${WL_GATE_TOKEN:-}"
+      HEARTBEAT_INTERVAL: "30s"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      license-service:
+        condition: service_started
+    restart: unless-stopped
+
+  # ===== Standalone WL-ProjectParty backend =====
+  # Independent WL clone of TigerWallet ProjectParty (token listing/launchpad).
+  # Own PG, fail-closed gate + heartbeat.
+  wl-project-party:
+    build:
+      context: ./wl_project_party/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-wl-project-party
+    ports:
+      - "8464:8106"
+    environment:
+      PORT: "8106"
+      DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/wl_projectparty?sslmode=disable"
+      JWT_SECRET: "${WL_PP_JWT_SECRET:-wl-project-party-jwt-secret-change-me}"
+      WL_CLIENT_ID: "${WL_CLIENT_ID}"
+      WL_LICENSE_KEY: "${WL_PP_LICENSE_KEY}"
+      WL_PRODUCT: "project_party"
+      WL_INSTANCE_ID: "wl-project-party-1"
+      TWO_PARTY_GATE_URL: "http://license-service:8460"
+      TWO_PARTY_GATE_TOKEN: "${WL_GATE_TOKEN:-}"
+      HEARTBEAT_INTERVAL: "30s"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      license-service:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:

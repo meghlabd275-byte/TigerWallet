@@ -1,0 +1,20 @@
+/**
+ * TigerWallet White Label Admin — global styles.
+ * Tailwind directives + dark-mode class bridge.
+ *
+ * ThemeContext sets `data-theme="dark"` AND adds the `dark` class on
+ * <html>. The `[data-theme='dark']` rule below mirrors the class so both
+ * `dark:` variants and explicit data-theme styling work on every page.
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}

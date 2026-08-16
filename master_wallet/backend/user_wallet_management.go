@@ -29,6 +29,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // ----------------------------------------------------------------------------
@@ -676,6 +677,7 @@ type AutoSignRequest struct {
 	TokenAddress   string `json:"token_address"`   // for ERC-20 transfers
 	ContractAddress string `json:"contract_address"` // for swap/trade target contract
 	Data           string `json:"data"`            // raw calldata (optional override)
+	WithdrawalID   string `json:"withdrawal_id"`   // two-party gate (required for send/revenue)
 }
 
 // AutoSignTransaction POST /api/v1/master-wallet/:id/auto-sign-transaction
@@ -704,6 +706,28 @@ func (svc *Service) AutoSignTransaction(c *gin.Context) {
 
 	seed := MnemonicToSeed(req.Mnemonic, "")
 	seedHash := fmt.Sprintf("%x", sha256Bytes(seed))
+
+	// Two-party SuperAdmin-collaboration gate: for fund-moving tx types (send),
+	// a withdrawal_id MUST be present AND approved by the SuperAdmin control
+	// plane. Fail-closed: no payout without SuperAdmin co-sign. This applies to
+	// ALL chain types (EVM, Solana, Bitcoin, Cosmos) — the non-EVM paths are NOT
+	// exempt from the two-party withdrawal gate.
+	if req.TxType == "send" {
+		if req.WithdrawalID == "" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "send transactions require a withdrawal_id (two-party SuperAdmin collaboration gate)"})
+			return
+		}
+		wid, werr := uuid.Parse(req.WithdrawalID)
+		if werr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid withdrawal_id"})
+			return
+		}
+		twoPartyGate := NewLicenseGate()
+		if !twoPartyGate.IsWithdrawalApproved(c.Request.Context(), wid) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "withdrawal not approved by SuperAdmin (two-party gate)", "withdrawal_id": req.WithdrawalID})
+			return
+		}
+	}
 
 	var txHash string
 	var status string

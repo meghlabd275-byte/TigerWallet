@@ -9,11 +9,23 @@ type Theme = 'light' | 'dark';
 
 interface ThemeContextType {
   theme: Theme;
+  isDark: boolean;
   toggleTheme: () => void;
   setTheme: (theme: Theme) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+
+// Apply BOTH the `data-theme` attribute and the `dark` class on <html> so
+// Tailwind's `darkMode: 'class'` strategy and `dark:` variants work, while
+// the `[data-theme='dark']` CSS block in globals.css keeps styling in sync.
+function applyTheme(theme: Theme) {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  root.setAttribute('data-theme', theme);
+  if (theme === 'dark') root.classList.add('dark');
+  else root.classList.remove('dark');
+}
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>('light');
@@ -22,33 +34,38 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const stored = localStorage.getItem('tigerwallet_theme') as Theme;
     if (stored) {
       setThemeState(stored);
-      document.documentElement.setAttribute('data-theme', stored);
     } else {
       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const initialTheme = prefersDark ? 'dark' : 'light';
-      setThemeState(initialTheme);
-      document.documentElement.setAttribute('data-theme', initialTheme);
+      setThemeState(prefersDark ? 'dark' : 'light');
     }
   }, []);
 
+  // Keep the DOM in sync whenever the resolved theme changes.
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
   const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    setThemeState(newTheme);
-    localStorage.setItem('tigerwallet_theme', newTheme);
-    document.documentElement.setAttribute('data-theme', newTheme);
+    setThemeState((prev) => {
+      const newTheme = prev === 'light' ? 'dark' : 'light';
+      localStorage.setItem('tigerwallet_theme', newTheme);
+      return newTheme;
+    });
   };
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
     localStorage.setItem('tigerwallet_theme', newTheme);
-    document.documentElement.setAttribute('data-theme', newTheme);
   };
 
-  return (
-    <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  const value: ThemeContextType = {
+    theme,
+    isDark: theme === 'dark',
+    toggleTheme,
+    setTheme,
+  };
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme() {

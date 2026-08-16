@@ -2903,3 +2903,42 @@ Committed `829ea25` + pushed to origin/main.
 | wl_user_wallet/go | build+vet+test exit 0 (4 crypto tests) |
 
 ### Commit: 829ea25 pushed to origin/main.
+
+## wl_master_wallet Go backend (standalone)
+- Lives at `wl_master_wallet/go/`, module `github.com/tigerwallet/wl-master-wallet`.
+- Replace directive for wl-shared is `../../wl_shared/go` (NOT `../wl_shared/go`) because the module lives one level deeper than sibling services (`wl_user_wallet/go` is at root; `wl_master_wallet/go` is nested under `wl_master_wallet/`).
+- Uses shared `wlgate` (New + HeartbeatLoop + Middleware(product, SimpleFetcher) + JWTAuth + IssueJWT + NewTwoPartyGate with IsWithdrawalApproved/RequestWithdrawal) and `wlcrypto` (GenerateMnemonic, DeriveEVMPrivateKey, EncryptSeedAtRest, DecryptSeedAtRest, SignTransaction, SignMessage).
+- RequestWithdrawal signature: `(ctx, walletID, to, amountWei string, currency, chainID)` — amount must be `.String()` of a `*big.Int`.
+- Default port 8450. Every protected route wrapped with `wlgate.JWTAuth(secret)` + `gate.Middleware("master_wallet", wlgate.SimpleFetcher)`. RevenuePayout ALWAYS requires two-party gate co-sign.
+
+## wl_project_party Go backend (standalone)
+- Lives at `wl_project_party/go/`, module `github.com/tigerwallet/wl-project-party`.
+- Replace directive for wl-shared is `../../wl_shared/go` (nested one level deeper, same pattern as wl_master_wallet).
+- Clone of the TigerWallet `project_party/` token-listing / launchpad platform. Tables: `users, tokens, listings, launchpad_projects, participations, market_making_configs, fee_configs, favorites`. REAL PostgreSQL only (pgxpool, NUMERIC columns store decimal strings). No ethereum/wlcrypto dependency (token-listing domain, no key management).
+- Uses shared `wlgate` only: `New` + `HeartbeatLoop` + `Middleware("project_party", wlgate.SimpleFetcher)` + `JWTAuth` + `IssueJWT`. Fail-closed: gate starts dead until first heartbeat validates license.
+- Default port 8106. Every protected route wrapped with `wlgate.JWTAuth(secret)` + `gate.Middleware("project_party", wlgate.SimpleFetcher)`.
+- CreateParticipation is a tx that atomically increments `launchpad_projects.sold_amount`. ParticipateInLaunchpad enforces project exists + status active/upcoming + end_time not passed.
+- Build: `cd wl_project_party/go && GOFLAGS=-mod=mod go build ./... && go vet ./...` → both exit 0.
+
+## white_label_admin/web (Next.js 14 frontend)
+
+- **Routing architecture (2026-08-16):** This is a **Pages Router** app, NOT App
+  Router, despite `src/app/globals.css` existing. Entry chain: `src/pages/_app.tsx`
+  (wraps every route in `<ThemeProvider>` + imports `../app/globals.css`) ->
+  `src/pages/index.tsx` (renders `<App/>` from `src/App.tsx`). `App.tsx` is the
+  single-page shell with sidebar + page switch; the other `src/pages/*.tsx`
+  files are both (a) imported by App.tsx as components AND (b) auto-routed by
+  Next as standalone URLs (e.g. `/Trading`, `/KYC`) - that is intentional and
+  works because `_app.tsx` provides the ThemeProvider for every route.
+- `App.tsx` MUST start with `'use client';` (it uses hooks). Do NOT create
+  `src/app/layout.tsx`/`src/app/page.tsx` - that triggers App Router mode and
+  conflicts with the Pages Router `_app.tsx`. The `src/app/` dir holds ONLY
+  `globals.css`.
+- **Theme:** `darkMode: 'class'` in `tailwind.config.js`. `ThemeContext.applyTheme()`
+  sets BOTH `data-theme` attr AND `dark` class on `document.documentElement`.
+  Pages use `useTheme()` + `isDark` ternaries (e.g. `isDark ? 'bg-gray-900' :
+  'bg-white'`) rather than `dark:` variants - so Tailwind emits no `.dark`
+  rules (correct/expected); the `dark:` variants WOULD work if added because
+  the class strategy + `[data-theme='dark']` CSS bridge are in place.
+- Build verification: `npx tsc --noEmit -p tsconfig.json` (0 errors) AND
+  `npx next build` (0 errors, 24 static routes). Both must pass.

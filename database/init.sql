@@ -79,3 +79,23 @@ CREATE DATABASE wl_userwallet;
 \connect wl_userwallet;
 -- WL-UserWallet schema is managed by the service's own migrations on boot
 -- (users, wallets with encrypted_seed, transactions, address_book).
+
+-- Standalone WL-MasterWallet database (independent of TigerWallet cloud).
+CREATE DATABASE wl_masterwallet;
+\connect wl_masterwallet;
+-- WL-MasterWallet schema is managed by the service's own migrations on boot
+-- (master_wallets with encrypted_seed, sub_wallets, transactions, policies,
+--  fee_configs, auto_sign_rules, audit_log).
+
+-- Standalone WL-Bots database (independent of TigerWallet cloud).
+CREATE DATABASE wl_bots;
+\connect wl_bots;
+-- WL-Bots schema is managed by the service's own migrations on boot
+-- (users, bots, bot_executions, subscriptions, fee_configs, api_keys, bot_logs).
+
+-- Standalone WL-ProjectParty database (independent of TigerWallet cloud).
+CREATE DATABASE wl_projectparty;
+\connect wl_projectparty;
+-- WL-ProjectParty schema is managed by the service's own migrations on boot
+-- (users, tokens, listings, launchpad_projects, participations,
+--  market_making_configs, fee_configs, favorites).
