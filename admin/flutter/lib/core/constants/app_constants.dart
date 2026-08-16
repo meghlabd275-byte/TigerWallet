@@ -8,7 +8,7 @@ class AppConstants {
   static const String appVersion = '1.0.0';
   
   // API
-  static const String baseUrl = 'http://localhost:8443/api/v1';
+  static const String baseUrl = 'http://localhost:9093/api/v1';
   static const String wsUrl = '';
   static const int apiTimeout = 30000;
   static const int wsTimeout = 5000;

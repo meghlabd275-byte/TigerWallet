@@ -42,7 +42,7 @@ class AuthService {
     func login(email: String, password: String, completion: @escaping (Result<User, Error>) -> Void) {
         // Real backend login against the canonical wallet_api /api/v1/auth/login
         // (real JWT, NOT a simulated mock_token). Fails-closed on any error.
-        let apiBase = ProcessInfo.processInfo.environment["ADMIN_API_URL"] ?? "http://localhost:8443"
+        let apiBase = ProcessInfo.processInfo.environment["ADMIN_API_URL"] ?? "http://localhost:9093"
         guard let url = URL(string: apiBase + "/api/v1/auth/login") else {
             completion(.failure(NSError(domain: "AuthService", code: 0,
                 userInfo: [NSLocalizedDescriptionKey: "Invalid ADMIN_API_URL"])))
