@@ -3148,3 +3148,23 @@ All 11 domain backends + full client parity verified. Port = 8082 (NOT 9092).
 Build verification (all pass): go build 0, go vet 0, cargo check 0,
 g++ -std=c++20 -fsyntax-only 0, npx tsc --noEmit 0, node --check on every
 popup.js + desktop main/renderer/preload OK, android/ios brace-balanced.
+
+## Session 2026-08-16 (session 2): Admin ecosystem complete gap closure
+
+### admin/go - 11 domain backends + structured RBAC
+10 new handlers (futures/options/copy_trading/convert/onramp/offramp/p2p_clients/partners/rewards/marketing) + rbac_handler, GORM pattern. Each CRUD + status; onramp/offramp/partners approve/reject. Partners real api_key. RBAC: admin_roles + admin_role_assignments + admin_permissions (is_system protected). 14 tables. Withdrawal record-only. build+vet 0.
+
+### admin/web - 12 domain pages + orphan wiring
+11 new pages + 5 orphans wired (MarginTrading/CryptoCards/Liquidity/P2PMerchant/Features). tsc 0.
+
+### Native parity - 3 families x 6 platforms
+admin: android/ios/desktop/extensions/cpp/rust all 12 domains. super_admin: same. white_label_admin: same + 11 WL/go domain backends + port 9092->8082 + 3 new web pages.
+
+### Feature-flag enforcement (Redis)
+Admin publish tigerwallet:feature:<name>=enabled/disabled/paused. wallet_api FeatureChecker (5s cache, fail-closed, 423 Locked). Gated: swap/send/staking/nft_transfer. docs/FEATURE_FLAG_ENFORCEMENT.md.
+
+### Port consistency
+admin->9093, super_admin->8082, white_label_admin->8082.
+
+### Builds ALL GREEN
+4 Go backends build+vet 0; 3 rust cargo check 0; 3 cpp g++ syntax 0; 3 web tsc 0; all extensions+desktop node --check 0.

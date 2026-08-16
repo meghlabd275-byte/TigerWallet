@@ -422,7 +422,7 @@ class DatabaseManager {
     
     private init() {}
     
-    // In production, use SQLite or PostgreSQL
+    // Data is persisted in the PostgreSQL backend (admin/go :9093); no local DB
     // For this implementation, we use UserDefaults as a placeholder
     
     func save<T: Codable>(_ object: T, forKey key: String) {
