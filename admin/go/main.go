@@ -47,6 +47,26 @@ func main() {
 	// Auth service (JWT + bcrypt + pepper)
 	authSvc := auth.NewAuthService(cfg)
 
+	// Auto-migrate handler-package governance models (avoid import cycle by
+	// migrating here rather than in pkg/database, which handlers import).
+	if err := db.DB.AutoMigrate(
+		&handlers.FuturesPosition{},
+		&handlers.OptionsContract{},
+		&handlers.CopyTradingConfig{},
+		&handlers.ConvertOrder{},
+		&handlers.OnRampOrder{},
+		&handlers.OffRampOrder{},
+		&handlers.P2PClient{},
+		&handlers.Partner{},
+		&handlers.RewardCampaign{},
+		&handlers.MarketingCampaign{},
+		&handlers.AdminRole{},
+		&handlers.AdminRoleAssignment{},
+		&handlers.AdminPermission{},
+	); err != nil {
+		log.Fatalf("Failed to migrate admin domain governance models: %v", err)
+	}
+
 	// Create default super admin if none exists
 	createDefaultAdmin(db, cfg, authSvc)
 
@@ -81,6 +101,20 @@ func main() {
 	liquidityHandler := handlers.NewLiquidityHandler(db.DB)
 	marginTradingHandler := handlers.NewMarginTradingHandler(db.DB)
 	p2pMerchantHandler := handlers.NewP2PMerchantHandler(db.DB)
+
+	// Trading admin domain governance handlers (mirror super_admin/go commit 0cb13d7).
+	futuresHandler := handlers.NewFuturesHandler(db.DB)
+	optionsHandler := handlers.NewOptionsHandler(db.DB)
+	copyTradingHandler := handlers.NewCopyTradingHandler(db.DB)
+	convertHandler := handlers.NewConvertHandler(db.DB)
+	onrampHandler := handlers.NewOnRampHandler(db.DB)
+	offrampHandler := handlers.NewOffRampHandler(db.DB)
+	p2pClientsHandler := handlers.NewP2PClientsHandler(db.DB)
+	partnersHandler := handlers.NewPartnersHandler(db.DB)
+	rewardsHandler := handlers.NewRewardsHandler(db.DB)
+	marketingHandler := handlers.NewMarketingHandler(db.DB)
+	// Structured RBAC (mirror super_admin/go commit 15e99eb).
+	rbacHandler := handlers.NewRBACHandler(db.DB)
 
 	blockchainHandler := handlers.NewBlockchainHandler(db)
 	exportHandler := handlers.NewExportHandler(db)
@@ -480,6 +514,140 @@ func main() {
 				p2p.POST("/:id/reject", p2pMerchantHandler.RejectMerchant)
 				p2p.GET("/:id/transactions", p2pMerchantHandler.GetTransactions)
 			}
+
+			// P2P clients
+			p2pClients := protected.Group("/p2p-clients")
+			{
+				p2pClients.GET("", p2pClientsHandler.List)
+				p2pClients.POST("", p2pClientsHandler.Create)
+				p2pClients.GET("/:id", p2pClientsHandler.Get)
+				p2pClients.PUT("/:id", p2pClientsHandler.Update)
+				p2pClients.DELETE("/:id", p2pClientsHandler.Delete)
+				p2pClients.PUT("/:id/status", p2pClientsHandler.UpdateStatus)
+			}
+
+			// Futures (governance records only)
+			futures := protected.Group("/futures")
+			{
+				futures.GET("", futuresHandler.List)
+				futures.POST("", futuresHandler.Create)
+				futures.GET("/:id", futuresHandler.Get)
+				futures.PUT("/:id", futuresHandler.Update)
+				futures.DELETE("/:id", futuresHandler.Delete)
+				futures.PUT("/:id/status", futuresHandler.UpdateStatus)
+			}
+
+			// Options (governance records only)
+			opts := protected.Group("/options")
+			{
+				opts.GET("", optionsHandler.List)
+				opts.POST("", optionsHandler.Create)
+				opts.GET("/:id", optionsHandler.Get)
+				opts.PUT("/:id", optionsHandler.Update)
+				opts.DELETE("/:id", optionsHandler.Delete)
+				opts.PUT("/:id/status", optionsHandler.UpdateStatus)
+			}
+
+			// Copy trading (governance records only)
+			copyTrading := protected.Group("/copy-trading")
+			{
+				copyTrading.GET("", copyTradingHandler.List)
+				copyTrading.POST("", copyTradingHandler.Create)
+				copyTrading.GET("/:id", copyTradingHandler.Get)
+				copyTrading.PUT("/:id", copyTradingHandler.Update)
+				copyTrading.DELETE("/:id", copyTradingHandler.Delete)
+				copyTrading.PUT("/:id/status", copyTradingHandler.UpdateStatus)
+			}
+
+			// Convert (governance records only)
+			convert := protected.Group("/convert")
+			{
+				convert.GET("", convertHandler.List)
+				convert.POST("", convertHandler.Create)
+				convert.GET("/:id", convertHandler.Get)
+				convert.PUT("/:id", convertHandler.Update)
+				convert.DELETE("/:id", convertHandler.Delete)
+				convert.PUT("/:id/status", convertHandler.UpdateStatus)
+			}
+
+			// OnRamp (governance records only; approve/reject are record-only)
+			onramp := protected.Group("/onramp")
+			{
+				onramp.GET("", onrampHandler.List)
+				onramp.POST("", onrampHandler.Create)
+				onramp.GET("/:id", onrampHandler.Get)
+				onramp.PUT("/:id", onrampHandler.Update)
+				onramp.DELETE("/:id", onrampHandler.Delete)
+				onramp.POST("/:id/approve", onrampHandler.Approve)
+				onramp.POST("/:id/reject", onrampHandler.Reject)
+			}
+
+			// OffRamp (governance records only; approve/reject are record-only)
+			offramp := protected.Group("/offramp")
+			{
+				offramp.GET("", offrampHandler.List)
+				offramp.POST("", offrampHandler.Create)
+				offramp.GET("/:id", offrampHandler.Get)
+				offramp.PUT("/:id", offrampHandler.Update)
+				offramp.DELETE("/:id", offrampHandler.Delete)
+				offramp.POST("/:id/approve", offrampHandler.Approve)
+				offramp.POST("/:id/reject", offrampHandler.Reject)
+			}
+
+			// Partners (governance records only; api_key generated on create)
+			partners := protected.Group("/partners")
+			{
+				partners.GET("", partnersHandler.List)
+				partners.POST("", partnersHandler.Create)
+				partners.GET("/:id", partnersHandler.Get)
+				partners.PUT("/:id", partnersHandler.Update)
+				partners.DELETE("/:id", partnersHandler.Delete)
+				partners.PUT("/:id/status", partnersHandler.UpdateStatus)
+				partners.POST("/:id/approve", partnersHandler.Approve)
+				partners.POST("/:id/reject", partnersHandler.Reject)
+			}
+
+			// Rewards (governance records only)
+			rewards := protected.Group("/rewards")
+			{
+				rewards.GET("", rewardsHandler.List)
+				rewards.POST("", rewardsHandler.Create)
+				rewards.GET("/:id", rewardsHandler.Get)
+				rewards.PUT("/:id", rewardsHandler.Update)
+				rewards.DELETE("/:id", rewardsHandler.Delete)
+				rewards.PUT("/:id/status", rewardsHandler.UpdateStatus)
+			}
+
+			// Marketing (governance records only)
+			marketing := protected.Group("/marketing")
+			{
+				marketing.GET("", marketingHandler.List)
+				marketing.POST("", marketingHandler.Create)
+				marketing.GET("/:id", marketingHandler.Get)
+				marketing.PUT("/:id", marketingHandler.Update)
+				marketing.DELETE("/:id", marketingHandler.Delete)
+				marketing.PUT("/:id/status", marketingHandler.UpdateStatus)
+			}
+
+			// Structured RBAC: roles, permissions, assignments.
+			roles := protected.Group("/roles")
+			{
+				roles.GET("", rbacHandler.ListRoles)
+				roles.POST("", rbacHandler.CreateRole)
+				roles.GET("/:id", rbacHandler.GetRole)
+				roles.PUT("/:id", rbacHandler.UpdateRole)
+				roles.DELETE("/:id", rbacHandler.DeleteRole)
+			}
+			permissions := protected.Group("/permissions")
+			{
+				permissions.GET("", rbacHandler.ListPermissions)
+				permissions.POST("", rbacHandler.CreatePermission)
+			}
+			// Per-admin role assignments + effective permissions.
+			protected.GET("/admins/:id/roles", rbacHandler.ListRoles)
+			protected.POST("/admins/:id/roles", rbacHandler.AssignRole)
+			protected.DELETE("/admins/:id/roles/:roleId", rbacHandler.RevokeRole)
+			protected.GET("/admins/:id/permissions", rbacHandler.GetEffectivePermissions)
 
 			// Audit logs
 			protected.GET("/audit-logs", superAdminHandler.GetAuditLogs)
