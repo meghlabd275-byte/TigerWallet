@@ -343,6 +343,9 @@ type sendTxReq struct {
 }
 
 func handleSendTransaction(c *gin.Context) {
+	if !enforceFeature(c, FeatureSendTransactions) {
+		return
+	}
 	var req sendTxReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

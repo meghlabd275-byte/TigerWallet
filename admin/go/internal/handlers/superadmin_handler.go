@@ -464,6 +464,8 @@ func (h *SuperAdminHandler) CreateFeatureFlag(c *gin.Context) {
 		return
 	}
 
+	h.publishFeatureState(flag.Name, redis.FeatureStateFromBool(flag.IsEnabled))
+
 	c.JSON(http.StatusCreated, gin.H{"data": flag})
 }
 
@@ -506,6 +508,10 @@ func (h *SuperAdminHandler) UpdateFeatureFlag(c *gin.Context) {
 		return
 	}
 
+	// Reload to capture final state and publish to Redis.
+	h.db.Where("name = ?", name).First(&flag)
+	h.publishFeatureState(flag.Name, redis.FeatureStateFromBool(flag.IsEnabled))
+
 	h.logActivity(c.GetUint("admin_id"), "update_feature", "feature_flag", name, "Updated feature flag", c.ClientIP(), c.Request.UserAgent(), "success", "")
 
 	c.JSON(http.StatusOK, gin.H{"data": flag})
@@ -521,10 +527,29 @@ func (h *SuperAdminHandler) DeleteFeatureFlag(c *gin.Context) {
 		return
 	}
 
+	h.deleteFeatureState(name)
+
 	c.JSON(http.StatusOK, gin.H{"message": "Feature flag deleted successfully"})
 }
 
 // ==================== RATE LIMITS ====================
+
+// publishFeatureState writes the feature flag's live state to Redis (shared
+// store downstream services consult). Non-fatal on failure.
+func (h *SuperAdminHandler) publishFeatureState(name, state string) {
+	if h.redis == nil || name == "" {
+		return
+	}
+	_ = h.redis.PublishFeatureState(name, state)
+}
+
+// deleteFeatureState removes the feature flag's live state from Redis.
+func (h *SuperAdminHandler) deleteFeatureState(name string) {
+	if h.redis == nil || name == "" {
+		return
+	}
+	_ = h.redis.DeleteFeatureState(name)
+}
 
 // GetRateLimits gets current rate limits
 // GET /api/v1/superadmin/rate-limits

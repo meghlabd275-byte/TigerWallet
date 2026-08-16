@@ -20,11 +20,16 @@ import (
 	"github.com/tigerwallet/super-admin/internal/config"
 	"github.com/tigerwallet/super-admin/internal/database"
 	"github.com/tigerwallet/super-admin/internal/middleware"
+	twredis "github.com/tigerwallet/super-admin/internal/redis"
 	"golang.org/x/crypto/bcrypt"
 )
 
 // appCfg is the package-level config, set in main(), used by handlers for JWT auth.
 var appCfg *config.Config
+
+// redisClient is the shared feature-flag store client. Feature flag handlers
+// publish live state to it; downstream services read from the same Redis keys.
+var redisClient *twredis.RedisClient
 
 func main() {
 	cfg := config.Load()
@@ -36,6 +41,18 @@ func main() {
 	defer database.Close()
 
 	log.Println("Database initialized successfully")
+
+	// Shared feature-flag store. Non-fatal: if Redis is unavailable the backend
+	// still boots; flag publish simply no-ops (fail-closed downstream).
+	rc, err := twredis.NewRedisClient(cfg)
+	if err != nil {
+		log.Printf("Warning: feature-flag Redis client unavailable: %v", err)
+	}
+	redisClient = rc
+	if redisClient != nil {
+		defer redisClient.Close()
+		log.Println("Feature-flag Redis client initialized")
+	}
 
 	router := gin.Default()
 
@@ -130,6 +147,7 @@ func main() {
 			// GET /features -> [{name, enabled, description}], PUT /features/:name {enabled}.
 			admin.GET("/features", handleGetFeatures)
 			admin.PUT("/features/:name", handleSetFeature)
+			admin.GET("/features/:name/check", handleCheckFeatureFlag)
 
 			admin.GET("/ip-whitelist", handleGetIPWhitelist)
 			admin.POST("/ip-whitelist", handleAddIPWhitelist)
@@ -1202,6 +1220,23 @@ func handleRevokeAllSessions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "all sessions revoked"})
 }
 
+// publishFeatureState writes the feature flag's live state to the shared Redis
+// store (the store downstream services consult). Non-fatal on failure.
+func publishFeatureState(name, state string) {
+	if redisClient == nil || name == "" {
+		return
+	}
+	_ = redisClient.PublishFeatureState(name, state)
+}
+
+// deleteFeatureState removes the feature flag's live state from Redis.
+func deleteFeatureState(name string) {
+	if redisClient == nil || name == "" {
+		return
+	}
+	_ = redisClient.DeleteFeatureState(name)
+}
+
 // ---- Feature Flags ----
 
 func handleGetFeatureFlags(c *gin.Context) {
@@ -1228,6 +1263,7 @@ func handleCreateFeatureFlag(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	publishFeatureState(req.Name, twredis.FeatureStateFromBool(req.IsEnabled))
 	c.JSON(http.StatusCreated, gin.H{"message": "feature flag created"})
 }
 
@@ -1243,17 +1279,29 @@ func handleUpdateFeatureFlag(c *gin.Context) {
 	if req.IsEnabled != nil {
 		isEnabled = *req.IsEnabled
 	}
+	// Resolve the feature name by id so we can publish the live state to Redis.
+	var name string
+	_ = dbQueryRow(c, `SELECT name FROM feature_flags WHERE id=$1`, c.Param("id")).Scan(&name)
 	if _, err := dbExec(c, `UPDATE feature_flags SET is_enabled=$1, updated_by=$2 WHERE id=$3`, isEnabled, c.GetString("user_id"), c.Param("id")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+	if name != "" {
+		publishFeatureState(name, twredis.FeatureStateFromBool(isEnabled))
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "feature flag updated"})
 }
 
 func handleDeleteFeatureFlag(c *gin.Context) {
+	// Resolve the feature name by id so we can delete the live state from Redis.
+	var name string
+	_ = dbQueryRow(c, `SELECT name FROM feature_flags WHERE id=$1`, c.Param("id")).Scan(&name)
 	if _, err := dbExec(c, `DELETE FROM feature_flags WHERE id=$1`, c.Param("id")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+	if name != "" {
+		deleteFeatureState(name)
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "feature flag deleted"})
 }
@@ -1304,7 +1352,28 @@ func handleSetFeature(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	publishFeatureState(name, twredis.FeatureStateFromBool(isEnabled))
 	c.JSON(http.StatusOK, gin.H{"name": name, "enabled": isEnabled})
+}
+
+// handleCheckFeatureFlag returns the LIVE feature state as read from Redis
+// (the store downstream services consult), not just the DB row. Fail-closed:
+// missing/unknown -> disabled.
+func handleCheckFeatureFlag(c *gin.Context) {
+	name := c.Param("name")
+	if name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "feature name required"})
+		return
+	}
+	state := twredis.StateDisabled
+	enabled := false
+	if redisClient != nil {
+		if live, ok := redisClient.GetFeatureState(name); ok {
+			state = live
+			enabled = (live == twredis.StateEnabled)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"name": name, "state": state, "enabled": enabled})
 }
 
 // ---- IP Whitelist ----

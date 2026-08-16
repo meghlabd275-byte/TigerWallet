@@ -30,6 +30,9 @@ const safeTransferFromSelector = "42842e0e"
 // handleNFTTransfer builds an ERC-721 safeTransferFrom calldata and delegates
 // to the shared executeSend signing/broadcast path (value=0, to=contract).
 func handleNFTTransfer(c *gin.Context) {
+	if !enforceFeature(c, FeatureNFTTransfer) {
+		return
+	}
 	var req nftTransferReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

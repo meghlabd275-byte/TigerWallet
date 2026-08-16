@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	twredis "github.com/tigerwallet/white-label-admin/internal/redis"
 	"github.com/tigerwallet/white-label-admin/internal/middleware"
 )
 
@@ -304,7 +305,7 @@ func (s *Svc) CreateFeatureFlag(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	id := uuid.New()
+			id := uuid.New()
 	_, err := s.db.Exec(c.Request.Context(),
 		`INSERT INTO feature_flags (id, name, description, is_enabled, rollout_percentage, updated_by) VALUES ($1,$2,$3,$4,0,$5)`,
 		id, req.Name, req.Description, req.IsEnabled, middleware.AdminID(c))
@@ -312,6 +313,7 @@ func (s *Svc) CreateFeatureFlag(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	s.publishFeatureState(req.Name, twredis.FeatureStateFromBool(req.IsEnabled))
 	c.JSON(http.StatusCreated, gin.H{"id": id, "name": req.Name, "is_enabled": req.IsEnabled})
 }
 
@@ -328,8 +330,14 @@ func (s *Svc) UpdateFeatureFlag(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// Resolve the feature name by id so we can publish the live state to Redis.
+	var name string
+	_ = s.db.QueryRow(c.Request.Context(), `SELECT name FROM feature_flags WHERE id=$1`, id).Scan(&name)
 	if req.IsEnabled != nil {
 		_, _ = s.db.Exec(c.Request.Context(), `UPDATE feature_flags SET is_enabled=$1, updated_at=NOW(), updated_by=$2 WHERE id=$3`, *req.IsEnabled, middleware.AdminID(c), id)
+		if name != "" {
+			s.publishFeatureState(name, twredis.FeatureStateFromBool(*req.IsEnabled))
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{"updated": id})
 }
@@ -340,12 +348,36 @@ func (s *Svc) DeleteFeatureFlag(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
+	var name string
+	_ = s.db.QueryRow(c.Request.Context(), `SELECT name FROM feature_flags WHERE id=$1`, id).Scan(&name)
 	_, err = s.db.Exec(c.Request.Context(), `DELETE FROM feature_flags WHERE id=$1`, id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	if name != "" {
+		s.deleteFeatureState(name)
+	}
 	c.JSON(http.StatusOK, gin.H{"deleted": id})
+}
+
+// CheckFeatureFlag returns the live state of a feature flag as read from Redis
+// (the shared store downstream services consult), not just the DB row.
+func (s *Svc) CheckFeatureFlag(c *gin.Context) {
+	name := c.Param("name")
+	if name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "feature name required"})
+		return
+	}
+	if s.rdb == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "feature-flag store unavailable"})
+		return
+	}
+	state, ok := s.rdb.GetFeatureState(name)
+	if !ok {
+		state = twredis.StateDisabled
+	}
+	c.JSON(http.StatusOK, gin.H{"name": name, "state": state, "enabled": state == twredis.StateEnabled})
 }
 
 // ==================== IP whitelist ====================

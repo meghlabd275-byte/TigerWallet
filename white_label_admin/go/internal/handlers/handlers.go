@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tigerwallet/white-label-admin/internal/config"
+	twredis "github.com/tigerwallet/white-label-admin/internal/redis"
 	"github.com/tigerwallet/white-label-admin/internal/middleware"
 	"github.com/tigerwallet/white-label-admin/internal/roles"
 	"golang.org/x/crypto/bcrypt"
@@ -24,10 +25,28 @@ import (
 type Svc struct {
 	cfg  *config.Config
 	db   *pgxpool.Pool
+	rdb  *twredis.RedisClient
 }
 
-func New(cfg *config.Config, db *pgxpool.Pool) *Svc {
-	return &Svc{cfg: cfg, db: db}
+func New(cfg *config.Config, db *pgxpool.Pool, rdb *twredis.RedisClient) *Svc {
+	return &Svc{cfg: cfg, db: db, rdb: rdb}
+}
+
+// publishFeatureState writes the feature flag's live state to the shared Redis
+// store. Non-fatal on failure (fail-closed downstream).
+func (s *Svc) publishFeatureState(name, state string) {
+	if s.rdb == nil || name == "" {
+		return
+	}
+	_ = s.rdb.PublishFeatureState(name, state)
+}
+
+// deleteFeatureState removes the feature flag's live state from Redis.
+func (s *Svc) deleteFeatureState(name string) {
+	if s.rdb == nil || name == "" {
+		return
+	}
+	_ = s.rdb.DeleteFeatureState(name)
 }
 
 // ==================== Auth (real bcrypt + JWT with scopes) ====================

@@ -97,7 +97,7 @@ func main() {
 	masterWalletHandler := handlers.NewMasterWalletHandler(db.DB)
 	billingHandler := handlers.NewBillingHandler()
 	cryptoCardHandler := handlers.NewCryptoCardHandler(db.DB)
-	featuresHandler := handlers.NewFeaturesHandler(db.DB)
+	featuresHandler := handlers.NewFeaturesHandler(db.DB, redisClient)
 	liquidityHandler := handlers.NewLiquidityHandler(db.DB)
 	marginTradingHandler := handlers.NewMarginTradingHandler(db.DB)
 	p2pMerchantHandler := handlers.NewP2PMerchantHandler(db.DB)
@@ -480,6 +480,8 @@ func main() {
 				features.PUT("/:id/rollout", featuresHandler.SetRollout)
 				features.DELETE("/:id", featuresHandler.Delete)
 				features.GET("/:id/check", featuresHandler.CheckFeature)
+				features.PATCH("/:id/status", featuresHandler.SetStatus)
+				features.PUT("/:id/status", featuresHandler.SetStatus)
 			}
 
 			// Liquidity pools

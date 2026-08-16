@@ -116,6 +116,9 @@ func decodeAmountsOut(ret []byte) ([]*big.Int, error) {
 // Real on-chain quote via getAmountsOut. amount_in is in human units; converted
 // to wei using the token's on-chain decimals (another real eth_call).
 func handleAmmQuote(c *gin.Context) {
+	if !enforceFeature(c, FeatureSwapTrading) {
+		return
+	}
 	chainIDStr := c.Query("chain_id")
 	tokenIn := c.Query("token_in")
 	tokenOut := c.Query("token_out")
@@ -211,6 +214,9 @@ func handleAmmQuote(c *gin.Context) {
 // client broadcasts it via POST /api/v1/send (real eth_sendRawTransaction).
 // No transaction hash is fabricated here.
 func handleAmmSwap(c *gin.Context) {
+	if !enforceFeature(c, FeatureSwapTrading) {
+		return
+	}
 	var req struct {
 		From        string `json:"from"`
 		ChainID     int64  `json:"chain_id"`

@@ -20,6 +20,7 @@ import (
 	"github.com/tigerwallet/white-label-admin/internal/config"
 	"github.com/tigerwallet/white-label-admin/internal/database"
 	"github.com/tigerwallet/white-label-admin/internal/handlers"
+	twredis "github.com/tigerwallet/white-label-admin/internal/redis"
 	"github.com/tigerwallet/white-label-admin/internal/middleware"
 	"github.com/tigerwallet/white-label-admin/internal/roles"
 )
@@ -35,7 +36,18 @@ func main() {
 	defer database.Close()
 	log.Println("Database initialized successfully")
 
-	svc := handlers.New(cfg, database.Pool)
+	// Shared feature-flag store. Non-fatal: if Redis is unavailable the backend
+	// still boots; flag publish no-ops (fail-closed downstream).
+	rdb, err := twredis.NewRedisClient(cfg)
+	if err != nil {
+		log.Printf("Warning: feature-flag Redis client unavailable: %v", err)
+	}
+	if rdb != nil {
+		defer rdb.Close()
+		log.Println("Feature-flag Redis client initialized")
+	}
+
+	svc := handlers.New(cfg, database.Pool, rdb)
 
 	router := gin.Default()
 	router.Use(cors.New(cors.Config{
@@ -138,6 +150,7 @@ func main() {
 			admin.POST("/feature-flags", middleware.RequireScope(roles.WLClient), svc.CreateFeatureFlag)
 			admin.PUT("/feature-flags/:id", middleware.RequireScope(roles.WLClient), svc.UpdateFeatureFlag)
 			admin.DELETE("/feature-flags/:id", middleware.RequireScope(roles.WLClient), svc.DeleteFeatureFlag)
+			admin.GET("/feature-flags/:name/check", svc.CheckFeatureFlag)
 
 			admin.GET("/ip-whitelist", middleware.RequireScope(roles.SecurityAdmin), svc.ListIPWhitelist)
 			admin.POST("/ip-whitelist", middleware.RequireScope(roles.SecurityAdmin), svc.AddIPWhitelist)

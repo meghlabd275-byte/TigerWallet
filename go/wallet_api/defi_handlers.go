@@ -79,6 +79,9 @@ func coinGeckoIDForSymbol(sym string) string {
 // which are not available without a DEX router integration — reporting 0 is an
 // honest "indicative" signal, not a fabricated number.
 func handleSwapQuote(c *gin.Context) {
+	if !enforceFeature(c, FeatureSwapTrading) {
+		return
+	}
 	// Accept both param conventions: react sends from/to/amount; the other
 	// clients (web/desktop/android/ios) send from_token/to_token/from_amount.
 	fromToken := firstNonEmpty(c.Query("from"), c.Query("from_token"))
@@ -150,6 +153,9 @@ func handleSwapQuote(c *gin.Context) {
 //     getAmountsOut + swapExactTokensForTokens calldata). If no router is
 //     configured for the chain, it returns an honest 404 (no fabrication).
 func handleSwapExecute(c *gin.Context) {
+	if !enforceFeature(c, FeatureSwapTrading) {
+		return
+	}
 	var req struct {
 		From      string `json:"from"`
 		FromToken string `json:"from_token"`
@@ -289,6 +295,9 @@ type stakingAsset struct {
 // (indicative) until a live staking contract / oracle is wired — never a
 // fabricated yield number.
 func handleStakingQuote(c *gin.Context) {
+	if !enforceFeature(c, FeatureStaking) {
+		return
+	}
 	assets := make([]stakingAsset, 0, len(SupportedChains))
 	for _, ch := range SupportedChains {
 		assets = append(assets, stakingAsset{
@@ -315,6 +324,9 @@ func handleStakingQuote(c *gin.Context) {
 // does not fabricate a transaction hash.
 func handleStakingAction(action string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if !enforceFeature(c, FeatureStaking) {
+			return
+		}
 		// Accept both client conventions: the full action form supplies
 		// staking_contract + call_data; the react client sends wallet_id +
 		// password + token + amount + chain_id (no contract/call_data).
