@@ -204,10 +204,10 @@ std::optional<Transaction> TransactionPool::getNext() {
     
     // Find highest gas price transaction
     size_t best_idx = 0;
-    uint64_t best_priority = pending_[0].priority.load();
+    uint64_t best_priority = pending_[0].priority;
     
     for (size_t i = 1; i < pending_.size(); i++) {
-        uint64_t p = pending_[i].priority.load();
+        uint64_t p = pending_[i].priority;
         if (p > best_priority) {
             best_priority = p;
             best_idx = i;

@@ -1,6 +1,5 @@
 //! TigerWallet Admin - Main Entry Point
 use anyhow::Result;
-use axum::Router;
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -19,7 +18,7 @@ async fn main() -> Result<()> {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    let app = api::router().layer(cors);
+    let app = tiger_admin::api::router().layer(cors);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3002));
     tracing::info!("Server listening on {}", addr);

@@ -4,7 +4,7 @@
  * Connected to Go Backend with PostgreSQL and Redis
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_WHITELABEL_ADMIN_API || 'http://localhost:9092';
+const API_BASE_URL = process.env.NEXT_PUBLIC_WHITELABEL_ADMIN_API || 'http://localhost:8082';
 
 class WhiteLabelAdminApiService {
   private baseURL: string;
@@ -333,6 +333,103 @@ class WhiteLabelAdminApiService {
   async disable2FA(code: string): Promise<void> {
     await this.request('/api/v1/admin/auth/2fa/disable', { method: 'POST', body: JSON.stringify({ code }) });
   }
+
+  // ==================== Domain backends (governance records; no fund movement) ====================
+  // Futures
+  async getFuturesPositions(): Promise<any> { return this.request('/api/v1/admin/futures'); }
+  async getFuturesPosition(id: string): Promise<any> { return this.request(`/api/v1/admin/futures/${id}`); }
+  async createFuturesPosition(data: any): Promise<any> { return this.request('/api/v1/admin/futures', { method: 'POST', body: JSON.stringify(data) }); }
+  async updateFuturesPosition(id: string, data: any): Promise<any> { return this.request(`/api/v1/admin/futures/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
+  async deleteFuturesPosition(id: string): Promise<void> { return this.request(`/api/v1/admin/futures/${id}`, { method: 'DELETE' }); }
+  async updateFuturesPositionStatus(id: string, status: string): Promise<any> { return this.request(`/api/v1/admin/futures/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }); }
+
+  // Options
+  async getOptionsContracts(): Promise<any> { return this.request('/api/v1/admin/options'); }
+  async getOptionsContract(id: string): Promise<any> { return this.request(`/api/v1/admin/options/${id}`); }
+  async createOptionsContract(data: any): Promise<any> { return this.request('/api/v1/admin/options', { method: 'POST', body: JSON.stringify(data) }); }
+  async updateOptionsContract(id: string, data: any): Promise<any> { return this.request(`/api/v1/admin/options/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
+  async deleteOptionsContract(id: string): Promise<void> { return this.request(`/api/v1/admin/options/${id}`, { method: 'DELETE' }); }
+  async updateOptionsContractStatus(id: string, status: string): Promise<any> { return this.request(`/api/v1/admin/options/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }); }
+
+  // Copy-trading
+  async getCopyTradingConfigs(): Promise<any> { return this.request('/api/v1/admin/copy-trading'); }
+  async getCopyTradingConfig(id: string): Promise<any> { return this.request(`/api/v1/admin/copy-trading/${id}`); }
+  async createCopyTradingConfig(data: any): Promise<any> { return this.request('/api/v1/admin/copy-trading', { method: 'POST', body: JSON.stringify(data) }); }
+  async updateCopyTradingConfig(id: string, data: any): Promise<any> { return this.request(`/api/v1/admin/copy-trading/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
+  async deleteCopyTradingConfig(id: string): Promise<void> { return this.request(`/api/v1/admin/copy-trading/${id}`, { method: 'DELETE' }); }
+  async updateCopyTradingConfigStatus(id: string, status: string): Promise<any> { return this.request(`/api/v1/admin/copy-trading/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }); }
+
+  // Convert
+  async getConvertOrders(): Promise<any> { return this.request('/api/v1/admin/convert'); }
+  async getConvertOrder(id: string): Promise<any> { return this.request(`/api/v1/admin/convert/${id}`); }
+  async createConvertOrder(data: any): Promise<any> { return this.request('/api/v1/admin/convert', { method: 'POST', body: JSON.stringify(data) }); }
+  async updateConvertOrder(id: string, data: any): Promise<any> { return this.request(`/api/v1/admin/convert/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
+  async deleteConvertOrder(id: string): Promise<void> { return this.request(`/api/v1/admin/convert/${id}`, { method: 'DELETE' }); }
+  async updateConvertOrderStatus(id: string, status: string): Promise<any> { return this.request(`/api/v1/admin/convert/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }); }
+
+  // Onramp (governance approve/reject; no fund movement)
+  async getOnrampOrders(): Promise<any> { return this.request('/api/v1/admin/onramp'); }
+  async getOnrampOrder(id: string): Promise<any> { return this.request(`/api/v1/admin/onramp/${id}`); }
+  async createOnrampOrder(data: any): Promise<any> { return this.request('/api/v1/admin/onramp', { method: 'POST', body: JSON.stringify(data) }); }
+  async updateOnrampOrder(id: string, data: any): Promise<any> { return this.request(`/api/v1/admin/onramp/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
+  async deleteOnrampOrder(id: string): Promise<void> { return this.request(`/api/v1/admin/onramp/${id}`, { method: 'DELETE' }); }
+  async approveOnrampOrder(id: string): Promise<any> { return this.request(`/api/v1/admin/onramp/${id}/approve`, { method: 'POST' }); }
+  async rejectOnrampOrder(id: string, reason: string): Promise<any> { return this.request(`/api/v1/admin/onramp/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }); }
+
+  // Offramp (governance approve/reject; no fund movement)
+  async getOfframpOrders(): Promise<any> { return this.request('/api/v1/admin/offramp'); }
+  async getOfframpOrder(id: string): Promise<any> { return this.request(`/api/v1/admin/offramp/${id}`); }
+  async createOfframpOrder(data: any): Promise<any> { return this.request('/api/v1/admin/offramp', { method: 'POST', body: JSON.stringify(data) }); }
+  async updateOfframpOrder(id: string, data: any): Promise<any> { return this.request(`/api/v1/admin/offramp/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
+  async deleteOfframpOrder(id: string): Promise<void> { return this.request(`/api/v1/admin/offramp/${id}`, { method: 'DELETE' }); }
+  async approveOfframpOrder(id: string): Promise<any> { return this.request(`/api/v1/admin/offramp/${id}/approve`, { method: 'POST' }); }
+  async rejectOfframpOrder(id: string, reason: string): Promise<any> { return this.request(`/api/v1/admin/offramp/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }); }
+
+  // P2P clients
+  async getP2PClients(): Promise<any> { return this.request('/api/v1/admin/p2p-clients'); }
+  async getP2PClient(id: string): Promise<any> { return this.request(`/api/v1/admin/p2p-clients/${id}`); }
+  async createP2PClient(data: any): Promise<any> { return this.request('/api/v1/admin/p2p-clients', { method: 'POST', body: JSON.stringify(data) }); }
+  async updateP2PClient(id: string, data: any): Promise<any> { return this.request(`/api/v1/admin/p2p-clients/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
+  async deleteP2PClient(id: string): Promise<void> { return this.request(`/api/v1/admin/p2p-clients/${id}`, { method: 'DELETE' }); }
+  async updateP2PClientStatus(id: string, status: string): Promise<any> { return this.request(`/api/v1/admin/p2p-clients/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }); }
+
+  // Partners (status + approve/reject governance)
+  async getPartners(): Promise<any> { return this.request('/api/v1/admin/partners'); }
+  async getPartner(id: string): Promise<any> { return this.request(`/api/v1/admin/partners/${id}`); }
+  async createPartner(data: any): Promise<any> { return this.request('/api/v1/admin/partners', { method: 'POST', body: JSON.stringify(data) }); }
+  async updatePartner(id: string, data: any): Promise<any> { return this.request(`/api/v1/admin/partners/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
+  async deletePartner(id: string): Promise<void> { return this.request(`/api/v1/admin/partners/${id}`, { method: 'DELETE' }); }
+  async updatePartnerStatus(id: string, status: string): Promise<any> { return this.request(`/api/v1/admin/partners/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }); }
+  async approvePartner(id: string): Promise<any> { return this.request(`/api/v1/admin/partners/${id}/approve`, { method: 'POST' }); }
+  async rejectPartner(id: string, reason: string): Promise<any> { return this.request(`/api/v1/admin/partners/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }); }
+
+  // Rewards
+  async getRewardCampaigns(): Promise<any> { return this.request('/api/v1/admin/rewards'); }
+  async getRewardCampaign(id: string): Promise<any> { return this.request(`/api/v1/admin/rewards/${id}`); }
+  async createRewardCampaign(data: any): Promise<any> { return this.request('/api/v1/admin/rewards', { method: 'POST', body: JSON.stringify(data) }); }
+  async updateRewardCampaign(id: string, data: any): Promise<any> { return this.request(`/api/v1/admin/rewards/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
+  async deleteRewardCampaign(id: string): Promise<void> { return this.request(`/api/v1/admin/rewards/${id}`, { method: 'DELETE' }); }
+  async updateRewardCampaignStatus(id: string, status: string): Promise<any> { return this.request(`/api/v1/admin/rewards/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }); }
+
+  // Marketing
+  async getMarketingCampaigns(): Promise<any> { return this.request('/api/v1/admin/marketing'); }
+  async getMarketingCampaign(id: string): Promise<any> { return this.request(`/api/v1/admin/marketing/${id}`); }
+  async createMarketingCampaign(data: any): Promise<any> { return this.request('/api/v1/admin/marketing', { method: 'POST', body: JSON.stringify(data) }); }
+  async updateMarketingCampaign(id: string, data: any): Promise<any> { return this.request(`/api/v1/admin/marketing/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
+  async deleteMarketingCampaign(id: string): Promise<void> { return this.request(`/api/v1/admin/marketing/${id}`, { method: 'DELETE' }); }
+  async updateMarketingCampaignStatus(id: string, status: string): Promise<any> { return this.request(`/api/v1/admin/marketing/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }); }
+
+  // ==================== Structured RBAC (integrates with scopes) ====================
+  async getAdminRoles(): Promise<any> { return this.request('/api/v1/admin/admin-roles'); }
+  async createAdminRole(data: { name: string; description?: string; permissions: string[] }): Promise<any> { return this.request('/api/v1/admin/admin-roles', { method: 'POST', body: JSON.stringify(data) }); }
+  async getAdminRole(id: string): Promise<any> { return this.request(`/api/v1/admin/admin-roles/${id}`); }
+  async updateAdminRole(id: string, data: any): Promise<any> { return this.request(`/api/v1/admin/admin-roles/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
+  async deleteAdminRole(id: string): Promise<void> { return this.request(`/api/v1/admin/admin-roles/${id}`, { method: 'DELETE' }); }
+  async getAdminPermissions(): Promise<any> { return this.request('/api/v1/admin/admin-permissions'); }
+  async createAdminPermission(data: { name: string; description?: string; category?: string }): Promise<any> { return this.request('/api/v1/admin/admin-permissions', { method: 'POST', body: JSON.stringify(data) }); }
+  async assignAdminRole(adminId: string, roleId: string): Promise<any> { return this.request(`/api/v1/admin/admins/${adminId}/role`, { method: 'POST', body: JSON.stringify({ role_id: roleId }) }); }
+  async revokeAdminRole(adminId: string, roleId: string): Promise<any> { return this.request(`/api/v1/admin/admins/${adminId}/role/${roleId}`, { method: 'DELETE' }); }
+  async getAdminEffectivePermissions(adminId: string): Promise<any> { return this.request(`/api/v1/admin/admins/${adminId}/permissions`); }
 
   // ==================== Health ====================
   async healthCheck(): Promise<boolean> {

@@ -254,3 +254,165 @@ pub struct PaginatedResponse<T> {
     pub page: i32,
     pub page_size: i32,
 }
+
+// ---------------------------------------------------------------------------
+// Domain governance models (white-label admin). These are governance/config
+// records only — no fund movement. All carry a `white_label_id` for tenant
+// isolation and a `status` field managed via dedicated approve/reject or
+// status endpoints.
+// ---------------------------------------------------------------------------
+
+/// Generic status-update body for /:id/status endpoints.
+#[derive(Debug, Deserialize)]
+pub struct StatusUpdate {
+    pub status: String,
+}
+
+/// Generic rejection body for /:id/reject endpoints (onramp also carries reason).
+#[derive(Debug, Deserialize)]
+pub struct RejectRequest {
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FuturesConfig {
+    pub id: Uuid,
+    pub white_label_id: Uuid,
+    pub symbol: String,
+    pub contract_type: String,
+    pub leverage_max: i32,
+    pub margin_currency: String,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OptionsConfig {
+    pub id: Uuid,
+    pub white_label_id: Uuid,
+    pub symbol: String,
+    pub option_type: String,
+    pub strike: String,
+    pub expiry: DateTime<Utc>,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CopyTradingConfig {
+    pub id: Uuid,
+    pub white_label_id: Uuid,
+    pub lead_trader_id: Uuid,
+    pub max_followers: i32,
+    pub fee_bps: i32,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConvertConfig {
+    pub id: Uuid,
+    pub white_label_id: Uuid,
+    pub from_currency: String,
+    pub to_currency: String,
+    pub spread_bps: i32,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OnrampOrder {
+    pub id: Uuid,
+    pub white_label_id: Uuid,
+    pub user_id: Uuid,
+    pub fiat_currency: String,
+    pub fiat_amount: String,
+    pub crypto_currency: String,
+    pub status: String,
+    pub reject_reason: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OfframpOrder {
+    pub id: Uuid,
+    pub white_label_id: Uuid,
+    pub user_id: Uuid,
+    pub crypto_currency: String,
+    pub crypto_amount: String,
+    pub fiat_currency: String,
+    pub status: String,
+    pub reject_reason: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct P2pClient {
+    pub id: Uuid,
+    pub white_label_id: Uuid,
+    pub user_id: Uuid,
+    pub display_name: String,
+    pub rating: f64,
+    pub total_trades: i64,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Partner {
+    pub id: Uuid,
+    pub white_label_id: Uuid,
+    pub name: String,
+    pub partner_type: String,
+    pub api_key_hint: String,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Reward {
+    pub id: Uuid,
+    pub white_label_id: Uuid,
+    pub name: String,
+    pub reward_type: String,
+    pub amount: String,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketingCampaign {
+    pub id: Uuid,
+    pub white_label_id: Uuid,
+    pub name: String,
+    pub channel: String,
+    pub budget: String,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+}
+
+// --- RBAC ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdminRole {
+    pub id: Uuid,
+    pub white_label_id: Uuid,
+    pub name: String,
+    pub scopes: Vec<String>,
+    pub is_system: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdminPermission {
+    pub id: Uuid,
+    pub scope: String,
+    pub description: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AssignRoleRequest {
+    pub role_id: Uuid,
+}
+

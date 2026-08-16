@@ -24,7 +24,7 @@ public class TigerWhiteLabelAdminApp extends Application {
     }
     
     public String getBaseURL() {
-        return "http://localhost:9092";
+        return "http://localhost:8082";
     }
     
     public boolean isDarkMode() {

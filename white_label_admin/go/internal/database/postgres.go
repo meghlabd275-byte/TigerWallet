@@ -103,6 +103,186 @@ func runMigrations(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_withdrawals_user_id ON withdrawals(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)`,
+		// ---- Trading admin domains (governance records; never move funds) ----
+		// Mirrors super_admin/go commit 0cb13d7 schema, plus white_label_id for
+		// per-WL-client tenant isolation (every row is scoped to one WL client).
+		`CREATE TABLE IF NOT EXISTS futures_positions (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID,
+			pair TEXT NOT NULL,
+			side TEXT NOT NULL,
+			size NUMERIC NOT NULL DEFAULT 0,
+			leverage NUMERIC NOT NULL DEFAULT 1,
+			entry_price NUMERIC NOT NULL DEFAULT 0,
+			liquidation_price NUMERIC NOT NULL DEFAULT 0,
+			margin NUMERIC NOT NULL DEFAULT 0,
+			status TEXT NOT NULL DEFAULT 'open',
+			chain_id BIGINT,
+			white_label_id UUID NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_futures_positions_white_label ON futures_positions(white_label_id)`,
+		`CREATE TABLE IF NOT EXISTS options_contracts (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID,
+			underlying TEXT NOT NULL,
+			option_type TEXT NOT NULL,
+			strike NUMERIC NOT NULL DEFAULT 0,
+			expiry TIMESTAMPTZ NOT NULL,
+			premium NUMERIC NOT NULL DEFAULT 0,
+			size NUMERIC NOT NULL DEFAULT 0,
+			status TEXT NOT NULL DEFAULT 'active',
+			chain_id BIGINT,
+			white_label_id UUID NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_options_contracts_white_label ON options_contracts(white_label_id)`,
+		`CREATE TABLE IF NOT EXISTS copy_trading_configs (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			follower_id UUID,
+			leader_id UUID,
+			allocation NUMERIC NOT NULL DEFAULT 0,
+			max_leverage NUMERIC NOT NULL DEFAULT 1,
+			status TEXT NOT NULL DEFAULT 'active',
+			white_label_id UUID NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_copy_trading_configs_white_label ON copy_trading_configs(white_label_id)`,
+		`CREATE TABLE IF NOT EXISTS convert_orders (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID,
+			from_token TEXT NOT NULL,
+			to_token TEXT NOT NULL,
+			from_amount NUMERIC NOT NULL DEFAULT 0,
+			to_amount NUMERIC NOT NULL DEFAULT 0,
+			rate NUMERIC NOT NULL DEFAULT 0,
+			status TEXT NOT NULL DEFAULT 'pending',
+			chain_id BIGINT,
+			white_label_id UUID NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_convert_orders_white_label ON convert_orders(white_label_id)`,
+		`CREATE TABLE IF NOT EXISTS onramp_orders (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID,
+			provider TEXT NOT NULL,
+			fiat_currency TEXT NOT NULL,
+			crypto_token TEXT NOT NULL,
+			fiat_amount NUMERIC NOT NULL DEFAULT 0,
+			crypto_amount NUMERIC NOT NULL DEFAULT 0,
+			status TEXT NOT NULL DEFAULT 'pending',
+			payment_ref TEXT,
+			white_label_id UUID NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_onramp_orders_white_label ON onramp_orders(white_label_id)`,
+		`CREATE TABLE IF NOT EXISTS offramp_orders (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID,
+			provider TEXT NOT NULL,
+			crypto_token TEXT NOT NULL,
+			fiat_currency TEXT NOT NULL,
+			crypto_amount NUMERIC NOT NULL DEFAULT 0,
+			fiat_amount NUMERIC NOT NULL DEFAULT 0,
+			status TEXT NOT NULL DEFAULT 'pending',
+			payout_ref TEXT,
+			white_label_id UUID NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_offramp_orders_white_label ON offramp_orders(white_label_id)`,
+		`CREATE TABLE IF NOT EXISTS p2p_clients (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID,
+			username TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'active',
+			rating NUMERIC DEFAULT 0,
+			trades_count INT DEFAULT 0,
+			white_label_id UUID NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_p2p_clients_white_label ON p2p_clients(white_label_id)`,
+		`CREATE TABLE IF NOT EXISTS partners (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name TEXT NOT NULL,
+			contact_email TEXT,
+			api_key TEXT UNIQUE,
+			status TEXT NOT NULL DEFAULT 'pending',
+			revenue_share NUMERIC DEFAULT 0,
+			white_label_id UUID NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_partners_white_label ON partners(white_label_id)`,
+		`CREATE TABLE IF NOT EXISTS reward_campaigns (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name TEXT NOT NULL,
+			reward_type TEXT NOT NULL,
+			amount NUMERIC NOT NULL DEFAULT 0,
+			token TEXT,
+			status TEXT NOT NULL DEFAULT 'active',
+			start_at TIMESTAMPTZ,
+			end_at TIMESTAMPTZ,
+			white_label_id UUID NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_reward_campaigns_white_label ON reward_campaigns(white_label_id)`,
+		`CREATE TABLE IF NOT EXISTS marketing_campaigns (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name TEXT NOT NULL,
+			channel TEXT NOT NULL,
+			budget NUMERIC NOT NULL DEFAULT 0,
+			status TEXT NOT NULL DEFAULT 'draft',
+			start_at TIMESTAMPTZ,
+			end_at TIMESTAMPTZ,
+			white_label_id UUID NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_marketing_campaigns_white_label ON marketing_campaigns(white_label_id)`,
+		// ---- Structured RBAC: custom admin roles + granular permissions ----
+		// admin_roles.permissions is a TEXT[] of scope strings from the existing
+		// roles whitelist (roles.IsValid). Assigning a role merges its scopes
+		// into admin_users.scopes so RequireScope (which reads JWT scopes issued
+		// at login from admin_users.scopes) keeps working unchanged.
+		`CREATE TABLE IF NOT EXISTS admin_roles (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name TEXT UNIQUE NOT NULL,
+			description TEXT,
+			permissions TEXT[] NOT NULL DEFAULT '{}',
+			is_system BOOLEAN DEFAULT FALSE,
+			is_active BOOLEAN DEFAULT TRUE,
+			white_label_id UUID NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_admin_roles_white_label ON admin_roles(white_label_id)`,
+		`CREATE TABLE IF NOT EXISTS admin_role_assignments (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			admin_id UUID NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+			role_id UUID NOT NULL REFERENCES admin_roles(id) ON DELETE CASCADE,
+			granted_by UUID REFERENCES admin_users(id),
+			granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE (admin_id, role_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_admin_role_assignments_admin ON admin_role_assignments(admin_id)`,
+		`CREATE TABLE IF NOT EXISTS admin_permissions (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name TEXT UNIQUE NOT NULL,
+			description TEXT,
+			category TEXT NOT NULL DEFAULT 'general',
+			is_active BOOLEAN DEFAULT TRUE,
+			white_label_id UUID NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_admin_permissions_white_label ON admin_permissions(white_label_id)`,
 	}
 
 	for _, migration := range migrations {

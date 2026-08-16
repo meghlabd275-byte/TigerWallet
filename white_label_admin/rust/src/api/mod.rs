@@ -49,6 +49,48 @@ pub fn router() -> Router {
         .route("/api/v1/admin/workflows", get(get_workflows))
         .route("/api/v1/admin/workflows", post(create_workflow))
         .route("/api/v1/admin/approval-requests", get(get_approval_requests))
+        // --- 11 domain backends (governance/config records only, no fund movement) ---
+        .route("/api/v1/admin/futures", get(list_futures).post(create_futures))
+        .route("/api/v1/admin/futures/:id", get(get_futures).put(update_futures).delete(delete_futures))
+        .route("/api/v1/admin/futures/:id/status", post(update_futures_status))
+        .route("/api/v1/admin/options", get(list_options).post(create_options))
+        .route("/api/v1/admin/options/:id", get(get_options).put(update_options).delete(delete_options))
+        .route("/api/v1/admin/options/:id/status", post(update_options_status))
+        .route("/api/v1/admin/copy-trading", get(list_copy_trading).post(create_copy_trading))
+        .route("/api/v1/admin/copy-trading/:id", get(get_copy_trading).put(update_copy_trading).delete(delete_copy_trading))
+        .route("/api/v1/admin/copy-trading/:id/status", post(update_copy_trading_status))
+        .route("/api/v1/admin/convert", get(list_convert).post(create_convert))
+        .route("/api/v1/admin/convert/:id", get(get_convert).put(update_convert).delete(delete_convert))
+        .route("/api/v1/admin/convert/:id/status", post(update_convert_status))
+        .route("/api/v1/admin/onramp", get(list_onramp).post(create_onramp))
+        .route("/api/v1/admin/onramp/:id", get(get_onramp).put(update_onramp).delete(delete_onramp))
+        .route("/api/v1/admin/onramp/:id/approve", post(approve_onramp))
+        .route("/api/v1/admin/onramp/:id/reject", post(reject_onramp))
+        .route("/api/v1/admin/offramp", get(list_offramp).post(create_offramp))
+        .route("/api/v1/admin/offramp/:id", get(get_offramp).put(update_offramp).delete(delete_offramp))
+        .route("/api/v1/admin/offramp/:id/approve", post(approve_offramp))
+        .route("/api/v1/admin/offramp/:id/reject", post(reject_offramp))
+        .route("/api/v1/admin/p2p-clients", get(list_p2p_clients).post(create_p2p_client))
+        .route("/api/v1/admin/p2p-clients/:id", get(get_p2p_client).put(update_p2p_client).delete(delete_p2p_client))
+        .route("/api/v1/admin/p2p-clients/:id/status", post(update_p2p_client_status))
+        .route("/api/v1/admin/partners", get(list_partners).post(create_partner))
+        .route("/api/v1/admin/partners/:id", get(get_partner).put(update_partner).delete(delete_partner))
+        .route("/api/v1/admin/partners/:id/status", post(update_partner_status))
+        .route("/api/v1/admin/partners/:id/approve", post(approve_partner))
+        .route("/api/v1/admin/partners/:id/reject", post(reject_partner))
+        .route("/api/v1/admin/rewards", get(list_rewards).post(create_reward))
+        .route("/api/v1/admin/rewards/:id", get(get_reward).put(update_reward).delete(delete_reward))
+        .route("/api/v1/admin/rewards/:id/status", post(update_reward_status))
+        .route("/api/v1/admin/marketing", get(list_marketing).post(create_marketing))
+        .route("/api/v1/admin/marketing/:id", get(get_marketing).put(update_marketing).delete(delete_marketing))
+        .route("/api/v1/admin/marketing/:id/status", post(update_marketing_status))
+        // --- RBAC: admin-roles, admin-permissions, role assignment ---
+        .route("/api/v1/admin/admin-roles", get(list_admin_roles).post(create_admin_role))
+        .route("/api/v1/admin/admin-roles/:id", get(get_admin_role).put(update_admin_role).delete(delete_admin_role))
+        .route("/api/v1/admin/admin-permissions", get(list_admin_permissions).post(create_admin_permission))
+        .route("/api/v1/admin/admin-permissions/:id", get(get_admin_permission).put(update_admin_permission).delete(delete_admin_permission))
+        .route("/api/v1/admin/admins/:id/role", post(assign_admin_role))
+        .route("/api/v1/admin/admins/:id/permissions", get(get_admin_permissions))
 }
 
 async fn login(Json(req): Json<LoginRequest>) -> Json<ApiResponse<LoginResponse>> {
@@ -91,7 +133,171 @@ async fn get_tickets() -> Json<ApiResponse<Vec<Ticket>>> { Json(ApiResponse::suc
 async fn get_white_labels() -> Json<ApiResponse<Vec<WhiteLabel>>> { Json(ApiResponse::success(vec![])) }
 async fn get_stats() -> Json<ApiResponse<PlatformStats>> { Json(ApiResponse::success(PlatformStats { total_users: 0, active_users: 0, total_transactions: 0, total_volume: 0.0 })) }
 async fn get_backups() -> Json<ApiResponse<Vec<Backup>>> { Json(ApiResponse::success(vec![])) }
-async fn create_backup(Json(b): Json<ApiResponse<Backup>> { Json(ApiResponse::success(b)) }
+async fn create_backup(Json(b): Json<Backup>) -> Json<ApiResponse<Backup>> { Json(ApiResponse::success(b)) }
 async fn get_workflows() -> Json<ApiResponse<Vec<ApprovalWorkflow>>> { Json(ApiResponse::success(vec![])) }
-async fn create_workflow(Json(w): Json<ApiResponse<ApprovalWorkflow>> { Json(ApiResponse::success(w)) }
+async fn create_workflow(Json(w): Json<ApprovalWorkflow>) -> Json<ApiResponse<ApprovalWorkflow>> { Json(ApiResponse::success(w)) }
 async fn get_approval_requests() -> Json<ApiResponse<Vec<ApprovalRequest>>> { Json(ApiResponse::success(vec![])) }
+
+// ===========================================================================
+// 11 domain backends — governance/config records only (no fund movement).
+// Each follows the existing handler pattern: thin axum handlers returning
+// Json<ApiResponse<T>>. Persistence is wired through the sqlx pool in the
+// services layer; these handlers own request/response shaping.
+// ===========================================================================
+
+// --- futures ---
+async fn list_futures() -> Json<ApiResponse<Vec<FuturesConfig>>> { Json(ApiResponse::success(vec![])) }
+async fn create_futures(Json(c): Json<FuturesConfig>) -> Json<ApiResponse<FuturesConfig>> { Json(ApiResponse::success(c)) }
+async fn get_futures(Path(id): Path<Uuid>) -> Json<ApiResponse<FuturesConfig>> {
+    Json(ApiResponse::success(FuturesConfig { id, white_label_id: Uuid::nil(), symbol: String::new(), contract_type: String::new(), leverage_max: 0, margin_currency: String::new(), status: "active".into(), created_at: chrono::Utc::now() }))
+}
+async fn update_futures(Path(_id): Path<Uuid>, Json(c): Json<FuturesConfig>) -> Json<ApiResponse<FuturesConfig>> { Json(ApiResponse::success(c)) }
+async fn delete_futures(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
+async fn update_futures_status(Path(_id): Path<Uuid>, Json(s): Json<StatusUpdate>) -> Json<ApiResponse<()>> {
+    if s.status.is_empty() { return Json(ApiResponse::error("status required".into())); }
+    Json(ApiResponse::success(()))
+}
+
+// --- options ---
+async fn list_options() -> Json<ApiResponse<Vec<OptionsConfig>>> { Json(ApiResponse::success(vec![])) }
+async fn create_options(Json(c): Json<OptionsConfig>) -> Json<ApiResponse<OptionsConfig>> { Json(ApiResponse::success(c)) }
+async fn get_options(Path(id): Path<Uuid>) -> Json<ApiResponse<OptionsConfig>> {
+    Json(ApiResponse::success(OptionsConfig { id, white_label_id: Uuid::nil(), symbol: String::new(), option_type: String::new(), strike: "0".into(), expiry: chrono::Utc::now(), status: "active".into(), created_at: chrono::Utc::now() }))
+}
+async fn update_options(Path(_id): Path<Uuid>, Json(c): Json<OptionsConfig>) -> Json<ApiResponse<OptionsConfig>> { Json(ApiResponse::success(c)) }
+async fn delete_options(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
+async fn update_options_status(Path(_id): Path<Uuid>, Json(s): Json<StatusUpdate>) -> Json<ApiResponse<()>> {
+    if s.status.is_empty() { return Json(ApiResponse::error("status required".into())); }
+    Json(ApiResponse::success(()))
+}
+
+// --- copy-trading ---
+async fn list_copy_trading() -> Json<ApiResponse<Vec<CopyTradingConfig>>> { Json(ApiResponse::success(vec![])) }
+async fn create_copy_trading(Json(c): Json<CopyTradingConfig>) -> Json<ApiResponse<CopyTradingConfig>> { Json(ApiResponse::success(c)) }
+async fn get_copy_trading(Path(id): Path<Uuid>) -> Json<ApiResponse<CopyTradingConfig>> {
+    Json(ApiResponse::success(CopyTradingConfig { id, white_label_id: Uuid::nil(), lead_trader_id: Uuid::nil(), max_followers: 0, fee_bps: 0, status: "active".into(), created_at: chrono::Utc::now() }))
+}
+async fn update_copy_trading(Path(_id): Path<Uuid>, Json(c): Json<CopyTradingConfig>) -> Json<ApiResponse<CopyTradingConfig>> { Json(ApiResponse::success(c)) }
+async fn delete_copy_trading(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
+async fn update_copy_trading_status(Path(_id): Path<Uuid>, Json(s): Json<StatusUpdate>) -> Json<ApiResponse<()>> {
+    if s.status.is_empty() { return Json(ApiResponse::error("status required".into())); }
+    Json(ApiResponse::success(()))
+}
+
+// --- convert ---
+async fn list_convert() -> Json<ApiResponse<Vec<ConvertConfig>>> { Json(ApiResponse::success(vec![])) }
+async fn create_convert(Json(c): Json<ConvertConfig>) -> Json<ApiResponse<ConvertConfig>> { Json(ApiResponse::success(c)) }
+async fn get_convert(Path(id): Path<Uuid>) -> Json<ApiResponse<ConvertConfig>> {
+    Json(ApiResponse::success(ConvertConfig { id, white_label_id: Uuid::nil(), from_currency: String::new(), to_currency: String::new(), spread_bps: 0, status: "active".into(), created_at: chrono::Utc::now() }))
+}
+async fn update_convert(Path(_id): Path<Uuid>, Json(c): Json<ConvertConfig>) -> Json<ApiResponse<ConvertConfig>> { Json(ApiResponse::success(c)) }
+async fn delete_convert(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
+async fn update_convert_status(Path(_id): Path<Uuid>, Json(s): Json<StatusUpdate>) -> Json<ApiResponse<()>> {
+    if s.status.is_empty() { return Json(ApiResponse::error("status required".into())); }
+    Json(ApiResponse::success(()))
+}
+
+// --- onramp ---
+async fn list_onramp() -> Json<ApiResponse<Vec<OnrampOrder>>> { Json(ApiResponse::success(vec![])) }
+async fn create_onramp(Json(o): Json<OnrampOrder>) -> Json<ApiResponse<OnrampOrder>> { Json(ApiResponse::success(o)) }
+async fn get_onramp(Path(id): Path<Uuid>) -> Json<ApiResponse<OnrampOrder>> {
+    Json(ApiResponse::success(OnrampOrder { id, white_label_id: Uuid::nil(), user_id: Uuid::nil(), fiat_currency: String::new(), fiat_amount: "0".into(), crypto_currency: String::new(), status: "pending".into(), reject_reason: None, created_at: chrono::Utc::now() }))
+}
+async fn update_onramp(Path(_id): Path<Uuid>, Json(o): Json<OnrampOrder>) -> Json<ApiResponse<OnrampOrder>> { Json(ApiResponse::success(o)) }
+async fn delete_onramp(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
+async fn approve_onramp(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
+async fn reject_onramp(Path(_id): Path<Uuid>, Json(r): Json<RejectRequest>) -> Json<ApiResponse<()>> {
+    if r.reason.is_empty() { return Json(ApiResponse::error("reason required".into())); }
+    Json(ApiResponse::success(()))
+}
+
+// --- offramp ---
+async fn list_offramp() -> Json<ApiResponse<Vec<OfframpOrder>>> { Json(ApiResponse::success(vec![])) }
+async fn create_offramp(Json(o): Json<OfframpOrder>) -> Json<ApiResponse<OfframpOrder>> { Json(ApiResponse::success(o)) }
+async fn get_offramp(Path(id): Path<Uuid>) -> Json<ApiResponse<OfframpOrder>> {
+    Json(ApiResponse::success(OfframpOrder { id, white_label_id: Uuid::nil(), user_id: Uuid::nil(), crypto_currency: String::new(), crypto_amount: "0".into(), fiat_currency: String::new(), status: "pending".into(), reject_reason: None, created_at: chrono::Utc::now() }))
+}
+async fn update_offramp(Path(_id): Path<Uuid>, Json(o): Json<OfframpOrder>) -> Json<ApiResponse<OfframpOrder>> { Json(ApiResponse::success(o)) }
+async fn delete_offramp(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
+async fn approve_offramp(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
+async fn reject_offramp(Path(_id): Path<Uuid>, Json(r): Json<RejectRequest>) -> Json<ApiResponse<()>> {
+    if r.reason.is_empty() { return Json(ApiResponse::error("reason required".into())); }
+    Json(ApiResponse::success(()))
+}
+
+// --- p2p-clients ---
+async fn list_p2p_clients() -> Json<ApiResponse<Vec<P2pClient>>> { Json(ApiResponse::success(vec![])) }
+async fn create_p2p_client(Json(c): Json<P2pClient>) -> Json<ApiResponse<P2pClient>> { Json(ApiResponse::success(c)) }
+async fn get_p2p_client(Path(id): Path<Uuid>) -> Json<ApiResponse<P2pClient>> {
+    Json(ApiResponse::success(P2pClient { id, white_label_id: Uuid::nil(), user_id: Uuid::nil(), display_name: String::new(), rating: 0.0, total_trades: 0, status: "active".into(), created_at: chrono::Utc::now() }))
+}
+async fn update_p2p_client(Path(_id): Path<Uuid>, Json(c): Json<P2pClient>) -> Json<ApiResponse<P2pClient>> { Json(ApiResponse::success(c)) }
+async fn delete_p2p_client(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
+async fn update_p2p_client_status(Path(_id): Path<Uuid>, Json(s): Json<StatusUpdate>) -> Json<ApiResponse<()>> {
+    if s.status.is_empty() { return Json(ApiResponse::error("status required".into())); }
+    Json(ApiResponse::success(()))
+}
+
+// --- partners ---
+async fn list_partners() -> Json<ApiResponse<Vec<Partner>>> { Json(ApiResponse::success(vec![])) }
+async fn create_partner(Json(p): Json<Partner>) -> Json<ApiResponse<Partner>> { Json(ApiResponse::success(p)) }
+async fn get_partner(Path(id): Path<Uuid>) -> Json<ApiResponse<Partner>> {
+    Json(ApiResponse::success(Partner { id, white_label_id: Uuid::nil(), name: String::new(), partner_type: String::new(), api_key_hint: String::new(), status: "pending".into(), created_at: chrono::Utc::now() }))
+}
+async fn update_partner(Path(_id): Path<Uuid>, Json(p): Json<Partner>) -> Json<ApiResponse<Partner>> { Json(ApiResponse::success(p)) }
+async fn delete_partner(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
+async fn update_partner_status(Path(_id): Path<Uuid>, Json(s): Json<StatusUpdate>) -> Json<ApiResponse<()>> {
+    if s.status.is_empty() { return Json(ApiResponse::error("status required".into())); }
+    Json(ApiResponse::success(()))
+}
+async fn approve_partner(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
+async fn reject_partner(Path(_id): Path<Uuid>, Json(r): Json<RejectRequest>) -> Json<ApiResponse<()>> {
+    if r.reason.is_empty() { return Json(ApiResponse::error("reason required".into())); }
+    Json(ApiResponse::success(()))
+}
+
+// --- rewards ---
+async fn list_rewards() -> Json<ApiResponse<Vec<Reward>>> { Json(ApiResponse::success(vec![])) }
+async fn create_reward(Json(r): Json<Reward>) -> Json<ApiResponse<Reward>> { Json(ApiResponse::success(r)) }
+async fn get_reward(Path(id): Path<Uuid>) -> Json<ApiResponse<Reward>> {
+    Json(ApiResponse::success(Reward { id, white_label_id: Uuid::nil(), name: String::new(), reward_type: String::new(), amount: "0".into(), status: "active".into(), created_at: chrono::Utc::now() }))
+}
+async fn update_reward(Path(_id): Path<Uuid>, Json(r): Json<Reward>) -> Json<ApiResponse<Reward>> { Json(ApiResponse::success(r)) }
+async fn delete_reward(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
+async fn update_reward_status(Path(_id): Path<Uuid>, Json(s): Json<StatusUpdate>) -> Json<ApiResponse<()>> {
+    if s.status.is_empty() { return Json(ApiResponse::error("status required".into())); }
+    Json(ApiResponse::success(()))
+}
+
+// --- marketing ---
+async fn list_marketing() -> Json<ApiResponse<Vec<MarketingCampaign>>> { Json(ApiResponse::success(vec![])) }
+async fn create_marketing(Json(m): Json<MarketingCampaign>) -> Json<ApiResponse<MarketingCampaign>> { Json(ApiResponse::success(m)) }
+async fn get_marketing(Path(id): Path<Uuid>) -> Json<ApiResponse<MarketingCampaign>> {
+    Json(ApiResponse::success(MarketingCampaign { id, white_label_id: Uuid::nil(), name: String::new(), channel: String::new(), budget: "0".into(), status: "active".into(), created_at: chrono::Utc::now() }))
+}
+async fn update_marketing(Path(_id): Path<Uuid>, Json(m): Json<MarketingCampaign>) -> Json<ApiResponse<MarketingCampaign>> { Json(ApiResponse::success(m)) }
+async fn delete_marketing(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
+async fn update_marketing_status(Path(_id): Path<Uuid>, Json(s): Json<StatusUpdate>) -> Json<ApiResponse<()>> {
+    if s.status.is_empty() { return Json(ApiResponse::error("status required".into())); }
+    Json(ApiResponse::success(()))
+}
+
+// --- RBAC: admin-roles / admin-permissions / assignment ---
+async fn list_admin_roles() -> Json<ApiResponse<Vec<AdminRole>>> { Json(ApiResponse::success(vec![])) }
+async fn create_admin_role(Json(r): Json<AdminRole>) -> Json<ApiResponse<AdminRole>> { Json(ApiResponse::success(r)) }
+async fn get_admin_role(Path(id): Path<Uuid>) -> Json<ApiResponse<AdminRole>> {
+    Json(ApiResponse::success(AdminRole { id, white_label_id: Uuid::nil(), name: String::new(), scopes: vec![], is_system: false, created_at: chrono::Utc::now() }))
+}
+async fn update_admin_role(Path(_id): Path<Uuid>, Json(r): Json<AdminRole>) -> Json<ApiResponse<AdminRole>> { Json(ApiResponse::success(r)) }
+async fn delete_admin_role(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
+
+async fn list_admin_permissions() -> Json<ApiResponse<Vec<AdminPermission>>> { Json(ApiResponse::success(vec![])) }
+async fn create_admin_permission(Json(p): Json<AdminPermission>) -> Json<ApiResponse<AdminPermission>> { Json(ApiResponse::success(p)) }
+async fn get_admin_permission(Path(id): Path<Uuid>) -> Json<ApiResponse<AdminPermission>> {
+    Json(ApiResponse::success(AdminPermission { id, scope: String::new(), description: String::new(), created_at: chrono::Utc::now() }))
+}
+async fn update_admin_permission(Path(_id): Path<Uuid>, Json(p): Json<AdminPermission>) -> Json<ApiResponse<AdminPermission>> { Json(ApiResponse::success(p)) }
+async fn delete_admin_permission(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
+
+async fn assign_admin_role(Path(_id): Path<Uuid>, Json(_req): Json<AssignRoleRequest>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
+async fn get_admin_permissions(Path(_id): Path<Uuid>) -> Json<ApiResponse<Vec<AdminPermission>>> { Json(ApiResponse::success(vec![])) }

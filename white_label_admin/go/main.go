@@ -150,6 +150,106 @@ func main() {
 			admin.POST("/tickets/:id/messages", middleware.RequireScope(roles.CustomerServiceAdmin), svc.AddTicketMessage)
 			admin.PUT("/tickets/:id/assign", middleware.RequireScope(roles.CustomerServiceAdmin), svc.AssignTicket)
 
+			// ---- Trading admin domains (governance records; no fund movement) ----
+			// Futures positions
+			admin.GET("/futures", middleware.RequireScope(roles.TradingAdmin), svc.ListFuturesPositions)
+			admin.GET("/futures/:id", middleware.RequireScope(roles.TradingAdmin), svc.GetFuturesPosition)
+			admin.POST("/futures", middleware.RequireScope(roles.TradingAdmin), svc.CreateFuturesPosition)
+			admin.PUT("/futures/:id", middleware.RequireScope(roles.TradingAdmin), svc.UpdateFuturesPosition)
+			admin.DELETE("/futures/:id", middleware.RequireScope(roles.TradingAdmin), svc.DeleteFuturesPosition)
+			admin.PUT("/futures/:id/status", middleware.RequireScope(roles.TradingAdmin), svc.UpdateFuturesPositionStatus)
+
+			// Options contracts
+			admin.GET("/options", middleware.RequireScope(roles.TradingAdmin), svc.ListOptionsContracts)
+			admin.GET("/options/:id", middleware.RequireScope(roles.TradingAdmin), svc.GetOptionsContract)
+			admin.POST("/options", middleware.RequireScope(roles.TradingAdmin), svc.CreateOptionsContract)
+			admin.PUT("/options/:id", middleware.RequireScope(roles.TradingAdmin), svc.UpdateOptionsContract)
+			admin.DELETE("/options/:id", middleware.RequireScope(roles.TradingAdmin), svc.DeleteOptionsContract)
+			admin.PUT("/options/:id/status", middleware.RequireScope(roles.TradingAdmin), svc.UpdateOptionsContractStatus)
+
+			// Copy-trading configs
+			admin.GET("/copy-trading", middleware.RequireScope(roles.TradingAdmin), svc.ListCopyTradingConfigs)
+			admin.GET("/copy-trading/:id", middleware.RequireScope(roles.TradingAdmin), svc.GetCopyTradingConfig)
+			admin.POST("/copy-trading", middleware.RequireScope(roles.TradingAdmin), svc.CreateCopyTradingConfig)
+			admin.PUT("/copy-trading/:id", middleware.RequireScope(roles.TradingAdmin), svc.UpdateCopyTradingConfig)
+			admin.DELETE("/copy-trading/:id", middleware.RequireScope(roles.TradingAdmin), svc.DeleteCopyTradingConfig)
+			admin.PUT("/copy-trading/:id/status", middleware.RequireScope(roles.TradingAdmin), svc.UpdateCopyTradingConfigStatus)
+
+			// Convert orders
+			admin.GET("/convert", middleware.RequireScope(roles.TradingAdmin), svc.ListConvertOrders)
+			admin.GET("/convert/:id", middleware.RequireScope(roles.TradingAdmin), svc.GetConvertOrder)
+			admin.POST("/convert", middleware.RequireScope(roles.TradingAdmin), svc.CreateConvertOrder)
+			admin.PUT("/convert/:id", middleware.RequireScope(roles.TradingAdmin), svc.UpdateConvertOrder)
+			admin.DELETE("/convert/:id", middleware.RequireScope(roles.TradingAdmin), svc.DeleteConvertOrder)
+			admin.PUT("/convert/:id/status", middleware.RequireScope(roles.TradingAdmin), svc.UpdateConvertOrderStatus)
+
+			// Onramp orders (approve/reject governance; no fund movement)
+			admin.GET("/onramp", middleware.RequireScope(roles.P2PAdmin), svc.ListOnrampOrders)
+			admin.GET("/onramp/:id", middleware.RequireScope(roles.P2PAdmin), svc.GetOnrampOrder)
+			admin.POST("/onramp", middleware.RequireScope(roles.P2PAdmin), svc.CreateOnrampOrder)
+			admin.PUT("/onramp/:id", middleware.RequireScope(roles.P2PAdmin), svc.UpdateOnrampOrder)
+			admin.DELETE("/onramp/:id", middleware.RequireScope(roles.P2PAdmin), svc.DeleteOnrampOrder)
+			admin.POST("/onramp/:id/approve", middleware.RequireScope(roles.P2PAdmin), svc.ApproveOnrampOrder)
+			admin.POST("/onramp/:id/reject", middleware.RequireScope(roles.P2PAdmin), svc.RejectOnrampOrder)
+
+			// Offramp orders (approve/reject governance; no fund movement)
+			admin.GET("/offramp", middleware.RequireScope(roles.P2PAdmin), svc.ListOfframpOrders)
+			admin.GET("/offramp/:id", middleware.RequireScope(roles.P2PAdmin), svc.GetOfframpOrder)
+			admin.POST("/offramp", middleware.RequireScope(roles.P2PAdmin), svc.CreateOfframpOrder)
+			admin.PUT("/offramp/:id", middleware.RequireScope(roles.P2PAdmin), svc.UpdateOfframpOrder)
+			admin.DELETE("/offramp/:id", middleware.RequireScope(roles.P2PAdmin), svc.DeleteOfframpOrder)
+			admin.POST("/offramp/:id/approve", middleware.RequireScope(roles.P2PAdmin), svc.ApproveOfframpOrder)
+			admin.POST("/offramp/:id/reject", middleware.RequireScope(roles.P2PAdmin), svc.RejectOfframpOrder)
+
+			// P2P clients
+			admin.GET("/p2p-clients", middleware.RequireScope(roles.P2PAdmin), svc.ListP2PClients)
+			admin.GET("/p2p-clients/:id", middleware.RequireScope(roles.P2PAdmin), svc.GetP2PClient)
+			admin.POST("/p2p-clients", middleware.RequireScope(roles.P2PAdmin), svc.CreateP2PClient)
+			admin.PUT("/p2p-clients/:id", middleware.RequireScope(roles.P2PAdmin), svc.UpdateP2PClient)
+			admin.DELETE("/p2p-clients/:id", middleware.RequireScope(roles.P2PAdmin), svc.DeleteP2PClient)
+			admin.PUT("/p2p-clients/:id/status", middleware.RequireScope(roles.P2PAdmin), svc.UpdateP2PClientStatus)
+
+			// Partners (status + approve/reject governance)
+			admin.GET("/partners", middleware.RequireScope(roles.ListingAdmin), svc.ListPartners)
+			admin.GET("/partners/:id", middleware.RequireScope(roles.ListingAdmin), svc.GetPartner)
+			admin.POST("/partners", middleware.RequireScope(roles.ListingAdmin), svc.CreatePartner)
+			admin.PUT("/partners/:id", middleware.RequireScope(roles.ListingAdmin), svc.UpdatePartner)
+			admin.DELETE("/partners/:id", middleware.RequireScope(roles.ListingAdmin), svc.DeletePartner)
+			admin.PUT("/partners/:id/status", middleware.RequireScope(roles.ListingAdmin), svc.UpdatePartnerStatus)
+			admin.POST("/partners/:id/approve", middleware.RequireScope(roles.ListingAdmin), svc.ApprovePartner)
+			admin.POST("/partners/:id/reject", middleware.RequireScope(roles.ListingAdmin), svc.RejectPartner)
+
+			// Reward campaigns
+			admin.GET("/rewards", middleware.RequireScope(roles.RewardAdmin), svc.ListRewardCampaigns)
+			admin.GET("/rewards/:id", middleware.RequireScope(roles.RewardAdmin), svc.GetRewardCampaign)
+			admin.POST("/rewards", middleware.RequireScope(roles.RewardAdmin), svc.CreateRewardCampaign)
+			admin.PUT("/rewards/:id", middleware.RequireScope(roles.RewardAdmin), svc.UpdateRewardCampaign)
+			admin.DELETE("/rewards/:id", middleware.RequireScope(roles.RewardAdmin), svc.DeleteRewardCampaign)
+			admin.PUT("/rewards/:id/status", middleware.RequireScope(roles.RewardAdmin), svc.UpdateRewardCampaignStatus)
+
+			// Marketing campaigns
+			admin.GET("/marketing", middleware.RequireScope(roles.MarketingAdmin), svc.ListMarketingCampaigns)
+			admin.GET("/marketing/:id", middleware.RequireScope(roles.MarketingAdmin), svc.GetMarketingCampaign)
+			admin.POST("/marketing", middleware.RequireScope(roles.MarketingAdmin), svc.CreateMarketingCampaign)
+			admin.PUT("/marketing/:id", middleware.RequireScope(roles.MarketingAdmin), svc.UpdateMarketingCampaign)
+			admin.DELETE("/marketing/:id", middleware.RequireScope(roles.MarketingAdmin), svc.DeleteMarketingCampaign)
+			admin.PUT("/marketing/:id/status", middleware.RequireScope(roles.MarketingAdmin), svc.UpdateMarketingCampaignStatus)
+
+			// ---- Structured RBAC (wl_client only) ----
+			// Integrates with the existing scope system: roles bundle whitelisted
+			// scope strings; assigning a role merges scopes into admin_users.scopes
+			// so RequireScope (JWT scopes) keeps working unchanged.
+			admin.GET("/admin-roles", middleware.RequireScope(roles.WLClient), svc.ListAdminRoles)
+			admin.POST("/admin-roles", middleware.RequireScope(roles.WLClient), svc.CreateAdminRole)
+			admin.GET("/admin-roles/:id", middleware.RequireScope(roles.WLClient), svc.GetAdminRole)
+			admin.PUT("/admin-roles/:id", middleware.RequireScope(roles.WLClient), svc.UpdateAdminRole)
+			admin.DELETE("/admin-roles/:id", middleware.RequireScope(roles.WLClient), svc.DeleteAdminRole)
+			admin.GET("/admin-permissions", middleware.RequireScope(roles.WLClient), svc.ListAdminPermissions)
+			admin.POST("/admin-permissions", middleware.RequireScope(roles.WLClient), svc.CreateAdminPermission)
+			admin.POST("/admins/:id/role", middleware.RequireScope(roles.WLClient), svc.AssignAdminRole)
+			admin.DELETE("/admins/:id/role/:roleId", middleware.RequireScope(roles.WLClient), svc.RevokeAdminRole)
+			admin.GET("/admins/:id/permissions", middleware.RequireScope(roles.WLClient), svc.GetAdminPermissions)
+
 			admin.GET("/stats", svc.Stats)
 		}
 	}

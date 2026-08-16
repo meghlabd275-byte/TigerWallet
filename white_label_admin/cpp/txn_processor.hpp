@@ -64,6 +64,8 @@ struct TxHash {
     explicit TxHash(const std::string& hex);
     void fromHex(const std::string& hex);
     std::string toHex() const;
+    bool operator==(const TxHash& o) const { return data == o.data; }
+    bool operator!=(const TxHash& o) const { return data != o.data; }
     struct hash { size_t operator()(const TxHash& h) const; };
 };
 
@@ -113,8 +115,8 @@ struct Transaction {
     uint64_t gas_price;
     std::vector<uint8_t> data;
     std::string memo;
-    std::atomic<bool> verified;
-    std::atomic<bool> processed;
+    bool verified;   // guarded by pool mutex; plain bool keeps Transaction copyable
+    bool processed;
     
     Transaction() : amount(0), fee(0), type(TransactionType::UNKNOWN), status(TransactionStatus::PENDING),
         nonce(0), block_number(0), gas_limit(0), gas_used(0), gas_price(0), verified(false), processed(false) {}
@@ -124,8 +126,8 @@ class TransactionPool {
 private:
     struct PendingTransaction {
         Transaction txn;
-        std::atomic<uint64_t> priority;
-        std::atomic<uint64_t> timestamp;
+        uint64_t priority;     // guarded by mutex_; plain uint64_t keeps the struct copyable for swap-remove
+        uint64_t timestamp;
     };
     std::vector<PendingTransaction> pending_;
     std::unordered_map<TxHash, size_t, TxHash::hash> index_;

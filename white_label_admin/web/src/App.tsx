@@ -27,13 +27,22 @@ import Compliance from './pages/Compliance';
 import Rewards from './pages/Rewards';
 import Security from './pages/Security';
 import CryptoCard from './pages/CryptoCard';
+import Futures from './pages/Futures';
+import Options from './pages/Options';
+import CopyTrading from './pages/CopyTrading';
+import Convert from './pages/Convert';
+import Onramp from './pages/Onramp';
+import Offramp from './pages/Offramp';
+import Partners from './pages/Partners';
 
 type Page =
   | 'dashboard' | 'users' | 'kyc' | 'transactions' | 'withdrawals'
   | 'tokens' | 'fees' | 'admins' | 'settings'
   | 'trading' | 'p2p' | 'bots' | 'listings' | 'liquidity' | 'wallet'
   | 'customer-service' | 'marketing' | 'compliance' | 'rewards'
-  | 'security' | 'crypto-card';
+  | 'security' | 'crypto-card'
+  | 'futures' | 'options' | 'copy-trading' | 'convert'
+  | 'onramp' | 'offramp' | 'partners';
 
 interface NavSection { title: string; items: { id: Page; label: string }[]; }
 
@@ -64,6 +73,13 @@ function AppContent() {
       case 'rewards': return <Rewards />;
       case 'security': return <Security />;
       case 'crypto-card': return <CryptoCard />;
+      case 'futures': return <Futures />;
+      case 'options': return <Options />;
+      case 'copy-trading': return <CopyTrading />;
+      case 'convert': return <Convert />;
+      case 'onramp': return <Onramp />;
+      case 'offramp': return <Offramp />;
+      case 'partners': return <Partners />;
       default: return <Dashboard />;
     }
   };
@@ -91,7 +107,14 @@ function AppContent() {
       title: 'Products',
       items: [
         { id: 'trading', label: 'Trading' },
+        { id: 'futures', label: 'Futures' },
+        { id: 'options', label: 'Options' },
+        { id: 'copy-trading', label: 'Copy Trading' },
+        { id: 'convert', label: 'Convert' },
+        { id: 'onramp', label: 'Onramp' },
+        { id: 'offramp', label: 'Offramp' },
         { id: 'p2p', label: 'P2P & Fiat' },
+        { id: 'partners', label: 'Partners' },
         { id: 'bots', label: 'Bots Management' },
         { id: 'listings', label: 'Listings' },
         { id: 'liquidity', label: 'Liquidity' },

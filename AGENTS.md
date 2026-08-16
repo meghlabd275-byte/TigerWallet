@@ -3095,3 +3095,56 @@ CRUD = GET /, POST /, GET /:id, PUT /:id, DELETE /:id
 
 Native client status: admin/rust (cargo check 0), admin/cpp (g++ syntax-only 0),
 admin/go (verified, do NOT touch), admin/web (done). TODO: android, ios, desktop, extensions.
+
+## white_label_admin family — COMPLETE (2026-08-16)
+
+All 11 domain backends + full client parity verified. Port = 8082 (NOT 9092).
+
+### white_label_admin/go (port 8082, Gin + pgx + scope RBAC)
+- 11 domain handler files in internal/handlers/: futures.go, options.go,
+  copytrading.go, convert.go, onramp.go, offramp.go, p2pclients.go,
+  partners.go, rbac.go, rewards.go, marketing.go.
+- Methods are on the shared `Service` struct (pgx queries, UUID PKs,
+  white_label_id tenant isolation). Routes in main.go use
+  middleware.RequireScope(roles.XXX, ...).
+- Scopes used: TradingAdmin (futures/options/copy-trading/convert),
+  P2PAdmin (onramp/offramp/p2p-clients), ListingAdmin (partners),
+  RewardAdmin (rewards), MarketingAdmin (marketing), WLClient (admin-roles,
+  admin-permissions, admins/:id/role assign+revoke, admins/:id/permissions GET).
+- Endpoints: CRUD for all; + /:id/status for futures/options/copy-trading/convert/
+  p2p-clients/rewards/marketing/partners; + /:id/approve + /:id/reject {reason}
+  for onramp/offramp/partners. RBAC: admin-roles CRUD, admin-permissions
+  GET/POST, admins/:id/role POST + DELETE, admins/:id/permissions GET.
+  Integrated with existing RequireScope — NOT a parallel system.
+- 11 CREATE TABLE migrations in internal/database/postgres.go (mirror
+  super_admin schema commit 0cb13d7). NO fund movement — governance records.
+- `go build ./...` exit 0, `go vet ./...` exit 0.
+
+### white_label_admin/web (React 18 / Next 14 / TS)
+- api.ts uses http://localhost:8082 (9092 fully purged from ALL WL clients).
+- 11 domain methods present (getFuturesPositions, getOptionsContracts,
+  getCopyTradingConfigs, getConvertOrders, getOnrampOrders + approve/reject,
+  getOfframpOrders + approve/reject, getP2PClients, getPartners + status/
+  approve/reject, getRewardCampaigns, getMarketingCampaigns, RBAC methods).
+- 21 existing pages + 7 new domain pages: Futures, Options, CopyTrading,
+  Convert, Onramp (approve/reject), Offramp (approve/reject), Partners
+  (status + approve/reject + delete). All use useTheme + whiteLabelAdminApi.
+- App.tsx: imports + Page union + switch cases + Products nav section updated.
+  `npx tsc --noEmit` exit 0.
+
+### Native clients (all target :8082, 11 domains, light/dark)
+- android (Java): DomainsFragment + DomainDetailFragment enumerate all 11
+  domains. Brace-balanced (no toolchain).
+- ios (Swift): ContentView.swift DomainLink list = all 11 domains. Brace-balanced.
+- desktop (Electron): main.js WL_API_BASE = localhost:8082; domain capabilities
+  map covers all 11. renderer.js + preload.js node --check OK.
+- extensions (chrome/firefox/safari): identical popup.js with 11 read-only
+  domain sections + endpoint tables; node --check OK on all popup.js + background.js.
+- cpp: include/wl_admin_domains.hpp — g++ -std=c++20 -fsyntax-only OK.
+- rust: 11 domain models + StatusUpdate/RejectRequest/AssignRoleRequest in
+  src/models/mod.rs; routes + handlers in src/api/mod.rs. cargo check exit 0
+  (warnings only — dead_code/unused, not errors).
+
+Build verification (all pass): go build 0, go vet 0, cargo check 0,
+g++ -std=c++20 -fsyntax-only 0, npx tsc --noEmit 0, node --check on every
+popup.js + desktop main/renderer/preload OK, android/ios brace-balanced.

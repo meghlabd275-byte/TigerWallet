@@ -34,6 +34,8 @@ public class MainActivity extends AppCompatActivity {
                 fragment = new TransactionsFragment();
             } else if (itemId == R.id.nav_kyc) {
                 fragment = new KYCFragment();
+            } else if (itemId == R.id.nav_domains) {
+                fragment = new DomainsFragment();
             } else if (itemId == R.id.nav_settings) {
                 fragment = new SettingsFragment();
             }
