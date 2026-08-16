@@ -278,6 +278,9 @@ type StakeRequest struct {
 }
 
 func (ss *StakingService) Stake(c *gin.Context) {
+	if !ss.enforceFeature(c, FeatureStaking) {
+		return
+	}
 	var req StakeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -354,6 +357,9 @@ type UnstakeRequestInput struct {
 }
 
 func (ss *StakingService) Unstake(c *gin.Context) {
+	if !ss.enforceFeature(c, FeatureStaking) {
+		return
+	}
 	var req UnstakeRequestInput
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -430,6 +436,9 @@ type ClaimRequest struct {
 }
 
 func (ss *StakingService) Claim(c *gin.Context) {
+	if !ss.enforceFeature(c, FeatureStaking) {
+		return
+	}
 	var req ClaimRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -522,6 +531,9 @@ type DelegateRequest struct {
 }
 
 func (ss *StakingService) Delegate(c *gin.Context) {
+	if !ss.enforceFeature(c, FeatureStaking) {
+		return
+	}
 	var req DelegateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -587,6 +599,9 @@ type ConvertRequest struct {
 }
 
 func (ss *StakingService) Convert(c *gin.Context) {
+	if !ss.enforceFeature(c, FeatureStaking) {
+		return
+	}
 	var req ConvertRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

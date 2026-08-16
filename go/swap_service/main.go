@@ -292,6 +292,9 @@ type QuoteRequest struct {
 }
 
 func (ss *SwapService) GetQuote(c *gin.Context) {
+	if !ss.enforceFeature(c, FeatureSwapTrading) {
+		return
+	}
 	var req QuoteRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
 		req.FromToken = c.Query("token_in")
@@ -375,6 +378,9 @@ type SwapRequest struct {
 }
 
 func (ss *SwapService) ExecuteSwap(c *gin.Context) {
+	if !ss.enforceFeature(c, FeatureSwapTrading) {
+		return
+	}
 	var req SwapRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

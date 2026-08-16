@@ -1,7 +1,7 @@
 // Background script
 chrome.runtime.onInstalled.addListener(() => {
   console.log('TigerWallet White Label Admin Extension installed');
-  chrome.storage.local.set({ darkMode: false, apiUrl: 'http://localhost:3001' });
+  chrome.storage.local.set({ darkMode: false, apiUrl: 'http://localhost:8082' });
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

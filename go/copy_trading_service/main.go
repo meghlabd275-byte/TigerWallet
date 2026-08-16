@@ -202,6 +202,9 @@ type registerTraderReq struct {
 }
 
 func (s *service) registerTrader(c *gin.Context) {
+	if !s.enforceFeature(c, FeatureCopyTrading) {
+		return
+	}
 	var req registerTraderReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -238,6 +241,9 @@ type followReq struct {
 }
 
 func (s *service) follow(c *gin.Context) {
+	if !s.enforceFeature(c, FeatureCopyTrading) {
+		return
+	}
 	var req followReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -283,6 +289,9 @@ func (s *service) listCopiers(c *gin.Context) {
 }
 
 func (s *service) stopCopier(c *gin.Context) {
+	if !s.enforceFeature(c, FeatureCopyTrading) {
+		return
+	}
 	id := c.Param("id")
 	user := c.GetString("user_id")
 	var traderID string
@@ -296,6 +305,9 @@ func (s *service) stopCopier(c *gin.Context) {
 }
 
 func (s *service) stopAll(c *gin.Context) {
+	if !s.enforceFeature(c, FeatureCopyTrading) {
+		return
+	}
 	user := c.GetString("user_id")
 	rows, err := s.pg.Query(c, `UPDATE copy_copiers SET status='stopped' WHERE user_id=$1 AND status='active' RETURNING trader_id`, user)
 	if err != nil {

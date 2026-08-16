@@ -525,6 +525,7 @@ func main() {
 
 			// P2P clients
 			p2pClients := protected.Group("/p2p-clients")
+			p2pClients.Use(middleware.DomainScopeMiddleware("p2p_clients"))
 			{
 				p2pClients.GET("", p2pClientsHandler.List)
 				p2pClients.POST("", p2pClientsHandler.Create)
@@ -536,6 +537,7 @@ func main() {
 
 			// Futures (governance records only)
 			futures := protected.Group("/futures")
+			futures.Use(middleware.DomainScopeMiddleware("futures"))
 			{
 				futures.GET("", futuresHandler.List)
 				futures.POST("", futuresHandler.Create)
@@ -547,6 +549,7 @@ func main() {
 
 			// Options (governance records only)
 			opts := protected.Group("/options")
+			opts.Use(middleware.DomainScopeMiddleware("options"))
 			{
 				opts.GET("", optionsHandler.List)
 				opts.POST("", optionsHandler.Create)
@@ -558,6 +561,7 @@ func main() {
 
 			// Copy trading (governance records only)
 			copyTrading := protected.Group("/copy-trading")
+			copyTrading.Use(middleware.DomainScopeMiddleware("copy_trading"))
 			{
 				copyTrading.GET("", copyTradingHandler.List)
 				copyTrading.POST("", copyTradingHandler.Create)
@@ -569,6 +573,7 @@ func main() {
 
 			// Convert (governance records only)
 			convert := protected.Group("/convert")
+			convert.Use(middleware.DomainScopeMiddleware("convert"))
 			{
 				convert.GET("", convertHandler.List)
 				convert.POST("", convertHandler.Create)
@@ -580,6 +585,7 @@ func main() {
 
 			// OnRamp (governance records only; approve/reject are record-only)
 			onramp := protected.Group("/onramp")
+			onramp.Use(middleware.DomainScopeMiddleware("onramp"))
 			{
 				onramp.GET("", onrampHandler.List)
 				onramp.POST("", onrampHandler.Create)
@@ -592,6 +598,7 @@ func main() {
 
 			// OffRamp (governance records only; approve/reject are record-only)
 			offramp := protected.Group("/offramp")
+			offramp.Use(middleware.DomainScopeMiddleware("offramp"))
 			{
 				offramp.GET("", offrampHandler.List)
 				offramp.POST("", offrampHandler.Create)
@@ -604,6 +611,7 @@ func main() {
 
 			// Partners (governance records only; api_key generated on create)
 			partners := protected.Group("/partners")
+			partners.Use(middleware.DomainScopeMiddleware("partners"))
 			{
 				partners.GET("", partnersHandler.List)
 				partners.POST("", partnersHandler.Create)
@@ -617,6 +625,7 @@ func main() {
 
 			// Rewards (governance records only)
 			rewards := protected.Group("/rewards")
+			rewards.Use(middleware.DomainScopeMiddleware("rewards"))
 			{
 				rewards.GET("", rewardsHandler.List)
 				rewards.POST("", rewardsHandler.Create)
@@ -628,6 +637,7 @@ func main() {
 
 			// Marketing (governance records only)
 			marketing := protected.Group("/marketing")
+			marketing.Use(middleware.DomainScopeMiddleware("marketing"))
 			{
 				marketing.GET("", marketingHandler.List)
 				marketing.POST("", marketingHandler.Create)
@@ -639,6 +649,7 @@ func main() {
 
 			// Structured RBAC: roles, permissions, assignments.
 			roles := protected.Group("/roles")
+			roles.Use(middleware.DomainScopeMiddleware("rbac"))
 			{
 				roles.GET("", rbacHandler.ListRoles)
 				roles.POST("", rbacHandler.CreateRole)

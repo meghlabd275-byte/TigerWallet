@@ -550,6 +550,9 @@ func decodeReserveConfig(hexResult string) (*reserveConfigFields, error) {
 // ============================================================================
 
 func (ls *LendingService) Supply(c *gin.Context) {
+	if !ls.enforceFeature(c, FeatureLending) {
+		return
+	}
 	var req SupplyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
@@ -617,6 +620,9 @@ func (ls *LendingService) Supply(c *gin.Context) {
 }
 
 func (ls *LendingService) Borrow(c *gin.Context) {
+	if !ls.enforceFeature(c, FeatureLending) {
+		return
+	}
 	var req SupplyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
@@ -752,6 +758,9 @@ func (ls *LendingService) GetUserPosition(c *gin.Context) {
 // address to) calldata for wallet_api to sign and broadcast, and records a
 // negative supply position (a withdrawal) so the wallet-side ledger persists.
 func (ls *LendingService) Withdraw(c *gin.Context) {
+	if !ls.enforceFeature(c, FeatureLending) {
+		return
+	}
 	var req SupplyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
@@ -817,6 +826,9 @@ func (ls *LendingService) Withdraw(c *gin.Context) {
 // uint256 interestRateMode, address onBehalfOf) calldata for wallet_api to sign
 // and broadcast, and records a negative borrow position (a repayment).
 func (ls *LendingService) Repay(c *gin.Context) {
+	if !ls.enforceFeature(c, FeatureLending) {
+		return
+	}
 	var req SupplyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})

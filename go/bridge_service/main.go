@@ -15,16 +15,19 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5"
+	"github.com/redis/go-redis/v9"
 )
 
 type Config struct {
 	Port        int
 	DatabaseURL string
+	RedisURL    string
 }
 
 var cfg = Config{
 	Port:        8007,
 	DatabaseURL: getEnv("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet_bridge?sslmode=disable"),
+	RedisURL:    getEnv("REDIS_URL", "redis://localhost:6379/0"),
 }
 
 func getEnv(key, def string) string {
@@ -54,7 +57,8 @@ type BridgeTransaction struct {
 }
 
 type BridgeService struct {
-	pg *pgxpool.Pool
+	pg    *pgxpool.Pool
+	redis *redis.Client
 }
 
 // bridgeChain is a lightweight chain descriptor used by the bridge routes
@@ -112,8 +116,8 @@ func bridgeTokens(chainID int64) []string {
 	}
 }
 
-func NewBridgeService(pg *pgxpool.Pool) *BridgeService {
-	return &BridgeService{pg: pg}
+func NewBridgeService(pg *pgxpool.Pool, rdb *redis.Client) *BridgeService {
+	return &BridgeService{pg: pg, redis: rdb}
 }
 
 // migrateDB creates the bridge_transactions table if it does not exist.
@@ -144,6 +148,9 @@ CREATE INDEX IF NOT EXISTS idx_bridge_tx_status ON bridge_transactions(status);
 }
 
 func (bs *BridgeService) GetQuote(c *gin.Context) {
+	if !bs.enforceFeature(c, FeatureBridge) {
+		return
+	}
 	var req struct {
 		FromChain string `json:"from_chain" binding:"required"`
 		ToChain   string `json:"to_chain" binding:"required"`
@@ -172,6 +179,9 @@ func (bs *BridgeService) GetQuote(c *gin.Context) {
 }
 
 func (bs *BridgeService) InitiateTransfer(c *gin.Context) {
+	if !bs.enforceFeature(c, FeatureBridge) {
+		return
+	}
 	var req struct {
 		UserID    string `json:"user_id" binding:"required"`
 		FromChain string `json:"from_chain" binding:"required"`
@@ -313,7 +323,23 @@ func main() {
 		log.Fatalf("Database ping failed: %v", err)
 	}
 
-	bs := NewBridgeService(pool)
+	// Redis is the SHARED feature-flag store (see feature_flags.go). A missing
+	// or unreachable Redis is non-fatal: flag enforcement fails closed
+	// (disabled) at request time rather than preventing startup.
+	rdbOpts, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		log.Printf("warning: invalid REDIS_URL %q: %v (flag enforcement will fail closed)", cfg.RedisURL, err)
+	}
+	var rdb *redis.Client
+	if rdbOpts != nil {
+		rdb = redis.NewClient(rdbOpts)
+		if err := rdb.Ping(ctx).Err(); err != nil {
+			log.Printf("warning: redis ping failed: %v (flag enforcement will fail closed)", err)
+			rdb = nil
+		}
+	}
+
+	bs := NewBridgeService(pool, rdb)
 	if err := bs.migrateDB(); err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}

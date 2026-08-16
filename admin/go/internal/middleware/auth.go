@@ -72,6 +72,55 @@ func AdminMiddleware() gin.HandlerFunc {
 	return RoleMiddleware("super_admin", "admin")
 }
 
+// DomainScopeMiddleware enforces per-domain RBAC for the 11 governance domains.
+// It grants full access to super_admin, read+write to admin, read-only to
+// support/analyst/moderator on GET, and denies write to non-admin roles.
+// scope is the domain name (e.g. "futures", "options", "onramp").
+func DomainScopeMiddleware(scope string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, exists := c.Get("admin_role")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			c.Abort()
+			return
+		}
+		roleStr, ok := role.(string)
+		if !ok || roleStr == "" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
+			c.Abort()
+			return
+		}
+
+		// super_admin has unrestricted access to all domains.
+		if roleStr == "super_admin" {
+			c.Next()
+			return
+		}
+
+		method := c.Request.Method
+		isWrite := method == "POST" || method == "PUT" || method == "PATCH" || method == "DELETE"
+
+		// admin role: full CRUD on all governance domains.
+		if roleStr == "admin" {
+			c.Next()
+			return
+		}
+
+		// support/analyst/moderator: read-only on governance domains.
+		if !isWrite && (roleStr == "support" || roleStr == "analyst" || roleStr == "moderator") {
+			c.Next()
+			return
+		}
+
+		if isWrite {
+			c.JSON(http.StatusForbidden, gin.H{"error": "write access to " + scope + " requires admin role"})
+		} else {
+			c.JSON(http.StatusForbidden, gin.H{"error": "access to " + scope + " denied"})
+		}
+		c.Abort()
+	}
+}
+
 // PermissionMiddleware creates permission checking middleware
 func PermissionMiddleware(requiredPermission string) gin.HandlerFunc {
 	return func(c *gin.Context) {

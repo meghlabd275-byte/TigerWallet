@@ -82,5 +82,5 @@ function initTheme() {
 document.addEventListener('DOMContentLoaded', () => {
   buildTabs();
   initTheme();
-  document.getElementById('open-dashboard').addEventListener('click', () => openDashboard('http://localhost:3001'));
+  document.getElementById('open-dashboard').addEventListener('click', () => openDashboard('http://localhost:8082'));
 });

@@ -1,11 +1,12 @@
 # TigerWallet Admin System — Verified Fetchers, Functionality & Gap Status
 
-> **Status date: 2026-08-16 (session 2 — COMPLETE).** This document supersedes
-> the prior admin analysis files for accuracy. It reflects the ACTUAL verified
-> state of the codebase after the security + RBAC + domain-backend +
-> client-parity + feature-flag-enforcement work landed on `main`. All claims
-> below are backed by `go build`/`go vet`/`cargo check`/`tsc --noEmit`/
-> `g++ -fsyntax-only`/`node --check` exit 0.
+> **Status date: 2026-08-16 (session 3 — ALL GAPS CLOSED).** This document
+> supersedes the prior admin analysis files for accuracy. It reflects the
+> ACTUAL verified state of the codebase after the security + RBAC +
+> domain-backend + client-parity + feature-flag-enforcement + per-endpoint
+> RBAC + downstream enforcement + C++ infra fix + port-consistency work
+> landed on `main`. All claims below are backed by `go build`/`go vet`/
+> `cargo check`/`tsc --noEmit`/`g++ -fsyntax-only`/`node --check` exit 0.
 
 ---
 
@@ -358,6 +359,16 @@ Every admin family now has the 12 domain surfaces across ALL native platforms:
   white_label/go but no dedicated `/admin/liquidity-sources` surface)
 - Crypto-card / customer-service dedicated admin governance CRUD in
   super_admin/go (managed via card_service/notifications APIs directly)
-- Additional downstream services (copy_trading_service, lending_service,
-  bridge_service) should adopt the feature-flag checker pattern documented
-  in `docs/FEATURE_FLAG_ENFORCEMENT.md` (wallet_api is the reference impl)
+
+> **Session 3 (2026-08-16) CLOSED all remaining enforcement/parity gaps:**
+> - `admin/go` 11 domain routes now have per-endpoint `DomainScopeMiddleware`
+>   RBAC (super_admin full, admin full, support/analyst/moderator read-only,
+>   others denied). Matches super_admin/go + white_label_admin/go enforcement.
+> - 5 downstream services (copy_trading, lending, bridge, swap, staking) now
+>   enforce Redis feature flags (fail-closed, 423 Locked) — mirrors wallet_api.
+> - `admin/cpp` infrastructure layer fixed: 14 missing .hpp headers created;
+>   all 28 .cpp files compile clean.
+> - white_label_admin port mismatches fixed: extensions apiUrl + dashboard
+>   :3001→:8082; rust listen :3002→:8082. Zero :3001/:3002 references remain.
+> - All 9 Go backends build+vet 0; all 3 Rust cargo check 0; all 3 C++ g++
+>   syntax 0; all 3 web tsc 0; all 18 extension/desktop node --check 0.
