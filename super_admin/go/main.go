@@ -16,6 +16,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/lib/pq"
 	"github.com/tigerwallet/super-admin/internal/config"
 	"github.com/tigerwallet/super-admin/internal/database"
 	"github.com/tigerwallet/super-admin/internal/middleware"
@@ -357,6 +358,18 @@ func main() {
 				adminAdmins.DELETE("/admins/:id", handleDeleteAdmin)
 				adminAdmins.POST("/admins/:id/suspend", handleSuspendAdmin)
 				adminAdmins.POST("/admins/:id/activate", handleActivateAdmin)
+
+				// Structured RBAC: custom admin roles + granular permissions (SuperAdmin only)
+				adminAdmins.GET("/roles", handleListAdminRoles)
+				adminAdmins.POST("/roles", handleCreateAdminRole)
+				adminAdmins.GET("/roles/:id", handleGetAdminRole)
+				adminAdmins.PUT("/roles/:id", handleUpdateAdminRole)
+				adminAdmins.DELETE("/roles/:id", handleDeleteAdminRole)
+				adminAdmins.GET("/permissions", handleListAdminPermissions)
+				adminAdmins.POST("/permissions", handleCreateAdminPermission)
+				adminAdmins.POST("/admins/:id/roles", handleAssignAdminRole)
+				adminAdmins.DELETE("/admins/:id/roles/:roleId", handleRevokeAdminRole)
+				adminAdmins.GET("/admins/:id/permissions", handleGetAdminEffectivePermissions)
 			}
 
 			admin.GET("/workflows", handleGetWorkflows)
@@ -4155,4 +4168,156 @@ func handleUpdateMarketingCampaignStatus(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "marketing campaign status updated"})
+}
+
+
+// ---- Structured RBAC handlers (SuperAdmin-managed custom roles + permissions) ----
+
+func handleListAdminRoles(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT id, name, description, permissions, is_system, is_active, created_at, updated_at FROM admin_roles ORDER BY created_at DESC`)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	c.JSON(http.StatusOK, gin.H{"roles": rowsToMaps(rows)})
+}
+
+func handleCreateAdminRole(c *gin.Context) {
+	var req struct {
+		Name        string   `json:"name" binding:"required"`
+		Description string   `json:"description"`
+		Permissions []string `json:"permissions"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `INSERT INTO admin_roles (id, name, description, permissions, is_system, is_active) VALUES ($1,$2,$3,$4,false,true)`, uuid.New(), req.Name, req.Description, pq.Array(req.Permissions)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "admin role created"})
+}
+
+func handleGetAdminRole(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT id, name, description, permissions, is_system, is_active, created_at, updated_at FROM admin_roles WHERE id=$1`, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	roles := rowsToMaps(rows)
+	if len(roles) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "role not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"role": roles[0]})
+}
+
+func handleUpdateAdminRole(c *gin.Context) {
+	var req struct {
+		Name        string   `json:"name"`
+		Description string   `json:"description"`
+		Permissions []string `json:"permissions"`
+		IsActive    *bool    `json:"is_active"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// System roles cannot be deleted but can be toggled active.
+	isActive := true
+	if req.IsActive != nil {
+		isActive = *req.IsActive
+	}
+	if _, err := dbExec(c, `UPDATE admin_roles SET name=$1, description=$2, permissions=$3, is_active=$4, updated_at=NOW() WHERE id=$5 AND is_system=false`, req.Name, req.Description, pq.Array(req.Permissions), isActive, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "admin role updated"})
+}
+
+func handleDeleteAdminRole(c *gin.Context) {
+	if _, err := dbExec(c, `DELETE FROM admin_roles WHERE id=$1 AND is_system=false`, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "admin role deleted"})
+}
+
+func handleListAdminPermissions(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT id, name, description, category, is_active, created_at FROM admin_permissions ORDER BY category, name`)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	c.JSON(http.StatusOK, gin.H{"permissions": rowsToMaps(rows)})
+}
+
+func handleCreateAdminPermission(c *gin.Context) {
+	var req struct {
+		Name        string `json:"name" binding:"required"`
+		Description string `json:"description"`
+		Category    string `json:"category"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Category == "" {
+		req.Category = "general"
+	}
+	if _, err := dbExec(c, `INSERT INTO admin_permissions (id, name, description, category, is_active) VALUES ($1,$2,$3,$4,true)`, uuid.New(), req.Name, req.Description, req.Category); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "permission created"})
+}
+
+func handleAssignAdminRole(c *gin.Context) {
+	var req struct {
+		RoleID string `json:"role_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	grantedBy := c.GetString("user_id")
+	if _, err := dbExec(c, `INSERT INTO admin_role_assignments (id, admin_id, role_id, granted_by) VALUES ($1,$2,$3,$4) ON CONFLICT (admin_id, role_id) DO NOTHING`, uuid.New(), c.Param("id"), req.RoleID, grantedBy); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "role assigned"})
+}
+
+func handleRevokeAdminRole(c *gin.Context) {
+	if _, err := dbExec(c, `DELETE FROM admin_role_assignments WHERE admin_id=$1 AND role_id=$2`, c.Param("id"), c.Param("roleId")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "role revoked"})
+}
+
+func handleGetAdminEffectivePermissions(c *gin.Context) {
+	// Aggregate permissions across all roles assigned to this admin.
+	rows, err := dbQuery(c, `
+		SELECT DISTINCT unnest(r.permissions) AS permission
+		FROM admin_role_assignments a
+		JOIN admin_roles r ON r.id = a.role_id
+		WHERE a.admin_id = $1 AND r.is_active = true`, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	perms := []string{}
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err == nil {
+			perms = append(perms, p)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"admin_id": c.Param("id"), "permissions": perms})
 }

@@ -297,6 +297,34 @@ func runMigrations(ctx context.Context) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
+		// ---- Structured RBAC: custom admin roles + granular permissions ----
+		`CREATE TABLE IF NOT EXISTS admin_roles (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name TEXT UNIQUE NOT NULL,
+			description TEXT,
+			permissions TEXT[] NOT NULL DEFAULT '{}',
+			is_system BOOLEAN DEFAULT FALSE,
+			is_active BOOLEAN DEFAULT TRUE,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE TABLE IF NOT EXISTS admin_role_assignments (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			admin_id UUID NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+			role_id UUID NOT NULL REFERENCES admin_roles(id) ON DELETE CASCADE,
+			granted_by UUID REFERENCES admin_users(id),
+			granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE (admin_id, role_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS admin_permissions (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name TEXT UNIQUE NOT NULL,
+			description TEXT,
+			category TEXT NOT NULL DEFAULT 'general',
+			is_active BOOLEAN DEFAULT TRUE,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_admin_role_assignments_admin ON admin_role_assignments(admin_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_bots_owner ON bots(owner_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_bots_clients_status ON bots_clients(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_project_team_members_team ON project_team_members(team_id)`,
