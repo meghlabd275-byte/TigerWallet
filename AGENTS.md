@@ -2942,3 +2942,75 @@ Committed `829ea25` + pushed to origin/main.
   the class strategy + `[data-theme='dark']` CSS bridge are in place.
 - Build verification: `npx tsc --noEmit -p tsconfig.json` (0 errors) AND
   `npx next build` (0 errors, 24 static routes). Both must pass.
+
+## Session 2026-08-16: Admin ecosystem security + RBAC + domain backends + parity
+
+Built the missing TigerWallet admin ecosystem gaps. Three SEPARATED admin app
+families (admin/, super_admin/, white_label_admin/) — none imports UserWallet
+or MasterWallet client fetchers. All Go backends real PostgreSQL, no stubs,
+no fund movement. Commits on main: 3a45977, 8565d1b, 321474f, c0a653c, 9c76750.
+
+### CRITICAL security fixes (enforce "no admin can withdraw crypto")
+- super_admin/go: disabled /master-wallets/:id/transfer route + handler (403).
+  Fund movement is the wallet owner's action via canonical wallet_api only.
+- admin/go: ApproveWithdrawal + RejectWithdrawal now RECORD-ONLY (no balance
+  debit/credit, no broadcast); BroadcastWithdrawal fail-closed (returns error,
+  never fakes a tx hash).
+- admin/flutter + super_admin/web: removed Transfer UI + API methods.
+- rust/super_admin_backend: execute_profit_transfer no longer fakes tx_hash or
+  hardcoded 0xSuperAdminWallet; status='pending_settlement', total_transferred
+  not incremented until real on-chain settlement.
+
+### JWT/RBAC fixes
+- super_admin/go: middleware now sets user_id (string) from claims.AdminID so
+  all handlers' audit attribution (approved_by/created_by) works; login +
+  refresh issue proper Claims struct (was MapClaims missing admin_id).
+- super_admin/go: wired RoleAuth('super_admin') on admin-user management +
+  master/user-wallet CRUD subgroups (was unwired).
+
+### Built 11 missing admin domain backends (super_admin/go, 72 routes, real PG)
+futures, options, copy-trading, convert, onramp, offramp, p2p-clients,
+p2p-merchants, partners, rewards, marketing. Each: CRUD + Status
+(start/stop/pause/resume); p2p-merchants + partners + onramp/offramp also
+Approve/Reject. DB migrations for all 11 new tables. Governance records only.
+
+### Structured RBAC (SuperAdmin-managed custom roles + granular permissions)
+- admin_roles table (TEXT[] permission arrays, is_system protected flag)
+- admin_role_assignments (many-to-many admin<->role, granted_by audit)
+- admin_permissions catalog (named permissions grouped by category)
+- 10 SuperAdmin-only routes: CRUD roles, CRUD permissions, assign/revoke
+  roles, get effective permissions (aggregated). System roles cannot be
+  deleted/edited.
+
+### Per-product SuperAdmin status controls
+Added missing /status endpoints: white-labels, project-teams, wl-project-teams,
+master-wallets, user-wallets. Now EVERY product has a status control so
+SuperAdmin can add/remove/halt/pause/start/resume each feature.
+
+### white_label_admin/go rewrite (112 handlers, real PG)
+Was 112 stub handlers returning canned empty data (and `[]` is invalid Go
+syntax — build was broken). All promoted to real PostgreSQL CRUD via
+database.Pool (pgxpool): users/KYC/transactions/tokens/pairs/blockchains/fees/
+webhooks/notifications/tickets/white-labels/stats/admins/workflows/approvals/
+backups/knowledge-base/archival/reports/SLA/integrations. Withdrawal
+approve/reject record-only; process fail-closed 403; testWebhook real http.Post.
+
+### super_admin/web client parity (12 new pages + 82 API methods, tsc 0)
+Futures, Options, CopyTrading, Convert, OnRamp, OffRamp, P2PClients,
+P2PMerchants, Partners, Rewards, Marketing, AdminRoles (RBAC UI). Routes +
+nav links registered. Loading/error/empty states. No fund-movement UI.
+
+### Build verification (ALL GREEN)
+- admin/go go build exit 0
+- super_admin/go go build + go vet exit 0
+- white_label_admin/go go build + go vet exit 0
+- rust/super_admin_backend rustc 0 errors (orphan lib, no Cargo.toml)
+- super_admin/web npx tsc --noEmit 0 errors
+
+### Remaining gaps (honest)
+- New domain screens not yet mirrored to android/ios/desktop/extension/cpp/
+  rust admin clients (web has them; native clients expose pre-existing surface).
+- Feature-flag enforcement layer: flags are set but downstream product services
+  don't yet consult the admin flag store to halt operations at runtime.
+- Dedicated liquidity-source management admin CRUD not yet present.
+- Three feature-flag systems need consolidation.
