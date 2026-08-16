@@ -229,6 +229,92 @@ func main() {
 			admin.DELETE("/wl-project-teams/:id", handleDeleteWLProjectTeam)
 			admin.PUT("/wl-project-teams/:id/status", handleUpdateWLProjectTeamStatus)
 
+			// ---- Domain admin governance (CRUD + status/approve/reject) ----
+			// Governance records only; never moves crypto assets.
+			admin.GET("/futures", handleGetFuturesPositions)
+			admin.GET("/futures/:id", handleGetFuturesPosition)
+			admin.POST("/futures", handleCreateFuturesPosition)
+			admin.PUT("/futures/:id", handleUpdateFuturesPosition)
+			admin.DELETE("/futures/:id", handleDeleteFuturesPosition)
+			admin.PUT("/futures/:id/status", handleUpdateFuturesPositionStatus)
+
+			admin.GET("/options", handleGetOptionsContracts)
+			admin.GET("/options/:id", handleGetOptionsContract)
+			admin.POST("/options", handleCreateOptionsContract)
+			admin.PUT("/options/:id", handleUpdateOptionsContract)
+			admin.DELETE("/options/:id", handleDeleteOptionsContract)
+			admin.PUT("/options/:id/status", handleUpdateOptionsContractStatus)
+
+			admin.GET("/copy-trading", handleGetCopyTradingConfigs)
+			admin.GET("/copy-trading/:id", handleGetCopyTradingConfig)
+			admin.POST("/copy-trading", handleCreateCopyTradingConfig)
+			admin.PUT("/copy-trading/:id", handleUpdateCopyTradingConfig)
+			admin.DELETE("/copy-trading/:id", handleDeleteCopyTradingConfig)
+			admin.PUT("/copy-trading/:id/status", handleUpdateCopyTradingConfigStatus)
+
+			admin.GET("/convert", handleGetConvertOrders)
+			admin.GET("/convert/:id", handleGetConvertOrder)
+			admin.POST("/convert", handleCreateConvertOrder)
+			admin.PUT("/convert/:id", handleUpdateConvertOrder)
+			admin.DELETE("/convert/:id", handleDeleteConvertOrder)
+			admin.PUT("/convert/:id/status", handleUpdateConvertOrderStatus)
+
+			admin.GET("/onramp", handleGetOnrampOrders)
+			admin.GET("/onramp/:id", handleGetOnrampOrder)
+			admin.POST("/onramp", handleCreateOnrampOrder)
+			admin.PUT("/onramp/:id", handleUpdateOnrampOrder)
+			admin.DELETE("/onramp/:id", handleDeleteOnrampOrder)
+			admin.POST("/onramp/:id/approve", handleApproveOnrampOrder)
+			admin.POST("/onramp/:id/reject", handleRejectOnrampOrder)
+
+			admin.GET("/offramp", handleGetOfframpOrders)
+			admin.GET("/offramp/:id", handleGetOfframpOrder)
+			admin.POST("/offramp", handleCreateOfframpOrder)
+			admin.PUT("/offramp/:id", handleUpdateOfframpOrder)
+			admin.DELETE("/offramp/:id", handleDeleteOfframpOrder)
+			admin.POST("/offramp/:id/approve", handleApproveOfframpOrder)
+			admin.POST("/offramp/:id/reject", handleRejectOfframpOrder)
+
+			admin.GET("/p2p-clients", handleGetP2PClients)
+			admin.GET("/p2p-clients/:id", handleGetP2PClient)
+			admin.POST("/p2p-clients", handleCreateP2PClient)
+			admin.PUT("/p2p-clients/:id", handleUpdateP2PClient)
+			admin.DELETE("/p2p-clients/:id", handleDeleteP2PClient)
+			admin.PUT("/p2p-clients/:id/status", handleUpdateP2PClientStatus)
+
+			admin.GET("/p2p-merchants", handleGetP2PMerchants)
+			admin.GET("/p2p-merchants/:id", handleGetP2PMerchant)
+			admin.POST("/p2p-merchants", handleCreateP2PMerchant)
+			admin.PUT("/p2p-merchants/:id", handleUpdateP2PMerchant)
+			admin.DELETE("/p2p-merchants/:id", handleDeleteP2PMerchant)
+			admin.PUT("/p2p-merchants/:id/status", handleUpdateP2PMerchantStatus)
+			admin.POST("/p2p-merchants/:id/approve", handleApproveP2PMerchant)
+			admin.POST("/p2p-merchants/:id/reject", handleRejectP2PMerchant)
+
+			admin.GET("/partners", handleGetPartners)
+			admin.GET("/partners/:id", handleGetPartner)
+			admin.POST("/partners", handleCreatePartner)
+			admin.PUT("/partners/:id", handleUpdatePartner)
+			admin.DELETE("/partners/:id", handleDeletePartner)
+			admin.PUT("/partners/:id/status", handleUpdatePartnerStatus)
+			admin.POST("/partners/:id/approve", handleApprovePartner)
+			admin.POST("/partners/:id/reject", handleRejectPartner)
+
+			admin.GET("/rewards", handleGetRewardCampaigns)
+			admin.GET("/rewards/:id", handleGetRewardCampaign)
+			admin.POST("/rewards", handleCreateRewardCampaign)
+			admin.PUT("/rewards/:id", handleUpdateRewardCampaign)
+			admin.DELETE("/rewards/:id", handleDeleteRewardCampaign)
+			admin.PUT("/rewards/:id/status", handleUpdateRewardCampaignStatus)
+
+			admin.GET("/marketing", handleGetMarketingCampaigns)
+			admin.GET("/marketing/:id", handleGetMarketingCampaign)
+			admin.POST("/marketing", handleCreateMarketingCampaign)
+			admin.PUT("/marketing/:id", handleUpdateMarketingCampaign)
+			admin.DELETE("/marketing/:id", handleDeleteMarketingCampaign)
+			admin.PUT("/marketing/:id/status", handleUpdateMarketingCampaignStatus)
+
+
 			// MasterWallet Management
 			admin.GET("/master-wallets", handleGetMasterWallets)
 			admin.GET("/master-wallets/:id", handleGetMasterWallet)
@@ -3027,3 +3113,1046 @@ func handleGetUserWalletBalance(c *gin.Context) {
 
 // keep strconv referenced (used implicitly by some future extensions)
 var _ = strconv.Itoa
+
+// ============== Domain admin governance handlers ==============
+// Real PostgreSQL-backed CRUD + status/approve/reject handlers for the
+// per-product governance tables. These manage governance records ONLY —
+// they never move crypto assets.
+
+// ---- Futures (futures_positions) ----
+
+func handleGetFuturesPositions(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM futures_positions ORDER BY created_at DESC LIMIT 100`)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	c.JSON(http.StatusOK, gin.H{"positions": rowsToMaps(rows)})
+}
+
+func handleGetFuturesPosition(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM futures_positions WHERE id=$1`, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	positions := rowsToMaps(rows)
+	if len(positions) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "position not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"position": positions[0]})
+}
+
+func handleCreateFuturesPosition(c *gin.Context) {
+	var req struct {
+		Pair             string  `json:"pair" binding:"required"`
+		Side             string  `json:"side" binding:"required"`
+		Size             float64 `json:"size"`
+		Leverage         float64 `json:"leverage"`
+		EntryPrice       float64 `json:"entry_price"`
+		LiquidationPrice float64 `json:"liquidation_price"`
+		Margin           float64 `json:"margin"`
+		ChainID          int64   `json:"chain_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `INSERT INTO futures_positions (id, pair, side, size, leverage, entry_price, liquidation_price, margin, chain_id, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'open')`,
+		uuid.New(), req.Pair, req.Side, req.Size, req.Leverage, req.EntryPrice, req.LiquidationPrice, req.Margin, req.ChainID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "futures position created"})
+}
+
+func handleUpdateFuturesPosition(c *gin.Context) {
+	var req struct {
+		Pair             string  `json:"pair"`
+		Side             string  `json:"side"`
+		Size             float64 `json:"size"`
+		Leverage         float64 `json:"leverage"`
+		EntryPrice       float64 `json:"entry_price"`
+		LiquidationPrice float64 `json:"liquidation_price"`
+		Margin           float64 `json:"margin"`
+		ChainID          int64   `json:"chain_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE futures_positions SET pair=$1, side=$2, size=$3, leverage=$4, entry_price=$5, liquidation_price=$6, margin=$7, chain_id=$8, updated_at=NOW() WHERE id=$9`,
+		req.Pair, req.Side, req.Size, req.Leverage, req.EntryPrice, req.LiquidationPrice, req.Margin, req.ChainID, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "futures position updated"})
+}
+
+func handleDeleteFuturesPosition(c *gin.Context) {
+	if _, err := dbExec(c, `DELETE FROM futures_positions WHERE id=$1`, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "futures position deleted"})
+}
+
+func handleUpdateFuturesPositionStatus(c *gin.Context) {
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE futures_positions SET status=$1, updated_at=NOW() WHERE id=$2`, req.Status, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "futures position status updated"})
+}
+
+// ---- Options (options_contracts) ----
+
+func handleGetOptionsContracts(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM options_contracts ORDER BY created_at DESC LIMIT 100`)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	c.JSON(http.StatusOK, gin.H{"contracts": rowsToMaps(rows)})
+}
+
+func handleGetOptionsContract(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM options_contracts WHERE id=$1`, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	contracts := rowsToMaps(rows)
+	if len(contracts) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "contract not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"contract": contracts[0]})
+}
+
+func handleCreateOptionsContract(c *gin.Context) {
+	var req struct {
+		Underlying string  `json:"underlying" binding:"required"`
+		OptionType string  `json:"option_type" binding:"required"`
+		Strike     float64 `json:"strike"`
+		Expiry     string  `json:"expiry"`
+		Premium    float64 `json:"premium"`
+		Size       float64 `json:"size"`
+		ChainID    int64   `json:"chain_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `INSERT INTO options_contracts (id, underlying, option_type, strike, expiry, premium, size, chain_id, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active')`,
+		uuid.New(), req.Underlying, req.OptionType, req.Strike, req.Expiry, req.Premium, req.Size, req.ChainID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "options contract created"})
+}
+
+func handleUpdateOptionsContract(c *gin.Context) {
+	var req struct {
+		Underlying string  `json:"underlying"`
+		OptionType string  `json:"option_type"`
+		Strike     float64 `json:"strike"`
+		Expiry     string  `json:"expiry"`
+		Premium    float64 `json:"premium"`
+		Size       float64 `json:"size"`
+		ChainID    int64   `json:"chain_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE options_contracts SET underlying=$1, option_type=$2, strike=$3, expiry=$4, premium=$5, size=$6, chain_id=$7, updated_at=NOW() WHERE id=$8`,
+		req.Underlying, req.OptionType, req.Strike, req.Expiry, req.Premium, req.Size, req.ChainID, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "options contract updated"})
+}
+
+func handleDeleteOptionsContract(c *gin.Context) {
+	if _, err := dbExec(c, `DELETE FROM options_contracts WHERE id=$1`, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "options contract deleted"})
+}
+
+func handleUpdateOptionsContractStatus(c *gin.Context) {
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE options_contracts SET status=$1, updated_at=NOW() WHERE id=$2`, req.Status, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "options contract status updated"})
+}
+
+// ---- Copy trading (copy_trading_configs) ----
+
+func handleGetCopyTradingConfigs(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM copy_trading_configs ORDER BY created_at DESC LIMIT 100`)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	c.JSON(http.StatusOK, gin.H{"configs": rowsToMaps(rows)})
+}
+
+func handleGetCopyTradingConfig(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM copy_trading_configs WHERE id=$1`, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	configs := rowsToMaps(rows)
+	if len(configs) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "config not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"config": configs[0]})
+}
+
+func handleCreateCopyTradingConfig(c *gin.Context) {
+	var req struct {
+		FollowerID  string  `json:"follower_id"`
+		LeaderID    string  `json:"leader_id"`
+		Allocation  float64 `json:"allocation"`
+		MaxLeverage float64 `json:"max_leverage"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `INSERT INTO copy_trading_configs (id, follower_id, leader_id, allocation, max_leverage, status) VALUES ($1,$2,$3,$4,$5,'active')`,
+		uuid.New(), req.FollowerID, req.LeaderID, req.Allocation, req.MaxLeverage); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "copy trading config created"})
+}
+
+func handleUpdateCopyTradingConfig(c *gin.Context) {
+	var req struct {
+		FollowerID  string  `json:"follower_id"`
+		LeaderID    string  `json:"leader_id"`
+		Allocation  float64 `json:"allocation"`
+		MaxLeverage float64 `json:"max_leverage"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE copy_trading_configs SET follower_id=$1, leader_id=$2, allocation=$3, max_leverage=$4, updated_at=NOW() WHERE id=$5`,
+		req.FollowerID, req.LeaderID, req.Allocation, req.MaxLeverage, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "copy trading config updated"})
+}
+
+func handleDeleteCopyTradingConfig(c *gin.Context) {
+	if _, err := dbExec(c, `DELETE FROM copy_trading_configs WHERE id=$1`, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "copy trading config deleted"})
+}
+
+func handleUpdateCopyTradingConfigStatus(c *gin.Context) {
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE copy_trading_configs SET status=$1, updated_at=NOW() WHERE id=$2`, req.Status, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "copy trading config status updated"})
+}
+
+// ---- Convert (convert_orders) ----
+
+func handleGetConvertOrders(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM convert_orders ORDER BY created_at DESC LIMIT 100`)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	c.JSON(http.StatusOK, gin.H{"orders": rowsToMaps(rows)})
+}
+
+func handleGetConvertOrder(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM convert_orders WHERE id=$1`, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	orders := rowsToMaps(rows)
+	if len(orders) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "order not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"order": orders[0]})
+}
+
+func handleCreateConvertOrder(c *gin.Context) {
+	var req struct {
+		UserID     string  `json:"user_id"`
+		FromToken  string  `json:"from_token" binding:"required"`
+		ToToken    string  `json:"to_token" binding:"required"`
+		FromAmount float64 `json:"from_amount"`
+		ToAmount   float64 `json:"to_amount"`
+		Rate       float64 `json:"rate"`
+		ChainID    int64   `json:"chain_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `INSERT INTO convert_orders (id, user_id, from_token, to_token, from_amount, to_amount, rate, chain_id, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending')`,
+		uuid.New(), req.UserID, req.FromToken, req.ToToken, req.FromAmount, req.ToAmount, req.Rate, req.ChainID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "convert order created"})
+}
+
+func handleUpdateConvertOrder(c *gin.Context) {
+	var req struct {
+		FromToken  string  `json:"from_token"`
+		ToToken    string  `json:"to_token"`
+		FromAmount float64 `json:"from_amount"`
+		ToAmount   float64 `json:"to_amount"`
+		Rate       float64 `json:"rate"`
+		ChainID    int64   `json:"chain_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE convert_orders SET from_token=$1, to_token=$2, from_amount=$3, to_amount=$4, rate=$5, chain_id=$6, updated_at=NOW() WHERE id=$7`,
+		req.FromToken, req.ToToken, req.FromAmount, req.ToAmount, req.Rate, req.ChainID, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "convert order updated"})
+}
+
+func handleDeleteConvertOrder(c *gin.Context) {
+	if _, err := dbExec(c, `DELETE FROM convert_orders WHERE id=$1`, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "convert order deleted"})
+}
+
+func handleUpdateConvertOrderStatus(c *gin.Context) {
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE convert_orders SET status=$1, updated_at=NOW() WHERE id=$2`, req.Status, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "convert order status updated"})
+}
+
+// ---- Onramp (onramp_orders) ----
+
+func handleGetOnrampOrders(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM onramp_orders ORDER BY created_at DESC LIMIT 100`)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	c.JSON(http.StatusOK, gin.H{"orders": rowsToMaps(rows)})
+}
+
+func handleGetOnrampOrder(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM onramp_orders WHERE id=$1`, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	orders := rowsToMaps(rows)
+	if len(orders) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "order not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"order": orders[0]})
+}
+
+func handleCreateOnrampOrder(c *gin.Context) {
+	var req struct {
+		UserID       string  `json:"user_id"`
+		Provider     string  `json:"provider" binding:"required"`
+		FiatCurrency string  `json:"fiat_currency" binding:"required"`
+		CryptoToken  string  `json:"crypto_token" binding:"required"`
+		FiatAmount   float64 `json:"fiat_amount"`
+		CryptoAmount float64 `json:"crypto_amount"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `INSERT INTO onramp_orders (id, user_id, provider, fiat_currency, crypto_token, fiat_amount, crypto_amount, status) VALUES ($1,$2,$3,$4,$5,$6,$7,'pending')`,
+		uuid.New(), req.UserID, req.Provider, req.FiatCurrency, req.CryptoToken, req.FiatAmount, req.CryptoAmount); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "onramp order created"})
+}
+
+func handleUpdateOnrampOrder(c *gin.Context) {
+	var req struct {
+		Provider     string  `json:"provider"`
+		FiatCurrency string  `json:"fiat_currency"`
+		CryptoToken  string  `json:"crypto_token"`
+		FiatAmount   float64 `json:"fiat_amount"`
+		CryptoAmount float64 `json:"crypto_amount"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE onramp_orders SET provider=$1, fiat_currency=$2, crypto_token=$3, fiat_amount=$4, crypto_amount=$5, updated_at=NOW() WHERE id=$6`,
+		req.Provider, req.FiatCurrency, req.CryptoToken, req.FiatAmount, req.CryptoAmount, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "onramp order updated"})
+}
+
+func handleDeleteOnrampOrder(c *gin.Context) {
+	if _, err := dbExec(c, `DELETE FROM onramp_orders WHERE id=$1`, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "onramp order deleted"})
+}
+
+func handleApproveOnrampOrder(c *gin.Context) {
+	if _, err := dbExec(c, `UPDATE onramp_orders SET status='completed', updated_at=NOW() WHERE id=$1`, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "onramp order approved"})
+}
+
+func handleRejectOnrampOrder(c *gin.Context) {
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	c.ShouldBindJSON(&req)
+	if _, err := dbExec(c, `UPDATE onramp_orders SET status='rejected', payment_ref=$1, updated_at=NOW() WHERE id=$2`, req.Reason, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "onramp order rejected"})
+}
+
+// ---- Offramp (offramp_orders) ----
+
+func handleGetOfframpOrders(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM offramp_orders ORDER BY created_at DESC LIMIT 100`)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	c.JSON(http.StatusOK, gin.H{"orders": rowsToMaps(rows)})
+}
+
+func handleGetOfframpOrder(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM offramp_orders WHERE id=$1`, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	orders := rowsToMaps(rows)
+	if len(orders) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "order not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"order": orders[0]})
+}
+
+func handleCreateOfframpOrder(c *gin.Context) {
+	var req struct {
+		UserID       string  `json:"user_id"`
+		Provider     string  `json:"provider" binding:"required"`
+		CryptoToken  string  `json:"crypto_token" binding:"required"`
+		FiatCurrency string  `json:"fiat_currency" binding:"required"`
+		CryptoAmount float64 `json:"crypto_amount"`
+		FiatAmount   float64 `json:"fiat_amount"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `INSERT INTO offramp_orders (id, user_id, provider, crypto_token, fiat_currency, crypto_amount, fiat_amount, status) VALUES ($1,$2,$3,$4,$5,$6,$7,'pending')`,
+		uuid.New(), req.UserID, req.Provider, req.CryptoToken, req.FiatCurrency, req.CryptoAmount, req.FiatAmount); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "offramp order created"})
+}
+
+func handleUpdateOfframpOrder(c *gin.Context) {
+	var req struct {
+		Provider     string  `json:"provider"`
+		CryptoToken  string  `json:"crypto_token"`
+		FiatCurrency string  `json:"fiat_currency"`
+		CryptoAmount float64 `json:"crypto_amount"`
+		FiatAmount   float64 `json:"fiat_amount"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE offramp_orders SET provider=$1, crypto_token=$2, fiat_currency=$3, crypto_amount=$4, fiat_amount=$5, updated_at=NOW() WHERE id=$6`,
+		req.Provider, req.CryptoToken, req.FiatCurrency, req.CryptoAmount, req.FiatAmount, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "offramp order updated"})
+}
+
+func handleDeleteOfframpOrder(c *gin.Context) {
+	if _, err := dbExec(c, `DELETE FROM offramp_orders WHERE id=$1`, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "offramp order deleted"})
+}
+
+func handleApproveOfframpOrder(c *gin.Context) {
+	if _, err := dbExec(c, `UPDATE offramp_orders SET status='completed', updated_at=NOW() WHERE id=$1`, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "offramp order approved"})
+}
+
+func handleRejectOfframpOrder(c *gin.Context) {
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	c.ShouldBindJSON(&req)
+	if _, err := dbExec(c, `UPDATE offramp_orders SET status='rejected', payout_ref=$1, updated_at=NOW() WHERE id=$2`, req.Reason, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "offramp order rejected"})
+}
+
+// ---- P2P clients (p2p_clients) ----
+
+func handleGetP2PClients(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM p2p_clients ORDER BY created_at DESC LIMIT 100`)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	c.JSON(http.StatusOK, gin.H{"clients": rowsToMaps(rows)})
+}
+
+func handleGetP2PClient(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM p2p_clients WHERE id=$1`, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	clients := rowsToMaps(rows)
+	if len(clients) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "client not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"client": clients[0]})
+}
+
+func handleCreateP2PClient(c *gin.Context) {
+	var req struct {
+		UserID   string `json:"user_id"`
+		Username string `json:"username" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `INSERT INTO p2p_clients (id, user_id, username, status) VALUES ($1,$2,$3,'active')`,
+		uuid.New(), req.UserID, req.Username); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "p2p client created"})
+}
+
+func handleUpdateP2PClient(c *gin.Context) {
+	var req struct {
+		Username string `json:"username"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE p2p_clients SET username=$1, updated_at=NOW() WHERE id=$2`, req.Username, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "p2p client updated"})
+}
+
+func handleDeleteP2PClient(c *gin.Context) {
+	if _, err := dbExec(c, `DELETE FROM p2p_clients WHERE id=$1`, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "p2p client deleted"})
+}
+
+func handleUpdateP2PClientStatus(c *gin.Context) {
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE p2p_clients SET status=$1, updated_at=NOW() WHERE id=$2`, req.Status, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "p2p client status updated"})
+}
+
+// ---- P2P merchants (p2p_merchants) ----
+
+func handleGetP2PMerchants(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM p2p_merchants ORDER BY created_at DESC LIMIT 100`)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	c.JSON(http.StatusOK, gin.H{"merchants": rowsToMaps(rows)})
+}
+
+func handleGetP2PMerchant(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM p2p_merchants WHERE id=$1`, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	merchants := rowsToMaps(rows)
+	if len(merchants) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "merchant not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"merchant": merchants[0]})
+}
+
+func handleCreateP2PMerchant(c *gin.Context) {
+	var req struct {
+		Name  string `json:"name" binding:"required"`
+		Email string `json:"email"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `INSERT INTO p2p_merchants (id, name, email, status, verified) VALUES ($1,$2,$3,'pending',false)`,
+		uuid.New(), req.Name, req.Email); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "p2p merchant created"})
+}
+
+func handleUpdateP2PMerchant(c *gin.Context) {
+	var req struct {
+		Name  string `json:"name"`
+		Email string `json:"email"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE p2p_merchants SET name=$1, email=$2, updated_at=NOW() WHERE id=$3`, req.Name, req.Email, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "p2p merchant updated"})
+}
+
+func handleDeleteP2PMerchant(c *gin.Context) {
+	if _, err := dbExec(c, `DELETE FROM p2p_merchants WHERE id=$1`, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "p2p merchant deleted"})
+}
+
+func handleUpdateP2PMerchantStatus(c *gin.Context) {
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE p2p_merchants SET status=$1, updated_at=NOW() WHERE id=$2`, req.Status, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "p2p merchant status updated"})
+}
+
+func handleApproveP2PMerchant(c *gin.Context) {
+	if _, err := dbExec(c, `UPDATE p2p_merchants SET status='approved', verified=true, updated_at=NOW() WHERE id=$1`, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "p2p merchant approved"})
+}
+
+func handleRejectP2PMerchant(c *gin.Context) {
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	c.ShouldBindJSON(&req)
+	_ = req
+	if _, err := dbExec(c, `UPDATE p2p_merchants SET status='rejected', updated_at=NOW() WHERE id=$1`, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "p2p merchant rejected"})
+}
+
+// ---- Partners (partners) ----
+
+func handleGetPartners(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM partners ORDER BY created_at DESC LIMIT 100`)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	c.JSON(http.StatusOK, gin.H{"partners": rowsToMaps(rows)})
+}
+
+func handleGetPartner(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM partners WHERE id=$1`, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	partners := rowsToMaps(rows)
+	if len(partners) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "partner not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"partner": partners[0]})
+}
+
+func handleCreatePartner(c *gin.Context) {
+	var req struct {
+		Name         string  `json:"name" binding:"required"`
+		ContactEmail string  `json:"contact_email"`
+		RevenueShare float64 `json:"revenue_share"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `INSERT INTO partners (id, name, contact_email, api_key, revenue_share, status) VALUES ($1,$2,$3,$4,$5,'pending')`,
+		uuid.New(), req.Name, req.ContactEmail, uuid.New().String(), req.RevenueShare); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "partner created"})
+}
+
+func handleUpdatePartner(c *gin.Context) {
+	var req struct {
+		Name         string  `json:"name"`
+		ContactEmail string  `json:"contact_email"`
+		RevenueShare float64 `json:"revenue_share"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE partners SET name=$1, contact_email=$2, revenue_share=$3, updated_at=NOW() WHERE id=$4`,
+		req.Name, req.ContactEmail, req.RevenueShare, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "partner updated"})
+}
+
+func handleDeletePartner(c *gin.Context) {
+	if _, err := dbExec(c, `DELETE FROM partners WHERE id=$1`, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "partner deleted"})
+}
+
+func handleUpdatePartnerStatus(c *gin.Context) {
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE partners SET status=$1, updated_at=NOW() WHERE id=$2`, req.Status, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "partner status updated"})
+}
+
+func handleApprovePartner(c *gin.Context) {
+	if _, err := dbExec(c, `UPDATE partners SET status='approved', updated_at=NOW() WHERE id=$1`, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "partner approved"})
+}
+
+func handleRejectPartner(c *gin.Context) {
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	c.ShouldBindJSON(&req)
+	_ = req
+	if _, err := dbExec(c, `UPDATE partners SET status='rejected', updated_at=NOW() WHERE id=$1`, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "partner rejected"})
+}
+
+// ---- Rewards (reward_campaigns) ----
+
+func handleGetRewardCampaigns(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM reward_campaigns ORDER BY created_at DESC LIMIT 100`)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	c.JSON(http.StatusOK, gin.H{"campaigns": rowsToMaps(rows)})
+}
+
+func handleGetRewardCampaign(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM reward_campaigns WHERE id=$1`, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	campaigns := rowsToMaps(rows)
+	if len(campaigns) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "campaign not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"campaign": campaigns[0]})
+}
+
+func handleCreateRewardCampaign(c *gin.Context) {
+	var req struct {
+		Name       string  `json:"name" binding:"required"`
+		RewardType string  `json:"reward_type" binding:"required"`
+		Amount     float64 `json:"amount"`
+		Token      string  `json:"token"`
+		StartAt    string  `json:"start_at"`
+		EndAt      string  `json:"end_at"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `INSERT INTO reward_campaigns (id, name, reward_type, amount, token, status, start_at, end_at) VALUES ($1,$2,$3,$4,$5,'active',$6,$7)`,
+		uuid.New(), req.Name, req.RewardType, req.Amount, req.Token, req.StartAt, req.EndAt); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "reward campaign created"})
+}
+
+func handleUpdateRewardCampaign(c *gin.Context) {
+	var req struct {
+		Name       string  `json:"name"`
+		RewardType string  `json:"reward_type"`
+		Amount     float64 `json:"amount"`
+		Token      string  `json:"token"`
+		StartAt    string  `json:"start_at"`
+		EndAt      string  `json:"end_at"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE reward_campaigns SET name=$1, reward_type=$2, amount=$3, token=$4, start_at=$5, end_at=$6, updated_at=NOW() WHERE id=$7`,
+		req.Name, req.RewardType, req.Amount, req.Token, req.StartAt, req.EndAt, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "reward campaign updated"})
+}
+
+func handleDeleteRewardCampaign(c *gin.Context) {
+	if _, err := dbExec(c, `DELETE FROM reward_campaigns WHERE id=$1`, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "reward campaign deleted"})
+}
+
+func handleUpdateRewardCampaignStatus(c *gin.Context) {
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE reward_campaigns SET status=$1, updated_at=NOW() WHERE id=$2`, req.Status, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "reward campaign status updated"})
+}
+
+// ---- Marketing (marketing_campaigns) ----
+
+func handleGetMarketingCampaigns(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM marketing_campaigns ORDER BY created_at DESC LIMIT 100`)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	c.JSON(http.StatusOK, gin.H{"campaigns": rowsToMaps(rows)})
+}
+
+func handleGetMarketingCampaign(c *gin.Context) {
+	rows, err := dbQuery(c, `SELECT * FROM marketing_campaigns WHERE id=$1`, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	campaigns := rowsToMaps(rows)
+	if len(campaigns) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "campaign not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"campaign": campaigns[0]})
+}
+
+func handleCreateMarketingCampaign(c *gin.Context) {
+	var req struct {
+		Name    string  `json:"name" binding:"required"`
+		Channel string  `json:"channel" binding:"required"`
+		Budget  float64 `json:"budget"`
+		StartAt string  `json:"start_at"`
+		EndAt   string  `json:"end_at"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `INSERT INTO marketing_campaigns (id, name, channel, budget, status, start_at, end_at) VALUES ($1,$2,$3,$4,'draft',$5,$6)`,
+		uuid.New(), req.Name, req.Channel, req.Budget, req.StartAt, req.EndAt); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "marketing campaign created"})
+}
+
+func handleUpdateMarketingCampaign(c *gin.Context) {
+	var req struct {
+		Name    string  `json:"name"`
+		Channel string  `json:"channel"`
+		Budget  float64 `json:"budget"`
+		StartAt string  `json:"start_at"`
+		EndAt   string  `json:"end_at"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE marketing_campaigns SET name=$1, channel=$2, budget=$3, start_at=$4, end_at=$5, updated_at=NOW() WHERE id=$6`,
+		req.Name, req.Channel, req.Budget, req.StartAt, req.EndAt, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "marketing campaign updated"})
+}
+
+func handleDeleteMarketingCampaign(c *gin.Context) {
+	if _, err := dbExec(c, `DELETE FROM marketing_campaigns WHERE id=$1`, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "marketing campaign deleted"})
+}
+
+func handleUpdateMarketingCampaignStatus(c *gin.Context) {
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE marketing_campaigns SET status=$1, updated_at=NOW() WHERE id=$2`, req.Status, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "marketing campaign status updated"})
+}
