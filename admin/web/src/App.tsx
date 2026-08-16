@@ -21,6 +21,24 @@ import ChainsPage from './pages/ChainsPage';
 import ReportsPage from './pages/ReportsPage';
 import AdminsPage from './pages/AdminsPage';
 
+// Domain admin pages (orphan + new domain pages)
+import MarginTradingPage from './pages/MarginTrading';
+import CryptoCardsPage from './pages/CryptoCards';
+import LiquidityPage from './pages/Liquidity';
+import P2PMerchantPage from './pages/P2PMerchant';
+import FeaturesPage from './pages/Features';
+import FuturesPage from './pages/Futures';
+import OptionsPage from './pages/Options';
+import CopyTradingPage from './pages/CopyTrading';
+import ConvertPage from './pages/Convert';
+import OnRampPage from './pages/OnRamp';
+import OffRampPage from './pages/OffRamp';
+import P2PClientsPage from './pages/P2PClients';
+import PartnersPage from './pages/Partners';
+import RewardsPage from './pages/Rewards';
+import MarketingPage from './pages/Marketing';
+import AdminRolesPage from './pages/AdminRoles';
+
 // Sidebar Component
 const Sidebar: React.FC<{ 
   currentPage: string; 
@@ -42,6 +60,22 @@ const Sidebar: React.FC<{
     { id: 'auditlogs', label: 'Audit Logs', icon: '📝' },
     { id: 'reports', label: 'Reports', icon: '📋' },
     { id: 'admins', label: 'Admins', icon: '👤' },
+    { id: 'admin-roles', label: 'Roles & RBAC', icon: '🔐' },
+    { id: 'margin-trading', label: 'Margin Trading', icon: '📈' },
+    { id: 'futures', label: 'Futures', icon: '🔥' },
+    { id: 'options', label: 'Options', icon: '🎯' },
+    { id: 'copy-trading', label: 'Copy Trading', icon: '📋' },
+    { id: 'convert', label: 'Convert', icon: '💱' },
+    { id: 'liquidity', label: 'Liquidity', icon: '💧' },
+    { id: 'onramp', label: 'OnRamp', icon: '⬇️' },
+    { id: 'offramp', label: 'OffRamp', icon: '⬆️' },
+    { id: 'p2p-merchants', label: 'P2P Merchants', icon: '🤝' },
+    { id: 'p2p-clients', label: 'P2P Clients', icon: '👥' },
+    { id: 'crypto-cards', label: 'Crypto Cards', icon: '💳' },
+    { id: 'partners', label: 'Partners', icon: '🌐' },
+    { id: 'rewards', label: 'Rewards', icon: '🎁' },
+    { id: 'marketing', label: 'Marketing', icon: '📣' },
+    { id: 'features', label: 'Feature Flags', icon: '🚩' },
     { id: 'settings', label: 'Settings', icon: '⚙️' },
   ];
 
@@ -170,6 +204,38 @@ const PageRouter: React.FC<{ currentPage: string }> = ({ currentPage }) => {
       return <ReportsPage />;
     case 'admins':
       return <AdminsPage />;
+    case 'admin-roles':
+      return <AdminRolesPage />;
+    case 'margin-trading':
+      return <MarginTradingPage />;
+    case 'futures':
+      return <FuturesPage />;
+    case 'options':
+      return <OptionsPage />;
+    case 'copy-trading':
+      return <CopyTradingPage />;
+    case 'convert':
+      return <ConvertPage />;
+    case 'liquidity':
+      return <LiquidityPage />;
+    case 'onramp':
+      return <OnRampPage />;
+    case 'offramp':
+      return <OffRampPage />;
+    case 'p2p-merchants':
+      return <P2PMerchantPage />;
+    case 'p2p-clients':
+      return <P2PClientsPage />;
+    case 'crypto-cards':
+      return <CryptoCardsPage />;
+    case 'partners':
+      return <PartnersPage />;
+    case 'rewards':
+      return <RewardsPage />;
+    case 'marketing':
+      return <MarketingPage />;
+    case 'features':
+      return <FeaturesPage />;
     case 'settings':
       return <SettingsPage />;
     default:

@@ -775,3 +775,129 @@ export const p2pMerchantAPI = {
   rejectMerchant: (id: string, reason: string) => adminApi.request(`/api/v1/p2p-merchants/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
   getTransactions: async (id: string) => ({ data: await adminApi.request<any[]>(`/api/v1/p2p-merchants/${id}/transactions`) }),
 };
+
+// Futures API facade (real /api/v1/futures endpoints)
+export const futuresAPI = {
+  getAll: async () => ({ data: await adminApi.request<any[]>('/api/v1/futures') }),
+  getOne: async (id: string) => ({ data: await adminApi.request<any>(`/api/v1/futures/${id}`) }),
+  create: (data: any) => adminApi.request('/api/v1/futures', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => adminApi.request(`/api/v1/futures/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) => adminApi.request(`/api/v1/futures/${id}`, { method: 'DELETE' }),
+  setStatus: (id: string, status: string) => adminApi.request(`/api/v1/futures/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+};
+
+// Options API facade (real /api/v1/options endpoints)
+export const optionsAPI = {
+  getAll: async () => ({ data: await adminApi.request<any[]>('/api/v1/options') }),
+  getOne: async (id: string) => ({ data: await adminApi.request<any>(`/api/v1/options/${id}`) }),
+  create: (data: any) => adminApi.request('/api/v1/options', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => adminApi.request(`/api/v1/options/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) => adminApi.request(`/api/v1/options/${id}`, { method: 'DELETE' }),
+  setStatus: (id: string, status: string) => adminApi.request(`/api/v1/options/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+};
+
+// Copy Trading API facade (real /api/v1/copy-trading endpoints)
+export const copyTradingAPI = {
+  getAll: async () => ({ data: await adminApi.request<any[]>('/api/v1/copy-trading') }),
+  getOne: async (id: string) => ({ data: await adminApi.request<any>(`/api/v1/copy-trading/${id}`) }),
+  create: (data: any) => adminApi.request('/api/v1/copy-trading', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => adminApi.request(`/api/v1/copy-trading/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) => adminApi.request(`/api/v1/copy-trading/${id}`, { method: 'DELETE' }),
+  setStatus: (id: string, status: string) => adminApi.request(`/api/v1/copy-trading/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+};
+
+// Convert API facade (real /api/v1/convert endpoints)
+export const convertAPI = {
+  getAll: async () => ({ data: await adminApi.request<any[]>('/api/v1/convert') }),
+  getOne: async (id: string) => ({ data: await adminApi.request<any>(`/api/v1/convert/${id}`) }),
+  create: (data: any) => adminApi.request('/api/v1/convert', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => adminApi.request(`/api/v1/convert/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) => adminApi.request(`/api/v1/convert/${id}`, { method: 'DELETE' }),
+  setStatus: (id: string, status: string) => adminApi.request(`/api/v1/convert/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+};
+
+// OnRamp API facade (real /api/v1/onramp endpoints)
+export const onRampAPI = {
+  getAll: async () => ({ data: await adminApi.request<any[]>('/api/v1/onramp') }),
+  getOne: async (id: string) => ({ data: await adminApi.request<any>(`/api/v1/onramp/${id}`) }),
+  create: (data: any) => adminApi.request('/api/v1/onramp', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => adminApi.request(`/api/v1/onramp/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) => adminApi.request(`/api/v1/onramp/${id}`, { method: 'DELETE' }),
+  setStatus: (id: string, status: string) => adminApi.request(`/api/v1/onramp/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  approve: (id: string) => adminApi.request(`/api/v1/onramp/${id}/approve`, { method: 'POST', body: JSON.stringify({}) }),
+  reject: (id: string, reason: string) => adminApi.request(`/api/v1/onramp/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
+};
+
+// OffRamp API facade (real /api/v1/offramp endpoints)
+export const offRampAPI = {
+  getAll: async () => ({ data: await adminApi.request<any[]>('/api/v1/offramp') }),
+  getOne: async (id: string) => ({ data: await adminApi.request<any>(`/api/v1/offramp/${id}`) }),
+  create: (data: any) => adminApi.request('/api/v1/offramp', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => adminApi.request(`/api/v1/offramp/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) => adminApi.request(`/api/v1/offramp/${id}`, { method: 'DELETE' }),
+  setStatus: (id: string, status: string) => adminApi.request(`/api/v1/offramp/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  approve: (id: string) => adminApi.request(`/api/v1/offramp/${id}/approve`, { method: 'POST', body: JSON.stringify({}) }),
+  reject: (id: string, reason: string) => adminApi.request(`/api/v1/offramp/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
+};
+
+// P2P Clients API facade (real /api/v1/p2p-clients endpoints)
+export const p2pClientsAPI = {
+  getAll: async () => ({ data: await adminApi.request<any[]>('/api/v1/p2p-clients') }),
+  getOne: async (id: string) => ({ data: await adminApi.request<any>(`/api/v1/p2p-clients/${id}`) }),
+  create: (data: any) => adminApi.request('/api/v1/p2p-clients', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => adminApi.request(`/api/v1/p2p-clients/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) => adminApi.request(`/api/v1/p2p-clients/${id}`, { method: 'DELETE' }),
+  setStatus: (id: string, status: string) => adminApi.request(`/api/v1/p2p-clients/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+};
+
+// Partners API facade (real /api/v1/partners endpoints)
+export const partnersAPI = {
+  getAll: async () => ({ data: await adminApi.request<any[]>('/api/v1/partners') }),
+  getOne: async (id: string) => ({ data: await adminApi.request<any>(`/api/v1/partners/${id}`) }),
+  create: (data: any) => adminApi.request('/api/v1/partners', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => adminApi.request(`/api/v1/partners/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) => adminApi.request(`/api/v1/partners/${id}`, { method: 'DELETE' }),
+  setStatus: (id: string, status: string) => adminApi.request(`/api/v1/partners/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  approve: (id: string) => adminApi.request(`/api/v1/partners/${id}/approve`, { method: 'POST', body: JSON.stringify({}) }),
+  reject: (id: string, reason: string) => adminApi.request(`/api/v1/partners/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
+};
+
+// Rewards API facade (real /api/v1/rewards endpoints)
+export const rewardsAPI = {
+  getAll: async () => ({ data: await adminApi.request<any[]>('/api/v1/rewards') }),
+  getOne: async (id: string) => ({ data: await adminApi.request<any>(`/api/v1/rewards/${id}`) }),
+  create: (data: any) => adminApi.request('/api/v1/rewards', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => adminApi.request(`/api/v1/rewards/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) => adminApi.request(`/api/v1/rewards/${id}`, { method: 'DELETE' }),
+  setStatus: (id: string, status: string) => adminApi.request(`/api/v1/rewards/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+};
+
+// Marketing API facade (real /api/v1/marketing endpoints)
+export const marketingAPI = {
+  getAll: async () => ({ data: await adminApi.request<any[]>('/api/v1/marketing') }),
+  getOne: async (id: string) => ({ data: await adminApi.request<any>(`/api/v1/marketing/${id}`) }),
+  create: (data: any) => adminApi.request('/api/v1/marketing', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => adminApi.request(`/api/v1/marketing/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) => adminApi.request(`/api/v1/marketing/${id}`, { method: 'DELETE' }),
+  setStatus: (id: string, status: string) => adminApi.request(`/api/v1/marketing/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+};
+
+// RBAC Admin Roles API facade (real /api/v1/roles, /api/v1/permissions, /api/v1/admins endpoints)
+export const adminRolesAPI = {
+  // Roles
+  getRoles: async () => ({ data: await adminApi.request<any[]>('/api/v1/roles') }),
+  getRole: async (id: string) => ({ data: await adminApi.request<any>(`/api/v1/roles/${id}`) }),
+  createRole: (data: any) => adminApi.request('/api/v1/roles', { method: 'POST', body: JSON.stringify(data) }),
+  updateRole: (id: string, data: any) => adminApi.request(`/api/v1/roles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteRole: (id: string) => adminApi.request(`/api/v1/roles/${id}`, { method: 'DELETE' }),
+  // Permissions
+  getPermissions: async () => ({ data: await adminApi.request<any[]>('/api/v1/permissions') }),
+  getPermission: async (id: string) => ({ data: await adminApi.request<any>(`/api/v1/permissions/${id}`) }),
+  createPermission: (data: any) => adminApi.request('/api/v1/permissions', { method: 'POST', body: JSON.stringify(data) }),
+  updatePermission: (id: string, data: any) => adminApi.request(`/api/v1/permissions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deletePermission: (id: string) => adminApi.request(`/api/v1/permissions/${id}`, { method: 'DELETE' }),
+  // Admin role/permission assignments
+  assignRole: (adminId: string, data: { roleId: string }) => adminApi.request(`/api/v1/admins/${adminId}/roles`, { method: 'POST', body: JSON.stringify(data) }),
+  revokeRole: (adminId: string, roleId: string) => adminApi.request(`/api/v1/admins/${adminId}/roles/${roleId}`, { method: 'DELETE' }),
+  getEffectivePermissions: async (adminId: string) => ({ data: await adminApi.request<any[]>(`/api/v1/admins/${adminId}/permissions`) }),
+};
