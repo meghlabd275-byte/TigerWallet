@@ -36,6 +36,18 @@ const menuItems = [
   { path: '/audit-logs', icon: '📝', label: 'Audit Logs' },
   { path: '/system', icon: '⚙️', label: 'System' },
   { path: '/settings', icon: '🔧', label: 'Settings' },
+  { path: '/futures', icon: '📈', label: 'Futures' },
+  { path: '/options', icon: '📋', label: 'Options' },
+  { path: '/copy-trading', icon: '👯', label: 'Copy Trading' },
+  { path: '/convert', icon: '🔁', label: 'Convert' },
+  { path: '/onramp', icon: '🏦', label: 'OnRamp' },
+  { path: '/offramp', icon: '🏧', label: 'OffRamp' },
+  { path: '/p2p-clients', icon: '🧑', label: 'P2P Clients' },
+  { path: '/p2p-merchants', icon: '🏪', label: 'P2P Merchants' },
+  { path: '/partners', icon: '🤝', label: 'Partners' },
+  { path: '/rewards', icon: '🎁', label: 'Rewards' },
+  { path: '/marketing', icon: '📣', label: 'Marketing' },
+  { path: '/admin-roles', icon: '🛡️', label: 'Admin Roles' },
 ];
 
 export default function Layout() {

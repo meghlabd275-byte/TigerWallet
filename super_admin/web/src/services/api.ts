@@ -2184,6 +2184,324 @@ class SuperAdminApiService {
   async deleteWLProjectTeam(id: string): Promise<{ message: string }> {
     return this.request(`/api/v1/admin/wl-project-teams/${id}`, { method: 'DELETE' });
   }
+
+  // ==================== Domain admin governance (PostgreSQL-backed) ====================
+  // Governance records only — these never move crypto assets. Fund movement is
+  // performed exclusively by the wallet owner via the canonical wallet backend.
+
+  // ---- Futures positions ----
+  async getFutures(): Promise<{ positions: any[] }> {
+    return this.request('/api/v1/admin/futures');
+  }
+  async getFuture(id: string): Promise<{ position: any }> {
+    return this.request(`/api/v1/admin/futures/${id}`);
+  }
+  async createFuture(data: {
+    pair: string; side: string; size?: number; leverage?: number;
+    entry_price?: number; liquidation_price?: number; margin?: number; chain_id?: number;
+  }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/futures', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateFuture(id: string, data: {
+    pair?: string; side?: string; size?: number; leverage?: number;
+    entry_price?: number; liquidation_price?: number; margin?: number; chain_id?: number;
+  }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/futures/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deleteFuture(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/futures/${id}`, { method: 'DELETE' });
+  }
+  async updateFutureStatus(id: string, status: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/futures/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+  }
+
+  // ---- Options contracts ----
+  async getOptions(): Promise<{ contracts: any[] }> {
+    return this.request('/api/v1/admin/options');
+  }
+  async getOption(id: string): Promise<{ contract: any }> {
+    return this.request(`/api/v1/admin/options/${id}`);
+  }
+  async createOption(data: {
+    underlying: string; option_type: string; strike?: number; expiry?: string;
+    premium?: number; size?: number; chain_id?: number;
+  }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/options', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateOption(id: string, data: {
+    underlying?: string; option_type?: string; strike?: number; expiry?: string;
+    premium?: number; size?: number; chain_id?: number;
+  }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/options/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deleteOption(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/options/${id}`, { method: 'DELETE' });
+  }
+  async updateOptionStatus(id: string, status: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/options/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+  }
+
+  // ---- Copy trading configs ----
+  async getCopyTrading(): Promise<{ configs: any[] }> {
+    return this.request('/api/v1/admin/copy-trading');
+  }
+  async getCopyTradingItem(id: string): Promise<{ config: any }> {
+    return this.request(`/api/v1/admin/copy-trading/${id}`);
+  }
+  async createCopyTrading(data: {
+    follower_id?: string; leader_id?: string; allocation?: number; max_leverage?: number;
+  }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/copy-trading', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateCopyTrading(id: string, data: {
+    follower_id?: string; leader_id?: string; allocation?: number; max_leverage?: number;
+  }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/copy-trading/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deleteCopyTrading(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/copy-trading/${id}`, { method: 'DELETE' });
+  }
+  async updateCopyTradingStatus(id: string, status: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/copy-trading/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+  }
+
+  // ---- Convert orders ----
+  async getConvert(): Promise<{ orders: any[] }> {
+    return this.request('/api/v1/admin/convert');
+  }
+  async getConvertItem(id: string): Promise<{ order: any }> {
+    return this.request(`/api/v1/admin/convert/${id}`);
+  }
+  async createConvert(data: {
+    user_id?: string; from_token: string; to_token: string;
+    from_amount?: number; to_amount?: number; rate?: number; chain_id?: number;
+  }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/convert', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateConvert(id: string, data: {
+    from_token?: string; to_token?: string;
+    from_amount?: number; to_amount?: number; rate?: number; chain_id?: number;
+  }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/convert/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deleteConvert(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/convert/${id}`, { method: 'DELETE' });
+  }
+  async updateConvertStatus(id: string, status: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/convert/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+  }
+
+  // ---- Onramp orders ----
+  async getOnRampOrders(): Promise<{ orders: any[] }> {
+    return this.request('/api/v1/admin/onramp');
+  }
+  async getOnRampOrder(id: string): Promise<{ order: any }> {
+    return this.request(`/api/v1/admin/onramp/${id}`);
+  }
+  async createOnRampOrder(data: {
+    user_id?: string; provider: string; fiat_currency: string; crypto_token: string;
+    fiat_amount?: number; crypto_amount?: number;
+  }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/onramp', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateOnRampOrder(id: string, data: {
+    provider?: string; fiat_currency?: string; crypto_token?: string;
+    fiat_amount?: number; crypto_amount?: number;
+  }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/onramp/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deleteOnRampOrder(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/onramp/${id}`, { method: 'DELETE' });
+  }
+  async approveOnRampOrder(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/onramp/${id}/approve`, { method: 'POST' });
+  }
+  async rejectOnRampOrder(id: string, reason: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/onramp/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) });
+  }
+
+  // ---- Offramp orders ----
+  async getOffRampOrders(): Promise<{ orders: any[] }> {
+    return this.request('/api/v1/admin/offramp');
+  }
+  async getOffRampOrder(id: string): Promise<{ order: any }> {
+    return this.request(`/api/v1/admin/offramp/${id}`);
+  }
+  async createOffRampOrder(data: {
+    user_id?: string; provider: string; crypto_token: string; fiat_currency: string;
+    crypto_amount?: number; fiat_amount?: number;
+  }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/offramp', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateOffRampOrder(id: string, data: {
+    provider?: string; crypto_token?: string; fiat_currency?: string;
+    crypto_amount?: number; fiat_amount?: number;
+  }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/offramp/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deleteOffRampOrder(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/offramp/${id}`, { method: 'DELETE' });
+  }
+  async approveOffRampOrder(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/offramp/${id}/approve`, { method: 'POST' });
+  }
+  async rejectOffRampOrder(id: string, reason: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/offramp/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) });
+  }
+
+  // ---- P2P clients ----
+  async getP2PClients(): Promise<{ clients: any[] }> {
+    return this.request('/api/v1/admin/p2p-clients');
+  }
+  async getP2PClient(id: string): Promise<{ client: any }> {
+    return this.request(`/api/v1/admin/p2p-clients/${id}`);
+  }
+  async createP2PClient(data: { user_id?: string; username: string }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/p2p-clients', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateP2PClient(id: string, data: { username?: string }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/p2p-clients/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deleteP2PClient(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/p2p-clients/${id}`, { method: 'DELETE' });
+  }
+  async updateP2PClientStatus(id: string, status: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/p2p-clients/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+  }
+
+  // ---- P2P merchants ----
+  async getP2PMerchants(): Promise<{ merchants: any[] }> {
+    return this.request('/api/v1/admin/p2p-merchants');
+  }
+  async getP2PMerchant(id: string): Promise<{ merchant: any }> {
+    return this.request(`/api/v1/admin/p2p-merchants/${id}`);
+  }
+  async createP2PMerchant(data: { name: string; email?: string }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/p2p-merchants', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateP2PMerchant(id: string, data: { name?: string; email?: string }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/p2p-merchants/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deleteP2PMerchant(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/p2p-merchants/${id}`, { method: 'DELETE' });
+  }
+  async updateP2PMerchantStatus(id: string, status: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/p2p-merchants/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+  }
+  async approveP2PMerchant(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/p2p-merchants/${id}/approve`, { method: 'POST' });
+  }
+  async rejectP2PMerchant(id: string, reason: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/p2p-merchants/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) });
+  }
+
+  // ---- Partners ----
+  async getPartners(): Promise<{ partners: any[] }> {
+    return this.request('/api/v1/admin/partners');
+  }
+  async getPartner(id: string): Promise<{ partner: any }> {
+    return this.request(`/api/v1/admin/partners/${id}`);
+  }
+  async createPartner(data: { name: string; contact_email?: string; revenue_share?: number }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/partners', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updatePartner(id: string, data: { name?: string; contact_email?: string; revenue_share?: number }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/partners/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deletePartner(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/partners/${id}`, { method: 'DELETE' });
+  }
+  async updatePartnerStatus(id: string, status: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/partners/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+  }
+  async approvePartner(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/partners/${id}/approve`, { method: 'POST' });
+  }
+  async rejectPartner(id: string, reason: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/partners/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) });
+  }
+
+  // ---- Rewards campaigns ----
+  async getRewards(): Promise<{ campaigns: any[] }> {
+    return this.request('/api/v1/admin/rewards');
+  }
+  async getReward(id: string): Promise<{ campaign: any }> {
+    return this.request(`/api/v1/admin/rewards/${id}`);
+  }
+  async createReward(data: {
+    name: string; reward_type: string; amount?: number; token?: string;
+    start_at?: string; end_at?: string;
+  }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/rewards', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateReward(id: string, data: {
+    name?: string; reward_type?: string; amount?: number; token?: string;
+    start_at?: string; end_at?: string;
+  }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/rewards/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deleteReward(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/rewards/${id}`, { method: 'DELETE' });
+  }
+  async updateRewardStatus(id: string, status: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/rewards/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+  }
+
+  // ---- Marketing campaigns ----
+  async getMarketing(): Promise<{ campaigns: any[] }> {
+    return this.request('/api/v1/admin/marketing');
+  }
+  async getMarketingItem(id: string): Promise<{ campaign: any }> {
+    return this.request(`/api/v1/admin/marketing/${id}`);
+  }
+  async createMarketing(data: {
+    name: string; channel: string; budget?: number; start_at?: string; end_at?: string;
+  }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/marketing', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateMarketing(id: string, data: {
+    name?: string; channel?: string; budget?: number; start_at?: string; end_at?: string;
+  }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/marketing/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deleteMarketing(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/marketing/${id}`, { method: 'DELETE' });
+  }
+  async updateMarketingStatus(id: string, status: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/marketing/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+  }
+
+  // ---- Structured RBAC: custom admin roles + granular permissions ----
+  async getAdminRoles(): Promise<{ roles: any[] }> {
+    return this.request('/api/v1/admin/roles');
+  }
+  async getAdminRole(id: string): Promise<{ role: any }> {
+    return this.request(`/api/v1/admin/roles/${id}`);
+  }
+  async createAdminRole(data: { name: string; description?: string; permissions?: string[] }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/roles', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateAdminRole(id: string, data: { name?: string; description?: string; permissions?: string[]; is_active?: boolean }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/roles/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async deleteAdminRole(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/roles/${id}`, { method: 'DELETE' });
+  }
+  async getAdminPermissions(): Promise<{ permissions: any[] }> {
+    return this.request('/api/v1/admin/permissions');
+  }
+  async createAdminPermission(data: { name: string; description?: string; category?: string }): Promise<{ message: string }> {
+    return this.request('/api/v1/admin/permissions', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async assignAdminRole(adminId: string, roleId: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/admins/${adminId}/roles`, { method: 'POST', body: JSON.stringify({ role_id: roleId }) });
+  }
+  async revokeAdminRole(adminId: string, roleId: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/admins/${adminId}/roles/${roleId}`, { method: 'DELETE' });
+  }
+  async getAdminEffectivePermissions(adminId: string): Promise<{ admin_id: string; permissions: string[] }> {
+    return this.request(`/api/v1/admin/admins/${adminId}/permissions`);
+  }
 }
 
 export const superAdminApi = new SuperAdminApiService();

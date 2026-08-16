@@ -35,6 +35,18 @@ import AuditLogs from './pages/AuditLogs';
 import System from './pages/System';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
+import Futures from './pages/Futures';
+import Options from './pages/Options';
+import CopyTrading from './pages/CopyTrading';
+import Convert from './pages/Convert';
+import OnRamp from './pages/OnRamp';
+import OffRamp from './pages/OffRamp';
+import P2PClients from './pages/P2PClients';
+import P2PMerchants from './pages/P2PMerchants';
+import Partners from './pages/Partners';
+import Rewards from './pages/Rewards';
+import Marketing from './pages/Marketing';
+import AdminRoles from './pages/AdminRoles';
 import './styles/globals.css';
 
 // Protected Route Component
@@ -87,6 +99,18 @@ function App() {
             <Route path="audit-logs" element={<AuditLogs />} />
             <Route path="system" element={<System />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="futures" element={<Futures />} />
+            <Route path="options" element={<Options />} />
+            <Route path="copy-trading" element={<CopyTrading />} />
+            <Route path="convert" element={<Convert />} />
+            <Route path="onramp" element={<OnRamp />} />
+            <Route path="offramp" element={<OffRamp />} />
+            <Route path="p2p-clients" element={<P2PClients />} />
+            <Route path="p2p-merchants" element={<P2PMerchants />} />
+            <Route path="partners" element={<Partners />} />
+            <Route path="rewards" element={<Rewards />} />
+            <Route path="marketing" element={<Marketing />} />
+            <Route path="admin-roles" element={<AdminRoles />} />
           </Route>
           
           <Route path="*" element={<Navigate to="/" replace />} />
