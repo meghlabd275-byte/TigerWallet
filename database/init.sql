@@ -73,3 +73,9 @@ CREATE DATABASE tigerwallet_project_party;
 CREATE DATABASE tigerwallet_bridge;
 \connect tigerwallet_bridge;
 -- Bridge schema is managed by the bridge service migrations on boot.
+
+-- Standalone WL-UserWallet database (independent of TigerWallet cloud).
+CREATE DATABASE wl_userwallet;
+\connect wl_userwallet;
+-- WL-UserWallet schema is managed by the service's own migrations on boot
+-- (users, wallets with encrypted_seed, transactions, address_book).

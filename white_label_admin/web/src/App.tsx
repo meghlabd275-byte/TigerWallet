@@ -3,7 +3,7 @@
  */
 
 import React, { useState } from 'react';
-import { ThemeProvider, useTheme } from '../context/ThemeContext';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
 import KYC from './pages/KYC';
@@ -12,8 +12,9 @@ import Withdrawals from './pages/Withdrawals';
 import Tokens from './pages/Tokens';
 import Fees from './pages/Fees';
 import Settings from './pages/Settings';
+import Admins from './pages/Admins';
 
-type Page = 'dashboard' | 'users' | 'kyc' | 'transactions' | 'withdrawals' | 'tokens' | 'fees' | 'settings';
+type Page = 'dashboard' | 'users' | 'kyc' | 'transactions' | 'withdrawals' | 'tokens' | 'fees' | 'admins' | 'settings';
 
 function AppContent() {
   const { theme, toggleTheme } = useTheme();
@@ -28,6 +29,7 @@ function AppContent() {
       case 'withdrawals': return <Withdrawals />;
       case 'tokens': return <Tokens />;
       case 'fees': return <Fees />;
+      case 'admins': return <Admins />;
       case 'settings': return <Settings />;
       default: return <Dashboard />;
     }
@@ -41,6 +43,7 @@ function AppContent() {
     { id: 'withdrawals', label: 'Withdrawals' },
     { id: 'tokens', label: 'Tokens' },
     { id: 'fees', label: 'Fees' },
+    { id: 'admins', label: 'Admins & Roles' },
     { id: 'settings', label: 'Settings' },
   ];
 

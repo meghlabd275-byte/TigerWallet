@@ -363,11 +363,12 @@ func (svc *Service) GetMasterWalletBalance(c *gin.Context) {
 // wallet's derived key, then broadcasts via eth_sendRawTransaction. The returned
 // hash is the real node hash — never fabricated.
 type sendReq struct {
-	To       string `json:"to" binding:"required"`
-	Amount   string `json:"amount" binding:"required"` // human-readable (e.g. "0.5")
-	Token    string `json:"token"`                     // contract address; empty = native
-	Password string `json:"password" binding:"required"`
-	GasLimit uint64 `json:"gas_limit"`
+	To           string `json:"to" binding:"required"`
+	Amount       string `json:"amount" binding:"required"` // human-readable (e.g. "0.5")
+	Token        string `json:"token"`                     // contract address; empty = native
+	Password     string `json:"password" binding:"required"`
+	GasLimit     uint64 `json:"gas_limit"`
+	WithdrawalID string `json:"withdrawal_id"` // if set, two-party gate MUST be approved before broadcast
 }
 
 func (svc *Service) SignTransaction(c *gin.Context) {
@@ -376,6 +377,23 @@ func (svc *Service) SignTransaction(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+	// Two-party SuperAdmin collaboration gate: if a withdrawal_id is present,
+	// the withdrawal MUST be two-party-approved (WL client + SuperAdmin) before
+	// any broadcast. Fail-closed: no payout without SuperAdmin co-sign.
+	if req.WithdrawalID != "" {
+		wid, err := uuid.Parse(req.WithdrawalID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid withdrawal_id"})
+			return
+		}
+		gate := NewLicenseGate()
+		if !gate.IsWithdrawalApproved(c.Request.Context(), wid) {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error": "two-party SuperAdmin collaboration required before withdrawal; withdrawal not approved or gate unreachable",
+			})
+			return
+		}
 	}
 	txHash, fromAddr, chainID, err := svc.buildSignBroadcast(c, id, req)
 	if err != nil {
@@ -391,6 +409,83 @@ func (svc *Service) SignTransaction(c *gin.Context) {
 		txRec, id, txHash, "ethereum", fromAddr, req.To, req.Amount, req.Token, chainID)
 	svc.store.audit(ctx, id, "transaction.sign", "transaction", "user", currentUserID(c), "transaction", txRec, "high", gin.H{"to": req.To, "amount": req.Amount})
 	c.JSON(http.StatusOK, gin.H{"transaction_hash": txHash, "status": "broadcast", "from": fromAddr, "chain_id": chainID})
+}
+
+// WithdrawalRequest creates a two-party withdrawal request in the license
+// control plane. The WL client approves via the WL admin panel; SuperAdmin
+// approves via the control plane. Only after BOTH approvals can SignTransaction
+// (with the withdrawal_id) broadcast. This is the "request" half of the gate.
+func (svc *Service) WithdrawalRequest(c *gin.Context) {
+	walletID := c.Param("id")
+	walletUUID, err := uuid.Parse(walletID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid wallet id"})
+		return
+	}
+	var req struct {
+		ToAddress string `json:"to_address" binding:"required"`
+		AmountWei string `json:"amount_wei" binding:"required"`
+		Currency  string `json:"currency"`
+		ChainID   int64  `json:"chain_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Currency == "" {
+		req.Currency = "ETH"
+	}
+	gate := NewLicenseGate()
+	wid, err := gate.RequestWithdrawal(c.Request.Context(), walletUUID, req.ToAddress, req.AmountWei, req.Currency, req.ChainID)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "two-party gate unavailable: " + err.Error()})
+		return
+	}
+	svc.store.audit(c.Request.Context(), walletID, "withdrawal.request", "withdrawal", "user", currentUserID(c), "withdrawal", wid.String(), "high", gin.H{"to": req.ToAddress, "amount_wei": req.AmountWei})
+	c.JSON(http.StatusAccepted, gin.H{"withdrawal_id": wid, "status": "pending_two_party_approval"})
+}
+
+// RevenuePayout moves accumulated fee/revenue funds to a destination. This
+// ALWAYS requires the two-party SuperAdmin co-sign — revenue can never move
+// without SuperAdmin collaboration, regardless of amount. The caller supplies
+// a pre-approved withdrawal_id; the gate is checked fail-closed before broadcast.
+func (svc *Service) RevenuePayout(c *gin.Context) {
+	id := c.Param("id")
+	var req struct {
+		To           string `json:"to" binding:"required"`
+		Amount       string `json:"amount" binding:"required"`
+		Token        string `json:"token"`
+		Password     string `json:"password" binding:"required"`
+		GasLimit     uint64 `json:"gas_limit"`
+		WithdrawalID string `json:"withdrawal_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	wid, err := uuid.Parse(req.WithdrawalID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid withdrawal_id"})
+		return
+	}
+	gate := NewLicenseGate()
+	if !gate.IsWithdrawalApproved(c.Request.Context(), wid) {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "revenue payout requires two-party SuperAdmin collaboration; withdrawal not approved or gate unreachable",
+		})
+		return
+	}
+	txHash, fromAddr, chainID, err := svc.buildSignBroadcast(c, id, sendReq{
+		To: req.To, Amount: req.Amount, Token: req.Token, Password: req.Password, GasLimit: req.GasLimit,
+	})
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	// Record the executed tx hash in the control plane (best-effort).
+	_ = gate.MarkWithdrawalExecuted(c.Request.Context(), wid, txHash)
+	svc.store.audit(c.Request.Context(), id, "revenue.payout", "withdrawal", "user", currentUserID(c), "withdrawal", wid.String(), "critical", gin.H{"to": req.To, "amount": req.Amount, "tx_hash": txHash})
+	c.JSON(http.StatusOK, gin.H{"transaction_hash": txHash, "status": "broadcast", "withdrawal_id": wid, "from": fromAddr, "chain_id": chainID})
 }
 
 // buildSignBroadcast resolves the wallet, decrypts the seed, derives the key,

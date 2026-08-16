@@ -48,7 +48,25 @@ func Close() {
 
 func runMigrations(ctx context.Context) error {
 	migrations := []string{
-		`CREATE TABLE IF NOT EXISTS admin_users (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), username VARCHAR(255) UNIQUE NOT NULL, email VARCHAR(255) UNIQUE NOT NULL, password_hash VARCHAR(255) NOT NULL, role VARCHAR(50) NOT NULL DEFAULT 'admin', two_factor_secret VARCHAR(255), two_factor_enabled BOOLEAN DEFAULT FALSE, is_active BOOLEAN DEFAULT TRUE, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), last_login TIMESTAMP WITH TIME ZONE)`,
+		`CREATE TABLE IF NOT EXISTS admin_users (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), username VARCHAR(255) UNIQUE NOT NULL, email VARCHAR(255) UNIQUE NOT NULL, password_hash VARCHAR(255) NOT NULL, role VARCHAR(50) NOT NULL DEFAULT 'admin', white_label_id UUID, scopes TEXT[] DEFAULT '{}', two_factor_secret VARCHAR(255), two_factor_enabled BOOLEAN DEFAULT FALSE, is_active BOOLEAN DEFAULT TRUE, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), last_login TIMESTAMP WITH TIME ZONE)`,
+		// Backfill white_label_id + scopes on existing rows (idempotent).
+		`ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS white_label_id UUID`,
+		`ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS scopes TEXT[] DEFAULT '{}'`,
+		`CREATE INDEX IF NOT EXISTS idx_admin_users_white_label ON admin_users(white_label_id)`,
+		// Tenant-scoped data tables: every row carries white_label_id so a WL
+		// admin can never read/write another WL client's data.
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS white_label_id UUID`,
+		`CREATE INDEX IF NOT EXISTS idx_users_white_label ON users(white_label_id)`,
+		`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS white_label_id UUID`,
+		`CREATE INDEX IF NOT EXISTS idx_tokens_white_label ON tokens(white_label_id)`,
+		`ALTER TABLE trading_pairs ADD COLUMN IF NOT EXISTS white_label_id UUID`,
+		`CREATE INDEX IF NOT EXISTS idx_pairs_white_label ON trading_pairs(white_label_id)`,
+		`ALTER TABLE blockchains ADD COLUMN IF NOT EXISTS white_label_id UUID`,
+		`CREATE INDEX IF NOT EXISTS idx_blockchains_white_label ON blockchains(white_label_id)`,
+		`ALTER TABLE fee_structures ADD COLUMN IF NOT EXISTS white_label_id UUID`,
+		`CREATE INDEX IF NOT EXISTS idx_fees_white_label ON fee_structures(white_label_id)`,
+		`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS white_label_id UUID`,
+		`CREATE INDEX IF NOT EXISTS idx_tickets_white_label ON tickets(white_label_id)`,
 		`CREATE TABLE IF NOT EXISTS admin_sessions (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), admin_id UUID REFERENCES admin_users(id) ON DELETE CASCADE, token_hash VARCHAR(255) NOT NULL, ip_address VARCHAR(45), user_agent TEXT, expires_at TIMESTAMP WITH TIME ZONE NOT NULL, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW())`,
 		`CREATE TABLE IF NOT EXISTS ip_whitelist (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), ip_address VARCHAR(45) UNIQUE NOT NULL, description TEXT, is_active BOOLEAN DEFAULT TRUE, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), created_by UUID REFERENCES admin_users(id))`,
 		`CREATE TABLE IF NOT EXISTS feature_flags (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) UNIQUE NOT NULL, description TEXT, is_enabled BOOLEAN DEFAULT FALSE, rollout_percentage INTEGER DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), updated_by UUID REFERENCES admin_users(id))`,

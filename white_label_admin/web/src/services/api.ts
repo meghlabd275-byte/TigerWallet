@@ -150,17 +150,54 @@ class WhiteLabelAdminApiService {
     return this.request('/api/v1/config', { method: 'PUT', body: JSON.stringify(config) });
   }
 
-  // ==================== White Label Admins ====================
+  // ==================== White Label Admins (scoped sub-admins) ====================
   async getAdmins(): Promise<any> {
-    return this.request('/api/v1/admins');
+    return this.request('/api/v1/admin/admins');
   }
 
-  async createAdmin(data: any): Promise<any> {
-    return this.request('/api/v1/admins', { method: 'POST', body: JSON.stringify(data) });
+  async createAdmin(data: { username: string; email: string; password: string }): Promise<any> {
+    return this.request('/api/v1/admin/admins', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async getAdmin(id: string): Promise<any> {
+    return this.request(`/api/v1/admin/admins/${id}`);
+  }
+
+  async updateAdmin(id: string, data: { username?: string; scopes?: string[]; is_active?: boolean }): Promise<any> {
+    return this.request(`/api/v1/admin/admins/${id}`, { method: 'PUT', body: JSON.stringify(data) });
   }
 
   async deleteAdmin(id: string): Promise<void> {
-    return this.request(`/api/v1/admins/${id}`, { method: 'DELETE' });
+    return this.request(`/api/v1/admin/admins/${id}`, { method: 'DELETE' });
+  }
+
+  async suspendAdmin(id: string): Promise<any> {
+    return this.request(`/api/v1/admin/admins/${id}/suspend`, { method: 'POST' });
+  }
+
+  async activateAdmin(id: string): Promise<any> {
+    return this.request(`/api/v1/admin/admins/${id}/activate`, { method: 'POST' });
+  }
+
+  async getScopes(): Promise<any> {
+    return this.request('/api/v1/scopes');
+  }
+
+  // ==================== Auth (real bcrypt + JWT with scopes) ====================
+  async register(data: { username: string; email: string; password: string }): Promise<any> {
+    return this.request('/api/v1/admin/auth/register', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async changePassword(oldPassword: string, newPassword: string): Promise<void> {
+    await this.request('/api/v1/admin/auth/change-password', { method: 'POST', body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }) });
+  }
+
+  async enable2FA(): Promise<{ secret: string; issuer: string }> {
+    return this.request('/api/v1/admin/auth/2fa/enable', { method: 'POST' });
+  }
+
+  async disable2FA(code: string): Promise<void> {
+    await this.request('/api/v1/admin/auth/2fa/disable', { method: 'POST', body: JSON.stringify({ code }) });
   }
 
   // ==================== Health ====================

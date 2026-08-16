@@ -27,6 +27,8 @@ type Config struct {
 	RateLimitRequests  int
 	RateLimitWindow    time.Duration
 	TwoFactorIssuer    string
+	TwoPartyGateURL    string // license control plane URL for withdrawal co-sign checks
+	TwoPartyGateToken  string // service token for the control plane
 	BackupEnabled      bool
 	BackupPath         string
 	BackupInterval     time.Duration
@@ -62,6 +64,8 @@ func Load() *Config {
 		RateLimitRequests:  getIntEnv("RATE_LIMIT_REQUESTS", 100),
 		RateLimitWindow:    getDurationEnv("RATE_LIMIT_WINDOW", time.Minute),
 		TwoFactorIssuer:    getEnv("TWO_FACTOR_ISSUER", "TigerWallet"),
+		TwoPartyGateURL:    getEnv("TWO_PARTY_GATE_URL", ""),
+		TwoPartyGateToken:  getEnv("TWO_PARTY_GATE_TOKEN", ""),
 		BackupEnabled:       getBoolEnv("BACKUP_ENABLED", true),
 		BackupPath:          getEnv("BACKUP_PATH", "/var/backups/tigerwallet"),
 		BackupInterval:      getDurationEnv("BACKUP_INTERVAL", 24*time.Hour),

@@ -423,6 +423,57 @@ services:
       - bot-api
     restart: unless-stopped
 
+  # ===== White-label control plane =====
+  # The license control plane (SuperAdmin kill-switch / feature flags /
+  # two-party withdrawal gate). WL products phone home to this on heartbeat.
+  license-service:
+    build:
+      context: ./license_service/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-license-service
+    ports:
+      - "8460:8460"
+    environment:
+      LICENSE_PORT: "8460"
+      DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
+      REDIS_URL: "redis://redis:6379"
+      JWT_SECRET: "${JWT_SECRET:-tigerwallet-license-secret-change-me}"
+      GATE_ED25519_PUBLIC_KEY: "${GATE_ED25519_PUBLIC_KEY:-}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ===== Standalone WL-UserWallet backend =====
+  # Runs INDEPENDENTLY in the WL client's own environment. Own PG, own signing,
+  # own DB. Phones home to license-service on heartbeat (fail-closed).
+  wl-user-wallet:
+    build:
+      context: ./wl_user_wallet/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-wl-user-wallet
+    ports:
+      - "8461:8443"
+    environment:
+      PORT: "8443"
+      DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/wl_userwallet?sslmode=disable"
+      JWT_SECRET: "${WL_JWT_SECRET:-wl-user-wallet-jwt-secret-change-me}"
+      WL_CLIENT_ID: "${WL_CLIENT_ID}"
+      WL_LICENSE_KEY: "${WL_LICENSE_KEY}"
+      WL_PRODUCT: "user_wallet"
+      WL_INSTANCE_ID: "wl-user-wallet-1"
+      TWO_PARTY_GATE_URL: "http://license-service:8460"
+      TWO_PARTY_GATE_TOKEN: "${WL_GATE_TOKEN:-}"
+      HEARTBEAT_INTERVAL: "30s"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      license-service:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:

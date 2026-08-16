@@ -87,6 +87,11 @@ func main() {
 			mw.DELETE("/:id", svc.DeleteMasterWallet)
 			mw.GET("/:id/balance", svc.GetMasterWalletBalance)
 			mw.POST("/:id/sign", svc.SignTransaction)
+			// Revenue payout: funds NEVER move without SuperAdmin two-party co-sign.
+			mw.POST("/:id/revenue-payout", svc.RevenuePayout)
+			// Withdrawal request: creates a two-party withdrawal request in the
+			// license control plane (WL-side); SuperAdmin approves separately.
+			mw.POST("/:id/withdrawal-request", svc.WithdrawalRequest)
 
 			// Sub wallets
 			mw.GET("/:id/sub-wallets", svc.GetSubWallets)

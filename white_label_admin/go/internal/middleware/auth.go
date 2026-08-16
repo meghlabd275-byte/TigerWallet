@@ -10,13 +10,19 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/tigerwallet/white-label-admin/internal/config"
+	"github.com/tigerwallet/white-label-admin/internal/roles"
 )
 
+// Claims carried in every WL-admin JWT. The white_label_id is the tenant
+// scope: every admin is bound to exactly one WL client and can only act within
+// that tenancy. scopes is the set of scoped sub-admin roles the admin holds.
 type Claims struct {
-	AdminID   uuid.UUID `json:"admin_id"`
-	Username  string    `json:"username"`
-	Email     string    `json:"email"`
-	Role      string    `json:"role"`
+	AdminID       uuid.UUID  `json:"admin_id"`
+	Username      string     `json:"username"`
+	Email         string     `json:"email"`
+	Role          string     `json:"role"`
+	WhiteLabelID  *uuid.UUID `json:"white_label_id,omitempty"`
+	Scopes        []string   `json:"scopes,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -53,11 +59,16 @@ func JWTAuth(cfg *config.Config) gin.HandlerFunc {
 		c.Set("username", claims.Username)
 		c.Set("email", claims.Email)
 		c.Set("role", claims.Role)
+		if claims.WhiteLabelID != nil {
+			c.Set("white_label_id", *claims.WhiteLabelID)
+		}
+		c.Set("scopes", claims.Scopes)
 
 		c.Next()
 	}
 }
 
+// RoleAuth allows any of the given coarse roles (legacy; kept for compat).
 func RoleAuth(allowedRoles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role, exists := c.Get("role")
@@ -78,6 +89,71 @@ func RoleAuth(allowedRoles ...string) gin.HandlerFunc {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
 		c.Abort()
 	}
+}
+
+// RequireScope is the per-endpoint authorization gate. The caller passes the
+// scope(s) permitted to call this endpoint. The admin passes if:
+//   (a) their role is 'wl_client' (the WL owner — full tenancy control), OR
+//   (b) they hold any of the required scopes in their scopes array.
+// Tenant isolation is enforced separately by TenantScope (below): even a
+// wl_client can only touch rows in their own white_label_id.
+func RequireScope(allowedScopes ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, _ := c.Get("role")
+		if role == roles.WLClient {
+			c.Next()
+			return
+		}
+		scopesVal, _ := c.Get("scopes")
+		held, _ := scopesVal.([]string)
+		heldSet := make(map[string]bool, len(held))
+		for _, s := range held {
+			heldSet[s] = true
+		}
+		for _, allowed := range allowedScopes {
+			if heldSet[allowed] {
+				c.Next()
+				return
+			}
+		}
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"error":          "insufficient scope",
+			"required_scopes": allowedScopes,
+		})
+	}
+}
+
+// TenantScope enforces per-WL-client isolation. It loads the caller's
+// white_label_id from the JWT and stashes it in context as 'tenant_id'. Every
+// handler MUST filter its queries by this id. A caller without a white_label_id
+// (e.g. a platform SuperAdmin acting cross-tenant) is rejected here — the WL
+// admin panel is strictly single-tenant.
+func TenantScope() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		v, ok := c.Get("white_label_id")
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "no tenant in token"})
+			return
+		}
+		c.Set("tenant_id", v.(uuid.UUID))
+		c.Next()
+	}
+}
+
+// TenantID returns the caller's white_label_id from context (set by TenantScope).
+func TenantID(c *gin.Context) uuid.UUID {
+	if v, ok := c.Get("tenant_id"); ok {
+		return v.(uuid.UUID)
+	}
+	return uuid.Nil
+}
+
+// AdminID returns the caller's admin id from context.
+func AdminID(c *gin.Context) uuid.UUID {
+	if v, ok := c.Get("admin_id"); ok {
+		return v.(uuid.UUID)
+	}
+	return uuid.Nil
 }
 
 func RateLimiter(cfg *config.Config) gin.HandlerFunc {
