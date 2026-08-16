@@ -80,6 +80,13 @@ pub fn router() -> Router {
         .domain_routes("wl-user-wallets", &["status"])
         .domain_routes("wl-bots", &["status"])
         .domain_routes("wl-bots-clients", &["status"])
+        // ---- Crypto Cards management (dedicated handlers -> Go :8082) ----
+        .route("/api/v1/admin/crypto-cards", get(domain::crypto_cards::list_cards).post(domain::crypto_cards::create_card))
+        .route("/api/v1/admin/crypto-cards/:id", get(domain::crypto_cards::get_card).put(domain::crypto_cards::update_card).delete(domain::crypto_cards::delete_card))
+        .route("/api/v1/admin/crypto-cards/:id/block", post(domain::crypto_cards::block_card))
+        .route("/api/v1/admin/crypto-cards/:id/activate", post(domain::crypto_cards::activate_card))
+        .route("/api/v1/admin/crypto-cards/:id/limit", put(domain::crypto_cards::set_card_limit))
+        .route("/api/v1/admin/crypto-cards/:id/status", put(domain::crypto_cards::set_card_status))
         // Fallback catch-all for any deeper admin path not matched above.
         .route("/api/v1/admin/:domain", get(proxy_domain).post(proxy_domain).put(proxy_domain).delete(proxy_domain))
         .route("/api/v1/admin/:domain/:id", get(proxy_domain).put(proxy_domain).delete(proxy_domain))

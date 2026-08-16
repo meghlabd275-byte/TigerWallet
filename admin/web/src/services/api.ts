@@ -918,3 +918,54 @@ export const adminRolesAPI = {
   revokeRole: (adminId: string, roleId: string) => adminApi.request(`/api/v1/admins/${adminId}/roles/${roleId}`, { method: 'DELETE' }),
   getEffectivePermissions: async (adminId: string) => ({ data: await adminApi.request<any[]>(`/api/v1/admins/${adminId}/permissions`) }),
 };
+
+// Bots API facade (real /api/v1/bots endpoints — governance records only)
+export const botsAPI = {
+  getAll: async () => ({ data: await adminApi.request<any[]>('/api/v1/bots') }),
+  getOne: async (id: string) => ({ data: await adminApi.request<any>(`/api/v1/bots/${id}`) }),
+  create: (data: any) => adminApi.request('/api/v1/bots', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => adminApi.request(`/api/v1/bots/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) => adminApi.request(`/api/v1/bots/${id}`, { method: 'DELETE' }),
+  setStatus: (id: string, status: string) => adminApi.request(`/api/v1/bots/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  getStats: async () => ({ data: await adminApi.request<any>('/api/v1/bots/stats') }),
+  getTiers: async () => ({ data: await adminApi.request<any[]>('/api/v1/bots/tiers') }),
+  createTier: (data: any) => adminApi.request('/api/v1/bots/tiers', { method: 'POST', body: JSON.stringify(data) }),
+  updateTier: (id: string, data: any) => adminApi.request(`/api/v1/bots/tiers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteTier: (id: string) => adminApi.request(`/api/v1/bots/tiers/${id}`, { method: 'DELETE' }),
+};
+
+// Bots Clients API facade (real /api/v1/bots-clients endpoints — governance records only)
+export const botsClientsAPI = {
+  getAll: async () => ({ data: await adminApi.request<any[]>('/api/v1/bots-clients') }),
+  getOne: async (id: string) => ({ data: await adminApi.request<any>(`/api/v1/bots-clients/${id}`) }),
+  create: (data: any) => adminApi.request('/api/v1/bots-clients', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => adminApi.request(`/api/v1/bots-clients/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) => adminApi.request(`/api/v1/bots-clients/${id}`, { method: 'DELETE' }),
+  setStatus: (id: string, status: string) => adminApi.request(`/api/v1/bots-clients/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+};
+
+// Project Teams API facade (real /api/v1/project-teams endpoints — governance records only)
+export const projectTeamsAPI = {
+  getAll: async () => ({ data: await adminApi.request<any[]>('/api/v1/project-teams') }),
+  getOne: async (id: string) => ({ data: await adminApi.request<any>(`/api/v1/project-teams/${id}`) }),
+  create: (data: any) => adminApi.request('/api/v1/project-teams', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => adminApi.request(`/api/v1/project-teams/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) => adminApi.request(`/api/v1/project-teams/${id}`, { method: 'DELETE' }),
+  setStatus: (id: string, status: string) => adminApi.request(`/api/v1/project-teams/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  getMembers: async (id: string) => ({ data: await adminApi.request<any[]>(`/api/v1/project-teams/${id}/members`) }),
+  addMember: (id: string, data: any) => adminApi.request(`/api/v1/project-teams/${id}/members`, { method: 'POST', body: JSON.stringify(data) }),
+  removeMember: (id: string, memberId: string) => adminApi.request(`/api/v1/project-teams/${id}/members/${memberId}`, { method: 'DELETE' }),
+};
+
+// Liquidity Sources API facade (real /api/v1/liquidity-sources endpoints — governance records only)
+export const liquiditySourcesAPI = {
+  getAll: async () => ({ data: await adminApi.request<any[]>('/api/v1/liquidity-sources') }),
+  getOne: async (id: string) => ({ data: await adminApi.request<any>(`/api/v1/liquidity-sources/${id}`) }),
+  create: (data: any) => adminApi.request('/api/v1/liquidity-sources', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => adminApi.request(`/api/v1/liquidity-sources/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) => adminApi.request(`/api/v1/liquidity-sources/${id}`, { method: 'DELETE' }),
+  setStatus: (id: string, status: string) => adminApi.request(`/api/v1/liquidity-sources/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  setPriority: (id: string, priority: number) => adminApi.request(`/api/v1/liquidity-sources/${id}/priority`, { method: 'PUT', body: JSON.stringify({ priority }) }),
+  healthCheck: (id: string, data: any) => adminApi.request(`/api/v1/liquidity-sources/${id}/health-check`, { method: 'POST', body: JSON.stringify(data) }),
+  getStats: async () => ({ data: await adminApi.request<any>('/api/v1/liquidity-sources/stats') }),
+};

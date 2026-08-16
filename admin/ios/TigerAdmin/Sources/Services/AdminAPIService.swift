@@ -413,6 +413,135 @@ class AdminAPIService {
         try await request(endpoint: "/api/v1/admins/\(adminId)/permissions")
     }
 
+    // MARK: - Bots (/api/v1/bots) + tiers + stats
+    func listBots() async throws -> [BotDomainRecord] {
+        try await request(endpoint: "/api/v1/bots")
+    }
+    func getBot(id: String) async throws -> BotDomainRecord {
+        try await request(endpoint: "/api/v1/bots/\(id)")
+    }
+    func createBot(_ payload: BotDomainRequest) async throws -> BotDomainRecord {
+        let body = try JSONEncoder().encode(payload)
+        return try await request(endpoint: "/api/v1/bots", method: "POST", body: body)
+    }
+    func updateBot(id: String, _ payload: BotDomainRequest) async throws -> BotDomainRecord {
+        let body = try JSONEncoder().encode(payload)
+        return try await request(endpoint: "/api/v1/bots/\(id)", method: "PUT", body: body)
+    }
+    func deleteBot(id: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/bots/\(id)", method: "DELETE")
+    }
+    func setBotStatus(id: String, status: String) async throws -> BotDomainRecord {
+        let body = try JSONSerialization.data(withJSONObject: ["status": status])
+        return try await request(endpoint: "/api/v1/bots/\(id)/status", method: "PUT", body: body)
+    }
+    func getBotStats() async throws -> DomainStats {
+        try await request(endpoint: "/api/v1/bots/stats")
+    }
+    func getBotTiers(id: String) async throws -> [BotTierRecord] {
+        try await request(endpoint: "/api/v1/bots/\(id)/tiers")
+    }
+    func createBotTier(id: String, _ payload: BotTierRequest) async throws -> BotTierRecord {
+        let body = try JSONEncoder().encode(payload)
+        return try await request(endpoint: "/api/v1/bots/\(id)/tiers", method: "POST", body: body)
+    }
+    func updateBotTier(id: String, tierId: String, _ payload: BotTierRequest) async throws -> BotTierRecord {
+        let body = try JSONEncoder().encode(payload)
+        return try await request(endpoint: "/api/v1/bots/\(id)/tiers/\(tierId)", method: "PUT", body: body)
+    }
+    func deleteBotTier(id: String, tierId: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/bots/\(id)/tiers/\(tierId)", method: "DELETE")
+    }
+
+    // MARK: - Bots Clients (/api/v1/bots-clients)
+    func listBotsClients() async throws -> [BotsClientRecord] {
+        try await request(endpoint: "/api/v1/bots-clients")
+    }
+    func getBotsClient(id: String) async throws -> BotsClientRecord {
+        try await request(endpoint: "/api/v1/bots-clients/\(id)")
+    }
+    func createBotsClient(_ payload: BotsClientRequest) async throws -> BotsClientRecord {
+        let body = try JSONEncoder().encode(payload)
+        return try await request(endpoint: "/api/v1/bots-clients", method: "POST", body: body)
+    }
+    func updateBotsClient(id: String, _ payload: BotsClientRequest) async throws -> BotsClientRecord {
+        let body = try JSONEncoder().encode(payload)
+        return try await request(endpoint: "/api/v1/bots-clients/\(id)", method: "PUT", body: body)
+    }
+    func deleteBotsClient(id: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/bots-clients/\(id)", method: "DELETE")
+    }
+    func setBotsClientStatus(id: String, status: String) async throws -> BotsClientRecord {
+        let body = try JSONSerialization.data(withJSONObject: ["status": status])
+        return try await request(endpoint: "/api/v1/bots-clients/\(id)/status", method: "PUT", body: body)
+    }
+
+    // MARK: - Project Teams (/api/v1/project-teams) + members
+    func listProjectTeams() async throws -> [ProjectTeamRecord] {
+        try await request(endpoint: "/api/v1/project-teams")
+    }
+    func getProjectTeam(id: String) async throws -> ProjectTeamRecord {
+        try await request(endpoint: "/api/v1/project-teams/\(id)")
+    }
+    func createProjectTeam(_ payload: ProjectTeamRequest) async throws -> ProjectTeamRecord {
+        let body = try JSONEncoder().encode(payload)
+        return try await request(endpoint: "/api/v1/project-teams", method: "POST", body: body)
+    }
+    func updateProjectTeam(id: String, _ payload: ProjectTeamRequest) async throws -> ProjectTeamRecord {
+        let body = try JSONEncoder().encode(payload)
+        return try await request(endpoint: "/api/v1/project-teams/\(id)", method: "PUT", body: body)
+    }
+    func deleteProjectTeam(id: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/project-teams/\(id)", method: "DELETE")
+    }
+    func setProjectTeamStatus(id: String, status: String) async throws -> ProjectTeamRecord {
+        let body = try JSONSerialization.data(withJSONObject: ["status": status])
+        return try await request(endpoint: "/api/v1/project-teams/\(id)/status", method: "PUT", body: body)
+    }
+    func getProjectTeamMembers(id: String) async throws -> [ProjectTeamMemberRecord] {
+        try await request(endpoint: "/api/v1/project-teams/\(id)/members")
+    }
+    func addProjectTeamMember(id: String, _ payload: AddProjectTeamMemberRequest) async throws -> ProjectTeamMemberRecord {
+        let body = try JSONEncoder().encode(payload)
+        return try await request(endpoint: "/api/v1/project-teams/\(id)/members", method: "POST", body: body)
+    }
+    func removeProjectTeamMember(id: String, memberId: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/project-teams/\(id)/members/\(memberId)", method: "DELETE")
+    }
+
+    // MARK: - Liquidity Sources (/api/v1/liquidity-sources) + priority/health/stats
+    func listLiquiditySources() async throws -> [LiquiditySourceRecord] {
+        try await request(endpoint: "/api/v1/liquidity-sources")
+    }
+    func getLiquiditySource(id: String) async throws -> LiquiditySourceRecord {
+        try await request(endpoint: "/api/v1/liquidity-sources/\(id)")
+    }
+    func createLiquiditySource(_ payload: LiquiditySourceRequest) async throws -> LiquiditySourceRecord {
+        let body = try JSONEncoder().encode(payload)
+        return try await request(endpoint: "/api/v1/liquidity-sources", method: "POST", body: body)
+    }
+    func updateLiquiditySource(id: String, _ payload: LiquiditySourceRequest) async throws -> LiquiditySourceRecord {
+        let body = try JSONEncoder().encode(payload)
+        return try await request(endpoint: "/api/v1/liquidity-sources/\(id)", method: "PUT", body: body)
+    }
+    func deleteLiquiditySource(id: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/liquidity-sources/\(id)", method: "DELETE")
+    }
+    func setLiquiditySourceStatus(id: String, status: String) async throws -> LiquiditySourceRecord {
+        let body = try JSONSerialization.data(withJSONObject: ["status": status])
+        return try await request(endpoint: "/api/v1/liquidity-sources/\(id)/status", method: "PUT", body: body)
+    }
+    func setLiquiditySourcePriority(id: String, _ payload: SetLiquiditySourcePriorityRequest) async throws -> LiquiditySourceRecord {
+        let body = try JSONEncoder().encode(payload)
+        return try await request(endpoint: "/api/v1/liquidity-sources/\(id)/priority", method: "PUT", body: body)
+    }
+    func liquiditySourceHealthCheck(id: String) async throws -> LiquiditySourceRecord {
+        try await request(endpoint: "/api/v1/liquidity-sources/\(id)/health-check", method: "POST")
+    }
+    func getLiquiditySourceStats() async throws -> DomainStats {
+        try await request(endpoint: "/api/v1/liquidity-sources/stats")
+    }
+
     // MARK: - Generic Request
     private func request<T: Decodable>(_ endpoint: String, method: String = "GET", body: Data? = nil) async throws -> T {
         guard let url = URL(string: "\(baseURL)\(endpoint)") else {

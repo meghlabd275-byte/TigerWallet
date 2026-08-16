@@ -100,6 +100,39 @@ class DesktopAdminAPI {
   async listP2PMerchantTransactions(id: string) {
     return this.request(`/api/v1/p2p-merchants/${id}/transactions`);
   }
+
+  // ---- new admin domains: bots, bots-clients, project-teams, liquidity-sources ----
+  // Each domain reuses the generic CRUD helpers (listDomain/createDomain/...).
+  // Domain-specific sub-resources are exposed below.
+
+  // bots: stats + tiers sub-resource
+  async getBotStats() { return this.request('/api/v1/bots/stats'); }
+  async getBotTiers(botId: string) { return this.request(`/api/v1/bots/${botId}/tiers`); }
+  async createBotTier(botId: string, body: any) {
+    return this.request(`/api/v1/bots/${botId}/tiers`, { method: 'POST', body: JSON.stringify(body) });
+  }
+  async updateBotTier(botId: string, tierId: string, body: any) {
+    return this.request(`/api/v1/bots/${botId}/tiers/${tierId}`, { method: 'PUT', body: JSON.stringify(body) });
+  }
+  async deleteBotTier(botId: string, tierId: string) {
+    return this.request(`/api/v1/bots/${botId}/tiers/${tierId}`, { method: 'DELETE' });
+  }
+
+  // project-teams: members sub-resource
+  async getTeamMembers(teamId: string) { return this.request(`/api/v1/project-teams/${teamId}/members`); }
+  async addTeamMember(teamId: string, body: any) {
+    return this.request(`/api/v1/project-teams/${teamId}/members`, { method: 'POST', body: JSON.stringify(body) });
+  }
+  async removeTeamMember(teamId: string, memberId: string) {
+    return this.request(`/api/v1/project-teams/${teamId}/members/${memberId}`, { method: 'DELETE' });
+  }
+
+  // liquidity-sources: priority + health + stats
+  async setLiquiditySourcePriority(id: string, priority: number) {
+    return this.request(`/api/v1/liquidity-sources/${id}/priority`, { method: 'PUT', body: JSON.stringify({ priority }) });
+  }
+  async liquiditySourceHealthCheck(id: string) { return this.request(`/api/v1/liquidity-sources/${id}/health`); }
+  async getLiquiditySourceStats() { return this.request('/api/v1/liquidity-sources/stats'); }
 }
 
 export const api = new DesktopAdminAPI();
@@ -149,6 +182,10 @@ const AdminSidebar: React.FC<{ currentPage: string; setCurrentPage: (page: strin
     { id: 'marketing', label: 'Marketing', icon: '📣' },
     { id: 'roles', label: 'Roles', icon: '🛡️' },
     { id: 'permissions', label: 'Permissions', icon: '🔐' },
+    { id: 'bots', label: 'Bots', icon: '🤖' },
+    { id: 'bots-clients', label: 'Bots Clients', icon: '👤' },
+    { id: 'project-teams', label: 'Project Teams', icon: '👥' },
+    { id: 'liquidity-sources', label: 'Liquidity Sources', icon: '💧' },
     { id: 'settings', label: 'Settings', icon: '⚙️' },
   ];
   

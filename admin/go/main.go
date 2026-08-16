@@ -63,6 +63,12 @@ func main() {
 		&handlers.AdminRole{},
 		&handlers.AdminRoleAssignment{},
 		&handlers.AdminPermission{},
+		&handlers.Bot{},
+		&handlers.BotTier{},
+		&handlers.BotsClient{},
+		&handlers.ProjectTeam{},
+		&handlers.ProjectTeamMember{},
+		&handlers.LiquiditySource{},
 	); err != nil {
 		log.Fatalf("Failed to migrate admin domain governance models: %v", err)
 	}
@@ -115,6 +121,11 @@ func main() {
 	marketingHandler := handlers.NewMarketingHandler(db.DB)
 	// Structured RBAC (mirror super_admin/go commit 15e99eb).
 	rbacHandler := handlers.NewRBACHandler(db.DB)
+	// Bots + Bots-Clients + Project-Teams governance handlers.
+	botsHandler := handlers.NewBotsHandler(db.DB)
+	botsClientsHandler := handlers.NewBotsClientsHandler(db.DB)
+	projectTeamsHandler := handlers.NewProjectTeamsHandler(db.DB)
+	liquiditySourcesHandler := handlers.NewLiquiditySourcesHandler(db.DB)
 
 	blockchainHandler := handlers.NewBlockchainHandler(db)
 	exportHandler := handlers.NewExportHandler(db)
@@ -511,6 +522,22 @@ func main() {
 				margin.GET("/stats", marginTradingHandler.GetStats)
 			}
 
+
+			// Liquidity sources (external DEX/CEX connectors, aggregators, market makers — governance records only)
+			liquiditySources := protected.Group("/liquidity-sources")
+			liquiditySources.Use(middleware.DomainScopeMiddleware("liquidity_sources"))
+			{
+				liquiditySources.GET("", liquiditySourcesHandler.List)
+				liquiditySources.POST("", liquiditySourcesHandler.Create)
+				liquiditySources.GET("/:id", liquiditySourcesHandler.Get)
+				liquiditySources.PUT("/:id", liquiditySourcesHandler.Update)
+				liquiditySources.DELETE("/:id", liquiditySourcesHandler.Delete)
+				liquiditySources.PUT("/:id/status", liquiditySourcesHandler.UpdateStatus)
+				liquiditySources.PUT("/:id/priority", liquiditySourcesHandler.UpdatePriority)
+				liquiditySources.POST("/:id/health-check", liquiditySourcesHandler.HealthCheck)
+				liquiditySources.GET("/stats", liquiditySourcesHandler.GetStats)
+			}
+
 			// P2P merchants
 			p2p := protected.Group("/p2p-merchants")
 			{
@@ -594,6 +621,7 @@ func main() {
 				onramp.DELETE("/:id", onrampHandler.Delete)
 				onramp.POST("/:id/approve", onrampHandler.Approve)
 				onramp.POST("/:id/reject", onrampHandler.Reject)
+				onramp.PUT("/:id/status", onrampHandler.UpdateStatus)
 			}
 
 			// OffRamp (governance records only; approve/reject are record-only)
@@ -607,6 +635,7 @@ func main() {
 				offramp.DELETE("/:id", offrampHandler.Delete)
 				offramp.POST("/:id/approve", offrampHandler.Approve)
 				offramp.POST("/:id/reject", offrampHandler.Reject)
+				offramp.PUT("/:id/status", offrampHandler.UpdateStatus)
 			}
 
 			// Partners (governance records only; api_key generated on create)
@@ -645,6 +674,51 @@ func main() {
 				marketing.PUT("/:id", marketingHandler.Update)
 				marketing.DELETE("/:id", marketingHandler.Delete)
 				marketing.PUT("/:id/status", marketingHandler.UpdateStatus)
+			}
+
+
+			// Bots (governance records only — bot execution lives in bot_api + TigerBotPlatform.sol)
+			bots := protected.Group("/bots")
+			bots.Use(middleware.DomainScopeMiddleware("bots"))
+			{
+				bots.GET("", botsHandler.List)
+				bots.POST("", botsHandler.Create)
+				bots.GET("/:id", botsHandler.Get)
+				bots.PUT("/:id", botsHandler.Update)
+				bots.DELETE("/:id", botsHandler.Delete)
+				bots.PUT("/:id/status", botsHandler.UpdateStatus)
+				bots.GET("/stats", botsHandler.GetStats)
+				bots.GET("/tiers", botsHandler.ListTiers)
+				bots.POST("/tiers", botsHandler.CreateTier)
+				bots.PUT("/tiers/:id", botsHandler.UpdateTier)
+				bots.DELETE("/tiers/:id", botsHandler.DeleteTier)
+			}
+
+			// Bots clients (governance records only)
+			botsClients := protected.Group("/bots-clients")
+			botsClients.Use(middleware.DomainScopeMiddleware("bots_clients"))
+			{
+				botsClients.GET("", botsClientsHandler.List)
+				botsClients.POST("", botsClientsHandler.Create)
+				botsClients.GET("/:id", botsClientsHandler.Get)
+				botsClients.PUT("/:id", botsClientsHandler.Update)
+				botsClients.DELETE("/:id", botsClientsHandler.Delete)
+				botsClients.PUT("/:id/status", botsClientsHandler.UpdateStatus)
+			}
+
+			// Project teams (coin/token listing project teams — governance records only)
+			projectTeams := protected.Group("/project-teams")
+			projectTeams.Use(middleware.DomainScopeMiddleware("project_teams"))
+			{
+				projectTeams.GET("", projectTeamsHandler.List)
+				projectTeams.POST("", projectTeamsHandler.Create)
+				projectTeams.GET("/:id", projectTeamsHandler.Get)
+				projectTeams.PUT("/:id", projectTeamsHandler.Update)
+				projectTeams.DELETE("/:id", projectTeamsHandler.Delete)
+				projectTeams.PUT("/:id/status", projectTeamsHandler.UpdateStatus)
+				projectTeams.GET("/:id/members", projectTeamsHandler.GetMembers)
+				projectTeams.POST("/:id/members", projectTeamsHandler.AddMember)
+				projectTeams.DELETE("/:id/members/:memberId", projectTeamsHandler.RemoveMember)
 			}
 
 			// Structured RBAC: roles, permissions, assignments.

@@ -213,6 +213,170 @@ class APIService {
         }
         return []
     }
+
+    // MARK: - Crypto-cards API (super_admin/go :8082 /api/v1/admin/crypto-cards)
+    // Async URLSession-based methods. Mirror the routes exposed by the Go backend:
+    // GET/POST /crypto-cards, GET/PUT/DELETE /crypto-cards/:id,
+    // POST /crypto-cards/:id/block, POST /crypto-cards/:id/activate,
+    // PUT /crypto-cards/:id/limit, PUT /crypto-cards/:id/status.
+    private static let cryptoCardsResource = "crypto-cards"
+
+    private func cryptoCardURL(_ id: Int64? = nil, suffix: String? = nil, query: String? = nil) -> URL {
+        var path = "\(baseURL)/\(Self.cryptoCardsResource)"
+        if let id = id { path += "/\(id)" }
+        if let suffix = suffix, !suffix.isEmpty { path += "/\(suffix)" }
+        if let query = query, !query.isEmpty { path += "?\(query)" }
+        return URL(string: path)!
+    }
+
+    private func authedRequest(url: URL, method: String, body: Data? = nil) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let token = UserDefaults.standard.string(forKey: "authToken") ?? ""
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = body
+        return request
+    }
+
+    private enum APIError: Error, LocalizedError {
+        case badStatus(Int, String)
+        case empty
+        var errorDescription: String? {
+            switch self {
+            case .badStatus(let code, let msg): return "HTTP \(code): \(msg)"
+            case .empty: return "No response from server"
+            }
+        }
+    }
+
+    private func decode<T: Decodable>(_ type: T.Type, from data: Data, key: String? = nil) throws -> T {
+        if data.isEmpty { throw APIError.empty }
+        let decoder = JSONDecoder()
+        if let key = key {
+            guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let payload = root[key] else {
+                throw APIError.badStatus(0, "missing '\(key)' in response")
+            }
+            let nested = try JSONSerialization.data(withJSONObject: payload)
+            return try decoder.decode(T.self, from: nested)
+        }
+        return try decoder.decode(T.self, from: data)
+    }
+
+    /// GET /crypto-cards?status=... -> [CryptoCard] (response wraps as {"crypto_cards": [...]}).
+    func listCryptoCards(status: String? = nil) async throws -> [CryptoCard] {
+        var query: String? = nil
+        if let status = status, !status.isEmpty, status != "all" {
+            query = "status=\(status)"
+        }
+        let (data, response) = try await URLSession.shared.data(for: authedRequest(url: cryptoCardURL(query: query), method: "GET"))
+        guard let http = response as? HTTPURLResponse else { throw APIError.empty }
+        if !(200..<300).contains(http.statusCode) {
+            throw APIError.badStatus(http.statusCode, errorMessage(data) ?? "HTTP \(http.statusCode)")
+        }
+        return try decode([CryptoCard].self, from: data, key: "crypto_cards")
+    }
+
+    /// GET /crypto-cards/:id -> CryptoCard (response wraps as {"crypto_card": {...}}).
+    func getCryptoCard(id: Int64) async throws -> CryptoCard {
+        let (data, response) = try await URLSession.shared.data(for: authedRequest(url: cryptoCardURL(id), method: "GET"))
+        guard let http = response as? HTTPURLResponse else { throw APIError.empty }
+        if !(200..<300).contains(http.statusCode) {
+            throw APIError.badStatus(http.statusCode, errorMessage(data) ?? "HTTP \(http.statusCode)")
+        }
+        return try decode(CryptoCard.self, from: data, key: "crypto_card")
+    }
+
+    /// POST /crypto-cards -> {"card_number": "...", ...} (Go returns the new card_number).
+    @discardableResult
+    func createCryptoCard(_ req: CryptoCardCreateRequest) async throws -> [String: Any] {
+        let body = try JSONEncoder().encode(req)
+        let (data, response) = try await URLSession.shared.data(for: authedRequest(url: cryptoCardURL(), method: "POST", body: body))
+        guard let http = response as? HTTPURLResponse else { throw APIError.empty }
+        if !(200..<300).contains(http.statusCode) {
+            throw APIError.badStatus(http.statusCode, errorMessage(data) ?? "HTTP \(http.statusCode)")
+        }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+    }
+
+    /// PUT /crypto-cards/:id -> updates user_name/currency/card_type.
+    @discardableResult
+    func updateCryptoCard(id: Int64, _ req: CryptoCardUpdateRequest) async throws -> [String: Any] {
+        let body = try req.encodedSkippingNil()
+        let (data, response) = try await URLSession.shared.data(for: authedRequest(url: cryptoCardURL(id), method: "PUT", body: body))
+        guard let http = response as? HTTPURLResponse else { throw APIError.empty }
+        if !(200..<300).contains(http.statusCode) {
+            throw APIError.badStatus(http.statusCode, errorMessage(data) ?? "HTTP \(http.statusCode)")
+        }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+    }
+
+    /// DELETE /crypto-cards/:id.
+    @discardableResult
+    func deleteCryptoCard(id: Int64) async throws -> [String: Any] {
+        let (data, response) = try await URLSession.shared.data(for: authedRequest(url: cryptoCardURL(id), method: "DELETE"))
+        guard let http = response as? HTTPURLResponse else { throw APIError.empty }
+        if !(200..<300).contains(http.statusCode) {
+            throw APIError.badStatus(http.statusCode, errorMessage(data) ?? "HTTP \(http.statusCode)")
+        }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+    }
+
+    /// POST /crypto-cards/:id/block.
+    @discardableResult
+    func blockCryptoCard(id: Int64) async throws -> [String: Any] {
+        let (data, response) = try await URLSession.shared.data(for: authedRequest(url: cryptoCardURL(id, suffix: "block"), method: "POST", body: Data("{}".utf8)))
+        guard let http = response as? HTTPURLResponse else { throw APIError.empty }
+        if !(200..<300).contains(http.statusCode) {
+            throw APIError.badStatus(http.statusCode, errorMessage(data) ?? "HTTP \(http.statusCode)")
+        }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+    }
+
+    /// POST /crypto-cards/:id/activate.
+    @discardableResult
+    func activateCryptoCard(id: Int64) async throws -> [String: Any] {
+        let (data, response) = try await URLSession.shared.data(for: authedRequest(url: cryptoCardURL(id, suffix: "activate"), method: "POST", body: Data("{}".utf8)))
+        guard let http = response as? HTTPURLResponse else { throw APIError.empty }
+        if !(200..<300).contains(http.statusCode) {
+            throw APIError.badStatus(http.statusCode, errorMessage(data) ?? "HTTP \(http.statusCode)")
+        }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+    }
+
+    /// PUT /crypto-cards/:id/limit -> {"limit": <double>}.
+    @discardableResult
+    func setCryptoCardLimit(id: Int64, limit: Double) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: ["limit": limit])
+        let (data, response) = try await URLSession.shared.data(for: authedRequest(url: cryptoCardURL(id, suffix: "limit"), method: "PUT", body: body))
+        guard let http = response as? HTTPURLResponse else { throw APIError.empty }
+        if !(200..<300).contains(http.statusCode) {
+            throw APIError.badStatus(http.statusCode, errorMessage(data) ?? "HTTP \(http.statusCode)")
+        }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+    }
+
+    /// PUT /crypto-cards/:id/status -> {"status": <string>}.
+    @discardableResult
+    func setCryptoCardStatus(id: Int64, status: String) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: ["status": status])
+        let (data, response) = try await URLSession.shared.data(for: authedRequest(url: cryptoCardURL(id, suffix: "status"), method: "PUT", body: body))
+        guard let http = response as? HTTPURLResponse else { throw APIError.empty }
+        if !(200..<300).contains(http.statusCode) {
+            throw APIError.badStatus(http.statusCode, errorMessage(data) ?? "HTTP \(http.statusCode)")
+        }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+    }
+
+    /// Pull the "error" field out of an error-response body for a clearer message.
+    private func errorMessage(_ data: Data) -> String? {
+        guard !data.isEmpty,
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return obj["error"] as? String ?? obj["message"] as? String
+    }
 }
 
 /// Operations supported by every governance domain.
@@ -300,6 +464,72 @@ struct KYCRequest: Codable, Identifiable {
         case docType = "doc_type"
         case status
         case riskLevel = "risk_level"
+    }
+}
+
+// MARK: - Crypto Card Model
+/// Crypto-card record from the super_admin/go backend
+/// (`/api/v1/admin/crypto-cards` on :8082). Mirrors the DB columns.
+struct CryptoCard: Codable, Identifiable {
+    let id: Int64
+    let userId: String?
+    let userName: String
+    let cardNumber: String
+    let currency: String
+    let balance: Double
+    let limit: Double
+    let status: String
+    let cardType: String
+    let createdAt: String?
+    let updatedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case userName = "user_name"
+        case cardNumber = "card_number"
+        case currency, balance, limit, status
+        case cardType = "card_type"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+/// Payload for createCryptoCard(_:). Mirrors the Go handler's request struct.
+struct CryptoCardCreateRequest: Codable {
+    let userId: String?
+    let userName: String
+    let currency: String
+    let limit: Double
+    let cardType: String
+
+    enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
+        case userName = "user_name"
+        case currency, limit
+        case cardType = "card_type"
+    }
+}
+
+/// Payload for updateCryptoCard(_:). All fields optional; only non-nil ones
+/// are sent (the Go handler accepts user_name/currency/card_type).
+struct CryptoCardUpdateRequest: Codable {
+    var userName: String?
+    var currency: String?
+    var cardType: String?
+
+    enum CodingKeys: String, CodingKey {
+        case userName = "user_name"
+        case currency
+        case cardType = "card_type"
+    }
+
+    func encodedSkippingNil() throws -> Data {
+        var dict = [String: String]()
+        if let v = userName { dict["user_name"] = v }
+        if let v = currency { dict["currency"] = v }
+        if let v = cardType { dict["card_type"] = v }
+        return try JSONSerialization.data(withJSONObject: dict)
     }
 }
 

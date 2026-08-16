@@ -2502,7 +2502,80 @@ class SuperAdminApiService {
   async getAdminEffectivePermissions(adminId: string): Promise<{ admin_id: string; permissions: string[] }> {
     return this.request(`/api/v1/admin/admins/${adminId}/permissions`);
   }
+
+  // ==================== Crypto Cards ====================
+
+  async getCryptoCards(params?: { page?: number; page_size?: number; status?: string; search?: string }): Promise<PaginatedResponse<any>> {
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) query.append(key, String(value));
+      });
+    }
+    return this.request(`/api/v1/admin/crypto-cards?${query}`);
+  }
+
+  async getCryptoCard(id: string): Promise<{ card: any }> {
+    return this.request(`/api/v1/admin/crypto-cards/${id}`);
+  }
+
+  async createCryptoCard(data: {
+    user_id?: string; card_number?: string; network?: string; currency?: string;
+    balance?: number; daily_limit?: number; monthly_limit?: number; status?: string; metadata?: Record<string, any>;
+  }): Promise<{ message: string; card?: any }> {
+    return this.request('/api/v1/admin/crypto-cards', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateCryptoCard(id: string, data: {
+    card_number?: string; network?: string; currency?: string; balance?: number;
+    daily_limit?: number; monthly_limit?: number; metadata?: Record<string, any>;
+  }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/crypto-cards/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  async deleteCryptoCard(id: string): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/crypto-cards/${id}`, { method: 'DELETE' });
+  }
+
+  async blockCryptoCard(id: string, reason?: string): Promise<{ message: string; status?: string }> {
+    return this.request(`/api/v1/admin/crypto-cards/${id}/block`, {
+      method: 'POST', body: JSON.stringify(reason ? { reason } : {}),
+    });
+  }
+
+  async activateCryptoCard(id: string): Promise<{ message: string; status?: string }> {
+    return this.request(`/api/v1/admin/crypto-cards/${id}/activate`, { method: 'POST' });
+  }
+
+  async setCryptoCardLimit(id: string, data: { daily_limit?: number; monthly_limit?: number }): Promise<{ message: string }> {
+    return this.request(`/api/v1/admin/crypto-cards/${id}/limit`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  async updateCryptoCardStatus(id: string, status: string): Promise<{ message: string; status?: string }> {
+    return this.request(`/api/v1/admin/crypto-cards/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+  }
 }
 
 export const superAdminApi = new SuperAdminApiService();
 export default superAdminApi;
+
+/**
+ * Crypto-cards management facade mirroring the `/api/v1/admin/crypto-cards`
+ * routes on the super_admin/go backend (port 8082). Same JWT auth and base URL
+ * as `superAdminApi`, exposed as a grouped object for the CryptoCards page.
+ */
+export const cryptoCardsAPI = {
+  getAll: (params?: { page?: number; page_size?: number; status?: string; search?: string }) =>
+    superAdminApi.getCryptoCards(params),
+  getOne: (id: string) => superAdminApi.getCryptoCard(id),
+  create: (data: Parameters<SuperAdminApiService['createCryptoCard']>[0]) =>
+    superAdminApi.createCryptoCard(data),
+  update: (id: string, data: Parameters<SuperAdminApiService['updateCryptoCard']>[1]) =>
+    superAdminApi.updateCryptoCard(id, data),
+  delete: (id: string) => superAdminApi.deleteCryptoCard(id),
+  block: (id: string, reason?: string) => superAdminApi.blockCryptoCard(id, reason),
+  activate: (id: string) => superAdminApi.activateCryptoCard(id),
+  setLimit: (id: string, data: { daily_limit?: number; monthly_limit?: number }) =>
+    superAdminApi.setCryptoCardLimit(id, data),
+  setStatus: (id: string, status: string) => superAdminApi.updateCryptoCardStatus(id, status),
+};

@@ -20,6 +20,9 @@ contextBridge.exposeInMainWorld('tiger', {
   domainCall: (args) => ipcRenderer.invoke('admin:domain-call', args),
   domainAction: (args) => ipcRenderer.invoke('admin:domain-action', args),
 
+  // Crypto Cards management (dedicated service for block/activate/limit/status)
+  cryptoCards: (args) => ipcRenderer.invoke('admin:crypto-cards', args),
+
   // Misc
   getAppInfo: () => ipcRenderer.invoke('get-app-info')
 });

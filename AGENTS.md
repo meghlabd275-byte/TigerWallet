@@ -3384,3 +3384,77 @@ benefit since the live enforcement already flows through license_service.
 - 3 C++: g++ syntax 0 (admin 28 files, super_admin 2 headers, WL 3 headers + 1 cpp)
 - 3 Web: tsc 0 errors
 - 18 extension/desktop files: node --check 0
+
+### super_admin Android + iOS crypto-cards API (2026-08-16)
+- Backend routes under `/api/v1/admin/crypto-cards` on :8082 (super_admin/go
+  main.go): GET/POST /crypto-cards, GET/PUT/DELETE /crypto-cards/:id,
+  POST /crypto-cards/:id/block, POST /crypto-cards/:id/activate,
+  PUT /crypto-cards/:id/limit, PUT /crypto-cards/:id/status.
+- DB columns: id(int64), user_id(*string), user_name, card_number, currency,
+  balance(float64), limit(float64), status, card_type, created_at, updated_at.
+  List wraps as {"crypto_cards":[...]}, single get wraps as {"crypto_card":{...}}.
+- Android (super_admin/android/app/src/main/java/com/tigersuperadmin/MainActivity.kt,
+  single-file app, HttpURLConnection-based, NOT Retrofit): added top-level
+  CryptoCard data class with fromJson/toJson and MainActivity methods
+  listCryptoCards/getCryptoCard/createCryptoCard/updateCryptoCard/deleteCryptoCard/
+  blockCryptoCard/activateCryptoCard/setCryptoCardLimit/setCryptoCardStatus plus a
+  shared cryptoCardRequest helper mirroring the existing domainRequest.
+- iOS (super_admin/ios/TigerSuperAdmin/Sources/TigerSuperAdminApp.swift,
+  single-file app, URLSession-based): added Codable CryptoCard struct +
+  CryptoCardCreateRequest/CryptoCardUpdateRequest payloads, and async APIService
+  methods listCryptoCards/getCryptoCard/createCryptoCard/updateCryptoCard/
+  deleteCryptoCard/blockCryptoCard/activateCryptoCard/setCryptoCardLimit/
+  setCryptoCardStatus. New methods are the only async throws ones (Swift 5.5+).
+- Balance verified with a Python tokenizer (kotlinc/swiftc not installed):
+  Android (),{},[] all balanced; iOS (),{},[] all balanced.
+
+
+## Session 2026-08-16 (session 4): Final admin domain gaps + contract fix
+
+### admin/go — 4 new domain handlers (all build + vet clean)
+- `bots_handler.go`: Bot + BotTier models, full CRUD + status (start/stop/
+  pause/resume) + getStats + tiers CRUD. Auto-migrated + wired in main.go.
+- `bots_clients_handler.go`: BotsClient model, full CRUD + status.
+- `project_teams_handler.go`: ProjectTeam + ProjectTeamMember models, full
+  CRUD + status + members management (getMembers/addMember/removeMember).
+- `liquidity_sources_handler.go`: LiquiditySource model, full CRUD + status
+  + setPriority + healthCheck + getStats.
+- onramp_handler.go + offramp_handler.go: added UpdateStatus method +
+  PUT /:id/status route.
+
+### super_admin/go — crypto-cards governance surface (build clean)
+- 9 routes under `/api/v1/admin/crypto-cards`: GET (list w/ status filter +
+  pagination), POST, GET/:id, PUT/:id, DELETE/:id, POST/:id/block,
+  POST/:id/activate, PUT/:id/limit, PUT/:id/status. Governance records ONLY.
+  Uses `database.Pool` (NOT dbPool) + `c.Request.Context()`. `strings` import added.
+
+### TigerBotPlatform.sol — setFeeRecipient + pre-existing compile fix
+- Added `setFeeRecipient(address)` — ADMIN-only, rejects zero address,
+  emits `FeeRecipientUpdated`. The ONE legitimate on-chain crypto-movement
+  governance path (fee/profit routing); no admin private key/wallet seed.
+- Fixed PRE-EXISTING compile errors: `executeTrade` external->public (Solidity
+  disallows external->external internal calls); `bytes calldata`->`bytes memory`
+  (can't pass literal "" to calldata from internal call).
+- Added `mm_bot_platform/bot_admin/foundry.toml` with `via_ir = true`
+  (contract hits EVM stack-too-deep without IR compilation).
+
+### Client parity — ALL admin + super_admin clients updated
+Admin clients (bots/bots-clients/project-teams/liquidity-sources): web (4 new
+pages + API facades, tsc 0), android (Kotlin Retrofit), ios (Swift Codable +
+async), desktop (App.tsx + DomainPage.tsx), extensions x3 (js/api.js),
+cpp (admin_bots.hpp), rust (domain.rs, cargo check 0).
+SuperAdmin clients (crypto-cards): web (CryptoCards.tsx, tsc 0), android
+(MainActivity.kt), ios (TigerSuperAdminApp.swift), desktop (main.js+preload.js),
+extensions x3 (background.js), cpp (super_admin_domains.hpp), rust
+(domain/crypto_cards.rs, cargo check 0).
+
+### Build verification (ALL GREEN)
+- 3 Go backends (admin/super_admin/white_label_admin): go build + vet exit 0
+- 3 Rust clients: cargo check exit 0
+- 3 C++ clients: g++ -fsyntax-only exit 0
+- 3 Web clients: npx tsc --noEmit 0 errors
+- 18 extension JS files: node --check OK
+- 8 desktop JS files: node --check OK
+- smart_contracts/evm_contracts: forge build exit 0; forge test 31/31 pass
+- TigerBotPlatform.sol: code-level compile errors resolved (via_ir needed for
+  stack-too-deep; foundry.toml added)

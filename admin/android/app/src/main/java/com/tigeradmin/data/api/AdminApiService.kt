@@ -817,6 +817,136 @@ interface AdminApiService {
 
     @GET("admins/{adminId}/permissions")
     suspend fun getAdminPermissions(@Path("adminId") adminId: String): Response<List<PermissionRecord>>
+
+    // ========== New Admin Domains (admin/go backend, port 9093) ==========
+    // bots, bots-clients, project-teams, liquidity-sources — each exposes
+    // CRUD + setStatus, plus the domain-specific sub-resources documented in
+    // admin/cpp/include/admin_bots.hpp.
+
+    // ---------- Bots (CRUD + status + stats + tiers) ----------
+    @GET("bots")
+    suspend fun getBotsDomain(): Response<List<BotRecord>>
+
+    @GET("bots/{id}")
+    suspend fun getBotRecord(@Path("id") id: String): Response<BotRecord>
+
+    @POST("bots")
+    suspend fun createBotRecord(@Body request: BotRequest): Response<BotRecord>
+
+    @PUT("bots/{id}")
+    suspend fun updateBotRecord(@Path("id") id: String, @Body request: BotRequest): Response<BotRecord>
+
+    @DELETE("bots/{id}")
+    suspend fun deleteBotRecord(@Path("id") id: String): Response<Unit>
+
+    @PUT("bots/{id}/status")
+    suspend fun setBotStatus(@Path("id") id: String, @Body request: StatusUpdateRequest): Response<BotRecord>
+
+    @GET("bots/stats")
+    suspend fun getBotDomainStats(): Response<DomainStatsResponse>
+
+    @GET("bots/{id}/tiers")
+    suspend fun getBotTiers(@Path("id") id: String): Response<List<BotTierRecord>>
+
+    @POST("bots/{id}/tiers")
+    suspend fun createBotTier(@Path("id") id: String, @Body request: BotTierRequest): Response<BotTierRecord>
+
+    @PUT("bots/{id}/tiers/{tierId}")
+    suspend fun updateBotTier(
+        @Path("id") id: String,
+        @Path("tierId") tierId: String,
+        @Body request: BotTierRequest
+    ): Response<BotTierRecord>
+
+    @DELETE("bots/{id}/tiers/{tierId}")
+    suspend fun deleteBotTier(
+        @Path("id") id: String,
+        @Path("tierId") tierId: String
+    ): Response<Unit>
+
+    // ---------- Bots Clients (CRUD + status) ----------
+    @GET("bots-clients")
+    suspend fun getBotsClients(): Response<List<BotsClientRecord>>
+
+    @GET("bots-clients/{id}")
+    suspend fun getBotsClientRecord(@Path("id") id: String): Response<BotsClientRecord>
+
+    @POST("bots-clients")
+    suspend fun createBotsClient(@Body request: BotsClientRequest): Response<BotsClientRecord>
+
+    @PUT("bots-clients/{id}")
+    suspend fun updateBotsClient(@Path("id") id: String, @Body request: BotsClientRequest): Response<BotsClientRecord>
+
+    @DELETE("bots-clients/{id}")
+    suspend fun deleteBotsClient(@Path("id") id: String): Response<Unit>
+
+    @PUT("bots-clients/{id}/status")
+    suspend fun setBotsClientStatus(@Path("id") id: String, @Body request: StatusUpdateRequest): Response<BotsClientRecord>
+
+    // ---------- Project Teams (CRUD + status + members) ----------
+    @GET("project-teams")
+    suspend fun getProjectTeams(): Response<List<ProjectTeamRecord>>
+
+    @GET("project-teams/{id}")
+    suspend fun getProjectTeamRecord(@Path("id") id: String): Response<ProjectTeamRecord>
+
+    @POST("project-teams")
+    suspend fun createProjectTeam(@Body request: ProjectTeamRequest): Response<ProjectTeamRecord>
+
+    @PUT("project-teams/{id}")
+    suspend fun updateProjectTeam(@Path("id") id: String, @Body request: ProjectTeamRequest): Response<ProjectTeamRecord>
+
+    @DELETE("project-teams/{id}")
+    suspend fun deleteProjectTeam(@Path("id") id: String): Response<Unit>
+
+    @PUT("project-teams/{id}/status")
+    suspend fun setProjectTeamStatus(@Path("id") id: String, @Body request: StatusUpdateRequest): Response<ProjectTeamRecord>
+
+    @GET("project-teams/{id}/members")
+    suspend fun getProjectTeamMembers(@Path("id") id: String): Response<List<ProjectTeamMemberRecord>>
+
+    @POST("project-teams/{id}/members")
+    suspend fun addProjectTeamMember(
+        @Path("id") id: String,
+        @Body request: AddProjectTeamMemberRequest
+    ): Response<ProjectTeamMemberRecord>
+
+    @DELETE("project-teams/{id}/members/{memberId}")
+    suspend fun removeProjectTeamMember(
+        @Path("id") id: String,
+        @Path("memberId") memberId: String
+    ): Response<Unit>
+
+    // ---------- Liquidity Sources (CRUD + status + priority + health-check + stats) ----------
+    @GET("liquidity-sources")
+    suspend fun getLiquiditySources(): Response<List<LiquiditySourceRecord>>
+
+    @GET("liquidity-sources/{id}")
+    suspend fun getLiquiditySourceRecord(@Path("id") id: String): Response<LiquiditySourceRecord>
+
+    @POST("liquidity-sources")
+    suspend fun createLiquiditySource(@Body request: LiquiditySourceRequest): Response<LiquiditySourceRecord>
+
+    @PUT("liquidity-sources/{id}")
+    suspend fun updateLiquiditySource(@Path("id") id: String, @Body request: LiquiditySourceRequest): Response<LiquiditySourceRecord>
+
+    @DELETE("liquidity-sources/{id}")
+    suspend fun deleteLiquiditySource(@Path("id") id: String): Response<Unit>
+
+    @PUT("liquidity-sources/{id}/status")
+    suspend fun setLiquiditySourceStatus(@Path("id") id: String, @Body request: StatusUpdateRequest): Response<LiquiditySourceRecord>
+
+    @PUT("liquidity-sources/{id}/priority")
+    suspend fun setLiquiditySourcePriority(
+        @Path("id") id: String,
+        @Body request: SetLiquiditySourcePriorityRequest
+    ): Response<LiquiditySourceRecord>
+
+    @POST("liquidity-sources/{id}/health-check")
+    suspend fun liquiditySourceHealthCheck(@Path("id") id: String): Response<LiquiditySourceRecord>
+
+    @GET("liquidity-sources/stats")
+    suspend fun getLiquiditySourceStats(): Response<DomainStatsResponse>
 }
 
 // ========== Request Models ==========

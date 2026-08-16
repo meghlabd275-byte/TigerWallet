@@ -78,6 +78,7 @@ set(HEADERS
     include/admin_marketing.cpp
     include/admin_roles.cpp
     include/admin_p2p_merchants.cpp
+    include/admin_bots.hpp
 )
 
 # Create executable

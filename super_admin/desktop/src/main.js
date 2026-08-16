@@ -283,6 +283,64 @@ function resolveResource(domain) {
   return cfg ? cfg.resource : domain;
 }
 
+// --- Crypto Cards API (real HTTP to :8082 /api/v1/admin/crypto-cards) -----
+// Dedicated service for the crypto-cards routes which use block/activate/
+// limit/status sub-actions beyond the generic domain CRUD vocabulary.
+const CRYPTO_CARDS_RESOURCE = 'crypto-cards';
+
+const cryptoCardsAPI = {
+  getAll: (params = {}) => cryptoCardsRequest('GET', '', null, params),
+  getOne: (id) => cryptoCardsRequest('GET', id),
+  create: (data) => cryptoCardsRequest('POST', '', data),
+  update: (id, data) => cryptoCardsRequest('PUT', id, data),
+  delete: (id) => cryptoCardsRequest('DELETE', id),
+  block: (id, reason) => cryptoCardsRequest('POST', id + '/block', reason ? { reason } : {}),
+  activate: (id) => cryptoCardsRequest('POST', id + '/activate', {}),
+  setLimit: (id, data) => cryptoCardsRequest('PUT', id + '/limit', data),
+  setStatus: (id, status) => cryptoCardsRequest('PUT', id + '/status', { status })
+};
+
+async function cryptoCardsRequest(method, suffix = '', body = null, params = {}) {
+  const query = Object.keys(params).length ? '?' + new URLSearchParams(params).toString() : '';
+  const url = ADMIN_API_BASE + '/' + CRYPTO_CARDS_RESOURCE + (suffix ? '/' + suffix : '') + query;
+  const headers = { 'Content-Type': 'application/json' };
+  if (adminToken) headers['Authorization'] = 'Bearer ' + adminToken;
+  const init = { method, headers };
+  if (method !== 'GET' && method !== 'DELETE') {
+    init.body = JSON.stringify(body || {});
+  }
+  try {
+    const res = await fetch(url, init);
+    const text = await res.text();
+    let parsed = null;
+    try { parsed = text ? JSON.parse(text) : null; }
+    catch (_) { parsed = { raw: text }; }
+    if (!res.ok) {
+      const msg = (parsed && parsed.error) ? parsed.error : ('HTTP ' + res.status);
+      return { error: msg, status: res.status };
+    }
+    return { ok: true, status: res.status, data: parsed };
+  } catch (error) {
+    return { error: (error && error.message) ? error.message : 'Failed to reach super-admin backend.' };
+  }
+}
+
+ipcMain.handle('admin:crypto-cards', async (_event, args) => {
+  const { op, id, body, params, reason, status } = args || {};
+  switch (op) {
+    case 'list': return cryptoCardsAPI.getAll(params || {});
+    case 'get': return cryptoCardsAPI.getOne(id);
+    case 'create': return cryptoCardsAPI.create(body || {});
+    case 'update': return cryptoCardsAPI.update(id, body || {});
+    case 'delete': return cryptoCardsAPI.delete(id);
+    case 'block': return cryptoCardsAPI.block(id, reason);
+    case 'activate': return cryptoCardsAPI.activate(id);
+    case 'setLimit': return cryptoCardsAPI.setLimit(id, body || {});
+    case 'setStatus': return cryptoCardsAPI.setStatus(id, status);
+    default: return { error: 'Unknown crypto-cards op: ' + op };
+  }
+});
+
 // Build the URL for a given op.
 function buildUrl(domain, op, id) {
   const resource = resolveResource(domain);

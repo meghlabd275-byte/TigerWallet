@@ -406,6 +406,143 @@ async fn admin_permissions_handler(
     proxy(headers, Method::GET, "/admins", &format!("/{aid}/permissions"), None, Bytes::new()).await
 }
 
+// ----------------------------------------------------------------------------
+// Handlers for the 4 new admin domain families (bots, bots-clients,
+// project-teams, liquidity-sources) and their sub-resources. Each forwards to
+// the upstream admin/go backend verbatim via `proxy`, propagating the caller's
+// Bearer JWT. No stubs, fakes, or canned payloads.
+// ----------------------------------------------------------------------------
+
+/// GET /<resource>/stats — collection-level stats (bots, liquidity-sources).
+async fn stats_handler(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+    resource: &'static str,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, resource, "/stats", query, Bytes::new()).await
+}
+
+/// GET /<resource>/:id/tiers — list a bot's tiers.
+async fn get_tiers_handler(
+    headers: HeaderMap,
+    Path(params): Path<HashMap<String, String>>,
+    resource: &'static str,
+) -> AppResult<Response> {
+    let id = params.get("id").cloned().unwrap_or_default();
+    proxy(headers, Method::GET, resource, &format!("/{id}/tiers"), None, Bytes::new()).await
+}
+
+/// POST /<resource>/:id/tiers — create a tier under a bot.
+async fn create_tier_handler(
+    headers: HeaderMap,
+    Path(params): Path<HashMap<String, String>>,
+    body: Bytes,
+    resource: &'static str,
+) -> AppResult<Response> {
+    let id = params.get("id").cloned().unwrap_or_default();
+    proxy(headers, Method::POST, resource, &format!("/{id}/tiers"), None, body).await
+}
+
+/// PUT /<resource>/:id/tiers/:tid — update a bot tier.
+async fn update_tier_handler(
+    headers: HeaderMap,
+    Path(params): Path<HashMap<String, String>>,
+    body: Bytes,
+    resource: &'static str,
+) -> AppResult<Response> {
+    let id = params.get("id").cloned().unwrap_or_default();
+    let tid = params.get("tid").cloned().unwrap_or_default();
+    proxy(headers, Method::PUT, resource, &format!("/{id}/tiers/{tid}"), None, body).await
+}
+
+/// DELETE /<resource>/:id/tiers/:tid — delete a bot tier.
+async fn delete_tier_handler(
+    headers: HeaderMap,
+    Path(params): Path<HashMap<String, String>>,
+    resource: &'static str,
+) -> AppResult<Response> {
+    let id = params.get("id").cloned().unwrap_or_default();
+    let tid = params.get("tid").cloned().unwrap_or_default();
+    proxy(
+        headers,
+        Method::DELETE,
+        resource,
+        &format!("/{id}/tiers/{tid}"),
+        None,
+        Bytes::new(),
+    )
+    .await
+}
+
+/// GET /<resource>/:id/members — list a project team's members.
+async fn get_members_handler(
+    headers: HeaderMap,
+    Path(params): Path<HashMap<String, String>>,
+    resource: &'static str,
+) -> AppResult<Response> {
+    let id = params.get("id").cloned().unwrap_or_default();
+    proxy(headers, Method::GET, resource, &format!("/{id}/members"), None, Bytes::new()).await
+}
+
+/// POST /<resource>/:id/members — add a member to a project team.
+async fn add_member_handler(
+    headers: HeaderMap,
+    Path(params): Path<HashMap<String, String>>,
+    body: Bytes,
+    resource: &'static str,
+) -> AppResult<Response> {
+    let id = params.get("id").cloned().unwrap_or_default();
+    proxy(headers, Method::POST, resource, &format!("/{id}/members"), None, body).await
+}
+
+/// DELETE /<resource>/:id/members/:mid — remove a member from a project team.
+async fn remove_member_handler(
+    headers: HeaderMap,
+    Path(params): Path<HashMap<String, String>>,
+    resource: &'static str,
+) -> AppResult<Response> {
+    let id = params.get("id").cloned().unwrap_or_default();
+    let mid = params.get("mid").cloned().unwrap_or_default();
+    proxy(
+        headers,
+        Method::DELETE,
+        resource,
+        &format!("/{id}/members/{mid}"),
+        None,
+        Bytes::new(),
+    )
+    .await
+}
+
+/// PUT /<resource>/:id/priority — set a liquidity source's priority.
+async fn set_priority_handler(
+    headers: HeaderMap,
+    Path(params): Path<HashMap<String, String>>,
+    body: Bytes,
+    resource: &'static str,
+) -> AppResult<Response> {
+    let id = params.get("id").cloned().unwrap_or_default();
+    proxy(headers, Method::PUT, resource, &format!("/{id}/priority"), None, body).await
+}
+
+/// POST /<resource>/:id/health-check — run a liquidity source health check.
+async fn health_check_handler(
+    headers: HeaderMap,
+    Path(params): Path<HashMap<String, String>>,
+    resource: &'static str,
+) -> AppResult<Response> {
+    let id = params.get("id").cloned().unwrap_or_default();
+    proxy(
+        headers,
+        Method::POST,
+        resource,
+        &format!("/{id}/health-check"),
+        None,
+        Bytes::new(),
+    )
+    .await
+}
+
 /// Registers the standard CRUD + status routes for a domain resource.
 /// `with_status` adds `PUT /:id/status`; `with_approve_reject` adds
 /// `POST /:id/approve` and `POST /:id/reject`.
@@ -462,7 +599,7 @@ fn register_domain(
     r
 }
 
-/// Builds the merged router for all 12 admin domain resource families.
+/// Builds the merged router for all 16 admin domain resource families.
 pub fn domain_routes() -> Router {
     let router = Router::new();
 
@@ -508,6 +645,66 @@ pub fn domain_routes() -> Router {
         .route(
             "/p2p-merchants/:id/transactions",
             get(move |h, p| get_transactions_handler(h, p, "/p2p-merchants")),
+        );
+
+    // 13. bots — CRUD + status + stats + tiers CRUD (sub-resource under a bot).
+    //     axum matches literal segments ahead of :id captures, so /bots/stats
+    //     resolves over /bots/:id.
+    let router = register_domain(router, "/bots", true, false)
+        .route(
+            "/bots/stats",
+            get(move |h, q| stats_handler(h, q, "/bots")),
+        )
+        .route(
+            "/bots/:id/tiers",
+            get(move |h, p| get_tiers_handler(h, p, "/bots")),
+        )
+        .route(
+            "/bots/:id/tiers",
+            post(move |h, p, b| create_tier_handler(h, p, b, "/bots")),
+        )
+        .route(
+            "/bots/:id/tiers/:tid",
+            put(move |h, p, b| update_tier_handler(h, p, b, "/bots")),
+        )
+        .route(
+            "/bots/:id/tiers/:tid",
+            delete(move |h, p| delete_tier_handler(h, p, "/bots")),
+        );
+
+    // 14. bots-clients — CRUD + status (no extra sub-resources).
+    let router = register_domain(router, "/bots-clients", true, false);
+
+    // 15. project-teams — CRUD + status + members sub-resource.
+    let router = register_domain(router, "/project-teams", true, false)
+        .route(
+            "/project-teams/:id/members",
+            get(move |h, p| get_members_handler(h, p, "/project-teams")),
+        )
+        .route(
+            "/project-teams/:id/members",
+            post(move |h, p, b| add_member_handler(h, p, b, "/project-teams")),
+        )
+        .route(
+            "/project-teams/:id/members/:mid",
+            delete(move |h, p| remove_member_handler(h, p, "/project-teams")),
+        );
+
+    // 16. liquidity-sources — CRUD + status + setPriority + healthCheck +
+    //     getStats. axum matches literal segments ahead of :id captures, so
+    //     /liquidity-sources/stats resolves over /liquidity-sources/:id.
+    let router = register_domain(router, "/liquidity-sources", true, false)
+        .route(
+            "/liquidity-sources/:id/priority",
+            put(move |h, p, b| set_priority_handler(h, p, b, "/liquidity-sources")),
+        )
+        .route(
+            "/liquidity-sources/:id/health-check",
+            post(move |h, p| health_check_handler(h, p, "/liquidity-sources")),
+        )
+        .route(
+            "/liquidity-sources/stats",
+            get(move |h, q| stats_handler(h, q, "/liquidity-sources")),
         );
 
     router

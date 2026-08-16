@@ -48,6 +48,7 @@ const menuItems = [
   { path: '/rewards', icon: '🎁', label: 'Rewards' },
   { path: '/marketing', icon: '📣', label: 'Marketing' },
   { path: '/admin-roles', icon: '🛡️', label: 'Admin Roles' },
+  { path: '/crypto-cards', icon: '💳', label: 'Crypto Cards' },
 ];
 
 export default function Layout() {

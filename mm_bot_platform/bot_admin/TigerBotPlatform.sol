@@ -370,8 +370,8 @@ contract TigerBotPlatform {
         address _tokenOut,
         uint256 _amountIn,
         uint256 _minAmountOut,
-        bytes calldata _data
-    ) external returns (uint256 amountOut) {
+        bytes memory _data
+    ) public returns (uint256 amountOut) {
         require(!emergencyMode, "EMERGENCY_MODE");
         require(!pauseTrading, "TRADING_PAUSED");
         
@@ -547,6 +547,28 @@ contract TigerBotPlatform {
         
         protocolFeeBps = _feeBps;
     }
+
+    /**
+     * @notice Update the fee recipient address (Admin only).
+     * @dev Zero address is rejected. Only the ADMIN role can rotate the fee
+     *      recipient — this is the ONE legitimate on-chain crypto movement
+     *      governance path (fees/profits route to the new recipient), and it
+     *      is role-gated. No admin private key or wallet seed is involved.
+     */
+    function setFeeRecipient(address _newFeeRecipient) external {
+        require(roleMembers[ROLE_ADMIN][msg.sender], "ONLY_ADMIN");
+        require(_newFeeRecipient != address(0), "ZERO_ADDRESS");
+
+        address oldRecipient = feeRecipient;
+        feeRecipient = _newFeeRecipient;
+
+        emit FeeRecipientUpdated(oldRecipient, _newFeeRecipient);
+    }
+
+    /**
+     * @notice Emitted when the fee recipient is rotated.
+     */
+    event FeeRecipientUpdated(address indexed oldRecipient, address indexed newRecipient);
     
     // ============================================================================
     // Emergency Controls

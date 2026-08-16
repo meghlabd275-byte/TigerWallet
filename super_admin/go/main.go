@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -439,6 +440,17 @@ func main() {
 			admin.PUT("/integrations/:id", handleUpdateIntegration)
 			admin.DELETE("/integrations/:id", handleDeleteIntegration)
 			admin.POST("/integrations/:id/test", handleTestIntegration)
+
+			// Crypto cards (governance records only — no fund movement)
+			admin.GET("/crypto-cards", handleListCryptoCards)
+			admin.POST("/crypto-cards", handleCreateCryptoCard)
+			admin.GET("/crypto-cards/:id", handleGetCryptoCard)
+			admin.PUT("/crypto-cards/:id", handleUpdateCryptoCard)
+			admin.DELETE("/crypto-cards/:id", handleDeleteCryptoCard)
+			admin.POST("/crypto-cards/:id/block", handleBlockCryptoCard)
+			admin.POST("/crypto-cards/:id/activate", handleActivateCryptoCard)
+			admin.PUT("/crypto-cards/:id/limit", handleSetCryptoCardLimit)
+			admin.PUT("/crypto-cards/:id/status", handleUpdateCryptoCardStatus)
 		}
 	}
 
@@ -4390,3 +4402,216 @@ func handleGetAdminEffectivePermissions(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"admin_id": c.Param("id"), "permissions": perms})
 }
+
+// ===================== Crypto Cards (governance records only — no fund movement) =====================
+
+func handleListCryptoCards(c *gin.Context) {
+	status := c.Query("status")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	offset := (page - 1) * limit
+
+	query := `SELECT id, user_id, user_name, card_number, currency, balance, "limit", status, card_type, created_at, updated_at FROM crypto_cards`
+	args := []interface{}{}
+	if status != "" && status != "all" {
+		query += ` WHERE status = $1`
+		args = append(args, status)
+	}
+	query += ` ORDER BY created_at DESC LIMIT $` + strconv.Itoa(len(args)+1) + ` OFFSET $` + strconv.Itoa(len(args)+2)
+	args = append(args, limit, offset)
+
+	rows, err := database.Pool.Query(c.Request.Context(), query, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	cards := []map[string]interface{}{}
+	for rows.Next() {
+		var id int64
+		var userID *string
+		var userName, cardNumber, currency, cardStatus, cardType string
+		var balance, limitVal float64
+		var createdAt, updatedAt time.Time
+		if err := rows.Scan(&id, &userID, &userName, &cardNumber, &currency, &balance, &limitVal, &cardStatus, &cardType, &createdAt, &updatedAt); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		cards = append(cards, map[string]interface{}{
+			"id": id, "user_id": userID, "user_name": userName, "card_number": cardNumber,
+			"currency": currency, "balance": balance, "limit": limitVal, "status": cardStatus,
+			"card_type": cardType, "created_at": createdAt, "updated_at": updatedAt,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"crypto_cards": cards})
+}
+
+func handleCreateCryptoCard(c *gin.Context) {
+	var req struct {
+		UserID   *string `json:"user_id"`
+		UserName string  `json:"user_name"`
+		Currency string  `json:"currency" binding:"required"`
+		Limit    float64 `json:"limit"`
+		CardType string  `json:"card_type"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.CardType == "" {
+		req.CardType = "virtual"
+	}
+	cardNumber := "****-****-****-" + strconv.FormatInt(time.Now().UnixNano()%10000, 10)
+	_, err := database.Pool.Exec(c.Request.Context(),
+		`INSERT INTO crypto_cards (user_id, user_name, card_number, currency, balance, "limit", status, card_type) VALUES ($1,$2,$3,$4,0,$5,'pending',$6)`,
+		req.UserID, req.UserName, cardNumber, req.Currency, req.Limit, req.CardType)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "crypto card created", "card_number": cardNumber})
+}
+
+func handleGetCryptoCard(c *gin.Context) {
+	id := c.Param("id")
+	var cardID int64
+	var userID *string
+	var userName, cardNumber, currency, cardStatus, cardType string
+	var balance, limitVal float64
+	var createdAt, updatedAt time.Time
+	err := database.Pool.QueryRow(c.Request.Context(),
+		`SELECT id, user_id, user_name, card_number, currency, balance, "limit", status, card_type, created_at, updated_at FROM crypto_cards WHERE id = $1`, id).
+		Scan(&cardID, &userID, &userName, &cardNumber, &currency, &balance, &limitVal, &cardStatus, &cardType, &createdAt, &updatedAt)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "crypto card not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"crypto_card": map[string]interface{}{
+		"id": cardID, "user_id": userID, "user_name": userName, "card_number": cardNumber,
+		"currency": currency, "balance": balance, "limit": limitVal, "status": cardStatus,
+		"card_type": cardType, "created_at": createdAt, "updated_at": updatedAt,
+	}})
+}
+
+func handleUpdateCryptoCard(c *gin.Context) {
+	id := c.Param("id")
+	var req map[string]interface{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	allowedFields := map[string]string{
+		"user_name": "user_name", "currency": "currency", "card_type": "card_type",
+	}
+	setClauses := []string{}
+	args := []interface{}{id}
+	argIdx := 2
+	for field, col := range allowedFields {
+		if val, ok := req[field]; ok {
+			setClauses = append(setClauses, col+" = $"+strconv.Itoa(argIdx))
+			args = append(args, val)
+			argIdx++
+		}
+	}
+	if len(setClauses) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no updatable fields provided"})
+		return
+	}
+	query := `UPDATE crypto_cards SET ` + strings.Join(setClauses, ", ") + ` WHERE id = $1`
+	result, err := database.Pool.Exec(c.Request.Context(), query, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if result.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "crypto card not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "crypto card updated"})
+}
+
+func handleDeleteCryptoCard(c *gin.Context) {
+	id := c.Param("id")
+	result, err := database.Pool.Exec(c.Request.Context(), `DELETE FROM crypto_cards WHERE id = $1`, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if result.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "crypto card not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "crypto card deleted"})
+}
+
+func handleBlockCryptoCard(c *gin.Context) {
+	id := c.Param("id")
+	result, err := database.Pool.Exec(c.Request.Context(), `UPDATE crypto_cards SET status = 'blocked' WHERE id = $1`, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if result.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "crypto card not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "crypto card blocked", "status": "blocked"})
+}
+
+func handleActivateCryptoCard(c *gin.Context) {
+	id := c.Param("id")
+	result, err := database.Pool.Exec(c.Request.Context(), `UPDATE crypto_cards SET status = 'active' WHERE id = $1`, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if result.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "crypto card not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "crypto card activated", "status": "active"})
+}
+
+func handleSetCryptoCardLimit(c *gin.Context) {
+	id := c.Param("id")
+	var req struct {
+		Limit float64 `json:"limit" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	result, err := database.Pool.Exec(c.Request.Context(), `UPDATE crypto_cards SET "limit" = $1 WHERE id = $2`, req.Limit, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if result.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "crypto card not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "limit updated", "limit": req.Limit})
+}
+
+func handleUpdateCryptoCardStatus(c *gin.Context) {
+	id := c.Param("id")
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	result, err := database.Pool.Exec(c.Request.Context(), `UPDATE crypto_cards SET status = $1 WHERE id = $2`, req.Status, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if result.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "crypto card not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "status updated", "status": req.Status})
+}
+

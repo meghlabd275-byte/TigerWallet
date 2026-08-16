@@ -280,3 +280,154 @@ class AdminRbacRepository(private val apiService: AdminApiService) {
         }
     }
 }
+
+/**
+ * New admin domain repositories (bots, bots-clients, project-teams, liquidity-sources)
+ * backed by the admin/go service on port 9093. CRUD + status come from DomainRepository;
+ * each adds its domain-specific sub-resource methods.
+ */
+class BotsDomainRepository(apiService: AdminApiService) : DomainRepository<BotRecord, BotRequest>(apiService) {
+    override suspend fun fetchList() = apiService.getBotsDomain()
+    override suspend fun fetchOne(id: String) = apiService.getBotRecord(id)
+    override suspend fun createRecord(request: BotRequest) = apiService.createBotRecord(request)
+    override suspend fun updateRecord(id: String, request: BotRequest) = apiService.updateBotRecord(id, request)
+    override suspend fun deleteRecord(id: String) = apiService.deleteBotRecord(id)
+    override suspend fun setStatus(id: String, status: String) = apiService.setBotStatus(id, StatusUpdateRequest(status))
+
+    suspend fun getStats(): Result<DomainStatsResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getBotDomainStats()
+            if (response.isSuccessful && response.body() != null) Result.success(response.body()!!)
+            else Result.failure(Exception("Failed to load bot stats (${response.code()})"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getTiers(id: String): Result<List<BotTierRecord>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getBotTiers(id)
+            if (response.isSuccessful) Result.success(response.body() ?: emptyList())
+            else Result.failure(Exception("Failed to load tiers (${response.code()})"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun createTier(id: String, request: BotTierRequest): Result<BotTierRecord> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.createBotTier(id, request)
+            if (response.isSuccessful && response.body() != null) Result.success(response.body()!!)
+            else Result.failure(Exception("Failed to create tier (${response.code()})"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateTier(id: String, tierId: String, request: BotTierRequest): Result<BotTierRecord> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.updateBotTier(id, tierId, request)
+            if (response.isSuccessful && response.body() != null) Result.success(response.body()!!)
+            else Result.failure(Exception("Failed to update tier (${response.code()})"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteTier(id: String, tierId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.deleteBotTier(id, tierId)
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception("Failed to delete tier (${response.code()})"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+}
+
+class BotsClientsRepository(apiService: AdminApiService) : DomainRepository<BotsClientRecord, BotsClientRequest>(apiService) {
+    override suspend fun fetchList() = apiService.getBotsClients()
+    override suspend fun fetchOne(id: String) = apiService.getBotsClientRecord(id)
+    override suspend fun createRecord(request: BotsClientRequest) = apiService.createBotsClient(request)
+    override suspend fun updateRecord(id: String, request: BotsClientRequest) = apiService.updateBotsClient(id, request)
+    override suspend fun deleteRecord(id: String) = apiService.deleteBotsClient(id)
+    override suspend fun setStatus(id: String, status: String) = apiService.setBotsClientStatus(id, StatusUpdateRequest(status))
+}
+
+class ProjectTeamsRepository(apiService: AdminApiService) : DomainRepository<ProjectTeamRecord, ProjectTeamRequest>(apiService) {
+    override suspend fun fetchList() = apiService.getProjectTeams()
+    override suspend fun fetchOne(id: String) = apiService.getProjectTeamRecord(id)
+    override suspend fun createRecord(request: ProjectTeamRequest) = apiService.createProjectTeam(request)
+    override suspend fun updateRecord(id: String, request: ProjectTeamRequest) = apiService.updateProjectTeam(id, request)
+    override suspend fun deleteRecord(id: String) = apiService.deleteProjectTeam(id)
+    override suspend fun setStatus(id: String, status: String) = apiService.setProjectTeamStatus(id, StatusUpdateRequest(status))
+
+    suspend fun getMembers(id: String): Result<List<ProjectTeamMemberRecord>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getProjectTeamMembers(id)
+            if (response.isSuccessful) Result.success(response.body() ?: emptyList())
+            else Result.failure(Exception("Failed to load members (${response.code()})"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun addMember(id: String, request: AddProjectTeamMemberRequest): Result<ProjectTeamMemberRecord> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.addProjectTeamMember(id, request)
+            if (response.isSuccessful && response.body() != null) Result.success(response.body()!!)
+            else Result.failure(Exception("Failed to add member (${response.code()})"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun removeMember(id: String, memberId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.removeProjectTeamMember(id, memberId)
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception("Failed to remove member (${response.code()})"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+}
+
+class LiquiditySourcesRepository(apiService: AdminApiService) : DomainRepository<LiquiditySourceRecord, LiquiditySourceRequest>(apiService) {
+    override suspend fun fetchList() = apiService.getLiquiditySources()
+    override suspend fun fetchOne(id: String) = apiService.getLiquiditySourceRecord(id)
+    override suspend fun createRecord(request: LiquiditySourceRequest) = apiService.createLiquiditySource(request)
+    override suspend fun updateRecord(id: String, request: LiquiditySourceRequest) = apiService.updateLiquiditySource(id, request)
+    override suspend fun deleteRecord(id: String) = apiService.deleteLiquiditySource(id)
+    override suspend fun setStatus(id: String, status: String) = apiService.setLiquiditySourceStatus(id, StatusUpdateRequest(status))
+
+    suspend fun setPriority(id: String, priority: Int): Result<LiquiditySourceRecord> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.setLiquiditySourcePriority(id, SetLiquiditySourcePriorityRequest(priority))
+            if (response.isSuccessful && response.body() != null) Result.success(response.body()!!)
+            else Result.failure(Exception("Failed to set priority (${response.code()})"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun healthCheck(id: String): Result<LiquiditySourceRecord> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.liquiditySourceHealthCheck(id)
+            if (response.isSuccessful && response.body() != null) Result.success(response.body()!!)
+            else Result.failure(Exception("Failed to run health check (${response.code()})"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getStats(): Result<DomainStatsResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getLiquiditySourceStats()
+            if (response.isSuccessful && response.body() != null) Result.success(response.body()!!)
+            else Result.failure(Exception("Failed to load liquidity source stats (${response.code()})"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+}

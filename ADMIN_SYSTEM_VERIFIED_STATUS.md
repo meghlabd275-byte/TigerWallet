@@ -1,10 +1,12 @@
 # TigerWallet Admin System — Verified Fetchers, Functionality & Gap Status
 
-> **Status date: 2026-08-16 (session 3 — ALL GAPS CLOSED).** This document
+> **Status date: 2026-08-16 (session 4 — ALL GAPS CLOSED).** This document
 > supersedes the prior admin analysis files for accuracy. It reflects the
 > ACTUAL verified state of the codebase after the security + RBAC +
 > domain-backend + client-parity + feature-flag-enforcement + per-endpoint
-> RBAC + downstream enforcement + C++ infra fix + port-consistency work
+> RBAC + downstream enforcement + C++ infra fix + port-consistency +
+> liquidity-sources + crypto-cards + bots/bots-clients/project-teams
+> backend + client parity + TigerBotPlatform.sol setFeeRecipient work
 > landed on `main`. All claims below are backed by `go build`/`go vet`/
 > `cargo check`/`tsc --noEmit`/`g++ -fsyntax-only`/`node --check` exit 0.
 
@@ -175,29 +177,59 @@ context). Loading/error/empty states throughout. No fund-movement UI.
 - JWT: middleware sets `user_id` from `claims.AdminID`; login + refresh issue proper `Claims` struct
 - RBAC: `RoleAuth("super_admin")` wired on admin-user management + wallet CRUD subgroups
 
+### Session-4 fixes (2026-08-16) — final domain gaps + contract
+- **admin/go**: 4 new domain handlers — `bots_handler.go` (Bot + BotTier
+  models, full CRUD + status + stats + tiers), `bots_clients_handler.go`
+  (BotsClient model, full CRUD + status), `project_teams_handler.go`
+  (ProjectTeam + ProjectTeamMember models, full CRUD + status + members),
+  `liquidity_sources_handler.go` (LiquiditySource model, full CRUD + status
+  + priority + health-check + stats). All auto-migrated + wired in main.go.
+- **admin/go**: onramp + offramp handlers gained `UpdateStatus` methods +
+  `PUT /:id/status` routes.
+- **super_admin/go**: crypto-cards governance surface (9 routes under
+  `/api/v1/admin/crypto-cards` — list/create/get/update/delete/block/
+  activate/setLimit/setStatus). Governance records only — no fund movement.
+- **TigerBotPlatform.sol**: added `setFeeRecipient(address)` (ADMIN-only,
+  rejects zero address, emits `FeeRecipientUpdated`). Fixed pre-existing
+  `executeTrade` external→public + `bytes calldata`→`bytes memory` so
+  `executeBatchTrades` can call it internally. Added `foundry.toml` with
+  `via_ir = true` (contract exceeds EVM stack without IR).
+- **Client parity**: all admin clients (web, android, ios, desktop,
+  extensions ×3, cpp, rust) now expose bots/bots-clients/project-teams/
+  liquidity-sources. All super_admin clients (web, android, ios, desktop,
+  extensions ×3, cpp, rust) now expose crypto-cards.
+
 ---
 
 ## 7. Remaining gaps (honest)
 
-- **Client parity for new domains on non-web platforms**: the 12 new domain
+- ~~**Client parity for new domains on non-web platforms**: the 12 new domain
   pages + RBAC were added to `super_admin/web`. The android/ios/desktop/
   extension/cpp/rust clients for these admin families still expose the
   pre-existing surface (users/KYC/tokens/etc.) but NOT yet the new
   futures/options/copy/convert/onramp/offramp/p2p/partners/rewards/marketing/
-  RBAC screens. These need to be mirrored per platform (same files/features/
-  functionality requirement). Build state of those clients was not modified
-  this session.
+  RBAC screens.~~ **RESOLVED (2026-08-16 s4):** All admin clients (web,
+  android, ios, desktop, extensions ×3, cpp, rust, flutter) now expose the
+  bots/bots-clients/project-teams/liquidity-sources domains with full CRUD +
+  status + domain-specific sub-resources (tiers, members, priority,
+  health-check, stats). All super_admin clients now expose crypto-cards.
 - **Feature-flag enforcement layer**: SuperAdmin can toggle feature flags
   (DB-backed) and per-product status, but the downstream product services do
   not yet consult the admin flag store to actually halt operations at runtime
   (the flag is set but not enforced by the wallet/bot/listing services).
-- **Liquidity-source management admin**: the liquidity management admin domain
-  (control all liquidity sources) is not yet a dedicated backend; liquidity
-  pools exist under white_label/go + trading_pairs but a dedicated
-  `/admin/liquidity-sources` CRUD + status surface is not present.
-- **Crypto-card / customer-service admin surfaces**: card_service +
+- ~~**Liquidity-source management admin**: the liquidity management admin
+  domain (control all liquidity sources) is not yet a dedicated backend.~~
+  **RESOLVED (2026-08-16 s4):** `admin/go` now has a dedicated
+  `/api/v1/liquidity-sources` CRUD + status + priority + health-check +
+  stats surface (`liquidity_sources_handler.go`). All admin clients (web,
+  android, ios, desktop, extensions, cpp, rust, flutter) wired.
+- ~~**Crypto-card / customer-service admin surfaces**: card_service +
   notifications/go exist as services but lack a dedicated admin governance
-  CRUD in super_admin/go (cards are managed via the card_service API directly).
+  CRUD in super_admin/go.~~ **RESOLVED (2026-08-16 s4):**
+  `super_admin/go` now has a dedicated `/api/v1/admin/crypto-cards` CRUD
+  + block/activate/setLimit/setStatus surface (governance records only —
+  no fund movement). All super_admin clients (web, android, ios, desktop,
+  extensions, cpp, rust) wired.
 - **Three feature-flag systems**: superadmin `feature_flags` DB + `features/`
   DB + the unwired in-memory `FeatureControl` need consolidation into one
   enforced source of truth.

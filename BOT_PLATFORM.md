@@ -357,6 +357,18 @@ GET /api/bot-subscription/stats
 - Monitoring & alerts
 - Encrypted connections
 
+### On-chain governance (TigerBotPlatform.sol)
+
+- `setFeeRecipient(address)` — ADMIN-only rotation of the protocol fee
+  recipient (the ONE legitimate on-chain crypto-movement governance path;
+  rejects zero address, emits `FeeRecipientUpdated`). No admin private key
+  or wallet seed is involved — only the ADMIN role can call this.
+- `updateProtocolFee(uint256)` — ADMIN-only fee cap (max 5% / 500 bps).
+- Role-based access control (`ROLE_ADMIN`, `ROLE_OPERATOR`) on all
+  mutating functions.
+- Emergency mode + trading pause circuit breakers.
+- Compiles with `via_ir = true` (foundry.toml) due to contract size.
+
 ---
 
 ## Getting Started

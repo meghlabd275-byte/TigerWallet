@@ -79,3 +79,158 @@ struct AnyKey: CodingKey {
     var intValue: Int? { nil }
     init?(intValue: Int) { nil }
 }
+
+// MARK: - New admin domains (bots, bots-clients, project-teams, liquidity-sources)
+// Loose Codable structs mirroring the admin/go (port 9093) payloads. Fields are
+// optional and decoded defensively so a partial/missing field never breaks a list.
+
+struct BotDomainRecord: Codable, Identifiable {
+    let id: String
+    var name: String?
+    var botType: String?
+    var leverage: Int?
+    var status: String?
+    var createdAt: String?
+    var updatedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, status
+        case botType = "bot_type"
+        case leverage
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func str(_ k: KeyedDecodingContainer<CodingKeys>.Key) -> String? {
+            if let v = try? c.decode(String.self, forKey: k) { return v }
+            if let v = try? c.decode(Int.self, forKey: k) { return String(v) }
+            return nil
+        }
+        id = str(.id) ?? UUID().uuidString
+        name = str(.name); botType = str(.botType); status = str(.status)
+        leverage = try? c.decode(Int.self, forKey: .leverage)
+        createdAt = str(.createdAt); updatedAt = str(.updatedAt)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encodeIfPresent(name, forKey: .name)
+        try c.encodeIfPresent(botType, forKey: .botType)
+        try c.encodeIfPresent(leverage, forKey: .leverage)
+        try c.encodeIfPresent(status, forKey: .status)
+    }
+}
+
+struct BotDomainRequest: Codable {
+    var name: String
+    var botType: String?
+    var leverage: Int?
+    enum CodingKeys: String, CodingKey { case name; case botType = "bot_type"; case leverage }
+}
+
+struct BotTierRecord: Codable, Identifiable {
+    let id: String
+    var name: String?
+    var minVolume: String?
+    var maxVolume: String?
+    var feeRate: String?
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case minVolume = "min_volume"; case maxVolume = "max_volume"; case feeRate = "fee_rate"
+    }
+}
+
+struct BotTierRequest: Codable {
+    var name: String?
+    var minVolume: String?
+    var maxVolume: String?
+    var feeRate: String?
+    enum CodingKeys: String, CodingKey {
+        case name; case minVolume = "min_volume"; case maxVolume = "max_volume"; case feeRate = "fee_rate"
+    }
+}
+
+struct BotsClientRecord: Codable, Identifiable {
+    let id: String
+    var name: String?
+    var clientId: String?
+    var apiKey: String?
+    var status: String?
+    var createdAt: String?
+    enum CodingKeys: String, CodingKey {
+        case id, name, status
+        case clientId = "client_id"; case apiKey = "api_key"; case createdAt = "created_at"
+    }
+}
+
+struct BotsClientRequest: Codable {
+    var name: String
+    var clientId: String?
+    var apiKey: String?
+    enum CodingKeys: String, CodingKey { case name; case clientId = "client_id"; case apiKey = "api_key" }
+}
+
+struct ProjectTeamRecord: Codable, Identifiable {
+    let id: String
+    var name: String?
+    var description: String?
+    var status: String?
+    var createdAt: String?
+    enum CodingKeys: String, CodingKey { case id, name, description, status; case createdAt = "created_at" }
+}
+
+struct ProjectTeamRequest: Codable {
+    var name: String
+    var description: String?
+}
+
+struct ProjectTeamMemberRecord: Codable, Identifiable {
+    let id: String
+    var teamId: String?
+    var userId: String?
+    var role: String?
+    var status: String?
+    enum CodingKeys: String, CodingKey {
+        case id, role, status
+        case teamId = "team_id"; case userId = "user_id"
+    }
+}
+
+struct AddProjectTeamMemberRequest: Codable {
+    var userId: String
+    var role: String?
+    enum CodingKeys: String, CodingKey { case userId = "user_id"; case role }
+}
+
+struct LiquiditySourceRecord: Codable, Identifiable {
+    let id: String
+    var name: String?
+    var provider: String?
+    var priority: Int?
+    var status: String?
+    var healthy: Bool?
+    var lastCheck: String?
+    enum CodingKeys: String, CodingKey {
+        case id, name, provider, priority, status
+        case healthy; case lastCheck = "last_check"
+    }
+}
+
+struct LiquiditySourceRequest: Codable {
+    var name: String
+    var provider: String?
+    var priority: Int?
+}
+
+struct SetLiquiditySourcePriorityRequest: Codable {
+    let priority: Int
+}
+
+struct DomainStats: Codable {
+    var total: Int?
+    var active: Int?
+    var inactive: Int?
+}

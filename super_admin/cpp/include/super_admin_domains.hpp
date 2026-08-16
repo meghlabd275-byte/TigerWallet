@@ -612,7 +612,69 @@ struct WLControlHandler {
     }
 };
 
-/// Aggregate of all 12 domain handlers, wired to a single HTTP client.
+/// 13. Crypto Cards management: CRUD + block/activate/limit/status.
+///
+/// Dedicated handler for the `/api/v1/admin/crypto-cards` routes. The generic
+/// DomainHandler only models status/approve/reject sub-actions, so the
+/// block/activate/limit actions are implemented directly against the client.
+struct CryptoCardsHandler {
+    static constexpr const char* kResource = "crypto-cards";
+    SuperAdminHttpClient client;
+
+    explicit CryptoCardsHandler(SuperAdminHttpClient c) : client(std::move(c)) {}
+
+    // CRUD
+    DomainResult list() const { return client.get(kResource); }
+    DomainResult create(const std::string& json_body) const {
+        return client.post(kResource, json_body);
+    }
+    DomainResult get_one(const std::string& id) const {
+        return client.get(std::string(kResource) + "/" + id);
+    }
+    DomainResult update(const std::string& id, const std::string& json_body) const {
+        return client.put(std::string(kResource) + "/" + id, json_body);
+    }
+    DomainResult remove(const std::string& id) const {
+        return client.del(std::string(kResource) + "/" + id);
+    }
+
+    // Card-specific sub-actions
+    DomainResult block(const std::string& id, const std::string& reason) const {
+        JsonValue body;
+        if (!reason.empty()) body.add("reason", reason);
+        return client.post(std::string(kResource) + "/" + id + "/block",
+                           reason.empty() ? "{}" : body.build());
+    }
+    DomainResult activate(const std::string& id) const {
+        return client.post(std::string(kResource) + "/" + id + "/activate", "{}");
+    }
+    DomainResult set_limit(const std::string& id, double daily_limit,
+                           double monthly_limit, const std::string& currency) const {
+        JsonValue body;
+        body.add("daily_limit", daily_limit)
+            .add("monthly_limit", monthly_limit)
+            .add("currency", currency);
+        return client.put(std::string(kResource) + "/" + id + "/limit", body.build());
+    }
+    DomainResult set_status(const std::string& id, const std::string& status) const {
+        JsonValue body;
+        body.add("status", status);
+        return client.put(std::string(kResource) + "/" + id + "/status", body.build());
+    }
+
+    /// Convenience create payload for a new crypto card.
+    static std::string create_body(const std::string& user_id, const std::string& card_type,
+                                   const std::string& network, double daily_limit,
+                                   double monthly_limit, const std::string& currency) {
+        JsonValue v;
+        v.add("user_id", user_id).add("card_type", card_type).add("network", network)
+            .add("daily_limit", daily_limit).add("monthly_limit", monthly_limit)
+            .add("currency", currency);
+        return v.build();
+    }
+};
+
+/// Aggregate of all domain handlers, wired to a single HTTP client.
 struct SuperAdminDomains {
     SuperAdminHttpClient client;
     FuturesHandler futures;
@@ -627,6 +689,7 @@ struct SuperAdminDomains {
     MarketingHandler marketing;
     AdminRolesHandler admin_roles;
     WLControlHandler wl_control;
+    CryptoCardsHandler crypto_cards;
 
     explicit SuperAdminDomains(std::string jwt = {})
         : client(std::move(jwt)),
@@ -641,13 +704,14 @@ struct SuperAdminDomains {
           rewards(client),
           marketing(client),
           admin_roles(client),
-          wl_control(client) {}
+          wl_control(client),
+          crypto_cards(client) {}
 
-    /// Names of the 12 governance domains (for UI wiring / logging).
+    /// Names of the governance domains (for UI wiring / logging).
     static std::vector<std::string> domain_names() {
         return {"futures", "options", "copy-trading", "convert",   "onramp",
                 "offramp", "p2p-clients", "partners",     "rewards",   "marketing",
-                "admin-roles", "wl-control"};
+                "admin-roles", "wl-control", "crypto-cards"};
     }
 };
 

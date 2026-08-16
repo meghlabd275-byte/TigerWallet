@@ -173,3 +173,29 @@ func (h *OffRampHandler) Reject(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "order rejected", "status": "rejected", "reason": req.Reason})
 }
+
+// UpdateStatus sets the status of an off-ramp order (start/stop/pause/resume — governance record only).
+func (h *OffRampHandler) UpdateStatus(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	result := h.db.Model(&OffRampOrder{}).Where("id = ?", id).Update("status", req.Status)
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+		return
+	}
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "order not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "status updated", "status": req.Status})
+}

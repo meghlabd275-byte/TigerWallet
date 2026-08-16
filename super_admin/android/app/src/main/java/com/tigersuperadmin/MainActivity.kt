@@ -22,6 +22,62 @@ import java.util.List;
 import java.util.Map;
 
 /**
+ * Crypto-card record returned by the super_admin/go backend
+ * (`/api/v1/admin/crypto-cards` on :8082). Mirrors the DB columns:
+ * id, user_id, user_name, card_number, currency, balance, limit, status,
+ * card_type, created_at, updated_at.
+ */
+class CryptoCard {
+    long id;
+    String userId;
+    String userName;
+    String cardNumber;
+    String currency;
+    double balance;
+    double limit;
+    String status;
+    String cardType;
+    String createdAt;
+    String updatedAt;
+
+    static CryptoCard fromJson(JSONObject o) {
+        CryptoCard c = new CryptoCard();
+        c.id = o.optLong("id", 0);
+        c.userId = o.optString("user_id", null);
+        c.userName = o.optString("user_name", "");
+        c.cardNumber = o.optString("card_number", "");
+        c.currency = o.optString("currency", "");
+        c.balance = o.optDouble("balance", 0);
+        c.limit = o.optDouble("limit", 0);
+        c.status = o.optString("status", "");
+        c.cardType = o.optString("card_type", "");
+        c.createdAt = o.optString("created_at", "");
+        c.updatedAt = o.optString("updated_at", "");
+        return c;
+    }
+
+    JSONObject toJson() {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("id", id);
+            if (userId != null) o.put("user_id", userId);
+            o.put("user_name", userName);
+            o.put("card_number", cardNumber);
+            o.put("currency", currency);
+            o.put("balance", balance);
+            o.put("limit", limit);
+            o.put("status", status);
+            o.put("card_type", cardType);
+            o.put("created_at", createdAt);
+            o.put("updated_at", updatedAt);
+        } catch (Exception e) {
+            // ignore
+        }
+        return o;
+    }
+}
+
+/**
  * TigerWallet Super Admin - Android Application
  * Complete admin management with all features
  */
@@ -592,6 +648,128 @@ public class MainActivity extends AppCompatActivity {
         contentLayout.addView(webView);
     }
     
+    // ===== Crypto-cards API (super_admin/go :8082 /api/v1/admin/crypto-cards) =====
+    // Uses the same HttpURLConnection/JSON patterns as domainRequest above.
+    private static final String CRYPTO_CARDS_RESOURCE = "crypto-cards";
+
+    /** GET /crypto-cards -> list of cards (optionally filtered by status). */
+    List<CryptoCard> listCryptoCards(String status) throws Exception {
+        StringBuilder urlStr = new StringBuilder(API_BASE_URL).append("/").append(CRYPTO_CARDS_RESOURCE);
+        if (status != null && !status.isEmpty() && !status.equals("all")) {
+            urlStr.append("?status=").append(status);
+        }
+        JSONObject resp = cryptoCardRequest("GET", urlStr.toString(), null, null);
+        JSONArray arr = resp.optJSONArray("crypto_cards");
+        if (arr == null) {
+            Object root = resp.opt("root");
+            arr = root instanceof JSONArray ? (JSONArray) root : new JSONArray();
+        }
+        List<CryptoCard> cards = new ArrayList<>();
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject row = arr.optJSONObject(i);
+            if (row != null) cards.add(CryptoCard.fromJson(row));
+        }
+        return cards;
+    }
+
+    /** GET /crypto-cards/:id -> single card (wrapped as {"crypto_card": {...}}). */
+    CryptoCard getCryptoCard(long id) throws Exception {
+        String urlStr = API_BASE_URL + "/" + CRYPTO_CARDS_RESOURCE + "/" + id;
+        JSONObject resp = cryptoCardRequest("GET", urlStr, null, null);
+        JSONObject obj = resp.optJSONObject("crypto_card");
+        if (obj == null) obj = resp;
+        return CryptoCard.fromJson(obj);
+    }
+
+    /** POST /crypto-cards -> create. `card` supplies user_name/currency/limit/card_type. */
+    JSONObject createCryptoCard(CryptoCard card) throws Exception {
+        JSONObject body = new JSONObject();
+        if (card.userId != null) body.put("user_id", card.userId);
+        body.put("user_name", card.userName);
+        body.put("currency", card.currency);
+        body.put("limit", card.limit);
+        body.put("card_type", card.cardType);
+        return cryptoCardRequest("POST", API_BASE_URL + "/" + CRYPTO_CARDS_RESOURCE, "POST", body);
+    }
+
+    /** PUT /crypto-cards/:id -> update updatable fields (user_name, currency, card_type). */
+    JSONObject updateCryptoCard(long id, CryptoCard card) throws Exception {
+        JSONObject body = new JSONObject();
+        if (card.userName != null && !card.userName.isEmpty()) body.put("user_name", card.userName);
+        if (card.currency != null && !card.currency.isEmpty()) body.put("currency", card.currency);
+        if (card.cardType != null && !card.cardType.isEmpty()) body.put("card_type", card.cardType);
+        String urlStr = API_BASE_URL + "/" + CRYPTO_CARDS_RESOURCE + "/" + id;
+        return cryptoCardRequest("PUT", urlStr, "PUT", body);
+    }
+
+    /** DELETE /crypto-cards/:id. */
+    JSONObject deleteCryptoCard(long id) throws Exception {
+        String urlStr = API_BASE_URL + "/" + CRYPTO_CARDS_RESOURCE + "/" + id;
+        return cryptoCardRequest("DELETE", urlStr, "DELETE", null);
+    }
+
+    /** POST /crypto-cards/:id/block. */
+    JSONObject blockCryptoCard(long id) throws Exception {
+        String urlStr = API_BASE_URL + "/" + CRYPTO_CARDS_RESOURCE + "/" + id + "/block";
+        return cryptoCardRequest("POST", urlStr, "POST", new JSONObject());
+    }
+
+    /** POST /crypto-cards/:id/activate. */
+    JSONObject activateCryptoCard(long id) throws Exception {
+        String urlStr = API_BASE_URL + "/" + CRYPTO_CARDS_RESOURCE + "/" + id + "/activate";
+        return cryptoCardRequest("POST", urlStr, "POST", new JSONObject());
+    }
+
+    /** PUT /crypto-cards/:id/limit -> {"limit": <double>}. */
+    JSONObject setCryptoCardLimit(long id, double limit) throws Exception {
+        JSONObject body = new JSONObject().put("limit", limit);
+        String urlStr = API_BASE_URL + "/" + CRYPTO_CARDS_RESOURCE + "/" + id + "/limit";
+        return cryptoCardRequest("PUT", urlStr, "PUT", body);
+    }
+
+    /** PUT /crypto-cards/:id/status -> {"status": <string>}. */
+    JSONObject setCryptoCardStatus(long id, String status) throws Exception {
+        JSONObject body = new JSONObject().put("status", status);
+        String urlStr = API_BASE_URL + "/" + CRYPTO_CARDS_RESOURCE + "/" + id + "/status";
+        return cryptoCardRequest("PUT", urlStr, "PUT", body);
+    }
+
+    // Shared HTTP helper for crypto-card endpoints. Mirrors domainRequest() but
+    // accepts a pre-built URL (so the :id sub-paths can be composed above).
+    private JSONObject cryptoCardRequest(String method, String urlStr, String bodyMethod, JSONObject body) throws Exception {
+        URL url = new URL(urlStr);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod(method);
+        addAuthHeader(conn);
+        if (body != null && (bodyMethod.equals("POST") || bodyMethod.equals("PUT") || bodyMethod.equals("PATCH"))) {
+            conn.setDoOutput(true);
+            byte[] payload = body.toString().getBytes("UTF-8");
+            conn.getOutputStream().write(payload);
+        }
+        int code = conn.getResponseCode();
+        BufferedReader reader;
+        if (code >= 200 && code < 300) {
+            reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+        } else {
+            reader = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
+            StringBuilder er = new StringBuilder(); String l;
+            while ((l = reader.readLine()) != null) er.append(l);
+            reader.close();
+            throw new Exception("HTTP " + code + ": " + er.toString());
+        }
+        StringBuilder response = new StringBuilder(); String line;
+        while ((line = reader.readLine()) != null) response.append(line);
+        reader.close();
+        String resp = response.toString();
+        if (resp.isEmpty()) return new JSONObject();
+        if (resp.trim().startsWith("[")) {
+            JSONObject wrapper = new JSONObject();
+            wrapper.put("root", new JSONArray(resp));
+            return wrapper;
+        }
+        return new JSONObject(resp);
+    }
+
     private void addAuthHeader(HttpURLConnection conn) {
         if (authToken != null) {
             conn.setRequestProperty("Authorization", "Bearer " + authToken);

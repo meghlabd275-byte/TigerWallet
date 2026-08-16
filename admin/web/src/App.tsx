@@ -38,6 +38,10 @@ import PartnersPage from './pages/Partners';
 import RewardsPage from './pages/Rewards';
 import MarketingPage from './pages/Marketing';
 import AdminRolesPage from './pages/AdminRoles';
+import BotsPage from './pages/Bots';
+import BotsClientsPage from './pages/BotsClients';
+import ProjectTeamsPage from './pages/ProjectTeams';
+import LiquiditySourcesPage from './pages/LiquiditySources';
 
 // Sidebar Component
 const Sidebar: React.FC<{ 
@@ -76,6 +80,10 @@ const Sidebar: React.FC<{
     { id: 'rewards', label: 'Rewards', icon: '🎁' },
     { id: 'marketing', label: 'Marketing', icon: '📣' },
     { id: 'features', label: 'Feature Flags', icon: '🚩' },
+    { id: 'bots', label: 'Bots', icon: '🤖' },
+    { id: 'bots-clients', label: 'Bots Clients', icon: '🔗' },
+    { id: 'project-teams', label: 'Project Teams', icon: '👥' },
+    { id: 'liquidity-sources', label: 'Liquidity Sources', icon: '🏊' },
     { id: 'settings', label: 'Settings', icon: '⚙️' },
   ];
 
@@ -236,6 +244,14 @@ const PageRouter: React.FC<{ currentPage: string }> = ({ currentPage }) => {
       return <MarketingPage />;
     case 'features':
       return <FeaturesPage />;
+    case 'bots':
+      return <BotsPage />;
+    case 'bots-clients':
+      return <BotsClientsPage />;
+    case 'project-teams':
+      return <ProjectTeamsPage />;
+    case 'liquidity-sources':
+      return <LiquiditySourcesPage />;
     case 'settings':
       return <SettingsPage />;
     default:

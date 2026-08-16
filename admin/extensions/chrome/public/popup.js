@@ -30,7 +30,12 @@
         { id: 'rewards',        label: 'Rewards',         endpoint: 'rewards' },
         { id: 'marketing',      label: 'Marketing',       endpoint: 'marketing' },
         { id: 'roles',          label: 'Roles',           endpoint: 'roles' },
-        { id: 'permissions',    label: 'Permissions',     endpoint: 'permissions' }
+        { id: 'permissions',    label: 'Permissions',     endpoint: 'permissions' },
+        // ---- new admin domains (admin/go :9093) ----
+        { id: 'bots',               label: 'Bots',               endpoint: 'bots' },
+        { id: 'bots-clients',       label: 'Bots Clients',       endpoint: 'bots-clients' },
+        { id: 'project-teams',      label: 'Project Teams',      endpoint: 'project-teams' },
+        { id: 'liquidity-sources',  label: 'Liquidity Sources',  endpoint: 'liquidity-sources' }
     ];
 
     // DOM Elements

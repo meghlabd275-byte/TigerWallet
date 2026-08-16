@@ -40,6 +40,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case 'getDomains':
       sendResponse({ domains: DOMAINS });
       return true;
+    case 'cryptoCards':
+      handleCryptoCards(request.op, request.payload).then(sendResponse);
+      return true;
     case 'getTheme':
       chrome.storage.local.get(['theme']).then(result => {
         sendResponse(result.theme || 'system');
@@ -124,6 +127,61 @@ async function fetchDomain(domain) {
     return parsed || { error: 'No data returned by the domain service.' };
   } catch (error) {
     return { error: error.message || 'Failed to reach super-admin backend.' };
+  }
+}
+
+// Crypto Cards management API: maps to /api/v1/admin/crypto-cards routes on
+// the super_admin/go backend (port 8082). Same JWT bearer auth as fetchDomain.
+const cryptoCardsAPI = {
+  resource: 'crypto-cards',
+  getAll: (params = {}) => cryptoCardsRequest('GET', '', null, params),
+  getOne: (id) => cryptoCardsRequest('GET', id),
+  create: (data) => cryptoCardsRequest('POST', '', data),
+  update: (id, data) => cryptoCardsRequest('PUT', id, data),
+  delete: (id) => cryptoCardsRequest('DELETE', id),
+  block: (id, reason) => cryptoCardsRequest('POST', id + '/block', reason ? { reason } : {}),
+  activate: (id) => cryptoCardsRequest('POST', id + '/activate', {}),
+  setLimit: (id, data) => cryptoCardsRequest('PUT', id + '/limit', data),
+  setStatus: (id, status) => cryptoCardsRequest('PUT', id + '/status', { status })
+};
+
+async function cryptoCardsRequest(method, suffix = '', body = null, params = {}) {
+  try {
+    const token = await getToken();
+    const query = Object.keys(params).length ? '?' + new URLSearchParams(params).toString() : '';
+    const url = `${API_BASE_URL}/${cryptoCardsAPI.resource}${suffix ? '/' + suffix : ''}${query}`;
+    const opts = { method, headers: { 'Authorization': `Bearer ${token}` } };
+    if (body !== null) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    const response = await fetch(url, opts);
+    const text = await response.text();
+    let parsed = null;
+    try { parsed = text ? JSON.parse(text) : null; }
+    catch (_) { parsed = { raw: text }; }
+    if (!response.ok) {
+      const msg = (parsed && parsed.error) ? parsed.error : `HTTP ${response.status}`;
+      return { error: msg, status: response.status };
+    }
+    return parsed || { error: 'No data returned by the crypto-cards service.' };
+  } catch (error) {
+    return { error: error.message || 'Failed to reach super-admin backend.' };
+  }
+}
+
+async function handleCryptoCards(op, payload = {}) {
+  switch (op) {
+    case 'list': return cryptoCardsAPI.getAll(payload.params || {});
+    case 'get': return cryptoCardsAPI.getOne(payload.id);
+    case 'create': return cryptoCardsAPI.create(payload.body || {});
+    case 'update': return cryptoCardsAPI.update(payload.id, payload.body || {});
+    case 'delete': return cryptoCardsAPI.delete(payload.id);
+    case 'block': return cryptoCardsAPI.block(payload.id, payload.reason);
+    case 'activate': return cryptoCardsAPI.activate(payload.id);
+    case 'setLimit': return cryptoCardsAPI.setLimit(payload.id, payload.body || {});
+    case 'setStatus': return cryptoCardsAPI.setStatus(payload.id, payload.status);
+    default: return { error: 'Unknown cryptoCards op: ' + op };
   }
 }
 

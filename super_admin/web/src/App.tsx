@@ -47,6 +47,7 @@ import Partners from './pages/Partners';
 import Rewards from './pages/Rewards';
 import Marketing from './pages/Marketing';
 import AdminRoles from './pages/AdminRoles';
+import CryptoCards from './pages/CryptoCards';
 import './styles/globals.css';
 
 // Protected Route Component
@@ -111,6 +112,7 @@ function App() {
             <Route path="rewards" element={<Rewards />} />
             <Route path="marketing" element={<Marketing />} />
             <Route path="admin-roles" element={<AdminRoles />} />
+            <Route path="crypto-cards" element={<CryptoCards />} />
           </Route>
           
           <Route path="*" element={<Navigate to="/" replace />} />

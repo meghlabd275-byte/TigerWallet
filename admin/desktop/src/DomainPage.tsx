@@ -90,6 +90,27 @@ export const DOMAIN_PAGES: DomainPageConfig[] = [
     columns: ['Name', 'Resource', 'Action', 'Description'],
     renderRow: r => [r.name ?? '—', r.resource ?? '—', r.action ?? '—', r.description ?? '—'],
   },
+  {
+    id: 'bots', title: 'Bots', domain: 'bots', action: 'status',
+    columns: ['Name', 'Type', 'Status'],
+    renderRow: r => [r.name ?? '—', r.type ?? '—', r.status ?? '—'],
+  },
+  {
+    id: 'bots-clients', title: 'Bots Clients', domain: 'bots-clients', action: 'status',
+    statusValues: ['active', 'suspended'],
+    columns: ['Name', 'Email', 'Status'],
+    renderRow: r => [r.name ?? '—', r.email ?? '—', r.status ?? '—'],
+  },
+  {
+    id: 'project-teams', title: 'Project Teams', domain: 'project-teams', action: 'status',
+    columns: ['Name', 'Members', 'Status'],
+    renderRow: r => [r.name ?? '—', r.members ?? (r.member_count ?? '—'), r.status ?? '—'],
+  },
+  {
+    id: 'liquidity-sources', title: 'Liquidity Sources', domain: 'liquidity-sources', action: 'status',
+    columns: ['Name', 'Type', 'Priority', 'Status'],
+    renderRow: r => [r.name ?? '—', r.type ?? '—', r.priority ?? '—', r.status ?? '—'],
+  },
 ];
 
 export const DomainPage: React.FC<{ config: DomainPageConfig; theme: Theme }> = ({ config, theme }) => {

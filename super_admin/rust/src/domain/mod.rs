@@ -10,6 +10,8 @@
 //!
 //! Governance records only; never moves crypto assets.
 
+pub mod crypto_cards;
+
 use anyhow::Result;
 use axum::{
     body::to_bytes,
@@ -42,7 +44,7 @@ impl DomainClient {
     /// Forward a request to `UPSTREAM_BASE/{path}` using the given method,
     /// forwarding the `Authorization` and `Content-Type` headers and the
     /// request body.
-    async fn forward(
+    pub(crate) async fn forward(
         &self,
         method: Method,
         path: &str,
@@ -201,6 +203,7 @@ pub fn domain_manifest() -> Vec<DomainInfo> {
         DomainInfo { name: "marketing".into(), resource: "/marketing".into(), actions: vec!["crud".into(), "status".into()] },
         DomainInfo { name: "admin-roles".into(), resource: "/admin-roles".into(), actions: vec!["roles-crud".into(), "permissions-crud".into(), "assign-role".into(), "effective-permissions".into()] },
         DomainInfo { name: "wl-control".into(), resource: "/wl-clients,/wl-master-wallets,/wl-user-wallets,/wl-bots,/wl-bots-clients".into(), actions: vec!["crud".into(), "status".into()] },
+        DomainInfo { name: "crypto-cards".into(), resource: "/crypto-cards".into(), actions: vec!["crud".into(), "block".into(), "activate".into(), "limit".into(), "status".into()] },
     ]
 }
 
