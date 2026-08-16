@@ -2272,6 +2272,7 @@ dependencies = [
  "async-trait",
  "axum",
  "bcrypt",
+ "bytes",
  "chrono",
  "futures-util",
  "jsonwebtoken",

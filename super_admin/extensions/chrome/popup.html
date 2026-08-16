@@ -1,88 +1,168 @@
 <!DOCTYPE html>
-<html>
+<html data-theme="light">
 <head>
   <meta charset="UTF-8">
   <title>TigerWallet Super Admin</title>
   <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #0f172a;
+      --muted: #64748b;
+      --card: #f1f5f9;
+      --card-hover: #e2e8f0;
+      --border: #e2e8f0;
+      --accent: #3b82f6;
+      --accent-dark: #1d4ed8;
+      --error: #ef4444;
+      --on-accent: #ffffff;
+    }
+    [data-theme="dark"] {
+      --bg: #1e293b;
+      --fg: #f1f5f9;
+      --muted: #94a3b8;
+      --card: #334155;
+      --card-hover: #475569;
+      --border: #334155;
+      --accent: #3b82f6;
+      --accent-dark: #1d4ed8;
+      --error: #f87171;
+      --on-accent: #ffffff;
+    }
+    /* Fall back to the OS preference when data-theme is not set. */
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme]) {
+        --bg: #1e293b; --fg: #f1f5f9; --muted: #94a3b8; --card: #334155;
+        --card-hover: #475569; --border: #334155; --accent: #3b82f6;
+        --accent-dark: #1d4ed8; --error: #f87171; --on-accent: #ffffff;
+      }
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      width: 320px;
-      min-height: 400px;
+      width: 360px;
+      min-height: 480px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #ffffff;
-      color: #0f172a;
-    }
-    @media (prefers-color-scheme: dark) {
-      body { background: #1e293b; color: #f1f5f9; }
+      background: var(--bg);
+      color: var(--fg);
     }
     .header {
       padding: 16px;
-      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-      color: white;
+      background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+      color: var(--on-accent);
       text-align: center;
     }
     .header h1 { font-size: 16px; font-weight: 600; }
     .header p { font-size: 11px; opacity: 0.9; margin-top: 4px; }
     .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px; }
     .stat {
-      background: #f1f5f9;
+      background: var(--card);
       padding: 12px;
       border-radius: 8px;
       text-align: center;
     }
-    @media (prefers-color-scheme: dark) {
-      .stat { background: #334155; }
-    }
     .stat-value { font-size: 18px; font-weight: 700; }
-    .stat-label { font-size: 10px; color: #64748b; margin-top: 4px; }
-    .nav { padding: 8px; border-top: 1px solid #e2e8f0; }
-    @media (prefers-color-scheme: dark) { .nav { border-color: #334155; } }
+    .stat-label { font-size: 10px; color: var(--muted); margin-top: 4px; }
+    .stat-error {
+      grid-column: 1 / -1;
+      color: var(--error);
+      font-size: 12px;
+      padding: 12px;
+      text-align: center;
+    }
+
+    /* Domain tabs + panel */
+    .domain-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 8px 12px 0;
+      border-top: 1px solid var(--border);
+    }
+    .domain-tab {
+      padding: 6px 8px;
+      background: var(--card);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+    .domain-tab:hover { background: var(--card-hover); }
+    .domain-tab.active {
+      background: var(--accent);
+      color: var(--on-accent);
+      border-color: var(--accent);
+    }
+    .domain-panel { padding: 12px; min-height: 120px; }
+    .domain-loading, .domain-empty {
+      padding: 16px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .domain-header {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--fg);
+    }
+    .domain-list { display: flex; flex-direction: column; gap: 6px; }
+    .domain-row {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px;
+    }
+    .domain-field { font-size: 11px; line-height: 1.4; word-break: break-word; }
+    .domain-field-label { color: var(--muted); }
+    .domain-field-value { color: var(--fg); }
+
+    .nav { padding: 8px; border-top: 1px solid var(--border); }
     .nav-item {
       display: block;
       padding: 10px 12px;
-      color: #475569;
+      color: var(--muted);
       text-decoration: none;
       border-radius: 6px;
       font-size: 13px;
       transition: background 0.2s;
     }
-    @media (prefers-color-scheme: dark) { .nav-item { color: #94a3b8; } }
-    .nav-item:hover { background: #f1f5f9; }
-    @media (prefers-color-scheme: dark) { .nav-item:hover { background: #334155; } }
+    .nav-item:hover { background: var(--card); }
     .theme-toggle {
       width: 100%;
       padding: 10px;
       background: transparent;
-      border: 1px solid #e2e8f0;
+      border: 1px solid var(--border);
       border-radius: 6px;
       cursor: pointer;
       font-size: 13px;
-      color: #475569;
+      color: var(--muted);
       margin-top: 8px;
-    }
-    @media (prefers-color-scheme: dark) {
-      .theme-toggle { border-color: #334155; color: #94a3b8; }
     }
     .loading { padding: 40px; text-align: center; }
   </style>
 </head>
 <body>
   <div class="header">
-    <h1>🐯 TigerWallet</h1>
+    <h1>🐅 TigerWallet</h1>
     <p>Super Admin Portal</p>
   </div>
-  
+
   <div class="stats" id="stats">
     <div class="loading">Loading...</div>
   </div>
-  
+
+  <div class="domain-tabs" id="domainTabs"></div>
+  <div class="domain-panel" id="domainPanel">
+    <div class="domain-loading">Select a domain...</div>
+  </div>
+
   <div class="nav">
     <a href="#" class="nav-item" data-page="dashboard">📊 Dashboard</a>
     <a href="#" class="nav-item" data-page="users">👥 Users</a>
     <a href="#" class="nav-item" data-page="transactions">💸 Transactions</a>
     <a href="#" class="nav-item" data-page="withdrawals">💰 Withdrawals</a>
     <a href="#" class="nav-item" data-page="whitelabels">🏢 White Labels</a>
-    <a href="#" class="nav-item" data-page="tickets">🎫 Tickets</a>
+    <a href="#" class="nav-item" data-page="tickets">🎟 Tickets</a>
     <button class="theme-toggle" id="themeToggle">🌓 Toggle Theme</button>
   </div>
 

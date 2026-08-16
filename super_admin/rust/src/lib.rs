@@ -1,6 +1,7 @@
 //! TigerWallet Admin - Rust Backend
 pub mod api;
 pub mod database;
+pub mod domain;
 pub mod models;
 pub mod services;
 pub mod middleware;

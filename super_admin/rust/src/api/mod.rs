@@ -3,6 +3,7 @@ use axum::{routing::{get, post, put, delete}, Router, extract::{Path, Query, Sta
 use serde::Deserialize;
 use uuid::Uuid;
 
+use crate::domain::{self, AppState, proxy_domain};
 use crate::models::*;
 
 pub async fn health_check() -> Json<serde_json::Value> {
@@ -13,6 +14,8 @@ pub async fn health_check() -> Json<serde_json::Value> {
 pub struct Pagination { page: Option<i32>, page_size: Option<i32> }
 
 pub fn router() -> Router {
+    let state = AppState::new();
+
     Router::new()
         .route("/health", get(health_check))
         .route("/api/v1/auth/login", post(login))
@@ -49,6 +52,59 @@ pub fn router() -> Router {
         .route("/api/v1/admin/workflows", get(get_workflows))
         .route("/api/v1/admin/workflows", post(create_workflow))
         .route("/api/v1/admin/approval-requests", get(get_approval_requests))
+        // Domain manifest (lists the 12 governance domains).
+        .route("/api/v1/admin/domains", get(domain::list_domains))
+        // ---- 12 domain admin screens (real calls to Go backend on :8082) ----
+        // Each domain registers explicit CRUD routes plus its governance
+        // sub-actions (status / approve / reject / RBAC). All forward the JWT
+        // bearer token to the upstream Go super-admin backend.
+        .domain_routes("futures", &["status"])
+        .domain_routes("options", &["status"])
+        .domain_routes("copy-trading", &["status"])
+        .domain_routes("convert", &["status"])
+        .domain_routes("onramp", &["approve", "reject"])
+        .domain_routes("offramp", &["approve", "reject"])
+        .domain_routes("p2p-clients", &["status"])
+        .domain_routes("partners", &["status", "approve", "reject"])
+        .domain_routes("rewards", &["status"])
+        .domain_routes("marketing", &["status"])
+        // admin-roles RBAC: roles + permissions CRUD + assign + effective.
+        .domain_routes("admin-roles", &[])
+        .domain_routes("admin-permissions", &[])
+        .route("/api/v1/admin/admins/:id/roles", post(proxy_domain))
+        .route("/api/v1/admin/admins/:id/roles/:role_id", delete(proxy_domain))
+        .route("/api/v1/admin/admins/:id/permissions", get(proxy_domain))
+        // wl-control: five white-label sub-resources, each CRUD + status.
+        .domain_routes("wl-clients", &["status"])
+        .domain_routes("wl-master-wallets", &["status"])
+        .domain_routes("wl-user-wallets", &["status"])
+        .domain_routes("wl-bots", &["status"])
+        .domain_routes("wl-bots-clients", &["status"])
+        // Fallback catch-all for any deeper admin path not matched above.
+        .route("/api/v1/admin/:domain", get(proxy_domain).post(proxy_domain).put(proxy_domain).delete(proxy_domain))
+        .route("/api/v1/admin/:domain/:id", get(proxy_domain).put(proxy_domain).delete(proxy_domain))
+        .route("/api/v1/admin/:domain/:id/:action", get(proxy_domain).post(proxy_domain).put(proxy_domain).delete(proxy_domain))
+        .with_state(state)
+}
+
+/// Extension trait that registers CRUD + optional sub-actions for a domain.
+trait DomainRouterExt {
+    fn domain_routes(self, domain: &'static str, actions: &'static [&'static str]) -> Self;
+}
+
+impl DomainRouterExt for Router<AppState> {
+    fn domain_routes(self, domain: &'static str, actions: &'static [&'static str]) -> Self {
+        let base = format!("/api/v1/admin/{}", domain);
+        let by_id = format!("/api/v1/admin/{}/:id", domain);
+        let mut r = self
+            .route(&base, get(proxy_domain).post(proxy_domain))
+            .route(&by_id, get(proxy_domain).put(proxy_domain).delete(proxy_domain));
+        for a in actions {
+            let p = format!("/api/v1/admin/{}/:id/{}", domain, a);
+            r = r.route(&p, post(proxy_domain).put(proxy_domain));
+        }
+        r
+    }
 }
 
 async fn login(Json(req): Json<LoginRequest>) -> Json<ApiResponse<LoginResponse>> {
@@ -91,7 +147,7 @@ async fn get_tickets() -> Json<ApiResponse<Vec<Ticket>>> { Json(ApiResponse::suc
 async fn get_white_labels() -> Json<ApiResponse<Vec<WhiteLabel>>> { Json(ApiResponse::success(vec![])) }
 async fn get_stats() -> Json<ApiResponse<PlatformStats>> { Json(ApiResponse::success(PlatformStats { total_users: 0, active_users: 0, total_transactions: 0, total_volume: 0.0 })) }
 async fn get_backups() -> Json<ApiResponse<Vec<Backup>>> { Json(ApiResponse::success(vec![])) }
-async fn create_backup(Json(b): Json<ApiResponse<Backup>> { Json(ApiResponse::success(b)) }
+async fn create_backup(Json(b): Json<Backup>) -> Json<ApiResponse<Backup>> { Json(ApiResponse::success(b)) }
 async fn get_workflows() -> Json<ApiResponse<Vec<ApprovalWorkflow>>> { Json(ApiResponse::success(vec![])) }
-async fn create_workflow(Json(w): Json<ApiResponse<ApprovalWorkflow>> { Json(ApiResponse::success(w)) }
+async fn create_workflow(Json(w): Json<ApprovalWorkflow>) -> Json<ApiResponse<ApprovalWorkflow>> { Json(ApiResponse::success(w)) }
 async fn get_approval_requests() -> Json<ApiResponse<Vec<ApprovalRequest>>> { Json(ApiResponse::success(vec![])) }
