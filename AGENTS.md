@@ -2796,3 +2796,110 @@ require (auth).
 | Theme on all 6 frontends | confirmed (ThemeContext/ThemeProvider + data-theme/CSS vars/isDark) |
 
 ### Commit: ab13aa0 pushed to origin/main.
+
+## Session 2026-08-16: Complete white-label governance system (5 pillars)
+
+Built the complete white-label governance system per the WL client/admin
+requirements. Five pillars, all real crypto, fail-closed, no stubs/fakes/mocks.
+Committed `829ea25` + pushed to origin/main.
+
+### Pillar 1 — SuperAdmin license/kill-switch control plane (Go)
+- `license_service/go/`: real PostgreSQL-backed control plane. Ed25519 signed
+  license tokens (real `crypto.Sign`), SuperAdmin-gated halt/resume/revoke,
+  WL-cannot-self-resume (resume requires SuperAdmin), heartbeat staleness
+  detection, per-fetcher feature flags, two-party withdrawal approval records.
+- Endpoints: `/api/v1/license/validate` (WL phone-home), `/api/v1/super-admin/
+  licenses/*` (CRUD), `/api/v1/super-admin/feature-flags/*` (per-fetcher),
+  `/api/v1/super-admin/products/:id/{halt,resume,revoke}`, `/api/v1/wl/
+  withdrawals/request`, `/api/v1/super-admin/withdrawals/:id/{approved,
+  reject,executed}`.
+- Dockerfile created. docker-compose `license-service` (:8460).
+- Build+vet+test clean.
+
+### Pillar 2 — Cross-language gate + per-fetcher governance
+- `white_level_sdk/rust/`: real Ed25519 verifier (ed25519-dalek 2.x).
+  `verifier.rs` validates signed license tokens (payload = canonical JSON,
+  signature = Ed25519 over payload). 6/6 tests pass (sign+verify roundtrip,
+  tamper detection, expired/suspended rejection, fetcher-flag logic).
+- `wl_control_plane/cpp/`: ultra-low-latency wait-free atomic WlGate (C++20).
+  `wl_gate.hpp/cpp`: `std::atomic<bool> alive_` + `std::shared_mutex` flag
+  map. `wl_gate_abi.h`: pure C ABI for cgo. 6/6 tests pass. Builds
+  `libwl_gate.so` + `libwl_gate_static.a`.
+- `wl_control_plane/go/wlgate/`: cgo binding to the C++ gate. Builds+vet clean.
+- Per-fetcher granularity: SuperAdmin can disable any individual fetcher on any
+  WL product (e.g. disable `user_wallet.send` while leaving `user_wallet.
+  balance` alive). The C++ gate checks `product\x1ffetcher` in the flag map;
+  `product\x1f*` disables the whole product.
+
+### Pillar 3 — WL admin backend (13 scoped roles + tenant isolation)
+- `white_label_admin/go/`: ALL stub handlers replaced with real PostgreSQL.
+  13 scoped sub-admin roles: trading_admin, p2p_admin, bot_admin,
+  listing_admin, liquidity_admin, wallet_admin, customer_service_admin,
+  marketing_admin, kyc_admin, card_admin, reward_admin, security_admin,
+  compliance_admin (+ wl_client = the WL owner with full tenancy control).
+- `internal/roles/roles.go`: 13 role definitions with scope sets.
+- `internal/middleware/auth.go`: JWT with `white_label_id` + `scopes` claims;
+  `RequireScope()` middleware; `TenantScope` isolation (every query filtered
+  by `white_label_id`).
+- `internal/handlers/`: real PG handlers (users.go, tokens.go, fees.go,
+  totp.go with real RFC 6238 TOTP, handlers.go). Migrations add
+  `white_label_id` + `scopes` columns to admin_users/tokens/trading_pairs/
+  blockchains/users/tickets/fee_structures.
+- Frontend `white_label_admin/web/src/pages/Admins.tsx`: scoped-role
+  assignment UI (add/edit/remove admins, toggle any of 13 scopes, suspend/
+  activate/delete). Theme-aware (useTheme isDark). tsc 0 errors.
+- The WL client can add/edit/remove/update any adminRight to any admin in
+  his WL admin panel (matches the requirement).
+- Build+vet clean; tsc 0 errors.
+
+### Pillar 4 — Two-party SuperAdmin-collaboration withdrawal gate
+- `master_wallet/backend/license_gate.go`: fail-closed gate client.
+  `IsWithdrawalApproved` checks the control plane; returns false on any error
+  (no payout without SuperAdmin co-sign).
+- `SignTransaction` (handlers.go): when `withdrawal_id` is present in the
+  request, the gate MUST be approved before broadcast. Fail-closed 403.
+- `/revenue-payout` endpoint (NEW): ALWAYS requires two-party approval —
+  revenue can NEVER move without SuperAdmin collaboration, regardless of
+  amount. The caller supplies a pre-approved `withdrawal_id`; the gate is
+  checked fail-closed before broadcast.
+- `/withdrawal-request` endpoint (NEW): creates a two-party withdrawal request
+  in the control plane (WL-side). SuperAdmin approves separately.
+- Build+vet clean.
+
+### Pillar 5 — Independent external hosting (standalone WL-UserWallet)
+- `wl_user_wallet/go/`: standalone WL-UserWallet backend that runs
+  INDEPENDENTLY in the WL client's own cloud/OS. Own BIP-39/32/44 key
+  management + real EVM signing (secp256k1 + keccak256 + EIP-1559) + own
+  PostgreSQL (`wl_userwallet` DB). Does NOT depend on TigerWallet cloud at
+  request time.
+- `internal/crypto/crypto.go`: real BIP-39 (tyler-smith/go-bip39, 256-bit
+  entropy), real BIP-32 (HMAC-SHA512 "Bitcoin seed" master + CKDpriv mod-n
+  via secp256k1), BIP-44 `m/44'/60'/0'/0/0`. Canonical vector PASSES:
+  abandon...about -> 0x9858EfFD232B4033E47d90003D41EC34EcaEda94.
+- `internal/crypto/helpers.go`: real scrypt (N=32768) + AES-256-GCM seed
+  encryption at rest. Fail-closed on wrong passphrase.
+- `internal/middleware/middleware.go`: in-process license gate (mirrors C++
+  WlGate semantics in pure Go, no cgo dep). `Gate()` middleware fail-closeds
+  503 when product not authorized or fetcher disabled. `JWTAuth()` real
+  HS256 JWT.
+- `internal/middleware/heartbeat.go`: phones home to the control plane
+  (`/api/v1/license/validate`) every 30s. On validation failure, gate goes
+  dead. Fail-closed.
+- 4 crypto tests pass (BIP-44 vector, seed encryption roundtrip + wrong-pass,
+  mnemonic generation, sign message).
+- Dockerfile + docker-compose `wl-user-wallet` (:8461). database/init.sql
+  creates `wl_userwallet` DB.
+
+### Build verification (ALL GREEN)
+| Component | Result |
+|-----------|--------|
+| license_service/go | build+vet+test exit 0 |
+| white_level_sdk/rust | cargo test 6/6 pass |
+| wl_control_plane/cpp | cmake+make+test 6/6 pass |
+| wl_control_plane/go/wlgate | build+vet exit 0 |
+| white_label_admin/go | build+vet exit 0 |
+| white_label_admin/web | tsc 0 errors |
+| master_wallet/backend | build+vet exit 0 |
+| wl_user_wallet/go | build+vet+test exit 0 (4 crypto tests) |
+
+### Commit: 829ea25 pushed to origin/main.
