@@ -878,6 +878,101 @@ TransactionResult MasterWalletService::transferSubWallet(const WalletID& walletI
     return r;
 }
 
+// ==================== Two-party revenue gate ====================
+
+// POST /api/v1/master-wallet/:id/withdrawal-request
+WithdrawalRequestResult MasterWalletService::requestWithdrawal(const WalletID& masterId,
+                                                               const std::string& toAddress,
+                                                               const std::string& amountWei,
+                                                               const std::string& currency,
+                                                               ChainID chainId) {
+    WithdrawalRequestResult r;
+    if (masterId.empty() || toAddress.empty() || amountWei.empty()) {
+        r.error = "masterId, toAddress and amountWei are required";
+        return r;
+    }
+    // Build the body manually so optional fields (currency/chain_id) are omitted
+    // when not provided, keeping the JSON clean for the backend.
+    std::ostringstream body;
+    body << "{"
+         << "\"to_address\":\"" << api::jsonEscape(toAddress) << "\","
+         << "\"amount_wei\":\"" << api::jsonEscape(amountWei) << "\"";
+    if (!currency.empty()) {
+        body << ",\"currency\":\"" << api::jsonEscape(currency) << "\"";
+    }
+    if (chainId != 0) {
+        body << ",\"chain_id\":" << chainId;
+    }
+    body << "}";
+
+    std::string resp;
+    try {
+        resp = api::backendPost("/api/v1/master-wallet/" + masterId + "/withdrawal-request", body.str());
+    } catch (const api::APIException& e) {
+        r.error = e.what();
+        return r;
+    }
+
+    auto withdrawalId = api::jsonStringField(resp, "withdrawal_id");
+    if (!withdrawalId) withdrawalId = api::jsonStringField(resp, "withdrawalId");
+    if (!withdrawalId) {
+        r.error = "Backend withdrawal-request response missing withdrawal_id";
+        return r;
+    }
+    r.withdrawalId = *withdrawalId;
+    r.status = api::jsonStringField(resp, "status").value_or("");
+    r.success = true;
+    return r;
+}
+
+// POST /api/v1/master-wallet/:id/revenue-payout
+RevenuePayoutResult MasterWalletService::revenuePayout(const WalletID& masterId,
+                                                       const std::string& to,
+                                                       const std::string& amount,
+                                                       const std::string& password,
+                                                       uint64_t gasLimit,
+                                                       const std::string& withdrawalId) {
+    RevenuePayoutResult r;
+    if (masterId.empty() || to.empty() || amount.empty() || password.empty() || withdrawalId.empty()) {
+        r.error = "masterId, to, amount, password and withdrawalId are required";
+        return r;
+    }
+    // gas_limit is optional; omit it unless the caller provided a non-zero value.
+    std::ostringstream body;
+    body << "{"
+         << "\"to\":\"" << api::jsonEscape(to) << "\","
+         << "\"amount\":\"" << api::jsonEscape(amount) << "\","
+         << "\"password\":\"" << api::jsonEscape(password) << "\","
+         << "\"withdrawal_id\":\"" << api::jsonEscape(withdrawalId) << "\"";
+    if (gasLimit != 0) {
+        body << ",\"gas_limit\":" << gasLimit;
+    }
+    body << "}";
+
+    std::string resp;
+    try {
+        resp = api::backendPost("/api/v1/master-wallet/" + masterId + "/revenue-payout", body.str());
+    } catch (const api::APIException& e) {
+        r.error = e.what();
+        return r;
+    }
+
+    auto txHash = api::jsonStringField(resp, "transaction_hash");
+    if (!txHash) txHash = api::jsonStringField(resp, "tx_hash");
+    if (!txHash) {
+        r.error = "Backend revenue-payout response missing transaction_hash";
+        return r;
+    }
+    r.transactionHash = *txHash;
+    r.status = api::jsonStringField(resp, "status").value_or("");
+    r.withdrawalId = api::jsonStringField(resp, "withdrawal_id").value_or("");
+    r.from = api::jsonStringField(resp, "from").value_or("");
+    auto chainIdNum = api::jsonNumberField(resp, "chain_id");
+    if (chainIdNum) r.chainId = static_cast<uint64_t>(*chainIdNum);
+    r.success = true;
+    return r;
+}
+
 // ==================== Policies / Fees / Auto-sign / Users ====================
 
 std::string MasterWalletService::getPolicies(const WalletID& walletId) {

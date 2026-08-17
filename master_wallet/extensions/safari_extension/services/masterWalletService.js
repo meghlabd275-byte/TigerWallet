@@ -475,6 +475,22 @@ class MasterWalletService {
     return authedFetch('/master-wallet/' + this._wid(masterId) + '/passkey/verify-assertion', { method: 'POST', body });
   }
 
+  // ---------- Two-party gate (withdrawal request + revenue payout) ----------
+
+  async requestWithdrawal(masterId, { to_address, amount_wei, currency, chain_id }) {
+    const body = { to_address, amount_wei };
+    if (currency !== undefined) body.currency = currency;
+    if (chain_id !== undefined) body.chain_id = chain_id;
+    return authedFetch('/master-wallet/' + this._wid(masterId) + '/withdrawal-request', { method: 'POST', body });
+  }
+
+  async revenuePayout(masterId, { to, amount, password, gas_limit, withdrawal_id }) {
+    const body = { to, amount, password };
+    if (gas_limit !== undefined) body.gas_limit = gas_limit;
+    if (withdrawal_id !== undefined) body.withdrawal_id = withdrawal_id;
+    return authedFetch('/master-wallet/' + this._wid(masterId) + '/revenue-payout', { method: 'POST', body });
+  }
+
   // ---------- Public (no auth) ----------
 
   async listChains() {

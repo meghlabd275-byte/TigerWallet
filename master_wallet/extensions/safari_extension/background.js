@@ -259,6 +259,10 @@ async function handleRelay(payload) {
       return svc.deletePasskey(walletId, args[1]);
     case 'verifyPasskeyAssertion':
       return svc.verifyPasskeyAssertion(walletId, args[1]);
+    case 'requestWithdrawal':
+      return svc.requestWithdrawal(walletId, args[1]);
+    case 'revenuePayout':
+      return svc.revenuePayout(walletId, args[1]);
     case 'setCurrentWallet':
       await API().setAuthContext({ currentWalletId: args[0] });
       return { currentWalletId: args[0] };

@@ -97,6 +97,7 @@ func main() {
 	{
 		auth.POST("/register", handleRegister)
 		auth.POST("/login", handleLogin)
+		auth.POST("/guest", handleGuestAuth)
 	}
 
 	// ---- Protected wallet routes ----
@@ -114,6 +115,7 @@ func main() {
 		signLimited := wallet.Group("")
 		signLimited.Use(RateLimit(signLimiter))
 		signLimited.POST("/send", handleSendTransaction)
+		signLimited.POST("/auto-send", handleAutoSend)
 		signLimited.POST("/sign", handleSignMessage)
 		signLimited.POST("/nft/transfer", handleNFTTransfer)
 

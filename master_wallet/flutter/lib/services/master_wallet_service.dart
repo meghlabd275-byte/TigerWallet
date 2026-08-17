@@ -1085,6 +1085,69 @@ class MasterWalletService {
 
   // ==================== Helpers ====================
 
+  // ==================== Two-Party Gate ====================
+
+  /// POST /api/v1/master-wallet/:id/withdrawal-request — two-party gate.
+  /// Body {to_address, amount_wei, currency?, chain_id?} → {withdrawal_id, status}.
+  Future<WithdrawalRequestResult?> requestWithdrawal(
+    String masterId,
+    String toAddress,
+    String amountWei, {
+    String? currency,
+    int? chainId,
+  }) async {
+    try {
+      final r = await http.post(
+        Uri.parse('$_apiV1/master-wallet/$masterId/withdrawal-request'),
+        headers: _headers,
+        body: jsonEncode({
+          'to_address': toAddress,
+          'amount_wei': amountWei,
+          if (currency != null) 'currency': currency,
+          if (chainId != null) 'chain_id': chainId,
+        }),
+      );
+      if (r.statusCode != 200 && r.statusCode != 201) return null;
+      final data = jsonDecode(r.body) as Map<String, dynamic>;
+      return WithdrawalRequestResult.fromJson(data);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// POST /api/v1/master-wallet/:id/revenue-payout — executes a two-party
+  /// gate payout. Body {to, amount, password, gas_limit?, withdrawal_id}
+  /// → {transaction_hash, status, withdrawal_id?, from?, chain_id?}.
+  Future<RevenuePayoutResult?> revenuePayout(
+    String masterId,
+    String to,
+    String amount,
+    String password, {
+    int? gasLimit,
+    required String withdrawalId,
+  }) async {
+    try {
+      final r = await http.post(
+        Uri.parse('$_apiV1/master-wallet/$masterId/revenue-payout'),
+        headers: _headers,
+        body: jsonEncode({
+          'to': to,
+          'amount': amount,
+          'password': password,
+          'withdrawal_id': withdrawalId,
+          if (gasLimit != null) 'gas_limit': gasLimit,
+        }),
+      );
+      if (r.statusCode != 200 && r.statusCode != 201) return null;
+      final data = jsonDecode(r.body) as Map<String, dynamic>;
+      return RevenuePayoutResult.fromJson(data);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ==================== Helpers ====================
+
   double _toDouble(dynamic v) {
     if (v is num) return v.toDouble();
     if (v is String) return double.tryParse(v) ?? 0;
@@ -1322,5 +1385,51 @@ class PasskeyCredential {
     if (v is int) return v;
     if (v == null) return 0;
     return DateTime.tryParse(v.toString())?.millisecondsSinceEpoch ?? 0;
+  }
+}
+
+/// POST /api/v1/master-wallet/:id/withdrawal-request → {withdrawal_id, status}
+class WithdrawalRequestResult {
+  final String withdrawalId;
+  final String status;
+
+  WithdrawalRequestResult({
+    required this.withdrawalId,
+    required this.status,
+  });
+
+  factory WithdrawalRequestResult.fromJson(Map<String, dynamic> json) {
+    return WithdrawalRequestResult(
+      withdrawalId: json['withdrawal_id'] as String? ?? '',
+      status: json['status'] as String? ?? '',
+    );
+  }
+}
+
+/// POST /api/v1/master-wallet/:id/revenue-payout →
+/// {transaction_hash, status, withdrawal_id?, from?, chain_id?}
+class RevenuePayoutResult {
+  final String transactionHash;
+  final String status;
+  final String? withdrawalId;
+  final String? from;
+  final int? chainId;
+
+  RevenuePayoutResult({
+    required this.transactionHash,
+    required this.status,
+    this.withdrawalId,
+    this.from,
+    this.chainId,
+  });
+
+  factory RevenuePayoutResult.fromJson(Map<String, dynamic> json) {
+    return RevenuePayoutResult(
+      transactionHash: json['transaction_hash'] as String? ?? '',
+      status: json['status'] as String? ?? '',
+      withdrawalId: json['withdrawal_id'] as String?,
+      from: json['from'] as String?,
+      chainId: (json['chain_id'] as num?)?.toInt(),
+    );
   }
 }

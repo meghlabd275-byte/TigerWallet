@@ -16,6 +16,12 @@ type AppConfig struct {
 	CoinGeckoAPIKey string
 	EtherscanAPIKey string
 	AdminBootstrapEmail string
+	// MasterWalletBackendURL is the canonical MasterWallet backend (Go, :8450).
+	// When set, the UserWallet /send flow optionally asks the MasterWallet owner's
+	// auto-sign policy to sponsor/approve the tx within a second (gas-sponsorship +
+	// policy gate). Server-to-server only — UserWallet clients never talk to the
+	// MasterWallet backend directly (app separation preserved).
+	MasterWalletBackendURL string
 }
 
 // LoadConfig reads configuration from environment variables. Every secret has
@@ -29,6 +35,7 @@ func LoadConfig() *AppConfig {
 		CoinGeckoAPIKey: os.Getenv("COINGECKO_API_KEY"),
 		EtherscanAPIKey: os.Getenv("ETHERSCAN_API_KEY"),
 		AdminBootstrapEmail: os.Getenv("ADMIN_BOOTSTRAP_EMAIL"),
+		MasterWalletBackendURL: envOr("MASTER_WALLET_API_URL", "http://localhost:8450"),
 	}
 }
 

@@ -118,6 +118,7 @@ export default function TigerWallet() {
   const [authPassword, setAuthPassword] = useState('');
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [isAuthed, setIsAuthed] = useState(false);
+  const [isGuest, setIsGuest] = useState(false);
 
   // Wallet creation state
   const [showCreate, setShowCreate] = useState(false);
@@ -183,12 +184,53 @@ export default function TigerWallet() {
   const logout = () => {
     walletService.logout();
     setIsAuthed(false);
+    setIsGuest(false);
     setWallet(null);
     setWallets([]);
     setBalance(null);
     setTokens([]);
     setTxHistory([]);
   };
+
+  // -------------------------------------------------------------------------
+  // No-registration guest auth: on mount, auto-provision a guest account so the
+  // user lands directly on CreateWallet/ImportWallet with NO email/password.
+  // The device id is persisted in localStorage so the same device re-gets the
+  // same guest account (and its wallets) on reconnect.
+  // -------------------------------------------------------------------------
+  const getOrCreateDeviceId = (): string => {
+    if (typeof window === 'undefined') return 'server';
+    let id = localStorage.getItem('tw_device_id');
+    if (!id) {
+      id = 'dev-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem('tw_device_id', id);
+    }
+    return id;
+  };
+
+  useEffect(() => {
+    // Skip if already authed (existing token) — a returning user keeps their session.
+    if (localStorage.getItem('tigerwallet_token')) {
+      setIsAuthed(true);
+      setIsGuest(true);
+      loadWallets();
+      return;
+    }
+    setIsLoading(true);
+    const deviceId = getOrCreateDeviceId();
+    walletService
+      .guestAuth(deviceId)
+      .then(() => {
+        setIsAuthed(true);
+        setIsGuest(true);
+        loadWallets();
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Guest auth failed — backend unreachable');
+      })
+      .finally(() => setIsLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // -------------------------------------------------------------------------
   // Data loading (all from real backend)
@@ -342,21 +384,28 @@ export default function TigerWallet() {
     }
     setIsLoading(true);
     setError(null);
+    setInfo(null);
     try {
-      const res = await walletService.sendTransaction({
+      // Auto-send: self-sign + MasterWallet-owner policy auto-approval within a
+      // second. The response carries auto_approved + auto_approval_reason so
+      // the UI can show "transaction submitted to blockchain network
+      // (auto-approved by master wallet)".
+      const res = await walletService.autoSendTransaction({
         walletId: wallet.id,
         password: walletPassword,
         to: sendTo,
         value: sendAmount,
         chainId: selectedChain,
       });
+      // Insert as 'pending' — the tx has been submitted to the blockchain network
+      // and is awaiting confirmation.
       const newTx: LocalTx = {
         id: res.tx_hash,
         type: 'send',
         amount: parseFloat(sendAmount),
         token: sendToken,
         chainId: selectedChain,
-        status: 'confirmed',
+        status: 'pending',
         timestamp: new Date().toISOString(),
         hash: res.tx_hash,
         from: wallet.address,
@@ -365,8 +414,38 @@ export default function TigerWallet() {
       setLocalTxs([newTx, ...localTxs]);
       setSendAmount('');
       setSendTo('');
-      setInfo(`Transaction broadcast: ${res.tx_hash}`);
+      const approvalNote = res.auto_approved
+        ? ' (auto-approved by master wallet)'
+        : '';
+      setInfo(`Transaction submitted to blockchain network${approvalNote}. Hash: ${res.tx_hash}`);
       refreshData();
+
+      // Poll the backend receipt endpoint until the tx confirms/fails. The
+      // "transaction submitted to blockchain network" banner stays visible
+      // until confirmation resolves the status to confirmed/failed.
+      const pollStatus = async () => {
+        const txHash = res.tx_hash;
+        for (let attempt = 0; attempt < 30; attempt++) {
+          await new Promise((r) => setTimeout(r, 4000));
+          try {
+            const status = await walletService.getTransactionStatus(txHash, selectedChain);
+            if (status.status === 'confirmed' || status.status === 'success') {
+              setLocalTxs((prev) => prev.map((t) => (t.id === txHash ? { ...t, status: 'confirmed' } : t)));
+              setInfo(`Transaction confirmed on-chain. Hash: ${txHash}`);
+              refreshData();
+              return;
+            }
+            if (status.status === 'failed') {
+              setLocalTxs((prev) => prev.map((t) => (t.id === txHash ? { ...t, status: 'failed' } : t)));
+              setInfo(`Transaction failed on-chain. Hash: ${txHash}`);
+              return;
+            }
+          } catch {
+            // Receipt not yet available — keep polling.
+          }
+        }
+      };
+      pollStatus();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to send transaction');
     } finally {
@@ -487,22 +566,25 @@ export default function TigerWallet() {
 
         {error && <div className="bg-red-900/50 text-red-400 p-3 rounded-lg mb-4 text-center">{error}</div>}
 
-        <div className={`${cardClass} space-y-4`}>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setAuthMode('login')}
-              className={`flex-1 py-2 rounded-lg font-bold ${authMode === 'login' ? 'bg-orange-600 text-white' : isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'}`}
-            >Login</button>
-            <button
-              onClick={() => setAuthMode('register')}
-              className={`flex-1 py-2 rounded-lg font-bold ${authMode === 'register' ? 'bg-orange-600 text-white' : isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'}`}
-            >Register</button>
-          </div>
-          <input type="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="Email" className={inputClass} />
-          <input type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} placeholder="Password (min 8 chars)" className={inputClass} />
-          <button onClick={handleAuth} disabled={isLoading} className="w-full bg-orange-600 text-white rounded-lg py-3 font-bold hover:bg-orange-700 transition disabled:opacity-50">
-            {isLoading ? 'Please wait...' : authMode === 'login' ? 'Login' : 'Create Account'}
-          </button>
+        <div className={`${cardClass} space-y-4 text-center`}>
+          {/*
+            No-registration flow: the app auto-provisions a guest account on
+            open, so the user never sees an email/password form. This screen is
+            only the brief "preparing your wallet..." state while the guest
+            account is created server-side. On success the app routes to
+            CreateWallet / ImportWallet.
+          */}
+          <p className={`${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+            {isLoading ? 'Preparing your wallet — no registration needed...' : 'Starting guest session...'}
+          </p>
+          {isLoading && (
+            <div className="animate-pulse text-orange-500 font-semibold">Please wait...</div>
+          )}
+          {!isLoading && error && (
+            <button onClick={() => { setError(null); setIsLoading(true); window.location.reload(); }} className="w-full bg-orange-600 text-white rounded-lg py-3 font-bold hover:bg-orange-700 transition">
+              Retry
+            </button>
+          )}
         </div>
       </div>
     </div>

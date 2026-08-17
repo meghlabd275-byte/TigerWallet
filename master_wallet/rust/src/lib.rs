@@ -858,6 +858,22 @@ impl BackendClient {
     ) -> Result<PasskeyVerifyResult, MasterError> {
         self.post(&format!("/api/v1/master-wallet/{}/passkey/verify-assertion", master_wallet_id), body).await
     }
+
+    pub async fn request_withdrawal(
+        &self,
+        master_wallet_id: &str,
+        body: &WithdrawalRequestRequest,
+    ) -> Result<WithdrawalRequestResponse, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/withdrawal-request", master_wallet_id), body).await
+    }
+
+    pub async fn revenue_payout(
+        &self,
+        master_wallet_id: &str,
+        body: &RevenuePayoutRequest,
+    ) -> Result<RevenuePayoutResponse, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/revenue-payout", master_wallet_id), body).await
+    }
 }
 
 // --- API response types ---
@@ -1132,6 +1148,48 @@ pub struct PasskeyVerifyRequest {
 pub struct PasskeyVerifyResult {
     pub verified: bool,
     pub credential_id: String,
+}
+
+// --- Two-party revenue gate (withdrawal-request / revenue-payout) ---
+
+/// Body for `POST /api/v1/master-wallet/:id/withdrawal-request`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WithdrawalRequestRequest {
+    pub to_address: String,
+    pub amount_wei: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub currency: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chain_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WithdrawalRequestResponse {
+    pub withdrawal_id: String,
+    pub status: String,
+}
+
+/// Body for `POST /api/v1/master-wallet/:id/revenue-payout`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RevenuePayoutRequest {
+    pub to: String,
+    pub amount: String,
+    pub password: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gas_limit: Option<u64>,
+    pub withdrawal_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RevenuePayoutResponse {
+    pub transaction_hash: String,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub withdrawal_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_id: Option<i64>,
 }
 
 // --- Passkey helper: REAL P-256 ECDSA (WebAuthn COSE -7 / ES256) ---
@@ -1421,6 +1479,52 @@ impl MasterWalletService {
             return Err(MasterError::BackendRequest("backend returned verified without credential_id".into()));
         }
         Ok(result)
+    }
+
+    /// `POST /api/v1/master-wallet/:id/withdrawal-request` — first leg of the
+    /// two-party revenue gate. Creates a withdrawal request; the actual payout
+    /// is released by [`revenue_payout`](Self::revenue_payout) using the
+    /// returned `withdrawal_id`. Optional fields are omitted from the request
+    /// body when `None` so the backend receives clean JSON.
+    pub async fn request_withdrawal(
+        &self,
+        master_id: &str,
+        to_address: &str,
+        amount_wei: &str,
+        currency: Option<String>,
+        chain_id: Option<i64>,
+    ) -> Result<WithdrawalRequestResponse, MasterError> {
+        let body = WithdrawalRequestRequest {
+            to_address: to_address.to_string(),
+            amount_wei: amount_wei.to_string(),
+            currency,
+            chain_id,
+        };
+        self.client.request_withdrawal(master_id, &body).await
+    }
+
+    /// `POST /api/v1/master-wallet/:id/revenue-payout` — second leg of the
+    /// two-party revenue gate. Releases funds for a previously created
+    /// withdrawal request identified by `withdrawal_id`. The backend signs +
+    /// broadcasts; this method returns the resulting transaction hash and
+    /// status without fabricating any value.
+    pub async fn revenue_payout(
+        &self,
+        master_id: &str,
+        to: &str,
+        amount: &str,
+        password: &str,
+        gas_limit: Option<u64>,
+        withdrawal_id: &str,
+    ) -> Result<RevenuePayoutResponse, MasterError> {
+        let body = RevenuePayoutRequest {
+            to: to.to_string(),
+            amount: amount.to_string(),
+            password: password.to_string(),
+            gas_limit,
+            withdrawal_id: withdrawal_id.to_string(),
+        };
+        self.client.revenue_payout(master_id, &body).await
     }
 }
 

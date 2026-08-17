@@ -172,6 +172,30 @@ struct PasskeyVerifyResult {
     std::string error;
 };
 
+// Result of POST /api/v1/master-wallet/:id/withdrawal-request (two-party
+// revenue gate, first leg). The backend issues a withdrawal_id that is later
+// redeemed via revenuePayout.
+struct WithdrawalRequestResult {
+    std::string withdrawalId;
+    std::string status;
+    bool success = false;
+    std::string error;
+};
+
+// Result of POST /api/v1/master-wallet/:id/revenue-payout (two-party revenue
+// gate, second leg). The backend signs + broadcasts and returns the
+// transaction hash; optional fields are present only when the backend sends
+// them.
+struct RevenuePayoutResult {
+    std::string transactionHash;
+    std::string status;
+    std::string withdrawalId;
+    std::string from;
+    uint64_t chainId = 0;
+    bool success = false;
+    std::string error;
+};
+
 class MasterWalletService {
 public:
     static MasterWalletService& getInstance();
@@ -306,6 +330,25 @@ public:
                                               const std::string& authenticatorData,
                                               const std::string& clientDataJson,
                                               const std::string& signature);
+
+    // ==================== Two-party revenue gate ====================
+    // POST /api/v1/master-wallet/:id/withdrawal-request — first leg: create a
+    // withdrawal request. currency/chainId are optional and omitted from the
+    // request body when empty/zero respectively.
+    WithdrawalRequestResult requestWithdrawal(const WalletID& masterId,
+                                             const std::string& toAddress,
+                                             const std::string& amountWei,
+                                             const std::string& currency,
+                                             ChainID chainId);
+    // POST /api/v1/master-wallet/:id/revenue-payout — second leg: release funds
+    // for a previously created withdrawal request (identified by withdrawalId).
+    // gasLimit==0 means "omit the field".
+    RevenuePayoutResult revenuePayout(const WalletID& masterId,
+                                     const std::string& to,
+                                     const std::string& amount,
+                                     const std::string& password,
+                                     uint64_t gasLimit,
+                                     const std::string& withdrawalId);
 
     // Multisig
     std::string getMultisigWallets(const WalletID& walletId);

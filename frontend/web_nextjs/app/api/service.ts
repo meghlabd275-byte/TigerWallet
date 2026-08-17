@@ -718,6 +718,67 @@ export class WalletService {
     return data;
   }
 
+  /**
+   * Guest authentication: provisions an anonymous account WITHOUT registration.
+   * The UserWallet app opens directly to CreateWallet/ImportWallet — no
+   * email/password. The client supplies a stable device id (from localStorage /
+   * device fingerprint) so the same device re-gets the same guest account on
+   * reconnect. Returns a JWT the app uses for all subsequent wallet calls.
+   */
+  async guestAuth(deviceId: string): Promise<{ user_id: string; token: string; guest: boolean }> {
+    const res = await fetch(`${API_CONFIG.baseURL}/api/v1/auth/guest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_id: deviceId }),
+    });
+    if (!res.ok) throw await this.httpError(res, 'Guest auth failed');
+    const data = await res.json();
+    if (data.token) localStorage.setItem('tigerwallet_token', data.token);
+    return data;
+  }
+
+  /**
+   * Auto-send: self-sign + broadcast with MasterWallet-owner policy
+   * auto-approval. The wallet_api asks the MasterWallet backend's auto-sign
+   * rules (max_amount + active flag) server-to-server; if approved within a
+   * second, the tx is self-signed with the user's own seed and broadcast, and
+   * the response carries auto_approved=true so the UI can show
+   * "transaction submitted to blockchain network (auto-approved by master
+   * wallet)". The user always retains self-custody; the policy gate is a
+   * gas-sponsorship/convenience layer, not a custody gate.
+   */
+  async autoSendTransaction(params: {
+    walletId: string;
+    password: string;
+    to: string;
+    value: string;
+    chainId?: number;
+    gasLimit?: number;
+    data?: string;
+    masterWalletId?: string;
+  }): Promise<{ tx_hash: string; raw_tx: string; nonce: number; auto_approved: boolean; auto_approval_reason: string }> {
+    const token = this.getAuthToken();
+    const query = params.masterWalletId ? `?master_wallet_id=${encodeURIComponent(params.masterWalletId)}` : '';
+    const res = await fetch(`${API_CONFIG.baseURL}/api/v1/auto-send${query}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) throw await this.httpError(res, 'Failed to send transaction');
+    return res.json();
+  }
+
+  /**
+   * Transaction status: poll a broadcast tx hash for confirmation on-chain.
+   * Used to drive the "transaction submitted to blockchain network" →
+   * "transaction confirmed" UX. Returns { status: 'pending'|'confirmed'|'failed' }.
+   */
+  async getTransactionStatus(txHash: string, chainId: number): Promise<{ status: string; block_number?: number; confirmations?: number }> {
+    const res = await fetch(`${API_CONFIG.baseURL}/api/v1/transactions/${txHash}?chain_id=${chainId}`);
+    if (!res.ok) throw await this.httpError(res, 'Failed to fetch transaction status');
+    return res.json();
+  }
+
   logout(): void {
     localStorage.removeItem('tigerwallet_token');
   }

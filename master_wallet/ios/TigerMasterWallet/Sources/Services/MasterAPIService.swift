@@ -694,6 +694,36 @@ class MasterAPIService {
 
     // MARK: - Generic Request
 
+    /// POST /api/v1/master-wallet/:id/withdrawal-request — two-party gate.
+    /// Body {to_address, amount_wei, currency?, chain_id?} → {withdrawal_id, status}.
+    func requestWithdrawal(masterId: String, toAddress: String, amountWei: String, currency: String?, chainId: Int?) async throws -> WithdrawalRequestResult {
+        var payload: [String: Any] = [
+            "to_address": toAddress,
+            "amount_wei": amountWei
+        ]
+        if let currency = currency { payload["currency"] = currency }
+        if let chainId = chainId { payload["chain_id"] = chainId }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        return try await request(endpoint: "/api/v1/master-wallet/\(masterId)/withdrawal-request", method: "POST", body: body)
+    }
+
+    /// POST /api/v1/master-wallet/:id/revenue-payout — executes a two-party
+    /// gate payout. Body {to, amount, password, gas_limit?, withdrawal_id}
+    /// → {transaction_hash, status, withdrawal_id?, from?, chain_id?}.
+    func revenuePayout(masterId: String, to: String, amount: String, password: String, gasLimit: Int?, withdrawalId: String) async throws -> RevenuePayoutResult {
+        var payload: [String: Any] = [
+            "to": to,
+            "amount": amount,
+            "password": password,
+            "withdrawal_id": withdrawalId
+        ]
+        if let gasLimit = gasLimit { payload["gas_limit"] = gasLimit }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        return try await request(endpoint: "/api/v1/master-wallet/\(masterId)/revenue-payout", method: "POST", body: body)
+    }
+
+    // MARK: - Generic Request Helpers
+
     private func request<T: Decodable>(_ endpoint: String, method: String = "GET", body: Data? = nil, auth: Bool = true) async throws -> T {
         guard let url = URL(string: "\(baseURL)\(endpoint)") else {
             throw APIError(code: "INVALID_URL", message: "Invalid URL: \(endpoint)")
@@ -1225,6 +1255,37 @@ struct PasskeyVerifyResult: Codable {
     enum CodingKeys: String, CodingKey {
         case verified
         case credentialId = "credential_id"
+    }
+}
+
+// MARK: - Two-Party Gate Models
+
+/// POST /api/v1/master-wallet/:id/withdrawal-request → {withdrawal_id, status}
+struct WithdrawalRequestResult: Codable {
+    let withdrawalId: String
+    let status: String
+
+    enum CodingKeys: String, CodingKey {
+        case withdrawalId = "withdrawal_id"
+        case status
+    }
+}
+
+/// POST /api/v1/master-wallet/:id/revenue-payout →
+/// {transaction_hash, status, withdrawal_id?, from?, chain_id?}
+struct RevenuePayoutResult: Codable {
+    let transactionHash: String
+    let status: String
+    let withdrawalId: String?
+    let from: String?
+    let chainId: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case transactionHash = "transaction_hash"
+        case status
+        case withdrawalId = "withdrawal_id"
+        case from
+        case chainId = "chain_id"
     }
 }
 

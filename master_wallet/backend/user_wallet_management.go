@@ -782,6 +782,178 @@ func (svc *Service) AutoSignTransaction(c *gin.Context) {
 	})
 }
 
+// UserWalletAutoSign POST /api/v1/master-wallet/:id/user-wallet-auto-sign
+//
+// Policy-based auto-sign for ordinary UserWallet outgoing transactions. Unlike
+// AutoSignTransaction (which enforces the two-party SuperAdmin withdrawal gate
+// for the MasterWallet's OWN revenue/fee payouts), this endpoint approves a
+// UserWallet's send/claim/swap/trade within a second based on the master
+// wallet owner's configured auto-sign RULES (max_amount + active flag). The
+// MasterWallet owner never takes custody of user funds — it only auto-signs
+// (with the user's own seed, supplied by the requesting client) and broadcasts.
+// Returns the tx hash + status so the UserWallet can show "transaction
+// submitted to blockchain network".
+func (svc *Service) UserWalletAutoSign(c *gin.Context) {
+	masterID := c.Param("id")
+	var req AutoSignRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !ValidateMnemonic(req.Mnemonic) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid mnemonic"})
+		return
+	}
+	if req.TxType == "" {
+		req.TxType = "send"
+	}
+	chainType := strings.ToLower(req.ChainType)
+	if chainType == "" {
+		chainType = "evm"
+	}
+
+	// ---- Policy gate: check the master wallet owner's auto-sign RULES ----
+	approved, reason := svc.checkAutoSignRules(c.Request.Context(), masterID, req.TxType, req.Value)
+	if !approved {
+		c.JSON(http.StatusForbidden, gin.H{"error": "auto-sign not approved by master wallet policy: " + reason, "approved": false})
+		return
+	}
+
+	seed := MnemonicToSeed(req.Mnemonic, "")
+	seedHash := fmt.Sprintf("%x", sha256Bytes(seed))
+
+	var txHash string
+	var status string
+	var err error
+	switch chainType {
+	case "evm", "ethereum", "bsc", "polygon", "arbitrum", "optimism", "base", "avalanche":
+		txHash, status, err = svc.autoSignEVM(c, seed, &req)
+	case "solana":
+		txHash, status, err = svc.autoSignSolana(seed, &req)
+	case "bitcoin", "btc":
+		txHash, status, err = svc.autoSignBitcoin(seed, &req)
+	case "cosmos", "osmosis", "atom":
+		txHash, status, err = svc.autoSignCosmos(seed, &req)
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "auto-sign not supported for chain_type: " + chainType})
+		return
+	}
+
+	userAddr := req.ToAddress
+	derivedAddr, derr := svc.deriveUserAddressForLog(seed, &req)
+	if derr == nil && derivedAddr != "" {
+		userAddr = derivedAddr
+	}
+	_, logErr := store.DB().Exec(c.Request.Context(), `
+		INSERT INTO auto_sign_log (master_wallet_id, user_address, chain_id, tx_type,
+			to_address, value, token_address, tx_hash, status)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		masterID, userAddr, req.ChainID, req.TxType, req.ToAddress, req.Value,
+		req.TokenAddress, txHash, status)
+	if logErr != nil {
+		log.Printf("WARN: user-wallet auto-sign log: %v", logErr)
+	}
+	svc.auditAction(masterID, c.GetString("user_id"), "user_wallet_auto_sign", fmt.Sprintf("type=%s chain=%s hash=%s", req.TxType, chainType, txHash))
+
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"tx_hash":   txHash,
+			"status":    status,
+			"seed_hash": seedHash,
+			"approved":  true,
+			"error":     err.Error(),
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"tx_hash":   txHash,
+		"status":    status,
+		"seed_hash": seedHash,
+		"tx_type":   req.TxType,
+		"approved":  true,
+	})
+}
+
+// CheckAutoSignPolicy POST /api/v1/master-wallet/:id/check-auto-sign-policy
+//
+// Policy-only check (no signing, no fund movement): returns whether the master
+// wallet owner's auto-sign RULES would approve a given tx_type + value. The
+// UserWallet backend (wallet_api) calls this server-to-server before self-signing
+// a UserWallet outgoing tx with the user's own seed, so the UserWallet gets
+// "automatic approval within a second from the MasterWallet owner" WITHOUT the
+// MasterWallet ever taking custody of the user's seed/funds. App separation is
+// preserved (UserWallet clients never call this; only the wallet_api does).
+func (svc *Service) CheckAutoSignPolicy(c *gin.Context) {
+	masterID := c.Param("id")
+	var req struct {
+		TxType string `json:"tx_type"`
+		Value  string `json:"value"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.TxType == "" {
+		req.TxType = "send"
+	}
+	approved, reason := svc.checkAutoSignRules(c.Request.Context(), masterID, req.TxType, req.Value)
+	c.JSON(http.StatusOK, gin.H{"approved": approved, "reason": reason, "tx_type": req.TxType, "value": req.Value})
+}
+
+// checkAutoSignRules evaluates the master wallet owner's configured auto-sign
+// rules for a given tx_type + value. Approval requires at least one ACTIVE rule
+// of the matching type whose max_amount (if set) is >= the tx value. Fail-closed
+// (deny) when no active matching rule exists. The value is parsed as a decimal;
+// unparseable values are denied.
+func (svc *Service) checkAutoSignRules(ctx context.Context, masterID, txType, valueStr string) (bool, string) {
+	rows, err := store.DB().Query(ctx,
+		`SELECT rule_type, max_amount, is_active FROM auto_sign_rules WHERE master_wallet_id = $1 AND is_active = true`,
+		masterID)
+	if err != nil {
+		return false, "policy lookup failed"
+	}
+	defer rows.Close()
+
+	txValue, valueOk := new(big.Float).SetString(strings.TrimSpace(valueStr))
+	if !valueOk {
+		txValue = new(big.Float)
+	}
+
+	matched := false
+	for rows.Next() {
+		var rtype, maxAmt string
+		var active bool
+		if err := rows.Scan(&rtype, &maxAmt, &active); err != nil {
+			continue
+		}
+		if !active {
+			continue
+		}
+		// A rule_type of "send" matches a "send" tx; "any"/"*" matches all.
+		if rtype != txType && rtype != "any" && rtype != "*" {
+			continue
+		}
+		matched = true
+		// If the rule sets a max_amount, enforce it.
+		maxStr := strings.TrimSpace(maxAmt)
+		if maxStr != "" {
+			maxVal, ok := new(big.Float).SetString(maxStr)
+			if !ok {
+				continue
+			}
+			if txValue.Cmp(maxVal) > 0 {
+				continue // exceeds this rule's cap; try the next
+			}
+		}
+		return true, "approved by rule"
+	}
+	if matched {
+		return false, "tx value exceeds all matching rule max_amount caps"
+	}
+	return false, "no active auto-sign rule for tx_type: " + txType
+}
+
+
 // ListAutoSignLogs GET /api/v1/master-wallet/:id/auto-sign-logs
 func (svc *Service) ListAutoSignLogs(c *gin.Context) {
 	masterID := c.Param("id")

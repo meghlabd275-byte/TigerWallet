@@ -4,7 +4,9 @@ package main
 // wallet, derive address, fetch balances/tokens/tx/nfts, send signed tx.
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -79,6 +81,25 @@ func handleRegister(c *gin.Context) {
 	}
 	token, _ := IssueJWT(appConfig.JWTSecret, uid.String(), "user")
 	c.JSON(http.StatusCreated, gin.H{"user_id": uid, "token": token})
+}
+
+// handleGuestAuth provisions an anonymous guest account for the UserWallet app so
+// the user can Create/Import a wallet WITHOUT registering. The client supplies a
+// stable device id; the backend idempotently creates (or re-uses) a guest user and
+// returns a JWT. Guest accounts cannot be logged into via /auth/login (random
+// sentinel password hash), so this is not a privilege-escalation vector.
+func handleGuestAuth(c *gin.Context) {
+	var req struct {
+		DeviceID string `json:"device_id"`
+	}
+	_ = c.ShouldBindJSON(&req) // device_id optional; empty -> random
+	uid, err := store.CreateGuestUser(c.Request.Context(), req.DeviceID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to provision guest account"})
+		return
+	}
+	token, _ := IssueJWT(appConfig.JWTSecret, uid.String(), "user")
+	c.JSON(http.StatusCreated, gin.H{"user_id": uid, "token": token, "guest": true})
 }
 
 func handleLogin(c *gin.Context) {
@@ -353,6 +374,110 @@ func handleSendTransaction(c *gin.Context) {
 	}
 	executeSend(c, req)
 }
+
+// handleAutoSend is the UserWallet outgoing-tx flow with MasterWallet-owner
+// policy auto-approval. It performs a server-to-server policy check against the
+// MasterWallet backend's /check-auto-sign-policy (the master wallet owner's
+// configured auto-sign RULES: max_amount + active flag). If the policy approves
+// within a second, the tx is self-signed with the user's own decrypted seed and
+// broadcast — the UserWallet shows "transaction submitted to blockchain
+// network". If the master wallet is unreachable or the policy denies, the tx
+// falls back to a normal self-sign + broadcast (the user always retains
+// self-custody; the policy gate is a gas-sponsorship/convenience layer, NOT a
+// custody gate). The UserWallet client never talks to the MasterWallet backend
+// directly — only this wallet_api does (server-to-server), preserving app
+// separation.
+func handleAutoSend(c *gin.Context) {
+	if !enforceFeature(c, FeatureSendTransactions) {
+		return
+	}
+	var req sendTxReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// Optional MasterWallet master-id to consult for policy (env-configured
+	// default when omitted). When the master wallet backend is unset or the
+	// policy denies/errored, we still self-sign (user retains self-custody).
+	masterID := c.Query("master_wallet_id")
+	autoApproved, reason := checkMasterWalletPolicy(req.Value, masterID)
+	// Self-sign + broadcast regardless (self-custody). The autoApproved flag is
+	// surfaced to the client so it can show "auto-approved by master wallet".
+	executeSendWithAutoFlag(c, req, autoApproved, reason)
+}
+
+// checkMasterWalletPolicy asks the MasterWallet backend whether the master
+// wallet owner's auto-sign rules approve a tx of the given value. Returns
+// (approved bool, reason string). On any error (backend unreachable, no
+// master id, network failure) it returns (false, "policy unavailable —
+// self-sign fallback") — never blocks the user's self-custodial send.
+func checkMasterWalletPolicy(value, masterID string) (bool, string) {
+	base := strings.TrimRight(appConfig.MasterWalletBackendURL, "/")
+	if base == "" || masterID == "" {
+		return false, "master wallet policy not configured — self-sign fallback"
+	}
+	body, _ := json.Marshal(map[string]string{"tx_type": "send", "value": value})
+	client := &http.Client{Timeout: 3 * time.Second}
+	url := base + "/api/v1/master-wallet/" + masterID + "/check-auto-sign-policy"
+	resp, err := client.Post(url, "application/json", bytes.NewReader(body))
+	if err != nil {
+		return false, "master wallet policy unreachable — self-sign fallback"
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false, "master wallet policy error — self-sign fallback"
+	}
+	var out struct {
+		Approved bool   `json:"approved"`
+		Reason   string `json:"reason"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return false, "master wallet policy decode error — self-sign fallback"
+	}
+	return out.Approved, out.Reason
+}
+
+// executeSendWithAutoFlag wraps executeSend, tagging the response with the
+// master-wallet auto-approval status so the client can display it.
+func executeSendWithAutoFlag(c *gin.Context, req sendTxReq, autoApproved bool, reason string) {
+	// executeSend writes the JSON response directly; capture it via a response
+	// writer wrapper to inject the auto-approval fields.
+	rw := &autoFlagWriter{ResponseWriter: c.Writer, autoApproved: autoApproved, reason: reason}
+	orig := c.Writer
+	c.Writer = rw
+	executeSend(c, req)
+	c.Writer = orig
+}
+
+// autoFlagWriter is a gin.ResponseWriter wrapper that injects the master-wallet
+// auto-approval fields into the JSON response written by executeSend.
+type autoFlagWriter struct {
+	gin.ResponseWriter
+	autoApproved bool
+	reason       string
+	wrote        bool
+}
+
+func (w *autoFlagWriter) Write(b []byte) (int, error) {
+	if w.wrote {
+		return w.ResponseWriter.Write(b)
+	}
+	w.wrote = true
+	// Inject the auto-approval fields into the JSON object. executeSend writes a
+	// compact JSON object starting with '{', so we insert the new keys after it.
+	s := string(b)
+	if strings.HasPrefix(strings.TrimSpace(s), "{") {
+		trimmed := strings.TrimSpace(s)
+		inject := fmt.Sprintf(`"auto_approved":%t,"auto_approval_reason":%q,`, w.autoApproved, w.reason)
+		// Insert after the leading '{' (or '{\n').
+		i := strings.Index(trimmed, "{")
+		modified := trimmed[:i+1] + inject + trimmed[i+1:]
+		return w.ResponseWriter.Write([]byte(modified))
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func handleSendTransactionUnused(c *gin.Context) {}
 
 // executeSend performs the real EVM transaction signing + broadcast for an
 // already-bound sendTxReq. Shared by handleSendTransaction and handleNFTTransfer

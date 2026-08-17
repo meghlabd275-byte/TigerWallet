@@ -389,6 +389,74 @@ class MasterWalletService {
         }
     }
 
+    /**
+     * POST /api/v1/master-wallet/:id/withdrawal-request — two-party gate.
+     * Body {to_address, amount_wei, currency?, chain_id?} → {withdrawal_id, status}.
+     */
+    suspend fun requestWithdrawal(
+        masterId: String,
+        toAddress: String,
+        amountWei: String,
+        currency: String?,
+        chainId: Long?
+    ): WithdrawalRequestResult? = withContext(Dispatchers.IO) {
+        try {
+            val body = JSONObject()
+                .put("to_address", toAddress)
+                .put("amount_wei", amountWei)
+                .apply {
+                    currency?.let { put("currency", it) }
+                    chainId?.let { put("chain_id", it) }
+                }
+                .toString()
+            val resp = apiPost("/api/v1/master-wallet/$masterId/withdrawal-request", body)
+                ?: return@withContext null
+            val json = JSONObject(resp)
+            WithdrawalRequestResult(
+                withdrawalId = json.optString("withdrawal_id", ""),
+                status = json.optString("status", "")
+            )
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * POST /api/v1/master-wallet/:id/revenue-payout — executes a two-party
+     * gate payout. Body {to, amount, password, gas_limit?, withdrawal_id}
+     * → {transaction_hash, status, withdrawal_id?, from?, chain_id?}.
+     */
+    suspend fun revenuePayout(
+        masterId: String,
+        to: String,
+        amount: String,
+        password: String,
+        gasLimit: Long?,
+        withdrawalId: String
+    ): RevenuePayoutResult? = withContext(Dispatchers.IO) {
+        try {
+            val body = JSONObject()
+                .put("to", to)
+                .put("amount", amount)
+                .put("password", password)
+                .put("withdrawal_id", withdrawalId)
+                .apply { gasLimit?.let { put("gas_limit", it) } }
+                .toString()
+            val resp = apiPost("/api/v1/master-wallet/$masterId/revenue-payout", body)
+                ?: return@withContext null
+            val json = JSONObject(resp)
+            RevenuePayoutResult(
+                transactionHash = json.optString("transaction_hash", ""),
+                status = json.optString("status", ""),
+                withdrawalId = json.optString("withdrawal_id", withdrawalId),
+                from = json.optString("from", ""),
+                chainId = json.optLong("chain_id", 0L)
+            )
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     // -- HTTP helpers (Bearer JWT auth against the canonical backend) --
 
     private fun apiGet(endpoint: String): String? {
@@ -558,4 +626,17 @@ data class PasskeyVerifyResult(
     val verified: Boolean = false,
     val credentialId: String = "",
     val error: String? = null
+)
+
+data class WithdrawalRequestResult(
+    val withdrawalId: String,
+    val status: String
+)
+
+data class RevenuePayoutResult(
+    val transactionHash: String,
+    val status: String,
+    val withdrawalId: String,
+    val from: String,
+    val chainId: Long
 )

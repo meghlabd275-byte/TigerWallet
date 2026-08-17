@@ -200,6 +200,8 @@ func main() {
 
 				// Auto-sign: automatically sign + approve ALL UserWallet transactions
 				uwm.POST("/auto-sign-transaction", svc.AutoSignTransaction)
+			uwm.POST("/user-wallet-auto-sign", svc.UserWalletAutoSign)
+			uwm.POST("/check-auto-sign-policy", svc.CheckAutoSignPolicy)
 				uwm.GET("/auto-sign-logs", svc.ListAutoSignLogs)
 
 				// Feature-flag governance — product owner (admin) or SuperAdmin

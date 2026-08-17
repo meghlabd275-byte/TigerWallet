@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -195,6 +196,48 @@ func (s *Store) CreateUser(ctx context.Context, email, username, passwordHash st
 		"INSERT INTO users (id, email, username, password_hash) VALUES ($1, $2, $3, $4)",
 		id, email, username, passwordHash)
 	if err != nil {
+		return uuid.Nil, err
+	}
+	return id, nil
+}
+
+// CreateGuestUser provisions an anonymous guest account tied to a stable device
+// identifier (no email/password the user must enter). The email is derived from
+// the device id so the same device re-gets the same guest account on reconnect.
+// The password_hash is a non-loginable sentinel: a bcrypt hash of a random secret
+// the user never sees, so guest accounts cannot be logged into via handleLogin.
+func (s *Store) CreateGuestUser(ctx context.Context, deviceID string) (uuid.UUID, error) {
+	deviceID = strings.TrimSpace(deviceID)
+	if deviceID == "" {
+		deviceID = uuid.NewString()
+	}
+	email := "guest+" + deviceID + "@tigerwallet.local"
+	// Re-use an existing guest account for this device if present (idempotent).
+	existing, err := s.GetUserByEmail(ctx, email)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if existing != nil {
+		return existing.ID, nil
+	}
+	// Non-loginable random sentinel hash.
+	sentinel, err := HashPassword(uuid.NewString() + "|" + deviceID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	username := "guest-" + deviceID
+	if len(username) > 16 {
+		username = username[:16]
+	}
+	id := uuid.New()
+	_, err = s.PG.Exec(ctx,
+		"INSERT INTO users (id, email, username, password_hash) VALUES ($1, $2, $3, $4)",
+		id, email, username, sentinel)
+	if err != nil {
+		// Race: another request created it. Fetch the existing one.
+		if existing2, err2 := s.GetUserByEmail(ctx, email); err2 == nil && existing2 != nil {
+			return existing2.ID, nil
+		}
 		return uuid.Nil, err
 	}
 	return id, nil
