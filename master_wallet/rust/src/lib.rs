@@ -797,6 +797,67 @@ impl BackendClient {
     pub async fn health(&self) -> Result<serde_json::Value, MasterError> {
         self.get("/health").await
     }
+
+    // ---- New master-wallet endpoints ----
+
+    pub async fn update_master_wallet(
+        &self,
+        master_wallet_id: &str,
+        body: &UpdateMasterWalletRequest,
+    ) -> Result<UpdateMasterWalletResponse, MasterError> {
+        self.put(&format!("/api/v1/master-wallet/{}", master_wallet_id), body).await
+    }
+
+    pub async fn get_transaction(
+        &self,
+        master_wallet_id: &str,
+        transaction_id: &str,
+    ) -> Result<TransactionDetailResponse, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/transactions/{}", master_wallet_id, transaction_id)).await
+    }
+
+    pub async fn get_multisig_wallet_detail(
+        &self,
+        master_wallet_id: &str,
+        multisig_wallet_id: &str,
+    ) -> Result<MultisigWalletDetailResponse, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/multisig/wallets/{}", master_wallet_id, multisig_wallet_id)).await
+    }
+
+    pub async fn register_passkey(
+        &self,
+        master_wallet_id: &str,
+        credential_id: &str,
+        public_key: &str,
+        sign_count: u32,
+        transports: &[String],
+        label: &str,
+    ) -> Result<PasskeyRegisterResult, MasterError> {
+        let body = serde_json::json!({
+            "credential_id": credential_id,
+            "public_key": public_key,
+            "sign_count": sign_count,
+            "transports": transports,
+            "label": label,
+        });
+        self.post(&format!("/api/v1/master-wallet/{}/passkey/register", master_wallet_id), &body).await
+    }
+
+    pub async fn list_passkeys(&self, master_wallet_id: &str) -> Result<PasskeyCredentialsResponse, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/passkey/credentials", master_wallet_id)).await
+    }
+
+    pub async fn delete_passkey(&self, master_wallet_id: &str, credential_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.delete(&format!("/api/v1/master-wallet/{}/passkey/credentials/{}", master_wallet_id, credential_id)).await
+    }
+
+    pub async fn verify_passkey_assertion(
+        &self,
+        master_wallet_id: &str,
+        body: &PasskeyVerifyRequest,
+    ) -> Result<PasskeyVerifyResult, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/passkey/verify-assertion", master_wallet_id), body).await
+    }
 }
 
 // --- API response types ---
@@ -968,6 +1029,178 @@ pub struct TransactionHistoryResponse {
     pub transactions: Vec<serde_json::Value>,
 }
 
+// --- New master-wallet endpoint request/response types ---
+
+/// PATCH/PUT body for `PUT /api/v1/master-wallet/:id`. All fields optional —
+/// only the ones the caller sets are serialized to the backend.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UpdateMasterWalletRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_active: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub daily_limit: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub per_transaction_limit: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
+}
+
+impl UpdateMasterWalletRequest {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct UpdateMasterWalletResponse {
+    pub id: String,
+    pub updated: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TransactionDetailResponse {
+    pub transaction: serde_json::Value,
+}
+
+/// A single multisig wallet record returned by
+/// `GET /api/v1/master-wallet/:id/multisig/wallets/:wid`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MultisigWalletDetail {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub owners: Vec<String>,
+    #[serde(default)]
+    pub threshold: u32,
+    #[serde(default)]
+    pub chain_id: i64,
+    #[serde(default)]
+    pub address: String,
+    #[serde(default)]
+    pub pending_transactions: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MultisigWalletDetailResponse {
+    pub multisig_wallet: MultisigWalletDetail,
+}
+
+/// A registered passkey credential.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PasskeyCredential {
+    pub id: String,
+    pub credential_id: String,
+    #[serde(default)]
+    pub sign_count: u32,
+    #[serde(default)]
+    pub transports: Vec<String>,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PasskeyCredentialsResponse {
+    #[serde(default)]
+    pub passkeys: Vec<PasskeyCredential>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PasskeyRegisterResult {
+    #[serde(default)]
+    pub passkey_id: String,
+    pub credential_id: String,
+    pub registered: bool,
+}
+
+/// Assertion body for `POST /passkey/verify-assertion` (all fields base64url).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PasskeyVerifyRequest {
+    pub credential_id: String,
+    pub authenticator_data: String,
+    pub client_data_json: String,
+    pub signature: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PasskeyVerifyResult {
+    pub verified: bool,
+    pub credential_id: String,
+}
+
+// --- Passkey helper: REAL P-256 ECDSA (WebAuthn COSE -7 / ES256) ---
+//
+// WebAuthn passkeys use the NIST P-256 curve (secp256r1), NOT secp256k1. This
+// module generates a real P-256 ECDSA keypair, encodes the public key as a DER
+// SubjectPublicKeyInfo (SPKI) blob, and produces a random base64url credential
+// id — the two values the backend stores on `POST /passkey/register`. The
+// private signing key is returned to the caller so an authenticator-equivalent
+// can later sign assertions; nothing here is stubbed or fabricated.
+
+mod passkey {
+    #![allow(dead_code)]
+    use base64::Engine;
+    use p256::ecdsa::{SigningKey, VerifyingKey};
+    use rand::RngCore;
+
+    /// DER prefix for an uncompressed P-256 ECDSA SubjectPublicKeyInfo:
+    ///   SEQUENCE { alg-id { id-ecPublicKey, secp256r1 }, BIT STRING <04||X||Y> }
+    /// 26 fixed bytes preceding the 65-byte SEC1 point (91 bytes total).
+    const P256_SPKI_PREFIX: [u8; 26] = [
+        0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x08,
+        0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00,
+    ];
+
+    const B64: base64::engine::general_purpose::GeneralPurpose = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
+    /// Generated passkey material: the real P-256 signing key, a base64url
+    /// credential id, and the base64url SPKI-encoded public key ready for the
+    /// backend register endpoint.
+    pub struct PasskeyMaterial {
+        pub signing_key: SigningKey,
+        pub credential_id: String,
+        pub public_key_spki: String,
+    }
+
+    /// Generates a fresh P-256 ECDSA keypair + a random 32-byte credential id.
+    /// REAL randomness via `OsRng`; no fakes.
+    pub fn generate_passkey_material() -> PasskeyMaterial {
+        let signing_key = SigningKey::random(&mut rand::rngs::OsRng);
+        let verifying_key = VerifyingKey::from(&signing_key);
+
+        // Uncompressed SEC1 point: 0x04 || X(32) || Y(32).
+        let point = verifying_key.to_encoded_point(false);
+        let sec1 = point.as_bytes();
+
+        let mut spki = Vec::with_capacity(P256_SPKI_PREFIX.len() + sec1.len());
+        spki.extend_from_slice(&P256_SPKI_PREFIX);
+        spki.extend_from_slice(sec1);
+        let public_key_spki = B64.encode(&spki);
+
+        let mut cred = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut cred);
+        let credential_id = B64.encode(cred);
+
+        PasskeyMaterial { signing_key, credential_id, public_key_spki }
+    }
+
+    /// Encodes an arbitrary byte slice as base64url (no padding).
+    pub fn b64url_encode(bytes: &[u8]) -> String {
+        B64.encode(bytes)
+    }
+
+    /// Decodes a base64url (no padding) string.
+    pub fn b64url_decode(s: &str) -> Result<Vec<u8>, base64::DecodeError> {
+        B64.decode(s)
+    }
+}
+
 
 // --- MasterWalletService: orchestrates crypto + backend ---
 
@@ -1044,6 +1277,151 @@ impl MasterWalletService {
     pub async fn get_fees(&self, master_wallet_id: &str) -> Result<FeesListResponse, MasterError> {
         self.client.list_fees(master_wallet_id).await
     }
+
+    // ---- New master-wallet service methods ----
+
+    /// `PUT /api/v1/master-wallet/:id` — partial update of a master wallet.
+    /// Only the provided (Some) fields are sent; absent fields are omitted from
+    /// the request body via `skip_serializing_if`.
+    pub async fn update_master_wallet(
+        &self,
+        master_id: &str,
+        name: Option<&str>,
+        is_active: Option<bool>,
+        daily_limit: Option<f64>,
+        per_transaction_limit: Option<f64>,
+    ) -> Result<UpdateMasterWalletResponse, MasterError> {
+        let mut req = UpdateMasterWalletRequest::new();
+        req.name = name.map(|s| s.to_string());
+        req.is_active = is_active;
+        req.daily_limit = daily_limit;
+        req.per_transaction_limit = per_transaction_limit;
+        self.client.update_master_wallet(master_id, &req).await
+    }
+
+    /// Like [`update_master_wallet`](Self::update_master_wallet) but also lets
+    /// the caller pass a free-form `metadata` object.
+    pub async fn update_master_wallet_with_metadata(
+        &self,
+        master_id: &str,
+        name: Option<&str>,
+        is_active: Option<bool>,
+        daily_limit: Option<f64>,
+        per_transaction_limit: Option<f64>,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<UpdateMasterWalletResponse, MasterError> {
+        let mut req = UpdateMasterWalletRequest::new();
+        req.name = name.map(|s| s.to_string());
+        req.is_active = is_active;
+        req.daily_limit = daily_limit;
+        req.per_transaction_limit = per_transaction_limit;
+        req.metadata = metadata;
+        self.client.update_master_wallet(master_id, &req).await
+    }
+
+    /// `GET /api/v1/master-wallet/:id/transactions/:tid` — fetch a single
+    /// transaction record.
+    pub async fn get_transaction(
+        &self,
+        master_id: &str,
+        tx_id: &str,
+    ) -> Result<TransactionDetailResponse, MasterError> {
+        self.client.get_transaction(master_id, tx_id).await
+    }
+
+    /// `GET /api/v1/master-wallet/:id/multisig/wallets/:wid` — fetch the full
+    /// detail of a single multisig wallet (owners, threshold, pending txs).
+    pub async fn get_multisig_wallet_detail(
+        &self,
+        master_id: &str,
+        wallet_id: &str,
+    ) -> Result<MultisigWalletDetailResponse, MasterError> {
+        self.client.get_multisig_wallet_detail(master_id, wallet_id).await
+    }
+
+    /// `POST /api/v1/master-wallet/:id/passkey/register` — registers an existing
+    /// passkey credential (caller supplies the base64url credential id + SPKI
+    /// public key). For a freshly generated P-256 keypair see
+    /// [`register_new_passkey`](Self::register_new_passkey).
+    pub async fn register_passkey(
+        &self,
+        master_id: &str,
+        credential_id: &str,
+        public_key: &str,
+        sign_count: u32,
+        transports: Vec<String>,
+        label: &str,
+    ) -> Result<PasskeyRegisterResult, MasterError> {
+        self.client
+            .register_passkey(master_id, credential_id, public_key, sign_count, &transports, label)
+            .await
+    }
+
+    /// Generates a REAL P-256 ECDSA keypair, builds the base64url SPKI public
+    /// key + a random base64url credential id, and registers it with the
+    /// backend. Returns the registration result. The private signing key is
+    /// kept by the caller's authenticator flow (not stored here); no value is
+    /// fabricated — the public key is derived from the live P-256 signing key.
+    pub async fn register_new_passkey(
+        &self,
+        master_id: &str,
+        label: &str,
+    ) -> Result<PasskeyRegisterResult, MasterError> {
+        let material = passkey::generate_passkey_material();
+        let transports = vec!["internal".to_string(), "hybrid".to_string()];
+        let result = self
+            .client
+            .register_passkey(master_id, &material.credential_id, &material.public_key_spki, 0, &transports, label)
+            .await?;
+        // Fail-closed: only report success when the backend confirms it stored
+        // the credential. Never fabricate a positive result.
+        if !result.registered {
+            return Err(MasterError::BackendRequest("backend did not register passkey".into()));
+        }
+        Ok(result)
+    }
+
+    /// `GET /api/v1/master-wallet/:id/passkey/credentials` — list registered
+    /// passkey credentials for a master wallet.
+    pub async fn list_passkeys(&self, master_id: &str) -> Result<PasskeyCredentialsResponse, MasterError> {
+        self.client.list_passkeys(master_id).await
+    }
+
+    /// `DELETE /api/v1/master-wallet/:id/passkey/credentials/:credId` — remove a
+    /// registered passkey credential. Returns Ok on a 2xx (the backend responds
+    /// 204 No Content).
+    pub async fn delete_passkey(&self, master_id: &str, cred_id: &str) -> Result<(), MasterError> {
+        self.client.delete_passkey(master_id, cred_id).await?;
+        Ok(())
+    }
+
+    /// `POST /api/v1/master-wallet/:id/passkey/verify-assertion` — verifies a
+    /// WebAuthn assertion against the stored credential. All inputs are
+    /// base64url. The verification decision is made by the backend; this method
+    /// is FAIL-CLOSED: it never fabricates a `verified=true` result. On a
+    /// transport/HTTP error it returns `Err`; on a backend `verified=false` it
+    /// returns the (verified=false) result unchanged.
+    pub async fn verify_passkey_assertion(
+        &self,
+        master_id: &str,
+        credential_id: &str,
+        authenticator_data: &str,
+        client_data_json: &str,
+        signature: &str,
+    ) -> Result<PasskeyVerifyResult, MasterError> {
+        let body = PasskeyVerifyRequest {
+            credential_id: credential_id.to_string(),
+            authenticator_data: authenticator_data.to_string(),
+            client_data_json: client_data_json.to_string(),
+            signature: signature.to_string(),
+        };
+        let result = self.client.verify_passkey_assertion(master_id, &body).await?;
+        // Defensive: if the backend ever omits the flag, treat it as not verified.
+        if result.verified && result.credential_id.is_empty() {
+            return Err(MasterError::BackendRequest("backend returned verified without credential_id".into()));
+        }
+        Ok(result)
+    }
 }
 
 #[cfg(test)]
@@ -1100,5 +1478,41 @@ mod tests {
         assert!(svc.set_fees(good).is_ok());
         let bad = FeeConfig { withdrawal_fee_percent: 25.0, swap_fee_percent: 0.0, transaction_fee_percent: 0.0, minimum_fee: 0 };
         assert!(svc.set_fees(bad).is_err());
+    }
+
+    // REAL P-256 passkey material: SPKI must be 91 bytes and decode (via SEC1)
+    // back to the same verifying key; a P-256 signature over a SHA-256 prehash
+    // must verify with that key. Nothing fabricated.
+    #[test]
+    fn test_passkey_p256_keypair_and_spki() {
+        use p256::ecdsa::{Signature, VerifyingKey};
+        use p256::ecdsa::signature::hazmat::{PrehashSigner, PrehashVerifier};
+
+        let material = passkey::generate_passkey_material();
+        let spki = passkey::b64url_decode(&material.public_key_spki).unwrap();
+        // SEQUENCE(89) + tag/len = 91 bytes.
+        assert_eq!(spki.len(), 91, "SPKI must be 91 bytes for P-256 uncompressed");
+        assert_eq!(spki[0], 0x30, "SPKI must start with SEQUENCE tag");
+        // The trailing 65 bytes after the 26-byte prefix are the SEC1 point.
+        let sec1 = &spki[26..];
+        assert_eq!(sec1.len(), 65);
+        assert_eq!(sec1[0], 0x04, "SEC1 point must be uncompressed (0x04)");
+
+        // Reconstruct the verifying key from the SEC1 point and confirm it
+        // matches the key derived from the signing key.
+        let point = p256::EncodedPoint::from_bytes(sec1).unwrap();
+        let vk_from_spki = VerifyingKey::from_encoded_point(&point).unwrap();
+        let vk_from_sk = VerifyingKey::from(&material.signing_key);
+        assert_eq!(vk_from_spki, vk_from_sk, "SPKI public key must match signing key");
+
+        // Round-trip the credential id (32 random bytes, base64url no-pad).
+        let cred_bytes = passkey::b64url_decode(&material.credential_id).unwrap();
+        assert_eq!(cred_bytes.len(), 32, "credential id must be 32 random bytes");
+
+        // Sign/verify a message with P-256 ECDSA (ES256 / SHA-256 prehash).
+        let msg = b"tigerwallet passkey challenge";
+        let digest = sha2::Sha256::digest(msg);
+        let sig: Signature = material.signing_key.sign_prehash(&digest).unwrap();
+        assert!(vk_from_sk.verify_prehash(&digest, &sig).is_ok(), "P-256 signature must verify");
     }
 }

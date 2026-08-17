@@ -84,6 +84,7 @@ func main() {
 			mw.GET("", svc.GetMasterWallets)
 			mw.POST("", svc.CreateMasterWallet)
 			mw.GET("/:id", svc.GetMasterWallet)
+			mw.PUT("/:id", svc.UpdateMasterWallet)
 			mw.DELETE("/:id", svc.DeleteMasterWallet)
 			mw.GET("/:id/balance", svc.GetMasterWalletBalance)
 			mw.POST("/:id/sign", svc.SignTransaction)
@@ -101,9 +102,16 @@ func main() {
 
 			// Transactions
 			mw.GET("/:id/transactions", svc.GetTransactions)
+			mw.GET("/:id/transactions/:tid", svc.GetMasterWalletTransaction)
 			mw.POST("/:id/transactions", svc.CreateTransaction)
 			mw.POST("/:id/transactions/:tid/approve", svc.ApproveTransaction)
 			mw.POST("/:id/transactions/:tid/reject", svc.RejectTransaction)
+
+			// Passkey relying-party surface
+			mw.POST("/:id/passkey/register", svc.RegisterPasskey)
+			mw.GET("/:id/passkey/credentials", svc.ListPasskeys)
+			mw.DELETE("/:id/passkey/credentials/:credId", svc.DeletePasskey)
+			mw.POST("/:id/passkey/verify-assertion", svc.VerifyPasskeyAssertion)
 
 			// Policies
 			mw.GET("/:id/policies", svc.GetPolicies)
@@ -158,6 +166,7 @@ func main() {
 			{
 				msig.GET("/wallets", svc.GetMultisigWallets)
 				msig.POST("/wallets", svc.CreateMultisigWallet)
+				msig.GET("/wallets/:wid", svc.GetMultisigWalletDetail)
 				msig.GET("/wallets/:wid/transactions", svc.GetMultisigTransactions)
 				msig.POST("/wallets/:wid/transactions", svc.CreateMultisigTransaction)
 				msig.POST("/transactions/:tid/sign", svc.SignMultisigTransaction)

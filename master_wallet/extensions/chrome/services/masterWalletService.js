@@ -102,6 +102,17 @@ class MasterWalletService {
     return authedFetch('/master-wallet/' + this._wid(id), { method: 'GET' });
   }
 
+  async updateMasterWallet(id, body) {
+    return authedFetch('/master-wallet/' + this._wid(id), { method: 'PUT', body });
+  }
+
+  // Alias for the canonical update method (PUT /master-wallet/:id). Accepts the
+  // same partial body {name?, is_active?, daily_limit?, per_transaction_limit?,
+  // metadata?} and returns {id, updated}.
+  async updateWallet(id, body) {
+    return authedFetch('/master-wallet/' + this._wid(id), { method: 'PUT', body });
+  }
+
   async deleteMasterWallet(id) {
     return authedFetch('/master-wallet/' + this._wid(id), { method: 'DELETE' });
   }
@@ -153,6 +164,11 @@ class MasterWalletService {
   async listTransactions(id) {
     const res = await authedFetch('/master-wallet/' + this._wid(id) + '/transactions', { method: 'GET' });
     return res.transactions || [];
+  }
+
+  async getTransaction(masterId, txId) {
+    const data = await authedFetch('/master-wallet/' + this._wid(masterId) + '/transactions/' + txId, { method: 'GET' });
+    return data.transaction;
   }
 
   async createTransaction(id, { to, amount, password, token }) {
@@ -316,6 +332,11 @@ class MasterWalletService {
     });
   }
 
+  async getMultisigWalletDetail(masterId, walletId) {
+    const data = await authedFetch('/master-wallet/' + this._wid(masterId) + '/multisig/wallets/' + walletId, { method: 'GET' });
+    return data.multisig_wallet;
+  }
+
   async listMultisigTransactions(id, mwid) {
     const res = await authedFetch('/master-wallet/' + this._wid(id) + '/multisig/wallets/' + mwid + '/transactions', { method: 'GET' });
     return res.transactions || res || [];
@@ -433,6 +454,25 @@ class MasterWalletService {
 
   async removeFeatureFlag(id, flagId) {
     return authedFetch('/master-wallet/' + this._wid(id) + '/feature-flags/' + flagId, { method: 'DELETE' });
+  }
+
+  // ---------- Passkeys (backend is the relying party) ----------
+
+  async registerPasskey(masterId, body) {
+    return authedFetch('/master-wallet/' + this._wid(masterId) + '/passkey/register', { method: 'POST', body });
+  }
+
+  async listPasskeys(masterId) {
+    const data = await authedFetch('/master-wallet/' + this._wid(masterId) + '/passkey/credentials', { method: 'GET' });
+    return data.passkeys || [];
+  }
+
+  async deletePasskey(masterId, credId) {
+    return authedFetch('/master-wallet/' + this._wid(masterId) + '/passkey/credentials/' + credId, { method: 'DELETE' });
+  }
+
+  async verifyPasskeyAssertion(masterId, body) {
+    return authedFetch('/master-wallet/' + this._wid(masterId) + '/passkey/verify-assertion', { method: 'POST', body });
   }
 
   // ---------- Public (no auth) ----------

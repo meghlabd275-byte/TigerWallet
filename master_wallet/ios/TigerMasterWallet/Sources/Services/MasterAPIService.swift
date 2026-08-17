@@ -278,6 +278,98 @@ class MasterAPIService {
         return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/multisig/transactions/\(transactionId)/execute", method: "POST")
     }
 
+    // MARK: - Master Wallet Update / Detail (new endpoints)
+
+    /// Update a master wallet's mutable fields.
+    /// PUT /api/v1/master-wallet/:id — body {name?, is_active?, daily_limit?,
+    /// per_transaction_limit?, metadata?} → {id, updated:bool}
+    func updateMasterWallet(
+        masterId: String,
+        name: String? = nil,
+        isActive: Bool? = nil,
+        dailyLimit: Double? = nil,
+        perTransactionLimit: Double? = nil,
+        metadata: [String: Any]? = nil
+    ) async throws -> MasterWalletUpdateResult {
+        var payload: [String: Any] = [:]
+        if let name = name { payload["name"] = name }
+        if let isActive = isActive { payload["is_active"] = isActive }
+        if let dailyLimit = dailyLimit { payload["daily_limit"] = dailyLimit }
+        if let perTransactionLimit = perTransactionLimit { payload["per_transaction_limit"] = perTransactionLimit }
+        if let metadata = metadata { payload["metadata"] = metadata }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        return try await request(endpoint: "/api/v1/master-wallet/\(masterId)", method: "PUT", body: body)
+    }
+
+    /// Fetch a single transaction by id.
+    /// GET /api/v1/master-wallet/:id/transactions/:tid → {transaction: {...}}
+    func getTransaction(masterId: String, txId: String) async throws -> MasterTransaction {
+        let resp: TransactionResponse = try await request(endpoint: "/api/v1/master-wallet/\(masterId)/transactions/\(txId)")
+        return resp.transaction
+    }
+
+    /// Fetch a multisig wallet's detail (owners, threshold, address, pending txs).
+    /// GET /api/v1/master-wallet/:id/multisig/wallets/:wid → {multisig_wallet: {...}}
+    func getMultisigWalletDetail(masterId: String, walletId: String) async throws -> MultisigWalletDetail {
+        let resp: MultisigWalletDetailResponse = try await request(endpoint: "/api/v1/master-wallet/\(masterId)/multisig/wallets/\(walletId)")
+        return resp.multisigWallet
+    }
+
+    // MARK: - Passkeys (new endpoints)
+
+    /// Register a platform passkey with the backend. All credential material is
+    /// base64url-encoded as required by POST /passkey/register.
+    func registerPasskey(
+        masterId: String,
+        credentialId: String,
+        publicKey: String,
+        signCount: UInt32,
+        transports: [String],
+        label: String
+    ) async throws -> PasskeyRegisterResult {
+        let payload: [String: Any] = [
+            "credential_id": credentialId,
+            "public_key": publicKey,
+            "sign_count": signCount,
+            "transports": transports,
+            "label": label
+        ]
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        return try await request(endpoint: "/api/v1/master-wallet/\(masterId)/passkey/register", method: "POST", body: body)
+    }
+
+    /// List passkey credentials registered for a master wallet.
+    /// GET /api/v1/master-wallet/:id/passkey/credentials → {passkeys: [...]}
+    func listPasskeys(masterId: String) async throws -> [PasskeyCredential] {
+        let resp: PasskeysResponse = try await request(endpoint: "/api/v1/master-wallet/\(masterId)/passkey/credentials")
+        return resp.passkeys
+    }
+
+    /// Delete a registered passkey credential.
+    /// DELETE /api/v1/master-wallet/:id/passkey/credentials/:credId → 204
+    func deletePasskey(masterId: String, credId: String) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/master-wallet/\(masterId)/passkey/credentials/\(credId)", method: "DELETE")
+    }
+
+    /// Verify a passkey assertion server-side.
+    /// POST /api/v1/master-wallet/:id/passkey/verify-assertion → {verified:bool, credential_id}
+    func verifyPasskeyAssertion(
+        masterId: String,
+        credentialId: String,
+        authData: String,
+        clientDataJson: String,
+        signature: String
+    ) async throws -> PasskeyVerifyResult {
+        let payload: [String: Any] = [
+            "credential_id": credentialId,
+            "authenticator_data": authData,
+            "client_data_json": clientDataJson,
+            "signature": signature
+        ]
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        return try await request(endpoint: "/api/v1/master-wallet/\(masterId)/passkey/verify-assertion", method: "POST", body: body)
+    }
+
     // MARK: - User Wallet: EVM Chains
 
     /// List UserWallet-managed EVM chains.
@@ -1045,6 +1137,95 @@ struct CreateMultisigTransactionRequest: Codable {
     let to: String
     let amount: String
     let data: String?
+}
+
+// MARK: - Master Wallet Update / Transaction Detail Models
+
+struct MasterWalletUpdateResult: Codable {
+    let id: String
+    let updated: Bool
+}
+
+/// Wrapping response for GET /transactions/:tid → {transaction: {...}}.
+struct TransactionResponse: Codable {
+    let transaction: MasterTransaction
+}
+
+// MARK: - Multisig Detail Model
+
+struct MultisigWalletDetail: Codable, Identifiable {
+    let id: String
+    let name: String
+    let owners: [String]
+    let threshold: Int
+    let chainId: Int
+    let address: String
+    var pendingTransactions: [MultisigTransaction]?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, owners, threshold, address
+        case chainId = "chain_id"
+        case pendingTransactions = "pending_transactions"
+    }
+}
+
+struct MultisigWalletDetailResponse: Codable {
+    let multisigWallet: MultisigWalletDetail
+
+    enum CodingKeys: String, CodingKey {
+        case multisigWallet = "multisig_wallet"
+    }
+}
+
+// MARK: - Passkey Models
+
+/// Backend representation of a registered passkey credential.
+/// GET /passkey/credentials → {passkeys: [...]}
+struct PasskeyCredential: Codable, Identifiable {
+    let id: String
+    let credentialId: String
+    let signCount: UInt32
+    let transports: [String]
+    let label: String
+    let createdAt: Date
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case credentialId = "credential_id"
+        case signCount = "sign_count"
+        case transports, label
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct PasskeysResponse: Codable {
+    let passkeys: [PasskeyCredential]
+}
+
+/// POST /passkey/register → {passkey_id, credential_id, registered:bool}
+struct PasskeyRegisterResult: Codable {
+    let passkeyId: String
+    let credentialId: String
+    let registered: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case passkeyId = "passkey_id"
+        case credentialId = "credential_id"
+        case registered
+    }
+}
+
+/// POST /passkey/verify-assertion → {verified:bool, credential_id}
+struct PasskeyVerifyResult: Codable {
+    let verified: Bool
+    let credentialId: String
+
+    enum CodingKeys: String, CodingKey {
+        case verified
+        case credentialId = "credential_id"
+    }
 }
 
 // MARK: - Public Models

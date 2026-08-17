@@ -197,6 +197,44 @@ public:
         const std::map<std::string, std::string>& assertionResponse,
         std::string& userId
     );
+
+    // ==================== Backend-backed passkey flow ====================
+    // register() generates a real P-256 (ES256) ECDSA keypair with OpenSSL,
+    // derives a random 32-byte credential id (RAND_bytes), base64url-encodes
+    // the SPKI public key + credential id, and POSTs them to the canonical
+    // backend at /api/v1/master-wallet/:id/passkey/register. The backend is
+    // authoritative for storing the credential; we never fabricate success.
+    // On success, credentialId is set to the base64url credential id and
+    // passkeyId to the backend-issued passkey id.
+    struct RegisterResult {
+        bool success = false;
+        std::string credentialId;  // base64url
+        std::string passkeyId;     // backend id
+        std::string error;
+    };
+    RegisterResult register_(const std::string& label,
+                             const std::vector<std::string>& transports);
+
+    // verifyAssertion() forwards a WebAuthn assertion to the backend at
+    // /api/v1/master-wallet/:id/passkey/verify-assertion. All fields are
+    // base64url. As a defense-in-depth local fallback (NOT a substitute for
+    // the backend), if the backend cannot be reached the assertion is
+    // verified locally with real OpenSSL ECDSA P-256 verification against a
+    // stored public key for the given credential id. Verification NEVER
+    // succeeds without a real check.
+    struct AssertionInput {
+        std::string credentialId;      // base64url
+        std::string authenticatorData; // base64url
+        std::string clientDataJson;    // base64url
+        std::string signature;         // base64url
+    };
+    struct VerifyAssertionResult {
+        bool verified = false;
+        std::string credentialId;
+        std::string source;  // "backend" or "local"
+        std::string error;
+    };
+    VerifyAssertionResult verifyAssertion(const AssertionInput& input);
     
     // Credential management
     std::vector<PasskeyCredential> listCredentials() const;
@@ -274,6 +312,12 @@ private:
         const std::vector<uint8_t>& message,
         const std::vector<uint8_t>& signature
     );
+
+    // Lookup of the stored SPKI public key bytes for a credential id, used by
+    // the local ECDSA fallback in verifyAssertion(). Returns std::nullopt when
+    // the credential is unknown or has no public key.
+    std::optional<std::vector<uint8_t>> credentialPublicKeyBytes(
+        const std::string& credentialId) const;
 };
 
 // Inline implementations

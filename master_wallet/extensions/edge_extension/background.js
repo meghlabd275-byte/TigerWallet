@@ -244,6 +244,21 @@ async function handleRelay(payload) {
       return svc.signMultisigTransaction(walletId, args[1]);
     case 'executeMultisigTransaction':
       return svc.executeMultisigTransaction(walletId, args[1]);
+    case 'getTransaction':
+      return svc.getTransaction(walletId, args[1]);
+    case 'getMultisigWalletDetail':
+      return svc.getMultisigWalletDetail(walletId, args[1]);
+    case 'updateWallet':
+      return svc.updateWallet(walletId, args[1]);
+    // ---------- Passkeys (backend is the relying party) ----------
+    case 'registerPasskey':
+      return svc.registerPasskey(walletId, args[1]);
+    case 'listPasskeys':
+      return svc.listPasskeys(walletId);
+    case 'deletePasskey':
+      return svc.deletePasskey(walletId, args[1]);
+    case 'verifyPasskeyAssertion':
+      return svc.verifyPasskeyAssertion(walletId, args[1]);
     case 'setCurrentWallet':
       await API().setAuthContext({ currentWalletId: args[0] });
       return { currentWalletId: args[0] };

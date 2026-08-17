@@ -120,9 +120,11 @@
       const res = await send('MW_RELAY', { action: 'listMasterWallets', args: [] });
       const wallets = (res && (res.wallets || res)) || [];
       renderWalletList(Array.isArray(wallets) ? wallets : []);
+      renderPasskeys();
     } catch (e) {
       setStatus((e && e.message) || String(e), true);
       renderWalletList([]);
+      renderPasskeys();
     }
   }
 
@@ -160,9 +162,145 @@
     try {
       await send('MW_RELAY', { action: 'setCurrentWallet', args: [id] });
       setStatus('Selected: ' + name);
+      renderPasskeys();
     } catch (e) {
       setStatus((e && e.message) || String(e), true);
     }
+  }
+
+  // ---- Passkeys -----------------------------------------------------------
+  // Authoritative list comes from the backend via the MW_RELAY 'listPasskeys'
+  // handler in background.js, which calls masterWalletService.listPasskeys on
+  // the currently selected master wallet. No passkeys are fabricated.
+  async function renderPasskeys() {
+    const list = $('passkeyList');
+    if (!list) return;
+    list.innerHTML = '';
+    let passkeys = [];
+    try {
+      const res = await send('MW_RELAY', { action: 'listPasskeys', args: [] });
+      passkeys = (res && (res.passkeys || res)) || [];
+      if (!Array.isArray(passkeys)) passkeys = [];
+    } catch (e) {
+      list.appendChild(el('div', { class: 'muted' }, '\u26A0 ' + ((e && e.message) || String(e))));
+      return;
+    }
+    if (!passkeys.length) {
+      list.appendChild(el('div', { class: 'empty' }, 'No passkeys registered.'));
+      return;
+    }
+    for (const p of passkeys) {
+      const credId = p.credential_id || p.id || '';
+      const label = p.label || '';
+      const created = p.created_at ? new Date(p.created_at).toLocaleString() : '';
+      const row = el('div', { class: 'row' },
+        el('div', null,
+          el('div', { text: label ? (label + ' (' + truncate(credId, 12) + ')') : truncate(credId, 18) }),
+          el('div', { class: 'muted', text: created })
+        ),
+        el('button', { class: 'btn danger', style: 'width:auto;margin:0;', id: 'pk-' + String(credId).slice(0, 12) }, 'Delete')
+      );
+      list.appendChild(row);
+      const btn = document.getElementById('pk-' + String(credId).slice(0, 12));
+      if (btn) btn.addEventListener('click', () => deletePasskey(credId));
+    }
+  }
+
+  async function deletePasskey(credentialId) {
+    try {
+      await send('MW_RELAY', { action: 'deletePasskey', args: [credentialId] });
+      setStatus('Passkey deleted');
+      renderPasskeys();
+    } catch (e) {
+      setStatus((e && e.message) || String(e), true);
+    }
+  }
+
+  // Real WebAuthn registration: run navigator.credentials.create in the popup
+  // (an https/secure context), then relay the resulting credential_id +
+  // SPKI public key to the backend's /passkey/register route via MW_RELAY
+  // 'registerPasskey'. The backend is the relying party and stores the key.
+  async function registerPasskey() {
+    const ctx = await send('MW_AUTH_CONTEXT', {});
+    if (!ctx || !ctx.token) { setStatus('Sign in first', true); return; }
+    if (!navigator.credentials || !navigator.credentials.create || !window.PublicKeyCredential) {
+      setStatus('WebAuthn not supported here', true);
+      return;
+    }
+    const origin = (location && location.hostname) ? location.hostname : 'localhost';
+    setStatus('Creating passkey\u2026');
+    let credential;
+    try {
+      const challenge = new Uint8Array(32);
+      crypto.getRandomValues(challenge);
+      const userId = new Uint8Array(16);
+      crypto.getRandomValues(userId);
+      credential = await navigator.credentials.create({
+        publicKey: {
+          rp: { name: 'TigerMasterWallet', id: origin },
+          user: { id: userId, name: ctx.email || 'user', displayName: ctx.email || 'user' },
+          challenge,
+          pubKeyCredParams: [
+            { type: 'public-key', alg: -7 },
+            { type: 'public-key', alg: -257 },
+          ],
+          timeout: 60000,
+          authenticatorSelection: {
+            authenticatorAttachment: 'platform',
+            userVerification: 'required',
+            requireResidentKey: true,
+          },
+          attestation: 'none',
+        },
+      });
+    } catch (e) {
+      setStatus('WebAuthn create failed: ' + ((e && e.message) || String(e)), true);
+      return;
+    }
+    if (!credential || !credential.id) {
+      setStatus('WebAuthn returned no credential', true);
+      return;
+    }
+    const resp = credential.response || {};
+    let publicKeyBytes = null;
+    if (typeof resp.getPublicKey === 'function') {
+      const spki = resp.getPublicKey();
+      if (spki) publicKeyBytes = spki;
+    }
+    if (!publicKeyBytes && resp.publicKey) publicKeyBytes = resp.publicKey;
+    if (!publicKeyBytes) {
+      setStatus('Credential is missing a SPKI public key', true);
+      return;
+    }
+    const transports = (typeof credential.getTransports === 'function')
+      ? (credential.getTransports() || [])
+      : (credential.transports || []);
+    try {
+      const res = await send('MW_RELAY', {
+        action: 'registerPasskey',
+        args: [{
+          credential_id: credential.id,
+          public_key: bufToB64url(publicKeyBytes),
+          transports,
+          label: ctx.email || 'popup',
+        }],
+      });
+      if (!res || !res.registered) {
+        setStatus('Backend rejected passkey registration', true);
+        return;
+      }
+      setStatus('Passkey registered');
+      renderPasskeys();
+    } catch (e) {
+      setStatus((e && e.message) || String(e), true);
+    }
+  }
+
+  function bufToB64url(buf) {
+    const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
 
   function showAuth() {
@@ -180,6 +318,8 @@
     $('logoutBtn').addEventListener('click', logout);
     $('refreshBtn').addEventListener('click', renderWalletView);
     $('themeToggleBtn').addEventListener('click', toggleTheme);
+    const regPkBtn = $('registerPasskeyBtn');
+    if (regPkBtn) regPkBtn.addEventListener('click', registerPasskey);
 
     await applyTheme();
     try {

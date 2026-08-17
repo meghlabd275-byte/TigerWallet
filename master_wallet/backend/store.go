@@ -397,6 +397,20 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			executed_at TIMESTAMPTZ
 		)`,
+		// Passkey relying-party table - stores WebAuthn credential public keys (SPKI).
+		`CREATE TABLE IF NOT EXISTS mw_passkeys (
+			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+			master_wallet_id UUID NOT NULL REFERENCES master_wallets(id) ON DELETE CASCADE,
+			credential_id TEXT NOT NULL,
+			public_key_spki TEXT NOT NULL,
+			sign_count INTEGER NOT NULL DEFAULT 0,
+			transports TEXT[] NOT NULL DEFAULT '{}',
+			label TEXT,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE (master_wallet_id, credential_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_mw_passkeys_master ON mw_passkeys (master_wallet_id)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := pool.Exec(ctx, stmt); err != nil {

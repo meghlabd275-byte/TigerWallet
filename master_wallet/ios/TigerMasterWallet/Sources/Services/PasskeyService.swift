@@ -38,10 +38,21 @@ enum PasskeyError: Error, LocalizedError {
 class PasskeyService: NSObject {
 
     private let keyTag = "com.tigerwallet.passkey"
-    private var credentials: [PasskeyCredential] = []
+    private var credentials: [StoredPasskeyCredential] = []
+
+    /// Canonical backend client used to register passkeys server-side and to
+    /// verify assertions against the backend's stored public keys. Injected for
+    /// testability; defaults to a standard client pointed at :8450.
+    private let apiService: MasterAPIService
+
+    init(apiService: MasterAPIService = MasterAPIService()) {
+        self.apiService = apiService
+        super.init()
+        loadCredentials()
+    }
 
     // Active authorization controllers bridged to Swift continuations.
-    private var registrationContinuation: CheckedContinuation<PasskeyCredential, Error>?
+    private var registrationContinuation: CheckedContinuation<StoredPasskeyCredential, Error>?
     private var assertionContinuation: CheckedContinuation<PasskeyAuthResult, Error>?
     private var currentAuthorizationController: ASAuthorizationController?
 
@@ -85,7 +96,7 @@ class PasskeyService: NSObject {
     /// returned credential stores the real P-256 public key (x963) produced by
     /// the Secure Enclave-backed authenticator. Throws on failure/cancel.
     func registerPasskey(relyingPartyId: String, relyingPartyName: String,
-                         userId: String, userName: String) async throws -> PasskeyCredential {
+                         userId: String, userName: String) async throws -> StoredPasskeyCredential {
         guard isSupported() else { throw PasskeyError.notSupported }
 
         let challenge = generateChallenge(length: 32)
@@ -108,6 +119,62 @@ class PasskeyService: NSObject {
             controller.performRequests()
             self.currentAuthorizationController = controller
         }
+    }
+
+    /// Full registration flow: run the real ASAuthorization
+    /// ASAuthorizationPlatformPublicKeyCredentialRegistrationRequest ceremony,
+    /// then POST the SPKI (SubjectPublicKeyInfo DER) public key + credential_id
+    /// (both base64url) to the backend /passkey/register route. The backend is
+    /// the system of record for registered passkeys; this never fabricates a
+    /// success. Throws on ceremony failure, backend failure, or if the backend
+    /// reports `registered == false`.
+    ///
+    /// `label` is an optional human-readable handle stored alongside the
+    /// credential server-side.
+    func register(masterId: String,
+                  relyingPartyId: String,
+                  relyingPartyName: String,
+                  userId: String,
+                  userName: String,
+                  label: String) async throws -> PasskeyRegisterResult {
+        // 1. Real WebAuthn ceremony (Secure Enclave-backed platform authenticator).
+        let credential = try await registerPasskey(
+            relyingPartyId: relyingPartyId,
+            relyingPartyName: relyingPartyName,
+            userId: userId,
+            userName: userName
+        )
+
+        // 2. Derive the canonical SPKI (DER) public key from the x963 bytes
+        //    returned by the authenticator, then base64url-encode it.
+        guard let x963Data = Data(base64Encoded: credential.publicKey),
+              let publicKey = try? P256.Signing.PublicKey(x963Representation: x963Data) else {
+            throw PasskeyError.missingPublicKey
+        }
+        let spkiBase64url = base64urlEncode(publicKey.derRepresentation)
+
+        // 3. base64url-encode the credential id.
+        guard let credIdData = Data(base64Encoded: credential.id) else {
+            throw PasskeyError.registrationFailed("credential id was not valid base64")
+        }
+        let credentialIdBase64url = base64urlEncode(credIdData)
+
+        // 4. POST to the backend. Fail-closed: a backend-reported
+        //    `registered == false` is treated as failure.
+        let result = try await apiService.registerPasskey(
+            masterId: masterId,
+            credentialId: credentialIdBase64url,
+            publicKey: spkiBase64url,
+            signCount: 0,
+            transports: ["internal"],
+            label: label
+        )
+
+        guard result.registered else {
+            throw PasskeyError.registrationFailed("backend declined registration (registered=false)")
+        }
+
+        return result
     }
 
     // MARK: - Authentication (real ASAuthorization + CryptoKit P-256 verify)
@@ -159,6 +226,11 @@ class PasskeyService: NSObject {
     /// real CryptoKit P-256 signature verification. All inputs are base64url/base64.
     /// Returns true only if the signature is valid over
     /// `authenticatorData || SHA-256(clientDataJSON)` for the stored public key.
+    ///
+    /// This is the local fail-closed fallback (no backend round-trip). The
+    /// canonical verification path is `verifyAssertion(masterId:...)`, which
+    /// delegates to the backend's stored public keys via
+    /// POST /passkey/verify-assertion.
     func verifyAssertion(credentialId: String, clientDataJSONBase64: String,
                          authenticatorDataBase64: String, signatureBase64: String) -> Bool {
         guard let credential = credentials.first(where: { $0.id == credentialId }) else {
@@ -190,9 +262,61 @@ class PasskeyService: NSObject {
         return publicKey.isValidSignature(signature, for: signedData)
     }
 
+    /// Server-side assertion verification. POSTs the assertion
+    /// (credential_id, authenticator_data, client_data_json, signature — all
+    /// base64url) to the backend /passkey/verify-assertion route, which checks
+    /// the signature against the public key it holds. The backend is the system
+    /// of record for credential public keys.
+    ///
+    /// Fail-closed: returns `false` on any backend failure, non-2xx response,
+    /// or `verified == false`. Never fabricates success. If a `localPublicKey`
+    /// (base64 x963) is supplied and the backend is unreachable, the real
+    /// CryptoKit `P256.Signing.PublicKey.isValidSignature` check is used as a
+    /// fallback — but a missing/unparseable key yields `false`, not `true`.
+    func verifyAssertion(masterId: String,
+                         credentialId: String,
+                         clientDataJSONBase64: String,
+                         authenticatorDataBase64: String,
+                         signatureBase64: String,
+                         localPublicKeyBase64: String? = nil) async -> Bool {
+        let credIdB64url = base64urlNormalize(credentialId)
+        let clientDataB64url = base64urlNormalize(clientDataJSONBase64)
+        let authDataB64url = base64urlNormalize(authenticatorDataBase64)
+        let signatureB64url = base64urlNormalize(signatureBase64)
+
+        do {
+            let result = try await apiService.verifyPasskeyAssertion(
+                masterId: masterId,
+                credentialId: credIdB64url,
+                authData: authDataB64url,
+                clientDataJson: clientDataB64url,
+                signature: signatureB64url
+            )
+            return result.verified
+        } catch {
+            // Backend unreachable: fall back to the real local CryptoKit check.
+            // We only trust a caller-supplied or stored public key; never
+            // fabricate success.
+            let localKey = localPublicKeyBase64
+                ?? credentials.first(where: { $0.id == credentialId })?.publicKey
+            guard let keyB64 = localKey,
+                  let keyData = Data(base64Encoded: keyB64),
+                  let publicKey = try? P256.Signing.PublicKey(x963Representation: keyData),
+                  let clientData = Data(base64Encoded: unbase64url(clientDataJSONBase64)),
+                  let authenticatorData = Data(base64Encoded: unbase64url(authenticatorDataBase64)),
+                  let signatureData = Data(base64Encoded: unbase64url(signatureBase64)),
+                  let signature = try? P256.Signing.ECDSASignature(derRepresentation: signatureData) else {
+                return false
+            }
+            let clientDataHash = SHA256.hash(data: clientData)
+            let signedData = authenticatorData + Data(clientDataHash)
+            return publicKey.isValidSignature(signature, for: signedData)
+        }
+    }
+
     // MARK: - Credentials Management
 
-    func getCredentials() -> [PasskeyCredential] {
+    func getCredentials() -> [StoredPasskeyCredential] {
         return credentials
     }
 
@@ -228,11 +352,27 @@ class PasskeyService: NSObject {
         return t
     }
 
+    /// base64url-encode raw bytes (no padding), as required by the passkey
+    /// backend routes.
+    private func base64urlEncode(_ data: Data) -> String {
+        data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    /// Normalize a base64/base64url string to unpadded base64url.
+    private func base64urlNormalize(_ s: String) -> String {
+        var t = s.replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+        while t.hasSuffix("=") { t.removeLast() }
+        return t
+    }
+
     private func updateCredentialCounter(credentialId: String) {
         if let index = credentials.firstIndex(where: { $0.id == credentialId }) {
             let current = credentials[index]
             let newCounter = (Double(current.counter) ?? 0) + 1
-            credentials[index] = PasskeyCredential(
+            credentials[index] = StoredPasskeyCredential(
                 id: current.id,
                 publicKey: current.publicKey,
                 counter: String(newCounter),
@@ -245,12 +385,12 @@ class PasskeyService: NSObject {
 
     private func loadCredentials() {
         if let data = UserDefaults.standard.data(forKey: "passkey_credentials"),
-           let decoded = try? JSONDecoder().decode([PasskeyCredential].self, from: data) {
+           let decoded = try? JSONDecoder().decode([StoredPasskeyCredential].self, from: data) {
             credentials = decoded
         }
     }
 
-    private func saveCredential(_ credential: PasskeyCredential) {
+    private func saveCredential(_ credential: StoredPasskeyCredential) {
         if let index = credentials.firstIndex(where: { $0.id == credential.id }) {
             credentials[index] = credential
         } else {
@@ -279,7 +419,7 @@ extension PasskeyService: ASAuthorizationControllerDelegate {
             } else {
                 publicKeyData = Data()
             }
-            let credential = PasskeyCredential(
+            let credential = StoredPasskeyCredential(
                 id: credentialId,
                 publicKey: publicKeyData.base64EncodedString(),
                 counter: "0",
@@ -353,7 +493,10 @@ extension PasskeyService: ASAuthorizationControllerPresentationContextProviding 
 
 // MARK: - Models
 
-struct PasskeyCredential: Codable {
+/// Locally-persisted passkey credential (x963 public key). This is the on-device
+/// mirror used for the offline CryptoKit fallback; the backend holds its own
+/// canonical credential records (see `PasskeyCredential` in MasterAPIService).
+struct StoredPasskeyCredential: Codable {
     let id: String
     let publicKey: String   // base64-encoded P-256 public key (x963 representation)
     let counter: String

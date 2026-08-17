@@ -19,6 +19,18 @@ import {
   WithdrawalRequestResponse,
 } from './api';
 import { webSocketService } from './services/webSocketService';
+import {
+  PoliciesPage,
+  FeesPage,
+  NotificationsPage,
+  WebhooksPage,
+  AuditPage,
+  MultisigPage,
+  ChainsPage,
+  TokensPage,
+  FeatureFlagsPage,
+  PasskeysPage,
+} from './pages';
 
 type Page =
   | 'dashboard'
@@ -28,6 +40,16 @@ type Page =
   | 'auto-sign'
   | 'users'
   | 'analytics'
+  | 'policies'
+  | 'fees'
+  | 'notifications'
+  | 'webhooks'
+  | 'audit'
+  | 'multisig'
+  | 'chains'
+  | 'tokens'
+  | 'feature-flags'
+  | 'passkeys'
   | 'settings';
 
 interface AuthForm {
@@ -169,6 +191,16 @@ const Sidebar = ({ currentPage, setCurrentPage, isDark, masterAddress, onLogout 
     { id: 'auto-sign', label: 'Auto Sign', icon: '🔑' },
     { id: 'users', label: 'Users', icon: '👥' },
     { id: 'analytics', label: 'Analytics', icon: '📈' },
+    { id: 'policies', label: 'Policies', icon: '🛡️' },
+    { id: 'fees', label: 'Fees', icon: '💸' },
+    { id: 'notifications', label: 'Notifications', icon: '🔔' },
+    { id: 'webhooks', label: 'Webhooks', icon: '🪝' },
+    { id: 'audit', label: 'Audit', icon: '📋' },
+    { id: 'multisig', label: 'Multisig', icon: '🔏' },
+    { id: 'chains', label: 'Chains', icon: '⛓️' },
+    { id: 'tokens', label: 'Tokens', icon: '🪙' },
+    { id: 'feature-flags', label: 'Feature Flags', icon: '🏁' },
+    { id: 'passkeys', label: 'Passkeys', icon: '🔐' },
     { id: 'settings', label: 'Settings', icon: '⚙️' },
   ];
 
@@ -1321,6 +1353,36 @@ const App = () => {
           )}
           {currentPage === 'analytics' && (
             <AnalyticsPage isDark={isDark} masterId={masterId} />
+          )}
+          {currentPage === 'policies' && (
+            <PoliciesPage isDark={isDark} masterId={masterId} />
+          )}
+          {currentPage === 'fees' && (
+            <FeesPage isDark={isDark} masterId={masterId} />
+          )}
+          {currentPage === 'notifications' && (
+            <NotificationsPage isDark={isDark} masterId={masterId} />
+          )}
+          {currentPage === 'webhooks' && (
+            <WebhooksPage isDark={isDark} masterId={masterId} />
+          )}
+          {currentPage === 'audit' && (
+            <AuditPage isDark={isDark} masterId={masterId} />
+          )}
+          {currentPage === 'multisig' && (
+            <MultisigPage isDark={isDark} masterId={masterId} />
+          )}
+          {currentPage === 'chains' && (
+            <ChainsPage isDark={isDark} masterId={masterId} />
+          )}
+          {currentPage === 'tokens' && (
+            <TokensPage isDark={isDark} masterId={masterId} />
+          )}
+          {currentPage === 'feature-flags' && (
+            <FeatureFlagsPage isDark={isDark} masterId={masterId} />
+          )}
+          {currentPage === 'passkeys' && (
+            <PasskeysPage isDark={isDark} masterId={masterId} />
           )}
           {currentPage === 'settings' && <SettingsPage isDark={isDark} />}
         </main>

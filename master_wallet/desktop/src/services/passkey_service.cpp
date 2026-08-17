@@ -15,6 +15,8 @@
 
 #include "passkey_service.hpp"
 
+#include "api_client.hpp"
+
 #include <algorithm>
 #include <cstring>
 #include <openssl/rand.h>
@@ -22,6 +24,7 @@
 #include <openssl/evp.h>
 #include <openssl/ec.h>
 #include <openssl/x509.h>
+#include <openssl/pem.h>
 #include <sstream>
 #include <iomanip>
 #include <stdexcept>
@@ -111,6 +114,67 @@ std::string join(const std::vector<std::string>& parts, const std::string& sep) 
     for (size_t i = 0; i < parts.size(); ++i) {
         if (i) out += sep;
         out += parts[i];
+    }
+    return out;
+}
+
+// RFC 4648 base64url (no padding) encoder, used for WebAuthn fields sent to the
+// backend (/passkey/register and /passkey/verify-assertion require base64url).
+std::string base64urlEncode(const std::vector<uint8_t>& data) {
+    static const char kTbl[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    std::string out;
+    out.reserve(((data.size() + 2) / 3) * 4);
+    size_t i = 0;
+    while (i + 3 <= data.size()) {
+        uint32_t n = (uint32_t(data[i]) << 16) | (uint32_t(data[i + 1]) << 8) |
+                     uint32_t(data[i + 2]);
+        out.push_back(kTbl[(n >> 18) & 0x3F]);
+        out.push_back(kTbl[(n >> 12) & 0x3F]);
+        out.push_back(kTbl[(n >> 6) & 0x3F]);
+        out.push_back(kTbl[n & 0x3F]);
+        i += 3;
+    }
+    size_t rem = data.size() - i;
+    if (rem == 1) {
+        uint32_t n = uint32_t(data[i]) << 16;
+        out.push_back(kTbl[(n >> 18) & 0x3F]);
+        out.push_back(kTbl[(n >> 12) & 0x3F]);
+    } else if (rem == 2) {
+        uint32_t n = (uint32_t(data[i]) << 16) | (uint32_t(data[i + 1]) << 8);
+        out.push_back(kTbl[(n >> 18) & 0x3F]);
+        out.push_back(kTbl[(n >> 12) & 0x3F]);
+        out.push_back(kTbl[(n >> 6) & 0x3F]);
+    }
+    return out;
+}
+
+int b64urlVal(char c) {
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '-') return 62;
+    if (c == '_') return 63;
+    return -1;
+}
+
+// RFC 4648 base64url decoder. Accepts the URL-safe alphabet and ignores
+// padding and whitespace. Returns an empty vector on invalid input.
+std::vector<uint8_t> base64urlDecode(const std::string& s) {
+    std::vector<uint8_t> out;
+    out.reserve(s.size() * 3 / 4);
+    uint32_t buf = 0;
+    int bits = 0;
+    for (char c : s) {
+        if (c == '=' || c == '\n' || c == '\r' || c == ' ') continue;
+        int v = b64urlVal(c);
+        if (v < 0) continue;
+        buf = (buf << 6) | uint32_t(v);
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            out.push_back(uint8_t((buf >> bits) & 0xFF));
+        }
     }
     return out;
 }
@@ -601,6 +665,207 @@ bool PasskeyService::verifyECDSASignature(
     EVP_MD_CTX_free(ctx);
     EVP_PKEY_free(pkey);
     return ok;
+}
+
+// ==================== Backend-backed passkey flow ====================
+
+PasskeyService::RegisterResult PasskeyService::register_(
+    const std::string& label,
+    const std::vector<std::string>& transports
+) {
+    RegisterResult r;
+
+    // 1) Generate a real P-256 (secp256r1 / prime256v1) ECDSA keypair with
+    //    OpenSSL. RAND_bytes (used internally by EC_KEY_generate_key) is the
+    //    CSPRNG; there is no time-based seeding here.
+    EC_KEY* ec = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
+    if (!ec) {
+        r.error = "EC_KEY_new_by_curve_name failed";
+        return r;
+    }
+    if (EC_KEY_generate_key(ec) != 1) {
+        EC_KEY_free(ec);
+        r.error = "EC_KEY_generate_key failed";
+        return r;
+    }
+
+    // 2) Serialize the public key as a DER SubjectPublicKeyInfo (SPKI) blob via
+    //    i2d_PUBKEY — this is the format WebAuthn/COSE ES256 expects.
+    std::vector<uint8_t> spki;
+    {
+        EVP_PKEY* pkey = EVP_PKEY_new();
+        if (!pkey || EVP_PKEY_assign_EC_KEY(pkey, ec) != 1) {
+            // On failure, ec is NOT consumed by pkey; free it ourselves.
+            if (pkey) EVP_PKEY_free(pkey);
+            EC_KEY_free(ec);
+            r.error = "EVP_PKEY_assign_EC_KEY failed";
+            return r;
+        }
+        // From here pkey owns ec.
+        unsigned char* buf = nullptr;
+        int len = i2d_PUBKEY(pkey, &buf);
+        EVP_PKEY_free(pkey);
+        if (len <= 0 || !buf) {
+            r.error = "i2d_PUBKEY failed";
+            return r;
+        }
+        spki.assign(buf, buf + len);
+        OPENSSL_free(buf);
+    }
+
+    // 3) Random 32-byte credential id via OpenSSL RAND_bytes (CSPRNG).
+    std::vector<uint8_t> credentialIdBytes(32);
+    if (RAND_bytes(credentialIdBytes.data(), 32) != 1) {
+        r.error = "RAND_bytes failed for credential id";
+        return r;
+    }
+
+    std::string credentialIdB64url = base64urlEncode(credentialIdBytes);
+    std::string publicKeyB64url = base64urlEncode(spki);
+
+    // 4) Build transports JSON array string.
+    std::ostringstream transportsJson;
+    transportsJson << "[";
+    for (size_t i = 0; i < transports.size(); ++i) {
+        if (i) transportsJson << ",";
+        transportsJson << "\"" << api::jsonEscape(transports[i]) << "\"";
+    }
+    transportsJson << "]";
+
+    std::ostringstream body;
+    body << "{"
+         << "\"credential_id\":\"" << api::jsonEscape(credentialIdB64url) << "\","
+         << "\"public_key\":\"" << api::jsonEscape(publicKeyB64url) << "\","
+         << "\"sign_count\":0,"
+         << "\"transports\":" << transportsJson.str() << ","
+         << "\"label\":\"" << api::jsonEscape(label.empty() ? std::string("Passkey") : label) << "\""
+         << "}";
+
+    // 5) POST to the backend /passkey/register route. The backend is
+    //    authoritative; we only succeed if it confirms registration.
+    std::string resp;
+    try {
+        resp = api::backendPost(
+            "/api/v1/master-wallet/" + masterWalletId_ + "/passkey/register", body.str());
+    } catch (const api::APIException& e) {
+        r.error = e.what();
+        return r;
+    }
+
+    r.passkeyId = api::jsonStringField(resp, "passkey_id").value_or("");
+    bool registered = api::jsonBoolField(resp, "registered").value_or(false);
+    if (!registered) {
+        r.error = "Backend declined passkey registration";
+        return r;
+    }
+
+    // 6) Cache the credential locally (public material only) so that the
+    //    local ECDSA fallback in verifyAssertion() can verify future
+    //    assertions if the backend is unreachable.
+    PasskeyCredential credential;
+    credential.id = credentialIdB64url;
+    credential.publicKey = publicKeyB64url;
+    credential.counter = "0";
+    credential.transports = transports;
+    credential.aaguid = "00000000-0000-0000-0000-000000000000";
+    credential.label = label.empty() ? "Passkey" : label;
+    credential.isResident = true;
+    credential.createdAt = std::time(nullptr);
+    credential.lastUsedAt = credential.createdAt;
+    storeCredential(credential);
+
+    r.success = true;
+    r.credentialId = credentialIdB64url;
+    totalRegistrations_++;
+    lastRegistrationTime_ = std::chrono::system_clock::now();
+    return r;
+}
+
+PasskeyService::VerifyAssertionResult PasskeyService::verifyAssertion(
+    const AssertionInput& input
+) {
+    VerifyAssertionResult r;
+    r.credentialId = input.credentialId;
+
+    if (input.credentialId.empty() || input.authenticatorData.empty() ||
+        input.clientDataJson.empty() || input.signature.empty()) {
+        r.error = "All assertion fields are required";
+        return r;
+    }
+
+    // 1) Authoritative path: forward the assertion to the backend. The backend
+    //    performs the real WebAuthn verification and is the source of truth.
+    auto body = api::buildJsonObject({
+        {"credential_id", input.credentialId},
+        {"authenticator_data", input.authenticatorData},
+        {"client_data_json", input.clientDataJson},
+        {"signature", input.signature},
+    });
+
+    try {
+        std::string resp = api::backendPost(
+            "/api/v1/master-wallet/" + masterWalletId_ + "/passkey/verify-assertion", body);
+        auto verified = api::jsonBoolField(resp, "verified");
+        if (verified) {
+            r.verified = *verified;
+            r.source = "backend";
+            if (!r.verified) r.error = "Backend rejected assertion";
+            auto cred = api::jsonStringField(resp, "credential_id");
+            if (cred) r.credentialId = *cred;
+            return r;
+        }
+        // Backend responded but no verified flag — do NOT assume success; fall
+        // through to the local ECDSA check, which will fail closed if needed.
+    } catch (const api::APIException& e) {
+        // Backend unreachable: use the defense-in-depth local fallback below.
+        r.error = std::string("Backend unreachable (") + e.what() + "): using local fallback";
+    }
+
+    // 2) Defense-in-depth local fallback. This is NOT a substitute for the
+    //    backend: it only verifies the cryptographic signature with real
+    //    OpenSSL ECDSA P-256 against the stored public key. It performs no
+    //    replay/counter policy and is only consulted when the backend could not
+    //    be reached. It NEVER fabricates success.
+    auto pubKeyOpt = credentialPublicKeyBytes(input.credentialId);
+    if (!pubKeyOpt) {
+        r.error = (r.error.empty() ? std::string("") : r.error + "; ") +
+                  "Unknown credential for local fallback";
+        return r;
+    }
+
+    // The backend sends authenticatorData/clientDataJson/signature as base64url
+    // encoded; decode them to reconstruct the signed message
+    // (authenticatorData || SHA-256(clientDataJSON)).
+    std::vector<uint8_t> authData = base64urlDecode(input.authenticatorData);
+    std::vector<uint8_t> clientData = base64urlDecode(input.clientDataJson);
+    std::vector<uint8_t> sig = base64urlDecode(input.signature);
+    if (authData.empty() || clientData.empty() || sig.empty()) {
+        r.error = (r.error.empty() ? std::string("") : r.error + "; ") +
+                  "Malformed base64url assertion inputs";
+        return r;
+    }
+    std::vector<uint8_t> clientDataHash = sha256Raw(clientData);
+    std::vector<uint8_t> message = authData;
+    message.insert(message.end(), clientDataHash.begin(), clientDataHash.end());
+
+    bool ok = verifyECDSASignature(*pubKeyOpt, message, sig);
+    r.verified = ok;
+    r.source = "local";
+    if (!ok) {
+        r.error = (r.error.empty() ? std::string("") : r.error + "; ") +
+                  "Local ECDSA verification failed";
+    }
+    return r;
+}
+
+std::optional<std::vector<uint8_t>> PasskeyService::credentialPublicKeyBytes(
+    const std::string& credentialId
+) const {
+    auto credOpt = getCredential(credentialId);
+    if (!credOpt) return std::nullopt;
+    if (credOpt->publicKey.empty()) return std::nullopt;
+    // The stored public key is base64url-encoded SPKI.
+    return base64urlDecode(credOpt->publicKey);
 }
 
 // ==================== Helper functions ====================

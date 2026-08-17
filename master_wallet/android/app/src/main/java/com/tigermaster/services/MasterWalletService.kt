@@ -183,6 +183,212 @@ class MasterWalletService {
         apiDelete("/api/v1/master-wallet/$walletId")
     }
 
+    /**
+     * PUT /api/v1/master-wallet/:id — update wallet metadata/limits. Only non-null
+     * fields are sent so the backend leaves the others untouched. Returns the backend
+     * id and whether anything actually changed.
+     */
+    suspend fun updateMasterWallet(
+        masterId: String,
+        name: String? = null,
+        isActive: Boolean? = null,
+        dailyLimit: java.math.BigDecimal? = null,
+        perTransactionLimit: java.math.BigDecimal? = null,
+        metadata: Map<String, String>? = null
+    ): UpdateResult = withContext(Dispatchers.IO) {
+        try {
+            val body = JSONObject()
+            name?.let { body.put("name", it) }
+            isActive?.let { body.put("is_active", it) }
+            dailyLimit?.let { body.put("daily_limit", it.toPlainString()) }
+            perTransactionLimit?.let { body.put("per_transaction_limit", it.toPlainString()) }
+            metadata?.let {
+                val meta = JSONObject()
+                it.forEach { (k, v) -> meta.put(k, v) }
+                body.put("metadata", meta)
+            }
+            val resp = apiPut("/api/v1/master-wallet/$masterId", body.toString())
+                ?: return@withContext UpdateResult(success = false, error = "Update request failed")
+            val json = JSONObject(resp)
+            UpdateResult(
+                success = true,
+                id = json.optString("id", masterId),
+                updated = json.optBoolean("updated", false)
+            )
+        } catch (e: Exception) {
+            UpdateResult(success = false, error = e.message)
+        }
+    }
+
+    /**
+     * GET /api/v1/master-wallet/:id/transactions/:tid — fetch a single transaction
+     * by id. Returns the raw transaction object the backend produced (real on-chain
+     * data, never fabricated).
+     */
+    suspend fun getTransaction(masterId: String, txId: String): TransactionDetailResult =
+        withContext(Dispatchers.IO) {
+            try {
+                val resp = apiGet("/api/v1/master-wallet/$masterId/transactions/$txId")
+                    ?: return@withContext TransactionDetailResult(success = false, error = "Transaction fetch failed")
+                val json = JSONObject(resp)
+                val tx = json.optJSONObject("transaction") ?: json
+                TransactionDetailResult(
+                    success = true,
+                    transaction = tx.toString()
+                )
+            } catch (e: Exception) {
+                TransactionDetailResult(success = false, error = e.message)
+            }
+        }
+
+    /**
+     * GET /api/v1/master-wallet/:id/multisig/wallets/:wid — fetch a multisig wallet
+     * (owners, threshold, chain, address, optional pending transactions).
+     */
+    suspend fun getMultisigWalletDetail(masterId: String, walletId: String): MultisigWalletDetailResult =
+        withContext(Dispatchers.IO) {
+            try {
+                val resp = apiGet("/api/v1/master-wallet/$masterId/multisig/wallets/$walletId")
+                    ?: return@withContext MultisigWalletDetailResult(success = false, error = "Multisig fetch failed")
+                val json = JSONObject(resp)
+                val mw = json.optJSONObject("multisig_wallet") ?: json
+                val owners = mutableListOf<String>()
+                mw.optJSONArray("owners")?.let { arr ->
+                    for (i in 0 until arr.length()) owners.add(arr.optString(i))
+                }
+                val pending = mutableListOf<String>()
+                mw.optJSONArray("pending_transactions")?.let { arr ->
+                    for (i in 0 until arr.length()) pending.add(arr.optString(i))
+                }
+                MultisigWalletDetailResult(
+                    success = true,
+                    wallet = MultisigWalletDetail(
+                        id = mw.optString("id", walletId),
+                        name = mw.optString("name", ""),
+                        owners = owners,
+                        threshold = mw.optInt("threshold", 0),
+                        chainId = mw.optLong("chain_id", 0L),
+                        address = mw.optString("address", ""),
+                        pendingTransactions = pending
+                    )
+                )
+            } catch (e: Exception) {
+                MultisigWalletDetailResult(success = false, error = e.message)
+            }
+        }
+
+    /**
+     * POST /api/v1/master-wallet/:id/passkey/register — register a WebAuthn
+     * credential with the backend. credentialId/publicKey are base64url, publicKey
+     * is the X.509/SPKI P-256 public key. Returns the server-assigned passkey id.
+     */
+    suspend fun registerPasskey(
+        masterId: String,
+        credentialId: String,
+        publicKey: String,
+        signCount: Long,
+        transports: List<String>,
+        label: String
+    ): PasskeyRegisterResult = withContext(Dispatchers.IO) {
+        try {
+            val transportsArr = JSONArray()
+            transports.forEach { transportsArr.put(it) }
+            val body = JSONObject()
+                .put("credential_id", credentialId)
+                .put("public_key", publicKey)
+                .put("sign_count", signCount)
+                .put("transports", transportsArr)
+                .put("label", label)
+                .toString()
+            val resp = apiPost("/api/v1/master-wallet/$masterId/passkey/register", body)
+                ?: return@withContext PasskeyRegisterResult(success = false, error = "Passkey register failed")
+            val json = JSONObject(resp)
+            PasskeyRegisterResult(
+                success = true,
+                passkeyId = json.optString("passkey_id", ""),
+                credentialId = json.optString("credential_id", credentialId),
+                registered = json.optBoolean("registered", false)
+            )
+        } catch (e: Exception) {
+            PasskeyRegisterResult(success = false, error = e.message)
+        }
+    }
+
+    /**
+     * GET /api/v1/master-wallet/:id/passkey/credentials — list registered passkeys.
+     */
+    suspend fun listPasskeys(masterId: String): PasskeyListResult = withContext(Dispatchers.IO) {
+        try {
+            val resp = apiGet("/api/v1/master-wallet/$masterId/passkey/credentials")
+                ?: return@withContext PasskeyListResult(success = false, error = "Passkey list failed")
+            val json = JSONObject(resp)
+            val arr = json.optJSONArray("passkeys") ?: JSONArray()
+            val list = mutableListOf<PasskeyCredential>()
+            for (i in 0 until arr.length()) {
+                val p = arr.getJSONObject(i)
+                val transports = mutableListOf<String>()
+                p.optJSONArray("transports")?.let { t ->
+                    for (j in 0 until t.length()) transports.add(t.optString(j))
+                }
+                list.add(
+                    PasskeyCredential(
+                        id = p.optString("id"),
+                        credentialId = p.optString("credential_id"),
+                        signCount = p.optLong("sign_count", 0L),
+                        transports = transports,
+                        label = p.optString("label", ""),
+                        createdAt = p.optString("created_at", ""),
+                        updatedAt = p.optString("updated_at", "")
+                    )
+                )
+            }
+            PasskeyListResult(success = true, passkeys = list)
+        } catch (e: Exception) {
+            PasskeyListResult(success = false, error = e.message)
+        }
+    }
+
+    /**
+     * DELETE /api/v1/master-wallet/:id/passkey/credentials/:credId — remove a
+     * passkey credential from the backend. Backend returns 204 on success.
+     */
+    suspend fun deletePasskey(masterId: String, credId: String): Boolean = withContext(Dispatchers.IO) {
+        apiDelete("/api/v1/master-wallet/$masterId/passkey/credentials/$credId")
+    }
+
+    /**
+     * POST /api/v1/master-wallet/:id/passkey/verify-assertion — server-side
+     * verification of a WebAuthn assertion. All fields are base64url. The backend
+     * performs the real P-256 ECDSA verification; this method only reports its
+     * verdict (never fabricates success).
+     */
+    suspend fun verifyPasskeyAssertion(
+        masterId: String,
+        credentialId: String,
+        authData: String,
+        clientDataJson: String,
+        signature: String
+    ): PasskeyVerifyResult = withContext(Dispatchers.IO) {
+        try {
+            val body = JSONObject()
+                .put("credential_id", credentialId)
+                .put("authenticator_data", authData)
+                .put("client_data_json", clientDataJson)
+                .put("signature", signature)
+                .toString()
+            val resp = apiPost("/api/v1/master-wallet/$masterId/passkey/verify-assertion", body)
+                ?: return@withContext PasskeyVerifyResult(success = false, error = "Assertion verification request failed")
+            val json = JSONObject(resp)
+            PasskeyVerifyResult(
+                success = true,
+                verified = json.optBoolean("verified", false),
+                credentialId = json.optString("credential_id", credentialId)
+            )
+        } catch (e: Exception) {
+            PasskeyVerifyResult(success = false, error = e.message)
+        }
+    }
+
     // -- HTTP helpers (Bearer JWT auth against the canonical backend) --
 
     private fun apiGet(endpoint: String): String? {
@@ -203,6 +409,22 @@ class MasterWalletService {
         return try {
             val conn = (URL("$baseUrl$endpoint").openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
+                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Authorization", "Bearer $token")
+                doOutput = true
+                connectTimeout = 10000
+                readTimeout = 10000
+            }
+            conn.outputStream.use { it.write(body.toByteArray()) }
+            if (conn.responseCode in 200..299) conn.inputStream.bufferedReader().readText() else null
+        } catch (e: Exception) { null }
+    }
+
+    private fun apiPut(endpoint: String, body: String): String? {
+        val token = try { requireToken() } catch (e: Exception) { return null }
+        return try {
+            val conn = (URL("$baseUrl$endpoint").openConnection() as HttpURLConnection).apply {
+                requestMethod = "PUT"
                 setRequestProperty("Content-Type", "application/json")
                 setRequestProperty("Authorization", "Bearer $token")
                 doOutput = true
@@ -270,5 +492,70 @@ data class TransactionResult(
     val from: String? = null,
     val to: String? = null,
     val amount: String? = null,
+    val error: String? = null
+)
+
+data class UpdateResult(
+    val success: Boolean,
+    val id: String = "",
+    val updated: Boolean = false,
+    val error: String? = null
+)
+
+data class TransactionDetailResult(
+    val success: Boolean,
+    val transaction: String = "",
+    val error: String? = null
+)
+
+data class MultisigWalletDetail(
+    val id: String,
+    val name: String,
+    val owners: List<String>,
+    val threshold: Int,
+    val chainId: Long,
+    val address: String,
+    val pendingTransactions: List<String>
+)
+
+data class MultisigWalletDetailResult(
+    val success: Boolean,
+    val wallet: MultisigWalletDetail? = null,
+    val error: String? = null
+)
+
+/**
+ * Passkey credential as returned by the backend
+ * (GET /passkey/credentials). credentialId is base64url; signCount is the
+ * authenticator counter; createdAt/updatedAt are backend timestamps.
+ */
+data class PasskeyCredential(
+    val id: String,
+    val credentialId: String,
+    val signCount: Long,
+    val transports: List<String>,
+    val label: String,
+    val createdAt: String,
+    val updatedAt: String
+)
+
+data class PasskeyRegisterResult(
+    val success: Boolean,
+    val passkeyId: String = "",
+    val credentialId: String = "",
+    val registered: Boolean = false,
+    val error: String? = null
+)
+
+data class PasskeyListResult(
+    val success: Boolean,
+    val passkeys: List<PasskeyCredential> = emptyList(),
+    val error: String? = null
+)
+
+data class PasskeyVerifyResult(
+    val success: Boolean,
+    val verified: Boolean = false,
+    val credentialId: String = "",
     val error: String? = null
 )

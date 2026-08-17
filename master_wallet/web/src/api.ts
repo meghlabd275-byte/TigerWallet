@@ -394,6 +394,22 @@ class MasterWalletAPI {
     return this.request<MasterWallet>(`/api/v1/master-wallet/${id}`);
   }
 
+  async updateMasterWallet(
+    id: string,
+    req: {
+      name?: string;
+      is_active?: boolean;
+      daily_limit?: string;
+      per_transaction_limit?: string;
+      metadata?: Record<string, unknown>;
+    }
+  ): Promise<{ id: string; updated: boolean }> {
+    return this.request<{ id: string; updated: boolean }>(
+      `/api/v1/master-wallet/${id}`,
+      { method: 'PUT', body: JSON.stringify(req) }
+    );
+  }
+
   async deleteMasterWallet(id: string): Promise<void> {
     await this.request<{ id: string; deleted: boolean }>(
       `/api/v1/master-wallet/${id}`,
@@ -485,6 +501,13 @@ class MasterWalletAPI {
       `/api/v1/master-wallet/${masterId}/transactions`
     );
     return data.transactions ?? [];
+  }
+
+  async getTransaction(masterId: string, txId: string): Promise<Transaction> {
+    const data = await this.request<{ transaction: Transaction }>(
+      `/api/v1/master-wallet/${masterId}/transactions/${txId}`
+    );
+    return data.transaction;
   }
 
   async createTransaction(
@@ -735,6 +758,16 @@ class MasterWalletAPI {
       `/api/v1/master-wallet/${masterId}/multisig/wallets`,
       { method: 'POST', body: JSON.stringify(req) }
     );
+  }
+
+  async getMultisigWalletDetail(
+    masterId: string,
+    walletId: string
+  ): Promise<MultisigWallet & { pending_transactions?: number }> {
+    const data = await this.request<{ multisig_wallet: MultisigWallet & { pending_transactions?: number } }>(
+      `/api/v1/master-wallet/${masterId}/multisig/wallets/${walletId}`
+    );
+    return data.multisig_wallet;
   }
 
   async getMultisigTransactions(
@@ -1086,6 +1119,68 @@ class MasterWalletAPI {
       return false;
     }
   }
+
+  // ---------------- Passkey relying-party ----------------
+  // The backend is the WebAuthn relying party; the client performs the
+  // navigator.credentials ceremony and POSTs the result for server-side
+  // verification.
+
+  async registerPasskey(
+    masterId: string,
+    req: {
+      credential_id: string;
+      public_key: string;
+      sign_count?: number;
+      transports?: string[];
+      label?: string;
+    }
+  ): Promise<{ passkey_id: string; credential_id: string; registered: boolean }> {
+    return this.request(
+      `/api/v1/master-wallet/${masterId}/passkey/register`,
+      { method: 'POST', body: JSON.stringify(req) }
+    );
+  }
+
+  async listPasskeys(
+    masterId: string
+  ): Promise<PasskeyCredential[]> {
+    const data = await this.request<{ passkeys: PasskeyCredential[] }>(
+      `/api/v1/master-wallet/${masterId}/passkey/credentials`
+    );
+    return data.passkeys ?? [];
+  }
+
+  async deletePasskey(masterId: string, credentialId: string): Promise<void> {
+    await this.request(
+      `/api/v1/master-wallet/${masterId}/passkey/credentials/${encodeURIComponent(credentialId)}`,
+      { method: 'DELETE' }
+    );
+  }
+
+  async verifyPasskeyAssertion(
+    masterId: string,
+    req: {
+      credential_id: string;
+      authenticator_data: string;
+      client_data_json: string;
+      signature: string;
+    }
+  ): Promise<{ verified: boolean; credential_id: string }> {
+    return this.request(
+      `/api/v1/master-wallet/${masterId}/passkey/verify-assertion`,
+      { method: 'POST', body: JSON.stringify(req) }
+    );
+  }
+}
+
+export interface PasskeyCredential {
+  id: string;
+  credential_id: string;
+  sign_count: number;
+  transports: string[];
+  label?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export const masterWalletAPI = new MasterWalletAPI();

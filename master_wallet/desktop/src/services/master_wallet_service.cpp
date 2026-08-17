@@ -533,6 +533,315 @@ std::vector<ChainConfig> MasterWalletService::fetchChains() {
     return getAllChains();
 }
 
+// ==================== New MasterWallet backend endpoints ====================
+
+namespace {
+// Build a JSON object string that only includes provided (non-nullopt) fields.
+// Values are emitted as JSON strings/numbers/booleans via buildJsonObject, which
+// passes numbers/booleans through unquoted.
+std::string buildOptionalObject(
+    const std::vector<std::pair<std::string, std::optional<std::string>>>& strFields,
+    const std::vector<std::pair<std::string, std::optional<bool>>>& boolFields) {
+    std::vector<std::pair<std::string, std::string>> fields;
+    for (const auto& [k, v] : strFields) {
+        if (v.has_value()) fields.emplace_back(k, *v);
+    }
+    for (const auto& [k, v] : boolFields) {
+        if (v.has_value()) fields.emplace_back(k, *v ? "true" : "false");
+    }
+    return api::buildJsonObject(fields);
+}
+
+// Parse a JSON array of strings (the value following `"key":`). Returns the
+// individual unescaped string elements.
+std::vector<std::string> jsonArrayOfStrings(const std::string& json, const std::string& key) {
+    std::vector<std::string> out;
+    std::string needle = "\"" + key + "\"";
+    size_t pos = json.find(needle);
+    if (pos == std::string::npos) return out;
+    size_t arr = json.find('[', pos);
+    if (arr == std::string::npos) return out;
+    size_t i = arr + 1;
+    while (i < json.size()) {
+        while (i < json.size() && (json[i] == ' ' || json[i] == '\t' || json[i] == '\n' ||
+               json[i] == '\r' || json[i] == ',')) ++i;
+        if (i >= json.size() || json[i] == ']') break;
+        if (json[i] != '"') break;
+        size_t s = i + 1;
+        size_t e = s;
+        while (e < json.size() && json[e] != '"') {
+            if (json[e] == '\\' && e + 1 < json.size()) ++e;
+            ++e;
+        }
+        if (e >= json.size()) break;
+        out.push_back(json.substr(s, e - s));
+        i = e + 1;
+    }
+    return out;
+}
+
+// Extract the balanced text of a single JSON object value following `"key":`.
+// Returns std::nullopt if the key is absent or its value is not an object.
+std::optional<std::string> jsonObjectField(const std::string& json, const std::string& key) {
+    std::string needle = "\"" + key + "\"";
+    size_t pos = json.find(needle);
+    if (pos == std::string::npos) return std::nullopt;
+    size_t i = pos + needle.size();
+    while (i < json.size() && (json[i] == ' ' || json[i] == '\t' || json[i] == '\n' ||
+           json[i] == '\r' || json[i] == ':')) ++i;
+    if (i >= json.size() || json[i] != '{') return std::nullopt;
+    size_t start = i;
+    int depth = 0;
+    bool inString = false;
+    bool escape = false;
+    for (; i < json.size(); ++i) {
+        char c = json[i];
+        if (inString) {
+            if (escape) { escape = false; }
+            else if (c == '\\') { escape = true; }
+            else if (c == '"') { inString = false; }
+        } else {
+            if (c == '"') { inString = true; }
+            else if (c == '{') { ++depth; }
+            else if (c == '}') {
+                --depth;
+                if (depth == 0) { ++i; break; }
+            }
+        }
+    }
+    if (depth != 0) return std::nullopt;
+    return json.substr(start, i - start);
+}
+} // namespace
+
+// PUT /api/v1/master-wallet/:id
+MasterWalletUpdateResult MasterWalletService::updateMasterWallet(
+    const WalletID& masterId,
+    const std::optional<std::string>& name,
+    const std::optional<bool>& isActive,
+    const std::optional<std::string>& dailyLimit,
+    const std::optional<std::string>& perTransactionLimit,
+    const std::optional<std::string>& metadata) {
+    MasterWalletUpdateResult r;
+    if (masterId.empty()) {
+        r.error = "masterId required";
+        return r;
+    }
+    if (!name && !isActive && !dailyLimit && !perTransactionLimit && !metadata) {
+        r.error = "At least one field must be provided to update";
+        return r;
+    }
+
+    std::string body = buildOptionalObject(
+        {{"name", name},
+         {"daily_limit", dailyLimit},
+         {"per_transaction_limit", perTransactionLimit},
+         {"metadata", metadata}},
+        {{"is_active", isActive}});
+
+    std::string resp;
+    try {
+        resp = api::backendPut("/api/v1/master-wallet/" + masterId, body);
+    } catch (const api::APIException& e) {
+        r.error = e.what();
+        return r;
+    }
+
+    r.id = api::jsonStringField(resp, "id").value_or(masterId);
+    auto updated = api::jsonBoolField(resp, "updated");
+    r.updated = updated.value_or(true);
+    r.success = true;
+    return r;
+}
+
+// GET /api/v1/master-wallet/:id/transactions/:tid
+std::string MasterWalletService::getTransaction(const WalletID& masterId, const std::string& txId) {
+    if (masterId.empty() || txId.empty()) {
+        throw std::runtime_error("getTransaction: masterId and txId are required");
+    }
+    return api::backendGet("/api/v1/master-wallet/" + masterId + "/transactions/" + txId);
+}
+
+// GET /api/v1/master-wallet/:id/multisig/wallets/:wid
+MultisigWalletDetail MasterWalletService::getMultisigWalletDetail(const WalletID& masterId,
+                                                                  const std::string& walletId) {
+    MultisigWalletDetail d;
+    if (masterId.empty() || walletId.empty()) {
+        d.error = "masterId and walletId are required";
+        return d;
+    }
+    std::string resp;
+    try {
+        resp = api::backendGet("/api/v1/master-wallet/" + masterId + "/multisig/wallets/" + walletId);
+    } catch (const api::APIException& e) {
+        d.error = e.what();
+        return d;
+    }
+
+    // The backend wraps the detail in {"multisig_wallet": {...}}; fall back to
+    // the top-level object if the wrapper is absent.
+    std::string obj = resp;
+    auto inner = jsonObjectField(resp, "multisig_wallet");
+    if (inner) obj = *inner;
+
+    d.id = api::jsonStringField(obj, "id").value_or("");
+    d.name = api::jsonStringField(obj, "name").value_or("");
+    d.owners = jsonArrayOfStrings(obj, "owners");
+    auto threshold = api::jsonNumberField(obj, "threshold");
+    if (threshold) d.threshold = static_cast<uint32_t>(*threshold);
+    auto chainId = api::jsonNumberField(obj, "chain_id");
+    if (!chainId) chainId = api::jsonNumberField(obj, "chainId");
+    if (chainId) d.chainId = static_cast<uint64_t>(*chainId);
+    d.address = api::jsonStringField(obj, "address").value_or("");
+    d.pendingTransactions = api::jsonArrayOfObjects(obj, "pending_transactions");
+    d.success = !d.id.empty();
+    if (!d.success) d.error = "Backend multisig wallet response missing id";
+    return d;
+}
+
+// POST /api/v1/master-wallet/:id/passkey/register
+PasskeyRegisterResult MasterWalletService::registerPasskey(
+    const WalletID& masterId,
+    const std::string& credentialId,
+    const std::string& publicKey,
+    uint32_t signCount,
+    const std::vector<std::string>& transports,
+    const std::string& label) {
+    PasskeyRegisterResult r;
+    r.credentialId = credentialId;
+    if (masterId.empty() || credentialId.empty() || publicKey.empty()) {
+        r.error = "masterId, credentialId and publicKey are required";
+        return r;
+    }
+
+    // Build transports JSON array string.
+    std::string transportsJson = "[";
+    for (size_t i = 0; i < transports.size(); ++i) {
+        if (i) transportsJson += ",";
+        transportsJson += "\"" + api::jsonEscape(transports[i]) + "\"";
+    }
+    transportsJson += "]";
+
+    // buildJsonObject quotes string values and passes numeric-looking values
+    // through; sign_count is a real uint32, so emit it as a bare number by
+    // constructing the body manually to embed the array and number correctly.
+    std::ostringstream body;
+    body << "{"
+         << "\"credential_id\":\"" << api::jsonEscape(credentialId) << "\","
+         << "\"public_key\":\"" << api::jsonEscape(publicKey) << "\","
+         << "\"sign_count\":" << signCount << ","
+         << "\"transports\":" << transportsJson << ","
+         << "\"label\":\"" << api::jsonEscape(label) << "\""
+         << "}";
+
+    std::string resp;
+    try {
+        resp = api::backendPost("/api/v1/master-wallet/" + masterId + "/passkey/register", body.str());
+    } catch (const api::APIException& e) {
+        r.error = e.what();
+        return r;
+    }
+
+    r.passkeyId = api::jsonStringField(resp, "passkey_id").value_or("");
+    r.registered = api::jsonBoolField(resp, "registered").value_or(false);
+    r.success = true;
+    return r;
+}
+
+// GET /api/v1/master-wallet/:id/passkey/credentials
+PasskeyListResult MasterWalletService::listPasskeys(const WalletID& masterId) {
+    PasskeyListResult r;
+    if (masterId.empty()) {
+        r.error = "masterId required";
+        return r;
+    }
+    std::string resp;
+    try {
+        resp = api::backendGet("/api/v1/master-wallet/" + masterId + "/passkey/credentials");
+    } catch (const api::APIException& e) {
+        r.error = e.what();
+        return r;
+    }
+    auto items = api::jsonArrayOfObjects(resp, "passkeys");
+    if (items.empty()) items = api::jsonArrayOfObjects(resp, "data");
+    for (const auto& obj : items) {
+        PasskeyCredentialRow row;
+        row.id = api::jsonStringField(obj, "id").value_or("");
+        row.credentialId = api::jsonStringField(obj, "credential_id")
+                               .value_or(api::jsonStringField(obj, "credentialId").value_or(""));
+        auto sc = api::jsonNumberField(obj, "sign_count");
+        if (!sc) sc = api::jsonNumberField(obj, "signCount");
+        if (sc) row.signCount = static_cast<uint32_t>(*sc);
+        row.transports = jsonArrayOfStrings(obj, "transports");
+        row.label = api::jsonStringField(obj, "label").value_or("");
+        row.createdAt = api::jsonStringField(obj, "created_at")
+                            .value_or(api::jsonStringField(obj, "createdAt").value_or(""));
+        row.updatedAt = api::jsonStringField(obj, "updated_at")
+                            .value_or(api::jsonStringField(obj, "updatedAt").value_or(""));
+        if (!row.id.empty() || !row.credentialId.empty()) r.passkeys.push_back(row);
+    }
+    r.success = true;
+    return r;
+}
+
+// DELETE /api/v1/master-wallet/:id/passkey/credentials/:credId
+bool MasterWalletService::deletePasskey(const WalletID& masterId, const std::string& credId) {
+    if (masterId.empty() || credId.empty()) return false;
+    try {
+        api::backendDelete("/api/v1/master-wallet/" + masterId + "/passkey/credentials/" + credId);
+        return true;
+    } catch (const api::APIException&) {
+        return false;
+    }
+}
+
+// POST /api/v1/master-wallet/:id/passkey/verify-assertion
+PasskeyVerifyResult MasterWalletService::verifyPasskeyAssertion(
+    const WalletID& masterId,
+    const std::string& credentialId,
+    const std::string& authenticatorData,
+    const std::string& clientDataJson,
+    const std::string& signature) {
+    PasskeyVerifyResult r;
+    r.credentialId = credentialId;
+    if (masterId.empty() || credentialId.empty() || authenticatorData.empty() ||
+        clientDataJson.empty() || signature.empty()) {
+        r.error = "All assertion fields are required";
+        return r;
+    }
+
+    auto body = api::buildJsonObject({
+        {"credential_id", credentialId},
+        {"authenticator_data", authenticatorData},
+        {"client_data_json", clientDataJson},
+        {"signature", signature},
+    });
+
+    std::string resp;
+    try {
+        resp = api::backendPost("/api/v1/master-wallet/" + masterId + "/passkey/verify-assertion", body);
+    } catch (const api::APIException& e) {
+        r.error = e.what();
+        return r;
+    }
+
+    auto verified = api::jsonBoolField(resp, "verified");
+    if (!verified) {
+        // Backend call succeeded but the response did not carry a verified flag.
+        // Fail closed: never assume verification.
+        r.success = true;
+        r.verified = false;
+        r.error = "Backend response missing 'verified' field";
+        return r;
+    }
+    r.verified = *verified;
+    r.success = true;
+    auto cred = api::jsonStringField(resp, "credential_id");
+    if (cred) r.credentialId = *cred;
+    return r;
+}
+
+
 // ==================== Sub-wallets ====================
 
 std::string MasterWalletService::getSubWallets(const WalletID& walletId) {

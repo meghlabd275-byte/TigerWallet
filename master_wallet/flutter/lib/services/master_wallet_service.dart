@@ -932,6 +932,157 @@ class MasterWalletService {
     return txs.cast<Map<String, dynamic>>();
   }
 
+  // ==================== Master wallet mutation ====================
+
+  /// PUT /master-wallet/:id — partial update. Only the supplied fields are
+  /// sent; null fields are omitted from the body so the backend leaves them
+  /// untouched. Returns the backend's {id, updated} result.
+  Future<Map<String, dynamic>> updateMasterWallet(
+    String masterId, {
+    String? name,
+    bool? isActive,
+    double? dailyLimit,
+    double? perTransactionLimit,
+    Map<String, dynamic>? metadata,
+  }) async {
+    final body = <String, dynamic>{};
+    if (name != null) body['name'] = name;
+    if (isActive != null) body['is_active'] = isActive;
+    if (dailyLimit != null) body['daily_limit'] = dailyLimit;
+    if (perTransactionLimit != null) {
+      body['per_transaction_limit'] = perTransactionLimit;
+    }
+    if (metadata != null) body['metadata'] = metadata;
+    final r = await http.put(
+      Uri.parse('$_apiV1/master-wallet/$masterId'),
+      headers: _headers,
+      body: jsonEncode(body),
+    );
+    if (r.statusCode != 200) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  // ==================== Transactions (single) ====================
+
+  /// GET /master-wallet/:id/transactions/:tid → {transaction: {...}}.
+  Future<Map<String, dynamic>> getTransaction(
+    String masterId,
+    String txId,
+  ) async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/master-wallet/$masterId/transactions/$txId'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    // Unwrap the {transaction: {...}} envelope when present; otherwise return
+    // the raw object so callers get the transaction payload either way.
+    final tx = body['transaction'];
+    if (tx is Map<String, dynamic>) return tx;
+    return body;
+  }
+
+  // ==================== Multisig ====================
+
+  /// GET /master-wallet/:id/multisig/wallets/:wid →
+  /// {multisig_wallet: {id, name, owners, threshold, chain_id, address,
+  /// pending_transactions?}}.
+  Future<MultisigWalletDetail> getMultisigWalletDetail(
+    String masterId,
+    String walletId,
+  ) async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/master-wallet/$masterId/multisig/wallets/$walletId'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    final mw = body['multisig_wallet'];
+    if (mw is Map<String, dynamic>) {
+      return MultisigWalletDetail.fromJson(mw);
+    }
+    // Tolerate an unwrapped payload.
+    return MultisigWalletDetail.fromJson(body);
+  }
+
+  // ==================== Passkeys ====================
+
+  /// POST /master-wallet/:id/passkey/register — body {credential_id(base64url),
+  /// public_key(base64url SPKI), sign_count(int), transports(List<String>),
+  /// label} → {passkey_id, credential_id, registered:bool}.
+  Future<Map<String, dynamic>> registerPasskey(
+    String masterId,
+    String credentialId,
+    String publicKey,
+    int signCount,
+    List<String> transports,
+    String label,
+  ) async {
+    final r = await http.post(
+      Uri.parse('$_apiV1/master-wallet/$masterId/passkey/register'),
+      headers: _headers,
+      body: jsonEncode({
+        'credential_id': credentialId,
+        'public_key': publicKey,
+        'sign_count': signCount,
+        'transports': transports,
+        'label': label,
+      }),
+    );
+    if (r.statusCode != 200 && r.statusCode != 201) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// GET /master-wallet/:id/passkey/credentials →
+  /// {passkeys: [{id, credential_id, sign_count, transports, label,
+  /// created_at, updated_at}]}.
+  Future<List<PasskeyCredential>> listPasskeys(String masterId) async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/master-wallet/$masterId/passkey/credentials'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    final passkeys = body['passkeys'] as List? ?? const [];
+    return passkeys
+        .map((p) => PasskeyCredential.fromJson(p as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// DELETE /master-wallet/:id/passkey/credentials/:credId → 204.
+  Future<bool> deletePasskey(String masterId, String credId) async {
+    final r = await http.delete(
+      Uri.parse('$_apiV1/master-wallet/$masterId/passkey/credentials/$credId'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200 && r.statusCode != 204) throw _error(r);
+    return true;
+  }
+
+  /// POST /master-wallet/:id/passkey/verify-assertion — body
+  /// {credential_id, authenticator_data, client_data_json, signature}
+  /// (all base64url) → {verified:bool, credential_id}.
+  Future<Map<String, dynamic>> verifyPasskeyAssertion(
+    String masterId,
+    String credentialId,
+    String authData,
+    String clientDataJson,
+    String signature,
+  ) async {
+    final r = await http.post(
+      Uri.parse('$_apiV1/master-wallet/$masterId/passkey/verify-assertion'),
+      headers: _headers,
+      body: jsonEncode({
+        'credential_id': credentialId,
+        'authenticator_data': authData,
+        'client_data_json': clientDataJson,
+        'signature': signature,
+      }),
+    );
+    if (r.statusCode != 200) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
   // ==================== Helpers ====================
 
   double _toDouble(dynamic v) {
@@ -1085,4 +1236,91 @@ class VolumeAnalytics {
     required this.totalVolume,
     required this.transactionCount,
   });
+}
+
+/// Multisig wallet detail returned by
+/// GET /master-wallet/:id/multisig/wallets/:wid.
+class MultisigWalletDetail {
+  final String id;
+  final String name;
+  final List<String> owners;
+  final int threshold;
+  final int chainId;
+  final String address;
+  final List<Map<String, dynamic>> pendingTransactions;
+
+  MultisigWalletDetail({
+    required this.id,
+    required this.name,
+    required this.owners,
+    required this.threshold,
+    required this.chainId,
+    required this.address,
+    this.pendingTransactions = const [],
+  });
+
+  factory MultisigWalletDetail.fromJson(Map<String, dynamic> json) {
+    final owners = (json['owners'] as List? ?? const [])
+        .map((o) => o.toString())
+        .toList();
+    final pending = json['pending_transactions'];
+    final pendingList = pending is List
+        ? pending
+            .map((t) => t is Map<String, dynamic> ? t : <String, dynamic>{})
+            .toList()
+            .cast<Map<String, dynamic>>()
+        : const <Map<String, dynamic>>[];
+    return MultisigWalletDetail(
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      owners: owners,
+      threshold: (json['threshold'] as num?)?.toInt() ?? 0,
+      chainId: (json['chain_id'] as num?)?.toInt() ?? 0,
+      address: json['address'] as String? ?? '',
+      pendingTransactions: pendingList,
+    );
+  }
+}
+
+/// Passkey credential returned by
+/// GET /master-wallet/:id/passkey/credentials.
+class PasskeyCredential {
+  final String id;
+  final String credentialId;
+  final int signCount;
+  final List<String> transports;
+  final String label;
+  final int createdAt;
+  final int updatedAt;
+
+  PasskeyCredential({
+    required this.id,
+    required this.credentialId,
+    required this.signCount,
+    required this.transports,
+    required this.label,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory PasskeyCredential.fromJson(Map<String, dynamic> json) {
+    final transports = (json['transports'] as List? ?? const [])
+        .map((t) => t.toString())
+        .toList();
+    return PasskeyCredential(
+      id: json['id'] as String? ?? '',
+      credentialId: json['credential_id'] as String? ?? '',
+      signCount: (json['sign_count'] as num?)?.toInt() ?? 0,
+      transports: transports,
+      label: json['label'] as String? ?? '',
+      createdAt: _parseTimestamp(json['created_at']),
+      updatedAt: _parseTimestamp(json['updated_at']),
+    );
+  }
+
+  static int _parseTimestamp(dynamic v) {
+    if (v is int) return v;
+    if (v == null) return 0;
+    return DateTime.tryParse(v.toString())?.millisecondsSinceEpoch ?? 0;
+  }
 }

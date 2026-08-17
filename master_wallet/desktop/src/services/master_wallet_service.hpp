@@ -116,6 +116,62 @@ struct TransactionRecord {
     std::string blockNumber;
 };
 
+// Result of PUT /api/v1/master-wallet/:id (wallet settings update).
+struct MasterWalletUpdateResult {
+    std::string id;
+    bool updated = false;
+    bool success = false;
+    std::string error;
+};
+
+// Detail of a single multisig wallet (GET .../multisig/wallets/:wid).
+struct MultisigWalletDetail {
+    std::string id;
+    std::string name;
+    std::vector<std::string> owners;
+    uint32_t threshold = 0;
+    uint64_t chainId = 0;
+    std::string address;
+    std::vector<std::string> pendingTransactions; // raw JSON object strings, if present
+    bool success = false;
+    std::string error;
+};
+
+// A single passkey credential row from GET .../passkey/credentials.
+struct PasskeyCredentialRow {
+    std::string id;            // backend passkey id
+    std::string credentialId;  // base64url credential id
+    uint32_t signCount = 0;
+    std::vector<std::string> transports;
+    std::string label;
+    std::string createdAt;
+    std::string updatedAt;
+};
+
+// Result of GET .../passkey/credentials.
+struct PasskeyListResult {
+    std::vector<PasskeyCredentialRow> passkeys;
+    bool success = false;
+    std::string error;
+};
+
+// Result of POST .../passkey/register.
+struct PasskeyRegisterResult {
+    std::string passkeyId;
+    std::string credentialId;  // base64url, as sent
+    bool registered = false;
+    bool success = false;
+    std::string error;
+};
+
+// Result of POST .../passkey/verify-assertion.
+struct PasskeyVerifyResult {
+    bool verified = false;
+    std::string credentialId;  // base64url
+    bool success = false;      // true iff the backend call itself succeeded
+    std::string error;
+};
+
 class MasterWalletService {
 public:
     static MasterWalletService& getInstance();
@@ -207,6 +263,49 @@ public:
                                        const std::string& amount, const std::string& password);
     TransactionResult treasurySweep(const WalletID& walletId, const std::string& to,
                                     const std::string& password);
+
+    // ==================== New MasterWallet backend endpoints ====================
+    // PUT /api/v1/master-wallet/:id — update wallet settings. Only non-nullopt
+    // fields are sent; the backend applies a partial update.
+    MasterWalletUpdateResult updateMasterWallet(
+        const WalletID& masterId,
+        const std::optional<std::string>& name,
+        const std::optional<bool>& isActive,
+        const std::optional<std::string>& dailyLimit,
+        const std::optional<std::string>& perTransactionLimit,
+        const std::optional<std::string>& metadata = std::nullopt);
+
+    // GET /api/v1/master-wallet/:id/transactions/:tid — single transaction.
+    // Returns raw backend JSON (the "transaction" object is caller-interpreted).
+    std::string getTransaction(const WalletID& masterId, const std::string& txId);
+
+    // GET /api/v1/master-wallet/:id/multisig/wallets/:wid — parsed detail.
+    MultisigWalletDetail getMultisigWalletDetail(const WalletID& masterId,
+                                                 const std::string& walletId);
+
+    // POST /api/v1/master-wallet/:id/passkey/register.
+    // credentialId/publicKey are base64url; signCount is the initial counter;
+    // transports is the WebAuthn transport list; label is a human label.
+    PasskeyRegisterResult registerPasskey(const WalletID& masterId,
+                                          const std::string& credentialId,
+                                          const std::string& publicKey,
+                                          uint32_t signCount,
+                                          const std::vector<std::string>& transports,
+                                          const std::string& label);
+
+    // GET /api/v1/master-wallet/:id/passkey/credentials — parsed list.
+    PasskeyListResult listPasskeys(const WalletID& masterId);
+
+    // DELETE /api/v1/master-wallet/:id/passkey/credentials/:credId — 204 on success.
+    bool deletePasskey(const WalletID& masterId, const std::string& credId);
+
+    // POST /api/v1/master-wallet/:id/passkey/verify-assertion.
+    // All inputs are base64url-encoded as required by the backend.
+    PasskeyVerifyResult verifyPasskeyAssertion(const WalletID& masterId,
+                                              const std::string& credentialId,
+                                              const std::string& authenticatorData,
+                                              const std::string& clientDataJson,
+                                              const std::string& signature);
 
     // Multisig
     std::string getMultisigWallets(const WalletID& walletId);
