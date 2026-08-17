@@ -3920,3 +3920,46 @@ page).
   gap.
 - No SQLite introduced (PostgreSQL + Redis remain the only DBs). No duplicate
   files created. No new branch (work on main).
+
+
+## Session 2026-08-17 (cont): MasterWallet all-gaps closure (A-G, 86/86 parity)
+
+Closed every gap identified in MASTERWALLET_FULL_FETCHERS_AND_GAPS.md so all 9
+MasterWallet client apps now expose the full 86-route canonical backend surface
+with identical files/features/functionality. Commit d52c25f on main.
+
+### Gaps resolved (all real, no stubs/fakes/mocks; fail-closed where non-canonical)
+- Gap A (universal): added POST /master-wallet/:id/user-wallet-auto-sign,
+  POST /master-wallet/:id/check-auto-sign-policy, GET /api/v1/health to Web,
+  iOS, Desktop C++, Flutter, Rust, and all 5 extensions (Android already had them).
+- Gap B (WebSocket): Rust gained tokio-tungstenite + WebSocketClient (run() with
+  capped exponential reconnect, Open/Message/Close/Error events, fail-closed).
+  All 5 extensions gained services/webSocketService.js (browser WebSocket API,
+  JWT + master_wallet_id query params, 30s heartbeat, auto-reconnect).
+- Gap C (Desktop C++ weakest, was 79/86): added createSubWallet +
+  userWalletAutoSign + checkAutoSignPolicy + apiHealth + getTransaction. Now 86/86.
+- Gap D (Android non-canonical 404 calls): DELETE sub-wallets/:sid and the four
+  /api/aa/* calls now fail-closed with descriptive errors (real Web3j signing
+  preserved for AA; only the non-canonical network submission replaced).
+- Gap E (extension relay wiring): added missing MW_RELAY cases to background.js
+  across all 5 extensions. All 21 previously-unreachable fetchers now reachable.
+- Gap F (Web TaxAnalyticsService stub): getSummary() now throws fail-closed.
+- Gap G (build scaffolding): created full Android Gradle project + iOS
+  Package.swift. Package conflict (com.tigermasterwallet.api) resolved by moving
+  MasterWalletApiService.kt into com.tigermaster.services.
+
+### Build verification (ALL GREEN)
+- Rust: cargo check --lib exit 0. Web: tsc 0 errors. Desktop C++: cmake+make 0.
+- 5 extensions: node --check OK. Android (14 .kt) + Flutter (20 .dart):
+  brace-balanced (string-aware tokenizer). iOS Package.swift: brace-balanced.
+- Backend Go: go build exit 0. Fake-crypto grep: 0 genuine hits in source.
+- Theme: light/dark on all UI-capable clients.
+
+### Key technical notes
+- tokio-tungstenite 0.20: connect_async requires the connect feature (NOT just
+  rustls-tls-webpki-roots); Message::Frame(_) arm required for non-exhaustive match.
+- String-aware brace check: the naive Python tokenizer misreads Dart/Kotlin
+  ${...} interpolation as unbalanced braces. ALWAYS use a string-aware tokenizer.
+- iOS Swift Package > hand-written .xcodeproj: Package.swift is text-based.
+- Extension relay pattern: background.js MW_RELAY switch needs a case for EVERY
+  masterWalletService.js method the popup can call; missing cases = dead code.
