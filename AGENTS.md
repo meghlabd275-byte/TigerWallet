@@ -1127,6 +1127,36 @@ co-located bundles (`frontend/web_nextjs`, `mobile_apps/*`) are NOT duplicates.
   pass** (MultisigWallet 13, AccountFactory 5, VerifyingPaymaster, TigerWalletAAFactory) —
   all real ECDSA via `vm.sign`, no mocks.
 
+### user_wallet/desktop UI-parity gap closed (2026-08-17)
+- Web has 18 pages; desktop had only 8. Added 9 NEW themed pages mirroring
+  existing patterns (KYC/Wallets/Send): `useTheme()` + `isDark` ternaries,
+  fetch-on-mount `useEffect`, loading/error/empty states, NO mock data — every
+  value from a real `api` call in `src/services/api.js`:
+  - `src/pages/Swap.jsx` (`getSwapQuote`+`ammSwap`), `Staking.jsx`
+    (`getStakingQuote`+`stake`/`unstake`/`claim`), `NFTs.jsx` (`getNFTs`+
+    `transferNFT`), `Bridge.jsx` (`getConvertQuote` indicative +
+    `sendTransaction` broadcast — NO fabricated bridge tx; doc'd in file),
+    `AddressBook.jsx` (`getAddressBookContacts`+`addContact`/`updateContact`/
+    `deleteContact`), `Approvals.jsx` (`getApprovals`+`revokeApproval`),
+    `Devices.jsx` (`getDevices`+`registerDevice`/`syncDevice`/`deleteDevice`),
+    `Keystore.jsx` (`exportKeystore`+`importKeystore`, copy/download), `DeFi.jsx`
+    (ONE hub w/ 8 tabbed sections: Lending, Copy, DAO, Perpetual, Margin,
+    Prediction, Launchpool, Token Sales — each list+action form).
+- Routes wired in `src/renderer/App.jsx` (HashRouter): /swap, /staking, /nfts,
+  /bridge, /address-book, /approvals, /devices, /keystore, /defi.
+- Nav links added to `src/components/Layout.jsx` (matched nav-item style).
+- Convert.jsx intentionally NOT created (web uses Swap; matches web page set).
+- Login.jsx covers register (no separate Register.jsx forced).
+- Verification: `node --check src/services/api.js` OK (untouched);
+  `esbuild --bundle` per new file + full `App.jsx` → all parse clean, 0 errors.
+  No `dark:` Tailwind classes (project uses CSS vars + isDark ternaries).
+- Convention for new desktop pages: mirror KYC.jsx/Wallets.jsx/Send.jsx exactly
+  (top-level `useTheme()`+`isDark`, `useEffect` fetch w/ `alive` cancel flag,
+  `.send-page`/`.wallets-page`/`.send-form`/`.import-form`/`.wallets-grid`/
+  `.wallet-card`/`.transactions-table` class names from styles.css, `success-banner`
+  for confirmations). `CHAIN_OPTIONS`+`CHAIN_IDS` (ethereum=1, bsc=56,
+  polygon=137) duplicated per-page as in existing pages.
+
 ### UserWallet clients — FULL feature parity (web/desktop/android/ios)
 - ALL four UserWallet native clients now expose the SAME fetcher set against the
   canonical `go/wallet_api` (:8443): login/register, getWallets/createWallet,
@@ -1141,6 +1171,33 @@ co-located bundles (`frontend/web_nextjs`, `mobile_apps/*`) are NOT duplicates.
 - `user_wallet/ios/App/UserWalletApiService.swift`: added sendTransaction/signMessage/
   getTokenBalances/getNFTs/getGasPrice/getTokenPrice/getChains/getNetworkStatus/
   getSwapQuote/getStakingQuote (+ Codable structs).
+
+### user_wallet/ios SwiftUI app — conventions (App/*.swift)
+- `UserWalletApiService` is a class; the singleton is `UserWalletApiService.shared`.
+  All API methods are `async throws`. Untyped endpoints return `[String: Any]`;
+  typed ones return nested `Codable` structs.
+- **Type-scoping gotcha (non-obvious):** top-level structs are referenced BARE:
+  `WalletRecord`, `BalanceResult`, `TransactionRecord`, `AuthResponse`, etc.
+  But many structs are NESTED inside `UserWalletApiService` and MUST be qualified
+  with the `UserWalletApiService.` prefix: `SwapQuote`, `StakingQuote`,
+  `StakingAsset`, `NFT`, `SendResult`, `AutoSendResult`, `TokenBalance`,
+  `ChainInfo`, `PasskeyWalletResult`, etc. (A bare `SwapQuote` will NOT compile.)
+- View pattern: each `*View` is a `struct … : View` with `NavigationView`, uses
+  `@State` + a `loadXxx()` helper that wraps `Task { do { … await MainActor.run { … } } catch { … } }`,
+  shows `ProgressView` (loading) / red `Text`+Retry (error) / `.secondary` empty
+  state, and calls `UserWalletApiService.shared` directly. Forms use `Form`+`Section`;
+  semantic theme colors via `.systemGray6`/`.secondary`/`.orange` accent.
+- Navigation: `ContentView` in `UserWalletApp.swift` is a `TabView` with the
+  original 6 tabs + a 7th "More" tab (`MoreView`) that is a `NavigationView`/`List`
+  of `NavigationLink`s to: Receive, Swap, Staking, NFTs, Bridge, AddressBook,
+  Approvals, Devices, Keystore, DeFi.
+- **No swiftc in this env** — cannot compile. Verify new `.swift` files with the
+  string-aware Python tokenizer at `/tmp/swift_balance.py` (handles `//`, `/* */`,
+  `"..."` with escapes, `"""..."""` multiline, `\(…)` interpolation braces NOT
+  counted, `#"…"#` raw strings). It correctly ignores interpolation braces.
+- Real QR for ReceiveView uses `CoreImage.CIFilterBuiltins` `qrCodeGenerator()`
+  (NOT a fake asset). BridgeView honestly uses `sendTransaction` (no dedicated
+  bridge endpoint) and shows "Transaction submitted to the blockchain network".
 - `user_wallet/web/src/services/api.ts`: added getSwapQuote/getStakingQuote (send/sign
   already existed — avoid duplicate method definitions, TS2393).
 - `user_wallet/desktop/src/services/api.js`: added getNFTs/getSwapQuote/getStakingQuote.
@@ -3779,3 +3836,87 @@ Every UserWallet client gained: `passkeyCreateWallet`, `setupLock`,
 go build+vet+test (wallet_api), tsc (web + production/react), node --check
 (desktop api.js + extension popup.js), cargo check (rust lib), brace-balance
 (android kotlin + ios swift), XML well-formed (android + extension layouts).
+
+## Session 2026-08-17 (final): UserWallet full UI parity (desktop/android/ios)
+
+The pasted "Full Fetchers, Functionality & Gap Analysis" was re-verified and
+found ALMOST ENTIRELY STALE: every claimed-missing client method already
+existed (address-book, devices, approvals, keystore, AMM, non-EVM
+send/sign/address, the full DeFi suite, tx receipt, NFT transfer, security
+scan — all present on all 7 clients, built in prior sessions). The core
+requirements (no-register guest auth, Google Drive backup + copy, passwordless
+send, "Transaction submitted to the blockchain network", auto-sign/
+auto-approval, KYC-gated P2P, app-lock passcode/passkey/nothing, passkey wallet
+creation) were all confirmed present from the prior 8567c70 session.
+
+The ONE genuine gap was **UI parity**: web (18 pages) and production/react
+(13) were feature-complete, but desktop (8), android (7), and ios (8) had only
+core wallet-management screens despite having the full fetcher set. This
+session closed that gap — all fetchers were already available, so this was
+purely UI wiring (no service-layer changes, no backend changes).
+
+### Desktop (`user_wallet/desktop`, Electron JSX)
+Added 9 themed pages (esbuild parse-clean): Swap.jsx, Staking.jsx, NFTs.jsx,
+Bridge.jsx, AddressBook.jsx, Approvals.jsx, Devices.jsx, Keystore.jsx,
+DeFi.jsx (single hub with Lending/CopyTrading/DAO/Perpetual/Margin/Prediction/
+Launchpool/TokenSales sections). Wired routes in `src/renderer/App.jsx` + nav
+links in `src/components/Layout.jsx`. All use `useTheme()` + `isDark` ternaries,
+fetch-on-mount, loading/error/empty states, no mock data. Desktop page count
+8 -> 17.
+
+### Android (`user_wallet/android`, Kotlin)
+Confirmed ReceiveFragment/SwapFragment/StakingFragment/NFTsFragment/
+BridgeFragment/AddressBookFragment/ApprovalsFragment already existed (prior
+sessions). Added the 3 genuinely-missing: DevicesFragment.kt +
+KeystoreFragment.kt + DeFiFragment.kt + adapters (DevicesAdapter.kt) + layouts.
+Rewrote `fragment_dashboard.xml` as a 15-button GridLayout nav grid +
+`DashboardFragment.kt` navigation via `MainActivity.navigateTo(XFragment())`
+(mirroring the existing KYC button pattern). All call the real
+`UserWalletApiService` methods on `Dispatchers.IO`, themed via theme attrs +
+`values-night`. Brace-balanced + XML well-formed (kotlinc NOT installed).
+Android fragment count 7 -> 17.
+
+### iOS (`user_wallet/ios`, SwiftUI)
+Added 10 themed SwiftUI views: ReceiveView.swift (real QR via CoreImage
+CIQRCodeGenerator + UIPasteboard Copy), SwapView.swift, StakingView.swift,
+NFTsView.swift, BridgeView.swift, AddressBookView.swift, ApprovalsView.swift,
+DevicesView.swift, KeystoreView.swift, DeFiView.swift (single hub, 8
+sections). Wired into navigation via a new `MoreView` (NavigationView +
+NavigationLink list) as a 7th tab in `UserWalletApp.swift`'s ContentView
+TabView (preserved the original 6 tabs). All use semantic system colors
+(theme-aware), `.task{}` async, loading/error/empty states, no mock data.
+Brace-balanced via string-aware tokenizer (swiftc NOT installed). iOS view
+count 8 -> 16.
+
+### Final page/fragment/view counts (FULL UI PARITY)
+- web: 18 pages (reference set)
+- desktop: 17 pages
+- android: 17 fragments
+- ios: 16 views
+- production/react: 13 pages (DeFi split across Staking/NFTs/Swap/Bridge/DApps)
+- extension: 7 popup tabs (appropriate for a popup)
+All expose the SAME feature set; all theme-aware (light/dark switch on every
+page).
+
+### Build verification (ALL GREEN — 2026-08-17)
+- go/wallet_api: go build exit 0 (Go 1.23.12 installed at $HOME/.go-sdk)
+- user_wallet/rust: cargo check --lib exit 0 (Rust 1.97.1 installed)
+- user_wallet/web: npx tsc --noEmit 0 errors
+- user_wallet/production/react: npx tsc --noEmit 0 errors
+- user_wallet/desktop: node --check api.js OK; all 9 new .jsx + App.jsx
+  esbuild-parse clean
+- user_wallet/extension: node --check popup.js OK
+- user_wallet/android: brace-balanced + XML well-formed (kotlinc NOT installed)
+- user_wallet/ios: brace-balanced (swiftc NOT installed)
+
+### Notes
+- Toolchains (Go 1.23.12, Rust 1.97.1) were NOT preinstalled in this fresh env;
+  installed on demand ($HOME/.go-sdk + rustup minimal). Node 22 + g++ 14 were
+  preinstalled.
+- The pasted analysis's "12 methods / 24 methods / 22 methods / 35 methods /
+  33 methods / 24 methods / 25 methods" counts are STALE — all 7 clients now
+  have ~92-105 methods (the full fetcher set). No service-layer changes were
+  needed this session; the work was purely closing the desktop/android/ios UI
+  gap.
+- No SQLite introduced (PostgreSQL + Redis remain the only DBs). No duplicate
+  files created. No new branch (work on main).

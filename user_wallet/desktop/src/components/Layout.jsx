@@ -13,6 +13,15 @@ function Layout() {
     { path: '/receive', label: 'Receive', icon: '📥' },
     { path: '/transactions', label: 'Transactions', icon: '📋' },
     { path: '/kyc', label: 'KYC', icon: '🪪' },
+    { path: '/swap', label: 'Swap', icon: '🔄' },
+    { path: '/staking', label: 'Staking', icon: '📈' },
+    { path: '/nfts', label: 'NFTs', icon: '🖼️' },
+    { path: '/bridge', label: 'Bridge', icon: '🌉' },
+    { path: '/address-book', label: 'Address Book', icon: '📕' },
+    { path: '/approvals', label: 'Approvals', icon: '✅' },
+    { path: '/devices', label: 'Devices', icon: '💻' },
+    { path: '/keystore', label: 'Keystore', icon: '🔐' },
+    { path: '/defi', label: 'DeFi', icon: '🏦' },
     { path: '/settings', label: 'Settings', icon: '⚙️' }
   ];
 

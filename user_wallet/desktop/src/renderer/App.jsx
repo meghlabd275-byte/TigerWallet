@@ -11,6 +11,15 @@ import Settings from '../pages/Settings';
 import Send from '../pages/Send';
 import Receive from '../pages/Receive';
 import KYC from '../pages/KYC';
+import Swap from '../pages/Swap';
+import Staking from '../pages/Staking';
+import NFTs from '../pages/NFTs';
+import Bridge from '../pages/Bridge';
+import AddressBook from '../pages/AddressBook';
+import Approvals from '../pages/Approvals';
+import Devices from '../pages/Devices';
+import Keystore from '../pages/Keystore';
+import DeFi from '../pages/DeFi';
 
 function App() {
   return (
@@ -28,6 +37,15 @@ function App() {
               <Route path="transactions" element={<Transactions />} />
               <Route path="kyc" element={<KYC />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="swap" element={<Swap />} />
+              <Route path="staking" element={<Staking />} />
+              <Route path="nfts" element={<NFTs />} />
+              <Route path="bridge" element={<Bridge />} />
+              <Route path="address-book" element={<AddressBook />} />
+              <Route path="approvals" element={<Approvals />} />
+              <Route path="devices" element={<Devices />} />
+              <Route path="keystore" element={<Keystore />} />
+              <Route path="defi" element={<DeFi />} />
             </Route>
           </Routes>
         </HashRouter>

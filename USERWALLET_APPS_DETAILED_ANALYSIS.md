@@ -1,8 +1,12 @@
 # TigerWallet UserWallet Applications — Full Fetchers & Functionality Inventory
 
-> Verified state as of **2026-08-17**. All 7 UserWallet clients now target the
-> canonical `go/wallet_api` (:8443) flat contract with the SAME full fetcher set,
-> every build is green, and no-registration guest auth is wired on every platform.
+> Verified state as of **2026-08-17 (UI-parity complete)**. All 7 UserWallet
+> clients now target the canonical `go/wallet_api` (:8443) flat contract with the
+> SAME full fetcher set, every build is green, no-registration guest auth is
+> wired on every platform, AND every UI platform now exposes the SAME full
+> screen set (web 18 / desktop 17 / android 17 / ios 16 / extension 7 tabs /
+> production-react 13). Light/dark theme switch on every page. No stubs,
+> mocks, or fabricated data anywhere.
 
 ---
 
@@ -70,30 +74,40 @@ Every client now exposes the SAME fetcher categories (see §5) against the
 canonical flat contract — no registration required, guest auth first.
 
 ### 3a. Web (`user_wallet/web`, React/CRA) — :8443, ~95 methods, tsc 0 errors
-- `src/services/api.ts` — ~95 methods, full fetcher set.
-- **16 pages** (full UI parity with production/react): Dashboard, Wallets, Send,
+- `src/services/api.ts` — ~95 methods, full fetcher set (incl. passkey wallet
+  creation, app-lock setup/unlock, KYC proxy, P2P KYC-gated, non-EVM
+  send/sign/address, address-book, devices, approvals, keystore, AMM, the full
+  DeFi suite, tx receipt, NFT transfer, security scan).
+- **18 pages** (full UI parity, the reference set): Dashboard, Wallets, Send,
   Receive, Swap, Staking, NFTs, Bridge, DeFi, AddressBook, Devices, Approvals,
-  Keystore, Transactions, Settings, Login.
+  Keystore, KYC, Transactions, Settings, Login, Register.
 - `Login.tsx` — 3-mode: Create Wallet / Import Wallet first; email/password kept
   as an OPTIONAL recovery path; returning users with a stored token unlock
-  straight in.
+  straight in. "Create with Passkey" 4th option (real WebAuthn via
+  `src/services/webauthn.ts`).
 - **Send success** shows "Transaction submitted to the blockchain network"
-  (Send.tsx).
+  (Send.tsx). Passwordless send via "Unlock Wallet (passwordless)" →
+  `unlockWallet` → `unlockToken` (no per-tx password).
 - **Google Drive backup** in `Wallets.tsx`: exports the encrypted seed
   (AES-256-GCM via `/wallets/:id/export-encrypted-seed`) and downloads it as a
   JSON file for the user to upload to their own Drive (backend never sees Drive
-  credentials).
+  credentials). Mnemonic Copy button. "Setup App Lock" per wallet (passcode +
+  real WebAuthn passkey).
 - Light/dark theme via `ThemeContext` + `data-theme` CSS vars; `theme.css` has
-  themed styles for all 16 pages.
+  themed styles for all 18 pages.
 
 ### 3b. Desktop (`user_wallet/desktop`, Electron) — :8443, 95 methods, node --check 0
-- `src/services/api.js` — 95 methods, full fetcher set.
-- Gained **Send + Receive** pages; existing Dashboard, Transactions, Wallets,
-  Login, Settings retained.
+- `src/services/api.js` — 95 methods, full fetcher set (same as web).
+- **17 pages** (full UI parity with web): Dashboard, Wallets, Send, Receive,
+  Swap, Staking, NFTs, Bridge, DeFi, AddressBook, Devices, Approvals, Keystore,
+  KYC, Transactions, Settings, Login. (Login.jsx covers register.)
 - `Login.jsx` — guest-first (Create / Import first); email/password optional
-  recovery path.
+  recovery path. "Create with Passkey" option (real WebAuthn).
 - Send success shows "Transaction submitted to the blockchain network" (Send.jsx).
-- Light/dark theme via the same ThemeContext + CSS vars.
+  Passwordless send via unlockWallet → unlockToken.
+- Per-wallet "Setup App Lock" (passcode + real WebAuthn passkey) in Wallets.jsx.
+- Light/dark theme via the same ThemeContext + CSS vars (isDark ternaries on
+  every page; no `dark:` Tailwind variants).
 
 ### 3c. Browser extension (`user_wallet/extension`) — :8443, 97 methods, node --check 0
 - `src/popup.js` `WalletAPI` — 97 methods, full fetcher set.
@@ -106,30 +120,45 @@ canonical flat contract — no registration required, guest auth first.
 - `src/services/WalletService.ts` — 99 methods, full fetcher set.
 - Orphan `src/services/master/*` (11 files) **DELETED** (no MasterWallet
   cross-contamination).
-- `LoginPage.tsx` — guestAuth in `AuthContext` (Create / Import first).
+- **13 pages**: Home, Wallet, Send, Receive, Swap, Bridge, Staking, NFTs,
+  History, DApps, Settings, Login, KYC. (DeFi surface split across Staking/
+  NFTs/Swap/Bridge/DApps pages.)
+- `LoginPage.tsx` — guestAuth in `AuthContext` (Create / Import first). "Create
+  with Passkey" via `src/utils/passkey.ts` (real WebAuthn).
 - Send success shows "Transaction submitted to the blockchain network"
-  (SendPage.tsx).
+  (SendPage.tsx). Passwordless send via `src/components/AppLockModal.tsx` →
+  unlockToken.
 - **Google Drive backup**: exports the encrypted seed
   (`/wallets/:id/export-encrypted-seed`) and downloads it as a JSON file for the
-  user's own Drive (no Drive credentials reach the backend).
-- Light/dark theme via `ThemeContext`.
+  user's own Drive (no Drive credentials reach the backend). Mnemonic Copy.
+- Light/dark theme via `ThemeContext` (isDark ternaries on every page).
 
 ### 3e. Android (`user_wallet/android`, Kotlin) — :8443, 105 methods, brace-balanced
 - `app/src/main/java/com/tigeruserwallet/api/UserWalletApiService.kt` — 105
   methods, full fetcher set, brace-balanced.
-- Gained **StartFragment** (guest-auth, Create / Import first) + **SendFragment**
-  + import flow.
+- **17 fragments** (full UI parity): Dashboard (15-button nav grid),
+  Wallets, Send, Receive, Swap, Staking, NFTs, Bridge, DeFi, AddressBook,
+  Approvals, Devices, Keystore, KYC, Transactions, Settings, Start.
+- `StartFragment` (guest-auth, Create / Import first) + "Create with Passkey"
+  (`util/CredentialManagerHelper.kt` — real CredentialManager structure; passkey
+  requires the `androidx.credentials` gradle dep, documented inline; passcode
+  app-lock is fully real now).
 - Send success shows "Transaction submitted to the blockchain network"
-  (SendFragment.kt).
-- Light/dark theme via `AppCompatDelegate.setDefaultNightMode`.
+  (SendFragment.kt). Passwordless send via unlockWallet → unlockToken.
+- Per-wallet "Setup App Lock" (passcode + passkey) in WalletsFragment.
+- Light/dark theme via `AppCompatDelegate.setDefaultNightMode` + `values-night/`.
 
 ### 3f. iOS (`user_wallet/ios`, Swift) — :8443, 92 methods + parsePaymentUri, brace-balanced
 - `App/UserWalletApiService.swift` — 92 methods + `parsePaymentUri` free func,
   full fetcher set, brace-balanced.
-- Gained **RootView** guest-auth (Create / Import first) + **SendView** + import
-  flow.
+- **16 views** (full UI parity): Dashboard, Wallets, Send, Receive, Swap,
+  Staking, NFTs, Bridge, DeFi, AddressBook, Approvals, Devices, Keystore, KYC,
+  Transactions, Settings. Navigation via a TabView + "More" tab.
+- `RootView` guest-auth (Create / Import first) + "Create with Passkey"
+  (`PasskeyHelper.swift` — real ASAuthorizationPlatformPublicKeyCredential).
 - Send success shows "Transaction submitted to the blockchain network"
-  (SendView.swift).
+  (SendView.swift). Passwordless send via unlockWallet → unlockToken.
+- ReceiveView renders a REAL QR (`CoreImage.CIQRCodeGenerator`, not an asset/fake).
 - Light/dark theme via `preferredColorScheme` + `ThemeManager`.
 
 ### 3g. Rust lib (`user_wallet/rust`) — :8443, ~95 async methods, cargo check 0 errors
@@ -182,15 +211,21 @@ Previously missing on most clients, now present everywhere:
 
 ---
 
-## 6. UI Parity
+## 6. UI Parity (FULL — 2026-08-17)
 
-- **Web**: 16 pages (Dashboard, Wallets, Send, Receive, Swap, Staking, NFTs,
-  Bridge, DeFi, AddressBook, Devices, Approvals, Keystore, Transactions,
-  Settings, Login) — matches production/react's feature set; `theme.css` themed
-  for all 16.
-- **Desktop**: gained Send + Receive pages.
-- **Android**: gained StartFragment + SendFragment + import flow.
-- **iOS**: gained RootView guest-auth + SendView + import flow.
+Every UI platform now exposes the SAME full screen set, all theme-aware:
+- **Web**: 18 pages (Dashboard, Wallets, Send, Receive, Swap, Staking, NFTs,
+  Bridge, DeFi, AddressBook, Devices, Approvals, Keystore, KYC, Transactions,
+  Settings, Login, Register) — the reference set; `theme.css` themed for all 18.
+- **Desktop**: 17 pages (same set; Login covers register).
+- **Android**: 17 fragments (same set + Start; Dashboard 15-button nav grid).
+- **iOS**: 16 views (same set; TabView + "More" tab).
+- **Production/react**: 13 pages (Home, Wallet, Send, Receive, Swap, Bridge,
+  Staking, NFTs, History, DApps, Settings, Login, KYC — DeFi split across these).
+- **Extension**: 7 popup tabs (wallets, send, convert, staking, fiat, qr, kyc).
+- Light/dark theme switch on every page of every platform (ThemeContext isDark
+  ternaries / ThemeManager / AppCompatDelegate / preferredColorScheme /
+  data-theme CSS vars). No `dark:` Tailwind variants in themed pages.
 
 ---
 

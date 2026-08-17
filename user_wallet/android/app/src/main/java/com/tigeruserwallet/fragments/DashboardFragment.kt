@@ -32,9 +32,54 @@ class DashboardFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         balancesRecyclerView = view.findViewById(R.id.balancesRecyclerView)
         balancesRecyclerView.layoutManager = LinearLayoutManager(requireContext())
-        view.findViewById<Button>(R.id.openKycButton).setOnClickListener {
-            (activity as? MainActivity)?.navigateTo(KycFragment())
+
+        val main = activity as? MainActivity
+        view.findViewById<Button>(R.id.navSendButton).setOnClickListener {
+            main?.navigateTo(SendFragment())
         }
+        view.findViewById<Button>(R.id.navReceiveButton).setOnClickListener {
+            main?.navigateTo(ReceiveFragment())
+        }
+        view.findViewById<Button>(R.id.navTransactionsButton).setOnClickListener {
+            main?.navigateTo(TransactionsFragment())
+        }
+        view.findViewById<Button>(R.id.navSwapButton).setOnClickListener {
+            main?.navigateTo(SwapFragment())
+        }
+        view.findViewById<Button>(R.id.navStakingButton).setOnClickListener {
+            main?.navigateTo(StakingFragment())
+        }
+        view.findViewById<Button>(R.id.navNftsButton).setOnClickListener {
+            main?.navigateTo(NFTsFragment())
+        }
+        view.findViewById<Button>(R.id.navBridgeButton).setOnClickListener {
+            main?.navigateTo(BridgeFragment())
+        }
+        view.findViewById<Button>(R.id.navDeFiButton).setOnClickListener {
+            main?.navigateTo(DeFiFragment())
+        }
+        view.findViewById<Button>(R.id.navKycButton).setOnClickListener {
+            main?.navigateTo(KycFragment())
+        }
+        view.findViewById<Button>(R.id.navAddressBookButton).setOnClickListener {
+            main?.navigateTo(AddressBookFragment())
+        }
+        view.findViewById<Button>(R.id.navApprovalsButton).setOnClickListener {
+            main?.navigateTo(ApprovalsFragment())
+        }
+        view.findViewById<Button>(R.id.navDevicesButton).setOnClickListener {
+            main?.navigateTo(DevicesFragment())
+        }
+        view.findViewById<Button>(R.id.navKeystoreButton).setOnClickListener {
+            main?.navigateTo(KeystoreFragment())
+        }
+        view.findViewById<Button>(R.id.navWalletsButton).setOnClickListener {
+            main?.navigateTo(WalletsFragment())
+        }
+        view.findViewById<Button>(R.id.navSettingsButton).setOnClickListener {
+            main?.navigateTo(SettingsFragment())
+        }
+
         loadBalances()
     }
 

@@ -12,17 +12,134 @@
         android:textSize="24sp"
         android:textStyle="bold" />
 
-    <Button
-        android:id="@+id/openKycButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="Identity Verification (KYC)" />
-
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/balancesRecyclerView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp" />
 
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Quick actions"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <GridLayout
+        android:id="@+id/dashboardActionsGrid"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:columnCount="3"
+        android:rowCount="5">
+
+        <Button
+            android:id="@+id/navSendButton"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="Send" />
+
+        <Button
+            android:id="@+id/navReceiveButton"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="Receive" />
+
+        <Button
+            android:id="@+id/navTransactionsButton"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="Transactions" />
+
+        <Button
+            android:id="@+id/navSwapButton"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="Swap" />
+
+        <Button
+            android:id="@+id/navStakingButton"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="Staking" />
+
+        <Button
+            android:id="@+id/navNftsButton"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="NFTs" />
+
+        <Button
+            android:id="@+id/navBridgeButton"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="Bridge" />
+
+        <Button
+            android:id="@+id/navDeFiButton"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="DeFi" />
+
+        <Button
+            android:id="@+id/navKycButton"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="KYC" />
+
+        <Button
+            android:id="@+id/navAddressBookButton"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="Address Book" />
+
+        <Button
+            android:id="@+id/navApprovalsButton"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="Approvals" />
+
+        <Button
+            android:id="@+id/navDevicesButton"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="Devices" />
+
+        <Button
+            android:id="@+id/navKeystoreButton"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="Keystore" />
+
+        <Button
+            android:id="@+id/navWalletsButton"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="Wallets" />
+
+        <Button
+            android:id="@+id/navSettingsButton"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="Settings" />
+
+    </GridLayout>
+
 </LinearLayout>
+

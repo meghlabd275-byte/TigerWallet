@@ -1,0 +1,550 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="DeFi Hub"
+        android:textSize="24sp"
+        android:textStyle="bold" />
+
+    <ProgressBar
+        android:id="@+id/defiProgressBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginTop="16dp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/defiStatusTextView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textSize="14sp" />
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="12dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- LAUNCHPOOL -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Launchpool"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/launchpoolInfoText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:fontFamily="monospace"
+                android:textSize="12sp" />
+
+            <Spinner
+                android:id="@+id/launchpoolWalletSpinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp" />
+
+            <EditText
+                android:id="@+id/launchpoolAmountInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Amount"
+                android:inputType="numberDecimal" />
+
+            <EditText
+                android:id="@+id/launchpoolPasswordInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Wallet password"
+                android:inputType="textPassword" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/launchpoolStakeButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Stake" />
+
+                <Button
+                    android:id="@+id/launchpoolUnstakeButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:text="Unstake" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/launchpoolStakesText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:fontFamily="monospace"
+                android:textSize="12sp" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginVertical="12dp"
+                android:alpha="0.2"
+                android:background="?android:attr/textColorPrimary" />
+
+            <!-- TOKEN SALES -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Token Sales"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tokenSalesText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:fontFamily="monospace"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/saleIdInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Sale ID"
+                android:inputType="text" />
+
+            <EditText
+                android:id="@+id/saleAmountInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Amount"
+                android:inputType="numberDecimal" />
+
+            <Button
+                android:id="@+id/participateSaleButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Participate" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginVertical="12dp"
+                android:alpha="0.2"
+                android:background="?android:attr/textColorPrimary" />
+
+            <!-- DAO -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="DAO"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/daoProposalsText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:fontFamily="monospace"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/daoProposalIdInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Proposal ID to vote"
+                android:inputType="text" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/daoVoteYesButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Vote For" />
+
+                <Button
+                    android:id="@+id/daoVoteNoButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:text="Vote Against" />
+            </LinearLayout>
+
+            <EditText
+                android:id="@+id/daoTitleInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:hint="New proposal title"
+                android:inputType="text" />
+
+            <EditText
+                android:id="@+id/daoDescriptionInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="New proposal description"
+                android:inputType="textMultiLine" />
+
+            <Button
+                android:id="@+id/daoCreateButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Create Proposal" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginVertical="12dp"
+                android:alpha="0.2"
+                android:background="?android:attr/textColorPrimary" />
+
+            <!-- PERPETUAL -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Perpetual"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/perpPositionsText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:fontFamily="monospace"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/perpPairInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Pair (e.g. ETH-USD)"
+                android:inputType="text" />
+
+            <Spinner
+                android:id="@+id/perpSideSpinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <EditText
+                android:id="@+id/perpSizeInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Size"
+                android:inputType="numberDecimal" />
+
+            <EditText
+                android:id="@+id/perpLeverageInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Leverage (e.g. 5)"
+                android:inputType="number" />
+
+            <Button
+                android:id="@+id/perpCreateButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Open Position" />
+
+            <EditText
+                android:id="@+id/perpCloseIdInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Position ID to close"
+                android:inputType="text" />
+
+            <Button
+                android:id="@+id/perpCloseButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Close Position" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginVertical="12dp"
+                android:alpha="0.2"
+                android:background="?android:attr/textColorPrimary" />
+
+            <!-- MARGIN -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Margin"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/marginPositionsText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:fontFamily="monospace"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/marginPairInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Pair"
+                android:inputType="text" />
+
+            <Spinner
+                android:id="@+id/marginSideSpinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <EditText
+                android:id="@+id/marginSizeInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Size"
+                android:inputType="numberDecimal" />
+
+            <EditText
+                android:id="@+id/marginLeverageInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Leverage"
+                android:inputType="number" />
+
+            <Button
+                android:id="@+id/marginCreateButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Open Margin" />
+
+            <EditText
+                android:id="@+id/marginCloseIdInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Position ID to close"
+                android:inputType="text" />
+
+            <Button
+                android:id="@+id/marginCloseButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Close Margin" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginVertical="12dp"
+                android:alpha="0.2"
+                android:background="?android:attr/textColorPrimary" />
+
+            <!-- PREDICTION -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Prediction Markets"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/predictionMarketsText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:fontFamily="monospace"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/predMarketIdInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Market ID"
+                android:inputType="text" />
+
+            <Spinner
+                android:id="@+id/predSideSpinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <EditText
+                android:id="@+id/predAmountInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Amount"
+                android:inputType="numberDecimal" />
+
+            <Button
+                android:id="@+id/predBetButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Place Bet" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginVertical="12dp"
+                android:alpha="0.2"
+                android:background="?android:attr/textColorPrimary" />
+
+            <!-- LENDING -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Lending"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/lendingMarketsText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:fontFamily="monospace"
+                android:textSize="12sp" />
+
+            <Spinner
+                android:id="@+id/lendingWalletSpinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <EditText
+                android:id="@+id/lendingAssetInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Asset"
+                android:inputType="text" />
+
+            <EditText
+                android:id="@+id/lendingAmountInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Amount"
+                android:inputType="numberDecimal" />
+
+            <EditText
+                android:id="@+id/lendingPasswordInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Wallet password"
+                android:inputType="textPassword" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/lendingSupplyButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Supply" />
+
+                <Button
+                    android:id="@+id/lendingBorrowButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:text="Borrow" />
+
+                <Button
+                    android:id="@+id/lendingWithdrawButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:text="Withdraw" />
+
+                <Button
+                    android:id="@+id/lendingRepayButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:text="Repay" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginVertical="12dp"
+                android:alpha="0.2"
+                android:background="?android:attr/textColorPrimary" />
+
+            <!-- COPY TRADING -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Copy Trading"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/copyTradersText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:fontFamily="monospace"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/copyTraderIdInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Trader ID to follow"
+                android:inputType="text" />
+
+            <EditText
+                android:id="@+id/copyAllocationInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Allocation (optional)"
+                android:inputType="numberDecimal" />
+
+            <Button
+                android:id="@+id/copyFollowButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Follow" />
+
+            <EditText
+                android:id="@+id/copyStopIdInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Copier ID to stop"
+                android:inputType="text" />
+
+            <Button
+                android:id="@+id/copyStopButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Stop Copying" />
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+</LinearLayout>

@@ -231,6 +231,52 @@ struct ContentView: View {
             SettingsView()
                 .tabItem { Image(systemName: "gear"); Text("Settings") }
                 .tag(5)
+
+            // "More" hub — mirrors the web's flat nav (18 routes). The fixed
+            // tabs above cover the core actions; everything else lives here as
+            // a NavigationLink list, each pushing a real SwiftUI view that
+            // fetches data on appear.
+            MoreView()
+                .tabItem { Image(systemName: "ellipsis.circle"); Text("More") }
+                .tag(6)
+        }
+    }
+}
+
+// "More" tab: a NavigationView with a List of NavigationLinks to every
+// secondary surface. Keeps the TabView to 7 items while exposing all 18 web
+// pages (core tabs + these). Each destination fetches real data.
+struct MoreView: View {
+    var body: some View {
+        NavigationView {
+            List {
+                Section("Wallet") {
+                    navLink("Receive", "qrcode", ReceiveView())
+                    navLink("Swap", "arrow.left.arrow.right", SwapView())
+                    navLink("Staking", "lock.ropescript", StakingView())
+                    navLink("NFTs", "photo.on.rectangle.angled", NFTsView())
+                    navLink("Bridge", "arrow.left.arrow.right.circle", BridgeView())
+                    navLink("Keystore", "key", KeystoreView())
+                    navLink("Approvals", "checkmark.shield", ApprovalsView())
+                }
+                Section("Account") {
+                    navLink("Address Book", "person.crop.rectangle.badge.plus", AddressBookView())
+                    navLink("Devices", "laptopcomputer.and.iphone", DevicesView())
+                }
+                Section("DeFi") {
+                    navLink("DeFi", "square.grid.2x2.fill", DeFiView())
+                }
+            }
+            .navigationTitle("More")
+        }
+    }
+
+    @ViewBuilder
+    private func navLink<Destination: View>(_ title: String, _ icon: String, _ destination: Destination) -> some View {
+        NavigationLink {
+            destination
+        } label: {
+            Label(title, systemImage: icon)
         }
     }
 }
