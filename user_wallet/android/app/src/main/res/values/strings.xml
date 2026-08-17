@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">TigerWallet</string>
+    <!-- OAuth2 web client_id for the Google Drive REST API (drive.appdata scope).
+         Defaults to empty so the helper fails closed until a real client_id from
+         the Google Cloud Console is configured here. The same client_id is also
+         used by GoogleSignIn (configured in google-services.json). -->
+    <string name="google_drive_client_id" translatable="false"></string>
 </resources>

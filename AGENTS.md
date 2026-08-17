@@ -3984,6 +3984,39 @@ with identical files/features/functionality. Commit d52c25f on main.
   rustls-tls-webpki-roots); Message::Frame(_) arm required for non-exhaustive match.
 - String-aware brace check: the naive Python tokenizer misreads Dart/Kotlin
   ${...} interpolation as unbalanced braces. ALWAYS use a string-aware tokenizer.
+  A reusable one for Kotlin + Swift lives at `user_wallet/verify_balance.py`
+  (handles Kotlin `$ident` / `${...}` / `"""raw"""` and Swift `\( ... )` /
+  `#"raw"#` / `###...###`, plus comments and char literals). Run:
+  `python3 user_wallet/verify_balance.py <file.kt> <file.swift>`. When counting
+  Kotlin `${`, the opening `{` is skipped past, so the counter must add +1 for
+  it and let `_count_brace_until_close` net it back to 0 with the closing `}`.
 - iOS Swift Package > hand-written .xcodeproj: Package.swift is text-based.
 - Extension relay pattern: background.js MW_RELAY switch needs a case for EVERY
   masterWalletService.js method the popup can call; missing cases = dead code.
+
+## Google Drive encrypted-seed backup helpers (UserWallet Android + iOS)
+
+- Android: `user_wallet/android/app/src/main/java/com/tigeruserwallet/util/GoogleDriveBackupHelper.kt`
+  — `object` singleton with `suspend fun backupToDrive(context, encryptedSeedBlob): String`,
+  `suspend fun restoreFromDrive(context): String?`, `fun isAvailable(context): Boolean`.
+  Uses `GoogleSignIn` (silent sign-in) → `GoogleAccountCredential.usingOAuth2(..., DRIVE_APPDATA)`
+  → `com.google.api.services.drive.Drive` REST client (NOT the browser GIS / Drive
+  Android API). All blocking Drive I/O is on `Dispatchers.IO`. The OAuth2 web
+  client_id is read from the `google_drive_client_id` string resource (empty by
+  default → throws `GoogleDriveBackupError.NotConfigured`, fail-closed). The
+  `play-services-auth`, `google-api-client-android`, `google-api-services-drive`
+  deps are already in `app/build.gradle`.
+- iOS: `user_wallet/ios/App/GoogleDriveBackupHelper.swift` — `enum` (namespace)
+  with `backupToDrive(encryptedSeedBlob:) async throws -> String`,
+  `restoreFromDrive() async throws -> String?`, `isAvailable`. Pure OAuth2
+  Authorization Code flow via `ASWebAuthenticationSession` (no GoogleSignIn SDK
+  dependency) → `URLSession` calls to the Drive REST API v3. Client id/secret/
+  redirect scheme are constants in `GoogleDriveConfig` at the top of the file
+  (empty by default → throws `GoogleDriveBackupError.notConfigured`, fail-closed).
+  Token is held in-memory only (never persisted).
+- Both helpers treat the seed blob as opaque (already AES-256-GCM encrypted by
+  the wallet core); they NEVER decrypt/fabricate seed data. Backups go to the
+  hidden Drive `appDataFolder` (scope `drive.appdata`). A backup named
+  `tigerwallet-wallet-backup.enc` is updated in place if it exists, else created.
+- Restore returns `nil`/`null` when no backup exists (a valid outcome), distinct
+  from throwing on real failures.

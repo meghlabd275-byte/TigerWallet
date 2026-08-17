@@ -878,6 +878,27 @@ async function handleCreatePasskey() {
         );
       });
       out.appendChild(copy);
+      const drive = document.createElement('button');
+      drive.className = 'secondary';
+      drive.style.marginLeft = '6px';
+      drive.textContent = 'Backup to Google Drive';
+      drive.addEventListener('click', async () => {
+        if (typeof window.backupToDrive !== 'function') {
+          drive.textContent = 'Drive backup unavailable';
+          return;
+        }
+        drive.disabled = true;
+        drive.textContent = 'Backing up…';
+        try {
+          await window.backupToDrive(mnemonic);
+          drive.textContent = '✓ Backed up to Google Drive';
+        } catch (e) {
+          drive.textContent = e && e.message ? e.message : 'Drive backup failed';
+        } finally {
+          drive.disabled = false;
+        }
+      });
+      out.appendChild(drive);
       out.appendChild(document.createElement('br'));
       const note = document.createElement('div');
       note.className = 'wallet-balance';

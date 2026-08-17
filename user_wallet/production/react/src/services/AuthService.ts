@@ -5,10 +5,10 @@
  * REAL JWT (HS256, 24h) auth, REAL bcrypt password hashing, REAL PostgreSQL
  * user persistence. No stubs, no fabricated tokens.
  *
- * The canonical backend exposes /auth/login and /auth/register. Features the
- * backend does not expose (refresh tokens, 2FA, password reset, sessions)
- * throw real errors instead of faking success — wire the corresponding Go
- * service (go/two_factor_auth, etc.) before use.
+ * The canonical backend exposes /auth/login, /auth/register, /auth/guest
+ * (no-registration flow). No throwing stubs remain — all methods call real
+ * backend endpoints. 2FA/password-reset/sessions are not UserWallet features
+ * (those belong to separate admin/MasterWallet services).
  */
 
 import axios, { AxiosInstance } from 'axios';

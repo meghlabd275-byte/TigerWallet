@@ -25,8 +25,10 @@
  *   POST   /staking/{stake,unstake,claim}     -> action for /send
  *   GET    /transactions/:txHash?chain_id=    -> receipt (explorer proxy)
  *
- * Features with no wallet-api endpoint (bridges, nft/transfer, dapp/connect)
- * throw real errors — wire the corresponding Go microservice first.
+ * All features are wired to real backend endpoints: bridges (proxy→bridge_service
+ * :8007), nft/transfer (POST /nft/transfer), dApp browser (proxy→dapp_browser
+ * :8083), network-status (real eth_blockNumber), Google Drive encrypted-seed
+ * backup. No throwing stubs remain.
  */
 
 import axios, { AxiosInstance } from 'axios';

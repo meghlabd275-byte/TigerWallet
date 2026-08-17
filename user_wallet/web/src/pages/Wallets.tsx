@@ -10,6 +10,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { api, WalletRecord, BalanceResult } from '../services/api';
 import { createPasskey, webauthnSupported } from '../services/webauthn';
+import { backupToDrive } from '../services/googleDriveBackup';
 
 const CHAIN_OPTIONS = [
   { id: 1, label: 'Ethereum' },
@@ -37,6 +38,8 @@ export default function Wallets() {
   const [backupWalletId, setBackupWalletId] = useState<string | null>(null);
   const [backupBlob, setBackupBlob] = useState<string | null>(null);
   const [backupDone, setBackupDone] = useState(false);
+  const [driveBusy, setDriveBusy] = useState(false);
+  const [driveMsg, setDriveMsg] = useState('');
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -140,6 +143,22 @@ export default function Wallets() {
     a.download = `tigerwallet-backup-${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // Upload the encrypted seed blob directly to the user's Google Drive
+  // (appDataFolder scope) — the backend never sees Drive credentials.
+  const handleBackupToDrive = async () => {
+    if (!backupBlob) return;
+    setDriveBusy(true);
+    setDriveMsg('');
+    try {
+      await backupToDrive(backupBlob);
+      setDriveMsg('✓ Backed up to Google Drive');
+    } catch (err: unknown) {
+      setDriveMsg(err instanceof Error ? err.message : 'Google Drive backup failed');
+    } finally {
+      setDriveBusy(false);
+    }
   };
 
   // Create a wallet whose entropy is wrapped by a browser-issued WebAuthn
@@ -256,10 +275,10 @@ export default function Wallets() {
             </button>
             {backupWalletId && (
               <button onClick={() => exportBackup(backupWalletId)} disabled={busy}>
-                {busy ? 'Exporting…' : '☁️ Backup to Google Drive'}
+                {busy ? 'Exporting…' : '🔐 Export encrypted backup'}
               </button>
             )}
-            <button onClick={() => { setCreatedMnemonic(''); setBackupWalletId(null); setBackupBlob(null); setCopied(false); setBackupDone(false); }}>
+            <button onClick={() => { setCreatedMnemonic(''); setBackupWalletId(null); setBackupBlob(null); setCopied(false); setBackupDone(false); setDriveMsg(''); setDriveBusy(false); }}>
               I've saved it
             </button>
           </div>
@@ -267,6 +286,10 @@ export default function Wallets() {
             <div className="backup-info">
               <p>Encrypted seed ready. Download it and upload to your Google Drive for safekeeping.</p>
               <button onClick={downloadBackup}>⬇️ Download encrypted backup</button>
+              <button onClick={handleBackupToDrive} disabled={driveBusy}>
+                {driveBusy ? 'Uploading…' : '☁️ Backup to Google Drive'}
+              </button>
+              {driveMsg && <p className={driveMsg.startsWith('✓') ? 'success' : 'error'}>{driveMsg}</p>}
               <button onClick={() => setBackupDone(true)}>✓ Uploaded to Drive</button>
             </div>
           )}

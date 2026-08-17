@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { api } from '../services/api';
+import { backupToDrive as uploadToDrive } from '../services/googleDriveBackup';
 
 const CHAIN_IDS = { ethereum: 1, bsc: 56, polygon: 137 };
 const CHAIN_OPTIONS = [
@@ -40,6 +41,8 @@ function Wallets() {
   const [createdWallet, setCreatedWallet] = useState(null);
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupMsg, setBackupMsg] = useState('');
+  const [driveBusy, setDriveBusy] = useState(false);
+  const [driveMsg, setDriveMsg] = useState('');
   const [error, setError] = useState('');
 
   // App-lock modal state (per wallet).
@@ -163,10 +166,31 @@ function Wallets() {
     }
   };
 
+  // Upload the encrypted seed blob directly to Google Drive appDataFolder.
+  const handleDriveBackup = async () => {
+    if (!createdWallet) return;
+    setError('');
+    setDriveBusy(true);
+    setDriveMsg('');
+    try {
+      const walletId = createdWallet.id || createdWallet.wallet_id || createdWallet.walletId;
+      const blob = await api.exportEncryptedSeed(walletId, createData.password);
+      const serialized = typeof blob === 'string' ? blob : JSON.stringify(blob);
+      await uploadToDrive(serialized);
+      setDriveMsg('✓ Backed up to Google Drive');
+    } catch (err) {
+      setDriveMsg(err.message || 'Google Drive backup failed');
+    } finally {
+      setDriveBusy(false);
+    }
+  };
+
   const dismissMnemonic = () => {
     setNewMnemonic('');
     setCreatedWallet(null);
     setBackupMsg('');
+    setDriveMsg('');
+    setDriveBusy(false);
   };
 
   const openLock = (wallet) => {
@@ -315,11 +339,19 @@ function Wallets() {
           <div className="mnemonic-actions">
             <button onClick={copyMnemonic}>📋 Copy</button>
             <button onClick={backupToDrive} disabled={backupBusy}>
-              {backupBusy ? 'Backing up…' : '☁️ Backup to Google Drive'}
+              {backupBusy ? 'Backing up…' : '⬇️ Download backup'}
+            </button>
+            <button onClick={handleDriveBackup} disabled={driveBusy}>
+              {driveBusy ? 'Uploading…' : '☁️ Backup to Google Drive'}
             </button>
             <button onClick={dismissMnemonic}>I&apos;ve saved it</button>
           </div>
           {backupMsg && <p className="backup-msg">{backupMsg}</p>}
+          {driveMsg && (
+            <p className="backup-msg" style={{ color: driveMsg.startsWith('✓') ? '#4CAF50' : '#f44336' }}>
+              {driveMsg}
+            </p>
+          )}
           {error && <div className="error">{error}</div>}
         </div>
       )}

@@ -16,6 +16,7 @@ import { Token, Chain } from '../services/WalletService';
 import { WalletService } from '../services/WalletService';
 import AppLockModal from '../components/AppLockModal';
 import { passkeySupported, createPasskey } from '../utils/passkey';
+import { backupToDrive } from '../services/googleDriveBackup';
 
 interface PasskeyWalletResult {
   walletId: string;
@@ -42,6 +43,8 @@ function WalletPage() {
   const [passkeyResult, setPasskeyResult] = useState<PasskeyWalletResult | null>(null);
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [driveBusy, setDriveBusy] = useState(false);
+  const [driveMsg, setDriveMsg] = useState('');
 
   const webauthnSupported = passkeySupported();
 
@@ -112,6 +115,21 @@ function WalletPage() {
       setTimeout(() => setCopied(false), 2000);
     } catch {
       /* clipboard may be blocked; ignore */
+    }
+  };
+
+  // Upload the wallet recovery phrase to Google Drive appDataFolder.
+  const handleBackupToDrive = async () => {
+    if (!passkeyResult?.mnemonic) return;
+    setDriveBusy(true);
+    setDriveMsg('');
+    try {
+      await backupToDrive(passkeyResult.mnemonic);
+      setDriveMsg('✓ Backed up to Google Drive');
+    } catch (err: unknown) {
+      setDriveMsg(err instanceof Error ? err.message : 'Google Drive backup failed');
+    } finally {
+      setDriveBusy(false);
     }
   };
 
@@ -231,7 +249,19 @@ function WalletPage() {
               <button onClick={copyMnemonic} className="btn btn-secondary text-sm shrink-0">
                 {copied ? 'Copied!' : 'Copy'}
               </button>
+              <button
+                onClick={handleBackupToDrive}
+                disabled={driveBusy}
+                className="btn btn-secondary text-sm shrink-0"
+              >
+                {driveBusy ? 'Uploading...' : '☁️ Backup to Google Drive'}
+              </button>
             </div>
+            {driveMsg && (
+              <p className={`text-xs mt-2 ${driveMsg.startsWith('✓') ? 'text-green-500' : 'text-red-500'}`}>
+                {driveMsg}
+              </p>
+            )}
           </div>
         )}
 
