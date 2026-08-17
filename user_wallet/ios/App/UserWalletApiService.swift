@@ -389,13 +389,12 @@ final class UserWalletApiService {
         let connected: Bool
     }
 
-    // Mirrors the web client: derive connected/chain-id from /chains (no
-    // dedicated status route on wallet_api). block_number is not exposed by the
-    // chains list endpoint, so we report 0 honestly rather than fabricate.
+    // GET /network-status?chain_id=N -> { chain_id, block_number, connected }
+    // (real node_status RPC proxied by the backend). Replaces the previous
+    // derivation from /chains that fabricated block_number: 0.
     func getNetworkStatus(chainId: Int) async throws -> NetworkStatus {
-        let chains = try await getChains()
-        let chain = chains.first { $0.chain_id == chainId }
-        return NetworkStatus(chain_id: chain?.chain_id ?? chainId, block_number: 0, connected: chain != nil)
+        let path = "/network-status?chain_id=\(chainId)"
+        return try await request(path)
     }
 
     // MARK: - Swap (real CoinGecko cross-rate + on-chain via backend)
@@ -1158,6 +1157,102 @@ final class UserWalletApiService {
     func getKycSession(sessionId: String) async throws -> [String: Any] {
         let safeId = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionId
         return try await requestRaw("/kyc/session/\(safeId)")
+    }
+
+    // MARK: - Bridge (proxied to bridge_service :8007)
+    //
+    // Cross-chain bridge routes. All forward to /api/v1/bridge/* on the wallet
+    // backend (port 8443), which proxies them to bridge_service (:8007). List
+    // endpoints return the full envelope as [String: Any] (the array lives under
+    // a key such as "routes"/"history"); singletons return the raw JSON object.
+    // Same Bearer JWT auth as every other protected route.
+
+    /// GET /bridge/routes -> available cross-chain routes.
+    func getBridgeRoutes() async throws -> [String: Any] {
+        return try await requestRaw("/bridge/routes")
+    }
+
+    /// POST /bridge/quote { fromChain, toChain, token, amount } -> quote.
+    func getBridgeQuote(fromChain: Int, toChain: Int, token: String, amount: String) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "fromChain": fromChain, "toChain": toChain, "token": token, "amount": amount,
+        ])
+        return try await requestRaw("/bridge/quote", method: "POST", body: body)
+    }
+
+    /// POST /bridge/transfer { ... } -> initiates a cross-chain transfer.
+    func bridgeTransfer(body: [String: Any]) async throws -> [String: Any] {
+        let payload = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/bridge/transfer", method: "POST", body: payload)
+    }
+
+    /// GET /bridge/tx/:id -> status of a bridge transfer.
+    func getBridgeTx(id: String) async throws -> [String: Any] {
+        let safeId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        return try await requestRaw("/bridge/tx/\(safeId)")
+    }
+
+    /// GET /bridge/history -> caller's bridge transfer history.
+    func getBridgeHistory() async throws -> [String: Any] {
+        return try await requestRaw("/bridge/history")
+    }
+
+    // MARK: - dApp browser / WalletConnect (proxied to dapp_browser :8083)
+    //
+    // WalletConnect pairing + session lifecycle routes. All forward to
+    // /api/v1/dapp/* on the wallet backend (port 8443), which proxies them to
+    // dapp_browser (:8083). Pairing approval/rejection take empty bodies; the
+    // request/response endpoints forward opaque JSON.
+
+    /// GET /dapp/pairings -> active WalletConnect pairings.
+    func getDappPairings() async throws -> [String: Any] {
+        return try await requestRaw("/dapp/pairings")
+    }
+
+    /// POST /dapp/pairings { ... } -> create a new pairing.
+    func createDappPairing(body: [String: Any]) async throws -> [String: Any] {
+        let payload = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/dapp/pairings", method: "POST", body: payload)
+    }
+
+    /// POST /dapp/pairings/:topic/approve -> approve a pending pairing (empty body).
+    func approveDappPairing(topic: String) async throws -> [String: Any] {
+        let safeTopic = topic.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? topic
+        let body = try JSONSerialization.data(withJSONObject: [String: Any]())
+        return try await requestRaw("/dapp/pairings/\(safeTopic)/approve", method: "POST", body: body)
+    }
+
+    /// POST /dapp/pairings/:topic/reject -> reject a pending pairing (empty body).
+    func rejectDappPairing(topic: String) async throws -> [String: Any] {
+        let safeTopic = topic.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? topic
+        let body = try JSONSerialization.data(withJSONObject: [String: Any]())
+        return try await requestRaw("/dapp/pairings/\(safeTopic)/reject", method: "POST", body: body)
+    }
+
+    /// GET /dapp/sessions -> active WalletConnect sessions.
+    func getDappSessions() async throws -> [String: Any] {
+        return try await requestRaw("/dapp/sessions")
+    }
+
+    /// POST /dapp/sessions/:topic/request { ... } -> issue a session request.
+    func dappSessionRequest(topic: String, body: [String: Any]) async throws -> [String: Any] {
+        let safeTopic = topic.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? topic
+        let payload = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/dapp/sessions/\(safeTopic)/request", method: "POST", body: payload)
+    }
+
+    /// GET /dapp/sessions/:topic/request -> pending request for a session.
+    func getDappSessionRequest(topic: String) async throws -> [String: Any] {
+        let safeTopic = topic.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? topic
+        return try await requestRaw("/dapp/sessions/\(safeTopic)/request")
+    }
+
+    /// POST /dapp/sessions/:topic/request/:id/respond { ... } -> respond to a request.
+    func dappSessionRespond(topic: String, id: String, body: [String: Any]) async throws -> [String: Any] {
+        let safeTopic = topic.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? topic
+        let safeId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        let payload = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/dapp/sessions/\(safeTopic)/request/\(safeId)/respond", method: "POST", body: payload)
     }
 }
 

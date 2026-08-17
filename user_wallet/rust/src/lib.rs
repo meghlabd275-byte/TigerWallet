@@ -161,8 +161,18 @@ pub struct ChainInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkStatus {
     pub chain_id: i64,
-    pub block_number: i64,
-    pub connected: bool,
+    #[serde(default)]
+    pub block_number: String,
+    #[serde(default)]
+    pub block_number_int: u64,
+    #[serde(default)]
+    pub syncing: bool,
+    #[serde(default)]
+    pub rpc_endpoint: String,
+    #[serde(default)]
+    pub latency_ms: i64,
+    #[serde(default)]
+    pub timestamp: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -634,17 +644,11 @@ impl UserWalletClient {
         Ok(r.chains)
     }
 
-    /// get_network_status derives a real connection status from the chains
-    /// registry (connected = chain present) and an honest block_number of 0
-    /// when no dedicated status endpoint exists — never a fabricated height.
+    /// get_network_status performs a REAL eth_blockNumber RPC call via the
+    /// backend's /network-status endpoint (never a fabricated block_number:0).
     pub async fn get_network_status(&self, chain_id: i64) -> Result<NetworkStatus, WalletError> {
-        let chains = self.get_chains().await?;
-        let chain = chains.into_iter().find(|c| c.id == chain_id);
-        Ok(NetworkStatus {
-            chain_id,
-            block_number: 0,
-            connected: chain.is_some(),
-        })
+        let path = format!("/network-status?chain_id={}", chain_id);
+        self.get::<NetworkStatus>(&path).await
     }
 
     // ---- Swap / Staking / Convert ----
@@ -1637,6 +1641,115 @@ impl UserWalletClient {
 
     pub async fn get_price(&self, coin: String) -> Result<PriceInfo, WalletError> {
         self.get_token_price(&coin).await
+    }
+
+    // ---- Bridge (proxied bridge_service :8007) ----
+
+    pub async fn get_bridges(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/api/v1/bridge/routes").await
+    }
+
+    pub async fn get_bridge_quote(
+        &self,
+        from_chain: i64,
+        to_chain: i64,
+        token: String,
+        amount: String,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            #[serde(rename = "fromChain")]
+            from_chain: i64,
+            #[serde(rename = "toChain")]
+            to_chain: i64,
+            token: String,
+            amount: String,
+        }
+        let req = Req { from_chain, to_chain, token, amount };
+        self.post("/api/v1/bridge/quote", &req).await
+    }
+
+    pub async fn initiate_bridge_transfer(
+        &self,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, WalletError> {
+        self.post("/api/v1/bridge/transfer", &body).await
+    }
+
+    pub async fn get_bridge_tx_status(
+        &self,
+        tx_id: String,
+    ) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/api/v1/bridge/tx/{}", url_encode(&tx_id));
+        self.get(&path).await
+    }
+
+    pub async fn get_bridge_history(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/api/v1/bridge/history").await
+    }
+
+    // ---- dApp browser / WalletConnect (proxied dapp_browser :8083) ----
+
+    pub async fn get_dapp_pairings(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/api/v1/dapp/pairings").await
+    }
+
+    pub async fn create_dapp_pairing(
+        &self,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, WalletError> {
+        self.post("/api/v1/dapp/pairings", &body).await
+    }
+
+    pub async fn approve_dapp_pairing(
+        &self,
+        topic: String,
+    ) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/api/v1/dapp/pairings/{}/approve", url_encode(&topic));
+        self.post(&path, &serde_json::json!({})).await
+    }
+
+    pub async fn reject_dapp_pairing(
+        &self,
+        topic: String,
+    ) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/api/v1/dapp/pairings/{}/reject", url_encode(&topic));
+        self.post(&path, &serde_json::json!({})).await
+    }
+
+    pub async fn get_dapp_sessions(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/api/v1/dapp/sessions").await
+    }
+
+    pub async fn send_dapp_request(
+        &self,
+        topic: String,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/api/v1/dapp/sessions/{}/request", url_encode(&topic));
+        self.post(&path, &body).await
+    }
+
+    pub async fn get_dapp_requests(
+        &self,
+        topic: String,
+    ) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/api/v1/dapp/sessions/{}/request", url_encode(&topic));
+        self.get(&path).await
+    }
+
+    pub async fn respond_to_dapp_request(
+        &self,
+        topic: String,
+        request_id: String,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, WalletError> {
+        let path = format!(
+            "/api/v1/dapp/sessions/{}/request/{}/respond",
+            url_encode(&topic),
+            url_encode(&request_id)
+        );
+        self.post(&path, &body).await
     }
 }
 

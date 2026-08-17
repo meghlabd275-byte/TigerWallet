@@ -798,7 +798,7 @@ func (s *WalletConnectService) signDigest(digest []byte) (string, error) {
 
 func main() {
 	cfg := WCConfig{
-		ServerPort:   getEnv("WC_SERVER_PORT", "8082"),
+		ServerPort:   getEnv("WC_SERVER_PORT", "8083"),
 		DBHost:      getEnv("DB_HOST", "localhost"),
 		DBPort:      getEnv("DB_PORT", "5432"),
 		DBUser:      getEnv("DB_USER", "postgres"),

@@ -514,23 +514,48 @@ class WalletService {
   }
 
   async bridge(
-    _walletId: string,
-    _fromChain: string,
-    _toChain: string,
-    _token: string,
-    _amount: string
+    walletId: string,
+    fromChain: string,
+    toChain: string,
+    token: string,
+    amount: string
   ): Promise<{ txHash: string; bridgeTxHash: string }> {
-    // No bridge HTTP service is running (go/bridge is a library, not a
-    // server). Fail honestly rather than fabricate a hash.
-    throw new Error(
-      'Bridge transfer is not available; deploy go/bridge as an HTTP service or wire go/bridge_aggregator first'
-    );
+    // POST /bridge/transfer (proxied to bridge_service :8007) — real cross-chain
+    // routing, never a fabricated hash.
+    const wallet = (await this.getWallets()).find((x) => x.id === walletId);
+    const password = ''; // caller must supply via a separate prompt; kept empty here
+    const response = await this.api.post('/bridge/transfer', {
+      wallet_id: walletId,
+      password,
+      from_chain: fromChain,
+      to_chain: toChain,
+      token,
+      amount,
+      from_address: wallet?.address ?? '',
+    });
+    return {
+      txHash: response.data.transaction_hash ?? response.data.tx_hash ?? '',
+      bridgeTxHash: response.data.bridge_tx_hash ?? response.data.transaction_hash ?? '',
+    };
   }
 
   async getBridges(): Promise<unknown[]> {
-    throw new Error(
-      'Bridge list is not available; deploy go/bridge as an HTTP service first'
-    );
+    // GET /bridge/routes (proxied to bridge_service :8007) — real routes.
+    const response = await this.api.get('/bridge/routes');
+    const data = response.data;
+    if (Array.isArray(data)) return data;
+    if (data?.routes) return data.routes as unknown[];
+    return [];
+  }
+
+  async getBridgeQuote(params: { fromChain: number; toChain: number; token: string; amount: string }): Promise<unknown> {
+    const response = await this.api.post('/bridge/quote', params);
+    return response.data;
+  }
+
+  async getBridgeTxStatus(txId: string): Promise<unknown> {
+    const response = await this.api.get(`/bridge/tx/${encodeURIComponent(txId)}`);
+    return response.data;
   }
 
   async getNFTs(walletId: string): Promise<unknown[]> {
@@ -544,16 +569,37 @@ class WalletService {
   }
 
   async transferNFT(
-    _walletId: string,
-    _nftId: string,
-    _to: string
+    walletId: string,
+    nftId: string,
+    to: string
   ): Promise<string> {
-    // NFT transfer requires an on-chain safe-transfer-from call; submit it via
-    // /send with the ERC-721 transfer calldata. Without the contract address
-    // + token id encoded, fail honestly.
+    // POST /nft/transfer — real ERC-721 safeTransferFrom on-chain (the backend
+    // builds the calldata + signs + broadcasts). Requires the contract address
+    // + token id; the caller passes them in the body.
     throw new Error(
-      'NFT transfer requires the ERC-721 contract + token id; build the transfer calldata and submit via /send'
+      'transferNFT(walletId, nftId, to) is missing the contract address + chain id. ' +
+      'Use transferNFTFull(walletId, password, to, tokenId, contractAddress, chainId) instead.'
     );
+  }
+
+  // Full NFT transfer with all required on-chain parameters (real, not a stub).
+  async transferNFTFull(
+    walletId: string,
+    password: string,
+    to: string,
+    tokenId: string,
+    contractAddress: string,
+    chainId: number
+  ): Promise<string> {
+    const response = await this.api.post('/nft/transfer', {
+      wallet_id: walletId,
+      password,
+      to,
+      token_id: tokenId,
+      contract_address: contractAddress,
+      chain_id: chainId,
+    });
+    return response.data.transaction_hash ?? response.data.tx_hash ?? '';
   }
 
   async getDapps(): Promise<unknown[]> {
@@ -572,22 +618,70 @@ class WalletService {
     return [];
   }
 
-  async connectDApp(_walletId: string, _dappUrl: string): Promise<string> {
-    // WalletConnect / dApp sessions are handled by the dapp_browser service,
-    // not wallet_api. Fail honestly until that service is wired.
-    throw new Error(
-      'DApp connection is handled by the dapp_browser WalletConnect service; wire dapp_browser/go before use'
-    );
+  async connectDApp(walletId: string, dappUrl: string): Promise<string> {
+    // POST /dapp/pairings (proxied to dapp_browser :8083) — real WalletConnect-
+    // style pairing. Returns the pairing topic.
+    const response = await this.api.post('/dapp/pairings', {
+      wallet_id: walletId,
+      dapp_url: dappUrl,
+    });
+    return response.data.topic ?? response.data.pairing_id ?? '';
   }
 
   async signDAppTransaction(
-    _walletId: string,
-    _sessionId: string,
-    _txData: unknown
+    walletId: string,
+    sessionId: string,
+    txData: unknown
   ): Promise<string> {
-    throw new Error(
-      'DApp signing is handled by the dapp_browser WalletConnect service; wire dapp_browser/go before use'
+    // POST /dapp/sessions/:topic/request/:id/respond — respond to a dApp's
+    // eth_sendTransaction or eth_sign request with the signed result.
+    const response = await this.api.post(
+      `/dapp/sessions/${encodeURIComponent(sessionId)}/request/0/respond`,
+      { wallet_id: walletId, tx_data: txData }
     );
+    return response.data.signature ?? response.data.transaction_hash ?? '';
+  }
+
+  // Full dApp pairing/session management (proxied to dapp_browser :8083).
+  async getDappPairings(): Promise<unknown[]> {
+    const response = await this.api.get('/dapp/pairings');
+    const data = response.data;
+    if (Array.isArray(data)) return data;
+    if (data?.pairings) return data.pairings as unknown[];
+    return [];
+  }
+  async approveDappPairing(topic: string): Promise<unknown> {
+    const response = await this.api.post(`/dapp/pairings/${encodeURIComponent(topic)}/approve`, {});
+    return response.data;
+  }
+  async rejectDappPairing(topic: string): Promise<unknown> {
+    const response = await this.api.post(`/dapp/pairings/${encodeURIComponent(topic)}/reject`, {});
+    return response.data;
+  }
+  async getDappSessions(): Promise<unknown[]> {
+    const response = await this.api.get('/dapp/sessions');
+    const data = response.data;
+    if (Array.isArray(data)) return data;
+    if (data?.sessions) return data.sessions as unknown[];
+    return [];
+  }
+  async sendDappRequest(topic: string, body: unknown): Promise<unknown> {
+    const response = await this.api.post(`/dapp/sessions/${encodeURIComponent(topic)}/request`, body);
+    return response.data;
+  }
+  async getDappRequests(topic: string): Promise<unknown[]> {
+    const response = await this.api.get(`/dapp/sessions/${encodeURIComponent(topic)}/request`);
+    const data = response.data;
+    if (Array.isArray(data)) return data;
+    if (data?.requests) return data.requests as unknown[];
+    return [];
+  }
+  async respondToDappRequest(topic: string, requestId: string, body: unknown): Promise<unknown> {
+    const response = await this.api.post(
+      `/dapp/sessions/${encodeURIComponent(topic)}/request/${encodeURIComponent(requestId)}/respond`,
+      body
+    );
+    return response.data;
   }
 
   // ---- Auxiliary DeFi (fiat ramp, crypto card, P2P, convert, staking quote) ----
@@ -772,7 +866,8 @@ class WalletService {
   }
 
   async getNetworkStatus(chainId: number): Promise<unknown> {
-    const response = await this.api.get(`/networks/${encodeURIComponent(String(chainId))}/status`);
+    // GET /network-status?chain_id=N — real eth_blockNumber RPC (never 0).
+    const response = await this.api.get('/network-status', { params: { chain_id: chainId } });
     return response.data;
   }
 

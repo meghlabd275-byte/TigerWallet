@@ -310,11 +310,8 @@ const WalletAPI = {
   getGasPrice: (chainId) => api(`/gas?chain_id=${chainId}`),
   getTokenPrice: (symbol) => api(`/price?symbol=${encodeURIComponent(symbol)}`),
   getChains: () => api('/chains'),
-  getNetworkStatus: async (chainId) => {
-    const { chains } = await api('/chains');
-    const chain = chains.find((c) => c.id === chainId);
-    return { chain_id: chainId, block_number: 0, connected: !!chain };
-  },
+  getNetworkStatus: (chainId) =>
+    api(`/network-status?chain_id=${chainId}`),
 
   // Swap / Convert / Staking
   getSwapQuote: (fromToken, toToken, fromAmount, chainId) =>
@@ -548,6 +545,24 @@ const WalletAPI = {
 
   // P2P orders — POST /p2p/orders (KYC-gated; 403 {kyc_required:true}).
   createP2POrder: (body) => api('/p2p/orders', { method: 'POST', body }),
+
+  // Bridge (proxied bridge_service :8007)
+  getBridges: () => api('/bridge/routes'),
+  getBridgeQuote: (params) => api('/bridge/quote', { method: 'POST', body: JSON.stringify(params) }),
+  initiateBridgeTransfer: (body) => api('/bridge/transfer', { method: 'POST', body: JSON.stringify(body) }),
+  getBridgeTxStatus: (txId) => api(`/bridge/tx/${txId}`),
+  getBridgeHistory: () => api('/bridge/history'),
+
+  // dApp browser / WalletConnect (proxied dapp_browser :8083)
+  getDappPairings: () => api('/dapp/pairings'),
+  createDappPairing: (body) => api('/dapp/pairings', { method: 'POST', body: JSON.stringify(body) }),
+  approveDappPairing: (topic) => api(`/dapp/pairings/${topic}/approve`, { method: 'POST', body: '{}' }),
+  rejectDappPairing: (topic) => api(`/dapp/pairings/${topic}/reject`, { method: 'POST', body: '{}' }),
+  getDappSessions: () => api('/dapp/sessions'),
+  sendDappRequest: (topic, body) => api(`/dapp/sessions/${topic}/request`, { method: 'POST', body: JSON.stringify(body) }),
+  getDappRequests: (topic) => api(`/dapp/sessions/${topic}/request`),
+  respondToDappRequest: (topic, requestId, body) =>
+    api(`/dapp/sessions/${topic}/request/${requestId}/respond`, { method: 'POST', body: JSON.stringify(body) }),
 
   // Networks alias.
   getNetworks: () => WalletAPI.getChains(),

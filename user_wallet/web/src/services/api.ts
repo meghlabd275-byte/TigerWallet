@@ -500,12 +500,11 @@ class ApiService {
     return this.getChains();
   }
 
-  // No dedicated block-height endpoint; block_number is honestly 0 (never
-  // fabricated) and connected reflects whether the chain is in the registry.
-  async getNetworkStatus(chainId = 1): Promise<{ chain_id: number; block_number: number; connected: boolean }> {
-    const data = await this.getChains();
-    const chain = (data.chains as Array<{ id?: number }>).find((c) => c.id === Number(chainId));
-    return { chain_id: Number(chainId), block_number: 0, connected: !!chain };
+  // GET /network-status?chain_id=N — real eth_blockNumber + eth_chainId RPC
+  // call against the chain's configured RPC endpoint (never block_number:0).
+  async getNetworkStatus(chainId = 1): Promise<{ chain_id: number; block_number: string; block_number_int: number; syncing: boolean; rpc_endpoint: string; latency_ms: number; timestamp: number }> {
+    const { data } = await this.client.get('/network-status', { params: { chain_id: chainId } });
+    return data;
   }
 
   async estimateGas(params: {
@@ -1253,6 +1252,76 @@ class ApiService {
   // { kyc_required: true } when the user is not verified).
   async createP2POrder(body: any): Promise<any> {
     const { data } = await this.client.post('/p2p/orders', body);
+    return data;
+  }
+
+  // ==================== Bridge (proxied bridge_service :8007) ====================
+  // GET /bridge/routes — list available cross-chain bridge routes.
+  async getBridges(): Promise<any> {
+    const { data } = await this.client.get('/bridge/routes');
+    return data;
+  }
+  // POST /bridge/quote — get a bridge quote (source chain, dest chain, token, amount).
+  async getBridgeQuote(params: { fromChain: number; toChain: number; token: string; amount: string }): Promise<any> {
+    const { data } = await this.client.post('/bridge/quote', params);
+    return data;
+  }
+  // POST /bridge/transfer — initiate a cross-chain bridge transfer.
+  async initiateBridgeTransfer(body: any): Promise<any> {
+    const { data } = await this.client.post('/bridge/transfer', body);
+    return data;
+  }
+  // GET /bridge/tx/:id — get the status of a bridge transfer.
+  async getBridgeTxStatus(txId: string): Promise<any> {
+    const { data } = await this.client.get(`/bridge/tx/${txId}`);
+    return data;
+  }
+  // GET /bridge/history?user_id= — list a user's bridge transfer history.
+  async getBridgeHistory(): Promise<any> {
+    const { data } = await this.client.get('/bridge/history');
+    return data;
+  }
+
+  // ==================== dApp browser / WalletConnect (proxied dapp_browser :8083) ====================
+  // GET /dapp/pairings — list active dApp pairings.
+  async getDappPairings(): Promise<any> {
+    const { data } = await this.client.get('/dapp/pairings');
+    return data;
+  }
+  // POST /dapp/pairings — create a new dApp pairing (WalletConnect-style).
+  async createDappPairing(body: any): Promise<any> {
+    const { data } = await this.client.post('/dapp/pairings', body);
+    return data;
+  }
+  // POST /dapp/pairings/:topic/approve — approve a pending dApp pairing.
+  async approveDappPairing(topic: string): Promise<any> {
+    const { data } = await this.client.post(`/dapp/pairings/${topic}/approve`, {});
+    return data;
+  }
+  // POST /dapp/pairings/:topic/reject — reject a pending dApp pairing.
+  async rejectDappPairing(topic: string): Promise<any> {
+    const { data } = await this.client.post(`/dapp/pairings/${topic}/reject`, {});
+    return data;
+  }
+  // GET /dapp/sessions — list active dApp sessions.
+  async getDappSessions(): Promise<any> {
+    const { data } = await this.client.get('/dapp/sessions');
+    return data;
+  }
+  // POST /dapp/sessions/:topic/request — send a JSON-RPC request to a dApp session.
+  async sendDappRequest(topic: string, body: any): Promise<any> {
+    const { data } = await this.client.post(`/dapp/sessions/${topic}/request`, body);
+    return data;
+  }
+  // GET /dapp/sessions/:topic/request — get pending dApp requests for a session.
+  async getDappRequests(topic: string): Promise<any> {
+    const { data } = await this.client.get(`/dapp/sessions/${topic}/request`);
+    return data;
+  }
+  // POST /dapp/sessions/:topic/request/:id/respond — respond to a dApp request
+  // (e.g. approve/reject a personal_sign or eth_sendTransaction from a dApp).
+  async respondToDappRequest(topic: string, requestId: string, body: any): Promise<any> {
+    const { data } = await this.client.post(`/dapp/sessions/${topic}/request/${requestId}/respond`, body);
     return data;
   }
 }

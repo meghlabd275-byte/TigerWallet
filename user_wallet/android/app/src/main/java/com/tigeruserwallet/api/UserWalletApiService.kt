@@ -485,16 +485,17 @@ object UserWalletApiService {
 
     data class NetworkStatus(val chainId: Int, val blockNumber: Long, val connected: Boolean)
 
+    // GET /network-status?chain_id=N -> { chain_id, block_number, connected }
+    // (real node_status RPC proxied by the backend). Replaces the previous
+    // derivation from /chains that fabricated block_number: 0.
     fun getNetworkStatus(chainId: Int): NetworkStatus {
-        // Mirrors the web client: derive connected/chain-id from /chains (no
-        // dedicated status route on wallet_api). block_number is not exposed by
-        // the chains list endpoint, so we report 0 honestly rather than fabricate.
-        val chains = getChains()
-        val chain = chains.firstOrNull { it.chainId == chainId }
+        val path = "/network-status?chain_id=$chainId"
+        val req = requestBuilder(path).get().build()
+        val json = execute(req)
         return NetworkStatus(
-            chainId = chain?.chainId ?: chainId,
-            blockNumber = 0L,
-            connected = chain != null
+            chainId = json.optInt("chain_id", chainId),
+            blockNumber = json.optLong("block_number"),
+            connected = if (json.has("connected")) json.optBoolean("connected") else true
         )
     }
 
@@ -1509,6 +1510,104 @@ object UserWalletApiService {
      */
     suspend fun createP2POrder(body: JSONObject): JSONObject {
         val req = requestBuilder("/p2p/orders")
+            .post(body.toString().toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    // ==================== Bridge (proxied to bridge_service :8007) ====================
+    //
+    // Cross-chain bridge routes. All forward to /api/v1/bridge/* on the wallet
+    // backend (port 8443), which proxies them to bridge_service (:8007). Lists
+    // return [String: Any] via requestRaw-style helpers; singletons return
+    // JSONObject. Same Bearer JWT auth as every other protected route.
+
+    /** GET /bridge/routes -> available cross-chain routes. */
+    fun getBridgeRoutes(): List<JSONObject> =
+        executeList(requestBuilder("/bridge/routes").get().build(), "routes")
+
+    /** POST /bridge/quote { fromChain, toChain, token, amount } -> quote. */
+    fun getBridgeQuote(fromChain: Int, toChain: Int, token: String, amount: String): JSONObject {
+        val body = JSONObject().apply {
+            put("fromChain", fromChain)
+            put("toChain", toChain)
+            put("token", token)
+            put("amount", amount)
+        }.toString()
+        val req = requestBuilder("/bridge/quote").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    /** POST /bridge/transfer { ... } -> initiates a cross-chain transfer. */
+    fun bridgeTransfer(body: JSONObject): JSONObject {
+        val req = requestBuilder("/bridge/transfer")
+            .post(body.toString().toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    /** GET /bridge/tx/:id -> status of a bridge transfer. */
+    fun getBridgeTx(id: String): JSONObject {
+        val req = requestBuilder("/bridge/tx/${id}").get().build()
+        return execute(req)
+    }
+
+    /** GET /bridge/history -> caller's bridge transfer history. */
+    fun getBridgeHistory(): List<JSONObject> =
+        executeList(requestBuilder("/bridge/history").get().build(), "history")
+
+    // ==================== dApp browser / WalletConnect (proxied to dapp_browser :8083) ====================
+    //
+    // WalletConnect pairing + session lifecycle routes. All forward to
+    // /api/v1/dapp/* on the wallet backend (port 8443), which proxies them to
+    // dapp_browser (:8083). Pairing approval/rejection take empty bodies; the
+    // request/response endpoints forward opaque JSON.
+
+    /** GET /dapp/pairings -> active WalletConnect pairings. */
+    fun getDappPairings(): List<JSONObject> =
+        executeList(requestBuilder("/dapp/pairings").get().build(), "pairings")
+
+    /** POST /dapp/pairings { ... } -> create a new pairing. */
+    fun createDappPairing(body: JSONObject): JSONObject {
+        val req = requestBuilder("/dapp/pairings")
+            .post(body.toString().toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    /** POST /dapp/pairings/:topic/approve -> approve a pending pairing (empty body). */
+    fun approveDappPairing(topic: String): JSONObject {
+        val body = JSONObject().toString()
+        val req = requestBuilder("/dapp/pairings/${topic}/approve")
+            .post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    /** POST /dapp/pairings/:topic/reject -> reject a pending pairing (empty body). */
+    fun rejectDappPairing(topic: String): JSONObject {
+        val body = JSONObject().toString()
+        val req = requestBuilder("/dapp/pairings/${topic}/reject")
+            .post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    /** GET /dapp/sessions -> active WalletConnect sessions. */
+    fun getDappSessions(): List<JSONObject> =
+        executeList(requestBuilder("/dapp/sessions").get().build(), "sessions")
+
+    /** POST /dapp/sessions/:topic/request { ... } -> issue a session request. */
+    fun dappSessionRequest(topic: String, body: JSONObject): JSONObject {
+        val req = requestBuilder("/dapp/sessions/${topic}/request")
+            .post(body.toString().toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    /** GET /dapp/sessions/:topic/request -> pending request for a session. */
+    fun getDappSessionRequest(topic: String): JSONObject {
+        val req = requestBuilder("/dapp/sessions/${topic}/request").get().build()
+        return execute(req)
+    }
+
+    /** POST /dapp/sessions/:topic/request/:id/respond { ... } -> respond to a request. */
+    fun dappSessionRespond(topic: String, id: String, body: JSONObject): JSONObject {
+        val req = requestBuilder("/dapp/sessions/${topic}/request/${id}/respond")
             .post(body.toString().toRequestBody(jsonMediaType)).build()
         return execute(req)
     }

@@ -69,6 +69,7 @@ func main() {
 	r.GET("/api/v1/chains", handleSupportedChains)
 	r.GET("/api/v1/price", handlePrice)
 	r.GET("/api/v1/gas", handleGasPrice)
+	r.GET("/api/v1/network-status", handleNetworkStatus)
 	r.GET("/api/v1/chart/history", handleChartHistory)
 
 	// ---- Security / scam-scan routes (read-only public) ----
@@ -214,6 +215,19 @@ func main() {
 		wallet.Any("/copytrading/*path", deFiProxy("COPYTRADING_SERVICE_URL", "http://localhost:8006", "copytrading"))
 		wallet.Any("/governance/*path", deFiProxy("GOVERNANCE_SERVICE_URL", "http://localhost:8454", "governance"))
 		wallet.Any("/prediction/*path", deFiProxy("PREDICTION_SERVICE_URL", "http://localhost:8455", "prediction"))
+		// Bridge: the canonical go/bridge_service (:8007) exposes
+		// /api/v1/bridge/{routes,quote,transfer,tx/:id,history}. Proxying it
+		// through :8443 closes Gap E (no dedicated bridge backend) so every
+		// UserWallet client reaches real cross-chain routing via one port.
+		wallet.Any("/bridge/*path", deFiProxy("BRIDGE_SERVICE_URL", "http://localhost:8007", "bridge"))
+		// dApp browser / WalletConnect: the canonical dapp_browser/go service
+		// (:8083) exposes /{pairings,sessions,ws/*,health} for WalletConnect-style
+		// dApp pairing + signed-request relay. Proxying it through :8443 closes
+		// Gap F so every UserWallet client reaches dApp pairing via one port.
+		// Note: WebSocket upgrade (/ws/:topic) is handled by the reverse proxy
+		// transparently (httputil.ReverseProxy supports WS).
+		wallet.Any("/dapp/*path", deFiProxy("DAPP_BROWSER_SERVICE_URL", "http://localhost:8083", "dapp"))
+		wallet.Any("/walletconnect/*path", deFiProxy("DAPP_BROWSER_SERVICE_URL", "http://localhost:8083", "walletconnect"))
 
 		// ---- Admin / dashboard routes (authenticated + admin-role) ----
 		// Back the master-wallet dashboard with real PostgreSQL aggregates.

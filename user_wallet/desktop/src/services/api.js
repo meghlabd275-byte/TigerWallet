@@ -210,12 +210,8 @@ export const api = {
   },
 
   async getNetworkStatus(chainId = 1) {
-    // The backend exposes the chains registry but no dedicated block-height
-    // endpoint; block_number is honestly 0 (never fabricated) and connected
-    // reflects whether the chain is present in the registry.
-    const data = await request('/chains');
-    const chain = (data.chains || []).find((c) => c.id === Number(chainId));
-    return { chain_id: Number(chainId), block_number: 0, connected: !!chain };
+    // GET /network-status?chain_id=N — real eth_blockNumber RPC (never 0).
+    return request(`/network-status?chain_id=${chainId}`);
   },
 
   async getNFTs(address, chainId) {
@@ -765,6 +761,64 @@ export const api = {
   // { kyc_required: true } when KYC is incomplete.
   async createP2POrder(body) {
     return request('/p2p/orders', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  // ---- Bridge (proxied bridge_service :8007) ----
+  async getBridges() {
+    return request('/bridge/routes');
+  },
+  async getBridgeQuote(params) {
+    return request('/bridge/quote', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  },
+  async initiateBridgeTransfer(body) {
+    return request('/bridge/transfer', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+  async getBridgeTxStatus(txId) {
+    return request(`/bridge/tx/${txId}`);
+  },
+  async getBridgeHistory() {
+    return request('/bridge/history');
+  },
+
+  // ---- dApp browser / WalletConnect (proxied dapp_browser :8083) ----
+  async getDappPairings() {
+    return request('/dapp/pairings');
+  },
+  async createDappPairing(body) {
+    return request('/dapp/pairings', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+  async approveDappPairing(topic) {
+    return request(`/dapp/pairings/${topic}/approve`, { method: 'POST', body: '{}' });
+  },
+  async rejectDappPairing(topic) {
+    return request(`/dapp/pairings/${topic}/reject`, { method: 'POST', body: '{}' });
+  },
+  async getDappSessions() {
+    return request('/dapp/sessions');
+  },
+  async sendDappRequest(topic, body) {
+    return request(`/dapp/sessions/${topic}/request`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+  async getDappRequests(topic) {
+    return request(`/dapp/sessions/${topic}/request`);
+  },
+  async respondToDappRequest(topic, requestId, body) {
+    return request(`/dapp/sessions/${topic}/request/${requestId}/respond`, {
       method: 'POST',
       body: JSON.stringify(body),
     });
