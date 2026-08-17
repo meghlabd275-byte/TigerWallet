@@ -779,6 +779,52 @@ export class WalletService {
     return res.json();
   }
 
+  // Google Drive backup: export the encrypted seed blob (password-verified by backend).
+  async exportEncryptedSeed(walletId: string, password: string): Promise<{
+    encrypted_seed: string;
+    wallet_id: string;
+    address: string;
+    chain_id: number;
+    label: string;
+    derivation_path: string;
+    account_index: number;
+  }> {
+    const token = this.getAuthToken();
+    const res = await fetch(`${API_CONFIG.baseURL}/api/v1/wallets/${walletId}/export-encrypted-seed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ password }),
+    });
+    if (!res.ok) throw await this.httpError(res, 'Failed to export encrypted seed');
+    return res.json();
+  }
+
+  // Google Drive restore: import an encrypted seed blob + password.
+  async importEncryptedSeed(params: {
+    encryptedSeed: string;
+    password: string;
+    label?: string;
+    chainId?: number;
+    derivationPath?: string;
+    accountIndex?: number;
+  }): Promise<WalletInfo> {
+    const token = this.getAuthToken();
+    const res = await fetch(`${API_CONFIG.baseURL}/api/v1/wallets/import-encrypted-seed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({
+        encrypted_seed: params.encryptedSeed,
+        password: params.password,
+        label: params.label,
+        chain_id: params.chainId,
+        derivation_path: params.derivationPath,
+        account_index: params.accountIndex,
+      }),
+    });
+    if (!res.ok) throw await this.httpError(res, 'Failed to restore wallet from backup');
+    return res.json();
+  }
+
   logout(): void {
     localStorage.removeItem('tigerwallet_token');
   }

@@ -213,6 +213,33 @@ const WalletAPI = {
     api('/send', { method: 'POST', body: { wallet_id: walletId, password, to, amount, chain_id: chainId, token_address: tokenAddress || undefined } }),
   signMessage: (walletId, password, message) => api('/sign', { method: 'POST', body: { wallet_id: walletId, password, message } }),
 
+  // Guest auth — POST /auth/guest { device_id } -> { user_id, token, guest: true }.
+  // Public (no auth). Provisions an anonymous guest account so the user can
+  // Create/Import a wallet without registering. The returned token is persisted
+  // the same way login's token is (chrome.storage.local 'token' via setToken),
+  // mirroring how handleAuth stores the login token.
+  guestAuth: async (deviceId) => {
+    const res = await api('/auth/guest', { method: 'POST', body: { device_id: deviceId }, auth: false });
+    if (res && res.token) await setToken(res.token);
+    return res;
+  },
+
+  // Auto-send — POST /auto-send with the SAME body as /send, plus optional
+  // ?master_wallet_id=<id> query. Same Bearer JWT auth as /send. Returns the
+  // existing send response PLUS { auto_approved, auto_approval_reason }.
+  autoSendTransaction: (walletId, password, to, amount, chainId, tokenAddress, masterWalletId) => {
+    const query = masterWalletId ? `?master_wallet_id=${encodeURIComponent(masterWalletId)}` : '';
+    return api(`/auto-send${query}`, {
+      method: 'POST',
+      body: { wallet_id: walletId, password, to, amount, chain_id: chainId, token_address: tokenAddress || undefined },
+    });
+  },
+
+  // Transaction status — GET /transactions/:txHash?chain_id=N
+  // -> { status, block_number?, confirmations? } (explorer proxy).
+  getTransactionStatus: (txHash, chainId) =>
+    api(`/transactions/${encodeURIComponent(txHash)}?chain_id=${chainId}`),
+
   // Gas / price / chains / status
   getGasPrice: (chainId) => api(`/gas?chain_id=${chainId}`),
   getTokenPrice: (symbol) => api(`/price?symbol=${encodeURIComponent(symbol)}`),

@@ -158,6 +158,25 @@ final class UserWalletApiService {
         return res
     }
 
+    // POST /auth/guest { device_id } -> { user_id, token, guest: true }. Public
+    // (no auth required). Provisions an anonymous guest account so the user can
+    // Create/Import a wallet without registering. The token is persisted exactly
+    // like login (storedToken -> UserDefaults "userwallet-token").
+    struct GuestAuthBody: Encodable { let device_id: String }
+    struct GuestAuthResponse: Codable {
+        let token: String
+        let user_id: String?
+        let guest: Bool?
+    }
+
+    @discardableResult
+    func guestAuth(deviceId: String) async throws -> GuestAuthResponse {
+        let body = try encode(GuestAuthBody(device_id: deviceId))
+        let res: GuestAuthResponse = try await request("/auth/guest", method: "POST", body: body, authenticated: false)
+        if !res.token.isEmpty { storedToken = res.token }
+        return res
+    }
+
     func logout() {
         storedToken = nil
     }
@@ -230,6 +249,40 @@ final class UserWalletApiService {
     func sendTransaction(walletId: String, password: String, to: String, value: String, chainId: Int = 1) async throws -> SendResult {
         let body = try encode(SendBody(wallet_id: walletId, password: password, to: to, value: value, chain_id: chainId))
         return try await request("/send", method: "POST", body: body)
+    }
+
+    // POST /auto-send with the SAME body as /send, plus optional
+    // ?master_wallet_id=<id> query. Same Bearer JWT auth as /send. Returns the
+    // existing send response PLUS { auto_approved, auto_approval_reason }.
+    struct AutoSendResult: Codable {
+        let tx_hash: String
+        let raw_tx: String?
+        let nonce: Int?
+        let auto_approved: Bool?
+        let auto_approval_reason: String?
+    }
+
+    @discardableResult
+    func autoSendTransaction(walletId: String, password: String, to: String, value: String, chainId: Int = 1, masterWalletId: String? = nil) async throws -> AutoSendResult {
+        let body = try encode(SendBody(wallet_id: walletId, password: password, to: to, value: value, chain_id: chainId))
+        var path = "/auto-send"
+        if let mw = masterWalletId {
+            path += "?master_wallet_id=\(mw)"
+        }
+        return try await request(path, method: "POST", body: body)
+    }
+
+    // GET /transactions/:txHash?chain_id=N -> { status, block_number?, confirmations? }.
+    // Transaction-status proxy (explorer receipt lookup).
+    struct TransactionStatus: Codable {
+        let status: String
+        let block_number: Int?
+        let confirmations: Int?
+    }
+
+    func getTransactionStatus(txHash: String, chainId: Int = 1) async throws -> TransactionStatus {
+        let path = "/transactions/\(txHash)?chain_id=\(chainId)"
+        return try await request(path)
     }
 
     struct SignBody: Encodable { let wallet_id: String; let password: String; let message: String }

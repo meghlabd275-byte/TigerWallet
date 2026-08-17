@@ -270,6 +270,72 @@ class WalletService {
     return response.data.tx_hash;
   }
 
+  // ---- Guest auth (public, no-auth) ----
+  // POST /auth/guest { device_id } -> { user_id, token, guest: true }.
+  // Provisions an anonymous guest account so a user can Create/Import a wallet
+  // without registering. Persists the token the same way AuthService.login
+  // does: localStorage 'tigerwallet-token' (+ refresh/expires mirrors).
+  async guestAuth(deviceId: string): Promise<{ userId: string; token: string; guest: boolean }> {
+    const response = await this.api.post('/auth/guest', { device_id: deviceId });
+    const token = response.data.token as string;
+    const guest = response.data.guest !== undefined ? Boolean(response.data.guest) : true;
+    if (token) {
+      localStorage.setItem('tigerwallet-token', token);
+    }
+    return {
+      userId: response.data.user_id ?? '',
+      token,
+      guest,
+    };
+  }
+
+  // ---- Auto-send (auto-approval-gated send) ----
+  // POST /auto-send with the SAME body as /send, plus optional
+  // ?master_wallet_id=<id> query. Same Bearer JWT auth as /send. Returns the
+  // existing send response (tx_hash) PLUS { auto_approved, auto_approval_reason }.
+  async autoSendTransaction(
+    walletId: string,
+    to: string,
+    amount: string,
+    password: string,
+    chainId?: number,
+    masterWalletId?: string
+  ): Promise<{ txHash: string; autoApproved: boolean; autoApprovalReason: string }> {
+    if (!password) throw new Error('password is required to sign on the backend');
+    const response = await this.api.post(
+      '/auto-send',
+      {
+        wallet_id: walletId,
+        password,
+        to,
+        value: amount,
+        chain_id: chainId ?? 1,
+      },
+      masterWalletId ? { params: { master_wallet_id: masterWalletId } } : undefined
+    );
+    return {
+      txHash: response.data.tx_hash,
+      autoApproved: Boolean(response.data.auto_approved),
+      autoApprovalReason: String(response.data.auto_approval_reason ?? ''),
+    };
+  }
+
+  // ---- Transaction status (explorer proxy) ----
+  // GET /transactions/:txHash?chain_id=N -> { status, block_number?, confirmations? }.
+  async getTransactionStatus(
+    txHash: string,
+    chainId: number
+  ): Promise<{ status: string; blockNumber?: number; confirmations?: number }> {
+    const response = await this.api.get(`/transactions/${encodeURIComponent(txHash)}`, {
+      params: { chain_id: chainId },
+    });
+    return {
+      status: String(response.data.status ?? ''),
+      blockNumber: response.data.block_number !== undefined ? Number(response.data.block_number) : undefined,
+      confirmations: response.data.confirmations !== undefined ? Number(response.data.confirmations) : undefined,
+    };
+  }
+
   async signMessage(walletId: string, message: string, password?: string): Promise<string> {
     if (!password) throw new Error('password is required to sign on the backend');
     const response = await this.api.post('/sign', {

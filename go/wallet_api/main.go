@@ -106,6 +106,10 @@ func main() {
 	{
 		wallet.POST("/wallets", handleCreateWallet)
 		wallet.GET("/wallets", handleListWallets)
+		// Google Drive backup: export the encrypted seed blob (password-verified)
+		// for upload to Drive; restore from a downloaded blob + password.
+		wallet.POST("/wallets/:id/export-encrypted-seed", handleExportEncryptedSeed)
+		wallet.POST("/wallets/import-encrypted-seed", handleImportEncryptedSeed)
 		wallet.GET("/balance", handleBalance)
 		wallet.GET("/tokens", handleTokenBalances)
 		wallet.GET("/transactions", handleTransactions)

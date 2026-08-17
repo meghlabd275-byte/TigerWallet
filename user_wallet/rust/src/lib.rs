@@ -328,6 +328,24 @@ impl UserWalletClient {
         Ok(r.token)
     }
 
+    // POST /auth/guest { device_id } -> { user_id, token, guest: true }. Public
+    // (no auth required). Provisions an anonymous guest account so the user can
+    // create/import a wallet without registering. The token is persisted exactly
+    // like login (set_token -> in-memory Mutex<Option<String>>).
+    pub async fn guest_auth(&self, device_id: &str) -> Result<String, WalletError> {
+        #[derive(Serialize)]
+        struct Req<'a> { device_id: &'a str }
+        #[derive(Deserialize)]
+        #[allow(dead_code)]
+        struct Resp { #[serde(default)] token: String, #[serde(default)] user_id: String, #[serde(default)] guest: bool }
+        let r: Resp = self.post("/api/v1/auth/guest", &Req { device_id }).await?;
+        if r.token.is_empty() {
+            return Err(WalletError::Api("no token in response".into()));
+        }
+        self.set_token(Some(r.token.clone()));
+        Ok(r.token)
+    }
+
     // ---- Wallets ----
 
     pub async fn create_wallet(
@@ -411,6 +429,49 @@ impl UserWalletClient {
         self.post("/api/v1/send", &Req {
             wallet_id, password, to, amount, chain_id, token_address,
         }).await
+    }
+
+    // POST /api/v1/auto-send with the SAME body as /send, plus optional
+    // ?master_wallet_id=<id> query. Same Bearer JWT auth as /send. Returns the
+    // existing send response (raw JSON) PLUS { auto_approved, auto_approval_reason }.
+    pub async fn auto_send_transaction(
+        &self,
+        wallet_id: &str,
+        password: &str,
+        to: &str,
+        amount: &str,
+        chain_id: i64,
+        token_address: Option<&str>,
+        master_wallet_id: Option<&str>,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req<'a> {
+            wallet_id: &'a str,
+            password: &'a str,
+            to: &'a str,
+            amount: &'a str,
+            chain_id: i64,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            token_address: Option<&'a str>,
+        }
+        let path = match master_wallet_id {
+            Some(mw) => format!("/api/v1/auto-send?master_wallet_id={}", mw),
+            None => "/api/v1/auto-send".to_string(),
+        };
+        self.post(&path, &Req {
+            wallet_id, password, to, amount, chain_id, token_address,
+        }).await
+    }
+
+    // GET /api/v1/transactions/:txHash?chain_id=N -> { status, block_number?, confirmations? }.
+    // Transaction-status proxy (explorer receipt lookup).
+    pub async fn get_transaction_status(
+        &self,
+        tx_hash: &str,
+        chain_id: i64,
+    ) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/api/v1/transactions/{}?chain_id={}", tx_hash, chain_id);
+        self.get(&path).await
     }
 
     pub async fn sign_message(

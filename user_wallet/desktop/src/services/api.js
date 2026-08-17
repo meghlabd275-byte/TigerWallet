@@ -134,6 +134,52 @@ export const api = {
     });
   },
 
+  // ---- Guest auth (public, no-auth) ----
+  // POST /auth/guest { device_id } -> { user_id, token, guest: true }.
+  // Provisions an anonymous guest account so the user can Create/Import a
+  // wallet without registering. Mirrors login(): returns { token, user } and
+  // leaves token persistence to the caller (AuthContext stores
+  // 'userwallet-token' + calls setToken), exactly like login/register.
+  async guestAuth(deviceId) {
+    const data = await request('/auth/guest', {
+      method: 'POST',
+      body: JSON.stringify({ device_id: deviceId }),
+    });
+    return {
+      token: data.token,
+      user_id: data.user_id,
+      guest: data.guest !== undefined ? Boolean(data.guest) : true,
+      user: data.user || { id: data.user_id, guest: true },
+    };
+  },
+
+  // ---- Auto-send (auto-approval-gated send) ----
+  // POST /auto-send with the SAME body as /send, plus optional
+  // ?master_wallet_id=<id> query. Same Bearer JWT auth as /send. Returns the
+  // existing send response PLUS { auto_approved, auto_approval_reason }.
+  async autoSendTransaction({ walletId, password, to, value, chainId, gasLimit, data, masterWalletId }) {
+    const query = masterWalletId ? `?master_wallet_id=${encodeURIComponent(masterWalletId)}` : '';
+    return request(`/auto-send${query}`, {
+      method: 'POST',
+      body: JSON.stringify({
+        wallet_id: walletId,
+        password,
+        to,
+        value,
+        chain_id: chainId ?? 1,
+        gas_limit: gasLimit,
+        data,
+      }),
+    });
+  },
+
+  // ---- Transaction status (explorer proxy) ----
+  // GET /transactions/:txHash?chain_id=N -> { status, block_number?, confirmations? }.
+  async getTransactionStatus(txHash, chainId) {
+    const path = `/transactions/${encodeURIComponent(txHash)}?chain_id=${chainId}`;
+    return request(path);
+  },
+
   async signMessage({ walletId, password, message }) {
     return request('/sign', {
       method: 'POST',

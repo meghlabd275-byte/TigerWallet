@@ -310,6 +310,65 @@ class ApiService {
     return data;
   }
 
+  // ---- Guest auth (public, no-auth) ----
+  // POST /auth/guest { device_id } -> { user_id, token, guest: true }. Provisions
+  // an anonymous guest account so a user can Create/Import a wallet without
+  // registering. The token is persisted exactly like a login token (setToken).
+  async guestAuth(deviceId: string): Promise<{ user_id: string; token: string; guest: boolean }> {
+    try {
+      const { data } = await this.client.post('/auth/guest', { device_id: deviceId });
+      const token = data.token as string;
+      if (token) this.setToken(token);
+      return {
+        user_id: data.user_id || '',
+        token,
+        guest: data.guest !== undefined ? Boolean(data.guest) : true,
+      };
+    } catch (err) {
+      throw new Error(this.errMsg(err, 'Guest auth failed'));
+    }
+  }
+
+  // ---- Auto-send (auto-approval-gated send) ----
+  // POST /auto-send with the SAME body as /send, plus optional
+  // ?master_wallet_id=<id> query. Same Bearer JWT auth as /send. Returns the
+  // existing send response PLUS { auto_approved, auto_approval_reason }.
+  async autoSendTransaction(params: {
+    walletId: string;
+    password: string;
+    to: string;
+    value: string;
+    chainId?: number;
+    gasLimit?: number;
+    data?: string;
+    masterWalletId?: string;
+  }): Promise<{ transaction_hash: string; status: string; from: string; auto_approved: boolean; auto_approval_reason: string }> {
+    const query = params.masterWalletId ? { master_wallet_id: params.masterWalletId } : undefined;
+    const { data } = await this.client.post('/auto-send', {
+      wallet_id: params.walletId,
+      password: params.password,
+      to: params.to,
+      value: params.value,
+      chain_id: params.chainId,
+      gas_limit: params.gasLimit,
+      data: params.data,
+    }, { params: query });
+    return data;
+  }
+
+  // ---- Transaction status (explorer proxy) ----
+  // GET /transactions/:txHash?chain_id=N -> { status, block_number?, confirmations? }.
+  async getTransactionStatus(txHash: string, chainId: number): Promise<{
+    status: string;
+    block_number?: number;
+    confirmations?: number;
+  }> {
+    const { data } = await this.client.get(`/transactions/${encodeURIComponent(txHash)}`, {
+      params: { chain_id: chainId },
+    });
+    return data;
+  }
+
   // ---- Sign (real EIP-191 personal_sign via WL POST /wallets/:id/sign) ----
   // WL expects { message, password } -> { signature, address }
   async signMessage(params: { walletId: string; password: string; message: string }): Promise<{

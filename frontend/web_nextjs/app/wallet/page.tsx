@@ -23,6 +23,7 @@ import {
   TokenBalance,
   TransactionHistory,
 } from '../api/service';
+import { backupToDrive, restoreFromDrive } from './googleDriveBackup';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -129,6 +130,9 @@ export default function TigerWallet() {
   const [mnemonic, setMnemonic] = useState('');
   const [showMnemonic, setShowMnemonic] = useState(false);
   const [importMnemonic, setImportMnemonic] = useState('');
+  // Google Drive backup / restore state
+  const [showGDriveRestore, setShowGDriveRestore] = useState(false);
+  const [gdriveRestorePassword, setGdriveRestorePassword] = useState('');
 
   // Send state
   const [sendTo, setSendTo] = useState('');
@@ -370,6 +374,63 @@ export default function TigerWallet() {
   };
 
   // -------------------------------------------------------------------------
+  // Google Drive backup / restore (encrypted seed blob only — never the mnemonic)
+  // -------------------------------------------------------------------------
+  const backupToGoogleDrive = async () => {
+    if (!wallet) {
+      setError('No wallet selected');
+      return;
+    }
+    if (!walletPassword) {
+      setError('Enter your wallet password to back up');
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    setInfo(null);
+    try {
+      const blob = await walletService.exportEncryptedSeed(wallet.id, walletPassword);
+      const fileId = await backupToDrive(blob.encrypted_seed);
+      setInfo(`Wallet backed up to Google Drive (file id: ${fileId}). Encrypted seed stored safely — restore on any device with your password.`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Google Drive backup failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const restoreFromGoogleDrive = async () => {
+    if (!gdriveRestorePassword) {
+      setError('Enter the password used when the wallet was created');
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    setInfo(null);
+    try {
+      const encryptedSeed = await restoreFromDrive();
+      if (!encryptedSeed) {
+        setError('No TigerWallet backup found in your Google Drive appDataFolder');
+        setIsLoading(false);
+        return;
+      }
+      const restored = await walletService.importEncryptedSeed({
+        encryptedSeed,
+        password: gdriveRestorePassword,
+        chainId: selectedChain,
+      });
+      setInfo(`Wallet restored from Google Drive: ${restored.address}`);
+      setShowGDriveRestore(false);
+      setGdriveRestorePassword('');
+      await loadWallets();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Google Drive restore failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // -------------------------------------------------------------------------
   // Send (real on-chain broadcast via wallet_api /api/v1/send)
   // -------------------------------------------------------------------------
 
@@ -603,6 +664,22 @@ export default function TigerWallet() {
           <div className="space-y-4">
             <button onClick={() => { setShowCreate(true); setIsImport(false); setError(null); }} className="w-full bg-orange-600 text-white rounded-xl py-4 font-bold text-lg hover:bg-orange-700 transition">Create New Wallet</button>
             <button onClick={() => { setShowCreate(true); setIsImport(true); setError(null); }} className={`w-full rounded-xl py-4 font-bold text-lg ${isDark ? 'bg-gray-800 text-white hover:bg-gray-700' : 'bg-white text-gray-900 hover:bg-gray-100'}`}>Import Wallet</button>
+            <button onClick={() => { setShowGDriveRestore(true); setError(null); setInfo(null); }} className={`w-full rounded-xl py-3 font-semibold ${isDark ? 'bg-blue-900/60 text-blue-300 hover:bg-blue-900' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
+              ☁️ Restore from Google Drive
+            </button>
+            {showGDriveRestore && (
+              <div className={`${cardClass} space-y-3`}>
+                <h3 className={headingClass}>Restore from Google Drive</h3>
+                <p className={`${isDark ? 'text-gray-300' : 'text-gray-600'} text-sm`}>
+                  Sign in to Google to download your encrypted wallet backup. You will need the password you set when you created the wallet.
+                </p>
+                <input type="password" value={gdriveRestorePassword} onChange={(e) => setGdriveRestorePassword(e.target.value)} placeholder="Wallet password" className={inputClass} />
+                <button onClick={restoreFromGoogleDrive} disabled={isLoading} className="w-full bg-blue-600 text-white rounded-lg py-3 font-bold hover:bg-blue-700 transition disabled:opacity-50">
+                  {isLoading ? 'Restoring...' : 'Sign in & Restore'}
+                </button>
+                <button onClick={() => setShowGDriveRestore(false)} className={`w-full py-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Cancel</button>
+              </div>
+            )}
           </div>
         ) : (
           <div className={`${cardClass} space-y-4`}>
@@ -867,6 +944,21 @@ export default function TigerWallet() {
             <div className={labelClass}>Chain ID</div>
             <div className={isDark ? 'text-white' : 'text-gray-900'}>{wallet?.chainId}</div>
           </div>
+        </div>
+      </div>
+
+      <div className={cardClass}>
+        <h3 className={headingClass}>☁️ Google Drive Backup</h3>
+        <p className={`${isDark ? 'text-gray-300' : 'text-gray-600'} text-sm mb-3`}>
+          Back up your encrypted wallet seed to Google Drive. Only the encrypted blob is uploaded — never your seed phrase. Restore on any device with your password.
+        </p>
+        <div className="space-y-3">
+          <input type="password" value={walletPassword} onChange={(e) => setWalletPassword(e.target.value)} placeholder="Wallet password (to verify)" className={inputClass} />
+          <button onClick={backupToGoogleDrive} disabled={isLoading} className="w-full bg-blue-600 text-white rounded-lg py-3 font-bold hover:bg-blue-700 transition disabled:opacity-50">
+            {isLoading ? 'Backing up...' : 'Back up to Google Drive'}
+          </button>
+          {info && <div className="bg-green-900/50 text-green-400 p-3 rounded-lg text-sm">{info}</div>}
+          {error && <div className="bg-red-900/50 text-red-400 p-3 rounded-lg text-sm">{error}</div>}
         </div>
       </div>
 

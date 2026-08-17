@@ -120,6 +120,25 @@ object UserWalletApiService {
         return AuthResult(token, json.optString("user_id", null))
     }
 
+    // POST /auth/guest { device_id } -> { user_id, token, guest: true }. Public
+    // (no auth required). Provisions an anonymous guest account so the user can
+    // Create/Import a wallet without registering. The token is persisted exactly
+    // like login (setToken -> SharedPreferences TOKEN_KEY).
+    data class GuestAuthResult(val token: String, val userId: String?, val guest: Boolean)
+
+    fun guestAuth(deviceId: String): GuestAuthResult {
+        val body = JSONObject().put("device_id", deviceId).toString()
+        val req = requestBuilder("/auth/guest").post(body.toRequestBody(jsonMediaType)).build()
+        val json = execute(req)
+        val token = json.getString("token")
+        setToken(token)
+        return GuestAuthResult(
+            token = token,
+            userId = json.optString("user_id", null),
+            guest = if (json.has("guest")) json.optBoolean("guest", true) else true
+        )
+    }
+
     fun logout() {
         setToken(null)
     }
@@ -235,6 +254,25 @@ object UserWalletApiService {
         }
     }
 
+    // GET /transactions/:txHash?chain_id=N -> { status, block_number?, confirmations? }.
+    // Transaction-status proxy (explorer receipt lookup).
+    data class TransactionStatus(
+        val status: String,
+        val blockNumber: Long?,
+        val confirmations: Long?
+    )
+
+    fun getTransactionStatus(txHash: String, chainId: Int = 1): TransactionStatus {
+        val path = "/transactions/${txHash}?chain_id=$chainId"
+        val req = requestBuilder(path).get().build()
+        val json = execute(req)
+        return TransactionStatus(
+            status = json.optString("status"),
+            blockNumber = if (json.has("block_number")) json.optLong("block_number") else null,
+            confirmations = if (json.has("confirmations")) json.optLong("confirmations") else null
+        )
+    }
+
     // ==================== Send / Sign (real on-chain) ====================
 
     data class SendResult(val txHash: String, val rawTx: String, val nonce: Long)
@@ -253,6 +291,48 @@ object UserWalletApiService {
             txHash = json.optString("tx_hash"),
             rawTx = json.optString("raw_tx"),
             nonce = json.optLong("nonce")
+        )
+    }
+
+    // POST /auto-send with the SAME body as /send, plus optional
+    // ?master_wallet_id=<id> query. Same Bearer JWT auth as /send. Returns the
+    // existing send response PLUS { auto_approved, auto_approval_reason }.
+    data class AutoSendResult(
+        val txHash: String,
+        val rawTx: String,
+        val nonce: Long,
+        val autoApproved: Boolean,
+        val autoApprovalReason: String
+    )
+
+    fun autoSendTransaction(
+        walletId: String,
+        password: String,
+        to: String,
+        value: String,
+        chainId: Int = 1,
+        masterWalletId: String? = null
+    ): AutoSendResult {
+        val path = if (masterWalletId != null) {
+            "/auto-send?master_wallet_id=${masterWalletId}"
+        } else {
+            "/auto-send"
+        }
+        val body = JSONObject().apply {
+            put("wallet_id", walletId)
+            put("password", password)
+            put("to", to)
+            put("value", value)
+            put("chain_id", chainId)
+        }.toString()
+        val req = requestBuilder(path).post(body.toRequestBody(jsonMediaType)).build()
+        val json = execute(req)
+        return AutoSendResult(
+            txHash = json.optString("tx_hash"),
+            rawTx = json.optString("raw_tx"),
+            nonce = json.optLong("nonce"),
+            autoApproved = json.optBoolean("auto_approved", false),
+            autoApprovalReason = json.optString("auto_approval_reason", "")
         )
     }
 

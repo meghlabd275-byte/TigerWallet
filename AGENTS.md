@@ -3458,3 +3458,36 @@ extensions x3 (background.js), cpp (super_admin_domains.hpp), rust
 - smart_contracts/evm_contracts: forge build exit 0; forge test 31/31 pass
 - TigerBotPlatform.sol: code-level compile errors resolved (via_ir needed for
   stack-too-deep; foundry.toml added)
+
+
+## wallet_api new endpoints -- UserWallet client parity (2026-08-17)
+- go/wallet_api (:8443, /api/v1) gained THREE endpoints; added matching client
+  methods to ALL 7 UserWallet native clients (real fetch/reqwest/OkHttp/URLSession
+  only -- no mocks):
+  1. POST /auth/guest {device_id} -> {user_id, token, guest:true}. Public
+     (no-auth). Provisions anonymous guest account so user can Create/Import a
+     wallet WITHOUT registering. Client persists the returned token the SAME way
+     it persists login tokens.
+  2. POST /auto-send (same body as /send: {wallet_id,password,to,value,
+     chain_id?,gas_limit?,data?}) + optional ?master_wallet_id=<id> query.
+     Same Bearer JWT auth as /send. Returns send response PLUS
+     {auto_approved: bool, auto_approval_reason: string}.
+  3. GET /transactions/:txHash?chain_id=N -> {status, block_number?,
+     confirmations?}. Added getTransactionStatus(txHash, chainId) client method.
+- Client files changed (exact paths): web/src/services/api.ts (axios; guestAuth
+  setToken like login), desktop/src/services/api.js (fetch; guestAuth mirrors
+  login returning {token,user} -- AuthContext persists userwallet-token),
+  production/react/src/services/WalletService.ts (axios; guestAuth persists
+  tigerwallet-token via localStorage like AuthService.login),
+  android/.../UserWalletApiService.kt (OkHttp; guestAuth setToken SharedPreferences
+  TOKEN_KEY), ios/App/UserWalletApiService.swift (URLSession request<T>; guestAuth
+  authenticated:false + storedToken), rust/src/lib.rs (reqwest; guest_auth
+  set_token), extension/src/popup.js (fetch api(); guestAuth auth:false +
+  setToken).
+- No MasterWallet/admin clients touched. No base URLs changed. No existing
+  methods removed. No mock/stub data.
+- Build/lint: web tsc 0 errors; desktop node --check 0; production/react tsc 0
+  errors; rust cargo check --lib 0 errors; android brace-balanced (kotlinc NOT
+  installed); ios brace-balanced (swiftc NOT installed; naive tokenizer misreads
+  Swift string interpolation like backslash-paren-mw -- use string-aware check);
+  extension node --check 0.

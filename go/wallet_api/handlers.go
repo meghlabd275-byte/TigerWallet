@@ -226,6 +226,129 @@ func handleCreateWallet(c *gin.Context) {
 	})
 }
 
+// handleExportEncryptedSeed returns the wallet's AES-256-GCM encrypted seed blob
+// (salt+ciphertext hex) for the user to back up to Google Drive / iCloud / a
+// hardware drive. The blob is password-encrypted server-side; the raw seed /
+// mnemonic is NEVER exposed. The caller MUST supply the wallet password, which
+// is verified by actually decrypting the blob (proves the password is correct
+// before handing the blob to the user). Used for Google Drive backup.
+func handleExportEncryptedSeed(c *gin.Context) {
+	walletID := c.Param("id")
+	var req struct {
+		Password string `json:"password" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	wid, err := uuid.Parse(walletID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid wallet_id"})
+		return
+	}
+	wallet, err := store.GetWalletByID(c.Request.Context(), wid)
+	if err != nil || wallet == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "wallet not found"})
+		return
+	}
+	uid, _ := uuid.Parse(getUserID(c))
+	if wallet.UserID != uid {
+		c.JSON(http.StatusForbidden, gin.H{"error": "wallet does not belong to user"})
+		return
+	}
+	// Verify the password by actually decrypting (fail-closed). We do NOT
+	// return the blob unless the password is correct.
+	if _, err := DecryptSeed(wallet.EncryptedSeed, req.Password); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "incorrect password"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"wallet_id":       wallet.ID,
+		"address":         wallet.Address,
+		"chain_id":        wallet.ChainID,
+		"label":           wallet.Label,
+		"derivation_path": wallet.DerivationPath,
+		"account_index":   wallet.AccountIndex,
+		"encrypted_seed":  wallet.EncryptedSeed,
+		"v":               1,
+	})
+}
+
+// handleImportEncryptedSeed restores a wallet from an AES-256-GCM encrypted
+// seed blob (e.g. downloaded from Google Drive). The user supplies the blob +
+// the password; the backend decrypts (verifies the password), re-derives the
+// address to confirm, and re-stores the encrypted seed under the current user.
+// The raw seed is never persisted in plaintext — only the re-stored encrypted
+// blob. Used for Google Drive restore.
+func handleImportEncryptedSeed(c *gin.Context) {
+	var req struct {
+		EncryptedSeed string `json:"encrypted_seed" binding:"required"`
+		Password      string `json:"password" binding:"required"`
+		Label         string `json:"label"`
+		ChainID       int64  `json:"chain_id"`
+		DerivationPath string `json:"derivation_path"`
+		AccountIndex   int    `json:"account_index"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// Decrypt to verify the password (fail-closed: wrong password -> reject).
+	seed, err := DecryptSeed(req.EncryptedSeed, req.Password)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "incorrect password or corrupted backup"})
+		return
+	}
+	if req.ChainID == 0 {
+		req.ChainID = 1
+	}
+	chain := evmChainByChainID(req.ChainID)
+	if chain == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported chain_id"})
+		return
+	}
+	if req.DerivationPath == "" {
+		req.DerivationPath = chain.DerivationPath
+	}
+	if req.AccountIndex == 0 {
+		req.AccountIndex = 0
+	}
+	// Re-derive the address from the recovered seed to confirm the backup is valid.
+	privKey, err := DerivePrivateKeyFromPath(seed, req.DerivationPath)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to derive key from backup: " + err.Error()})
+		return
+	}
+	addr := crypto.PubkeyToAddress(privKey.PublicKey).Hex()
+	if req.Label == "" {
+		req.Label = "Restored Wallet"
+	}
+	uid, _ := uuid.Parse(getUserID(c))
+	w := &WalletRecord{
+		UserID:         uid,
+		Label:          req.Label,
+		ChainID:        req.ChainID,
+		Address:        addr,
+		EncryptedSeed:  req.EncryptedSeed, // re-store the original encrypted blob (not re-encrypted)
+		DerivationPath: req.DerivationPath,
+		AccountIndex:   req.AccountIndex,
+		IsPrimary:      false,
+	}
+	if err := store.SaveWallet(c.Request.Context(), w); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to restore wallet: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{
+		"id":              w.ID,
+		"label":           w.Label,
+		"chain_id":        w.ChainID,
+		"address":         w.Address,
+		"derivation_path": w.DerivationPath,
+		"account_index":  w.AccountIndex,
+		"restored":        true,
+	})
+}
+
 func handleListWallets(c *gin.Context) {
 	uid, _ := uuid.Parse(getUserID(c))
 	wallets, err := store.GetWalletsByUser(c.Request.Context(), uid)
