@@ -457,6 +457,677 @@ class MasterWalletService {
         }
     }
 
+    // MARK: - Sub Wallets (mirror iOS: GET/POST /master-wallet/:id/sub-wallets,
+    //   GET .../sub-wallets/:sid/balance, POST .../sub-wallets/:sid/transfer)
+
+    suspend fun getSubWallets(masterWalletId: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$masterWalletId/sub-wallets") }
+
+    suspend fun createSubWallet(
+        masterWalletId: String,
+        name: String,
+        password: String,
+        chainId: Int
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("name", name)
+            .put("password", password)
+            .put("chain_id", chainId)
+            .toString()
+        apiPost("/api/v1/master-wallet/$masterWalletId/sub-wallets", body)
+    }
+
+    suspend fun getSubWalletBalance(masterWalletId: String, subWalletId: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$masterWalletId/sub-wallets/$subWalletId/balance") }
+
+    suspend fun transferSubWallet(
+        masterWalletId: String,
+        subWalletId: String,
+        to: String,
+        amount: String,
+        password: String,
+        token: String? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("to", to)
+            .put("amount", amount)
+            .put("password", password)
+            .apply { token?.let { put("token", it) } }
+            .toString()
+        apiPost("/api/v1/master-wallet/$masterWalletId/sub-wallets/$subWalletId/transfer", body)
+    }
+
+    // MARK: - Transactions (getTransaction already exists)
+
+    suspend fun listTransactions(walletId: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$walletId/transactions") }
+
+    suspend fun createTransaction(
+        walletId: String,
+        to: String,
+        amount: String,
+        password: String,
+        token: String? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("to", to)
+            .put("amount", amount)
+            .put("password", password)
+            .apply { token?.let { put("token", it) } }
+            .toString()
+        apiPost("/api/v1/master-wallet/$walletId/transactions", body)
+    }
+
+    suspend fun approveTransaction(walletId: String, transactionId: String): String? =
+        withContext(Dispatchers.IO) { apiPost("/api/v1/master-wallet/$walletId/transactions/$transactionId/approve", "{}") }
+
+    suspend fun rejectTransaction(walletId: String, transactionId: String): String? =
+        withContext(Dispatchers.IO) { apiPost("/api/v1/master-wallet/$walletId/transactions/$transactionId/reject", "{}") }
+
+    // MARK: - Policies (GET/POST /policies, PUT/DELETE /policies/:pid)
+
+    suspend fun getPolicies(walletId: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$walletId/policies") }
+
+    suspend fun createPolicy(
+        walletId: String,
+        name: String,
+        policyType: String,
+        conditions: Map<String, String>? = null,
+        actions: Map<String, String>? = null,
+        isActive: Boolean? = null,
+        priority: Int = 0
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("name", name)
+            .put("policy_type", policyType)
+            .apply {
+                conditions?.let { put("conditions", JSONObject(it)) }
+                actions?.let { put("actions", JSONObject(it)) }
+                isActive?.let { put("is_active", it) }
+            }
+            .put("priority", priority)
+            .toString()
+        apiPost("/api/v1/master-wallet/$walletId/policies", body)
+    }
+
+    suspend fun updatePolicy(
+        walletId: String,
+        policyId: String,
+        name: String? = null,
+        policyType: String? = null,
+        conditions: Map<String, String>? = null,
+        actions: Map<String, String>? = null,
+        isActive: Boolean? = null,
+        priority: Int? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .apply {
+                name?.let { put("name", it) }
+                policyType?.let { put("policy_type", it) }
+                conditions?.let { put("conditions", JSONObject(it)) }
+                actions?.let { put("actions", JSONObject(it)) }
+                isActive?.let { put("is_active", it) }
+                priority?.let { put("priority", it) }
+            }
+            .toString()
+        apiPut("/api/v1/master-wallet/$walletId/policies/$policyId", body)
+    }
+
+    suspend fun deletePolicy(walletId: String, policyId: String): Boolean =
+        withContext(Dispatchers.IO) { apiDelete("/api/v1/master-wallet/$walletId/policies/$policyId") }
+
+    // MARK: - Fees (GET/POST /fees, DELETE /fees/:fid)
+
+    suspend fun getFees(walletId: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$walletId/fees") }
+
+    suspend fun createFee(
+        walletId: String,
+        feeType: String,
+        feePercentage: Double? = null,
+        feeFixed: String? = null,
+        isActive: Boolean? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("fee_type", feeType)
+            .apply {
+                feePercentage?.let { put("fee_percentage", it) }
+                feeFixed?.let { put("fee_fixed", it) }
+                isActive?.let { put("is_active", it) }
+            }
+            .toString()
+        apiPost("/api/v1/master-wallet/$walletId/fees", body)
+    }
+
+    suspend fun deleteFee(walletId: String, feeId: String): Boolean =
+        withContext(Dispatchers.IO) { apiDelete("/api/v1/master-wallet/$walletId/fees/$feeId") }
+
+    // MARK: - Auto-sign (master): GET/POST /auto-sign, DELETE /auto-sign/:rid,
+    //   POST /auto-sign-transaction, GET /auto-sign-logs
+
+    suspend fun getAutoSignRules(walletId: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$walletId/auto-sign") }
+
+    suspend fun createAutoSignRule(
+        walletId: String,
+        name: String,
+        ruleType: String,
+        conditions: Map<String, String>? = null,
+        maxAmount: String? = null,
+        isActive: Boolean? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("name", name)
+            .put("rule_type", ruleType)
+            .apply {
+                conditions?.let { put("conditions", JSONObject(it)) }
+                maxAmount?.let { put("max_amount", it) }
+                isActive?.let { put("is_active", it) }
+            }
+            .toString()
+        apiPost("/api/v1/master-wallet/$walletId/auto-sign", body)
+    }
+
+    suspend fun deleteAutoSignRule(walletId: String, ruleId: String): Boolean =
+        withContext(Dispatchers.IO) { apiDelete("/api/v1/master-wallet/$walletId/auto-sign/$ruleId") }
+
+    /**
+     * POST /master-wallet/:id/auto-sign-transaction — backend performs the real
+     * secp256k1 signing + broadcast. Body mirrors the backend AutoSignRequest.
+     */
+    suspend fun autoSignTransaction(
+        id: String,
+        mnemonic: String,
+        chainId: Long,
+        chainType: String,
+        txType: String,
+        toAddress: String,
+        value: String,
+        tokenAddress: String? = null,
+        derivationPath: String? = null,
+        accountIndex: Long? = null,
+        contractAddress: String? = null,
+        data: String? = null,
+        withdrawalId: String? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("mnemonic", mnemonic)
+            .put("chain_id", chainId)
+            .put("chain_type", chainType)
+            .put("tx_type", txType)
+            .put("to_address", toAddress)
+            .put("value", value)
+            .apply {
+                tokenAddress?.let { put("token_address", it) }
+                derivationPath?.let { put("derivation_path", it) }
+                accountIndex?.let { put("account_index", it) }
+                contractAddress?.let { put("contract_address", it) }
+                data?.let { put("data", it) }
+                withdrawalId?.let { put("withdrawal_id", it) }
+            }
+            .toString()
+        apiPost("/api/v1/master-wallet/$id/auto-sign-transaction", body)
+    }
+
+    suspend fun listAutoSignLogs(id: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$id/auto-sign-logs") }
+
+    // MARK: - Users (GET/POST /users, DELETE /users/:uid)
+
+    suspend fun getUsers(walletId: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$walletId/users") }
+
+    suspend fun createUser(
+        walletId: String,
+        email: String,
+        password: String,
+        name: String? = null,
+        role: String? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("email", email)
+            .put("password", password)
+            .apply {
+                name?.let { put("name", it) }
+                role?.let { put("role", it) }
+            }
+            .toString()
+        apiPost("/api/v1/master-wallet/$walletId/users", body)
+    }
+
+    suspend fun deleteUser(walletId: String, userId: String): Boolean =
+        withContext(Dispatchers.IO) { apiDelete("/api/v1/master-wallet/$walletId/users/$userId") }
+
+    // MARK: - Audit (GET /audit)
+
+    suspend fun getAudit(walletId: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$walletId/audit") }
+
+    // MARK: - Analytics (GET /analytics/volume, /transactions, /wallets)
+
+    suspend fun getAnalyticsVolume(walletId: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$walletId/analytics/volume") }
+
+    suspend fun getAnalyticsTransactions(walletId: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$walletId/analytics/transactions") }
+
+    suspend fun getAnalyticsWallets(walletId: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$walletId/analytics/wallets") }
+
+    // MARK: - Notifications (GET/POST /notifications)
+
+    suspend fun getNotifications(walletId: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$walletId/notifications") }
+
+    suspend fun createNotification(
+        walletId: String,
+        type: String,
+        title: String,
+        message: String,
+        userId: String? = null,
+        category: String? = null,
+        priority: String? = null,
+        channel: String? = null,
+        data: Map<String, String>? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("notification_type", type)
+            .put("title", title)
+            .put("message", message)
+            .apply {
+                userId?.let { put("user_id", it) }
+                category?.let { put("category", it) }
+                priority?.let { put("priority", it) }
+                channel?.let { put("channel", it) }
+                data?.let { put("data", JSONObject(it)) }
+            }
+            .toString()
+        apiPost("/api/v1/master-wallet/$walletId/notifications", body)
+    }
+
+    // MARK: - Webhooks (GET/POST /webhooks, DELETE /webhooks/:wid)
+
+    suspend fun getWebhooks(walletId: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$walletId/webhooks") }
+
+    suspend fun createWebhook(
+        walletId: String,
+        name: String,
+        url: String,
+        events: List<String>,
+        retryCount: Int = 0
+    ): String? = withContext(Dispatchers.IO) {
+        val eventsArr = JSONArray()
+        events.forEach { eventsArr.put(it) }
+        val body = JSONObject()
+            .put("name", name)
+            .put("url", url)
+            .put("events", eventsArr)
+            .put("retry_count", retryCount)
+            .toString()
+        apiPost("/api/v1/master-wallet/$walletId/webhooks", body)
+    }
+
+    suspend fun deleteWebhook(walletId: String, webhookId: String): Boolean =
+        withContext(Dispatchers.IO) { apiDelete("/api/v1/master-wallet/$walletId/webhooks/$webhookId") }
+
+    // MARK: - Treasury (GET /treasury, GET /treasury/transactions,
+    //   POST /treasury/transfer, POST /treasury/sweep)
+
+    suspend fun getTreasury(walletId: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$walletId/treasury") }
+
+    suspend fun getTreasuryTransactions(walletId: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$walletId/treasury/transactions") }
+
+    /** POST .../treasury/transfer — body mirrors iOS TreasuryTransferRequest {to, amount, password}. */
+    suspend fun treasuryTransfer(walletId: String, to: String, amount: String, password: String): String? =
+        withContext(Dispatchers.IO) {
+            val body = JSONObject()
+                .put("to", to)
+                .put("amount", amount)
+                .put("password", password)
+                .toString()
+            apiPost("/api/v1/master-wallet/$walletId/treasury/transfer", body)
+        }
+
+    /** POST .../treasury/sweep — body mirrors iOS TreasurySweepRequest {to, password}. */
+    suspend fun treasurySweep(walletId: String, to: String, password: String): String? =
+        withContext(Dispatchers.IO) {
+            val body = JSONObject()
+                .put("to", to)
+                .put("password", password)
+                .toString()
+            apiPost("/api/v1/master-wallet/$walletId/treasury/sweep", body)
+        }
+
+    // MARK: - Multisig (getMultisigWalletDetail already exists)
+
+    suspend fun getMultisigWallets(walletId: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$walletId/multisig/wallets") }
+
+    suspend fun createMultisigWallet(
+        walletId: String,
+        name: String,
+        owners: List<String>,
+        threshold: Int
+    ): String? = withContext(Dispatchers.IO) {
+        val ownersArr = JSONArray()
+        owners.forEach { ownersArr.put(it) }
+        val body = JSONObject()
+            .put("name", name)
+            .put("owners", ownersArr)
+            .put("threshold", threshold)
+            .toString()
+        apiPost("/api/v1/master-wallet/$walletId/multisig/wallets", body)
+    }
+
+    suspend fun getMultisigTransactions(walletId: String, multisigWalletId: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$walletId/multisig/wallets/$multisigWalletId/transactions") }
+
+    suspend fun createMultisigTransaction(
+        walletId: String,
+        multisigWalletId: String,
+        to: String,
+        amount: String,
+        data: String? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("to", to)
+            .put("amount", amount)
+            .apply { data?.let { put("data", it) } }
+            .toString()
+        apiPost("/api/v1/master-wallet/$walletId/multisig/wallets/$multisigWalletId/transactions", body)
+    }
+
+    suspend fun signMultisigTransaction(walletId: String, transactionId: String): String? =
+        withContext(Dispatchers.IO) { apiPost("/api/v1/master-wallet/$walletId/multisig/transactions/$transactionId/sign", "{}") }
+
+    suspend fun executeMultisigTransaction(walletId: String, transactionId: String): String? =
+        withContext(Dispatchers.IO) { apiPost("/api/v1/master-wallet/$walletId/multisig/transactions/$transactionId/execute", "{}") }
+
+    // MARK: - User-wallet management / governance (EVM + non-EVM chains, tokens,
+    //   derive-user-address, user-wallet-addresses)
+
+    suspend fun listUserEVMChains(id: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$id/user-chains/evm") }
+
+    suspend fun addUserEVMChain(
+        id: String,
+        chainId: Int,
+        name: String,
+        symbol: String,
+        rpcUrl: String,
+        explorerUrl: String,
+        decimals: Int,
+        derivationPath: String
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("chain_id", chainId)
+            .put("name", name)
+            .put("symbol", symbol)
+            .put("rpc_url", rpcUrl)
+            .put("explorer_url", explorerUrl)
+            .put("decimals", decimals)
+            .put("derivation_path", derivationPath)
+            .toString()
+        apiPost("/api/v1/master-wallet/$id/user-chains/evm", body)
+    }
+
+    suspend fun updateUserEVMChain(
+        id: String,
+        chainId: Int,
+        name: String? = null,
+        symbol: String? = null,
+        rpcUrl: String? = null,
+        explorerUrl: String? = null,
+        decimals: Int? = null,
+        derivationPath: String? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .apply {
+                name?.let { put("name", it) }
+                symbol?.let { put("symbol", it) }
+                rpcUrl?.let { put("rpc_url", it) }
+                explorerUrl?.let { put("explorer_url", it) }
+                decimals?.let { put("decimals", it) }
+                derivationPath?.let { put("derivation_path", it) }
+            }
+            .toString()
+        apiPut("/api/v1/master-wallet/$id/user-chains/evm/$chainId", body)
+    }
+
+    suspend fun removeUserEVMChain(id: String, chainId: Int): Boolean =
+        withContext(Dispatchers.IO) { apiDelete("/api/v1/master-wallet/$id/user-chains/evm/$chainId") }
+
+    suspend fun listUserNonEVMChains(id: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$id/user-chains/nonevm") }
+
+    suspend fun addUserNonEVMChain(
+        id: String,
+        chainId: Int,
+        name: String,
+        symbol: String,
+        chainType: String,
+        rpcUrl: String,
+        derivationPath: String,
+        addressPrefix: String
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("chain_id", chainId)
+            .put("name", name)
+            .put("symbol", symbol)
+            .put("chain_type", chainType)
+            .put("rpc_url", rpcUrl)
+            .put("derivation_path", derivationPath)
+            .put("address_prefix", addressPrefix)
+            .toString()
+        apiPost("/api/v1/master-wallet/$id/user-chains/nonevm", body)
+    }
+
+    suspend fun updateUserNonEVMChain(
+        id: String,
+        chainId: Int,
+        name: String? = null,
+        symbol: String? = null,
+        chainType: String? = null,
+        rpcUrl: String? = null,
+        derivationPath: String? = null,
+        addressPrefix: String? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .apply {
+                name?.let { put("name", it) }
+                symbol?.let { put("symbol", it) }
+                chainType?.let { put("chain_type", it) }
+                rpcUrl?.let { put("rpc_url", it) }
+                derivationPath?.let { put("derivation_path", it) }
+                addressPrefix?.let { put("address_prefix", it) }
+            }
+            .toString()
+        apiPut("/api/v1/master-wallet/$id/user-chains/nonevm/$chainId", body)
+    }
+
+    suspend fun removeUserNonEVMChain(id: String, chainId: Int): Boolean =
+        withContext(Dispatchers.IO) { apiDelete("/api/v1/master-wallet/$id/user-chains/nonevm/$chainId") }
+
+    suspend fun listUserTokens(id: String, chainId: Int? = null): String? =
+        withContext(Dispatchers.IO) {
+            val endpoint = if (chainId != null) "/api/v1/master-wallet/$id/user-tokens?chain_id=$chainId"
+                else "/api/v1/master-wallet/$id/user-tokens"
+            apiGet(endpoint)
+        }
+
+    suspend fun addUserToken(
+        id: String,
+        chainId: Int,
+        contractAddress: String,
+        symbol: String,
+        name: String,
+        decimals: Int,
+        isNative: Boolean
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("chain_id", chainId)
+            .put("contract_address", contractAddress)
+            .put("symbol", symbol)
+            .put("name", name)
+            .put("decimals", decimals)
+            .put("is_native", isNative)
+            .toString()
+        apiPost("/api/v1/master-wallet/$id/user-tokens", body)
+    }
+
+    suspend fun updateUserToken(
+        id: String,
+        tokenId: String,
+        symbol: String? = null,
+        name: String? = null,
+        decimals: Int? = null,
+        isNative: Boolean? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .apply {
+                symbol?.let { put("symbol", it) }
+                name?.let { put("name", it) }
+                decimals?.let { put("decimals", it) }
+                isNative?.let { put("is_native", it) }
+            }
+            .toString()
+        apiPut("/api/v1/master-wallet/$id/user-tokens/$tokenId", body)
+    }
+
+    suspend fun removeUserToken(id: String, tokenId: String): Boolean =
+        withContext(Dispatchers.IO) { apiDelete("/api/v1/master-wallet/$id/user-tokens/$tokenId") }
+
+    suspend fun deriveUserAddress(
+        id: String,
+        mnemonic: String,
+        chainId: Long,
+        chainType: String,
+        derivationPath: String,
+        accountIndex: Long
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("mnemonic", mnemonic)
+            .put("chain_id", chainId)
+            .put("chain_type", chainType)
+            .put("derivation_path", derivationPath)
+            .put("account_index", accountIndex)
+            .toString()
+        apiPost("/api/v1/master-wallet/$id/derive-user-address", body)
+    }
+
+    suspend fun listUserWalletAddresses(id: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$id/user-wallet-addresses") }
+
+    // MARK: - Feature flags (GET/POST /feature-flags, PUT/DELETE .../feature-flags/:flagId)
+
+    suspend fun listFeatureFlags(id: String): String? =
+        withContext(Dispatchers.IO) { apiGet("/api/v1/master-wallet/$id/feature-flags") }
+
+    suspend fun addFeatureFlag(
+        id: String,
+        flagKey: String,
+        flagValue: String,
+        description: String? = null,
+        isEnabled: Boolean
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("flag_key", flagKey)
+            .put("flag_value", flagValue)
+            .put("is_enabled", isEnabled)
+            .apply { description?.let { put("description", it) } }
+            .toString()
+        apiPost("/api/v1/master-wallet/$id/feature-flags", body)
+    }
+
+    suspend fun updateFeatureFlag(
+        id: String,
+        flagId: String,
+        flagValue: String? = null,
+        description: String? = null,
+        isEnabled: Boolean? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .apply {
+                flagValue?.let { put("flag_value", it) }
+                description?.let { put("description", it) }
+                isEnabled?.let { put("is_enabled", it) }
+            }
+            .toString()
+        apiPut("/api/v1/master-wallet/$id/feature-flags/$flagId", body)
+    }
+
+    suspend fun removeFeatureFlag(id: String, flagId: String): Boolean =
+        withContext(Dispatchers.IO) { apiDelete("/api/v1/master-wallet/$id/feature-flags/$flagId") }
+
+    // MARK: - Auto-sign bridge (POST /user-wallet-auto-sign, POST /check-auto-sign-policy)
+
+    /**
+     * POST /master-wallet/:id/user-wallet-auto-sign — the user-wallet auto-sign
+     * bridge. Body mirrors the backend AutoSignRequest (real signing on the server).
+     */
+    suspend fun userWalletAutoSign(
+        id: String,
+        mnemonic: String,
+        chainId: Long,
+        chainType: String,
+        txType: String,
+        toAddress: String,
+        value: String,
+        tokenAddress: String? = null,
+        derivationPath: String? = null,
+        accountIndex: Long? = null,
+        contractAddress: String? = null,
+        data: String? = null,
+        withdrawalId: String? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("mnemonic", mnemonic)
+            .put("chain_id", chainId)
+            .put("chain_type", chainType)
+            .put("tx_type", txType)
+            .put("to_address", toAddress)
+            .put("value", value)
+            .apply {
+                tokenAddress?.let { put("token_address", it) }
+                derivationPath?.let { put("derivation_path", it) }
+                accountIndex?.let { put("account_index", it) }
+                contractAddress?.let { put("contract_address", it) }
+                data?.let { put("data", it) }
+                withdrawalId?.let { put("withdrawal_id", it) }
+            }
+            .toString()
+        apiPost("/api/v1/master-wallet/$id/user-wallet-auto-sign", body)
+    }
+
+    /** POST /master-wallet/:id/check-auto-sign-policy — body {tx_type, value}. */
+    suspend fun checkAutoSignPolicy(id: String, txType: String, value: String): String? =
+        withContext(Dispatchers.IO) {
+            val body = JSONObject()
+                .put("tx_type", txType)
+                .put("value", value)
+                .toString()
+            apiPost("/api/v1/master-wallet/$id/check-auto-sign-policy", body)
+        }
+
+    // MARK: - Public endpoints (NO auth) — getSupportedChains already exists.
+    //   /gas, /price, /transactions/history, /health do not require a JWT.
+
+    suspend fun getGas(chainId: Int): String? =
+        withContext(Dispatchers.IO) { apiGetPublic("/api/v1/gas?chain_id=$chainId") }
+
+    suspend fun getPrice(coinId: String): String? =
+        withContext(Dispatchers.IO) { apiGetPublic("/api/v1/price?coin_id=$coinId") }
+
+    suspend fun getHealth(): String? =
+        withContext(Dispatchers.IO) { apiGetPublic("/api/v1/health") }
+
+    suspend fun getTransactionHistory(address: String, chainId: Int): String? =
+        withContext(Dispatchers.IO) { apiGetPublic("/api/v1/transactions/history?address=$address&chain_id=$chainId") }
+
     // -- HTTP helpers (Bearer JWT auth against the canonical backend) --
 
     private fun apiGet(endpoint: String): String? {
@@ -516,6 +1187,16 @@ class MasterWalletService {
             conn.responseCode in 200..299
         } catch (e: Exception) { false }
     }
+
+    // Public GET (no JWT) for /api/v1/chains, /gas, /price, /transactions/history, /health.
+    private fun apiGetPublic(endpoint: String): String? = try {
+        val conn = (URL("$baseUrl$endpoint").openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 10000
+            readTimeout = 10000
+        }
+        if (conn.responseCode in 200..299) conn.inputStream.bufferedReader().readText() else null
+    } catch (e: Exception) { null }
 }
 
 // Data classes
