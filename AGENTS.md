@@ -3491,3 +3491,31 @@ extensions x3 (background.js), cpp (super_admin_domains.hpp), rust
   installed); ios brace-balanced (swiftc NOT installed; naive tokenizer misreads
   Swift string interpolation like backslash-paren-mw -- use string-aware check);
   extension node --check 0.
+
+## Session 2026-08-16 (final): UserWallet no-registration + Google Drive backup + MasterWallet auto-sign bridge + Android parity
+
+### UserWallet no-registration flow (no email/password needed)
+- go/wallet_api: POST /api/v1/auth/guest provisions an anonymous guest account from a stable device_id (idempotent; non-loginable sentinel password hash; NOT a privilege-escalation vector). store.go CreateGuestUser derives guest email from device id.
+- All 7 UserWallet clients gained guestAuth(deviceId): web, desktop, production/react, android, ios, rust, extension. web_nextjs wallet page auto guest-auths on mount (no email/password form).
+
+### Auto-sign bridge (MasterWallet-owner policy auto-approval, app separation preserved)
+- master_wallet/backend: POST /master-wallet/:id/user-wallet-auto-sign (policy-based auto-sign via auto-sign RULES, distinct from two-party SuperAdmin gate) + POST /master-wallet/:id/check-auto-sign-policy (policy-only check, server-to-server).
+- go/wallet_api: POST /api/v1/auto-send self-signs + broadcasts with MasterWallet-owner policy auto-approval (server-to-server check). UserWallet clients NEVER talk to MasterWallet directly. config.go MASTER_WALLET_API_URL env (default :8450).
+- All 7 UserWallet clients gained autoSendTransaction + getTransactionStatus. web_nextjs send flow uses autoSendTransaction with pending->confirmed polling + "Transaction submitted to blockchain network" UX banner.
+
+### Google Drive encrypted-seed backup (UserWallet)
+- go/wallet_api: POST /wallets/:id/export-encrypted-seed (password-verified; returns AES-256-GCM encrypted blob for Drive upload; raw mnemonic NEVER exposed) + POST /wallets/import-encrypted-seed (restores from blob + password; backend decrypts to verify, re-derives address, re-stores encrypted blob).
+- frontend/web_nextjs: app/wallet/googleDriveBackup.ts real Google Identity Services OAuth2 (drive.appdata scope) + Drive REST API v3 upload/download to appDataFolder. Fail-closed unless NEXT_PUBLIC_GOOGLE_DRIVE_CLIENT_ID set. WalletService.exportEncryptedSeed + importEncryptedSeed. Proxy routes /api/v1/wallets/[id]/export-encrypted-seed (3 levels -> ../../../_proxy), /api/v1/wallets/import-encrypted-seed (2 levels -> ../../_proxy).
+
+### Two-party revenue gate across all 8 MasterWallet clients
+- requestWithdrawal + revenuePayout in web, rust, desktop C++, 5 extensions, android, ios, flutter. Two-party SuperAdmin gate ONLY for MasterWallet revenue/fee payouts; UserWallet normal txs use policy-based auto-approval.
+
+### MasterWallet Android fetcher parity (the genuine gap)
+- Android MasterWalletService.kt had only 16 fetcher methods vs iOS reference ~85-endpoint coverage. Added 66 methods (16 -> 82): sub-wallets, transactions (create/approve/reject), policies/fees/auto-sign/users CRUD, audit, analytics, notifications, webhooks, treasury, multisig, user-wallet management governance (EVM + non-EVM chain CRUD, token CRUD, derive-user-address), feature flags, auto-sign bridge, public (gas/price/health/history). Real OkHttp (suspend + withContext + Bearer auth). Existing 16 methods unchanged. Brace-balanced (string-aware tokenizer accounting for dollar-brace interpolation; naive tokenizer false-reports +1 brace).
+
+### MasterWallet client parity (post-fix)
+- web (api.ts) ~96% gold-standard; extension ~93%; rust ~89%; ios ~88% (most comprehensive native, ~40+ methods incl. all user-mgmt governance); flutter ~71% (64 methods); desktop C++ full coverage in .hpp declarations; android NOW full parity (82 methods).
+
+### Commits on main (this session): e2a6ea2, 66c35d4, 9f2a96a
+### Builds ALL GREEN: go build+vet (wallet_api, master_wallet), cargo check (master_wallet/rust, user_wallet/rust), npx tsc --noEmit (web_nextjs 0 errors), android brace-balanced.
+### Toolchains: Go 1.23.12 ($HOME/.go-sdk/go/bin), Rust 1.97.1 ($HOME/.cargo/env), npm install for web_nextjs (node_modules was wiped).
