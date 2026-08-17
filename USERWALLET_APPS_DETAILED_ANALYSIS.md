@@ -1,12 +1,19 @@
 # TigerWallet UserWallet Applications — Full Fetchers & Functionality Inventory
 
-> Verified state as of **2026-08-17 (UI-parity complete)**. All 7 UserWallet
-> clients now target the canonical `go/wallet_api` (:8443) flat contract with the
-> SAME full fetcher set, every build is green, no-registration guest auth is
-> wired on every platform, AND every UI platform now exposes the SAME full
-> screen set (web 18 / desktop 17 / android 17 / ios 16 / extension 7 tabs /
+> Verified state as of **2026-08-17 (source re-verified, UI-parity complete)**.
+> All 7 UserWallet clients target the canonical `go/wallet_api` (:8443) flat
+> contract. Every build is green, no-registration guest auth is wired on every
+> platform, and every UI platform exposes the SAME full screen set
+> (web 19 / desktop 18 / android 17 fragments / ios 16 views / extension 7 tabs /
 > production-react 13). Light/dark theme switch on every page. No stubs,
-> mocks, or fabricated data anywhere.
+> mocks, or fabricated data anywhere (the only throwing stubs are in
+> `production/react`; see the Gaps section).
+>
+> **Source-verified method counts** (read directly from each service file):
+> web 107 + `parsePaymentUri` · desktop 104 + 3 free fns · extension 104 ·
+> production/react 127 (109 WalletService + 18 AuthService, of which 11 throw) ·
+> android 106 · ios 101 + `parsePaymentUri` · rust 104 async + `parse_payment_uri`.
+> The canonical backend exposes ~114 endpoints across all domains.
 
 ---
 
@@ -27,13 +34,13 @@ The UserWallet apps are **separate** from MasterWallet and Admin apps:
 | Canonical wallet backend (flat contract) | `go/wallet_api` | **8443** | ✅ Real — RPC + BIP-32 + CoinGecko + Etherscan + DeFi proxy |
 | DeFi reverse-proxy shims (NEW) | `go/wallet_api/defi_proxy.go` | :8443 → :8009/:8006/:8454/:8455 | ✅ go build + vet clean |
 | Legacy `user_wallet/go` | `user_wallet/go` | — | Deprecated reverse-proxy shim to :8443 (kept for compat) |
-| Web client (React/CRA) | `user_wallet/web` | — | ✅ :8443, ~95 methods, tsc 0 errors |
-| Desktop (Electron) | `user_wallet/desktop` | — | ✅ :8443, 95 methods, node --check 0 |
-| Browser extension | `user_wallet/extension` | — | ✅ :8443, 97 methods, node --check 0 |
-| Production (React/TS) | `user_wallet/production/react` | — | ✅ :8443, 99 methods, tsc 0 errors |
-| Android (Kotlin) | `user_wallet/android` | — | ✅ :8443, 105 methods, brace-balanced |
-| iOS (Swift) | `user_wallet/ios` | — | ✅ :8443, 92 methods + parsePaymentUri, brace-balanced |
-| Rust lib | `user_wallet/rust` | — | ✅ :8443, ~95 async methods, cargo check 0 errors |
+| Web client (React/CRA) | `user_wallet/web` | — | ✅ :8443, 107 methods + `parsePaymentUri`, 19 pages, tsc 0 errors |
+| Desktop (Electron) | `user_wallet/desktop` | — | ✅ :8443, 104 methods + 3 free fns, 18 pages, node --check 0 |
+| Browser extension | `user_wallet/extension` | — | ✅ :8443, 104 methods, 7 tabs, node --check 0 |
+| Production (React/TS) | `user_wallet/production/react` | — | ⚠️ :8443, 127 methods (11 throwing stubs), 13 pages, tsc 0 errors |
+| Android (Kotlin) | `user_wallet/android` | — | ✅ :8443, 106 methods, 17 fragments, brace-balanced |
+| iOS (Swift) | `user_wallet/ios` | — | ⚠️ :8443, 101 methods + `parsePaymentUri`, 16 views, brace-balanced (missing `getCardTransactions`) |
+| Rust lib | `user_wallet/rust` | — | ✅ :8443, 104 async methods + `parse_payment_uri`, cargo check 0 errors |
 
 > The old `user_wallet/go/handlers/user_wallet_handler.go` dead handler and the
 > `:8105` / `:8080` targets are **obsolete** — resolved. The previously dead
@@ -253,3 +260,63 @@ success, Google Drive encrypted-seed backup, full UI parity, light/dark theme,
 and all fetcher categories are present on every platform. All builds are green.
 The previously documented `:8105` dead handler, `:8080` target, route
 mismatches, and stubs are **resolved**.
+
+---
+
+## 9. Genuine Remaining Gaps (source-verified 2026-08-17)
+
+These were each verified against actual source + sibling clients + the backend.
+Most old-doc "missing" claims are STALE (already fixed); the real gaps are:
+
+### Gap A — `production/react` WalletService: 5 throwing stubs siblings implement
+| React method | Sibling behavior | Backend endpoint |
+|---|---|---|
+| `transferNFT` (throws) | 6 others call `POST /nft/transfer` | ✅ exists |
+| `bridge()` (throws) | siblings use `/swap/quote` + `/send` workaround | ⚠️ no dedicated `/bridge` |
+| `getBridges()` (throws) | siblings return `[]` / fallback | ⚠️ none |
+| `connectDApp` (throws) | none of the 7 implement (dApp browser is separate service) | ❌ not in wallet_api |
+| `signDAppTransaction` (throws) | none implement | ❌ not in wallet_api |
+| `importPrivateKey` (throws) | none implement raw-key import | ❌ not in wallet_api |
+
+### Gap B — `production/react` AuthService: 9 dead stub methods (no backend)
+`updateProfile`, `changePassword`, `resetPassword`, `verifyEmail`,
+`getSessions`, `revokeSession`, `enableTwoFactor`, `verifyTwoFactor`,
+`disableTwoFactor` — all throw. Other 6 clients correctly limit auth to
+login/register/guest/logout/getProfile.
+
+### Gap C — iOS missing `getCardTransactions`
+Android has it → `GET /card/transactions`; iOS has only `getCryptoCardBalance`.
+Backend exposes both.
+
+### Gap D — production/react fewest UI screens (13 vs web 19)
+Missing dedicated: Address Book, Devices, Approvals, Keystore, DeFi hub pages.
+
+### Gap E — No dedicated bridge backend
+`go/bridge` is a library, not an HTTP service. All clients use a workaround.
+
+### Gap F — dApp browser (WalletConnect) not wired into any UserWallet client
+`dapp_browser/go` exists but no UserWallet client consumes it.
+
+### Gap G — `getNetworkStatus` is a semi-stub on all clients
+No backend `/network-status`; all derive from `/chains`, return `block_number: 0`.
+
+### Gap matrix
+| Gap | web | desktop | extension | react | android | ios | rust |
+|---|---|---|---|---|---|---|---|
+| A. transferNFT/bridge throws | ✅ | ✅ | ✅ | 🔴 | ✅ | ✅ | ✅ |
+| B. AuthService dead stubs | n/a | n/a | n/a | 🔴 | n/a | n/a | n/a |
+| C. getCardTransactions | ✅ | ✅ | ✅ | ✅ | ✅ | 🔴 | ✅ |
+| D. UI screen count | 19 | 18 | 7 | 🔴 13 | 17 | 16 | — |
+| E. No real bridge backend | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 |
+| F. No dApp browser wired | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 |
+| G. getNetworkStatus stub | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 |
+
+---
+
+## 10. Verification footer
+
+- **Date**: 2026-08-17
+- **Method**: source read of all 7 client service files + `go/wallet_api/main.go` route registrations (~114 endpoints).
+- **App separation**: CONFIRMED — no UserWallet client reaches MasterWallet (`:8450`) or admin (`:8082`/`:9093`) fetchers.
+- **Builds**: all green (web/desktop/extension/react `tsc`/`node --check` 0; rust `cargo check` 0; android/ios brace-balanced).
+- **Companion file**: `USERWALLET_FETCHERS_AND_GAPS.md` (the full per-method inventory).

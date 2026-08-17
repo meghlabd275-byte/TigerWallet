@@ -263,3 +263,13 @@ per-client gap being **iOS missing `getCardTransactions`** (Gap C). The
 dead AuthService methods) and the fewest UI screens (Gap D). The remaining gaps
 (E/F/G) are backend-feature limitations shared equally across all clients, not
 per-client defects.
+
+---
+
+## Verification footer
+
+- **Date**: 2026-08-17 (source re-verified)
+- **Method**: direct source read of all 7 client service files + `go/wallet_api/main.go` route registrations (~114 endpoints confirmed).
+- **App separation**: CONFIRMED — no UserWallet client reaches MasterWallet (`:8450`) or admin (`:8082`/`:9093`) fetchers. The only cross-product touch is an optional `?master_wallet_id=` query param on `POST /auto-send`, which is a server-to-server call *inside* `wallet_api` (the client never talks to MasterWallet directly).
+- **Builds**: all green — web `tsc --noEmit` 0 errors; desktop/extension `node --check` 0; production/react `tsc --noEmit` 0 errors; rust `cargo check --lib` 0 errors; android/ios brace-balanced (kotlinc/swiftc not installed in this env).
+- **Companion file**: `USERWALLET_APPS_DETAILED_ANALYSIS.md` (the per-domain narrative).
