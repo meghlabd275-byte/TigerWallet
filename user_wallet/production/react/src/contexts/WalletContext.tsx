@@ -26,7 +26,7 @@ export interface WalletState {
 
 interface WalletContextType extends WalletState {
   createWallet: (mnemonic: string | undefined, password: string, chain: Chain) => Promise<Wallet>;
-  importWallet: (privateKey: string, chain: Chain) => Promise<void>;
+  importWallet: (mnemonic: string, password: string, chain: Chain) => Promise<void>;
   importFromMnemonic: (mnemonic: string, password: string, chain: Chain) => Promise<void>;
   switchChain: (chain: Chain) => Promise<void>;
   refreshBalances: () => Promise<void>;
@@ -87,12 +87,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, [walletService]);
 
-  const importWallet = useCallback(async (privateKey: string, chain: Chain) => {
+  const importWallet = useCallback(async (mnemonic: string, password: string, chain: Chain) => {
     setIsLoading(true);
     setError(null);
     
     try {
-      const importedWallet = await walletService.importPrivateKey(privateKey, chain);
+      const importedWallet = await walletService.importFromMnemonic(mnemonic, password, chain);
       setWallets(prev => [...prev, importedWallet]);
       setActiveWallet(importedWallet);
     } catch (err: any) {

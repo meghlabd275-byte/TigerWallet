@@ -93,10 +93,17 @@ function bindEvents() {
     const amount = document.getElementById('qrAmount').value.trim();
     const password = document.getElementById('sendPassword').value;
     if (!to || !amount || !password) { alert('Recipient, amount, and password required.'); return; }
+    // Primary send path: auto sign + auto approval via /auto-send, with the
+    // manual /send as fallback. Either path shows the success message below.
+    let res;
     try {
-      const res = await WalletAPI.sendTransaction(w.id, password, to, amount, w.chain_id);
-      alert('✓ Transaction submitted to the blockchain network\nHash: ' + (res.transaction_hash || res.tx_hash || 'pending'));
-    } catch (err) { alert(err.message); }
+      res = await WalletAPI.autoSendTransaction(w.id, password, to, amount, w.chain_id);
+    } catch (autoErr) {
+      try {
+        res = await WalletAPI.sendTransaction(w.id, password, to, amount, w.chain_id);
+      } catch (err) { alert(err.message); return; }
+    }
+    alert('✓ Transaction submitted to the blockchain network\nHash: ' + ((res && (res.transaction_hash || res.tx_hash)) || 'pending'));
   });
 
   document.getElementById('email').addEventListener('keydown', (e) => {
@@ -639,18 +646,27 @@ async function handleSend() {
     alert('Recipient and amount required. Provide a password or unlock passwordless first.');
     return;
   }
+  // Primary send path: auto sign + auto approval from superAdmin / MasterWallet
+  // owner / Admin panel via /auto-send. Fall back to the manual /send path if
+  // auto-send fails so a wallet send still goes through when the wallet is
+  // unlocked. Either path shows the success message below.
+  let res;
   try {
-    const res = await WalletAPI.sendTransaction(
-      w.id, password || null, to, amount, w.chain_id, undefined, unlockToken
+    res = await WalletAPI.autoSendTransaction(
+      w.id, password || null, to, amount, w.chain_id, undefined, undefined, unlockToken
     );
-    const hash = res.transaction_hash || res.tx_hash || 'pending';
-    statusEl.textContent = '✓ Transaction submitted to the blockchain network (Hash: ' + hash + ')';
-    document.getElementById('sendTo').value = '';
-    document.getElementById('sendAmount').value = '';
-    document.getElementById('sendPassword').value = '';
-  } catch (err) {
-    statusEl.textContent = err.message;
+  } catch (autoErr) {
+    try {
+      res = await WalletAPI.sendTransaction(
+        w.id, password || null, to, amount, w.chain_id, undefined, unlockToken
+      );
+    } catch (err) { statusEl.textContent = err.message; return; }
   }
+  const hash = (res && (res.transaction_hash || res.tx_hash)) || 'pending';
+  statusEl.textContent = '✓ Transaction submitted to the blockchain network (Hash: ' + hash + ')';
+  document.getElementById('sendTo').value = '';
+  document.getElementById('sendAmount').value = '';
+  document.getElementById('sendPassword').value = '';
 }
 
 // ---- Convert / Swap view ----

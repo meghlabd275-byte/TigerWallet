@@ -490,6 +490,11 @@ final class UserWalletApiService {
         return try await requestRaw("/card/balance")
     }
 
+    /// Fetch crypto card transaction history from GET /card/transactions.
+    func getCardTransactions() async throws -> [String: Any] {
+        return try await requestRaw("/card/transactions")
+    }
+
     /// Fetch live P2P market listings from GET /p2p/adverts (PostgreSQL-backed).
     func getP2PAdverts() async throws -> [String: Any] {
         return try await requestRaw("/p2p/adverts")

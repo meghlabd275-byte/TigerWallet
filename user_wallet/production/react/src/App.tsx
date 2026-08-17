@@ -14,7 +14,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'r
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { WalletProvider } from './contexts/WalletContext';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 // Components
 import Sidebar from './components/Sidebar';
@@ -35,6 +35,11 @@ import NFTsPage from './pages/NFTsPage';
 import HistoryPage from './pages/HistoryPage';
 import BridgePage from './pages/BridgePage';
 import KYCPage from './pages/KYCPage';
+import AddressBookPage from './pages/AddressBookPage';
+import ApprovalsPage from './pages/ApprovalsPage';
+import DevicesPage from './pages/DevicesPage';
+import KeystorePage from './pages/KeystorePage';
+import DeFiPage from './pages/DeFiPage';
 
 // Styles
 import './styles/globals.css';
@@ -192,7 +197,47 @@ function AppRoutes() {
           </AppLayout>
         </ProtectedRoute>
       } />
-      
+
+      <Route path="/address-book" element={
+        <ProtectedRoute>
+          <AppLayout>
+            <AddressBookPage />
+          </AppLayout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/approvals" element={
+        <ProtectedRoute>
+          <AppLayout>
+            <ApprovalsPage />
+          </AppLayout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/devices" element={
+        <ProtectedRoute>
+          <AppLayout>
+            <DevicesPage />
+          </AppLayout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/keystore" element={
+        <ProtectedRoute>
+          <AppLayout>
+            <KeystorePage />
+          </AppLayout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/defi" element={
+        <ProtectedRoute>
+          <AppLayout>
+            <DeFiPage />
+          </AppLayout>
+        </ProtectedRoute>
+      } />
+
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
@@ -212,12 +257,6 @@ function App() {
       </ThemeProvider>
     </QueryClientProvider>
   );
-}
-
-// Custom hooks for auth
-function useAuth() {
-  // This would be implemented in AuthContext
-  return { isAuthenticated: true, isLoading: false };
 }
 
 export default App;

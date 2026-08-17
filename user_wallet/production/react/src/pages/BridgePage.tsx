@@ -21,6 +21,7 @@ function BridgePage() {
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successHash, setSuccessHash] = useState('');
 
   const chains = [
     { id: 'ethereum', name: 'Ethereum', symbol: 'ETH' },
@@ -34,9 +35,11 @@ function BridgePage() {
   const handleBridge = async () => {
     setIsLoading(true);
     setError(null);
+    setSuccessHash('');
     try {
       if (!activeWallet) throw new Error('No active wallet selected');
-      await walletService.bridge(activeWallet.id, fromChain, toChain, 'native', amount);
+      const result = await walletService.bridge(activeWallet.id, fromChain, toChain, 'native', amount);
+      setSuccessHash(result.txHash || result.bridgeTxHash || '');
     } catch (err: any) {
       setError(err?.response?.data?.error || err?.message || 'Bridge failed');
     } finally {
@@ -47,6 +50,14 @@ function BridgePage() {
   return (
     <div className="p-6 max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Bridge</h1>
+
+      {successHash && (
+        <div className={`card mb-6 bg-green-500/20 border-green-500 ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'}`}>
+          <h3 className="font-semibold text-green-500 mb-2">✓ Transaction submitted to the blockchain network</h3>
+          <p className="text-sm opacity-70">Tx Hash:</p>
+          <p className="font-mono text-xs break-all">{successHash}</p>
+        </div>
+      )}
 
       <div className={`card ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'}`}>
         <div className="mb-4">

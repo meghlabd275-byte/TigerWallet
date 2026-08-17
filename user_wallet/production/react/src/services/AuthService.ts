@@ -134,42 +134,6 @@ class AuthService {
     };
   }
 
-  async updateProfile(_data: Partial<User>): Promise<User> {
-    throw new Error(
-      'Profile update is not exposed by the canonical wallet-api backend; wire go/user_services or an admin API first'
-    );
-  }
-
-  async changePassword(_current: string, _next: string): Promise<void> {
-    throw new Error(
-      'Password change is not exposed by the canonical wallet-api backend'
-    );
-  }
-
-  async requestPasswordReset(_email: string): Promise<void> {
-    throw new Error(
-      'Password reset is not exposed by the canonical wallet-api backend'
-    );
-  }
-
-  async resetPassword(_token: string, _newPassword: string): Promise<void> {
-    throw new Error(
-      'Password reset is not exposed by the canonical wallet-api backend'
-    );
-  }
-
-  async verifyEmail(_token: string): Promise<void> {
-    throw new Error(
-      'Email verification is not exposed by the canonical wallet-api backend'
-    );
-  }
-
-  async resendVerificationEmail(): Promise<void> {
-    throw new Error(
-      'Email verification is not exposed by the canonical wallet-api backend'
-    );
-  }
-
   async refreshAccessToken(): Promise<string> {
     // wallet_api issues a single stateless JWT (no refresh-token endpoint).
     // Re-use the stored token if still valid; otherwise the caller must
@@ -177,32 +141,6 @@ class AuthService {
     const token = localStorage.getItem(TOKEN_KEY);
     if (token && !this.isTokenExpired()) return token;
     throw new Error('Session expired; please log in again');
-  }
-
-  async enable2FA(): Promise<{ qrCode: string; secret: string }> {
-    throw new Error(
-      '2FA is not exposed by the canonical wallet-api backend; wire go/two_factor_auth first'
-    );
-  }
-
-  async verify2FA(_code: string): Promise<void> {
-    throw new Error('2FA is not exposed by the canonical wallet-api backend');
-  }
-
-  async disable2FA(_code: string): Promise<void> {
-    throw new Error('2FA is not exposed by the canonical wallet-api backend');
-  }
-
-  async getSessions(): Promise<unknown[]> {
-    throw new Error('Session management is not exposed by the canonical wallet-api backend');
-  }
-
-  async revokeSession(_sessionId: string): Promise<void> {
-    throw new Error('Session management is not exposed by the canonical wallet-api backend');
-  }
-
-  async revokeAllSessions(): Promise<void> {
-    throw new Error('Session management is not exposed by the canonical wallet-api backend');
   }
 
   isTokenExpired(): boolean {

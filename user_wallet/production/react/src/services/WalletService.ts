@@ -225,14 +225,6 @@ class WalletService {
     };
   }
 
-  async importPrivateKey(_privateKey: string, _chain: Chain): Promise<Wallet> {
-    // The canonical backend derives addresses from an encrypted seed (BIP-39),
-    // not raw private keys. Import via mnemonic instead.
-    throw new Error(
-      'Raw private-key import is not supported by the canonical wallet-api backend; import via mnemonic (importFromMnemonic)'
-    );
-  }
-
   async importFromMnemonic(mnemonic: string, password: string, chain: Chain): Promise<Wallet> {
     return this.createWallet(mnemonic, password, chain);
   }
@@ -570,27 +562,14 @@ class WalletService {
 
   async transferNFT(
     walletId: string,
-    nftId: string,
-    to: string
-  ): Promise<string> {
-    // POST /nft/transfer — real ERC-721 safeTransferFrom on-chain (the backend
-    // builds the calldata + signs + broadcasts). Requires the contract address
-    // + token id; the caller passes them in the body.
-    throw new Error(
-      'transferNFT(walletId, nftId, to) is missing the contract address + chain id. ' +
-      'Use transferNFTFull(walletId, password, to, tokenId, contractAddress, chainId) instead.'
-    );
-  }
-
-  // Full NFT transfer with all required on-chain parameters (real, not a stub).
-  async transferNFTFull(
-    walletId: string,
     password: string,
     to: string,
     tokenId: string,
     contractAddress: string,
     chainId: number
   ): Promise<string> {
+    // POST /nft/transfer — real ERC-721 safeTransferFrom on-chain (the backend
+    // builds the calldata + signs + broadcasts).
     const response = await this.api.post('/nft/transfer', {
       wallet_id: walletId,
       password,
@@ -600,6 +579,18 @@ class WalletService {
       chain_id: chainId,
     });
     return response.data.transaction_hash ?? response.data.tx_hash ?? '';
+  }
+
+  // Alias with the full-args signature for backward compat.
+  async transferNFTFull(
+    walletId: string,
+    password: string,
+    to: string,
+    tokenId: string,
+    contractAddress: string,
+    chainId: number
+  ): Promise<string> {
+    return this.transferNFT(walletId, password, to, tokenId, contractAddress, chainId);
   }
 
   async getDapps(): Promise<unknown[]> {

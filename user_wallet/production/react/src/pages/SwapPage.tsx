@@ -18,6 +18,7 @@ function SwapPage() {
   const [slippage, setSlippage] = useState(0.5);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successHash, setSuccessHash] = useState('');
   const [quote, setQuote] = useState<{ priceImpact: number; route: string[] } | null>(null);
   const [password, setPassword] = useState('');
 
@@ -55,6 +56,7 @@ function SwapPage() {
     if (!password) { setError('Wallet password is required to execute the swap'); return; }
     setIsLoading(true);
     setError(null);
+    setSuccessHash('');
     try {
       const result = await walletService.swap(
         activeWallet.id,
@@ -67,6 +69,7 @@ function SwapPage() {
       if (!result.txHash) {
         setError('Swap executed but no transaction hash was returned by the backend');
       } else {
+        setSuccessHash(result.txHash);
         setPassword('');
         setFromAmount('');
         setToAmount('');
@@ -88,6 +91,14 @@ function SwapPage() {
   return (
     <div className="p-6 max-w-xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Swap</h1>
+
+      {successHash && (
+        <div className={`card mb-6 bg-green-500/20 border-green-500 ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'}`}>
+          <h3 className="font-semibold text-green-500 mb-2">✓ Transaction submitted to the blockchain network</h3>
+          <p className="text-sm opacity-70">Tx Hash:</p>
+          <p className="font-mono text-xs break-all">{successHash}</p>
+        </div>
+      )}
 
       <div className={`card ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'}`}>
         {/* From Token */}

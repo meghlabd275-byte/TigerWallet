@@ -36,4 +36,11 @@ dependencies {
     implementation "androidx.recyclerview:recyclerview:1.3.2"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
     implementation "com.squareup.okhttp3:okhttp:4.12.0"
+    // CredentialManager — real passkey/biometric unlock (androidx.credentials)
+    implementation "androidx.credentials:credentials:1.2.2"
+    implementation "androidx.credentials:credentials-play-services-auth:1.2.2"
+    // Google Drive encrypted-seed backup (Google Identity + Drive REST)
+    implementation "com.google.android.gms:play-services-auth:21.2.0"
+    implementation "com.google.api-client:google-api-client-android:2.4.1"
+    implementation "com.google.apis:google-api-services-drive:v3-rev20240514-2.0.0"
 }

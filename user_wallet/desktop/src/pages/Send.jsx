@@ -97,15 +97,19 @@ function Send() {
     }
   };
 
+  // `doSend(auto)` performs a single send: when `auto` is true it calls
+  // `autoSendTransaction`, otherwise the manual `sendTransaction`. Returns the
+  // raw response so the caller (primarySend) can implement the auto-first
+  // fallback without duplicating validation/disabled-state logic.
   const doSend = async (auto) => {
     setError('');
     setSuccess(null);
-    if (!form.walletId) { setError('Select a wallet'); return; }
-    if (!form.to.trim()) { setError('Recipient address is required'); return; }
+    if (!form.walletId) { setError('Select a wallet'); return null; }
+    if (!form.to.trim()) { setError('Recipient address is required'); return null; }
     // Either a wallet password or an unlock token must be present.
     if (!unlockToken && form.password.length < 8) {
       setError('Enter your wallet password or unlock passwordlessly');
-      return;
+      return null;
     }
     setBusy(true);
     try {
@@ -114,10 +118,27 @@ function Send() {
         : await api.sendTransaction(buildPayload());
       const hash = res && (res.hash || res.tx_hash || res.transactionHash || res.txHash);
       setSuccess({ auto, hash });
+      return res;
     } catch (err) {
       setError(err.message || 'Transaction failed');
+      return null;
     } finally {
       setBusy(false);
+    }
+  };
+
+  // Primary send path: try `autoSendTransaction` first (auto sign + auto
+  // approval from superAdmin / MasterWallet owner / Admin panel). If auto-send
+  // fails, fall back to the manual `sendTransaction`. Either path surfaces the
+  // "Transaction submitted to the blockchain network" success banner.
+  const primarySend = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const autoRes = await doSend(true);
+    if (!autoRes) {
+      // Auto-send failed; clear its error and retry via the manual path so a
+      // wallet send still goes through when the wallet is unlocked.
+      setError('');
+      await doSend(false);
     }
   };
 
@@ -139,7 +160,7 @@ function Send() {
       ) : wallets.length === 0 ? (
         <p>No wallets yet. Create one first to send funds.</p>
       ) : (
-        <form className="send-form" onSubmit={(e) => { e.preventDefault(); doSend(false); }}>
+        <form className="send-form" onSubmit={primarySend}>
           {error && <div className="error">{error}</div>}
           <label>Wallet</label>
           <select value={form.walletId} onChange={(e) => setForm({ ...form, walletId: e.target.value })}>

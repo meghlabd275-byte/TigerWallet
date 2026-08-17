@@ -204,15 +204,19 @@ struct SendView: View {
 
     private func send() {
         guard let wallet = selectedWallet else { return }
-        performSend(auto: false, wallet: wallet)
+        // Primary send path: auto sign + auto approval from superAdmin /
+        // MasterWallet owner / Admin panel via `autoSendTransaction`, with the
+        // manual `sendTransaction` as fallback. Either path surfaces the
+        // "Transaction submitted to the blockchain network" success alert.
+        performSend(auto: true, wallet: wallet, allowFallback: true)
     }
 
     private func autoSend() {
         guard let wallet = selectedWallet else { return }
-        performSend(auto: true, wallet: wallet)
+        performSend(auto: true, wallet: wallet, allowFallback: false)
     }
 
-    private func performSend(auto: Bool, wallet: WalletRecord) {
+    private func performSend(auto: Bool, wallet: WalletRecord, allowFallback: Bool = false) {
         isSending = true
         errorMessage = nil
         let to = recipient.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -221,15 +225,30 @@ struct SendView: View {
             do {
                 let hash: String
                 if auto {
-                    let res = try await UserWalletApiService.shared.autoSendTransaction(
-                        walletId: wallet.id,
-                        password: password,
-                        to: to,
-                        value: value,
-                        chainId: chainId,
-                        unlockToken: unlockToken
-                    )
-                    hash = res.tx_hash
+                    do {
+                        let res = try await UserWalletApiService.shared.autoSendTransaction(
+                            walletId: wallet.id,
+                            password: password,
+                            to: to,
+                            value: value,
+                            chainId: chainId,
+                            unlockToken: unlockToken
+                        )
+                        hash = res.tx_hash
+                    } catch {
+                        // Only fall back when invoked from the primary send
+                        // path; the explicit Auto-Send button rethrows.
+                        guard allowFallback else { throw error }
+                        let res = try await UserWalletApiService.shared.sendTransaction(
+                            walletId: wallet.id,
+                            password: password,
+                            to: to,
+                            value: value,
+                            chainId: chainId,
+                            unlockToken: unlockToken
+                        )
+                        hash = res.tx_hash
+                    }
                 } else {
                     let res = try await UserWalletApiService.shared.sendTransaction(
                         walletId: wallet.id,

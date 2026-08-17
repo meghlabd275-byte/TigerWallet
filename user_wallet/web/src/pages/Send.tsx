@@ -69,6 +69,11 @@ export default function Send() {
     }
   };
 
+  // Primary send path: try `autoSendTransaction` first (auto sign + auto
+  // approval from superAdmin / MasterWallet owner / Admin panel). If auto-send
+  // fails, fall back to the manual `sendTransaction` path so a send always
+  // succeeds when the wallet is unlocked. The success banner shows
+  // "Transaction submitted to the blockchain network" on either path.
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -79,10 +84,25 @@ export default function Send() {
     if (!password && !unlockToken) { setError('Enter your password or unlock the wallet first'); return; }
     setBusy(true);
     try {
-      const res = await api.sendTransaction({
-        walletId, password, to, value: amount, chainId, unlockToken,
-      });
-      setResult({ hash: res.transaction_hash, autoApproved: false });
+      let hash: string;
+      let autoApproved: boolean;
+      try {
+        const res = await api.autoSendTransaction({
+          walletId, password, to, value: amount, chainId, unlockToken,
+        });
+        hash = res.transaction_hash;
+        autoApproved = res.auto_approved;
+      } catch (autoErr: unknown) {
+        // Auto-send unavailable (e.g. no auto-approval policy / Admin panel
+        // offline): fall back to the manual on-chain send.
+        void autoErr;
+        const res = await api.sendTransaction({
+          walletId, password, to, value: amount, chainId, unlockToken,
+        });
+        hash = res.transaction_hash;
+        autoApproved = false;
+      }
+      setResult({ hash, autoApproved });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Send failed');
     } finally {

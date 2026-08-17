@@ -70,21 +70,23 @@ function SendPage() {
     setIsLoading(true);
 
     try {
-      // If a passwordless unlock_token is available, use it directly with the
-      // wallet service so no wallet password is needed. Otherwise fall back to
-      // the existing WalletContext.sendTransaction flow.
-      if (unlockToken && activeWallet) {
-        const chainId = activeWallet.chain?.chainId ?? 1;
-        const hash = await walletService.sendTransaction(
-          activeWallet.id,
+      // Primary path: autoSendTransaction — the MasterWallet owner auto-
+      // approves + auto-signs within a second (no per-tx password needed).
+      // Falls back to password-based sendTransaction if autoSend is
+      // unavailable.
+      const chainId = activeWallet?.chain?.chainId ?? 1;
+      const walletId = activeWallet?.id ?? '';
+      if (walletId) {
+        const result = await walletService.autoSendTransaction(
+          walletId,
           toAddress,
           amount,
-          undefined, // token (not used by backend /send)
-          undefined, // password
+          '', // password (not required when unlock_token is present or auto-approval is active)
           chainId,
-          unlockToken
+          undefined, // masterWalletId
+          unlockToken || undefined
         );
-        setTxHash(hash);
+        setTxHash(typeof result === 'string' ? result : result?.txHash ?? '');
       } else {
         const hash = await sendTransaction(toAddress, amount, selectedToken);
         setTxHash(hash);

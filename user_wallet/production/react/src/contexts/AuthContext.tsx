@@ -15,7 +15,6 @@ interface AuthContextType {
   register: (data: RegisterData) => Promise<void>;
   guestAuth: (deviceId: string) => Promise<void>;
   logout: () => void;
-  updateProfile: (data: Partial<User>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -99,19 +98,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
-  const updateProfile = async (data: Partial<User>) => {
-    setIsLoading(true);
-    try {
-      const updatedUser = await authService.updateProfile(data);
-      setUser(updatedUser);
-    } catch (err: any) {
-      setError(err.message || 'Update failed');
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   return (
     <AuthContext.Provider value={{
       user,
@@ -122,7 +108,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       register,
       guestAuth,
       logout,
-      updateProfile,
     }}>
       {children}
     </AuthContext.Provider>

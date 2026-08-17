@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
+import { useTheme } from '../contexts/ThemeContext';
 import { useWallet } from '../contexts/WalletContext';
 import { WalletService } from '../services/WalletService';
 
@@ -14,12 +15,14 @@ interface StakingAsset {
 // Staking Page - Complete
 const StakingPage = () => {
   const { activeWallet } = useWallet();
+  const { theme } = useTheme();
   const [walletService] = useState(() => new WalletService());
   const [selectedTab, setSelectedTab] = useState('stake');
   const [stakeAmount, setStakeAmount] = useState('');
   const [selectedPool, setSelectedPool] = useState('');
   const [isStaking, setIsStaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState('');
   const [password, setPassword] = useState('');
   const [assets, setAssets] = useState<StakingAsset[]>([]);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
@@ -61,6 +64,7 @@ const StakingPage = () => {
     if (!selectedPool) { setError('Select a pool first'); return; }
     setIsStaking(true);
     setError(null);
+    setSuccessMsg('');
     try {
       const result = await walletService.stake(
         activeWallet.id,
@@ -73,6 +77,7 @@ const StakingPage = () => {
       if (!result.txHash) {
         setError('Stake submitted but no transaction hash was returned by the backend');
       } else {
+        setSuccessMsg('Transaction submitted to the blockchain network');
         setStakeAmount('');
         setPassword('');
         await loadAssets();
@@ -88,8 +93,10 @@ const StakingPage = () => {
     if (!activeWallet) { setError('No active wallet'); return; }
     if (!password) { setError('Wallet password is required to claim'); return; }
     setError(null);
+    setSuccessMsg('');
     try {
       await walletService.claimRewards(activeWallet.id, poolName, password, chainId);
+      setSuccessMsg('Transaction submitted to the blockchain network');
       await loadAssets();
     } catch (err: any) {
       setError(err?.response?.data?.error || err?.message || 'Claim failed');
@@ -103,6 +110,12 @@ const StakingPage = () => {
         <Header title="Staking" />
         
         <div className="page-content">
+          {successMsg && (
+            <div className={`card mb-6 bg-green-500/20 border-green-500 ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'}`}>
+              <h3 className="font-semibold text-green-500 mb-2">✓ Transaction submitted to the blockchain network</h3>
+            </div>
+          )}
+
           {/* Tab Selector */}
           <div className="tabs">
             <button

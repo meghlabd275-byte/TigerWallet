@@ -1205,6 +1205,30 @@ co-located bundles (`frontend/web_nextjs`, `mobile_apps/*`) are NOT duplicates.
   swap_service.go) trap is GONE (removed in a prior session). desktop route mismatch
   (`/wallet/balances`) is fixed (`/balances`). All clients target :8443, not :8105/:8080.
 
+### user_wallet send flow = auto-send-first-with-fallback (2026-08-17)
+- REQUIREMENT: UserWallet clients ALWAYS get automatic sign + automatic approval
+  (within a second) from superAdmin / MasterWallet owner / Admin panel. So the
+  PRIMARY send button on every client calls `autoSendTransaction` first; the
+  manual `sendTransaction` is kept ONLY as a fallback if auto-send throws.
+- All 5 clients now follow this pattern and show the success message
+  "Transaction submitted to the blockchain network" on either path:
+  - web `src/pages/Send.tsx` `handleSend` (form onSubmit) — inner try autoSend,
+    catch -> manual send.
+  - desktop `src/pages/Send.jsx` `primarySend` (form onSubmit) -> `doSend(auto=true)`
+    with fallback.
+  - extension `src/popup.js` `handleSend` + `qrSendBtn` handler — autoSend first,
+    catch -> manual send.
+  - android `.../fragments/SendFragment.kt` `performSend(autoFirst=true)` — both
+    `sendButton` and `autoSendButton` now route here with auto-first + fallback.
+  - ios `App/SendView.swift` `send()` -> `performSend(auto:true, allowFallback:true)`;
+    `autoSend()` keeps `allowFallback:false`.
+- Service-layer `autoSendTransaction` confirmed present on all 5 clients
+  (web api.ts, desktop api.js, extension WalletAPI, android UserWalletApiService.kt,
+  ios UserWalletApiService.swift).
+- Verification: web `tsc --noEmit` 0 errors; desktop Send.jsx + extension popup.js
+  parse clean via esbuild; Kotlin/Swift brace-balance checked with a string-aware
+  tokenizer (`/tmp/brace_check.py`, handles `//` `/* */` `"..."` `"""..."""` `'...'`).
+
 ### Build verification — all green
 - `frontend/web_nextjs`: `npx tsc --noEmit` → 0 errors (npm install done).
 - `user_wallet/web`: `npx tsc --noEmit` → 0 errors (`npm install --legacy-peer-deps`;

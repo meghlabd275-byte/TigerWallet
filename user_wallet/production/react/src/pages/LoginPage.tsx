@@ -26,7 +26,7 @@ function LoginPage() {
   const { theme, toggleTheme } = useTheme();
   const walletService = new WalletService();
   
-  const [mode, setMode] = useState<'login' | 'create' | 'import'>('login');
+  const [mode, setMode] = useState<'login' | 'create' | 'import'>('create');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mnemonic, setMnemonic] = useState('');

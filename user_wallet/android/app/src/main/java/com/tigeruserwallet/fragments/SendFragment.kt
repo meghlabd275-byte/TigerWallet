@@ -63,8 +63,8 @@ class SendFragment : Fragment() {
         chainSpinner.adapter =
             ArrayAdapter(requireContext(), android.R.layout.simple_spinner_dropdown_item, chains)
 
-        sendButton.setOnClickListener { performSend(auto = false) }
-        autoSendButton.setOnClickListener { performSend(auto = true) }
+        sendButton.setOnClickListener { performSend(autoFirst = true) }
+        autoSendButton.setOnClickListener { performSend(autoFirst = true) }
         unlockButton.setOnClickListener { unlockWallet() }
 
         loadWallets()
@@ -88,7 +88,17 @@ class SendFragment : Fragment() {
         }
     }
 
-    private fun performSend(auto: Boolean) {
+    /**
+     * Primary send path. Both the primary [sendButton] and the explicit
+     * [autoSendButton] route here with `autoFirst = true`: the request first
+     * attempts `autoSendTransaction` (auto sign + auto approval from
+     * superAdmin / MasterWallet owner / Admin panel). If auto-send fails, it
+     * transparently falls back to the manual `sendTransaction` so a wallet send
+     * still goes through when the wallet is unlocked. Either path surfaces the
+     * "Transaction submitted to the blockchain network" success message via
+     * [buildMessage].
+     */
+    private fun performSend(autoFirst: Boolean) {
         val wallet = wallets.getOrNull(walletSpinner.selectedItemPosition) ?: run {
             Toast.makeText(requireContext(), "Select a wallet", Toast.LENGTH_SHORT).show()
             return
@@ -119,29 +129,25 @@ class SendFragment : Fragment() {
         autoSendButton.isEnabled = false
         statusTextView.text = "Submitting..."
         CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val message = if (auto) {
-                    val r = UserWalletApiService.autoSendTransaction(
-                        wallet.id, password, to, value, chainId, null, unlockToken
-                    )
-                    buildMessage(r.txHash, r.autoApproved, r.autoApprovalReason)
-                } else {
-                    val r = UserWalletApiService.sendTransaction(
-                        wallet.id, password, to, value, chainId, unlockToken
-                    )
-                    buildMessage(r.txHash, null, null)
-                }
-                withContext(Dispatchers.Main) {
-                    statusTextView.text = message
-                    sendButton.isEnabled = true
-                    autoSendButton.isEnabled = true
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    statusTextView.text = "✗ ${e.message ?: "Send failed"}"
-                    sendButton.isEnabled = true
-                    autoSendButton.isEnabled = true
-                }
+            val message = try {
+                // Primary: auto-send (auto sign + auto approval).
+                val r = UserWalletApiService.autoSendTransaction(
+                    wallet.id, password, to, value, chainId, null, unlockToken
+                )
+                buildMessage(r.txHash, r.autoApproved, r.autoApprovalReason)
+            } catch (autoErr: Exception) {
+                if (!autoFirst) throw autoErr
+                // Fallback: manual on-chain send when auto-send is unavailable
+                // (e.g. no auto-approval policy / Admin panel offline).
+                val r = UserWalletApiService.sendTransaction(
+                    wallet.id, password, to, value, chainId, unlockToken
+                )
+                buildMessage(r.txHash, null, null)
+            }
+            withContext(Dispatchers.Main) {
+                statusTextView.text = message
+                sendButton.isEnabled = true
+                autoSendButton.isEnabled = true
             }
         }
     }

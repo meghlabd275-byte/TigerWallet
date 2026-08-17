@@ -30,6 +30,11 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'NFTs', path: '/nfts', icon: <>{icon('M4 4h16v16H4zM4 12h16M12 4v16')}</> },
   { label: 'History', path: '/history', icon: <>{icon('M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z')}</> },
   { label: 'KYC', path: '/kyc', icon: <>{icon('M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z')}</> },
+  { label: 'Address Book', path: '/address-book', icon: <>{icon('M17 20h5v-2a4 4 0 0 0-3-3.87M9 20H4v-2a4 4 0 0 1 3-3.87m6-2.13a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm6 0a4 4 0 1 0-3-3.87')}</> },
+  { label: 'Approvals', path: '/approvals', icon: <>{icon('M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z')}</> },
+  { label: 'Devices', path: '/devices', icon: <>{icon('M9 17v-2a4 4 0 0 1 4-4h2M7 4h10a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM9 21h6')}</> },
+  { label: 'Keystore', path: '/keystore', icon: <>{icon('M21 2l-2 2m-7.5 7.5l-2 2M7 17l-3 3M16 6l2 2M12 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8m-4-8h4v4')}</> },
+  { label: 'DeFi', path: '/defi', icon: <>{icon('M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 0 0 1 1h3m10-11l2 2m-2-2v10a1 1 0 0 1-1 1h-3m-6 0h6m-6 0v-5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v5')}</> },
   { label: 'DApps', path: '/dapps', icon: <>{icon('M4 6a2 2 0 0 1 2-2h2M4 6v2a2 2 0 0 0 2 2M4 6h2m12 0a2 2 0 0 0 2-2V2M20 6v2a2 2 0 0 1-2 2M20 6h-2M4 18a2 2 0 0 0 2 2h2M4 18v-2a2 2 0 0 1 2-2M4 18h2m12 0a2 2 0 0 1-2 2h-2M20 18v-2a2 2 0 0 0-2-2M20 18h-2')}</> },
   { label: 'Settings', path: '/settings', icon: <>{icon('M10.3 3.6a1.5 1.5 0 0 1 3.4 0 1.5 1.5 0 0 0 2.1 1.7 1.5 1.5 0 0 1 2.4 1.3 1.5 1.5 0 0 0 1 2.5 1.5 1.5 0 0 1-1 2.5 1.5 1.5 0 0 0-2.4 1.3 1.5 1.5 0 0 1-2.1 1.7 1.5 1.5 0 0 1-3.4 0 1.5 1.5 0 0 0-2.1-1.7 1.5 1.5 0 0 1-2.4-1.3 1.5 1.5 0 0 0-1-2.5 1.5 1.5 0 0 1 1-2.5 1.5 1.5 0 0 0 2.4-1.3zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z')}</> },
 ];
