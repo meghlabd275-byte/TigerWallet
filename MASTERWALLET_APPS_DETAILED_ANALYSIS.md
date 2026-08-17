@@ -23,6 +23,17 @@
 > *governing* the UserWallet ecosystem server-side, NOT importing UserWallet
 > client code. All 7 clients target ONLY `localhost:8450`.
 >
+> **2026-08-17 update — Android `getTransaction` parity fix:** The Android
+> client's `getTransaction(txId, callback)` was a stale fail-closed stub that
+> returned `"no canonical backend route"` even though the backend exposes
+> `GET /api/v1/master-wallet/:id/transactions/:tid` (`wallet_ext.go:146`
+> `GetMasterWalletTransaction`, real PostgreSQL SELECT). Rewritten to call the
+> real route (signature now `getTransaction(walletId, txId, callback)`,
+> unwraps the `{transaction:{...}}` envelope via the shared `executeRequest` +
+> `parseMasterTransaction(JSONObject)` helpers). All 7 clients now fetch a
+> single transaction by id identically. No callers of the old 2-arg signature
+> existed (Android had no single-tx UI), so the signature change is safe.
+>
 > **Build verification (2026-08-17, clean toolchains installed on demand):**
 > | Component | Result |
 > |---|---|

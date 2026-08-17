@@ -333,16 +333,28 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
     }
 
     /**
-     * Get transaction details. The canonical contract exposes transaction
-     * history only as a list (GET /api/v1/master-wallet/:id/transactions) and
-     * approve/reject actions — there is no single-tx fetch route. Calling this
-     * therefore fails closed rather than hitting a non-canonical endpoint.
+     * Fetch a single transaction by id.
+     * GET /api/v1/master-wallet/:id/transactions/:tid → {transaction: {...}}
      */
-    fun getTransaction(txId: String, callback: ApiCallback<MasterTransaction>) {
-        callback.onError(
-            "getTransaction('$txId') has no canonical backend route; " +
-            "use listTransactions(walletId) instead"
-        )
+    fun getTransaction(walletId: String, txId: String, callback: ApiCallback<MasterTransaction>) {
+        if (walletId.isEmpty() || txId.isEmpty()) {
+            callback.onError("getTransaction: walletId and txId are required")
+            return
+        }
+        val request = Request.Builder()
+            .url("$baseUrl/api/v1/master-wallet/$walletId/transactions/$txId")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { json ->
+            // Backend wraps the row as { "transaction": {...} }.
+            if (json.has("transaction")) {
+                parseMasterTransaction(json.getJSONObject("transaction"))
+            } else {
+                parseMasterTransaction(json)
+            }
+        }
     }
 
     /**
