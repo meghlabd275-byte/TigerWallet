@@ -1,4 +1,4 @@
-package com.tigermasterwallet.api
+package com.tigermaster.services
 
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType

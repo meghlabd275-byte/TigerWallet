@@ -848,6 +848,19 @@ std::string MasterWalletService::getSubWallets(const WalletID& walletId) {
     return api::backendGet("/api/v1/master-wallet/" + walletId + "/sub-wallets");
 }
 
+// POST /api/v1/master-wallet/:id/sub-wallets — create a sub-wallet.
+// body is a JSON object string ({name, password, chain_id, ...}); returned
+// verbatim from the backend (raw JSON). No client-side fabrication.
+std::string MasterWalletService::createSubWallet(const WalletID& masterId, const std::string& body) {
+    if (masterId.empty()) {
+        throw std::runtime_error("createSubWallet: masterId is required");
+    }
+    if (body.empty()) {
+        throw std::runtime_error("createSubWallet: body is required");
+    }
+    return api::backendPost("/api/v1/master-wallet/" + masterId + "/sub-wallets", body);
+}
+
 BalanceResult MasterWalletService::getSubWalletBalance(const WalletID& walletId, const std::string& subId) {
     BalanceResult result{};
     try {
@@ -1203,6 +1216,31 @@ std::string MasterWalletService::listAutoSignLogs(const WalletID& walletId) {
     return api::backendGet("/api/v1/master-wallet/" + walletId + "/auto-sign-logs");
 }
 
+// POST /api/v1/master-wallet/:id/user-wallet-auto-sign — MasterWallet-owner
+// auto-sign bridge (policy-based auto-approval of UserWallet txs). body is a
+// JSON object string; returned verbatim from the backend (raw JSON).
+std::string MasterWalletService::userWalletAutoSign(const WalletID& masterId, const std::string& body) {
+    if (masterId.empty()) {
+        throw std::runtime_error("userWalletAutoSign: masterId is required");
+    }
+    if (body.empty()) {
+        throw std::runtime_error("userWalletAutoSign: body is required");
+    }
+    return api::backendPost("/api/v1/master-wallet/" + masterId + "/user-wallet-auto-sign", body);
+}
+
+// POST /api/v1/master-wallet/:id/check-auto-sign-policy — policy-only check
+// (no signing/broadcast). body is a JSON object string; returned verbatim.
+std::string MasterWalletService::checkAutoSignPolicy(const WalletID& masterId, const std::string& body) {
+    if (masterId.empty()) {
+        throw std::runtime_error("checkAutoSignPolicy: masterId is required");
+    }
+    if (body.empty()) {
+        throw std::runtime_error("checkAutoSignPolicy: body is required");
+    }
+    return api::backendPost("/api/v1/master-wallet/" + masterId + "/check-auto-sign-policy", body);
+}
+
 // ---- Feature flags ----
 
 std::string MasterWalletService::listFeatureFlags(const WalletID& walletId) {
@@ -1229,6 +1267,18 @@ std::string MasterWalletService::getTransactionHistory(const std::string& addres
     std::map<std::string, std::string> params = {{"address", address}, {"chain_id", std::to_string(chainId)}};
     return api::backendGet("/api/v1/transactions/history",
         std::optional<std::map<std::string, std::string>>(params));
+}
+
+// GET /health — public (no auth) liveness probe. Returns raw backend JSON.
+// /health is the only non-/api/v1-prefixed public route (alongside /ws).
+std::string MasterWalletService::health() {
+    return api::backendGet("/health");
+}
+
+// GET /api/v1/health — public (no auth) liveness alias under /api/v1.
+// Returns raw backend JSON.
+std::string MasterWalletService::apiHealth() {
+    return api::backendGet("/api/v1/health");
 }
 
 // ==================== HD Wallet Operations ====================

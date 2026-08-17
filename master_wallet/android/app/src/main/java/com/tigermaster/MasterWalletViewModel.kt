@@ -313,21 +313,14 @@ class MasterWalletViewModel : ViewModel() {
     }
     
     fun deleteSubWallet(sid: String) {
+        // The canonical MasterWallet backend (port 8450) exposes no DELETE
+        // /master-wallet/:id/sub-wallets/:sid route. Sub-wallets are derived
+        // HD children of the master wallet and cannot be deleted on-chain;
+        // deletion is a governance record that requires a SuperAdmin-gated
+        // route that is not part of the canonical contract. Fail-closed.
         viewModelScope.launch {
-            _isLoading.value = true
-            try {
-                val id = requireWalletId()
-                if (id == null) {
-                    _error.value = "No master wallet selected"
-                    return@launch
-                }
-                apiDelete("/master-wallet/$id/sub-wallets/$sid")
-                loadSubWallets()
-            } catch (e: Exception) {
-                _error.value = e.message
-            } finally {
-                _isLoading.value = false
-            }
+            _error.value =
+                "Sub-wallet deletion is not supported by the canonical MasterWallet backend"
         }
     }
     

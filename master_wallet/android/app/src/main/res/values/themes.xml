@@ -1,0 +1,13 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Base application theme. The UI is rendered with Jetpack Compose
+         (MasterWalletTheme in MainActivity); this XML theme only needs to
+         supply a valid AppCompat/Material parent for window/background boot
+         before Compose takes over. -->
+    <style name="Theme.TigerMasterWallet" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:statusBarColor">@color/tiger_primary_dark</item>
+        <item name="android:windowBackground">@color/tiger_background</item>
+        <item name="android:navigationBarColor">@color/tiger_surface</item>
+    </style>
+
+</resources>

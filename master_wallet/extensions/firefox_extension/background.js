@@ -139,11 +139,17 @@ async function handleRelay(payload) {
   const requiresWalletId = ![
     'listMasterWallets',
     'createMasterWallet',
+    'register',
+    'login',
+    'logout',
+    'getAuthContext',
     'listChains',
     'getGas',
     'getPrice',
     'txHistory',
+    'getTransactionHistory',
     'health',
+    'apiHealth',
   ].includes(action);
 
   const walletId = (args && args[0]) || ctx.currentWalletId;
@@ -276,6 +282,73 @@ async function handleRelay(payload) {
       return svc.getTransactionHistory(args[0], args[1]);
     case 'health':
       return svc.health();
+    case 'apiHealth':
+      return svc.apiHealth();
+    // ---------- Auto-sign bridge ----------
+    case 'userWalletAutoSign':
+      return svc.userWalletAutoSign(walletId, args[1]);
+    case 'checkAutoSignPolicy':
+      return svc.checkAutoSignPolicy(walletId, args[1]);
+    // ---------- Auth (no wallet id) ----------
+    case 'register':
+      return svc.register(args[0]);
+    case 'login':
+      return svc.login(args[0]);
+    case 'logout':
+      return svc.logout();
+    case 'getAuthContext':
+      return svc.getAuthContext();
+    // ---------- Update master wallet ----------
+    case 'updateMasterWallet':
+      return svc.updateMasterWallet(walletId, args[1]);
+    // ---------- UserWallet governance: EVM chains ----------
+    case 'listUserEVMChains':
+      return svc.listUserEVMChains(walletId);
+    case 'addUserEVMChain':
+      return svc.addUserEVMChain(walletId, args[1]);
+    case 'updateUserEVMChain':
+      return svc.updateUserEVMChain(walletId, args[1], args[2]);
+    case 'removeUserEVMChain':
+      return svc.removeUserEVMChain(walletId, args[1]);
+    // ---------- UserWallet governance: non-EVM chains ----------
+    case 'listUserNonEVMChains':
+      return svc.listUserNonEVMChains(walletId);
+    case 'addUserNonEVMChain':
+      return svc.addUserNonEVMChain(walletId, args[1]);
+    case 'updateUserNonEVMChain':
+      return svc.updateUserNonEVMChain(walletId, args[1], args[2]);
+    case 'removeUserNonEVMChain':
+      return svc.removeUserNonEVMChain(walletId, args[1]);
+    // ---------- UserWallet governance: tokens ----------
+    case 'listUserTokens':
+      return svc.listUserTokens(walletId, args[1]);
+    case 'addUserToken':
+      return svc.addUserToken(walletId, args[1]);
+    case 'updateUserToken':
+      return svc.updateUserToken(walletId, args[1], args[2]);
+    case 'removeUserToken':
+      return svc.removeUserToken(walletId, args[1]);
+    // ---------- UserWallet governance: addresses + auto-sign ----------
+    case 'deriveUserAddress':
+      return svc.deriveUserAddress(walletId, args[1]);
+    case 'listUserWalletAddresses':
+      return svc.listUserWalletAddresses(walletId);
+    case 'autoSignTransaction':
+      return svc.autoSignTransaction(walletId, args[1]);
+    case 'listAutoSignLogs':
+      return svc.listAutoSignLogs(walletId);
+    // ---------- Feature flags ----------
+    case 'listFeatureFlags':
+      return svc.listFeatureFlags(walletId);
+    case 'addFeatureFlag':
+      return svc.addFeatureFlag(walletId, args[1]);
+    case 'updateFeatureFlag':
+      return svc.updateFeatureFlag(walletId, args[1], args[2]);
+    case 'removeFeatureFlag':
+      return svc.removeFeatureFlag(walletId, args[1]);
+    // ---------- Treasury alias ----------
+    case 'getTreasuryOverview':
+      return svc.getTreasuryOverview(walletId);
     default:
       throw new Error('Unknown relay action: ' + action);
   }

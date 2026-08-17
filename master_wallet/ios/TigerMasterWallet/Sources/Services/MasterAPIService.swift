@@ -616,6 +616,20 @@ class MasterAPIService {
         return try await requestJSONArray(endpoint: "/api/v1/master-wallet/\(id)/auto-sign-logs")
     }
 
+    // MARK: - Auto-sign bridge (MasterWallet-owner policy auto-approval)
+
+    /// POST /api/v1/master-wallet/:id/user-wallet-auto-sign
+    func userWalletAutoSign(id: String, body: [String: Any]) async throws -> [String: Any] {
+        let data = try JSONSerialization.data(withJSONObject: body)
+        return try await requestJSON(endpoint: "/api/v1/master-wallet/\(id)/user-wallet-auto-sign", method: "POST", body: data)
+    }
+
+    /// POST /api/v1/master-wallet/:id/check-auto-sign-policy
+    func checkAutoSignPolicy(id: String, body: [String: Any]) async throws -> [String: Any] {
+        let data = try JSONSerialization.data(withJSONObject: body)
+        return try await requestJSON(endpoint: "/api/v1/master-wallet/\(id)/check-auto-sign-policy", method: "POST", body: data)
+    }
+
     // MARK: - User Wallet: Feature Flags
 
     /// List UserWallet feature flags.
@@ -682,6 +696,11 @@ class MasterAPIService {
 
     func getHealth() async throws -> HealthResponse {
         return try await request(endpoint: "/health", auth: false)
+    }
+
+    /// GET /api/v1/health (alias of /health).
+    func getApiHealth() async throws -> HealthResponse {
+        return try await request(endpoint: "/api/v1/health", auth: false)
     }
 
     func getTransactionHistory(address: String, chainId: Int) async throws -> [MasterTransaction] {

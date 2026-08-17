@@ -158,31 +158,21 @@ class PaymasterService(private val context: Context) {
 
     /**
      * Build paymasterAndData according to ERC-4337. Sponsorship signing that
-     * cannot be done client-side (no paymaster signer key) is delegated to the
-     * canonical backend via POST /api/aa/paymaster/sponsor.
+     * can be done client-side (paymaster signer key configured) is real; when
+     * no signer key is configured the operation is fail-closed (the canonical
+     * MasterWallet backend on :8450 has no /api/aa/paymaster/sponsor route —
+     * ERC-4337 paymaster sponsorship is not part of the canonical contract).
      */
     private suspend fun buildPaymasterAndData(userOp: Map<String, Any>, chainId: String): String {
         val validUntil = 0 // Always valid
 
         val signerKey = getPaymasterSignerKey()
         if (signerKey == null) {
-            // Delegate sponsorship to the backend, which holds the paymaster key.
-            val sponsored = makeRequest(
-                method = "POST",
-                endpoint = "/api/aa/paymaster/sponsor",
-                body = mapOf(
-                    "userOp" to userOp,
-                    "chainId" to chainId,
-                    "validUntil" to validUntil
-                )
+            throw PaymasterException(
+                "No paymaster signer key configured and the canonical MasterWallet " +
+                    "backend does not host a paymaster sponsor endpoint; refusing to " +
+                    "sponsor (fail-closed)"
             )
-            val pd = sponsored.optString("paymasterAndData")
-            if (pd.isEmpty()) {
-                throw PaymasterException(
-                    "Backend did not return paymasterAndData; refusing to sponsor (fail-closed)"
-                )
-            }
-            return pd
         }
 
         val hash = hashPaymasterData(userOp, chainId, validUntil)
@@ -453,35 +443,28 @@ class PaymasterService(private val context: Context) {
     }
 
     /**
-     * Get paymaster balance from the canonical backend.
+     * Get paymaster balance. The canonical MasterWallet backend (:8450) does not
+     * host an /api/aa/paymaster/balance route (ERC-4337 paymaster balance is read
+     * directly from the EntryPoint contract on-chain, not via this backend).
+     * Fail-closed: returns empty to signal no value rather than fabricating "0".
      */
     suspend fun getPaymasterBalance(chainId: String): String {
-        return try {
-            val result = makeRequest(
-                method = "GET",
-                endpoint = "/api/aa/paymaster/balance?chain_id=$chainId"
-            )
-            result.optString("balance", "0")
-        } catch (e: Exception) {
-            "0"
-        }
+        throw PaymasterException(
+            "Paymaster balance is not available via the canonical MasterWallet backend; " +
+                "read it from the EntryPoint contract on-chain (fail-closed)"
+        )
     }
 
     /**
-     * Fund paymaster via the canonical backend.
+     * Fund paymaster. The canonical MasterWallet backend (:8450) does not host
+     * an /api/aa/paymaster/fund route. Funding the paymaster is an on-chain
+     * deposit to the EntryPoint; this client-side shortcut is fail-closed.
      */
     suspend fun fundPaymaster(chainId: String, amount: String): Boolean {
-        return try {
-            makeRequest(
-                method = "POST",
-                endpoint = "/api/aa/paymaster/fund",
-                body = mapOf("chainId" to chainId, "amount" to amount)
-            )
-            true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
-        }
+        throw PaymasterException(
+            "Paymaster funding is not supported via the canonical MasterWallet backend; " +
+                "deposit to the EntryPoint contract on-chain (fail-closed)"
+        )
     }
 
     /**

@@ -770,6 +770,16 @@ impl BackendClient {
         self.get(&format!("/api/v1/master-wallet/{}/auto-sign-logs", master_wallet_id)).await
     }
 
+    // ---- Auto-sign bridge (MasterWallet-owner policy auto-approval) ----
+
+    pub async fn user_wallet_auto_sign(&self, master_wallet_id: &str, body: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/user-wallet-auto-sign", master_wallet_id), body).await
+    }
+
+    pub async fn check_auto_sign_policy(&self, master_wallet_id: &str, body: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/check-auto-sign-policy", master_wallet_id), body).await
+    }
+
     // ---- Feature flags ----
 
     pub async fn list_feature_flags(&self, master_wallet_id: &str) -> Result<serde_json::Value, MasterError> {
@@ -796,6 +806,11 @@ impl BackendClient {
 
     pub async fn health(&self) -> Result<serde_json::Value, MasterError> {
         self.get("/health").await
+    }
+
+    /// GET /api/v1/health (alias of /health).
+    pub async fn api_health(&self) -> Result<serde_json::Value, MasterError> {
+        self.get("/api/v1/health").await
     }
 
     // ---- New master-wallet endpoints ----
@@ -1525,6 +1540,131 @@ impl MasterWalletService {
             withdrawal_id: withdrawal_id.to_string(),
         };
         self.client.revenue_payout(master_id, &body).await
+    }
+}
+
+// ============================================================================
+// WebSocketClient — real-time feed from the canonical backend (/ws).
+//
+// Connects to ws://<base>/ws?master_wallet_id=<id>&token=<JWT> and streams
+// live balance updates, transaction confirmations, and market-ticker events.
+// Uses tokio-tungstenite (real WebSocket over rustls). Fail-closed: no fake
+// events are ever produced; a closed/errored socket simply stops yielding
+// messages until reconnect.
+// ============================================================================
+
+/// A real-time WebSocket client for the canonical MasterWallet backend.
+pub struct WebSocketClient {
+    base_url: String,
+}
+
+/// Events delivered to the caller's handler.
+#[derive(Debug, Clone)]
+pub enum WsEvent {
+    Open,
+    Message(serde_json::Value),
+    Close,
+    Error(String),
+}
+
+impl WebSocketClient {
+    /// Build a client targeting the given base URL (e.g. "http://localhost:8450"
+    /// or "https://master-api.tigerwallet.com").
+    pub fn new(base_url: &str) -> Self {
+        Self { base_url: base_url.trim_end_matches('/').to_string() }
+    }
+
+    /// Derive the ws:// URL with master_wallet_id + token query params.
+    fn ws_url(&self, master_wallet_id: &str, token: &str) -> String {
+        let ws_base = self.base_url.replace("http://", "ws://").replace("https://", "wss://");
+        format!("{}/ws?master_wallet_id={}&token={}", ws_base, master_wallet_id, token)
+    }
+
+    /// Connect and drive an event handler until the socket closes or the handler
+    /// returns false. Reconnects with capped exponential backoff on transient
+    /// errors; the handler receives WsEvent::Open/Message/Close/Error.
+    ///
+    /// This is a future that resolves only when the handler returns false or a
+    /// hard error occurs. Run it on a tokio task:
+    ///   `tokio::spawn(async move { ws.run(&id, &token, |ev| matches!(ev, WsEvent::Message(_))).await });`
+    pub async fn run<F>(&self, master_wallet_id: &str, token: &str, mut on_event: F) -> Result<(), MasterError>
+    where
+        F: FnMut(WsEvent) -> bool,
+    {
+        use futures_util::StreamExt;
+        use tokio_tungstenite::tungstenite::Message;
+        use std::time::Duration;
+
+        let url = self.ws_url(master_wallet_id, token);
+        let mut backoff_ms = 1000u64;
+
+        loop {
+            let mut stream = match tokio_tungstenite::connect_async(&url).await {
+                Ok((s, _)) => { backoff_ms = 1000; s }
+                Err(e) => {
+                    let _ = on_event(WsEvent::Error(format!("connect: {e}")));
+                    if backoff_ms >= 30000 {
+                        // Capped backoff; keep trying but don't spin tightly.
+                        backoff_ms = 30000;
+                    }
+                    tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                    backoff_ms = (backoff_ms * 2).min(30000);
+                    continue;
+                }
+            };
+
+            if !on_event(WsEvent::Open) { return Ok(()); }
+
+            loop {
+                tokio::select! {
+                    msg = stream.next() => {
+                        match msg {
+                            Some(Ok(Message::Text(txt))) => {
+                                match serde_json::from_str::<serde_json::Value>(&txt) {
+                                    Ok(v) => { if !on_event(WsEvent::Message(v)) { return Ok(()); } }
+                                    Err(_) => {
+                                        // Non-JSON text frame; wrap as a string value.
+                                        if !on_event(WsEvent::Message(serde_json::Value::String(txt))) { return Ok(()); }
+                                    }
+                                }
+                            }
+                            Some(Ok(Message::Binary(bin))) => {
+                                if !on_event(WsEvent::Message(serde_json::Value::String(
+                                    format!("<binary {} bytes>", bin.len())
+                                ))) { return Ok(()); }
+                            }
+                            Some(Ok(Message::Ping(_))) => { /* tungstenite auto-pongs */ }
+                            Some(Ok(Message::Pong(_))) => { }
+                            Some(Ok(Message::Frame(_))) => { /* raw frame; ignored */ }
+                            Some(Ok(Message::Close(_))) => {
+                                let _ = on_event(WsEvent::Close);
+                                break;
+                            }
+                            Some(Err(e)) => {
+                                let _ = on_event(WsEvent::Error(format!("stream: {e}")));
+                                break;
+                            }
+                            None => {
+                                let _ = on_event(WsEvent::Close);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Socket closed; back off before reconnecting.
+            tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+            backoff_ms = (backoff_ms * 2).min(30000);
+        }
+    }
+
+    /// Send a JSON message to the backend over an already-connected socket.
+    /// (Convenience for request/reply patterns; for streaming use `run`.)
+    pub async fn send_once(&self, _master_wallet_id: &str, _token: &str, _payload: &serde_json::Value) -> Result<(), MasterError> {
+        // A one-shot send requires its own short-lived connection; for the
+        // streaming use case prefer run() which keeps the socket open.
+        Err(MasterError::BackendRequest("send_once is not supported; use run() for a streaming connection".to_string()))
     }
 }
 

@@ -437,6 +437,16 @@ class MasterWalletService {
     return res.logs || res || [];
   }
 
+  // ---------- Auto-sign bridge (MasterWallet-owner policy auto-approval of UserWallet txs) ----------
+
+  async userWalletAutoSign(id, body) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/user-wallet-auto-sign', { method: 'POST', body });
+  }
+
+  async checkAutoSignPolicy(id, body) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/check-auto-sign-policy', { method: 'POST', body });
+  }
+
   // ---------- Feature flags ----------
 
   async listFeatureFlags(id) {
@@ -517,6 +527,10 @@ class MasterWalletService {
 
   async health() {
     return authedFetch('/health', { method: 'GET', auth: false });
+  }
+
+  async apiHealth() {
+    return authedFetch('/api/v1/health', { method: 'GET', auth: false });
   }
 
   // ---------- Local chain metadata ----------

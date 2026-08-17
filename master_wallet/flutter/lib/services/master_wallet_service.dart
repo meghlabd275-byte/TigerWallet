@@ -534,6 +534,36 @@ class MasterWalletService {
     return list.cast<Map<String, dynamic>>();
   }
 
+  // ---------- Auto-sign bridge (MasterWallet-owner policy auto-approval) ----------
+
+  /// POST /master-wallet/:id/user-wallet-auto-sign
+  Future<Map<String, dynamic>> userWalletAutoSign(
+    String walletId,
+    Map<String, dynamic> request,
+  ) async {
+    final r = await http.post(
+      Uri.parse('$_apiV1/master-wallet/$walletId/user-wallet-auto-sign'),
+      headers: _headers,
+      body: jsonEncode(request),
+    );
+    if (r.statusCode != 200 && r.statusCode != 201) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// POST /master-wallet/:id/check-auto-sign-policy
+  Future<Map<String, dynamic>> checkAutoSignPolicy(
+    String walletId,
+    Map<String, dynamic> request,
+  ) async {
+    final r = await http.post(
+      Uri.parse('$_apiV1/master-wallet/$walletId/check-auto-sign-policy'),
+      headers: _headers,
+      body: jsonEncode(request),
+    );
+    if (r.statusCode != 200 && r.statusCode != 201) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
   // ==================== UserWallet: Feature flags ====================
 
   /// GET /master-wallet/:id/feature-flags → {flags: [...]} (or raw list).
@@ -907,6 +937,16 @@ class MasterWalletService {
   Future<Map<String, dynamic>> health() async {
     final r = await http.get(
       Uri.parse('$API_BASE/health'),
+      headers: {'Content-Type': 'application/json'},
+    );
+    if (r.statusCode != 200) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// GET /api/v1/health (alias of /health).
+  Future<Map<String, dynamic>> apiHealth() async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/health'),
       headers: {'Content-Type': 'application/json'},
     );
     if (r.statusCode != 200) throw _error(r);

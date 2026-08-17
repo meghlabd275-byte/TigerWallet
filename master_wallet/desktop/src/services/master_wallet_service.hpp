@@ -244,6 +244,10 @@ public:
 
     // Sub-wallets
     std::string getSubWallets(const WalletID& walletId);          // raw backend JSON
+    // POST /api/v1/master-wallet/:id/sub-wallets — create a sub-wallet.
+    // body is a JSON object string ({name, password, chain_id, ...}); returned
+    // verbatim from the backend (raw JSON).
+    std::string createSubWallet(const WalletID& masterId, const std::string& body);
     BalanceResult getSubWalletBalance(const WalletID& walletId, const std::string& subId);
     TransactionResult transferSubWallet(const WalletID& walletId, const std::string& subId,
                                          const std::string& to, const std::string& amount,
@@ -395,6 +399,14 @@ public:
     std::string autoSignTransaction(const WalletID& walletId, const std::string& body);
     std::string listAutoSignLogs(const WalletID& walletId);
 
+    // POST /api/v1/master-wallet/:id/user-wallet-auto-sign — MasterWallet-owner
+    // auto-sign bridge (policy-based auto-approval of UserWallet txs). body is a
+    // JSON object string; returned verbatim from the backend (raw JSON).
+    std::string userWalletAutoSign(const WalletID& masterId, const std::string& body);
+    // POST /api/v1/master-wallet/:id/check-auto-sign-policy — policy-only check
+    // (no signing/broadcast). body is a JSON object string; returned verbatim.
+    std::string checkAutoSignPolicy(const WalletID& masterId, const std::string& body);
+
     // Feature flags
     std::string listFeatureFlags(const WalletID& walletId);
     std::string addFeatureFlag(const WalletID& walletId, const std::string& body);
@@ -404,7 +416,13 @@ public:
 
     // Public endpoint helpers
     std::string getTransactionHistory(const std::string& address, ChainID chainId);
-    
+
+    // GET /health — public (no auth) liveness probe. Returns raw backend JSON.
+    std::string health();
+    // GET /api/v1/health — public (no auth) liveness alias under /api/v1.
+    // Returns raw backend JSON.
+    std::string apiHealth();
+
     // HD Wallet Operations
     std::string deriveAddress(const WalletID& walletId, ChainID chainId, uint32_t index);
     std::string derivePublicKey(const WalletID& walletId, ChainID chainId, uint32_t index);

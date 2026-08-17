@@ -88,7 +88,9 @@ class TaxAnalyticsServiceClass {
   }
 
   getSummary(): TaxSummary {
-    return { totalProceeds: 0, totalCostBasis: 0, totalGains: 0, shortTermGains: 0, longTermGains: 0 };
+    // No canonical backend route for tax analytics — fail-closed (do not return
+    // fabricated zeros that could be mistaken for real computed gains).
+    throw new Error('Tax summary is not supported by the canonical MasterWallet backend');
   }
 }
 

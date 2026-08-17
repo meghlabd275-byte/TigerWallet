@@ -1,0 +1,9 @@
+<resources>
+    <color name="tiger_primary">#FFB8860B</color>
+    <color name="tiger_primary_dark">#FF8B6508</color>
+    <color name="tiger_accent">#FFFFC107</color>
+    <color name="tiger_background">#FFFAFAFA</color>
+    <color name="tiger_surface">#FFFFFFFF</color>
+    <color name="tiger_on_primary">#FFFFFFFF</color>
+    <color name="tiger_error">#FFB00020</color>
+</resources>

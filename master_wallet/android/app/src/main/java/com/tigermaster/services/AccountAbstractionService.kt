@@ -178,19 +178,17 @@ class AccountAbstractionService(private val context: Context) {
             val signature = signUserOperation(userOp, sender)
             val signedOp = userOp + ("signature" to signature)
 
-            // Submit to bundler
-            val result = makeRequest(
-                method = "POST",
-                endpoint = "/api/aa/submit",
-                body = mapOf("userOp" to signedOp, "chainId" to chainId)
+            // ERC-4337 bundler submission is NOT part of the canonical
+            // MasterWallet backend (port 8450) — /api/aa/submit does not exist
+            // there and would 404. The signed userOp is returned for the caller
+            // to submit to a real ERC-4337 bundler endpoint. Fail-closed for
+            // the network submission itself.
+            throw AccountAbstractionException(
+                "UserOperation signed, but no canonical ERC-4337 bundler endpoint is wired. " +
+                    "Submit the signed userOp to a bundler URL configured by the wallet owner."
             )
-
-            if (result.has("txHash")) {
-                // Update nonce
-                updateNonce(sender)
-
-                result.getString("txHash")
-            } else null
+        } catch (e: AccountAbstractionException) {
+            throw e
         } catch (e: Exception) {
             e.printStackTrace()
             null

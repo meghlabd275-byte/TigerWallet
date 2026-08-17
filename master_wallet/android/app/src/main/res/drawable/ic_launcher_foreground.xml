@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Simplified tiger-head mark centered in the safe-zone of the adaptive icon. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,30 C42,30 33,40 33,52 C33,60 38,67 45,71 L45,80 L63,80 L63,71 C70,67 75,60 75,52 C75,40 66,30 54,30 Z" />
+    <path
+        android:fillColor="#B8860B"
+        android:pathData="M48,48 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+    <path
+        android:fillColor="#B8860B"
+        android:pathData="M60,48 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+</vector>

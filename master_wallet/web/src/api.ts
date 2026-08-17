@@ -1037,6 +1037,22 @@ class MasterWalletAPI {
     return data.logs ?? [];
   }
 
+  // ---------------- Auto-sign bridge (MasterWallet-owner policy auto-approval) ----------------
+
+  async userWalletAutoSign(masterId: string, body: Record<string, unknown>): Promise<unknown> {
+    return this.request<{ [k: string]: unknown }>(
+      `/api/v1/master-wallet/${masterId}/user-wallet-auto-sign`,
+      { method: 'POST', body: JSON.stringify(body) }
+    );
+  }
+
+  async checkAutoSignPolicy(masterId: string, body: Record<string, unknown>): Promise<unknown> {
+    return this.request<{ [k: string]: unknown }>(
+      `/api/v1/master-wallet/${masterId}/check-auto-sign-policy`,
+      { method: 'POST', body: JSON.stringify(body) }
+    );
+  }
+
   // ---------------- Feature flags ----------------
 
   async listFeatureFlags(masterId: string): Promise<unknown[]> {
@@ -1118,6 +1134,14 @@ class MasterWalletAPI {
     } catch {
       return false;
     }
+  }
+
+  async apiHealth(): Promise<{ status: string; [k: string]: unknown }> {
+    return this.request<{ status: string; [k: string]: unknown }>(
+      '/api/v1/health',
+      {},
+      false
+    );
   }
 
   // ---------------- Passkey relying-party ----------------
