@@ -1,5 +1,63 @@
 # TigerWallet MasterWallet Applications — Full Fetchers & Functionality Inventory
 
+> **VERIFIED STATUS — 2026-08-17 (re-verified against live source, not prior notes)**
+>
+> A fresh source-level audit of `master_wallet/` confirms that the gaps reported
+> in a recent pasted analysis are **STALE / already resolved**. Every claimed gap
+> was verified by direct `grep` against the actual files:
+>
+> | Claimed gap (stale report) | Backend (`master_wallet/backend`, :8450) | web | desktop (C++) | rust | extensions (chrome/brave/edge/safari) | android | ios | flutter |
+> |---|---|---|---|---|---|---|---|---|
+> | GAP1 — two-party SuperAdmin withdrawal gate (`revenue-payout` + `withdrawal-request`) | ✅ L92-95 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+> | GAP2 — `updateWallet` (`PUT /master-wallet/:id`) | ✅ L87 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+> | GAP3 — single-transaction fetch (`GET /:id/transactions/:tid`) | ✅ L105 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+> | GAP4 — passkey backend routes (`/passkey/register`, `/passkey/credentials`, `/passkey/verify-assertion`) | ✅ L111-114 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+> | GAP5 — UI screen coverage lags API coverage | ❌ FALSE — web has all 10 domain pages (Policies, Fees, Notifications, Webhooks, Audit, Multisig, Chains, Tokens, FeatureFlags, Passkeys) + Dashboard/Wallets/Transactions/Treasury/AutoSign/Users/Analytics/Settings, all wired in `App.tsx` |
+> | "No Safari extension for MasterWallet" | ❌ FALSE — `master_wallet/extensions/safari_extension/` exists |
+>
+> **Separation guarantee (re-verified):** zero imports of UserWallet or Admin
+> client service classes in any of the 7 MasterWallet clients. The only
+> `user_wallet` string hits are the MasterWallet backend's legitimate
+> *governing* routes (`/user-chains`, `/user-tokens`, `/derive-user-address`,
+> `/auto-sign-transaction`, `/user-wallet-auto-sign`) — that is MasterWallet
+> *governing* the UserWallet ecosystem server-side, NOT importing UserWallet
+> client code. All 7 clients target ONLY `localhost:8450`.
+>
+> **Build verification (2026-08-17, clean toolchains installed on demand):**
+> | Component | Result |
+> |---|---|
+> | `master_wallet/backend` (Go) | `go build` + `go vet` + `go test ./...` exit 0 (all tests pass) |
+> | `master_wallet/web` (React/TS/Vite) | `npx tsc --noEmit` 0 errors |
+> | `master_wallet/rust` | `cargo check --lib` exit 0 (1 benign dead-code warning) |
+> | `master_wallet/desktop` (C++20/libcurl/OpenSSL) | `cmake .. && make -j4` exit 0 (only OpenSSL 3.0 deprecation warnings) |
+> | `master_wallet/extensions/{chrome,brave,edge,safari}` JS | `node --check` pass on every service/popup/background script |
+> | `go/wallet_api` (canonical UserWallet backend, :8443) | `go build ./...` exit 0 |
+>
+> **UserWallet no-registration + auto-sign flow (user-emphasized, verified):**
+> `go/wallet_api` exposes `POST /auth/guest` (anonymous provisioning from
+> `device_id`, no email/password) + `POST /auto-send` (MasterWallet-owner
+> policy auto-approval within a second). All 7 UserWallet clients implement
+> `guestAuth(deviceId)` + `autoSendTransaction` + `getTransactionStatus`. The
+> "✓ Transaction submitted to the blockchain network" success banner is present
+> on web/desktop/ios/production-react send flows.
+>
+> **Note on the table in §1 below:** the broad-overview table and several §2
+> entries reference historical/legacy paths (`master_wallet/go/...`, "stubbed",
+> "Balance stub", "Simulated handlers", "no network") that predate the
+> canonical rewrite. The **canonical, verified** locations are:
+> - Backend: `master_wallet/backend/` (Go/Gin, `main.go`, port 8450) — NOT `master_wallet/go/`.
+> - Web: `master_wallet/web/` (real ethers.js client-side crypto + full API coverage).
+> - Desktop: `master_wallet/desktop/` (C++/libcurl, real fetchers + two-party gate + passkey structs).
+> - Android: `master_wallet/android/` (Kotlin/OkHttp, 64+ API methods, real Web3j crypto).
+> - iOS: `master_wallet/ios/` (Swift/URLSession, 73 methods, real CryptoKit).
+> - Flutter: `master_wallet/flutter/` (Dart, 55+ methods, 6-tab dashboard, real AES-256-GCM).
+> - Rust: `master_wallet/rust/` (real secp256k1/keccak256/BIP-32/44 + 83 backend methods).
+> - Extensions: `master_wallet/extensions/{chrome,brave,edge,safari}/` (byte-identical services, full canonical surface).
+> The historical narrative below is retained for context; treat the verified
+> banner + canonical locations above as authoritative.
+
+---
+
 > Comprehensive analysis of all MasterWallet apps (web, flutter, desktop, Android,
 > iOS, extensions, Rust) across every platform: their fetchers, functionality,
 > what is real vs stubbed, what is missing, the database schema, and separation
