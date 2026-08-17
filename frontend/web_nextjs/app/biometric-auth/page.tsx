@@ -32,14 +32,40 @@ export default function BiometricAuthPage() {
 
   const { isDark } = useTheme();
 
+  function currentUserId(): string | null {
+    if (typeof window === 'undefined') return null;
+    // Prefer the canonical wallet_api JWT subject, then legacy keys. Never
+    // fall back to a hardcoded 'demo-user' — that would attribute real
+    // WebAuthn credentials to a wrong/fabricated identity.
+    const token = localStorage.getItem('tigerwallet-token') || localStorage.getItem('userwallet-token');
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1] || ''));
+        if (payload && (payload.user_id || payload.sub || payload.uid)) {
+          return String(payload.user_id || payload.sub || payload.uid);
+        }
+      } catch {
+        // malformed JWT — fall through to other keys
+      }
+    }
+    return localStorage.getItem('userId');
+  }
+
   async function loadCredentials() {
+    const userId = currentUserId();
+    if (!userId) {
+      setError('Sign in to manage biometric credentials.');
+      setCredentials([]);
+      return;
+    }
     try {
-      const userId = localStorage.getItem('userId') || 'demo-user';
       const res = await fetch(`${API_BASE}/api/v1/2fa/webauthn/credentials/${userId}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setCredentials(data.credentials || []);
     } catch (err) {
-      console.error('Failed to load credentials:', err);
+      setError('Failed to load credentials. Is the two-factor service reachable?');
+      setCredentials([]);
     }
   }
 
@@ -53,9 +79,13 @@ export default function BiometricAuthPage() {
     setError(null);
 
     try {
-      const userId = localStorage.getItem('userId') || 'demo-user';
-      
-      // Check if we're using a real browser or mock
+      const userId = currentUserId();
+      if (!userId) {
+        setError('Sign in to register a biometric credential.');
+        setLoading(false);
+        return;
+      }
+
       if (window.PublicKeyCredential && window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
         const available = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
         
@@ -121,8 +151,13 @@ export default function BiometricAuthPage() {
     setError(null);
 
     try {
-      const userId = localStorage.getItem('userId') || 'demo-user';
-      
+      const userId = currentUserId();
+      if (!userId) {
+        setError('Sign in to authenticate with biometrics.');
+        setLoading(false);
+        return;
+      }
+
       if (window.PublicKeyCredential) {
         const available = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
         
@@ -171,8 +206,12 @@ export default function BiometricAuthPage() {
   }
 
   async function deleteCredential(credentialId: string) {
+    const userId = currentUserId();
+    if (!userId) {
+      setError('Sign in to delete a biometric credential.');
+      return;
+    }
     try {
-      const userId = localStorage.getItem('userId') || 'demo-user';
       await fetch(`${API_BASE}/api/v1/2fa/webauthn/credentials/${userId}/${credentialId}`, {
         method: 'DELETE',
       });

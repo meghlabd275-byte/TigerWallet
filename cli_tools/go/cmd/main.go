@@ -19,19 +19,18 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
-	"flag"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
+	"net/http"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -123,7 +122,20 @@ var walletCommands = []*cli.Command{
 	},
 	{
 		Name:  "list",
-		Usage: "List all wallets",
+		Usage: "List all wallets from the canonical wallet_api backend",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "api",
+				Usage:   "wallet_api base URL (e.g. http://localhost:8443)",
+				EnvVars: []string{"WALLET_API_URL"},
+				Value:   "http://localhost:8443",
+			},
+			&cli.StringFlag{
+				Name:    "token",
+				Usage:   "Bearer JWT for authenticated /wallets access",
+				EnvVars: []string{"WALLET_API_TOKEN"},
+			},
+		},
 		Action: listWallets,
 	},
 }
@@ -250,7 +262,7 @@ var contractCommands = []*cli.Command{
 	},
 	{
 		Name:  "call",
-		Usage: "Call a smart contract",
+		Usage: "Call a smart contract (read-only eth_call) using raw calldata",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "address",
@@ -258,13 +270,8 @@ var contractCommands = []*cli.Command{
 				Required: true,
 			},
 			&cli.StringFlag{
-				Name:     "method",
-				Usage:    "Contract method name",
-				Required: true,
-			},
-			&cli.StringFlag{
-				Name:  "args",
-				Usage: "Method arguments (comma-separated)",
+				Name:  "data",
+				Usage: "Raw calldata hex (e.g. 0x70a082310000...)",
 			},
 			&cli.StringFlag{
 				Name:  "rpc",
@@ -437,14 +444,45 @@ func checkBalance(c *cli.Context) error {
 }
 
 func listWallets(c *cli.Context) error {
-	// In production, list from wallet storage
-	wallets := []map[string]string{
-		{"address": "0x0000000000000000000000000000000000000000", "type": "demo"},
+	apiURL := strings.TrimRight(c.String("api"), "/")
+	token := c.String("token")
+	if apiURL == "" {
+		return fmt.Errorf("wallet_api base URL is required (--api or WALLET_API_URL)")
+	}
+	if token == "" {
+		return fmt.Errorf("bearer JWT is required (--token or WALLET_API_TOKEN); the canonical /wallets endpoint is authenticated")
 	}
 
-	jsonData, _ := json.MarshalIndent(wallets, "", "  ")
-	fmt.Println(string(jsonData))
+	req, err := http.NewRequest("GET", apiURL+"/api/v1/wallets", nil)
+	if err != nil {
+		return fmt.Errorf("failed to build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
 
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to reach wallet_api at %s: %w", apiURL, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read wallet_api response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("wallet_api returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	// Re-marshal pretty if the body is valid JSON, otherwise print raw.
+	var parsed interface{}
+	if err := json.Unmarshal(body, &parsed); err == nil {
+		pretty, _ := json.MarshalIndent(parsed, "", "  ")
+		fmt.Println(string(pretty))
+	} else {
+		fmt.Println(string(body))
+	}
 	return nil
 }
 
@@ -693,32 +731,37 @@ func deployContract(c *cli.Context) error {
 
 func callContract(c *cli.Context) error {
 	contractAddr := c.String("address")
-	methodName := c.String("method")
-	argsStr := c.String("args")
+	dataHex := c.String("data")
 	rpcURL := c.String("rpc")
 
 	if !common.IsHexAddress(contractAddr) {
 		return fmt.Errorf("invalid contract address")
 	}
 
-	// In production, read contract ABI from file or blockchain
-	// For now, use a basic example
-	
-	// Connect to network
+	// Parse raw calldata (optional 0x prefix). Empty data is a valid eth_call
+	// (returns the full return data for a no-arg call).
+	cleanData := strings.TrimPrefix(dataHex, "0x")
+	dataBytes, err := hex.DecodeString(cleanData)
+	if err != nil {
+		return fmt.Errorf("invalid --data hex: %w", err)
+	}
+
 	client, err := ethclient.Dial(rpcURL)
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 
-	// Call contract (simplified - in production use proper ABI encoding)
 	addr := common.HexToAddress(contractAddr)
-	result, err := client.CallContract(context.Background(), addr, nil)
+	msg := ethereum.CallMsg{
+		To:   &addr,
+		Data: dataBytes,
+	}
+	result, err := client.CallContract(context.Background(), msg, nil)
 	if err != nil {
 		return fmt.Errorf("call failed: %w", err)
 	}
 
-	fmt.Printf("Result: %s\n", hex.EncodeToString(result))
-
+	fmt.Printf("Result: 0x%s\n", hex.EncodeToString(result))
 	return nil
 }
 
@@ -815,24 +858,24 @@ func main() {
 		Version: version,
 		Commands: []*cli.Command{
 			{
-				Name:     "wallet",
-				Usage:    "Wallet management commands",
-				Commands: walletCommands,
+				Name:        "wallet",
+				Usage:       "Wallet management commands",
+				Subcommands: walletCommands,
 			},
 			{
-				Name:     "tx",
-				Usage:    "Transaction commands",
-				Commands: txCommands,
+				Name:        "tx",
+				Usage:       "Transaction commands",
+				Subcommands: txCommands,
 			},
 			{
-				Name:     "contract",
-				Usage:    "Smart contract commands",
-				Commands: contractCommands,
+				Name:        "contract",
+				Usage:       "Smart contract commands",
+				Subcommands: contractCommands,
 			},
 			{
-				Name:     "network",
-				Usage:    "Network commands",
-				Commands: networkCommands,
+				Name:        "network",
+				Usage:       "Network commands",
+				Subcommands: networkCommands,
 			},
 		},
 		Flags: []cli.Flag{
