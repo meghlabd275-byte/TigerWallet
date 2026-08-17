@@ -5,9 +5,11 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 /**
@@ -600,5 +602,683 @@ object UserWalletApiService {
             priceImpact = json.optDouble("price_impact"),
             route = json.optString("route"),
         )
+    }
+
+    // ==================== Profile (local JWT decode) ====================
+
+    data class Profile(val id: String, val email: String, val username: String)
+
+    fun getProfile(): Profile {
+        val token = authToken ?: throw Exception("Not authenticated")
+        val parts = token.split(".")
+        if (parts.size < 2) throw Exception("Not authenticated")
+        val payload = String(Base64.decode(parts[1], Base64.DEFAULT))
+        val json = JSONObject(payload)
+        return Profile(
+            id = json.optString("user_id", json.optString("sub", "")),
+            email = json.optString("email", ""),
+            username = json.optString("username", json.optString("name", ""))
+        )
+    }
+
+    // ==================== Health (outside /api/v1) ====================
+
+    fun health(): JSONObject {
+        val base = baseUrl.removeSuffix("/api/v1")
+        val req = Request.Builder().url("$base/health").headers(headers()).get().build()
+        return execute(req)
+    }
+
+    // ==================== Import wallet (POST /wallets) ====================
+
+    fun importWallet(
+        label: String,
+        password: String,
+        mnemonic: String,
+        chainId: Int,
+        passphrase: String? = null
+    ): Wallet {
+        val body = JSONObject().apply {
+            put("label", label)
+            put("password", password)
+            put("chain_id", chainId)
+            put("mnemonic", mnemonic)
+            if (passphrase != null) put("passphrase", passphrase)
+        }.toString()
+        val req = requestBuilder("/wallets").post(body.toRequestBody(jsonMediaType)).build()
+        val json = execute(req)
+        return Wallet(
+            id = json.optString("id"),
+            label = json.optString("label"),
+            chainId = json.optInt("chain_id"),
+            address = json.optString("address"),
+            derivationPath = json.optString("derivation_path"),
+            mnemonic = json.optString("mnemonic", null)
+        )
+    }
+
+    // ==================== NFT transfer (POST /nft/transfer) ====================
+
+    fun transferNFT(
+        walletId: String,
+        password: String,
+        to: String,
+        tokenId: String,
+        contractAddress: String,
+        chainId: Int
+    ): JSONObject {
+        val body = JSONObject().apply {
+            put("wallet_id", walletId)
+            put("password", password)
+            put("to", to)
+            put("token_id", tokenId)
+            put("contract_address", contractAddress)
+            put("chain_id", chainId)
+        }.toString()
+        val req = requestBuilder("/nft/transfer").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    // ==================== Transaction receipt (GET /transactions/{txHash}) ====================
+
+    fun getTransactionReceipt(txHash: String, chainId: Int): JSONObject {
+        val path = "/transactions/${txHash}?chain_id=$chainId"
+        val req = requestBuilder(path).get().build()
+        return execute(req)
+    }
+
+    // ==================== Gas estimate (POST /gas/estimate) ====================
+
+    fun estimateGas(
+        from: String,
+        to: String,
+        value: String? = null,
+        data: String? = null,
+        chainId: Int
+    ): JSONObject {
+        val body = JSONObject().apply {
+            put("from", from)
+            put("to", to)
+            if (value != null) put("value", value)
+            if (data != null) put("data", data)
+            put("chain_id", chainId)
+        }.toString()
+        val req = requestBuilder("/gas/estimate").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    // ==================== Swap execute (POST /swap/execute) ====================
+
+    fun executeSwap(
+        walletId: String,
+        password: String,
+        fromToken: String,
+        toToken: String,
+        fromAmount: String,
+        chainId: Int
+    ): JSONObject {
+        val body = JSONObject().apply {
+            put("wallet_id", walletId)
+            put("password", password)
+            put("from_token", fromToken)
+            put("to_token", toToken)
+            put("from_amount", fromAmount)
+            put("chain_id", chainId)
+        }.toString()
+        val req = requestBuilder("/swap/execute").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    // ==================== AMM (GET /amm/quote, POST /amm/swap) ====================
+
+    fun getAmmQuote(fromToken: String, toToken: String, fromAmount: String, chainId: Int): SwapQuote {
+        val path = "/amm/quote?from_token=$fromToken&to_token=$toToken&from_amount=$fromAmount&chain_id=$chainId"
+        val req = requestBuilder(path).get().build()
+        val json = execute(req)
+        return SwapQuote(
+            fromToken = json.optString("from_token"),
+            toToken = json.optString("to_token"),
+            fromAmount = json.optString("from_amount"),
+            toAmount = json.optString("to_amount"),
+            priceImpact = json.optDouble("price_impact"),
+            route = json.optString("route")
+        )
+    }
+
+    fun ammSwap(
+        walletId: String,
+        password: String,
+        fromToken: String,
+        toToken: String,
+        fromAmount: String,
+        chainId: Int
+    ): JSONObject {
+        val body = JSONObject().apply {
+            put("wallet_id", walletId)
+            put("password", password)
+            put("from_token", fromToken)
+            put("to_token", toToken)
+            put("from_amount", fromAmount)
+            put("chain_id", chainId)
+        }.toString()
+        val req = requestBuilder("/amm/swap").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    // ==================== Staking actions (POST /staking/{stake,unstake,claim}) ====================
+
+    fun stake(walletId: String, password: String, asset: String, amount: String, chainId: Int): JSONObject {
+        val body = JSONObject().apply {
+            put("wallet_id", walletId)
+            put("password", password)
+            put("asset", asset)
+            put("amount", amount)
+            put("chain_id", chainId)
+        }.toString()
+        val req = requestBuilder("/staking/stake").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun unstake(walletId: String, password: String, asset: String, amount: String, chainId: Int): JSONObject {
+        val body = JSONObject().apply {
+            put("wallet_id", walletId)
+            put("password", password)
+            put("asset", asset)
+            put("amount", amount)
+            put("chain_id", chainId)
+        }.toString()
+        val req = requestBuilder("/staking/unstake").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun claim(walletId: String, password: String, asset: String, chainId: Int): JSONObject {
+        val body = JSONObject().apply {
+            put("wallet_id", walletId)
+            put("password", password)
+            put("asset", asset)
+            put("chain_id", chainId)
+        }.toString()
+        val req = requestBuilder("/staking/claim").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    // ==================== Networks (alias of getChains) ====================
+
+    fun getNetworks(): List<ChainInfo> = getChains()
+
+    // ==================== Non-EVM (POST /non_evm/{address,sign,send}) ====================
+
+    fun nonEvmAddress(seed: String, chainType: String, chainId: String, path: String? = null): JSONObject {
+        val body = JSONObject().apply {
+            put("seed", seed)
+            put("chain_type", chainType)
+            put("chain_id", chainId)
+            if (path != null) put("path", path)
+        }.toString()
+        val req = requestBuilder("/non_evm/address").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun nonEvmSign(seed: String, chainType: String, chainId: String, messageHash: String, path: String? = null): JSONObject {
+        val body = JSONObject().apply {
+            put("seed", seed)
+            put("chain_type", chainType)
+            put("chain_id", chainId)
+            put("message_hash", messageHash)
+            if (path != null) put("path", path)
+        }.toString()
+        val req = requestBuilder("/non_evm/sign").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun nonEvmSend(
+        seed: String,
+        chainType: String,
+        chainId: String,
+        to: String,
+        value: String,
+        path: String? = null
+    ): JSONObject {
+        val body = JSONObject().apply {
+            put("seed", seed)
+            put("chain_type", chainType)
+            put("chain_id", chainId)
+            put("to", to)
+            put("value", value)
+            if (path != null) put("path", path)
+        }.toString()
+        val req = requestBuilder("/non_evm/send").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    // ==================== Address book (GET/POST/PUT/DELETE /address-book/contacts) ====================
+
+    fun getAddressBookContacts(): List<JSONObject> =
+        executeList(requestBuilder("/address-book/contacts").get().build(), "contacts")
+
+    fun addContact(name: String, address: String, chainId: Int? = null): JSONObject {
+        val body = JSONObject().apply {
+            put("name", name)
+            put("address", address)
+            if (chainId != null) put("chain_id", chainId)
+        }.toString()
+        val req = requestBuilder("/address-book/contacts").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun updateContact(id: String, name: String? = null, address: String? = null, chainId: Int? = null): JSONObject {
+        val body = JSONObject().apply {
+            if (name != null) put("name", name)
+            if (address != null) put("address", address)
+            if (chainId != null) put("chain_id", chainId)
+        }.toString()
+        val req = requestBuilder("/address-book/contacts/${id}").put(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun deleteContact(id: String): JSONObject {
+        val req = requestBuilder("/address-book/contacts/${id}").delete().build()
+        return execute(req)
+    }
+
+    // ==================== Devices (GET/POST /devices, sync + delete) ====================
+
+    fun getDevices(): List<JSONObject> =
+        executeList(requestBuilder("/devices").get().build(), "devices")
+
+    fun registerDevice(name: String, deviceType: String): JSONObject {
+        val body = JSONObject().apply {
+            put("name", name)
+            put("device_type", deviceType)
+        }.toString()
+        val req = requestBuilder("/devices").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun syncDevice(deviceId: String): JSONObject {
+        val req = requestBuilder("/devices/${deviceId}/sync").post("".toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun deleteDevice(deviceId: String): JSONObject {
+        val req = requestBuilder("/devices/${deviceId}").delete().build()
+        return execute(req)
+    }
+
+    // ==================== Approvals (GET /approvals, DELETE /approvals/{id}) ====================
+
+    fun getApprovals(address: String, chainId: Int): List<JSONObject> {
+        val path = "/approvals?address=${URLEncoder.encode(address, "UTF-8")}&chain_id=$chainId"
+        val req = requestBuilder(path).get().build()
+        return executeList(req, "approvals")
+    }
+
+    fun revokeApproval(approvalId: String): JSONObject {
+        val req = requestBuilder("/approvals/${approvalId}").delete().build()
+        return execute(req)
+    }
+
+    // ==================== Keystore (POST /keystore/{export,import}) ====================
+
+    fun exportKeystore(walletId: String, password: String): JSONObject {
+        val body = JSONObject().apply {
+            put("wallet_id", walletId)
+            put("password", password)
+        }.toString()
+        val req = requestBuilder("/keystore/export").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun importKeystore(keystore: String, password: String, label: String? = null): Wallet {
+        val body = JSONObject().apply {
+            put("keystore", keystore)
+            put("password", password)
+            if (label != null) put("label", label)
+        }.toString()
+        val req = requestBuilder("/keystore/import").post(body.toRequestBody(jsonMediaType)).build()
+        val json = execute(req)
+        return Wallet(
+            id = json.optString("id"),
+            label = json.optString("label"),
+            chainId = json.optInt("chain_id"),
+            address = json.optString("address"),
+            derivationPath = json.optString("derivation_path"),
+            mnemonic = json.optString("mnemonic", null)
+        )
+    }
+
+    // ==================== Encrypted seed export/import (POST /wallets...) ====================
+
+    fun exportEncryptedSeed(walletId: String, password: String): JSONObject {
+        val body = JSONObject().put("password", password).toString()
+        val req = requestBuilder("/wallets/${walletId}/export-encrypted-seed")
+            .post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun importEncryptedSeed(encryptedSeed: String, password: String, label: String? = null): Wallet {
+        val body = JSONObject().apply {
+            put("encrypted_seed", encryptedSeed)
+            put("password", password)
+            if (label != null) put("label", label)
+        }.toString()
+        val req = requestBuilder("/wallets/import-encrypted-seed")
+            .post(body.toRequestBody(jsonMediaType)).build()
+        val json = execute(req)
+        return Wallet(
+            id = json.optString("id"),
+            label = json.optString("label"),
+            chainId = json.optInt("chain_id"),
+            address = json.optString("address"),
+            derivationPath = json.optString("derivation_path"),
+            mnemonic = json.optString("mnemonic", null)
+        )
+    }
+
+    // ==================== Security (GET /security/check-*, POST /security/scan) ====================
+
+    fun checkUrl(url: String): JSONObject {
+        val path = "/security/check-url?url=${URLEncoder.encode(url, "UTF-8")}"
+        val req = requestBuilder(path).get().build()
+        return execute(req)
+    }
+
+    fun checkAddress(address: String): JSONObject {
+        val path = "/security/check-address?address=${URLEncoder.encode(address, "UTF-8")}"
+        val req = requestBuilder(path).get().build()
+        return execute(req)
+    }
+
+    fun securityScan(target: String): JSONObject {
+        val body = JSONObject().put("target", target).toString()
+        val req = requestBuilder("/security/scan").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    // ==================== Lending (GET /lending/markets,positions; POST /lending/{supply,borrow,withdraw,repay}) ====================
+
+    fun getLendingMarkets(): List<JSONObject> =
+        executeList(requestBuilder("/lending/markets").get().build(), "markets")
+
+    fun getLendingPositions(): List<JSONObject> =
+        executeList(requestBuilder("/lending/positions").get().build(), "positions")
+
+    fun lendingSupply(walletId: String, password: String, asset: String, amount: String, chainId: Int): JSONObject {
+        val body = JSONObject().apply {
+            put("wallet_id", walletId)
+            put("password", password)
+            put("asset", asset)
+            put("amount", amount)
+            put("chain_id", chainId)
+        }.toString()
+        val req = requestBuilder("/lending/supply").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun lendingBorrow(walletId: String, password: String, asset: String, amount: String, chainId: Int): JSONObject {
+        val body = JSONObject().apply {
+            put("wallet_id", walletId)
+            put("password", password)
+            put("asset", asset)
+            put("amount", amount)
+            put("chain_id", chainId)
+        }.toString()
+        val req = requestBuilder("/lending/borrow").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun lendingWithdraw(walletId: String, password: String, asset: String, amount: String, chainId: Int): JSONObject {
+        val body = JSONObject().apply {
+            put("wallet_id", walletId)
+            put("password", password)
+            put("asset", asset)
+            put("amount", amount)
+            put("chain_id", chainId)
+        }.toString()
+        val req = requestBuilder("/lending/withdraw").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun lendingRepay(walletId: String, password: String, asset: String, amount: String, chainId: Int): JSONObject {
+        val body = JSONObject().apply {
+            put("wallet_id", walletId)
+            put("password", password)
+            put("asset", asset)
+            put("amount", amount)
+            put("chain_id", chainId)
+        }.toString()
+        val req = requestBuilder("/lending/repay").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    // ==================== Copy trading (GET /copytrading/{traders,signals}; follow + stop) ====================
+
+    fun getCopyTraders(): List<JSONObject> =
+        executeList(requestBuilder("/copytrading/traders").get().build(), "traders")
+
+    fun followTrader(traderId: String, allocation: String? = null): JSONObject {
+        val body = JSONObject().apply {
+            put("trader_id", traderId)
+            if (allocation != null) put("allocation", allocation)
+        }.toString()
+        val req = requestBuilder("/copytrading/follow").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun stopCopyTrader(copierId: String): JSONObject {
+        val req = requestBuilder("/copytrading/copiers/${copierId}/stop")
+            .post("".toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun getCopySignals(): List<JSONObject> =
+        executeList(requestBuilder("/copytrading/signals").get().build(), "signals")
+
+    // ==================== DAO (GET /dao/{proposals,delegates}; create + vote) ====================
+
+    fun getDaoProposals(): List<JSONObject> =
+        executeList(requestBuilder("/dao/proposals").get().build(), "proposals")
+
+    fun createDaoProposal(title: String, description: String): JSONObject {
+        val body = JSONObject().apply {
+            put("title", title)
+            put("description", description)
+        }.toString()
+        val req = requestBuilder("/dao/proposals").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun voteDaoProposal(proposalId: String, support: Boolean): JSONObject {
+        val body = JSONObject().put("support", support).toString()
+        val req = requestBuilder("/dao/proposals/${proposalId}/vote")
+            .post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun getDaoDelegates(): List<JSONObject> =
+        executeList(requestBuilder("/dao/delegates").get().build(), "delegates")
+
+    // ==================== Perpetual (GET /perpetual/positions; create + close) ====================
+
+    fun getPerpetualPositions(): List<JSONObject> =
+        executeList(requestBuilder("/perpetual/positions").get().build(), "positions")
+
+    fun createPerpetualPosition(pair: String, side: String, size: String, leverage: Int, chainId: Int): JSONObject {
+        val body = JSONObject().apply {
+            put("pair", pair)
+            put("side", side)
+            put("size", size)
+            put("leverage", leverage)
+            put("chain_id", chainId)
+        }.toString()
+        val req = requestBuilder("/perpetual/positions").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun closePerpetualPosition(positionId: String): JSONObject {
+        val req = requestBuilder("/perpetual/positions/${positionId}/close")
+            .post("".toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    // ==================== Margin (GET /margin/positions; create + close) ====================
+
+    fun getMarginPositions(): List<JSONObject> =
+        executeList(requestBuilder("/margin/positions").get().build(), "positions")
+
+    fun createMarginPosition(pair: String, side: String, size: String, leverage: Int, chainId: Int): JSONObject {
+        val body = JSONObject().apply {
+            put("pair", pair)
+            put("side", side)
+            put("size", size)
+            put("leverage", leverage)
+            put("chain_id", chainId)
+        }.toString()
+        val req = requestBuilder("/margin/positions").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun closeMarginPosition(positionId: String): JSONObject {
+        val req = requestBuilder("/margin/positions/${positionId}/close")
+            .post("".toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    // ==================== Prediction (GET /prediction/markets; bet) ====================
+
+    fun getPredictionMarkets(): List<JSONObject> =
+        executeList(requestBuilder("/prediction/markets").get().build(), "markets")
+
+    fun placePredictionBet(marketId: String, side: String, amount: String): JSONObject {
+        val body = JSONObject().apply {
+            put("side", side)
+            put("amount", amount)
+        }.toString()
+        val req = requestBuilder("/prediction/markets/${marketId}/bet")
+            .post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    // ==================== Launchpool (GET /launchpool, /launchpool/stakes; stake + unstake) ====================
+
+    fun getLaunchpool(): JSONObject =
+        execute(requestBuilder("/launchpool").get().build())
+
+    fun getLaunchpoolStakes(): List<JSONObject> =
+        executeList(requestBuilder("/launchpool/stakes").get().build(), "stakes")
+
+    fun launchpoolStake(walletId: String, password: String, amount: String): JSONObject {
+        val body = JSONObject().apply {
+            put("wallet_id", walletId)
+            put("password", password)
+            put("amount", amount)
+        }.toString()
+        val req = requestBuilder("/launchpool/stake").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    fun launchpoolUnstake(walletId: String, password: String, amount: String): JSONObject {
+        val body = JSONObject().apply {
+            put("wallet_id", walletId)
+            put("password", password)
+            put("amount", amount)
+        }.toString()
+        val req = requestBuilder("/launchpool/unstake").post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    // ==================== Token sales (GET /token-sales; participate) ====================
+
+    fun getTokenSales(): List<JSONObject> =
+        executeList(requestBuilder("/token-sales").get().build(), "sales")
+
+    fun participateTokenSale(saleId: String, amount: String): JSONObject {
+        val body = JSONObject().put("amount", amount).toString()
+        val req = requestBuilder("/token-sales/${saleId}/participate")
+            .post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    // ==================== Dapps (GET /dapps, /dapps/categories) ====================
+
+    fun getDapps(): List<JSONObject> =
+        executeList(requestBuilder("/dapps").get().build(), "dapps")
+
+    fun getDappCategories(): List<JSONObject> =
+        executeList(requestBuilder("/dapps/categories").get().build(), "categories")
+
+    // ==================== Chart / DeFi (GET /chart/history, /defi/protocols) ====================
+
+    fun getChartHistory(token: String, days: Int? = null): JSONObject {
+        val path = if (days != null) {
+            "/chart/history?token=${URLEncoder.encode(token, "UTF-8")}&days=$days"
+        } else {
+            "/chart/history?token=${URLEncoder.encode(token, "UTF-8")}"
+        }
+        val req = requestBuilder(path).get().build()
+        return execute(req)
+    }
+
+    fun getDefiProtocols(): List<JSONObject> =
+        executeList(requestBuilder("/defi/protocols").get().build(), "protocols")
+
+    // ==================== Payment URI parser (bare 0x, ethereum:, EIP-681) ====================
+
+    data class PaymentUri(val address: String, val amount: String?, val chainId: Int?)
+
+    fun parsePaymentUri(input: String): PaymentUri? {
+        val trimmed = input.trim()
+        if (trimmed.isEmpty()) return null
+        // Bare 0x address (and possibly ?value=... appended).
+        if (trimmed.startsWith("0x", ignoreCase = true)) {
+            val (addr, params) = splitUri(trimmed)
+            if (!isValidAddress(addr)) return null
+            val amount = params["value"] ?: params["amount"]
+            return PaymentUri(addr, amount, params["chainId"]?.toIntOrNull())
+        }
+        // ethereum:<address> or ethereum:<address>?... (EIP-681) or ethereum:/<address>
+        if (trimmed.startsWith("ethereum:", ignoreCase = true)) {
+            val rest = trimmed.substring("ethereum:".length).trim()
+            val cleaned = if (rest.startsWith("/")) rest.removePrefix("/") else rest
+            if (cleaned.startsWith("@")) {
+                // EIP-681 chain-tagged form: ethereum:<chainId>@<address>?...
+                val atIdx = cleaned.indexOf('@')
+                val chainPart = cleaned.substring(1, atIdx)
+                val remainder = cleaned.substring(atIdx + 1)
+                val (addr, params) = splitUri(remainder)
+                if (!isValidAddress(addr)) return null
+                val amount = params["value"] ?: params["amount"]
+                return PaymentUri(addr, amount, chainPart.toIntOrNull() ?: params["chainId"]?.toIntOrNull())
+            }
+            val (addr, params) = splitUri(cleaned)
+            if (!isValidAddress(addr)) return null
+            val amount = params["value"] ?: params["amount"]
+            return PaymentUri(addr, amount, params["chainId"]?.toIntOrNull())
+        }
+        return null
+    }
+
+    private fun splitUri(s: String): Pair<String, Map<String, String>> {
+        val qIdx = s.indexOf('?')
+        if (qIdx < 0) return s to emptyMap()
+        val addr = s.substring(0, qIdx)
+        val query = s.substring(qIdx + 1)
+        val params = mutableMapOf<String, String>()
+        for (pair in query.split('&')) {
+            val eq = pair.indexOf('=')
+            if (eq > 0) {
+                val k = pair.substring(0, eq)
+                val v = pair.substring(eq + 1)
+                params[k] = v
+            }
+        }
+        return addr to params
+    }
+
+    private fun isValidAddress(s: String): Boolean {
+        val a = s.trim()
+        if (!a.startsWith("0x", ignoreCase = true)) return false
+        val hex = a.substring(2)
+        return hex.length == 40 && hex.all { it.isLetterOrDigit() }
     }
 }

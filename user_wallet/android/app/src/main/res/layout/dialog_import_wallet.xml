@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <EditText
+        android:id="@+id/importNameInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Wallet Name"
+        android:inputType="text" />
+
+    <EditText
+        android:id="@+id/importMnemonicInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="Recovery phrase (mnemonic)"
+        android:inputType="textMultiLine"
+        android:minLines="2"
+        android:gravity="top|start" />
+
+    <EditText
+        android:id="@+id/importPasswordInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="Password (min 8 chars)"
+        android:inputType="textPassword" />
+
+    <Spinner
+        android:id="@+id/importChainSpinner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp" />
+
+</LinearLayout>

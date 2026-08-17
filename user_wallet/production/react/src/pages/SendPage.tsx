@@ -46,7 +46,7 @@ function SendPage() {
       {/* Success Message */}
       {txHash && (
         <div className={`card mb-6 bg-green-500/20 border-green-500 ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'}`}>
-          <h3 className="font-semibold text-green-500 mb-2">Transaction Submitted!</h3>
+          <h3 className="font-semibold text-green-500 mb-2">✓ Transaction submitted to the blockchain network</h3>
           <p className="text-sm opacity-70">Tx Hash:</p>
           <p className="font-mono text-xs break-all">{txHash}</p>
         </div>

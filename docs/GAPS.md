@@ -295,3 +295,58 @@
 - 🟠 **High** — breaks a specific flow (contract mismatch, port/config drift, missing route).
 - 🟡 **Medium** — quality/robustness/scale issue (simplified math, missing tests, minor drift).
 - ❌ marks an unimplemented capability; ✅ marks what is implemented.
+
+---
+
+## UserWallet Full Parity (2026-08-17)
+
+> Supersedes the UserWallet cross-cutting gaps noted above — all now RESOLVED.
+
+All UserWallet cross-cutting fetcher gaps are now **RESOLVED across all 7
+clients**. The categories previously missing on most clients — non-EVM
+sign/send/address (Solana/Bitcoin/Cosmos), address-book CRUD, devices CRUD,
+token approvals + revoke, keystore V3 export/import, encrypted-seed
+export/import, security scan (URL/address), AMM quote/swap, lending
+supply/borrow/withdraw/repay, copy-trading follow/traders/signals, DAO
+proposals/vote/delegates, perpetual + margin positions, prediction markets,
+launchpool stake/unstake, token-sales participate, dapps + categories, chart
+history, defi protocols, NFT transfer, tx receipt, estimate gas, execute swap —
+are now present on every client.
+
+All 7 UserWallet clients (web, desktop, extension, production/react, android,
+ios, rust) now target the canonical `go/wallet_api` (:8443) flat contract with
+the SAME full fetcher set, reached via the new `go/wallet_api/defi_proxy.go`
+reverse-proxy shims (lending :8009, copytrading :8006, governance :8454,
+prediction :8455). No registration required — `POST /auth/guest` provisions an
+anonymous account; every login UI leads with Create Wallet / Import Wallet,
+email/password kept as an optional recovery path. Send-flow success message,
+Google Drive encrypted-seed backup (web + production/react), full UI parity
+(web 16 pages), and light/dark theme are present on every platform.
+
+### Build Verification (2026-08-17 — ALL GREEN)
+
+| Client / backend | Verification |
+|------------------|--------------|
+| `go/wallet_api` (+ `defi_proxy.go`) | go build ✅ + go vet clean ✅ |
+| `user_wallet/web` (React/CRA) | `tsc --noEmit` 0 errors |
+| `user_wallet/desktop` (Electron) | `node --check` 0 |
+| `user_wallet/extension` | `node --check` 0 |
+| `user_wallet/production/react` (React/TS) | `tsc --noEmit` 0 errors |
+| `user_wallet/android` (Kotlin) | brace-balanced (validated) |
+| `user_wallet/ios` (Swift) | brace-balanced (validated) |
+| `user_wallet/rust` (lib) | `cargo check` 0 errors |
+
+| Client | API surface file | Methods |
+|--------|------------------|---------|
+| `user_wallet/web` | `src/services/api.ts` | ~95 |
+| `user_wallet/desktop` | `src/services/api.js` | 95 |
+| `user_wallet/extension` | `src/popup.js` (`WalletAPI`) | 97 |
+| `user_wallet/production/react` | `src/services/WalletService.ts` | 99 |
+| `user_wallet/android` | `.../api/UserWalletApiService.kt` | 105 |
+| `user_wallet/ios` | `App/UserWalletApiService.swift` | 92 + `parsePaymentUri` |
+| `user_wallet/rust` | `src/lib.rs` | ~95 (async) |
+
+The previously documented `:8105` dead handler, `:8080` target, route
+mismatches (desktop `/wallet/balances`, android `/api/v1/wallet/*`), and stubs
+are **resolved**. The orphan `user_wallet/production/react/src/services/master/*`
+(11 files) was deleted (no MasterWallet cross-contamination).

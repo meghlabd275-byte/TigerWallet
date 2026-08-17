@@ -9,6 +9,8 @@ function Layout() {
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: '📊' },
     { path: '/wallets', label: 'Wallets', icon: '💰' },
+    { path: '/send', label: 'Send', icon: '📤' },
+    { path: '/receive', label: 'Receive', icon: '📥' },
     { path: '/transactions', label: 'Transactions', icon: '📋' },
     { path: '/settings', label: 'Settings', icon: '⚙️' }
   ];

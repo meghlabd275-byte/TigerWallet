@@ -5,14 +5,26 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useWallet } from '../contexts/WalletContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { WalletService } from '../services/WalletService';
+
+function getDeviceId(): string {
+  const KEY = 'userwallet-device-id';
+  let id = localStorage.getItem(KEY);
+  if (!id) {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    id = Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+    localStorage.setItem(KEY, id);
+  }
+  return id;
+}
 
 function LoginPage() {
   const navigate = useNavigate();
-  const { login, isLoading } = useAuth();
-  const { createWallet, importFromMnemonic } = useWallet();
+  const { login, guestAuth, isLoading } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const walletService = new WalletService();
   
   const [mode, setMode] = useState<'login' | 'create' | 'import'>('login');
   const [email, setEmail] = useState('');
@@ -44,13 +56,14 @@ function LoginPage() {
 
   const handleCreateWallet = async () => {
     setError('');
-    // The canonical wallet-api backend generates a REAL BIP-39 mnemonic
-    // (CSPRNG entropy + checksum) when POST /wallets is called without a
-    // mnemonic. The flow below requests creation first, then displays the
-    // backend-generated mnemonic for backup confirmation. The client NEVER
-    // fabricates a mnemonic itself.
+    // Provision an anonymous guest account first (no email/password), then
+    // create the wallet through WalletService directly. The canonical
+    // wallet-api backend generates a REAL BIP-39 mnemonic (CSPRNG entropy +
+    // checksum) when POST /wallets is called without a mnemonic; the client
+    // NEVER fabricates a mnemonic itself.
     try {
-      const newWallet = await createWallet(undefined, walletPassword, selectedChain as any);
+      await guestAuth(getDeviceId());
+      const newWallet = await walletService.createWallet(undefined, walletPassword, selectedChain as any);
       setMnemonic(newWallet.mnemonic || '');
       setStep(2);
     } catch (err: any) {
@@ -61,10 +74,9 @@ function LoginPage() {
   const handleConfirmCreate = async () => {
     setError('');
     // The wallet was already created (with a backend-generated mnemonic) in
-    // handleCreateWallet. Here the user has confirmed they backed up the
-    // mnemonic, so we just authenticate and proceed.
+    // handleCreateWallet, and guest auth was provisioned there. Here the user
+    // has confirmed they backed up the mnemonic, so we just proceed.
     try {
-      await login({ email, password });
       navigate('/');
     } catch (err: any) {
       setError(err.message || 'Failed to login');
@@ -74,9 +86,11 @@ function LoginPage() {
   const handleImport = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    // Provision an anonymous guest account first (no email/password), then
+    // import the wallet via its mnemonic through WalletService directly.
     try {
-      await importFromMnemonic(mnemonic, walletPassword, selectedChain as any);
-      await login({ email, password });
+      await guestAuth(getDeviceId());
+      await walletService.importFromMnemonic(mnemonic, walletPassword, selectedChain as any);
       navigate('/');
     } catch (err: any) {
       setError(err.message || 'Failed to import wallet');
@@ -117,11 +131,10 @@ function LoginPage() {
 
         {mode === 'create' && step === 1 && (
           <div className="space-y-4">
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white" required />
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white" required />
             <select value={selectedChain} onChange={(e) => setSelectedChain(e.target.value)} className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white">
               {chains.map(c => <option key={c.id} value={c.id}>{c.name} ({c.symbol})</option>)}
             </select>
+            <input type="password" value={walletPassword} onChange={(e) => setWalletPassword(e.target.value)} placeholder="Wallet Password" className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white" required />
             <button onClick={handleCreateWallet} className="w-full py-3 bg-amber-500 text-black font-semibold rounded-lg">Generate Recovery Phrase</button>
           </div>
         )}
@@ -146,8 +159,6 @@ function LoginPage() {
 
         {mode === 'import' && (
           <form onSubmit={handleImport} className="space-y-4">
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white" required />
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white" required />
             <textarea value={mnemonic} onChange={(e) => setMnemonic(e.target.value)} placeholder="Recovery phrase (12 or 24 words)" className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white h-24" required />
             <input type="password" value={walletPassword} onChange={(e) => setWalletPassword(e.target.value)} placeholder="Wallet Password" className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white" required />
             <select value={selectedChain} onChange={(e) => setSelectedChain(e.target.value)} className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white">

@@ -633,6 +633,803 @@ class WalletService {
     const response = await this.api.get('/staking/quote');
     return response.data;
   }
+
+  // ---- Auth & session ----
+
+  // Clears the persisted JWT (mirrors AuthService.login). Other tab state is
+  // the UI's responsibility; this only owns the token.
+  async logout(): Promise<void> {
+    localStorage.removeItem('tigerwallet-token');
+  }
+
+  // GET /health at the server root. The axios client baseURL includes /api/v1,
+  // so strip that suffix to hit the root-level health endpoint.
+  async health(): Promise<unknown> {
+    const base = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
+    const response = await axios.get(`${base}/health`);
+    return response.data;
+  }
+
+  // Decodes the locally-stored JWT to surface the user profile without a
+  // network round-trip. Throws when no token is present (fail-closed).
+  async getProfile(): Promise<{ userId?: string; sub?: string; exp?: number; [k: string]: unknown }> {
+    const token = localStorage.getItem('tigerwallet-token');
+    if (!token) throw new Error('Not authenticated');
+    const parts = token.split('.');
+    if (parts.length < 2) throw new Error('Not authenticated');
+    try {
+      const payload = JSON.parse(
+        decodeURIComponent(
+          atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))
+            .split('')
+            .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+            .join('')
+        )
+      );
+      return payload as { userId?: string; sub?: string; exp?: number; [k: string]: unknown };
+    } catch {
+      throw new Error('Not authenticated');
+    }
+  }
+
+  // ---- Aggregated balances ----
+
+  // Fan-out: list wallets then fetch the native balance of each. Returns
+  // { balances: [...] } to mirror the web client contract.
+  async getBalances(): Promise<{ balances: BalanceResult[] }> {
+    const wallets = await this.getWallets();
+    const balances: BalanceResult[] = [];
+    for (const w of wallets) {
+      try {
+        const b = await this.getBalance(w.address, Number(w.chain.chainId));
+        balances.push(b);
+      } catch {
+        // Skip wallets whose balance cannot be fetched rather than abort the
+        // whole aggregate (one dead chain should not blank the portfolio).
+      }
+    }
+    return { balances };
+  }
+
+  // GET /tokens?address=&chain_id= — the ERC-20 *list* for an address. The
+  // existing getTokenBalance (singular) looks up one token within that list;
+  // this plural variant returns the full list the backend returns.
+  async getTokenBalances(address: string, chainId: number): Promise<unknown[]> {
+    const response = await this.api.get('/tokens', {
+      params: { address, chain_id: chainId },
+    });
+    return (response.data.tokens ?? []) as unknown[];
+  }
+
+  // GET /transactions/:txHash?chain_id= — full receipt (explorer proxy).
+  async getTransactionReceipt(txHash: string, chainId: number): Promise<unknown> {
+    const response = await this.api.get(`/transactions/${encodeURIComponent(txHash)}`, {
+      params: { chain_id: chainId },
+    });
+    return response.data;
+  }
+
+  // ---- AMM swap (distinct route family from /swap) ----
+
+  async getAmmQuote({
+    fromToken,
+    toToken,
+    fromAmount,
+    chainId,
+  }: {
+    fromToken: string;
+    toToken: string;
+    fromAmount: string;
+    chainId: number;
+  }): Promise<unknown> {
+    const response = await this.api.get('/amm/quote', {
+      params: {
+        from: fromToken,
+        to: toToken,
+        amount: fromAmount,
+        chain_id: chainId,
+      },
+    });
+    return response.data;
+  }
+
+  async ammSwap({
+    walletId,
+    password,
+    fromToken,
+    toToken,
+    fromAmount,
+    chainId,
+  }: {
+    walletId: string;
+    password: string;
+    fromToken: string;
+    toToken: string;
+    fromAmount: string;
+    chainId: number;
+  }): Promise<unknown> {
+    if (!password) throw new Error('password is required to execute an AMM swap on the backend');
+    const response = await this.api.post('/amm/swap', {
+      wallet_id: walletId,
+      password,
+      from: fromToken,
+      to: toToken,
+      amount: fromAmount,
+      chain_id: chainId,
+    });
+    return response.data;
+  }
+
+  // ---- Networks ----
+
+  async getNetworks(): Promise<unknown> {
+    const response = await this.api.get('/networks');
+    return response.data;
+  }
+
+  async getNetworkStatus(chainId: number): Promise<unknown> {
+    const response = await this.api.get(`/networks/${encodeURIComponent(String(chainId))}/status`);
+    return response.data;
+  }
+
+  // GET /price?symbol= — real CoinGecko price. (No prior method existed; the
+  // RealTokenService helper was a static local lookup, not a fetcher.)
+  async getTokenPrice(coin: string): Promise<unknown> {
+    const response = await this.api.get('/price', { params: { symbol: coin } });
+    return response.data;
+  }
+
+  // ---- Non-EVM (Solana / Aptos / Sui / TON) derivation + signing + send ----
+
+  async nonEvmAddress({
+    seed,
+    chainType,
+    chainId,
+    path,
+  }: {
+    seed: string;
+    chainType: string;
+    chainId: number;
+    path?: string;
+  }): Promise<unknown> {
+    const response = await this.api.post('/non_evm/address', {
+      seed,
+      chain_type: chainType,
+      chain_id: chainId,
+      path,
+    });
+    return response.data;
+  }
+
+  async nonEvmSign({
+    seed,
+    chainType,
+    chainId,
+    messageHash,
+    path,
+  }: {
+    seed: string;
+    chainType: string;
+    chainId: number;
+    messageHash: string;
+    path?: string;
+  }): Promise<unknown> {
+    const response = await this.api.post('/non_evm/sign', {
+      seed,
+      chain_type: chainType,
+      chain_id: chainId,
+      message_hash: messageHash,
+      path,
+    });
+    return response.data;
+  }
+
+  async nonEvmSend({
+    seed,
+    chainType,
+    chainId,
+    to,
+    value,
+    path,
+  }: {
+    seed: string;
+    chainType: string;
+    chainId: number;
+    to: string;
+    value: string;
+    path?: string;
+  }): Promise<unknown> {
+    const response = await this.api.post('/non_evm/send', {
+      seed,
+      chain_type: chainType,
+      chain_id: chainId,
+      to,
+      value,
+      path,
+    });
+    return response.data;
+  }
+
+  // ---- Address book ----
+
+  async getAddressBookContacts(): Promise<unknown> {
+    const response = await this.api.get('/address-book/contacts');
+    return response.data;
+  }
+
+  async addContact({
+    name,
+    address,
+    chainId,
+  }: {
+    name: string;
+    address: string;
+    chainId?: number;
+  }): Promise<unknown> {
+    const response = await this.api.post('/address-book/contacts', {
+      name,
+      address,
+      chain_id: chainId,
+    });
+    return response.data;
+  }
+
+  async updateContact(
+    id: string,
+    {
+      name,
+      address,
+      chainId,
+    }: {
+      name?: string;
+      address?: string;
+      chainId?: number;
+    }
+  ): Promise<unknown> {
+    const response = await this.api.put(
+      `/address-book/contacts/${encodeURIComponent(id)}`,
+      {
+        name,
+        address,
+        chain_id: chainId,
+      }
+    );
+    return response.data;
+  }
+
+  async deleteContact(id: string): Promise<void> {
+    await this.api.delete(`/address-book/contacts/${encodeURIComponent(id)}`);
+  }
+
+  // ---- Devices (multi-device sync) ----
+
+  async getDevices(): Promise<unknown> {
+    const response = await this.api.get('/devices');
+    return response.data;
+  }
+
+  async registerDevice({
+    name,
+    deviceType,
+  }: {
+    name: string;
+    deviceType: string;
+  }): Promise<unknown> {
+    const response = await this.api.post('/devices', {
+      name,
+      device_type: deviceType,
+    });
+    return response.data;
+  }
+
+  async syncDevice(deviceId: string): Promise<unknown> {
+    const response = await this.api.post(`/devices/${encodeURIComponent(deviceId)}/sync`);
+    return response.data;
+  }
+
+  async deleteDevice(deviceId: string): Promise<void> {
+    await this.api.delete(`/devices/${encodeURIComponent(deviceId)}`);
+  }
+
+  // ---- Token approvals (ERC-20 approve / revoke) ----
+
+  async getApprovals(address: string, chainId: number): Promise<unknown> {
+    const response = await this.api.get('/approvals', {
+      params: { address, chain_id: chainId },
+    });
+    return response.data;
+  }
+
+  async revokeApproval({ approvalId }: { approvalId: string }): Promise<void> {
+    await this.api.delete(`/approvals/${encodeURIComponent(approvalId)}`);
+  }
+
+  // ---- Keystore export / import ----
+
+  async exportKeystore({
+    walletId,
+    password,
+  }: {
+    walletId: string;
+    password: string;
+  }): Promise<unknown> {
+    if (!password) throw new Error('password is required to export a keystore');
+    const response = await this.api.post('/keystore/export', {
+      wallet_id: walletId,
+      password,
+    });
+    return response.data;
+  }
+
+  async importKeystore({
+    keystore,
+    password,
+    label,
+  }: {
+    keystore: string;
+    password: string;
+    label?: string;
+  }): Promise<unknown> {
+    if (!password) throw new Error('password is required to import a keystore');
+    const response = await this.api.post('/keystore/import', {
+      keystore,
+      password,
+      label,
+    });
+    return response.data;
+  }
+
+  // ---- Encrypted-seed export / import (AES-256-GCM) ----
+
+  async exportEncryptedSeed(walletId: string, password: string): Promise<unknown> {
+    if (!password) throw new Error('password is required to export an encrypted seed');
+    const response = await this.api.post(
+      `/wallets/${encodeURIComponent(walletId)}/export-encrypted-seed`,
+      { password }
+    );
+    return response.data;
+  }
+
+  async importEncryptedSeed({
+    encryptedSeed,
+    password,
+    label,
+  }: {
+    encryptedSeed: string;
+    password: string;
+    label?: string;
+  }): Promise<unknown> {
+    if (!password) throw new Error('password is required to import an encrypted seed');
+    const response = await this.api.post('/wallets/import-encrypted-seed', {
+      encrypted_seed: encryptedSeed,
+      password,
+      label,
+    });
+    return response.data;
+  }
+
+  // ---- Security (URL / address screening) ----
+
+  async checkUrl(url: string): Promise<unknown> {
+    const response = await this.api.get('/security/check-url', { params: { url } });
+    return response.data;
+  }
+
+  async checkAddress(address: string): Promise<unknown> {
+    const response = await this.api.get('/security/check-address', { params: { address } });
+    return response.data;
+  }
+
+  async securityScan(target: string): Promise<unknown> {
+    const response = await this.api.post('/security/scan', { target });
+    return response.data;
+  }
+
+  // ---- Lending ----
+
+  async getLendingMarkets(): Promise<unknown> {
+    const response = await this.api.get('/lending/markets');
+    return response.data;
+  }
+
+  async getLendingPositions(): Promise<unknown> {
+    const response = await this.api.get('/lending/positions');
+    return response.data;
+  }
+
+  async lendingSupply({
+    walletId,
+    password,
+    asset,
+    amount,
+    chainId,
+  }: {
+    walletId: string;
+    password: string;
+    asset: string;
+    amount: string;
+    chainId: number;
+  }): Promise<unknown> {
+    if (!password) throw new Error('password is required to supply on the backend');
+    const response = await this.api.post('/lending/supply', {
+      wallet_id: walletId,
+      password,
+      asset,
+      amount,
+      chain_id: chainId,
+    });
+    return response.data;
+  }
+
+  async lendingBorrow({
+    walletId,
+    password,
+    asset,
+    amount,
+    chainId,
+  }: {
+    walletId: string;
+    password: string;
+    asset: string;
+    amount: string;
+    chainId: number;
+  }): Promise<unknown> {
+    if (!password) throw new Error('password is required to borrow on the backend');
+    const response = await this.api.post('/lending/borrow', {
+      wallet_id: walletId,
+      password,
+      asset,
+      amount,
+      chain_id: chainId,
+    });
+    return response.data;
+  }
+
+  async lendingWithdraw({
+    walletId,
+    password,
+    asset,
+    amount,
+    chainId,
+  }: {
+    walletId: string;
+    password: string;
+    asset: string;
+    amount: string;
+    chainId: number;
+  }): Promise<unknown> {
+    if (!password) throw new Error('password is required to withdraw on the backend');
+    const response = await this.api.post('/lending/withdraw', {
+      wallet_id: walletId,
+      password,
+      asset,
+      amount,
+      chain_id: chainId,
+    });
+    return response.data;
+  }
+
+  async lendingRepay({
+    walletId,
+    password,
+    asset,
+    amount,
+    chainId,
+  }: {
+    walletId: string;
+    password: string;
+    asset: string;
+    amount: string;
+    chainId: number;
+  }): Promise<unknown> {
+    if (!password) throw new Error('password is required to repay on the backend');
+    const response = await this.api.post('/lending/repay', {
+      wallet_id: walletId,
+      password,
+      asset,
+      amount,
+      chain_id: chainId,
+    });
+    return response.data;
+  }
+
+  // ---- Copy trading ----
+
+  async getCopyTraders(): Promise<unknown> {
+    const response = await this.api.get('/copytrading/traders');
+    return response.data;
+  }
+
+  async followTrader({
+    traderId,
+    allocation,
+  }: {
+    traderId: string;
+    allocation: string;
+  }): Promise<unknown> {
+    const response = await this.api.post('/copytrading/follow', {
+      trader_id: traderId,
+      allocation,
+    });
+    return response.data;
+  }
+
+  async stopCopyTrader(copierId: string): Promise<unknown> {
+    const response = await this.api.post(
+      `/copytrading/copiers/${encodeURIComponent(copierId)}/stop`
+    );
+    return response.data;
+  }
+
+  async getCopySignals(): Promise<unknown> {
+    const response = await this.api.get('/copytrading/signals');
+    return response.data;
+  }
+
+  // ---- DAO governance ----
+
+  async getDaoProposals(): Promise<unknown> {
+    const response = await this.api.get('/dao/proposals');
+    return response.data;
+  }
+
+  async createDaoProposal({
+    title,
+    description,
+  }: {
+    title: string;
+    description: string;
+  }): Promise<unknown> {
+    const response = await this.api.post('/dao/proposals', { title, description });
+    return response.data;
+  }
+
+  async voteDaoProposal({
+    proposalId,
+    support,
+  }: {
+    proposalId: string;
+    support: boolean;
+  }): Promise<unknown> {
+    const response = await this.api.post(
+      `/dao/proposals/${encodeURIComponent(proposalId)}/vote`,
+      { support }
+    );
+    return response.data;
+  }
+
+  async getDaoDelegates(): Promise<unknown> {
+    const response = await this.api.get('/dao/delegates');
+    return response.data;
+  }
+
+  // ---- Perpetuals ----
+
+  async getPerpetualPositions(): Promise<unknown> {
+    const response = await this.api.get('/perpetual/positions');
+    return response.data;
+  }
+
+  async createPerpetualPosition({
+    pair,
+    side,
+    size,
+    leverage,
+    chainId,
+  }: {
+    pair: string;
+    side: string;
+    size: string;
+    leverage: number;
+    chainId: number;
+  }): Promise<unknown> {
+    const response = await this.api.post('/perpetual/positions', {
+      pair,
+      side,
+      size,
+      leverage,
+      chain_id: chainId,
+    });
+    return response.data;
+  }
+
+  async closePerpetualPosition(positionId: string): Promise<unknown> {
+    const response = await this.api.post(
+      `/perpetual/positions/${encodeURIComponent(positionId)}/close`
+    );
+    return response.data;
+  }
+
+  // ---- Margin trading ----
+
+  async getMarginPositions(): Promise<unknown> {
+    const response = await this.api.get('/margin/positions');
+    return response.data;
+  }
+
+  async createMarginPosition({
+    pair,
+    side,
+    size,
+    leverage,
+    chainId,
+  }: {
+    pair: string;
+    side: string;
+    size: string;
+    leverage: number;
+    chainId: number;
+  }): Promise<unknown> {
+    const response = await this.api.post('/margin/positions', {
+      pair,
+      side,
+      size,
+      leverage,
+      chain_id: chainId,
+    });
+    return response.data;
+  }
+
+  async closeMarginPosition(positionId: string): Promise<unknown> {
+    const response = await this.api.post(
+      `/margin/positions/${encodeURIComponent(positionId)}/close`
+    );
+    return response.data;
+  }
+
+  // ---- Prediction markets ----
+
+  async getPredictionMarkets(): Promise<unknown> {
+    const response = await this.api.get('/prediction/markets');
+    return response.data;
+  }
+
+  async placePredictionBet({
+    marketId,
+    side,
+    amount,
+  }: {
+    marketId: string;
+    side: string;
+    amount: string;
+  }): Promise<unknown> {
+    const response = await this.api.post(
+      `/prediction/markets/${encodeURIComponent(marketId)}/bet`,
+      { side, amount }
+    );
+    return response.data;
+  }
+
+  // ---- Launchpool ----
+
+  async getLaunchpool(): Promise<unknown> {
+    const response = await this.api.get('/launchpool');
+    return response.data;
+  }
+
+  async getLaunchpoolStakes(): Promise<unknown> {
+    const response = await this.api.get('/launchpool/stakes');
+    return response.data;
+  }
+
+  async launchpoolStake({
+    walletId,
+    password,
+    amount,
+  }: {
+    walletId: string;
+    password: string;
+    amount: string;
+  }): Promise<unknown> {
+    if (!password) throw new Error('password is required to stake in the launchpool');
+    const response = await this.api.post('/launchpool/stake', {
+      wallet_id: walletId,
+      password,
+      amount,
+    });
+    return response.data;
+  }
+
+  async launchpoolUnstake({
+    walletId,
+    password,
+    amount,
+  }: {
+    walletId: string;
+    password: string;
+    amount: string;
+  }): Promise<unknown> {
+    if (!password) throw new Error('password is required to unstake from the launchpool');
+    const response = await this.api.post('/launchpool/unstake', {
+      wallet_id: walletId,
+      password,
+      amount,
+    });
+    return response.data;
+  }
+
+  // ---- Token sales (IDO) ----
+
+  async getTokenSales(): Promise<unknown> {
+    const response = await this.api.get('/token-sales');
+    return response.data;
+  }
+
+  async participateTokenSale({
+    saleId,
+    amount,
+  }: {
+    saleId: string;
+    amount: string;
+  }): Promise<unknown> {
+    const response = await this.api.post(
+      `/token-sales/${encodeURIComponent(saleId)}/participate`,
+      { amount }
+    );
+    return response.data;
+  }
+
+  // ---- Charts / DeFi directory ----
+
+  async getChartHistory({
+    token,
+    days,
+  }: {
+    token: string;
+    days: number;
+  }): Promise<unknown> {
+    const response = await this.api.get('/chart/history', {
+      params: { token, days },
+    });
+    return response.data;
+  }
+
+  async getDefiProtocols(): Promise<unknown> {
+    const response = await this.api.get('/defi/protocols');
+    return response.data;
+  }
+}
+
+// parsePaymentUri — decodes a scanned QR string (bare 0x address, ethereum:
+// URI, or EIP-681 payment URI) into an address + optional amount. Returns
+// null when no address can be extracted (fail-closed — never a guessed value).
+// Mirrors the desktop/web client implementation.
+export function parsePaymentUri(input: string): {
+  address: string;
+  amount?: string;
+  chainId?: number;
+  tokenAddress?: string;
+} | null {
+  const s = (input || '').trim();
+  if (!s) return null;
+  if (/^0x[a-fA-F0-9]{40}$/.test(s)) {
+    return { address: s };
+  }
+  let body: string;
+  if (s.startsWith('ethereum:')) body = s.slice('ethereum:'.length);
+  else return null;
+  const qIdx = body.indexOf('?');
+  const target = qIdx >= 0 ? body.slice(0, qIdx) : body;
+  const query = qIdx >= 0 ? body.slice(qIdx + 1) : '';
+  let address: string;
+  let tokenAddress: string | null = null;
+  if (target.includes('/')) {
+    const [addr, func] = target.split('/');
+    address = addr;
+    if (func.startsWith('transfer')) tokenAddress = '';
+  } else {
+    address = target;
+  }
+  if (!/^0x[a-fA-F0-9]{40}$/.test(address)) return null;
+  let amount: string | undefined;
+  let chainId: number | undefined;
+  query.split('&').forEach((pair) => {
+    const [k, v] = pair.split('=');
+    if (k === 'value') amount = v;
+    else if (k === 'chainId') chainId = Number(v);
+    else if (k === 'address' && tokenAddress !== null) tokenAddress = v;
+  });
+  return { address, amount, chainId, tokenAddress: tokenAddress || undefined };
 }
 
 export { WalletService };

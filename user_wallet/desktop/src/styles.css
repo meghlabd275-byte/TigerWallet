@@ -322,3 +322,38 @@ h1 {
 .mnemonic-warning { background: var(--bg-secondary); border: 1px solid var(--accent); border-radius: 12px; padding: 20px; margin-bottom: 24px; }
 .mnemonic-warning code { display: block; background: var(--bg-primary); padding: 12px; border-radius: 8px; margin: 12px 0; font-family: monospace; word-break: break-word; }
 .mnemonic-warning button { background: var(--accent); color: white; border: none; border-radius: 8px; padding: 8px 16px; cursor: pointer; }
+.mnemonic-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.backup-msg { margin-top: 10px; font-size: 0.85rem; color: var(--accent); }
+
+/* Guest login */
+.login-subtitle { color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem; }
+.guest-actions { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.primary-btn { padding: 14px; border: none; border-radius: 8px; background-color: var(--accent); color: white; font-size: 16px; cursor: pointer; }
+.primary-btn:disabled { opacity: 0.6; cursor: default; }
+
+/* Import / link buttons */
+.import-form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; padding: 20px; background: var(--bg-secondary); border-radius: 8px; }
+.import-form input, .import-form select, .import-form textarea { padding: 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; }
+.import-form textarea { resize: vertical; font-family: monospace; }
+.import-form button { padding: 10px 20px; border: none; border-radius: 8px; background-color: var(--accent); color: white; cursor: pointer; }
+.link-btn { background: transparent !important; color: var(--accent) !important; border: none; cursor: pointer; font-size: 0.875rem; padding: 8px; }
+
+/* Send page */
+.send-form { display: flex; flex-direction: column; gap: 8px; max-width: 480px; margin-top: 16px; }
+.send-form label { font-size: 0.85rem; color: var(--text-secondary); margin-top: 6px; }
+.send-form input, .send-form select { padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
+.send-form .qr-row { display: flex; gap: 8px; }
+.send-form .qr-row input { flex: 1; }
+.send-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.send-actions button { padding: 12px 20px; border: none; border-radius: 8px; background-color: var(--accent); color: white; cursor: pointer; }
+.send-actions button:disabled { opacity: 0.6; }
+.success-banner { background: rgba(76, 175, 80, 0.15); border: 1px solid var(--accent); border-radius: 12px; padding: 16px; margin-bottom: 20px; }
+.success-banner h3 { color: var(--accent); margin-bottom: 8px; }
+
+/* Receive page */
+.receive-page label { font-size: 0.85rem; color: var(--text-secondary); display: block; margin: 12px 0 6px; }
+.receive-page select { padding: 10px; border: 1px solid var(--border); border-radius: 8px; width: 100%; max-width: 480px; }
+.receive-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-top: 16px; max-width: 480px; text-align: center; }
+.receive-card .qr-placeholder { width: 200px; height: 200px; margin: 16px auto; border: 2px dashed var(--border); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); font-size: 1.5rem; }
+.receive-card .address { word-break: break-all; margin: 12px 0; font-size: 0.9rem; }
+.receive-card button { padding: 10px 20px; border: none; border-radius: 8px; background-color: var(--accent); color: white; cursor: pointer; }

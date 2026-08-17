@@ -298,6 +298,38 @@ impl UserWalletClient {
         serde_json::from_str(&text).map_err(|e| WalletError::Json(e.to_string()))
     }
 
+    async fn put<T: DeserializeOwned, B: Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, WalletError> {
+        let mut req = self.http.put(self.url(path)).json(body);
+        if let Some(t) = self.token() {
+            req = req.bearer_auth(t);
+        }
+        let resp = req.send().await.map_err(|e| WalletError::Http(e.to_string()))?;
+        let status = resp.status();
+        let text = resp.text().await.map_err(|e| WalletError::Http(e.to_string()))?;
+        if !status.is_success() {
+            return Err(WalletError::Api(text));
+        }
+        serde_json::from_str(&text).map_err(|e| WalletError::Json(e.to_string()))
+    }
+
+    async fn delete<T: DeserializeOwned>(&self, path: &str) -> Result<T, WalletError> {
+        let mut req = self.http.delete(self.url(path));
+        if let Some(t) = self.token() {
+            req = req.bearer_auth(t);
+        }
+        let resp = req.send().await.map_err(|e| WalletError::Http(e.to_string()))?;
+        let status = resp.status();
+        let text = resp.text().await.map_err(|e| WalletError::Http(e.to_string()))?;
+        if !status.is_success() {
+            return Err(WalletError::Api(text));
+        }
+        serde_json::from_str(&text).map_err(|e| WalletError::Json(e.to_string()))
+    }
+
     // ---- Auth ----
 
     pub async fn login(&self, email: &str, password: &str) -> Result<String, WalletError> {
@@ -639,6 +671,757 @@ impl UserWalletClient {
     pub async fn p2p_listings(&self) -> Result<serde_json::Value, WalletError> {
         self.get("/api/v1/p2p/listings").await
     }
+
+    // -----------------------------------------------------------------------
+    // Canonical flat-route fetcher set (:8443, single base_url).
+    // Matches the web/desktop/android/ios client contract.
+    // -----------------------------------------------------------------------
+
+    // ---- Auth / profile ----
+
+    pub async fn logout(&self) -> Result<(), String> {
+        self.set_token(None);
+        Ok(())
+    }
+
+    /// get_profile decodes the JWT payload locally (no network). Returns the
+    /// claims as a JSON object. Errors if no token is set.
+    pub async fn get_profile(&self) -> Result<serde_json::Value, String> {
+        let token = self.token().ok_or_else(|| "Not authenticated".to_string())?;
+        let parts: Vec<&str> = token.split('.').collect();
+        if parts.len() < 2 {
+            return Err("Malformed token".into());
+        }
+        let payload_b64 = parts[1];
+        // JWT uses base64url without padding.
+        let mut decoded = String::new();
+        for c in payload_b64.chars() {
+            match c {
+                '-' => decoded.push('+'),
+                '_' => decoded.push('/'),
+                _ => decoded.push(c),
+            }
+        }
+        while decoded.len() % 4 != 0 {
+            decoded.push('=');
+        }
+        let bytes = base64_decode(&decoded)?;
+        let s = String::from_utf8(bytes).map_err(|e| e.to_string())?;
+        serde_json::from_str(&s).map_err(|e| e.to_string())
+    }
+
+    pub async fn health(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/health").await
+    }
+
+    // ---- Wallets (extended) ----
+
+    pub async fn import_wallet(
+        &self,
+        label: String,
+        password: String,
+        mnemonic: String,
+        chain_id: Option<i64>,
+        passphrase: Option<String>,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            label: String,
+            password: String,
+            mnemonic: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            chain_id: Option<i64>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            passphrase: Option<String>,
+        }
+        self.post("/wallets", &Req {
+            label, password, mnemonic, chain_id, passphrase,
+        }).await
+    }
+
+    pub async fn export_encrypted_seed(
+        &self,
+        wallet_id: String,
+        password: String,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req { wallet_id: String, password: String }
+        let path = format!("/wallets/{}/export-encrypted-seed", url_encode(&wallet_id));
+        self.post(&path, &Req { wallet_id, password }).await
+    }
+
+    pub async fn import_encrypted_seed(
+        &self,
+        encrypted_seed: String,
+        password: String,
+        label: Option<String>,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            encrypted_seed: String,
+            password: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            label: Option<String>,
+        }
+        self.post("/wallets/import-encrypted-seed", &Req {
+            encrypted_seed, password, label,
+        }).await
+    }
+
+    // ---- NFTs ----
+
+    pub async fn transfer_nft(
+        &self,
+        wallet_id: String,
+        password: String,
+        to: String,
+        token_id: String,
+        contract_address: String,
+        chain_id: i64,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            wallet_id: String,
+            password: String,
+            to: String,
+            token_id: String,
+            contract_address: String,
+            chain_id: i64,
+        }
+        self.post("/nft/transfer", &Req {
+            wallet_id, password, to, token_id, contract_address, chain_id,
+        }).await
+    }
+
+    // ---- Transactions / gas ----
+
+    pub async fn get_transaction_receipt(
+        &self,
+        tx_hash: String,
+        chain_id: i64,
+    ) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/transactions/{}?chain_id={}", url_encode(&tx_hash), chain_id);
+        self.get(&path).await
+    }
+
+    pub async fn estimate_gas(
+        &self,
+        from: String,
+        to: String,
+        value: Option<String>,
+        data: Option<String>,
+        chain_id: i64,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            from: String,
+            to: String,
+            chain_id: i64,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            value: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            data: Option<String>,
+        }
+        self.post("/gas/estimate", &Req { from, to, value, data, chain_id }).await
+    }
+
+    // ---- Swap / AMM ----
+
+    pub async fn execute_swap(
+        &self,
+        wallet_id: String,
+        password: String,
+        from_token: String,
+        to_token: String,
+        from_amount: String,
+        chain_id: i64,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            wallet_id: String,
+            password: String,
+            from_token: String,
+            to_token: String,
+            from_amount: String,
+            chain_id: i64,
+        }
+        self.post("/swap/execute", &Req {
+            wallet_id, password, from_token, to_token, from_amount, chain_id,
+        }).await
+    }
+
+    pub async fn get_amm_quote(
+        &self,
+        from_token: String,
+        to_token: String,
+        from_amount: String,
+        chain_id: i64,
+    ) -> Result<serde_json::Value, WalletError> {
+        self.get_query("/amm/quote", &[
+            ("from_token", from_token),
+            ("to_token", to_token),
+            ("from_amount", from_amount),
+            ("chain_id", chain_id.to_string()),
+        ]).await
+    }
+
+    pub async fn amm_swap(
+        &self,
+        wallet_id: String,
+        password: String,
+        from_token: String,
+        to_token: String,
+        from_amount: String,
+        chain_id: i64,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            wallet_id: String,
+            password: String,
+            from_token: String,
+            to_token: String,
+            from_amount: String,
+            chain_id: i64,
+        }
+        self.post("/amm/swap", &Req {
+            wallet_id, password, from_token, to_token, from_amount, chain_id,
+        }).await
+    }
+
+    // ---- Crypto cards ----
+
+    pub async fn get_crypto_card_balance(&self, card_id: String) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/cards/{}/balance", url_encode(&card_id));
+        self.get(&path).await
+    }
+
+    pub async fn get_card_transactions(&self, card_id: String) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/cards/{}/transactions", url_encode(&card_id));
+        self.get(&path).await
+    }
+
+    // ---- P2P / fiat ramp ----
+
+    pub async fn get_p2p_adverts(&self) -> Result<serde_json::Value, WalletError> {
+        self.p2p_listings().await
+    }
+
+    pub async fn get_fiat_offramp_quote(
+        &self,
+        provider_id: String,
+        amount: String,
+        fiat: String,
+        crypto: String,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            provider_id: String,
+            amount: String,
+            fiat: String,
+            crypto: String,
+        }
+        self.post("/ramp/offramp-quote", &Req { provider_id, amount, fiat, crypto }).await
+    }
+
+    // ---- Non-EVM (Solana / Cosmos / etc.) ----
+
+    pub async fn non_evm_address(
+        &self,
+        seed: String,
+        chain_type: String,
+        chain_id: i64,
+        path: Option<String>,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            seed: String,
+            chain_type: String,
+            chain_id: i64,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            path: Option<String>,
+        }
+        self.post("/non_evm/address", &Req { seed, chain_type, chain_id, path }).await
+    }
+
+    pub async fn non_evm_sign(
+        &self,
+        seed: String,
+        chain_type: String,
+        chain_id: i64,
+        message_hash: String,
+        path: Option<String>,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            seed: String,
+            chain_type: String,
+            chain_id: i64,
+            message_hash: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            path: Option<String>,
+        }
+        self.post("/non_evm/sign", &Req { seed, chain_type, chain_id, message_hash, path }).await
+    }
+
+    pub async fn non_evm_send(
+        &self,
+        seed: String,
+        chain_type: String,
+        chain_id: i64,
+        to: String,
+        value: String,
+        path: Option<String>,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            seed: String,
+            chain_type: String,
+            chain_id: i64,
+            to: String,
+            value: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            path: Option<String>,
+        }
+        self.post("/non_evm/send", &Req { seed, chain_type, chain_id, to, value, path }).await
+    }
+
+    // ---- Address book ----
+
+    pub async fn get_address_book_contacts(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/address-book/contacts").await
+    }
+
+    pub async fn add_contact(
+        &self,
+        name: String,
+        address: String,
+        chain_id: Option<i64>,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            name: String,
+            address: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            chain_id: Option<i64>,
+        }
+        self.post("/address-book/contacts", &Req { name, address, chain_id }).await
+    }
+
+    pub async fn update_contact(
+        &self,
+        id: String,
+        name: Option<String>,
+        address: Option<String>,
+        chain_id: Option<i64>,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            name: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            address: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            chain_id: Option<i64>,
+        }
+        let path = format!("/address-book/contacts/{}", url_encode(&id));
+        self.put(&path, &Req { name, address, chain_id }).await
+    }
+
+    pub async fn delete_contact(&self, id: String) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/address-book/contacts/{}", url_encode(&id));
+        self.delete(&path).await
+    }
+
+    // ---- Devices ----
+
+    pub async fn get_devices(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/devices").await
+    }
+
+    pub async fn register_device(
+        &self,
+        name: String,
+        device_type: String,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req { name: String, device_type: String }
+        self.post("/devices", &Req { name, device_type }).await
+    }
+
+    pub async fn sync_device(&self, device_id: String) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/devices/{}/sync", url_encode(&device_id));
+        self.post(&path, &serde_json::json!({})).await
+    }
+
+    pub async fn delete_device(&self, device_id: String) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/devices/{}", url_encode(&device_id));
+        self.delete(&path).await
+    }
+
+    // ---- Approvals (token allowances) ----
+
+    pub async fn get_approvals(
+        &self,
+        address: String,
+        chain_id: i64,
+    ) -> Result<serde_json::Value, WalletError> {
+        self.get_query("/approvals", &[
+            ("address", address),
+            ("chain_id", chain_id.to_string()),
+        ]).await
+    }
+
+    pub async fn revoke_approval(&self, approval_id: String) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/approvals/{}", url_encode(&approval_id));
+        self.delete(&path).await
+    }
+
+    // ---- Keystore ----
+
+    pub async fn export_keystore(
+        &self,
+        wallet_id: String,
+        password: String,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req { wallet_id: String, password: String }
+        self.post("/keystore/export", &Req { wallet_id, password }).await
+    }
+
+    pub async fn import_keystore(
+        &self,
+        keystore: String,
+        password: String,
+        label: Option<String>,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            keystore: String,
+            password: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            label: Option<String>,
+        }
+        self.post("/keystore/import", &Req { keystore, password, label }).await
+    }
+
+    // ---- Security ----
+
+    pub async fn check_url(&self, url: String) -> Result<serde_json::Value, WalletError> {
+        self.get_query("/security/check-url", &[("url", url)]).await
+    }
+
+    pub async fn check_address(&self, address: String) -> Result<serde_json::Value, WalletError> {
+        self.get_query("/security/check-address", &[("address", address)]).await
+    }
+
+    pub async fn security_scan(&self, target: String) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req { target: String }
+        self.post("/security/scan", &Req { target }).await
+    }
+
+    // ---- Lending ----
+
+    pub async fn get_lending_markets(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/lending/markets").await
+    }
+
+    pub async fn get_lending_positions(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/lending/positions").await
+    }
+
+    pub async fn lending_supply(
+        &self,
+        wallet_id: String,
+        password: String,
+        asset: String,
+        amount: String,
+        chain_id: i64,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            wallet_id: String,
+            password: String,
+            asset: String,
+            amount: String,
+            chain_id: i64,
+        }
+        self.post("/lending/supply", &Req { wallet_id, password, asset, amount, chain_id }).await
+    }
+
+    pub async fn lending_borrow(
+        &self,
+        wallet_id: String,
+        password: String,
+        asset: String,
+        amount: String,
+        chain_id: i64,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            wallet_id: String,
+            password: String,
+            asset: String,
+            amount: String,
+            chain_id: i64,
+        }
+        self.post("/lending/borrow", &Req { wallet_id, password, asset, amount, chain_id }).await
+    }
+
+    pub async fn lending_withdraw(
+        &self,
+        wallet_id: String,
+        password: String,
+        asset: String,
+        amount: String,
+        chain_id: i64,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            wallet_id: String,
+            password: String,
+            asset: String,
+            amount: String,
+            chain_id: i64,
+        }
+        self.post("/lending/withdraw", &Req { wallet_id, password, asset, amount, chain_id }).await
+    }
+
+    pub async fn lending_repay(
+        &self,
+        wallet_id: String,
+        password: String,
+        asset: String,
+        amount: String,
+        chain_id: i64,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            wallet_id: String,
+            password: String,
+            asset: String,
+            amount: String,
+            chain_id: i64,
+        }
+        self.post("/lending/repay", &Req { wallet_id, password, asset, amount, chain_id }).await
+    }
+
+    // ---- Copy trading ----
+
+    pub async fn get_copy_traders(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/copytrading/traders").await
+    }
+
+    pub async fn follow_trader(
+        &self,
+        trader_id: String,
+        allocation: Option<String>,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            trader_id: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            allocation: Option<String>,
+        }
+        self.post("/copytrading/follow", &Req { trader_id, allocation }).await
+    }
+
+    pub async fn stop_copy_trader(&self, copier_id: String) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/copytrading/copiers/{}/stop", url_encode(&copier_id));
+        self.post(&path, &serde_json::json!({})).await
+    }
+
+    pub async fn get_copy_signals(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/copytrading/signals").await
+    }
+
+    // ---- DAO ----
+
+    pub async fn get_dao_proposals(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/dao/proposals").await
+    }
+
+    pub async fn create_dao_proposal(
+        &self,
+        title: String,
+        description: String,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req { title: String, description: String }
+        self.post("/dao/proposals", &Req { title, description }).await
+    }
+
+    pub async fn vote_dao_proposal(
+        &self,
+        proposal_id: String,
+        support: bool,
+    ) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/dao/proposals/{}/vote", url_encode(&proposal_id));
+        self.post(&path, &serde_json::json!({ "support": support })).await
+    }
+
+    pub async fn get_dao_delegates(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/dao/delegates").await
+    }
+
+    // ---- Perpetuals ----
+
+    pub async fn get_perpetual_positions(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/perpetual/positions").await
+    }
+
+    pub async fn create_perpetual_position(
+        &self,
+        pair: String,
+        side: String,
+        size: String,
+        leverage: i64,
+        chain_id: i64,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            pair: String,
+            side: String,
+            size: String,
+            leverage: i64,
+            chain_id: i64,
+        }
+        self.post("/perpetual/positions", &Req { pair, side, size, leverage, chain_id }).await
+    }
+
+    pub async fn close_perpetual_position(&self, position_id: String) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/perpetual/positions/{}/close", url_encode(&position_id));
+        self.post(&path, &serde_json::json!({})).await
+    }
+
+    // ---- Margin ----
+
+    pub async fn get_margin_positions(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/margin/positions").await
+    }
+
+    pub async fn create_margin_position(
+        &self,
+        pair: String,
+        side: String,
+        size: String,
+        leverage: i64,
+        chain_id: i64,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            pair: String,
+            side: String,
+            size: String,
+            leverage: i64,
+            chain_id: i64,
+        }
+        self.post("/margin/positions", &Req { pair, side, size, leverage, chain_id }).await
+    }
+
+    pub async fn close_margin_position(&self, position_id: String) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/margin/positions/{}/close", url_encode(&position_id));
+        self.post(&path, &serde_json::json!({})).await
+    }
+
+    // ---- Prediction markets ----
+
+    pub async fn get_prediction_markets(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/prediction/markets").await
+    }
+
+    pub async fn place_prediction_bet(
+        &self,
+        market_id: String,
+        side: String,
+        amount: String,
+    ) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/prediction/markets/{}/bet", url_encode(&market_id));
+        self.post(&path, &serde_json::json!({ "side": side, "amount": amount })).await
+    }
+
+    // ---- Launchpool ----
+
+    pub async fn get_launchpool(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/launchpool").await
+    }
+
+    pub async fn get_launchpool_stakes(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/launchpool/stakes").await
+    }
+
+    pub async fn launchpool_stake(
+        &self,
+        wallet_id: String,
+        password: String,
+        amount: String,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req { wallet_id: String, password: String, amount: String }
+        self.post("/launchpool/stake", &Req { wallet_id, password, amount }).await
+    }
+
+    pub async fn launchpool_unstake(
+        &self,
+        wallet_id: String,
+        password: String,
+        amount: String,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req { wallet_id: String, password: String, amount: String }
+        self.post("/launchpool/unstake", &Req { wallet_id, password, amount }).await
+    }
+
+    // ---- Token sales ----
+
+    pub async fn get_token_sales(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/token-sales").await
+    }
+
+    pub async fn participate_token_sale(
+        &self,
+        sale_id: String,
+        amount: String,
+    ) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/token-sales/{}/participate", url_encode(&sale_id));
+        self.post(&path, &serde_json::json!({ "amount": amount })).await
+    }
+
+    // ---- DApps ----
+
+    pub async fn get_dapps(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/dapps").await
+    }
+
+    pub async fn get_dapp_categories(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/dapps/categories").await
+    }
+
+    // ---- Charts / DeFi / aliases ----
+
+    pub async fn get_chart_history(
+        &self,
+        token: String,
+        days: Option<i64>,
+    ) -> Result<serde_json::Value, WalletError> {
+        let mut q = vec![("token", token)];
+        if let Some(d) = days {
+            q.push(("days", d.to_string()));
+        }
+        self.get_query("/chart/history", &q).await
+    }
+
+    pub async fn get_defi_protocols(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/defi/protocols").await
+    }
+
+    pub async fn get_networks(&self) -> Result<Vec<ChainInfo>, WalletError> {
+        self.get_chains().await
+    }
+
+    pub async fn get_price(&self, coin: String) -> Result<PriceInfo, WalletError> {
+        self.get_token_price(&coin).await
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -702,6 +1485,64 @@ pub fn parse_payment_uri(input: &str) -> Option<ParsedPayment> {
         }
     }
     Some(ParsedPayment { address, amount, chain_id, token_address: token_contract.filter(|s| !s.is_empty()) })
+}
+
+// Minimal base64 (standard alphabet, with padding) decoder and a percent-encoder
+// for path/query parameters. These avoid pulling extra crates for the few spots
+// that need them (JWT payload decode + path-param encoding).
+
+fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
+    const TABLE: [i8; 256] = {
+        let mut t = [-1i8; 256];
+        let mut i = 0u8;
+        while i < 64 {
+            let ch = match i {
+                0..=25 => b'A' + i,
+                26..=51 => b'a' + (i - 26),
+                52..=61 => b'0' + (i - 52),
+                62 => b'+',
+                63 => b'/',
+                _ => 0,
+            };
+            t[ch as usize] = i as i8;
+            i += 1;
+        }
+        t
+    };
+    let bytes: Vec<u8> = input.bytes().filter(|b| *b != b'=').collect();
+    let mut out = Vec::with_capacity(bytes.len() * 3 / 4);
+    for chunk in bytes.chunks(4) {
+        let vals: Vec<i8> = chunk.iter().map(|b| TABLE[*b as usize]).collect();
+        if vals.iter().any(|v| *v < 0) {
+            return Err("invalid base64".into());
+        }
+        let n = vals.len();
+        let b0 = vals[0] as u32;
+        let b1 = vals[1] as u32;
+        out.push(((b0 << 2) | (b1 >> 4)) as u8);
+        if n > 2 {
+            let b2 = vals[2] as u32;
+            out.push((((b1 & 0x0f) << 4) | (b2 >> 2)) as u8);
+            if n > 3 {
+                let b3 = vals[3] as u32;
+                out.push((((b2 & 0x03) << 6) | b3) as u8);
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// url_encode percent-encodes a path segment per RFC 3986 (unreserved set only).
+fn url_encode(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for b in input.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{:02X}", b));
+        }
+    }
+    out
 }
 
 #[cfg(test)]

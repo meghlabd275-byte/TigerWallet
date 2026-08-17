@@ -7,8 +7,8 @@ import { api } from '../services/api';
 interface HealthState {
   status: string;
   service: string;
-  licensed: boolean;
-  wl_client_id: string;
+  licensed?: boolean;
+  wl_client_id?: string;
 }
 
 export default function Settings() {

@@ -241,3 +241,64 @@ th { color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; }
   background: var(--input-bg);
   color: var(--text);
 }
+/* New pages themed via CSS variables */
+.primary-btn,button.primary-btn,.secondary-btn,button.secondary-btn,.link-btn{width:100%;padding:12px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;border:1px solid transparent;margin-top:8px}
+.primary-btn,button.primary-btn{background:var(--accent);color:#fff}
+.primary-btn:disabled{opacity:.6;cursor:not-allowed}
+.secondary-btn,button.secondary-btn{background:var(--bg-card);color:var(--text);border-color:var(--border)}
+.link-btn{background:transparent;color:var(--accent);border:none;width:auto;padding:8px;font-weight:500}
+.subtitle{color:var(--text-muted);font-size:13px;margin-bottom:16px}
+.header-actions{display:flex;gap:8px}
+.mnemonic-text{display:block;background:var(--input-bg);padding:14px;border-radius:8px;border:1px solid var(--border);font-size:14px;line-height:1.6;margin:10px 0;word-break:break-word}
+.mnemonic-actions,.backup-info{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.mnemonic-actions button,.backup-info button{width:auto;padding:8px 14px;margin-top:0}
+.backup-info{background:var(--input-bg);padding:12px;border-radius:8px;border:1px solid var(--border)}
+.success{color:var(--success);margin-top:8px;font-weight:500}
+.success-banner{background:rgba(22,163,74,.12);border:1px solid var(--success);border-radius:10px;padding:14px;margin-bottom:16px}
+.success-banner h3{color:var(--success);margin-bottom:6px}
+.success-banner p{color:var(--text-muted);font-size:13px}
+.tx-hash{font-size:12px;word-break:break-all;margin-top:6px}
+.auto-badge{color:var(--accent);font-weight:500;margin-top:4px}
+.send-page .send-form,.swap-page .swap-form,.staking-page .staking-form,.bridge-page .bridge-form,.keystore-section,.defi-page .action-form{background:var(--bg-card);padding:18px;border-radius:12px;border:1px solid var(--border);max-width:520px}
+.swap-row,.bridge-row{display:flex;gap:12px}
+.swap-row .form-group,.bridge-row .form-group{flex:1}
+.action-row{display:flex;gap:8px;flex-wrap:wrap}
+.action-row button{width:auto;flex:1;min-width:100px}
+.qr-paste{margin:10px 0}
+.qr-row{display:flex;gap:8px}
+.qr-row button{width:auto;padding:10px 16px;margin-top:0}
+.receive-page .receive-card{background:var(--bg-card);padding:24px;border-radius:12px;border:1px solid var(--border);text-align:center;max-width:400px;margin:0 auto}
+.qr-canvas{margin:0 auto 16px;display:block;border-radius:8px}
+.hint{color:var(--text-muted);font-size:12px;margin-top:8px}
+.quote-box,.data-box{background:var(--input-bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin:10px 0;overflow-x:auto}
+.quote-box pre,.data-box pre{font-size:12px;white-space:pre-wrap;word-break:break-all;color:var(--text-muted)}
+.quote-box.amm{border-color:var(--accent)}
+.nfts-page .nfts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}
+.nft-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center}
+.nft-img{max-width:100%;border-radius:8px}
+.nft-placeholder{font-size:48px;padding:20px}
+.small{font-size:12px;color:var(--text-muted)}
+.nft-card button{width:100%;margin-top:8px;padding:8px}
+.filter-row{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.filter-row .address-input,.filter-row select{flex:1}
+.contact-form,.device-form{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.contact-form input,.device-form input,.contact-form select,.device-form select{flex:1;min-width:120px;padding:10px;border-radius:8px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--text)}
+.contact-form button,.device-form button{width:auto;padding:10px 16px;margin-top:0}
+.contact-list,.device-list,.approval-list{list-style:none;padding:0}
+.contact-list li,.device-list li,.approval-list li{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px}
+.contact-list button,.device-list button,.approval-list button{width:auto;padding:6px 12px;margin:4px 4px 0 0;font-size:12px}
+.status{padding:2px 8px;border-radius:10px;font-size:11px}
+.status.online,.status.confirmed,.status.active{background:rgba(22,163,74,.15);color:var(--success)}
+.status.offline,.status.failed,.status.inactive{background:var(--error-bg);color:var(--error)}
+.defi-page .tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+.defi-page .tab{background:var(--bg-card);border:1px solid var(--border);color:var(--text-muted);padding:8px 14px;border-radius:20px;font-size:13px;cursor:pointer}
+.defi-page .tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.defi-content{display:flex;gap:16px;flex-wrap:wrap}
+.defi-content .action-form,.defi-content .data-box{flex:1;min-width:280px}
+.defi-content input,.defi-content select{width:100%;padding:10px;margin-bottom:8px;border-radius:8px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--text)}
+.keystore-page .keystore-section{margin-bottom:24px}
+.keystore-page textarea{width:100%;background:var(--input-bg);color:var(--text);border:1px solid var(--input-border);border-radius:8px;padding:10px;font-family:monospace;font-size:12px}
+.export-box{background:var(--input-bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:10px}
+.export-box pre{font-size:11px;max-height:200px;overflow:auto;color:var(--text-muted)}
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:100}
+.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;max-width:420px;width:90%}

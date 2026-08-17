@@ -7,6 +7,8 @@ const API_BASE_URL =
   (typeof process !== 'undefined' && process.env && process.env.REACT_APP_API_URL) ||
   'http://localhost:8443/api/v1';
 
+const HEALTH_URL = API_BASE_URL.replace(/\/api\/v1\/?$/, '') + '/health';
+
 const CHAIN_IDS = {
   ethereum: 1,
   bsc: 56,
@@ -247,6 +249,444 @@ export const api = {
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem('tigerwallet-token');
     }
+  },
+
+  // ---- Wallet import ----
+  async importWallet({ label, password, mnemonic, chainId, passphrase }) {
+    return request('/wallets', {
+      method: 'POST',
+      body: JSON.stringify({
+        label,
+        password,
+        chain_id: chainId,
+        mnemonic,
+        passphrase,
+      }),
+    });
+  },
+
+  // ---- Profile (local JWT decode) ----
+  async getProfile() {
+    if (!authToken) throw new Error('Not authenticated');
+    const payloadB64 = authToken.split('.')[1];
+    const payloadJson = JSON.parse(
+      decodeURIComponent(
+        atob(payloadB64)
+          .split('')
+          .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+          .join(''),
+      ),
+    );
+    return { id: payloadJson.id, email: payloadJson.email, username: payloadJson.username };
+  },
+
+  // ---- Health ----
+  async health() {
+    const headers = { 'Content-Type': 'application/json' };
+    if (authToken) headers.Authorization = `Bearer ${authToken}`;
+    const res = await fetch(HEALTH_URL, { headers });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Request failed: ${res.status}`);
+    }
+    return res.json();
+  },
+
+  // ---- NFT ----
+  // getNFTs already exists above.
+  async transferNFT({ walletId, password, to, tokenId, contractAddress, chainId }) {
+    return request('/nft/transfer', {
+      method: 'POST',
+      body: JSON.stringify({
+        wallet_id: walletId,
+        password,
+        to,
+        token_id: tokenId,
+        contract_address: contractAddress,
+        chain_id: chainId,
+      }),
+    });
+  },
+
+  // ---- Transaction receipt ----
+  async getTransactionReceipt(txHash, chainId) {
+    return request(`/transactions/${encodeURIComponent(txHash)}?chain_id=${chainId}`);
+  },
+
+  // ---- Gas estimate ----
+  async estimateGas({ from, to, value, data, chainId }) {
+    return request('/gas/estimate', {
+      method: 'POST',
+      body: JSON.stringify({ from, to, value, data, chain_id: chainId }),
+    });
+  },
+
+  // ---- Swap execution ----
+  async executeSwap({ walletId, password, fromToken, toToken, fromAmount, chainId }) {
+    return request('/swap/execute', {
+      method: 'POST',
+      body: JSON.stringify({
+        wallet_id: walletId,
+        password,
+        from_token: fromToken,
+        to_token: toToken,
+        from_amount: fromAmount,
+        chain_id: chainId,
+      }),
+    });
+  },
+
+  // ---- AMM ----
+  async getAmmQuote({ fromToken, toToken, fromAmount, chainId }) {
+    return request(`/amm/quote?from_token=${encodeURIComponent(fromToken)}&to_token=${encodeURIComponent(toToken)}&from_amount=${encodeURIComponent(fromAmount)}&chain_id=${encodeURIComponent(chainId)}`);
+  },
+
+  async ammSwap({ walletId, password, fromToken, toToken, fromAmount, chainId }) {
+    return request('/amm/swap', {
+      method: 'POST',
+      body: JSON.stringify({
+        wallet_id: walletId,
+        password,
+        from_token: fromToken,
+        to_token: toToken,
+        from_amount: fromAmount,
+        chain_id: chainId,
+      }),
+    });
+  },
+
+  // ---- Staking ----
+  async stake({ walletId, password, asset, amount, chainId }) {
+    return request('/staking/stake', {
+      method: 'POST',
+      body: JSON.stringify({ wallet_id: walletId, password, asset, amount, chain_id: chainId }),
+    });
+  },
+
+  async unstake({ walletId, password, asset, amount, chainId }) {
+    return request('/staking/unstake', {
+      method: 'POST',
+      body: JSON.stringify({ wallet_id: walletId, password, asset, amount, chain_id: chainId }),
+    });
+  },
+
+  async claim({ walletId, password, asset, chainId }) {
+    return request('/staking/claim', {
+      method: 'POST',
+      body: JSON.stringify({ wallet_id: walletId, password, asset, chain_id: chainId }),
+    });
+  },
+
+  // ---- Crypto card ----
+  async getCryptoCardBalance(cardId) {
+    return request(`/cards/${encodeURIComponent(cardId)}/balance`);
+  },
+
+  async getCardTransactions(cardId) {
+    return request(`/cards/${encodeURIComponent(cardId)}/transactions`);
+  },
+
+  // ---- P2P alias ----
+  async getP2PAdverts() {
+    return this.getP2PListings();
+  },
+
+  // ---- Non-EVM ----
+  async nonEvmAddress({ seed, chainType, chainId, path }) {
+    return request('/non_evm/address', {
+      method: 'POST',
+      body: JSON.stringify({ seed, chain_type: chainType, chain_id: chainId, path }),
+    });
+  },
+
+  async nonEvmSign({ seed, chainType, chainId, messageHash, path }) {
+    return request('/non_evm/sign', {
+      method: 'POST',
+      body: JSON.stringify({ seed, chain_type: chainType, chain_id: chainId, message_hash: messageHash, path }),
+    });
+  },
+
+  async nonEvmSend({ seed, chainType, chainId, to, value, path }) {
+    return request('/non_evm/send', {
+      method: 'POST',
+      body: JSON.stringify({ seed, chain_type: chainType, chain_id: chainId, to, value, path }),
+    });
+  },
+
+  // ---- Address book ----
+  async getAddressBookContacts() {
+    return request('/address-book/contacts');
+  },
+
+  async addContact({ name, address, chainId }) {
+    return request('/address-book/contacts', {
+      method: 'POST',
+      body: JSON.stringify({ name, address, chain_id: chainId }),
+    });
+  },
+
+  async updateContact(id, { name, address, chainId }) {
+    return request(`/address-book/contacts/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name, address, chain_id: chainId }),
+    });
+  },
+
+  async deleteContact(id) {
+    return request(`/address-book/contacts/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  // ---- Devices ----
+  async getDevices() {
+    return request('/devices');
+  },
+
+  async registerDevice({ name, deviceType }) {
+    return request('/devices', {
+      method: 'POST',
+      body: JSON.stringify({ name, device_type: deviceType }),
+    });
+  },
+
+  async syncDevice(deviceId) {
+    return request(`/devices/${encodeURIComponent(deviceId)}/sync`, { method: 'POST' });
+  },
+
+  async deleteDevice(deviceId) {
+    return request(`/devices/${encodeURIComponent(deviceId)}`, { method: 'DELETE' });
+  },
+
+  // ---- Approvals ----
+  async getApprovals(address, chainId) {
+    return request(`/approvals?address=${encodeURIComponent(address)}&chain_id=${encodeURIComponent(chainId)}`);
+  },
+
+  async revokeApproval({ approvalId }) {
+    return request(`/approvals/${encodeURIComponent(approvalId)}`, { method: 'DELETE' });
+  },
+
+  // ---- Keystore ----
+  async exportKeystore({ walletId, password }) {
+    return request('/keystore/export', {
+      method: 'POST',
+      body: JSON.stringify({ wallet_id: walletId, password }),
+    });
+  },
+
+  async importKeystore({ keystore, password, label }) {
+    return request('/keystore/import', {
+      method: 'POST',
+      body: JSON.stringify({ keystore, password, label }),
+    });
+  },
+
+  // ---- Encrypted seed ----
+  async exportEncryptedSeed(walletId, password) {
+    return request(`/wallets/${encodeURIComponent(walletId)}/export-encrypted-seed`, {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    });
+  },
+
+  async importEncryptedSeed({ encryptedSeed, password, label }) {
+    return request('/wallets/import-encrypted-seed', {
+      method: 'POST',
+      body: JSON.stringify({ encrypted_seed: encryptedSeed, password, label }),
+    });
+  },
+
+  // ---- Security ----
+  async checkUrl(url) {
+    return request(`/security/check-url?url=${encodeURIComponent(url)}`);
+  },
+
+  async checkAddress(address) {
+    return request(`/security/check-address?address=${encodeURIComponent(address)}`);
+  },
+
+  async securityScan(target) {
+    return request('/security/scan', {
+      method: 'POST',
+      body: JSON.stringify({ target }),
+    });
+  },
+
+  // ---- Lending ----
+  async getLendingMarkets() {
+    return request('/lending/markets');
+  },
+
+  async getLendingPositions() {
+    return request('/lending/positions');
+  },
+
+  async lendingSupply({ walletId, password, asset, amount, chainId }) {
+    return request('/lending/supply', {
+      method: 'POST',
+      body: JSON.stringify({ wallet_id: walletId, password, asset, amount, chain_id: chainId }),
+    });
+  },
+
+  async lendingBorrow({ walletId, password, asset, amount, chainId }) {
+    return request('/lending/borrow', {
+      method: 'POST',
+      body: JSON.stringify({ wallet_id: walletId, password, asset, amount, chain_id: chainId }),
+    });
+  },
+
+  async lendingWithdraw({ walletId, password, asset, amount, chainId }) {
+    return request('/lending/withdraw', {
+      method: 'POST',
+      body: JSON.stringify({ wallet_id: walletId, password, asset, amount, chain_id: chainId }),
+    });
+  },
+
+  async lendingRepay({ walletId, password, asset, amount, chainId }) {
+    return request('/lending/repay', {
+      method: 'POST',
+      body: JSON.stringify({ wallet_id: walletId, password, asset, amount, chain_id: chainId }),
+    });
+  },
+
+  // ---- Copy trading ----
+  async getCopyTraders() {
+    return request('/copytrading/traders');
+  },
+
+  async followTrader({ traderId, allocation }) {
+    return request('/copytrading/follow', {
+      method: 'POST',
+      body: JSON.stringify({ trader_id: traderId, allocation }),
+    });
+  },
+
+  async stopCopyTrader(copierId) {
+    return request(`/copytrading/copiers/${encodeURIComponent(copierId)}/stop`, { method: 'POST' });
+  },
+
+  async getCopySignals() {
+    return request('/copytrading/signals');
+  },
+
+  // ---- DAO ----
+  async getDaoProposals() {
+    return request('/dao/proposals');
+  },
+
+  async createDaoProposal({ title, description }) {
+    return request('/dao/proposals', {
+      method: 'POST',
+      body: JSON.stringify({ title, description }),
+    });
+  },
+
+  async voteDaoProposal({ proposalId, support }) {
+    return request(`/dao/proposals/${encodeURIComponent(proposalId)}/vote`, {
+      method: 'POST',
+      body: JSON.stringify({ support }),
+    });
+  },
+
+  async getDaoDelegates() {
+    return request('/dao/delegates');
+  },
+
+  // ---- Perpetual ----
+  async getPerpetualPositions() {
+    return request('/perpetual/positions');
+  },
+
+  async createPerpetualPosition({ pair, side, size, leverage, chainId }) {
+    return request('/perpetual/positions', {
+      method: 'POST',
+      body: JSON.stringify({ pair, side, size, leverage, chain_id: chainId }),
+    });
+  },
+
+  async closePerpetualPosition(positionId) {
+    return request(`/perpetual/positions/${encodeURIComponent(positionId)}/close`, { method: 'POST' });
+  },
+
+  // ---- Margin ----
+  async getMarginPositions() {
+    return request('/margin/positions');
+  },
+
+  async createMarginPosition({ pair, side, size, leverage, chainId }) {
+    return request('/margin/positions', {
+      method: 'POST',
+      body: JSON.stringify({ pair, side, size, leverage, chain_id: chainId }),
+    });
+  },
+
+  async closeMarginPosition(positionId) {
+    return request(`/margin/positions/${encodeURIComponent(positionId)}/close`, { method: 'POST' });
+  },
+
+  // ---- Prediction markets ----
+  async getPredictionMarkets() {
+    return request('/prediction/markets');
+  },
+
+  async placePredictionBet({ marketId, side, amount }) {
+    return request(`/prediction/markets/${encodeURIComponent(marketId)}/bet`, {
+      method: 'POST',
+      body: JSON.stringify({ side, amount }),
+    });
+  },
+
+  // ---- Launchpool ----
+  async getLaunchpool() {
+    return request('/launchpool');
+  },
+
+  async getLaunchpoolStakes() {
+    return request('/launchpool/stakes');
+  },
+
+  async launchpoolStake({ walletId, password, amount }) {
+    return request('/launchpool/stake', {
+      method: 'POST',
+      body: JSON.stringify({ wallet_id: walletId, password, amount }),
+    });
+  },
+
+  async launchpoolUnstake({ walletId, password, amount }) {
+    return request('/launchpool/unstake', {
+      method: 'POST',
+      body: JSON.stringify({ wallet_id: walletId, password, amount }),
+    });
+  },
+
+  // ---- Token sales ----
+  async getTokenSales() {
+    return request('/token-sales');
+  },
+
+  async participateTokenSale({ saleId, amount }) {
+    return request(`/token-sales/${encodeURIComponent(saleId)}/participate`, {
+      method: 'POST',
+      body: JSON.stringify({ amount }),
+    });
+  },
+
+  // ---- Dapps ----
+  async getDapps() {
+    return request('/dapps');
+  },
+
+  async getDappCategories() {
+    return request('/dapps/categories');
+  },
+
+  // ---- Chart history ----
+  async getChartHistory({ token, days }) {
+    return request(`/chart/history?token=${encodeURIComponent(token)}&days=${encodeURIComponent(days)}`);
+  },
+
+  // ---- DeFi protocols ----
+  async getDefiProtocols() {
+    return request('/defi/protocols');
   },
 };
 

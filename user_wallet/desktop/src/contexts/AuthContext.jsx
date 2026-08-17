@@ -36,6 +36,16 @@ export function AuthProvider({ children }) {
     setUser({ email, username });
   };
 
+  // Guest auth — provisions an anonymous account so the user can create/import
+  // a wallet without registering. Persists the token exactly like login().
+  const guestAuth = async (deviceId) => {
+    const { token: newToken, user: returnedUser } = await api.guestAuth(deviceId);
+    localStorage.setItem('userwallet-token', newToken);
+    setToken(newToken);
+    setTokenState(newToken);
+    setUser(returnedUser || { id: '', email: '', username: 'Guest', guest: true });
+  };
+
   const logout = () => {
     localStorage.removeItem('userwallet-token');
     setToken('');
@@ -44,7 +54,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ token, user, login, register, logout, isAuthenticated: !!token }}>
+    <AuthContext.Provider value={{ token, user, login, register, guestAuth, logout, isAuthenticated: !!token }}>
       {children}
     </AuthContext.Provider>
   );

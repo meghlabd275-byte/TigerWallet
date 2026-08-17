@@ -3519,3 +3519,101 @@ extensions x3 (background.js), cpp (super_admin_domains.hpp), rust
 ### Commits on main (this session): e2a6ea2, 66c35d4, 9f2a96a
 ### Builds ALL GREEN: go build+vet (wallet_api, master_wallet), cargo check (master_wallet/rust, user_wallet/rust), npx tsc --noEmit (web_nextjs 0 errors), android brace-balanced.
 ### Toolchains: Go 1.23.12 ($HOME/.go-sdk/go/bin), Rust 1.97.1 ($HOME/.cargo/env), npm install for web_nextjs (node_modules was wiped).
+## desktop/src/services/api.js -- full client method parity (2026-08-17)
+- The desktop API client (`user_wallet/desktop/src/services/api.js`) connects to
+  the canonical TigerWallet Go wallet-api backend (`go/wallet_api`, :8443,
+  `/api/v1`), via a single `request(path, options)` fetch helper that prepends
+  `API_BASE_URL` and injects the module-level `authToken` as a Bearer JWT.
+- The `api` object now has 95 total async methods (was ~28 core). Added 67 new
+  methods covering: importWallet, getProfile (local JWT payload decode from
+  `authToken` -> {id,email,username}; throws 'Not authenticated' if no token),
+  health (uses module-level `HEALTH_URL` const = `API_BASE_URL.replace(/\/api\/v1\/?$/, '') + '/health'`,
+  fetched directly with its own fetch because `request()` prepends API_BASE_URL),
+  transferNFT, getTransactionReceipt, estimateGas, executeSwap, getAmmQuote,
+  ammSwap, stake/unstake/claim, getCryptoCardBalance, getCardTransactions,
+  getP2PAdverts (alias of existing getP2PListings), nonEvmAddress/Sign/Send,
+  address-book CRUD, device CRUD, approvals, keystore export/import, encrypted
+  seed export/import, security check-url/check-address/scan, lending markets/
+  positions/supply/borrow/withdraw/repay, copytrading traders/follow/stop/signals,
+  dao proposals/create/vote/delegates, perpetual positions create/close, margin
+  positions create/close, prediction markets + bet, launchpool + stake/unstake,
+  token-sales + participate, dapps + categories, chart history, defi protocols.
+- `getNFTs` already existed (verified, NOT duplicated). The 28 pre-existing core
+  methods were NOT touched. `parsePaymentUri` is an exported function outside the
+  `api` object (correct). `HEALTH_URL` is defined at module top near `API_BASE_URL`.
+- Verification: `node --check src/services/api.js` exit 0; 95 unique async methods,
+  0 duplicates. Method names regex must include digits (`[a-zA-Z0-9]`) since names
+  like `getP2PListings` contain digits.
+
+## user_wallet/android -- no-registration guest flow + Send screen (2026-08-17)
+- The canonical Android app is `user_wallet/android` (NOT the Java
+  `mobile_apps/android_app` or `master_wallet/android`, which are different
+  trees). Package `com.tigeruserwallet`, ViewBinding (`ActivityMainBinding`) +
+  `findViewById` in fragments, `UserWalletApiService` is a Kotlin singleton
+  (OkHttp) with `init(ctx)`, `guestAuth(deviceId)`, `isAuthenticated()`,
+  `getWallets(): List<Wallet>` (Wallet has `id,label,address,mnemonic?`),
+  `createWallet(name,password,chainId)`, `importWallet(label,password,mnemonic,chainId,null)`,
+  `sendTransaction(...)`, `autoSendTransaction(...)` (returns `{txHash,autoApproved,autoApprovalReason}`).
+  Bottom nav IDs: `nav_dashboard/nav_wallets/nav_send/nav_transactions/nav_settings`.
+- DO NOT modify `UserWalletApiService.kt` (already complete, 105 methods).
+- New: `StartFragment` (guest "Get Started" gate) + `SendFragment` (Send/Auto-Send
+  form). `MainActivity` now implements `StartFragment.StartHost`; on first open it
+  checks `isAuthenticated()` + `getWallets()` -- if token+wallets present, loads
+  Dashboard directly (no passcode/biometric infra = "unlock" means go to
+  Dashboard); else loads `StartFragment`. StartFragment calls `guestAuth` then
+  `onGuestReady(mode)` -> opens `WalletsFragment` with `entryMode` (CREATE/IMPORT,
+  consumed once via `view.post`, NONE default so tapping the Wallets tab doesn't
+  auto-open a dialog).
+- `WalletsFragment` now has an "Import Wallet" button -> `dialog_import_wallet.xml`
+  (ids: importNameInput, importMnemonicInput, importPasswordInput,
+  importChainSpinner). Create flow shows the generated mnemonic in an AlertDialog
+  with a "Copy" neutral button (ClipboardManager).
+- `SendFragment` (`fragment_send.xml`: walletSpinner, chainSpinner, recipientInput,
+  amountInput, passwordInput, sendButton, autoSendButton, statusTextView) calls
+  `sendTransaction` / `autoSendTransaction` and shows
+  "✓ Transaction submitted to the blockchain network" + tx hash (and auto-approval
+  reason when Auto-Send). This message is the success string for ANY send path.
+- Verification (kotlinc NOT installed): wrote a string-aware brace/paren/bracket
+  checker in Python (skips `"..."`, `"""..."""`, `'...'`, `//`, `/* */` so
+  brackets inside string literals aren't miscounted). Results: MainActivity.kt
+  ()53/53 {}23/23; StartFragment.kt ()38/38 {}16/16; SendFragment.kt ()79/79
+  {}25/25 []1/1; WalletsFragment.kt ()114/114 {}38/38 []2/2 -- all balanced.
+  All new/modified layouts/menu/drawable validated well-formed via
+  xml.dom.minidom.parse. View IDs in every Kotlin fragment cross-checked against
+  the matching layout IDs -- all present. The temporary brace_check.py was
+  deleted after verification (do not commit it).
+
+## Session 2026-08-17: UserWallet full parity (COMPLETE)
+
+All 7 UserWallet clients (web, desktop, extension, production/react, android,
+ios, rust) now target the canonical `go/wallet_api` (:8443) flat contract with
+the SAME full fetcher set — no registration required (`POST /auth/guest`
+provisions an anonymous account; every login UI leads with Create Wallet /
+Import Wallet, email/password kept as an optional recovery path). Builds all
+green: web `tsc` 0 errors, desktop/extension `node --check` 0, production/react
+`tsc` 0 errors, android/ios brace-balanced, rust `cargo check` 0 errors.
+
+- **`go/wallet_api/defi_proxy.go`** (NEW): reverse-proxy shims for lending
+  (:8009), copytrading (:8006), governance (:8454), prediction (:8455) so every
+  client reaches the full DeFi surface via a single port (:8443). go build +
+  go vet clean.
+- **Full fetcher set on all 7 clients** (previously missing on most):
+  non-EVM sign/send/address (Solana/Bitcoin/Cosmos), address-book CRUD,
+  devices CRUD, token approvals + revoke, keystore V3 export/import,
+  encrypted-seed export/import (AES-256-GCM), security scan (URL/address),
+  AMM quote/swap, lending supply/borrow/withdraw/repay, copy-trading
+  follow/traders/signals, DAO proposals/vote/delegates, perpetual + margin
+  positions, prediction markets, launchpool stake/unstake, token-sales
+  participate, dapps + categories, chart history, defi protocols, NFT transfer,
+  tx receipt, estimate gas, execute swap.
+- **UI parity**: web 16 pages (matches production/react); desktop gained
+  Send + Receive; android gained StartFragment + SendFragment + import; ios
+  gained RootView guest-auth + SendView + import. Send-flow success shows
+  "Transaction submitted to the blockchain network" on all 7. Google Drive
+  encrypted-seed backup on web + production/react. Light/dark theme on all.
+- Method counts: web ~95, desktop 95, extension 97, production/react 99,
+  android 105, ios 92 (+ parsePaymentUri free func), rust ~95 async.
+- Orphan `user_wallet/production/react/src/services/master/*` (11 files)
+  deleted. The old `:8105` dead handler, `:8080` target, and route mismatches
+  (desktop `/wallet/balances`, android `/api/v1/wallet/*`) are RESOLVED.
+

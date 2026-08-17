@@ -53,6 +53,8 @@ function bindEvents() {
   document.getElementById('toggleTheme').addEventListener('click', toggleTheme);
   document.getElementById('authSubmit').addEventListener('click', handleAuth);
   document.getElementById('authToggle').addEventListener('click', toggleAuthMode);
+  const guestStartBtn = document.getElementById('guestStart');
+  if (guestStartBtn) guestStartBtn.addEventListener('click', handleGuestStart);
   document.getElementById('refreshBtn').addEventListener('click', loadWallets);
   document.getElementById('logoutBtn').addEventListener('click', handleLogout);
 
@@ -87,7 +89,7 @@ function bindEvents() {
     if (!to || !amount || !password) { alert('Recipient, amount, and password required.'); return; }
     try {
       const res = await WalletAPI.sendTransaction(w.id, password, to, amount, w.chain_id);
-      alert('Transaction sent: ' + (res.transaction_hash || res.tx_hash || 'submitted'));
+      alert('✓ Transaction submitted to the blockchain network\nHash: ' + (res.transaction_hash || res.tx_hash || 'pending'));
     } catch (err) { alert(err.message); }
   });
 
@@ -133,6 +135,56 @@ async function handleAuth() {
     showError(err.message);
     btn.disabled = false;
     btn.textContent = isRegister ? 'Register' : 'Login';
+  }
+}
+
+// Stable per-extension device id (generated once, persisted in chrome.storage).
+// Used as the guest-account device_id so re-installs reuse the same guest.
+function getDeviceId() {
+  return new Promise((resolve) => {
+    if (chrome && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get(['userwallet-device-id'], (res) => {
+        let id = res['userwallet-device-id'];
+        if (!id) {
+          const buf = new Uint8Array(16);
+          crypto.getRandomValues(buf);
+          id = Array.from(buf).map((b) => b.toString(16).padStart(2, '0')).join('');
+          chrome.storage.local.set({ 'userwallet-device-id': id });
+        }
+        resolve(id);
+      });
+    } else {
+      let id = localStorage.getItem('userwallet-device-id');
+      if (!id) {
+        const buf = new Uint8Array(16);
+        crypto.getRandomValues(buf);
+        id = Array.from(buf).map((b) => b.toString(16).padStart(2, '0')).join('');
+        localStorage.setItem('userwallet-device-id', id);
+      }
+      resolve(id);
+    }
+  });
+}
+
+// Quick-start: provision an anonymous guest account (no email/password) so the
+// user can Create/Import a wallet WITHOUT registering. Routes to the wallets
+// tab where the create/import UI lives.
+async function handleGuestStart() {
+  hideError();
+  const btn = document.getElementById('guestStart');
+  if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
+  try {
+    const deviceId = await getDeviceId();
+    const res = await api('/auth/guest', { method: 'POST', body: { device_id: deviceId }, auth: false });
+    if (!res || !res.token) throw new Error('Guest start failed — backend unreachable.');
+    await setToken(res.token);
+    showWallets();
+    // Switch to the wallets tab so the create/import UI is front-and-center.
+    const walletsTab = document.querySelector('[data-tab="wallet"]');
+    if (walletsTab) walletsTab.click();
+  } catch (err) {
+    showError(err.message);
+    if (btn) { btn.disabled = false; btn.textContent = '➕ Create / Import Wallet'; }
   }
 }
 
@@ -268,6 +320,204 @@ const WalletAPI = {
     api('/ramp/offramp-quote', { method: 'POST', body: { providerId, amount, fiatCurrency: fiat, cryptoCurrency: crypto } }),
   getCryptoCardRates: () => api('/cards/rates'),
   getP2PListings: () => api('/p2p/listings'),
+  parsePaymentUri,
+
+  // ---- Canonical backend fetcher additions (parity with web/desktop/ios/android/rust) ----
+
+  // Auth — logout clears the persisted Bearer token.
+  logout: async () => { await setToken(null); },
+
+  // Decode the JWT locally; throw 'Not authenticated' when no token is stored.
+  getProfile: async () => {
+    const token = await getToken();
+    if (!token) throw new Error('Not authenticated');
+    const parts = token.split('.');
+    if (parts.length < 2) return {};
+    const payload = JSON.parse(
+      decodeURIComponent(
+        atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))
+          .split('')
+          .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+          .join('')
+      )
+    );
+    return payload;
+  },
+
+  // Health — root /health route lives outside /api/v1, so fetch directly.
+  health: () => fetch(`${API_BASE.replace(/\/api\/v1\/?$/, '')}/health`).then((r) => r.json()),
+
+  // Import wallet (HD mnemonic).
+  importWallet: ({ label, password, mnemonic, chainId, passphrase }) =>
+    api('/wallets', { method: 'POST', body: { label, password, mnemonic, chain_id: chainId, passphrase } }),
+
+  // NFT transfer.
+  transferNFT: ({ walletId, password, to, tokenId, contractAddress, chainId }) =>
+    api('/nft/transfer', { method: 'POST', body: { wallet_id: walletId, password, to, token_id: tokenId, contract_address: contractAddress, chain_id: chainId } }),
+
+  // Transaction receipt (explorer proxy).
+  getTransactionReceipt: (txHash, chainId) =>
+    api(`/transactions/${encodeURIComponent(txHash)}?chain_id=${chainId}`),
+
+  // Gas estimation.
+  estimateGas: ({ from, to, value, data, chainId }) =>
+    api('/gas/estimate', { method: 'POST', body: { from, to, value, data, chain_id: chainId } }),
+
+  // Swap execution.
+  executeSwap: ({ walletId, password, fromToken, toToken, fromAmount, chainId }) =>
+    api('/swap/execute', { method: 'POST', body: { wallet_id: walletId, password, from_token: fromToken, to_token: toToken, from_amount: fromAmount, chain_id: chainId } }),
+
+  // AMM quote + swap.
+  getAmmQuote: ({ fromToken, toToken, fromAmount, chainId }) =>
+    api(`/amm/quote?from_token=${encodeURIComponent(fromToken)}&to_token=${encodeURIComponent(toToken)}&from_amount=${encodeURIComponent(fromAmount)}&chain_id=${chainId}`),
+  ammSwap: ({ walletId, password, fromToken, toToken, fromAmount, chainId }) =>
+    api('/amm/swap', { method: 'POST', body: { wallet_id: walletId, password, from_token: fromToken, to_token: toToken, from_amount: fromAmount, chain_id: chainId } }),
+
+  // Staking — unstake + claim.
+  unstake: ({ walletId, password, asset, amount, chainId }) =>
+    api('/staking/unstake', { method: 'POST', body: { wallet_id: walletId, password, asset, amount, chain_id: chainId } }),
+  claim: ({ walletId, password, asset, chainId }) =>
+    api('/staking/claim', { method: 'POST', body: { wallet_id: walletId, password, asset, chain_id: chainId } }),
+
+  // Crypto cards.
+  getCryptoCardBalance: (cardId) => api(`/cards/${encodeURIComponent(cardId)}/balance`),
+  getCardTransactions: (cardId) => api(`/cards/${encodeURIComponent(cardId)}/transactions`),
+
+  // P2P alias.
+  getP2PAdverts: () => WalletAPI.getP2PListings(),
+
+  // Non-EVM address derivation + signing + sending.
+  nonEvmAddress: ({ seed, chainType, chainId, path }) =>
+    api('/non_evm/address', { method: 'POST', body: { seed, chain_type: chainType, chain_id: chainId, path } }),
+  nonEvmSign: ({ seed, chainType, chainId, messageHash, path }) =>
+    api('/non_evm/sign', { method: 'POST', body: { seed, chain_type: chainType, chain_id: chainId, message_hash: messageHash, path } }),
+  nonEvmSend: ({ seed, chainType, chainId, to, value, path }) =>
+    api('/non_evm/send', { method: 'POST', body: { seed, chain_type: chainType, chain_id: chainId, to, value, path } }),
+
+  // Address book.
+  getAddressBookContacts: () => api('/address-book/contacts'),
+  addContact: ({ name, address, chainId }) =>
+    api('/address-book/contacts', { method: 'POST', body: { name, address, chain_id: chainId } }),
+  updateContact: (id, { name, address, chainId }) =>
+    api(`/address-book/contacts/${encodeURIComponent(id)}`, { method: 'PUT', body: { name, address, chain_id: chainId } }),
+  deleteContact: (id) =>
+    api(`/address-book/contacts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  // Devices.
+  getDevices: () => api('/devices'),
+  registerDevice: ({ name, deviceType }) =>
+    api('/devices', { method: 'POST', body: { name, device_type: deviceType } }),
+  syncDevice: (deviceId) => api(`/devices/${encodeURIComponent(deviceId)}/sync`, { method: 'POST' }),
+  deleteDevice: (deviceId) => api(`/devices/${encodeURIComponent(deviceId)}`, { method: 'DELETE' }),
+
+  // Token approvals.
+  getApprovals: (address, chainId) =>
+    api(`/approvals?address=${encodeURIComponent(address)}&chain_id=${chainId}`),
+  revokeApproval: ({ approvalId }) =>
+    api(`/approvals/${encodeURIComponent(approvalId)}`, { method: 'DELETE' }),
+
+  // Keystore export / import.
+  exportKeystore: ({ walletId, password }) =>
+    api('/keystore/export', { method: 'POST', body: { wallet_id: walletId, password } }),
+  importKeystore: ({ keystore, password, label }) =>
+    api('/keystore/import', { method: 'POST', body: { keystore, password, label } }),
+
+  // Encrypted seed export / import.
+  exportEncryptedSeed: (walletId, password) =>
+    api(`/wallets/${encodeURIComponent(walletId)}/export-encrypted-seed`, { method: 'POST', body: { password } }),
+  importEncryptedSeed: ({ encryptedSeed, password, label }) =>
+    api('/wallets/import-encrypted-seed', { method: 'POST', body: { encrypted_seed: encryptedSeed, password, label } }),
+
+  // Security.
+  checkUrl: (url) => api(`/security/check-url?url=${encodeURIComponent(url)}`),
+  checkAddress: (address) => api(`/security/check-address?address=${encodeURIComponent(address)}`),
+  securityScan: (target) => api('/security/scan', { method: 'POST', body: { target } }),
+
+  // Lending.
+  getLendingMarkets: () => api('/lending/markets'),
+  getLendingPositions: () => api('/lending/positions'),
+  lendingSupply: ({ walletId, password, asset, amount, chainId }) =>
+    api('/lending/supply', { method: 'POST', body: { wallet_id: walletId, password, asset, amount, chain_id: chainId } }),
+  lendingBorrow: ({ walletId, password, asset, amount, chainId }) =>
+    api('/lending/borrow', { method: 'POST', body: { wallet_id: walletId, password, asset, amount, chain_id: chainId } }),
+  lendingWithdraw: ({ walletId, password, asset, amount, chainId }) =>
+    api('/lending/withdraw', { method: 'POST', body: { wallet_id: walletId, password, asset, amount, chain_id: chainId } }),
+  lendingRepay: ({ walletId, password, asset, amount, chainId }) =>
+    api('/lending/repay', { method: 'POST', body: { wallet_id: walletId, password, asset, amount, chain_id: chainId } }),
+
+  // Copy trading.
+  getCopyTraders: () => api('/copytrading/traders'),
+  followTrader: ({ traderId, allocation }) =>
+    api('/copytrading/follow', { method: 'POST', body: { trader_id: traderId, allocation } }),
+  stopCopyTrader: (copierId) => api(`/copytrading/copiers/${encodeURIComponent(copierId)}/stop`, { method: 'POST' }),
+  getCopySignals: () => api('/copytrading/signals'),
+
+  // DAO.
+  getDaoProposals: () => api('/dao/proposals'),
+  createDaoProposal: ({ title, description }) =>
+    api('/dao/proposals', { method: 'POST', body: { title, description } }),
+  voteDaoProposal: ({ proposalId, support }) =>
+    api(`/dao/proposals/${encodeURIComponent(proposalId)}/vote`, { method: 'POST', body: { support } }),
+  getDaoDelegates: () => api('/dao/delegates'),
+
+  // Perpetuals.
+  getPerpetualPositions: () => api('/perpetual/positions'),
+  createPerpetualPosition: ({ pair, side, size, leverage, chainId }) =>
+    api('/perpetual/positions', { method: 'POST', body: { pair, side, size, leverage, chain_id: chainId } }),
+  closePerpetualPosition: (positionId) =>
+    api(`/perpetual/positions/${encodeURIComponent(positionId)}/close`, { method: 'POST' }),
+
+  // Margin.
+  getMarginPositions: () => api('/margin/positions'),
+  createMarginPosition: ({ pair, side, size, leverage, chainId }) =>
+    api('/margin/positions', { method: 'POST', body: { pair, side, size, leverage, chain_id: chainId } }),
+  closeMarginPosition: (positionId) =>
+    api(`/margin/positions/${encodeURIComponent(positionId)}/close`, { method: 'POST' }),
+
+  // Prediction markets.
+  getPredictionMarkets: () => api('/prediction/markets'),
+  placePredictionBet: ({ marketId, side, amount }) =>
+    api(`/prediction/markets/${encodeURIComponent(marketId)}/bet`, { method: 'POST', body: { side, amount } }),
+
+  // Launchpool.
+  getLaunchpool: () => api('/launchpool'),
+  getLaunchpoolStakes: () => api('/launchpool/stakes'),
+  launchpoolStake: ({ walletId, password, amount }) =>
+    api('/launchpool/stake', { method: 'POST', body: { wallet_id: walletId, password, amount } }),
+  launchpoolUnstake: ({ walletId, password, amount }) =>
+    api('/launchpool/unstake', { method: 'POST', body: { wallet_id: walletId, password, amount } }),
+
+  // Token sales.
+  getTokenSales: () => api('/token-sales'),
+  participateTokenSale: ({ saleId, amount }) =>
+    api(`/token-sales/${encodeURIComponent(saleId)}/participate`, { method: 'POST', body: { amount } }),
+
+  // DApps.
+  getDapps: () => api('/dapps'),
+  getDappCategories: () => api('/dapps/categories'),
+
+  // Chart history.
+  getChartHistory: ({ token, days }) =>
+    api(`/chart/history?token=${encodeURIComponent(token)}&days=${encodeURIComponent(days)}`),
+
+  // DeFi protocols.
+  getDefiProtocols: () => api('/defi/protocols'),
+
+  // Networks alias.
+  getNetworks: () => WalletAPI.getChains(),
+
+  // Aggregate balances — list wallets then fan out getBalance per wallet.
+  getBalances: async () => {
+    const { wallets } = await WalletAPI.listWallets();
+    const results = await Promise.all(
+      (wallets || []).map((w) =>
+        WalletAPI.getBalance(w.address, w.chain_id)
+          .then((balance) => ({ wallet: w, balance }))
+          .catch(() => ({ wallet: w, balance: null }))
+      )
+    );
+    return results;
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -302,7 +552,7 @@ async function handleSend() {
   if (!to || !amount || !password) { alert('Fill all fields.'); return; }
   try {
     const res = await WalletAPI.sendTransaction(w.id, password, to, amount, w.chain_id);
-    alert('Transaction sent: ' + (res.transaction_hash || res.tx_hash || 'submitted'));
+    alert('✓ Transaction submitted to the blockchain network\nHash: ' + (res.transaction_hash || res.tx_hash || 'pending'));
     document.getElementById('sendTo').value = '';
     document.getElementById('sendAmount').value = '';
     document.getElementById('sendPassword').value = '';
@@ -359,7 +609,7 @@ async function handleStake() {
   if (!token || !amount || !password) { alert('Fill all fields.'); return; }
   try {
     const res = await WalletAPI.stake(w.id, password, token, amount, w.chain_id);
-    alert(res.action_required ? 'Staking requires a staking contract + calldata. Submit via Send.' : 'Stake submitted.');
+    alert(res.action_required ? 'Staking requires a staking contract + calldata. Submit via Send.' : '✓ Transaction submitted to the blockchain network');
   } catch (err) { alert(err.message); }
 }
 

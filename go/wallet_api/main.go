@@ -178,6 +178,20 @@ func main() {
 		wallet.POST("/launchpool/stake", handleLaunchpoolStake)
 		wallet.POST("/launchpool/unstake", handleLaunchpoolUnstake)
 
+		// ---- Auxiliary DeFi service reverse-proxies ----
+		// Forwards to the standalone microservices so every UserWallet client
+		// (web/desktop/android/ios/rust/extension) can target a single port
+		// (:8443) and reach the full DeFi surface. Auth is preserved via the
+		// Bearer JWT header; no data is fabricated.
+		//   lending_service      :8009  (/api/v1/lending/*)
+		//   copy_trading_service :8006  (/api/v1/copytrading/*)
+		//   governance_service   :8454  (/api/v1/governance/*)
+		//   prediction_service   :8455  (/api/v1/prediction/*)
+		wallet.Any("/lending/*path", deFiProxy("LENDING_SERVICE_URL", "http://localhost:8009", "lending"))
+		wallet.Any("/copytrading/*path", deFiProxy("COPYTRADING_SERVICE_URL", "http://localhost:8006", "copytrading"))
+		wallet.Any("/governance/*path", deFiProxy("GOVERNANCE_SERVICE_URL", "http://localhost:8454", "governance"))
+		wallet.Any("/prediction/*path", deFiProxy("PREDICTION_SERVICE_URL", "http://localhost:8455", "prediction"))
+
 		// ---- Admin / dashboard routes (authenticated + admin-role) ----
 		// Back the master-wallet dashboard with real PostgreSQL aggregates.
 		admin := wallet.Group("/admin")

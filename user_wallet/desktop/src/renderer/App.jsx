@@ -8,6 +8,8 @@ import Dashboard from '../pages/Dashboard';
 import Wallets from '../pages/Wallets';
 import Transactions from '../pages/Transactions';
 import Settings from '../pages/Settings';
+import Send from '../pages/Send';
+import Receive from '../pages/Receive';
 
 function App() {
   return (
@@ -20,6 +22,8 @@ function App() {
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="wallets" element={<Wallets />} />
+              <Route path="send" element={<Send />} />
+              <Route path="receive" element={<Receive />} />
               <Route path="transactions" element={<Transactions />} />
               <Route path="settings" element={<Settings />} />
             </Route>

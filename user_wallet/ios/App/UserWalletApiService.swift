@@ -491,4 +491,538 @@ final class UserWalletApiService {
     func getConvertQuote(fromToken: String, toToken: String, fromAmount: String, chainId: Int = 1) async throws -> SwapQuote {
         return try await getSwapQuote(fromToken: fromToken, toToken: toToken, fromAmount: fromAmount, chainId: chainId)
     }
+
+    // MARK: - Profile / Health
+
+    // No /profile route on the backend — decode the JWT payload locally
+    // (no network call), exactly like the web client.
+    func getProfile() async throws -> [String: Any] {
+        guard let t = storedToken else { throw WalletAPIError.unauthorized }
+        let parts = t.split(separator: ".")
+        guard parts.count >= 2 else { throw WalletAPIError.unauthorized }
+        var b64 = parts[1].replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        while b64.count % 4 != 0 { b64 += "=" }
+        guard let payloadData = Data(base64Encoded: b64) else { throw WalletAPIError.unauthorized }
+        do {
+            guard let payload = try JSONSerialization.jsonObject(with: payloadData) as? [String: Any] else {
+                throw WalletAPIError.emptyResponse
+            }
+            let id = payload["sub"] ?? payload["user_id"] ?? ""
+            let email = payload["email"] ?? ""
+            let username = payload["email"] ?? payload["username"] ?? ""
+            return ["id": id, "email": email, "username": username]
+        } catch let e as WalletAPIError {
+            throw e
+        } catch {
+            throw WalletAPIError.decoding(error)
+        }
+    }
+
+    // /health lives at the server root (outside /api/v1): strip the /api/v1
+    // suffix from baseURL and GET /health. No auth header required.
+    func health() async throws -> [String: Any] {
+        let root: String
+        if baseURL.hasSuffix("/api/v1/") {
+            root = String(baseURL.dropLast("/api/v1/".count))
+        } else if baseURL.hasSuffix("/api/v1") {
+            root = String(baseURL.dropLast("/api/v1".count))
+        } else {
+            root = baseURL
+        }
+        guard let url = URL(string: root + "/health") else { throw WalletAPIError.invalidURL }
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse else { throw WalletAPIError.emptyResponse }
+        if http.statusCode == 401 { throw WalletAPIError.unauthorized }
+        if !(200..<300).contains(http.statusCode) {
+            let msg = (try? JSONDecoder().decode([String: String].self, from: data))?["error"] ?? ""
+            throw WalletAPIError.http(status: http.statusCode, message: msg)
+        }
+        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+    }
+
+    // MARK: - Wallet import / NFT transfer / Tx receipt / Gas estimate
+
+    // POST /wallets with a mnemonic (optionally a BIP-39 passphrase) imports
+    // an existing wallet. Mirrors createWallet but accepts a mnemonic + passphrase.
+    func importWallet(label: String, password: String, mnemonic: String, chainId: Int = 1, passphrase: String? = nil) async throws -> [String: Any] {
+        var body: [String: Any] = ["label": label, "password": password, "chain_id": chainId, "mnemonic": mnemonic]
+        if let p = passphrase { body["passphrase"] = p }
+        let data = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/wallets", method: "POST", body: data)
+    }
+
+    // POST /nft/transfer { wallet_id, password, to, token_id, contract_address, chain_id }
+    func transferNFT(walletId: String, password: String, to: String, tokenId: String, contractAddress: String, chainId: Int) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "wallet_id": walletId, "password": password, "to": to,
+            "token_id": tokenId, "contract_address": contractAddress, "chain_id": chainId,
+        ])
+        return try await requestRaw("/nft/transfer", method: "POST", body: body)
+    }
+
+    // GET /transactions/{txHash}?chain_id=N -> full receipt.
+    func getTransactionReceipt(txHash: String, chainId: Int = 1) async throws -> [String: Any] {
+        let safeHash = txHash.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? txHash
+        let path = "/transactions/\(safeHash)?chain_id=\(chainId)"
+        return try await requestRaw(path)
+    }
+
+    // POST /gas/estimate { from, to, value?, data?, chain_id } -> { gas_limit }
+    func estimateGas(from: String, to: String, value: String? = nil, data: String? = nil, chainId: Int = 1) async throws -> [String: Any] {
+        var body: [String: Any] = ["from": from, "to": to, "chain_id": chainId]
+        if let v = value { body["value"] = v }
+        if let d = data { body["data"] = d }
+        let payload = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/gas/estimate", method: "POST", body: payload)
+    }
+
+    // MARK: - Swap execution / AMM
+
+    // POST /swap/execute -> real on-chain action via /send (no fabricated hash).
+    func executeSwap(walletId: String, password: String, fromToken: String, toToken: String, fromAmount: String, chainId: Int = 1) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "wallet_id": walletId, "password": password,
+            "from_token": fromToken, "to_token": toToken, "from_amount": fromAmount, "chain_id": chainId,
+        ])
+        return try await requestRaw("/swap/execute", method: "POST", body: body)
+    }
+
+    // GET /amm/quote (real on-chain Uniswap-V2 getAmountsOut).
+    func getAmmQuote(fromToken: String, toToken: String, fromAmount: String, chainId: Int = 1) async throws -> [String: Any] {
+        let f = fromToken.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? fromToken
+        let t = toToken.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? toToken
+        let a = fromAmount.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? fromAmount
+        let path = "/amm/quote?from_token=\(f)&to_token=\(t)&from_amount=\(a)&chain_id=\(chainId)"
+        return try await requestRaw(path)
+    }
+
+    // POST /amm/swap (real on-chain swapExactTokensForTokens calldata).
+    func ammSwap(walletId: String, password: String, fromToken: String, toToken: String, fromAmount: String, chainId: Int = 1) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "wallet_id": walletId, "password": password,
+            "from_token": fromToken, "to_token": toToken, "from_amount": fromAmount, "chain_id": chainId,
+        ])
+        return try await requestRaw("/amm/swap", method: "POST", body: body)
+    }
+
+    // MARK: - Staking actions (real on-chain via backend /send)
+
+    // POST /staking/stake { wallet_id, password, asset, amount, chain_id }
+    func stake(walletId: String, password: String, asset: String, amount: String, chainId: Int = 1) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "wallet_id": walletId, "password": password, "asset": asset, "amount": amount, "chain_id": chainId,
+        ])
+        return try await requestRaw("/staking/stake", method: "POST", body: body)
+    }
+
+    // POST /staking/unstake { wallet_id, password, asset, amount, chain_id }
+    func unstake(walletId: String, password: String, asset: String, amount: String, chainId: Int = 1) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "wallet_id": walletId, "password": password, "asset": asset, "amount": amount, "chain_id": chainId,
+        ])
+        return try await requestRaw("/staking/unstake", method: "POST", body: body)
+    }
+
+    // POST /staking/claim { wallet_id, password, asset, chain_id }
+    func claim(walletId: String, password: String, asset: String, chainId: Int = 1) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "wallet_id": walletId, "password": password, "asset": asset, "chain_id": chainId,
+        ])
+        return try await requestRaw("/staking/claim", method: "POST", body: body)
+    }
+
+    // MARK: - Networks alias
+
+    // getNetworks is an alias for /chains (same endpoint, untyped payload).
+    func getNetworks() async throws -> [String: Any] {
+        return try await requestRaw("/chains")
+    }
+
+    // MARK: - Non-EVM (Solana / Bitcoin / Cosmos)
+
+    // POST /non_evm/address { seed, chain_type, chain_id, path? } -> { address }
+    func nonEvmAddress(seed: String, chainType: String, chainId: Int, path: String? = nil) async throws -> [String: Any] {
+        var body: [String: Any] = ["seed": seed, "chain_type": chainType, "chain_id": chainId]
+        if let p = path { body["path"] = p }
+        let data = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/non_evm/address", method: "POST", body: data)
+    }
+
+    // POST /non_evm/sign { seed, chain_type, chain_id, message_hash, path? } -> { signature }
+    func nonEvmSign(seed: String, chainType: String, chainId: Int, messageHash: String, path: String? = nil) async throws -> [String: Any] {
+        var body: [String: Any] = ["seed": seed, "chain_type": chainType, "chain_id": chainId, "message_hash": messageHash]
+        if let p = path { body["path"] = p }
+        let data = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/non_evm/sign", method: "POST", body: data)
+    }
+
+    // POST /non_evm/send { seed, chain_type, chain_id, to, value, path? } -> { signature, raw_tx?, tx_hash? }
+    func nonEvmSend(seed: String, chainType: String, chainId: Int, to: String, value: String, path: String? = nil) async throws -> [String: Any] {
+        var body: [String: Any] = ["seed": seed, "chain_type": chainType, "chain_id": chainId, "to": to, "value": value]
+        if let p = path { body["path"] = p }
+        let data = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/non_evm/send", method: "POST", body: data)
+    }
+
+    // MARK: - Address book
+
+    func getAddressBookContacts() async throws -> [String: Any] {
+        return try await requestRaw("/address-book/contacts")
+    }
+
+    func addContact(name: String, address: String, chainId: Int? = nil) async throws -> [String: Any] {
+        var body: [String: Any] = ["name": name, "address": address]
+        if let c = chainId { body["chain_id"] = c }
+        let data = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/address-book/contacts", method: "POST", body: data)
+    }
+
+    func updateContact(id: String, name: String? = nil, address: String? = nil, chainId: Int? = nil) async throws -> [String: Any] {
+        var body: [String: Any] = [:]
+        if let n = name { body["name"] = n }
+        if let a = address { body["address"] = a }
+        if let c = chainId { body["chain_id"] = c }
+        let safeId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        let data = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/address-book/contacts/\(safeId)", method: "PUT", body: data)
+    }
+
+    func deleteContact(id: String) async throws -> [String: Any] {
+        let safeId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        return try await requestRaw("/address-book/contacts/\(safeId)", method: "DELETE")
+    }
+
+    // MARK: - Devices
+
+    func getDevices() async throws -> [String: Any] {
+        return try await requestRaw("/devices")
+    }
+
+    func registerDevice(name: String, deviceType: String) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: ["name": name, "device_type": deviceType])
+        return try await requestRaw("/devices", method: "POST", body: body)
+    }
+
+    func syncDevice(deviceId: String) async throws -> [String: Any] {
+        let safeId = deviceId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? deviceId
+        let body = try JSONSerialization.data(withJSONObject: [String: Any]())
+        return try await requestRaw("/devices/\(safeId)/sync", method: "POST", body: body)
+    }
+
+    func deleteDevice(deviceId: String) async throws -> [String: Any] {
+        let safeId = deviceId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? deviceId
+        return try await requestRaw("/devices/\(safeId)", method: "DELETE")
+    }
+
+    // MARK: - Token approvals
+
+    func getApprovals(address: String, chainId: Int) async throws -> [String: Any] {
+        let a = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? address
+        let path = "/approvals?address=\(a)&chain_id=\(chainId)"
+        return try await requestRaw(path)
+    }
+
+    func revokeApproval(approvalId: String) async throws -> [String: Any] {
+        let safeId = approvalId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? approvalId
+        return try await requestRaw("/approvals/\(safeId)", method: "DELETE")
+    }
+
+    // MARK: - Keystore V3 (Web3 Secret Storage)
+
+    // POST /keystore/export { wallet_id, password } -> { keystore }
+    func exportKeystore(walletId: String, password: String) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: ["wallet_id": walletId, "password": password])
+        return try await requestRaw("/keystore/export", method: "POST", body: body)
+    }
+
+    // POST /keystore/import { keystore, password, label? } -> { wallet_id, address }
+    func importKeystore(keystore: String, password: String, label: String? = nil) async throws -> [String: Any] {
+        var body: [String: Any] = ["keystore": keystore, "password": password]
+        if let l = label { body["label"] = l }
+        let data = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/keystore/import", method: "POST", body: data)
+    }
+
+    // MARK: - Encrypted-seed backup
+
+    // POST /wallets/{walletId}/export-encrypted-seed { password }
+    // -> { encrypted_seed, salt, nonce } (real AES-256-GCM).
+    func exportEncryptedSeed(walletId: String, password: String) async throws -> [String: Any] {
+        let safeId = walletId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? walletId
+        let body = try JSONSerialization.data(withJSONObject: ["password": password])
+        return try await requestRaw("/wallets/\(safeId)/export-encrypted-seed", method: "POST", body: body)
+    }
+
+    // POST /wallets/import-encrypted-seed { encrypted_seed, password, label? }
+    // -> { wallet_id, address }
+    func importEncryptedSeed(encryptedSeed: String, password: String, label: String? = nil) async throws -> [String: Any] {
+        var body: [String: Any] = ["encrypted_seed": encryptedSeed, "password": password]
+        if let l = label { body["label"] = l }
+        let data = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/wallets/import-encrypted-seed", method: "POST", body: data)
+    }
+
+    // MARK: - Security scan (scam URL / address check)
+
+    // GET /security/check-url?url= -> { safe, reason? }
+    func checkUrl(_ url: String) async throws -> [String: Any] {
+        let u = url.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? url
+        return try await requestRaw("/security/check-url?url=\(u)")
+    }
+
+    // GET /security/check-address?address= -> { safe, reason? }
+    func checkAddress(_ address: String) async throws -> [String: Any] {
+        let a = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? address
+        return try await requestRaw("/security/check-address?address=\(a)")
+    }
+
+    // POST /security/scan { target } -> { safe, threats[] }
+    func securityScan(target: String) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: ["target": target])
+        return try await requestRaw("/security/scan", method: "POST", body: body)
+    }
+
+    // MARK: - Lending
+
+    func getLendingMarkets() async throws -> [String: Any] {
+        return try await requestRaw("/lending/markets")
+    }
+
+    func getLendingPositions() async throws -> [String: Any] {
+        return try await requestRaw("/lending/positions")
+    }
+
+    func lendingSupply(walletId: String, password: String, asset: String, amount: String, chainId: Int = 1) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "wallet_id": walletId, "password": password, "asset": asset, "amount": amount, "chain_id": chainId,
+        ])
+        return try await requestRaw("/lending/supply", method: "POST", body: body)
+    }
+
+    func lendingBorrow(walletId: String, password: String, asset: String, amount: String, chainId: Int = 1) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "wallet_id": walletId, "password": password, "asset": asset, "amount": amount, "chain_id": chainId,
+        ])
+        return try await requestRaw("/lending/borrow", method: "POST", body: body)
+    }
+
+    func lendingWithdraw(walletId: String, password: String, asset: String, amount: String, chainId: Int = 1) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "wallet_id": walletId, "password": password, "asset": asset, "amount": amount, "chain_id": chainId,
+        ])
+        return try await requestRaw("/lending/withdraw", method: "POST", body: body)
+    }
+
+    func lendingRepay(walletId: String, password: String, asset: String, amount: String, chainId: Int = 1) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "wallet_id": walletId, "password": password, "asset": asset, "amount": amount, "chain_id": chainId,
+        ])
+        return try await requestRaw("/lending/repay", method: "POST", body: body)
+    }
+
+    // MARK: - Copy trading
+
+    func getCopyTraders() async throws -> [String: Any] {
+        return try await requestRaw("/copytrading/traders")
+    }
+
+    func followTrader(traderId: String, allocation: String? = nil) async throws -> [String: Any] {
+        var body: [String: Any] = ["trader_id": traderId]
+        if let a = allocation { body["allocation"] = a }
+        let data = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/copytrading/follow", method: "POST", body: data)
+    }
+
+    func stopCopyTrader(copierId: String) async throws -> [String: Any] {
+        let safeId = copierId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? copierId
+        let body = try JSONSerialization.data(withJSONObject: [String: Any]())
+        return try await requestRaw("/copytrading/copiers/\(safeId)/stop", method: "POST", body: body)
+    }
+
+    func getCopySignals() async throws -> [String: Any] {
+        return try await requestRaw("/copytrading/signals")
+    }
+
+    // MARK: - DAO / Governance
+
+    func getDaoProposals() async throws -> [String: Any] {
+        return try await requestRaw("/dao/proposals")
+    }
+
+    func createDaoProposal(title: String, description: String) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: ["title": title, "description": description])
+        return try await requestRaw("/dao/proposals", method: "POST", body: body)
+    }
+
+    func voteDaoProposal(proposalId: String, support: Bool) async throws -> [String: Any] {
+        let safeId = proposalId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? proposalId
+        let body = try JSONSerialization.data(withJSONObject: ["support": support])
+        return try await requestRaw("/dao/proposals/\(safeId)/vote", method: "POST", body: body)
+    }
+
+    func getDaoDelegates() async throws -> [String: Any] {
+        return try await requestRaw("/dao/delegates")
+    }
+
+    // MARK: - Perpetual positions
+
+    func getPerpetualPositions() async throws -> [String: Any] {
+        return try await requestRaw("/perpetual/positions")
+    }
+
+    func createPerpetualPosition(pair: String, side: String, size: String, leverage: Int, chainId: Int = 1) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "pair": pair, "side": side, "size": size, "leverage": leverage, "chain_id": chainId,
+        ])
+        return try await requestRaw("/perpetual/positions", method: "POST", body: body)
+    }
+
+    func closePerpetualPosition(positionId: String) async throws -> [String: Any] {
+        let safeId = positionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? positionId
+        let body = try JSONSerialization.data(withJSONObject: [String: Any]())
+        return try await requestRaw("/perpetual/positions/\(safeId)/close", method: "POST", body: body)
+    }
+
+    // MARK: - Margin positions
+
+    func getMarginPositions() async throws -> [String: Any] {
+        return try await requestRaw("/margin/positions")
+    }
+
+    func createMarginPosition(pair: String, side: String, size: String, leverage: Int, chainId: Int = 1) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "pair": pair, "side": side, "size": size, "leverage": leverage, "chain_id": chainId,
+        ])
+        return try await requestRaw("/margin/positions", method: "POST", body: body)
+    }
+
+    func closeMarginPosition(positionId: String) async throws -> [String: Any] {
+        let safeId = positionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? positionId
+        let body = try JSONSerialization.data(withJSONObject: [String: Any]())
+        return try await requestRaw("/margin/positions/\(safeId)/close", method: "POST", body: body)
+    }
+
+    // MARK: - Prediction markets
+
+    func getPredictionMarkets() async throws -> [String: Any] {
+        return try await requestRaw("/prediction/markets")
+    }
+
+    func placePredictionBet(marketId: String, side: String, amount: String) async throws -> [String: Any] {
+        let safeId = marketId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? marketId
+        let body = try JSONSerialization.data(withJSONObject: ["side": side, "amount": amount])
+        return try await requestRaw("/prediction/markets/\(safeId)/bet", method: "POST", body: body)
+    }
+
+    // MARK: - Launchpool
+
+    func getLaunchpool() async throws -> [String: Any] {
+        return try await requestRaw("/launchpool")
+    }
+
+    func getLaunchpoolStakes() async throws -> [String: Any] {
+        return try await requestRaw("/launchpool/stakes")
+    }
+
+    func launchpoolStake(walletId: String, password: String, amount: String) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "wallet_id": walletId, "password": password, "amount": amount,
+        ])
+        return try await requestRaw("/launchpool/stake", method: "POST", body: body)
+    }
+
+    func launchpoolUnstake(walletId: String, password: String, amount: String) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "wallet_id": walletId, "password": password, "amount": amount,
+        ])
+        return try await requestRaw("/launchpool/unstake", method: "POST", body: body)
+    }
+
+    // MARK: - Token sales
+
+    func getTokenSales() async throws -> [String: Any] {
+        return try await requestRaw("/token-sales")
+    }
+
+    func participateTokenSale(saleId: String, amount: String) async throws -> [String: Any] {
+        let safeId = saleId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? saleId
+        let body = try JSONSerialization.data(withJSONObject: ["amount": amount])
+        return try await requestRaw("/token-sales/\(safeId)/participate", method: "POST", body: body)
+    }
+
+    // MARK: - dApps / Chart / DeFi protocols
+
+    func getDapps() async throws -> [String: Any] {
+        return try await requestRaw("/dapps")
+    }
+
+    func getDappCategories() async throws -> [String: Any] {
+        return try await requestRaw("/dapps/categories")
+    }
+
+    func getChartHistory(token: String, days: Int? = nil) async throws -> [String: Any] {
+        let t = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? token
+        let d = days ?? 30
+        let path = "/chart/history?token=\(t)&days=\(d)"
+        return try await requestRaw(path)
+    }
+
+    func getDefiProtocols() async throws -> [String: Any] {
+        return try await requestRaw("/defi/protocols")
+    }
+}
+
+// parsePaymentUri — decodes a scanned QR string (bare 0x address, ethereum:
+// URI, or EIP-681 payment URI) into an address + optional amount/chainId/
+// tokenAddress. Returns nil when no address can be extracted (fail-closed —
+// never a guessed value). Mirrors the web client's parsePaymentUri 1:1.
+func parsePaymentUri(_ input: String) -> [String: Any]? {
+    let s = input.trimmingCharacters(in: .whitespacesAndNewlines)
+    if s.isEmpty { return nil }
+    if s.range(of: "^0x[a-fA-F0-9]{40}$", options: .regularExpression) != nil {
+        return ["address": s]
+    }
+    guard s.hasPrefix("ethereum:") else { return nil }
+    let body = String(s.dropFirst("ethereum:".count))
+    let qIdx = body.firstIndex(of: "?")
+    let target: String
+    let query: String
+    if let q = qIdx {
+        target = String(body[body.startIndex..<q])
+        query = String(body[body.index(after: q)...])
+    } else {
+        target = body
+        query = ""
+    }
+    var address = ""
+    var tokenAddress: String? = nil
+    if let slash = target.firstIndex(of: "/") {
+        address = String(target[target.startIndex..<slash])
+        let funcPart = String(target[target.index(after: slash)...])
+        if funcPart.hasPrefix("transfer") { tokenAddress = "" }
+    } else {
+        address = target
+    }
+    if address.range(of: "^0x[a-fA-F0-9]{40}$", options: .regularExpression) == nil { return nil }
+    var amount: String? = nil
+    var chainId: Int? = nil
+    if !query.isEmpty {
+        for pair in query.split(separator: "&") {
+            let parts = pair.split(separator: "=", maxSplits: 1)
+            guard parts.count == 2 else { continue }
+            let k = String(parts[0])
+            let v = String(parts[1])
+            if k == "value" { amount = v }
+            else if k == "chainId" { chainId = Int(v) }
+            else if k == "address", tokenAddress != nil { tokenAddress = v }
+        }
+    }
+    var result: [String: Any] = ["address": address]
+    if let a = amount { result["amount"] = a }
+    if let c = chainId { result["chainId"] = c }
+    if let t = tokenAddress, !t.isEmpty { result["tokenAddress"] = t }
+    return result
 }

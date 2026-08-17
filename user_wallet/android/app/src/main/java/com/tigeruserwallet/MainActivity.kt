@@ -8,12 +8,18 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.fragment.app.Fragment
 import com.tigeruserwallet.databinding.ActivityMainBinding
 import com.tigeruserwallet.fragments.DashboardFragment
+import com.tigeruserwallet.fragments.SendFragment
+import com.tigeruserwallet.fragments.StartFragment
 import com.tigeruserwallet.fragments.WalletsFragment
 import com.tigeruserwallet.fragments.TransactionsFragment
 import com.tigeruserwallet.fragments.SettingsFragment
 import com.tigeruserwallet.api.UserWalletApiService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), StartFragment.StartHost {
     private lateinit var binding: ActivityMainBinding
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -25,18 +31,52 @@ class MainActivity : AppCompatActivity() {
         setSupportActionBar(binding.toolbar)
 
         if (savedInstanceState == null) {
-            loadFragment(DashboardFragment())
+            showStartOrDashboard()
         }
 
         binding.bottomNavigation.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_dashboard -> loadFragment(DashboardFragment())
                 R.id.nav_wallets -> loadFragment(WalletsFragment())
+                R.id.nav_send -> loadFragment(SendFragment())
                 R.id.nav_transactions -> loadFragment(TransactionsFragment())
                 R.id.nav_settings -> loadFragment(SettingsFragment())
             }
             true
         }
+    }
+
+    // First-open gate: if a token + wallets already exist, unlock straight into
+    // Dashboard (no passcode/biometric infra -> "unlock" == go to Dashboard).
+    // Otherwise show the guest "Get Started" screen.
+    private fun showStartOrDashboard() {
+        if (UserWalletApiService.isAuthenticated()) {
+            CoroutineScope(Dispatchers.IO).launch {
+                val hasWallets = try {
+                    UserWalletApiService.getWallets().isNotEmpty()
+                } catch (e: Exception) {
+                    false
+                }
+                withContext(Dispatchers.Main) {
+                    if (hasWallets) loadFragment(DashboardFragment())
+                    else loadFragment(StartFragment())
+                }
+            }
+        } else {
+            loadFragment(StartFragment())
+        }
+    }
+
+    // StartFragment.StartHost: guestAuth already ran inside StartFragment, so by
+    // the time we get here a token is persisted. Open WalletsFragment in the
+    // requested create/import mode.
+    override fun onGuestReady(mode: StartFragment.Mode) {
+        val walletMode = when (mode) {
+            StartFragment.Mode.IMPORT -> WalletsFragment.Mode.IMPORT
+            else -> WalletsFragment.Mode.CREATE
+        }
+        loadFragment(WalletsFragment().apply { entryMode = walletMode })
+        binding.bottomNavigation.selectedItemId = R.id.nav_wallets
     }
 
     private fun loadFragment(fragment: Fragment): Boolean {

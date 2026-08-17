@@ -10,6 +10,17 @@ export default function Layout() {
   const navItems = [
     { path: '/dashboard', label: 'Dashboard' },
     { path: '/wallets', label: 'Wallets' },
+    { path: '/send', label: 'Send' },
+    { path: '/receive', label: 'Receive' },
+    { path: '/swap', label: 'Swap' },
+    { path: '/staking', label: 'Staking' },
+    { path: '/nfts', label: 'NFTs' },
+    { path: '/bridge', label: 'Bridge' },
+    { path: '/defi', label: 'DeFi' },
+    { path: '/address-book', label: 'Address Book' },
+    { path: '/devices', label: 'Devices' },
+    { path: '/approvals', label: 'Approvals' },
+    { path: '/keystore', label: 'Keystore' },
     { path: '/transactions', label: 'Transactions' },
     { path: '/settings', label: 'Settings' }
   ];
