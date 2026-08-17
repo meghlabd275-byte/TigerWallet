@@ -242,12 +242,16 @@ final class UserWalletApiService {
         let to: String
         let value: String
         let chain_id: Int
+        let unlock_token: String?
     }
     struct SendResult: Codable { let tx_hash: String; let raw_tx: String?; let nonce: Int? }
 
+    /// Broadcast a signed transaction via POST /send. `password` decrypts the
+    /// local seed; an optional `unlockToken` (from /unlock) authorizes the
+    /// action without re-entering the password. Both are sent in the JSON body.
     @discardableResult
-    func sendTransaction(walletId: String, password: String, to: String, value: String, chainId: Int = 1) async throws -> SendResult {
-        let body = try encode(SendBody(wallet_id: walletId, password: password, to: to, value: value, chain_id: chainId))
+    func sendTransaction(walletId: String, password: String, to: String, value: String, chainId: Int = 1, unlockToken: String? = nil) async throws -> SendResult {
+        let body = try encode(SendBody(wallet_id: walletId, password: password, to: to, value: value, chain_id: chainId, unlock_token: unlockToken))
         return try await request("/send", method: "POST", body: body)
     }
 
@@ -262,9 +266,13 @@ final class UserWalletApiService {
         let auto_approval_reason: String?
     }
 
+    /// Auto-approval variant of /send. Same body as `sendTransaction`
+    /// (password + optional unlock_token) plus an optional
+    /// ?master_wallet_id=<id> query. Returns the send response augmented with
+    /// { auto_approved, auto_approval_reason }.
     @discardableResult
-    func autoSendTransaction(walletId: String, password: String, to: String, value: String, chainId: Int = 1, masterWalletId: String? = nil) async throws -> AutoSendResult {
-        let body = try encode(SendBody(wallet_id: walletId, password: password, to: to, value: value, chain_id: chainId))
+    func autoSendTransaction(walletId: String, password: String, to: String, value: String, chainId: Int = 1, masterWalletId: String? = nil, unlockToken: String? = nil) async throws -> AutoSendResult {
+        let body = try encode(SendBody(wallet_id: walletId, password: password, to: to, value: value, chain_id: chainId, unlock_token: unlockToken))
         var path = "/auto-send"
         if let mw = masterWalletId {
             path += "?master_wallet_id=\(mw)"
@@ -483,8 +491,17 @@ final class UserWalletApiService {
         return try await requestRaw("/card/balance")
     }
 
+    /// Fetch live P2P market listings from GET /p2p/adverts (PostgreSQL-backed).
     func getP2PAdverts() async throws -> [String: Any] {
         return try await requestRaw("/p2p/adverts")
+    }
+
+    /// Create a P2P trade order via POST /p2p/orders. KYC-gated: the backend
+    /// returns 403 {kyc_required:true} when the caller is not verified, which
+    /// surfaces here as `WalletAPIError.http(status: 403, ...)`.
+    func createP2POrder(body: [String: Any]) async throws -> [String: Any] {
+        let payload = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/p2p/orders", method: "POST", body: payload)
     }
 
     // Convert is the same path as swap (cross-token conversion).
@@ -972,6 +989,175 @@ final class UserWalletApiService {
 
     func getDefiProtocols() async throws -> [String: Any] {
         return try await requestRaw("/defi/protocols")
+    }
+
+    // MARK: - Passkey wallet creation
+
+    // POST /passkey/wallet — creates a wallet whose seed is unlocked by a
+    // passkey credential instead of (or alongside) a password. The backend
+    // derives the BIP-39/BIP-32/BIP-44 keys, persists the encrypted seed, and
+    // returns the mnemonic + an unlock_key/unlock_token pair.
+    struct PasskeyWalletParams: Encodable {
+        let label: String
+        let chain_id: Int
+        let account_index: Int
+        let entropy_bits: Int
+        let credential_id: String
+        let public_key: String
+        let sign_count: Int
+        let attestation: String
+    }
+
+    struct PasskeyWalletResult: Codable {
+        let wallet_id: String
+        let label: String
+        let chain_id: Int
+        let address: String
+        let derivation_path: String
+        let mnemonic: String?
+        let unlock_key: String?
+        let unlock_token: String?
+    }
+
+    /// Create a passkey-secured wallet via POST /passkey/wallet. The backend
+    /// returns the new wallet id, address, derivation path, mnemonic, and an
+    /// unlock_key/unlock_token pair issued against the supplied passkey.
+    func passkeyCreateWallet(params: PasskeyWalletParams) async throws -> PasskeyWalletResult {
+        let body = try encode(params)
+        return try await request("/passkey/wallet", method: "POST", body: body)
+    }
+
+    // MARK: - Wallet lock / unlock
+
+    // POST /wallets/:id/lock — attaches a passcode and/or passkey credential
+    // to an existing wallet so it can be unlocked without the raw password.
+    struct LockSetupParams: Encodable {
+        let passcode: String?
+        let passkey_credential_id: String?
+        let passkey_public_key: String?
+    }
+
+    struct LockSetupResult: Codable {
+        let status: String
+        let has_passcode: Bool
+        let has_passkey: Bool
+    }
+
+    /// Configure a wallet's unlock mechanisms via POST /wallets/:id/lock.
+    /// Supply a passcode, a passkey credential id + public key, or both; the
+    /// response reports which mechanisms are now active on the wallet.
+    func setupLock(walletId: String, params: LockSetupParams) async throws -> LockSetupResult {
+        let safeId = walletId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? walletId
+        let body = try encode(params)
+        return try await request("/wallets/\(safeId)/lock", method: "POST", body: body)
+    }
+
+    // POST /wallets/:id/unlock — exchanges a passcode, password, passkey
+    // assertion, or pre-unwrapped unlock_key for a short-lived unlock_token
+    // that can be passed to /send, /sign, /swap/execute, etc.
+    struct UnlockParams: Encodable {
+        let passcode: String?
+        let password: String?
+        let passkey_assertion: String?
+        let passkey_auth_data: String?
+        let passkey_client_data: String?
+        let unwrapped_unlock_key: String?
+    }
+
+    struct UnlockResult: Codable {
+        let unlock_token: String
+        let expires_in: Int
+    }
+
+    /// Unlock a wallet via POST /wallets/:id/unlock. Accepts any one (or
+    /// combination) of passcode / password / passkey assertion / unwrapped
+    /// unlock key and returns a short-lived `unlock_token` + its TTL.
+    func unlockWallet(walletId: String, params: UnlockParams) async throws -> UnlockResult {
+        let safeId = walletId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? walletId
+        let body = try encode(params)
+        return try await request("/wallets/\(safeId)/unlock", method: "POST", body: body)
+    }
+
+    // MARK: - KYC
+
+    // A single file part forwarded to the multipart /kyc/document endpoint.
+    struct KycDocumentPart {
+        let name: String        // form-field name
+        let filename: String
+        let mimeType: String
+        let data: Data
+    }
+
+    /// GET /kyc/status?user_id= — current KYC verification status. `userId`
+    /// is optional; when nil the backend resolves the caller from the Bearer
+    /// JWT. Returns the opaque KYC status JSON.
+    func getKycStatus(userId: String? = nil) async throws -> [String: Any] {
+        var path = "/kyc/status"
+        if let u = userId {
+            let q = u.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? u
+            path += "?user_id=\(q)"
+        }
+        return try await requestRaw(path)
+    }
+
+    /// Begin a KYC flow via POST /kyc/register. Forwards the opaque JSON body
+    /// to the backend and returns its KYC registration response.
+    func registerKyc(body: [String: Any]) async throws -> [String: Any] {
+        let payload = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/kyc/register", method: "POST", body: payload)
+    }
+
+    /// Submit KYC verification data via POST /kyc/submit. Forwards the opaque
+    /// JSON body and returns the backend's submission response.
+    func submitKyc(body: [String: Any]) async throws -> [String: Any] {
+        let payload = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/kyc/submit", method: "POST", body: payload)
+    }
+
+    /// Upload a KYC document via POST /kyc/document (multipart/form-data).
+    /// Builds the multipart body in-memory with a boundary and forwards the
+    /// file parts plus any accompanying text fields; returns the backend
+    /// response as an opaque JSON object.
+    func submitKycDocument(parts: [KycDocumentPart], fields: [String: String] = [:]) async throws -> [String: Any] {
+        let boundary = "TigerWallet-\(UUID().uuidString)"
+        guard let url = URL(string: baseURL + "/kyc/document") else { throw WalletAPIError.invalidURL }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let t = storedToken { req.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization") }
+
+        var body = Data()
+        let crlf = "\r\n"
+        for (name, value) in fields {
+            body.append("--\(boundary)\(crlf)".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\(crlf)\(crlf)".data(using: .utf8)!)
+            body.append("\(value)\(crlf)".data(using: .utf8)!)
+        }
+        for part in parts {
+            body.append("--\(boundary)\(crlf)".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(part.name)\"; filename=\"\(part.filename)\"\(crlf)".data(using: .utf8)!)
+            body.append("Content-Type: \(part.mimeType)\(crlf)\(crlf)".data(using: .utf8)!)
+            body.append(part.data)
+            body.append(crlf.data(using: .utf8)!)
+        }
+        body.append("--\(boundary)--\(crlf)".data(using: .utf8)!)
+        req.httpBody = body
+
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse else { throw WalletAPIError.emptyResponse }
+        if http.statusCode == 401 { throw WalletAPIError.unauthorized }
+        if !(200..<300).contains(http.statusCode) {
+            let msg = (try? JSONDecoder().decode([String: String].self, from: data))?["error"] ?? ""
+            throw WalletAPIError.http(status: http.statusCode, message: msg)
+        }
+        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+    }
+
+    /// GET /kyc/session/:id — poll a KYC verification session by id. Returns
+    /// the opaque session JSON (status, provider state, verification result).
+    func getKycSession(sessionId: String) async throws -> [String: Any] {
+        let safeId = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionId
+        return try await requestRaw("/kyc/session/\(safeId)")
     }
 }
 

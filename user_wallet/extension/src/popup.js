@@ -69,6 +69,12 @@ function bindEvents() {
   // Feature handlers
   const sendBtn = document.getElementById('sendBtn');
   if (sendBtn) sendBtn.addEventListener('click', handleSend);
+  const unlockBtn = document.getElementById('unlockBtn');
+  if (unlockBtn) unlockBtn.addEventListener('click', handleUnlock);
+  const createPasskeyBtn = document.getElementById('createPasskeyBtn');
+  if (createPasskeyBtn) createPasskeyBtn.addEventListener('click', handleCreatePasskey);
+  const kycSubmitBtn = document.getElementById('kycSubmitBtn');
+  if (kycSubmitBtn) kycSubmitBtn.addEventListener('click', handleKycSubmit);
   const convertBtn = document.getElementById('convertBtn');
   if (convertBtn) convertBtn.addEventListener('click', handleConvert);
   const stakeBtn = document.getElementById('stakeBtn');
@@ -230,9 +236,17 @@ async function loadWallets() {
           <div class="wallet-label">${escapeHtml(wallet.label)} <span style="color:var(--text-secondary);font-weight:400">· Chain #${wallet.chain_id}</span></div>
           <div class="wallet-addr">${escapeHtml(wallet.address)}</div>
           ${balance ? `<div class="wallet-balance">${escapeHtml(balance.symbol)}: ${balance.balance_f.toFixed(6)} ($${balance.usd_value.toFixed(2)})</div>` : '<div class="wallet-balance" style="color:var(--text-secondary)">Balance unavailable</div>'}
+          <a href="#" class="setup-lock" data-wallet-id="${escapeHtml(wallet.id)}" style="display:inline-block;margin-top:4px;color:var(--accent);font-size:12px;">Setup App Lock</a>
         </div>`
       )
       .join('');
+    // Bind the per-wallet "Setup App Lock" links.
+    list.querySelectorAll('.setup-lock').forEach((link) => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        handleSetupLock(link.getAttribute('data-wallet-id'));
+      });
+    });
     const total = balances.reduce((sum, b) => sum + (b.balance ? b.balance.usd_value : 0), 0);
     document.getElementById('totalUsd').textContent = `$${total.toFixed(2)}`;
   } catch (err) {
@@ -261,8 +275,8 @@ const WalletAPI = {
 
   // Transactions / send / sign
   getTransactions: (address, chainId) => api(`/transactions?address=${encodeURIComponent(address)}&chain_id=${chainId}`),
-  sendTransaction: (walletId, password, to, amount, chainId, tokenAddress) =>
-    api('/send', { method: 'POST', body: { wallet_id: walletId, password, to, amount, chain_id: chainId, token_address: tokenAddress || undefined } }),
+  sendTransaction: (walletId, password, to, amount, chainId, tokenAddress, unlockToken) =>
+    api('/send', { method: 'POST', body: { wallet_id: walletId, password, unlock_token: unlockToken, to, amount, chain_id: chainId, token_address: tokenAddress || undefined } }),
   signMessage: (walletId, password, message) => api('/sign', { method: 'POST', body: { wallet_id: walletId, password, message } }),
 
   // Guest auth — POST /auth/guest { device_id } -> { user_id, token, guest: true }.
@@ -279,11 +293,11 @@ const WalletAPI = {
   // Auto-send — POST /auto-send with the SAME body as /send, plus optional
   // ?master_wallet_id=<id> query. Same Bearer JWT auth as /send. Returns the
   // existing send response PLUS { auto_approved, auto_approval_reason }.
-  autoSendTransaction: (walletId, password, to, amount, chainId, tokenAddress, masterWalletId) => {
+  autoSendTransaction: (walletId, password, to, amount, chainId, tokenAddress, masterWalletId, unlockToken) => {
     const query = masterWalletId ? `?master_wallet_id=${encodeURIComponent(masterWalletId)}` : '';
     return api(`/auto-send${query}`, {
       method: 'POST',
-      body: { wallet_id: walletId, password, to, amount, chain_id: chainId, token_address: tokenAddress || undefined },
+      body: { wallet_id: walletId, password, unlock_token: unlockToken, to, amount, chain_id: chainId, token_address: tokenAddress || undefined },
     });
   },
 
@@ -383,8 +397,8 @@ const WalletAPI = {
   getCryptoCardBalance: (cardId) => api(`/cards/${encodeURIComponent(cardId)}/balance`),
   getCardTransactions: (cardId) => api(`/cards/${encodeURIComponent(cardId)}/transactions`),
 
-  // P2P alias.
-  getP2PAdverts: () => WalletAPI.getP2PListings(),
+  // P2P adverts — GET /p2p/adverts.
+  getP2PAdverts: () => api('/p2p/adverts'),
 
   // Non-EVM address derivation + signing + sending.
   nonEvmAddress: ({ seed, chainType, chainId, path }) =>
@@ -503,6 +517,38 @@ const WalletAPI = {
   // DeFi protocols.
   getDefiProtocols: () => api('/defi/protocols'),
 
+  // Passkey wallet creation — POST /passkey/wallet.
+  passkeyCreateWallet: ({ label, chain_id, account_index, entropy_bits, credential_id, public_key, sign_count, attestation }) =>
+    api('/passkey/wallet', { method: 'POST', body: { label, chain_id, account_index, entropy_bits, credential_id, public_key, sign_count, attestation } }),
+
+  // Wallet lock — POST /wallets/:id/lock.
+  setupLock: (walletId, params) =>
+    api(`/wallets/${encodeURIComponent(walletId)}/lock`, { method: 'POST', body: params }),
+
+  // Wallet unlock — POST /wallets/:id/unlock.
+  unlockWallet: (walletId, params) =>
+    api(`/wallets/${encodeURIComponent(walletId)}/unlock`, { method: 'POST', body: params }),
+
+  // KYC — status, register, submit, document (multipart), session.
+  getKycStatus: (userId) => api(`/kyc/status?user_id=${encodeURIComponent(userId)}`),
+  registerKyc: (body) => api('/kyc/register', { method: 'POST', body }),
+  submitKyc: (body) => api('/kyc/submit', { method: 'POST', body }),
+  submitKycDocument: async (formData) => {
+    const token = await getToken();
+    const res = await fetch(`${API_BASE}/kyc/document`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    return data;
+  },
+  getKycSession: (sessionId) => api(`/kyc/session/${encodeURIComponent(sessionId)}`),
+
+  // P2P orders — POST /p2p/orders (KYC-gated; 403 {kyc_required:true}).
+  createP2POrder: (body) => api('/p2p/orders', { method: 'POST', body }),
+
   // Networks alias.
   getNetworks: () => WalletAPI.getChains(),
 
@@ -526,7 +572,7 @@ const WalletAPI = {
 const state = { wallets: [], activeWallet: null };
 
 function switchTab(tab) {
-  ['walletTab', 'sendTab', 'convertTab', 'stakingTab', 'fiatTab', 'qrTab'].forEach((t) => {
+  ['walletTab', 'sendTab', 'convertTab', 'stakingTab', 'fiatTab', 'qrTab', 'kycTab'].forEach((t) => {
     const el = document.getElementById(t);
     if (el) el.classList.add('hidden');
   });
@@ -536,6 +582,7 @@ function switchTab(tab) {
   if (tab === 'convert') loadConvert();
   if (tab === 'staking') loadStaking();
   if (tab === 'fiat') loadFiatProviders();
+  if (tab === 'kyc') loadKyc();
 }
 
 function activeWallet() {
@@ -543,20 +590,52 @@ function activeWallet() {
 }
 
 // ---- Send view ----
+// unlock_token returned by WalletAPI.unlockWallet; lets the user send
+// without re-entering the wallet password (passwordless send).
+let unlockToken = null;
+
+async function handleUnlock() {
+  const w = activeWallet();
+  if (!w) { alert('No wallet available.'); return; }
+  const passcode = document.getElementById('unlockPasscode').value;
+  const statusEl = document.getElementById('unlockStatus');
+  if (!passcode) { statusEl.textContent = 'Enter an app-lock passcode first.'; return; }
+  statusEl.textContent = 'Unlocking…';
+  try {
+    const res = await WalletAPI.unlockWallet(w.id, { passcode });
+    unlockToken = res.unlock_token || res.unlockToken || (res.token) || null;
+    if (!unlockToken) throw new Error('Unlock did not return a token.');
+    statusEl.textContent = '✓ Unlocked — passwordless send enabled.';
+  } catch (err) {
+    unlockToken = null;
+    statusEl.textContent = err.message;
+  }
+}
+
 async function handleSend() {
   const w = activeWallet();
   if (!w) { alert('No wallet available.'); return; }
   const to = document.getElementById('sendTo').value.trim();
   const amount = document.getElementById('sendAmount').value.trim();
   const password = document.getElementById('sendPassword').value;
-  if (!to || !amount || !password) { alert('Fill all fields.'); return; }
+  const statusEl = document.getElementById('sendStatus');
+  // Password is optional when an unlock_token is present (passwordless send).
+  if (!to || !amount || (!password && !unlockToken)) {
+    alert('Recipient and amount required. Provide a password or unlock passwordless first.');
+    return;
+  }
   try {
-    const res = await WalletAPI.sendTransaction(w.id, password, to, amount, w.chain_id);
-    alert('✓ Transaction submitted to the blockchain network\nHash: ' + (res.transaction_hash || res.tx_hash || 'pending'));
+    const res = await WalletAPI.sendTransaction(
+      w.id, password || null, to, amount, w.chain_id, undefined, unlockToken
+    );
+    const hash = res.transaction_hash || res.tx_hash || 'pending';
+    statusEl.textContent = '✓ Transaction submitted to the blockchain network (Hash: ' + hash + ')';
     document.getElementById('sendTo').value = '';
     document.getElementById('sendAmount').value = '';
     document.getElementById('sendPassword').value = '';
-  } catch (err) { alert(err.message); }
+  } catch (err) {
+    statusEl.textContent = err.message;
+  }
 }
 
 // ---- Convert / Swap view ----
@@ -699,6 +778,183 @@ function parsePaymentUri(input) {
     else if (k === 'address' && tokenAddress !== null) tokenAddress = v;
   });
   return { address, amount, chain_id: chainId, token_address: tokenAddress || null };
+}
+
+// ---- Passkey wallet creation + App-lock ----
+// Encode ArrayBuffer → base64url (no padding). Used for the WebAuthn
+// credentialId and the SPKI publicKey sent to passkeyCreateWallet.
+function bufToBase64Url(buf) {
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// Create a passkey-secured wallet: WebAuthn create() → credentialId +
+// publicKey SPKI (base64url) → WalletAPI.passkeyCreateWallet → show the
+// returned mnemonic with a Copy button. No fake passkey data — bails out
+// cleanly when WebAuthn is unavailable or the user cancels.
+async function handleCreatePasskey() {
+  const out = document.getElementById('passkeyResult');
+  const btn = document.getElementById('createPasskeyBtn');
+  if (!window.PublicKeyCredential) {
+    out.textContent = 'WebAuthn not supported in this browser.';
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
+  try {
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    const userId = crypto.getRandomValues(new Uint8Array(16));
+    const publicKey = {
+      challenge,
+      rp: { name: 'TigerWallet' },
+      user: { id: userId, name: 'tigerwallet-user', displayName: 'TigerWallet User' },
+      pubKeyCredParams: [
+        { type: 'public-key', alg: -7 },   // ES256
+        { type: 'public-key', alg: -257 }, // RS256
+      ],
+      authenticatorSelection: { userVerification: 'preferred', residentKey: 'preferred' },
+      attestation: 'none',
+    };
+    const cred = await navigator.credentials.create({ publicKey });
+    if (!cred || !cred.response) throw new Error('Passkey creation failed — no credential returned.');
+    const credentialId = bufToBase64Url(cred.rawId);
+    const publicKeySpki = cred.response.getPublicKey
+      ? bufToBase64Url(cred.response.getPublicKey())
+      : null;
+    if (!publicKeySpki) throw new Error('Authenticator did not return a public key.');
+
+    const label = 'Passkey Wallet';
+    const chainId = (activeWallet() && activeWallet().chain_id) || 1;
+    const res = await WalletAPI.passkeyCreateWallet({
+      label, chain_id: chainId, credential_id: credentialId, public_key: publicKeySpki,
+    });
+    const mnemonic = res.mnemonic || res.seed_phrase || res.seed || '';
+    if (mnemonic) {
+      out.innerHTML = '';
+      const pre = document.createElement('div');
+      pre.className = 'wallet-addr';
+      pre.style.margin = '6px 0';
+      pre.textContent = mnemonic;
+      out.appendChild(pre);
+      const copy = document.createElement('button');
+      copy.className = 'secondary';
+      copy.textContent = 'Copy Mnemonic';
+      copy.addEventListener('click', () => {
+        navigator.clipboard.writeText(mnemonic).then(
+          () => { copy.textContent = '✓ Copied'; },
+          () => { copy.textContent = 'Copy failed'; }
+        );
+      });
+      out.appendChild(copy);
+      out.appendChild(document.createElement('br'));
+      const note = document.createElement('div');
+      note.className = 'wallet-balance';
+      note.style.color = 'var(--text-secondary)';
+      note.textContent = 'Store this mnemonic securely. It will not be shown again.';
+      out.appendChild(note);
+    } else {
+      out.textContent = '✓ Passkey wallet created.';
+    }
+    loadWallets();
+  } catch (err) {
+    out.textContent = err && err.name === 'NotAllowedError'
+      ? 'Passkey creation cancelled or denied.'
+      : (err.message || 'Passkey creation failed.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔐 Create with Passkey'; }
+  }
+}
+
+// Setup App Lock per wallet — prompt for a passcode, then call setupLock.
+async function handleSetupLock(walletId) {
+  const passcode = prompt('Set an app-lock passcode for this wallet:');
+  if (!passcode) return;
+  if (passcode.length < 4) { alert('Passcode must be at least 4 characters.'); return; }
+  try {
+    await WalletAPI.setupLock(walletId, { passcode });
+    alert('✓ App Lock set. Use it to unlock passwordless send.');
+  } catch (err) { alert(err.message); }
+}
+
+// ---- KYC view ----
+async function loadKyc() {
+  const statusEl = document.getElementById('kycStatus');
+  const formEl = document.getElementById('kycForm');
+  const errEl = document.getElementById('kycError');
+  if (errEl) errEl.classList.add('hidden');
+  statusEl.textContent = 'Checking KYC status…';
+  formEl.classList.add('hidden');
+  try {
+    const profile = await WalletAPI.getProfile();
+    const userId = profile.sub || profile.user_id || profile.userId || profile.id;
+    if (!userId) throw new Error('Unable to determine user id.');
+    const res = await WalletAPI.getKycStatus(userId);
+    const status = (res.status || res.kyc_status || 'not_submitted').toLowerCase();
+    if (status === 'verified' || status === 'approved') {
+      statusEl.textContent = '✓ KYC Verified — P2P trading enabled.';
+    } else if (status === 'pending' || status === 'in_review' || status === 'reviewing') {
+      statusEl.textContent = 'KYC review pending. Check back shortly.';
+    } else if (status === 'rejected' || status === 'declined') {
+      statusEl.textContent = 'KYC was rejected. Please re-submit below.';
+      formEl.classList.remove('hidden');
+    } else {
+      statusEl.textContent = 'KYC required only for P2P trading. Not submitted yet.';
+      formEl.classList.remove('hidden');
+    }
+  } catch (err) {
+    statusEl.textContent = '';
+    errEl.textContent = err.message;
+    errEl.classList.remove('hidden');
+    // Surface the start form on error (e.g. status fetch failed) so the user can proceed.
+    formEl.classList.remove('hidden');
+  }
+}
+
+async function handleKycSubmit() {
+  const fullName = document.getElementById('kycFullName').value.trim();
+  const documentType = document.getElementById('kycDocType').value.trim();
+  const documentNumber = document.getElementById('kycDocNumber').value.trim();
+  const errEl = document.getElementById('kycError');
+  const statusEl = document.getElementById('kycStatus');
+  const btn = document.getElementById('kycSubmitBtn');
+  if (!fullName || !documentType || !documentNumber) {
+    errEl.textContent = 'Fill all KYC fields.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  errEl.classList.add('hidden');
+  if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+  try {
+    const profile = await WalletAPI.getProfile();
+    const userId = profile.sub || profile.user_id || profile.userId || profile.id;
+    // 1) register the KYC record (identity claims).
+    const reg = await WalletAPI.registerKyc({
+      user_id: userId,
+      full_name: fullName,
+      document_type: documentType,
+      document_number: documentNumber,
+    });
+    const sessionId = reg.session_id || reg.sessionId || reg.id || null;
+    // 2) submit for verification.
+    const sub = await WalletAPI.submitKyc({
+      user_id: userId,
+      session_id: sessionId,
+      full_name: fullName,
+      document_type: documentType,
+      document_number: documentNumber,
+    });
+    const finalSessionId = sessionId || sub.session_id || sub.sessionId || sub.id;
+    statusEl.textContent = sub.status === 'verified' || sub.status === 'approved'
+      ? '✓ KYC Verified — P2P trading enabled.'
+      : 'KYC submitted — review pending.' + (finalSessionId ? ' Session: ' + finalSessionId : '');
+    document.getElementById('kycForm').classList.add('hidden');
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.remove('hidden');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Start KYC'; }
+  }
 }
 
 function showError(msg) {

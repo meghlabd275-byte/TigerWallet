@@ -257,12 +257,14 @@ class WalletService {
     amount: string,
     _token?: string,
     password?: string,
-    chainId?: number
+    chainId?: number,
+    unlockToken?: string
   ): Promise<string> {
-    if (!password) throw new Error('password is required to sign on the backend');
+    if (!password && !unlockToken) throw new Error('password or unlock_token is required to sign on the backend');
     const response = await this.api.post('/send', {
       wallet_id: walletId,
       password,
+      unlock_token: unlockToken,
       to,
       value: amount,
       chain_id: chainId ?? 1,
@@ -299,14 +301,16 @@ class WalletService {
     amount: string,
     password: string,
     chainId?: number,
-    masterWalletId?: string
+    masterWalletId?: string,
+    unlockToken?: string
   ): Promise<{ txHash: string; autoApproved: boolean; autoApprovalReason: string }> {
-    if (!password) throw new Error('password is required to sign on the backend');
+    if (!password && !unlockToken) throw new Error('password or unlock_token is required to sign on the backend');
     const response = await this.api.post(
       '/auto-send',
       {
         wallet_id: walletId,
         password,
+        unlock_token: unlockToken,
         to,
         value: amount,
         chain_id: chainId ?? 1,
@@ -1387,6 +1391,133 @@ class WalletService {
   async getDefiProtocols(): Promise<unknown> {
     const response = await this.api.get('/defi/protocols');
     return response.data;
+  }
+
+  // ---- Passkey wallet creation / lock / unlock ----
+
+  // Create a wallet whose seed is sealed behind a passkey credential. Maps to
+  // POST /passkey/wallet and returns the wallet record plus the unlock
+  // material the backend issues at creation time.
+  async passkeyCreateWallet(params: {
+    label?: string;
+    chainId?: number;
+    accountIndex?: number;
+    entropyBits?: number;
+    credentialId: string;
+    publicKey: string;
+    signCount?: number;
+    attestation?: string;
+  }): Promise<{
+    wallet_id: string;
+    label: string;
+    chain_id: number;
+    address: string;
+    derivation_path: string;
+    mnemonic: string;
+    unlock_key: string;
+    unlock_token: string;
+  }> {
+    const { data } = await this.api.post('/passkey/wallet', {
+      label: params.label,
+      chain_id: params.chainId,
+      account_index: params.accountIndex,
+      entropy_bits: params.entropyBits,
+      credential_id: params.credentialId,
+      public_key: params.publicKey,
+      sign_count: params.signCount,
+      attestation: params.attestation,
+    });
+    return data;
+  }
+
+  // Attach a passcode and/or passkey lock to a wallet. POST /wallets/:id/lock.
+  async setupLock(
+    walletId: string,
+    params: { passcode?: string; passkeyCredentialId?: string; passkeyPublicKey?: string }
+  ): Promise<{ status: string; has_passcode: boolean; has_passkey: boolean }> {
+    const { data } = await this.api.post(
+      `/wallets/${encodeURIComponent(walletId)}/lock`,
+      {
+        passcode: params.passcode,
+        passkey_credential_id: params.passkeyCredentialId,
+        passkey_public_key: params.passkeyPublicKey,
+      }
+    );
+    return data;
+  }
+
+  // Unlock a wallet with a passcode, password, passkey assertion, or a
+  // pre-unwrapped key. POST /wallets/:id/unlock -> { unlock_token, expires_in }.
+  async unlockWallet(
+    walletId: string,
+    params: {
+      passcode?: string;
+      password?: string;
+      passkeyAssertion?: string;
+      passkeyAuthData?: string;
+      passkeyClientData?: string;
+      unwrappedUnlockKey?: string;
+    }
+  ): Promise<{ unlock_token: string; expires_in: number }> {
+    const { data } = await this.api.post(
+      `/wallets/${encodeURIComponent(walletId)}/unlock`,
+      {
+        passcode: params.passcode,
+        password: params.password,
+        passkey_assertion: params.passkeyAssertion,
+        passkey_auth_data: params.passkeyAuthData,
+        passkey_client_data: params.passkeyClientData,
+        unwrapped_unlock_key: params.unwrappedUnlockKey,
+      }
+    );
+    return data;
+  }
+
+  // ---- KYC ----
+
+  // GET /kyc/status?user_id= — current KYC status for a user.
+  async getKycStatus(userId?: string): Promise<any> {
+    const { data } = await this.api.get('/kyc/status', {
+      params: userId ? { user_id: userId } : undefined,
+    });
+    return data;
+  }
+
+  // POST /kyc/register — begin KYC registration for the caller.
+  async registerKyc(body: any): Promise<any> {
+    const { data } = await this.api.post('/kyc/register', body);
+    return data;
+  }
+
+  // POST /kyc/submit — submit KYC details for review.
+  async submitKyc(body: any): Promise<any> {
+    const { data } = await this.api.post('/kyc/submit', body);
+    return data;
+  }
+
+  // POST /kyc/document (multipart/form-data) — upload a verification document.
+  async submitKycDocument(formData: FormData): Promise<any> {
+    const { data } = await this.api.post('/kyc/document', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  }
+
+  // GET /kyc/session/:id — retrieve a KYC verification session.
+  async getKycSession(sessionId: string): Promise<any> {
+    const { data } = await this.api.get(
+      `/kyc/session/${encodeURIComponent(sessionId)}`
+    );
+    return data;
+  }
+
+  // ---- P2P ----
+
+  // createP2POrder — POST /p2p/orders (KYC-gated; backend returns
+  // 403 { kyc_required: true } when the caller is not verified).
+  async createP2POrder(body: any): Promise<any> {
+    const { data } = await this.api.post('/p2p/orders', body);
+    return data;
   }
 }
 

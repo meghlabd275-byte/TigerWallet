@@ -3617,3 +3617,165 @@ green: web `tsc` 0 errors, desktop/extension `node --check` 0, production/react
   deleted. The old `:8105` dead handler, `:8080` target, and route mismatches
   (desktop `/wallet/balances`, android `/api/v1/wallet/*`) are RESOLVED.
 
+### user_wallet/rust/src/lib.rs -- passkey/lock/unlock/KYC/P2P additions (2026-08-17)
+
+- `UserWalletClient` (crate `tigerwallet_user_wallet`, single-file
+  `src/lib.rs`) is the async reqwest client delegating to go/wallet_api
+  (`:8443`, Bearer JWT). It uses private `get<T>`/`post<T,B>`/`put`/`delete`/
+  `get_query<T>` helpers that all auto-attach `bearer_auth(self.token())`.
+- Added `multipart` to reqwest features in `Cargo.toml`
+  (`features = ["json", "rustls-tls", "multipart"]`) — needed only for
+  `submit_kyc_document`. No other deps added.
+- New serde structs (all `#[derive(Debug, Clone, Serialize, Deserialize,
+  Default)]`, optional fields use `#[serde(default, skip_serializing_if =
+  "Option::is_none")]`): `PasskeyWalletParams`, `PasskeyWalletResult`,
+  `LockSetupParams`, `LockSetupResult`, `UnlockParams`, `UnlockResult`.
+- New async methods under `/api/v1`: `passkey_create_wallet` (POST
+  `/passkey/wallet`), `setup_lock` (POST `/wallets/:id/lock`),
+  `unlock_wallet` (POST `/wallets/:id/unlock`), `get_kyc_status` (GET
+  `/kyc/status?user_id=`), `register_kyc`/`submit_kyc` (POST JSON ->
+  `serde_json::Value`), `submit_kyc_document` (multipart — dedicated method
+  using `self.http.post(url).multipart(form).bearer_auth(t)`, NOT the JSON
+  `post` helper), `get_kyc_session` (GET `/kyc/session/:id`),
+  `create_p2p_order` (POST `/p2p/orders`, KYC-gated 403). Opaque responses
+  deserialize to `serde_json::Value`.
+- `get_p2p_adverts` repointed from `p2p_listings()` alias to
+  `GET /api/v1/p2p/adverts` (no duplicate; `p2p_listings()` left intact).
+- `send_transaction` and `auto_send_transaction` gained an
+  `unlock_token: Option<&str>` param (appended after existing params);
+  `"unlock_token"` is added to the JSON body alongside `password` (password
+  NOT removed), with `skip_serializing_if = "Option::is_none"`. CALLERS MUST
+  pass the new arg — signature changed.
+- All paths are under `/api/v1` (helpers prepend only `base_url`). Path
+  params encoded with the local `url_encode` (RFC 3986 unreserved set).
+- `cargo check --lib` exit 0, no warnings, no new deps beyond multipart.
+
+
+
+## Session 2026-08-17 (cont): UserWallet passkey + app-lock + passwordless send + KYC-gated P2P (COMPLETE)
+
+Built the four genuinely-new requirements (verified not done in the prior
+parity session). All real crypto, fail-closed, no stubs/fakes/mocks.
+
+### Backend (`go/wallet_api/app_lock.go` NEW + main.go + config.go + store.go + handlers.go + nft_transfer.go)
+- **Passkey wallet creation**: `POST /api/v1/passkey/wallet` — generates a real
+  BIP-39 mnemonic + derives the EVM key (same as handleCreateWallet), but
+  encrypts the seed with a randomly generated `unlock_key` (AES-256-GCM keyed
+  on SHA-256(unlock_key)) instead of a user password. Stores
+  `unlock_key_enc_seed` + `sha256(unlock_key)` in the new `wallet_locks` PG
+  table. The server validates the browser-supplied SPKI passkey public key is
+  a real P-256 ECDSA key (`parseWebAuthnSPKI`). Returns the mnemonic +
+  `unlock_key` (client wraps it with the passkey) + a passwordless
+  `unlock_token`. The raw unlock key is NEVER re-stored server-side.
+- **App lock**: `POST /wallets/:id/lock` (set/replace a per-wallet lock
+  credential: passcode hash + optional passkey SPKI) + `POST /wallets/:id/unlock`
+  (verify passcode/passkey/no-credential -> issue a 5-min passwordless
+  `unlock_token`). The `unlock_token` is a random 32-byte hex stored in an
+  in-memory `seedSessions` cache mapping token -> decrypted seed + walletID +
+  userID + expiry. Unlock paths: (1) passkey-created wallet: client supplies
+  the passkey-unwrapped `unlock_key` (verified against the stored hash) ->
+  decrypt seed; (2) standard wallet, no lock set: requires the wallet
+  password; (3) standard wallet with passcode: verify passcode (bcrypt) +
+  wallet password; (4) standard wallet with passkey: verify the WebAuthn
+  assertion (real ECDSA P-256 ES256 over SHA-256(authenticatorData ||
+  SHA-256(clientDataJSON)), sign-count replay protection) + wallet password.
+- **Passwordless send/sign/NFT-transfer**: `sendTxReq`/`nftTransferReq`/
+  sign-message now accept an optional `unlock_token`. `resolveSeed` prefers
+  the unlock_token (retrieves the decrypted seed from the session cache) and
+  falls back to the wallet password. So a user who has unlocked (passcode/
+  passkey/nothing) can send + sign + transfer NFTs WITHOUT entering the wallet
+  password for 5 minutes. `handleAutoSend` still self-signs + broadcasts +
+  surfaces the MasterWallet-owner auto-approval flag — the "within a second"
+  auto-approval path is unchanged; the new unlock_token just removes the
+  per-tx password prompt.
+- **KYC proxy + P2P KYC gate**: `GET /kyc/status`, `POST /kyc/register`,
+  `POST /kyc/submit`, `POST /kyc/document` (multipart), `GET /kyc/session/:id`
+  proxy to the canonical listing_service (`LISTING_SERVICE_URL` env, :8010) so
+  UserWallet clients reach KYC via the single :8443 port. `GET /p2p/adverts`
+  + `POST /p2p/orders` proxy to p2p_trading (`P2P_SERVICE_URL`, :8475); the
+  order-creation endpoint is KYC-gated — `kycVerified(userID)` (fail-closed
+  on any error) returns 403 `{kyc_required: true}` if the user's KYC status is
+  not verified/approved. Browsing adverts is ungated; only placing a P2P order
+  requires KYC.
+- **WebAuthn assertion verification**: real `ecdsa.VerifyASN1` (DER) +
+  raw-r||s fallback; reconstructs the signed message (authenticatorData ||
+  SHA-256(clientDataJSON)); sign-count rollback rejection. Mirrors the W3C
+  spec + the two_factor_auth reference impl.
+- **Schema**: new `wallet_locks` table (wallet_id PK, passcode_hash,
+  passkey_cred_id, passkey_pubkey, passkey_sign_count, unlock_key_enc_seed,
+  unlock_key_hash, updated_at) auto-migrated on boot.
+- **Config**: `ListingServiceURL` (LISTING_SERVICE_URL) + `P2PServiceURL`
+  (P2P_SERVICE_URL) added to AppConfig.
+- Build+vet+test all exit 0 (BIP-44 vector + non-EVM + rate-limit + chain
+  registry tests all pass).
+
+### Clients (all 7) — new fetcher methods + unlock_token plumbing
+Every UserWallet client gained: `passkeyCreateWallet`, `setupLock`,
+`unlockWallet`, `getKycStatus`, `registerKyc`, `submitKyc`,
+`submitKycDocument` (multipart), `getKycSession`, `getP2PAdverts` (updated to
+`/p2p/adverts`), `createP2POrder`. The existing `sendTransaction` +
+`autoSendTransaction` now accept an optional `unlockToken`/`unlock_token`
+(alongside password — password NOT removed).
+- web `src/services/api.ts`: 10 new methods + unlockToken on send/autoSend.
+  `npx tsc --noEmit` 0 errors.
+- desktop `src/services/api.js`: 10 new methods + unlockToken. node --check 0.
+- extension `src/popup.js`: 10 new methods + unlockToken. node --check 0.
+- production/react `src/services/WalletService.ts`: 9 new methods (getP2PAdverts
+  already existed) + unlockToken. `npx tsc --noEmit` 0 errors.
+- android `UserWalletApiService.kt`: 9 new methods + typed param/result data
+  classes (PasskeyWalletParams/Result, LockParams, UnlockParams) + unlockToken
+  on send/autoSend. Multipart via dedicated okhttp call. Brace-balanced
+  (kotlinc NOT installed).
+- ios `UserWalletApiService.swift`: 9 new methods + Codable structs +
+  unlockToken. Brace-balanced (swiftc NOT installed).
+- rust `src/lib.rs`: 9 new methods + serde structs + unlockToken on
+  send/autoSend. reqwest `multipart` feature added to Cargo.toml.
+  `cargo check --lib` exit 0.
+
+### UI (all 6 UI platforms) — passkey create + app-lock + KYC screen + passwordless send
+- web: new `src/pages/KYC.tsx` (fetch status, Start KYC form, verified banner,
+  P2P note) + route + nav. Wallets.tsx: "Setup App Lock" modal (passcode +
+  real WebAuthn passkey via `navigator.credentials.create`) + "Create with
+  Passkey" option + mnemonic Copy. Send.tsx: "Unlock Wallet (passwordless)"
+  button -> unlockWallet -> unlockToken -> send; keeps the "Transaction
+  submitted to the blockchain network" banner. `src/services/webauthn.ts`
+  helper (feature-check + createPasskey). tsc 0 errors.
+- production/react: `src/pages/KYCPage.tsx` + route + Sidebar link;
+  `src/components/AppLockModal.tsx`; `src/utils/passkey.ts`; WalletPage passkey
+  create + app-lock; SendPage passwordless unlock. tsc 0 errors.
+- desktop: `src/pages/KYC.jsx` + route + Layout nav; Wallets.jsx app-lock +
+  passkey create; Send.jsx passwordless unlock + tx-submitted message.
+  node --check OK; JSX parse-clean (esbuild).
+- android: `fragments/KycFragment.kt` + `fragment_kyc.xml` + Dashboard
+  button; `util/CredentialManagerHelper.kt` (reflective passkey, real
+  CredentialManager call structure, throws honestly without the gradle dep);
+  WalletsFragment app-lock dialog + passkey create (mnemonic + Copy);
+  SendFragment passwordless unlock -> unlockToken. Brace-balanced + XML
+  well-formed. NOTE: real passkey flow requires adding
+  `androidx.credentials:credentials` to app/build.gradle (documented inline;
+  passcode-only lock is fully real now).
+- ios: `KycView.swift` + ContentView tab; `PasskeyHelper.swift` (real
+  ASAuthorizationPlatformPublicKeyCredentialRegistrationRequest);
+  WalletsView app-lock sheet + passkey-create toolbar item + mnemonic Copy;
+  SendView passwordless unlock -> unlockToken. Brace-balanced (string-aware
+  tokenizer). swiftc NOT installed.
+- extension: KYC tab + loadKyc; Send tab passwordless unlock + tx-submitted
+  status; walletTab "Create with Passkey" (real WebAuthn) + per-wallet
+  "Setup App Lock" link. node --check OK; popup.html XML well-formed.
+
+### Requirement coverage
+1. Passkey wallet creation (4th create option) — web/react/desktop/ios/ext
+   real WebAuthn; android real CredentialManager structure (gradle dep TODO).
+2. Passwordless send/receive — unlock_token session (5 min); send/sign/
+   nft-transfer accept unlock_token; user never enters the wallet password
+   after unlock.
+3. App lock: passcode/fingerprint/unlock-without-anything — backend
+   `/wallets/:id/lock` + `/unlock` supports passcode, passkey, or (for
+   passkey-created wallets) the unlock key; UI on all 6 platforms.
+4. KYC gate for P2P trading only — `POST /p2p/orders` 403s unless KYC
+   verified; KYC screen on all 6 platforms; browsing adverts ungated.
+
+### Build verification (ALL GREEN)
+go build+vet+test (wallet_api), tsc (web + production/react), node --check
+(desktop api.js + extension popup.js), cargo check (rust lib), brace-balance
+(android kotlin + ios swift), XML well-formed (android + extension layouts).

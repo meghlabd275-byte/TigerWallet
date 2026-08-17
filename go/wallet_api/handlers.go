@@ -477,13 +477,14 @@ func handleNFTs(c *gin.Context) {
 // ---- Send transaction ----
 
 type sendTxReq struct {
-	WalletID  string `json:"wallet_id" binding:"required"`
-	Password  string `json:"password" binding:"required"`
-	ToAddress string `json:"to" binding:"required"`
-	Value     string `json:"value" binding:"required"` // in ether
-	GasLimit  uint64 `json:"gas_limit"`
-	Data      string `json:"data"`
-	ChainID   int64  `json:"chain_id"`
+	WalletID    string `json:"wallet_id" binding:"required"`
+	Password    string `json:"password"`         // optional when unlock_token supplied (passwordless send)
+	UnlockToken string `json:"unlock_token"`     // optional; short-lived session from /wallets/:id/unlock
+	ToAddress   string `json:"to" binding:"required"`
+	Value       string `json:"value" binding:"required"` // in ether
+	GasLimit    uint64 `json:"gas_limit"`
+	Data        string `json:"data"`
+	ChainID     int64  `json:"chain_id"`
 }
 
 func handleSendTransaction(c *gin.Context) {
@@ -633,10 +634,11 @@ func executeSend(c *gin.Context, req sendTxReq) {
 		return
 	}
 
-	// Decrypt seed
-	seed, err := DecryptSeed(wallet.EncryptedSeed, req.Password)
+	// Decrypt seed — prefer passwordless unlock_token (issued by /wallets/:id/unlock
+	// after passkey/passcode/no-credential unlock); fall back to the wallet password.
+	seed, err := resolveSeed(wallet, req.Password, req.UnlockToken)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "incorrect password"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -798,9 +800,10 @@ func handleSupportedChains(c *gin.Context) {
 
 func handleSignMessage(c *gin.Context) {
 	var req struct {
-		WalletID string `json:"wallet_id" binding:"required"`
-		Password string `json:"password" binding:"required"`
-		Message  string `json:"message" binding:"required"`
+		WalletID    string `json:"wallet_id" binding:"required"`
+		Password    string `json:"password"`     // optional when unlock_token supplied
+		UnlockToken string `json:"unlock_token"` // optional; passwordless signing
+		Message     string `json:"message" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -817,9 +820,9 @@ func handleSignMessage(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "wallet does not belong to user"})
 		return
 	}
-	seed, err := DecryptSeed(wallet.EncryptedSeed, req.Password)
+	seed, err := resolveSeed(wallet, req.Password, req.UnlockToken)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "incorrect password"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 	privKey, err := hdDerive(seed, wallet.DerivationPath)

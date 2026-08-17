@@ -26,6 +26,13 @@
         android:layout_marginTop="8dp"
         android:text="Import Wallet" />
 
+    <Button
+        android:id="@+id/passkeyCreateWalletButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Create with Passkey" />
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/walletsRecyclerView"
         android:layout_width="match_parent"

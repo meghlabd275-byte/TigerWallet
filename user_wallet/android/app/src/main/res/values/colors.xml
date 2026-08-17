@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="kyc_verified">#16A34A</color>
+    <color name="kyc_pending">#D97706</color>
+    <color name="kyc_rejected">#DC2626</color>
+    <color name="kyc_neutral">#6B7280</color>
+</resources>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTheme } from '../contexts/ThemeContext';
 import { api, parsePaymentUri } from '../services/api';
 
 const CHAIN_OPTIONS = [
@@ -9,6 +10,8 @@ const CHAIN_OPTIONS = [
 const CHAIN_IDS = { ethereum: 1, bsc: 56, polygon: 137 };
 
 function Send() {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
   const [wallets, setWallets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
@@ -22,6 +25,12 @@ function Send() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
+
+  // Passwordless unlock state.
+  const [unlockPasscode, setUnlockPasscode] = useState('');
+  const [unlockToken, setUnlockToken] = useState('');
+  const [unlockBusy, setUnlockBusy] = useState(false);
+  const [unlockMsg, setUnlockMsg] = useState('');
 
   useEffect(() => {
     api.getWallets()
@@ -61,14 +70,43 @@ function Send() {
     to: form.to.trim(),
     value: form.value,
     chainId: CHAIN_IDS[form.network] || 1,
+    unlockToken: unlockToken || undefined,
   });
+
+  const unlockWallet = async () => {
+    setError('');
+    setUnlockMsg('');
+    if (!form.walletId) { setError('Select a wallet first'); return; }
+    if (!unlockPasscode) { setError('Enter a passcode to unlock'); return; }
+    setUnlockBusy(true);
+    try {
+      const res = await api.unlockWallet(form.walletId, { passcode: unlockPasscode });
+      const token = res && (res.unlock_token || res.unlockToken);
+      if (!token) {
+        setUnlockMsg('Unlock succeeded but no token was returned.');
+        setUnlockBusy(false);
+        return;
+      }
+      setUnlockToken(token);
+      setUnlockMsg('Wallet unlocked passwordlessly — send will use the unlock token.');
+      setUnlockPasscode('');
+    } catch (err) {
+      setError(err.message || 'Unlock failed');
+    } finally {
+      setUnlockBusy(false);
+    }
+  };
 
   const doSend = async (auto) => {
     setError('');
     setSuccess(null);
     if (!form.walletId) { setError('Select a wallet'); return; }
     if (!form.to.trim()) { setError('Recipient address is required'); return; }
-    if (form.password.length < 8) { setError('Password must be at least 8 characters'); return; }
+    // Either a wallet password or an unlock token must be present.
+    if (!unlockToken && form.password.length < 8) {
+      setError('Enter your wallet password or unlock passwordlessly');
+      return;
+    }
     setBusy(true);
     try {
       const res = auto
@@ -135,15 +173,39 @@ function Send() {
             required
           />
 
-          <label>Wallet password</label>
+          <label>Wallet password {unlockToken && <span style={{ color: isDark ? '#4CAF50' : 'var(--accent)' }}>(optional — unlocked)</span>}</label>
           <input
             type="password"
-            placeholder="Password (min 8 chars)"
+            placeholder="Password (min 8 chars) — or unlock passwordlessly"
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
-            required
             minLength={8}
           />
+
+          <label>Or unlock passwordlessly (app-lock passcode)</label>
+          <div className="qr-row">
+            <input
+              type="password"
+              placeholder="App-lock passcode"
+              value={unlockPasscode}
+              onChange={(e) => setUnlockPasscode(e.target.value)}
+            />
+            <button type="button" onClick={unlockWallet} disabled={unlockBusy}>
+              {unlockBusy ? 'Unlocking…' : '🔑 Unlock Wallet (passwordless)'}
+            </button>
+          </div>
+          {unlockMsg && (
+            <p className="backup-msg" style={{ color: isDark ? '#4CAF50' : 'var(--accent)' }}>{unlockMsg}</p>
+          )}
+          {unlockToken && (
+            <button
+              type="button"
+              className="link-btn"
+              onClick={() => { setUnlockToken(''); setUnlockMsg('Unlock token cleared.'); }}
+            >
+              Clear unlock token
+            </button>
+          )}
 
           <label>Paste QR / payment URI</label>
           <div className="qr-row">

@@ -186,6 +186,17 @@ CREATE TABLE IF NOT EXISTS devices (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(user_id);
+
+CREATE TABLE IF NOT EXISTS wallet_locks (
+    wallet_id UUID PRIMARY KEY REFERENCES wallets(id) ON DELETE CASCADE,
+    passcode_hash TEXT,
+    passkey_cred_id TEXT,
+    passkey_pubkey TEXT,
+    passkey_sign_count INTEGER NOT NULL DEFAULT 0,
+    unlock_key_enc_seed TEXT,
+    unlock_key_hash TEXT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 ` + portfolioSchemaSQL
 
 // ---- User operations ----

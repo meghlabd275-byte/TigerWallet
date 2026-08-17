@@ -10,6 +10,7 @@ import Transactions from '../pages/Transactions';
 import Settings from '../pages/Settings';
 import Send from '../pages/Send';
 import Receive from '../pages/Receive';
+import KYC from '../pages/KYC';
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
               <Route path="send" element={<Send />} />
               <Route path="receive" element={<Receive />} />
               <Route path="transactions" element={<Transactions />} />
+              <Route path="kyc" element={<KYC />} />
               <Route path="settings" element={<Settings />} />
             </Route>
           </Routes>

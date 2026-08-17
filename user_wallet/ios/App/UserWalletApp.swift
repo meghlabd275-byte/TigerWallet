@@ -224,9 +224,13 @@ struct ContentView: View {
                 .tabItem { Image(systemName: "list.bullet.rectangle"); Text("Transactions") }
                 .tag(3)
 
+            KycView()
+                .tabItem { Image(systemName: "person.text.rectangle"); Text("KYC") }
+                .tag(4)
+
             SettingsView()
                 .tabItem { Image(systemName: "gear"); Text("Settings") }
-                .tag(4)
+                .tag(5)
         }
     }
 }

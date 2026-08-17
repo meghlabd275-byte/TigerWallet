@@ -22,6 +22,12 @@ import kotlinx.coroutines.withContext
 class MainActivity : AppCompatActivity(), StartFragment.StartHost {
     private lateinit var binding: ActivityMainBinding
 
+    // Allow hosted fragments to switch screens (e.g. Dashboard -> KYC) without
+    // exposing the private loadFragment internals.
+    fun navigateTo(fragment: Fragment) {
+        loadFragment(fragment)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         UserWalletApiService.init(this)

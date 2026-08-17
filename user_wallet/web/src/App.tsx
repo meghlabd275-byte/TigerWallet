@@ -14,6 +14,7 @@ import Receive from './pages/Receive';
 import Swap from './pages/Swap';
 import Staking from './pages/Staking';
 import NFTs from './pages/NFTs';
+import KYC from './pages/KYC';
 import Bridge from './pages/Bridge';
 import AddressBook from './pages/AddressBook';
 import Devices from './pages/Devices';
@@ -38,6 +39,7 @@ function App() {
               <Route path="receive" element={<Receive />} />
               <Route path="swap" element={<Swap />} />
               <Route path="staking" element={<Staking />} />
+              <Route path="kyc" element={<KYC />} />
               <Route path="nfts" element={<NFTs />} />
               <Route path="bridge" element={<Bridge />} />
               <Route path="defi" element={<DeFi />} />

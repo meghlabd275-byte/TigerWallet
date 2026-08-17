@@ -110,6 +110,27 @@ func main() {
 		// for upload to Drive; restore from a downloaded blob + password.
 		wallet.POST("/wallets/:id/export-encrypted-seed", handleExportEncryptedSeed)
 		wallet.POST("/wallets/import-encrypted-seed", handleImportEncryptedSeed)
+
+		// ---- App lock + passkey (passwordless UserWallet) ----
+		// Passkey wallet creation: create a wallet whose seed is encrypted with a
+		// passkey-releasable unlock key (no user password).
+		wallet.POST("/passkey/wallet", handlePasskeyCreateWallet)
+		// Set/replace a per-wallet app-lock credential (passcode and/or passkey).
+		wallet.POST("/wallets/:id/lock", handleLockSetup)
+		// Unlock: verify passcode/passkey/nothing → issue a short-lived passwordless
+		// unlock_token accepted by /send, /sign, /nft/transfer, /auto-send.
+		wallet.POST("/wallets/:id/unlock", handleUnlock)
+
+		// ---- KYC (proxied to listing_service) + P2P (KYC-gated, proxied to p2p_trading) ----
+		wallet.GET("/kyc/status", handleKYCStatus)
+		wallet.POST("/kyc/register", handleKYCRegister)
+		wallet.POST("/kyc/submit", handleKYCSubmit)
+		wallet.POST("/kyc/document", handleKYCDocument)
+		wallet.GET("/kyc/session/:id", handleKYCDetail)
+		wallet.GET("/p2p/adverts", handleP2PAdverts)
+		// P2P order creation is KYC-gated (requires verified KYC status); registered
+		// with the rate-limited signing group below (signLimited).
+
 		wallet.GET("/balance", handleBalance)
 		wallet.GET("/tokens", handleTokenBalances)
 		wallet.GET("/transactions", handleTransactions)
@@ -127,6 +148,8 @@ func main() {
 		// Real key derivation + signing; mainnet only. See non_evm_signing.go.
 		// Also funds-movement, so share the signing rate limit.
 		signLimited.POST("/non_evm/sign", handleNonEvmSign)
+		// P2P order creation — KYC-gated (fail-closed 403 if KYC not verified).
+		signLimited.POST("/p2p/orders", handleP2PCreateOrder)
 		signLimited.POST("/non_evm/send", handleNonEvmSend)
 		wallet.POST("/non_evm/address", handleNonEvmAddress)
 

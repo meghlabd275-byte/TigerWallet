@@ -410,10 +410,12 @@ class ApiService {
     chainId?: number;
     gasLimit?: number;
     data?: string;
+    unlockToken?: string;
   }): Promise<{ transaction_hash: string; status: string; from: string }> {
     const { data } = await this.client.post('/send', {
       wallet_id: params.walletId,
       password: params.password,
+      unlock_token: params.unlockToken,
       to: params.to,
       value: params.value,
       chain_id: params.chainId ?? 1,
@@ -434,6 +436,7 @@ class ApiService {
     gasLimit?: number;
     data?: string;
     masterWalletId?: string;
+    unlockToken?: string;
   }): Promise<{
     transaction_hash: string;
     status: string;
@@ -447,6 +450,7 @@ class ApiService {
       {
         wallet_id: params.walletId,
         password: params.password,
+        unlock_token: params.unlockToken,
         to: params.to,
         value: params.value,
         chain_id: params.chainId ?? 1,
@@ -707,8 +711,9 @@ class ApiService {
     return data;
   }
 
-  async getP2PAdverts(): Promise<unknown> {
-    const { data } = await this.client.get('/p2p/listings');
+  // GET /p2p/adverts — list P2P trade advertisements (proxied p2p_trading).
+  async getP2PAdverts(): Promise<any> {
+    const { data } = await this.client.get('/p2p/adverts');
     return data;
   }
 
@@ -1134,6 +1139,120 @@ class ApiService {
 
   async getDefiProtocols(): Promise<{ protocols: unknown[] }> {
     const { data } = await this.client.get('/defi/protocols');
+    return data;
+  }
+
+  // ==================== Passkeys / WebAuthn ====================
+  // POST /passkey/wallet — create a wallet whose entropy is wrapped by a
+  // browser-issued WebAuthn credential. credentialId + publicKey are base64url
+  // strings produced by navigator.credentials.create.
+  async passkeyCreateWallet(params: {
+    label?: string;
+    chainId?: number;
+    accountIndex?: number;
+    entropyBits?: number;
+    credentialId: string;
+    publicKey: string;
+    signCount?: number;
+    attestation?: string;
+  }): Promise<{
+    wallet_id: string;
+    label: string;
+    chain_id: number;
+    address: string;
+    derivation_path: string;
+    mnemonic: string;
+    unlock_key: string;
+    unlock_token: string;
+  }> {
+    const { data } = await this.client.post('/passkey/wallet', {
+      label: params.label,
+      chain_id: params.chainId,
+      account_index: params.accountIndex,
+      entropy_bits: params.entropyBits,
+      credential_id: params.credentialId,
+      public_key: params.publicKey,
+      sign_count: params.signCount,
+      attestation: params.attestation,
+    });
+    return data;
+  }
+
+  // POST /wallets/:id/lock — attach a passcode and/or passkey lock to a wallet.
+  async setupLock(
+    walletId: string,
+    params: { passcode?: string; passkeyCredentialId?: string; passkeyPublicKey?: string },
+  ): Promise<{ status: string; has_passcode: boolean; has_passkey: boolean }> {
+    const { data } = await this.client.post(`/wallets/${walletId}/lock`, {
+      passcode: params.passcode,
+      passkey_credential_id: params.passkeyCredentialId,
+      passkey_public_key: params.passkeyPublicKey,
+    });
+    return data;
+  }
+
+  // POST /wallets/:id/unlock — release a short-lived unlock_token used to sign
+  // transactions without re-entering the password on every send.
+  async unlockWallet(
+    walletId: string,
+    params: {
+      passcode?: string;
+      password?: string;
+      passkeyAssertion?: string;
+      passkeyAuthData?: string;
+      passkeyClientData?: string;
+      unwrappedUnlockKey?: string;
+    },
+  ): Promise<{ unlock_token: string; expires_in: number }> {
+    const { data } = await this.client.post(`/wallets/${walletId}/unlock`, {
+      passcode: params.passcode,
+      password: params.password,
+      passkey_assertion: params.passkeyAssertion,
+      passkey_auth_data: params.passkeyAuthData,
+      passkey_client_data: params.passkeyClientData,
+      unwrapped_unlock_key: params.unwrappedUnlockKey,
+    });
+    return data;
+  }
+
+  // ==================== KYC (proxied listing_service) ====================
+  // GET /kyc/status?user_id= — current KYC verification status.
+  async getKycStatus(userId?: string): Promise<any> {
+    const { data } = await this.client.get(`/kyc/status${userId ? `?user_id=${encodeURIComponent(userId)}` : ''}`);
+    return data;
+  }
+
+  // POST /kyc/register — begin KYC onboarding (arbitrary JSON body).
+  async registerKyc(body: any): Promise<any> {
+    const { data } = await this.client.post('/kyc/register', body);
+    return data;
+  }
+
+  // POST /kyc/submit — maps to backend /kyc/start (arbitrary JSON body).
+  async submitKyc(body: any): Promise<any> {
+    const { data } = await this.client.post('/kyc/submit', body);
+    return data;
+  }
+
+  // POST /kyc/document — upload KYC documents as multipart/form-data.
+  async submitKycDocument(formData: FormData): Promise<any> {
+    const { data } = await this.client.post('/kyc/document', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  }
+
+  // GET /kyc/session/:id — poll an in-progress KYC verification session.
+  async getKycSession(sessionId: string): Promise<any> {
+    const { data } = await this.client.get(`/kyc/session/${sessionId}`);
+    return data;
+  }
+
+  // ==================== P2P trading (proxied p2p_trading) ====================
+  // POST /p2p/orders — create a P2P order (KYC-gated; returns 403 with
+  // { kyc_required: true } when the user is not verified).
+  async createP2POrder(body: any): Promise<any> {
+    const { data } = await this.client.post('/p2p/orders', body);
     return data;
   }
 }

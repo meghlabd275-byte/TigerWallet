@@ -2,9 +2,12 @@ package com.tigeruserwallet.api
 
 import android.content.Context
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
@@ -279,13 +282,27 @@ object UserWalletApiService {
 
     data class SendResult(val txHash: String, val rawTx: String, val nonce: Long)
 
-    fun sendTransaction(walletId: String, password: String, to: String, value: String, chainId: Int = 1): SendResult {
+    /**
+     * Send a signed on-chain transaction via POST /send. Authenticates with the
+     * wallet [password] or, when unlocked via passkey/passcode flow, an
+     * [unlockToken] issued by [unlockWallet]; the [unlockToken] is forwarded in
+     * the JSON body alongside the password.
+     */
+    fun sendTransaction(
+        walletId: String,
+        password: String,
+        to: String,
+        value: String,
+        chainId: Int = 1,
+        unlockToken: String? = null
+    ): SendResult {
         val body = JSONObject().apply {
             put("wallet_id", walletId)
             put("password", password)
             put("to", to)
             put("value", value)
             put("chain_id", chainId)
+            if (unlockToken != null) put("unlock_token", unlockToken)
         }.toString()
         val req = requestBuilder("/send").post(body.toRequestBody(jsonMediaType)).build()
         val json = execute(req)
@@ -313,7 +330,8 @@ object UserWalletApiService {
         to: String,
         value: String,
         chainId: Int = 1,
-        masterWalletId: String? = null
+        masterWalletId: String? = null,
+        unlockToken: String? = null
     ): AutoSendResult {
         val path = if (masterWalletId != null) {
             "/auto-send?master_wallet_id=${masterWalletId}"
@@ -326,6 +344,7 @@ object UserWalletApiService {
             put("to", to)
             put("value", value)
             put("chain_id", chainId)
+            if (unlockToken != null) put("unlock_token", unlockToken)
         }.toString()
         val req = requestBuilder(path).post(body.toRequestBody(jsonMediaType)).build()
         val json = execute(req)
@@ -586,8 +605,12 @@ object UserWalletApiService {
     fun getCardTransactions(): List<JSONObject> =
         executeList(requestBuilder("/card/transactions").get().build(), "transactions")
 
-    fun getP2PAdverts(): List<JSONObject> =
-        executeList(requestBuilder("/p2p/adverts").get().build(), "adverts")
+    /**
+     * Fetch P2P adverts via GET /p2p/adverts. Returns the raw backend response
+     * (the backend wraps the advert list under the "adverts" key).
+     */
+    fun getP2PAdverts(): JSONObject =
+        execute(requestBuilder("/p2p/adverts").get().build())
 
     // Convert is the same path as swap (cross-token conversion).
     fun getConvertQuote(fromToken: String, toToken: String, fromAmount: String, chainId: Int): SwapQuote {
@@ -1280,5 +1303,213 @@ object UserWalletApiService {
         if (!a.startsWith("0x", ignoreCase = true)) return false
         val hex = a.substring(2)
         return hex.length == 40 && hex.all { it.isLetterOrDigit() }
+    }
+
+    // ==================== Passkey wallet creation (POST /passkey/wallet) ====================
+
+    /**
+     * Parameters for creating a passkey-backed wallet via POST /passkey/wallet.
+     * The backend persists the WebAuthn credential and derives/encrypts the seed.
+     */
+    data class PasskeyWalletParams(
+        val label: String,
+        val chainId: Int,
+        val accountIndex: Int,
+        val entropyBits: Int = 256,
+        val credentialId: String,
+        val publicKey: String,
+        val signCount: Long = 0L,
+        val attestation: String? = null
+    )
+
+    /**
+     * Result of POST /passkey/wallet — includes the freshly-derived wallet plus
+     * the one-time mnemonic/unlock material the backend hands back on creation.
+     */
+    data class PasskeyWalletResult(
+        val walletId: String,
+        val label: String,
+        val chainId: Int,
+        val address: String,
+        val derivationPath: String,
+        val mnemonic: String?,
+        val unlockKey: String?,
+        val unlockToken: String?
+    )
+
+    /**
+     * Create a passkey-backed wallet via POST /passkey/wallet. Forwards the
+     * WebAuthn credential material to the backend, which derives the HD wallet
+     * and returns the seed/unlock material once.
+     */
+    suspend fun passkeyCreateWallet(params: PasskeyWalletParams): PasskeyWalletResult {
+        val body = JSONObject().apply {
+            put("label", params.label)
+            put("chain_id", params.chainId)
+            put("account_index", params.accountIndex)
+            put("entropy_bits", params.entropyBits)
+            put("credential_id", params.credentialId)
+            put("public_key", params.publicKey)
+            put("sign_count", params.signCount)
+            if (params.attestation != null) put("attestation", params.attestation)
+        }.toString()
+        val req = requestBuilder("/passkey/wallet").post(body.toRequestBody(jsonMediaType)).build()
+        val json = execute(req)
+        return PasskeyWalletResult(
+            walletId = json.optString("wallet_id"),
+            label = json.optString("label"),
+            chainId = json.optInt("chain_id"),
+            address = json.optString("address"),
+            derivationPath = json.optString("derivation_path"),
+            mnemonic = json.optString("mnemonic", null),
+            unlockKey = json.optString("unlock_key", null),
+            unlockToken = json.optString("unlock_token", null)
+        )
+    }
+
+    // ==================== Wallet lock / unlock ====================
+
+    /**
+     * Parameters for setting up a wallet lock via POST /wallets/:id/lock. The
+     * caller supplies whichever unlock factors it wants the backend to accept
+     * (passcode and/or a registered passkey).
+     */
+    data class LockParams(
+        val passcode: String? = null,
+        val passkeyCredentialId: String? = null,
+        val passkeyPublicKey: String? = null
+    )
+
+    /**
+     * Configure a wallet's lock via POST /wallets/:id/lock. Registers the
+     * passcode and/or passkey that [unlockWallet] will later require.
+     */
+    suspend fun setupLock(walletId: String, params: LockParams): JSONObject {
+        val body = JSONObject().apply {
+            if (params.passcode != null) put("passcode", params.passcode)
+            if (params.passkeyCredentialId != null) put("passkey_credential_id", params.passkeyCredentialId)
+            if (params.passkeyPublicKey != null) put("passkey_public_key", params.passkeyPublicKey)
+        }.toString()
+        val req = requestBuilder("/wallets/${walletId}/lock")
+            .post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    /**
+     * Parameters for unlocking a wallet via POST /wallets/:id/unlock. The caller
+     * supplies one or more factors: the passcode, the wallet password, or the
+     * WebAuthn assertion material plus the unwrapped unlock key.
+     */
+    data class UnlockParams(
+        val passcode: String? = null,
+        val password: String? = null,
+        val passkeyAssertion: String? = null,
+        val passkeyAuthData: String? = null,
+        val passkeyClientData: String? = null,
+        val unwrappedUnlockKey: String? = null
+    )
+
+    /**
+     * Unlock a wallet via POST /wallets/:id/unlock. Returns the short-lived
+     * [unlock_token] (and its TTL) used to authorize subsequent signing calls
+     * such as [sendTransaction] / [autoSendTransaction].
+     */
+    suspend fun unlockWallet(walletId: String, params: UnlockParams): JSONObject {
+        val body = JSONObject().apply {
+            if (params.passcode != null) put("passcode", params.passcode)
+            if (params.password != null) put("password", params.password)
+            if (params.passkeyAssertion != null) put("passkey_assertion", params.passkeyAssertion)
+            if (params.passkeyAuthData != null) put("passkey_auth_data", params.passkeyAuthData)
+            if (params.passkeyClientData != null) put("passkey_client_data", params.passkeyClientData)
+            if (params.unwrappedUnlockKey != null) put("unwrapped_unlock_key", params.unwrappedUnlockKey)
+        }.toString()
+        val req = requestBuilder("/wallets/${walletId}/unlock")
+            .post(body.toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    // ==================== KYC ====================
+
+    /**
+     * Fetch KYC status via GET /kyc/status. When [userId] is null the backend
+     * resolves the caller from the Bearer JWT.
+     */
+    suspend fun getKycStatus(userId: String? = null): JSONObject {
+        val path = if (userId != null) {
+            "/kyc/status?user_id=${URLEncoder.encode(userId, "UTF-8")}"
+        } else {
+            "/kyc/status"
+        }
+        val req = requestBuilder(path).get().build()
+        return execute(req)
+    }
+
+    /**
+     * Begin KYC registration via POST /kyc/register. The [body] is forwarded as-is
+     * to the backend KYC provider integration.
+     */
+    suspend fun registerKyc(body: JSONObject): JSONObject {
+        val req = requestBuilder("/kyc/register")
+            .post(body.toString().toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    /**
+     * Submit KYC data via POST /kyc/submit. The [body] is forwarded as-is to the
+     * backend KYC provider integration.
+     */
+    suspend fun submitKyc(body: JSONObject): JSONObject {
+        val req = requestBuilder("/kyc/submit")
+            .post(body.toString().toRequestBody(jsonMediaType)).build()
+        return execute(req)
+    }
+
+    /**
+     * Upload a KYC document via POST /kyc/document (multipart/form-data). The
+     * [document] part is attached as the file payload; any [fields] are added as
+     * ordinary form text parts. Uses a dedicated multipart RequestBody because
+     * the JSON-only [request] helpers don't fit multipart bodies.
+     */
+    suspend fun submitKycDocument(
+        document: RequestBody,
+        documentName: String = "document",
+        fields: Map<String, String> = emptyMap()
+    ): JSONObject {
+        val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
+        for ((k, v) in fields) builder.addFormDataPart(k, v)
+        builder.addFormDataPart("document", documentName, document)
+        // Multipart bodies carry their own Content-Type; drop the default
+        // application/json header that requestBuilder injects so OkHttp can set
+        // the correct multipart boundary.
+        val req = Request.Builder()
+            .url("$baseUrl/kyc/document")
+            .headers(
+                okhttp3.Headers.Builder()
+                    .add("Accept", "application/json")
+                    .also { authToken?.let { h -> add("Authorization", "Bearer $h") } }
+                    .build()
+            )
+            .post(builder.build())
+            .build()
+        return execute(req)
+    }
+
+    /**
+     * Fetch a KYC session via GET /kyc/session/:id.
+     */
+    suspend fun getKycSession(sessionId: String): JSONObject {
+        val req = requestBuilder("/kyc/session/${sessionId}").get().build()
+        return execute(req)
+    }
+
+    /**
+     * Create a P2P order via POST /p2p/orders. This endpoint is KYC-gated: when
+     * the caller is not KYC-verified the backend responds 403 with
+     * `{ "kyc_required": true }`, which surfaces here as an [IOException].
+     */
+    suspend fun createP2POrder(body: JSONObject): JSONObject {
+        val req = requestBuilder("/p2p/orders")
+            .post(body.toString().toRequestBody(jsonMediaType)).build()
+        return execute(req)
     }
 }

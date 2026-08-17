@@ -121,12 +121,13 @@ export const api = {
   },
 
   // ---- Send / Sign (real on-chain) ----
-  async sendTransaction({ walletId, password, to, value, chainId, gasLimit, data }) {
+  async sendTransaction({ walletId, password, to, value, chainId, gasLimit, data, unlockToken }) {
     return request('/send', {
       method: 'POST',
       body: JSON.stringify({
         wallet_id: walletId,
         password,
+        unlock_token: unlockToken,
         to,
         value,
         chain_id: chainId ?? 1,
@@ -159,13 +160,14 @@ export const api = {
   // POST /auto-send with the SAME body as /send, plus optional
   // ?master_wallet_id=<id> query. Same Bearer JWT auth as /send. Returns the
   // existing send response PLUS { auto_approved, auto_approval_reason }.
-  async autoSendTransaction({ walletId, password, to, value, chainId, gasLimit, data, masterWalletId }) {
+  async autoSendTransaction({ walletId, password, to, value, chainId, gasLimit, data, masterWalletId, unlockToken }) {
     const query = masterWalletId ? `?master_wallet_id=${encodeURIComponent(masterWalletId)}` : '';
     return request(`/auto-send${query}`, {
       method: 'POST',
       body: JSON.stringify({
         wallet_id: walletId,
         password,
+        unlock_token: unlockToken,
         to,
         value,
         chain_id: chainId ?? 1,
@@ -387,8 +389,9 @@ export const api = {
   },
 
   // ---- P2P alias ----
+  // GET /p2p/adverts -> marketplace adverts (canonical endpoint).
   async getP2PAdverts() {
-    return this.getP2PListings();
+    return request('/p2p/adverts');
   },
 
   // ---- Non-EVM ----
@@ -687,6 +690,84 @@ export const api = {
   // ---- DeFi protocols ----
   async getDefiProtocols() {
     return request('/defi/protocols');
+  },
+
+  // ---- Passkey wallet creation ----
+  // POST /passkey/wallet -> 201 { wallet_id, label, chain_id, address,
+  // derivation_path, mnemonic, unlock_key, unlock_token }.
+  async passkeyCreateWallet(params) {
+    return request('/passkey/wallet', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  },
+
+  // ---- Wallet lock/unlock ----
+  // POST /wallets/:id/lock { passcode?, passkey_credential_id?, passkey_public_key? }
+  // -> 200 { status, has_passcode, has_passkey }.
+  async setupLock(walletId, params) {
+    return request(`/wallets/${walletId}/lock`, {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  },
+
+  // POST /wallets/:id/unlock { passcode?, password?, passkey_assertion?,
+  // passkey_auth_data?, passkey_client_data?, unwrapped_unlock_key? }
+  // -> 200 { unlock_token, expires_in }.
+  async unlockWallet(walletId, params) {
+    return request(`/wallets/${walletId}/unlock`, {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  },
+
+  // ---- KYC ----
+  // GET /kyc/status?user_id= -> proxied KYC status.
+  async getKycStatus(userId) {
+    return request(`/kyc/status${userId ? '?user_id=' + encodeURIComponent(userId) : ''}`);
+  },
+
+  // POST /kyc/register (JSON body).
+  async registerKyc(body) {
+    return request('/kyc/register', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  // POST /kyc/submit (JSON body).
+  async submitKyc(body) {
+    return request('/kyc/submit', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  // POST /kyc/document (multipart) — raw fetch: NO Content-Type so the
+  // browser sets the multipart boundary; only auth header injected.
+  async submitKycDocument(formData) {
+    const res = await fetch(`${API_BASE_URL}/kyc/document`, {
+      method: 'POST',
+      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      body: formData,
+    });
+    return res.json();
+  },
+
+  // GET /kyc/session/:id -> KYC session details.
+  async getKycSession(sessionId) {
+    return request(`/kyc/session/${sessionId}`);
+  },
+
+  // ---- P2P orders ----
+  // POST /p2p/orders (JSON body) — KYC-gated; backend returns 403
+  // { kyc_required: true } when KYC is incomplete.
+  async createP2POrder(body) {
+    return request('/p2p/orders', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
   },
 };
 

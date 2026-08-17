@@ -22,6 +22,8 @@ export default function Send() {
   const [amount, setAmount] = useState('');
   const [chainId, setChainId] = useState(1);
   const [qrInput, setQrInput] = useState('');
+  const [unlockToken, setUnlockToken] = useState('');
+  const [unlocked, setUnlocked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<{ hash: string; autoApproved: boolean } | null>(null);
@@ -48,6 +50,25 @@ export default function Send() {
     }
   };
 
+  // Unlock the wallet once (passcode prompt) to obtain a short-lived
+  // unlock_token. Once unlocked, sends do not require a password.
+  const handleUnlock = async () => {
+    setError('');
+    if (!walletId) { setError('Select a wallet'); return; }
+    const passcode = window.prompt('Enter your app lock passcode to unlock passwordless sending:') || '';
+    if (passcode.length < 4) { setError('Passcode must be at least 4 characters'); return; }
+    setBusy(true);
+    try {
+      const res = await api.unlockWallet(walletId, { passcode });
+      setUnlockToken(res.unlock_token);
+      setUnlocked(true);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unlock failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -55,9 +76,12 @@ export default function Send() {
     if (!walletId) { setError('Select a wallet'); return; }
     if (!/^0x[a-fA-F0-9]{40}$/.test(to)) { setError('Invalid recipient address'); return; }
     if (!amount || parseFloat(amount) <= 0) { setError('Enter a valid amount'); return; }
+    if (!password && !unlockToken) { setError('Enter your password or unlock the wallet first'); return; }
     setBusy(true);
     try {
-      const res = await api.sendTransaction({ walletId, password, to, value: amount, chainId });
+      const res = await api.sendTransaction({
+        walletId, password, to, value: amount, chainId, unlockToken,
+      });
       setResult({ hash: res.transaction_hash, autoApproved: false });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Send failed');
@@ -73,9 +97,12 @@ export default function Send() {
     if (!walletId) { setError('Select a wallet'); return; }
     if (!/^0x[a-fA-F0-9]{40}$/.test(to)) { setError('Invalid recipient address'); return; }
     if (!amount || parseFloat(amount) <= 0) { setError('Enter a valid amount'); return; }
+    if (!password && !unlockToken) { setError('Enter your password or unlock the wallet first'); return; }
     setBusy(true);
     try {
-      const res = await api.autoSendTransaction({ walletId, password, to, value: amount, chainId });
+      const res = await api.autoSendTransaction({
+        walletId, password, to, value: amount, chainId, unlockToken,
+      });
       setResult({ hash: res.transaction_hash, autoApproved: res.auto_approved });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Auto-send failed');
@@ -99,7 +126,11 @@ export default function Send() {
       <form onSubmit={handleSend} className="send-form">
         <div className="form-group">
           <label>From Wallet</label>
-          <select value={walletId} onChange={(e) => setWalletId(e.target.value)} required>
+          <select
+            value={walletId}
+            onChange={(e) => { setWalletId(e.target.value); setUnlockToken(''); setUnlocked(false); }}
+            required
+          >
             {wallets.map((w) => <option key={w.id} value={w.id}>{w.label || w.address.slice(0, 10)} · {w.address.slice(0, 8)}…</option>)}
           </select>
         </div>
@@ -118,9 +149,15 @@ export default function Send() {
           <input type="number" step="any" placeholder="0.0" value={amount} onChange={(e) => setAmount(e.target.value)} required />
         </div>
         <div className="form-group">
-          <label>Wallet Password</label>
-          <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
+          <label>Wallet Password {unlocked && <span className="success">(unlocked — optional)</span>}</label>
+          <input type="password" placeholder={unlocked ? 'Unlocked — leave empty to send passwordless' : 'Password (or unlock below)'} value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} />
         </div>
+        <div className="action-row">
+          <button type="button" className="secondary-btn" onClick={handleUnlock} disabled={busy || unlocked}>
+            {unlocked ? '✓ Unlocked' : '🔑 Unlock Wallet (passwordless)'}
+          </button>
+        </div>
+        <p className="hint">Unlock once with your app-lock passcode to send without entering your wallet password.</p>
         <div className="qr-paste">
           <label>Scan / paste payment URI</label>
           <div className="qr-row">

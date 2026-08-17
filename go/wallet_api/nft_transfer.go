@@ -16,12 +16,13 @@ import (
 // transfer is performed as a real on-chain safeTransferFrom(from,to,tokenId)
 // contract call, signed + broadcast by the wallet backend (no fabricated tx).
 type nftTransferReq struct {
-	WalletID  string `json:"wallet_id" binding:"required"`
-	Password  string `json:"password" binding:"required"`
-	Contract  string `json:"contract" binding:"required"`
-	ToAddress string `json:"to" binding:"required"`
-	TokenID   string `json:"token_id" binding:"required"`
-	ChainID   int64  `json:"chain_id"`
+	WalletID    string `json:"wallet_id" binding:"required"`
+	Password    string `json:"password"`     // optional when unlock_token supplied
+	UnlockToken string `json:"unlock_token"` // optional; passwordless NFT transfer
+	Contract    string `json:"contract" binding:"required"`
+	ToAddress   string `json:"to" binding:"required"`
+	TokenID     string `json:"token_id" binding:"required"`
+	ChainID     int64  `json:"chain_id"`
 }
 
 // safeTransferFrom(address from, address to, uint256 tokenId) selector = 0x42842e0e
@@ -77,13 +78,14 @@ func handleNFTTransfer(c *gin.Context) {
 		tokenIDHex
 
 	executeSend(c, sendTxReq{
-		WalletID:  req.WalletID,
-		Password:  req.Password,
-		ToAddress: contractAddr.Hex(),
-		Value:     "0",
-		GasLimit:  120000, // ERC-721 safeTransferFrom is heavier than a plain transfer
-		Data:      calldata,
-		ChainID:   req.ChainID,
+		WalletID:    req.WalletID,
+		Password:    req.Password,
+		UnlockToken: req.UnlockToken,
+		ToAddress:   contractAddr.Hex(),
+		Value:       "0",
+		GasLimit:    120000, // ERC-721 safeTransferFrom is heavier than a plain transfer
+		Data:        calldata,
+		ChainID:     req.ChainID,
 	})
 }
 

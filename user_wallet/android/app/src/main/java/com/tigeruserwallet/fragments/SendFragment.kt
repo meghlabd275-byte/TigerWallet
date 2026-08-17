@@ -24,14 +24,20 @@ class SendFragment : Fragment() {
     private lateinit var recipientInput: EditText
     private lateinit var amountInput: EditText
     private lateinit var passwordInput: EditText
+    private lateinit var passcodeInput: EditText
     private lateinit var sendButton: Button
     private lateinit var autoSendButton: Button
+    private lateinit var unlockButton: Button
     private lateinit var statusTextView: TextView
 
     private val chains = arrayOf("Ethereum (1)", "BNB Chain (56)", "Polygon (137)")
     private val chainIds = intArrayOf(1, 56, 137)
 
     private var wallets: List<UserWalletApiService.Wallet> = emptyList()
+
+    // Short-lived unlock token issued by /wallets/:id/unlock. While present, the
+    // wallet password is optional and the token authorizes send/auto-send.
+    private var unlockToken: String? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -48,8 +54,10 @@ class SendFragment : Fragment() {
         recipientInput = view.findViewById(R.id.recipientInput)
         amountInput = view.findViewById(R.id.amountInput)
         passwordInput = view.findViewById(R.id.passwordInput)
+        passcodeInput = view.findViewById(R.id.passcodeInput)
         sendButton = view.findViewById(R.id.sendButton)
         autoSendButton = view.findViewById(R.id.autoSendButton)
+        unlockButton = view.findViewById(R.id.unlockButton)
         statusTextView = view.findViewById(R.id.statusTextView)
 
         chainSpinner.adapter =
@@ -57,6 +65,7 @@ class SendFragment : Fragment() {
 
         sendButton.setOnClickListener { performSend(auto = false) }
         autoSendButton.setOnClickListener { performSend(auto = true) }
+        unlockButton.setOnClickListener { unlockWallet() }
 
         loadWallets()
     }
@@ -89,13 +98,21 @@ class SendFragment : Fragment() {
         val password = passwordInput.text.toString()
         val chainId = chainIds[chainSpinner.selectedItemPosition]
 
-        if (to.isEmpty() || value.isEmpty() || password.isEmpty()) {
-            Toast.makeText(requireContext(), "Fill all fields", Toast.LENGTH_SHORT).show()
+        if (to.isEmpty() || value.isEmpty()) {
+            Toast.makeText(requireContext(), "Enter recipient and amount", Toast.LENGTH_SHORT).show()
             return
         }
-        if (password.length < 8) {
-            Toast.makeText(requireContext(), "Password must be at least 8 chars", Toast.LENGTH_SHORT).show()
-            return
+        // Password is optional once we hold an unlock token; otherwise require a
+        // strong password exactly as the original flow did.
+        if (unlockToken == null) {
+            if (password.isEmpty()) {
+                Toast.makeText(requireContext(), "Enter password or unlock passwordlessly", Toast.LENGTH_SHORT).show()
+                return
+            }
+            if (password.length < 8) {
+                Toast.makeText(requireContext(), "Password must be at least 8 chars", Toast.LENGTH_SHORT).show()
+                return
+            }
         }
 
         sendButton.isEnabled = false
@@ -104,10 +121,14 @@ class SendFragment : Fragment() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val message = if (auto) {
-                    val r = UserWalletApiService.autoSendTransaction(wallet.id, password, to, value, chainId)
+                    val r = UserWalletApiService.autoSendTransaction(
+                        wallet.id, password, to, value, chainId, null, unlockToken
+                    )
                     buildMessage(r.txHash, r.autoApproved, r.autoApprovalReason)
                 } else {
-                    val r = UserWalletApiService.sendTransaction(wallet.id, password, to, value, chainId)
+                    val r = UserWalletApiService.sendTransaction(
+                        wallet.id, password, to, value, chainId, unlockToken
+                    )
                     buildMessage(r.txHash, null, null)
                 }
                 withContext(Dispatchers.Main) {
@@ -120,6 +141,49 @@ class SendFragment : Fragment() {
                     statusTextView.text = "✗ ${e.message ?: "Send failed"}"
                     sendButton.isEnabled = true
                     autoSendButton.isEnabled = true
+                }
+            }
+        }
+    }
+
+    /**
+     * Passwordless unlock: posts the app-lock passcode to /wallets/:id/unlock and
+     * stores the returned [unlock_token]. The token is then forwarded as the
+     * [unlockToken] param to [sendTransaction] / [autoSendTransaction], making the
+     * wallet password field optional.
+     */
+    private fun unlockWallet() {
+        val wallet = wallets.getOrNull(walletSpinner.selectedItemPosition) ?: run {
+            Toast.makeText(requireContext(), "Select a wallet", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val passcode = passcodeInput.text.toString()
+        if (passcode.length < 4) {
+            Toast.makeText(requireContext(), "Enter the app-lock passcode", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        unlockButton.isEnabled = false
+        statusTextView.text = "Unlocking..."
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val params = UserWalletApiService.UnlockParams(passcode = passcode)
+                val res = UserWalletApiService.unlockWallet(wallet.id, params)
+                val token = res.optString("unlock_token", "")
+                withContext(Dispatchers.Main) {
+                    if (token.isNotEmpty()) {
+                        unlockToken = token
+                        statusTextView.text = "✓ Wallet unlocked — password optional now"
+                        Toast.makeText(requireContext(), "Unlocked", Toast.LENGTH_SHORT).show()
+                    } else {
+                        statusTextView.text = "✗ No unlock token returned"
+                    }
+                    unlockButton.isEnabled = true
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    statusTextView.text = "✗ ${e.message ?: "Unlock failed"}"
+                    unlockButton.isEnabled = true
                 }
             }
         }

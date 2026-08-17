@@ -20,6 +20,15 @@ struct SendView: View {
     @State private var showSuccess = false
     @State private var successTxHash = ""
 
+    // Passwordless unlock: an unlock_token obtained via `unlockWallet` (passcode)
+    // so the wallet can be signed for without re-entering its raw password. When
+    // present, the password field becomes optional and `unlockToken` is forwarded
+    // to `sendTransaction` / `autoSendTransaction`.
+    @State private var unlockToken: String?
+    @State private var unlockPasscode = ""
+    @State private var isUnlocking = false
+    @State private var unlockError: String?
+
     private let chains: [(name: String, id: Int)] = [
         ("Ethereum", 1),
         ("BNB Chain", 56),
@@ -35,7 +44,7 @@ struct SendView: View {
         return !isSending
             && !recipient.isEmpty
             && !amount.isEmpty
-            && password.count >= 8
+            && (unlockToken != nil || password.count >= 8)
             && w.chain_id == chainId
     }
 
@@ -57,6 +66,9 @@ struct SendView: View {
                             if let id = newValue, let w = wallets.first(where: { $0.id == id }) {
                                 chainId = w.chain_id
                             }
+                            // A different wallet invalidates any cached unlock token.
+                            unlockToken = nil
+                            unlockError = nil
                         }
                     }
                 }
@@ -85,6 +97,35 @@ struct SendView: View {
 
                 Section("Security") {
                     SecureField("Wallet password", text: $password)
+                        .disabled(unlockToken != nil)
+                    if unlockToken != nil {
+                        Label("Unlocked (passwordless) — password not required", systemImage: "checkmark.lock.fill")
+                            .font(.caption)
+                            .foregroundColor(.green)
+                    }
+                }
+
+                Section {
+                    Button(action: unlockWallet) {
+                        HStack {
+                            Image(systemName: "key.fill")
+                            Text(unlockToken == nil ? "Unlock Wallet (passwordless)" : "Re-unlock Wallet")
+                            Spacer()
+                            if isUnlocking {
+                                ProgressView().tint(.orange)
+                            }
+                        }
+                    }
+                    .disabled(isUnlocking || selectedWallet == nil || (unlockToken == nil && unlockPasscode.trimmingCharacters(in: .whitespaces).isEmpty))
+                    if unlockToken == nil {
+                        SecureField("Passcode", text: $unlockPasscode)
+                            .keyboardType(.numberPad)
+                    }
+                    if let unlockError = unlockError {
+                        Text(unlockError)
+                            .foregroundColor(.red)
+                            .font(.subheadline)
+                    }
                 }
 
                 if let errorMessage = errorMessage {
@@ -132,6 +173,8 @@ struct SendView: View {
                         recipient = ""
                         amount = ""
                         password = ""
+                        unlockToken = nil
+                        unlockPasscode = ""
                     }
                 )
             }
@@ -183,7 +226,8 @@ struct SendView: View {
                         password: password,
                         to: to,
                         value: value,
-                        chainId: chainId
+                        chainId: chainId,
+                        unlockToken: unlockToken
                     )
                     hash = res.tx_hash
                 } else {
@@ -192,7 +236,8 @@ struct SendView: View {
                         password: password,
                         to: to,
                         value: value,
-                        chainId: chainId
+                        chainId: chainId,
+                        unlockToken: unlockToken
                     )
                     hash = res.tx_hash
                 }
@@ -205,6 +250,40 @@ struct SendView: View {
                 await MainActor.run {
                     self.isSending = false
                     self.errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    // Passwordless unlock: exchange the wallet's passcode for a short-lived
+    // `unlock_token` via `unlockWallet`, then forward it to `sendTransaction`
+    // / `autoSendTransaction`. With a token present the wallet password is
+    // optional (canSend relaxes the >=8 requirement).
+    private func unlockWallet() {
+        guard let wallet = selectedWallet else { return }
+        isUnlocking = true
+        unlockError = nil
+        let passcode = unlockPasscode.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task {
+            do {
+                let res = try await UserWalletApiService.shared.unlockWallet(
+                    walletId: wallet.id,
+                    params: .init(passcode: passcode,
+                                  password: nil,
+                                  passkey_assertion: nil,
+                                  passkey_auth_data: nil,
+                                  passkey_client_data: nil,
+                                  unwrapped_unlock_key: nil)
+                )
+                await MainActor.run {
+                    self.isUnlocking = false
+                    self.unlockToken = res.unlock_token
+                    self.unlockError = nil
+                }
+            } catch {
+                await MainActor.run {
+                    self.isUnlocking = false
+                    self.unlockError = error.localizedDescription
                 }
             }
         }

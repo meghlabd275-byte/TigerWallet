@@ -57,8 +57,23 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:hint="Wallet password"
+        android:hint="Wallet password (optional when unlocked)"
         android:inputType="textPassword" />
+
+    <EditText
+        android:id="@+id/passcodeInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:hint="App-lock passcode (for passwordless unlock)"
+        android:inputType="numberPassword" />
+
+    <Button
+        android:id="@+id/unlockButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Unlock Wallet (passwordless)" />
 
     <LinearLayout
         android:layout_width="match_parent"

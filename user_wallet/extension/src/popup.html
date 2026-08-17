@@ -140,11 +140,14 @@
       <button class="tab-btn" data-tab="stakingTab">Staking</button>
       <button class="tab-btn" data-tab="fiatTab">Fiat Ramp</button>
       <button class="tab-btn" data-tab="qrTab">QR Scan</button>
+      <button class="tab-btn" data-tab="kycTab">KYC</button>
     </div>
 
     <!-- Wallets tab -->
     <div id="walletTab" class="card">
       <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">My Wallets</div>
+      <button class="secondary" id="createPasskeyBtn" style="margin-bottom:8px;">🔐 Create with Passkey</button>
+      <div id="passkeyResult" class="wallet-balance"></div>
       <div id="walletList"><div class="spinner">Loading...</div></div>
     </div>
 
@@ -157,7 +160,12 @@
       <input type="text" id="sendAmount" placeholder="0.0" />
       <label for="sendPassword">Wallet password</label>
       <input type="password" id="sendPassword" placeholder="••••••••" />
+      <label for="unlockPasscode">Passcode (passwordless unlock)</label>
+      <input type="password" id="unlockPasscode" placeholder="app-lock passcode" />
+      <button class="secondary" id="unlockBtn" style="margin-bottom:8px;">🔓 Unlock (passwordless)</button>
+      <div id="unlockStatus" class="wallet-balance"></div>
       <button id="sendBtn">Send</button>
+      <div id="sendStatus" class="wallet-balance"></div>
     </div>
 
     <!-- Convert tab -->
@@ -219,6 +227,22 @@
       <label for="qrAmount">Amount (parsed)</label>
       <input type="text" id="qrAmount" placeholder="0.0" />
       <button id="qrSendBtn">Send Parsed</button>
+    </div>
+
+    <!-- KYC tab -->
+    <div id="kycTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">KYC Verification</div>
+      <div id="kycStatus" class="wallet-balance"></div>
+      <div id="kycForm" class="hidden">
+        <label for="kycFullName">Full name</label>
+        <input type="text" id="kycFullName" placeholder="Jane Doe" />
+        <label for="kycDocType">Document type</label>
+        <input type="text" id="kycDocType" placeholder="passport / id_card / driver_license" />
+        <label for="kycDocNumber">Document number</label>
+        <input type="text" id="kycDocNumber" placeholder="AB1234567" />
+        <button id="kycSubmitBtn">Start KYC</button>
+      </div>
+      <div id="kycError" class="error hidden"></div>
     </div>
 
     <button id="logoutBtn" class="toggle-auth">Logout</button>

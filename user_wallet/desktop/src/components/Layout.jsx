@@ -12,6 +12,7 @@ function Layout() {
     { path: '/send', label: 'Send', icon: '📤' },
     { path: '/receive', label: 'Receive', icon: '📥' },
     { path: '/transactions', label: 'Transactions', icon: '📋' },
+    { path: '/kyc', label: 'KYC', icon: '🪪' },
     { path: '/settings', label: 'Settings', icon: '⚙️' }
   ];
 

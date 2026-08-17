@@ -14,6 +14,7 @@ export default function Layout() {
     { path: '/receive', label: 'Receive' },
     { path: '/swap', label: 'Swap' },
     { path: '/staking', label: 'Staking' },
+    { path: '/kyc', label: 'KYC' },
     { path: '/nfts', label: 'NFTs' },
     { path: '/bridge', label: 'Bridge' },
     { path: '/defi', label: 'DeFi' },

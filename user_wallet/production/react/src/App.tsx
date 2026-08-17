@@ -34,6 +34,7 @@ import StakingPage from './pages/StakingPage';
 import NFTsPage from './pages/NFTsPage';
 import HistoryPage from './pages/HistoryPage';
 import BridgePage from './pages/BridgePage';
+import KYCPage from './pages/KYCPage';
 
 // Styles
 import './styles/globals.css';
@@ -180,6 +181,14 @@ function AppRoutes() {
         <ProtectedRoute>
           <AppLayout>
             <SettingsPage />
+          </AppLayout>
+        </ProtectedRoute>
+      } />
+      
+      <Route path="/kyc" element={
+        <ProtectedRoute>
+          <AppLayout>
+            <KYCPage />
           </AppLayout>
         </ProtectedRoute>
       } />

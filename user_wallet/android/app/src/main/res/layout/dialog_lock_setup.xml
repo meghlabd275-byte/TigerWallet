@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="4dp"
+        android:text="Set a passcode to unlock this wallet without re-entering the password."
+        android:textSize="13sp"
+        android:alpha="0.7" />
+
+    <EditText
+        android:id="@+id/lockPasscodeInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Passcode (min 4 digits)"
+        android:inputType="numberPassword" />
+
+    <EditText
+        android:id="@+id/lockPasscodeConfirmInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="Confirm passcode"
+        android:inputType="numberPassword" />
+
+    <CheckBox
+        android:id="@+id/usePasskeyCheckBox"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Use Passkey (Credential Manager)" />
+
+    <TextView
+        android:id="@+id/passkeyUnavailableNote"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="Passkey support requires the androidx.credentials gradle dependency (not yet added). Passcode is fully functional."
+        android:textSize="12sp"
+        android:alpha="0.6"
+        android:visibility="gone" />
+
+</LinearLayout>

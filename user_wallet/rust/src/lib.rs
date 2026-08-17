@@ -212,6 +212,100 @@ pub struct StakingQuoteResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Passkey / lock / unlock models (mirror the backend JSON shapes)
+// ---------------------------------------------------------------------------
+
+/// Parameters for `POST /passkey/wallet` — create a wallet backed by a passkey
+/// credential. Required fields are non-optional; the optional ones are only
+/// sent when present.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PasskeyWalletParams {
+    pub label: String,
+    pub chain_id: i64,
+    pub account_index: i64,
+    pub entropy_bits: i64,
+    pub credential_id: String,
+    pub public_key: String,
+    #[serde(default)]
+    pub sign_count: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attestation: Option<String>,
+}
+
+/// Result of `POST /passkey/wallet`. Includes the server-generated mnemonic,
+/// unlock key, and unlock token (returned once at creation time).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PasskeyWalletResult {
+    #[serde(default)]
+    pub wallet_id: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub chain_id: i64,
+    #[serde(default)]
+    pub address: String,
+    #[serde(default)]
+    pub derivation_path: String,
+    #[serde(default)]
+    pub mnemonic: String,
+    #[serde(default)]
+    pub unlock_key: String,
+    #[serde(default)]
+    pub unlock_token: String,
+}
+
+/// Parameters for `POST /wallets/:id/lock` — set up a passcode and/or passkey
+/// lock on a wallet. At least one of the optional fields should be present.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LockSetupParams {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub passcode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub passkey_credential_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub passkey_public_key: Option<String>,
+}
+
+/// Result of `POST /wallets/:id/lock`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LockSetupResult {
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub has_passcode: bool,
+    #[serde(default)]
+    pub has_passkey: bool,
+}
+
+/// Parameters for `POST /wallets/:id/unlock` — unlock a wallet with a passcode,
+/// password, a passkey assertion, or an already-unwrapped unlock key.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UnlockParams {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub passcode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub passkey_assertion: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub passkey_auth_data: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub passkey_client_data: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unwrapped_unlock_key: Option<String>,
+}
+
+/// Result of `POST /wallets/:id/unlock` — a short-lived unlock token used to
+/// authorize signing operations without re-sending the passcode/password.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UnlockResult {
+    #[serde(default)]
+    pub unlock_token: String,
+    #[serde(default)]
+    pub expires_in: i64,
+}
+
+// ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
 
@@ -447,6 +541,7 @@ impl UserWalletClient {
         amount: &str,
         chain_id: i64,
         token_address: Option<&str>,
+        unlock_token: Option<&str>,
     ) -> Result<serde_json::Value, WalletError> {
         #[derive(Serialize)]
         struct Req<'a> {
@@ -457,9 +552,11 @@ impl UserWalletClient {
             chain_id: i64,
             #[serde(skip_serializing_if = "Option::is_none")]
             token_address: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            unlock_token: Option<&'a str>,
         }
         self.post("/api/v1/send", &Req {
-            wallet_id, password, to, amount, chain_id, token_address,
+            wallet_id, password, to, amount, chain_id, token_address, unlock_token,
         }).await
     }
 
@@ -475,6 +572,7 @@ impl UserWalletClient {
         chain_id: i64,
         token_address: Option<&str>,
         master_wallet_id: Option<&str>,
+        unlock_token: Option<&str>,
     ) -> Result<serde_json::Value, WalletError> {
         #[derive(Serialize)]
         struct Req<'a> {
@@ -485,13 +583,15 @@ impl UserWalletClient {
             chain_id: i64,
             #[serde(skip_serializing_if = "Option::is_none")]
             token_address: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            unlock_token: Option<&'a str>,
         }
         let path = match master_wallet_id {
             Some(mw) => format!("/api/v1/auto-send?master_wallet_id={}", mw),
             None => "/api/v1/auto-send".to_string(),
         };
         self.post(&path, &Req {
-            wallet_id, password, to, amount, chain_id, token_address,
+            wallet_id, password, to, amount, chain_id, token_address, unlock_token,
         }).await
     }
 
@@ -900,10 +1000,126 @@ impl UserWalletClient {
         self.get(&path).await
     }
 
+    // ---- Passkey / lock / unlock ----
+
+    /// passkey_create_wallet creates a wallet backed by a passkey credential via
+    /// `POST /api/v1/passkey/wallet`. The backend generates the entropy, seed,
+    /// address, and a one-time unlock key + unlock token returned in the result.
+    pub async fn passkey_create_wallet(
+        &self,
+        params: PasskeyWalletParams,
+    ) -> Result<PasskeyWalletResult, WalletError> {
+        self.post("/api/v1/passkey/wallet", &params).await
+    }
+
+    /// setup_lock sets up a passcode and/or passkey lock on a wallet via
+    /// `POST /api/v1/wallets/:id/lock`. Returns the resulting lock status.
+    pub async fn setup_lock(
+        &self,
+        wallet_id: &str,
+        params: LockSetupParams,
+    ) -> Result<LockSetupResult, WalletError> {
+        let path = format!("/api/v1/wallets/{}/lock", url_encode(wallet_id));
+        self.post(&path, &params).await
+    }
+
+    /// unlock_wallet unlocks a wallet via `POST /api/v1/wallets/:id/unlock` using
+    /// a passcode, password, passkey assertion, or an already-unwrapped unlock
+    /// key. Returns a short-lived unlock token.
+    pub async fn unlock_wallet(
+        &self,
+        wallet_id: &str,
+        params: UnlockParams,
+    ) -> Result<UnlockResult, WalletError> {
+        let path = format!("/api/v1/wallets/{}/unlock", url_encode(wallet_id));
+        self.post(&path, &params).await
+    }
+
+    // ---- KYC ----
+
+    /// get_kyc_status fetches the caller's KYC status via
+    /// `GET /api/v1/kyc/status`. If `user_id` is provided it is sent as the
+    /// `user_id` query parameter; otherwise the backend infers the user from
+    /// the Bearer JWT. The response shape is opaque, so it is returned as a raw
+    /// JSON value.
+    pub async fn get_kyc_status(
+        &self,
+        user_id: Option<&str>,
+    ) -> Result<serde_json::Value, WalletError> {
+        match user_id {
+            Some(uid) => self.get_query("/api/v1/kyc/status", &[("user_id", uid.to_string())]).await,
+            None => self.get("/api/v1/kyc/status").await,
+        }
+    }
+
+    /// register_kyc starts a KYC registration via `POST /api/v1/kyc/register`.
+    /// The request body is opaque JSON defined by the caller; the response is
+    /// returned as a raw JSON value.
+    pub async fn register_kyc(
+        &self,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, WalletError> {
+        self.post("/api/v1/kyc/register", &body).await
+    }
+
+    /// submit_kyc submits KYC data via `POST /api/v1/kyc/submit`. The request
+    /// body is opaque JSON; the response is returned as a raw JSON value.
+    pub async fn submit_kyc(
+        &self,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, WalletError> {
+        self.post("/api/v1/kyc/submit", &body).await
+    }
+
+    /// submit_kyc_document uploads a KYC document via
+    /// `POST /api/v1/kyc/document` using multipart/form-data. The caller builds
+    /// the `reqwest::multipart::Form` (file part + metadata fields); this method
+    /// attaches the Bearer JWT and dispatches the multipart request directly,
+    /// since the JSON-only `post` helper cannot carry a multipart body.
+    pub async fn submit_kyc_document(
+        &self,
+        form: reqwest::multipart::Form,
+    ) -> Result<serde_json::Value, WalletError> {
+        let mut req = self.http.post(self.url("/api/v1/kyc/document")).multipart(form);
+        if let Some(t) = self.token() {
+            req = req.bearer_auth(t);
+        }
+        let resp = req.send().await.map_err(|e| WalletError::Http(e.to_string()))?;
+        let status = resp.status();
+        let text = resp.text().await.map_err(|e| WalletError::Http(e.to_string()))?;
+        if !status.is_success() {
+            return Err(WalletError::Api(text));
+        }
+        serde_json::from_str(&text).map_err(|e| WalletError::Json(e.to_string()))
+    }
+
+    /// get_kyc_session fetches a KYC session by id via
+    /// `GET /api/v1/kyc/session/:id`. The response shape is opaque, so it is
+    /// returned as a raw JSON value.
+    pub async fn get_kyc_session(
+        &self,
+        session_id: &str,
+    ) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/api/v1/kyc/session/{}", url_encode(session_id));
+        self.get(&path).await
+    }
+
     // ---- P2P / fiat ramp ----
 
+    /// get_p2p_adverts fetches the P2P advert listings from
+    /// `GET /api/v1/p2p/adverts`.
     pub async fn get_p2p_adverts(&self) -> Result<serde_json::Value, WalletError> {
-        self.p2p_listings().await
+        self.get("/api/v1/p2p/adverts").await
+    }
+
+    /// create_p2p_order creates a new P2P trade order via
+    /// `POST /api/v1/p2p/orders`. KYC-gated — the backend returns 403 if the
+    /// caller has not completed KYC.
+    pub async fn create_p2p_order(
+        &self,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, WalletError> {
+        self.post("/api/v1/p2p/orders", &body).await
     }
 
     pub async fn get_fiat_offramp_quote(

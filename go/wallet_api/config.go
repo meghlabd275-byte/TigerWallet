@@ -22,6 +22,12 @@ type AppConfig struct {
 	// policy gate). Server-to-server only — UserWallet clients never talk to the
 	// MasterWallet backend directly (app separation preserved).
 	MasterWalletBackendURL string
+	// ListingServiceURL is the canonical listing/KYC backend (:8010). Used by
+	// the /kyc/* proxy + the P2P KYC gate. Server-to-server only.
+	ListingServiceURL string
+	// P2PServiceURL is the canonical P2P trading backend (p2p_trading, :8475).
+	// Used by the /p2p/* proxy (orders KYC-gated). Server-to-server only.
+	P2PServiceURL string
 }
 
 // LoadConfig reads configuration from environment variables. Every secret has
@@ -36,6 +42,8 @@ func LoadConfig() *AppConfig {
 		EtherscanAPIKey: os.Getenv("ETHERSCAN_API_KEY"),
 		AdminBootstrapEmail: os.Getenv("ADMIN_BOOTSTRAP_EMAIL"),
 		MasterWalletBackendURL: envOr("MASTER_WALLET_API_URL", "http://localhost:8450"),
+		ListingServiceURL:      envOr("LISTING_SERVICE_URL", "http://localhost:8010"),
+		P2PServiceURL:          envOr("P2P_SERVICE_URL", "http://localhost:8475"),
 	}
 }
 

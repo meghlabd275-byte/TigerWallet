@@ -12,6 +12,13 @@
         android:textSize="24sp"
         android:textStyle="bold" />
 
+    <Button
+        android:id="@+id/openKycButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Identity Verification (KYC)" />
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/balancesRecyclerView"
         android:layout_width="match_parent"
