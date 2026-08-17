@@ -731,6 +731,12 @@ export default function TigerWallet() {
                     <div key={i} className={`${isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'} text-sm p-2 rounded text-center`}>{i + 1}. {word}</div>
                   ))}
                 </div>
+                <div className="flex gap-2 mb-3">
+                  <button onClick={() => copyToClipboard(mnemonic)} className="flex-1 bg-gray-600 text-white rounded-lg py-2 text-sm font-semibold hover:bg-gray-700">📋 Copy Seed Phrase</button>
+                  <button onClick={backupToGoogleDrive} disabled={isLoading} className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm font-semibold hover:bg-blue-700 disabled:opacity-50">
+                    {isLoading ? 'Backing up...' : '☁️ Backup to Google Drive'}
+                  </button>
+                </div>
                 <button onClick={() => { setShowCreate(false); setShowMnemonic(false); setMnemonic(''); setWalletPassword(''); setConfirmPassword(''); }} className="w-full bg-orange-600 text-white rounded-lg py-2">I&apos;ve Saved My Seed Phrase</button>
               </div>
             )}
