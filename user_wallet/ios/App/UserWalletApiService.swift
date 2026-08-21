@@ -486,6 +486,11 @@ final class UserWalletApiService {
         return try await requestRaw("/ramp/offramp-quote", method: "POST", body: body)
     }
 
+    /// Fetch real funding-asset conversion rates from GET /card/rates (CoinGecko-backed).
+    func getCryptoCardRates() async throws -> [String: Any] {
+        return try await requestRaw("/card/rates")
+    }
+
     func getCryptoCardBalance() async throws -> [String: Any] {
         return try await requestRaw("/card/balance")
     }
@@ -993,6 +998,26 @@ final class UserWalletApiService {
 
     func getDefiProtocols() async throws -> [String: Any] {
         return try await requestRaw("/defi/protocols")
+    }
+
+    // MARK: - Token registry + trading terminal (public)
+
+    /// GET /tokens/registry — canonical per-chain token asset registry.
+    func getTokenRegistry(chainId: Int? = nil) async throws -> [String: Any] {
+        let path = chainId != nil ? "/tokens/registry?chain_id=\(chainId!)" : "/tokens/registry"
+        return try await requestRaw(path)
+    }
+
+    /// GET /terminal/kline/:symbol — real OHLC candles (CoinGecko-backed).
+    func getTerminalKline(symbol: String, days: Int = 1) async throws -> [String: Any] {
+        let enc = symbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? symbol
+        return try await requestRaw("/terminal/kline/\(enc)?days=\(days)")
+    }
+
+    /// GET /terminal/ticker/:symbol — real 24h ticker (CoinGecko-backed).
+    func getTerminalTicker(symbol: String) async throws -> [String: Any] {
+        let enc = symbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? symbol
+        return try await requestRaw("/terminal/ticker/\(enc)")
     }
 
     // MARK: - Passkey wallet creation

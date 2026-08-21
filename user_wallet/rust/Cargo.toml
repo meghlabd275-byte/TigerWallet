@@ -12,6 +12,10 @@ path = "src/lib.rs"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Real WalletConnect live-event socket (ws://.../api/v1/dapp/ws/<topic>).
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio-tungstenite = { version = "0.20", features = ["connect", "rustls-tls-webpki-roots"] }
+futures-util = "0.3"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

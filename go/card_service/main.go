@@ -5,7 +5,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -37,7 +40,7 @@ func main() {
 	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
 	defer rdb.Close()
 
-	svc := &service{pg: pool, redis: rdb, jwt: cfg.JWTSecret}
+	svc := &service{pg: pool, redis: rdb, jwt: cfg.JWTSecret, cgAPIKey: cfg.CoinGeckoAPIKey}
 	if err := svc.migrate(ctx); err != nil {
 		log.Fatalf("migrate: %v", err)
 	}
@@ -51,6 +54,7 @@ func main() {
 		api.GET("/balance", svc.getBalance)
 		api.GET("/transactions", svc.listTransactions)
 		api.POST("/transactions", svc.createTransaction)
+		api.GET("/rates", svc.getRates)
 	}
 
 	srv := &http.Server{Addr: ":" + cfg.Port, Handler: r}
@@ -69,7 +73,7 @@ func main() {
 }
 
 type config struct {
-	Port, DBURL, RedisAddr, JWTSecret string
+	Port, DBURL, RedisAddr, JWTSecret, CoinGeckoAPIKey string
 }
 
 func loadCfg() config {
@@ -80,17 +84,19 @@ func loadCfg() config {
 		return d
 	}
 	return config{
-		Port:      g("PORT", "8457"),
-		DBURL:     g("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable"),
-		RedisAddr: g("REDIS_ADDR", "localhost:6379"),
-		JWTSecret: g("JWT_SECRET", "tigerwallet-dev-secret-change-in-production"),
+		Port:            g("PORT", "8457"),
+		DBURL:           g("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable"),
+		RedisAddr:       g("REDIS_ADDR", "localhost:6379"),
+		JWTSecret:       g("JWT_SECRET", "tigerwallet-dev-secret-change-in-production"),
+		CoinGeckoAPIKey: g("COINGECKO_API_KEY", ""),
 	}
 }
 
 type service struct {
-	pg    *pgxpool.Pool
-	redis *redis.Client
-	jwt   string
+	pg       *pgxpool.Pool
+	redis    *redis.Client
+	jwt      string
+	cgAPIKey string
 }
 
 func (s *service) auth() gin.HandlerFunc {
@@ -281,4 +287,56 @@ func (s *service) createTransaction(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "id": id, "new_balance": newAvail})
+}
+
+// fundingAssets are the card program's supported top-up assets, priced in USD.
+// The rates are REAL (CoinGecko simple/price), cached in Redis for 60s, and
+// fail-closed: if the price oracle is unreachable the endpoint returns 502/503
+// rather than ever fabricating a conversion rate.
+var fundingAssets = []string{"ethereum", "bitcoin", "binancecoin", "usd-coin", "tether"}
+
+func (s *service) getRates(c *gin.Context) {
+	const cacheKey = "card:funding-rates"
+	if cached, err := s.redis.Get(c, cacheKey).Result(); err == nil && cached != "" {
+		c.Data(http.StatusOK, "application/json", []byte(cached))
+		return
+	}
+	req, err := http.NewRequestWithContext(c, http.MethodGet,
+		"https://api.coingecko.com/api/v3/simple/price?ids=ethereum,bitcoin,binancecoin,usd-coin,tether&vs_currencies=usd", nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot build price request"})
+		return
+	}
+	if s.cgAPIKey != "" {
+		req.Header.Set("x-cg-demo-api-key", s.cgAPIKey)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "price oracle unavailable"})
+		return
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("price oracle error (HTTP %d)", resp.StatusCode)})
+		return
+	}
+	var prices map[string]map[string]float64
+	if err := json.Unmarshal(body, &prices); err != nil || len(prices) == 0 {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "price oracle returned no data"})
+		return
+	}
+	rates := gin.H{}
+	for _, id := range fundingAssets {
+		if usd, ok := prices[id]["usd"]; ok && usd > 0 {
+			rates[id] = gin.H{"usd": usd}
+		}
+	}
+	if len(rates) == 0 {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "no rates available from oracle"})
+		return
+	}
+	payload, _ := json.Marshal(gin.H{"rates": rates, "count": len(rates)})
+	s.redis.Set(c, cacheKey, payload, 60*time.Second)
+	c.Data(http.StatusOK, "application/json", payload)
 }

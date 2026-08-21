@@ -16,6 +16,9 @@
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
+pub mod wc;
+pub use wc::WalletConnectSocket;
+
 const DEFAULT_BASE_URL: &str = "http://localhost:8443";
 
 /// Errors returned by the client. Never leak secrets in messages.
@@ -348,8 +351,21 @@ impl UserWalletClient {
         self.token.lock().unwrap().clone()
     }
 
+    /// Open a live WalletConnect socket for a pairing topic against the
+    /// canonical dapp relay (proxied through this client's base_url).
+    pub async fn connect_walletconnect(&self, topic: &str) -> Result<WalletConnectSocket, WalletError> {
+        WalletConnectSocket::connect(&self.base_url, topic).await
+    }
+
     fn url(&self, path: &str) -> String {
-        format!("{}{}", self.base_url, path)
+        // The canonical wallet_api mounts ALL API routes under /api/v1 (only
+        // /health is root-level). Normalize here so callers may pass either
+        // "/api/v1/x" or "/x" — both resolve to the same backend route.
+        if path.starts_with("/api/v1") || path == "/health" {
+            format!("{}{}", self.base_url, path)
+        } else {
+            format!("{}/api/v1{}", self.base_url, path)
+        }
     }
 
     async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, WalletError> {
@@ -509,6 +525,19 @@ impl UserWalletClient {
             ("address", address.to_string()),
             ("chain_id", chain_id.to_string()),
         ]).await
+    }
+
+    /// get_balances aggregates the real on-chain balance of every wallet the
+    /// authenticated user owns (GET /wallets then one GET /balance per wallet).
+    /// Parity with the web/desktop `getBalances` convenience method.
+    pub async fn get_balances(&self) -> Result<Vec<(WalletRecord, BalanceResult)>, WalletError> {
+        let wallets = self.list_wallets().await?;
+        let mut out = Vec::with_capacity(wallets.len());
+        for w in wallets {
+            let b = self.get_balance(&w.address, w.chain_id).await?;
+            out.push((w, b));
+        }
+        Ok(out)
     }
 
     pub async fn get_token_balances(&self, address: &str, chain_id: i64) -> Result<Vec<TokenBalance>, WalletError> {
@@ -773,7 +802,8 @@ impl UserWalletClient {
     }
 
     pub async fn p2p_listings(&self) -> Result<serde_json::Value, WalletError> {
-        self.get("/api/v1/p2p/listings").await
+        // Alias of get_p2p_adverts — the backend route is /p2p/adverts.
+        self.get("/api/v1/p2p/adverts").await
     }
 
     // -----------------------------------------------------------------------
@@ -1635,6 +1665,27 @@ impl UserWalletClient {
         self.get("/defi/protocols").await
     }
 
+    // ---- Token registry + trading terminal (public) ----
+
+    /// GET /tokens/registry — canonical per-chain token asset registry.
+    pub async fn get_token_registry(&self, chain_id: Option<i64>) -> Result<serde_json::Value, WalletError> {
+        match chain_id {
+            Some(id) => self.get_query("/tokens/registry", &[("chain_id", id.to_string())]).await,
+            None => self.get("/tokens/registry").await,
+        }
+    }
+
+    /// GET /terminal/kline/:symbol — real OHLC candles (CoinGecko-backed).
+    pub async fn get_terminal_kline(&self, symbol: &str, days: u32) -> Result<serde_json::Value, WalletError> {
+        let days = if days == 0 { 1 } else { days };
+        self.get_query(&format!("/terminal/kline/{}", url_encode(symbol)), &[("days", days.to_string())]).await
+    }
+
+    /// GET /terminal/ticker/:symbol — real 24h ticker (CoinGecko-backed).
+    pub async fn get_terminal_ticker(&self, symbol: &str) -> Result<serde_json::Value, WalletError> {
+        self.get(&format!("/terminal/ticker/{}", url_encode(symbol))).await
+    }
+
     pub async fn get_networks(&self) -> Result<Vec<ChainInfo>, WalletError> {
         self.get_chains().await
     }
@@ -1862,7 +1913,7 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
 }
 
 /// url_encode percent-encodes a path segment per RFC 3986 (unreserved set only).
-fn url_encode(input: &str) -> String {
+pub(crate) fn url_encode(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     for b in input.bytes() {
         if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {

@@ -35,6 +35,15 @@ func serviceURL(envKey, fallback string) string {
 // and forwarding the Authorization header. Upstream is resolved per-request so
 // admin/runtime env changes take effect without a restart.
 func deFiProxy(upstreamEnv, fallback, groupPrefix string) gin.HandlerFunc {
+	return deFiProxyRewrite(upstreamEnv, fallback, groupPrefix, "/api/v1/"+groupPrefix)
+}
+
+// deFiProxyRewrite behaves like deFiProxy but remaps the path when the
+// upstream service mounts its routes under a different prefix than the one
+// the UserWallet clients use: the incoming prefix "/api/v1/<groupPrefix>" is
+// replaced by upstreamPrefix verbatim (query string preserved). Pass
+// upstreamPrefix="" for an upstream that mounts its routes at the root.
+func deFiProxyRewrite(upstreamEnv, fallback, groupPrefix, upstreamPrefix string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		raw := serviceURL(upstreamEnv, fallback)
 		base, err := url.Parse(raw)
@@ -42,14 +51,17 @@ func deFiProxy(upstreamEnv, fallback, groupPrefix string) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "DeFi service URL misconfigured"})
 			return
 		}
-		// Forward the full original path (the services expose /api/v1/<group>/...).
+		// Forward the original path (the services expose /api/v1/<group>/...).
 		proxy := httputil.NewSingleHostReverseProxy(base)
-		// Preserve the original request path (SingleHostReverseProxy joins
-		// base.Path + req.URL.Path; since base.Path is empty this is the raw path).
 		originalDirector := proxy.Director
+		incomingPrefix := "/api/v1/" + groupPrefix
 		proxy.Director = func(req *http.Request) {
 			originalDirector(req)
-			// httputil strips nothing here; keep req.URL.Path as-is.
+			// Remap "/api/v1/<group>" -> upstreamPrefix verbatim (identity
+			// when the prefixes match; root-mount when upstreamPrefix=="").
+			if strings.HasPrefix(req.URL.Path, incomingPrefix) {
+				req.URL.Path = upstreamPrefix + strings.TrimPrefix(req.URL.Path, incomingPrefix)
+			}
 			req.Host = base.Host
 		}
 		// Surface upstream errors honestly instead of masking them.
@@ -57,7 +69,44 @@ func deFiProxy(upstreamEnv, fallback, groupPrefix string) gin.HandlerFunc {
 			c.Error(err) //nolint:errcheck
 			c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": "DeFi service unavailable", "detail": err.Error()})
 		}
-		_ = groupPrefix // kept for readability of the route registration call sites
+		proxy.ServeHTTP(c.Writer, c.Request)
+	}
+}
+
+// cardsProxy reverse-proxies the UserWallet /api/v1/cards/* surface to the
+// canonical card_service (:8457), which keys one card account per user and
+// mounts its routes at /api/v1/card/{balance,transactions,rates} (no :id).
+// Clients address the per-card style (/cards/<id>/balance); the :id segment
+// is the user's card-account alias and is dropped here (the account is
+// derived from the authenticated JWT, so no account data can be spoofed).
+func cardsProxy(upstreamEnv, fallback string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		raw := serviceURL(upstreamEnv, fallback)
+		base, err := url.Parse(raw)
+		if err != nil || base.Scheme == "" || base.Host == "" {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "card service URL misconfigured"})
+			return
+		}
+		rest := c.Param("path") // e.g. "/rates", "/<id>/balance"
+		op := rest
+		if parts := strings.SplitN(strings.TrimPrefix(rest, "/"), "/", 2); len(parts) == 2 {
+			op = "/" + parts[1] // drop the <id> segment
+		}
+		if op != "/balance" && op != "/transactions" && op != "/rates" {
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "unknown card operation"})
+			return
+		}
+		proxy := httputil.NewSingleHostReverseProxy(base)
+		originalDirector := proxy.Director
+		proxy.Director = func(req *http.Request) {
+			originalDirector(req)
+			req.URL.Path = "/api/v1/card" + op
+			req.Host = base.Host
+		}
+		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+			c.Error(err) //nolint:errcheck
+			c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": "card service unavailable", "detail": err.Error()})
+		}
 		proxy.ServeHTTP(c.Writer, c.Request)
 	}
 }

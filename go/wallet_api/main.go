@@ -69,6 +69,7 @@ func main() {
 	r.GET("/api/v1/chains", handleSupportedChains)
 	r.GET("/api/v1/price", handlePrice)
 	r.GET("/api/v1/gas", handleGasPrice)
+	r.POST("/api/v1/gas/estimate", handleEstimateGas)
 	r.GET("/api/v1/network-status", handleNetworkStatus)
 	r.GET("/api/v1/chart/history", handleChartHistory)
 
@@ -176,11 +177,11 @@ func main() {
 		wallet.PUT("/address-book/contacts/:id", handleUpdateContact)
 		wallet.DELETE("/address-book/contacts/:id", handleDeleteContact)
 
-                // ---- Multi-device sync (PostgreSQL-backed, no mock data) ----
-                wallet.GET("/devices", handleListDevices)
-                wallet.POST("/devices", handleRegisterDevice)
-                wallet.POST("/devices/:id/sync", handleSyncDevice)
-                wallet.DELETE("/devices/:id", handleDeleteDevice)
+		// ---- Multi-device sync (PostgreSQL-backed, no mock data) ----
+		wallet.GET("/devices", handleListDevices)
+		wallet.POST("/devices", handleRegisterDevice)
+		wallet.POST("/devices/:id/sync", handleSyncDevice)
+		wallet.DELETE("/devices/:id", handleDeleteDevice)
 
 		// ---- Portfolio features (PostgreSQL-backed, no mock data) ----
 		wallet.GET("/approvals", handleListApprovals)
@@ -224,10 +225,25 @@ func main() {
 		// (:8083) exposes /{pairings,sessions,ws/*,health} for WalletConnect-style
 		// dApp pairing + signed-request relay. Proxying it through :8443 closes
 		// Gap F so every UserWallet client reaches dApp pairing via one port.
+		// The upstream mounts those routes at the ROOT (no /api/v1 prefix), so
+		// the incoming /api/v1/dapp[/walletconnect] prefix is rewritten away.
 		// Note: WebSocket upgrade (/ws/:topic) is handled by the reverse proxy
 		// transparently (httputil.ReverseProxy supports WS).
-		wallet.Any("/dapp/*path", deFiProxy("DAPP_BROWSER_SERVICE_URL", "http://localhost:8083", "dapp"))
-		wallet.Any("/walletconnect/*path", deFiProxy("DAPP_BROWSER_SERVICE_URL", "http://localhost:8083", "walletconnect"))
+		wallet.Any("/dapp/*path", deFiProxyRewrite("DAPP_BROWSER_SERVICE_URL", "http://localhost:8083", "dapp", ""))
+		wallet.Any("/walletconnect/*path", deFiProxyRewrite("DAPP_BROWSER_SERVICE_URL", "http://localhost:8083", "walletconnect", ""))
+
+		// Crypto card: the canonical go/card_service (:8457) exposes
+		// /api/v1/card/{balance,transactions,rates}. Clients use the plural
+		// /api/v1/cards/* surface (incl. /cards/:id/balance per-card style); the
+		// cardsProxy maps it to the upstream per-user card account.
+		wallet.Any("/cards/*path", cardsProxy("CARD_SERVICE_URL", "http://localhost:8457"))
+		// Singular form (production/react client uses /card/{balance,transactions}).
+		wallet.Any("/card/*path", deFiProxyRewrite("CARD_SERVICE_URL", "http://localhost:8457", "card", "/api/v1/card"))
+
+		// Fiat ramp: the canonical go/fiat_ramp (:8451) exposes
+		// /api/v1/ramp/{providers,quote,offramp-quote,order,...} — identical
+		// prefix on both sides, plain proxy.
+		wallet.Any("/ramp/*path", deFiProxy("FIAT_RAMP_SERVICE_URL", "http://localhost:8451", "ramp"))
 
 		// ---- Admin / dashboard routes (authenticated + admin-role) ----
 		// Back the master-wallet dashboard with real PostgreSQL aggregates.

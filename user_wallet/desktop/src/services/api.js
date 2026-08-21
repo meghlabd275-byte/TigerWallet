@@ -688,6 +688,19 @@ export const api = {
     return request('/defi/protocols');
   },
 
+  // ---- Token registry + trading terminal (public) ----
+  async getTokenRegistry(chainId) {
+    return request(chainId ? `/tokens/registry?chain_id=${chainId}` : '/tokens/registry');
+  },
+
+  async getTerminalKline(symbol, days = 1) {
+    return request(`/terminal/kline/${encodeURIComponent(symbol)}?days=${days}`);
+  },
+
+  async getTerminalTicker(symbol) {
+    return request(`/terminal/ticker/${encodeURIComponent(symbol)}`);
+  },
+
   // ---- Passkey wallet creation ----
   // POST /passkey/wallet -> 201 { wallet_id, label, chain_id, address,
   // derivation_path, mnemonic, unlock_key, unlock_token }.

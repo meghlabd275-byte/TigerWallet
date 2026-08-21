@@ -4020,3 +4020,80 @@ with identical files/features/functionality. Commit d52c25f on main.
   `tigerwallet-wallet-backup.enc` is updated in place if it exists, else created.
 - Restore returns `nil`/`null` when no backup exists (a valid outcome), distinct
   from throwing on real failures.
+
+
+## Session 2026-08-21: UserWallet full-parity audit -- verified gaps
+
+Verified all 7 UserWallet clients against go/wallet_api source (fresh re-verification):
+- Method counts: web 118, desktop 117, extension 117 (WalletAPI object), production/react
+  118 (+AuthService), android 127, ios 117, rust 117 pub async fns. Full fetcher parity
+  confirmed (aliases: listWallets=getWallets, bridgeTransfer=initiateBridgeTransfer,
+  fetchBalance=getBalance, getTokenPrice=getPrice, dappSessionRequest=sendDappRequest).
+- GENUINE BACKEND GAPS (affect ALL clients, verified in source):
+  1. /ramp/* 404: wallet_api has NO fiat-ramp proxy. fiat_ramp (:8451) serves
+     /api/v1/ramp/{providers,quote,offramp-quote,order} but no proxy route in main.go.
+  2. /cards/* 404: wallet_api has NO card proxy. card_service (:8457) serves
+     /api/v1/card/{balance,transactions} -- different path shape than clients'
+     /cards/rates + /cards/:id/balance + /cards/:id/transactions; /cards/rates has no
+     upstream at all.
+  3. /dapp/* + /walletconnect/* proxy PATH MISMATCH: deFiProxy preserves the full
+     original path (/api/v1/dapp/pairings) but dapp_browser/go (:8083) serves ROOT-level
+     /pairings, /sessions/*, /ws/:topic only -> upstream 404. Needs either route-prefix
+     mount in dapp_browser or path rewrite in deFiProxy.
+  4. docker-compose.yml does NOT include lending/copy-trading/governance/prediction/
+     p2p/fiat-ramp/card/dapp-browser services, and wallet-api sets no *_SERVICE_URL envs,
+     so in compose the DeFi proxies fail-closed to 502/503 (localhost inside container).
+- GENUINE CLIENT GAPS: production/react missing createDappPairing + getCryptoCardRates;
+  android + ios missing getCryptoCardRates; rust missing getBalances convenience
+  aggregation (has per-address get_balance).
+- UNUSED BACKEND ENDPOINTS (no client consumer on any of the 7 apps):
+  /api/v1/terminal/{kline,ticker}/:symbol and /api/v1/tokens/registry.
+
+## Session 2026-08-21 (cont): UserWallet parity gaps RESOLVED
+
+All 4 backend gaps + all client gaps from the audit above are now fixed and verified:
+
+- /ramp/* proxy: wallet_api main.go mounts deFiProxy("/ramp", FIAT_RAMP_URL:8451).
+- /cards/* proxy: wallet_api mounts cardsProxy (defi_proxy.go) which strips the
+  client :id path segment (clients call /cards/<id>/balance, upstream serves
+  /api/v1/card/balance). card_service gained GET /api/v1/card/rates (real CoinGecko,
+  Redis-cached 60s, fail-closed; COINGECKO_API_KEY env). NOTE: Gin panics on
+  static+param sibling routes -- do NOT add /api/v1/card/:id/* variants.
+- /dapp/* + /walletconnect/* proxy: deFiProxyRewrite strips the prefix so
+  /api/v1/dapp/pairings -> :8083 /pairings, /api/v1/walletconnect/ws/<topic> ->
+  :8083 /ws/<topic> (WS upgrade passes through httputil.ReverseProxy).
+- docker-compose: 8 new services (lending 8009, copy-trading 8006, governance
+  8454, prediction 8455, p2p 8475, fiat-ramp 8451, card 8457, dapp-browser 8083)
+  each with a golang:1.23-alpine multi-stage Dockerfile; wallet-api now gets all
+  *_SERVICE_URL envs; init.sql gained the walletconnect DB.
+- POST /api/v1/gas/estimate (gas_estimate.go NEW): real eth_estimateGas via
+  ethclient.EstimateGas against the chain's RPC; fail-closed 502/503, never a
+  fabricated limit. 6/7 clients already called this route (it 404'd); the 7th
+  (production/react estimateGas) was fabricating gasPrice*21000 client-side and
+  is now wired to the real endpoint.
+- Rust client /api/v1 normalization bug (was ~40 broken fetchers): rust
+  url() helper did not prepend /api/v1, so every bare-path fetcher 404'd. Fixed
+  at the choke point (url() prepends /api/v1 unless path already has it or is
+  /health). p2p_listings() repointed /p2p/listings -> /p2p/adverts (real route).
+- 3 new fetchers on all 7 clients: getTokenRegistry (?chain_id),
+  getTerminalKline (symbol, days=1), getTerminalTicker (symbol) -- consume the
+  previously-orphaned /api/v1/tokens/registry + /api/v1/terminal/* endpoints.
+- WalletConnect WS live-event helpers on all 7 clients: real WebSocket to
+  ws(s)://<host>/api/v1/dapp/ws/<topic> (JSON-RPC frames {id,method,params}).
+  web/production-react: services/walletconnect.ts; desktop: services/walletconnect.js;
+  extension: src/walletconnect.js (loaded in popup.html, window.WalletConnectSocket);
+  android: util/WalletConnectSocket.kt (OkHttp newWebSocket); ios:
+  App/WalletConnectSocket.swift (URLSessionWebSocketTask); rust: src/wc.rs
+  WalletConnectSocket (tokio-tungstenite 0.20 with connect+rustls features;
+  Message::Frame(_) arm required). Rust also gained UserWalletClient
+  .connect_walletconnect(topic) convenience + 2 URL-derivation tests.
+- Extension popup UI: added DeFi tab (9-section hub: lending markets/positions,
+  perpetual, margin, DAO, prediction, launchpool, token-sales, copy-trading) and
+  dApps tab (wc: pairing URI create + pending-pairing approve/reject + active
+  session list). Theme-aware via existing CSS vars; switchTab extended.
+- Build gate (all green): go build+vet+test wallet_api (ok 3.0s) + card_service;
+  cargo check + test user_wallet/rust (8/8); tsc --noEmit web + production/react
+  (0 errors, npm install --legacy-peer-deps for CRA web / plain for react);
+  node --check desktop+extension; string-aware brace-balance android+ios
+  (Kotlin supports NESTED block comments -- the checker must track comment depth
+  or KDoc with inline /* */ false-positives).

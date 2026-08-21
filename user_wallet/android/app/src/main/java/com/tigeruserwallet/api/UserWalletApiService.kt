@@ -600,6 +600,10 @@ object UserWalletApiService {
         return execute(req)
     }
 
+    /** GET /card/rates -> real funding-asset conversion rates (CoinGecko-backed). */
+    fun getCryptoCardRates(): JSONObject =
+        execute(requestBuilder("/card/rates").get().build())
+
     fun getCryptoCardBalance(): JSONObject =
         execute(requestBuilder("/card/balance").get().build())
 
@@ -1245,6 +1249,22 @@ object UserWalletApiService {
 
     fun getDefiProtocols(): List<JSONObject> =
         executeList(requestBuilder("/defi/protocols").get().build(), "protocols")
+
+    // ==================== Token registry + trading terminal (public) ====================
+
+    /** GET /tokens/registry — canonical per-chain token asset registry. */
+    fun getTokenRegistry(chainId: Long? = null): JSONObject {
+        val path = if (chainId != null) "/tokens/registry?chain_id=$chainId" else "/tokens/registry"
+        return execute(requestBuilder(path).get().build())
+    }
+
+    /** GET /terminal/kline/:symbol — real OHLC candles (CoinGecko-backed). */
+    fun getTerminalKline(symbol: String, days: Int = 1): JSONObject =
+        execute(requestBuilder("/terminal/kline/$symbol?days=$days").get().build())
+
+    /** GET /terminal/ticker/:symbol — real 24h ticker (CoinGecko-backed). */
+    fun getTerminalTicker(symbol: String): JSONObject =
+        execute(requestBuilder("/terminal/ticker/$symbol").get().build())
 
     // ==================== Payment URI parser (bare 0x, ethereum:, EIP-681) ====================
 

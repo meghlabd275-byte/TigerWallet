@@ -374,15 +374,25 @@ class WalletService {
 
   async estimateGas(
     chainId: string,
-    _from: string,
-    _to: string,
-    _value: string,
-    _data?: string
+    from: string,
+    to: string,
+    value: string,
+    data?: string
   ): Promise<string> {
-    // The backend exposes gas *price* (real eth_feeHistory / eth_gasPrice);
-    // a 21000-unit estimate is the standard EVM floor for a simple transfer.
-    const gas = await this.getGasPrice(chainId);
-    return String(BigInt(Math.round(parseFloat(gas) || 0)) * 21000n);
+    // Real node-side eth_estimateGas via the backend (POST /gas/estimate) —
+    // never a fabricated price×21000 floor.
+    const response = await this.api.post('/gas/estimate', {
+      from,
+      to,
+      value,
+      data,
+      chain_id: Number(chainId) || 1,
+    });
+    const gasLimit = (response.data as { gas_limit?: number }).gas_limit;
+    if (gasLimit == null) {
+      throw new Error('Gas estimation did not return a gas_limit');
+    }
+    return String(gasLimit);
   }
 
   async getTokenBalance(walletAddress: string, tokenAddress: string, chainId: string): Promise<string> {
@@ -643,6 +653,12 @@ class WalletService {
     if (data?.pairings) return data.pairings as unknown[];
     return [];
   }
+
+  // POST /dapp/pairings — create a new dApp pairing (WalletConnect-style).
+  async createDappPairing(body: Record<string, unknown>): Promise<unknown> {
+    const response = await this.api.post('/dapp/pairings', body);
+    return response.data;
+  }
   async approveDappPairing(topic: string): Promise<unknown> {
     const response = await this.api.post(`/dapp/pairings/${encodeURIComponent(topic)}/approve`, {});
     return response.data;
@@ -697,6 +713,12 @@ class WalletService {
     const response = await this.api.post('/ramp/offramp-quote', {
       providerId, amount, fiatCurrency: fiat, cryptoCurrency: crypto,
     });
+    return response.data;
+  }
+
+  // GET /card/rates — real funding-asset conversion rates (CoinGecko-backed).
+  async getCryptoCardRates(): Promise<unknown> {
+    const response = await this.api.get('/card/rates');
     return response.data;
   }
 
@@ -1478,6 +1500,32 @@ class WalletService {
 
   async getDefiProtocols(): Promise<unknown> {
     const response = await this.api.get('/defi/protocols');
+    return response.data;
+  }
+
+  // ---- Token registry + trading terminal (public) ----
+  // GET /tokens/registry — canonical per-chain token asset registry.
+  async getTokenRegistry(chainId?: number): Promise<unknown> {
+    const response = await this.api.get('/tokens/registry', {
+      params: chainId ? { chain_id: chainId } : {},
+    });
+    return response.data;
+  }
+
+  // GET /terminal/kline/:symbol — real OHLC candles (CoinGecko-backed).
+  async getTerminalKline(symbol: string, days = 1): Promise<unknown> {
+    const response = await this.api.get(
+      `/terminal/kline/${encodeURIComponent(symbol)}`,
+      { params: { days } },
+    );
+    return response.data;
+  }
+
+  // GET /terminal/ticker/:symbol — real 24h ticker (CoinGecko-backed).
+  async getTerminalTicker(symbol: string): Promise<unknown> {
+    const response = await this.api.get(
+      `/terminal/ticker/${encodeURIComponent(symbol)}`,
+    );
     return response.data;
   }
 

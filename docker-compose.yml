@@ -52,6 +52,16 @@ services:
       JWT_SECRET: "tigerwallet-jwt-secret-change-in-production"
       ETHERSCAN_API_KEY: "${ETHERSCAN_API_KEY:-}"
       COINGECKO_API_KEY: "${COINGECKO_API_KEY:-}"
+      # Upstream DeFi/utility services proxied through /api/v1/* (defi_proxy.go).
+      LENDING_SERVICE_URL: "http://lending-service:8009"
+      COPYTRADING_SERVICE_URL: "http://copy-trading-service:8006"
+      GOVERNANCE_SERVICE_URL: "http://governance-service:8454"
+      PREDICTION_SERVICE_URL: "http://prediction-service:8455"
+      BRIDGE_SERVICE_URL: "http://bridge-api:8007"
+      DAPP_BROWSER_SERVICE_URL: "http://dapp-browser:8083"
+      CARD_SERVICE_URL: "http://card-service:8457"
+      FIAT_RAMP_SERVICE_URL: "http://fiat-ramp-service:8451"
+      P2P_SERVICE_URL: "http://p2p-service:8475"
     depends_on:
       postgres:
         condition: service_healthy
@@ -158,6 +168,166 @@ services:
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet_bridge?sslmode=disable"
     depends_on:
       postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # UserWallet auxiliary services — proxied through wallet-api (:8443) so every
+  # UserWallet client reaches the full DeFi/utility surface via one port.
+  # JWT_SECRET must match wallet-api so proxied Bearer tokens validate upstream.
+  # ---------------------------------------------------------------------------
+
+  lending-service:
+    build:
+      context: ./go/lending_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-lending-service
+    ports:
+      - "8009:8009"
+    environment:
+      DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      JWT_SECRET: "tigerwallet-jwt-secret-change-in-production"
+      ETHEREUM_RPC_URL: "${ETHEREUM_RPC_URL:-https://ethereum.publicnode.com}"
+      WALLET_API_URL: "http://wallet-api:8443"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  copy-trading-service:
+    build:
+      context: ./go/copy_trading_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-copy-trading-service
+    ports:
+      - "8006:8006"
+    environment:
+      DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      JWT_SECRET: "tigerwallet-jwt-secret-change-in-production"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  governance-service:
+    build:
+      context: ./go/governance_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-governance-service
+    ports:
+      - "8454:8454"
+    environment:
+      DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      JWT_SECRET: "tigerwallet-jwt-secret-change-in-production"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  prediction-service:
+    build:
+      context: ./go/prediction_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-prediction-service
+    ports:
+      - "8455:8455"
+    environment:
+      DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      JWT_SECRET: "tigerwallet-jwt-secret-change-in-production"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  p2p-service:
+    build:
+      context: ./go/p2p_trading
+      dockerfile: Dockerfile
+    container_name: tigerwallet-p2p-service
+    ports:
+      - "8475:8475"
+    environment:
+      DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  fiat-ramp-service:
+    build:
+      context: ./go/fiat_ramp
+      dockerfile: Dockerfile
+    container_name: tigerwallet-fiat-ramp-service
+    ports:
+      - "8451:8451"
+    environment:
+      DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
+      REDIS_URL: "redis://redis:6379"
+      JWT_SECRET: "tigerwallet-jwt-secret-change-in-production"
+      TRANSAK_ENV: "${TRANSAK_ENV:-staging}"
+      TRANSAK_API_KEY: "${TRANSAK_API_KEY:-}"
+      MOONPAY_API_KEY: "${MOONPAY_API_KEY:-}"
+      COINGECKO_API_KEY: "${COINGECKO_API_KEY:-}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  card-service:
+    build:
+      context: ./go/card_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-card-service
+    ports:
+      - "8457:8457"
+    environment:
+      DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      JWT_SECRET: "tigerwallet-jwt-secret-change-in-production"
+      COINGECKO_API_KEY: "${COINGECKO_API_KEY:-}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  dapp-browser:
+    build:
+      context: ./dapp_browser/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-dapp-browser
+    ports:
+      - "8083:8083"
+    environment:
+      WC_SERVER_PORT: "8083"
+      DB_HOST: "postgres"
+      DB_PORT: "5432"
+      DB_USER: "tigerwallet"
+      DB_PASSWORD: "tigerwallet"
+      DB_NAME: "walletconnect"
+      REDIS_HOST: "redis"
+      REDIS_PORT: "6379"
+      WC_PROJECT_ID: "${WC_PROJECT_ID:-}"
+      WC_SIGNER_PRIVATE_KEY: "${WC_SIGNER_PRIVATE_KEY:-}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
 

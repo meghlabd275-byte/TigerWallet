@@ -111,3 +111,8 @@ CREATE DATABASE wl_card;
 \connect wl_card;
 -- WL-Card schema is managed by the service's own migrations on boot
 -- (users, cards with encrypted PAN/CVV, card_transactions).
+
+-- WalletConnect / dApp browser database (dapp_browser service).
+-- Schema is managed by the service's own migrations on boot.
+CREATE DATABASE walletconnect;
+\connect walletconnect;

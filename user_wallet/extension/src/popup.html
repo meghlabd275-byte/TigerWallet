@@ -141,6 +141,8 @@
       <button class="tab-btn" data-tab="fiatTab">Fiat Ramp</button>
       <button class="tab-btn" data-tab="qrTab">QR Scan</button>
       <button class="tab-btn" data-tab="kycTab">KYC</button>
+      <button class="tab-btn" data-tab="defiTab">DeFi</button>
+      <button class="tab-btn" data-tab="dappsTab">dApps</button>
     </div>
 
     <!-- Wallets tab -->
@@ -245,10 +247,45 @@
       <div id="kycError" class="error hidden"></div>
     </div>
 
+    <!-- DeFi hub tab -->
+    <div id="defiTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">DeFi Hub</div>
+      <div id="defiStatus" style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;"></div>
+      <label for="defiSection">Section</label>
+      <select id="defiSection" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);margin-bottom:8px;">
+        <option value="lending">Lending markets</option>
+        <option value="lending-positions">Lending positions</option>
+        <option value="perpetual">Perpetual positions</option>
+        <option value="margin">Margin positions</option>
+        <option value="dao">DAO proposals</option>
+        <option value="prediction">Prediction markets</option>
+        <option value="launchpool">Launchpool</option>
+        <option value="token-sales">Token sales</option>
+        <option value="copy-trading">Copy-trading traders</option>
+      </select>
+      <div id="defiList" style="max-height:220px;overflow-y:auto;font-size:12px;"></div>
+      <div id="defiError" class="error hidden"></div>
+    </div>
+
+    <!-- dApp pairing management tab -->
+    <div id="dappsTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">dApp Connections (WalletConnect)</div>
+      <label for="dappPairUri">Pairing URI (wc:...)</label>
+      <input type="text" id="dappPairUri" placeholder="wc:topic@2?..." />
+      <button id="dappPairBtn">Create Pairing</button>
+      <div id="dappStatus" style="font-size:12px;color:var(--text-secondary);margin:8px 0;"></div>
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">Pending pairings</div>
+      <div id="dappPairingsList" style="max-height:120px;overflow-y:auto;font-size:12px;margin-bottom:8px;"></div>
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">Active sessions</div>
+      <div id="dappSessionsList" style="max-height:120px;overflow-y:auto;font-size:12px;"></div>
+      <div id="dappError" class="error hidden"></div>
+    </div>
+
     <button id="logoutBtn" class="toggle-auth">Logout</button>
   </div>
 
   <script src="src/googleDriveBackup.js"></script>
+  <script src="src/walletconnect.js"></script>
   <script src="src/popup.js"></script>
 </body>
 </html>

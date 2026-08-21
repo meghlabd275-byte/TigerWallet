@@ -75,6 +75,10 @@ function bindEvents() {
   if (createPasskeyBtn) createPasskeyBtn.addEventListener('click', handleCreatePasskey);
   const kycSubmitBtn = document.getElementById('kycSubmitBtn');
   if (kycSubmitBtn) kycSubmitBtn.addEventListener('click', handleKycSubmit);
+  const defiSection = document.getElementById('defiSection');
+  if (defiSection) defiSection.addEventListener('change', loadDefi);
+  const dappPairBtn = document.getElementById('dappPairBtn');
+  if (dappPairBtn) dappPairBtn.addEventListener('click', handleDappPair);
   const convertBtn = document.getElementById('convertBtn');
   if (convertBtn) convertBtn.addEventListener('click', handleConvert);
   const stakeBtn = document.getElementById('stakeBtn');
@@ -521,6 +525,14 @@ const WalletAPI = {
   // DeFi protocols.
   getDefiProtocols: () => api('/defi/protocols'),
 
+  // ---- Token registry + trading terminal (public) ----
+  getTokenRegistry: (chainId) =>
+    api(chainId ? `/tokens/registry?chain_id=${chainId}` : '/tokens/registry'),
+  getTerminalKline: (symbol, days = 1) =>
+    api(`/terminal/kline/${encodeURIComponent(symbol)}?days=${days}`),
+  getTerminalTicker: (symbol) =>
+    api(`/terminal/ticker/${encodeURIComponent(symbol)}`),
+
   // Passkey wallet creation — POST /passkey/wallet.
   passkeyCreateWallet: ({ label, chain_id, account_index, entropy_bits, credential_id, public_key, sign_count, attestation }) =>
     api('/passkey/wallet', { method: 'POST', body: { label, chain_id, account_index, entropy_bits, credential_id, public_key, sign_count, attestation } }),
@@ -594,7 +606,7 @@ const WalletAPI = {
 const state = { wallets: [], activeWallet: null };
 
 function switchTab(tab) {
-  ['walletTab', 'sendTab', 'convertTab', 'stakingTab', 'fiatTab', 'qrTab', 'kycTab'].forEach((t) => {
+  ['walletTab', 'sendTab', 'convertTab', 'stakingTab', 'fiatTab', 'qrTab', 'kycTab', 'defiTab', 'dappsTab'].forEach((t) => {
     const el = document.getElementById(t);
     if (el) el.classList.add('hidden');
   });
@@ -605,6 +617,8 @@ function switchTab(tab) {
   if (tab === 'staking') loadStaking();
   if (tab === 'fiat') loadFiatProviders();
   if (tab === 'kyc') loadKyc();
+  if (tab === 'defi') loadDefi();
+  if (tab === 'dapps') loadDapps();
 }
 
 function activeWallet() {
@@ -1006,6 +1020,133 @@ async function handleKycSubmit() {
     errEl.classList.remove('hidden');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Start KYC'; }
+  }
+}
+
+// ---- DeFi hub view ----
+async function loadDefi() {
+  const section = document.getElementById('defiSection').value;
+  const listEl = document.getElementById('defiList');
+  const statusEl = document.getElementById('defiStatus');
+  const errEl = document.getElementById('defiError');
+  errEl.classList.add('hidden');
+  listEl.innerHTML = '';
+  statusEl.textContent = 'Loading…';
+  const unwrap = (res, key) => {
+    if (Array.isArray(res)) return res;
+    if (res && Array.isArray(res[key])) return res[key];
+    for (const k of Object.keys(res || {})) if (Array.isArray(res[k])) return res[k];
+    return [];
+  };
+  try {
+    let items = [];
+    switch (section) {
+      case 'lending': items = unwrap(await WalletAPI.getLendingMarkets(), 'markets'); break;
+      case 'lending-positions': items = unwrap(await WalletAPI.getLendingPositions(), 'positions'); break;
+      case 'perpetual': items = unwrap(await WalletAPI.getPerpetualPositions(), 'positions'); break;
+      case 'margin': items = unwrap(await WalletAPI.getMarginPositions(), 'positions'); break;
+      case 'dao': items = unwrap(await WalletAPI.getDaoProposals(), 'proposals'); break;
+      case 'prediction': items = unwrap(await WalletAPI.getPredictionMarkets(), 'markets'); break;
+      case 'launchpool': items = unwrap(await WalletAPI.getLaunchpool(), 'pools'); break;
+      case 'token-sales': items = unwrap(await WalletAPI.getTokenSales(), 'sales'); break;
+      case 'copy-trading': items = unwrap(await WalletAPI.getCopyTraders(), 'traders'); break;
+    }
+    statusEl.textContent = items.length + ' item(s)';
+    if (!items.length) {
+      listEl.innerHTML = '<div style="color:var(--text-secondary);">No data yet.</div>';
+      return;
+    }
+    items.slice(0, 50).forEach((it) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'padding:6px 4px;border-bottom:1px solid var(--border);';
+      const title = it.symbol || it.asset_symbol || it.title || it.name || it.token || it.asset || it.pair || it.id || 'item';
+      const detail = it.apy != null ? ` — APY ${it.apy}%`
+        : it.status ? ` — ${it.status}`
+        : it.pnl != null ? ` — PnL ${it.pnl}`
+        : '';
+      row.textContent = `${title}${detail}`;
+      listEl.appendChild(row);
+    });
+  } catch (err) {
+    statusEl.textContent = '';
+    errEl.textContent = err.message;
+    errEl.classList.remove('hidden');
+  }
+}
+
+// ---- dApp connections view ----
+async function loadDapps() {
+  const pairingsEl = document.getElementById('dappPairingsList');
+  const sessionsEl = document.getElementById('dappSessionsList');
+  const errEl = document.getElementById('dappError');
+  errEl.classList.add('hidden');
+  pairingsEl.innerHTML = '<div style="color:var(--text-secondary);">Loading…</div>';
+  sessionsEl.innerHTML = '';
+  try {
+    const [pairings, sessions] = await Promise.all([
+      WalletAPI.getDappPairings().catch(() => []),
+      WalletAPI.getDappSessions().catch(() => []),
+    ]);
+    const pList = Array.isArray(pairings) ? pairings : (pairings.pairings || []);
+    const sList = Array.isArray(sessions) ? sessions : (sessions.sessions || []);
+    pairingsEl.innerHTML = pList.length ? '' : '<div style="color:var(--text-secondary);">No pending pairings.</div>';
+    pList.forEach((p) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'padding:6px 4px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:6px;';
+      const label = document.createElement('span');
+      label.textContent = p.name || p.peer_name || p.topic || 'pairing';
+      label.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      const approve = document.createElement('button');
+      approve.textContent = 'Approve';
+      approve.style.cssText = 'padding:2px 8px;font-size:11px;';
+      approve.addEventListener('click', async () => {
+        try { await WalletAPI.approveDappPairing(p.topic); loadDapps(); }
+        catch (e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+      });
+      const reject = document.createElement('button');
+      reject.textContent = 'Reject';
+      reject.style.cssText = 'padding:2px 8px;font-size:11px;background:var(--error);';
+      reject.addEventListener('click', async () => {
+        try { await WalletAPI.rejectDappPairing(p.topic); loadDapps(); }
+        catch (e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+      });
+      row.appendChild(label);
+      row.appendChild(approve);
+      row.appendChild(reject);
+      pairingsEl.appendChild(row);
+    });
+    sessionsEl.innerHTML = sList.length ? '' : '<div style="color:var(--text-secondary);">No active sessions.</div>';
+    sList.forEach((s) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'padding:6px 4px;border-bottom:1px solid var(--border);';
+      row.textContent = (s.name || s.peer_name || s.topic || 'session') + (s.chain_id ? ` — chain ${s.chain_id}` : '');
+      sessionsEl.appendChild(row);
+    });
+  } catch (err) {
+    pairingsEl.innerHTML = '';
+    errEl.textContent = err.message;
+    errEl.classList.remove('hidden');
+  }
+}
+
+async function handleDappPair() {
+  const uri = document.getElementById('dappPairUri').value.trim();
+  const statusEl = document.getElementById('dappStatus');
+  const errEl = document.getElementById('dappError');
+  errEl.classList.add('hidden');
+  if (!uri) { errEl.textContent = 'Paste a WalletConnect pairing URI (wc:...).'; errEl.classList.remove('hidden'); return; }
+  if (!uri.startsWith('wc:')) { errEl.textContent = 'Invalid WalletConnect URI.'; errEl.classList.remove('hidden'); return; }
+  statusEl.textContent = 'Creating pairing…';
+  try {
+    const w = activeWallet();
+    await WalletAPI.createDappPairing({ uri, address: w ? w.address : undefined });
+    statusEl.textContent = '✓ Pairing created — approve it below.';
+    document.getElementById('dappPairUri').value = '';
+    loadDapps();
+  } catch (err) {
+    statusEl.textContent = '';
+    errEl.textContent = err.message;
+    errEl.classList.remove('hidden');
   }
 }
 

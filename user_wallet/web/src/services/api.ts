@@ -1141,6 +1141,32 @@ class ApiService {
     return data;
   }
 
+  // ==================== Token registry + trading terminal (public) ====================
+  // GET /tokens/registry — canonical per-chain token asset registry.
+  async getTokenRegistry(chainId?: number): Promise<unknown> {
+    const { data } = await this.client.get('/tokens/registry', {
+      params: chainId ? { chain_id: chainId } : {},
+    });
+    return data;
+  }
+
+  // GET /terminal/kline/:symbol — real OHLC candles (CoinGecko-backed).
+  async getTerminalKline(symbol: string, days = 1): Promise<unknown> {
+    const { data } = await this.client.get(
+      `/terminal/kline/${encodeURIComponent(symbol)}`,
+      { params: { days } },
+    );
+    return data;
+  }
+
+  // GET /terminal/ticker/:symbol — real 24h ticker (CoinGecko-backed).
+  async getTerminalTicker(symbol: string): Promise<unknown> {
+    const { data } = await this.client.get(
+      `/terminal/ticker/${encodeURIComponent(symbol)}`,
+    );
+    return data;
+  }
+
   // ==================== Passkeys / WebAuthn ====================
   // POST /passkey/wallet — create a wallet whose entropy is wrapped by a
   // browser-issued WebAuthn credential. credentialId + publicKey are base64url
