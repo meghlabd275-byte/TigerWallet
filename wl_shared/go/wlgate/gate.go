@@ -36,6 +36,7 @@ type Gate struct {
 	mu     sync.RWMutex
 	reason string
 	flags  map[string]bool // product\x1ffetcher -> enabled
+	auto   *AutoApprover   // optional: the transaction classifier (fee/revenue => Manual)
 }
 
 // New returns a Gate initialized to dead (fail-closed on boot until first
@@ -46,6 +47,17 @@ func New() *Gate {
 		reason: "license not yet validated (heartbeat pending)",
 	}
 }
+
+// WithAutoApprover attaches an AutoApprover so the heartbeat also pushes the
+// policy snapshot (treasury addresses + auto-sign rules) into it. Returns the
+// gate for chaining: gate := wlgate.New().WithAutoApprover(wlgate.NewAutoApprover()).
+func (g *Gate) WithAutoApprover(a *AutoApprover) *Gate {
+	g.auto = a
+	return g
+}
+
+// AutoApprover returns the attached AutoApprover (nil if none).
+func (g *Gate) AutoApprover() *AutoApprover { return g.auto }
 
 // SetAlive sets the liveness flag.
 func (g *Gate) SetAlive(alive bool, reason string) {
@@ -104,10 +116,10 @@ func (g *Gate) FetcherEnabled(product, fetcher string) bool {
 
 // Claims for the WL backend JWT (tenant-scoped).
 type Claims struct {
-	UserID        uuid.UUID `json:"user_id"`
-	Email         string    `json:"email"`
-	WhiteLabelID  uuid.UUID `json:"white_label_id"`
-	Scopes        []string  `json:"scopes"`
+	UserID       uuid.UUID `json:"user_id"`
+	Email        string    `json:"email"`
+	WhiteLabelID uuid.UUID `json:"white_label_id"`
+	Scopes       []string  `json:"scopes"`
 	jwt.RegisteredClaims
 }
 
@@ -260,29 +272,54 @@ func (g *Gate) beat(ctx context.Context, client *http.Client, cpURL, token, lice
 	resp, err := client.Do(req)
 	if err != nil {
 		g.SetAlive(false, "control plane unreachable: "+err.Error())
+		if g.auto != nil {
+			g.auto.SetAlive(false, "control plane unreachable: "+err.Error())
+		}
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		g.SetAlive(false, fmt.Sprintf("control plane rejected license (HTTP %d)", resp.StatusCode))
+		if g.auto != nil {
+			g.auto.SetAlive(false, fmt.Sprintf("control plane rejected license (HTTP %d)", resp.StatusCode))
+		}
 		return
 	}
 	var vr struct {
-		Valid  bool   `json:"valid"`
-		Alive  bool   `json:"alive"`
-		Reason string `json:"reason"`
-		Flags  []Flag `json:"flags"`
+		Valid             bool           `json:"valid"`
+		Alive             bool           `json:"alive"`
+		Reason            string         `json:"reason"`
+		Flags             []Flag         `json:"flags"`
+		TreasuryAddresses []string       `json:"treasury_addresses"`
+		AutoSignRules     []AutoSignRule `json:"auto_sign_rules"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&vr); err != nil {
 		g.SetAlive(false, "control plane response parse error")
+		if g.auto != nil {
+			g.auto.SetAlive(false, "control plane response parse error")
+		}
 		return
 	}
 	if !vr.Valid || !vr.Alive {
 		g.SetAlive(false, vr.Reason)
+		if g.auto != nil {
+			g.auto.SetAlive(false, vr.Reason)
+		}
 		return
 	}
 	if vr.Flags != nil {
 		g.SetFlags(vr.Flags)
+	}
+	// Push the AutoApprover policy snapshot (the security boundary that
+	// defines fee/revenue => Manual, user tx => Auto).
+	if g.auto != nil {
+		if vr.TreasuryAddresses != nil {
+			g.auto.SetTreasuryAddresses(vr.TreasuryAddresses)
+		}
+		if vr.AutoSignRules != nil {
+			g.auto.SetRules(vr.AutoSignRules)
+		}
+		g.auto.SetAlive(true, "")
 	}
 	g.SetAlive(true, "")
 }
@@ -329,7 +366,7 @@ func (t *TwoPartyGate) RequestWithdrawal(ctx context.Context, walletID uuid.UUID
 	}
 	body := fmt.Sprintf(`{"wallet_id":%q,"to_address":%q,"amount_wei":%q,"currency":%q,"chain_id":%d}`,
 		walletID, toAddress, amountWei, currency, chainID)
-	url := t.cpURL + "/api/v1/wl/withdrawals/request"
+	url := t.cpURL + "/api/v1/withdrawals/request"
 	req, _ := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	if t.token != "" {

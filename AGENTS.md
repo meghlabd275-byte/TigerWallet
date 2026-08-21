@@ -1127,36 +1127,6 @@ co-located bundles (`frontend/web_nextjs`, `mobile_apps/*`) are NOT duplicates.
   pass** (MultisigWallet 13, AccountFactory 5, VerifyingPaymaster, TigerWalletAAFactory) —
   all real ECDSA via `vm.sign`, no mocks.
 
-### user_wallet/desktop UI-parity gap closed (2026-08-17)
-- Web has 18 pages; desktop had only 8. Added 9 NEW themed pages mirroring
-  existing patterns (KYC/Wallets/Send): `useTheme()` + `isDark` ternaries,
-  fetch-on-mount `useEffect`, loading/error/empty states, NO mock data — every
-  value from a real `api` call in `src/services/api.js`:
-  - `src/pages/Swap.jsx` (`getSwapQuote`+`ammSwap`), `Staking.jsx`
-    (`getStakingQuote`+`stake`/`unstake`/`claim`), `NFTs.jsx` (`getNFTs`+
-    `transferNFT`), `Bridge.jsx` (`getConvertQuote` indicative +
-    `sendTransaction` broadcast — NO fabricated bridge tx; doc'd in file),
-    `AddressBook.jsx` (`getAddressBookContacts`+`addContact`/`updateContact`/
-    `deleteContact`), `Approvals.jsx` (`getApprovals`+`revokeApproval`),
-    `Devices.jsx` (`getDevices`+`registerDevice`/`syncDevice`/`deleteDevice`),
-    `Keystore.jsx` (`exportKeystore`+`importKeystore`, copy/download), `DeFi.jsx`
-    (ONE hub w/ 8 tabbed sections: Lending, Copy, DAO, Perpetual, Margin,
-    Prediction, Launchpool, Token Sales — each list+action form).
-- Routes wired in `src/renderer/App.jsx` (HashRouter): /swap, /staking, /nfts,
-  /bridge, /address-book, /approvals, /devices, /keystore, /defi.
-- Nav links added to `src/components/Layout.jsx` (matched nav-item style).
-- Convert.jsx intentionally NOT created (web uses Swap; matches web page set).
-- Login.jsx covers register (no separate Register.jsx forced).
-- Verification: `node --check src/services/api.js` OK (untouched);
-  `esbuild --bundle` per new file + full `App.jsx` → all parse clean, 0 errors.
-  No `dark:` Tailwind classes (project uses CSS vars + isDark ternaries).
-- Convention for new desktop pages: mirror KYC.jsx/Wallets.jsx/Send.jsx exactly
-  (top-level `useTheme()`+`isDark`, `useEffect` fetch w/ `alive` cancel flag,
-  `.send-page`/`.wallets-page`/`.send-form`/`.import-form`/`.wallets-grid`/
-  `.wallet-card`/`.transactions-table` class names from styles.css, `success-banner`
-  for confirmations). `CHAIN_OPTIONS`+`CHAIN_IDS` (ethereum=1, bsc=56,
-  polygon=137) duplicated per-page as in existing pages.
-
 ### UserWallet clients — FULL feature parity (web/desktop/android/ios)
 - ALL four UserWallet native clients now expose the SAME fetcher set against the
   canonical `go/wallet_api` (:8443): login/register, getWallets/createWallet,
@@ -1171,63 +1141,12 @@ co-located bundles (`frontend/web_nextjs`, `mobile_apps/*`) are NOT duplicates.
 - `user_wallet/ios/App/UserWalletApiService.swift`: added sendTransaction/signMessage/
   getTokenBalances/getNFTs/getGasPrice/getTokenPrice/getChains/getNetworkStatus/
   getSwapQuote/getStakingQuote (+ Codable structs).
-
-### user_wallet/ios SwiftUI app — conventions (App/*.swift)
-- `UserWalletApiService` is a class; the singleton is `UserWalletApiService.shared`.
-  All API methods are `async throws`. Untyped endpoints return `[String: Any]`;
-  typed ones return nested `Codable` structs.
-- **Type-scoping gotcha (non-obvious):** top-level structs are referenced BARE:
-  `WalletRecord`, `BalanceResult`, `TransactionRecord`, `AuthResponse`, etc.
-  But many structs are NESTED inside `UserWalletApiService` and MUST be qualified
-  with the `UserWalletApiService.` prefix: `SwapQuote`, `StakingQuote`,
-  `StakingAsset`, `NFT`, `SendResult`, `AutoSendResult`, `TokenBalance`,
-  `ChainInfo`, `PasskeyWalletResult`, etc. (A bare `SwapQuote` will NOT compile.)
-- View pattern: each `*View` is a `struct … : View` with `NavigationView`, uses
-  `@State` + a `loadXxx()` helper that wraps `Task { do { … await MainActor.run { … } } catch { … } }`,
-  shows `ProgressView` (loading) / red `Text`+Retry (error) / `.secondary` empty
-  state, and calls `UserWalletApiService.shared` directly. Forms use `Form`+`Section`;
-  semantic theme colors via `.systemGray6`/`.secondary`/`.orange` accent.
-- Navigation: `ContentView` in `UserWalletApp.swift` is a `TabView` with the
-  original 6 tabs + a 7th "More" tab (`MoreView`) that is a `NavigationView`/`List`
-  of `NavigationLink`s to: Receive, Swap, Staking, NFTs, Bridge, AddressBook,
-  Approvals, Devices, Keystore, DeFi.
-- **No swiftc in this env** — cannot compile. Verify new `.swift` files with the
-  string-aware Python tokenizer at `/tmp/swift_balance.py` (handles `//`, `/* */`,
-  `"..."` with escapes, `"""..."""` multiline, `\(…)` interpolation braces NOT
-  counted, `#"…"#` raw strings). It correctly ignores interpolation braces.
-- Real QR for ReceiveView uses `CoreImage.CIFilterBuiltins` `qrCodeGenerator()`
-  (NOT a fake asset). BridgeView honestly uses `sendTransaction` (no dedicated
-  bridge endpoint) and shows "Transaction submitted to the blockchain network".
 - `user_wallet/web/src/services/api.ts`: added getSwapQuote/getStakingQuote (send/sign
   already existed — avoid duplicate method definitions, TS2393).
 - `user_wallet/desktop/src/services/api.js`: added getNFTs/getSwapQuote/getStakingQuote.
 - The dead `user_wallet/go/handlers/` (user_wallet_handler.go, wallet_service.go,
   swap_service.go) trap is GONE (removed in a prior session). desktop route mismatch
   (`/wallet/balances`) is fixed (`/balances`). All clients target :8443, not :8105/:8080.
-
-### user_wallet send flow = auto-send-first-with-fallback (2026-08-17)
-- REQUIREMENT: UserWallet clients ALWAYS get automatic sign + automatic approval
-  (within a second) from superAdmin / MasterWallet owner / Admin panel. So the
-  PRIMARY send button on every client calls `autoSendTransaction` first; the
-  manual `sendTransaction` is kept ONLY as a fallback if auto-send throws.
-- All 5 clients now follow this pattern and show the success message
-  "Transaction submitted to the blockchain network" on either path:
-  - web `src/pages/Send.tsx` `handleSend` (form onSubmit) — inner try autoSend,
-    catch -> manual send.
-  - desktop `src/pages/Send.jsx` `primarySend` (form onSubmit) -> `doSend(auto=true)`
-    with fallback.
-  - extension `src/popup.js` `handleSend` + `qrSendBtn` handler — autoSend first,
-    catch -> manual send.
-  - android `.../fragments/SendFragment.kt` `performSend(autoFirst=true)` — both
-    `sendButton` and `autoSendButton` now route here with auto-first + fallback.
-  - ios `App/SendView.swift` `send()` -> `performSend(auto:true, allowFallback:true)`;
-    `autoSend()` keeps `allowFallback:false`.
-- Service-layer `autoSendTransaction` confirmed present on all 5 clients
-  (web api.ts, desktop api.js, extension WalletAPI, android UserWalletApiService.kt,
-  ios UserWalletApiService.swift).
-- Verification: web `tsc --noEmit` 0 errors; desktop Send.jsx + extension popup.js
-  parse clean via esbuild; Kotlin/Swift brace-balance checked with a string-aware
-  tokenizer (`/tmp/brace_check.py`, handles `//` `/* */` `"..."` `"""..."""` `'...'`).
 
 ### Build verification — all green
 - `frontend/web_nextjs`: `npx tsc --noEmit` → 0 errors (npm install done).
@@ -3540,668 +3459,237 @@ extensions x3 (background.js), cpp (super_admin_domains.hpp), rust
 - TigerBotPlatform.sol: code-level compile errors resolved (via_ir needed for
   stack-too-deep; foundry.toml added)
 
+## Session 2026-08-16 (session 5): Two-mode approval gate (AUTO + MANUAL) wired across WL products
 
-## wallet_api new endpoints -- UserWallet client parity (2026-08-17)
-- go/wallet_api (:8443, /api/v1) gained THREE endpoints; added matching client
-  methods to ALL 7 UserWallet native clients (real fetch/reqwest/OkHttp/URLSession
-  only -- no mocks):
-  1. POST /auth/guest {device_id} -> {user_id, token, guest:true}. Public
-     (no-auth). Provisions anonymous guest account so user can Create/Import a
-     wallet WITHOUT registering. Client persists the returned token the SAME way
-     it persists login tokens.
-  2. POST /auto-send (same body as /send: {wallet_id,password,to,value,
-     chain_id?,gas_limit?,data?}) + optional ?master_wallet_id=<id> query.
-     Same Bearer JWT auth as /send. Returns send response PLUS
-     {auto_approved: bool, auto_approval_reason: string}.
-  3. GET /transactions/:txHash?chain_id=N -> {status, block_number?,
-     confirmations?}. Added getTransactionStatus(txHash, chainId) client method.
-- Client files changed (exact paths): web/src/services/api.ts (axios; guestAuth
-  setToken like login), desktop/src/services/api.js (fetch; guestAuth mirrors
-  login returning {token,user} -- AuthContext persists userwallet-token),
-  production/react/src/services/WalletService.ts (axios; guestAuth persists
-  tigerwallet-token via localStorage like AuthService.login),
-  android/.../UserWalletApiService.kt (OkHttp; guestAuth setToken SharedPreferences
-  TOKEN_KEY), ios/App/UserWalletApiService.swift (URLSession request<T>; guestAuth
-  authenticated:false + storedToken), rust/src/lib.rs (reqwest; guest_auth
-  set_token), extension/src/popup.js (fetch api(); guestAuth auth:false +
-  setToken).
-- No MasterWallet/admin clients touched. No base URLs changed. No existing
-  methods removed. No mock/stub data.
-- Build/lint: web tsc 0 errors; desktop node --check 0; production/react tsc 0
-  errors; rust cargo check --lib 0 errors; android brace-balanced (kotlinc NOT
-  installed); ios brace-balanced (swiftc NOT installed; naive tokenizer misreads
-  Swift string interpolation like backslash-paren-mw -- use string-aware check);
-  extension node --check 0.
+Closed the approval-mode gap: WL products now have the two approval modes
+required by the spec — AUTO (user txs, sub-second, license-alive = approval)
+and MANUAL (fee/revenue/treasury txs requiring SuperAdmin two-party co-sign).
+All real crypto, fail-closed, no stubs/mocks/fakes.
 
-## Session 2026-08-16 (final): UserWallet no-registration + Google Drive backup + MasterWallet auto-sign bridge + Android parity
+### Shared auto-approver (wl_shared/go/wlgate) — the classifier
+- `wl_shared/go/wlgate/auto_approver.go` (NEW): `AutoApprover` with
+  `Classify(txType, to, token, amount) Decision{Mode, Approved, Reason,
+  RuleID}`. `Mode` is `ModeAuto` or `ModeManual`.
+  - ModeManual (ALWAYS, regardless of license): `revenue_payout`,
+    `treasury_transfer`, `treasury_sweep`, `fee_withdrawal`, OR any `transfer`
+    whose `to` address is in the SuperAdmin-managed `treasury_addresses` set.
+  - ModeAuto (the fast path): everything else (user transfers, swaps, stakes,
+    personal_sign). Approved IFF the license is alive AND no blocking
+    auto-sign rule matches (SuperAdmin can block a token/amount/type).
+- `gate.go`: `Gate` gained `auto *AutoApprover` field +
+  `WithAutoApprover()` + `SetAlive()` propagates to the AutoApprover.
+  `beat()` now pushes the policy snapshot (`treasury_addresses` +
+  `auto_sign_rules` from the control-plane response) into the AutoApprover.
+- `auto_approver_test.go` (NEW): 6 tests pass (user transfer Auto+approved,
+  revenue/treasury/fee Manual, treasury-recipient Manual, license-dead
+  denied, blocking-rule denied, personal_sign Auto).
 
-### UserWallet no-registration flow (no email/password needed)
-- go/wallet_api: POST /api/v1/auth/guest provisions an anonymous guest account from a stable device_id (idempotent; non-loginable sentinel password hash; NOT a privilege-escalation vector). store.go CreateGuestUser derives guest email from device id.
-- All 7 UserWallet clients gained guestAuth(deviceId): web, desktop, production/react, android, ios, rust, extension. web_nextjs wallet page auto guest-auths on mount (no email/password form).
+### Control plane (license_service/go) — policy snapshot source of truth
+- `internal/store/store.go`: added `treasury_addresses` + `auto_sign_rules`
+  tables (auto-migrated).
+- `internal/store/policy_snapshot.go` (NEW): `ListTreasuryAddresses`,
+  `ListAutoSignRules`, `AddTreasuryAddress`, `RemoveTreasuryAddress`,
+  `AddAutoSignRule`, `UpdateAutoSignRule`, `RemoveAutoSignRule`.
+- `internal/handlers/handlers.go`: `ValidateLicense` response now includes
+  `treasury_addresses` + `auto_sign_rules` (the policy snapshot pushed to
+  every WL product on each heartbeat).
+- `internal/handlers/policy_handlers.go` (NEW): SuperAdmin CRUD endpoints
+  for treasury addresses + auto-sign rules.
+- `main.go`: routes `/api/v1/super-admin/treasury-addresses` + `/auto-sign-rules`
+  (CRUD, RequireSuperAdmin).
 
-### Auto-sign bridge (MasterWallet-owner policy auto-approval, app separation preserved)
-- master_wallet/backend: POST /master-wallet/:id/user-wallet-auto-sign (policy-based auto-sign via auto-sign RULES, distinct from two-party SuperAdmin gate) + POST /master-wallet/:id/check-auto-sign-policy (policy-only check, server-to-server).
-- go/wallet_api: POST /api/v1/auto-send self-signs + broadcasts with MasterWallet-owner policy auto-approval (server-to-server check). UserWallet clients NEVER talk to MasterWallet directly. config.go MASTER_WALLET_API_URL env (default :8450).
-- All 7 UserWallet clients gained autoSendTransaction + getTransactionStatus. web_nextjs send flow uses autoSendTransaction with pending->confirmed polling + "Transaction submitted to blockchain network" UX banner.
+### wl_user_wallet/go — AUTO fast path for user txs, MANUAL for withdrawals
+- `internal/middleware/auto_approver.go` (NEW): local AutoApprover (mirrors
+  shared wlgate). `internal/middleware/heartbeat.go` pushes the policy snapshot
+  into it on each beat.
+- `internal/middleware/two_party.go` (NEW): `TwoPartyGate` with
+  `VerifyWithdrawal()` calling the control plane
+  `/api/v1/withdrawals/:id/approved` + `MarkWithdrawalExecuted()`.
+- `internal/handlers/handlers.go`: `requireApproval()` helper (two-mode gate).
+  `SendTransaction` + `SignMessage` gated.
+- `internal/handlers/flat.go`: `FlatSend` + `FlatSign` gated (added
+  `WithdrawalID` + `Token` fields).
+- `internal/handlers/nonevm.go`: `NonEvmSign` + `NonEvmSend` gated (added
+  `WithdrawalID`; non-EVM transfer to-address extracted from BTC outputs).
+- `main.go`: `InitTwoPartyGate()` called after heartbeat goroutine.
+- Build + vet exit 0.
 
-### Google Drive encrypted-seed backup (UserWallet)
-- go/wallet_api: POST /wallets/:id/export-encrypted-seed (password-verified; returns AES-256-GCM encrypted blob for Drive upload; raw mnemonic NEVER exposed) + POST /wallets/import-encrypted-seed (restores from blob + password; backend decrypts to verify, re-derives address, re-stores encrypted blob).
-- frontend/web_nextjs: app/wallet/googleDriveBackup.ts real Google Identity Services OAuth2 (drive.appdata scope) + Drive REST API v3 upload/download to appDataFolder. Fail-closed unless NEXT_PUBLIC_GOOGLE_DRIVE_CLIENT_ID set. WalletService.exportEncryptedSeed + importEncryptedSeed. Proxy routes /api/v1/wallets/[id]/export-encrypted-seed (3 levels -> ../../../_proxy), /api/v1/wallets/import-encrypted-seed (2 levels -> ../../_proxy).
+### wl_master_wallet/go — MANUAL mandatory for revenue/fee/treasury
+- `internal/handlers/handlers.go`: `Handlers` struct gained `autoApprover`
+  field; `New()` constructs it + attaches via `gate.WithAutoApprover()`.
+  `requireApproval()` helper (same two-mode semantics).
+- All 7 fund-movement handlers now call `requireApproval`:
+  `SignTransaction`, `RevenuePayout`, `TransferFromSubWallet`,
+  `ExecuteTransaction`, `SignPendingTransaction` (handlers_routes.go) +
+  `TreasuryTransfer`, `TreasurySweep`. ExecuteTransaction + SignPendingTransaction
+  were reordered to load the tx row (to/amount/token) BEFORE classifying, so
+  the treasury-recipient check works on the real recipient.
+- The previous "optional presence" check (only verify withdrawal_id IF
+  supplied) is REPLACED — a fee/revenue withdrawal to a treasury address
+  can no longer bypass the gate by omitting the withdrawal_id. The classifier
+  FORCES Manual regardless.
+- Build + vet exit 0.
 
-### Two-party revenue gate across all 8 MasterWallet clients
-- requestWithdrawal + revenuePayout in web, rust, desktop C++, 5 extensions, android, ios, flutter. Two-party SuperAdmin gate ONLY for MasterWallet revenue/fee payouts; UserWallet normal txs use policy-based auto-approval.
+### white_label_admin/go — fail-closed license gate + per-vertical fetcher granularity
+- `go.mod`: added `require` + `replace` for `github.com/tigerwallet/wl-shared`
+  (=> `../../wl_shared/go`).
+- `internal/config/config.go`: added `WLClientID`, `LicenseKey`, `Product`,
+  `HeartbeatInterval` fields (env: `WL_CLIENT_ID`, `LICENSE_KEY`,
+  `WL_PRODUCT`, `HEARTBEAT_INTERVAL`).
+- `main.go`: imported `wlgate`; constructs `Gate` + `AutoApprover`; starts
+  `gate.HeartbeatLoop` (fail-closed phone-home); wraps the admin route group
+  with `gate.Middleware(cfg.Product, adminFetcher)` as the FIRST middleware
+  (before JWTAuth). `adminFetcher` maps `/api/v1/admin/<domain>/...` to the
+  domain fetcher key (futures/options/copy-trading/convert/onramp/offramp/
+  p2p-clients/partners/rewards/marketing/kyc/tokens/pairs/blockchains/fees/
+  withdrawals/admin-roles) so SuperAdmin can disable any individual trading
+  vertical while leaving others alive (per-fetcher governance).
+- Build + vet exit 0.
 
-### MasterWallet Android fetcher parity (the genuine gap)
-- Android MasterWalletService.kt had only 16 fetcher methods vs iOS reference ~85-endpoint coverage. Added 66 methods (16 -> 82): sub-wallets, transactions (create/approve/reject), policies/fees/auto-sign/users CRUD, audit, analytics, notifications, webhooks, treasury, multisig, user-wallet management governance (EVM + non-EVM chain CRUD, token CRUD, derive-user-address), feature flags, auto-sign bridge, public (gas/price/health/history). Real OkHttp (suspend + withContext + Bearer auth). Existing 16 methods unchanged. Brace-balanced (string-aware tokenizer accounting for dollar-brace interpolation; naive tokenizer false-reports +1 brace).
+### C++ ultra-low-latency auto-approver (wl_control_plane/cpp)
+- `wl_auto_approver` (wait-free atomic gate + classifier) builds clean;
+  7/7 tests pass: user transfer Auto+approved, swap/stake/personal_sign Auto,
+  revenue/treasury/fee Manual, treasury-recipient transfer Manual,
+  license-dead denied, blocking-rule denied, C ABI roundtrip.
+- Pure C ABI (`wl_gate_abi.h`) for cgo binding (wl_control_plane/go/wlgate).
 
-### MasterWallet client parity (post-fix)
-- web (api.ts) ~96% gold-standard; extension ~93%; rust ~89%; ios ~88% (most comprehensive native, ~40+ methods incl. all user-mgmt governance); flutter ~71% (64 methods); desktop C++ full coverage in .hpp declarations; android NOW full parity (82 methods).
+### Rust policy engine (wl_control_plane/rust) — real Ed25519 verifier
+- `wl_policy_engine` builds clean; 6/6 tests pass (sign+verify roundtrip,
+  tamper detection, expired/suspended rejection, fetcher-flag logic).
+- Real Ed25519 via `ed25519-dalek` 2.x. No stubs.
 
-### Commits on main (this session): e2a6ea2, 66c35d4, 9f2a96a
-### Builds ALL GREEN: go build+vet (wallet_api, master_wallet), cargo check (master_wallet/rust, user_wallet/rust), npx tsc --noEmit (web_nextjs 0 errors), android brace-balanced.
-### Toolchains: Go 1.23.12 ($HOME/.go-sdk/go/bin), Rust 1.97.1 ($HOME/.cargo/env), npm install for web_nextjs (node_modules was wiped).
-## desktop/src/services/api.js -- full client method parity (2026-08-17)
-- The desktop API client (`user_wallet/desktop/src/services/api.js`) connects to
-  the canonical TigerWallet Go wallet-api backend (`go/wallet_api`, :8443,
-  `/api/v1`), via a single `request(path, options)` fetch helper that prepends
-  `API_BASE_URL` and injects the module-level `authToken` as a Bearer JWT.
-- The `api` object now has 95 total async methods (was ~28 core). Added 67 new
-  methods covering: importWallet, getProfile (local JWT payload decode from
-  `authToken` -> {id,email,username}; throws 'Not authenticated' if no token),
-  health (uses module-level `HEALTH_URL` const = `API_BASE_URL.replace(/\/api\/v1\/?$/, '') + '/health'`,
-  fetched directly with its own fetch because `request()` prepends API_BASE_URL),
-  transferNFT, getTransactionReceipt, estimateGas, executeSwap, getAmmQuote,
-  ammSwap, stake/unstake/claim, getCryptoCardBalance, getCardTransactions,
-  getP2PAdverts (alias of existing getP2PListings), nonEvmAddress/Sign/Send,
-  address-book CRUD, device CRUD, approvals, keystore export/import, encrypted
-  seed export/import, security check-url/check-address/scan, lending markets/
-  positions/supply/borrow/withdraw/repay, copytrading traders/follow/stop/signals,
-  dao proposals/create/vote/delegates, perpetual positions create/close, margin
-  positions create/close, prediction markets + bet, launchpool + stake/unstake,
-  token-sales + participate, dapps + categories, chart history, defi protocols.
-- `getNFTs` already existed (verified, NOT duplicated). The 28 pre-existing core
-  methods were NOT touched. `parsePaymentUri` is an exported function outside the
-  `api` object (correct). `HEALTH_URL` is defined at module top near `API_BASE_URL`.
-- Verification: `node --check src/services/api.js` exit 0; 95 unique async methods,
-  0 duplicates. Method names regex must include digits (`[a-zA-Z0-9]`) since names
-  like `getP2PListings` contain digits.
-
-## user_wallet/android -- no-registration guest flow + Send screen (2026-08-17)
-- The canonical Android app is `user_wallet/android` (NOT the Java
-  `mobile_apps/android_app` or `master_wallet/android`, which are different
-  trees). Package `com.tigeruserwallet`, ViewBinding (`ActivityMainBinding`) +
-  `findViewById` in fragments, `UserWalletApiService` is a Kotlin singleton
-  (OkHttp) with `init(ctx)`, `guestAuth(deviceId)`, `isAuthenticated()`,
-  `getWallets(): List<Wallet>` (Wallet has `id,label,address,mnemonic?`),
-  `createWallet(name,password,chainId)`, `importWallet(label,password,mnemonic,chainId,null)`,
-  `sendTransaction(...)`, `autoSendTransaction(...)` (returns `{txHash,autoApproved,autoApprovalReason}`).
-  Bottom nav IDs: `nav_dashboard/nav_wallets/nav_send/nav_transactions/nav_settings`.
-- DO NOT modify `UserWalletApiService.kt` (already complete, 105 methods).
-- New: `StartFragment` (guest "Get Started" gate) + `SendFragment` (Send/Auto-Send
-  form). `MainActivity` now implements `StartFragment.StartHost`; on first open it
-  checks `isAuthenticated()` + `getWallets()` -- if token+wallets present, loads
-  Dashboard directly (no passcode/biometric infra = "unlock" means go to
-  Dashboard); else loads `StartFragment`. StartFragment calls `guestAuth` then
-  `onGuestReady(mode)` -> opens `WalletsFragment` with `entryMode` (CREATE/IMPORT,
-  consumed once via `view.post`, NONE default so tapping the Wallets tab doesn't
-  auto-open a dialog).
-- `WalletsFragment` now has an "Import Wallet" button -> `dialog_import_wallet.xml`
-  (ids: importNameInput, importMnemonicInput, importPasswordInput,
-  importChainSpinner). Create flow shows the generated mnemonic in an AlertDialog
-  with a "Copy" neutral button (ClipboardManager).
-- `SendFragment` (`fragment_send.xml`: walletSpinner, chainSpinner, recipientInput,
-  amountInput, passwordInput, sendButton, autoSendButton, statusTextView) calls
-  `sendTransaction` / `autoSendTransaction` and shows
-  "✓ Transaction submitted to the blockchain network" + tx hash (and auto-approval
-  reason when Auto-Send). This message is the success string for ANY send path.
-- Verification (kotlinc NOT installed): wrote a string-aware brace/paren/bracket
-  checker in Python (skips `"..."`, `"""..."""`, `'...'`, `//`, `/* */` so
-  brackets inside string literals aren't miscounted). Results: MainActivity.kt
-  ()53/53 {}23/23; StartFragment.kt ()38/38 {}16/16; SendFragment.kt ()79/79
-  {}25/25 []1/1; WalletsFragment.kt ()114/114 {}38/38 []2/2 -- all balanced.
-  All new/modified layouts/menu/drawable validated well-formed via
-  xml.dom.minidom.parse. View IDs in every Kotlin fragment cross-checked against
-  the matching layout IDs -- all present. The temporary brace_check.py was
-  deleted after verification (do not commit it).
-
-## Session 2026-08-17: UserWallet full parity (COMPLETE)
-
-All 7 UserWallet clients (web, desktop, extension, production/react, android,
-ios, rust) now target the canonical `go/wallet_api` (:8443) flat contract with
-the SAME full fetcher set — no registration required (`POST /auth/guest`
-provisions an anonymous account; every login UI leads with Create Wallet /
-Import Wallet, email/password kept as an optional recovery path). Builds all
-green: web `tsc` 0 errors, desktop/extension `node --check` 0, production/react
-`tsc` 0 errors, android/ios brace-balanced, rust `cargo check` 0 errors.
-
-- **`go/wallet_api/defi_proxy.go`** (NEW): reverse-proxy shims for lending
-  (:8009), copytrading (:8006), governance (:8454), prediction (:8455) so every
-  client reaches the full DeFi surface via a single port (:8443). go build +
-  go vet clean.
-- **Full fetcher set on all 7 clients** (previously missing on most):
-  non-EVM sign/send/address (Solana/Bitcoin/Cosmos), address-book CRUD,
-  devices CRUD, token approvals + revoke, keystore V3 export/import,
-  encrypted-seed export/import (AES-256-GCM), security scan (URL/address),
-  AMM quote/swap, lending supply/borrow/withdraw/repay, copy-trading
-  follow/traders/signals, DAO proposals/vote/delegates, perpetual + margin
-  positions, prediction markets, launchpool stake/unstake, token-sales
-  participate, dapps + categories, chart history, defi protocols, NFT transfer,
-  tx receipt, estimate gas, execute swap.
-- **UI parity**: web 16 pages (matches production/react); desktop gained
-  Send + Receive; android gained StartFragment + SendFragment + import; ios
-  gained RootView guest-auth + SendView + import. Send-flow success shows
-  "Transaction submitted to the blockchain network" on all 7. Google Drive
-  encrypted-seed backup on web + production/react. Light/dark theme on all.
-- Method counts: web ~95, desktop 95, extension 97, production/react 99,
-  android 105, ios 92 (+ parsePaymentUri free func), rust ~95 async.
-- Orphan `user_wallet/production/react/src/services/master/*` (11 files)
-  deleted. The old `:8105` dead handler, `:8080` target, and route mismatches
-  (desktop `/wallet/balances`, android `/api/v1/wallet/*`) are RESOLVED.
-
-### user_wallet/rust/src/lib.rs -- passkey/lock/unlock/KYC/P2P additions (2026-08-17)
-
-- `UserWalletClient` (crate `tigerwallet_user_wallet`, single-file
-  `src/lib.rs`) is the async reqwest client delegating to go/wallet_api
-  (`:8443`, Bearer JWT). It uses private `get<T>`/`post<T,B>`/`put`/`delete`/
-  `get_query<T>` helpers that all auto-attach `bearer_auth(self.token())`.
-- Added `multipart` to reqwest features in `Cargo.toml`
-  (`features = ["json", "rustls-tls", "multipart"]`) — needed only for
-  `submit_kyc_document`. No other deps added.
-- New serde structs (all `#[derive(Debug, Clone, Serialize, Deserialize,
-  Default)]`, optional fields use `#[serde(default, skip_serializing_if =
-  "Option::is_none")]`): `PasskeyWalletParams`, `PasskeyWalletResult`,
-  `LockSetupParams`, `LockSetupResult`, `UnlockParams`, `UnlockResult`.
-- New async methods under `/api/v1`: `passkey_create_wallet` (POST
-  `/passkey/wallet`), `setup_lock` (POST `/wallets/:id/lock`),
-  `unlock_wallet` (POST `/wallets/:id/unlock`), `get_kyc_status` (GET
-  `/kyc/status?user_id=`), `register_kyc`/`submit_kyc` (POST JSON ->
-  `serde_json::Value`), `submit_kyc_document` (multipart — dedicated method
-  using `self.http.post(url).multipart(form).bearer_auth(t)`, NOT the JSON
-  `post` helper), `get_kyc_session` (GET `/kyc/session/:id`),
-  `create_p2p_order` (POST `/p2p/orders`, KYC-gated 403). Opaque responses
-  deserialize to `serde_json::Value`.
-- `get_p2p_adverts` repointed from `p2p_listings()` alias to
-  `GET /api/v1/p2p/adverts` (no duplicate; `p2p_listings()` left intact).
-- `send_transaction` and `auto_send_transaction` gained an
-  `unlock_token: Option<&str>` param (appended after existing params);
-  `"unlock_token"` is added to the JSON body alongside `password` (password
-  NOT removed), with `skip_serializing_if = "Option::is_none"`. CALLERS MUST
-  pass the new arg — signature changed.
-- All paths are under `/api/v1` (helpers prepend only `base_url`). Path
-  params encoded with the local `url_encode` (RFC 3986 unreserved set).
-- `cargo check --lib` exit 0, no warnings, no new deps beyond multipart.
-
-
-
-## Session 2026-08-17 (cont): UserWallet passkey + app-lock + passwordless send + KYC-gated P2P (COMPLETE)
-
-Built the four genuinely-new requirements (verified not done in the prior
-parity session). All real crypto, fail-closed, no stubs/fakes/mocks.
-
-### Backend (`go/wallet_api/app_lock.go` NEW + main.go + config.go + store.go + handlers.go + nft_transfer.go)
-- **Passkey wallet creation**: `POST /api/v1/passkey/wallet` — generates a real
-  BIP-39 mnemonic + derives the EVM key (same as handleCreateWallet), but
-  encrypts the seed with a randomly generated `unlock_key` (AES-256-GCM keyed
-  on SHA-256(unlock_key)) instead of a user password. Stores
-  `unlock_key_enc_seed` + `sha256(unlock_key)` in the new `wallet_locks` PG
-  table. The server validates the browser-supplied SPKI passkey public key is
-  a real P-256 ECDSA key (`parseWebAuthnSPKI`). Returns the mnemonic +
-  `unlock_key` (client wraps it with the passkey) + a passwordless
-  `unlock_token`. The raw unlock key is NEVER re-stored server-side.
-- **App lock**: `POST /wallets/:id/lock` (set/replace a per-wallet lock
-  credential: passcode hash + optional passkey SPKI) + `POST /wallets/:id/unlock`
-  (verify passcode/passkey/no-credential -> issue a 5-min passwordless
-  `unlock_token`). The `unlock_token` is a random 32-byte hex stored in an
-  in-memory `seedSessions` cache mapping token -> decrypted seed + walletID +
-  userID + expiry. Unlock paths: (1) passkey-created wallet: client supplies
-  the passkey-unwrapped `unlock_key` (verified against the stored hash) ->
-  decrypt seed; (2) standard wallet, no lock set: requires the wallet
-  password; (3) standard wallet with passcode: verify passcode (bcrypt) +
-  wallet password; (4) standard wallet with passkey: verify the WebAuthn
-  assertion (real ECDSA P-256 ES256 over SHA-256(authenticatorData ||
-  SHA-256(clientDataJSON)), sign-count replay protection) + wallet password.
-- **Passwordless send/sign/NFT-transfer**: `sendTxReq`/`nftTransferReq`/
-  sign-message now accept an optional `unlock_token`. `resolveSeed` prefers
-  the unlock_token (retrieves the decrypted seed from the session cache) and
-  falls back to the wallet password. So a user who has unlocked (passcode/
-  passkey/nothing) can send + sign + transfer NFTs WITHOUT entering the wallet
-  password for 5 minutes. `handleAutoSend` still self-signs + broadcasts +
-  surfaces the MasterWallet-owner auto-approval flag — the "within a second"
-  auto-approval path is unchanged; the new unlock_token just removes the
-  per-tx password prompt.
-- **KYC proxy + P2P KYC gate**: `GET /kyc/status`, `POST /kyc/register`,
-  `POST /kyc/submit`, `POST /kyc/document` (multipart), `GET /kyc/session/:id`
-  proxy to the canonical listing_service (`LISTING_SERVICE_URL` env, :8010) so
-  UserWallet clients reach KYC via the single :8443 port. `GET /p2p/adverts`
-  + `POST /p2p/orders` proxy to p2p_trading (`P2P_SERVICE_URL`, :8475); the
-  order-creation endpoint is KYC-gated — `kycVerified(userID)` (fail-closed
-  on any error) returns 403 `{kyc_required: true}` if the user's KYC status is
-  not verified/approved. Browsing adverts is ungated; only placing a P2P order
-  requires KYC.
-- **WebAuthn assertion verification**: real `ecdsa.VerifyASN1` (DER) +
-  raw-r||s fallback; reconstructs the signed message (authenticatorData ||
-  SHA-256(clientDataJSON)); sign-count rollback rejection. Mirrors the W3C
-  spec + the two_factor_auth reference impl.
-- **Schema**: new `wallet_locks` table (wallet_id PK, passcode_hash,
-  passkey_cred_id, passkey_pubkey, passkey_sign_count, unlock_key_enc_seed,
-  unlock_key_hash, updated_at) auto-migrated on boot.
-- **Config**: `ListingServiceURL` (LISTING_SERVICE_URL) + `P2PServiceURL`
-  (P2P_SERVICE_URL) added to AppConfig.
-- Build+vet+test all exit 0 (BIP-44 vector + non-EVM + rate-limit + chain
-  registry tests all pass).
-
-### Clients (all 7) — new fetcher methods + unlock_token plumbing
-Every UserWallet client gained: `passkeyCreateWallet`, `setupLock`,
-`unlockWallet`, `getKycStatus`, `registerKyc`, `submitKyc`,
-`submitKycDocument` (multipart), `getKycSession`, `getP2PAdverts` (updated to
-`/p2p/adverts`), `createP2POrder`. The existing `sendTransaction` +
-`autoSendTransaction` now accept an optional `unlockToken`/`unlock_token`
-(alongside password — password NOT removed).
-- web `src/services/api.ts`: 10 new methods + unlockToken on send/autoSend.
-  `npx tsc --noEmit` 0 errors.
-- desktop `src/services/api.js`: 10 new methods + unlockToken. node --check 0.
-- extension `src/popup.js`: 10 new methods + unlockToken. node --check 0.
-- production/react `src/services/WalletService.ts`: 9 new methods (getP2PAdverts
-  already existed) + unlockToken. `npx tsc --noEmit` 0 errors.
-- android `UserWalletApiService.kt`: 9 new methods + typed param/result data
-  classes (PasskeyWalletParams/Result, LockParams, UnlockParams) + unlockToken
-  on send/autoSend. Multipart via dedicated okhttp call. Brace-balanced
-  (kotlinc NOT installed).
-- ios `UserWalletApiService.swift`: 9 new methods + Codable structs +
-  unlockToken. Brace-balanced (swiftc NOT installed).
-- rust `src/lib.rs`: 9 new methods + serde structs + unlockToken on
-  send/autoSend. reqwest `multipart` feature added to Cargo.toml.
-  `cargo check --lib` exit 0.
-
-### UI (all 6 UI platforms) — passkey create + app-lock + KYC screen + passwordless send
-- web: new `src/pages/KYC.tsx` (fetch status, Start KYC form, verified banner,
-  P2P note) + route + nav. Wallets.tsx: "Setup App Lock" modal (passcode +
-  real WebAuthn passkey via `navigator.credentials.create`) + "Create with
-  Passkey" option + mnemonic Copy. Send.tsx: "Unlock Wallet (passwordless)"
-  button -> unlockWallet -> unlockToken -> send; keeps the "Transaction
-  submitted to the blockchain network" banner. `src/services/webauthn.ts`
-  helper (feature-check + createPasskey). tsc 0 errors.
-- production/react: `src/pages/KYCPage.tsx` + route + Sidebar link;
-  `src/components/AppLockModal.tsx`; `src/utils/passkey.ts`; WalletPage passkey
-  create + app-lock; SendPage passwordless unlock. tsc 0 errors.
-- desktop: `src/pages/KYC.jsx` + route + Layout nav; Wallets.jsx app-lock +
-  passkey create; Send.jsx passwordless unlock + tx-submitted message.
-  node --check OK; JSX parse-clean (esbuild).
-- android: `fragments/KycFragment.kt` + `fragment_kyc.xml` + Dashboard
-  button; `util/CredentialManagerHelper.kt` (reflective passkey, real
-  CredentialManager call structure, throws honestly without the gradle dep);
-  WalletsFragment app-lock dialog + passkey create (mnemonic + Copy);
-  SendFragment passwordless unlock -> unlockToken. Brace-balanced + XML
-  well-formed. NOTE: real passkey flow requires adding
-  `androidx.credentials:credentials` to app/build.gradle (documented inline;
-  passcode-only lock is fully real now).
-- ios: `KycView.swift` + ContentView tab; `PasskeyHelper.swift` (real
-  ASAuthorizationPlatformPublicKeyCredentialRegistrationRequest);
-  WalletsView app-lock sheet + passkey-create toolbar item + mnemonic Copy;
-  SendView passwordless unlock -> unlockToken. Brace-balanced (string-aware
-  tokenizer). swiftc NOT installed.
-- extension: KYC tab + loadKyc; Send tab passwordless unlock + tx-submitted
-  status; walletTab "Create with Passkey" (real WebAuthn) + per-wallet
-  "Setup App Lock" link. node --check OK; popup.html XML well-formed.
-
-### Requirement coverage
-1. Passkey wallet creation (4th create option) — web/react/desktop/ios/ext
-   real WebAuthn; android real CredentialManager structure (gradle dep TODO).
-2. Passwordless send/receive — unlock_token session (5 min); send/sign/
-   nft-transfer accept unlock_token; user never enters the wallet password
-   after unlock.
-3. App lock: passcode/fingerprint/unlock-without-anything — backend
-   `/wallets/:id/lock` + `/unlock` supports passcode, passkey, or (for
-   passkey-created wallets) the unlock key; UI on all 6 platforms.
-4. KYC gate for P2P trading only — `POST /p2p/orders` 403s unless KYC
-   verified; KYC screen on all 6 platforms; browsing adverts ungated.
-
-### Build verification (ALL GREEN)
-go build+vet+test (wallet_api), tsc (web + production/react), node --check
-(desktop api.js + extension popup.js), cargo check (rust lib), brace-balance
-(android kotlin + ios swift), XML well-formed (android + extension layouts).
-
-## Session 2026-08-17 (final): UserWallet full UI parity (desktop/android/ios)
-
-The pasted "Full Fetchers, Functionality & Gap Analysis" was re-verified and
-found ALMOST ENTIRELY STALE: every claimed-missing client method already
-existed (address-book, devices, approvals, keystore, AMM, non-EVM
-send/sign/address, the full DeFi suite, tx receipt, NFT transfer, security
-scan — all present on all 7 clients, built in prior sessions). The core
-requirements (no-register guest auth, Google Drive backup + copy, passwordless
-send, "Transaction submitted to the blockchain network", auto-sign/
-auto-approval, KYC-gated P2P, app-lock passcode/passkey/nothing, passkey wallet
-creation) were all confirmed present from the prior 8567c70 session.
-
-The ONE genuine gap was **UI parity**: web (18 pages) and production/react
-(13) were feature-complete, but desktop (8), android (7), and ios (8) had only
-core wallet-management screens despite having the full fetcher set. This
-session closed that gap — all fetchers were already available, so this was
-purely UI wiring (no service-layer changes, no backend changes).
-
-### Desktop (`user_wallet/desktop`, Electron JSX)
-Added 9 themed pages (esbuild parse-clean): Swap.jsx, Staking.jsx, NFTs.jsx,
-Bridge.jsx, AddressBook.jsx, Approvals.jsx, Devices.jsx, Keystore.jsx,
-DeFi.jsx (single hub with Lending/CopyTrading/DAO/Perpetual/Margin/Prediction/
-Launchpool/TokenSales sections). Wired routes in `src/renderer/App.jsx` + nav
-links in `src/components/Layout.jsx`. All use `useTheme()` + `isDark` ternaries,
-fetch-on-mount, loading/error/empty states, no mock data. Desktop page count
-8 -> 17.
-
-### Android (`user_wallet/android`, Kotlin)
-Confirmed ReceiveFragment/SwapFragment/StakingFragment/NFTsFragment/
-BridgeFragment/AddressBookFragment/ApprovalsFragment already existed (prior
-sessions). Added the 3 genuinely-missing: DevicesFragment.kt +
-KeystoreFragment.kt + DeFiFragment.kt + adapters (DevicesAdapter.kt) + layouts.
-Rewrote `fragment_dashboard.xml` as a 15-button GridLayout nav grid +
-`DashboardFragment.kt` navigation via `MainActivity.navigateTo(XFragment())`
-(mirroring the existing KYC button pattern). All call the real
-`UserWalletApiService` methods on `Dispatchers.IO`, themed via theme attrs +
-`values-night`. Brace-balanced + XML well-formed (kotlinc NOT installed).
-Android fragment count 7 -> 17.
-
-### iOS (`user_wallet/ios`, SwiftUI)
-Added 10 themed SwiftUI views: ReceiveView.swift (real QR via CoreImage
-CIQRCodeGenerator + UIPasteboard Copy), SwapView.swift, StakingView.swift,
-NFTsView.swift, BridgeView.swift, AddressBookView.swift, ApprovalsView.swift,
-DevicesView.swift, KeystoreView.swift, DeFiView.swift (single hub, 8
-sections). Wired into navigation via a new `MoreView` (NavigationView +
-NavigationLink list) as a 7th tab in `UserWalletApp.swift`'s ContentView
-TabView (preserved the original 6 tabs). All use semantic system colors
-(theme-aware), `.task{}` async, loading/error/empty states, no mock data.
-Brace-balanced via string-aware tokenizer (swiftc NOT installed). iOS view
-count 8 -> 16.
-
-### Final page/fragment/view counts (FULL UI PARITY)
-- web: 18 pages (reference set)
-- desktop: 17 pages
-- android: 17 fragments
-- ios: 16 views
-- production/react: 13 pages (DeFi split across Staking/NFTs/Swap/Bridge/DApps)
-- extension: 7 popup tabs (appropriate for a popup)
-All expose the SAME feature set; all theme-aware (light/dark switch on every
-page).
-
-### Build verification (ALL GREEN — 2026-08-17)
-- go/wallet_api: go build exit 0 (Go 1.23.12 installed at $HOME/.go-sdk)
-- user_wallet/rust: cargo check --lib exit 0 (Rust 1.97.1 installed)
-- user_wallet/web: npx tsc --noEmit 0 errors
-- user_wallet/production/react: npx tsc --noEmit 0 errors
-- user_wallet/desktop: node --check api.js OK; all 9 new .jsx + App.jsx
-  esbuild-parse clean
-- user_wallet/extension: node --check popup.js OK
-- user_wallet/android: brace-balanced + XML well-formed (kotlinc NOT installed)
-- user_wallet/ios: brace-balanced (swiftc NOT installed)
-
-### Notes
-- Toolchains (Go 1.23.12, Rust 1.97.1) were NOT preinstalled in this fresh env;
-  installed on demand ($HOME/.go-sdk + rustup minimal). Node 22 + g++ 14 were
-  preinstalled.
-- The pasted analysis's "12 methods / 24 methods / 22 methods / 35 methods /
-  33 methods / 24 methods / 25 methods" counts are STALE — all 7 clients now
-  have ~92-105 methods (the full fetcher set). No service-layer changes were
-  needed this session; the work was purely closing the desktop/android/ios UI
-  gap.
-- No SQLite introduced (PostgreSQL + Redis remain the only DBs). No duplicate
-  files created. No new branch (work on main).
-
-
-## Session 2026-08-17 (cont): MasterWallet all-gaps closure (A-G, 86/86 parity)
-
-Closed every gap identified in MASTERWALLET_FULL_FETCHERS_AND_GAPS.md so all 9
-MasterWallet client apps now expose the full 86-route canonical backend surface
-with identical files/features/functionality. Commit d52c25f on main.
-
-### Gaps resolved (all real, no stubs/fakes/mocks; fail-closed where non-canonical)
-- Gap A (universal): added POST /master-wallet/:id/user-wallet-auto-sign,
-  POST /master-wallet/:id/check-auto-sign-policy, GET /api/v1/health to Web,
-  iOS, Desktop C++, Flutter, Rust, and all 5 extensions (Android already had them).
-- Gap B (WebSocket): Rust gained tokio-tungstenite + WebSocketClient (run() with
-  capped exponential reconnect, Open/Message/Close/Error events, fail-closed).
-  All 5 extensions gained services/webSocketService.js (browser WebSocket API,
-  JWT + master_wallet_id query params, 30s heartbeat, auto-reconnect).
-- Gap C (Desktop C++ weakest, was 79/86): added createSubWallet +
-  userWalletAutoSign + checkAutoSignPolicy + apiHealth + getTransaction. Now 86/86.
-- Gap D (Android non-canonical 404 calls): DELETE sub-wallets/:sid and the four
-  /api/aa/* calls now fail-closed with descriptive errors (real Web3j signing
-  preserved for AA; only the non-canonical network submission replaced).
-- Gap E (extension relay wiring): added missing MW_RELAY cases to background.js
-  across all 5 extensions. All 21 previously-unreachable fetchers now reachable.
-- Gap F (Web TaxAnalyticsService stub): getSummary() now throws fail-closed.
-- Gap G (build scaffolding): created full Android Gradle project + iOS
-  Package.swift. Package conflict (com.tigermasterwallet.api) resolved by moving
-  MasterWalletApiService.kt into com.tigermaster.services.
-
-### Build verification (ALL GREEN)
-- Rust: cargo check --lib exit 0. Web: tsc 0 errors. Desktop C++: cmake+make 0.
-- 5 extensions: node --check OK. Android (14 .kt) + Flutter (20 .dart):
-  brace-balanced (string-aware tokenizer). iOS Package.swift: brace-balanced.
-- Backend Go: go build exit 0. Fake-crypto grep: 0 genuine hits in source.
-- Theme: light/dark on all UI-capable clients.
-
-### Key technical notes
-- tokio-tungstenite 0.20: connect_async requires the connect feature (NOT just
-  rustls-tls-webpki-roots); Message::Frame(_) arm required for non-exhaustive match.
-- String-aware brace check: the naive Python tokenizer misreads Dart/Kotlin
-  ${...} interpolation as unbalanced braces. ALWAYS use a string-aware tokenizer.
-  A reusable one for Kotlin + Swift lives at `user_wallet/verify_balance.py`
-  (handles Kotlin `$ident` / `${...}` / `"""raw"""` and Swift `\( ... )` /
-  `#"raw"#` / `###...###`, plus comments and char literals). Run:
-  `python3 user_wallet/verify_balance.py <file.kt> <file.swift>`. When counting
-  Kotlin `${`, the opening `{` is skipped past, so the counter must add +1 for
-  it and let `_count_brace_until_close` net it back to 0 with the closing `}`.
-- iOS Swift Package > hand-written .xcodeproj: Package.swift is text-based.
-- Extension relay pattern: background.js MW_RELAY switch needs a case for EVERY
-  masterWalletService.js method the popup can call; missing cases = dead code.
-
-## Google Drive encrypted-seed backup helpers (UserWallet Android + iOS)
-
-- Android: `user_wallet/android/app/src/main/java/com/tigeruserwallet/util/GoogleDriveBackupHelper.kt`
-  — `object` singleton with `suspend fun backupToDrive(context, encryptedSeedBlob): String`,
-  `suspend fun restoreFromDrive(context): String?`, `fun isAvailable(context): Boolean`.
-  Uses `GoogleSignIn` (silent sign-in) → `GoogleAccountCredential.usingOAuth2(..., DRIVE_APPDATA)`
-  → `com.google.api.services.drive.Drive` REST client (NOT the browser GIS / Drive
-  Android API). All blocking Drive I/O is on `Dispatchers.IO`. The OAuth2 web
-  client_id is read from the `google_drive_client_id` string resource (empty by
-  default → throws `GoogleDriveBackupError.NotConfigured`, fail-closed). The
-  `play-services-auth`, `google-api-client-android`, `google-api-services-drive`
-  deps are already in `app/build.gradle`.
-- iOS: `user_wallet/ios/App/GoogleDriveBackupHelper.swift` — `enum` (namespace)
-  with `backupToDrive(encryptedSeedBlob:) async throws -> String`,
-  `restoreFromDrive() async throws -> String?`, `isAvailable`. Pure OAuth2
-  Authorization Code flow via `ASWebAuthenticationSession` (no GoogleSignIn SDK
-  dependency) → `URLSession` calls to the Drive REST API v3. Client id/secret/
-  redirect scheme are constants in `GoogleDriveConfig` at the top of the file
-  (empty by default → throws `GoogleDriveBackupError.notConfigured`, fail-closed).
-  Token is held in-memory only (never persisted).
-- Both helpers treat the seed blob as opaque (already AES-256-GCM encrypted by
-  the wallet core); they NEVER decrypt/fabricate seed data. Backups go to the
-  hidden Drive `appDataFolder` (scope `drive.appdata`). A backup named
-  `tigerwallet-wallet-backup.enc` is updated in place if it exists, else created.
-- Restore returns `nil`/`null` when no backup exists (a valid outcome), distinct
-  from throwing on real failures.
-
-
-## Session 2026-08-21: UserWallet full-parity audit -- verified gaps
-
-Verified all 7 UserWallet clients against go/wallet_api source (fresh re-verification):
-- Method counts: web 118, desktop 117, extension 117 (WalletAPI object), production/react
-  118 (+AuthService), android 127, ios 117, rust 117 pub async fns. Full fetcher parity
-  confirmed (aliases: listWallets=getWallets, bridgeTransfer=initiateBridgeTransfer,
-  fetchBalance=getBalance, getTokenPrice=getPrice, dappSessionRequest=sendDappRequest).
-- GENUINE BACKEND GAPS (affect ALL clients, verified in source):
-  1. /ramp/* 404: wallet_api has NO fiat-ramp proxy. fiat_ramp (:8451) serves
-     /api/v1/ramp/{providers,quote,offramp-quote,order} but no proxy route in main.go.
-  2. /cards/* 404: wallet_api has NO card proxy. card_service (:8457) serves
-     /api/v1/card/{balance,transactions} -- different path shape than clients'
-     /cards/rates + /cards/:id/balance + /cards/:id/transactions; /cards/rates has no
-     upstream at all.
-  3. /dapp/* + /walletconnect/* proxy PATH MISMATCH: deFiProxy preserves the full
-     original path (/api/v1/dapp/pairings) but dapp_browser/go (:8083) serves ROOT-level
-     /pairings, /sessions/*, /ws/:topic only -> upstream 404. Needs either route-prefix
-     mount in dapp_browser or path rewrite in deFiProxy.
-  4. docker-compose.yml does NOT include lending/copy-trading/governance/prediction/
-     p2p/fiat-ramp/card/dapp-browser services, and wallet-api sets no *_SERVICE_URL envs,
-     so in compose the DeFi proxies fail-closed to 502/503 (localhost inside container).
-- GENUINE CLIENT GAPS: production/react missing createDappPairing + getCryptoCardRates;
-  android + ios missing getCryptoCardRates; rust missing getBalances convenience
-  aggregation (has per-address get_balance).
-- UNUSED BACKEND ENDPOINTS (no client consumer on any of the 7 apps):
-  /api/v1/terminal/{kline,ticker}/:symbol and /api/v1/tokens/registry.
-
-## Session 2026-08-21 (cont): UserWallet parity gaps RESOLVED
-
-All 4 backend gaps + all client gaps from the audit above are now fixed and verified:
-
-- /ramp/* proxy: wallet_api main.go mounts deFiProxy("/ramp", FIAT_RAMP_URL:8451).
-- /cards/* proxy: wallet_api mounts cardsProxy (defi_proxy.go) which strips the
-  client :id path segment (clients call /cards/<id>/balance, upstream serves
-  /api/v1/card/balance). card_service gained GET /api/v1/card/rates (real CoinGecko,
-  Redis-cached 60s, fail-closed; COINGECKO_API_KEY env). NOTE: Gin panics on
-  static+param sibling routes -- do NOT add /api/v1/card/:id/* variants.
-- /dapp/* + /walletconnect/* proxy: deFiProxyRewrite strips the prefix so
-  /api/v1/dapp/pairings -> :8083 /pairings, /api/v1/walletconnect/ws/<topic> ->
-  :8083 /ws/<topic> (WS upgrade passes through httputil.ReverseProxy).
-- docker-compose: 8 new services (lending 8009, copy-trading 8006, governance
-  8454, prediction 8455, p2p 8475, fiat-ramp 8451, card 8457, dapp-browser 8083)
-  each with a golang:1.23-alpine multi-stage Dockerfile; wallet-api now gets all
-  *_SERVICE_URL envs; init.sql gained the walletconnect DB.
-- POST /api/v1/gas/estimate (gas_estimate.go NEW): real eth_estimateGas via
-  ethclient.EstimateGas against the chain's RPC; fail-closed 502/503, never a
-  fabricated limit. 6/7 clients already called this route (it 404'd); the 7th
-  (production/react estimateGas) was fabricating gasPrice*21000 client-side and
-  is now wired to the real endpoint.
-- Rust client /api/v1 normalization bug (was ~40 broken fetchers): rust
-  url() helper did not prepend /api/v1, so every bare-path fetcher 404'd. Fixed
-  at the choke point (url() prepends /api/v1 unless path already has it or is
-  /health). p2p_listings() repointed /p2p/listings -> /p2p/adverts (real route).
-- 3 new fetchers on all 7 clients: getTokenRegistry (?chain_id),
-  getTerminalKline (symbol, days=1), getTerminalTicker (symbol) -- consume the
-  previously-orphaned /api/v1/tokens/registry + /api/v1/terminal/* endpoints.
-- WalletConnect WS live-event helpers on all 7 clients: real WebSocket to
-  ws(s)://<host>/api/v1/dapp/ws/<topic> (JSON-RPC frames {id,method,params}).
-  web/production-react: services/walletconnect.ts; desktop: services/walletconnect.js;
-  extension: src/walletconnect.js (loaded in popup.html, window.WalletConnectSocket);
-  android: util/WalletConnectSocket.kt (OkHttp newWebSocket); ios:
-  App/WalletConnectSocket.swift (URLSessionWebSocketTask); rust: src/wc.rs
-  WalletConnectSocket (tokio-tungstenite 0.20 with connect+rustls features;
-  Message::Frame(_) arm required). Rust also gained UserWalletClient
-  .connect_walletconnect(topic) convenience + 2 URL-derivation tests.
-- Extension popup UI: added DeFi tab (9-section hub: lending markets/positions,
-  perpetual, margin, DAO, prediction, launchpool, token-sales, copy-trading) and
-  dApps tab (wc: pairing URI create + pending-pairing approve/reject + active
-  session list). Theme-aware via existing CSS vars; switchTab extended.
-- Build gate (all green): go build+vet+test wallet_api (ok 3.0s) + card_service;
-  cargo check + test user_wallet/rust (8/8); tsc --noEmit web + production/react
-  (0 errors, npm install --legacy-peer-deps for CRA web / plain for react);
-  node --check desktop+extension; string-aware brace-balance android+ios
-  (Kotlin supports NESTED block comments -- the checker must track comment depth
-  or KDoc with inline /* */ false-positives).
-## Launchpad ecosystem (2026-08-22)
-
-- Desktop C++ launchpad_service.hpp (desktop_wallet/src/services/launchpad/) is NO LONGER a fake. It delegates to the real ProjectParty backend (http://localhost:8106) via the tiger::wallet::APIClient singleton: GET /api/v1/launchpad (getActiveLaunches), POST /api/v1/launchpad/:id/contribute (participate), POST /api/v1/launchpad/:id/claim (claimTokens). All methods fail-closed (empty/throw) on API failure; Launch/Participation struct names preserved. APIClient gained a public getAuthToken() (api_client.h); executeRequest auto-attaches Authorization: Bearer <token>. Compiles with: g++ -std=c++20 -fsyntax-only -I desktop_wallet/include -I desktop_wallet/src/services/launchpad (needs libcurl4-openssl-dev).
-- Go launchpad_ecosystem (launchpad_ecosystem/go/): package conflicts fixed. main.go is the only package main; the gorm-backed service lives in subpackage launchpad/ (package launchpad). IMPORTANT: module path is github.com/tigerwallet/launchpad-ecosystem and module ROOT dir is launchpad_ecosystem/go/, so the subpackage import is github.com/tigerwallet/launchpad-ecosystem/launchpad (NOT .../go/launchpad - the go/ dir is the module root, not part of the import path). Gin bumped v1.9.1 -> v1.10.0 (v1.9.1 chenzhuoyu/base64x pseudo-version was corrupted in module cache). ClaimTokens/ClaimRewards are fail-closed: return HTTP 501 errors (status not_implemented) and do NOT mutate DB / fabricate empty-hash not_broadcast success. go build ./... exit 0; go vet ./... clean. Go env: PATH=$HOME/.go-sdk/go/bin GOPATH=$HOME/go GOTOOLCHAIN=local; go mod tidy needs rogpeppe/go-internal@v1.12.0 pinned (v1.16.0 requires go >= 1.25, unavailable with GOTOOLCHAIN=local on go 1.23).
-## Session 2026-08-16: Bots + ProjectParty real execution + on-chain launchpad + full cross-platform parity
-
-Built the complete Bots+BotsClients and ProjectParty coin/token listing
-systems. C++ for ultra-low-latency hot paths, Rust for security/safety, Go for
-high-load distributed. No demos/stubs/fakes/mock data. All apps (android, iOS,
-webapp, desktop, extension, Rust, C++) have the same files/features/methods.
-Commit `fe3efb3` pushed to origin/main.
-
-### Bots system (mm_bot_platform/)
-- **bot_api/main.go** (Go, :8471): Replaced fake XOR `encryptSecret` with REAL
-  AES-256-GCM (`crypto/aes`+`crypto/cipher`+`crypto/rand`); `decryptSecret` for
-  reading back; `hashToken` now proper SHA-256 (was UUID+length string). Added
-  REAL dispatch to the Rust bot_core execution plane: `startBot`/`stopBot`/
-  `pauseBot` now call `dispatchBotCore` which POSTs to `BOT_CORE_URL/dispatch/
-  <action>` (default http://localhost:8472). `service` struct gained `httpClient
-  *http.Client` (15s timeout); constructed with `&http.Client{Timeout: 15*time.
-  Second}`. Dispatch is best-effort (logged, not fatal) -- DB status update
-  succeeds first; bot_core may be down for maintenance. `bytes` import added.
-- **bot_core/** (Rust, :8472): Real execution engine -- ethers v2, reqwest,
-  axum (dispatch server on :8472), tokio-postgres, secp256k1, hmac/sha2,
-  tracing. cargo check + cargo build succeed.
-- **bot_admin/** (Solidity, Foundry): `ProjectPartyLaunchpad.sol` -- real token
-  sale contract with on-chain escrow. Functions: createSale (owner-only,
-  bytes32 saleId), startSale, pauseSale, contribute (payable, min/max/soft/
-  hard cap checks), claimTokens (direct formula `tokens = amount * 1e18 /
-  tokenPrice`, NOT balance-dependent), claimRefund, finalizeSale,
-  withdrawProceeds (treasury), withdrawUnsold. 19 Foundry tests (real ECDSA via
-  `vm.sign`, no mocks) -- all pass. `TigerBotPlatform.sol` gained `setFeeRecipient`
-  (ADMIN-only, rejects zero address). `foundry.toml` has `via_ir = true` (contract
-  hits stack-too-deep without IR). 42/42 tests pass (23 TigerBotPlatform + 19
-  Launchpad). lib/ (forge-std + openzeppelin-contracts) is git-ignored via
-  `mm_bot_platform/bot_admin/.gitignore` -- must `forge install OpenZeppelin/
-  openzeppelin-contracts foundry-rs/forge-std --no-git` after a fresh clone.
-- **Cross-platform clients** (6 platforms): bots/{android (Kotlin
-  BotApiService.kt), ios (Swift BotApiService.swift), desktop (Node.js
-  bot-api.js), extensions/{chrome,firefox,safari} (JS bot-api.js), rust
-  (reqwest bot_api.rs), cpp (libcurl bot_api.cpp)}. All implement the same 40+
-  method set as the web reference (auth, bots CRUD + lifecycle, executions,
-  logs, subscriptions, fees, api-keys, CEX/DEX connectors, stats, users).
-- **bots/web** (React+TS): Added 18 missing API methods (getStats, getUsers,
-  getBotUser, listBotUsers, createBotUser, deleteUser, setUserStatus,
-  listBotTransactions, listBotInstances, createBotAlias, getSubscription,
-  logout, listCEX/createCEX/deleteCEX, listDEX/createDEX/deleteDEX,
-  listFeeAddresses/createFeeAddress/deleteFeeAddress, deleteApiKey,
-  setBotStatus, updateFees). tsc 0 errors.
-
-### ProjectParty system (project_party/)
-- **go/cmd/main.go** (Go, :8106): Real JWT auth (golang-jwt/jwt/v5) + bcrypt
-  password hashing; `authMiddleware` + `RequireAdmin` middleware; `pp_users`
-  table; routes restructured (public discovery vs authed mutations vs
-  admin-only approve/reject); DB-backed `fee_schedule` (removed hardcoded
-  fallbacks); `payFeesHandler` uses 'pending' status (not 'completed');
-  `LaunchpadContribution` struct gained `TxHash` + `ConfirmedAt` fields;
-  `contributeHandler` + `claimTokensHandler` now do REAL on-chain transactions
-  via go-ethereum (fail-closed 503 if unconfigured, NEVER fabricate tx hashes).
-  `math/big` import added.
-- **go/cmd/launchpad_onchain.go** (NEW): Real on-chain ProjectPartyLaunchpad
-  contract interaction. `LaunchpadOnChain` struct with ethclient + secp256k1
-  signing. `contributeOnChain` (real eth_sendRawTransaction + waits for receipt
-  + computes token claim from on-chain tokenPrice), `claimTokensOnChain`,
-  `getTokenPrice` (eth_call via abi). Env: `PP_RPC_URL`, `PP_LAUNCHPAD_PRIVATE_KEY`,
-  `PP_LAUNCHPAD_CONTRACT_ADDRESS`. If any unset, on-chain disabled (503).
-- **Cross-platform clients** (6 platforms): project_party/{android (Kotlin
-  ProjectPartyApiService.kt), ios (Swift ProjectPartyApiService.swift), desktop
-  (Node.js project-party-api.js), extensions/{chrome,firefox,safari} (JS
-  party-api.js), rust (reqwest party_api.rs), cpp (libcurl party_api.cpp)}.
-  All implement the same 50+ method set (coins, search, featured, trending,
-  market, tokens, listings, launchpad, market-making, pricing, analytics,
-  compliance, fees, favorites).
-- **project_party/web** (React+TS): Added pricing (getTokenPrice,
-  getTokenHistory, getMarketData), analytics (getHolders, getTransactions,
-  getTokenVolume, getTokenLiquidity), compliance (getKYCStatus, submitKYC,
-  submitAudit, getAuditReport, getTokenStatus) API methods. tsc 0 errors.
+### White-level SDK (white_level_sdk/rust)
+- `white-level-sdk` builds clean; 6/6 tests pass. Real Ed25519 license-token
+  verification. The fail-closed client a WL product embeds to phone home.
 
 ### Build verification (ALL GREEN)
 | Component | Result |
 |-----------|--------|
-| bot_api (Go) | go build exit 0 |
-| project_party (Go) | go build + go vet exit 0 |
-| bot_core (Rust) | cargo check exit 0 |
-| Foundry (bot_admin) | forge build exit 0; forge test 42/42 pass |
-| bots/web | tsc 0 errors |
-| project_party/web | tsc 0 errors |
-| bots/rust + project_party/rust | cargo check exit 0 |
-| bots/cpp + project_party/cpp | g++ -std=c++20 -fsyntax-only exit 0 |
-| 8 JS clients (desktop+extensions) | node --check OK |
-| 4 Kotlin/Swift | brace-balanced (no compilers in env) |
+| wl_shared/go (wlgate) | build+vet+test exit 0 (6 tests) |
+| license_service/go | build+vet exit 0 |
+| wl_user_wallet/go | build+vet exit 0 |
+| wl_master_wallet/go | build+vet exit 0 |
+| white_label_admin/go | build+vet exit 0 |
+| wl_control_plane/cpp | cmake+make exit 0; 7 tests pass |
+| wl_control_plane/rust | cargo check+test exit 0; 6 tests pass |
+| white_level_sdk/rust | cargo check+test exit 0; 6 tests pass |
 
-### Architecture (what can be performed)
-**Bots system actions:** register/login (JWT), create/list/get/update/delete
-bots, start/stop/pause bots (dispatches to real Rust bot_core execution plane),
-list bot executions + logs, create/list subscriptions (4 tiers), create/list
-fee configs, create/list/delete API keys (AES-256-GCM at rest), create/list/
-delete CEX + DEX connectors (AES-GCM at rest), list fee addresses, get stats
-(real COUNT from PG), list/create/delete bot users, set user status, list bot
-transactions + instances. 39 routes total.
+### Approval-mode semantics (final)
+- **AUTO** (sub-second): user-to-user EVM transfers, token transfers, swaps,
+  stakes, personal_sign. Approved IFF license alive + no blocking rule.
+  The license being alive IS the MasterWallet-owner/SuperAdmin authorization.
+- **MANUAL** (two-party, requires SuperAdmin co-sign): `revenue_payout`,
+  `treasury_transfer`, `treasury_sweep`, `fee_withdrawal`, OR any transfer to
+  a SuperAdmin-managed treasury address. Missing/unapproved withdrawal_id =>
+  403 fail-closed. No fee/revenue/treasury withdrawal can move without
+  SuperAdmin collaboration, even if the WL client omits the withdrawal_id
+  (the classifier forces Manual).
+- **License dead** (SuperAdmin revokes/halts): all wl_* product gates go
+  dead (503). The WL client cannot self-resume (resumeClient = 403; only
+  SuperAdmin can resume via the license control plane).
 
-**ProjectParty system actions:** register/login (JWT+bcrypt), create/list/get/
-update/delete tokens, create/list listings, create/list/get launchpad projects,
-participate (REAL on-chain contribute tx), claim tokens (REAL on-chain claim tx),
-list participations, create/list market-making configs, create/list fee configs,
-add/list/remove favorites, get token price/history/market data, get holders/
-transactions/volume/liquidity (analytics), get KYC status, submit KYC/audit,
-get audit report, get token compliance status. 40 routes total.
+
+## Session 2026-08-16 (session 6): No-registration UserWallet UX + Rust PG + native parity
+
+Closed the remaining gaps: the no-registration self-custody UserWallet UX
+across all 6 clients, the Rust admin backends -> PostgreSQL, and native
+WL-admin client parity for the 9 missing scoped domains. All real, no
+stubs/mocks/fakes.
+
+### UserWallet no-registration UX (all 6 clients identical)
+The user opens UserWallet and sees a Create/Import choice — NO register/
+login/email wall. A transparent ephemeral session is auto-provisioned
+behind the scenes (random device-bound identity via crypto.getRandomValues /
+SecureRandom / SecRandomCopyBytes, stored in localStorage / EncryptedSharedPreferences
+/ Keychain / chrome.storage.local) so the JWT-backed WL backend is satisfied.
+The wallet password the user enters encrypts the seed (server-side scrypt +
+AES-GCM), independent of the ephemeral account.
+
+Flow (identical on web/desktop/android/ios/production-react/chrome-extension):
+1. Onboarding (first screen): "Create Wallet" / "Import Wallet" buttons.
+2. Create: name + network (ETH/BNB/Polygon/Arbitrum/Optimism/Base) +
+   password + confirm -> backend POST /wallets -> mnemonic returned once.
+3. Backup (after create): reveals mnemonic (checkbox); Copy (clipboard);
+   Google Drive backup (REAL Google Drive API v3 — GIS+gapi on web/desktop,
+   GoogleSignIn+DriveClient on Android, GTMAppAuth+GTLRDrive on iOS,
+   chrome.identity.getAuthToken on extension; honestly disabled if no OAuth
+   client ID configured, NEVER fake success); Download encrypted backup
+   (real AES-256-GCM via WebCrypto/CryptoKit/javax.crypto + PBKDF2 600k iters,
+   blob = salt+iv+ciphertext); Continue (enabled only after "I have backed
+   up my recovery phrase" checkbox).
+4. Import: seed textarea (12/24-word validation) + name + network +
+   password -> createWallet WITH mnemonic -> dashboard.
+5. Send: after successful sendTransaction -> "Transaction submitted to
+   the blockchain network" banner with real tx hash + per-chain explorer
+   link (etherscan/bscscan/polygonscan/arbiscan/optimistic/basescan/snowtrace),
+   auto-dismiss 30s.
+
+Clients + files:
+- web (user_wallet/web/src): OnboardingContext.tsx, Onboarding.tsx,
+  BackupMnemonic.tsx, TxSubmittedBanner.tsx, App.tsx gating, Transactions.tsx
+  banner, theme.css. tsc --noEmit 0 errors.
+- desktop (user_wallet/desktop/src): OnboardingContext.jsx, Onboarding.jsx,
+  BackupMnemonic.jsx, TxSubmittedBanner.jsx, App.jsx gating, Transactions.jsx
+  banner, styles.css. Login.jsx removed (no login wall). node --check OK.
+- production/react (user_wallet/production/react/src): OnboardingContext.tsx,
+  Onboarding.tsx, BackupMnemonic.tsx, TxSubmittedBanner.tsx, App.tsx gating,
+  SendPage.tsx banner, WalletService.ts createWalletTyped. tsc --noEmit 0
+  errors + vite build succeeds.
+- android (user_wallet/android): OnboardingFragment, CreateWalletFragment,
+  ImportWalletFragment, BackupMnemonicFragment (Kotlin + XML layouts), secure
+  session via SecureBlobStore (Android-Keystore AES-GCM EncryptedSharedPreferences),
+  Google Drive via GoogleSignIn+Drive, AES-GCM via javax.crypto, TxSubmittedBanner
+  in TransactionsFragment. 16 .kt files balanced.
+- ios (user_wallet/ios/App): OnboardingView, CreateWalletView,
+  ImportWalletView, BackupView, TxSubmittedBanner, OnboardingManager,
+  KeychainService, EncryptedBackup, GoogleDriveBackup (SwiftUI). Google Drive
+  via GTMAppAuth+GTLRDrive, AES-GCM via CryptoKit, PBKDF2 via CommonCrypto.
+  13 .swift files balanced. Committed 46740ee.
+- chrome extension (browser_extensions/chrome): popup.js view-switching
+  (onboarding/create/import/backup/dashboard), background.js ensureSession,
+  Google Drive via chrome.identity.getAuthToken + Drive v3 multipart upload,
+  AES-GCM via WebCrypto. 36 .js files node --check 0 failures.
+
+### Rust admin backends -> PostgreSQL (Gap 7 closed)
+- rust/rbac_admin_backend: replaced in-memory HashMap with real PostgreSQL
+  via tokio-postgres + deadpool-postgres. DatabasePool owns a deadpool pool +
+  tokio Runtime (block_on wrappers, mirrors rust/admin_fetchers pattern).
+  New(database_url) fail-closed (returns Err if pool/migration fails — NEVER
+  falls back to in-memory). Migrate() runs CREATE TABLE IF NOT EXISTS for all
+  13 entity tables mirroring the Go admin schema. cargo check --lib exit 0.
+- rust/super_admin_backend: CREATED Cargo.toml (was missing). Replaced
+  RwLock<HashMap> with DatabasePool. 10 entity tables (admin_users,
+  admin_sessions, ip_whitelist, feature_flags, audit_logs, white_labels,
+  profit_share_configs, profit_transactions, login_attempts, rate_limits).
+  new() signature -> Result<Arc<Self>, String> (fail-closed). All argon2/
+  TOTP/crypto unchanged. cargo check --lib exit 0.
+
+### Native WL-admin client parity (Gap 6 closed)
+Added the 9 missing scoped admin domains to ALL native white_label_admin
+clients (liquidity, crypto-card, bots, kyc, tickets, ip-whitelist, audit-logs,
+wallet-management, withdrawals), mirroring the existing 11-domain pattern +
+using the real Go backend (port 8082) routes:
+- iOS: ContentView.swift (DomainLink + specFor entries).
+- Android: DomainsFragment + DomainDetailFragment (ENDPOINTS/GOV_ACTIONS maps).
+- Extensions (chrome/firefox/safari): popup.js (identical DOMAINS array).
+- Desktop/Electron: main.js + renderer.js + preload.js (DOMAINS map + IPC).
+- Rust server: api/mod.rs (4 missing route groups + handlers) + models/mod.rs
+  (5 new structs) — now 20 routes.
+- C++: wl_admin_domains.hpp (9 DomainSpec blocks — registry now returns 20).
+Verification: node --check on all 9 desktop+extension JS (exit 0); cargo check
+(3 pre-existing warnings, 0 errors); g++ -std=c++20 -fsyntax-only (exit 0);
+Python balance check on Swift/Kotlin/Java (all balanced).
+
+### Build verification (ALL GREEN)
+| Component | Result |
+|-----------|--------|
+| rust/rbac_admin_backend | cargo check --lib exit 0 |
+| rust/super_admin_backend | cargo check --lib exit 0 |
+| white_label_admin/rust | cargo check exit 0 (3 pre-existing warnings) |
+| white_label_admin/cpp | g++ -std=c++20 -fsyntax-only exit 0 |
+| user_wallet/web | tsc --noEmit 0 errors |
+| user_wallet/desktop | node --check OK (main + preload) |
+| user_wallet/production/react | tsc --noEmit 0 errors + vite build OK |
+| user_wallet/android | 16 .kt files balanced (interpolation-aware tokenizer) |
+| user_wallet/ios | 13 .swift files balanced (committed 46740ee) |
+| browser_extensions/chrome | 36 .js files node --check 0 failures |

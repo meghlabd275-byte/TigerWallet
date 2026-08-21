@@ -29,6 +29,10 @@ type Config struct {
 	TwoFactorIssuer    string
 	TwoPartyGateURL    string // license control plane URL for withdrawal co-sign checks
 	TwoPartyGateToken  string // service token for the control plane
+	WLClientID         string        // this WL client's UUID (for license heartbeat)
+	LicenseKey         string        // license key for this product
+	Product            string        // product name reported to the control plane
+	HeartbeatInterval  time.Duration // control-plane heartbeat cadence
 	BackupEnabled      bool
 	BackupPath         string
 	BackupInterval     time.Duration
@@ -66,6 +70,10 @@ func Load() *Config {
 		TwoFactorIssuer:    getEnv("TWO_FACTOR_ISSUER", "TigerWallet"),
 		TwoPartyGateURL:    getEnv("TWO_PARTY_GATE_URL", ""),
 		TwoPartyGateToken:  getEnv("TWO_PARTY_GATE_TOKEN", ""),
+		WLClientID:         getEnv("WL_CLIENT_ID", ""),
+		LicenseKey:         getEnv("LICENSE_KEY", ""),
+		Product:            getEnv("WL_PRODUCT", "white_label_admin"),
+		HeartbeatInterval:  getDurationEnv("HEARTBEAT_INTERVAL", 30*time.Second),
 		BackupEnabled:       getBoolEnv("BACKUP_ENABLED", true),
 		BackupPath:          getEnv("BACKUP_PATH", "/var/backups/tigerwallet"),
 		BackupInterval:      getDurationEnv("BACKUP_INTERVAL", 24*time.Hour),

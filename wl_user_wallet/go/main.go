@@ -42,6 +42,10 @@ func main() {
 	// Start the license-control-plane heartbeat (fail-closed phone-home).
 	go middleware.HeartbeatLoop(ctx, cfg.ControlPlaneURL, cfg.ControlPlaneToken, cfg.WLClientID, cfg.LicenseKey, cfg.Product, cfg.InstanceID, cfg.HeartbeatInterval)
 
+	// Initialize the two-party withdrawal gate (SuperAdmin co-sign verification
+	// for fee/revenue/treasury withdrawals — the slow path).
+	middleware.InitTwoPartyGate(cfg.ControlPlaneURL, cfg.ControlPlaneToken)
+
 	svc := handlers.New(cfg, st)
 
 	router := gin.Default()

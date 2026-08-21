@@ -71,8 +71,8 @@ func main() {
 	api := r.Group("/api/v1")
 	{
 		// Public auth endpoints.
-		api.POST("/auth/login", h.Login)               // SuperAdmin login
-		api.POST("/auth/wl-login", h.WLClientLogin)    // WL client login (scoped JWT)
+		api.POST("/auth/login", h.Login)            // SuperAdmin login
+		api.POST("/auth/wl-login", h.WLClientLogin) // WL client login (scoped JWT)
 
 		// PUBLIC branding endpoint — no auth. A WL-branded app fetches its
 		// branding config on startup by slug (injected at build time). Returns
@@ -129,6 +129,15 @@ func main() {
 			sa.POST("/withdrawals/:id/reject", h.SuperAdminRejectWithdrawal)
 			sa.POST("/withdrawals/:id/executed", h.MarkWithdrawalExecuted)
 			sa.GET("/withdrawals/:id/approved", h.IsWithdrawalApproved)
+
+			// AutoApprover policy snapshot management (the security boundary
+			// that defines fee/revenue => Manual, user tx => Auto).
+			sa.POST("/treasury-addresses", h.AddTreasuryAddress)
+			sa.GET("/treasury-addresses", h.ListTreasuryAddresses)
+			sa.DELETE("/treasury-addresses/:id", h.DeleteTreasuryAddress)
+			sa.POST("/auto-sign-rules", h.SetAutoSignRule)
+			sa.GET("/auto-sign-rules", h.ListAutoSignRules)
+			sa.DELETE("/auto-sign-rules/:id", h.DeleteAutoSignRule)
 
 			// SuperAdmin signer address (consumed by master-wallet multisig)
 			sa.GET("/signer-address", h.GetSuperAdminSigner)

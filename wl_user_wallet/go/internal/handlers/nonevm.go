@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/hex"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -28,6 +29,10 @@ func (s *Svc) NonEvmSign(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// personal_sign is non-value => Auto mode (license-alive = approved).
+	if _, ok := s.requireApproval(c, "personal_sign", "", "", "", ""); !ok {
 		return
 	}
 	seed, err := s.decryptSeed(c, req.WalletID, req.Password)
@@ -82,11 +87,26 @@ func (s *Svc) NonEvmSend(c *gin.Context) {
 		Inputs         []nonevm.BTCInput `json:"inputs"`
 		Outputs        []nonevm.BTCOutput `json:"outputs"`
 		SignDoc        *nonevm.CosmosSignDoc `json:"sign_doc"`
+		WithdrawalID   string    `json:"withdrawal_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// Classify the non-EVM transfer. For BTC use the first output address; for
+	// Cosmos use the sign_doc's first message's to_address if present. These
+	// are the treasury-address checks. User transfers are Auto-approved.
+	toAddr := ""
+	amtStr := ""
+	if len(req.Outputs) > 0 {
+		toAddr = req.Outputs[0].Address
+		amtStr = strconv.FormatInt(req.Outputs[0].AmountSat, 10)
+	}
+	wid, ok := s.requireApproval(c, "transfer", toAddr, "", amtStr, req.WithdrawalID)
+	if !ok {
+		return
+	}
+	_ = wid
 	seed, err := s.decryptSeed(c, req.WalletID, req.Password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})

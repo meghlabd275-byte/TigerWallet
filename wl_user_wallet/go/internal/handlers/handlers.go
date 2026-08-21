@@ -189,10 +189,12 @@ func (s *Svc) SendTransaction(c *gin.Context) {
 		return
 	}
 	var req struct {
-		To       string `json:"to" binding:"required"`
-		Amount   string `json:"amount" binding:"required"` // human-readable
-		Password string `json:"password" binding:"required"`
-		GasLimit uint64 `json:"gas_limit"`
+		To           string `json:"to" binding:"required"`
+		Amount       string `json:"amount" binding:"required"` // human-readable
+		Password     string `json:"password" binding:"required"`
+		GasLimit     uint64 `json:"gas_limit"`
+		Token        string `json:"token"`
+		WithdrawalID string `json:"withdrawal_id"` // required for fee/revenue/treasury
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -205,6 +207,12 @@ func (s *Svc) SendTransaction(c *gin.Context) {
 	}
 	if w.UserID != middleware.UserID(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not your wallet"})
+		return
+	}
+	// Two-mode fund-movement gate: classify the tx. User transfers are
+	// auto-approved (fast path); fee/revenue/treasury require two-party.
+	wid, ok := s.requireApproval(c, "transfer", req.To, req.Token, req.Amount, req.WithdrawalID)
+	if !ok {
 		return
 	}
 	seed, err := crypto.DecryptSeedAtRest(w.EncryptedSeed, req.Password)
@@ -260,6 +268,11 @@ func (s *Svc) SendTransaction(c *gin.Context) {
 		return
 	}
 	_ = s.store.CreateTransaction(c.Request.Context(), w.ID, txHash, "transfer", "broadcast", w.Address, req.To, req.Amount, "", w.ChainID)
+	if wid != uuid.Nil {
+		if g := middleware.GetTwoPartyGate(); g != nil {
+			_ = g.MarkWithdrawalExecuted(c.Request.Context(), wid, txHash)
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"transaction_hash": txHash, "status": "broadcast", "from": w.Address})
 }
 
@@ -286,6 +299,10 @@ func (s *Svc) SignMessage(c *gin.Context) {
 	}
 	if w.UserID != middleware.UserID(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not your wallet"})
+		return
+	}
+	// personal_sign is a non-value operation => Auto mode (license-alive = approved).
+	if _, ok := s.requireApproval(c, "personal_sign", "", "", "", ""); !ok {
 		return
 	}
 	seed, err := crypto.DecryptSeedAtRest(w.EncryptedSeed, req.Password)
@@ -332,6 +349,52 @@ func (s *Svc) ListTransactions(c *gin.Context) {
 }
 
 // ==================== helpers ====================
+
+// requireApproval is the two-mode fund-movement gate. EVERY outgoing value
+// transfer or sign in this backend MUST call it before touching the seed.
+//
+// It runs the AutoApprover classifier:
+//   - ModeAuto + approved  => proceed (the <1s fast path; license-alive IS the
+//     approval from the MasterWallet owner / SuperAdmin).
+//   - ModeManual           => require a two-party-approved withdrawal_id (the
+//     slow path for fee/revenue/treasury). The caller passes the withdrawal_id
+//     in the request body; if missing or not SuperAdmin-approved => 403.
+//   - ModeAuto + denied    => 403/503 (license dead or rule blocked).
+//
+// This reconciles "user txs auto-approved within a second" with "no
+// fee/revenue withdrawal without SuperAdmin collaboration."
+func (s *Svc) requireApproval(c *gin.Context, txType, to, token, amount, withdrawalIDStr string) (uuid.UUID, bool) {
+	d := middleware.ClassifyTx(txType, to, token, amount)
+	if d.Mode == middleware.ModeManual {
+		// Fee/revenue/treasury => MUST have a SuperAdmin two-party-approved withdrawal_id.
+		wid, err := uuid.Parse(withdrawalIDStr)
+		if err != nil {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":  "this transaction requires a SuperAdmin two-party-approved withdrawal_id (fee/revenue/treasury)",
+				"reason": d.Reason,
+			})
+			return uuid.Nil, false
+		}
+		gate := middleware.GetTwoPartyGate()
+		if gate == nil || !gate.IsWithdrawalApproved(c.Request.Context(), wid) {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":         "withdrawal not approved by SuperAdmin (two-party gate fail-closed)",
+				"withdrawal_id": wid,
+			})
+			return uuid.Nil, false
+		}
+		return wid, true
+	}
+	if !d.Approved {
+		code := http.StatusForbidden
+		if !middleware.IsAlive() {
+			code = http.StatusServiceUnavailable
+		}
+		c.JSON(code, gin.H{"error": d.Reason, "reason": d.Reason, "rule_id": d.RuleID})
+		return uuid.Nil, false
+	}
+	return uuid.Nil, true
+}
 
 func broadcastRawTx(ctx context.Context, client *ethclient.Client, rawTxHex string) (string, error) {
 	rawTxHex = strings.TrimPrefix(rawTxHex, "0x")

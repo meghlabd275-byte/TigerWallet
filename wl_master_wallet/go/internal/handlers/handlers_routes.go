@@ -145,22 +145,13 @@ func (h *Handlers) TransferFromSubWallet(c *gin.Context) {
 		return
 	}
 
-	var withdrawalID uuid.UUID
-	if req.WithdrawalID != "" {
-		wid, err := uuid.Parse(req.WithdrawalID)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid withdrawal_id"})
-			return
-		}
-		if !h.twoPartyGate.IsWithdrawalApproved(c.Request.Context(), wid) {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":         "withdrawal not approved by SuperAdmin (two-party gate fail-closed)",
-				"withdrawal_id": wid,
-			})
-			return
-		}
-		withdrawalID = wid
+	// Two-mode gate: user transfer => Auto (fast path); treasury recipient or
+	// fee/revenue => Manual (require two-party-approved withdrawal_id).
+	wid, ok := h.requireApproval(c, "transfer", req.To, req.Token, req.Amount, req.WithdrawalID)
+	if !ok {
+		return
 	}
+	withdrawalID := wid
 
 	txHash, err := h.signAndBroadcastPath(c.Request.Context(), w, subAddr, path, req.To, req.Amount, req.Password, req.GasLimit, req.Data)
 	if err != nil {
@@ -340,24 +331,11 @@ func (h *Handlers) ExecuteTransaction(c *gin.Context) {
 	}
 	var req struct {
 		Password     string `json:"password" binding:"required"`
-		WithdrawalID string `json:"withdrawal_id" binding:"required"`
+		WithdrawalID string `json:"withdrawal_id"` // required when classifier returns Manual
 		GasLimit     uint64 `json:"gas_limit"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	wid, err := uuid.Parse(req.WithdrawalID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid withdrawal_id"})
-		return
-	}
-	// Two-party gate: enforced BEFORE broadcast. No exceptions.
-	if !h.twoPartyGate.IsWithdrawalApproved(c.Request.Context(), wid) {
-		c.JSON(http.StatusForbidden, gin.H{
-			"error":         "transaction execution not approved by SuperAdmin (two-party gate required)",
-			"withdrawal_id": wid,
-		})
 		return
 	}
 
@@ -384,6 +362,12 @@ func (h *Handlers) ExecuteTransaction(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "transaction not approved (status=" + status + ")"})
 		return
 	}
+	// Two-mode gate with the loaded to/amount/token. User transfers => Auto;
+	// treasury recipient / fee / revenue => Manual (require withdrawal_id).
+	wid, ok := h.requireApproval(c, "transfer", to, token, amount, req.WithdrawalID)
+	if !ok {
+		return
+	}
 	txHash, err := h.signAndBroadcast(c.Request.Context(), w, to, amount, req.Password, req.GasLimit, "")
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "broadcast failed: " + err.Error()})
@@ -392,7 +376,9 @@ func (h *Handlers) ExecuteTransaction(c *gin.Context) {
 	_, _ = h.store.DB().Exec(c.Request.Context(),
 		`UPDATE transactions SET status='broadcast', tx_hash=$1 WHERE id=$2`, txHash, tid)
 	_ = h.store.Audit(c.Request.Context(), w.ID, "execute_tx", "transaction", txHash, "critical", mustJSON(gin.H{"tx_id": tid, "withdrawal_id": wid}))
-	_ = h.twoPartyGate.MarkWithdrawalExecuted(c.Request.Context(), wid, txHash)
+	if wid != uuid.Nil {
+		_ = h.twoPartyGate.MarkWithdrawalExecuted(c.Request.Context(), wid, txHash)
+	}
 	c.JSON(http.StatusOK, gin.H{"transaction_hash": txHash, "status": "broadcast", "tx_id": tid})
 }
 
@@ -414,21 +400,6 @@ func (h *Handlers) SignPendingTransaction(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	var wid uuid.UUID
-	if req.WithdrawalID != "" {
-		wid, err = uuid.Parse(req.WithdrawalID)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid withdrawal_id"})
-			return
-		}
-		if !h.twoPartyGate.IsWithdrawalApproved(c.Request.Context(), wid) {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":         "sign not approved by SuperAdmin (two-party gate fail-closed)",
-				"withdrawal_id": wid,
-			})
-			return
-		}
-	}
 	var mwID uuid.UUID
 	var to, amount, token, status string
 	var chainID int64
@@ -446,6 +417,11 @@ func (h *Handlers) SignPendingTransaction(c *gin.Context) {
 	}
 	if w.UserID != wlgate.UserID(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not your master wallet"})
+		return
+	}
+	// Two-mode gate with the loaded to/amount/token.
+	wid, ok := h.requireApproval(c, "transfer", to, token, amount, req.WithdrawalID)
+	if !ok {
 		return
 	}
 	priv, err := h.deriveKey(c.Request.Context(), w, req.Password)
@@ -1227,17 +1203,9 @@ func (h *Handlers) TreasuryTransfer(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not your master wallet"})
 		return
 	}
-	wid, err := uuid.Parse(req.WithdrawalID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid withdrawal_id"})
-		return
-	}
-	// Two-party gate: REQUIRED before broadcast. No exceptions.
-	if !h.twoPartyGate.IsWithdrawalApproved(c.Request.Context(), wid) {
-		c.JSON(http.StatusForbidden, gin.H{
-			"error":         "treasury transfer not approved by SuperAdmin (two-party gate required)",
-			"withdrawal_id": wid,
-		})
+	// Treasury transfer => ALWAYS Manual two-party (classifier forces it).
+	wid, ok := h.requireApproval(c, "treasury_transfer", req.To, "", req.Amount, req.WithdrawalID)
+	if !ok {
 		return
 	}
 	txHash, err := h.signAndBroadcast(c.Request.Context(), w, req.To, req.Amount, req.Password, req.GasLimit, "")
@@ -1278,17 +1246,9 @@ func (h *Handlers) TreasurySweep(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not your master wallet"})
 		return
 	}
-	wid, err := uuid.Parse(req.WithdrawalID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid withdrawal_id"})
-		return
-	}
-	// Two-party gate: REQUIRED before broadcast. No exceptions.
-	if !h.twoPartyGate.IsWithdrawalApproved(c.Request.Context(), wid) {
-		c.JSON(http.StatusForbidden, gin.H{
-			"error":         "treasury sweep not approved by SuperAdmin (two-party gate required)",
-			"withdrawal_id": wid,
-		})
+	// Treasury sweep => ALWAYS Manual two-party (classifier forces it).
+	wid, ok := h.requireApproval(c, "treasury_sweep", req.To, "", "", req.WithdrawalID)
+	if !ok {
 		return
 	}
 	rpc := rpcForChain(w.ChainID)

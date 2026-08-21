@@ -40,25 +40,79 @@ type Handlers struct {
 	cfg          *config.Config
 	store        *store.Store
 	gate         *wlgate.Gate
+	autoApprover *wlgate.AutoApprover
 	twoPartyGate *wlgate.TwoPartyGate
 	wlClientID   uuid.UUID
 	wsHub        *wsHub
 }
 
 // New builds a Handlers bound to a fail-closed license gate + two-party gate.
+// The AutoApprover is attached to the gate so the heartbeat pushes the policy
+// snapshot (treasury addresses + auto-sign rules) into it on each beat.
 func New(cfg *config.Config, st *store.Store, gate *wlgate.Gate) *Handlers {
 	wlID, err := uuid.Parse(cfg.WLClientID)
 	if err != nil {
 		wlID = uuid.Nil
 	}
+	auto := wlgate.NewAutoApprover()
+	gate.WithAutoApprover(auto)
 	return &Handlers{
 		cfg:          cfg,
 		store:        st,
 		gate:         gate,
+		autoApprover: auto,
 		twoPartyGate: wlgate.NewTwoPartyGate(cfg.ControlPlaneURL, cfg.ControlPlaneToken),
 		wlClientID:   wlID,
 		wsHub:        newWSHub(),
 	}
+}
+
+// requireApproval is the two-mode fund-movement gate. EVERY outgoing value
+// transfer in this backend MUST call it before touching the seed.
+//
+// It runs the AutoApprover classifier:
+//   - ModeAuto + approved  => proceed (the <1s fast path; license-alive IS the
+//     approval from the MasterWallet owner / SuperAdmin).
+//   - ModeManual           => require a two-party-approved withdrawal_id (the
+//     slow path for fee/revenue/treasury). Missing or not approved => 403.
+//   - ModeAuto + denied    => 403/503 (license dead or rule blocked).
+//
+// This reconciles "user txs auto-approved within a second" with "no
+// fee/revenue withdrawal without SuperAdmin collaboration."
+func (h *Handlers) requireApproval(c *gin.Context, txType, to, token, amount, withdrawalIDStr string) (uuid.UUID, bool) {
+	if h.autoApprover == nil {
+		// No classifier configured => fail-closed (defense in depth).
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "auto-approver not configured"})
+		return uuid.Nil, false
+	}
+	d := h.autoApprover.Classify(txType, to, token, amount)
+	if d.Mode == wlgate.ModeManual {
+		wid, err := uuid.Parse(withdrawalIDStr)
+		if err != nil {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":  "this transaction requires a SuperAdmin two-party-approved withdrawal_id (fee/revenue/treasury)",
+				"reason": d.Reason,
+			})
+			return uuid.Nil, false
+		}
+		if !h.twoPartyGate.IsWithdrawalApproved(c.Request.Context(), wid) {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":         "withdrawal not approved by SuperAdmin (two-party gate fail-closed)",
+				"withdrawal_id": wid,
+			})
+			return uuid.Nil, false
+		}
+		return wid, true
+	}
+	if !d.Approved {
+		code := http.StatusForbidden
+		if !h.gate.IsAlive() {
+			code = http.StatusServiceUnavailable
+		}
+		c.JSON(code, gin.H{"error": d.Reason, "reason": d.Reason, "rule_id": d.RuleID})
+		return uuid.Nil, false
+	}
+	return uuid.Nil, true
 }
 
 // ==================== Auth (real bcrypt + JWT via wlgate.IssueJWT) ====================
@@ -252,23 +306,14 @@ func (h *Handlers) SignTransaction(c *gin.Context) {
 		return
 	}
 
-	// Two-party gate: if a withdrawal_id is present, require SuperAdmin co-sign.
-	var withdrawalID uuid.UUID
-	if req.WithdrawalID != "" {
-		wid, err := uuid.Parse(req.WithdrawalID)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid withdrawal_id"})
-			return
-		}
-		if !h.twoPartyGate.IsWithdrawalApproved(c.Request.Context(), wid) {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":         "withdrawal not approved by SuperAdmin (two-party gate fail-closed)",
-				"withdrawal_id": wid,
-			})
-			return
-		}
-		withdrawalID = wid
+	// Two-mode fund-movement gate: classify the tx. User transfers are
+	// auto-approved (fast path); fee/revenue/treasury OR any tx to a treasury
+	// address => Manual (require two-party-approved withdrawal_id).
+	wid, ok := h.requireApproval(c, "transfer", req.To, req.Token, req.Amount, req.WithdrawalID)
+	if !ok {
+		return
 	}
+	withdrawalID := wid
 
 	txHash, err := h.signAndBroadcast(c.Request.Context(), w, req.To, req.Amount, req.Password, req.GasLimit, req.Data)
 	if err != nil {
@@ -307,17 +352,10 @@ func (h *Handlers) RevenuePayout(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	wid, err := uuid.Parse(req.WithdrawalID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid withdrawal_id"})
-		return
-	}
-	// Revenue ALWAYS requires SuperAdmin co-sign. No exceptions.
-	if !h.twoPartyGate.IsWithdrawalApproved(c.Request.Context(), wid) {
-		c.JSON(http.StatusForbidden, gin.H{
-			"error":         "revenue payout not approved by SuperAdmin (two-party gate required)",
-			"withdrawal_id": wid,
-		})
+	// Revenue payout => ALWAYS Manual two-party (the classifier forces it).
+	// requireApproval also verifies the SuperAdmin co-sign on the withdrawal_id.
+	wid, ok := h.requireApproval(c, "revenue_payout", req.To, "", req.Amount, req.WithdrawalID)
+	if !ok {
 		return
 	}
 	txHash, err := h.signAndBroadcast(c.Request.Context(), w, req.To, req.Amount, req.Password, req.GasLimit, "")

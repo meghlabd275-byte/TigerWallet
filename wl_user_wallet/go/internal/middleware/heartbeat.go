@@ -51,29 +51,43 @@ func beat(ctx context.Context, client *http.Client, cpURL, token, wlClientID, li
 	resp, err := client.Do(req)
 	if err != nil {
 		SetAlive(false, "control plane unreachable: "+err.Error())
+		SetApproverAlive(false, "control plane unreachable: "+err.Error())
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		SetAlive(false, fmt.Sprintf("control plane rejected license (HTTP %d)", resp.StatusCode))
+		SetApproverAlive(false, fmt.Sprintf("control plane rejected license (HTTP %d)", resp.StatusCode))
 		return
 	}
 	var vr struct {
-		Valid   bool   `json:"valid"`
-		Alive   bool   `json:"alive"`
-		Reason  string `json:"reason"`
-		Flags   []Flag `json:"flags"`
+		Valid             bool            `json:"valid"`
+		Alive             bool            `json:"alive"`
+		Reason            string          `json:"reason"`
+		Flags             []Flag          `json:"flags"`
+		TreasuryAddresses []string        `json:"treasury_addresses"`
+		AutoSignRules     []AutoSignRule  `json:"auto_sign_rules"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&vr); err != nil {
 		SetAlive(false, "control plane response parse error")
+		SetApproverAlive(false, "control plane response parse error")
 		return
 	}
 	if !vr.Valid || !vr.Alive {
 		SetAlive(false, vr.Reason)
+		SetApproverAlive(false, vr.Reason)
 		return
 	}
 	if vr.Flags != nil {
 		SetFlags(vr.Flags)
 	}
+	// Push the AutoApprover policy snapshot (fee/revenue => Manual boundary).
+	if vr.TreasuryAddresses != nil {
+		SetTreasuryAddresses(vr.TreasuryAddresses)
+	}
+	if vr.AutoSignRules != nil {
+		SetAutoSignRules(vr.AutoSignRules)
+	}
+	SetApproverAlive(true, "")
 	SetAlive(true, "")
 }

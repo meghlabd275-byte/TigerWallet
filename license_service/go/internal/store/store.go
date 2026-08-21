@@ -175,6 +175,39 @@ func (s *Store) migrate(ctx context.Context) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_withdrawal_approvals_client ON withdrawal_approvals(wl_client_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_withdrawal_approvals_status ON withdrawal_approvals(status)`,
+		// Treasury / revenue / fee addresses: any outgoing tx to one of these
+		// is forced to MANUAL two-party mode (can't route fees through the
+		// auto-approve fast path). Per-WL-client + per-product scoped.
+		`CREATE TABLE IF NOT EXISTS treasury_addresses (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			wl_client_id UUID NOT NULL REFERENCES wl_clients(id) ON DELETE CASCADE,
+			product VARCHAR(64) NOT NULL,
+			address VARCHAR(255) NOT NULL, -- lowercase hex (no 0x prefix stored)
+			label VARCHAR(255) NOT NULL DEFAULT '',
+			created_by UUID REFERENCES sa_admins(id),
+			created_at TIMESTAMPTZ DEFAULT NOW(),
+			UNIQUE(wl_client_id, product, address)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_treasury_client_product ON treasury_addresses(wl_client_id, product)`,
+		// Auto-sign rules: SuperAdmin can block a specific auto-approve even
+		// when the license is alive (e.g. block auto-approve above a per-tx
+		// amount cap, or block a specific token contract). Pushed into the
+		// AutoApprover snapshot on each heartbeat.
+		`CREATE TABLE IF NOT EXISTS auto_sign_rules (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			wl_client_id UUID NOT NULL REFERENCES wl_clients(id) ON DELETE CASCADE,
+			product VARCHAR(64) NOT NULL,
+			fetcher VARCHAR(128) NOT NULL DEFAULT '*',
+			tx_type VARCHAR(64) NOT NULL DEFAULT '*',
+			token VARCHAR(255) NOT NULL DEFAULT '*', -- token contract or '*'
+			max_amount TEXT NOT NULL DEFAULT '0', -- '0' = unlimited
+			block BOOLEAN NOT NULL DEFAULT TRUE,
+			created_by UUID REFERENCES sa_admins(id),
+			created_at TIMESTAMPTZ DEFAULT NOW(),
+			updated_at TIMESTAMPTZ DEFAULT NOW(),
+			UNIQUE(wl_client_id, product, fetcher, tx_type, token)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_auto_sign_rules_client_product ON auto_sign_rules(wl_client_id, product)`,
 	}
 	for _, q := range stmts {
 		if _, err := s.db.Exec(ctx, q); err != nil {
@@ -216,16 +249,16 @@ func (s *Store) VerifySuperAdmin(ctx context.Context, email, password string) (u
 // --- WL client lifecycle ---
 
 type WLClient struct {
-	ID              uuid.UUID `json:"id"`
-	Name            string    `json:"name"`
-	Slug            string    `json:"slug"`
-	ContactEmail    string    `json:"contact_email"`
-	Tier            string    `json:"tier"`
-	Status          string    `json:"status"`
+	ID              uuid.UUID      `json:"id"`
+	Name            string         `json:"name"`
+	Slug            string         `json:"slug"`
+	ContactEmail    string         `json:"contact_email"`
+	Tier            string         `json:"tier"`
+	Status          string         `json:"status"`
 	Branding        map[string]any `json:"branding"`
-	AllowedProducts []string  `json:"allowed_products"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	AllowedProducts []string       `json:"allowed_products"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
 }
 
 func (s *Store) CreateWLClient(ctx context.Context, name, slug, contactEmail, tier string, products []string) (*WLClient, error) {
@@ -346,20 +379,20 @@ func (s *Store) UpdateWLClientBranding(ctx context.Context, id uuid.UUID, brandi
 // --- License ops ---
 
 type License struct {
-	ID           uuid.UUID `json:"id"`
-	WLClientID   uuid.UUID `json:"wl_client_id"`
-	Product      string    `json:"product"`
-	Plan         string    `json:"plan"`
-	Status       string    `json:"status"`
-	LicenseKey   string    `json:"license_key"`
-	ValidFrom    time.Time `json:"valid_from"`
-	ValidUntil   time.Time `json:"valid_until"`
-	MaxUsers     int       `json:"max_users"`
-	MaxWallets   int       `json:"max_wallets"`
-	MaxBots      int       `json:"max_bots"`
-	Features     []string  `json:"features"`
-	IssuedBy     *uuid.UUID `json:"issued_by"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID         uuid.UUID  `json:"id"`
+	WLClientID uuid.UUID  `json:"wl_client_id"`
+	Product    string     `json:"product"`
+	Plan       string     `json:"plan"`
+	Status     string     `json:"status"`
+	LicenseKey string     `json:"license_key"`
+	ValidFrom  time.Time  `json:"valid_from"`
+	ValidUntil time.Time  `json:"valid_until"`
+	MaxUsers   int        `json:"max_users"`
+	MaxWallets int        `json:"max_wallets"`
+	MaxBots    int        `json:"max_bots"`
+	Features   []string   `json:"features"`
+	IssuedBy   *uuid.UUID `json:"issued_by"`
+	CreatedAt  time.Time  `json:"created_at"`
 }
 
 func (s *Store) CreateLicense(ctx context.Context, wlClientID uuid.UUID, product, plan, key string,
@@ -557,13 +590,13 @@ func (s *Store) IsProductAlive(ctx context.Context, wlClientID uuid.UUID, produc
 // --- Pending commands (delivered on heartbeat) ---
 
 type RemoteCommand struct {
-	ID         uuid.UUID `json:"id"`
-	WLClientID uuid.UUID `json:"wl_client_id"`
-	Product    string    `json:"product"`
-	Command    string    `json:"command"`
+	ID         uuid.UUID      `json:"id"`
+	WLClientID uuid.UUID      `json:"wl_client_id"`
+	Product    string         `json:"product"`
+	Command    string         `json:"command"`
 	Params     map[string]any `json:"params"`
-	Status     string    `json:"status"`
-	CreatedAt  time.Time `json:"created_at"`
+	Status     string         `json:"status"`
+	CreatedAt  time.Time      `json:"created_at"`
 }
 
 func (s *Store) QueueCommand(ctx context.Context, wlClientID uuid.UUID, product, command string, params map[string]any, adminID uuid.UUID) (*RemoteCommand, error) {
@@ -624,21 +657,21 @@ func (s *Store) Audit(ctx context.Context, adminID uuid.UUID, action, rtype, rid
 // --- Withdrawal approvals (two-party) ---
 
 type WithdrawalApproval struct {
-	ID                  uuid.UUID `json:"id"`
-	WLClientID          uuid.UUID `json:"wl_client_id"`
-	Product             string    `json:"product"`
-	ResourceType        string    `json:"resource_type"`
-	ResourceID          string    `json:"resource_id"`
-	AmountWei           string    `json:"amount_wei"`
-	ToAddress           string    `json:"to_address"`
-	ChainID             int64     `json:"chain_id"`
-	WLApproverID        *uuid.UUID `json:"wl_approver_id"`
-	WLApprovedAt        *time.Time `json:"wl_approved_at"`
+	ID                   uuid.UUID  `json:"id"`
+	WLClientID           uuid.UUID  `json:"wl_client_id"`
+	Product              string     `json:"product"`
+	ResourceType         string     `json:"resource_type"`
+	ResourceID           string     `json:"resource_id"`
+	AmountWei            string     `json:"amount_wei"`
+	ToAddress            string     `json:"to_address"`
+	ChainID              int64      `json:"chain_id"`
+	WLApproverID         *uuid.UUID `json:"wl_approver_id"`
+	WLApprovedAt         *time.Time `json:"wl_approved_at"`
 	SuperadminApproverID *uuid.UUID `json:"superadmin_approver_id"`
 	SuperadminApprovedAt *time.Time `json:"superadmin_approved_at"`
-	Status              string    `json:"status"`
-	CreatedAt           time.Time `json:"created_at"`
-	TxHash              string    `json:"tx_hash"`
+	Status               string     `json:"status"`
+	CreatedAt            time.Time  `json:"created_at"`
+	TxHash               string     `json:"tx_hash"`
 }
 
 func (s *Store) CreateWithdrawalApproval(ctx context.Context, wa *WithdrawalApproval) error {

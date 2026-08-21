@@ -61,8 +61,8 @@ func (h *Handlers) Login(c *gin.Context) {
 
 func (h *Handlers) WLClientLogin(c *gin.Context) {
 	var req struct {
-		Slug     string `json:"slug" binding:"required"`
-		APIKey   string `json:"api_key" binding:"required"`
+		Slug   string `json:"slug" binding:"required"`
+		APIKey string `json:"api_key" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -232,8 +232,8 @@ func (h *Handlers) UpdateWLClient(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Tier     string   `json:"tier"`
-		Products []string `json:"products"`
+		Tier     string         `json:"tier"`
+		Products []string       `json:"products"`
 		Branding map[string]any `json:"branding"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -261,14 +261,14 @@ func (h *Handlers) UpdateWLClient(c *gin.Context) {
 
 func (h *Handlers) IssueLicense(c *gin.Context) {
 	var req struct {
-		WLClientID string   `json:"wl_client_id" binding:"required"`
-		Product    string   `json:"product" binding:"required"`
-		Plan       string   `json:"plan"`
-		DurationDays int    `json:"duration_days"`
-		MaxUsers   int      `json:"max_users"`
-		MaxWallets int      `json:"max_wallets"`
-		MaxBots    int      `json:"max_bots"`
-		Features   []string `json:"features"`
+		WLClientID   string   `json:"wl_client_id" binding:"required"`
+		Product      string   `json:"product" binding:"required"`
+		Plan         string   `json:"plan"`
+		DurationDays int      `json:"duration_days"`
+		MaxUsers     int      `json:"max_users"`
+		MaxWallets   int      `json:"max_wallets"`
+		MaxBots      int      `json:"max_bots"`
+		Features     []string `json:"features"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -323,10 +323,10 @@ func (h *Handlers) ListLicenses(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"licenses": lics})
 }
 
-func (h *Handlers) SuspendLicense(c *gin.Context)  { h.transitionLicense(c, "suspended") }
-func (h *Handlers) HaltLicense(c *gin.Context)     { h.transitionLicense(c, "halted") }
-func (h *Handlers) RevokeLicense(c *gin.Context)   { h.transitionLicense(c, "revoked") }
-func (h *Handlers) ResumeLicense(c *gin.Context)   { h.transitionLicense(c, "active") }
+func (h *Handlers) SuspendLicense(c *gin.Context) { h.transitionLicense(c, "suspended") }
+func (h *Handlers) HaltLicense(c *gin.Context)    { h.transitionLicense(c, "halted") }
+func (h *Handlers) RevokeLicense(c *gin.Context)  { h.transitionLicense(c, "revoked") }
+func (h *Handlers) ResumeLicense(c *gin.Context)  { h.transitionLicense(c, "active") }
 
 func (h *Handlers) transitionLicense(c *gin.Context, status string) {
 	id, err := uuid.Parse(c.Param("id"))
@@ -440,15 +440,21 @@ func (h *Handlers) ValidateLicense(c *gin.Context) {
 	}
 	// Attach current flag set so the product refreshes its cache.
 	flags, _ := h.store.ListFeatureFlags(ctx, lic.WLClientID, lic.Product)
+	// Attach the AutoApprover policy snapshot: treasury addresses + auto-sign
+	// rules. These define the security boundary (fee/revenue => Manual).
+	treasury, _ := h.store.ListTreasuryAddresses(ctx, lic.WLClientID, lic.Product)
+	rules, _ := h.store.ListAutoSignRules(ctx, lic.WLClientID, lic.Product)
 	// Deliver pending commands.
 	cmds, _ := h.store.DeliverPendingCommands(ctx, lic.WLClientID, req.Product)
 	c.JSON(http.StatusOK, gin.H{
-		"valid":          true,
-		"alive":          true,
-		"token":          signed,
-		"verify_key_hex": h.keys.PublicKeyHex(),
-		"flags":          flags,
-		"commands":       cmds,
+		"valid":                     true,
+		"alive":                     true,
+		"token":                     signed,
+		"verify_key_hex":            h.keys.PublicKeyHex(),
+		"flags":                     flags,
+		"treasury_addresses":        treasury,
+		"auto_sign_rules":           rules,
+		"commands":                  cmds,
 		"heartbeat_timeout_seconds": int(h.cfg.HeartbeatTimeout.Seconds()),
 	})
 }
@@ -458,12 +464,12 @@ func (h *Handlers) ValidateLicense(c *gin.Context) {
 // fail-closed on the next validate). Returns pending commands + refreshed flags.
 func (h *Handlers) Heartbeat(c *gin.Context) {
 	var req struct {
-		LicenseKey string `json:"license_key" binding:"required"`
-		Product    string `json:"product" binding:"required"`
-		InstanceID string `json:"instance_id" binding:"required"`
-		LatencyMs  int    `json:"latency_ms"`
-		Version    string `json:"version"`
-		Hostname   string `json:"hostname"`
+		LicenseKey string         `json:"license_key" binding:"required"`
+		Product    string         `json:"product" binding:"required"`
+		InstanceID string         `json:"instance_id" binding:"required"`
+		LatencyMs  int            `json:"latency_ms"`
+		Version    string         `json:"version"`
+		Hostname   string         `json:"hostname"`
 		Metrics    map[string]any `json:"metrics"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -484,15 +490,20 @@ func (h *Handlers) Heartbeat(c *gin.Context) {
 	_ = h.store.RecordHeartbeat(ctx, lic.WLClientID, req.Product, req.InstanceID, req.LatencyMs, req.Version, req.Hostname, req.Metrics)
 	cmds, _ := h.store.DeliverPendingCommands(ctx, lic.WLClientID, req.Product)
 	flags, _ := h.store.ListFeatureFlags(ctx, lic.WLClientID, req.Product)
+	// Refresh the AutoApprover policy snapshot on each heartbeat.
+	treasury, _ := h.store.ListTreasuryAddresses(ctx, lic.WLClientID, req.Product)
+	rules, _ := h.store.ListAutoSignRules(ctx, lic.WLClientID, req.Product)
 	// Renew the token on each heartbeat.
 	tok := crypto.NewToken(lic.ID.String(), lic.WLClientID.String(), lic.Product, lic.Plan, lic.Status,
 		lic.ValidFrom.Unix(), lic.ValidUntil.Unix(), lic.MaxUsers, lic.MaxWallets, lic.MaxBots, lic.Features, tokenTTL)
 	signed, _ := h.keys.SignToken(tok)
 	c.JSON(http.StatusOK, gin.H{
-		"alive":    true,
-		"token":    signed,
-		"flags":    flags,
-		"commands": cmds,
+		"alive":              true,
+		"token":              signed,
+		"flags":              flags,
+		"treasury_addresses": treasury,
+		"auto_sign_rules":    rules,
+		"commands":           cmds,
 	})
 }
 

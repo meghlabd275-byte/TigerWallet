@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,9 +21,10 @@ import (
 	"github.com/tigerwallet/white-label-admin/internal/config"
 	"github.com/tigerwallet/white-label-admin/internal/database"
 	"github.com/tigerwallet/white-label-admin/internal/handlers"
-	twredis "github.com/tigerwallet/white-label-admin/internal/redis"
 	"github.com/tigerwallet/white-label-admin/internal/middleware"
+	twredis "github.com/tigerwallet/white-label-admin/internal/redis"
 	"github.com/tigerwallet/white-label-admin/internal/roles"
+	wlgate "github.com/tigerwallet/wl-shared/wlgate"
 )
 
 func main() {
@@ -35,6 +37,29 @@ func main() {
 	}
 	defer database.Close()
 	log.Println("Database initialized successfully")
+
+	// Fail-closed license gate. Phones home to the SuperAdmin control plane
+	// (license_service) on the heartbeat interval; refuses to serve (503) if
+	// the product license is suspended/revoked or a fetcher is disabled.
+	gate := wlgate.New().WithAutoApprover(wlgate.NewAutoApprover())
+	ctxBg, cancelBg := context.WithCancel(context.Background())
+	defer cancelBg()
+	go gate.HeartbeatLoop(ctxBg, cfg.TwoPartyGateURL, cfg.TwoPartyGateToken, cfg.LicenseKey, cfg.Product, "wl-admin-"+cfg.ServerPort, cfg.HeartbeatInterval)
+
+	// Per-trading-vertical fetcher granularity. Maps the admin path to the
+	// domain fetcher key (futures/options/copy-trading/convert/onramp/offramp/
+	// p2p-clients/partners/rewards/marketing/kyc/tokens/pairs/blockchains/
+	// fees/withdrawals/admin-roles/...). This lets SuperAdmin disable any
+	// individual vertical (e.g. disable futures while options stays alive).
+	adminFetcher := func(path string) string {
+		// path looks like /api/v1/admin/<domain>/...
+		parts := strings.Split(strings.Trim(path, "/"), "/")
+		// ["api","v1","admin","<domain>", ...]
+		if len(parts) >= 4 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "admin" {
+			return parts[3]
+		}
+		return "*"
+	}
 
 	// Shared feature-flag store. Non-fatal: if Redis is unavailable the backend
 	// still boots; flag publish no-ops (fail-closed downstream).
@@ -76,6 +101,7 @@ func main() {
 		}
 
 		admin := api.Group("/admin")
+		admin.Use(gate.Middleware(cfg.Product, adminFetcher))
 		admin.Use(middleware.JWTAuth(cfg))
 		admin.Use(middleware.IPWhitelistMiddleware(cfg))
 		admin.Use(middleware.TenantScope())

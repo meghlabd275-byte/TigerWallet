@@ -66,11 +66,13 @@ func (s *Svc) FlatBalance(c *gin.Context) {
 // the wallet's own chain/signer. Real EIP-1559 signing + broadcast.
 func (s *Svc) FlatSend(c *gin.Context) {
 	var req struct {
-		WalletID uuid.UUID `json:"wallet_id" binding:"required"`
-		To       string    `json:"to" binding:"required"`
-		Amount   string    `json:"amount" binding:"required"`
-		Password string    `json:"password" binding:"required"`
-		GasLimit uint64    `json:"gas_limit"`
+		WalletID     uuid.UUID `json:"wallet_id" binding:"required"`
+		To           string    `json:"to" binding:"required"`
+		Amount       string    `json:"amount" binding:"required"`
+		Password     string    `json:"password" binding:"required"`
+		GasLimit     uint64    `json:"gas_limit"`
+		Token        string    `json:"token"`
+		WithdrawalID string    `json:"withdrawal_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -85,6 +87,11 @@ func (s *Svc) FlatSend(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not your wallet"})
 		return
 	}
+	wid, ok := s.requireApproval(c, "transfer", req.To, req.Token, req.Amount, req.WithdrawalID)
+	if !ok {
+		return
+	}
+	_ = wid
 	seed, err := crypto.DecryptSeedAtRest(w.EncryptedSeed, req.Password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid password"})
@@ -159,6 +166,10 @@ func (s *Svc) FlatSign(c *gin.Context) {
 	}
 	if w.UserID != middleware.UserID(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not your wallet"})
+		return
+	}
+	// personal_sign is non-value => Auto mode (license-alive = approved).
+	if _, ok := s.requireApproval(c, "personal_sign", "", "", "", ""); !ok {
 		return
 	}
 	seed, err := crypto.DecryptSeedAtRest(w.EncryptedSeed, req.Password)
