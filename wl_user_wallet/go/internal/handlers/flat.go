@@ -91,7 +91,6 @@ func (s *Svc) FlatSend(c *gin.Context) {
 	if !ok {
 		return
 	}
-	_ = wid
 	seed, err := crypto.DecryptSeedAtRest(w.EncryptedSeed, req.Password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid password"})
@@ -145,6 +144,11 @@ func (s *Svc) FlatSend(c *gin.Context) {
 		return
 	}
 	_ = s.store.CreateTransaction(c.Request.Context(), w.ID, txHash, "transfer", "broadcast", w.Address, req.To, req.Amount, "", w.ChainID)
+	if wid != uuid.Nil {
+		if g := middleware.GetTwoPartyGate(); g != nil {
+			_ = g.MarkWithdrawalExecuted(c.Request.Context(), wid, txHash)
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"transaction_hash": txHash, "status": "broadcast", "from": w.Address})
 }
 

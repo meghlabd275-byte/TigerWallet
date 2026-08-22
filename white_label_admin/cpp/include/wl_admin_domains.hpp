@@ -155,29 +155,40 @@ inline const std::vector<DomainSpec>& domain_registry() {
         // (port 8082). Governance/config records + scoped approval actions.
         // -----------------------------------------------------------------
         {
-            // LiquidityAdmin: liquidity-sources CRUD + status + priority + health
+            // LiquidityAdmin: wl-liquidity/sources CRUD + status + allocations + stats.
+            // Matches the Go backend routes exactly (wl_admin_handlers.go).
             DomainSpec s{"liquidity", "Liquidity Sources", {}, {}};
-            add_crud(s, "/liquidity-sources");
-            s.governance_actions.push_back({HttpMethod::PUT,  "/liquidity-sources/:id/status",        "{\"status\":\"\"}", true});
-            s.governance_actions.push_back({HttpMethod::POST, "/liquidity-sources/:id/set-priority",  "{\"priority\":\"\"}", true});
-            s.governance_actions.push_back({HttpMethod::POST, "/liquidity-sources/:id/health-check", "", true});
+            s.endpoints.push_back({HttpMethod::GET,    "/wl-liquidity/sources",      "", false});
+            s.endpoints.push_back({HttpMethod::POST,   "/wl-liquidity/sources",      "", true});
+            s.endpoints.push_back({HttpMethod::PUT,    "/wl-liquidity/sources/:id",  "", true});
+            s.endpoints.push_back({HttpMethod::DELETE, "/wl-liquidity/sources/:id",  "", true});
+            s.endpoints.push_back({HttpMethod::GET,    "/wl-liquidity/allocations",   "", false});
+            s.endpoints.push_back({HttpMethod::POST,  "/wl-liquidity/allocations",   "", true});
+            s.endpoints.push_back({HttpMethod::GET,    "/wl-liquidity/stats",         "", false});
+            s.governance_actions.push_back({HttpMethod::PUT,  "/wl-liquidity/sources/:id",  "{\"status\":\"\"}", true});
             v.push_back(std::move(s));
         }
         {
-            // CardAdmin: crypto-cards CRUD + block + activate + limit + status
+            // CardAdmin: wl-cards CRUD + status + transactions + stats.
             DomainSpec s{"crypto-card", "Crypto Cards", {}, {}};
-            add_crud(s, "/crypto-cards");
-            s.governance_actions.push_back({HttpMethod::POST, "/crypto-cards/:id/block",    "", true});
-            s.governance_actions.push_back({HttpMethod::POST, "/crypto-cards/:id/activate", "", true});
-            s.governance_actions.push_back({HttpMethod::PUT,  "/crypto-cards/:id/limit",    "{\"limit\":\"\"}", true});
-            s.governance_actions.push_back({HttpMethod::PUT,  "/crypto-cards/:id/status",   "{\"status\":\"\"}", true});
+            s.endpoints.push_back({HttpMethod::GET,    "/wl-cards",            "", false});
+            s.endpoints.push_back({HttpMethod::POST,   "/wl-cards",            "", true});
+            s.endpoints.push_back({HttpMethod::GET,    "/wl-cards/transactions","", false});
+            s.endpoints.push_back({HttpMethod::GET,    "/wl-cards/stats",      "", false});
+            s.governance_actions.push_back({HttpMethod::POST, "/wl-cards/:id/block",    "", true});
+            s.governance_actions.push_back({HttpMethod::POST, "/wl-cards/:id/activate", "", true});
+            s.governance_actions.push_back({HttpMethod::PUT,  "/wl-cards/:id/limit",    "{\"limit\":\"\"}", true});
+            s.governance_actions.push_back({HttpMethod::PUT,  "/wl-cards/:id/status",   "{\"status\":\"\"}", true});
             v.push_back(std::move(s));
         }
         {
-            // BotAdmin: bots CRUD + status (start/stop/pause/resume)
+            // BotAdmin: wl-bots/operators CRUD + status + config + stats.
             DomainSpec s{"bots", "Bots", {}, {}};
-            add_crud(s, "/bots");
-            s.governance_actions.push_back({HttpMethod::PUT, "/bots/:id/status", "{\"status\":\"\"}", true});
+            s.endpoints.push_back({HttpMethod::GET,    "/wl-bots/operators",   "", false});
+            s.endpoints.push_back({HttpMethod::POST,   "/wl-bots/operators",   "", true});
+            s.endpoints.push_back({HttpMethod::GET,    "/wl-bots/config",      "", false});
+            s.endpoints.push_back({HttpMethod::GET,    "/wl-bots/stats",        "", false});
+            s.governance_actions.push_back({HttpMethod::PUT, "/wl-bots/operators/:id/status", "{\"status\":\"\"}", true});
             v.push_back(std::move(s));
         }
         {

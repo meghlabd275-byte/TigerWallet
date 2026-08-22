@@ -1,7 +1,6 @@
 //! Middleware
 pub mod auth {
     use axum::{extract::Request, http::{StatusCode, header}, middleware::Next, response::Response};
-    use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
     use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Serialize, Deserialize)]

@@ -1,13 +1,15 @@
 //! Data models for TigerWallet Admin
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct AdminUser {
     pub id: Uuid,
     pub username: String,
     pub email: String,
+    #[serde(skip_serializing)]
     pub password_hash: String,
     pub role: String,
     pub two_factor_secret: Option<String>,
@@ -24,6 +26,13 @@ pub struct LoginRequest {
     pub password: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RegisterRequest {
+    pub username: String,
+    pub email: String,
+    pub password: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct LoginResponse {
     pub admin: AdminUser,
@@ -31,7 +40,7 @@ pub struct LoginResponse {
     pub refresh_token: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct User {
     pub id: Uuid,
     pub email: String,
@@ -42,7 +51,7 @@ pub struct User {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Transaction {
     pub id: Uuid,
     pub user_id: Uuid,
@@ -53,7 +62,7 @@ pub struct Transaction {
     pub timestamp: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Withdrawal {
     pub id: Uuid,
     pub user_id: Uuid,
@@ -64,7 +73,7 @@ pub struct Withdrawal {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct KycRequest {
     pub id: Uuid,
     pub user_id: Uuid,
@@ -73,7 +82,7 @@ pub struct KycRequest {
     pub submitted_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Token {
     pub id: Uuid,
     pub symbol: String,
@@ -83,7 +92,7 @@ pub struct Token {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct TradingPair {
     pub id: Uuid,
     pub pair_name: String,
@@ -91,7 +100,7 @@ pub struct TradingPair {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Blockchain {
     pub id: Uuid,
     pub name: String,
@@ -102,7 +111,7 @@ pub struct Blockchain {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct FeeStructure {
     pub id: Uuid,
     pub fee_type: String,
@@ -111,7 +120,7 @@ pub struct FeeStructure {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Webhook {
     pub id: Uuid,
     pub name: String,
@@ -121,7 +130,7 @@ pub struct Webhook {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Notification {
     pub id: Uuid,
     pub admin_id: Uuid,
@@ -132,7 +141,7 @@ pub struct Notification {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct AuditLog {
     pub id: Uuid,
     pub admin_id: Option<Uuid>,
@@ -142,7 +151,7 @@ pub struct AuditLog {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Session {
     pub id: Uuid,
     pub admin_id: Uuid,
@@ -151,7 +160,7 @@ pub struct Session {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct FeatureFlag {
     pub id: Uuid,
     pub name: String,
@@ -161,7 +170,7 @@ pub struct FeatureFlag {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct IpWhitelist {
     pub id: Uuid,
     pub ip_address: String,
@@ -170,7 +179,7 @@ pub struct IpWhitelist {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Ticket {
     pub id: Uuid,
     pub title: String,
@@ -183,7 +192,7 @@ pub struct Ticket {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct WhiteLabel {
     pub id: Uuid,
     pub name: String,
@@ -192,7 +201,7 @@ pub struct WhiteLabel {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Backup {
     pub id: Uuid,
     pub backup_type: String,
@@ -201,7 +210,7 @@ pub struct Backup {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ApprovalWorkflow {
     pub id: Uuid,
     pub name: String,
@@ -212,7 +221,7 @@ pub struct ApprovalWorkflow {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ApprovalRequest {
     pub id: Uuid,
     pub workflow_id: Option<Uuid>,
@@ -274,7 +283,7 @@ pub struct RejectRequest {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct FuturesConfig {
     pub id: Uuid,
     pub white_label_id: Uuid,
@@ -286,7 +295,7 @@ pub struct FuturesConfig {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct OptionsConfig {
     pub id: Uuid,
     pub white_label_id: Uuid,
@@ -298,7 +307,7 @@ pub struct OptionsConfig {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct CopyTradingConfig {
     pub id: Uuid,
     pub white_label_id: Uuid,
@@ -309,7 +318,7 @@ pub struct CopyTradingConfig {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ConvertConfig {
     pub id: Uuid,
     pub white_label_id: Uuid,
@@ -320,7 +329,7 @@ pub struct ConvertConfig {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct OnrampOrder {
     pub id: Uuid,
     pub white_label_id: Uuid,
@@ -333,7 +342,7 @@ pub struct OnrampOrder {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct OfframpOrder {
     pub id: Uuid,
     pub white_label_id: Uuid,
@@ -346,7 +355,7 @@ pub struct OfframpOrder {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct P2pClient {
     pub id: Uuid,
     pub white_label_id: Uuid,
@@ -358,7 +367,7 @@ pub struct P2pClient {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Partner {
     pub id: Uuid,
     pub white_label_id: Uuid,
@@ -369,7 +378,7 @@ pub struct Partner {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Reward {
     pub id: Uuid,
     pub white_label_id: Uuid,
@@ -380,7 +389,7 @@ pub struct Reward {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct MarketingCampaign {
     pub id: Uuid,
     pub white_label_id: Uuid,
@@ -393,7 +402,7 @@ pub struct MarketingCampaign {
 
 // --- RBAC ---
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct AdminRole {
     pub id: Uuid,
     pub white_label_id: Uuid,
@@ -403,7 +412,7 @@ pub struct AdminRole {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct AdminPermission {
     pub id: Uuid,
     pub scope: String,
@@ -423,7 +432,7 @@ pub struct AssignRoleRequest {
 // FeeStructure (already defined above) plus user-status updates.
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct WLLiquiditySource {
     pub id: Uuid,
     pub white_label_id: Uuid,
@@ -440,7 +449,7 @@ pub struct WLLiquiditySource {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct WLLiquidityAllocation {
     pub id: Uuid,
     pub white_label_id: Uuid,
@@ -452,7 +461,7 @@ pub struct WLLiquidityAllocation {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct WLCard {
     pub id: Uuid,
     pub white_label_id: Uuid,
@@ -465,7 +474,7 @@ pub struct WLCard {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct WLCardTransaction {
     pub id: Uuid,
     pub white_label_id: Uuid,
@@ -477,7 +486,7 @@ pub struct WLCardTransaction {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct WLBotOperator {
     pub id: Uuid,
     pub white_label_id: Uuid,
@@ -487,5 +496,64 @@ pub struct WLBotOperator {
     pub config: serde_json::Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+// ---------------------------------------------------------------------------
+// Request DTOs for the missing routes (tickets CRUD, ip-whitelist, user
+// status, withdrawals process tx_hash). These map 1:1 to the Go bodies.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct CreateTicketRequest {
+    pub title: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub ticket_type: Option<String>,
+    #[serde(default)]
+    pub priority: Option<String>,
+    #[serde(default)]
+    pub user_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateTicketMessageRequest {
+    pub message: String,
+    #[serde(default)]
+    pub is_internal: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AssignTicketRequest {
+    pub assigned_to: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IpWhitelistCreateRequest {
+    pub ip_address: String,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UserStatusUpdateRequest {
+    pub status: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TxHashRequest {
+    pub tx_hash: String,
+}
+
+/// Generic id-only success payload (mirrors Go `{"id": ...}` / `{"updated": ...}`).
+#[derive(Debug, Serialize)]
+pub struct IdResponse {
+    pub id: Uuid,
+}
+
+#[derive(Debug, Serialize)]
+pub struct IdResponseField {
+    pub key: String,
+    pub id: Uuid,
 }
 

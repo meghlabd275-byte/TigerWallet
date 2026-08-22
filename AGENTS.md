@@ -3889,3 +3889,105 @@ real from prior sessions). All 3 fixed in commit f2ad068. All builds+vet clean.
 
 ### Commit
 - f2ad068 (19 files, +813/-102) pushed to origin/main.
+
+## Session 2026-08-22: white_label_admin/web (Next.js admin pages)
+
+### Frontend page conventions (mirror these EXACTLY for new pages)
+- Location: `white_label_admin/web/src/pages/*.tsx` (one component per page,
+  default-exported function).
+- Imports (relative, NOT path aliases):
+  `import { whiteLabelAdminApi } from '../services/api';`
+  `import { useTheme } from '../context/ThemeContext';`
+- Theming: `const { isDark } = useTheme();` then derive class-string locals
+  via `isDark ? 'dark-classes' : 'light-classes'` ternaries. NO Tailwind
+  `dark:` variants in pages (the ThemeContext sets the `dark` class on
+  <html>, but the working pages use explicit ternaries). Reference pages:
+  Futures.tsx, Options.tsx, Partners.tsx.
+  - Common locals: `cardBg`/`cardText`/`border`/`muted`/`thBg`/`inputCls`.
+  - Error banner: `${isDark ? 'bg-red-900/50 text-red-200' : 'bg-red-50 text-red-700'}`.
+- EVERY data page MUST have loading (`{loading && <div className={muted}>Loading…</div>}`),
+  error (`{error && <div ...>{error}</div>}`), and empty states
+  (`{rows.length === 0 && <tr><td colSpan={n} className={...muted}>No X.</td></tr>}`).
+- Data load pattern: `useEffect(() => { load(); }, [])` with
+  `setLoading(true); setError(''); try {...} catch (e:any){ setError(e.message || '...'); } finally { setLoading(false); }`.
+  Unwrap with `d.things || d || []` since endpoints vary in envelope shape.
+- NO mock data, NO fabricated arrays, NO setTimeout simulators.
+
+### API service (white_label_admin/web/src/services/api.ts)
+- Single exported instance `whiteLabelAdminApi` (WhiteLabelAdminApiService).
+  Base URL from `NEXT_PUBLIC_WHITELABEL_ADMIN_API` (default localhost:8082).
+  Bearer token from localStorage `whitelabel_admin_token`.
+- Generic/cross-cutting methods (real): getUsers, suspendUser, banUser,
+  unbanUser, updateUserStatus, getKYCRequests, getTransactions, getWithdrawals,
+  getTokens, getPairs, getBlockchains, getFees, getAuditLogs, getSessions,
+  revokeSession, partners, rewards, marketing, admin-roles.
+- WL-scoped domain methods (real, all under /api/v1/admin/...):
+  - Liquidity: getWLLiquiditySources/create/update/delete,
+    getWLLiquidityAllocations, setWLLiquidityAllocation, getWLLiquidityStats.
+  - Cards: getWLCards, issueWLCard, updateWLCardStatus, getWLCardTransactions,
+    getWLCardStats, blockWLCard, activateWLCard, setWLCardLimit.
+  - Bots: getWLBotOperators, registerWLBotOperator,
+    updateWLBotOperatorStatus, getWLBotConfig, getWLBotStats.
+  - IP whitelist: getIPWhitelist, addIPWhitelist({ip_address,label?}),
+    removeIPWhitelist(id).
+- When a page's domain maps to a wl-* backend, it MUST call the wl-* methods
+  (NOT generic getUsers/getPairs/getFees/getTransactions/getSessions).
+  Exception: Security.tsx legitimately keeps getUsers() (real) to drive the
+  ban/suspend UI (banUser/suspendUser/unbanUser are real user methods).
+
+### Type-check
+- `cd white_label_admin/web && npx tsc --noEmit -p tsconfig.json` -> exit 0
+  (node_modules NOT preinstalled; run `npm install` first, ~all deps install
+  cleanly). tsconfig has `strict:true` but NOT `noUnusedLocals`, so unused
+  locals don't fail the build — still avoid them for cleanliness.
+- After editing pages: Liquidity.tsx, CryptoCard.tsx, BotsManagement.tsx,
+  Security.tsx rewritten from simulated generic endpoints to real wl-* API
+  methods. tsc --noEmit: 0 errors.
+
+## white_label_admin/rust (Rust alternative admin backend)
+
+- Toolchain: `source "$HOME/.cargo/env"` then `cargo check`/`cargo build`.
+  rustc 1.98.0. Bin binds :8082. Build artifact: `tiger-admin-server`.
+- Architecture: `src/database/mod.rs` owns `AppState { pool: PgPool, jwt_secret,
+  white_label_id }` + `build_state()` + `run_migrations()`. `main.rs` builds the
+  state, runs migrations, then `api::router(state).with_state(state)`. Handlers
+  take `State<AppState>` and run real sqlx queries � NO stubs, NO `vec![]`.
+- Migrations are plain `CREATE TABLE IF NOT EXISTS` DDL strings run via
+  `sqlx::query(...).execute(pool)` (no sqlx::migrate! macro, so no offline .sql
+  files needed). Shares the Go backend's DB; column names mirror Go schema.
+- **sqlx decode gotcha:** Postgres `NUMERIC` columns are NOT natively
+  String-decodable by sqlx. The model structs use `String` for money/amount
+  fields (e.g. `amount: String`, `reserve_a: String`, `fee_pct: String`), so
+  SELECT queries must cast: `amount::text AS amount`. INSERTs cast back:
+  `$1::numeric`. Same for `rating::float8 AS rating` when the model field is f64.
+- JWT: `jsonwebtoken` HS256, secret from `JWT_SECRET` env (default
+  `tigerwallet-dev-jwt-secret-change-me`). `Claims { sub, email, role, exp, iat }`
+  lives in `src/middleware/auth.rs` and must `derive(Serialize)` so `issue_jwt`
+  can encode it. Login uses `bcrypt::verify`; register uses `bcrypt::hash`.
+- Tenant scoping: `state.white_label_id` (from `WL_CLIENT_ID` env, default
+  `00000000-0000-0000-0000-000000000001`) is bound in every tenant-scoped query.
+  Tables like `admin_users`/`white_labels`/`feature_flags`/`ip_whitelist` are
+  global (no white_label_id filter).
+- ApiResponse wrapper (`src/models/mod.rs`): `ApiResponse::success(data)` and
+  `ApiResponse::error(String)`. DB failures return `ApiResponse::error` (never
+  panic). Missing rows return a "not found" error, not empty success.
+- All model structs derive `sqlx::FromRow` (added via sed to every
+  `#[derive(Debug, Clone, Serialize, Deserialize)]` struct). Field order in the
+  struct must match the SELECT column order for FromRow to decode correctly.
+- Routes added beyond the original stubs: `PUT /users/:id/status`,
+  `POST /ip-whitelist`, `DELETE /ip-whitelist/:id`, `POST /tickets`,
+  `GET /tickets/:id`, `PUT /tickets/:id/status`, `POST /tickets/:id/messages`,
+  `PUT /tickets/:id/assign`, `POST /withdrawals/:id/process` (takes
+  `TxHashRequest`).
+
+## white_label_admin/rust (Rust alternative admin backend)
+
+- Toolchain: source "$HOME/.cargo/env" then cargo check/cargo build. rustc 1.98.0. Bin binds :8082.
+- Architecture: src/database/mod.rs owns AppState { pool: PgPool, jwt_secret, white_label_id } + build_state() + run_migrations(). main.rs builds state, runs migrations, then api::router(state).with_state(state). Handlers take State<AppState> and run real sqlx queries - NO stubs, NO vec![].
+- Migrations are plain CREATE TABLE IF NOT EXISTS DDL run via sqlx::query(...).execute(pool) (no sqlx::migrate! macro). Shares Go backend DB; column names mirror Go schema.
+- sqlx decode gotcha: Postgres NUMERIC columns are NOT natively String-decodable. Model structs use String for money/amount fields, so SELECT must cast amount::text AS amount; INSERTs cast back $1::numeric. Same for rating::float8 when field is f64.
+- JWT: jsonwebtoken HS256, secret from JWT_SECRET env. Claims { sub, email, role, exp, iat } in src/middleware/auth.rs must derive(Serialize). Login uses bcrypt::verify; register uses bcrypt::hash.
+- Tenant scoping: state.white_label_id (WL_CLIENT_ID env) bound in every tenant-scoped query. admin_users/white_labels/feature_flags/ip_whitelist are global.
+- ApiResponse wrapper: ApiResponse::success(data) and ApiResponse::error(String). DB failures return error (never panic). Missing rows return not-found error.
+- All model structs derive sqlx::FromRow; struct field order must match SELECT column order.
+- Routes added: PUT /users/:id/status, POST /ip-whitelist, DELETE /ip-whitelist/:id, POST /tickets, GET /tickets/:id, PUT /tickets/:id/status, POST /tickets/:id/messages, PUT /tickets/:id/assign, POST /withdrawals/:id/process (TxHashRequest).

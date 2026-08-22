@@ -106,7 +106,6 @@ func (s *Svc) NonEvmSend(c *gin.Context) {
 	if !ok {
 		return
 	}
-	_ = wid
 	seed, err := s.decryptSeed(c, req.WalletID, req.Password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
@@ -128,6 +127,13 @@ func (s *Svc) NonEvmSend(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		// Mark the two-party withdrawal as executed once the backend has
+		// produced the signed raw tx (the fund movement is now authorized).
+		if wid != uuid.Nil {
+			if g := middleware.GetTwoPartyGate(); g != nil {
+				_ = g.MarkWithdrawalExecuted(c.Request.Context(), wid, rawHex)
+			}
+		}
 		c.JSON(http.StatusOK, gin.H{"raw_tx": rawHex, "chain": "bitcoin", "action": "broadcast_btc"})
 	case "cosmos":
 		if req.SignDoc == nil {
@@ -139,8 +145,14 @@ func (s *Svc) NonEvmSend(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		sigHex := hex.EncodeToString(sig)
+		if wid != uuid.Nil {
+			if g := middleware.GetTwoPartyGate(); g != nil {
+				_ = g.MarkWithdrawalExecuted(c.Request.Context(), wid, sigHex)
+			}
+		}
 		c.JSON(http.StatusOK, gin.H{
-			"signature":   hex.EncodeToString(sig),
+			"signature":   sigHex,
 			"public_key":   hex.EncodeToString(pub),
 			"chain":        "cosmos",
 			"action":       "broadcast_cosmos",

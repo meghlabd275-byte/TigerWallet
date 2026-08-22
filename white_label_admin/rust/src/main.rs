@@ -13,12 +13,17 @@ async fn main() -> Result<()> {
 
     tracing::info!("Starting TigerWallet Admin (Rust Backend)");
 
+    // Build the PgPool-backed AppState and run idempotent schema migrations so
+    // the admin tables exist (mirrors the Go backend's runMigrations).
+    let state = tiger_admin::database::build_state().await?;
+    tiger_admin::database::run_migrations(&state.pool).await?;
+
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
         .allow_headers(Any);
 
-    let app = tiger_admin::api::router().layer(cors);
+    let app = tiger_admin::api::router(state).layer(cors);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8082));
     tracing::info!("Server listening on {}", addr);

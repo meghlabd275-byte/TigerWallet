@@ -241,6 +241,45 @@ func SimpleFetcher(path string) string {
 	return parts[len(parts)-1]
 }
 
+// CategoryFetcher derives the fetcher name from the first functional path
+// segment after the /api/v1 prefix. This gives SuperAdmin per-feature
+// granularity: the flag key becomes "master_wallet\x1fbalance" or
+// "bots\x1fexecutions", so SuperAdmin can disable one feature category while
+// leaving the rest of the product running.
+//
+// For admin-panel products (white_label_admin), the third segment
+// (/api/v1/admin/<domain>) is the category — adminFetcher there is preferred.
+// For product backends, the first segment after /api/v1 is the category
+// (balance, transactions, fees, bots, executions, etc.).
+// Unknown segments fall back to "*" (whole-product flag).
+func CategoryFetcher(path string) string {
+	path = strings.Trim(path, "/")
+	if path == "" {
+		return "*"
+	}
+	// Strip the /api/v1 prefix (with or without leading api/).
+	path = strings.TrimPrefix(path, "api/v1/")
+	path = strings.TrimPrefix(path, "api/")
+	parts := strings.Split(path, "/")
+	if len(parts) == 0 || parts[0] == "" {
+		return "*"
+	}
+	// For admin-panel routes /api/v1/admin/<domain>/..., the domain is the
+	// toggleable category (parts[1] after stripping api/v1/admin).
+	if len(parts) >= 2 && parts[0] == "admin" {
+		return parts[1]
+	}
+	// For product routes, the first segment is the functional category.
+	// Special-case common resource patterns so e.g. /wallets/:id/balance
+	// maps to "wallets" not the id.
+	first := parts[0]
+	// If the first segment looks like a UUID or :param, fall back to "*".
+	if strings.Contains(first, ":") || len(first) > 40 {
+		return "*"
+	}
+	return first
+}
+
 // HeartbeatLoop phones home to the license control plane at the configured
 // interval. Fail-closed: if validation fails, the gate goes dead.
 func (g *Gate) HeartbeatLoop(ctx context.Context, cpURL, token, licenseKey, product, instanceID string, interval time.Duration) {

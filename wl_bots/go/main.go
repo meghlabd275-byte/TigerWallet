@@ -88,7 +88,7 @@ func main() {
 	// rejects the request (HTTP 402/503) before any business logic runs.
 	protected := api.Group("")
 	protected.Use(wlgate.JWTAuth(cfg.JWTSecret))
-	protected.Use(gate.Middleware("bots", wlgate.SimpleFetcher))
+	protected.Use(gate.Middleware("bots", wlgate.CategoryFetcher))
 	{
 		// Stateless logout (audit-only) — sits under protected so the JWT is
 		// validated and the license gate enforced before we record the event.

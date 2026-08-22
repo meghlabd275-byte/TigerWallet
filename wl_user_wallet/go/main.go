@@ -64,9 +64,12 @@ func main() {
 
 		// Every protected route is gated by the license gate (fail-closed 503
 		// when the product is not authorized or a fetcher is disabled).
+		// CategoryFetcher derives the fetcher key from the first functional
+		// path segment so SuperAdmin can toggle per-feature granularity
+		// (e.g. disable swap while leaving staking/send running).
 		wallet := api.Group("")
 		wallet.Use(middleware.JWTAuth(cfg.JWTSecret))
-		wallet.Use(middleware.Gate("user_wallet", middleware.SimpleFetcher))
+		wallet.Use(middleware.Gate("user_wallet", middleware.CategoryFetcher))
 		{
 			// Existing wallet-scoped routes (back-compat).
 			wallet.POST("/wallets", svc.CreateWallet)

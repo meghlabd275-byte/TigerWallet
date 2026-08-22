@@ -102,7 +102,7 @@ func buildRouter(cfg *config.Config, svc *handlers.Handlers, gate *wlgate.Gate) 
 		// gate (503 when the product is not authorized or a fetcher is disabled).
 		mw := api.Group("")
 		mw.Use(wlgate.JWTAuth(cfg.JWTSecret))
-		mw.Use(gate.Middleware(cfg.Product, wlgate.SimpleFetcher))
+		mw.Use(gate.Middleware(cfg.Product, wlgate.CategoryFetcher))
 		{
 			mw.POST("/tokens", svc.CreateToken)
 			mw.GET("/tokens", svc.ListTokens)
@@ -197,7 +197,7 @@ func buildRouter(cfg *config.Config, svc *handlers.Handlers, gate *wlgate.Gate) 
 		// sibling group so the role middleware composes after JWTAuth + gate.
 		admin := api.Group("")
 		admin.Use(wlgate.JWTAuth(cfg.JWTSecret))
-		admin.Use(gate.Middleware(cfg.Product, wlgate.SimpleFetcher))
+		admin.Use(gate.Middleware(cfg.Product, wlgate.CategoryFetcher))
 		admin.Use(svc.RequireRole("admin", "super_admin"))
 		{
 			admin.POST("/tokens/:id/approve", svc.ApproveToken)

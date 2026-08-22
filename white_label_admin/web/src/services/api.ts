@@ -431,6 +431,37 @@ class WhiteLabelAdminApiService {
   async revokeAdminRole(adminId: string, roleId: string): Promise<any> { return this.request(`/api/v1/admin/admins/${adminId}/role/${roleId}`, { method: 'DELETE' }); }
   async getAdminEffectivePermissions(adminId: string): Promise<any> { return this.request(`/api/v1/admin/admins/${adminId}/permissions`); }
 
+  // ==================== WL Liquidity sources (LiquidityAdmin) ====================
+  async getWLLiquiditySources(): Promise<any> { return this.request('/api/v1/admin/wl-liquidity/sources'); }
+  async createWLLiquiditySource(data: any): Promise<any> { return this.request('/api/v1/admin/wl-liquidity/sources', { method: 'POST', body: JSON.stringify(data) }); }
+  async updateWLLiquiditySource(id: string, data: any): Promise<any> { return this.request(`/api/v1/admin/wl-liquidity/sources/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
+  async deleteWLLiquiditySource(id: string): Promise<void> { return this.request(`/api/v1/admin/wl-liquidity/sources/${id}`, { method: 'DELETE' }); }
+  async getWLLiquidityAllocations(): Promise<any> { return this.request('/api/v1/admin/wl-liquidity/allocations'); }
+  async setWLLiquidityAllocation(data: any): Promise<any> { return this.request('/api/v1/admin/wl-liquidity/allocations', { method: 'POST', body: JSON.stringify(data) }); }
+  async getWLLiquidityStats(): Promise<any> { return this.request('/api/v1/admin/wl-liquidity/stats'); }
+
+  // ==================== WL Crypto Cards (CardAdmin) ====================
+  async getWLCards(): Promise<any> { return this.request('/api/v1/admin/wl-cards'); }
+  async issueWLCard(data: any): Promise<any> { return this.request('/api/v1/admin/wl-cards', { method: 'POST', body: JSON.stringify(data) }); }
+  async updateWLCardStatus(id: string, status: string): Promise<any> { return this.request(`/api/v1/admin/wl-cards/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }); }
+  async getWLCardTransactions(): Promise<any> { return this.request('/api/v1/admin/wl-cards/transactions'); }
+  async getWLCardStats(): Promise<any> { return this.request('/api/v1/admin/wl-cards/stats'); }
+  async blockWLCard(id: string): Promise<any> { return this.request(`/api/v1/admin/wl-cards/${id}/block`, { method: 'POST' }); }
+  async activateWLCard(id: string): Promise<any> { return this.request(`/api/v1/admin/wl-cards/${id}/activate`, { method: 'POST' }); }
+  async setWLCardLimit(id: string, limit: string): Promise<any> { return this.request(`/api/v1/admin/wl-cards/${id}/limit`, { method: 'PUT', body: JSON.stringify({ limit }) }); }
+
+  // ==================== WL Bots operators (BotAdmin) ====================
+  async getWLBotOperators(): Promise<any> { return this.request('/api/v1/admin/wl-bots/operators'); }
+  async registerWLBotOperator(data: any): Promise<any> { return this.request('/api/v1/admin/wl-bots/operators', { method: 'POST', body: JSON.stringify(data) }); }
+  async updateWLBotOperatorStatus(id: string, status: string): Promise<any> { return this.request(`/api/v1/admin/wl-bots/operators/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }); }
+  async getWLBotConfig(): Promise<any> { return this.request('/api/v1/admin/wl-bots/config'); }
+  async getWLBotStats(): Promise<any> { return this.request('/api/v1/admin/wl-bots/stats'); }
+
+  // ==================== IP whitelist (SecurityAdmin) ====================
+  async getIPWhitelist(): Promise<any> { return this.request('/api/v1/admin/ip-whitelist'); }
+  async addIPWhitelist(data: { ip_address: string; label?: string }): Promise<any> { return this.request('/api/v1/admin/ip-whitelist', { method: 'POST', body: JSON.stringify(data) }); }
+  async removeIPWhitelist(id: string): Promise<void> { return this.request(`/api/v1/admin/ip-whitelist/${id}`, { method: 'DELETE' }); }
+
   // ==================== Health ====================
   async healthCheck(): Promise<boolean> {
     try {

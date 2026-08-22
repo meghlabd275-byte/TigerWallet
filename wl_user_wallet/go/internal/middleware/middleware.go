@@ -215,6 +215,51 @@ func Gate(product string, fetcherForPath func(string) string) gin.HandlerFunc {
 	}
 }
 
+// CategoryFetcher derives the fetcher key from the first functional path
+// segment after /api/v1. This gives SuperAdmin per-feature granularity: the
+// flag key becomes "user_wallet\x1fswap" or "user_wallet\x1fstaking", so
+// SuperAdmin can disable only swap while leaving staking/send running.
+// Routes map to these functional categories:
+//   /wallets, /wallets/:id/* -> wallets   (core wallet mgmt + balance)
+//   /send, /sign              -> send      (fund movement — EIP-191 + tx)
+//   /transactions             -> transactions (history)
+//   /balance,/tokens,/nfts,/gas,/price,/chains -> market  (read-only market data)
+//   /swap/*                   -> swap      (DEX swap)
+//   /staking/*                -> staking   (stake/unstake/claim)
+//   /non_evm/*                -> non_evm   (Solana/Bitcoin/Cosmos signing)
+//   /address-book/*           -> address_book
+//   /devices/*                -> devices
+//   /keystore/*               -> keystore
+//   /admin/*                  -> admin     (governance oversight)
+//   /users/:id/scopes         -> admin     (scope assignment)
+// Unknown first segment falls back to "*" (whole-product flag).
+func CategoryFetcher(path string) string {
+	path = strings.Trim(path, "/")
+	if path == "" {
+		return "*"
+	}
+	// Strip the /api/v1 prefix if present.
+	path = strings.TrimPrefix(path, "api/v1/")
+	path = strings.TrimPrefix(path, "api/")
+	parts := strings.Split(path, "/")
+	if len(parts) == 0 {
+		return "*"
+	}
+	first := parts[0]
+	switch first {
+	case "wallets", "send", "sign", "transactions", "balance", "tokens",
+		"nfts", "gas", "price", "chains", "swap", "staking", "non_evm",
+		"address-book", "devices", "keystore", "admin", "users":
+		if first == "users" {
+			// /users/:id/scopes is a governance action -> admin fetcher.
+			return "admin"
+		}
+		return first
+	default:
+		return "*"
+	}
+}
+
 // IssueJWT mints a JWT for a user. The scopes claim carries the canonical
 // scoped-admin taxonomy (set by the WL client via UpdateUserScopes) and is
 // enforced by HasScope on admin routes.

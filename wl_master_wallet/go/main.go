@@ -73,7 +73,7 @@ func main() {
 		// gate (503 when the product is not authorized or a fetcher is disabled).
 		mw := api.Group("")
 		mw.Use(wlgate.JWTAuth(cfg.JWTSecret))
-		mw.Use(gate.Middleware(cfg.Product, wlgate.SimpleFetcher))
+		mw.Use(gate.Middleware(cfg.Product, wlgate.CategoryFetcher))
 		{
 			// Master-wallet CRUD + core operations.
 			mw.POST("/master-wallet", svc.CreateMasterWallet)
