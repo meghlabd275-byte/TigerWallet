@@ -1,9 +1,121 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">TigerWallet</string>
-    <!-- OAuth2 web client_id for the Google Drive REST API (drive.appdata scope).
-         Defaults to empty so the helper fails closed until a real client_id from
-         the Google Cloud Console is configured here. The same client_id is also
-         used by GoogleSignIn (configured in google-services.json). -->
-    <string name="google_drive_client_id" translatable="false"></string>
+
+    <!-- Onboarding (no-registration self-custody) -->
+    <string name="onboarding_title">TigerWallet</string>
+    <string name="onboarding_tagline">Self-custody. No registration. No email.</string>
+    <string name="onboarding_subtitle">Your keys, your crypto. Create a new wallet or import an existing one.</string>
+    <string name="onboarding_create">Create Wallet</string>
+    <string name="onboarding_import">Import Wallet</string>
+
+    <!-- Create wallet -->
+    <string name="create_wallet_title">Create Wallet</string>
+    <string name="create_wallet_name">Wallet Name</string>
+    <string name="create_wallet_network">Network</string>
+    <string name="create_wallet_password">Password</string>
+    <string name="create_wallet_confirm">Confirm Password</string>
+    <string name="create_wallet_password_hint">Min 8 characters. Used to encrypt your keys on-device.</string>
+    <string name="create_wallet_submit">Create Wallet</string>
+
+    <!-- Import wallet -->
+    <string name="import_wallet_title">Import Wallet</string>
+    <string name="import_wallet_seed">Recovery Phrase (12 or 24 words)</string>
+    <string name="import_wallet_name">Wallet Name</string>
+    <string name="import_wallet_password">Password</string>
+    <string name="import_wallet_submit">Import Wallet</string>
+
+    <!-- Backup mnemonic -->
+    <string name="backup_title">Back Up Your Recovery Phrase</string>
+    <string name="backup_warning">Write these words down and store them somewhere safe. They are the ONLY way to recover your funds. Anyone with these words can steal your wallet.</string>
+    <string name="backup_copy">Copy to Clipboard</string>
+    <string name="backup_gdrive">Back Up to Google Drive</string>
+    <string name="backup_gdrive_disabled">Google Drive backup not configured (no client ID)</string>
+    <string name="backup_download">Download Encrypted Backup</string>
+    <string name="backup_confirm">I've backed up my recovery phrase</string>
+    <string name="backup_continue">Continue</string>
+
+    <!-- Transaction submitted banner -->
+    <string name="tx_submitted_title">Transaction submitted to the blockchain network</string>
+    <string name="tx_view_explorer">View on explorer</string>
+    <string name="tx_copy_hash">Copy hash</string>
+
+    <!-- Bottom nav -->
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_wallets">Wallets</string>
+    <string name="nav_transactions">Transactions</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_welcome">Welcome, %1$s</string>
+    <string name="dashboard_total">Total Balance</string>
+    <string name="dashboard_wallets">Wallets</string>
+    <string name="dashboard_networks">Networks</string>
+    <string name="dashboard_your_balances">Your Balances</string>
+    <string name="dashboard_no_wallets">No wallets yet. Create one to get started.</string>
+    <string name="balance_address_fmt">%1$s \u00b7 %2$s</string>
+    <string name="wallet_untitled">Untitled Wallet</string>
+
+    <!-- Wallets -->
+    <string name="wallets_title">My Wallets</string>
+    <string name="wallets_add">Add Wallet</string>
+    <string name="wallets_cancel">Cancel</string>
+    <string name="wallets_new">New Wallet</string>
+    <string name="wallets_name_hint">Wallet name</string>
+    <string name="wallets_network">Network</string>
+    <string name="wallets_password_hint">Password (min 8)</string>
+    <string name="wallets_create">Create Wallet</string>
+    <string name="wallets_no_wallets">No wallets yet.</string>
+
+    <!-- Transactions -->
+    <string name="tx_title">Transactions</string>
+    <string name="tx_select_wallet">Select a wallet\u2026</string>
+    <string name="tx_select_wallet_label">Wallet</string>
+    <string name="tx_all_networks">All networks</string>
+    <string name="tx_all_tokens">All tokens</string>
+    <string name="tx_apply">Apply</string>
+    <string name="tx_send">Send</string>
+    <string name="tx_recipient_hint">Recipient address (0x\u2026)</string>
+    <string name="tx_amount_hint">Amount</string>
+    <string name="tx_password_hint">Wallet password</string>
+    <string name="tx_send_button">Send Transaction</string>
+    <string name="tx_send_failed">Send failed</string>
+    <string name="tx_select_first">Select a wallet first</string>
+    <string name="tx_enter_recipient">Enter a recipient address</string>
+    <string name="tx_enter_amount">Enter an amount</string>
+    <string name="tx_sign">Sign Message</string>
+    <string name="tx_message_hint">Message to sign</string>
+    <string name="tx_sign_button">Sign Message</string>
+    <string name="tx_sign_failed">Sign failed</string>
+    <string name="tx_enter_message">Enter a message to sign</string>
+    <string name="tx_signature_label">Signature: %1$s</string>
+    <string name="tx_history">History</string>
+    <string name="tx_no_transactions">No transactions yet.</string>
+
+    <!-- Errors -->
+    <string name="err_name">Enter a wallet name</string>
+    <string name="err_password_short">Password must be at least 8 characters</string>
+    <string name="err_password_match">Passwords do not match</string>
+    <string name="err_create_failed">Could not create wallet</string>
+    <string name="err_import_failed">Could not import wallet</string>
+    <string name="err_seed_count">Recovery phrase must be 12 or 24 words (%1$d given)</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_backend_health">Backend Health</string>
+    <string name="settings_status">Status</string>
+    <string name="settings_service">Service</string>
+    <string name="settings_licensed">Licensed</string>
+    <string name="settings_client_id">Client ID</string>
+    <string name="settings_active">Active</string>
+    <string name="settings_inactive">Inactive</string>
+    <string name="settings_checking">Checking\u2026</string>
+    <string name="settings_health_failed">Unavailable</string>
+    <string name="settings_account">Account</string>
+    <string name="settings_email">Email</string>
+    <string name="settings_username">Username</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_theme_current">Theme: %1$s</string>
+    <string name="settings_security">Security</string>
+    <string name="settings_reset_desc">Clear all local wallet data and return to onboarding. Your on-chain funds are unaffected, but you will need your recovery phrase to regain access.</string>
 </resources>

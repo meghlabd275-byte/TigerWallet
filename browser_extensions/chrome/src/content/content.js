@@ -6,7 +6,7 @@
 // Inject the provider
 function injectProvider() {
   const script = document.createElement('script');
-  script.src = chrome.runtime.getURL('injected/injected.js');
+  script.src = chrome.runtime.getURL('src/injected/injected.js');
   script.onload = function() {
     script.remove();
   };

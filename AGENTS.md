@@ -3693,3 +3693,108 @@ Python balance check on Swift/Kotlin/Java (all balanced).
 | user_wallet/android | 16 .kt files balanced (interpolation-aware tokenizer) |
 | user_wallet/ios | 13 .swift files balanced (committed 46740ee) |
 | browser_extensions/chrome | 36 .js files node --check 0 failures |
+
+## Session 2026-08-16 (session 6): No-registration UserWallet UX + Rust PG + native parity
+
+Closed the remaining gaps: the no-registration self-custody UserWallet UX
+across all 6 clients, the Rust admin backends -> PostgreSQL, and native
+WL-admin client parity for the 9 missing scoped domains. All real, no
+stubs/mocks/fakes.
+
+### UserWallet no-registration UX (all 6 clients identical)
+The user opens UserWallet and sees a Create/Import choice — NO register/
+login/email wall. A transparent ephemeral session is auto-provisioned
+behind the scenes (random device-bound identity via crypto.getRandomValues /
+SecureRandom / SecRandomCopyBytes, stored in localStorage / EncryptedSharedPreferences
+/ Keychain / chrome.storage.local) so the JWT-backed WL backend is satisfied.
+The wallet password the user enters encrypts the seed (server-side scrypt +
+AES-GCM), independent of the ephemeral account.
+
+Flow (identical on web/desktop/android/ios/production-react/chrome-extension):
+1. Onboarding (first screen): "Create Wallet" / "Import Wallet" buttons.
+2. Create: name + network (ETH/BNB/Polygon/Arbitrum/Optimism/Base) +
+   password + confirm -> backend POST /wallets -> mnemonic returned once.
+3. Backup (after create): reveals mnemonic (checkbox); Copy (clipboard);
+   Google Drive backup (REAL Google Drive API v3 — GIS+gapi on web/desktop,
+   GoogleSignIn+DriveClient on Android, GTMAppAuth+GTLRDrive on iOS,
+   chrome.identity.getAuthToken on extension; honestly disabled if no OAuth
+   client ID configured, NEVER fake success); Download encrypted backup
+   (real AES-256-GCM via WebCrypto/CryptoKit/javax.crypto + PBKDF2 600k iters,
+   blob = salt+iv+ciphertext); Continue (enabled only after "I have backed
+   up my recovery phrase" checkbox).
+4. Import: seed textarea (12/24-word validation) + name + network +
+   password -> createWallet WITH mnemonic -> dashboard.
+5. Send: after successful sendTransaction -> "Transaction submitted to
+   the blockchain network" banner with real tx hash + per-chain explorer
+   link (etherscan/bscscan/polygonscan/arbiscan/optimistic/basescan/snowtrace),
+   auto-dismiss 30s.
+
+Clients + files:
+- web (user_wallet/web/src): OnboardingContext.tsx, Onboarding.tsx,
+  BackupMnemonic.tsx, TxSubmittedBanner.tsx, App.tsx gating, Transactions.tsx
+  banner, theme.css. tsc --noEmit 0 errors.
+- desktop (user_wallet/desktop/src): OnboardingContext.jsx, Onboarding.jsx,
+  BackupMnemonic.jsx, TxSubmittedBanner.jsx, App.jsx gating, Transactions.jsx
+  banner, styles.css. Login.jsx removed (no login wall). node --check OK.
+- production/react (user_wallet/production/react/src): OnboardingContext.tsx,
+  Onboarding.tsx, BackupMnemonic.tsx, TxSubmittedBanner.tsx, App.tsx gating,
+  SendPage.tsx banner, WalletService.ts createWalletTyped. tsc --noEmit 0
+  errors + vite build succeeds.
+- android (user_wallet/android): OnboardingFragment, CreateWalletFragment,
+  ImportWalletFragment, BackupMnemonicFragment (Kotlin + XML layouts), secure
+  session via SecureBlobStore (Android-Keystore AES-GCM EncryptedSharedPreferences),
+  Google Drive via GoogleSignIn+Drive, AES-GCM via javax.crypto, TxSubmittedBanner
+  in TransactionsFragment. 16 .kt files balanced.
+- ios (user_wallet/ios/App): OnboardingView, CreateWalletView,
+  ImportWalletView, BackupView, TxSubmittedBanner, OnboardingManager,
+  KeychainService, EncryptedBackup, GoogleDriveBackup (SwiftUI). Google Drive
+  via GTMAppAuth+GTLRDrive, AES-GCM via CryptoKit, PBKDF2 via CommonCrypto.
+  13 .swift files balanced. Committed 46740ee.
+- chrome extension (browser_extensions/chrome): popup.js view-switching
+  (onboarding/create/import/backup/dashboard), background.js ensureSession,
+  Google Drive via chrome.identity.getAuthToken + Drive v3 multipart upload,
+  AES-GCM via WebCrypto. 36 .js files node --check 0 failures.
+
+### Rust admin backends -> PostgreSQL (Gap 7 closed)
+- rust/rbac_admin_backend: replaced in-memory HashMap with real PostgreSQL
+  via tokio-postgres + deadpool-postgres. DatabasePool owns a deadpool pool +
+  tokio Runtime (block_on wrappers, mirrors rust/admin_fetchers pattern).
+  New(database_url) fail-closed (returns Err if pool/migration fails — NEVER
+  falls back to in-memory). Migrate() runs CREATE TABLE IF NOT EXISTS for all
+  13 entity tables mirroring the Go admin schema. cargo check --lib exit 0.
+- rust/super_admin_backend: CREATED Cargo.toml (was missing). Replaced
+  RwLock<HashMap> with DatabasePool. 10 entity tables (admin_users,
+  admin_sessions, ip_whitelist, feature_flags, audit_logs, white_labels,
+  profit_share_configs, profit_transactions, login_attempts, rate_limits).
+  new() signature -> Result<Arc<Self>, String> (fail-closed). All argon2/
+  TOTP/crypto unchanged. cargo check --lib exit 0.
+
+### Native WL-admin client parity (Gap 6 closed)
+Added the 9 missing scoped admin domains to ALL native white_label_admin
+clients (liquidity, crypto-card, bots, kyc, tickets, ip-whitelist, audit-logs,
+wallet-management, withdrawals), mirroring the existing 11-domain pattern +
+using the real Go backend (port 8082) routes:
+- iOS: ContentView.swift (DomainLink + specFor entries).
+- Android: DomainsFragment + DomainDetailFragment (ENDPOINTS/GOV_ACTIONS maps).
+- Extensions (chrome/firefox/safari): popup.js (identical DOMAINS array).
+- Desktop/Electron: main.js + renderer.js + preload.js (DOMAINS map + IPC).
+- Rust server: api/mod.rs (4 missing route groups + handlers) + models/mod.rs
+  (5 new structs) — now 20 routes.
+- C++: wl_admin_domains.hpp (9 DomainSpec blocks — registry now returns 20).
+Verification: node --check on all 9 desktop+extension JS (exit 0); cargo check
+(3 pre-existing warnings, 0 errors); g++ -std=c++20 -fsyntax-only (exit 0);
+Python balance check on Swift/Kotlin/Java (all balanced).
+
+### Build verification (ALL GREEN)
+| Component | Result |
+|-----------|--------|
+| rust/rbac_admin_backend | cargo check --lib exit 0 |
+| rust/super_admin_backend | cargo check --lib exit 0 |
+| white_label_admin/rust | cargo check exit 0 (3 pre-existing warnings) |
+| white_label_admin/cpp | g++ -std=c++20 -fsyntax-only exit 0 |
+| user_wallet/web | tsc --noEmit 0 errors |
+| user_wallet/desktop | node --check OK (main + preload) |
+| user_wallet/production/react | tsc --noEmit 0 errors + vite build OK |
+| user_wallet/android | 16 .kt files balanced (interpolation-aware tokenizer) |
+| user_wallet/ios | 13 .swift files balanced (committed 46740ee) |
+| browser_extensions/chrome | 36 .js files node --check 0 failures |

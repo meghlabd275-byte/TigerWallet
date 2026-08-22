@@ -1,4 +1,4 @@
-// Renderer: drives the 11 domain screens via the wlAdmin preload bridge.
+// Renderer: drives the 11 + 9 domain screens via the wlAdmin preload bridge.
 // Each screen renders the backend contract and binds the actions to IPC.
 const DOMAINS = [
   { key: 'dashboard',    label: 'Dashboard',     endpoints: [['GET', '/api/v1/admin/stats', false]] },
@@ -13,6 +13,15 @@ const DOMAINS = [
   { key: 'partners',     label: 'Partners',      endpoints: [['GET', '/partners', false], ['POST', '/partners', false], ['PUT', '/partners/:id', false], ['DELETE', '/partners/:id', false], ['PUT', '/partners/:id/status', true], ['POST', '/partners/:id/approve', true], ['POST', '/partners/:id/reject {reason}', true]] },
   { key: 'rewards',      label: 'Rewards',       endpoints: [['GET', '/rewards', false], ['POST', '/rewards', false], ['PUT', '/rewards/:id', false], ['DELETE', '/rewards/:id', false], ['PUT', '/rewards/:id/status', true]] },
   { key: 'marketing',    label: 'Marketing',     endpoints: [['GET', '/marketing', false], ['POST', '/marketing', false], ['PUT', '/marketing/:id', false], ['DELETE', '/marketing/:id', false], ['PUT', '/marketing/:id/status', true]] },
+  { key: 'liquidity',    label: 'Liquidity',     endpoints: [['GET', '/wl-liquidity/sources', false], ['POST', '/wl-liquidity/sources', false], ['PUT', '/wl-liquidity/sources/:id', true], ['DELETE', '/wl-liquidity/sources/:id', true], ['GET', '/wl-liquidity/allocations', false], ['POST', '/wl-liquidity/allocations', false], ['GET', '/wl-liquidity/stats', false]] },
+  { key: 'crypto-card',  label: 'Crypto Cards',  endpoints: [['GET', '/wl-cards', false], ['POST', '/wl-cards', false], ['PUT', '/wl-cards/:id/status', true], ['GET', '/wl-cards/transactions', false], ['GET', '/wl-cards/stats', false]] },
+  { key: 'bots',         label: 'Bots',          endpoints: [['GET', '/wl-bots/operators', false], ['POST', '/wl-bots/operators', false], ['PUT', '/wl-bots/operators/:id/status', true], ['GET', '/wl-bots/config', false], ['GET', '/wl-bots/stats', false]] },
+  { key: 'kyc',          label: 'KYC',           endpoints: [['GET', '/kyc', false], ['POST', '/kyc/:id/approve', true], ['POST', '/kyc/:id/reject {reason}', true]] },
+  { key: 'tickets',      label: 'Support Tickets', endpoints: [['GET', '/tickets', false], ['GET', '/tickets/:id', true], ['POST', '/tickets', false], ['PUT', '/tickets/:id/status', true], ['POST', '/tickets/:id/messages', true], ['PUT', '/tickets/:id/assign', true]] },
+  { key: 'ip-whitelist', label: 'IP Whitelist',  endpoints: [['GET', '/ip-whitelist', false], ['POST', '/ip-whitelist', false], ['DELETE', '/ip-whitelist/:id', true]] },
+  { key: 'audit-logs',   label: 'Audit Logs',    endpoints: [['GET', '/audit-logs', false], ['POST', '/audit-logs/export', true]] },
+  { key: 'wallet-management', label: 'Wallet Mgmt', endpoints: [['GET', '/withdrawals', false], ['GET', '/fees', false], ['POST', '/fees', false], ['PUT', '/fees/:id', true], ['PUT', '/users/:id/status', true], ['POST', '/withdrawals/:id/approve', true], ['POST', '/withdrawals/:id/reject {reason}', true], ['POST', '/withdrawals/:id/process', true]] },
+  { key: 'withdrawals',  label: 'Withdrawals',   endpoints: [['GET', '/withdrawals', false], ['POST', '/withdrawals/:id/approve', true], ['POST', '/withdrawals/:id/reject {reason}', true], ['POST', '/withdrawals/:id/process', true]] },
   { key: 'rbac',         label: 'Admin Roles',   endpoints: [['GET', '/admin-roles', false], ['POST', '/admin-roles', false], ['GET', '/admin-permissions', false], ['POST', '/admins/:id/role', true], ['GET', '/admins/:id/permissions', false], ['DELETE', '/admins/:id/role/:roleId', true]] },
 ];
 

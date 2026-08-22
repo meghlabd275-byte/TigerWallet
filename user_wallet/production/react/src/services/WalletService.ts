@@ -53,6 +53,24 @@ export interface Chain {
   type?: 'evm' | 'solana' | 'aptos' | 'sui' | 'ton' | string;
 }
 
+// Map a chain id/name string to its numeric chain id (used by SendPage to
+// resolve the explorer link for the tx-submitted banner).
+export function chainIdFor(network: string): number {
+  if (!network) return 1;
+  const n = parseInt(network, 10);
+  if (!Number.isNaN(n) && n > 0) return n;
+  const map: Record<string, number> = {
+    ethereum: 1, eth: 1,
+    bsc: 56, binance: 56, 'bnb chain': 56,
+    polygon: 137, matic: 137,
+    arbitrum: 42161,
+    optimism: 10,
+    base: 8453,
+    avalanche: 43114,
+  };
+  return map[network.toLowerCase()] ?? 1;
+}
+
 export interface Token {
   address: string;
   symbol: string;
@@ -229,6 +247,30 @@ class WalletService {
 
   async importFromMnemonic(mnemonic: string, password: string, chain: Chain): Promise<Wallet> {
     return this.createWallet(mnemonic, password, chain);
+  }
+
+  // Typed create/import used by the no-registration OnboardingContext (mirrors
+  // the web reference api.createWalletTyped). Accepts an explicit chainId +
+  // optional mnemonic (omit for create, provide for import) + label.
+  async createWalletTyped(params: {
+    label: string;
+    password: string;
+    chainId: number;
+    mnemonic?: string;
+  }): Promise<{ id: string; address: string; mnemonic?: string }> {
+    const body: Record<string, unknown> = {
+      label: params.label || `wallet-${Date.now()}`,
+      password: params.password,
+      chain_id: params.chainId,
+    };
+    if (params.mnemonic) {
+      body.mnemonic = params.mnemonic;
+    } else {
+      body.entropy_bits = 256;
+    }
+    const response = await this.api.post('/wallets', body);
+    const w = response.data as WalletRecord;
+    return { id: w.id, address: w.address, mnemonic: w.mnemonic };
   }
 
   async getWalletForChain(walletId: string, _chain: Chain): Promise<Wallet> {

@@ -1,24 +1,17 @@
 /**
  * Send Page - Send tokens to other addresses
- *
- * Supports two unlock paths:
- *   1. Existing password-based send (default WalletContext.sendTransaction)
- *   2. Passwordless send: "Unlock Wallet (passwordless)" calls
- *      walletService.unlockWallet(walletId, { passcode }) to obtain an
- *      unlock_token, which is then passed to walletService.sendTransaction /
- *      autoSendTransaction so no wallet password is required for the send.
  */
 
 import React, { useState } from 'react';
 import { useWallet } from '../contexts/WalletContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { WalletService } from '../services/WalletService';
 import QRScanner from '../components/QRScanner';
+import TxSubmittedBanner from '../components/TxSubmittedBanner';
+import { chainIdFor } from '../services/WalletService';
 
 function SendPage() {
   const { sendTransaction, getAddress, activeWallet } = useWallet();
   const { theme } = useTheme();
-  const [walletService] = useState(() => new WalletService());
   const [toAddress, setToAddress] = useState('');
   const [amount, setAmount] = useState('');
   const [selectedToken, setSelectedToken] = useState('ETH');
@@ -28,69 +21,14 @@ function SendPage() {
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [recentAddresses] = useState<string[]>([]);
 
-  // Passwordless unlock state
-  const [unlockPasscode, setUnlockPasscode] = useState('');
-  const [unlockToken, setUnlockToken] = useState('');
-  const [unlocking, setUnlocking] = useState(false);
-  const [unlockError, setUnlockError] = useState('');
-
-  const handleUnlock = async () => {
-    setUnlockError('');
-    if (!activeWallet) {
-      setUnlockError('No active wallet selected');
-      return;
-    }
-    if (!unlockPasscode) {
-      setUnlockError('Enter the app-lock passcode to unlock passwordless send');
-      return;
-    }
-    setUnlocking(true);
-    try {
-      const res = await walletService.unlockWallet(activeWallet.id, {
-        passcode: unlockPasscode,
-      });
-      setUnlockToken(res.unlock_token);
-    } catch (err: any) {
-      setUnlockError(err?.response?.data?.error || err?.message || 'Unlock failed');
-      setUnlockToken('');
-    } finally {
-      setUnlocking(false);
-    }
-  };
-
-  const clearUnlock = () => {
-    setUnlockToken('');
-    setUnlockPasscode('');
-    setUnlockError('');
-  };
-
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
 
     try {
-      // Primary path: autoSendTransaction — the MasterWallet owner auto-
-      // approves + auto-signs within a second (no per-tx password needed).
-      // Falls back to password-based sendTransaction if autoSend is
-      // unavailable.
-      const chainId = activeWallet?.chain?.chainId ?? 1;
-      const walletId = activeWallet?.id ?? '';
-      if (walletId) {
-        const result = await walletService.autoSendTransaction(
-          walletId,
-          toAddress,
-          amount,
-          '', // password (not required when unlock_token is present or auto-approval is active)
-          chainId,
-          undefined, // masterWalletId
-          unlockToken || undefined
-        );
-        setTxHash(typeof result === 'string' ? result : result?.txHash ?? '');
-      } else {
-        const hash = await sendTransaction(toAddress, amount, selectedToken);
-        setTxHash(hash);
-      }
+      const hash = await sendTransaction(toAddress, amount, selectedToken);
+      setTxHash(hash);
     } catch (err: any) {
       setError(err.message || 'Transaction failed');
     } finally {
@@ -107,12 +45,16 @@ function SendPage() {
     <div className="p-6 max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Send</h1>
 
-      {/* Success Message */}
+      {/* Transaction submitted banner — real tx hash + explorer link.
+          Mirrors the web reference TxSubmittedBanner; the inline success card
+          is replaced by the shared banner component for parity. */}
       {txHash && (
-        <div className={`card mb-6 bg-green-500/20 border-green-500 ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'}`}>
-          <h3 className="font-semibold text-green-500 mb-2">✓ Transaction submitted to the blockchain network</h3>
-          <p className="text-sm opacity-70">Tx Hash:</p>
-          <p className="font-mono text-xs break-all">{txHash}</p>
+        <div className="mb-6">
+          <TxSubmittedBanner
+            txHash={txHash}
+            chainId={chainIdFor(String(activeWallet?.chain?.id ?? '1'))}
+            onDismiss={() => setTxHash('')}
+          />
         </div>
       )}
 
@@ -122,44 +64,6 @@ function SendPage() {
           <p className="text-red-500">{error}</p>
         </div>
       )}
-
-      {/* Passwordless unlock panel */}
-      <div className={`card mb-6 ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'}`}>
-        <h3 className="font-semibold mb-2">Unlock Wallet (passwordless)</h3>
-        {unlockToken ? (
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-green-500">
-              ✓ Wallet unlocked — send will use the passwordless unlock token (no wallet password required).
-            </p>
-            <button onClick={clearUnlock} className="btn btn-secondary text-sm">Clear</button>
-          </div>
-        ) : (
-          <>
-            <p className={`text-xs mb-3 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-              Enter the app-lock passcode to obtain a temporary unlock token, then send without re-entering your wallet password.
-            </p>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                value={unlockPasscode}
-                onChange={(e) => setUnlockPasscode(e.target.value)}
-                placeholder="App-lock passcode"
-                className="input flex-1"
-                autoComplete="off"
-              />
-              <button
-                type="button"
-                onClick={handleUnlock}
-                disabled={unlocking || !activeWallet || !unlockPasscode}
-                className="btn btn-secondary"
-              >
-                {unlocking ? 'Unlocking...' : 'Unlock Wallet (passwordless)'}
-              </button>
-            </div>
-            {unlockError && <p className="text-red-500 text-sm mt-2">{unlockError}</p>}
-          </>
-        )}
-      </div>
 
       {/* Send Form */}
       <form onSubmit={handleSend} className={`card ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'}`}>

@@ -31,6 +31,15 @@ public class DomainsFragment extends Fragment {
         new String[]{"partners", "Partners governance (status + approve/reject)"},
         new String[]{"rewards", "Reward campaigns governance (CRUD + status)"},
         new String[]{"marketing", "Marketing campaigns governance (CRUD + status)"},
+        new String[]{"liquidity", "WL liquidity sources & allocations (LiquidityAdmin)"},
+        new String[]{"crypto-card", "WL crypto cards governance (CardAdmin)"},
+        new String[]{"bots", "WL bot operators governance (BotAdmin)"},
+        new String[]{"kyc", "KYC verification governance (approve/reject)"},
+        new String[]{"tickets", "Support tickets governance (status + assign + messages)"},
+        new String[]{"ip-whitelist", "IP allowlist governance (SecurityAdmin)"},
+        new String[]{"audit-logs", "Compliance audit trail (ComplianceAdmin)"},
+        new String[]{"wallet-management", "WalletAdmin scope: withdrawals + fees + user status"},
+        new String[]{"withdrawals", "Withdrawal two-party approval (WalletAdmin)"},
         new String[]{"rbac", "Admin roles & permissions governance"}
     );
 

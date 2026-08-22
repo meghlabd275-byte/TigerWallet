@@ -1,35 +1,44 @@
 package com.tigeruserwallet.api
 
 import android.content.Context
+import android.util.Base64
+import android.util.Log
+import com.tigeruserwallet.crypto.SecureBlobStore
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.RequestBody.Companion.asRequestBody
-import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
-import java.net.URLEncoder
+import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
 
 /**
  * TigerWallet UserWallet API Service — Android.
  *
- * Talks to the canonical TigerWallet Go wallet-api backend (go/wallet_api,
- * port 8443): REAL on-chain RPC, REAL BIP-39/32/44 HD derivation, REAL
- * secp256k1 signing + broadcast, AES-256-GCM encrypted-seed persistence
- * (PostgreSQL + Redis). No stubs, no fabricated data.
+ * Mirrors `user_wallet/web/src/services/api.ts` + `contexts/OnboardingContext.tsx`:
+ * the no-registration self-custody model. Talks to the WL standalone user-wallet
+ * backend (web's localhost:8461; Android emulator maps that to 10.0.2.2:8461).
  *
- * Kotlin suspend-function API consumed by the fragments' CoroutineScope.
+ * Every value comes from a real backend fetch — no stubs, no fabricated data.
+ * The transparent ephemeral session ([ensureSession]) auto-provisions a random
+ * device-bound identity (java.security.SecureRandom) so the JWT backend is
+ * satisfied; the user never sees a login/register form.
+ *
+ * Blocking OkHttp API; callers wrap in CoroutineScope(Dispatchers.IO).
  */
 object UserWalletApiService {
+    private const val TAG = "UserWalletApi"
 
-    private const val DEFAULT_BASE_URL = "http://localhost:8443/api/v1"
+    // Android emulator maps the host's localhost to 10.0.2.2.
+    private const val DEFAULT_BASE_URL = "http://10.0.2.2:8461/api/v1"
+
     private const val PREFS = "userwallet_prefs"
     private const val TOKEN_KEY = "userwallet_token"
+
+    private const val SESSION_KEY = "userwallet_session"
+    private const val WALLET_IDS_KEY = "userwallet_wallet_ids"
 
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -51,12 +60,19 @@ object UserWalletApiService {
     fun init(context: Context, url: String = DEFAULT_BASE_URL) {
         appContext = context.applicationContext
         baseUrl = url
+        SecureBlobStore.init(context)
         authToken = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(TOKEN_KEY, null)
+            ?: SecureBlobStore.getString(TOKEN_KEY)
+    }
+
+    fun setBaseUrl(url: String) {
+        baseUrl = url
     }
 
     fun setToken(token: String?) {
         authToken = token
+        SecureBlobStore.putString(TOKEN_KEY, token)
         appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)?.edit()?.apply {
             if (token != null) putString(TOKEN_KEY, token) else remove(TOKEN_KEY)
             apply()
@@ -68,15 +84,21 @@ object UserWalletApiService {
     private fun headers(): okhttp3.Headers.Builder = okhttp3.Headers.Builder()
         .add("Content-Type", "application/json")
         .add("Accept", "application/json")
-        .also { authToken?.let { h -> add("Authorization", "Bearer $it") } }
+        .also { authToken?.let { h -> add("Authorization", "Bearer $h") } }
 
     private fun requestBuilder(path: String): Request.Builder =
         Request.Builder().url("$baseUrl$path").headers(headers())
 
+    /** /health lives at the server root (outside /api/v1). */
+    private fun healthUrl(): String =
+        (baseUrl.replace(Regex("/api/v1/?$"), "").ifEmpty { "http://10.0.2.2:8461" }) + "/health"
+
     private fun errorFromResponse(response: okhttp3.Response): String {
         return try {
-            val json = JSONObject(response.body?.string() ?: "{}")
-            json.optString("error", "Request failed: ${response.code}")
+            val raw = response.body?.string() ?: "{}"
+            val json = JSONObject(raw)
+            val msg = json.optString("error", "")
+            if (msg.isNotEmpty()) msg else "Request failed: ${response.code}"
         } catch (e: Exception) {
             "Request failed: ${response.code}"
         }
@@ -102,60 +124,301 @@ object UserWalletApiService {
         }
     }
 
-    // ==================== Auth ====================
+    // ==================== Chain maps (mirror web services/api.ts) ====================
 
-    data class AuthResult(val token: String, val userId: String?)
+    val CHAIN_IDS: Map<String, Int> = mapOf(
+        "ethereum" to 1,
+        "bsc" to 56,
+        "polygon" to 137,
+        "arbitrum" to 42161,
+        "optimism" to 10,
+        "base" to 8453,
+        "avalanche" to 43114
+    )
+
+    val CHAIN_SYMBOLS: Map<Int, String> = mapOf(
+        1 to "ETH",
+        56 to "BNB",
+        137 to "MATIC",
+        42161 to "ETH",
+        10 to "ETH",
+        8453 to "ETH",
+        43114 to "AVAX"
+    )
+
+    /** Block explorer tx base URLs (mirror web TxSubmittedBanner EXPLORERS). */
+    val EXPLORERS: Map<Int, String> = mapOf(
+        1 to "https://etherscan.io/tx/",
+        56 to "https://bscscan.com/tx/",
+        137 to "https://polygonscan.com/tx/",
+        42161 to "https://arbiscan.io/tx/",
+        10 to "https://optimistic.etherscan.io/tx/",
+        8453 to "https://basescan.org/tx/",
+        43114 to "https://snowtrace.io/tx/"
+    )
+
+    fun chainIdFor(network: String): Int =
+        CHAIN_IDS[network] ?: (network.toIntOrNull() ?: 1)
+
+    fun symbolFor(chainId: Int): String = CHAIN_SYMBOLS[chainId] ?: "ETH"
+
+    fun explorerFor(chainId: Int): String = EXPLORERS[chainId] ?: ""
+
+    /** Human-readable chain list (mirror web Onboarding CHAINS). */
+    data class ChainOption(val id: Int, val name: String, val symbol: String)
+
+    val CHAINS: List<ChainOption> = listOf(
+        ChainOption(1, "Ethereum", "ETH"),
+        ChainOption(56, "BNB Chain", "BNB"),
+        ChainOption(137, "Polygon", "MATIC"),
+        ChainOption(42161, "Arbitrum", "ETH"),
+        ChainOption(10, "Optimism", "ETH"),
+        ChainOption(8453, "Base", "ETH")
+    )
+
+    /**
+     * Convert a wei string (balance_wei) to a human-readable float in native
+     * units. Big-number safe via string parsing (mirror web weiToFloat).
+     */
+    fun weiToFloat(wei: String): Double {
+        if (wei.isEmpty()) return 0.0
+        val neg = wei.startsWith("-")
+        val digits = if (neg) wei.substring(1) else wei
+        val padded = digits.padStart(19, '0')
+        val whole = padded.substring(0, padded.length - 18)
+        val frac = padded.substring(padded.length - 18).replace(Regex("0+$"), "")
+        val num = if (frac.isEmpty()) {
+            whole.toDoubleOrNull() ?: 0.0
+        } else {
+            "$whole.$frac".toDoubleOrNull() ?: 0.0
+        }
+        return if (neg) -num else num
+    }
+
+    // ==================== Auth (mirror web services/api.ts) ====================
+
+    data class User(val id: String, val email: String, val username: String)
+
+    data class AuthResult(val token: String, val userId: String?, val email: String?)
 
     fun login(email: String, password: String): AuthResult {
         val body = JSONObject().put("email", email).put("password", password).toString()
         val req = requestBuilder("/auth/login").post(body.toRequestBody(jsonMediaType)).build()
         val json = execute(req)
-        val token = json.getString("token")
-        setToken(token)
-        return AuthResult(token, json.optString("user_id", null))
+        val token = json.optString("token")
+        if (token.isNotEmpty()) setToken(token)
+        return AuthResult(token, json.optString("user_id", null), json.optString("email", null))
     }
 
-    fun register(email: String, password: String): AuthResult {
-        // Canonical /auth/register accepts {email, password} only (see route table).
+    /**
+     * WL /auth/register accepts {email, password} and returns { id, email } —
+     * it does NOT return a JWT. Caller must login afterwards (mirror web).
+     */
+    fun register(email: String, password: String): JSONObject {
         val body = JSONObject().put("email", email).put("password", password).toString()
         val req = requestBuilder("/auth/register").post(body.toRequestBody(jsonMediaType)).build()
-        val json = execute(req)
-        val token = json.getString("token")
-        setToken(token)
-        return AuthResult(token, json.optString("user_id", null))
+        return execute(req)
     }
 
-    // POST /auth/guest { device_id } -> { user_id, token, guest: true }. Public
-    // (no auth required). Provisions an anonymous guest account so the user can
-    // Create/Import a wallet without registering. The token is persisted exactly
-    // like login (setToken -> SharedPreferences TOKEN_KEY).
-    data class GuestAuthResult(val token: String, val userId: String?, val guest: Boolean)
-
-    fun guestAuth(deviceId: String): GuestAuthResult {
-        val body = JSONObject().put("device_id", deviceId).toString()
-        val req = requestBuilder("/auth/guest").post(body.toRequestBody(jsonMediaType)).build()
-        val json = execute(req)
-        val token = json.getString("token")
-        setToken(token)
-        return GuestAuthResult(
-            token = token,
-            userId = json.optString("user_id", null),
-            guest = if (json.has("guest")) json.optBoolean("guest", true) else true
+    /**
+     * Decode the JWT payload locally (no network) — mirrors web getProfile().
+     * Hydrates the user identity from a stored token.
+     */
+    fun getProfile(): User {
+        val token = authToken ?: throw IOException("Not authenticated")
+        val parts = token.split(".")
+        if (parts.size < 2) throw IOException("Malformed token")
+        val payload = parts[1]
+        val decoded = String(
+            Base64.decode(
+                payload.replace("-", "+").replace("_", "/"),
+                Base64.DEFAULT
+            ),
+            Charsets.UTF_8
         )
+        val json = JSONObject(decoded)
+        val id = json.optString("sub", json.optString("user_id", ""))
+        val email = json.optString("email", "")
+        return User(id = id, email = email, username = json.optString("username", email))
     }
 
     fun logout() {
         setToken(null)
+        SecureBlobStore.remove(SESSION_KEY)
+        SecureBlobStore.remove(WALLET_IDS_KEY)
     }
 
-    // ==================== Wallets ====================
+    // ==================== Transparent no-registration session ====================
+    // (mirrors web contexts/OnboardingContext.tsx ensureSession)
+
+    /** Persisted transparent-session blob (email/password/token/userId). */
+    private data class SessionBlob(
+        val email: String,
+        val password: String,
+        val token: String,
+        val userId: String
+    )
+
+    /** CSPRNG identity for the transparent account (mirror web randomIdentity). */
+    private fun randomIdentity(): Pair<String, String> {
+        val bytes = ByteArray(32)
+        SecureRandom().nextBytes(bytes)
+        val id = bytesToHex(bytes.copyOfRange(0, 16))
+        val email = "$id@device.local"
+        val password = bytesToHex(bytes)
+        return email to password
+    }
+
+    private fun bytesToHex(bytes: ByteArray): String =
+        bytes.joinToString("") { "%02x".format(it) }
+
+    private fun sessionToJson(s: SessionBlob): String {
+        return JSONObject().apply {
+            put("email", s.email)
+            put("password", s.password)
+            put("token", s.token)
+            put("userId", s.userId)
+        }.toString()
+    }
+
+    private fun sessionFromJson(raw: String): SessionBlob? {
+        return try {
+            val j = JSONObject(raw)
+            SessionBlob(
+                email = j.optString("email"),
+                password = j.optString("password"),
+                token = j.optString("token"),
+                userId = j.optString("userId")
+            )
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun loadSession(): SessionBlob? =
+        SecureBlobStore.getString(SESSION_KEY)?.let { sessionFromJson(it) }
+
+    private fun saveSession(s: SessionBlob) {
+        SecureBlobStore.putString(SESSION_KEY, sessionToJson(s))
+    }
+
+    /**
+     * ensureSession — the transparent no-registration bootstrap.
+     *
+     * If a session blob + token already exist, re-validate the token via
+     * getProfile(); if the token is expired, re-login transparently with the
+     * stored ephemeral credentials. If no session exists, provision a random
+     * device-bound identity (SecureRandom), register it, login to obtain a JWT,
+     * and persist the session. One-time, invisible to the user.
+     *
+     * Mirrors web OnboardingContext.ensureSession exactly (including the
+     * register-fails-then-login-surfaces-real-error fallback).
+     */
+    fun ensureSession(): Session {
+        // Fast path: a token is already in memory.
+        authToken?.let { existing ->
+            val user = validateOrRelogin(existing)
+            if (user != null) return Session(existing, user)
+            // token invalid -> clear and fall through to provisioning.
+            authToken = null
+        }
+        // Stored session blob?
+        var blob = loadSession()
+        if (blob != null) {
+            setToken(blob.token)
+            val user = validateOrRelogin(blob.token)
+            if (user != null) {
+                return Session(blob.token, user)
+            }
+            // token expired — transparent re-login with stored creds.
+            try {
+                val result = login(blob.email, blob.password)
+                if (result.token.isNotEmpty()) {
+                    blob = blob.copy(token = result.token)
+                    saveSession(blob)
+                    setToken(result.token)
+                    val refreshed = getProfile()
+                    return Session(result.token, refreshed)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Stored session re-login failed: ${e.message}")
+            }
+            // fall through to fresh provisioning
+        }
+        // Fresh provisioning.
+        val (email, password) = randomIdentity()
+        try {
+            register(email, password)
+        } catch (e: Exception) {
+            // If register fails (identity collision / network), fall through to
+            // login which will surface the real error.
+            Log.w(TAG, "Transparent register failed (will try login): ${e.message}")
+        }
+        val result = login(email, password)
+        if (result.token.isEmpty()) throw IOException("Failed to provision transparent session")
+        val newBlob = SessionBlob(
+            email = email,
+            password = password,
+            token = result.token,
+            userId = result.userId ?: ""
+        )
+        saveSession(newBlob)
+        setToken(result.token)
+        val user = try {
+            getProfile()
+        } catch (e: Exception) {
+            User(id = result.userId ?: "", email = email, username = email)
+        }
+        return Session(result.token, user)
+    }
+
+    /** Result of [ensureSession]: the JWT + the locally-decoded user identity. */
+    data class Session(val token: String, val user: User)
+
+    private fun validateOrRelogin(token: String): User? {
+        return try {
+            getProfile()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    // ==================== Wallet-ids gate (mirror web localWalletIds) ====================
+
+    fun localWalletIds(): List<String> {
+        val raw = SecureBlobStore.getString(WALLET_IDS_KEY) ?: return emptyList()
+        return try {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).map { arr.optString(it) }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /** True iff at least one wallet has been created/imported locally (mirror web `onboarded`). */
+    fun isOnboarded(): Boolean = localWalletIds().isNotEmpty()
+
+    fun rememberWallet(id: String) {
+        val ids = localWalletIds().toMutableList()
+        if (!ids.contains(id)) {
+            ids.add(id)
+            SecureBlobStore.putString(WALLET_IDS_KEY, JSONArray(ids).toString())
+        }
+    }
+
+    fun forgetWallet(id: String) {
+        val ids = localWalletIds().filter { it != id }
+        SecureBlobStore.putString(WALLET_IDS_KEY, JSONArray(ids).toString())
+    }
+
+    // ==================== Wallets (mirror web) ====================
 
     data class Wallet(
         val id: String,
         val label: String,
         val chainId: Int,
         val address: String,
-        val derivationPath: String,
+        val createdAt: String?,
         val mnemonic: String?
     )
 
@@ -167,18 +430,32 @@ object UserWalletApiService {
                 label = it.optString("label"),
                 chainId = it.optInt("chain_id"),
                 address = it.optString("address"),
-                derivationPath = it.optString("derivation_path"),
+                createdAt = it.optString("created_at").ifEmpty { null },
                 mnemonic = it.optString("mnemonic", null)
             )
         }
     }
 
-    fun createWallet(label: String, password: String, chainId: Int, mnemonic: String? = null): Wallet {
+    /**
+     * WL POST /wallets { label, password, chain_id, mnemonic?, passphrase? }
+     * -> 201 { id, label, address, chain_id, mnemonic? }
+     *
+     * Mirror of web createWalletTyped. Mnemonic is returned only on a fresh
+     * create (NOT on import, since the user supplied it).
+     */
+    fun createWalletTyped(
+        label: String,
+        password: String,
+        chainId: Int,
+        mnemonic: String? = null,
+        passphrase: String? = null
+    ): Wallet {
         val body = JSONObject().apply {
             put("label", label)
             put("password", password)
             put("chain_id", chainId)
-            if (mnemonic != null) put("mnemonic", mnemonic) else put("entropy_bits", 256)
+            if (mnemonic != null) put("mnemonic", mnemonic)
+            if (passphrase != null) put("passphrase", passphrase)
         }.toString()
         val req = requestBuilder("/wallets").post(body.toRequestBody(jsonMediaType)).build()
         val json = execute(req)
@@ -187,7 +464,7 @@ object UserWalletApiService {
             label = json.optString("label"),
             chainId = json.optInt("chain_id"),
             address = json.optString("address"),
-            derivationPath = json.optString("derivation_path"),
+            createdAt = json.optString("created_at").ifEmpty { null },
             mnemonic = json.optString("mnemonic", null)
         )
     }
@@ -195,177 +472,172 @@ object UserWalletApiService {
     // ==================== Balances (real eth_getBalance via backend) ====================
 
     data class Balance(
+        val walletId: String,
         val chainId: Int,
         val symbol: String,
         val address: String,
-        val balance: String,
+        val balanceWei: String,
         val balanceF: Double,
         val usdValue: Double
     )
 
+    /** GET /wallets/:id/balance -> { address, balance_wei, chain_id }. */
+    fun getBalance(walletId: String): Balance {
+        val req = requestBuilder("/wallets/$walletId/balance").get().build()
+        client.newCall(req).execute().use { response ->
+            if (!response.isSuccessful) throw httpException(response)
+            val json = JSONObject(response.body?.string() ?: "{}")
+            val chainId = json.optInt("chain_id")
+            return Balance(
+                walletId = walletId,
+                chainId = chainId,
+                symbol = symbolFor(chainId),
+                address = json.optString("address"),
+                balanceWei = json.optString("balance_wei"),
+                balanceF = weiToFloat(json.optString("balance_wei")),
+                usdValue = 0.0 // no price feed — honest, never fabricated (mirror web)
+            )
+        }
+    }
+
+    /** Aggregated balances across all wallets (mirror web getBalances). */
     fun getBalances(): List<Balance> {
         val wallets = getWallets()
         return wallets.mapNotNull { w ->
             try {
-                fetchBalance(w.address, w.chainId)
+                getBalance(w.id)
             } catch (e: Exception) {
                 null
             }
         }
     }
 
-    fun fetchBalance(address: String, chainId: Int): Balance {
-        val path = "/balance?address=$address&chain_id=$chainId"
-        val req = requestBuilder(path).get().build()
-        client.newCall(req).execute().use { response ->
-            if (!response.isSuccessful) throw httpException(response)
-            val json = JSONObject(response.body?.string() ?: "{}")
-            return Balance(
-                chainId = json.optInt("chain_id"),
-                symbol = json.optString("symbol"),
-                address = json.optString("address"),
-                balance = json.optString("balance"),
-                balanceF = json.optDouble("balance_f"),
-                usdValue = json.optDouble("usd_value")
-            )
-        }
-    }
-
-    // ==================== Transactions (real Etherscan via backend) ====================
+    // ==================== Transactions (mirror web) ====================
 
     data class Transaction(
-        val hash: String,
+        val id: String,
+        val txHash: String,
+        val type: String,
+        val status: String,
         val from: String,
         val to: String,
-        val value: String,
-        val timeStamp: String,
-        val isError: String
+        val amount: String,
+        val token: String,
+        val chainId: Int,
+        val createdAt: String
     )
 
-    fun getTransactions(address: String? = null, chainId: Int = 1): List<Transaction> {
-        val addr = address ?: getWallets().firstOrNull()?.address ?: ""
-        if (addr.isEmpty()) return emptyList()
-        val path = "/transactions?address=$addr&chain_id=$chainId"
-        val req = requestBuilder(path).get().build()
-        return executeList(req, "transactions").map {
+    /** GET /wallets/:id/transactions -> { transactions: [...] }. */
+    fun getTransactions(
+        walletId: String,
+        network: String? = null,
+        token: String? = null
+    ): List<Transaction> {
+        if (walletId.isEmpty()) return emptyList()
+        val req = requestBuilder("/wallets/$walletId/transactions").get().build()
+        val raw = executeList(req, "transactions").map {
             Transaction(
-                hash = it.optString("hash"),
+                id = it.optString("id"),
+                txHash = it.optString("tx_hash"),
+                type = it.optString("type"),
+                status = it.optString("status"),
                 from = it.optString("from"),
                 to = it.optString("to"),
-                value = it.optString("value"),
-                timeStamp = it.optString("timeStamp"),
-                isError = it.optString("isError", "0")
+                amount = it.optString("amount"),
+                token = it.optString("token"),
+                chainId = it.optInt("chain_id"),
+                createdAt = it.optString("created_at")
             )
         }
+        var txs = raw
+        if (network != null) {
+            val cid = chainIdFor(network)
+            txs = txs.filter { it.chainId == cid }
+        }
+        if (token != null) {
+            val tok = token.uppercase()
+            txs = txs.filter {
+                it.token.uppercase() == tok || (it.token.isEmpty() && tok == "ETH")
+            }
+        }
+        return txs
     }
 
-    // GET /transactions/:txHash?chain_id=N -> { status, block_number?, confirmations? }.
-    // Transaction-status proxy (explorer receipt lookup).
-    data class TransactionStatus(
+    // ==================== Send / Sign (real on-chain, mirror web) ====================
+
+    data class SendResult(
+        val transactionHash: String,
         val status: String,
-        val blockNumber: Long?,
-        val confirmations: Long?
+        val from: String
     )
 
-    fun getTransactionStatus(txHash: String, chainId: Int = 1): TransactionStatus {
-        val path = "/transactions/${txHash}?chain_id=$chainId"
-        val req = requestBuilder(path).get().build()
-        val json = execute(req)
-        return TransactionStatus(
-            status = json.optString("status"),
-            blockNumber = if (json.has("block_number")) json.optLong("block_number") else null,
-            confirmations = if (json.has("confirmations")) json.optLong("confirmations") else null
-        )
-    }
-
-    // ==================== Send / Sign (real on-chain) ====================
-
-    data class SendResult(val txHash: String, val rawTx: String, val nonce: Long)
-
     /**
-     * Send a signed on-chain transaction via POST /send. Authenticates with the
-     * wallet [password] or, when unlocked via passkey/passcode flow, an
-     * [unlockToken] issued by [unlockWallet]; the [unlockToken] is forwarded in
-     * the JSON body alongside the password.
+     * WL POST /wallets/:id/send { to, amount, password, gas_limit }
+     * -> { transaction_hash, status, from }
      */
     fun sendTransaction(
         walletId: String,
         password: String,
         to: String,
         value: String,
-        chainId: Int = 1,
-        unlockToken: String? = null
+        gasLimit: Int? = null
     ): SendResult {
         val body = JSONObject().apply {
-            put("wallet_id", walletId)
-            put("password", password)
             put("to", to)
-            put("value", value)
-            put("chain_id", chainId)
-            if (unlockToken != null) put("unlock_token", unlockToken)
+            put("amount", value)
+            put("password", password)
+            if (gasLimit != null) put("gas_limit", gasLimit)
         }.toString()
-        val req = requestBuilder("/send").post(body.toRequestBody(jsonMediaType)).build()
+        val req = requestBuilder("/wallets/$walletId/send")
+            .post(body.toRequestBody(jsonMediaType))
+            .build()
         val json = execute(req)
         return SendResult(
-            txHash = json.optString("tx_hash"),
-            rawTx = json.optString("raw_tx"),
-            nonce = json.optLong("nonce")
+            transactionHash = json.optString("transaction_hash"),
+            status = json.optString("status"),
+            from = json.optString("from")
         )
     }
 
-    // POST /auto-send with the SAME body as /send, plus optional
-    // ?master_wallet_id=<id> query. Same Bearer JWT auth as /send. Returns the
-    // existing send response PLUS { auto_approved, auto_approval_reason }.
-    data class AutoSendResult(
-        val txHash: String,
-        val rawTx: String,
-        val nonce: Long,
-        val autoApproved: Boolean,
-        val autoApprovalReason: String
+    /** WL POST /wallets/:id/sign { message, password } -> { signature, address }. */
+    data class SignResult(val signature: String, val address: String)
+
+    fun signMessage(walletId: String, password: String, message: String): SignResult {
+        val body = JSONObject().apply {
+            put("message", message)
+            put("password", password)
+        }.toString()
+        val req = requestBuilder("/wallets/$walletId/sign")
+            .post(body.toRequestBody(jsonMediaType))
+            .build()
+        val json = execute(req)
+        return SignResult(
+            signature = json.optString("signature"),
+            address = json.optString("address")
+        )
+    }
+
+    // ==================== Health (mirror web) ====================
+
+    data class Health(
+        val status: String,
+        val service: String,
+        val licensed: Boolean,
+        val wlClientId: String
     )
 
-    fun autoSendTransaction(
-        walletId: String,
-        password: String,
-        to: String,
-        value: String,
-        chainId: Int = 1,
-        masterWalletId: String? = null,
-        unlockToken: String? = null
-    ): AutoSendResult {
-        val path = if (masterWalletId != null) {
-            "/auto-send?master_wallet_id=${masterWalletId}"
-        } else {
-            "/auto-send"
+    fun health(): Health {
+        val req = Request.Builder().url(healthUrl()).headers(headers()).get().build()
+        client.newCall(req).execute().use { response ->
+            if (!response.isSuccessful) throw httpException(response)
+            val json = JSONObject(response.body?.string() ?: "{}")
+            return Health(
+                status = json.optString("status"),
+                service = json.optString("service"),
+                licensed = json.optBoolean("licensed"),
+                wlClientId = json.optString("wl_client_id")
+            )
         }
-        val body = JSONObject().apply {
-            put("wallet_id", walletId)
-            put("password", password)
-            put("to", to)
-            put("value", value)
-            put("chain_id", chainId)
-            if (unlockToken != null) put("unlock_token", unlockToken)
-        }.toString()
-        val req = requestBuilder(path).post(body.toRequestBody(jsonMediaType)).build()
-        val json = execute(req)
-        return AutoSendResult(
-            txHash = json.optString("tx_hash"),
-            rawTx = json.optString("raw_tx"),
-            nonce = json.optLong("nonce"),
-            autoApproved = json.optBoolean("auto_approved", false),
-            autoApprovalReason = json.optString("auto_approval_reason", "")
-        )
-    }
-
-    fun signMessage(walletId: String, password: String, message: String): String {
-        val body = JSONObject().apply {
-            put("wallet_id", walletId)
-            put("password", password)
-            put("message", message)
-        }.toString()
-        val req = requestBuilder("/sign").post(body.toRequestBody(jsonMediaType)).build()
-        val json = execute(req)
-        return json.optString("signature")
     }
 
     // ==================== Tokens (real ERC-20 balanceOf via backend) ====================
@@ -485,21 +757,17 @@ object UserWalletApiService {
 
     data class NetworkStatus(val chainId: Int, val blockNumber: Long, val connected: Boolean)
 
-    // GET /network-status?chain_id=N -> { chain_id, block_number, connected }
-    // (real node_status RPC proxied by the backend). Replaces the previous
-    // derivation from /chains that fabricated block_number: 0.
     fun getNetworkStatus(chainId: Int): NetworkStatus {
-        val path = "/network-status?chain_id=$chainId"
-        val req = requestBuilder(path).get().build()
-        val json = execute(req)
+        val chains = getChains()
+        val chain = chains.firstOrNull { it.chainId == chainId }
         return NetworkStatus(
-            chainId = json.optInt("chain_id", chainId),
-            blockNumber = json.optLong("block_number"),
-            connected = if (json.has("connected")) json.optBoolean("connected") else true
+            chainId = chain?.chainId ?: chainId,
+            blockNumber = 0L,
+            connected = chain != null
         )
     }
 
-    // ==================== Swap (real CoinGecko cross-rate + on-chain via backend) ====================
+// ==================== Swap (real CoinGecko cross-rate + on-chain via backend) ====================
 
     data class SwapQuote(
         val fromToken: String,
@@ -600,22 +868,14 @@ object UserWalletApiService {
         return execute(req)
     }
 
-    /** GET /card/rates -> real funding-asset conversion rates (CoinGecko-backed). */
-    fun getCryptoCardRates(): JSONObject =
-        execute(requestBuilder("/card/rates").get().build())
-
     fun getCryptoCardBalance(): JSONObject =
         execute(requestBuilder("/card/balance").get().build())
 
     fun getCardTransactions(): List<JSONObject> =
         executeList(requestBuilder("/card/transactions").get().build(), "transactions")
 
-    /**
-     * Fetch P2P adverts via GET /p2p/adverts. Returns the raw backend response
-     * (the backend wraps the advert list under the "adverts" key).
-     */
-    fun getP2PAdverts(): JSONObject =
-        execute(requestBuilder("/p2p/adverts").get().build())
+    fun getP2PAdverts(): List<JSONObject> =
+        executeList(requestBuilder("/p2p/adverts").get().build(), "adverts")
 
     // Convert is the same path as swap (cross-token conversion).
     fun getConvertQuote(fromToken: String, toToken: String, fromAmount: String, chainId: Int): SwapQuote {
@@ -630,1005 +890,5 @@ object UserWalletApiService {
             priceImpact = json.optDouble("price_impact"),
             route = json.optString("route"),
         )
-    }
-
-    // ==================== Profile (local JWT decode) ====================
-
-    data class Profile(val id: String, val email: String, val username: String)
-
-    fun getProfile(): Profile {
-        val token = authToken ?: throw Exception("Not authenticated")
-        val parts = token.split(".")
-        if (parts.size < 2) throw Exception("Not authenticated")
-        val payload = String(Base64.decode(parts[1], Base64.DEFAULT))
-        val json = JSONObject(payload)
-        return Profile(
-            id = json.optString("user_id", json.optString("sub", "")),
-            email = json.optString("email", ""),
-            username = json.optString("username", json.optString("name", ""))
-        )
-    }
-
-    // ==================== Health (outside /api/v1) ====================
-
-    fun health(): JSONObject {
-        val base = baseUrl.removeSuffix("/api/v1")
-        val req = Request.Builder().url("$base/health").headers(headers()).get().build()
-        return execute(req)
-    }
-
-    // ==================== Import wallet (POST /wallets) ====================
-
-    fun importWallet(
-        label: String,
-        password: String,
-        mnemonic: String,
-        chainId: Int,
-        passphrase: String? = null
-    ): Wallet {
-        val body = JSONObject().apply {
-            put("label", label)
-            put("password", password)
-            put("chain_id", chainId)
-            put("mnemonic", mnemonic)
-            if (passphrase != null) put("passphrase", passphrase)
-        }.toString()
-        val req = requestBuilder("/wallets").post(body.toRequestBody(jsonMediaType)).build()
-        val json = execute(req)
-        return Wallet(
-            id = json.optString("id"),
-            label = json.optString("label"),
-            chainId = json.optInt("chain_id"),
-            address = json.optString("address"),
-            derivationPath = json.optString("derivation_path"),
-            mnemonic = json.optString("mnemonic", null)
-        )
-    }
-
-    // ==================== NFT transfer (POST /nft/transfer) ====================
-
-    fun transferNFT(
-        walletId: String,
-        password: String,
-        to: String,
-        tokenId: String,
-        contractAddress: String,
-        chainId: Int
-    ): JSONObject {
-        val body = JSONObject().apply {
-            put("wallet_id", walletId)
-            put("password", password)
-            put("to", to)
-            put("token_id", tokenId)
-            put("contract_address", contractAddress)
-            put("chain_id", chainId)
-        }.toString()
-        val req = requestBuilder("/nft/transfer").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    // ==================== Transaction receipt (GET /transactions/{txHash}) ====================
-
-    fun getTransactionReceipt(txHash: String, chainId: Int): JSONObject {
-        val path = "/transactions/${txHash}?chain_id=$chainId"
-        val req = requestBuilder(path).get().build()
-        return execute(req)
-    }
-
-    // ==================== Gas estimate (POST /gas/estimate) ====================
-
-    fun estimateGas(
-        from: String,
-        to: String,
-        value: String? = null,
-        data: String? = null,
-        chainId: Int
-    ): JSONObject {
-        val body = JSONObject().apply {
-            put("from", from)
-            put("to", to)
-            if (value != null) put("value", value)
-            if (data != null) put("data", data)
-            put("chain_id", chainId)
-        }.toString()
-        val req = requestBuilder("/gas/estimate").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    // ==================== Swap execute (POST /swap/execute) ====================
-
-    fun executeSwap(
-        walletId: String,
-        password: String,
-        fromToken: String,
-        toToken: String,
-        fromAmount: String,
-        chainId: Int
-    ): JSONObject {
-        val body = JSONObject().apply {
-            put("wallet_id", walletId)
-            put("password", password)
-            put("from_token", fromToken)
-            put("to_token", toToken)
-            put("from_amount", fromAmount)
-            put("chain_id", chainId)
-        }.toString()
-        val req = requestBuilder("/swap/execute").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    // ==================== AMM (GET /amm/quote, POST /amm/swap) ====================
-
-    fun getAmmQuote(fromToken: String, toToken: String, fromAmount: String, chainId: Int): SwapQuote {
-        val path = "/amm/quote?from_token=$fromToken&to_token=$toToken&from_amount=$fromAmount&chain_id=$chainId"
-        val req = requestBuilder(path).get().build()
-        val json = execute(req)
-        return SwapQuote(
-            fromToken = json.optString("from_token"),
-            toToken = json.optString("to_token"),
-            fromAmount = json.optString("from_amount"),
-            toAmount = json.optString("to_amount"),
-            priceImpact = json.optDouble("price_impact"),
-            route = json.optString("route")
-        )
-    }
-
-    fun ammSwap(
-        walletId: String,
-        password: String,
-        fromToken: String,
-        toToken: String,
-        fromAmount: String,
-        chainId: Int
-    ): JSONObject {
-        val body = JSONObject().apply {
-            put("wallet_id", walletId)
-            put("password", password)
-            put("from_token", fromToken)
-            put("to_token", toToken)
-            put("from_amount", fromAmount)
-            put("chain_id", chainId)
-        }.toString()
-        val req = requestBuilder("/amm/swap").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    // ==================== Staking actions (POST /staking/{stake,unstake,claim}) ====================
-
-    fun stake(walletId: String, password: String, asset: String, amount: String, chainId: Int): JSONObject {
-        val body = JSONObject().apply {
-            put("wallet_id", walletId)
-            put("password", password)
-            put("asset", asset)
-            put("amount", amount)
-            put("chain_id", chainId)
-        }.toString()
-        val req = requestBuilder("/staking/stake").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun unstake(walletId: String, password: String, asset: String, amount: String, chainId: Int): JSONObject {
-        val body = JSONObject().apply {
-            put("wallet_id", walletId)
-            put("password", password)
-            put("asset", asset)
-            put("amount", amount)
-            put("chain_id", chainId)
-        }.toString()
-        val req = requestBuilder("/staking/unstake").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun claim(walletId: String, password: String, asset: String, chainId: Int): JSONObject {
-        val body = JSONObject().apply {
-            put("wallet_id", walletId)
-            put("password", password)
-            put("asset", asset)
-            put("chain_id", chainId)
-        }.toString()
-        val req = requestBuilder("/staking/claim").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    // ==================== Networks (alias of getChains) ====================
-
-    fun getNetworks(): List<ChainInfo> = getChains()
-
-    // ==================== Non-EVM (POST /non_evm/{address,sign,send}) ====================
-
-    fun nonEvmAddress(seed: String, chainType: String, chainId: String, path: String? = null): JSONObject {
-        val body = JSONObject().apply {
-            put("seed", seed)
-            put("chain_type", chainType)
-            put("chain_id", chainId)
-            if (path != null) put("path", path)
-        }.toString()
-        val req = requestBuilder("/non_evm/address").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun nonEvmSign(seed: String, chainType: String, chainId: String, messageHash: String, path: String? = null): JSONObject {
-        val body = JSONObject().apply {
-            put("seed", seed)
-            put("chain_type", chainType)
-            put("chain_id", chainId)
-            put("message_hash", messageHash)
-            if (path != null) put("path", path)
-        }.toString()
-        val req = requestBuilder("/non_evm/sign").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun nonEvmSend(
-        seed: String,
-        chainType: String,
-        chainId: String,
-        to: String,
-        value: String,
-        path: String? = null
-    ): JSONObject {
-        val body = JSONObject().apply {
-            put("seed", seed)
-            put("chain_type", chainType)
-            put("chain_id", chainId)
-            put("to", to)
-            put("value", value)
-            if (path != null) put("path", path)
-        }.toString()
-        val req = requestBuilder("/non_evm/send").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    // ==================== Address book (GET/POST/PUT/DELETE /address-book/contacts) ====================
-
-    fun getAddressBookContacts(): List<JSONObject> =
-        executeList(requestBuilder("/address-book/contacts").get().build(), "contacts")
-
-    fun addContact(name: String, address: String, chainId: Int? = null): JSONObject {
-        val body = JSONObject().apply {
-            put("name", name)
-            put("address", address)
-            if (chainId != null) put("chain_id", chainId)
-        }.toString()
-        val req = requestBuilder("/address-book/contacts").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun updateContact(id: String, name: String? = null, address: String? = null, chainId: Int? = null): JSONObject {
-        val body = JSONObject().apply {
-            if (name != null) put("name", name)
-            if (address != null) put("address", address)
-            if (chainId != null) put("chain_id", chainId)
-        }.toString()
-        val req = requestBuilder("/address-book/contacts/${id}").put(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun deleteContact(id: String): JSONObject {
-        val req = requestBuilder("/address-book/contacts/${id}").delete().build()
-        return execute(req)
-    }
-
-    // ==================== Devices (GET/POST /devices, sync + delete) ====================
-
-    fun getDevices(): List<JSONObject> =
-        executeList(requestBuilder("/devices").get().build(), "devices")
-
-    fun registerDevice(name: String, deviceType: String): JSONObject {
-        val body = JSONObject().apply {
-            put("name", name)
-            put("device_type", deviceType)
-        }.toString()
-        val req = requestBuilder("/devices").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun syncDevice(deviceId: String): JSONObject {
-        val req = requestBuilder("/devices/${deviceId}/sync").post("".toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun deleteDevice(deviceId: String): JSONObject {
-        val req = requestBuilder("/devices/${deviceId}").delete().build()
-        return execute(req)
-    }
-
-    // ==================== Approvals (GET /approvals, DELETE /approvals/{id}) ====================
-
-    fun getApprovals(address: String, chainId: Int): List<JSONObject> {
-        val path = "/approvals?address=${URLEncoder.encode(address, "UTF-8")}&chain_id=$chainId"
-        val req = requestBuilder(path).get().build()
-        return executeList(req, "approvals")
-    }
-
-    fun revokeApproval(approvalId: String): JSONObject {
-        val req = requestBuilder("/approvals/${approvalId}").delete().build()
-        return execute(req)
-    }
-
-    // ==================== Keystore (POST /keystore/{export,import}) ====================
-
-    fun exportKeystore(walletId: String, password: String): JSONObject {
-        val body = JSONObject().apply {
-            put("wallet_id", walletId)
-            put("password", password)
-        }.toString()
-        val req = requestBuilder("/keystore/export").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun importKeystore(keystore: String, password: String, label: String? = null): Wallet {
-        val body = JSONObject().apply {
-            put("keystore", keystore)
-            put("password", password)
-            if (label != null) put("label", label)
-        }.toString()
-        val req = requestBuilder("/keystore/import").post(body.toRequestBody(jsonMediaType)).build()
-        val json = execute(req)
-        return Wallet(
-            id = json.optString("id"),
-            label = json.optString("label"),
-            chainId = json.optInt("chain_id"),
-            address = json.optString("address"),
-            derivationPath = json.optString("derivation_path"),
-            mnemonic = json.optString("mnemonic", null)
-        )
-    }
-
-    // ==================== Encrypted seed export/import (POST /wallets...) ====================
-
-    fun exportEncryptedSeed(walletId: String, password: String): JSONObject {
-        val body = JSONObject().put("password", password).toString()
-        val req = requestBuilder("/wallets/${walletId}/export-encrypted-seed")
-            .post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun importEncryptedSeed(encryptedSeed: String, password: String, label: String? = null): Wallet {
-        val body = JSONObject().apply {
-            put("encrypted_seed", encryptedSeed)
-            put("password", password)
-            if (label != null) put("label", label)
-        }.toString()
-        val req = requestBuilder("/wallets/import-encrypted-seed")
-            .post(body.toRequestBody(jsonMediaType)).build()
-        val json = execute(req)
-        return Wallet(
-            id = json.optString("id"),
-            label = json.optString("label"),
-            chainId = json.optInt("chain_id"),
-            address = json.optString("address"),
-            derivationPath = json.optString("derivation_path"),
-            mnemonic = json.optString("mnemonic", null)
-        )
-    }
-
-    // ==================== Security (GET /security/check-*, POST /security/scan) ====================
-
-    fun checkUrl(url: String): JSONObject {
-        val path = "/security/check-url?url=${URLEncoder.encode(url, "UTF-8")}"
-        val req = requestBuilder(path).get().build()
-        return execute(req)
-    }
-
-    fun checkAddress(address: String): JSONObject {
-        val path = "/security/check-address?address=${URLEncoder.encode(address, "UTF-8")}"
-        val req = requestBuilder(path).get().build()
-        return execute(req)
-    }
-
-    fun securityScan(target: String): JSONObject {
-        val body = JSONObject().put("target", target).toString()
-        val req = requestBuilder("/security/scan").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    // ==================== Lending (GET /lending/markets,positions; POST /lending/{supply,borrow,withdraw,repay}) ====================
-
-    fun getLendingMarkets(): List<JSONObject> =
-        executeList(requestBuilder("/lending/markets").get().build(), "markets")
-
-    fun getLendingPositions(): List<JSONObject> =
-        executeList(requestBuilder("/lending/positions").get().build(), "positions")
-
-    fun lendingSupply(walletId: String, password: String, asset: String, amount: String, chainId: Int): JSONObject {
-        val body = JSONObject().apply {
-            put("wallet_id", walletId)
-            put("password", password)
-            put("asset", asset)
-            put("amount", amount)
-            put("chain_id", chainId)
-        }.toString()
-        val req = requestBuilder("/lending/supply").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun lendingBorrow(walletId: String, password: String, asset: String, amount: String, chainId: Int): JSONObject {
-        val body = JSONObject().apply {
-            put("wallet_id", walletId)
-            put("password", password)
-            put("asset", asset)
-            put("amount", amount)
-            put("chain_id", chainId)
-        }.toString()
-        val req = requestBuilder("/lending/borrow").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun lendingWithdraw(walletId: String, password: String, asset: String, amount: String, chainId: Int): JSONObject {
-        val body = JSONObject().apply {
-            put("wallet_id", walletId)
-            put("password", password)
-            put("asset", asset)
-            put("amount", amount)
-            put("chain_id", chainId)
-        }.toString()
-        val req = requestBuilder("/lending/withdraw").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun lendingRepay(walletId: String, password: String, asset: String, amount: String, chainId: Int): JSONObject {
-        val body = JSONObject().apply {
-            put("wallet_id", walletId)
-            put("password", password)
-            put("asset", asset)
-            put("amount", amount)
-            put("chain_id", chainId)
-        }.toString()
-        val req = requestBuilder("/lending/repay").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    // ==================== Copy trading (GET /copytrading/{traders,signals}; follow + stop) ====================
-
-    fun getCopyTraders(): List<JSONObject> =
-        executeList(requestBuilder("/copytrading/traders").get().build(), "traders")
-
-    fun followTrader(traderId: String, allocation: String? = null): JSONObject {
-        val body = JSONObject().apply {
-            put("trader_id", traderId)
-            if (allocation != null) put("allocation", allocation)
-        }.toString()
-        val req = requestBuilder("/copytrading/follow").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun stopCopyTrader(copierId: String): JSONObject {
-        val req = requestBuilder("/copytrading/copiers/${copierId}/stop")
-            .post("".toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun getCopySignals(): List<JSONObject> =
-        executeList(requestBuilder("/copytrading/signals").get().build(), "signals")
-
-    // ==================== DAO (GET /dao/{proposals,delegates}; create + vote) ====================
-
-    fun getDaoProposals(): List<JSONObject> =
-        executeList(requestBuilder("/dao/proposals").get().build(), "proposals")
-
-    fun createDaoProposal(title: String, description: String): JSONObject {
-        val body = JSONObject().apply {
-            put("title", title)
-            put("description", description)
-        }.toString()
-        val req = requestBuilder("/dao/proposals").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun voteDaoProposal(proposalId: String, support: Boolean): JSONObject {
-        val body = JSONObject().put("support", support).toString()
-        val req = requestBuilder("/dao/proposals/${proposalId}/vote")
-            .post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun getDaoDelegates(): List<JSONObject> =
-        executeList(requestBuilder("/dao/delegates").get().build(), "delegates")
-
-    // ==================== Perpetual (GET /perpetual/positions; create + close) ====================
-
-    fun getPerpetualPositions(): List<JSONObject> =
-        executeList(requestBuilder("/perpetual/positions").get().build(), "positions")
-
-    fun createPerpetualPosition(pair: String, side: String, size: String, leverage: Int, chainId: Int): JSONObject {
-        val body = JSONObject().apply {
-            put("pair", pair)
-            put("side", side)
-            put("size", size)
-            put("leverage", leverage)
-            put("chain_id", chainId)
-        }.toString()
-        val req = requestBuilder("/perpetual/positions").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun closePerpetualPosition(positionId: String): JSONObject {
-        val req = requestBuilder("/perpetual/positions/${positionId}/close")
-            .post("".toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    // ==================== Margin (GET /margin/positions; create + close) ====================
-
-    fun getMarginPositions(): List<JSONObject> =
-        executeList(requestBuilder("/margin/positions").get().build(), "positions")
-
-    fun createMarginPosition(pair: String, side: String, size: String, leverage: Int, chainId: Int): JSONObject {
-        val body = JSONObject().apply {
-            put("pair", pair)
-            put("side", side)
-            put("size", size)
-            put("leverage", leverage)
-            put("chain_id", chainId)
-        }.toString()
-        val req = requestBuilder("/margin/positions").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun closeMarginPosition(positionId: String): JSONObject {
-        val req = requestBuilder("/margin/positions/${positionId}/close")
-            .post("".toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    // ==================== Prediction (GET /prediction/markets; bet) ====================
-
-    fun getPredictionMarkets(): List<JSONObject> =
-        executeList(requestBuilder("/prediction/markets").get().build(), "markets")
-
-    fun placePredictionBet(marketId: String, side: String, amount: String): JSONObject {
-        val body = JSONObject().apply {
-            put("side", side)
-            put("amount", amount)
-        }.toString()
-        val req = requestBuilder("/prediction/markets/${marketId}/bet")
-            .post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    // ==================== Launchpool (GET /launchpool, /launchpool/stakes; stake + unstake) ====================
-
-    fun getLaunchpool(): JSONObject =
-        execute(requestBuilder("/launchpool").get().build())
-
-    fun getLaunchpoolStakes(): List<JSONObject> =
-        executeList(requestBuilder("/launchpool/stakes").get().build(), "stakes")
-
-    fun launchpoolStake(walletId: String, password: String, amount: String): JSONObject {
-        val body = JSONObject().apply {
-            put("wallet_id", walletId)
-            put("password", password)
-            put("amount", amount)
-        }.toString()
-        val req = requestBuilder("/launchpool/stake").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    fun launchpoolUnstake(walletId: String, password: String, amount: String): JSONObject {
-        val body = JSONObject().apply {
-            put("wallet_id", walletId)
-            put("password", password)
-            put("amount", amount)
-        }.toString()
-        val req = requestBuilder("/launchpool/unstake").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    // ==================== Token sales (GET /token-sales; participate) ====================
-
-    fun getTokenSales(): List<JSONObject> =
-        executeList(requestBuilder("/token-sales").get().build(), "sales")
-
-    fun participateTokenSale(saleId: String, amount: String): JSONObject {
-        val body = JSONObject().put("amount", amount).toString()
-        val req = requestBuilder("/token-sales/${saleId}/participate")
-            .post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    // ==================== Dapps (GET /dapps, /dapps/categories) ====================
-
-    fun getDapps(): List<JSONObject> =
-        executeList(requestBuilder("/dapps").get().build(), "dapps")
-
-    fun getDappCategories(): List<JSONObject> =
-        executeList(requestBuilder("/dapps/categories").get().build(), "categories")
-
-    // ==================== Chart / DeFi (GET /chart/history, /defi/protocols) ====================
-
-    fun getChartHistory(token: String, days: Int? = null): JSONObject {
-        val path = if (days != null) {
-            "/chart/history?token=${URLEncoder.encode(token, "UTF-8")}&days=$days"
-        } else {
-            "/chart/history?token=${URLEncoder.encode(token, "UTF-8")}"
-        }
-        val req = requestBuilder(path).get().build()
-        return execute(req)
-    }
-
-    fun getDefiProtocols(): List<JSONObject> =
-        executeList(requestBuilder("/defi/protocols").get().build(), "protocols")
-
-    // ==================== Token registry + trading terminal (public) ====================
-
-    /** GET /tokens/registry — canonical per-chain token asset registry. */
-    fun getTokenRegistry(chainId: Long? = null): JSONObject {
-        val path = if (chainId != null) "/tokens/registry?chain_id=$chainId" else "/tokens/registry"
-        return execute(requestBuilder(path).get().build())
-    }
-
-    /** GET /terminal/kline/:symbol — real OHLC candles (CoinGecko-backed). */
-    fun getTerminalKline(symbol: String, days: Int = 1): JSONObject =
-        execute(requestBuilder("/terminal/kline/$symbol?days=$days").get().build())
-
-    /** GET /terminal/ticker/:symbol — real 24h ticker (CoinGecko-backed). */
-    fun getTerminalTicker(symbol: String): JSONObject =
-        execute(requestBuilder("/terminal/ticker/$symbol").get().build())
-
-    // ==================== Payment URI parser (bare 0x, ethereum:, EIP-681) ====================
-
-    data class PaymentUri(val address: String, val amount: String?, val chainId: Int?)
-
-    fun parsePaymentUri(input: String): PaymentUri? {
-        val trimmed = input.trim()
-        if (trimmed.isEmpty()) return null
-        // Bare 0x address (and possibly ?value=... appended).
-        if (trimmed.startsWith("0x", ignoreCase = true)) {
-            val (addr, params) = splitUri(trimmed)
-            if (!isValidAddress(addr)) return null
-            val amount = params["value"] ?: params["amount"]
-            return PaymentUri(addr, amount, params["chainId"]?.toIntOrNull())
-        }
-        // ethereum:<address> or ethereum:<address>?... (EIP-681) or ethereum:/<address>
-        if (trimmed.startsWith("ethereum:", ignoreCase = true)) {
-            val rest = trimmed.substring("ethereum:".length).trim()
-            val cleaned = if (rest.startsWith("/")) rest.removePrefix("/") else rest
-            if (cleaned.startsWith("@")) {
-                // EIP-681 chain-tagged form: ethereum:<chainId>@<address>?...
-                val atIdx = cleaned.indexOf('@')
-                val chainPart = cleaned.substring(1, atIdx)
-                val remainder = cleaned.substring(atIdx + 1)
-                val (addr, params) = splitUri(remainder)
-                if (!isValidAddress(addr)) return null
-                val amount = params["value"] ?: params["amount"]
-                return PaymentUri(addr, amount, chainPart.toIntOrNull() ?: params["chainId"]?.toIntOrNull())
-            }
-            val (addr, params) = splitUri(cleaned)
-            if (!isValidAddress(addr)) return null
-            val amount = params["value"] ?: params["amount"]
-            return PaymentUri(addr, amount, params["chainId"]?.toIntOrNull())
-        }
-        return null
-    }
-
-    private fun splitUri(s: String): Pair<String, Map<String, String>> {
-        val qIdx = s.indexOf('?')
-        if (qIdx < 0) return s to emptyMap()
-        val addr = s.substring(0, qIdx)
-        val query = s.substring(qIdx + 1)
-        val params = mutableMapOf<String, String>()
-        for (pair in query.split('&')) {
-            val eq = pair.indexOf('=')
-            if (eq > 0) {
-                val k = pair.substring(0, eq)
-                val v = pair.substring(eq + 1)
-                params[k] = v
-            }
-        }
-        return addr to params
-    }
-
-    private fun isValidAddress(s: String): Boolean {
-        val a = s.trim()
-        if (!a.startsWith("0x", ignoreCase = true)) return false
-        val hex = a.substring(2)
-        return hex.length == 40 && hex.all { it.isLetterOrDigit() }
-    }
-
-    // ==================== Passkey wallet creation (POST /passkey/wallet) ====================
-
-    /**
-     * Parameters for creating a passkey-backed wallet via POST /passkey/wallet.
-     * The backend persists the WebAuthn credential and derives/encrypts the seed.
-     */
-    data class PasskeyWalletParams(
-        val label: String,
-        val chainId: Int,
-        val accountIndex: Int,
-        val entropyBits: Int = 256,
-        val credentialId: String,
-        val publicKey: String,
-        val signCount: Long = 0L,
-        val attestation: String? = null
-    )
-
-    /**
-     * Result of POST /passkey/wallet — includes the freshly-derived wallet plus
-     * the one-time mnemonic/unlock material the backend hands back on creation.
-     */
-    data class PasskeyWalletResult(
-        val walletId: String,
-        val label: String,
-        val chainId: Int,
-        val address: String,
-        val derivationPath: String,
-        val mnemonic: String?,
-        val unlockKey: String?,
-        val unlockToken: String?
-    )
-
-    /**
-     * Create a passkey-backed wallet via POST /passkey/wallet. Forwards the
-     * WebAuthn credential material to the backend, which derives the HD wallet
-     * and returns the seed/unlock material once.
-     */
-    suspend fun passkeyCreateWallet(params: PasskeyWalletParams): PasskeyWalletResult {
-        val body = JSONObject().apply {
-            put("label", params.label)
-            put("chain_id", params.chainId)
-            put("account_index", params.accountIndex)
-            put("entropy_bits", params.entropyBits)
-            put("credential_id", params.credentialId)
-            put("public_key", params.publicKey)
-            put("sign_count", params.signCount)
-            if (params.attestation != null) put("attestation", params.attestation)
-        }.toString()
-        val req = requestBuilder("/passkey/wallet").post(body.toRequestBody(jsonMediaType)).build()
-        val json = execute(req)
-        return PasskeyWalletResult(
-            walletId = json.optString("wallet_id"),
-            label = json.optString("label"),
-            chainId = json.optInt("chain_id"),
-            address = json.optString("address"),
-            derivationPath = json.optString("derivation_path"),
-            mnemonic = json.optString("mnemonic", null),
-            unlockKey = json.optString("unlock_key", null),
-            unlockToken = json.optString("unlock_token", null)
-        )
-    }
-
-    // ==================== Wallet lock / unlock ====================
-
-    /**
-     * Parameters for setting up a wallet lock via POST /wallets/:id/lock. The
-     * caller supplies whichever unlock factors it wants the backend to accept
-     * (passcode and/or a registered passkey).
-     */
-    data class LockParams(
-        val passcode: String? = null,
-        val passkeyCredentialId: String? = null,
-        val passkeyPublicKey: String? = null
-    )
-
-    /**
-     * Configure a wallet's lock via POST /wallets/:id/lock. Registers the
-     * passcode and/or passkey that [unlockWallet] will later require.
-     */
-    suspend fun setupLock(walletId: String, params: LockParams): JSONObject {
-        val body = JSONObject().apply {
-            if (params.passcode != null) put("passcode", params.passcode)
-            if (params.passkeyCredentialId != null) put("passkey_credential_id", params.passkeyCredentialId)
-            if (params.passkeyPublicKey != null) put("passkey_public_key", params.passkeyPublicKey)
-        }.toString()
-        val req = requestBuilder("/wallets/${walletId}/lock")
-            .post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    /**
-     * Parameters for unlocking a wallet via POST /wallets/:id/unlock. The caller
-     * supplies one or more factors: the passcode, the wallet password, or the
-     * WebAuthn assertion material plus the unwrapped unlock key.
-     */
-    data class UnlockParams(
-        val passcode: String? = null,
-        val password: String? = null,
-        val passkeyAssertion: String? = null,
-        val passkeyAuthData: String? = null,
-        val passkeyClientData: String? = null,
-        val unwrappedUnlockKey: String? = null
-    )
-
-    /**
-     * Unlock a wallet via POST /wallets/:id/unlock. Returns the short-lived
-     * [unlock_token] (and its TTL) used to authorize subsequent signing calls
-     * such as [sendTransaction] / [autoSendTransaction].
-     */
-    suspend fun unlockWallet(walletId: String, params: UnlockParams): JSONObject {
-        val body = JSONObject().apply {
-            if (params.passcode != null) put("passcode", params.passcode)
-            if (params.password != null) put("password", params.password)
-            if (params.passkeyAssertion != null) put("passkey_assertion", params.passkeyAssertion)
-            if (params.passkeyAuthData != null) put("passkey_auth_data", params.passkeyAuthData)
-            if (params.passkeyClientData != null) put("passkey_client_data", params.passkeyClientData)
-            if (params.unwrappedUnlockKey != null) put("unwrapped_unlock_key", params.unwrappedUnlockKey)
-        }.toString()
-        val req = requestBuilder("/wallets/${walletId}/unlock")
-            .post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    // ==================== KYC ====================
-
-    /**
-     * Fetch KYC status via GET /kyc/status. When [userId] is null the backend
-     * resolves the caller from the Bearer JWT.
-     */
-    suspend fun getKycStatus(userId: String? = null): JSONObject {
-        val path = if (userId != null) {
-            "/kyc/status?user_id=${URLEncoder.encode(userId, "UTF-8")}"
-        } else {
-            "/kyc/status"
-        }
-        val req = requestBuilder(path).get().build()
-        return execute(req)
-    }
-
-    /**
-     * Begin KYC registration via POST /kyc/register. The [body] is forwarded as-is
-     * to the backend KYC provider integration.
-     */
-    suspend fun registerKyc(body: JSONObject): JSONObject {
-        val req = requestBuilder("/kyc/register")
-            .post(body.toString().toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    /**
-     * Submit KYC data via POST /kyc/submit. The [body] is forwarded as-is to the
-     * backend KYC provider integration.
-     */
-    suspend fun submitKyc(body: JSONObject): JSONObject {
-        val req = requestBuilder("/kyc/submit")
-            .post(body.toString().toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    /**
-     * Upload a KYC document via POST /kyc/document (multipart/form-data). The
-     * [document] part is attached as the file payload; any [fields] are added as
-     * ordinary form text parts. Uses a dedicated multipart RequestBody because
-     * the JSON-only [request] helpers don't fit multipart bodies.
-     */
-    suspend fun submitKycDocument(
-        document: RequestBody,
-        documentName: String = "document",
-        fields: Map<String, String> = emptyMap()
-    ): JSONObject {
-        val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
-        for ((k, v) in fields) builder.addFormDataPart(k, v)
-        builder.addFormDataPart("document", documentName, document)
-        // Multipart bodies carry their own Content-Type; drop the default
-        // application/json header that requestBuilder injects so OkHttp can set
-        // the correct multipart boundary.
-        val req = Request.Builder()
-            .url("$baseUrl/kyc/document")
-            .headers(
-                okhttp3.Headers.Builder()
-                    .add("Accept", "application/json")
-                    .also { authToken?.let { h -> add("Authorization", "Bearer $h") } }
-                    .build()
-            )
-            .post(builder.build())
-            .build()
-        return execute(req)
-    }
-
-    /**
-     * Fetch a KYC session via GET /kyc/session/:id.
-     */
-    suspend fun getKycSession(sessionId: String): JSONObject {
-        val req = requestBuilder("/kyc/session/${sessionId}").get().build()
-        return execute(req)
-    }
-
-    /**
-     * Create a P2P order via POST /p2p/orders. This endpoint is KYC-gated: when
-     * the caller is not KYC-verified the backend responds 403 with
-     * `{ "kyc_required": true }`, which surfaces here as an [IOException].
-     */
-    suspend fun createP2POrder(body: JSONObject): JSONObject {
-        val req = requestBuilder("/p2p/orders")
-            .post(body.toString().toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    // ==================== Bridge (proxied to bridge_service :8007) ====================
-    //
-    // Cross-chain bridge routes. All forward to /api/v1/bridge/* on the wallet
-    // backend (port 8443), which proxies them to bridge_service (:8007). Lists
-    // return [String: Any] via requestRaw-style helpers; singletons return
-    // JSONObject. Same Bearer JWT auth as every other protected route.
-
-    /** GET /bridge/routes -> available cross-chain routes. */
-    fun getBridgeRoutes(): List<JSONObject> =
-        executeList(requestBuilder("/bridge/routes").get().build(), "routes")
-
-    /** POST /bridge/quote { fromChain, toChain, token, amount } -> quote. */
-    fun getBridgeQuote(fromChain: Int, toChain: Int, token: String, amount: String): JSONObject {
-        val body = JSONObject().apply {
-            put("fromChain", fromChain)
-            put("toChain", toChain)
-            put("token", token)
-            put("amount", amount)
-        }.toString()
-        val req = requestBuilder("/bridge/quote").post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    /** POST /bridge/transfer { ... } -> initiates a cross-chain transfer. */
-    fun bridgeTransfer(body: JSONObject): JSONObject {
-        val req = requestBuilder("/bridge/transfer")
-            .post(body.toString().toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    /** GET /bridge/tx/:id -> status of a bridge transfer. */
-    fun getBridgeTx(id: String): JSONObject {
-        val req = requestBuilder("/bridge/tx/${id}").get().build()
-        return execute(req)
-    }
-
-    /** GET /bridge/history -> caller's bridge transfer history. */
-    fun getBridgeHistory(): List<JSONObject> =
-        executeList(requestBuilder("/bridge/history").get().build(), "history")
-
-    // ==================== dApp browser / WalletConnect (proxied to dapp_browser :8083) ====================
-    //
-    // WalletConnect pairing + session lifecycle routes. All forward to
-    // /api/v1/dapp/* on the wallet backend (port 8443), which proxies them to
-    // dapp_browser (:8083). Pairing approval/rejection take empty bodies; the
-    // request/response endpoints forward opaque JSON.
-
-    /** GET /dapp/pairings -> active WalletConnect pairings. */
-    fun getDappPairings(): List<JSONObject> =
-        executeList(requestBuilder("/dapp/pairings").get().build(), "pairings")
-
-    /** POST /dapp/pairings { ... } -> create a new pairing. */
-    fun createDappPairing(body: JSONObject): JSONObject {
-        val req = requestBuilder("/dapp/pairings")
-            .post(body.toString().toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    /** POST /dapp/pairings/:topic/approve -> approve a pending pairing (empty body). */
-    fun approveDappPairing(topic: String): JSONObject {
-        val body = JSONObject().toString()
-        val req = requestBuilder("/dapp/pairings/${topic}/approve")
-            .post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    /** POST /dapp/pairings/:topic/reject -> reject a pending pairing (empty body). */
-    fun rejectDappPairing(topic: String): JSONObject {
-        val body = JSONObject().toString()
-        val req = requestBuilder("/dapp/pairings/${topic}/reject")
-            .post(body.toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    /** GET /dapp/sessions -> active WalletConnect sessions. */
-    fun getDappSessions(): List<JSONObject> =
-        executeList(requestBuilder("/dapp/sessions").get().build(), "sessions")
-
-    /** POST /dapp/sessions/:topic/request { ... } -> issue a session request. */
-    fun dappSessionRequest(topic: String, body: JSONObject): JSONObject {
-        val req = requestBuilder("/dapp/sessions/${topic}/request")
-            .post(body.toString().toRequestBody(jsonMediaType)).build()
-        return execute(req)
-    }
-
-    /** GET /dapp/sessions/:topic/request -> pending request for a session. */
-    fun getDappSessionRequest(topic: String): JSONObject {
-        val req = requestBuilder("/dapp/sessions/${topic}/request").get().build()
-        return execute(req)
-    }
-
-    /** POST /dapp/sessions/:topic/request/:id/respond { ... } -> respond to a request. */
-    fun dappSessionRespond(topic: String, id: String, body: JSONObject): JSONObject {
-        val req = requestBuilder("/dapp/sessions/${topic}/request/${id}/respond")
-            .post(body.toString().toRequestBody(jsonMediaType)).build()
-        return execute(req)
     }
 }

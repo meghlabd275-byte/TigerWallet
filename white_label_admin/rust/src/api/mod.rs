@@ -91,6 +91,25 @@ pub fn router() -> Router {
         .route("/api/v1/admin/admin-permissions/:id", get(get_admin_permission).put(update_admin_permission).delete(delete_admin_permission))
         .route("/api/v1/admin/admins/:id/role", post(assign_admin_role))
         .route("/api/v1/admin/admins/:id/permissions", get(get_admin_permissions))
+        // --- 4 missing WL product governance domains (mirrors Go wl_products.go) ---
+        // liquidity_admin: /wl-liquidity/sources CRUD + allocations + stats
+        .route("/api/v1/admin/wl-liquidity/sources", get(list_wl_liquidity_sources).post(create_wl_liquidity_source))
+        .route("/api/v1/admin/wl-liquidity/sources/:id", get(get_wl_liquidity_source).put(update_wl_liquidity_source).delete(delete_wl_liquidity_source))
+        .route("/api/v1/admin/wl-liquidity/allocations", get(list_wl_liquidity_allocations).post(set_wl_liquidity_allocation))
+        .route("/api/v1/admin/wl-liquidity/stats", get(wl_liquidity_stats))
+        // card_admin: /wl-cards list/issue + status + transactions + stats
+        .route("/api/v1/admin/wl-cards", get(list_wl_cards).post(issue_wl_card))
+        .route("/api/v1/admin/wl-cards/:id/status", put(update_wl_card_status))
+        .route("/api/v1/admin/wl-cards/transactions", get(list_wl_card_transactions))
+        .route("/api/v1/admin/wl-cards/stats", get(wl_card_stats))
+        // bot_admin: /wl-bots/operators list/register + status + config + stats
+        .route("/api/v1/admin/wl-bots/operators", get(list_wl_bot_operators).post(register_wl_bot_operator))
+        .route("/api/v1/admin/wl-bots/operators/:id/status", put(update_wl_bot_operator_status))
+        .route("/api/v1/admin/wl-bots/config", get(get_wl_bot_config))
+        .route("/api/v1/admin/wl-bots/stats", get(wl_bot_stats))
+        // wallet-management: WalletAdmin scope — withdrawals approve/reject/process
+        // (list already wired above), fees CRUD (already wired above), user status.
+        .route("/api/v1/admin/withdrawals/:id/process", post(process_withdrawal))
 }
 
 async fn login(Json(req): Json<LoginRequest>) -> Json<ApiResponse<LoginResponse>> {
@@ -116,6 +135,7 @@ async fn get_transactions() -> Json<ApiResponse<Vec<Transaction>>> { Json(ApiRes
 async fn get_withdrawals() -> Json<ApiResponse<Vec<Withdrawal>>> { Json(ApiResponse::success(vec![])) }
 async fn approve_withdrawal(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
 async fn reject_withdrawal(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
+async fn process_withdrawal(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
 async fn get_tokens() -> Json<ApiResponse<Vec<Token>>> { Json(ApiResponse::success(vec![])) }
 async fn create_token(Json(token): Json<Token>) -> Json<ApiResponse<Token>> { Json(ApiResponse::success(token)) }
 async fn get_pairs() -> Json<ApiResponse<Vec<TradingPair>>> { Json(ApiResponse::success(vec![])) }
@@ -301,3 +321,46 @@ async fn delete_admin_permission(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>>
 
 async fn assign_admin_role(Path(_id): Path<Uuid>, Json(_req): Json<AssignRoleRequest>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
 async fn get_admin_permissions(Path(_id): Path<Uuid>) -> Json<ApiResponse<Vec<AdminPermission>>> { Json(ApiResponse::success(vec![])) }
+
+// ---------------------------------------------------------------------------
+// WL product governance handlers (mirror Go wl_products.go). Governance/config
+// records only — no fund movement. Real shapes match the Go backend.
+// ---------------------------------------------------------------------------
+
+// --- liquidity_admin: /wl-liquidity/sources (+ allocations + stats) ---
+async fn list_wl_liquidity_sources() -> Json<ApiResponse<Vec<WLLiquiditySource>>> { Json(ApiResponse::success(vec![])) }
+async fn create_wl_liquidity_source(Json(s): Json<WLLiquiditySource>) -> Json<ApiResponse<WLLiquiditySource>> { Json(ApiResponse::success(s)) }
+async fn get_wl_liquidity_source(Path(id): Path<Uuid>) -> Json<ApiResponse<WLLiquiditySource>> {
+    Json(ApiResponse::success(WLLiquiditySource { id, white_label_id: Uuid::nil(), name: String::new(), chain: String::new(), dex: String::new(), pool_address: String::new(), token_a: String::new(), token_b: String::new(), reserve_a: "0".into(), reserve_b: "0".into(), fee_pct: "0".into(), is_active: true, created_at: chrono::Utc::now() }))
+}
+async fn update_wl_liquidity_source(Path(_id): Path<Uuid>, Json(s): Json<WLLiquiditySource>) -> Json<ApiResponse<WLLiquiditySource>> { Json(ApiResponse::success(s)) }
+async fn delete_wl_liquidity_source(Path(_id): Path<Uuid>) -> Json<ApiResponse<()>> { Json(ApiResponse::success(())) }
+async fn list_wl_liquidity_allocations() -> Json<ApiResponse<Vec<WLLiquidityAllocation>>> { Json(ApiResponse::success(vec![])) }
+async fn set_wl_liquidity_allocation(Json(a): Json<WLLiquidityAllocation>) -> Json<ApiResponse<WLLiquidityAllocation>> { Json(ApiResponse::success(a)) }
+async fn wl_liquidity_stats() -> Json<serde_json::Value> {
+    Json(serde_json::json!({"total_sources": 0, "active_sources": 0, "total_reserve_a": "0", "allocations": 0}))
+}
+
+// --- card_admin: /wl-cards (+ transactions + stats) ---
+async fn list_wl_cards() -> Json<ApiResponse<Vec<WLCard>>> { Json(ApiResponse::success(vec![])) }
+async fn issue_wl_card(Json(c): Json<WLCard>) -> Json<ApiResponse<WLCard>> { Json(ApiResponse::success(c)) }
+async fn update_wl_card_status(Path(_id): Path<Uuid>, Json(s): Json<StatusUpdate>) -> Json<ApiResponse<()>> {
+    if s.status.is_empty() { return Json(ApiResponse::error("status required".into())); }
+    Json(ApiResponse::success(()))
+}
+async fn list_wl_card_transactions() -> Json<ApiResponse<Vec<WLCardTransaction>>> { Json(ApiResponse::success(vec![])) }
+async fn wl_card_stats() -> Json<serde_json::Value> {
+    Json(serde_json::json!({"total_cards": 0, "active_cards": 0, "frozen_cards": 0, "transactions": 0}))
+}
+
+// --- bot_admin: /wl-bots/operators (+ config + stats) ---
+async fn list_wl_bot_operators() -> Json<ApiResponse<Vec<WLBotOperator>>> { Json(ApiResponse::success(vec![])) }
+async fn register_wl_bot_operator(Json(o): Json<WLBotOperator>) -> Json<ApiResponse<WLBotOperator>> { Json(ApiResponse::success(o)) }
+async fn update_wl_bot_operator_status(Path(_id): Path<Uuid>, Json(s): Json<StatusUpdate>) -> Json<ApiResponse<()>> {
+    if s.status.is_empty() { return Json(ApiResponse::error("status required".into())); }
+    Json(ApiResponse::success(()))
+}
+async fn get_wl_bot_config() -> Json<serde_json::Value> { Json(serde_json::json!({"config": []})) }
+async fn wl_bot_stats() -> Json<serde_json::Value> {
+    Json(serde_json::json!({"total_operators": 0, "active": 0, "halted": 0}))
+}

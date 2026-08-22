@@ -1,20 +1,21 @@
 /**
  * TigerWallet - Production User Wallet Application
- * 
- * Complete Web3 wallet with:
- * - Multi-chain support (EVM + Solana + more)
- * - Real wallet creation/import
- * - Real transactions
- * - Dark/Light theme
- * - Full backend integration
+ *
+ * No-registration self-custody model (mirrors web/src/App.tsx): the app opens
+ * to a Create/Import choice (Onboarding page) when no wallet exists locally.
+ * The user never sees a register/login form — a transparent ephemeral session
+ * is provisioned behind the scenes (OnboardingContext) so the JWT-backed
+ * wallet-api backend is satisfied. Once a wallet is created/imported, the full
+ * multi-chain wallet experience unlocks.
  */
 
-import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { WalletProvider } from './contexts/WalletContext';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { AuthProvider } from './contexts/AuthContext';
+import { OnboardingProvider, useOnboarding } from './contexts/OnboardingContext';
 
 // Components
 import Sidebar from './components/Sidebar';
@@ -22,7 +23,7 @@ import Header from './components/Header';
 import LoadingSpinner from './components/LoadingSpinner';
 
 // Pages
-import LoginPage from './pages/LoginPage';
+import Onboarding from './pages/Onboarding';
 import HomePage from './pages/HomePage';
 import WalletPage from './pages/WalletPage';
 import SendPage from './pages/SendPage';
@@ -34,12 +35,6 @@ import StakingPage from './pages/StakingPage';
 import NFTsPage from './pages/NFTsPage';
 import HistoryPage from './pages/HistoryPage';
 import BridgePage from './pages/BridgePage';
-import KYCPage from './pages/KYCPage';
-import AddressBookPage from './pages/AddressBookPage';
-import ApprovalsPage from './pages/ApprovalsPage';
-import DevicesPage from './pages/DevicesPage';
-import KeystorePage from './pages/KeystorePage';
-import DeFiPage from './pages/DeFiPage';
 
 // Styles
 import './styles/globals.css';
@@ -53,27 +48,6 @@ const queryClient = new QueryClient({
     },
   },
 });
-
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      navigate('/login');
-    }
-  }, [isAuthenticated, isLoading, navigate]);
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-900">
-        <LoadingSpinner size="lg" />
-      </div>
-    );
-  }
-
-  return isAuthenticated ? <>{children}</> : null;
-}
 
 function AppLayout({ children }: { children: React.ReactNode }) {
   const { theme } = useTheme();
@@ -94,152 +68,44 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 }
 
 function AppRoutes() {
-  const { isAuthenticated } = useAuth();
+  const { ready, onboarded } = useOnboarding();
+
+  // Gate 1: session bootstrap in progress — show a boot screen (the user never
+  // waits on a login form; the ephemeral session is provisioned transparently).
+  if (!ready) {
+    return (
+      <div className="app-boot">
+        <LoadingSpinner size="lg" />
+        <span className="app-boot-text">Initializing secure wallet…</span>
+      </div>
+    );
+  }
+
+  // Gate 2: if no wallet exists locally, show the no-registration onboarding
+  // (Create/Import). The user never reaches the dashboard without a wallet.
+  // Onboarding is a full-screen flow (no sidebar/header), so it renders outside
+  // the Router too.
+  if (!onboarded) {
+    return <Onboarding />;
+  }
 
   return (
-    <Routes>
-      <Route path="/login" element={
-        isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />
-      } />
-      
-      <Route path="/" element={
-        <ProtectedRoute>
-          <AppLayout>
-            <HomePage />
-          </AppLayout>
-        </ProtectedRoute>
-      } />
-      
-      <Route path="/wallet" element={
-        <ProtectedRoute>
-          <AppLayout>
-            <WalletPage />
-          </AppLayout>
-        </ProtectedRoute>
-      } />
-      
-      <Route path="/send" element={
-        <ProtectedRoute>
-          <AppLayout>
-            <SendPage />
-          </AppLayout>
-        </ProtectedRoute>
-      } />
-      
-      <Route path="/receive" element={
-        <ProtectedRoute>
-          <AppLayout>
-            <ReceivePage />
-          </AppLayout>
-        </ProtectedRoute>
-      } />
-      
-      <Route path="/swap" element={
-        <ProtectedRoute>
-          <AppLayout>
-            <SwapPage />
-          </AppLayout>
-        </ProtectedRoute>
-      } />
-      
-      <Route path="/staking" element={
-        <ProtectedRoute>
-          <AppLayout>
-            <StakingPage />
-          </AppLayout>
-        </ProtectedRoute>
-      } />
-      
-      <Route path="/nfts" element={
-        <ProtectedRoute>
-          <AppLayout>
-            <NFTsPage />
-          </AppLayout>
-        </ProtectedRoute>
-      } />
-      
-      <Route path="/history" element={
-        <ProtectedRoute>
-          <AppLayout>
-            <HistoryPage />
-          </AppLayout>
-        </ProtectedRoute>
-      } />
-      
-      <Route path="/bridge" element={
-        <ProtectedRoute>
-          <AppLayout>
-            <BridgePage />
-          </AppLayout>
-        </ProtectedRoute>
-      } />
-      
-      <Route path="/dapps" element={
-        <ProtectedRoute>
-          <AppLayout>
-            <DAppsPage />
-          </AppLayout>
-        </ProtectedRoute>
-      } />
-      
-      <Route path="/settings" element={
-        <ProtectedRoute>
-          <AppLayout>
-            <SettingsPage />
-          </AppLayout>
-        </ProtectedRoute>
-      } />
-      
-      <Route path="/kyc" element={
-        <ProtectedRoute>
-          <AppLayout>
-            <KYCPage />
-          </AppLayout>
-        </ProtectedRoute>
-      } />
-
-      <Route path="/address-book" element={
-        <ProtectedRoute>
-          <AppLayout>
-            <AddressBookPage />
-          </AppLayout>
-        </ProtectedRoute>
-      } />
-
-      <Route path="/approvals" element={
-        <ProtectedRoute>
-          <AppLayout>
-            <ApprovalsPage />
-          </AppLayout>
-        </ProtectedRoute>
-      } />
-
-      <Route path="/devices" element={
-        <ProtectedRoute>
-          <AppLayout>
-            <DevicesPage />
-          </AppLayout>
-        </ProtectedRoute>
-      } />
-
-      <Route path="/keystore" element={
-        <ProtectedRoute>
-          <AppLayout>
-            <KeystorePage />
-          </AppLayout>
-        </ProtectedRoute>
-      } />
-
-      <Route path="/defi" element={
-        <ProtectedRoute>
-          <AppLayout>
-            <DeFiPage />
-          </AppLayout>
-        </ProtectedRoute>
-      } />
-
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <Router>
+      <Routes>
+        <Route path="/" element={<AppLayout><HomePage /></AppLayout>} />
+        <Route path="/wallet" element={<AppLayout><WalletPage /></AppLayout>} />
+        <Route path="/send" element={<AppLayout><SendPage /></AppLayout>} />
+        <Route path="/receive" element={<AppLayout><ReceivePage /></AppLayout>} />
+        <Route path="/swap" element={<AppLayout><SwapPage /></AppLayout>} />
+        <Route path="/staking" element={<AppLayout><StakingPage /></AppLayout>} />
+        <Route path="/nfts" element={<AppLayout><NFTsPage /></AppLayout>} />
+        <Route path="/history" element={<AppLayout><HistoryPage /></AppLayout>} />
+        <Route path="/bridge" element={<AppLayout><BridgePage /></AppLayout>} />
+        <Route path="/dapps" element={<AppLayout><DAppsPage /></AppLayout>} />
+        <Route path="/settings" element={<AppLayout><SettingsPage /></AppLayout>} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Router>
   );
 }
 
@@ -247,16 +113,17 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <AuthProvider>
-          <WalletProvider>
-            <Router>
+        <OnboardingProvider>
+          <AuthProvider>
+            <WalletProvider>
               <AppRoutes />
-            </Router>
-          </WalletProvider>
-        </AuthProvider>
+            </WalletProvider>
+          </AuthProvider>
+        </OnboardingProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );
 }
 
 export default App;
+

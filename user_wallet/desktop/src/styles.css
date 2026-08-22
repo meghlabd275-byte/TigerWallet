@@ -322,38 +322,56 @@ h1 {
 .mnemonic-warning { background: var(--bg-secondary); border: 1px solid var(--accent); border-radius: 12px; padding: 20px; margin-bottom: 24px; }
 .mnemonic-warning code { display: block; background: var(--bg-primary); padding: 12px; border-radius: 8px; margin: 12px 0; font-family: monospace; word-break: break-word; }
 .mnemonic-warning button { background: var(--accent); color: white; border: none; border-radius: 8px; padding: 8px 16px; cursor: pointer; }
-.mnemonic-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
-.backup-msg { margin-top: 10px; font-size: 0.85rem; color: var(--accent); }
+/* ===== Onboarding (no-registration Create/Import) ===== */
+.onboarding-root { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--text); padding: 16px; }
+.onboarding-root.dark { background: #0b0e14; }
+.onboarding-card { background: var(--bg-card); border-radius: 16px; padding: 40px; width: 100%; max-width: 460px; box-shadow: 0 8px 32px rgba(0,0,0,0.08); border: 1px solid var(--border); }
+.onboarding-logo { font-size: 1.6rem; font-weight: 700; text-align: center; margin-bottom: 24px; color: var(--accent); }
+.onboarding-spinner { text-align: center; padding: 40px; color: var(--text-muted); }
+.choose-grid { display: flex; flex-direction: column; gap: 16px; text-align: center; }
+.choose-grid h1 { margin: 0 0 4px; }
+.choose-grid .subtitle { color: var(--text-muted); margin: 0 0 16px; }
+.wallet-form { display: flex; flex-direction: column; gap: 12px; }
+.wallet-form h2 { margin: 0 0 4px; }
+.wallet-form .hint { color: var(--text-muted); font-size: 0.85rem; margin: 0; }
+.wallet-form label { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; }
+.wallet-form input, .wallet-form select, .wallet-form textarea { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--text); font-size: 1rem; }
+.wallet-form textarea { font-family: monospace; resize: vertical; }
+.form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+.btn-primary { background: var(--accent); color: #fff; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-secondary { background: transparent; color: var(--text); border: 1px solid var(--border); padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem; }
+.btn-secondary:hover { background: var(--bg); }
 
-/* Guest login */
-.login-subtitle { color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem; }
-.guest-actions { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
-.primary-btn { padding: 14px; border: none; border-radius: 8px; background-color: var(--accent); color: white; font-size: 16px; cursor: pointer; }
-.primary-btn:disabled { opacity: 0.6; cursor: default; }
+/* ===== Backup mnemonic ===== */
+.backup-card { background: var(--bg-card); border-radius: 16px; padding: 32px; max-width: 560px; width: 100%; border: 1px solid var(--border); }
+.backup-card.dark { background: #0b0e14; }
+.backup-card h2 { margin-top: 0; color: var(--accent); }
+.backup-warn { color: var(--text-muted); line-height: 1.5; }
+.mnemonic-reveal-toggle { margin: 16px 0; }
+.mnemonic-reveal-toggle label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem; }
+.mnemonic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; padding: 16px; background: var(--bg); border-radius: 8px; border: 1px dashed var(--border); margin: 12px 0; }
+.mnemonic-word { font-family: monospace; padding: 6px 8px; background: var(--bg-card); border-radius: 6px; border: 1px solid var(--border); }
+.mnemonic-word em { color: var(--accent); font-style: normal; margin-right: 6px; font-weight: 700; }
+.backup-actions { display: flex; flex-direction: column; gap: 10px; margin: 16px 0; }
+.btn-copy, .btn-gdrive, .btn-download { padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); }
+.btn-gdrive { background: #4285f4; color: #fff; border-color: #4285f4; }
+.btn-gdrive:disabled { opacity: 0.5; }
+.btn-download { background: var(--text-muted); color: #fff; border-color: var(--text-muted); }
+.backup-actions .hint { color: var(--text-muted); font-size: 0.8rem; }
+.backup-actions .ok { color: var(--success); font-size: 0.8rem; }
+.backup-actions .err { color: var(--error); font-size: 0.8rem; }
+.backup-confirm { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+.backup-confirm label { display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 12px; }
 
-/* Import / link buttons */
-.import-form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; padding: 20px; background: var(--bg-secondary); border-radius: 8px; }
-.import-form input, .import-form select, .import-form textarea { padding: 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; }
-.import-form textarea { resize: vertical; font-family: monospace; }
-.import-form button { padding: 10px 20px; border: none; border-radius: 8px; background-color: var(--accent); color: white; cursor: pointer; }
-.link-btn { background: transparent !important; color: var(--accent) !important; border: none; cursor: pointer; font-size: 0.875rem; padding: 8px; }
-
-/* Send page */
-.send-form { display: flex; flex-direction: column; gap: 8px; max-width: 480px; margin-top: 16px; }
-.send-form label { font-size: 0.85rem; color: var(--text-secondary); margin-top: 6px; }
-.send-form input, .send-form select { padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
-.send-form .qr-row { display: flex; gap: 8px; }
-.send-form .qr-row input { flex: 1; }
-.send-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
-.send-actions button { padding: 12px 20px; border: none; border-radius: 8px; background-color: var(--accent); color: white; cursor: pointer; }
-.send-actions button:disabled { opacity: 0.6; }
-.success-banner { background: rgba(76, 175, 80, 0.15); border: 1px solid var(--accent); border-radius: 12px; padding: 16px; margin-bottom: 20px; }
-.success-banner h3 { color: var(--accent); margin-bottom: 8px; }
-
-/* Receive page */
-.receive-page label { font-size: 0.85rem; color: var(--text-secondary); display: block; margin: 12px 0 6px; }
-.receive-page select { padding: 10px; border: 1px solid var(--border); border-radius: 8px; width: 100%; max-width: 480px; }
-.receive-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-top: 16px; max-width: 480px; text-align: center; }
-.receive-card .qr-placeholder { width: 200px; height: 200px; margin: 16px auto; border: 2px dashed var(--border); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); font-size: 1.5rem; }
-.receive-card .address { word-break: break-all; margin: 12px 0; font-size: 0.9rem; }
-.receive-card button { padding: 10px 20px; border: none; border-radius: 8px; background-color: var(--accent); color: white; cursor: pointer; }
+/* ===== Transaction submitted banner ===== */
+.tx-submitted-banner { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 10px; margin-bottom: 12px; position: relative; background: rgba(22, 163, 74, 0.08); border: 1px solid var(--success); }
+.tx-submitted-banner.dark { background: rgba(22, 163, 74, 0.15); }
+.banner-icon { font-size: 1.6rem; }
+.banner-content { flex: 1; }
+.banner-content strong { color: var(--success); display: block; margin-bottom: 4px; }
+.banner-hash a, .banner-hash code { color: var(--accent); font-family: monospace; font-size: 0.85rem; }
+.banner-content small { color: var(--text-muted); display: block; margin-top: 4px; }
+.banner-close { background: none; border: none; font-size: 1.4rem; line-height: 1; cursor: pointer; color: var(--text-muted); padding: 0 4px; }
+.app-boot { min-height: 100vh; display: flex; align-items: center; justify-content: center; color: var(--text-muted); }

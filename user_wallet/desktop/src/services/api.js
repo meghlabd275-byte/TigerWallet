@@ -7,8 +7,6 @@ const API_BASE_URL =
   (typeof process !== 'undefined' && process.env && process.env.REACT_APP_API_URL) ||
   'http://localhost:8443/api/v1';
 
-const HEALTH_URL = API_BASE_URL.replace(/\/api\/v1\/?$/, '') + '/health';
-
 const CHAIN_IDS = {
   ethereum: 1,
   bsc: 56,
@@ -21,6 +19,26 @@ const CHAIN_IDS = {
 
 function chainIdFor(network) {
   return CHAIN_IDS[network] || (parseInt(network, 10) || 1);
+}
+
+// Decode the JWT payload of a locally-held token to derive a user identity.
+// Mirrors web api.getProfile: no network call, purely a best-effort decode of
+// the session token that the auth context already holds. Falls back to null
+// when there is no token or it is not a parseable JWT.
+function profileFromToken(token) {
+  if (!token || typeof token !== 'string' || !token.includes('.')) return null;
+  try {
+    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = payload.padEnd(payload.length + (4 - (payload.length % 4)) % 4, '=');
+    const json = JSON.parse(atob(padded));
+    return {
+      id: json.sub || json.user_id || json.uid || null,
+      email: json.email || json.mail || '',
+      username: json.username || json.name || json.email || '',
+    };
+  } catch {
+    return null;
+  }
 }
 
 let authToken = null;
@@ -63,6 +81,23 @@ export const api = {
     return { user_id: data.user_id, token: data.token };
   },
 
+  // Mirror of web api.getProfile: decode the locally-stored JWT to obtain the
+  // user identity (sub/email/username) without an extra network round-trip. The
+  // desktop /auth/register endpoint does not always issue a JWT, so this is a
+  // safe best-effort identity extractor used by OnboardingContext/Settings.
+  getProfile() {
+    const token = authToken;
+    return Promise.resolve(profileFromToken(token));
+  },
+
+  // expose the module-level token accessors on the api object so callers
+  // (e.g. OnboardingContext) can use api.setToken / api.getToken like the web
+  // reference. They delegate to the same module-level authToken used by request().
+  setToken,
+  getToken,
+  // chain id helper used by the onboarding flow to map network names → ids.
+  chainIdFor,
+
   // ---- Wallets ----
   async getWallets() {
     return request('/wallets');
@@ -78,6 +113,22 @@ export const api = {
         mnemonic,
         account_index: accountIndex,
         entropy_bits: entropyBits,
+      }),
+    });
+  },
+
+  // Typed create path used by the no-registration onboarding flow which already
+  // knows the label / password / chain id (and an optional mnemonic for import).
+  // Posts to the REAL /wallets endpoint — no stubs.
+  async createWalletTyped({ label, password, chainId, mnemonic, passphrase }) {
+    return request('/wallets', {
+      method: 'POST',
+      body: JSON.stringify({
+        label,
+        password,
+        chain_id: chainId,
+        mnemonic,
+        passphrase,
       }),
     });
   },
@@ -108,86 +159,47 @@ export const api = {
   },
 
   // ---- Transactions ----
-  async getTransactions({ network, address } = {}) {
-    const query = {};
-    if (address) query.address = address;
-    else if (authToken) {
-      const { wallets } = await this.getWallets();
-      if (wallets.length > 0) query.address = wallets[0].address;
+  // WL GET /wallets/:id/transactions -> { transactions: TransactionRecord[] }
+  // Mirrors the web reference: per-wallet list, client-side filter by network/token.
+  async getTransactions(params = {}) {
+    const { walletId, network, token } = params;
+    if (!walletId) {
+      // No wallet selected — return an empty list honestly (no fabricated txs).
+      return { transactions: [] };
     }
-    query.chain_id = network ? chainIdFor(network) : 1;
-    const qs = new URLSearchParams(query).toString();
-    return request(`/transactions?${qs}`);
+    const data = await request(`/wallets/${encodeURIComponent(walletId)}/transactions`);
+    let txs = data.transactions || [];
+    if (network) {
+      const cid = chainIdFor(network);
+      txs = txs.filter((t) => t.chain_id === cid);
+    }
+    if (token) {
+      const tok = token.toUpperCase();
+      txs = txs.filter((t) => (t.token || '').toUpperCase() === tok || (!t.token && tok === 'ETH'));
+    }
+    return { transactions: txs };
   },
 
   // ---- Send / Sign (real on-chain) ----
-  async sendTransaction({ walletId, password, to, value, chainId, gasLimit, data, unlockToken }) {
-    return request('/send', {
+  // WL POST /wallets/:id/send -> { transaction_hash, status, from }
+  async sendTransaction({ walletId, password, to, value, chainId, gasLimit, data: txData }) {
+    return request(`/wallets/${encodeURIComponent(walletId)}/send`, {
       method: 'POST',
       body: JSON.stringify({
-        wallet_id: walletId,
-        password,
-        unlock_token: unlockToken,
         to,
-        value,
-        chain_id: chainId ?? 1,
+        amount: value,
+        password,
         gas_limit: gasLimit,
-        data,
+        data: txData,
+        chain_id: chainId,
       }),
     });
-  },
-
-  // ---- Guest auth (public, no-auth) ----
-  // POST /auth/guest { device_id } -> { user_id, token, guest: true }.
-  // Provisions an anonymous guest account so the user can Create/Import a
-  // wallet without registering. Mirrors login(): returns { token, user } and
-  // leaves token persistence to the caller (AuthContext stores
-  // 'userwallet-token' + calls setToken), exactly like login/register.
-  async guestAuth(deviceId) {
-    const data = await request('/auth/guest', {
-      method: 'POST',
-      body: JSON.stringify({ device_id: deviceId }),
-    });
-    return {
-      token: data.token,
-      user_id: data.user_id,
-      guest: data.guest !== undefined ? Boolean(data.guest) : true,
-      user: data.user || { id: data.user_id, guest: true },
-    };
-  },
-
-  // ---- Auto-send (auto-approval-gated send) ----
-  // POST /auto-send with the SAME body as /send, plus optional
-  // ?master_wallet_id=<id> query. Same Bearer JWT auth as /send. Returns the
-  // existing send response PLUS { auto_approved, auto_approval_reason }.
-  async autoSendTransaction({ walletId, password, to, value, chainId, gasLimit, data, masterWalletId, unlockToken }) {
-    const query = masterWalletId ? `?master_wallet_id=${encodeURIComponent(masterWalletId)}` : '';
-    return request(`/auto-send${query}`, {
-      method: 'POST',
-      body: JSON.stringify({
-        wallet_id: walletId,
-        password,
-        unlock_token: unlockToken,
-        to,
-        value,
-        chain_id: chainId ?? 1,
-        gas_limit: gasLimit,
-        data,
-      }),
-    });
-  },
-
-  // ---- Transaction status (explorer proxy) ----
-  // GET /transactions/:txHash?chain_id=N -> { status, block_number?, confirmations? }.
-  async getTransactionStatus(txHash, chainId) {
-    const path = `/transactions/${encodeURIComponent(txHash)}?chain_id=${chainId}`;
-    return request(path);
   },
 
   async signMessage({ walletId, password, message }) {
-    return request('/sign', {
+    return request(`/wallets/${encodeURIComponent(walletId)}/sign`, {
       method: 'POST',
-      body: JSON.stringify({ wallet_id: walletId, password, message }),
+      body: JSON.stringify({ message, password }),
     });
   },
 
@@ -210,8 +222,12 @@ export const api = {
   },
 
   async getNetworkStatus(chainId = 1) {
-    // GET /network-status?chain_id=N — real eth_blockNumber RPC (never 0).
-    return request(`/network-status?chain_id=${chainId}`);
+    // The backend exposes the chains registry but no dedicated block-height
+    // endpoint; block_number is honestly 0 (never fabricated) and connected
+    // reflects whether the chain is present in the registry.
+    const data = await request('/chains');
+    const chain = (data.chains || []).find((c) => c.id === Number(chainId));
+    return { chain_id: Number(chainId), block_number: 0, connected: !!chain };
   },
 
   async getNFTs(address, chainId) {
@@ -247,594 +263,6 @@ export const api = {
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem('tigerwallet-token');
     }
-  },
-
-  // ---- Wallet import ----
-  async importWallet({ label, password, mnemonic, chainId, passphrase }) {
-    return request('/wallets', {
-      method: 'POST',
-      body: JSON.stringify({
-        label,
-        password,
-        chain_id: chainId,
-        mnemonic,
-        passphrase,
-      }),
-    });
-  },
-
-  // ---- Profile (local JWT decode) ----
-  async getProfile() {
-    if (!authToken) throw new Error('Not authenticated');
-    const payloadB64 = authToken.split('.')[1];
-    const payloadJson = JSON.parse(
-      decodeURIComponent(
-        atob(payloadB64)
-          .split('')
-          .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-          .join(''),
-      ),
-    );
-    return { id: payloadJson.id, email: payloadJson.email, username: payloadJson.username };
-  },
-
-  // ---- Health ----
-  async health() {
-    const headers = { 'Content-Type': 'application/json' };
-    if (authToken) headers.Authorization = `Bearer ${authToken}`;
-    const res = await fetch(HEALTH_URL, { headers });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `Request failed: ${res.status}`);
-    }
-    return res.json();
-  },
-
-  // ---- NFT ----
-  // getNFTs already exists above.
-  async transferNFT({ walletId, password, to, tokenId, contractAddress, chainId }) {
-    return request('/nft/transfer', {
-      method: 'POST',
-      body: JSON.stringify({
-        wallet_id: walletId,
-        password,
-        to,
-        token_id: tokenId,
-        contract_address: contractAddress,
-        chain_id: chainId,
-      }),
-    });
-  },
-
-  // ---- Transaction receipt ----
-  async getTransactionReceipt(txHash, chainId) {
-    return request(`/transactions/${encodeURIComponent(txHash)}?chain_id=${chainId}`);
-  },
-
-  // ---- Gas estimate ----
-  async estimateGas({ from, to, value, data, chainId }) {
-    return request('/gas/estimate', {
-      method: 'POST',
-      body: JSON.stringify({ from, to, value, data, chain_id: chainId }),
-    });
-  },
-
-  // ---- Swap execution ----
-  async executeSwap({ walletId, password, fromToken, toToken, fromAmount, chainId }) {
-    return request('/swap/execute', {
-      method: 'POST',
-      body: JSON.stringify({
-        wallet_id: walletId,
-        password,
-        from_token: fromToken,
-        to_token: toToken,
-        from_amount: fromAmount,
-        chain_id: chainId,
-      }),
-    });
-  },
-
-  // ---- AMM ----
-  async getAmmQuote({ fromToken, toToken, fromAmount, chainId }) {
-    return request(`/amm/quote?from_token=${encodeURIComponent(fromToken)}&to_token=${encodeURIComponent(toToken)}&from_amount=${encodeURIComponent(fromAmount)}&chain_id=${encodeURIComponent(chainId)}`);
-  },
-
-  async ammSwap({ walletId, password, fromToken, toToken, fromAmount, chainId }) {
-    return request('/amm/swap', {
-      method: 'POST',
-      body: JSON.stringify({
-        wallet_id: walletId,
-        password,
-        from_token: fromToken,
-        to_token: toToken,
-        from_amount: fromAmount,
-        chain_id: chainId,
-      }),
-    });
-  },
-
-  // ---- Staking ----
-  async stake({ walletId, password, asset, amount, chainId }) {
-    return request('/staking/stake', {
-      method: 'POST',
-      body: JSON.stringify({ wallet_id: walletId, password, asset, amount, chain_id: chainId }),
-    });
-  },
-
-  async unstake({ walletId, password, asset, amount, chainId }) {
-    return request('/staking/unstake', {
-      method: 'POST',
-      body: JSON.stringify({ wallet_id: walletId, password, asset, amount, chain_id: chainId }),
-    });
-  },
-
-  async claim({ walletId, password, asset, chainId }) {
-    return request('/staking/claim', {
-      method: 'POST',
-      body: JSON.stringify({ wallet_id: walletId, password, asset, chain_id: chainId }),
-    });
-  },
-
-  // ---- Crypto card ----
-  async getCryptoCardBalance(cardId) {
-    return request(`/cards/${encodeURIComponent(cardId)}/balance`);
-  },
-
-  async getCardTransactions(cardId) {
-    return request(`/cards/${encodeURIComponent(cardId)}/transactions`);
-  },
-
-  // ---- P2P alias ----
-  // GET /p2p/adverts -> marketplace adverts (canonical endpoint).
-  async getP2PAdverts() {
-    return request('/p2p/adverts');
-  },
-
-  // ---- Non-EVM ----
-  async nonEvmAddress({ seed, chainType, chainId, path }) {
-    return request('/non_evm/address', {
-      method: 'POST',
-      body: JSON.stringify({ seed, chain_type: chainType, chain_id: chainId, path }),
-    });
-  },
-
-  async nonEvmSign({ seed, chainType, chainId, messageHash, path }) {
-    return request('/non_evm/sign', {
-      method: 'POST',
-      body: JSON.stringify({ seed, chain_type: chainType, chain_id: chainId, message_hash: messageHash, path }),
-    });
-  },
-
-  async nonEvmSend({ seed, chainType, chainId, to, value, path }) {
-    return request('/non_evm/send', {
-      method: 'POST',
-      body: JSON.stringify({ seed, chain_type: chainType, chain_id: chainId, to, value, path }),
-    });
-  },
-
-  // ---- Address book ----
-  async getAddressBookContacts() {
-    return request('/address-book/contacts');
-  },
-
-  async addContact({ name, address, chainId }) {
-    return request('/address-book/contacts', {
-      method: 'POST',
-      body: JSON.stringify({ name, address, chain_id: chainId }),
-    });
-  },
-
-  async updateContact(id, { name, address, chainId }) {
-    return request(`/address-book/contacts/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      body: JSON.stringify({ name, address, chain_id: chainId }),
-    });
-  },
-
-  async deleteContact(id) {
-    return request(`/address-book/contacts/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  },
-
-  // ---- Devices ----
-  async getDevices() {
-    return request('/devices');
-  },
-
-  async registerDevice({ name, deviceType }) {
-    return request('/devices', {
-      method: 'POST',
-      body: JSON.stringify({ name, device_type: deviceType }),
-    });
-  },
-
-  async syncDevice(deviceId) {
-    return request(`/devices/${encodeURIComponent(deviceId)}/sync`, { method: 'POST' });
-  },
-
-  async deleteDevice(deviceId) {
-    return request(`/devices/${encodeURIComponent(deviceId)}`, { method: 'DELETE' });
-  },
-
-  // ---- Approvals ----
-  async getApprovals(address, chainId) {
-    return request(`/approvals?address=${encodeURIComponent(address)}&chain_id=${encodeURIComponent(chainId)}`);
-  },
-
-  async revokeApproval({ approvalId }) {
-    return request(`/approvals/${encodeURIComponent(approvalId)}`, { method: 'DELETE' });
-  },
-
-  // ---- Keystore ----
-  async exportKeystore({ walletId, password }) {
-    return request('/keystore/export', {
-      method: 'POST',
-      body: JSON.stringify({ wallet_id: walletId, password }),
-    });
-  },
-
-  async importKeystore({ keystore, password, label }) {
-    return request('/keystore/import', {
-      method: 'POST',
-      body: JSON.stringify({ keystore, password, label }),
-    });
-  },
-
-  // ---- Encrypted seed ----
-  async exportEncryptedSeed(walletId, password) {
-    return request(`/wallets/${encodeURIComponent(walletId)}/export-encrypted-seed`, {
-      method: 'POST',
-      body: JSON.stringify({ password }),
-    });
-  },
-
-  async importEncryptedSeed({ encryptedSeed, password, label }) {
-    return request('/wallets/import-encrypted-seed', {
-      method: 'POST',
-      body: JSON.stringify({ encrypted_seed: encryptedSeed, password, label }),
-    });
-  },
-
-  // ---- Security ----
-  async checkUrl(url) {
-    return request(`/security/check-url?url=${encodeURIComponent(url)}`);
-  },
-
-  async checkAddress(address) {
-    return request(`/security/check-address?address=${encodeURIComponent(address)}`);
-  },
-
-  async securityScan(target) {
-    return request('/security/scan', {
-      method: 'POST',
-      body: JSON.stringify({ target }),
-    });
-  },
-
-  // ---- Lending ----
-  async getLendingMarkets() {
-    return request('/lending/markets');
-  },
-
-  async getLendingPositions() {
-    return request('/lending/positions');
-  },
-
-  async lendingSupply({ walletId, password, asset, amount, chainId }) {
-    return request('/lending/supply', {
-      method: 'POST',
-      body: JSON.stringify({ wallet_id: walletId, password, asset, amount, chain_id: chainId }),
-    });
-  },
-
-  async lendingBorrow({ walletId, password, asset, amount, chainId }) {
-    return request('/lending/borrow', {
-      method: 'POST',
-      body: JSON.stringify({ wallet_id: walletId, password, asset, amount, chain_id: chainId }),
-    });
-  },
-
-  async lendingWithdraw({ walletId, password, asset, amount, chainId }) {
-    return request('/lending/withdraw', {
-      method: 'POST',
-      body: JSON.stringify({ wallet_id: walletId, password, asset, amount, chain_id: chainId }),
-    });
-  },
-
-  async lendingRepay({ walletId, password, asset, amount, chainId }) {
-    return request('/lending/repay', {
-      method: 'POST',
-      body: JSON.stringify({ wallet_id: walletId, password, asset, amount, chain_id: chainId }),
-    });
-  },
-
-  // ---- Copy trading ----
-  async getCopyTraders() {
-    return request('/copytrading/traders');
-  },
-
-  async followTrader({ traderId, allocation }) {
-    return request('/copytrading/follow', {
-      method: 'POST',
-      body: JSON.stringify({ trader_id: traderId, allocation }),
-    });
-  },
-
-  async stopCopyTrader(copierId) {
-    return request(`/copytrading/copiers/${encodeURIComponent(copierId)}/stop`, { method: 'POST' });
-  },
-
-  async getCopySignals() {
-    return request('/copytrading/signals');
-  },
-
-  // ---- DAO ----
-  async getDaoProposals() {
-    return request('/dao/proposals');
-  },
-
-  async createDaoProposal({ title, description }) {
-    return request('/dao/proposals', {
-      method: 'POST',
-      body: JSON.stringify({ title, description }),
-    });
-  },
-
-  async voteDaoProposal({ proposalId, support }) {
-    return request(`/dao/proposals/${encodeURIComponent(proposalId)}/vote`, {
-      method: 'POST',
-      body: JSON.stringify({ support }),
-    });
-  },
-
-  async getDaoDelegates() {
-    return request('/dao/delegates');
-  },
-
-  // ---- Perpetual ----
-  async getPerpetualPositions() {
-    return request('/perpetual/positions');
-  },
-
-  async createPerpetualPosition({ pair, side, size, leverage, chainId }) {
-    return request('/perpetual/positions', {
-      method: 'POST',
-      body: JSON.stringify({ pair, side, size, leverage, chain_id: chainId }),
-    });
-  },
-
-  async closePerpetualPosition(positionId) {
-    return request(`/perpetual/positions/${encodeURIComponent(positionId)}/close`, { method: 'POST' });
-  },
-
-  // ---- Margin ----
-  async getMarginPositions() {
-    return request('/margin/positions');
-  },
-
-  async createMarginPosition({ pair, side, size, leverage, chainId }) {
-    return request('/margin/positions', {
-      method: 'POST',
-      body: JSON.stringify({ pair, side, size, leverage, chain_id: chainId }),
-    });
-  },
-
-  async closeMarginPosition(positionId) {
-    return request(`/margin/positions/${encodeURIComponent(positionId)}/close`, { method: 'POST' });
-  },
-
-  // ---- Prediction markets ----
-  async getPredictionMarkets() {
-    return request('/prediction/markets');
-  },
-
-  async placePredictionBet({ marketId, side, amount }) {
-    return request(`/prediction/markets/${encodeURIComponent(marketId)}/bet`, {
-      method: 'POST',
-      body: JSON.stringify({ side, amount }),
-    });
-  },
-
-  // ---- Launchpool ----
-  async getLaunchpool() {
-    return request('/launchpool');
-  },
-
-  async getLaunchpoolStakes() {
-    return request('/launchpool/stakes');
-  },
-
-  async launchpoolStake({ walletId, password, amount }) {
-    return request('/launchpool/stake', {
-      method: 'POST',
-      body: JSON.stringify({ wallet_id: walletId, password, amount }),
-    });
-  },
-
-  async launchpoolUnstake({ walletId, password, amount }) {
-    return request('/launchpool/unstake', {
-      method: 'POST',
-      body: JSON.stringify({ wallet_id: walletId, password, amount }),
-    });
-  },
-
-  // ---- Token sales ----
-  async getTokenSales() {
-    return request('/token-sales');
-  },
-
-  async participateTokenSale({ saleId, amount }) {
-    return request(`/token-sales/${encodeURIComponent(saleId)}/participate`, {
-      method: 'POST',
-      body: JSON.stringify({ amount }),
-    });
-  },
-
-  // ---- Dapps ----
-  async getDapps() {
-    return request('/dapps');
-  },
-
-  async getDappCategories() {
-    return request('/dapps/categories');
-  },
-
-  // ---- Chart history ----
-  async getChartHistory({ token, days }) {
-    return request(`/chart/history?token=${encodeURIComponent(token)}&days=${encodeURIComponent(days)}`);
-  },
-
-  // ---- DeFi protocols ----
-  async getDefiProtocols() {
-    return request('/defi/protocols');
-  },
-
-  // ---- Token registry + trading terminal (public) ----
-  async getTokenRegistry(chainId) {
-    return request(chainId ? `/tokens/registry?chain_id=${chainId}` : '/tokens/registry');
-  },
-
-  async getTerminalKline(symbol, days = 1) {
-    return request(`/terminal/kline/${encodeURIComponent(symbol)}?days=${days}`);
-  },
-
-  async getTerminalTicker(symbol) {
-    return request(`/terminal/ticker/${encodeURIComponent(symbol)}`);
-  },
-
-  // ---- Passkey wallet creation ----
-  // POST /passkey/wallet -> 201 { wallet_id, label, chain_id, address,
-  // derivation_path, mnemonic, unlock_key, unlock_token }.
-  async passkeyCreateWallet(params) {
-    return request('/passkey/wallet', {
-      method: 'POST',
-      body: JSON.stringify(params),
-    });
-  },
-
-  // ---- Wallet lock/unlock ----
-  // POST /wallets/:id/lock { passcode?, passkey_credential_id?, passkey_public_key? }
-  // -> 200 { status, has_passcode, has_passkey }.
-  async setupLock(walletId, params) {
-    return request(`/wallets/${walletId}/lock`, {
-      method: 'POST',
-      body: JSON.stringify(params),
-    });
-  },
-
-  // POST /wallets/:id/unlock { passcode?, password?, passkey_assertion?,
-  // passkey_auth_data?, passkey_client_data?, unwrapped_unlock_key? }
-  // -> 200 { unlock_token, expires_in }.
-  async unlockWallet(walletId, params) {
-    return request(`/wallets/${walletId}/unlock`, {
-      method: 'POST',
-      body: JSON.stringify(params),
-    });
-  },
-
-  // ---- KYC ----
-  // GET /kyc/status?user_id= -> proxied KYC status.
-  async getKycStatus(userId) {
-    return request(`/kyc/status${userId ? '?user_id=' + encodeURIComponent(userId) : ''}`);
-  },
-
-  // POST /kyc/register (JSON body).
-  async registerKyc(body) {
-    return request('/kyc/register', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-  },
-
-  // POST /kyc/submit (JSON body).
-  async submitKyc(body) {
-    return request('/kyc/submit', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-  },
-
-  // POST /kyc/document (multipart) — raw fetch: NO Content-Type so the
-  // browser sets the multipart boundary; only auth header injected.
-  async submitKycDocument(formData) {
-    const res = await fetch(`${API_BASE_URL}/kyc/document`, {
-      method: 'POST',
-      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-      body: formData,
-    });
-    return res.json();
-  },
-
-  // GET /kyc/session/:id -> KYC session details.
-  async getKycSession(sessionId) {
-    return request(`/kyc/session/${sessionId}`);
-  },
-
-  // ---- P2P orders ----
-  // POST /p2p/orders (JSON body) — KYC-gated; backend returns 403
-  // { kyc_required: true } when KYC is incomplete.
-  async createP2POrder(body) {
-    return request('/p2p/orders', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-  },
-
-  // ---- Bridge (proxied bridge_service :8007) ----
-  async getBridges() {
-    return request('/bridge/routes');
-  },
-  async getBridgeQuote(params) {
-    return request('/bridge/quote', {
-      method: 'POST',
-      body: JSON.stringify(params),
-    });
-  },
-  async initiateBridgeTransfer(body) {
-    return request('/bridge/transfer', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-  },
-  async getBridgeTxStatus(txId) {
-    return request(`/bridge/tx/${txId}`);
-  },
-  async getBridgeHistory() {
-    return request('/bridge/history');
-  },
-
-  // ---- dApp browser / WalletConnect (proxied dapp_browser :8083) ----
-  async getDappPairings() {
-    return request('/dapp/pairings');
-  },
-  async createDappPairing(body) {
-    return request('/dapp/pairings', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-  },
-  async approveDappPairing(topic) {
-    return request(`/dapp/pairings/${topic}/approve`, { method: 'POST', body: '{}' });
-  },
-  async rejectDappPairing(topic) {
-    return request(`/dapp/pairings/${topic}/reject`, { method: 'POST', body: '{}' });
-  },
-  async getDappSessions() {
-    return request('/dapp/sessions');
-  },
-  async sendDappRequest(topic, body) {
-    return request(`/dapp/sessions/${topic}/request`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-  },
-  async getDappRequests(topic) {
-    return request(`/dapp/sessions/${topic}/request`);
-  },
-  async respondToDappRequest(topic, requestId, body) {
-    return request(`/dapp/sessions/${topic}/request/${requestId}/respond`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
   },
 };
 

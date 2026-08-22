@@ -1,0 +1,37 @@
+[package]
+name = "tigerwallet-super-admin"
+version = "1.0.0"
+edition = "2021"
+description = "TigerWallet Super Admin Backend - High-speed Rust implementation"
+
+[dependencies]
+# Async runtime + primitives (RwLock for transient in-process caches).
+tokio = { version = "1", features = ["full"] }
+
+# Database — tokio-postgres (runtime, no compile-time DATABASE_URL needed) +
+# deadpool-postgres for connection pooling. The pool owns its own tokio Runtime
+# and exposes SYNCHRONOUS wrappers (block_on) around the async DB calls so the
+# existing async service API keeps its signatures intact.
+tokio-postgres = { version = "0.7", features = ["with-serde_json-1", "with-chrono-0_4"] }
+deadpool-postgres = "0.14"
+deadpool = "0.12"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Password hashing (argon2) — real crypto, UNCHANGED by the storage migration.
+argon2 = "0.5"
+
+# TOTP 2FA — real crypto (HMAC-SHA1), UNCHANGED by the storage migration.
+rand = "0.8"
+base32 = "0.5"
+sha1 = "0.10"
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+[lib]
+name = "super_admin"
+path = "src/lib.rs"

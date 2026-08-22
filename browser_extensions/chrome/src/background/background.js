@@ -12,7 +12,7 @@
 // State
 let wallet = null;
 let isUnlocked = false;
-let authToken = null;
+let authToken = null; // transparent ephemeral session JWT (Bearer)
 const BACKEND_URL = 'http://localhost:8443'; // TigerWallet wallet-api Go backend
 
 let settings = {
@@ -21,6 +21,92 @@ let settings = {
   showBalance: true,
   biometricEnabled: false,
 };
+
+// Transparent no-registration session storage keys (chrome.storage.local).
+// Mirrors user_wallet/web OnboardingContext: the user never sees a login
+// form — a random device-bound identity is auto-provisioned on first launch
+// so the JWT-backed backend is satisfied.
+const SESSION_KEY = 'tigerwallet-session';
+const WALLET_IDS_KEY = 'tigerwallet-wallet-ids';
+
+// crypto.getRandomValues is available in service workers (Web Crypto). 32
+// random bytes -> 128-bit identity + 256-bit ephemeral password.
+function randomIdentity() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const hex = bytesToHex(bytes);
+  const email = `${hex.slice(0, 32)}@device.local`;
+  const password = hex; // 64 hex chars = 256 bits of entropy
+  return { email, password };
+}
+
+function bytesToHex(bytes) {
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ensureSession provisions (or reuses) the transparent ephemeral account and
+// guarantees authToken holds a valid JWT before any authed backend call. It is
+// idempotent and safe to call repeatedly; failures surface real errors.
+async function ensureSession() {
+  if (authToken) return;
+  let s = await loadSession();
+  if (!s) {
+    const id = randomIdentity();
+    try {
+      await registerViaBackend(id.email, id.email, id.password);
+    } catch {
+      // Identity collision / transient network — fall through to login which
+      // will surface the real error if the account truly doesn't exist.
+    }
+    try {
+      const { token, user } = await loginViaBackend(id.email, id.password);
+      s = { email: id.email, password: id.password, token, userId: user?.id || '' };
+      await saveSession(s);
+    } catch (err) {
+      // Cannot provision a transparent session — surface a real error.
+      throw err;
+    }
+  } else {
+    // Re-validate the stored token; if it's stale, re-login transparently.
+    authToken = s.token;
+    try {
+      await backendFetch('/api/v1/wallets', { method: 'GET' });
+    } catch {
+      authToken = null;
+      const { token } = await loginViaBackend(s.email, s.password);
+      s = { ...s, token };
+      await saveSession(s);
+    }
+  }
+  authToken = s.token;
+}
+
+async function loadSession() {
+  const data = await chrome.storage.local.get(SESSION_KEY);
+  return data[SESSION_KEY] || null;
+}
+
+async function saveSession(s) {
+  await chrome.storage.local.set({ [SESSION_KEY]: s });
+}
+
+async function getLocalWalletIds() {
+  const data = await chrome.storage.local.get(WALLET_IDS_KEY);
+  const ids = data[WALLET_IDS_KEY];
+  return Array.isArray(ids) ? ids : [];
+}
+
+async function rememberWallet(id) {
+  const ids = await getLocalWalletIds();
+  if (ids.includes(id)) return;
+  ids.push(id);
+  await chrome.storage.local.set({ [WALLET_IDS_KEY]: ids });
+}
+
+async function isOnboarded() {
+  const ids = await getLocalWalletIds();
+  return ids.length > 0;
+}
 
 // Apply theme to all extension pages (light/dark works everywhere)
 async function applyThemeToAllPages() {
@@ -238,10 +324,13 @@ async function handleMessage(message, sender) {
         return wallet;
         
       case 'tiger_createWallet':
-        return await createWallet(params[0], params[1]);
-        
+        // params: [name, password, chainId] — returns {id, label, chain_id,
+        // address, derivation_path, mnemonic} (mnemonic shown once).
+        return await createWallet(params[0], params[1], params[2]);
+
       case 'tiger_importWallet':
-        return await importWallet(params[0], params[1], params[2]);
+        // params: [mnemonic, name, password, chainId]
+        return await importWallet(params[0], params[1], params[2], params[3]);
         
       case 'tiger_exportPrivateKey':
         return await exportPrivateKey();
@@ -251,6 +340,26 @@ async function handleMessage(message, sender) {
         
       case 'tiger_unlock':
         return await unlock(params[0]);
+
+      case 'tiger_sendTransaction':
+        // params: [walletId, password, to, value(ether), chainId, data]
+        // -> { tx_hash, chain_id }. Used by the popup Send form (password
+        // comes from the form, NOT the password-prompt window).
+        return await sendTransactionViaBackend(
+          params[0], params[1], params[2], params[3], params[4], params[5]
+        );
+
+      // ---- No-registration session / onboarding (mirror web OnboardingContext) ----
+      case 'tiger_ensureSession':
+        await ensureSession();
+        return { ready: true };
+
+      case 'tiger_getOnboarded':
+        return await isOnboarded();
+
+      case 'tiger_rememberWallet':
+        await rememberWallet(params[0]);
+        return true;
         
       // Settings
       case 'tiger_getSettings':
@@ -383,6 +492,7 @@ async function signTransaction(tx) {
   }
   // Sign and broadcast via the Go wallet-api backend (real secp256k1 ECDSA
   // with EIP-155, real nonce/gas fetched from RPC, real eth_sendRawTransaction).
+  await ensureSession();
   const password = await getWalletPassword();
   const result = await sendTransactionViaBackend(
     wallet.id, password, tx.to, tx.value, parseInt(tx.chainId, 16), tx.data
@@ -453,44 +563,48 @@ async function requestPermissions(permissions) {
 // Wallet Management
 // ========================================
 
-async function createWallet(name, password) {
+async function createWallet(name, password, chainId) {
   // Create a real wallet via the Go wallet-api backend (real BIP-39 mnemonic,
   // real BIP-32/44 HD derivation, real secp256k1 key, encrypted seed stored in
-  // PostgreSQL). Returns the wallet + mnemonic (shown once).
-  const result = await createWalletViaBackend(name, password, 1);
+  // PostgreSQL). Returns the wallet + mnemonic (shown once). The transparent
+  // ephemeral session JWT authorizes the call — the user never logs in.
+  await ensureSession();
+  const result = await createWalletViaBackend(name, password, chainId || 1);
   wallet = {
     id: result.id,
     name,
     address: result.address,
-    mnemonic: result.mnemonic,
-    chainId: '0x1',
+    chainId: '0x' + (result.chain_id || 1).toString(16),
     derivationPath: result.derivation_path,
     createdAt: Date.now(),
   };
   isUnlocked = true;
   await saveWallet();
-  return wallet;
+  // Return the full backend payload so the popup can show the mnemonic.
+  return result;
 }
 
-async function importWallet(mnemonic, name, password) {
+async function importWallet(mnemonic, name, password, chainId) {
   // Import an existing mnemonic via the backend, which validates the BIP-39
-  // checksum and derives the real address server-side.
+  // checksum and derives the real address server-side. The mnemonic is NOT
+  // returned (the user already has it).
+  await ensureSession();
   const result = await backendFetch('/api/v1/wallets', {
     method: 'POST',
-    body: JSON.stringify({ label: name, password, chain_id: 1, mnemonic }),
+    body: JSON.stringify({ label: name, password, chain_id: chainId || 1, mnemonic }),
     headers: getAuthHeaders(),
   });
   wallet = {
     id: result.id,
     name,
     address: result.address,
-    chainId: '0x1',
+    chainId: '0x' + (result.chain_id || 1).toString(16),
     derivationPath: result.derivation_path,
     createdAt: Date.now(),
   };
   isUnlocked = true;
   await saveWallet();
-  return wallet;
+  return result;
 }
 
 async function exportPrivateKey() {
@@ -584,10 +698,31 @@ async function signMessageViaBackend(walletId, password, message) {
 }
 
 function getAuthHeaders() {
-  const token = typeof chrome !== 'undefined' && chrome.storage
-    ? null // tokens are fetched async in the service worker; cached in memory
-    : null;
-  return {};
+  // authToken is cached in memory by ensureSession(), which runs at service
+  // worker init and before any authed call (createWallet/importWallet/send all
+  // await ensureSession() first). Sync access here is safe because those
+  // callers already guaranteed a session exists.
+  if (!authToken) {
+    throw new Error('No active session — call ensureSession() first');
+  }
+  return { Authorization: `Bearer ${authToken}` };
+}
+
+// Transparent ephemeral session provisioning (no-registration self-custody).
+// Mirrors user_wallet/web OnboardingContext: register then login with a random
+// device-bound identity. Errors surface as real network/credential failures.
+async function registerViaBackend(email, username, password) {
+  return backendFetch('/api/v1/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ email, username, password }),
+  });
+}
+
+async function loginViaBackend(email, password) {
+  return backendFetch('/api/v1/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
 }
 
 // getWalletPassword prompts the user for their wallet password via the popup.
@@ -595,7 +730,7 @@ function getAuthHeaders() {
 async function getWalletPassword() {
   return new Promise((resolve, reject) => {
     chrome.windows.create({
-      url: chrome.runtime.getURL('popup/popup.html?action=password'),
+      url: chrome.runtime.getURL('src/popup/popup.html?action=password'),
       type: 'popup',
       width: 360,
       height: 480,
@@ -634,6 +769,13 @@ function notifyAllTabs(event, data) {
 // ========================================
 // Initialize
 // ========================================
+
+// Provision the transparent ephemeral session on startup (best-effort; if the
+// backend is down the first authed call will surface the real error). Mirrors
+// the web OnboardingContext which ensures a device identity before any API use.
+ensureSession().catch((err) => {
+  console.warn('TigerWallet: transparent session could not be established on startup:', err?.message || err);
+});
 
 loadWallet();
 

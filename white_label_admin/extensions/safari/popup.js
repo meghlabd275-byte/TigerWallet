@@ -13,6 +13,15 @@ const DOMAINS = [
   { key: 'partners', label: 'Partners', endpoints: [['GET', '/partners'], ['PUT', '/partners/:id/status', true], ['POST', '/partners/:id/approve', true], ['POST', '/partners/:id/reject {reason}', true]] },
   { key: 'rewards', label: 'Rewards', endpoints: [['GET', '/rewards'], ['PUT', '/rewards/:id/status', true]] },
   { key: 'marketing', label: 'Marketing', endpoints: [['GET', '/marketing'], ['PUT', '/marketing/:id/status', true]] },
+  { key: 'liquidity', label: 'Liquidity', endpoints: [['GET', '/wl-liquidity/sources'], ['POST', '/wl-liquidity/sources'], ['PUT', '/wl-liquidity/sources/:id'], ['DELETE', '/wl-liquidity/sources/:id'], ['GET', '/wl-liquidity/allocations'], ['POST', '/wl-liquidity/allocations'], ['GET', '/wl-liquidity/stats']] },
+  { key: 'crypto-card', label: 'Cards', endpoints: [['GET', '/wl-cards'], ['POST', '/wl-cards'], ['GET', '/wl-cards/transactions'], ['GET', '/wl-cards/stats'], ['PUT', '/wl-cards/:id/status', true]] },
+  { key: 'bots', label: 'Bots', endpoints: [['GET', '/wl-bots/operators'], ['POST', '/wl-bots/operators'], ['GET', '/wl-bots/config'], ['GET', '/wl-bots/stats'], ['PUT', '/wl-bots/operators/:id/status', true]] },
+  { key: 'kyc', label: 'KYC', endpoints: [['GET', '/kyc'], ['POST', '/kyc/:id/approve', true], ['POST', '/kyc/:id/reject {reason}', true]] },
+  { key: 'tickets', label: 'Tickets', endpoints: [['GET', '/tickets'], ['GET', '/tickets/:id'], ['POST', '/tickets'], ['PUT', '/tickets/:id/status', true], ['POST', '/tickets/:id/messages', true], ['PUT', '/tickets/:id/assign', true]] },
+  { key: 'ip-whitelist', label: 'IP WL', endpoints: [['GET', '/ip-whitelist'], ['POST', '/ip-whitelist'], ['DELETE', '/ip-whitelist/:id', true]] },
+  { key: 'audit-logs', label: 'Audit', endpoints: [['GET', '/audit-logs'], ['POST', '/audit-logs/export', true]] },
+  { key: 'wallet-management', label: 'Wallets', endpoints: [['GET', '/withdrawals'], ['GET', '/fees'], ['POST', '/fees'], ['PUT', '/fees/:id'], ['PUT', '/users/:id/status', true], ['POST', '/withdrawals/:id/approve', true], ['POST', '/withdrawals/:id/reject {reason}', true], ['POST', '/withdrawals/:id/process', true]] },
+  { key: 'withdrawals', label: 'Withdrawals', endpoints: [['GET', '/withdrawals'], ['POST', '/withdrawals/:id/approve', true], ['POST', '/withdrawals/:id/reject {reason}', true], ['POST', '/withdrawals/:id/process', true]] },
   { key: 'rbac', label: 'RBAC', endpoints: [['GET', '/admin-roles'], ['GET', '/admin-permissions'], ['POST', '/admins/:id/role', true], ['GET', '/admins/:id/permissions']] },
 ];
 

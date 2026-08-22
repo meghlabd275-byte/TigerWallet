@@ -250,9 +250,6 @@
 
   const isMetaMask = true;
   const isTigerWallet = true;
-  const isConnected = () => isConnected;
-  const chainId = () => chainId;
-  const selectedAddress = () => selectedAddress;
 
   // ========================================
   // Initialize Provider
@@ -263,9 +260,11 @@
     request,
     isMetaMask,
     isTigerWallet,
-    isConnected,
-    chainId,
-    selectedAddress,
+    // Expose live state via getters so the provider reflects the current
+    // chain/account without re-declaring the `let` state vars above.
+    get isConnected() { return isConnected; },
+    get chainId() { return chainId; },
+    get selectedAddress() { return selectedAddress; },
     
     // Events
     on,

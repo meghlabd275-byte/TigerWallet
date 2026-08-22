@@ -31,6 +31,15 @@ struct ContentView: View {
         DomainLink(id: "partners", key: "partners", label: "Partners", icon: "hand.raised.fingers.spread"),
         DomainLink(id: "rewards", key: "rewards", label: "Rewards", icon: "gift"),
         DomainLink(id: "marketing", key: "marketing", label: "Marketing", icon: "megaphone"),
+        DomainLink(id: "liquidity", key: "liquidity", label: "Liquidity", icon: "drop.fill"),
+        DomainLink(id: "crypto-card", key: "crypto-card", label: "Crypto Cards", icon: "creditcard"),
+        DomainLink(id: "bots", key: "bots", label: "Bots", icon: "cpu"),
+        DomainLink(id: "kyc", key: "kyc", label: "KYC", icon: "checkmark.shield"),
+        DomainLink(id: "tickets", key: "tickets", label: "Support Tickets", icon: "ticket"),
+        DomainLink(id: "ip-whitelist", key: "ip-whitelist", label: "IP Whitelist", icon: "network"),
+        DomainLink(id: "audit-logs", key: "audit-logs", label: "Audit Logs", icon: "doc.text.magnifyingglass"),
+        DomainLink(id: "wallet-management", key: "wallet-management", label: "Wallet Management", icon: "wallet.pass"),
+        DomainLink(id: "withdrawals", key: "withdrawals", label: "Withdrawals", icon: "arrow.up.arrow.down.circle"),
         DomainLink(id: "rbac", key: "rbac", label: "Admin Roles", icon: "person.badge.shield.checkmark"),
         DomainLink(id: "settings", key: "settings", label: "Settings", icon: "gear"),
     ]
@@ -81,6 +90,15 @@ func specFor(_ key: String) -> DomainSpec {
     case "partners": return DomainSpec(title: "Partners", subtitle: "Partner governance (status + approve/reject).", endpoints: ["GET /partners", "POST /partners", "PUT /partners/:id", "DELETE /partners/:id"], statusActions: ["PUT /partners/:id/status", "POST /partners/:id/approve", "POST /partners/:id/reject {reason}"])
     case "rewards": return DomainSpec(title: "Reward Campaigns", subtitle: "Reward campaigns governance records.", endpoints: ["GET /rewards", "POST /rewards", "PUT /rewards/:id", "DELETE /rewards/:id"], statusActions: ["PUT /rewards/:id/status"])
     case "marketing": return DomainSpec(title: "Marketing Campaigns", subtitle: "Marketing campaigns governance records.", endpoints: ["GET /marketing", "POST /marketing", "PUT /marketing/:id", "DELETE /marketing/:id"], statusActions: ["PUT /marketing/:id/status"])
+    case "liquidity": return DomainSpec(title: "Liquidity Sources", subtitle: "WL liquidity sources & allocations (LiquidityAdmin).", endpoints: ["GET /wl-liquidity/sources", "POST /wl-liquidity/sources", "PUT /wl-liquidity/sources/:id", "DELETE /wl-liquidity/sources/:id", "GET /wl-liquidity/allocations", "POST /wl-liquidity/allocations", "GET /wl-liquidity/stats"], statusActions: [])
+    case "crypto-card": return DomainSpec(title: "Crypto Cards", subtitle: "WL-branded card governance (CardAdmin).", endpoints: ["GET /wl-cards", "POST /wl-cards", "GET /wl-cards/transactions", "GET /wl-cards/stats"], statusActions: ["PUT /wl-cards/:id/status"])
+    case "bots": return DomainSpec(title: "Bot Operators", subtitle: "WL bot operator governance (BotAdmin).", endpoints: ["GET /wl-bots/operators", "POST /wl-bots/operators", "GET /wl-bots/config", "GET /wl-bots/stats"], statusActions: ["PUT /wl-bots/operators/:id/status"])
+    case "kyc": return DomainSpec(title: "KYC Verification", subtitle: "KYC applications (KYCAdmin).", endpoints: ["GET /kyc"], statusActions: ["POST /kyc/:id/approve", "POST /kyc/:id/reject {reason}"])
+    case "tickets": return DomainSpec(title: "Support Tickets", subtitle: "Customer service tickets (CustomerServiceAdmin).", endpoints: ["GET /tickets", "GET /tickets/:id", "POST /tickets"], statusActions: ["PUT /tickets/:id/status", "POST /tickets/:id/messages", "PUT /tickets/:id/assign"])
+    case "ip-whitelist": return DomainSpec(title: "IP Whitelist", subtitle: "Per-tenant IP allowlist (SecurityAdmin).", endpoints: ["GET /ip-whitelist", "POST /ip-whitelist"], statusActions: ["DELETE /ip-whitelist/:id"])
+    case "audit-logs": return DomainSpec(title: "Audit Logs", subtitle: "Compliance audit trail (ComplianceAdmin).", endpoints: ["GET /audit-logs"], statusActions: ["POST /audit-logs/export"])
+    case "wallet-management": return DomainSpec(title: "Wallet Management", subtitle: "WalletAdmin scope: withdrawals, fees, user status.", endpoints: ["GET /withdrawals", "GET /fees", "POST /fees", "PUT /fees/:id", "PUT /users/:id/status"], statusActions: ["POST /withdrawals/:id/approve", "POST /withdrawals/:id/reject {reason}", "POST /withdrawals/:id/process"])
+    case "withdrawals": return DomainSpec(title: "Withdrawals (Two-Party)", subtitle: "Withdrawal approval (WalletAdmin).", endpoints: ["GET /withdrawals"], statusActions: ["POST /withdrawals/:id/approve", "POST /withdrawals/:id/reject {reason}", "POST /withdrawals/:id/process"])
     case "rbac": return DomainSpec(title: "Admin Roles & Permissions", subtitle: "Structured RBAC over the scope system.", endpoints: ["GET /admin-roles", "POST /admin-roles", "GET /admin-permissions", "POST /admins/:id/role", "GET /admins/:id/permissions"], statusActions: ["DELETE /admins/:id/role/:roleId"])
     default: return DomainSpec(title: "Settings", subtitle: "Application settings.", endpoints: [], statusActions: [])
     }

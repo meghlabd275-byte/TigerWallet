@@ -458,7 +458,7 @@ class DAppBrowserService {
             }
             try {
                 chrome.windows.create({
-                    url: chrome.runtime.getURL('popup/popup.html?action=password'),
+                    url: chrome.runtime.getURL('src/popup/popup.html?action=password'),
                     type: 'popup',
                     width: 360,
                     height: 480

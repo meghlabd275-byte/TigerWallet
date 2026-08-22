@@ -4,9 +4,12 @@ const path = require('path');
 // WL backend (port 8082). Governance records only - no fund movement.
 const WL_API_BASE = 'http://localhost:8082/api/v1/admin';
 
-// 11 domain screens mirrored across all WL clients. Each domain exposes the
+// 11 + 9 domain screens mirrored across all WL clients. Each domain exposes the
 // same IPC contract: list / get / create / update / delete, plus status or
-// approve/reject where the backend defines them.
+// approve/reject where the backend defines them. Domains whose real backend
+// routes don't fit the uniform CRUD shape (wl-liquidity, wl-cards, wl-bots,
+// kyc, tickets, ip-whitelist, audit-logs, wallet-management, withdrawals) carry
+// an `extra` list of [method, path] tuples registered as wl:<domain>:<n>.
 const DOMAINS = {
   futures:       { crud: true, status: true,  approve: false },
   options:       { crud: true, status: true,  approve: false },
@@ -19,6 +22,24 @@ const DOMAINS = {
   rewards:       { crud: true, status: true,  approve: false },
   marketing:     { crud: true, status: true,  approve: false },
   rbac:          { crud: true, status: false, approve: false, special: ['admin-roles', 'admin-permissions', 'admins'] },
+  // --- 9 scoped admin domains (real main.go routes, port 8082) ---
+  liquidity:     { base: '/wl-liquidity/sources', crud: true, status: false, approve: false,
+                   extra: [['GET', '/wl-liquidity/allocations'], ['POST', '/wl-liquidity/allocations'], ['GET', '/wl-liquidity/stats']] },
+  'crypto-card': { base: '/wl-cards', crud: false, status: true, approve: false,
+                   extra: [['GET', '/wl-cards/transactions'], ['GET', '/wl-cards/stats'], ['POST', '/wl-cards']] },
+  bots:          { base: '/wl-bots/operators', crud: false, status: true, approve: false,
+                   extra: [['GET', '/wl-bots/config'], ['GET', '/wl-bots/stats'], ['POST', '/wl-bots/operators']] },
+  kyc:           { base: '/kyc', crud: false, status: false, approve: true },
+  tickets:       { base: '/tickets', crud: true, status: false, approve: false,
+                   extra: [['POST', '/tickets/:id/messages', true], ['PUT', '/tickets/:id/assign', true], ['PUT', '/tickets/:id/status', true]] },
+  'ip-whitelist':{ base: '/ip-whitelist', crud: false, status: false, approve: false,
+                   extra: [['DELETE', '/ip-whitelist/:id', true], ['POST', '/ip-whitelist']] },
+  'audit-logs':  { base: '/audit-logs', crud: false, status: false, approve: false,
+                   extra: [['POST', '/audit-logs/export', true]] },
+  'wallet-management': { base: '/withdrawals', crud: false, status: false, approve: true,
+                   extra: [['GET', '/fees'], ['POST', '/fees'], ['PUT', '/fees/:id'], ['PUT', '/users/:id/status', true]] },
+  withdrawals:   { base: '/withdrawals', crud: false, status: false, approve: true,
+                   extra: [['POST', '/withdrawals/:id/process', true]] },
 };
 
 function ipc(method, relPath, body) {
@@ -30,7 +51,7 @@ function ipc(method, relPath, body) {
 
 function registerDomainIpc() {
   for (const [domain, cfg] of Object.entries(DOMAINS)) {
-    const base = cfg.special ? '' : '/' + domain;
+    const base = cfg.base || (cfg.special ? '' : '/' + domain);
     ipcMain.handle(`wl:${domain}:list`, (_e, id) => ipc('GET', base + (id ? `/${id}` : '')));
     if (cfg.crud) {
       ipcMain.handle(`wl:${domain}:create`, (_e, body) => ipc('POST', base, body));
@@ -41,6 +62,17 @@ function registerDomainIpc() {
     if (cfg.approve) {
       ipcMain.handle(`wl:${domain}:approve`, (_e, id) => ipc('POST', `${base}/${id}/approve`));
       ipcMain.handle(`wl:${domain}:reject`, (_e, id, reason) => ipc('POST', `${base}/${id}/reject`, { reason }));
+    }
+    // Non-uniform real backend routes (e.g. allocations/stats/transactions).
+    // Registered as wl:<domain>:extra:<i> with optional id substitution.
+    if (cfg.extra) {
+      cfg.extra.forEach((spec, i) => {
+        const [method, path] = spec;
+        ipcMain.handle(`wl:${domain}:extra:${i}`, (_e, id, body) => {
+          const resolved = id ? path.replace(':id', id) : path;
+          return ipc(method, resolved, body);
+        });
+      });
     }
   }
   // Structured RBAC specifics (not covered by generic crud path above).

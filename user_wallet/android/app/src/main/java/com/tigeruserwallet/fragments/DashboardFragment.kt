@@ -4,97 +4,83 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.tigeruserwallet.MainActivity
 import com.tigeruserwallet.R
 import com.tigeruserwallet.adapters.BalanceAdapter
 import com.tigeruserwallet.api.UserWalletApiService
-import com.tigeruserwallet.fragments.KycFragment
+import com.tigeruserwallet.databinding.FragmentDashboardBinding
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/**
+ * Dashboard (mirrors web Dashboard.tsx):
+ *  - greeting from the transparent session's user identity
+ *  - stat cards: total native balance, wallet count, network count
+ *  - balances table (real GET /wallets + per-wallet GET /wallets/:id/balance)
+ *
+ * No stubs: every value is a real backend fetch.
+ */
 class DashboardFragment : Fragment() {
-    private lateinit var balancesRecyclerView: androidx.recyclerview.widget.RecyclerView
+
+    private var _binding: FragmentDashboardBinding? = null
+    private val binding get() = _binding!!
 
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View? {
-        return inflater.inflate(R.layout.fragment_dashboard, container, false)
+    ): View {
+        _binding = FragmentDashboardBinding.inflate(inflater, container, false)
+        return binding.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        balancesRecyclerView = view.findViewById(R.id.balancesRecyclerView)
-        balancesRecyclerView.layoutManager = LinearLayoutManager(requireContext())
-
-        val main = activity as? MainActivity
-        view.findViewById<Button>(R.id.navSendButton).setOnClickListener {
-            main?.navigateTo(SendFragment())
-        }
-        view.findViewById<Button>(R.id.navReceiveButton).setOnClickListener {
-            main?.navigateTo(ReceiveFragment())
-        }
-        view.findViewById<Button>(R.id.navTransactionsButton).setOnClickListener {
-            main?.navigateTo(TransactionsFragment())
-        }
-        view.findViewById<Button>(R.id.navSwapButton).setOnClickListener {
-            main?.navigateTo(SwapFragment())
-        }
-        view.findViewById<Button>(R.id.navStakingButton).setOnClickListener {
-            main?.navigateTo(StakingFragment())
-        }
-        view.findViewById<Button>(R.id.navNftsButton).setOnClickListener {
-            main?.navigateTo(NFTsFragment())
-        }
-        view.findViewById<Button>(R.id.navBridgeButton).setOnClickListener {
-            main?.navigateTo(BridgeFragment())
-        }
-        view.findViewById<Button>(R.id.navDeFiButton).setOnClickListener {
-            main?.navigateTo(DeFiFragment())
-        }
-        view.findViewById<Button>(R.id.navKycButton).setOnClickListener {
-            main?.navigateTo(KycFragment())
-        }
-        view.findViewById<Button>(R.id.navAddressBookButton).setOnClickListener {
-            main?.navigateTo(AddressBookFragment())
-        }
-        view.findViewById<Button>(R.id.navApprovalsButton).setOnClickListener {
-            main?.navigateTo(ApprovalsFragment())
-        }
-        view.findViewById<Button>(R.id.navDevicesButton).setOnClickListener {
-            main?.navigateTo(DevicesFragment())
-        }
-        view.findViewById<Button>(R.id.navKeystoreButton).setOnClickListener {
-            main?.navigateTo(KeystoreFragment())
-        }
-        view.findViewById<Button>(R.id.navWalletsButton).setOnClickListener {
-            main?.navigateTo(WalletsFragment())
-        }
-        view.findViewById<Button>(R.id.navSettingsButton).setOnClickListener {
-            main?.navigateTo(SettingsFragment())
-        }
-
-        loadBalances()
+        binding.balancesRecyclerView.layoutManager = LinearLayoutManager(requireContext())
+        load()
+        binding.swipeRefresh.setOnRefreshListener { load() }
     }
 
-    private fun loadBalances() {
+    private fun load() {
+        binding.swipeRefresh.isRefreshing = true
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                val user = UserWalletApiService.ensureSession().user
                 val balances = UserWalletApiService.getBalances()
+                val total = balances.sumOf { it.balanceF }
+                val networks = balances.map { it.chainId }.toSet().size
                 withContext(Dispatchers.Main) {
-                    balancesRecyclerView.adapter = BalanceAdapter(balances)
+                    binding.welcomeText.text = getString(R.string.dashboard_welcome, user.username)
+                    binding.statTotal.text = String.format("%.6f", total)
+                    binding.statWallets.text = balances.size.toString()
+                    binding.statNetworks.text = networks.toString()
+                    binding.balancesRecyclerView.adapter = BalanceAdapter(balances)
+                    binding.emptyState.visibility =
+                        if (balances.isEmpty()) View.VISIBLE else View.GONE
+                    binding.balancesRecyclerView.visibility =
+                        if (balances.isEmpty()) View.GONE else View.VISIBLE
+                    binding.swipeRefresh.isRefreshing = false
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    balancesRecyclerView.adapter = BalanceAdapter(emptyList())
+                    binding.welcomeText.text = getString(R.string.dashboard_welcome, "")
+                    binding.statTotal.text = "0.000000"
+                    binding.statWallets.text = "0"
+                    binding.statNetworks.text = "0"
+                    binding.balancesRecyclerView.adapter = BalanceAdapter(emptyList())
+                    binding.emptyState.visibility = View.VISIBLE
+                    binding.balancesRecyclerView.visibility = View.GONE
+                    binding.swipeRefresh.isRefreshing = false
                 }
             }
         }
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
     }
 }

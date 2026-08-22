@@ -5,6 +5,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 const DOMAINS = [
   'futures', 'options', 'copy-trading', 'convert', 'onramp', 'offramp',
   'p2p-clients', 'partners', 'rewards', 'marketing', 'rbac',
+  // 9 scoped admin domains (real main.go routes on port 8082)
+  'liquidity', 'crypto-card', 'bots', 'kyc', 'tickets',
+  'ip-whitelist', 'audit-logs', 'wallet-management', 'withdrawals',
 ];
 
 const api = { theme: {
@@ -21,6 +24,8 @@ for (const d of DOMAINS) {
     status: (id, s) => ipcRenderer.invoke(`wl:${d}:status`, id, s),
     approve: (id) => ipcRenderer.invoke(`wl:${d}:approve`, id),
     reject: (id, reason) => ipcRenderer.invoke(`wl:${d}:reject`, id, reason),
+    // Non-uniform real backend routes (allocations/stats/transactions/...).
+    extra: (i, id, body) => ipcRenderer.invoke(`wl:${d}:extra:${i}`, id, body),
   };
 }
 

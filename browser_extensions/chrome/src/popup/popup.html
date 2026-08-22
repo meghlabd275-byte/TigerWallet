@@ -22,8 +22,170 @@
 
     <!-- Main Content -->
     <main class="main">
+      <!-- Tx Submitted Banner (shown after a successful sendTransaction) -->
+      <div id="tx-banner" class="tx-banner hidden">
+        <div class="tx-banner-icon">✅</div>
+        <div class="tx-banner-body">
+          <div class="tx-banner-title">Transaction submitted to the blockchain network</div>
+          <div class="tx-banner-hash" id="tx-banner-hash"></div>
+          <a class="tx-banner-link" id="tx-banner-link" target="_blank" rel="noopener noreferrer">View on explorer ↗</a>
+        </div>
+        <button class="tx-banner-close" id="tx-banner-close" title="Dismiss">✕</button>
+      </div>
+
+      <!-- Onboarding Choose View (FIRST popup view — no login/register wall) -->
+      <div id="onboarding-view" class="view hidden">
+        <div class="welcome-card">
+          <div class="welcome-icon">🐯</div>
+          <h2 class="welcome-title">Welcome to TigerWallet</h2>
+          <p class="welcome-text">Self-custody, no account required. Your keys, your crypto.</p>
+        </div>
+
+        <div class="auth-buttons">
+          <button class="primary-btn" id="onboarding-create-btn">
+            <span class="btn-icon">✨</span>
+            Create Wallet
+          </button>
+          <button class="secondary-btn" id="onboarding-import-btn">
+            <span class="btn-icon">📥</span>
+            Import Wallet
+          </button>
+        </div>
+
+        <div class="features">
+          <div class="feature">
+            <span class="feature-icon">🔒</span>
+            <span class="feature-text">Self-Custody</span>
+          </div>
+          <div class="feature">
+            <span class="feature-icon">🌐</span>
+            <span class="feature-text">Multi-Chain</span>
+          </div>
+          <div class="feature">
+            <span class="feature-icon">🚫</span>
+            <span class="feature-text">No Sign-Up</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Create Wallet View -->
+      <div id="create-view" class="view hidden">
+        <div class="form-card">
+          <h2 class="form-title">Create Wallet</h2>
+          <p class="form-subtitle">Generate a brand-new self-custody wallet.</p>
+
+          <div class="form-group">
+            <label class="form-label" for="create-name">Wallet Name</label>
+            <input type="text" class="input" id="create-name" placeholder="My Tiger Wallet" maxlength="64">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="create-network">Network</label>
+            <select class="input" id="create-network">
+              <option value="1">Ethereum</option>
+              <option value="56">BNB Smart Chain</option>
+              <option value="137">Polygon</option>
+              <option value="42161">Arbitrum One</option>
+              <option value="10">Optimism</option>
+              <option value="8453">Base</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="create-password">Password</label>
+            <input type="password" class="input" id="create-password" placeholder="Min 8 characters">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="create-confirm">Confirm Password</label>
+            <input type="password" class="input" id="create-confirm" placeholder="Re-enter password">
+          </div>
+
+          <div id="create-error" class="form-error hidden"></div>
+
+          <button class="primary-btn" id="create-submit-btn">Create Wallet</button>
+          <button class="link-btn" id="create-back-btn">← Back</button>
+        </div>
+      </div>
+
+      <!-- Import Wallet View -->
+      <div id="import-view" class="view hidden">
+        <div class="form-card">
+          <h2 class="form-title">Import Wallet</h2>
+          <p class="form-subtitle">Restore from an existing 12 or 24-word recovery phrase.</p>
+
+          <div class="form-group">
+            <label class="form-label" for="import-seed">Recovery Phrase (Mnemonic)</label>
+            <textarea class="input textarea" id="import-seed" rows="3" placeholder="abandon abandon abandon ... art"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="import-name">Wallet Name</label>
+            <input type="text" class="input" id="import-name" placeholder="My Imported Wallet" maxlength="64">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="import-network">Network</label>
+            <select class="input" id="import-network">
+              <option value="1">Ethereum</option>
+              <option value="56">BNB Smart Chain</option>
+              <option value="137">Polygon</option>
+              <option value="42161">Arbitrum One</option>
+              <option value="10">Optimism</option>
+              <option value="8453">Base</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="import-password">Password</label>
+            <input type="password" class="input" id="import-password" placeholder="Min 8 characters">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="import-confirm">Confirm Password</label>
+            <input type="password" class="input" id="import-confirm" placeholder="Re-enter password">
+          </div>
+
+          <div id="import-error" class="form-error hidden"></div>
+
+          <button class="primary-btn" id="import-submit-btn">Import Wallet</button>
+          <button class="link-btn" id="import-back-btn">← Back</button>
+        </div>
+      </div>
+
+      <!-- Backup View (shown once after creating a wallet) -->
+      <div id="backup-view" class="view hidden">
+        <div class="backup-card">
+          <div class="backup-icon">🔐</div>
+          <h2 class="backup-title">Back Up Your Recovery Phrase</h2>
+          <p class="backup-warning">⚠️ This 12-word phrase is the ONLY way to recover your wallet. Anyone with these words controls your funds. We cannot recover it for you.</p>
+
+          <label class="reveal-row">
+            <input type="checkbox" id="backup-reveal">
+            <span>I understand — reveal my recovery phrase</span>
+          </label>
+
+          <div class="mnemonic-grid hidden" id="backup-mnemonic-grid"></div>
+          <div class="mnemonic-blur hidden" id="backup-mnemonic-blur">Check the box above to reveal your phrase</div>
+
+          <div class="backup-actions">
+            <button class="action-btn" id="backup-copy-btn" disabled>📋 Copy</button>
+            <button class="action-btn" id="backup-gdrive-btn" disabled>☁️ Google Drive</button>
+            <button class="action-btn" id="backup-download-btn" disabled>⬇️ Download Encrypted</button>
+          </div>
+          <div id="backup-gdrive-msg" class="backup-note hidden"></div>
+
+          <label class="reveal-row">
+            <input type="checkbox" id="backup-confirmed">
+            <span>I have backed up my recovery phrase somewhere safe</span>
+          </label>
+
+          <button class="primary-btn" id="backup-continue-btn" disabled>Continue</button>
+        </div>
+      </div>
+
       <!-- Connected State -->
-      <div id="connected-view" class="view">
+      <div id="connected-view" class="view hidden">
         <div class="balance-card">
           <div class="balance-label">Total Balance</div>
           <div class="balance-value" id="total-balance">$0.00</div>
@@ -85,6 +247,28 @@
           </button>
         </div>
 
+        <!-- Send Form (toggled by the Send action) -->
+        <div id="send-form" class="send-form hidden">
+          <div class="section-header">
+            <span class="section-title">Send</span>
+            <button class="link-btn" id="send-close-btn">✕</button>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="send-to">Recipient Address</label>
+            <input type="text" class="input" id="send-to" placeholder="0x... (ENS not supported)">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="send-amount">Amount (ETH)</label>
+            <input type="text" class="input" id="send-amount" placeholder="0.0" inputmode="decimal">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="send-password">Wallet Password</label>
+            <input type="password" class="input" id="send-password" placeholder="Password to sign">
+          </div>
+          <div id="send-error" class="form-error hidden"></div>
+          <button class="primary-btn" id="send-submit-btn">Send Transaction</button>
+        </div>
+
         <div class="tokens-section">
           <div class="section-header">
             <span class="section-title">Assets</span>
@@ -96,14 +280,14 @@
         </div>
       </div>
 
-      <!-- Disconnected State -->
+      <!-- Disconnected State (legacy: kept for dApp connect flows) -->
       <div id="disconnected-view" class="view hidden">
         <div class="welcome-card">
           <div class="welcome-icon">🐯</div>
           <h2 class="welcome-title">Welcome to TigerWallet</h2>
           <p class="welcome-text">The secure multi-chain wallet for DeFi</p>
         </div>
-        
+
         <div class="auth-buttons">
           <button class="primary-btn" id="create-wallet-btn">
             <span class="btn-icon">✨</span>
@@ -150,21 +334,22 @@
 
     <!-- Footer -->
     <footer class="footer">
-      <button class="footer-btn" id="history-btn">
+      <button class="footer-btn" id="footer-history-btn">
         <span class="footer-icon">📜</span>
         <span class="footer-label">History</span>
       </button>
-      <button class="footer-btn" id="dapps-btn">
+      <button class="footer-btn" id="footer-dapps-btn">
         <span class="footer-icon">🌐</span>
         <span class="footer-label">DApps</span>
       </button>
-      <button class="footer-btn" id="settings-footer-btn">
+      <button class="footer-btn" id="footer-settings-btn">
         <span class="footer-icon">⚙️</span>
         <span class="footer-label">Settings</span>
       </button>
     </footer>
   </div>
 
+  <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
   <script src="popup.js"></script>
 </body>
 </html>

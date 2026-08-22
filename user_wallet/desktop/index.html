@@ -3,11 +3,23 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:*">
+  <!--
+    CSP allows: local assets + the Google Identity Services (GIS) + gapi
+    scripts (loaded below), Google Drive API v3 REST + multipart upload, and
+    the local wallet-api backend. The GIS OAuth flow pops up Google's own
+    origin, hence frame-src https://accounts.google.com.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com https://apis.google.com; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:* https://www.googleapis.com https://oauth2.googleapis.com; frame-src https://accounts.google.com; img-src 'self' data: https:" />
   <title>UserWallet</title>
 </head>
 <body>
   <div id="root"></div>
+  <!-- Google Identity Services (token client for OAuth2) + gapi client (Drive
+       API v3 discovery + multipart upload). Used by BackupMnemonic. These load
+       lazily; if REACT_APP_GOOGLE_CLIENT_ID is unset the Drive button is
+       honestly disabled, so absence of a client ID never breaks the app. -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://apis.google.com/js/api.js" async defer></script>
   <script type="module" src="/src/renderer/main.jsx"></script>
 </body>
 </html>

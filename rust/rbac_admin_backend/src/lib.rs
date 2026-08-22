@@ -1,15 +1,22 @@
 /**
  * TigerWallet RBAC Admin - Rust Implementation
  * High-performance, ultra-low latency backend
- * Production-ready with real implementations
+ * Production-ready with real PostgreSQL storage (tokio-postgres + deadpool).
+ *
+ * State is persisted in PostgreSQL and shared across instances. No in-memory
+ * HashMaps, no fake/seed data — tables start empty and are owned/seeded by the
+ * canonical Go backends.
  */
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use std::collections::HashMap;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use uuid::Uuid;
+use tokio_postgres::types::ToSql;
+use tokio_postgres::{Config as PgConfig, NoTls, Row};
+use tokio::runtime::Runtime;
+use deadpool_postgres::{Manager as DeadpoolManager, Pool as DeadpoolPool};
 
 // ==================== TYPES ====================
 
@@ -260,168 +267,281 @@ pub struct PlatformStats {
     pub active_dex_connections: i32,
 }
 
+// ==================== DATABASE POOL ====================
+
+/// Default connection string. Overridable via the `DATABASE_URL` env var.
+const DEFAULT_DATABASE_URL: &str =
+    "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable";
+
+/// Idempotent DDL. Mirrors the canonical Go admin/super_admin schema
+/// (admin_users / admin_roles / admin_role_assignments / admin_permissions) plus
+/// the platform-admin entity tables this service manages. All `IF NOT EXISTS` —
+/// safe to run on every startup.
+const MIGRATIONS: &[&str] = &[
+    // ---- Admin RBAC (mirrors super_admin/go/internal/database/postgres.go) ----
+    "CREATE TABLE IF NOT EXISTS admin_users (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), username VARCHAR(255) UNIQUE NOT NULL, email VARCHAR(255) UNIQUE NOT NULL, password_hash VARCHAR(255) NOT NULL, role VARCHAR(50) NOT NULL DEFAULT 'admin', white_label_id UUID, two_factor_secret VARCHAR(255), two_factor_enabled BOOLEAN DEFAULT FALSE, is_active BOOLEAN DEFAULT TRUE, status VARCHAR(50) DEFAULT 'active', created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), last_login TIMESTAMPTZ)",
+    "CREATE TABLE IF NOT EXISTS admin_roles (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT UNIQUE NOT NULL, description TEXT, scope_set TEXT, permissions TEXT[] NOT NULL DEFAULT '{}', is_system BOOLEAN DEFAULT FALSE, is_active BOOLEAN DEFAULT TRUE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
+    "CREATE TABLE IF NOT EXISTS admin_role_assignments (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), admin_id UUID NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE, role_id UUID NOT NULL REFERENCES admin_roles(id) ON DELETE CASCADE, granted_by UUID REFERENCES admin_users(id), granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE (admin_id, role_id))",
+    "CREATE TABLE IF NOT EXISTS admin_permissions (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT UNIQUE NOT NULL, description TEXT, category TEXT NOT NULL DEFAULT 'general', is_active BOOLEAN DEFAULT TRUE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
+    "CREATE INDEX IF NOT EXISTS idx_admin_role_assignments_admin ON admin_role_assignments(admin_id)",
+    // ---- Platform entities ----
+    "CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT NOT NULL, username TEXT NOT NULL, password_hash TEXT NOT NULL, wallet_address TEXT NOT NULL DEFAULT '', kyc_status INT NOT NULL DEFAULT 0, status INT NOT NULL DEFAULT 1, created_at BIGINT NOT NULL DEFAULT 0, last_login BIGINT NOT NULL DEFAULT 0, balance JSONB NOT NULL DEFAULT '{}', two_factor_enabled BOOLEAN DEFAULT FALSE, ip_address TEXT NOT NULL DEFAULT '', country TEXT NOT NULL DEFAULT '')",
+    "CREATE TABLE IF NOT EXISTS kyc_requests (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, doc_type TEXT NOT NULL, status INT NOT NULL DEFAULT 0, document_url TEXT NOT NULL DEFAULT '', submitted_at BIGINT NOT NULL DEFAULT 0, reviewed_at BIGINT, reviewed_by TEXT, reject_reason TEXT)",
+    "CREATE TABLE IF NOT EXISTS transactions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, tx_type INT NOT NULL, amount DOUBLE PRECISION NOT NULL, currency TEXT NOT NULL, status INT NOT NULL, from_address TEXT NOT NULL DEFAULT '', to_address TEXT NOT NULL DEFAULT '', tx_hash TEXT NOT NULL DEFAULT '', timestamp BIGINT NOT NULL DEFAULT 0, fee DOUBLE PRECISION NOT NULL DEFAULT 0, chain_id INT NOT NULL DEFAULT 0)",
+    "CREATE TABLE IF NOT EXISTS trading_pairs (id TEXT PRIMARY KEY, base TEXT NOT NULL, quote TEXT NOT NULL, pair_name TEXT NOT NULL, price DOUBLE PRECISION NOT NULL DEFAULT 0, volume_24h DOUBLE PRECISION NOT NULL DEFAULT 0, liquidity DOUBLE PRECISION NOT NULL DEFAULT 0, status INT NOT NULL DEFAULT 1, chain_id INT NOT NULL DEFAULT 0, created_at BIGINT NOT NULL DEFAULT 0, updated_at BIGINT NOT NULL DEFAULT 0)",
+    "CREATE TABLE IF NOT EXISTS liquidity_pools (id TEXT PRIMARY KEY, pair_id TEXT NOT NULL, user_id TEXT NOT NULL, base_amount DOUBLE PRECISION NOT NULL DEFAULT 0, quote_amount DOUBLE PRECISION NOT NULL DEFAULT 0, liquidity DOUBLE PRECISION NOT NULL DEFAULT 0, apr DOUBLE PRECISION NOT NULL DEFAULT 0, created_at BIGINT NOT NULL DEFAULT 0)",
+    "CREATE TABLE IF NOT EXISTS fee_structures (id TEXT PRIMARY KEY, fee_type TEXT NOT NULL, asset TEXT NOT NULL, fee_percent DOUBLE PRECISION NOT NULL DEFAULT 0, fee_fixed DOUBLE PRECISION NOT NULL DEFAULT 0, min_fee DOUBLE PRECISION NOT NULL DEFAULT 0, max_fee DOUBLE PRECISION, tier TEXT NOT NULL DEFAULT 'all', is_active BOOLEAN DEFAULT TRUE, chain_id INT NOT NULL DEFAULT 0)",
+    "CREATE TABLE IF NOT EXISTS blockchains (id TEXT PRIMARY KEY, name TEXT NOT NULL, symbol TEXT NOT NULL, chain_id INT NOT NULL, is_evm BOOLEAN DEFAULT FALSE, rpc_url TEXT NOT NULL DEFAULT '', explorer_url TEXT NOT NULL DEFAULT '', native_token TEXT NOT NULL DEFAULT '', decimals INT NOT NULL DEFAULT 18, is_active BOOLEAN DEFAULT TRUE, avg_gas_price_gwei DOUBLE PRECISION NOT NULL DEFAULT 0)",
+    "CREATE TABLE IF NOT EXISTS bot_instances (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, bot_type TEXT NOT NULL, name TEXT NOT NULL, status TEXT NOT NULL, connected_dexs INT NOT NULL DEFAULT 0, connected_cexs INT NOT NULL DEFAULT 0, total_pnl DOUBLE PRECISION NOT NULL DEFAULT 0, total_volume DOUBLE PRECISION NOT NULL DEFAULT 0, total_orders INT NOT NULL DEFAULT 0, avg_latency_us INT NOT NULL DEFAULT 0, created_at BIGINT NOT NULL DEFAULT 0, last_trade_at BIGINT NOT NULL DEFAULT 0)",
+    "CREATE TABLE IF NOT EXISTS bot_tiers (id TEXT PRIMARY KEY, name TEXT NOT NULL, display_name TEXT NOT NULL, monthly_fee_usd DOUBLE PRECISION NOT NULL DEFAULT 0, per_dex_fee_usd DOUBLE PRECISION NOT NULL DEFAULT 0, per_cex_fee_usd DOUBLE PRECISION NOT NULL DEFAULT 0, max_bots INT NOT NULL DEFAULT 0, max_dexs INT NOT NULL DEFAULT 0, max_cexs INT NOT NULL DEFAULT 0, max_position_usd DOUBLE PRECISION NOT NULL DEFAULT 0, max_daily_volume DOUBLE PRECISION NOT NULL DEFAULT 0, latency_target_ms INT NOT NULL DEFAULT 0, is_active BOOLEAN DEFAULT TRUE)",
+    "CREATE TABLE IF NOT EXISTS api_keys (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, key TEXT NOT NULL, tier INT NOT NULL DEFAULT 1, permissions JSONB NOT NULL DEFAULT '{}', rate_limit_per_min INT NOT NULL DEFAULT 60, rate_limit_per_day INT NOT NULL DEFAULT 10000, is_active BOOLEAN DEFAULT TRUE, last_used_at BIGINT, expires_at BIGINT NOT NULL DEFAULT 0, created_at BIGINT NOT NULL DEFAULT 0)",
+    "CREATE TABLE IF NOT EXISTS external_connections (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, exchange_name TEXT NOT NULL, account_id TEXT NOT NULL, is_active BOOLEAN DEFAULT TRUE, can_trade BOOLEAN DEFAULT FALSE, can_withdraw BOOLEAN DEFAULT FALSE, can_deposit BOOLEAN DEFAULT FALSE, last_sync_at BIGINT NOT NULL DEFAULT 0, sync_status TEXT NOT NULL DEFAULT '')",
+    "CREATE TABLE IF NOT EXISTS token_listings (id TEXT PRIMARY KEY, token_symbol TEXT NOT NULL, token_name TEXT NOT NULL, contract_address TEXT NOT NULL, chain_id INT NOT NULL DEFAULT 0, tier TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT '', requester_address TEXT NOT NULL DEFAULT '', requester_email TEXT NOT NULL DEFAULT '', one_time_fee DOUBLE PRECISION NOT NULL DEFAULT 0, monthly_fee DOUBLE PRECISION NOT NULL DEFAULT 0, requested_at BIGINT NOT NULL DEFAULT 0)",
+];
+
+/// Owns a deadpool-postgres connection pool plus a dedicated tokio `Runtime`.
+///
+/// The `Runtime` drives the synchronous `migrate()` / `health_check()` paths
+/// via `block_on` (mirroring `rust/admin_fetchers/src/database.rs`). The async
+/// query/execute helpers use the deadpool pool directly so they can be `.await`ed
+/// from the service's `async` methods without nesting runtimes.
+pub struct DatabasePool {
+    pool: DeadpoolPool,
+    runtime: Runtime,
+}
+
+impl DatabasePool {
+    /// Construct from a libpq-style connection string, build the pool, and run
+    /// migrations. Fail-closed: any connection/migration error is returned and
+    /// NO service is constructed (never silently falls back to in-memory).
+    pub fn new(database_url: &str) -> Result<Self, String> {
+        let pg_config: PgConfig = database_url
+            .parse()
+            .map_err(|e| format!("invalid database url: {e}"))?;
+
+        let manager = DeadpoolManager::new(pg_config, NoTls);
+        let pool = DeadpoolPool::builder(manager)
+            .max_size(16)
+            .build()
+            .map_err(|e| format!("failed to create postgres pool: {e}"))?;
+
+        let runtime = Runtime::new().map_err(|e| format!("failed to create runtime: {e}"))?;
+        let db = Self { pool, runtime };
+        db.migrate()?;
+        Ok(db)
+    }
+
+    /// Run all `CREATE TABLE IF NOT EXISTS` migrations (idempotent).
+    fn migrate(&self) -> Result<(), String> {
+        self.runtime.block_on(async {
+            let client = self.pool.get().await.map_err(|e| format!("pool get: {e}"))?;
+            for stmt in MIGRATIONS {
+                client
+                    .execute(*stmt, &[])
+                    .await
+                    .map_err(|e| format!("migration failed: {e}"))?;
+            }
+            Ok::<(), String>(())
+        })
+    }
+
+    /// Synchronous health check (uses the owned runtime).
+    pub fn health_check(&self) -> Result<bool, String> {
+        self.runtime.block_on(async {
+            let client = self.pool.get().await.map_err(|e| format!("pool get: {e}"))?;
+            let rows = client
+                .query("SELECT 1", &[])
+                .await
+                .map_err(|e| format!("health check failed: {e}"))?;
+            Ok(!rows.is_empty())
+        })
+    }
+
+    async fn conn(&self) -> Result<deadpool_postgres::Object, String> {
+        self.pool.get().await.map_err(|e| format!("pool get: {e}"))
+    }
+
+    pub async fn query(
+        &self,
+        sql: &str,
+        params: &[&(dyn ToSql + Sync)],
+    ) -> Result<Vec<Row>, String> {
+        let client = self.conn().await?;
+        client.query(sql, params).await.map_err(|e| format!("query failed: {e}"))
+    }
+
+    pub async fn query_opt(
+        &self,
+        sql: &str,
+        params: &[&(dyn ToSql + Sync)],
+    ) -> Result<Option<Row>, String> {
+        let client = self.conn().await?;
+        let rows = client
+            .query(sql, params)
+            .await
+            .map_err(|e| format!("query failed: {e}"))?;
+        Ok(rows.into_iter().next())
+    }
+
+    pub async fn execute(
+        &self,
+        sql: &str,
+        params: &[&(dyn ToSql + Sync)],
+    ) -> Result<u64, String> {
+        let client = self.conn().await?;
+        client.execute(sql, params).await.map_err(|e| format!("execute failed: {e}"))
+    }
+}
+
 // ==================== RBAC ADMIN SERVICE ====================
 
 pub struct RBACAdminService {
-    users: RwLock<HashMap<String, User>>,
-    kyc_requests: RwLock<HashMap<String, KYCRequest>>,
-    transactions: RwLock<HashMap<String, Transaction>>,
-    trading_pairs: RwLock<HashMap<String, TradingPair>>,
-    liquidity_pools: RwLock<HashMap<String, LiquidityPool>>,
-    fee_structures: RwLock<HashMap<String, FeeStructure>>,
-    blockchains: RwLock<HashMap<String, Blockchain>>,
-    bot_instances: RwLock<HashMap<String, BotInstance>>,
-    bot_tiers: RwLock<HashMap<String, BotTier>>,
-    api_keys: RwLock<HashMap<String, APIKey>>,
-    external_connections: RwLock<HashMap<String, ExternalConnection>>,
-    token_listings: RwLock<HashMap<String, TokenListing>>,
-    stats: RwLock<PlatformStats>,
+    db: DatabasePool,
 }
 
 impl RBACAdminService {
-    pub fn new() -> Arc<Self> {
-        Arc::new(Self::new_inner())
+    /// Construct from the `DATABASE_URL` env var (default
+    /// `postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable`).
+    /// Fail-closed: returns an error if the pool cannot be built or migrations fail.
+    pub fn new() -> Result<Arc<Self>, String> {
+        Self::with_url(&std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DATABASE_URL.to_string()))
     }
 
-    fn new_inner() -> Self {
-        let mut service = Self {
-            users: RwLock::new(HashMap::new()),
-            kyc_requests: RwLock::new(HashMap::new()),
-            transactions: RwLock::new(HashMap::new()),
-            trading_pairs: RwLock::new(HashMap::new()),
-            liquidity_pools: RwLock::new(HashMap::new()),
-            fee_structures: RwLock::new(HashMap::new()),
-            blockchains: RwLock::new(HashMap::new()),
-            bot_instances: RwLock::new(HashMap::new()),
-            bot_tiers: RwLock::new(HashMap::new()),
-            api_keys: RwLock::new(HashMap::new()),
-            external_connections: RwLock::new(HashMap::new()),
-            token_listings: RwLock::new(HashMap::new()),
-            stats: RwLock::new(PlatformStats {
-                // Honest empty defaults — real platform statistics are
-                // aggregated from the canonical analytics backend
-                // (go/analytics_service) / PostgreSQL, never fabricated in the
-                // constructor. Zeroed here until a real data source populates
-                // them.
-                total_users: 0,
-                active_users: 0,
-                total_volume: 0.0,
-                total_transactions: 0,
-                total_fees: 0.0,
-                active_bots: 0,
-                total_bots: 0,
-                active_cex_connections: 0,
-                active_dex_connections: 0,
-            }),
-        };
-        
-        service.init_demo_data();
-        service
+    /// Construct from an explicit connection string.
+    pub fn with_url(database_url: &str) -> Result<Arc<Self>, String> {
+        let db = DatabasePool::new(database_url)?;
+        Ok(Arc::new(Self { db }))
     }
 
-    fn init_demo_data(&mut self) {
-        // Initialize blockchains
-        let chains = vec![
-            Blockchain { id: "eth".to_string(), name: "Ethereum".to_string(), symbol: "ETH".to_string(), chain_id: 1, is_evm: true, rpc_url: "https://eth-mainnet.alchemyapi.io".to_string(), explorer_url: "https://etherscan.io".to_string(), native_token: "ETH".to_string(), decimals: 18, is_active: true, avg_gas_price_gwei: 20.0 },
-            Blockchain { id: "bsc".to_string(), name: "BNB Smart Chain".to_string(), symbol: "BNB".to_string(), chain_id: 56, is_evm: true, rpc_url: "https://bsc-dataseed.binance.org".to_string(), explorer_url: "https://bscscan.com".to_string(), native_token: "BNB".to_string(), decimals: 18, is_active: true, avg_gas_price_gwei: 3.0 },
-            Blockchain { id: "polygon".to_string(), name: "Polygon".to_string(), symbol: "MATIC".to_string(), chain_id: 137, is_evm: true, rpc_url: "https://polygon-rpc.com".to_string(), explorer_url: "https://polygonscan.com".to_string(), native_token: "MATIC".to_string(), decimals: 18, is_active: true, avg_gas_price_gwei: 50.0 },
-            Blockchain { id: "arbitrum".to_string(), name: "Arbitrum One".to_string(), symbol: "ETH".to_string(), chain_id: 42161, is_evm: true, rpc_url: "https://arb1.arbitrum.io/rpc".to_string(), explorer_url: "https://arbiscan.io".to_string(), native_token: "ETH".to_string(), decimals: 18, is_active: true, avg_gas_price_gwei: 0.1 },
-            Blockchain { id: "optimism".to_string(), name: "Optimism".to_string(), symbol: "ETH".to_string(), chain_id: 10, is_evm: true, rpc_url: "https://mainnet.optimism.io".to_string(), explorer_url: "https://optimistic.etherscan.io".to_string(), native_token: "ETH".to_string(), decimals: 18, is_active: true, avg_gas_price_gwei: 0.001 },
-            Blockchain { id: "base".to_string(), name: "Base".to_string(), symbol: "ETH".to_string(), chain_id: 8453, is_evm: true, rpc_url: "https://mainnet.base.org".to_string(), explorer_url: "https://basescan.org".to_string(), native_token: "ETH".to_string(), decimals: 18, is_active: true, avg_gas_price_gwei: 0.001 },
-            Blockchain { id: "avalanche".to_string(), name: "Avalanche C-Chain".to_string(), symbol: "AVAX".to_string(), chain_id: 43114, is_evm: true, rpc_url: "https://api.avax.network/ext/bc/C/rpc".to_string(), explorer_url: "https://snowtrace.io".to_string(), native_token: "AVAX".to_string(), decimals: 18, is_active: true, avg_gas_price_gwei: 25.0 },
-            Blockchain { id: "solana".to_string(), name: "Solana".to_string(), symbol: "SOL".to_string(), chain_id: 101, is_evm: false, rpc_url: "https://api.mainnet-beta.solana.com".to_string(), explorer_url: "https://solscan.io".to_string(), native_token: "SOL".to_string(), decimals: 9, is_active: true, avg_gas_price_gwei: 0.0 },
-        ];
-        
-        let mut blockchains = self.blockchains.try_write().expect("init lock");
-        for chain in chains {
-            blockchains.insert(chain.id.clone(), chain);
-        }
-        drop(blockchains);
+    // ==================== ENUM CONVERSIONS ====================
 
-        // Initialize bot tiers
-        let tiers = vec![
-            BotTier { id: "tier_1".to_string(), name: "tier_1".to_string(), display_name: "Basic".to_string(), monthly_fee_usd: 2500.0, per_dex_fee_usd: 500.0, per_cex_fee_usd: 50.0, max_bots: 1, max_dexs: 5, max_cexs: 20, max_position_usd: 100000.0, max_daily_volume: 1000000.0, latency_target_ms: 100, is_active: true },
-            BotTier { id: "tier_2".to_string(), name: "tier_2".to_string(), display_name: "Pro".to_string(), monthly_fee_usd: 5000.0, per_dex_fee_usd: 750.0, per_cex_fee_usd: 75.0, max_bots: 3, max_dexs: 10, max_cexs: 50, max_position_usd: 500000.0, max_daily_volume: 5000000.0, latency_target_ms: 50, is_active: true },
-            BotTier { id: "tier_3".to_string(), name: "tier_3".to_string(), display_name: "Enterprise".to_string(), monthly_fee_usd: 10000.0, per_dex_fee_usd: 1000.0, per_cex_fee_usd: 100.0, max_bots: 10, max_dexs: 20, max_cexs: 200, max_position_usd: 5000000.0, max_daily_volume: 50000000.0, latency_target_ms: 10, is_active: true },
-        ];
-        
-        let mut bot_tiers = self.bot_tiers.try_write().expect("init lock");
-        for tier in tiers {
-            bot_tiers.insert(tier.id.clone(), tier);
+    fn user_status_from_i32(v: i32) -> UserStatus {
+        match v {
+            2 => UserStatus::Suspended,
+            3 => UserStatus::Banned,
+            _ => UserStatus::Active,
         }
-        drop(bot_tiers);
+    }
 
-        // Initialize fee structures
-        let fees = vec![
-            FeeStructure { id: "swap_eth".to_string(), fee_type: "swap".to_string(), asset: "ETH".to_string(), fee_percent: 0.3, fee_fixed: 0.0, min_fee: 0.0, max_fee: None, tier: "all".to_string(), is_active: true, chain_id: 1 },
-            FeeStructure { id: "swap_bsc".to_string(), fee_type: "swap".to_string(), asset: "BNB".to_string(), fee_percent: 0.3, fee_fixed: 0.0, min_fee: 0.0, max_fee: None, tier: "all".to_string(), is_active: true, chain_id: 56 },
-            FeeStructure { id: "withdrawal".to_string(), fee_type: "withdrawal".to_string(), asset: "*".to_string(), fee_percent: 0.0, fee_fixed: 5.0, min_fee: 5.0, max_fee: Some(50.0), tier: "all".to_string(), is_active: true, chain_id: 0 },
-            FeeStructure { id: "deposit".to_string(), fee_type: "deposit".to_string(), asset: "*".to_string(), fee_percent: 0.0, fee_fixed: 0.0, min_fee: 0.0, max_fee: None, tier: "all".to_string(), is_active: true, chain_id: 0 },
-        ];
-        
-        let mut fee_structures = self.fee_structures.try_write().expect("init lock");
-        for fee in fees {
-            fee_structures.insert(fee.id.clone(), fee);
+    fn kyc_status_from_i32(v: i32) -> KYCStatus {
+        match v {
+            1 => KYCStatus::Pending,
+            2 => KYCStatus::Approved,
+            3 => KYCStatus::Rejected,
+            _ => KYCStatus::None,
         }
-        drop(fee_structures);
+    }
 
-        // Initialize trading pairs
-        let pairs = vec![
-            TradingPair { id: "eth_usdt".to_string(), base: "ETH".to_string(), quote: "USDT".to_string(), pair_name: "ETH/USDT".to_string(), price: 3500.0, volume_24h: 50000000.0, liquidity: 100000000.0, status: PairStatus::Active, chain_id: 1, created_at: Utc::now().timestamp(), updated_at: Utc::now().timestamp() },
-            TradingPair { id: "bnb_usdt".to_string(), base: "BNB".to_string(), quote: "USDT".to_string(), pair_name: "BNB/USDT".to_string(), price: 600.0, volume_24h: 30000000.0, liquidity: 50000000.0, status: PairStatus::Active, chain_id: 56, created_at: Utc::now().timestamp(), updated_at: Utc::now().timestamp() },
-            TradingPair { id: "matic_usdt".to_string(), base: "MATIC".to_string(), quote: "USDT".to_string(), pair_name: "MATIC/USDT".to_string(), price: 0.85, volume_24h: 10000000.0, liquidity: 20000000.0, status: PairStatus::Active, chain_id: 137, created_at: Utc::now().timestamp(), updated_at: Utc::now().timestamp() },
-            TradingPair { id: "arb_usdt".to_string(), base: "ETH".to_string(), quote: "USDT".to_string(), pair_name: "ARB/USDT".to_string(), price: 1.20, volume_24h: 8000000.0, liquidity: 15000000.0, status: PairStatus::Active, chain_id: 42161, created_at: Utc::now().timestamp(), updated_at: Utc::now().timestamp() },
-            TradingPair { id: "sol_usdt".to_string(), base: "SOL".to_string(), quote: "USDT".to_string(), pair_name: "SOL/USDT".to_string(), price: 150.0, volume_24h: 20000000.0, liquidity: 40000000.0, status: PairStatus::Active, chain_id: 101, created_at: Utc::now().timestamp(), updated_at: Utc::now().timestamp() },
-        ];
-        
-        let mut trading_pairs = self.trading_pairs.try_write().expect("init lock");
-        for pair in pairs {
-            trading_pairs.insert(pair.id.clone(), pair);
+    fn tx_status_from_i32(v: i32) -> TransactionStatus {
+        match v {
+            2 => TransactionStatus::Completed,
+            3 => TransactionStatus::Failed,
+            _ => TransactionStatus::Pending,
+        }
+    }
+
+    fn tx_type_from_i32(v: i32) -> TransactionType {
+        match v {
+            2 => TransactionType::Withdrawal,
+            3 => TransactionType::Transfer,
+            4 => TransactionType::Swap,
+            _ => TransactionType::Deposit,
+        }
+    }
+
+    fn pair_status_from_i32(v: i32) -> PairStatus {
+        match v {
+            2 => PairStatus::Suspended,
+            3 => PairStatus::Halted,
+            _ => PairStatus::Active,
+        }
+    }
+
+    fn api_key_tier_from_i32(v: i32) -> APIKeyTier {
+        match v {
+            2 => APIKeyTier::Basic,
+            3 => APIKeyTier::Pro,
+            4 => APIKeyTier::Enterprise,
+            _ => APIKeyTier::Free,
         }
     }
 
     // ==================== USER MANAGEMENT ====================
 
+    fn row_to_user(r: &Row) -> User {
+        let balance_json: serde_json::Value = r.get("balance");
+        let balance: HashMap<String, f64> = serde_json::from_value(balance_json).unwrap_or_default();
+        User {
+            id: r.get("id"),
+            email: r.get("email"),
+            username: r.get("username"),
+            password_hash: r.get("password_hash"),
+            wallet_address: r.get("wallet_address"),
+            kyc_status: Self::kyc_status_from_i32(r.get("kyc_status")),
+            status: Self::user_status_from_i32(r.get("status")),
+            created_at: r.get("created_at"),
+            last_login: r.get("last_login"),
+            balance,
+            two_factor_enabled: r.get("two_factor_enabled"),
+            ip_address: r.get("ip_address"),
+            country: r.get("country"),
+        }
+    }
+
     pub async fn get_all_users(&self) -> Vec<User> {
-        let users = self.users.read().await;
-        users.values().cloned().collect()
+        self.db
+            .query("SELECT id, email, username, password_hash, wallet_address, kyc_status, status, created_at, last_login, balance, two_factor_enabled, ip_address, country FROM users", &[])
+            .await
+            .map(|rows| rows.iter().map(Self::row_to_user).collect())
+            .unwrap_or_default()
     }
 
     pub async fn get_user(&self, id: &str) -> Option<User> {
-        let users = self.users.read().await;
-        users.get(id).cloned()
+        self.db
+            .query_opt(
+                "SELECT id, email, username, password_hash, wallet_address, kyc_status, status, created_at, last_login, balance, two_factor_enabled, ip_address, country FROM users WHERE id = $1",
+                &[&id],
+            )
+            .await
+            .ok()
+            .flatten()
+            .map(|r| Self::row_to_user(&r))
     }
 
     pub async fn search_users(&self, query: &str) -> Vec<User> {
-        let users = self.users.read().await;
-        let query_lower = query.to_lowercase();
-        
-        users.values()
-            .filter(|u| {
-                u.email.to_lowercase().contains(&query_lower) ||
-                u.username.to_lowercase().contains(&query_lower) ||
-                u.wallet_address.to_lowercase().contains(&query_lower)
-            })
-            .cloned()
-            .collect()
+        let pattern = format!("%{}%", query.to_lowercase());
+        self.db
+            .query(
+                "SELECT id, email, username, password_hash, wallet_address, kyc_status, status, created_at, last_login, balance, two_factor_enabled, ip_address, country FROM users WHERE LOWER(email) LIKE $1 OR LOWER(username) LIKE $1 OR LOWER(wallet_address) LIKE $1",
+                &[&pattern],
+            )
+            .await
+            .map(|rows| rows.iter().map(Self::row_to_user).collect())
+            .unwrap_or_default()
     }
 
     pub async fn get_users_by_status(&self, status: UserStatus) -> Vec<User> {
-        let users = self.users.read().await;
-        users.values()
-            .filter(|u| u.status == status)
-            .cloned()
-            .collect()
+        let v = status as i32;
+        self.db
+            .query(
+                "SELECT id, email, username, password_hash, wallet_address, kyc_status, status, created_at, last_login, balance, two_factor_enabled, ip_address, country FROM users WHERE status = $1",
+                &[&v],
+            )
+            .await
+            .map(|rows| rows.iter().map(Self::row_to_user).collect())
+            .unwrap_or_default()
     }
 
     pub async fn update_user_status(&self, user_id: &str, status: UserStatus) -> Result<(), String> {
-        let mut users = self.users.write().await;
-        
-        if let Some(user) = users.get_mut(user_id) {
-            user.status = status;
-            Ok(())
-        } else {
+        let v = status as i32;
+        let n = self
+            .db
+            .execute("UPDATE users SET status = $1 WHERE id = $2", &[&v, &user_id])
+            .await?;
+        if n == 0 {
             Err("User not found".to_string())
+        } else {
+            Ok(())
         }
     }
 
@@ -439,131 +559,228 @@ impl RBACAdminService {
 
     // ==================== KYC MANAGEMENT ====================
 
+    fn row_to_kyc(r: &Row) -> KYCRequest {
+        KYCRequest {
+            id: r.get("id"),
+            user_id: r.get("user_id"),
+            doc_type: r.get("doc_type"),
+            status: Self::kyc_status_from_i32(r.get("status")),
+            document_url: r.get("document_url"),
+            submitted_at: r.get("submitted_at"),
+            reviewed_at: r.get("reviewed_at"),
+            reviewed_by: r.get("reviewed_by"),
+            reject_reason: r.get("reject_reason"),
+        }
+    }
+
     pub async fn get_all_kyc_requests(&self) -> Vec<KYCRequest> {
-        let requests = self.kyc_requests.read().await;
-        requests.values().cloned().collect()
+        self.db
+            .query("SELECT id, user_id, doc_type, status, document_url, submitted_at, reviewed_at, reviewed_by, reject_reason FROM kyc_requests", &[])
+            .await
+            .map(|rows| rows.iter().map(Self::row_to_kyc).collect())
+            .unwrap_or_default()
     }
 
     pub async fn get_kyc_requests_by_status(&self, status: KYCStatus) -> Vec<KYCRequest> {
-        let requests = self.kyc_requests.read().await;
-        requests.values()
-            .filter(|r| r.status == status)
-            .cloned()
-            .collect()
+        let v = status as i32;
+        self.db
+            .query(
+                "SELECT id, user_id, doc_type, status, document_url, submitted_at, reviewed_at, reviewed_by, reject_reason FROM kyc_requests WHERE status = $1",
+                &[&v],
+            )
+            .await
+            .map(|rows| rows.iter().map(Self::row_to_kyc).collect())
+            .unwrap_or_default()
     }
 
     pub async fn approve_kyc(&self, request_id: &str, reviewer_id: &str) -> Result<(), String> {
-        let mut requests = self.kyc_requests.write().await;
-        
-        if let Some(req) = requests.get_mut(request_id) {
-            req.status = KYCStatus::Approved;
-            req.reviewed_at = Some(Utc::now().timestamp());
-            req.reviewed_by = Some(reviewer_id.to_string());
-            
-            // Update user KYC status
-            let mut users = self.users.write().await;
-            if let Some(user) = users.get_mut(&req.user_id) {
-                user.kyc_status = KYCStatus::Approved;
+        let now = Utc::now().timestamp();
+        let mut client = self.db.conn().await?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|e| format!("begin tx: {e}"))?;
+        let row = tx
+            .query_opt(
+                "UPDATE kyc_requests SET status = 2, reviewed_at = $1, reviewed_by = $2 WHERE id = $3 RETURNING user_id",
+                &[&now, &reviewer_id, &request_id],
+            )
+            .await
+            .map_err(|e| format!("update kyc: {e}"))?;
+        let user_id: String = match row {
+            Some(r) => r.get(0),
+            None => {
+                let _ = tx.rollback().await;
+                return Err("KYC request not found".to_string());
             }
-            
-            Ok(())
-        } else {
-            Err("KYC request not found".to_string())
-        }
+        };
+        tx.execute("UPDATE users SET kyc_status = 2 WHERE id = $1", &[&user_id])
+            .await
+            .map_err(|e| format!("update user kyc: {e}"))?;
+        tx.commit().await.map_err(|e| format!("commit: {e}"))?;
+        Ok(())
     }
 
     pub async fn reject_kyc(&self, request_id: &str, reviewer_id: &str, reason: &str) -> Result<(), String> {
-        let mut requests = self.kyc_requests.write().await;
-        
-        if let Some(req) = requests.get_mut(request_id) {
-            req.status = KYCStatus::Rejected;
-            req.reviewed_at = Some(Utc::now().timestamp());
-            req.reviewed_by = Some(reviewer_id.to_string());
-            req.reject_reason = Some(reason.to_string());
-            
-            // Update user KYC status
-            let mut users = self.users.write().await;
-            if let Some(user) = users.get_mut(&req.user_id) {
-                user.kyc_status = KYCStatus::Rejected;
+        let now = Utc::now().timestamp();
+        let mut client = self.db.conn().await?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|e| format!("begin tx: {e}"))?;
+        let row = tx
+            .query_opt(
+                "UPDATE kyc_requests SET status = 3, reviewed_at = $1, reviewed_by = $2, reject_reason = $3 WHERE id = $4 RETURNING user_id",
+                &[&now, &reviewer_id, &reason, &request_id],
+            )
+            .await
+            .map_err(|e| format!("update kyc: {e}"))?;
+        let user_id: String = match row {
+            Some(r) => r.get(0),
+            None => {
+                let _ = tx.rollback().await;
+                return Err("KYC request not found".to_string());
             }
-            
-            Ok(())
-        } else {
-            Err("KYC request not found".to_string())
-        }
+        };
+        tx.execute("UPDATE users SET kyc_status = 3 WHERE id = $1", &[&user_id])
+            .await
+            .map_err(|e| format!("update user kyc: {e}"))?;
+        tx.commit().await.map_err(|e| format!("commit: {e}"))?;
+        Ok(())
     }
 
     // ==================== TRANSACTION MANAGEMENT ====================
 
+    fn row_to_transaction(r: &Row) -> Transaction {
+        Transaction {
+            id: r.get("id"),
+            user_id: r.get("user_id"),
+            tx_type: Self::tx_type_from_i32(r.get("tx_type")),
+            amount: r.get("amount"),
+            currency: r.get("currency"),
+            status: Self::tx_status_from_i32(r.get("status")),
+            from_address: r.get("from_address"),
+            to_address: r.get("to_address"),
+            tx_hash: r.get("tx_hash"),
+            timestamp: r.get("timestamp"),
+            fee: r.get("fee"),
+            chain_id: r.get("chain_id"),
+        }
+    }
+
     pub async fn get_all_transactions(&self) -> Vec<Transaction> {
-        let transactions = self.transactions.read().await;
-        transactions.values().cloned().collect()
+        self.db
+            .query("SELECT id, user_id, tx_type, amount, currency, status, from_address, to_address, tx_hash, timestamp, fee, chain_id FROM transactions", &[])
+            .await
+            .map(|rows| rows.iter().map(Self::row_to_transaction).collect())
+            .unwrap_or_default()
     }
 
     pub async fn get_transactions_by_user(&self, user_id: &str) -> Vec<Transaction> {
-        let transactions = self.transactions.read().await;
-        transactions.values()
-            .filter(|t| t.user_id == user_id)
-            .cloned()
-            .collect()
+        self.db
+            .query(
+                "SELECT id, user_id, tx_type, amount, currency, status, from_address, to_address, tx_hash, timestamp, fee, chain_id FROM transactions WHERE user_id = $1",
+                &[&user_id],
+            )
+            .await
+            .map(|rows| rows.iter().map(Self::row_to_transaction).collect())
+            .unwrap_or_default()
     }
 
     pub async fn get_transactions_by_status(&self, status: TransactionStatus) -> Vec<Transaction> {
-        let transactions = self.transactions.read().await;
-        transactions.values()
-            .filter(|t| t.status == status)
-            .cloned()
-            .collect()
+        let v = status as i32;
+        self.db
+            .query(
+                "SELECT id, user_id, tx_type, amount, currency, status, from_address, to_address, tx_hash, timestamp, fee, chain_id FROM transactions WHERE status = $1",
+                &[&v],
+            )
+            .await
+            .map(|rows| rows.iter().map(Self::row_to_transaction).collect())
+            .unwrap_or_default()
     }
 
     // ==================== TRADING PAIR MANAGEMENT ====================
 
+    fn row_to_pair(r: &Row) -> TradingPair {
+        TradingPair {
+            id: r.get("id"),
+            base: r.get("base"),
+            quote: r.get("quote"),
+            pair_name: r.get("pair_name"),
+            price: r.get("price"),
+            volume_24h: r.get("volume_24h"),
+            liquidity: r.get("liquidity"),
+            status: Self::pair_status_from_i32(r.get("status")),
+            chain_id: r.get("chain_id"),
+            created_at: r.get("created_at"),
+            updated_at: r.get("updated_at"),
+        }
+    }
+
     pub async fn get_all_trading_pairs(&self) -> Vec<TradingPair> {
-        let pairs = self.trading_pairs.read().await;
-        pairs.values().cloned().collect()
+        self.db
+            .query("SELECT id, base, quote, pair_name, price, volume_24h, liquidity, status, chain_id, created_at, updated_at FROM trading_pairs", &[])
+            .await
+            .map(|rows| rows.iter().map(Self::row_to_pair).collect())
+            .unwrap_or_default()
     }
 
     pub async fn get_trading_pair(&self, id: &str) -> Option<TradingPair> {
-        let pairs = self.trading_pairs.read().await;
-        pairs.get(id).cloned()
+        self.db
+            .query_opt(
+                "SELECT id, base, quote, pair_name, price, volume_24h, liquidity, status, chain_id, created_at, updated_at FROM trading_pairs WHERE id = $1",
+                &[&id],
+            )
+            .await
+            .ok()
+            .flatten()
+            .map(|r| Self::row_to_pair(&r))
     }
 
     pub async fn create_trading_pair(&self, base: &str, quote: &str, chain_id: i32) -> Result<TradingPair, String> {
         let pair_id = format!("{}_{}", base.to_lowercase(), quote.to_lowercase());
-        
-        let mut pairs = self.trading_pairs.write().await;
-        
-        if pairs.contains_key(&pair_id) {
-            return Err("Pair already exists".to_string());
-        }
-        
-        let pair = TradingPair {
+        let pair_name = format!("{}/{}", base, quote);
+        let now = Utc::now().timestamp();
+        let active = PairStatus::Active as i32;
+        self.db
+            .execute(
+                "INSERT INTO trading_pairs (id, base, quote, pair_name, price, volume_24h, liquidity, status, chain_id, created_at, updated_at) VALUES ($1, $2, $3, $4, 0, 0, 0, $5, $6, $7, $7)",
+                &[&pair_id, &base, &quote, &pair_name, &active, &chain_id, &now],
+            )
+            .await
+            .map_err(|e| {
+                if e.to_lowercase().contains("duplicate") {
+                    "Pair already exists".to_string()
+                } else {
+                    e
+                }
+            })?;
+        Ok(TradingPair {
             id: pair_id,
             base: base.to_string(),
             quote: quote.to_string(),
-            pair_name: format!("{}/{}", base, quote),
+            pair_name,
             price: 0.0,
             volume_24h: 0.0,
             liquidity: 0.0,
             status: PairStatus::Active,
             chain_id,
-            created_at: Utc::now().timestamp(),
-            updated_at: Utc::now().timestamp(),
-        };
-        
-        pairs.insert(pair.id.clone(), pair.clone());
-        Ok(pair)
+            created_at: now,
+            updated_at: now,
+        })
     }
 
     pub async fn update_pair_status(&self, pair_id: &str, status: PairStatus) -> Result<(), String> {
-        let mut pairs = self.trading_pairs.write().await;
-        
-        if let Some(pair) = pairs.get_mut(pair_id) {
-            pair.status = status;
-            pair.updated_at = Utc::now().timestamp();
-            Ok(())
-        } else {
+        let v = status as i32;
+        let now = Utc::now().timestamp();
+        let n = self
+            .db
+            .execute("UPDATE trading_pairs SET status = $1, updated_at = $2 WHERE id = $3", &[&v, &now, &pair_id])
+            .await?;
+        if n == 0 {
             Err("Pair not found".to_string())
+        } else {
+            Ok(())
         }
     }
 
@@ -581,15 +798,38 @@ impl RBACAdminService {
 
     // ==================== FEE MANAGEMENT ====================
 
+    fn row_to_fee(r: &Row) -> FeeStructure {
+        FeeStructure {
+            id: r.get("id"),
+            fee_type: r.get("fee_type"),
+            asset: r.get("asset"),
+            fee_percent: r.get("fee_percent"),
+            fee_fixed: r.get("fee_fixed"),
+            min_fee: r.get("min_fee"),
+            max_fee: r.get("max_fee"),
+            tier: r.get("tier"),
+            is_active: r.get("is_active"),
+            chain_id: r.get("chain_id"),
+        }
+    }
+
     pub async fn get_all_fee_structures(&self) -> Vec<FeeStructure> {
-        let fees = self.fee_structures.read().await;
-        fees.values().cloned().collect()
+        self.db
+            .query("SELECT id, fee_type, asset, fee_percent, fee_fixed, min_fee, max_fee, tier, is_active, chain_id FROM fee_structures", &[])
+            .await
+            .map(|rows| rows.iter().map(Self::row_to_fee).collect())
+            .unwrap_or_default()
     }
 
     pub async fn create_fee_structure(&self, fee_type: &str, asset: &str, tier: &str, fee_percent: f64, fee_fixed: f64, chain_id: i32) -> Result<FeeStructure, String> {
         let fee_id = Uuid::new_v4().to_string();
-        
-        let fee = FeeStructure {
+        self.db
+            .execute(
+                "INSERT INTO fee_structures (id, fee_type, asset, fee_percent, fee_fixed, min_fee, max_fee, tier, is_active, chain_id) VALUES ($1, $2, $3, $4, $5, 0, NULL, $6, TRUE, $7)",
+                &[&fee_id, &fee_type, &asset, &fee_percent, &fee_fixed, &tier, &chain_id],
+            )
+            .await?;
+        Ok(FeeStructure {
             id: fee_id,
             fee_type: fee_type.to_string(),
             asset: asset.to_string(),
@@ -600,48 +840,75 @@ impl RBACAdminService {
             tier: tier.to_string(),
             is_active: true,
             chain_id,
-        };
-        
-        let mut fees = self.fee_structures.write().await;
-        fees.insert(fee.id.clone(), fee.clone());
-        
-        Ok(fee)
+        })
     }
 
     pub async fn update_fee(&self, fee_id: &str, fee_percent: f64, fee_fixed: f64) -> Result<(), String> {
-        let mut fees = self.fee_structures.write().await;
-        
-        if let Some(fee) = fees.get_mut(fee_id) {
-            fee.fee_percent = fee_percent;
-            fee.fee_fixed = fee_fixed;
-            Ok(())
-        } else {
+        let n = self
+            .db
+            .execute("UPDATE fee_structures SET fee_percent = $1, fee_fixed = $2 WHERE id = $3", &[&fee_percent, &fee_fixed, &fee_id])
+            .await?;
+        if n == 0 {
             Err("Fee structure not found".to_string())
+        } else {
+            Ok(())
         }
     }
 
     // ==================== BLOCKCHAIN MANAGEMENT ====================
 
+    fn row_to_blockchain(r: &Row) -> Blockchain {
+        Blockchain {
+            id: r.get("id"),
+            name: r.get("name"),
+            symbol: r.get("symbol"),
+            chain_id: r.get("chain_id"),
+            is_evm: r.get("is_evm"),
+            rpc_url: r.get("rpc_url"),
+            explorer_url: r.get("explorer_url"),
+            native_token: r.get("native_token"),
+            decimals: r.get("decimals"),
+            is_active: r.get("is_active"),
+            avg_gas_price_gwei: r.get("avg_gas_price_gwei"),
+        }
+    }
+
     pub async fn get_all_blockchains(&self) -> Vec<Blockchain> {
-        let chains = self.blockchains.read().await;
-        chains.values().cloned().collect()
+        self.db
+            .query("SELECT id, name, symbol, chain_id, is_evm, rpc_url, explorer_url, native_token, decimals, is_active, avg_gas_price_gwei FROM blockchains", &[])
+            .await
+            .map(|rows| rows.iter().map(Self::row_to_blockchain).collect())
+            .unwrap_or_default()
     }
 
     pub async fn get_blockchain(&self, id: &str) -> Option<Blockchain> {
-        let chains = self.blockchains.read().await;
-        chains.get(id).cloned()
+        self.db
+            .query_opt(
+                "SELECT id, name, symbol, chain_id, is_evm, rpc_url, explorer_url, native_token, decimals, is_active, avg_gas_price_gwei FROM blockchains WHERE id = $1",
+                &[&id],
+            )
+            .await
+            .ok()
+            .flatten()
+            .map(|r| Self::row_to_blockchain(&r))
     }
 
     pub async fn add_blockchain(&self, name: &str, symbol: &str, chain_id: i32, is_evm: bool, rpc_url: &str, explorer_url: &str, native_token: &str, decimals: i32) -> Result<Blockchain, String> {
         let blockchain_id = symbol.to_lowercase();
-        
-        let mut chains = self.blockchains.write().await;
-        
-        if chains.contains_key(&blockchain_id) {
-            return Err("Blockchain already exists".to_string());
-        }
-        
-        let chain = Blockchain {
+        self.db
+            .execute(
+                "INSERT INTO blockchains (id, name, symbol, chain_id, is_evm, rpc_url, explorer_url, native_token, decimals, is_active, avg_gas_price_gwei) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, 0)",
+                &[&blockchain_id, &name, &symbol, &chain_id, &is_evm, &rpc_url, &explorer_url, &native_token, &decimals],
+            )
+            .await
+            .map_err(|e| {
+                if e.to_lowercase().contains("duplicate") {
+                    "Blockchain already exists".to_string()
+                } else {
+                    e
+                }
+            })?;
+        Ok(Blockchain {
             id: blockchain_id,
             name: name.to_string(),
             symbol: symbol.to_string(),
@@ -653,64 +920,107 @@ impl RBACAdminService {
             decimals,
             is_active: true,
             avg_gas_price_gwei: 0.0,
-        };
-        
-        chains.insert(chain.id.clone(), chain.clone());
-        
-        Ok(chain)
+        })
     }
 
     pub async fn update_blockchain(&self, id: &str, rpc_url: &str, explorer_url: &str) -> Result<(), String> {
-        let mut chains = self.blockchains.write().await;
-        
-        if let Some(chain) = chains.get_mut(id) {
-            chain.rpc_url = rpc_url.to_string();
-            chain.explorer_url = explorer_url.to_string();
-            Ok(())
-        } else {
+        let n = self
+            .db
+            .execute("UPDATE blockchains SET rpc_url = $1, explorer_url = $2 WHERE id = $3", &[&rpc_url, &explorer_url, &id])
+            .await?;
+        if n == 0 {
             Err("Blockchain not found".to_string())
+        } else {
+            Ok(())
         }
     }
 
     pub async fn set_blockchain_status(&self, id: &str, is_active: bool) -> Result<(), String> {
-        let mut chains = self.blockchains.write().await;
-        
-        if let Some(chain) = chains.get_mut(id) {
-            chain.is_active = is_active;
-            Ok(())
-        } else {
+        let n = self
+            .db
+            .execute("UPDATE blockchains SET is_active = $1 WHERE id = $2", &[&is_active, &id])
+            .await?;
+        if n == 0 {
             Err("Blockchain not found".to_string())
+        } else {
+            Ok(())
         }
     }
 
     // ==================== BOT MANAGEMENT ====================
 
+    fn row_to_bot(r: &Row) -> BotInstance {
+        BotInstance {
+            id: r.get("id"),
+            user_id: r.get("user_id"),
+            bot_type: r.get("bot_type"),
+            name: r.get("name"),
+            status: r.get("status"),
+            connected_dexs: r.get("connected_dexs"),
+            connected_cexs: r.get("connected_cexs"),
+            total_pnl: r.get("total_pnl"),
+            total_volume: r.get("total_volume"),
+            total_orders: r.get("total_orders"),
+            avg_latency_us: r.get("avg_latency_us"),
+            created_at: r.get("created_at"),
+            last_trade_at: r.get("last_trade_at"),
+        }
+    }
+
     pub async fn get_all_bot_instances(&self) -> Vec<BotInstance> {
-        let bots = self.bot_instances.read().await;
-        bots.values().cloned().collect()
+        self.db
+            .query("SELECT id, user_id, bot_type, name, status, connected_dexs, connected_cexs, total_pnl, total_volume, total_orders, avg_latency_us, created_at, last_trade_at FROM bot_instances", &[])
+            .await
+            .map(|rows| rows.iter().map(Self::row_to_bot).collect())
+            .unwrap_or_default()
     }
 
     pub async fn get_bot_instances_by_user(&self, user_id: &str) -> Vec<BotInstance> {
-        let bots = self.bot_instances.read().await;
-        bots.values()
-            .filter(|b| b.user_id == user_id)
-            .cloned()
-            .collect()
+        self.db
+            .query(
+                "SELECT id, user_id, bot_type, name, status, connected_dexs, connected_cexs, total_pnl, total_volume, total_orders, avg_latency_us, created_at, last_trade_at FROM bot_instances WHERE user_id = $1",
+                &[&user_id],
+            )
+            .await
+            .map(|rows| rows.iter().map(Self::row_to_bot).collect())
+            .unwrap_or_default()
+    }
+
+    fn row_to_bot_tier(r: &Row) -> BotTier {
+        BotTier {
+            id: r.get("id"),
+            name: r.get("name"),
+            display_name: r.get("display_name"),
+            monthly_fee_usd: r.get("monthly_fee_usd"),
+            per_dex_fee_usd: r.get("per_dex_fee_usd"),
+            per_cex_fee_usd: r.get("per_cex_fee_usd"),
+            max_bots: r.get("max_bots"),
+            max_dexs: r.get("max_dexs"),
+            max_cexs: r.get("max_cexs"),
+            max_position_usd: r.get("max_position_usd"),
+            max_daily_volume: r.get("max_daily_volume"),
+            latency_target_ms: r.get("latency_target_ms"),
+            is_active: r.get("is_active"),
+        }
     }
 
     pub async fn get_all_bot_tiers(&self) -> Vec<BotTier> {
-        let tiers = self.bot_tiers.read().await;
-        tiers.values().cloned().collect()
+        self.db
+            .query("SELECT id, name, display_name, monthly_fee_usd, per_dex_fee_usd, per_cex_fee_usd, max_bots, max_dexs, max_cexs, max_position_usd, max_daily_volume, latency_target_ms, is_active FROM bot_tiers", &[])
+            .await
+            .map(|rows| rows.iter().map(Self::row_to_bot_tier).collect())
+            .unwrap_or_default()
     }
 
     pub async fn update_bot_status(&self, bot_id: &str, status: &str) -> Result<(), String> {
-        let mut bots = self.bot_instances.write().await;
-        
-        if let Some(bot) = bots.get_mut(bot_id) {
-            bot.status = status.to_string();
-            Ok(())
-        } else {
+        let n = self
+            .db
+            .execute("UPDATE bot_instances SET status = $1 WHERE id = $2", &[&status, &bot_id])
+            .await?;
+        if n == 0 {
             Err("Bot not found".to_string())
+        } else {
+            Ok(())
         }
     }
 
@@ -728,60 +1038,140 @@ impl RBACAdminService {
 
     // ==================== API KEY MANAGEMENT ====================
 
+    fn row_to_api_key(r: &Row) -> APIKey {
+        let perms_json: serde_json::Value = r.get("permissions");
+        let permissions: APIKeyPermissions =
+            serde_json::from_value(perms_json).unwrap_or(APIKeyPermissions { trading: false, reading: false, withdrawal: false });
+        APIKey {
+            id: r.get("id"),
+            user_id: r.get("user_id"),
+            name: r.get("name"),
+            key: r.get("key"),
+            tier: Self::api_key_tier_from_i32(r.get("tier")),
+            permissions,
+            rate_limit_per_min: r.get("rate_limit_per_min"),
+            rate_limit_per_day: r.get("rate_limit_per_day"),
+            is_active: r.get("is_active"),
+            last_used_at: r.get("last_used_at"),
+            expires_at: r.get("expires_at"),
+            created_at: r.get("created_at"),
+        }
+    }
+
     pub async fn get_all_api_keys(&self) -> Vec<APIKey> {
-        let keys = self.api_keys.read().await;
-        keys.values().cloned().collect()
+        self.db
+            .query("SELECT id, user_id, name, key, tier, permissions, rate_limit_per_min, rate_limit_per_day, is_active, last_used_at, expires_at, created_at FROM api_keys", &[])
+            .await
+            .map(|rows| rows.iter().map(Self::row_to_api_key).collect())
+            .unwrap_or_default()
     }
 
     pub async fn get_api_keys_by_user(&self, user_id: &str) -> Vec<APIKey> {
-        let keys = self.api_keys.read().await;
-        keys.values()
-            .filter(|k| k.user_id == user_id)
-            .cloned()
-            .collect()
+        self.db
+            .query(
+                "SELECT id, user_id, name, key, tier, permissions, rate_limit_per_min, rate_limit_per_day, is_active, last_used_at, expires_at, created_at FROM api_keys WHERE user_id = $1",
+                &[&user_id],
+            )
+            .await
+            .map(|rows| rows.iter().map(Self::row_to_api_key).collect())
+            .unwrap_or_default()
     }
 
     pub async fn create_api_key(&self, user_id: &str, name: &str, tier: APIKeyTier, permissions: APIKeyPermissions) -> Result<APIKey, String> {
         let key_id = Uuid::new_v4().to_string();
         let api_key = format!("tw_{}", Uuid::new_v4().to_string().replace("-", ""));
-        
-        let key = APIKey {
+        let tier_v = tier as i32;
+        let perms_json = serde_json::to_value(&permissions).map_err(|e| format!("serialize perms: {e}"))?;
+        let now = Utc::now().timestamp();
+        let expires_at = now + (365 * 24 * 60 * 60);
+        self.db
+            .execute(
+                "INSERT INTO api_keys (id, user_id, name, key, tier, permissions, rate_limit_per_min, rate_limit_per_day, is_active, last_used_at, expires_at, created_at) VALUES ($1, $2, $3, $4, $5, $6, 60, 10000, TRUE, NULL, $7, $8)",
+                &[&key_id, &user_id, &name, &api_key, &tier_v, &perms_json, &expires_at, &now],
+            )
+            .await?;
+        Ok(APIKey {
             id: key_id,
             user_id: user_id.to_string(),
             name: name.to_string(),
             key: api_key,
-            tier,
+            tier: Self::api_key_tier_from_i32(tier_v),
             permissions,
             rate_limit_per_min: 60,
             rate_limit_per_day: 10000,
             is_active: true,
             last_used_at: None,
-            expires_at: Utc::now().timestamp() + (365 * 24 * 60 * 60),
-            created_at: Utc::now().timestamp(),
-        };
-        
-        let mut keys = self.api_keys.write().await;
-        keys.insert(key.id.clone(), key.clone());
-        
-        Ok(key)
+            expires_at,
+            created_at: now,
+        })
     }
 
     pub async fn revoke_api_key(&self, key_id: &str) -> Result<(), String> {
-        let mut keys = self.api_keys.write().await;
-        
-        if let Some(key) = keys.get_mut(key_id) {
-            key.is_active = false;
-            Ok(())
-        } else {
+        let n = self
+            .db
+            .execute("UPDATE api_keys SET is_active = FALSE WHERE id = $1", &[&key_id])
+            .await?;
+        if n == 0 {
             Err("API key not found".to_string())
+        } else {
+            Ok(())
         }
     }
 
     // ==================== PLATFORM STATS ====================
 
     pub async fn get_platform_stats(&self) -> PlatformStats {
-        let stats = self.stats.read().await;
-        stats.clone()
+        // Aggregate real counts from PostgreSQL. No fabricated numbers — every
+        // field is derived from a live table count.
+        let total_users = self.count("SELECT COUNT(*) FROM users").await.unwrap_or(0);
+        let active_users = self
+            .count("SELECT COUNT(*) FROM users WHERE status = 1")
+            .await
+            .unwrap_or(0);
+        let total_transactions = self.count("SELECT COUNT(*) FROM transactions").await.unwrap_or(0);
+        let total_volume = self
+            .sum("SELECT COALESCE(SUM(amount), 0) FROM transactions")
+            .await
+            .unwrap_or(0.0);
+        let total_fees = self
+            .sum("SELECT COALESCE(SUM(fee), 0) FROM transactions")
+            .await
+            .unwrap_or(0.0);
+        let total_bots = self.count("SELECT COUNT(*) FROM bot_instances").await.unwrap_or(0);
+        let active_bots = self
+            .count("SELECT COUNT(*) FROM bot_instances WHERE status = 'running'")
+            .await
+            .unwrap_or(0);
+        let active_cex_connections = self
+            .count("SELECT COUNT(*) FROM external_connections WHERE is_active = TRUE")
+            .await
+            .unwrap_or(0);
+        let active_dex_connections = self
+            .count("SELECT COUNT(*) FROM liquidity_pools")
+            .await
+            .unwrap_or(0);
+
+        PlatformStats {
+            total_users,
+            active_users,
+            total_volume,
+            total_transactions,
+            total_fees,
+            active_bots,
+            total_bots,
+            active_cex_connections,
+            active_dex_connections,
+        }
+    }
+
+    async fn count(&self, sql: &str) -> Result<i32, String> {
+        let rows = self.db.query(sql, &[]).await?;
+        Ok(rows.first().and_then(|r| r.try_get::<_, i64>(0).ok()).map(|v| v as i32).unwrap_or(0))
+    }
+
+    async fn sum(&self, sql: &str) -> Result<f64, String> {
+        let rows = self.db.query(sql, &[]).await?;
+        Ok(rows.first().and_then(|r| r.try_get::<_, f64>(0).ok()).unwrap_or(0.0))
     }
 }
 
@@ -790,16 +1180,21 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_get_blockchains() {
-        let service = RBACAdminService::new();
-        let chains = service.get_all_blockchains().await;
-        assert!(chains.len() > 0);
+    async fn test_new_fail_closed_without_db() {
+        // No live DB reachable on this bogus port → fail-closed (Err, never
+        // silently falls back to in-memory storage).
+        let svc = RBACAdminService::with_url(
+            "postgres://tigerwallet:tigerwallet@127.0.0.1:1/tigerwallet?sslmode=disable&connect_timeout=1",
+        );
+        assert!(svc.is_err());
     }
 
     #[tokio::test]
-    async fn test_create_pair() {
-        let service = RBACAdminService::new();
-        let result = service.create_trading_pair("BTC", "USDT", 1).await;
-        assert!(result.is_ok());
+    async fn test_enum_conversions_roundtrip() {
+        assert_eq!(RBACAdminService::user_status_from_i32(3), UserStatus::Banned);
+        assert_eq!(RBACAdminService::kyc_status_from_i32(2), KYCStatus::Approved);
+        assert_eq!(RBACAdminService::tx_type_from_i32(4), TransactionType::Swap);
+        assert_eq!(RBACAdminService::pair_status_from_i32(2), PairStatus::Suspended);
+        assert_eq!(RBACAdminService::api_key_tier_from_i32(4), APIKeyTier::Enterprise);
     }
 }

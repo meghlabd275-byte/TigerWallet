@@ -4,85 +4,65 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.app.AppCompatDelegate
 import androidx.fragment.app.Fragment
+import com.tigeruserwallet.api.UserWalletApiService
+import com.tigeruserwallet.crypto.GoogleDriveBackup
 import com.tigeruserwallet.databinding.ActivityMainBinding
 import com.tigeruserwallet.fragments.DashboardFragment
-import com.tigeruserwallet.fragments.SendFragment
-import com.tigeruserwallet.fragments.StartFragment
-import com.tigeruserwallet.fragments.WalletsFragment
-import com.tigeruserwallet.fragments.TransactionsFragment
+import com.tigeruserwallet.fragments.OnboardingFragment
 import com.tigeruserwallet.fragments.SettingsFragment
-import com.tigeruserwallet.api.UserWalletApiService
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import com.tigeruserwallet.fragments.TransactionsFragment
+import com.tigeruserwallet.fragments.WalletsFragment
+import com.tigeruserwallet.ui.ThemeManager
 
-class MainActivity : AppCompatActivity(), StartFragment.StartHost {
+/**
+ * No-registration entry: the app opens directly to the Create/Import onboarding
+ * screen when no local wallet exists, else to the Dashboard. There is NO
+ * login/register form — a transparent ephemeral session is auto-provisioned
+ * behind the scenes (UserWalletApiService.ensureSession) before any backend
+ * call. Mirrors web App.tsx.
+ */
+class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
 
-    // Allow hosted fragments to switch screens (e.g. Dashboard -> KYC) without
-    // exposing the private loadFragment internals.
-    fun navigateTo(fragment: Fragment) {
-        loadFragment(fragment)
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
+        ThemeManager.init(this)
         super.onCreate(savedInstanceState)
         UserWalletApiService.init(this)
+        GoogleDriveBackup.config = GoogleDriveBackup.Config(BuildConfig.GOOGLE_WEB_CLIENT_ID)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
         setSupportActionBar(binding.toolbar)
-
-        if (savedInstanceState == null) {
-            showStartOrDashboard()
-        }
-
         binding.bottomNavigation.setOnItemSelectedListener { item ->
-            when (item.itemId) {
-                R.id.nav_dashboard -> loadFragment(DashboardFragment())
-                R.id.nav_wallets -> loadFragment(WalletsFragment())
-                R.id.nav_send -> loadFragment(SendFragment())
-                R.id.nav_transactions -> loadFragment(TransactionsFragment())
-                R.id.nav_settings -> loadFragment(SettingsFragment())
+            val frag: Fragment = when (item.itemId) {
+                R.id.nav_dashboard -> DashboardFragment()
+                R.id.nav_wallets -> WalletsFragment()
+                R.id.nav_transactions -> TransactionsFragment()
+                R.id.nav_settings -> SettingsFragment()
+                else -> DashboardFragment()
             }
+            loadFragment(frag)
             true
         }
+
+        if (savedInstanceState == null) {
+            showEntry()
+        }
     }
 
-    // First-open gate: if a token + wallets already exist, unlock straight into
-    // Dashboard (no passcode/biometric infra -> "unlock" == go to Dashboard).
-    // Otherwise show the guest "Get Started" screen.
-    private fun showStartOrDashboard() {
-        if (UserWalletApiService.isAuthenticated()) {
-            CoroutineScope(Dispatchers.IO).launch {
-                val hasWallets = try {
-                    UserWalletApiService.getWallets().isNotEmpty()
-                } catch (e: Exception) {
-                    false
-                }
-                withContext(Dispatchers.Main) {
-                    if (hasWallets) loadFragment(DashboardFragment())
-                    else loadFragment(StartFragment())
-                }
-            }
+    /**
+     * Gate: if no local wallet exists -> Onboarding (Create/Import). Else ->
+     * Dashboard. The bottom nav is hidden during onboarding.
+     */
+    private fun showEntry() {
+        if (UserWalletApiService.isOnboarded()) {
+            binding.bottomNavigation.visibility = android.view.View.VISIBLE
+            loadFragment(DashboardFragment())
         } else {
-            loadFragment(StartFragment())
+            binding.bottomNavigation.visibility = android.view.View.GONE
+            loadFragment(OnboardingFragment())
         }
-    }
-
-    // StartFragment.StartHost: guestAuth already ran inside StartFragment, so by
-    // the time we get here a token is persisted. Open WalletsFragment in the
-    // requested create/import mode.
-    override fun onGuestReady(mode: StartFragment.Mode) {
-        val walletMode = when (mode) {
-            StartFragment.Mode.IMPORT -> WalletsFragment.Mode.IMPORT
-            else -> WalletsFragment.Mode.CREATE
-        }
-        loadFragment(WalletsFragment().apply { entryMode = walletMode })
-        binding.bottomNavigation.selectedItemId = R.id.nav_wallets
     }
 
     private fun loadFragment(fragment: Fragment): Boolean {
@@ -92,28 +72,30 @@ class MainActivity : AppCompatActivity(), StartFragment.StartHost {
         return true
     }
 
+    /** Called by OnboardingFragment after a wallet is created/imported. */
+    fun enterApp() {
+        binding.bottomNavigation.visibility = android.view.View.VISIBLE
+        binding.bottomNavigation.selectedItemId = R.id.nav_dashboard
+        loadFragment(DashboardFragment())
+    }
+
+    /** Show the onboarding screen (e.g. after a full reset from Settings). */
+    fun showOnboarding() {
+        binding.bottomNavigation.visibility = android.view.View.GONE
+        loadFragment(OnboardingFragment())
+    }
+
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.menu_main, menu)
         return true
     }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_toggle_theme -> {
-                toggleTheme()
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
+    override fun onOptionsItemSelected(item: MenuItem): Boolean = when (item.itemId) {
+        R.id.action_toggle_theme -> {
+            ThemeManager.toggle()
+            recreate()
+            true
         }
-    }
-
-    private fun toggleTheme() {
-        val currentMode = AppCompatDelegate.getDefaultNightMode()
-        val newMode = if (currentMode == AppCompatDelegate.MODE_NIGHT_YES) {
-            AppCompatDelegate.MODE_NIGHT_NO
-        } else {
-            AppCompatDelegate.MODE_NIGHT_YES
-        }
-        AppCompatDelegate.setDefaultNightMode(newMode)
+        else -> super.onOptionsItemSelected(item)
     }
 }

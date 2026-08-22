@@ -1,0 +1,169 @@
+// Onboarding Context — the no-registration self-custody entry model.
+//
+// The user NEVER sees a register/login form. On first launch the app shows a
+// "Create Wallet" / "Import Wallet" choice. Behind the scenes a transparent
+// ephemeral account is auto-provisioned (random device-bound identity stored in
+// localStorage) so the JWT-backed backend security is preserved. The wallet
+// password the user enters encrypts the seed (server-side scrypt + AES-GCM),
+// independent of the ephemeral account.
+//
+// Flow:
+//   ensureSession()  — if no local token, auto-register a random identity +
+//                      login to obtain a JWT. One-time, invisible to the user.
+//   createWallet()   — password -> backend POST /wallets -> mnemonic (backup).
+//   importWallet()   — seed + password -> backend POST /wallets { mnemonic }.
+//
+// `onboarded` (a wallet exists locally) gates the app:
+//   false => show Onboarding (Create/Import); true => show Dashboard.
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { api } from '../services/api';
+
+const SESSION_KEY = 'userwallet-session';
+const WALLET_IDS_KEY = 'userwallet-wallet-ids';
+
+const OnboardingContext = createContext();
+
+// CSPRNG identity for the transparent account. Uses crypto.getRandomValues
+// (Web Crypto). The email is a random UUID @device.local pseudo-address so the
+// backend's {email,password} register contract is satisfied without ever asking
+// the user for an email.
+function randomIdentity() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const id = bytesToHex(bytes.slice(0, 16));
+  const email = `${id}@device.local`;
+  // 32 hex chars = 128 bits of entropy for the ephemeral account password.
+  const password = bytesToHex(bytes);
+  return { email, password };
+}
+
+function bytesToHex(bytes) {
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(s) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+}
+
+export function OnboardingProvider({ children }) {
+  const [ready, setReady] = useState(false);
+  const [token, setToken] = useState(null);
+  const [localWalletIds, setLocalWalletIds] = useState(() => {
+    try {
+      const raw = localStorage.getItem(WALLET_IDS_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const onboarded = localWalletIds.length > 0;
+
+  const ensureSession = useCallback(async () => {
+    if (token) {
+      api.setToken(token);
+      setReady(true);
+      return;
+    }
+    let s = loadSession();
+    if (!s) {
+      const id = randomIdentity();
+      try {
+        await api.register(id.email, id.email, id.password);
+      } catch {
+        // If register fails (e.g. identity collision / network), fall through
+        // to login which will surface the real error.
+      }
+      try {
+        const { token: jwt } = await api.login(id.email, id.password);
+        s = { email: id.email, password: id.password, token: jwt, userId: '' };
+        saveSession(s);
+      } catch (err) {
+        // Cannot provision a transparent session — surface a real error.
+        setReady(true);
+        throw err;
+      }
+    } else {
+      // Re-validate the stored token; if invalid, re-login transparently.
+      api.setToken(s.token);
+      try {
+        const profile = await api.getProfile();
+        if (!profile) {
+          const { token: jwt } = await api.login(s.email, s.password);
+          s = { ...s, token: jwt };
+          saveSession(s);
+        }
+      } catch {
+        const { token: jwt } = await api.login(s.email, s.password);
+        s = { ...s, token: jwt };
+        saveSession(s);
+      }
+    }
+    api.setToken(s.token);
+    setToken(s.token);
+    setReady(true);
+  }, [token]);
+
+  // Bootstrap on mount: provision the transparent session immediately so the
+  // app can show Create/Import (the user never waits on a login form).
+  useEffect(() => {
+    ensureSession().catch(() => {
+      // The error is surfaced via the UI banner; ready=true so the landing
+      // page renders and can retry.
+      setReady(true);
+    });
+  }, [ensureSession]);
+
+  const createWallet = useCallback(
+    async (label, password, chainId) => {
+      await ensureSession();
+      const w = await api.createWalletTyped({ label, password, chainId });
+      if (w.mnemonic) {
+        return { mnemonic: w.mnemonic, id: w.id, address: w.address };
+      }
+      throw new Error('Backend did not return a recovery phrase');
+    },
+    [ensureSession]
+  );
+
+  const importWallet = useCallback(
+    async (mnemonic, label, password, chainId) => {
+      await ensureSession();
+      const w = await api.createWalletTyped({ label, password, chainId, mnemonic });
+      return { id: w.id, address: w.address };
+    },
+    [ensureSession]
+  );
+
+  const rememberWallet = useCallback((id) => {
+    setLocalWalletIds((prev) => {
+      if (prev.includes(id)) return prev;
+      const next = [...prev, id];
+      localStorage.setItem(WALLET_IDS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  return (
+    <OnboardingContext.Provider
+      value={{ ready, onboarded, ensureSession, createWallet, importWallet, rememberWallet, localWalletIds }}
+    >
+      {children}
+    </OnboardingContext.Provider>
+  );
+}
+
+export function useOnboarding() {
+  const ctx = useContext(OnboardingContext);
+  if (!ctx) throw new Error('useOnboarding must be used within OnboardingProvider');
+  return ctx;
+}

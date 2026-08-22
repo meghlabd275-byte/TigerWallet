@@ -416,3 +416,76 @@ pub struct AssignRoleRequest {
     pub role_id: Uuid,
 }
 
+// ---------------------------------------------------------------------------
+// WL product governance models (mirrors the Go backend wl_products.go shapes:
+// /wl-liquidity/sources, /wl-cards, /wl-bots/operators). Governance records
+// only — no fund movement. The wallet-management domain reuses Withdrawal +
+// FeeStructure (already defined above) plus user-status updates.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WLLiquiditySource {
+    pub id: Uuid,
+    pub white_label_id: Uuid,
+    pub name: String,
+    pub chain: String,
+    pub dex: String,
+    pub pool_address: String,
+    pub token_a: String,
+    pub token_b: String,
+    pub reserve_a: String,
+    pub reserve_b: String,
+    pub fee_pct: String,
+    pub is_active: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WLLiquidityAllocation {
+    pub id: Uuid,
+    pub white_label_id: Uuid,
+    pub name: String,
+    pub fee_share_pct: String,
+    pub destination: String,
+    pub is_active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WLCard {
+    pub id: Uuid,
+    pub white_label_id: Uuid,
+    pub user_id: Option<Uuid>,
+    pub holder_name: String,
+    pub status: String,
+    pub balance: String,
+    pub currency: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WLCardTransaction {
+    pub id: Uuid,
+    pub white_label_id: Uuid,
+    pub card_id: Uuid,
+    pub amount: String,
+    pub merchant: String,
+    pub category: String,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WLBotOperator {
+    pub id: Uuid,
+    pub white_label_id: Uuid,
+    pub name: String,
+    pub strategy: String,
+    pub status: String,
+    pub config: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+

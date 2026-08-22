@@ -4,6 +4,7 @@
 // WL backend fetch.
 import React, { useState, useEffect } from 'react';
 import { api, TransactionRecord, WalletRecord } from '../services/api';
+import TxSubmittedBanner from '../components/TxSubmittedBanner';
 
 export default function Transactions() {
   const [wallets, setWallets] = useState<WalletRecord[]>([]);
@@ -12,7 +13,7 @@ export default function Transactions() {
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState({ network: '', token: '' });
   const [send, setSend] = useState({ to: '', amount: '', password: '' });
-  const [sendResult, setSendResult] = useState('');
+  const [sendResult, setSendResult] = useState<{ hash: string; chainId: number } | null>(null);
   const [sign, setSign] = useState({ message: '', password: '' });
   const [signResult, setSignResult] = useState('');
   const [error, setError] = useState('');
@@ -54,7 +55,7 @@ export default function Transactions() {
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setSendResult('');
+    setSendResult(null);
     if (!walletId) {
       setError('Select a wallet first');
       return;
@@ -70,7 +71,11 @@ export default function Transactions() {
         to: send.to,
         value: send.amount,
       });
-      setSendResult(`Broadcast: ${res.transaction_hash} (status: ${res.status})`);
+      // Show the "Transaction submitted to the blockchain network" banner with
+      // the real tx hash. The chain id comes from the active wallet.
+      const activeWallet = wallets.find((w) => w.id === walletId);
+      const chainId = activeWallet ? (activeWallet.chain_id || 1) : 1;
+      setSendResult({ hash: res.transaction_hash, chainId });
       setSend({ to: '', amount: '', password: '' });
       loadTransactions();
     } catch (err: unknown) {
@@ -137,7 +142,13 @@ export default function Transactions() {
       <div className="create-form">
         <h3>Send {selectedWallet ? `from ${selectedWallet.label || selectedWallet.address.slice(0, 8)}` : ''}</h3>
         {error && <div className="error">{error}</div>}
-        {sendResult && <div className="status confirmed" style={{ display: 'block', marginBottom: 12 }}>{sendResult}</div>}
+        {sendResult && (
+          <TxSubmittedBanner
+            txHash={sendResult.hash}
+            chainId={sendResult.chainId}
+            onDismiss={() => setSendResult(null)}
+          />
+        )}
         <form onSubmit={handleSend}>
           <input
             placeholder="Recipient address (0x…)"

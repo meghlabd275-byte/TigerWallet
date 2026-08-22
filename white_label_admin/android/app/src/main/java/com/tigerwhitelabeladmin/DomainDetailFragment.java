@@ -47,6 +47,24 @@ public class DomainDetailFragment extends Fragment {
         GOV_ACTIONS.put("rewards", Arrays.asList("PUT /rewards/:id/status"));
         ENDPOINTS.put("marketing", Arrays.asList("GET /marketing", "POST /marketing", "PUT /marketing/:id", "DELETE /marketing/:id"));
         GOV_ACTIONS.put("marketing", Arrays.asList("PUT /marketing/:id/status"));
+        ENDPOINTS.put("liquidity", Arrays.asList("GET /wl-liquidity/sources", "POST /wl-liquidity/sources", "PUT /wl-liquidity/sources/:id", "DELETE /wl-liquidity/sources/:id", "GET /wl-liquidity/allocations", "POST /wl-liquidity/allocations", "GET /wl-liquidity/stats"));
+        GOV_ACTIONS.put("liquidity", java.util.Collections.emptyList());
+        ENDPOINTS.put("crypto-card", Arrays.asList("GET /wl-cards", "POST /wl-cards", "GET /wl-cards/transactions", "GET /wl-cards/stats"));
+        GOV_ACTIONS.put("crypto-card", Arrays.asList("PUT /wl-cards/:id/status"));
+        ENDPOINTS.put("bots", Arrays.asList("GET /wl-bots/operators", "POST /wl-bots/operators", "GET /wl-bots/config", "GET /wl-bots/stats"));
+        GOV_ACTIONS.put("bots", Arrays.asList("PUT /wl-bots/operators/:id/status"));
+        ENDPOINTS.put("kyc", Arrays.asList("GET /kyc"));
+        GOV_ACTIONS.put("kyc", Arrays.asList("POST /kyc/:id/approve", "POST /kyc/:id/reject {reason}"));
+        ENDPOINTS.put("tickets", Arrays.asList("GET /tickets", "GET /tickets/:id", "POST /tickets"));
+        GOV_ACTIONS.put("tickets", Arrays.asList("PUT /tickets/:id/status", "POST /tickets/:id/messages", "PUT /tickets/:id/assign"));
+        ENDPOINTS.put("ip-whitelist", Arrays.asList("GET /ip-whitelist", "POST /ip-whitelist"));
+        GOV_ACTIONS.put("ip-whitelist", Arrays.asList("DELETE /ip-whitelist/:id"));
+        ENDPOINTS.put("audit-logs", Arrays.asList("GET /audit-logs"));
+        GOV_ACTIONS.put("audit-logs", Arrays.asList("POST /audit-logs/export"));
+        ENDPOINTS.put("wallet-management", Arrays.asList("GET /withdrawals", "GET /fees", "POST /fees", "PUT /fees/:id", "PUT /users/:id/status"));
+        GOV_ACTIONS.put("wallet-management", Arrays.asList("POST /withdrawals/:id/approve", "POST /withdrawals/:id/reject {reason}", "POST /withdrawals/:id/process"));
+        ENDPOINTS.put("withdrawals", Arrays.asList("GET /withdrawals"));
+        GOV_ACTIONS.put("withdrawals", Arrays.asList("POST /withdrawals/:id/approve", "POST /withdrawals/:id/reject {reason}", "POST /withdrawals/:id/process"));
         ENDPOINTS.put("rbac", Arrays.asList("GET /admin-roles", "POST /admin-roles", "GET /admin-permissions", "POST /admins/:id/role", "GET /admins/:id/permissions"));
         GOV_ACTIONS.put("rbac", Arrays.asList("DELETE /admins/:id/role/:roleId"));
     }

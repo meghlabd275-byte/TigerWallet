@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.UserWallet" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorSurface">#1B1B1B</item>
+        <item name="colorOnSurface">#E8E8E8</item>
+        <item name="colorBackground">#121212</item>
+        <item name="android:statusBarColor">#0F0F0F</item>
+    </style>
+</resources>

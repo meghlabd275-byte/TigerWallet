@@ -149,6 +149,87 @@ inline const std::vector<DomainSpec>& domain_registry() {
             s.governance_actions.push_back({HttpMethod::DELETE, "/admins/:id/role/:roleId", "", true});
             v.push_back(std::move(s));
         }
+
+        // -----------------------------------------------------------------
+        // 9 scoped admin domains — real main.go routes on the WL backend
+        // (port 8082). Governance/config records + scoped approval actions.
+        // -----------------------------------------------------------------
+        {
+            // LiquidityAdmin: liquidity-sources CRUD + status + priority + health
+            DomainSpec s{"liquidity", "Liquidity Sources", {}, {}};
+            add_crud(s, "/liquidity-sources");
+            s.governance_actions.push_back({HttpMethod::PUT,  "/liquidity-sources/:id/status",        "{\"status\":\"\"}", true});
+            s.governance_actions.push_back({HttpMethod::POST, "/liquidity-sources/:id/set-priority",  "{\"priority\":\"\"}", true});
+            s.governance_actions.push_back({HttpMethod::POST, "/liquidity-sources/:id/health-check", "", true});
+            v.push_back(std::move(s));
+        }
+        {
+            // CardAdmin: crypto-cards CRUD + block + activate + limit + status
+            DomainSpec s{"crypto-card", "Crypto Cards", {}, {}};
+            add_crud(s, "/crypto-cards");
+            s.governance_actions.push_back({HttpMethod::POST, "/crypto-cards/:id/block",    "", true});
+            s.governance_actions.push_back({HttpMethod::POST, "/crypto-cards/:id/activate", "", true});
+            s.governance_actions.push_back({HttpMethod::PUT,  "/crypto-cards/:id/limit",    "{\"limit\":\"\"}", true});
+            s.governance_actions.push_back({HttpMethod::PUT,  "/crypto-cards/:id/status",   "{\"status\":\"\"}", true});
+            v.push_back(std::move(s));
+        }
+        {
+            // BotAdmin: bots CRUD + status (start/stop/pause/resume)
+            DomainSpec s{"bots", "Bots", {}, {}};
+            add_crud(s, "/bots");
+            s.governance_actions.push_back({HttpMethod::PUT, "/bots/:id/status", "{\"status\":\"\"}", true});
+            v.push_back(std::move(s));
+        }
+        {
+            // KYCAdmin: list + approve + reject {reason}
+            DomainSpec s{"kyc", "KYC", {}, {}};
+            s.endpoints.push_back({HttpMethod::GET, "/kyc", "", false});
+            s.governance_actions.push_back({HttpMethod::POST, "/kyc/:id/approve", "", true});
+            s.governance_actions.push_back({HttpMethod::POST, "/kyc/:id/reject",  "{\"reason\":\"\"}", true});
+            v.push_back(std::move(s));
+        }
+        {
+            // CustomerServiceAdmin: tickets list + create + status + assign
+            DomainSpec s{"tickets", "Support Tickets", {}, {}};
+            s.endpoints.push_back({HttpMethod::GET,  "/tickets", "{}", false});
+            s.endpoints.push_back({HttpMethod::POST, "/tickets", "{}", false});
+            s.governance_actions.push_back({HttpMethod::PUT,  "/tickets/:id/status",  "{\"status\":\"\"}", true});
+            s.governance_actions.push_back({HttpMethod::POST, "/tickets/:id/assign",  "{\"assignee_id\":\"\"}", true});
+            v.push_back(std::move(s));
+        }
+        {
+            // SecurityAdmin (WL client only): ip-whitelist add/remove
+            DomainSpec s{"ip-whitelist", "IP Whitelist", {}, {}};
+            s.endpoints.push_back({HttpMethod::GET,  "/ip-whitelist",      "{}", false});
+            s.endpoints.push_back({HttpMethod::POST, "/ip-whitelist",      "{\"ip\":\"\"}", false});
+            s.governance_actions.push_back({HttpMethod::DELETE, "/ip-whitelist/:id", "", true});
+            v.push_back(std::move(s));
+        }
+        {
+            // ComplianceAdmin: audit-logs (paginated) + reports
+            DomainSpec s{"audit-logs", "Audit Logs & Reports", {}, {}};
+            s.endpoints.push_back({HttpMethod::GET, "/audit-logs", "?page=1&page_size=20", false});
+            s.endpoints.push_back({HttpMethod::GET, "/reports",    "", false});
+            v.push_back(std::move(s));
+        }
+        {
+            // WalletAdmin: wallets list + create + status + approve + reject
+            DomainSpec s{"wallet-management", "Wallet Management", {}, {}};
+            s.endpoints.push_back({HttpMethod::GET,  "/wallets", "{}", false});
+            s.endpoints.push_back({HttpMethod::POST, "/wallets", "{}", false});
+            s.governance_actions.push_back({HttpMethod::PUT,  "/wallets/:id/status",  "{\"status\":\"\"}", true});
+            s.governance_actions.push_back({HttpMethod::POST, "/wallets/:id/approve", "", true});
+            s.governance_actions.push_back({HttpMethod::POST, "/wallets/:id/reject",  "{\"reason\":\"\"}", true});
+            v.push_back(std::move(s));
+        }
+        {
+            // Withdrawals: two-party approval (list + approve + reject {reason})
+            DomainSpec s{"withdrawals", "Withdrawals", {}, {}};
+            s.endpoints.push_back({HttpMethod::GET, "/withdrawals", "", false});
+            s.governance_actions.push_back({HttpMethod::POST, "/withdrawals/:id/approve", "", true});
+            s.governance_actions.push_back({HttpMethod::POST, "/withdrawals/:id/reject",  "{\"reason\":\"\"}", true});
+            v.push_back(std::move(s));
+        }
         return v;
     }();
     return registry;

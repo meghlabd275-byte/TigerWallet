@@ -13,10 +13,15 @@ android {
         targetSdk 34
         versionCode 1
         versionName "1.0.0"
+
+        // Google Sign-In web client ID (from Google Cloud console). Leave empty
+        // to honestly DISABLE Google Drive backup in the UI (never fake success).
+        buildConfigField "String", "GOOGLE_WEB_CLIENT_ID", "\"${project.findProperty('googleWebClientId') ?: ""}\""
     }
 
     buildFeatures {
         viewBinding true
+        buildConfig true
     }
 
     compileOptions {
@@ -34,13 +39,15 @@ dependencies {
     implementation "com.google.android.material:material:1.12.0"
     implementation "androidx.constraintlayout:constraintlayout:2.1.4"
     implementation "androidx.recyclerview:recyclerview:1.3.2"
+    implementation "androidx.activity:activity-ktx:1.9.2"
+    implementation "androidx.fragment:fragment-ktx:1.8.3"
+    implementation "androidx.security:security-crypto:1.1.0-alpha06"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
     implementation "com.squareup.okhttp3:okhttp:4.12.0"
-    // CredentialManager — real passkey/biometric unlock (androidx.credentials)
-    implementation "androidx.credentials:credentials:1.2.2"
-    implementation "androidx.credentials:credentials-play-services-auth:1.2.2"
-    // Google Drive encrypted-seed backup (Google Identity + Drive REST)
+
+    // Real Google Sign-In + Google Drive REST API v3 (no fabricated success).
     implementation "com.google.android.gms:play-services-auth:21.2.0"
-    implementation "com.google.api-client:google-api-client-android:2.4.1"
-    implementation "com.google.apis:google-api-services-drive:v3-rev20240514-2.0.0"
+    implementation "com.google.api-client:google-api-client-android:2.2.0"
+    implementation "com.google.api-client:google-api-client-gson:2.2.0"
+    implementation "com.google.apis:google-api-services-drive:v3-rev20230821-2.0.0"
 }

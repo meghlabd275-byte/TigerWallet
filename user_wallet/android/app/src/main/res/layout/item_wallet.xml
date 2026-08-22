@@ -6,11 +6,5 @@
     android:padding="12dp">
     <TextView android:id="@+id/walletLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textStyle="bold" android:textSize="16sp" />
     <TextView android:id="@+id/walletAddress" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="12sp" android:alpha="0.7" android:fontFamily="monospace" />
-    <Button
-        android:id="@+id/setupLockButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:minHeight="40dp"
-        android:text="Setup App Lock" />
+    <TextView android:id="@+id/walletDetail" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:textSize="13sp" />
 </LinearLayout>
