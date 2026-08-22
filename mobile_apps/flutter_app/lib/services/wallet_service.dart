@@ -1121,7 +1121,11 @@ class WalletService {
   /// Check if wallet exists
   Future<bool> checkWalletExists() async {
     final exists = await _secureStorage.read(key: 'wallet_exists');
-    return exists == 'true';
+    if (exists == 'true') return true;
+    // create_wallet_screen persists the seed under 'wallet_seed_phrase' before
+    // the backend wallet is registered; treat that as an existing wallet too.
+    final phrase = await _secureStorage.read(key: 'wallet_seed_phrase');
+    return phrase != null && phrase.isNotEmpty;
   }
 
   /// Unlock wallet with password
@@ -1280,6 +1284,233 @@ class WalletService {
       }
       return null;
     } catch (e) {
+      return null;
+    }
+  }
+
+  // =========================================================================
+  // NO-REGISTRATION GUEST SESSION (R1)
+  // =========================================================================
+
+  /// Provision a transparent guest session via POST /api/v1/auth/guest so the
+  /// user can Create/Import a wallet WITHOUT registering or logging in. The
+  /// backend idempotently creates (or re-uses) a guest user bound to a stable
+  /// device id and returns a JWT, which we persist in secure storage as
+  /// 'auth_token'. One-time, invisible to the user. Mirrors the Android
+  /// UserWalletApiService.ensureSession / iOS guestAuth flows.
+  Future<void> ensureGuestSession() async {
+    // Fast path: a token is already present.
+    final existing = await _secureStorage.read(key: 'auth_token');
+    if (existing != null && existing.isNotEmpty) return;
+
+    // Stable device id: re-use a previously generated one, else generate a
+    // random one and persist it so the same guest account is re-used.
+    var deviceId = await _secureStorage.read(key: 'device_id');
+    if (deviceId == null || deviceId.isEmpty) {
+      deviceId = _randomDeviceId();
+      await _secureStorage.write(key: 'device_id', deviceId);
+    }
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$API_BASE_URL/api/v1/auth/guest'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'device_id': deviceId}),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final body = jsonDecode(response.body);
+        final token = body['token'];
+        if (token is String && token.isNotEmpty) {
+          await _secureStorage.write(key: 'auth_token', token);
+          return;
+        }
+      }
+      // A missing guest session is non-fatal: the app still opens to
+      // Create/Import. Protected backend calls will surface a real 401 if the
+      // user attempts them before a session exists.
+    } catch (_) {
+      // Network errors are silently ignored here so offline first-launch still
+      // shows the onboarding screen. The next protected call will retry.
+    }
+  }
+
+  String _randomDeviceId() {
+    final rng = Random.secure();
+    final bytes = List<int>.generate(16, (_) => rng.nextInt(256));
+    return HEX.encode(bytes);
+  }
+
+  // =========================================================================
+  // BACKEND WALLET REGISTRATION (real BIP-39 + AES-256-GCM seed encryption)
+  // =========================================================================
+
+  /// Register the wallet with the canonical Go wallet_api backend via
+  /// POST /api/v1/wallets {mnemonic, password, chain_id, label}. The backend
+  /// performs REAL BIP-39 mnemonic validation, BIP-32/44 key derivation and
+  /// AES-256-GCM seed encryption (EncryptSeed), returning the wallet id +
+  /// on-chain address. We persist {wallet_id, wallet_address} so subsequent
+  /// /send and /auto-send calls have a real wallet_id. The mnemonic is the one
+  /// already generated locally by generateMnemonic() — nothing fabricated.
+  Future<Map<String, dynamic>?> createBackendWallet({
+    required String mnemonic,
+    required String password,
+    int chainId = 1,
+    String label = 'TigerWallet',
+  }) async {
+    final authToken = await _secureStorage.read(key: 'auth_token') ?? '';
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$API_BASE_URL/api/v1/wallets'),
+            headers: {
+              'Content-Type': 'application/json',
+              if (authToken.isNotEmpty) 'Authorization': 'Bearer $authToken',
+            },
+            body: jsonEncode({
+              'mnemonic': mnemonic,
+              'password': password,
+              'chain_id': chainId,
+              'label': label,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final body = jsonDecode(response.body);
+        final id = body['id']?.toString();
+        final address = body['address']?.toString();
+        if (id != null && id.isNotEmpty) {
+          await _secureStorage.write(key: 'wallet_id', id);
+          if (address != null && address.isNotEmpty) {
+            await _secureStorage.write(key: 'wallet_address', address);
+          }
+          return body as Map<String, dynamic>;
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The backend wallet id persisted by createBackendWallet (null when the
+  /// wallet has not been registered with the backend yet).
+  Future<String?> getBackendWalletId() async {
+    final id = await _secureStorage.read(key: 'wallet_id');
+    return (id != null && id.isNotEmpty) ? id : null;
+  }
+
+  // =========================================================================
+  // AUTO SIGN + APPROVAL SEND (R5)
+  // =========================================================================
+
+  /// Auto-send variant of /send: POST /api/v1/auto-send with the SAME body as
+  /// /send (wallet_id + password OR unlock_token + to + value + chain_id +
+  /// gas_limit) plus optional ?master_wallet_id=<id>. Returns the send
+  /// response augmented with {auto_approved, auto_approval_reason} so the UI
+  /// can show a ⚡ Auto-approved badge (or the reason when not auto-approved).
+  ///
+  /// Contract verified against go/wallet_api: route `signLimited.POST(
+  /// "/auto-send", handleAutoSend)`; sendTxReq binds wallet_id (required),
+  /// to (required), value (required, in ether), password, unlock_token,
+  /// gas_limit, data, chain_id. The backend self-signs + broadcasts with the
+  /// user's own decrypted seed regardless of the master-wallet policy gate
+  /// (self-custody is never blocked), tagging the response with the policy
+  /// result. Throws on non-200 so the caller can fall back to manual /send.
+  Future<Map<String, dynamic>> autoSendTransaction({
+    required String walletId,
+    required String to,
+    required String value,
+    required String password,
+    int chainId = 1,
+    String gasLimit = '21000',
+    String? unlockToken,
+    String? masterWalletId,
+  }) async {
+    final authToken = await _secureStorage.read(key: 'auth_token') ?? '';
+    var path = '$API_BASE_URL/api/v1/auto-send';
+    if (masterWalletId != null && masterWalletId.isNotEmpty) {
+      path += '?master_wallet_id=${Uri.encodeQueryComponent(masterWalletId)}';
+    }
+    final response = await http
+        .post(
+          Uri.parse(path),
+          headers: {
+            'Content-Type': 'application/json',
+            if (authToken.isNotEmpty) 'Authorization': 'Bearer $authToken',
+          },
+          body: jsonEncode({
+            'wallet_id': walletId,
+            'to': to,
+            'value': value,
+            'password': password,
+            'chain_id': chainId,
+            'gas_limit': gasLimit,
+            if (unlockToken != null && unlockToken.isNotEmpty)
+              'unlock_token': unlockToken,
+          }),
+        )
+        .timeout(const Duration(seconds: 30));
+
+    if (response.statusCode == 200) {
+      final body = jsonDecode(response.body);
+      final txHash = body['tx_hash'] ?? body['hash'] ?? body['result'];
+      return <String, dynamic>{
+        'tx_hash': (txHash ?? '').toString(),
+        'auto_approved': body['auto_approved'] == true,
+        'auto_approval_reason': (body['auto_approval_reason'] ?? '').toString(),
+        'raw': body,
+      };
+    }
+    throw Exception(
+      'Auto-send failed (${response.statusCode}): ${response.body}',
+    );
+  }
+
+  /// Manual /send fallback (same contract as autoSendTransaction minus the
+  /// auto-approval fields). Returns the tx hash, or null on failure. Kept as
+  /// the documented fallback path when /auto-send is unavailable.
+  Future<String?> sendTransactionManual({
+    required String walletId,
+    required String to,
+    required String value,
+    required String password,
+    int chainId = 1,
+    String gasLimit = '21000',
+    String? unlockToken,
+  }) async {
+    final authToken = await _secureStorage.read(key: 'auth_token') ?? '';
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$API_BASE_URL/api/v1/send'),
+            headers: {
+              'Content-Type': 'application/json',
+              if (authToken.isNotEmpty) 'Authorization': 'Bearer $authToken',
+            },
+            body: jsonEncode({
+              'wallet_id': walletId,
+              'to': to,
+              'value': value,
+              'password': password,
+              'chain_id': chainId,
+              'gas_limit': gasLimit,
+              if (unlockToken != null && unlockToken.isNotEmpty)
+                'unlock_token': unlockToken,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body);
+        final txHash = body['tx_hash'] ?? body['hash'] ?? body['result'];
+        return (txHash is String && txHash.isNotEmpty) ? txHash : null;
+      }
+      return null;
+    } catch (_) {
       return null;
     }
   }

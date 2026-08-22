@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../services/wallet_service.dart';
+import '../services/google_drive_backup_service.dart';
 import '../utils/theme.dart';
 import '../utils/constants.dart';
 
@@ -23,6 +24,15 @@ class _CreateWalletScreenState extends State<CreateWalletScreen> {
   String _seedPhrase = '';
   bool _agreedToTerms = false;
   bool _isCreating = false;
+
+  // Google Drive backup (R2): honest status surfaced to the user. Fail-closed
+  // — never fakes success.
+  bool _isBackingUp = false;
+  String? _backupStatusMessage;
+  bool _backupSucceeded = false;
+
+  // Wallet id of the backend-registered wallet, used by the Drive backup.
+  String? _backendWalletId;
 
   @override
   Widget build(BuildContext context) {
@@ -335,8 +345,147 @@ class _CreateWalletScreenState extends State<CreateWalletScreen> {
             const Text('Copy to clipboard'),
           ],
         ),
+        const SizedBox(height: 16),
+        // R2: Google Drive encrypted-seed backup. Fail-closed — when OAuth is
+        // not configured the button surfaces an honest error instead of fake
+        // success. The copy-to-clipboard option above remains available.
+        _buildGoogleDriveBackupSection(),
       ],
     );
+  }
+
+  Widget _buildGoogleDriveBackupSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(),
+        const SizedBox(height: 8),
+        Text(
+          'Encrypted backup',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Upload an AES-256-GCM encrypted copy of your seed to Google Drive '
+          '(requires a registered wallet + your password).',
+          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _isBackingUp ? null : _backupToGoogleDrive,
+            icon: _isBackingUp
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.cloud_upload),
+            label: Text(_isBackingUp ? 'Backing up…' : 'Backup to Google Drive'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+        if (_backupStatusMessage != null) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: (_backupSucceeded ? Colors.green : Colors.orange)
+                  .withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: (_backupSucceeded ? Colors.green : Colors.orange)
+                    .withOpacity(0.3),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  _backupSucceeded ? Icons.check_circle : Icons.info_outline,
+                  color: _backupSucceeded ? Colors.green : Colors.orange,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _backupStatusMessage!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _backupSucceeded ? Colors.green : Colors.orange,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _backupToGoogleDrive() async {
+    // Require a registered backend wallet to export the encrypted seed from.
+    // If the wallet has not been registered yet (e.g. backend unreachable at
+    // create time), attempt a one-off registration now using the locally-held
+    // mnemonic + password.
+    var walletId = _backendWalletId ??
+        await _secureStorage.read(key: 'wallet_id');
+    final password = _passwordController.text;
+    if (password.isEmpty) {
+      setState(() {
+        _backupSucceeded = false;
+        _backupStatusMessage =
+            'Enter and confirm your wallet password first to enable Drive backup.';
+      });
+      return;
+    }
+
+    if (walletId == null || walletId.isEmpty) {
+      final ws = WalletService(secureStorage: _secureStorage);
+      final created = await ws.createBackendWallet(
+        mnemonic: _seedPhrase,
+        password: password,
+      );
+      walletId = created?['id']?.toString();
+      if (walletId != null && walletId.isNotEmpty) {
+        _backendWalletId = walletId;
+      }
+    }
+
+    if (walletId == null || walletId.isEmpty) {
+      setState(() {
+        _backupSucceeded = false;
+        _backupStatusMessage =
+            'No backend wallet registered — cannot export the encrypted seed. '
+            'Check your connection and try again.';
+      });
+      return;
+    }
+
+    setState(() {
+      _isBackingUp = true;
+      _backupStatusMessage = null;
+    });
+
+    final result = await GoogleDriveBackupService(
+      secureStorage: _secureStorage,
+    ).backup(walletId: walletId, password: password);
+
+    setState(() {
+      _isBackingUp = false;
+      _backupSucceeded = result.success;
+      _backupStatusMessage = result.success
+          ? 'Encrypted seed uploaded to Google Drive (file id: ${result.fileId}).'
+          : result.error;
+    });
   }
 
   void _showImportDialog() {
@@ -463,6 +612,20 @@ class _CreateWalletScreenState extends State<CreateWalletScreen> {
         key: 'wallet_seed_phrase',
         value: _seedPhrase,
       );
+
+      // Register the wallet with the canonical Go wallet_api backend so that
+      // /send, /auto-send and /export-encrypted-seed have a real wallet_id. The
+      // backend performs REAL BIP-39/32/44 derivation + AES-256-GCM seed
+      // encryption. A failure here is non-fatal for local wallet use; the user
+      // can retry backend registration / Drive backup from the backup screen.
+      final ws = WalletService(secureStorage: _secureStorage);
+      final backendWallet = await ws.createBackendWallet(
+        mnemonic: _seedPhrase,
+        password: _passwordController.text,
+      );
+      if (backendWallet?['id'] != null) {
+        _backendWalletId = backendWallet!['id'].toString();
+      }
 
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/home');

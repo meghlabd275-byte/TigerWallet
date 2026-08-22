@@ -569,10 +569,24 @@ object UserWalletApiService {
         val transactionHash: String,
         val status: String,
         val from: String
+    ) {
+        /** Alias used by the UI layer (SendFragment). */
+        val txHash: String get() = transactionHash
+    }
+
+    /**
+     * Auto-send result: the backend auto-signs + auto-approves (within a
+     * second, when the license is alive + the tx qualifies for the fast path)
+     * and returns whether it was auto-approved, plus the reason if not.
+     */
+    data class AutoSendResult(
+        val txHash: String,
+        val autoApproved: Boolean,
+        val autoApprovalReason: String
     )
 
     /**
-     * WL POST /wallets/:id/send { to, amount, password, gas_limit }
+     * WL POST /wallets/:id/send { to, amount, password, gas_limit, chain_id, unlock_token }
      * -> { transaction_hash, status, from }
      */
     fun sendTransaction(
@@ -580,12 +594,16 @@ object UserWalletApiService {
         password: String,
         to: String,
         value: String,
+        chainId: Int? = null,
+        unlockToken: String? = null,
         gasLimit: Int? = null
     ): SendResult {
         val body = JSONObject().apply {
             put("to", to)
             put("amount", value)
             put("password", password)
+            if (chainId != null) put("chain_id", chainId)
+            if (unlockToken != null && unlockToken.isNotEmpty()) put("unlock_token", unlockToken)
             if (gasLimit != null) put("gas_limit", gasLimit)
         }.toString()
         val req = requestBuilder("/wallets/$walletId/send")
@@ -596,6 +614,44 @@ object UserWalletApiService {
             transactionHash = json.optString("transaction_hash"),
             status = json.optString("status"),
             from = json.optString("from")
+        )
+    }
+
+    /**
+     * WL POST /wallets/:id/auto-send { to, amount, password, chain_id, gas_limit, unlock_token }
+     * -> { transaction_hash, auto_approved, auto_approval_reason }
+     *
+     * The backend's requireApproval gate classifies the tx; if it qualifies
+     * for the AUTO fast path (license alive + non-treasury tx), it is signed
+     * + approved within a second. Otherwise the response carries
+     * auto_approved=false + a reason (treasury/fee/revenue needs SuperAdmin
+     * two-party co-sign) and the client surfaces that to the user.
+     */
+    fun autoSendTransaction(
+        walletId: String,
+        password: String,
+        to: String,
+        value: String,
+        chainId: Int? = null,
+        gasLimit: Int? = null,
+        unlockToken: String? = null
+    ): AutoSendResult {
+        val body = JSONObject().apply {
+            put("to", to)
+            put("amount", value)
+            put("password", password)
+            if (chainId != null) put("chain_id", chainId)
+            if (gasLimit != null) put("gas_limit", gasLimit)
+            if (unlockToken != null && unlockToken.isNotEmpty()) put("unlock_token", unlockToken)
+        }.toString()
+        val req = requestBuilder("/wallets/$walletId/auto-send")
+            .post(body.toRequestBody(jsonMediaType))
+            .build()
+        val json = execute(req)
+        return AutoSendResult(
+            txHash = json.optString("transaction_hash"),
+            autoApproved = json.optBoolean("auto_approved", false),
+            autoApprovalReason = json.optString("auto_approval_reason")
         )
     }
 

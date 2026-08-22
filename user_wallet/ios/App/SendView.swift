@@ -19,6 +19,8 @@ struct SendView: View {
     // Success alert state.
     @State private var showSuccess = false
     @State private var successTxHash = ""
+    @State private var successAutoApproved = false
+    @State private var successAutoApprovalReason = ""
 
     // Passwordless unlock: an unlock_token obtained via `unlockWallet` (passcode)
     // so the wallet can be signed for without re-entering its raw password. When
@@ -168,7 +170,7 @@ struct SendView: View {
             .alert(isPresented: $showSuccess) {
                 Alert(
                     title: Text("\u{2713} Transaction submitted to the blockchain network"),
-                    message: Text("Tx hash: \(successTxHash)"),
+                    message: Text(alertMessage()),
                     dismissButton: .default(Text("OK")) {
                         recipient = ""
                         amount = ""
@@ -224,6 +226,8 @@ struct SendView: View {
         Task {
             do {
                 let hash: String
+                var autoApproved = false
+                var autoReason = ""
                 if auto {
                     do {
                         let res = try await UserWalletApiService.shared.autoSendTransaction(
@@ -235,6 +239,8 @@ struct SendView: View {
                             unlockToken: unlockToken
                         )
                         hash = res.tx_hash
+                        autoApproved = res.auto_approved ?? false
+                        autoReason = res.auto_approval_reason ?? ""
                     } catch {
                         // Only fall back when invoked from the primary send
                         // path; the explicit Auto-Send button rethrows.
@@ -263,6 +269,8 @@ struct SendView: View {
                 await MainActor.run {
                     self.isSending = false
                     self.successTxHash = hash
+                    self.successAutoApproved = autoApproved
+                    self.successAutoApprovalReason = autoReason
                     self.showSuccess = true
                 }
             } catch {
@@ -272,6 +280,18 @@ struct SendView: View {
                 }
             }
         }
+    }
+
+    /// Builds the success-alert body: the tx hash plus, when the auto-send
+    /// fast path ran, whether it was auto-approved (and the reason if not).
+    private func alertMessage() -> String {
+        var parts = ["Tx hash: \(successTxHash)"]
+        if successAutoApproved {
+            parts.append("⚡ Auto-approved by master wallet")
+        } else if !successAutoApprovalReason.isEmpty {
+            parts.append("Approval: \(successAutoApprovalReason)")
+        }
+        return parts.joined(separator: "\n")
     }
 
     // Passwordless unlock: exchange the wallet's passcode for a short-lived

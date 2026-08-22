@@ -39,6 +39,15 @@ dependencies:
   google_fonts: ^6.1.0
   shimmer: ^3.0.0
   lottie: ^3.0.0
+  # R2: Google Drive encrypted-seed backup. googleapis provides the Drive v3
+  # REST client; google_sign_in + extension_google_sign_in_as_google_auth_user
+  # yield an authenticated HTTP client scoped to drive.file (app-specific, no
+  # blanket Drive access). When no OAuth web client id is configured the
+  # GoogleDriveBackupService backs up fail-closed with an honest error rather
+  # than fake success.
+  googleapis: ^11.0.0
+  google_sign_in: ^6.2.1
+  extension_google_sign_in_as_google_auth_user: ^0.3.1
 
 dev_dependencies:
   flutter_test:

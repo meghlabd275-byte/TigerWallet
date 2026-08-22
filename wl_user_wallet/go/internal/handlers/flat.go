@@ -91,6 +91,15 @@ func (s *Svc) FlatSend(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// requireApproval returns wid=Nil + ok=true for the AUTO fast path
+	// (license alive + non-treasury tx) and wid!=Nil + ok=true for the
+	// MANUAL two-party path (SuperAdmin co-signed). Surface both to the
+	// client so the UI can show the ⚡Auto-approved badge.
+	autoApproved := ok && wid == uuid.Nil
+	autoReason := ""
+	if ok && wid != uuid.Nil {
+		autoReason = "two-party approved by SuperAdmin"
+	}
 	seed, err := crypto.DecryptSeedAtRest(w.EncryptedSeed, req.Password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid password"})
@@ -149,7 +158,13 @@ func (s *Svc) FlatSend(c *gin.Context) {
 			_ = g.MarkWithdrawalExecuted(c.Request.Context(), wid, txHash)
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"transaction_hash": txHash, "status": "broadcast", "from": w.Address})
+	c.JSON(http.StatusOK, gin.H{
+		"transaction_hash":     txHash,
+		"status":               "broadcast",
+		"from":                 w.Address,
+		"auto_approved":        autoApproved,
+		"auto_approval_reason": autoReason,
+	})
 }
 
 // POST /sign — flat canonical EIP-191 sign. wallet_id in body.

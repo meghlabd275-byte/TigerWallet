@@ -64,7 +64,17 @@ class _SplashScreenState extends State<SplashScreen>
       setState(() => _statusMessage = 'Checking wallet...');
       final walletExists = await _checkWalletExists();
 
-      // Step 5: Navigate based on wallet status
+      // Provision a transparent guest session (no registration / login wall).
+      // Best-effort: a network failure here is non-fatal — the app still opens
+      // to Create/Import and protected calls retry later.
+      setState(() => _statusMessage = 'Preparing session...');
+      await WalletService(
+        secureStorage: _secureStorage,
+      ).ensureGuestSession();
+
+      // Step 5: Navigate based on wallet status — NO login/register wall.
+      // An existing wallet goes straight to the dashboard; otherwise the user
+      // lands on Create/Import onboarding.
       setState(() {
         _hasWallet = walletExists;
         _isLoading = false;
@@ -74,7 +84,7 @@ class _SplashScreenState extends State<SplashScreen>
 
       if (mounted) {
         if (_hasWallet) {
-          Navigator.pushReplacementNamed(context, '/login');
+          Navigator.pushReplacementNamed(context, '/home');
         } else {
           Navigator.pushReplacementNamed(context, '/create-wallet');
         }

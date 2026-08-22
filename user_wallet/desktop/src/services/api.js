@@ -196,6 +196,24 @@ export const api = {
     });
   },
 
+  // WL POST /wallets/:id/auto-send -> { transaction_hash, auto_approved, auto_approval_reason }
+  // The backend auto-signs + auto-approves (fast path, license alive + non-treasury tx);
+  // returns auto_approved=false + reason when two-party co-sign is required.
+  async autoSendTransaction({ walletId, password, to, value, chainId, gasLimit, data: txData, unlockToken }) {
+    return request(`/wallets/${encodeURIComponent(walletId)}/auto-send`, {
+      method: 'POST',
+      body: JSON.stringify({
+        to,
+        amount: value,
+        password,
+        gas_limit: gasLimit,
+        data: txData,
+        chain_id: chainId,
+        unlock_token: unlockToken,
+      }),
+    });
+  },
+
   async signMessage({ walletId, password, message }) {
     return request(`/wallets/${encodeURIComponent(walletId)}/sign`, {
       method: 'POST',

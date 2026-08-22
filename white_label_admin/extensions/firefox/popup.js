@@ -3,16 +3,16 @@
 // Read-only: governance record metadata, no fund movement.
 
 const DOMAINS = [
-  { key: 'futures', label: 'Futures', endpoints: [['GET', '/futures'], ['PUT', '/futures/:id/status', true]] },
-  { key: 'options', label: 'Options', endpoints: [['GET', '/options'], ['PUT', '/options/:id/status', true]] },
-  { key: 'copy-trading', label: 'Copy', endpoints: [['GET', '/copy-trading'], ['PUT', '/copy-trading/:id/status', true]] },
-  { key: 'convert', label: 'Convert', endpoints: [['GET', '/convert'], ['PUT', '/convert/:id/status', true]] },
+  { key: 'futures', label: 'Futures', endpoints: [['GET', '/futures'], ['POST', '/futures'], ['PUT', '/futures/:id'], ['DELETE', '/futures/:id'], ['PUT', '/futures/:id/status', true]] },
+  { key: 'options', label: 'Options', endpoints: [['GET', '/options'], ['POST', '/options'], ['PUT', '/options/:id'], ['DELETE', '/options/:id'], ['PUT', '/options/:id/status', true]] },
+  { key: 'copy-trading', label: 'Copy Trading', endpoints: [['GET', '/copy-trading'], ['POST', '/copy-trading'], ['PUT', '/copy-trading/:id'], ['DELETE', '/copy-trading/:id'], ['PUT', '/copy-trading/:id/status', true]] },
+  { key: 'convert', label: 'Convert', endpoints: [['GET', '/convert'], ['POST', '/convert'], ['PUT', '/convert/:id'], ['DELETE', '/convert/:id'], ['PUT', '/convert/:id/status', true]] },
   { key: 'onramp', label: 'On-Ramp', endpoints: [['GET', '/onramp'], ['POST', '/onramp/:id/approve', true], ['POST', '/onramp/:id/reject {reason}', true]] },
   { key: 'offramp', label: 'Off-Ramp', endpoints: [['GET', '/offramp'], ['POST', '/offramp/:id/approve', true], ['POST', '/offramp/:id/reject {reason}', true]] },
   { key: 'p2p-clients', label: 'P2P', endpoints: [['GET', '/p2p-clients'], ['PUT', '/p2p-clients/:id/status', true]] },
   { key: 'partners', label: 'Partners', endpoints: [['GET', '/partners'], ['PUT', '/partners/:id/status', true], ['POST', '/partners/:id/approve', true], ['POST', '/partners/:id/reject {reason}', true]] },
-  { key: 'rewards', label: 'Rewards', endpoints: [['GET', '/rewards'], ['PUT', '/rewards/:id/status', true]] },
-  { key: 'marketing', label: 'Marketing', endpoints: [['GET', '/marketing'], ['PUT', '/marketing/:id/status', true]] },
+  { key: 'rewards', label: 'Rewards', endpoints: [['GET', '/rewards'], ['POST', '/rewards'], ['PUT', '/rewards/:id'], ['DELETE', '/rewards/:id'], ['PUT', '/rewards/:id/status', true]] },
+  { key: 'marketing', label: 'Marketing', endpoints: [['GET', '/marketing'], ['POST', '/marketing'], ['PUT', '/marketing/:id'], ['DELETE', '/marketing/:id'], ['PUT', '/marketing/:id/status', true]] },
   { key: 'liquidity', label: 'Liquidity', endpoints: [['GET', '/wl-liquidity/sources'], ['POST', '/wl-liquidity/sources'], ['PUT', '/wl-liquidity/sources/:id'], ['DELETE', '/wl-liquidity/sources/:id'], ['GET', '/wl-liquidity/allocations'], ['POST', '/wl-liquidity/allocations'], ['GET', '/wl-liquidity/stats']] },
   { key: 'crypto-card', label: 'Cards', endpoints: [['GET', '/wl-cards'], ['POST', '/wl-cards'], ['GET', '/wl-cards/transactions'], ['GET', '/wl-cards/stats'], ['PUT', '/wl-cards/:id/status', true]] },
   { key: 'bots', label: 'Bots', endpoints: [['GET', '/wl-bots/operators'], ['POST', '/wl-bots/operators'], ['GET', '/wl-bots/config'], ['GET', '/wl-bots/stats'], ['PUT', '/wl-bots/operators/:id/status', true]] },

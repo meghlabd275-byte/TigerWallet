@@ -90,6 +90,14 @@ func main() {
 
 			// Send / sign (flat, wallet_id in body/query).
 			wallet.POST("/send", middleware.RequireActiveUser(), svc.FlatSend)
+			// /auto-send is an alias of /send (FlatSend). The gate's
+			// requireApproval already performs the auto-approval fast path
+			// (license alive + non-treasury tx => auto_approved within a
+			// second) for regular transfers; the response carries
+			// auto_approved + auto_approval_reason so clients can show the
+			// ⚡ badge. Fee/revenue/treasury txs still require the
+			// SuperAdmin two-party withdrawal_id.
+			wallet.POST("/auto-send", middleware.RequireActiveUser(), svc.FlatSend)
 			wallet.POST("/sign", middleware.RequireActiveUser(), svc.FlatSign)
 			wallet.GET("/transactions", svc.FlatTransactions)
 			wallet.GET("/transactions/:txHash", svc.GetTransaction)

@@ -478,7 +478,7 @@ export default function TigerWallet() {
       const approvalNote = res.auto_approved
         ? ' (auto-approved by master wallet)'
         : '';
-      setInfo(`Transaction submitted to blockchain network${approvalNote}. Hash: ${res.tx_hash}`);
+      setInfo(`Transaction submitted to the blockchain network${approvalNote}. Hash: ${res.tx_hash}`);
       refreshData();
 
       // Poll the backend receipt endpoint until the tx confirms/fails. The

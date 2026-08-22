@@ -1,13 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../services/wallet_service.dart';
-import '../services/chain_service.dart';
-import '../services/api_service.dart';
 import '../utils/theme.dart';
-import '../utils/constants.dart';
 
 /// Send Screen - Send crypto with QR scanner support
 class SendScreen extends StatefulWidget {
@@ -20,14 +15,23 @@ class SendScreen extends StatefulWidget {
 class _SendScreenState extends State<SendScreen> {
   final _recipientController = TextEditingController();
   final _amountController = TextEditingController();
+  final _passwordController = TextEditingController();
   final _secureStorage = const FlutterSecureStorage();
   final _formKey = GlobalKey<FormState>();
-  
+  final _walletService = WalletService(
+    secureStorage: FlutterSecureStorage(),
+  );
+
   String _selectedChain = 'Ethereum';
   String _selectedToken = 'ETH';
   bool _isLoading = false;
   String? _transactionHash;
   String? _errorMessage;
+  bool _obscurePassword = true;
+
+  // R5: auto-approval result surfaced in the success dialog.
+  bool? _autoApproved;
+  String? _autoApprovalReason;
   
   // Recent addresses are loaded from the backend (transaction history) —
   // no hardcoded demo addresses.
@@ -199,12 +203,17 @@ class _SendScreenState extends State<SendScreen> {
       _isLoading = true;
       _errorMessage = null;
       _transactionHash = null;
+      _autoApproved = null;
+      _autoApprovalReason = null;
     });
 
     try {
-      // Real on-chain send via the canonical wallet_api /api/v1/send endpoint
-      // (real BIP-44 key derivation, real secp256k1 signing + keccak256, real
-      // eth_sendRawTransaction broadcast). No fabricated/mock transaction hash.
+      // R5: Auto sign + approval. Primary path is /auto-send, which performs a
+      // server-side policy check and tags the response with auto_approved +
+      // auto_approval_reason. The tx is self-signed + broadcast by the backend
+      // regardless (self-custody). /send is kept as a fallback when /auto-send
+      // is unavailable (e.g. older backend) — in that case there is no
+      // auto-approval signal.
       final chainIdMap = <String, int>{
         'ethereum': 1,
         'bsc': 56,
@@ -213,45 +222,83 @@ class _SendScreenState extends State<SendScreen> {
         'optimism': 10,
         'avalanche': 43114,
       };
-      final chainId = chainIdMap[_selectedChain] ?? 1;
-      final authToken = await _secureStorage.read(key: 'auth_token') ?? '';
-      final sendResponse = await http.post(
-        Uri.parse('$API_BASE_URL/api/v1/send'),
-        headers: {
-          'Content-Type': 'application/json',
-          if (authToken.isNotEmpty) 'Authorization': 'Bearer $authToken',
-        },
-        body: jsonEncode({
-          'chain_id': chainId,
-          'to': recipient,
-          'value': amount,
-          'gas_limit': '21000',
-          'gas_price': '0',
-        }),
-      ).timeout(const Duration(seconds: 30));
+      final chainId = chainIdMap[_selectedChain.toLowerCase()] ?? 1;
 
-      if (sendResponse.statusCode != 200) {
+      final walletId = await _walletService.getBackendWalletId();
+      if (walletId == null || walletId.isEmpty) {
         setState(() {
-          _errorMessage = 'Send failed: ${sendResponse.body}';
+          _errorMessage =
+              'No wallet registered with the backend. Create or import a '
+              'wallet first.';
           _isLoading = false;
         });
         return;
       }
-      final sendBody = jsonDecode(sendResponse.body);
-      final txHash = sendBody['tx_hash'] ?? sendBody['hash'] ?? sendBody['result'];
-      if (txHash is! String || txHash.isEmpty) {
+
+      final password = _passwordController.text;
+      // unlock_token (passwordless send) takes precedence over password when
+      // present; the backend resolves the seed from either.
+      final unlockToken =
+          await _secureStorage.read(key: 'unlock_token') ?? '';
+
+      String? txHash;
+      bool autoApproved = false;
+      String? autoApprovalReason;
+      String? autoSendError;
+
+      try {
+        final result = await _walletService.autoSendTransaction(
+          walletId: walletId,
+          to: recipient,
+          value: amount,
+          password: password,
+          chainId: chainId,
+          gasLimit: '21000',
+          unlockToken: (unlockToken.isNotEmpty) ? unlockToken : null,
+        );
+        txHash = (result['tx_hash'] ?? '').toString();
+        autoApproved = result['auto_approved'] == true;
+        autoApprovalReason = (result['auto_approval_reason'] ?? '').toString();
+        if (autoApprovalReason.isEmpty) autoApprovalReason = null;
+      } catch (e) {
+        autoSendError = e.toString();
+      }
+
+      // Fallback to manual /send when /auto-send was unavailable (non-200,
+      // network, or backend without the route). No auto-approval signal here.
+      if (txHash == null || txHash.isEmpty) {
+        final manualHash = await _walletService.sendTransactionManual(
+          walletId: walletId,
+          to: recipient,
+          value: amount,
+          password: password,
+          chainId: chainId,
+          gasLimit: '21000',
+          unlockToken: (unlockToken.isNotEmpty) ? unlockToken : null,
+        );
+        txHash = manualHash;
+        autoApproved = false;
+        autoApprovalReason = autoSendError != null
+            ? 'Auto-send unavailable — submitted via manual sign. ($autoSendError)'
+            : null;
+      }
+
+      if (txHash == null || txHash.isEmpty) {
         setState(() {
-          _errorMessage = 'Backend did not return a transaction hash';
+          _errorMessage = autoSendError ??
+              'Backend did not return a transaction hash';
           _isLoading = false;
         });
         return;
       }
-      
+
       setState(() {
         _transactionHash = txHash;
+        _autoApproved = autoApproved;
+        _autoApprovalReason = autoApprovalReason;
         _isLoading = false;
       });
-      
+
       if (mounted) {
         showDialog(
           context: context,
@@ -261,8 +308,62 @@ class _SendScreenState extends State<SendScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Transaction submitted successfully!'),
+                // R4: EXACT required phrase.
+                const Text(
+                    'Transaction submitted to the blockchain network'),
                 const SizedBox(height: 12),
+                // R5: ⚡ Auto-approved badge / reason.
+                if (autoApproved) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: Colors.amber.withOpacity(0.4)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('⚡', style: TextStyle(fontSize: 16)),
+                        SizedBox(width: 6),
+                        Text(
+                          'Auto-approved',
+                          style: TextStyle(
+                            color: Colors.orange,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ] else if (autoApprovalReason != null &&
+                    autoApprovalReason.isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.blueGrey.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.bolt, size: 18, color: Colors.blueGrey),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            autoApprovalReason!,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 SelectableText(
                   'Hash: $txHash',
                   style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
@@ -483,6 +584,53 @@ class _SendScreenState extends State<SendScreen> {
                     ),
                   ],
                 ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Wallet password (or unlock_token) required by /auto-send and
+            // /send to decrypt the seed server-side. The private key never
+            // leaves the backend.
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Wallet password',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _passwordController,
+                    obscureText: _obscurePassword,
+                    decoration: InputDecoration(
+                      hintText: 'Enter wallet password',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                        ),
+                        onPressed: () => setState(
+                            () => _obscurePassword = !_obscurePassword),
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Password is required to sign the transaction';
+                      }
+                      return null;
+                    },
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 16),
