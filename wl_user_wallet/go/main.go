@@ -42,9 +42,14 @@ func main() {
 	// Start the license-control-plane heartbeat (fail-closed phone-home).
 	go middleware.HeartbeatLoop(ctx, cfg.ControlPlaneURL, cfg.ControlPlaneToken, cfg.WLClientID, cfg.LicenseKey, cfg.Product, cfg.InstanceID, cfg.HeartbeatInterval)
 
+
 	// Initialize the two-party withdrawal gate (SuperAdmin co-sign verification
 	// for fee/revenue/treasury withdrawals — the slow path).
-	middleware.InitTwoPartyGate(cfg.ControlPlaneURL, cfg.ControlPlaneToken)
+	middleware.InitTwoPartyGate(cfg.ControlPlaneURL, cfg.ControlPlaneToken, cfg.Product, cfg.WLClientID)
+
+	// Wire the store-backed is_active checker so RequireActiveUser middleware
+	// can lock out a suspended user immediately (even with a valid stateless JWT).
+	middleware.SetActiveUserChecker(st.GetUserActive)
 
 	svc := handlers.New(cfg, st)
 
@@ -81,24 +86,24 @@ func main() {
 			wallet.GET("/chains", svc.GetChains)
 
 			// Send / sign (flat, wallet_id in body/query).
-			wallet.POST("/send", svc.FlatSend)
-			wallet.POST("/sign", svc.FlatSign)
+			wallet.POST("/send", middleware.RequireActiveUser(), svc.FlatSend)
+			wallet.POST("/sign", middleware.RequireActiveUser(), svc.FlatSign)
 			wallet.GET("/transactions", svc.FlatTransactions)
 			wallet.GET("/transactions/:txHash", svc.GetTransaction)
 
 			// Swap (real CoinGecko cross-rate + on-chain V2 router calldata).
 			wallet.GET("/swap/quote", svc.SwapQuote)
-			wallet.POST("/swap/execute", svc.SwapExecute)
+			wallet.POST("/swap/execute", middleware.RequireActiveUser(), svc.SwapExecute)
 
 			// Staking (real on-chain stake/unstake/claim calldata).
 			wallet.GET("/staking/quote", svc.StakingQuote)
-			wallet.POST("/staking/stake", svc.StakingStake)
-			wallet.POST("/staking/unstake", svc.StakingUnstake)
-			wallet.POST("/staking/claim", svc.StakingClaim)
+			wallet.POST("/staking/stake", middleware.RequireActiveUser(), svc.StakingStake)
+			wallet.POST("/staking/unstake", middleware.RequireActiveUser(), svc.StakingUnstake)
+			wallet.POST("/staking/claim", middleware.RequireActiveUser(), svc.StakingClaim)
 
 			// Non-EVM signing (real Solana/Bitcoin/Cosmos crypto).
-			wallet.POST("/non_evm/sign", svc.NonEvmSign)
-			wallet.POST("/non_evm/send", svc.NonEvmSend)
+			wallet.POST("/non_evm/sign", middleware.RequireActiveUser(), svc.NonEvmSign)
+			wallet.POST("/non_evm/send", middleware.RequireActiveUser(), svc.NonEvmSend)
 			wallet.POST("/non_evm/address", svc.NonEvmAddress)
 
 			// Address book (real PG CRUD).
@@ -116,6 +121,16 @@ func main() {
 			// Keystore V3 (real Web3 Secret Storage scrypt+AES-CTR+keccak MAC).
 			wallet.POST("/keystore/export", svc.ExportKeystore)
 			wallet.POST("/keystore/import", svc.ImportKeystore)
+
+			// Scoped-admin role assignment — WL client owner only (wl_client scope).
+			wallet.PUT("/users/:id/scopes", svc.UpdateAdminScopes)
+
+			// Admin oversight (wallet_admin / wl_client scope) — view all
+			// wallets/users + suspend/activate a user. NO fund movement.
+			wallet.GET("/admin/users", svc.AdminListUsers)
+			wallet.GET("/admin/wallets", svc.AdminListWallets)
+			wallet.POST("/admin/users/:id/suspend", svc.AdminSuspendUser)
+			wallet.POST("/admin/users/:id/activate", svc.AdminActivateUser)
 		}
 
 		// Public unauthenticated reads (same real logic, no auth gate).

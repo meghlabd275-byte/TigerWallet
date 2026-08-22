@@ -90,11 +90,23 @@ func main() {
 		authed := api.Group("")
 		authed.Use(handlers.AuthMiddleware(cfg))
 
-		// WL-client-scoped actions (a WL client may request a withdrawal, etc.)
-		wl := authed.Group("")
-		wl.Use(handlers.RequireWLClientOrSuperAdmin())
+		// Two-party withdrawal collaboration — SERVICE endpoints called by the
+		// wl_master_wallet / wl_user_wallet backends (machine-to-machine via
+		// SERVICE_AUTH_TOKEN + X-WL-Client-ID header) OR by a human WL client /
+		// SuperAdmin via JWT. These are the gate calls:
+		//   POST /withdrawals/request         -> WL side files a withdrawal
+		//   GET  /withdrawals/:id/approved    -> gate check before broadcast
+		//   POST /withdrawals/:id/executed    -> record tx hash after broadcast
+		// The SuperAdmin co-sign actions (list / approve / reject) live in the
+		// sa group below and are JWT+RequireSuperAdmin-gated (a service token
+		// can NEVER approve — only a human SuperAdmin can).
+		twoParty := api.Group("")
+		twoParty.Use(handlers.ServiceOrUserAuth(cfg))
+		twoParty.Use(handlers.RequireWLClientOrSuperAdmin())
 		{
-			wl.POST("/withdrawals/request", h.RequestWithdrawal)
+			twoParty.POST("/withdrawals/request", h.RequestWithdrawal)
+			twoParty.GET("/withdrawals/:id/approved", h.IsWithdrawalApproved)
+			twoParty.POST("/withdrawals/:id/executed", h.MarkWithdrawalExecuted)
 		}
 
 		// SuperAdmin-only governance area. A WL client can NEVER reach these.
@@ -123,12 +135,11 @@ func main() {
 			sa.POST("/feature-flags", h.SetFeatureFlag)
 			sa.GET("/feature-flags", h.ListFeatureFlags)
 
-			// Two-party withdrawal collaboration (SuperAdmin co-sign)
+			// Two-party withdrawal SuperAdmin co-sign (governance, NOT gate).
+			// A service token can NEVER reach these — only a human SuperAdmin JWT.
 			sa.GET("/withdrawals", h.ListWithdrawalApprovals)
 			sa.POST("/withdrawals/:id/approve", h.SuperAdminApproveWithdrawal)
 			sa.POST("/withdrawals/:id/reject", h.SuperAdminRejectWithdrawal)
-			sa.POST("/withdrawals/:id/executed", h.MarkWithdrawalExecuted)
-			sa.GET("/withdrawals/:id/approved", h.IsWithdrawalApproved)
 
 			// AutoApprover policy snapshot management (the security boundary
 			// that defines fee/revenue => Manual, user tx => Auto).

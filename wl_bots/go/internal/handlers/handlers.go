@@ -9,6 +9,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -106,7 +107,17 @@ func (s *Svc) Login(c *gin.Context) {
 	if err != nil {
 		wlID = uuid.Nil
 	}
-	scopes := []string{"wl_client", "bots"}
+	// Issue the user's assigned scopes (set by the WL client via UpdateUserScopes)
+	// in the JWT. wlgate.RequireScope enforces these on admin routes. wl_client
+	// is always included (the WL client owner has full tenancy control). The
+	// canonical scope taxonomy lives in white_label_admin/go/internal/roles.
+	scopes := u.Scopes
+	if len(scopes) == 0 {
+		// Default: a plain client user (no admin scopes) gets only the base
+		// 'user' scope so RequireScope denies admin routes. wl_client is NOT
+		// granted by default — only the WL client owner has it assigned.
+		scopes = []string{"user"}
+	}
 	tok, err := wlgate.IssueJWT(s.cfg.JWTSecret, u.ID, u.Email, wlID, scopes, s.cfg.JWTExpiry)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "token issue failed"})
@@ -128,20 +139,36 @@ func (s *Svc) Logout(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "logged out"})
 }
 
-// RequireRole is the admin gate. The wl-bots JWT (wlgate.Claims) does not carry
-// a role, so the role is loaded fresh from the users table on each request —
-// fail-closed (403) if the user is missing or lacks one of the allowed roles.
-// Mirrors canonical bot_api requireRole.
+// RequireRole is kept for backward compat but now delegates to wlgate.HasScope.
+// The wl-bots JWT carries the user's assigned scopes (set by the WL client via
+// UpdateUserScopes). 'wl_client' (the WL owner) always passes. The canonical
+// bot-admin scope is 'bot_admin' (white_label_admin/go/internal/roles.BotAdmin).
+// Legacy local role strings (super_admin/finance_admin/bot_operator) are honored
+// ONLY if the user also holds the matching scope, so existing deployments don't
+// break while the WL client migrates to the canonical taxonomy.
 func (s *Svc) RequireRole(roles ...string) gin.HandlerFunc {
-	allowed := make(map[string]bool, len(roles))
-	for _, r := range roles {
-		allowed[r] = true
-	}
 	return func(c *gin.Context) {
 		uid := wlgate.UserID(c)
 		if uid == uuid.Nil {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "insufficient privileges"})
 			return
+		}
+		// wl_client (WL owner) always passes — full tenancy control.
+		if wlgate.HasScope(c, "wl_client") {
+			c.Set("role", "wl_client")
+			c.Next()
+			return
+		}
+		// Canonical scope: bot_admin controls all bots.
+		if wlgate.HasScope(c, "bot_admin") {
+			c.Set("role", "bot_admin")
+			c.Next()
+			return
+		}
+		// Legacy local-role fallback: load the user's role from the DB + match.
+		allowed := make(map[string]bool, len(roles))
+		for _, r := range roles {
+			allowed[r] = true
 		}
 		u, err := s.store.GetUserByID(c.Request.Context(), uid)
 		if err != nil || !u.IsActive || !allowed[u.Role] {
@@ -151,6 +178,50 @@ func (s *Svc) RequireRole(roles ...string) gin.HandlerFunc {
 		c.Set("role", u.Role)
 		c.Next()
 	}
+}
+
+// UpdateAdminScopes is the WL-client-facing endpoint to grant/revoke scoped
+// admin roles on a bots user. Mirrors white_label_admin AssignAdminRole. Only
+// a caller holding 'wl_client' (the WL owner) may set scopes — a bot_admin
+// cannot escalate themselves or others. The scopes MUST be in the canonical
+// whitelist (validated server-side).
+func (s *Svc) UpdateAdminScopes(c *gin.Context) {
+	if !wlgate.HasScope(c, "wl_client") {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "only the WL client owner may assign admin scopes"})
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+	var req struct {
+		Scopes []string `json:"scopes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// Validate every scope is in the canonical whitelist.
+	valid := map[string]bool{
+		"wl_client": true, "bot_admin": true, "trading_admin": true, "p2p_admin": true,
+		"listing_admin": true, "liquidity_admin": true, "wallet_admin": true,
+		"customer_service_admin": true, "marketing_admin": true, "kyc_admin": true,
+		"card_admin": true, "reward_admin": true, "security_admin": true, "compliance_admin": true,
+		"user": true,
+	}
+	for _, sc := range req.Scopes {
+		if !valid[sc] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid scope: " + sc})
+			return
+		}
+	}
+	if err := s.store.UpdateUserScopes(c.Request.Context(), id, req.Scopes); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	_ = s.store.RecordAuditEvent(c.Request.Context(), wlgate.UserID(c), "update_admin_scopes", "user "+id.String()+" scopes="+strings.Join(req.Scopes, ","))
+	c.JSON(http.StatusOK, gin.H{"user_id": id, "scopes": req.Scopes})
 }
 
 // ==================== Bots ====================

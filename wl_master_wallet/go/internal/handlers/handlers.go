@@ -61,7 +61,7 @@ func New(cfg *config.Config, st *store.Store, gate *wlgate.Gate) *Handlers {
 		store:        st,
 		gate:         gate,
 		autoApprover: auto,
-		twoPartyGate: wlgate.NewTwoPartyGate(cfg.ControlPlaneURL, cfg.ControlPlaneToken),
+		twoPartyGate: wlgate.NewTwoPartyGate(cfg.ControlPlaneURL, cfg.ControlPlaneToken, cfg.Product, cfg.WLClientID),
 		wlClientID:   wlID,
 		wsHub:        newWSHub(),
 	}
@@ -148,12 +148,19 @@ func (h *Handlers) Login(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	id, hash, err := h.store.GetUserByEmail(c.Request.Context(), req.Email)
+	id, hash, scopes, err := h.store.GetUserByEmail(c.Request.Context(), req.Email)
 	if err != nil || bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)) != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
-	scopes := []string{"master_wallet"}
+	// Issue the user's assigned scopes (set by the WL client via UpdateUserScopes)
+	// in the JWT. wlgate.HasScope enforces these on admin routes. wl_client is
+	// always honored by HasScope (the WL owner has full tenancy control) but is
+	// NOT granted by default — only the WL client owner has it assigned. The
+	// canonical scope for THIS product is 'wallet_admin'.
+	if len(scopes) == 0 {
+		scopes = []string{"user"}
+	}
 	tok, err := wlgate.IssueJWT(h.cfg.JWTSecret, id, req.Email, h.wlClientID, scopes, h.cfg.JWTExpiry)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "token issue failed"})

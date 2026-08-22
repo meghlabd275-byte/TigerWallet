@@ -38,8 +38,11 @@ func (s *Store) DB() *pgxpool.Pool { return s.db }
 
 func (s *Store) migrate(ctx context.Context) error {
 	stmts := []string{
-		`CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), email VARCHAR(255) UNIQUE NOT NULL, password_hash VARCHAR(255) NOT NULL, role VARCHAR(32) NOT NULL DEFAULT 'user', created_at TIMESTAMPTZ DEFAULT NOW())`,
+		`CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), email VARCHAR(255) UNIQUE NOT NULL, password_hash VARCHAR(255) NOT NULL, role VARCHAR(32) NOT NULL DEFAULT 'user', scopes TEXT[] NOT NULL DEFAULT '{}'::text[], created_at TIMESTAMPTZ DEFAULT NOW())`,
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(32) NOT NULL DEFAULT 'user'`,
+		// Scoped-admin role taxonomy (canonical white_label_admin scopes). The
+		// scopes are issued in the JWT at login and enforced by wlgate.HasScope.
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS scopes TEXT[] NOT NULL DEFAULT '{}'::text[]`,
 		`CREATE TABLE IF NOT EXISTS master_wallets (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID, label VARCHAR(255), address VARCHAR(64) NOT NULL, encrypted_seed TEXT NOT NULL, chain_id BIGINT DEFAULT 1, wl_client_id VARCHAR(64), created_at TIMESTAMPTZ DEFAULT NOW())`,
 		`CREATE INDEX IF NOT EXISTS idx_master_wallets_user ON master_wallets(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_master_wallets_wl_client ON master_wallets(wl_client_id)`,
@@ -110,11 +113,36 @@ func (s *Store) CreateUser(ctx context.Context, email, passwordHash string) (uui
 	return id, err
 }
 
-func (s *Store) GetUserByEmail(ctx context.Context, email string) (uuid.UUID, string, error) {
+// GetUserByEmail returns the user's id, password hash, and assigned scopes.
+// The scopes are issued in the JWT at login (canonical taxonomy) and enforced
+// by wlgate.HasScope on admin routes.
+func (s *Store) GetUserByEmail(ctx context.Context, email string) (uuid.UUID, string, []string, error) {
 	var id uuid.UUID
 	var hash string
-	err := s.db.QueryRow(ctx, `SELECT id, password_hash FROM users WHERE email=$1`, email).Scan(&id, &hash)
-	return id, hash, err
+	var scopes []string
+	err := s.db.QueryRow(ctx, `SELECT id, password_hash, scopes FROM users WHERE email=$1`, email).Scan(&id, &hash, &scopes)
+	return id, hash, scopes, err
+}
+
+// GetUserScopes returns the assigned scoped-admin roles for a user (canonical
+// taxonomy). Used by the legacy role fallback to honor scopes set via
+// UpdateUserScopes even when the JWT was minted before the migration.
+func (s *Store) GetUserScopes(ctx context.Context, userID uuid.UUID) []string {
+	var scopes []string
+	err := s.db.QueryRow(ctx, `SELECT scopes FROM users WHERE id=$1`, userID).Scan(&scopes)
+	if err != nil {
+		return nil
+	}
+	return scopes
+}
+
+// UpdateUserScopes replaces a user's scoped-admin roles (the canonical
+// taxonomy from white_label_admin/go/internal/roles). This is how the WL
+// client grants a wallet_admin etc. — the scopes are stored in the users table
+// and issued in the JWT at login, then enforced by wlgate.HasScope.
+func (s *Store) UpdateUserScopes(ctx context.Context, id uuid.UUID, scopes []string) error {
+	_, err := s.db.Exec(ctx, `UPDATE users SET scopes=$1 WHERE id=$2`, scopes, id)
+	return err
 }
 
 // ==================== Master wallets ====================

@@ -38,7 +38,10 @@ func (s *Store) Close() { s.db.Close() }
 
 func (s *Store) migrate(ctx context.Context) error {
 	stmts := []string{
-		`CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), email VARCHAR(255) UNIQUE NOT NULL, password_hash VARCHAR(255) NOT NULL, role VARCHAR(32) DEFAULT 'user', created_at TIMESTAMPTZ DEFAULT NOW())`,
+		`CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), email VARCHAR(255) UNIQUE NOT NULL, password_hash VARCHAR(255) NOT NULL, role VARCHAR(32) DEFAULT 'user', scopes TEXT[] NOT NULL DEFAULT '{}'::text[], created_at TIMESTAMPTZ DEFAULT NOW())`,
+		// scopes column for existing DBs (canonical scoped-role taxonomy, set via
+		// UpdateAdminScopes by the WL client owner; issued in the JWT at login).
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS scopes TEXT[] NOT NULL DEFAULT '{}'::text[]`,
 		`CREATE TABLE IF NOT EXISTS tokens (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL, symbol VARCHAR(64) NOT NULL, contract_address VARCHAR(128), chain_id BIGINT NOT NULL DEFAULT 1, decimals INT NOT NULL DEFAULT 18, logo_url TEXT, description TEXT, website TEXT, status VARCHAR(32) NOT NULL DEFAULT 'draft', listing_type VARCHAR(32) DEFAULT 'standard', created_at TIMESTAMPTZ DEFAULT NOW())`,
 		`CREATE INDEX IF NOT EXISTS idx_tokens_status ON tokens(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_tokens_symbol ON tokens(symbol)`,
@@ -120,6 +123,7 @@ type User struct {
 	Email        string
 	PasswordHash string
 	Role         string
+	Scopes       []string
 	CreatedAt    time.Time
 }
 
@@ -129,8 +133,8 @@ func (s *Store) CreateUser(ctx context.Context, email, passwordHash, role string
 	}
 	var u User
 	err := s.db.QueryRow(ctx,
-		`INSERT INTO users (email, password_hash, role) VALUES ($1,$2,$3) RETURNING id, email, password_hash, role, created_at`,
-		email, passwordHash, role).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.CreatedAt)
+		`INSERT INTO users (email, password_hash, role) VALUES ($1,$2,$3) RETURNING id, email, password_hash, role, scopes, created_at`,
+		email, passwordHash, role).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.Scopes, &u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -140,8 +144,8 @@ func (s *Store) CreateUser(ctx context.Context, email, passwordHash, role string
 func (s *Store) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	var u User
 	err := s.db.QueryRow(ctx,
-		`SELECT id, email, password_hash, role, created_at FROM users WHERE email=$1`, email).
-		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.CreatedAt)
+		`SELECT id, email, password_hash, role, scopes, created_at FROM users WHERE email=$1`, email).
+		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.Scopes, &u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -151,12 +155,20 @@ func (s *Store) GetUserByEmail(ctx context.Context, email string) (*User, error)
 func (s *Store) GetUserByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	var u User
 	err := s.db.QueryRow(ctx,
-		`SELECT id, email, password_hash, role, created_at FROM users WHERE id=$1`, id).
-		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.CreatedAt)
+		`SELECT id, email, password_hash, role, scopes, created_at FROM users WHERE id=$1`, id).
+		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.Scopes, &u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
 	return &u, nil
+}
+
+// UpdateUserScopes replaces a user's scoped-admin roles (canonical taxonomy).
+// The WL client owner (wl_client scope) uses this to grant listing_admin etc.
+// The scopes are issued in the JWT at login and enforced by wlgate.HasScope.
+func (s *Store) UpdateUserScopes(ctx context.Context, id uuid.UUID, scopes []string) error {
+	_, err := s.db.Exec(ctx, `UPDATE users SET scopes=$1 WHERE id=$2`, scopes, id)
+	return err
 }
 
 // ==================== Tokens ====================

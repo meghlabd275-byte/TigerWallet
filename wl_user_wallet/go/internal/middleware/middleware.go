@@ -6,6 +6,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"sync"
@@ -80,10 +81,13 @@ func FetcherEnabled(product, fetcher string) bool {
 	return true
 }
 
-// Claims for the WL-UserWallet JWT.
+// Claims for the WL-UserWallet JWT. Scopes carries the canonical scoped-admin
+// taxonomy (wl_client, wallet_admin, ...) issued at login and enforced by
+// HasScope on admin routes — mirrors wl_shared/go/wlgate.Claims.
 type Claims struct {
 	UserID uuid.UUID `json:"user_id"`
 	Email  string    `json:"email"`
+	Scopes []string  `json:"scopes"`
 	jwt.RegisteredClaims
 }
 
@@ -109,6 +113,7 @@ func JWTAuth(secret string) gin.HandlerFunc {
 		}
 		c.Set("user_id", claims.UserID)
 		c.Set("email", claims.Email)
+		c.Set("scopes", claims.Scopes)
 		c.Next()
 	}
 }
@@ -119,6 +124,65 @@ func UserID(c *gin.Context) uuid.UUID {
 		return v.(uuid.UUID)
 	}
 	return uuid.Nil
+}
+
+// HasScope reports whether the caller holds the given scope. wl_client (the WL
+// owner) is always honored — full tenancy control — mirroring wlgate.HasScope.
+func HasScope(c *gin.Context, scope string) bool {
+	if v, ok := c.Get("scopes"); ok {
+		scopes, _ := v.([]string)
+		for _, s := range scopes {
+			if s == scope || s == "wl_client" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// activeUserChecker is set by main.go (wired to the store) so the middleware
+// package does NOT import the store package (avoids a circular dep). When a
+// wallet_admin suspends a user, the user's existing stateless JWT still
+// validates, but RequireActiveUser re-checks is_active from PostgreSQL on
+// every fund-moving request — so the suspended user is immediately locked out.
+var (
+	activeUserChecker func(ctx context.Context, id uuid.UUID) (bool, error)
+	activeUserOnce    sync.Once
+)
+
+// SetActiveUserChecker wires the store-backed is_active lookup. Called once
+// from main.go at startup.
+func SetActiveUserChecker(fn func(ctx context.Context, id uuid.UUID) (bool, error)) {
+	activeUserOnce.Do(func() { activeUserChecker = fn })
+}
+
+// RequireActiveUser is middleware that 403-rejects a suspended (is_active=false)
+// user. It runs AFTER JWTAuth (which sets user_id) on every fund-moving route
+// (send/sign/swap/staking/non_evm). Admin-oversight routes (wallet_admin) are
+// exempt — a suspended user with wallet_admin scope can still be inspected, but
+// cannot move their own funds. Fail-closed: if the checker is unset or the DB
+// lookup errors, the request is 403-rejected (never silently allowed).
+func RequireActiveUser() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// wl_client (WL owner) + wallet_admin are governance callers, not the
+		// wallet's user — they are not subject to user-suspension gating here
+		// (their own access is governed by the scope check in each admin handler).
+		if HasScope(c, "wl_client") || HasScope(c, "wallet_admin") {
+			c.Next()
+			return
+		}
+		uid := UserID(c)
+		if uid == uuid.Nil || activeUserChecker == nil {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "user not authenticated or active-checker unavailable"})
+			return
+		}
+		active, err := activeUserChecker(c.Request.Context(), uid)
+		if err != nil || !active {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "account suspended"})
+			return
+		}
+		c.Next()
+	}
 }
 
 // Gate is the license-gate middleware. It fail-closeds (503) when the product
@@ -151,11 +215,14 @@ func Gate(product string, fetcherForPath func(string) string) gin.HandlerFunc {
 	}
 }
 
-// IssueJWT mints a JWT for a user.
-func IssueJWT(secret string, userID uuid.UUID, email string, expiry time.Duration) (string, error) {
+// IssueJWT mints a JWT for a user. The scopes claim carries the canonical
+// scoped-admin taxonomy (set by the WL client via UpdateUserScopes) and is
+// enforced by HasScope on admin routes.
+func IssueJWT(secret string, userID uuid.UUID, email string, scopes []string, expiry time.Duration) (string, error) {
 	claims := Claims{
 		UserID: userID,
 		Email:  email,
+		Scopes: scopes,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID.String(),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

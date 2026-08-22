@@ -136,11 +136,14 @@ func main() {
 		// Platform stats — real COUNT queries (super_admin / finance_admin).
 		admin.GET("/stats", svc.RequireRole("super_admin", "finance_admin"), svc.Stats)
 
-		// User management (super_admin / bot_operator).
+		// User management (wl_client / bot_admin — canonical scopes; legacy
+		// super_admin/bot_operator role strings still honored via fallback).
 		admin.GET("/users", svc.RequireRole("super_admin", "bot_operator"), svc.ListUsers)
 		admin.POST("/bots/users", svc.RequireRole("super_admin", "bot_operator"), svc.CreateBotUser)
 		admin.DELETE("/bots/users/:id", svc.RequireRole("super_admin"), svc.DeleteBotUser)
 		admin.PUT("/users/:id/status", svc.RequireRole("super_admin", "bot_operator"), svc.UpdateUserStatus)
+		// Scoped-admin role assignment — WL client owner only (wl_client scope).
+		admin.PUT("/users/:id/scopes", svc.UpdateAdminScopes)
 
 		// CEX connector configs — AES-GCM at rest (super_admin / finance_admin).
 		admin.GET("/cex", svc.RequireRole("super_admin", "finance_admin"), svc.ListCEX)

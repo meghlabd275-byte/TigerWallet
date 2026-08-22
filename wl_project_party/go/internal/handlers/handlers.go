@@ -83,7 +83,16 @@ func (h *Handlers) Login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
-	scopes := []string{"project_party"}
+	// Issue the user's assigned scopes (set by the WL client via UpdateUserScopes)
+	// in the JWT. wlgate.RequireScope enforces these on admin routes. wl_client is
+	// NOT granted by default — only the WL client owner has it assigned. The
+	// canonical scope for THIS product is 'listing_admin' (coin/token listing +
+	// trading pairs). Legacy local role strings are still honored via RequireRole
+	// fallback so existing deployments don't break.
+	scopes := u.Scopes
+	if len(scopes) == 0 {
+		scopes = []string{"user"}
+	}
 	tok, err := wlgate.IssueJWT(h.cfg.JWTSecret, u.ID, u.Email, h.wlClientID, scopes, h.cfg.JWTExpiry)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "token issue failed"})
@@ -1244,10 +1253,14 @@ func (h *Handlers) Health(c *gin.Context) {
 
 // ==================== helpers ====================
 
-// RequireRole is a gin middleware that gates a route on the caller's users.role
-// being one of the allowed roles. Role is read from the DB (the JWT carries only
-// user_id), so this is a real check, not a stub. Requires JWTAuth to have run
-// first (sets user_id). Admin/super_admin pass any allowed list containing them.
+// RequireRole is a gin middleware that gates a route on the caller's admin
+// privileges. It now prefers the canonical scoped-role taxonomy carried in the
+// JWT (set via UpdateAdminScopes by the WL client owner): 'wl_client' (the WL
+// owner) always passes, then the canonical scope for THIS product —
+// 'listing_admin' (coin/token listing + trading pairs). The legacy local-role
+// DB check (users.role ∈ allowed) is kept as a fallback so existing deployments
+// don't break while the WL client migrates to the canonical taxonomy. Requires
+// JWTAuth to have run first (sets user_id + scopes).
 func (h *Handlers) RequireRole(allowed ...string) gin.HandlerFunc {
 	allow := make(map[string]struct{}, len(allowed))
 	for _, r := range allowed {
@@ -1260,6 +1273,19 @@ func (h *Handlers) RequireRole(allowed ...string) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+		// wl_client (WL owner) always passes — full tenancy control.
+		if wlgate.HasScope(c, "wl_client") {
+			c.Set("role", "wl_client")
+			c.Next()
+			return
+		}
+		// Canonical scope: listing_admin controls all token listing/trading pairs.
+		if wlgate.HasScope(c, "listing_admin") {
+			c.Set("role", "listing_admin")
+			c.Next()
+			return
+		}
+		// Legacy local-role fallback: load the user's role from the DB + match.
 		u, err := h.store.GetUserByID(c.Request.Context(), uid)
 		if err != nil {
 			c.JSON(http.StatusForbidden, gin.H{"error": "user not found"})
@@ -1271,8 +1297,56 @@ func (h *Handlers) RequireRole(allowed ...string) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+		c.Set("role", u.Role)
 		c.Next()
 	}
+}
+
+// adminScopeWhitelist is the canonical scoped-role taxonomy (from
+// white_label_admin/go/internal/roles). UpdateAdminScopes validates every
+// requested scope against this set.
+var adminScopeWhitelist = map[string]bool{
+	"wl_client": true, "trading_admin": true, "p2p_admin": true, "bot_admin": true,
+	"listing_admin": true, "liquidity_admin": true, "wallet_admin": true,
+	"customer_service_admin": true, "marketing_admin": true, "kyc_admin": true,
+	"card_admin": true, "reward_admin": true, "security_admin": true,
+	"compliance_admin": true, "user": true,
+}
+
+// UpdateAdminScopes is the WL-client-facing endpoint to grant/revoke scoped
+// admin roles on a project-party user. Mirrors white_label_admin
+// AssignAdminRole. Only a caller holding 'wl_client' (the WL owner) may set
+// scopes — a listing_admin cannot escalate themselves or others. The scopes
+// MUST be in the canonical whitelist (validated server-side). wl_project_party
+// has no user-level audit-event table, so the change is simply persisted.
+func (h *Handlers) UpdateAdminScopes(c *gin.Context) {
+	if !wlgate.HasScope(c, "wl_client") {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "only the WL client owner may assign admin scopes"})
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+	var req struct {
+		Scopes []string `json:"scopes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	for _, sc := range req.Scopes {
+		if !adminScopeWhitelist[sc] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid scope: " + sc})
+			return
+		}
+	}
+	if err := h.store.UpdateUserScopes(c.Request.Context(), id, req.Scopes); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"user_id": id, "scopes": req.Scopes})
 }
 
 func parseID(c *gin.Context) (uuid.UUID, bool) {

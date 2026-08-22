@@ -42,8 +42,10 @@ func (s *Store) migrate(ctx context.Context) error {
 			email         VARCHAR(255) UNIQUE NOT NULL,
 			password_hash VARCHAR(255) NOT NULL,
 			role          VARCHAR(32) NOT NULL DEFAULT 'client',
+			scopes        TEXT[]    NOT NULL DEFAULT '{}'::text[],
 			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS scopes TEXT[] NOT NULL DEFAULT '{}'::text[]`,
 		`CREATE TABLE IF NOT EXISTS bots (
 			id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -156,6 +158,7 @@ type User struct {
 	Email        string
 	PasswordHash string
 	Role         string
+	Scopes       []string
 	IsActive     bool
 	CreatedAt    time.Time
 }
@@ -167,8 +170,8 @@ func (s *Store) CreateUser(ctx context.Context, email, passwordHash, role string
 	var u User
 	err := s.db.QueryRow(ctx,
 		`INSERT INTO users (email, password_hash, role) VALUES ($1,$2,$3)
-		 RETURNING id, email, password_hash, role, is_active, created_at`,
-		email, passwordHash, role).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.IsActive, &u.CreatedAt)
+		 RETURNING id, email, password_hash, role, scopes, is_active, created_at`,
+		email, passwordHash, role).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.Scopes, &u.IsActive, &u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -178,8 +181,8 @@ func (s *Store) CreateUser(ctx context.Context, email, passwordHash, role string
 func (s *Store) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	var u User
 	err := s.db.QueryRow(ctx,
-		`SELECT id, email, password_hash, role, is_active, created_at FROM users WHERE email=$1`,
-		email).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.IsActive, &u.CreatedAt)
+		`SELECT id, email, password_hash, role, scopes, is_active, created_at FROM users WHERE email=$1`,
+		email).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.Scopes, &u.IsActive, &u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -189,8 +192,8 @@ func (s *Store) GetUserByEmail(ctx context.Context, email string) (*User, error)
 func (s *Store) GetUserByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	var u User
 	err := s.db.QueryRow(ctx,
-		`SELECT id, email, password_hash, role, is_active, created_at FROM users WHERE id=$1`,
-		id).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.IsActive, &u.CreatedAt)
+		`SELECT id, email, password_hash, role, scopes, is_active, created_at FROM users WHERE id=$1`,
+		id).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.Scopes, &u.IsActive, &u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +207,7 @@ func (s *Store) ListUsers(ctx context.Context, limit int) ([]User, error) {
 		limit = 500
 	}
 	rows, err := s.db.Query(ctx,
-		`SELECT id, email, password_hash, role, is_active, created_at
+		`SELECT id, email, password_hash, role, scopes, is_active, created_at
 		 FROM users ORDER BY created_at DESC LIMIT $1`, limit)
 	if err != nil {
 		return nil, err
@@ -213,7 +216,7 @@ func (s *Store) ListUsers(ctx context.Context, limit int) ([]User, error) {
 	out := []User{}
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.IsActive, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.Scopes, &u.IsActive, &u.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, u)
@@ -229,6 +232,16 @@ func (s *Store) UpdateUserStatus(ctx context.Context, id uuid.UUID, isActive boo
 		return err
 	}
 	_, err := s.db.Exec(ctx, `UPDATE users SET is_active=$1 WHERE id=$2`, isActive, id)
+	return err
+}
+
+// UpdateUserScopes replaces a user's scoped-admin roles (the canonical
+// taxonomy from white_label_admin/go/internal/roles). This is how the WL
+// client grants an admin bot_admin / finance_admin etc. — the scopes are
+// stored in the users table and issued in the JWT at login, then enforced by
+// wlgate.RequireScope on each admin route.
+func (s *Store) UpdateUserScopes(ctx context.Context, id uuid.UUID, scopes []string) error {
+	_, err := s.db.Exec(ctx, `UPDATE users SET scopes=$1 WHERE id=$2`, scopes, id)
 	return err
 }
 

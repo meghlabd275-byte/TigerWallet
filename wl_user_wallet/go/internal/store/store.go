@@ -31,7 +31,10 @@ func (s *Store) Close() { s.db.Close() }
 
 func (s *Store) migrate(ctx context.Context) error {
 	stmts := []string{
-		`CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), email VARCHAR(255) UNIQUE NOT NULL, password_hash VARCHAR(255) NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW())`,
+		`CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), email VARCHAR(255) UNIQUE NOT NULL, password_hash VARCHAR(255) NOT NULL, scopes TEXT[] NOT NULL DEFAULT '{}'::text[], is_active BOOLEAN NOT NULL DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW())`,
+		// Backfill the scopes + is_active columns on existing DBs (added for the scoped-role taxonomy + admin oversight).
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS scopes TEXT[] NOT NULL DEFAULT '{}'::text[]`,
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true`,
 		`CREATE TABLE IF NOT EXISTS wallets (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID REFERENCES users(id) ON DELETE CASCADE, label VARCHAR(255), address VARCHAR(64) NOT NULL, encrypted_seed TEXT NOT NULL, chain_id BIGINT DEFAULT 1, wl_client_id VARCHAR(64), created_at TIMESTAMPTZ DEFAULT NOW())`,
 		`CREATE INDEX IF NOT EXISTS idx_wallets_user ON wallets(user_id)`,
 		`CREATE TABLE IF NOT EXISTS transactions (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), wallet_id UUID REFERENCES wallets(id) ON DELETE CASCADE, tx_hash VARCHAR(80), tx_type VARCHAR(32), status VARCHAR(32), from_address VARCHAR(64), to_address VARCHAR(64), amount VARCHAR(64), token VARCHAR(64), chain_id BIGINT, created_at TIMESTAMPTZ DEFAULT NOW())`,
@@ -58,6 +61,7 @@ type Wallet struct {
 	Address       string
 	EncryptedSeed string
 	ChainID       int64
+	WLClientID    string
 	CreatedAt     time.Time
 }
 
@@ -129,11 +133,103 @@ func (s *Store) CreateUser(ctx context.Context, email, passwordHash string) (uui
 	return id, err
 }
 
-func (s *Store) GetUserByEmail(ctx context.Context, email string) (uuid.UUID, string, error) {
+func (s *Store) GetUserByEmail(ctx context.Context, email string) (uuid.UUID, string, []string, error) {
 	var id uuid.UUID
 	var hash string
-	err := s.db.QueryRow(ctx, `SELECT id, password_hash FROM users WHERE email=$1`, email).Scan(&id, &hash)
-	return id, hash, err
+	var scopes []string
+	err := s.db.QueryRow(ctx, `SELECT id, password_hash, scopes FROM users WHERE email=$1`, email).Scan(&id, &hash, &scopes)
+	return id, hash, scopes, err
+}
+
+// UpdateUserScopes replaces a user's scoped-admin roles (canonical taxonomy).
+// The WL client owner (wl_client scope) uses this to grant wallet_admin etc.
+// The scopes are issued in the JWT at login and enforced by HasScope.
+func (s *Store) UpdateUserScopes(ctx context.Context, id uuid.UUID, scopes []string) error {
+	_, err := s.db.Exec(ctx, `UPDATE users SET scopes=$1 WHERE id=$2`, scopes, id)
+	return err
+}
+
+// ==================== Admin oversight (wallet_admin / wl_client scope) ====================
+// These methods power the WL client's wallet-management admin panel. They are
+// read-only or status-only (NO fund movement — withdrawals stay two-party
+// gated). A wallet_admin scoped admin can view all wallets/users in the
+// tenancy + suspend a user; the WL client owner (wl_client) can do the same.
+
+// AdminUserRow is a user record WITHOUT the password_hash (never exposed).
+type AdminUserRow struct {
+	ID        uuid.UUID `json:"id"`
+	Email     string    `json:"email"`
+	Scopes    []string  `json:"scopes"`
+	IsActive  bool      `json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ListAllUsers returns all users in the tenancy (admin oversight). Password
+// hashes are never selected — only id/email/scopes/is_active/created_at.
+func (s *Store) ListAllUsers(ctx context.Context) ([]AdminUserRow, error) {
+	rows, err := s.db.Query(ctx,
+		`SELECT id, email, scopes, is_active, created_at FROM users ORDER BY created_at DESC LIMIT 500`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []AdminUserRow{}
+	for rows.Next() {
+		var u AdminUserRow
+		if err := rows.Scan(&u.ID, &u.Email, &u.Scopes, &u.IsActive, &u.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+// SetUserActive activates/suspends a user. A suspended user's JWT still
+// validates (stateless HS256) but every wallet route re-checks is_active via
+// RequireActiveUser middleware — so a suspended user is immediately locked out.
+func (s *Store) SetUserActive(ctx context.Context, id uuid.UUID, active bool) error {
+	_, err := s.db.Exec(ctx, `UPDATE users SET is_active=$1 WHERE id=$2`, active, id)
+	return err
+}
+
+// GetUserActive returns the user's is_active flag (for the RequireActiveUser
+// middleware that reads it on every wallet request).
+func (s *Store) GetUserActive(ctx context.Context, id uuid.UUID) (bool, error) {
+	var active bool
+	err := s.db.QueryRow(ctx, `SELECT is_active FROM users WHERE id=$1`, id).Scan(&active)
+	if err != nil {
+		return false, err
+	}
+	return active, nil
+}
+
+// ListAllWallets returns all wallets in the tenancy (admin oversight). The
+// encrypted_seed is NEVER selected — only id/user_id/label/address/chain_id.
+func (s *Store) ListAllWallets(ctx context.Context) ([]Wallet, error) {
+	rows, err := s.db.Query(ctx,
+		`SELECT id, user_id, label, address, chain_id, wl_client_id, created_at
+		 FROM wallets ORDER BY created_at DESC LIMIT 1000`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Wallet{}
+	for rows.Next() {
+		var w Wallet
+		if err := rows.Scan(&w.ID, &w.UserID, &w.Label, &w.Address, &w.ChainID, &w.WLClientID, &w.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, w)
+	}
+	return out, rows.Err()
+}
+
+// CountWalletsByUser returns the number of wallets owned by a user (admin
+// oversight dashboard stat).
+func (s *Store) CountWalletsByUser(ctx context.Context, userID uuid.UUID) (int64, error) {
+	var n int64
+	err := s.db.QueryRow(ctx, `SELECT COUNT(*) FROM wallets WHERE user_id=$1`, userID).Scan(&n)
+	return n, err
 }
 
 // Pool exposes the underlying pgxpool for handlers that issue direct queries

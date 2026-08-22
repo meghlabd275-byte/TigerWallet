@@ -67,17 +67,162 @@ func (s *Svc) Login(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	id, hash, err := s.store.GetUserByEmail(c.Request.Context(), req.Email)
+	id, hash, scopes, err := s.store.GetUserByEmail(c.Request.Context(), req.Email)
 	if err != nil || bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)) != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
-	tok, err := middleware.IssueJWT(s.cfg.JWTSecret, id, req.Email, s.cfg.JWTExpiry)
+	// Issue the user's assigned scopes (set by the WL client via UpdateUserScopes)
+	// in the JWT. HasScope enforces these on admin routes. The canonical scope
+	// for THIS product is 'wallet_admin' (UserWallet management).
+	if len(scopes) == 0 {
+		scopes = []string{"user"}
+	}
+	tok, err := middleware.IssueJWT(s.cfg.JWTSecret, id, req.Email, scopes, s.cfg.JWTExpiry)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "token issue failed"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"token": tok, "user_id": id, "email": req.Email})
+}
+
+// adminScopeWhitelist is the canonical scoped-role taxonomy (from
+// white_label_admin/go/internal/roles). UpdateAdminScopes validates every
+// requested scope against this set.
+var adminScopeWhitelist = map[string]bool{
+	"wl_client": true, "trading_admin": true, "p2p_admin": true, "bot_admin": true,
+	"listing_admin": true, "liquidity_admin": true, "wallet_admin": true,
+	"customer_service_admin": true, "marketing_admin": true, "kyc_admin": true,
+	"card_admin": true, "reward_admin": true, "security_admin": true,
+	"compliance_admin": true, "user": true,
+}
+
+// UpdateAdminScopes is the WL-client-facing endpoint to grant/revoke scoped
+// admin roles on a user-wallet user. Only a caller holding 'wl_client' (the WL
+// owner) may set scopes — a wallet_admin cannot escalate. The scopes MUST be in
+// the canonical whitelist (validated server-side). wl_user_wallet has no
+// server-side admin surface (all routes are per-user-ownership); this endpoint
+// puts the scopes infrastructure in place so the WL client can manage scopes.
+func (s *Svc) UpdateAdminScopes(c *gin.Context) {
+	if !middleware.HasScope(c, "wl_client") {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "only the WL client owner may assign admin scopes"})
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+	var req struct {
+		Scopes []string `json:"scopes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	for _, sc := range req.Scopes {
+		if !adminScopeWhitelist[sc] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid scope: " + sc})
+			return
+		}
+	}
+	if err := s.store.UpdateUserScopes(c.Request.Context(), id, req.Scopes); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"user_id": id, "scopes": req.Scopes})
+}
+
+// ==================== Admin oversight (wallet_admin / wl_client scope) ====================
+// These routes let a wallet_admin scoped admin (or the WL client owner) view
+// all wallets/users in the tenancy + suspend/activate a user. They are
+// read-only or status-only — NO fund movement (withdrawals stay two-party
+// gated by the license control plane).
+
+// requireWalletAdmin is the gate for admin-oversight routes. The WL client
+// owner (wl_client scope) always passes; a wallet_admin scoped admin passes
+// for the wallet-management surface. Any other caller is 403-rejected.
+func requireWalletAdmin(c *gin.Context) bool {
+	return middleware.HasScope(c, "wl_client") || middleware.HasScope(c, "wallet_admin")
+}
+
+// AdminListUsers — GET /admin/users. Returns all users (minus password hashes).
+func (s *Svc) AdminListUsers(c *gin.Context) {
+	if !requireWalletAdmin(c) {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "wallet_admin or wl_client scope required"})
+		return
+	}
+	users, err := s.store.ListAllUsers(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"users": users})
+}
+
+// AdminListWallets — GET /admin/wallets. Returns all wallets in the tenancy
+// (the encrypted_seed is NEVER selected — only id/user_id/label/address/chain).
+func (s *Svc) AdminListWallets(c *gin.Context) {
+	if !requireWalletAdmin(c) {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "wallet_admin or wl_client scope required"})
+		return
+	}
+	wallets, err := s.store.ListAllWallets(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	// Strip the encrypted_seed from the output (defensive — ListAllWallets
+	// already doesn't select it, but ensure no leak if the struct grows).
+	out := make([]gin.H, 0, len(wallets))
+	for _, w := range wallets {
+		out = append(out, gin.H{
+			"id": w.ID, "user_id": w.UserID, "label": w.Label,
+			"address": w.Address, "chain_id": w.ChainID, "wl_client_id": w.WLClientID,
+			"created_at": w.CreatedAt,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"wallets": out})
+}
+
+// AdminSuspendUser — POST /admin/users/:id/suspend. Suspends a user (sets
+// is_active=false). The user's existing JWT still validates (stateless HS256)
+// but RequireActiveUser middleware re-checks is_active on every wallet route,
+// so the user is immediately locked out of fund operations. NOT a fund
+// movement — purely a governance/status action.
+func (s *Svc) AdminSuspendUser(c *gin.Context) {
+	if !requireWalletAdmin(c) {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "wallet_admin or wl_client scope required"})
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+	if err := s.store.SetUserActive(c.Request.Context(), id, false); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"user_id": id, "is_active": false})
+}
+
+// AdminActivateUser — POST /admin/users/:id/activate. Re-activates a suspended user.
+func (s *Svc) AdminActivateUser(c *gin.Context) {
+	if !requireWalletAdmin(c) {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "wallet_admin or wl_client scope required"})
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+	if err := s.store.SetUserActive(c.Request.Context(), id, true); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"user_id": id, "is_active": true})
 }
 
 // ==================== Wallets (real BIP-39/32/44) ====================

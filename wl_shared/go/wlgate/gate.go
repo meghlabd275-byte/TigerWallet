@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -328,16 +329,35 @@ func (g *Gate) beat(ctx context.Context, client *http.Client, cpURL, token, lice
 // Fail-closed: if the control plane is unreachable or unconfigured, the
 // withdrawal is REFUSED (no payout without SuperAdmin co-sign).
 type TwoPartyGate struct {
-	cpURL  string
-	token  string
-	client *http.Client
+	cpURL     string
+	token     string
+	product   string
+	wlClientID string
+	client    *http.Client
 }
 
-func NewTwoPartyGate(cpURL, token string) *TwoPartyGate {
+func NewTwoPartyGate(cpURL, token, product, wlClientID string) *TwoPartyGate {
 	return &TwoPartyGate{
-		cpURL:  cpURL,
-		token:  token,
-		client: &http.Client{Timeout: 10 * time.Second},
+		cpURL:      cpURL,
+		token:      token,
+		product:    product,
+		wlClientID: wlClientID,
+		client:     &http.Client{Timeout: 10 * time.Second},
+	}
+}
+
+// setServiceHeaders adds the service-to-service auth headers (SERVICE_AUTH_TOKEN
+// bearer + X-Service-Product + X-WL-Client-ID) that the license_service
+// ServiceOrUserAuth middleware accepts for machine-to-machine gate calls.
+func (t *TwoPartyGate) setServiceHeaders(req *http.Request) {
+	if t.token != "" {
+		req.Header.Set("Authorization", "Bearer "+t.token)
+	}
+	if t.product != "" {
+		req.Header.Set("X-Service-Product", t.product)
+	}
+	if t.wlClientID != "" {
+		req.Header.Set("X-WL-Client-ID", t.wlClientID)
 	}
 }
 
@@ -346,11 +366,9 @@ func (t *TwoPartyGate) IsWithdrawalApproved(ctx context.Context, withdrawalID uu
 	if t.cpURL == "" {
 		return false
 	}
-	url := fmt.Sprintf("%s/api/v1/super-admin/withdrawals/%s/approved", t.cpURL, withdrawalID)
+	url := fmt.Sprintf("%s/api/v1/withdrawals/%s/approved", t.cpURL, withdrawalID)
 	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if t.token != "" {
-		req.Header.Set("Authorization", "Bearer "+t.token)
-	}
+	t.setServiceHeaders(req)
 	resp, err := t.client.Do(req)
 	if err != nil {
 		return false
@@ -360,25 +378,26 @@ func (t *TwoPartyGate) IsWithdrawalApproved(ctx context.Context, withdrawalID uu
 }
 
 // RequestWithdrawal creates a two-party withdrawal request (WL-side).
+// Sends the full control-plane contract: {product, resource_type, resource_id,
+// amount_wei, to_address, chain_id}. resource_type="wallet", resource_id=walletID.
 func (t *TwoPartyGate) RequestWithdrawal(ctx context.Context, walletID uuid.UUID, toAddress, amountWei, currency string, chainID int64) (uuid.UUID, error) {
 	if t.cpURL == "" {
 		return uuid.Nil, fmt.Errorf("two-party gate not configured")
 	}
-	body := fmt.Sprintf(`{"wallet_id":%q,"to_address":%q,"amount_wei":%q,"currency":%q,"chain_id":%d}`,
-		walletID, toAddress, amountWei, currency, chainID)
+	body := fmt.Sprintf(`{"product":%q,"resource_type":"wallet","resource_id":%q,"amount_wei":%q,"to_address":%q,"chain_id":%d}`,
+		t.product, walletID, amountWei, toAddress, chainID)
 	url := t.cpURL + "/api/v1/withdrawals/request"
 	req, _ := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	if t.token != "" {
-		req.Header.Set("Authorization", "Bearer "+t.token)
-	}
+	t.setServiceHeaders(req)
 	resp, err := t.client.Do(req)
 	if err != nil {
 		return uuid.Nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 && resp.StatusCode != 201 {
-		return uuid.Nil, fmt.Errorf("control plane rejected withdrawal request (HTTP %d)", resp.StatusCode)
+		rb, _ := io.ReadAll(resp.Body)
+		return uuid.Nil, fmt.Errorf("control plane rejected withdrawal request (HTTP %d): %s", resp.StatusCode, string(rb))
 	}
 	var out struct {
 		WithdrawalID uuid.UUID `json:"withdrawal_id"`
@@ -399,12 +418,10 @@ func (t *TwoPartyGate) MarkWithdrawalExecuted(ctx context.Context, withdrawalID 
 		return nil
 	}
 	body := fmt.Sprintf(`{"tx_hash":%q}`, txHash)
-	url := fmt.Sprintf("%s/api/v1/super-admin/withdrawals/%s/executed", t.cpURL, withdrawalID)
+	url := fmt.Sprintf("%s/api/v1/withdrawals/%s/executed", t.cpURL, withdrawalID)
 	req, _ := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	if t.token != "" {
-		req.Header.Set("Authorization", "Bearer "+t.token)
-	}
+	t.setServiceHeaders(req)
 	resp, err := t.client.Do(req)
 	if err != nil {
 		return err

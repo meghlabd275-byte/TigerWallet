@@ -55,8 +55,23 @@ var adminRoles = map[string]bool{
 	"admin": true, "treasury": true, "operator": true, "super_admin": true,
 }
 
-// requireRole is a gin middleware that fails-closed (403) unless the JWT user
-// holds one of the allowed roles (loaded fresh from PostgreSQL on each call).
+// adminScopeWhitelist is the canonical scoped-role taxonomy (from
+// white_label_admin/go/internal/roles). UpdateAdminScopes validates every
+// requested scope against this set.
+var adminScopeWhitelist = map[string]bool{
+	"wl_client": true, "trading_admin": true, "p2p_admin": true, "bot_admin": true,
+	"listing_admin": true, "liquidity_admin": true, "wallet_admin": true,
+	"customer_service_admin": true, "marketing_admin": true, "kyc_admin": true,
+	"card_admin": true, "reward_admin": true, "security_admin": true,
+	"compliance_admin": true, "user": true,
+}
+
+// requireRole is a gin middleware that prefers the canonical scope taxonomy
+// (wlgate.HasScope) and falls back to the legacy local role (users.role) for
+// backward compatibility. 'wl_client' (the WL owner) always passes; the
+// canonical scope for THIS product is 'wallet_admin' (MasterWallet/UserWallet
+// management). Legacy admin/treasury/operator/super_admin role strings are
+// honored via the DB fallback so existing deployments don't break.
 func (h *Handlers) requireRole(allowed ...string) gin.HandlerFunc {
 	allow := map[string]bool{}
 	for _, r := range allowed {
@@ -68,6 +83,19 @@ func (h *Handlers) requireRole(allowed ...string) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
 			return
 		}
+		// wl_client (WL owner) always passes — full tenancy control.
+		if wlgate.HasScope(c, "wl_client") {
+			c.Set("role", "wl_client")
+			c.Next()
+			return
+		}
+		// Canonical scope: wallet_admin controls all MasterWallet management.
+		if wlgate.HasScope(c, "wallet_admin") {
+			c.Set("role", "wallet_admin")
+			c.Next()
+			return
+		}
+		// Legacy local-role fallback: load the user's role from the DB + match.
 		role := h.store.UserRole(c.Request.Context(), uid)
 		if !allow[role] {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
@@ -79,6 +107,42 @@ func (h *Handlers) requireRole(allowed ...string) gin.HandlerFunc {
 		c.Set("role", role)
 		c.Next()
 	}
+}
+
+// UpdateAdminScopes is the WL-client-facing endpoint to grant/revoke scoped
+// admin roles on a master-wallet user. Mirrors white_label_admin
+// AssignAdminRole. Only a caller holding 'wl_client' (the WL owner) may set
+// scopes — a wallet_admin cannot escalate themselves or others. The scopes
+// MUST be in the canonical whitelist (validated server-side).
+func (h *Handlers) UpdateAdminScopes(c *gin.Context) {
+	if !wlgate.HasScope(c, "wl_client") {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "only the WL client owner may assign admin scopes"})
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+	var req struct {
+		Scopes []string `json:"scopes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	for _, sc := range req.Scopes {
+		if !adminScopeWhitelist[sc] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid scope: " + sc})
+			return
+		}
+	}
+	if err := h.store.UpdateUserScopes(c.Request.Context(), id, req.Scopes); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	_ = h.store.Audit(c.Request.Context(), uuid.Nil, "update_admin_scopes", "user", id.String(), "warning", mustJSON(gin.H{"scopes": req.Scopes, "set_by": wlgate.UserID(c)}))
+	c.JSON(http.StatusOK, gin.H{"user_id": id, "scopes": req.Scopes})
 }
 
 // ----------------------------------------------------------------------------

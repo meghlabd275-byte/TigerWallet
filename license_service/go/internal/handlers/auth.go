@@ -90,9 +90,64 @@ func RequireSuperAdmin() gin.HandlerFunc {
 func RequireWLClientOrSuperAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role, _ := c.Get("role")
-		if role != "superadmin" && role != "wl_client" {
+		if role != "superadmin" && role != "wl_client" && role != "service" {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "insufficient privileges"})
 			return
+		}
+		c.Next()
+	}
+}
+
+// ServiceOrUserAuth authenticates a two-party-gate service-to-service call
+// (Authorization: Bearer <SERVICE_AUTH_TOKEN> + X-WL-Client-ID header) OR a
+// normal user JWT (Bearer <jwt>). When the service token matches, it synthesizes
+// role="wl_client" + wl_client_id from the X-WL-Client-ID header so the same
+// RequireWLClientOrSuperAdmin gate admits the machine caller. This lets the
+// wl_master_wallet / wl_user_wallet backends call /withdrawals/request,
+// /withdrawals/:id/approved, /withdrawals/:id/executed WITHOUT a human JWT,
+// while SuperAdmin governance (/approve, /reject, list) stays JWT-gated.
+//
+// Fail-closed: if SERVICE_AUTH_TOKEN is unset, the service path is disabled
+// entirely (the call must then present a valid user JWT).
+func ServiceOrUserAuth(cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		h := c.GetHeader("Authorization")
+		if h == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authorization header required"})
+			return
+		}
+		parts := strings.Split(h, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization header"})
+			return
+		}
+		// 1) Service-to-service path: the bearer token matches SERVICE_AUTH_TOKEN.
+		if cfg.ServiceToken != "" && parts[1] == cfg.ServiceToken {
+			wlIDStr := c.GetHeader("X-WL-Client-ID")
+			if wlIDStr != "" {
+				if wlID, err := uuid.Parse(wlIDStr); err == nil {
+					c.Set("wl_client_id", wlID)
+				}
+			}
+			c.Set("role", "service")
+			c.Set("email", "service:"+c.GetHeader("X-Service-Product"))
+			c.Next()
+			return
+		}
+		// 2) Human path: parse + verify a normal JWT.
+		claims := &Claims{}
+		tok, err := jwt.ParseWithClaims(parts[1], claims, func(t *jwt.Token) (any, error) {
+			return []byte(cfg.JWTSecret), nil
+		})
+		if err != nil || !tok.Valid {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			return
+		}
+		c.Set("admin_id", claims.AdminID)
+		c.Set("email", claims.Email)
+		c.Set("role", claims.Role)
+		if claims.WLClientID != nil {
+			c.Set("wl_client_id", *claims.WLClientID)
 		}
 		c.Next()
 	}

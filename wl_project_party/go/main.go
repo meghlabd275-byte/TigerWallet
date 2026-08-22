@@ -213,6 +213,11 @@ func buildRouter(cfg *config.Config, svc *handlers.Handlers, gate *wlgate.Gate) 
 			admin.POST("/compliance/audit", svc.CreateAuditLog)
 			admin.POST("/pricing/set", svc.SetTokenPrice)
 			admin.POST("/pricing/update", svc.UpdatePrice)
+			// Scoped-admin role assignment — WL client owner only (wl_client
+			// scope). RequireRole passes wl_client (full tenancy control); the
+			// handler re-checks HasScope("wl_client") so a listing_admin cannot
+			// escalate.
+			admin.PUT("/users/:id/scopes", svc.UpdateAdminScopes)
 		}
 	}
 	return router

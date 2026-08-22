@@ -116,6 +116,9 @@ func main() {
 			mw.POST("/master-wallet/:id/users", svc.CreateMasterWalletUser)
 			mw.DELETE("/master-wallet/:id/users/:uid", svc.DeleteMasterWalletUser)
 
+			// Scoped-admin role assignment — WL client owner only (wl_client scope).
+			mw.PUT("/users/:id/scopes", svc.UpdateAdminScopes)
+
 			// Analytics (real SQL aggregates).
 			mw.GET("/master-wallet/:id/analytics/transactions", svc.AnalyticsTransactions)
 			mw.GET("/master-wallet/:id/analytics/volume", svc.AnalyticsVolume)

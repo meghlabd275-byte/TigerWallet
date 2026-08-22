@@ -27,6 +27,13 @@ type Config struct {
 	SuperAdminEmail    string
 	SuperAdminPassword string
 
+	// Shared secret for service-to-service calls from WL product backends
+	// (wl_master_wallet / wl_user_wallet) to the two-party withdrawal
+	// collaboration endpoints. This is NOT a user JWT — it authenticates the
+	// machine-to-machine gate calls (IsWithdrawalApproved / RequestWithdrawal
+	// / MarkWithdrawalExecuted). Must match TWO_PARTY_GATE_TOKEN on the WL side.
+	ServiceToken string
+
 	// Withdrawal co-signer address controlled by TigerWallet SuperAdmin.
 	// Injected into every WL master-wallet multisig as a mandatory owner and
 	// required as the second approver on every fund/revenue exit.
@@ -48,6 +55,7 @@ func Load() *Config {
 		LicenseVerifyKeyHex:     getEnv("LICENSE_VERIFY_KEY_HEX", ""),
 		SuperAdminEmail:         getEnv("SUPER_ADMIN_EMAIL", "superadmin@tigerwallet.com"),
 		SuperAdminPassword:      getEnv("SUPER_ADMIN_PASSWORD", ""),
+		ServiceToken:            getEnv("SERVICE_AUTH_TOKEN", ""),
 		SuperAdminSignerAddress: getEnv("SUPER_ADMIN_SIGNER_ADDRESS", ""),
 		HeartbeatTimeout:        getDuration("HEARTBEAT_TIMEOUT", 90*time.Second),
 		GracePeriod:             getDuration("HEARTBEAT_GRACE_PERIOD", 15*time.Second),
