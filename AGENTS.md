@@ -4101,3 +4101,107 @@ All 4 backend gaps + all client gaps from the audit above are now fixed and veri
 
 - Desktop C++ launchpad_service.hpp (desktop_wallet/src/services/launchpad/) is NO LONGER a fake. It delegates to the real ProjectParty backend (http://localhost:8106) via the tiger::wallet::APIClient singleton: GET /api/v1/launchpad (getActiveLaunches), POST /api/v1/launchpad/:id/contribute (participate), POST /api/v1/launchpad/:id/claim (claimTokens). All methods fail-closed (empty/throw) on API failure; Launch/Participation struct names preserved. APIClient gained a public getAuthToken() (api_client.h); executeRequest auto-attaches Authorization: Bearer <token>. Compiles with: g++ -std=c++20 -fsyntax-only -I desktop_wallet/include -I desktop_wallet/src/services/launchpad (needs libcurl4-openssl-dev).
 - Go launchpad_ecosystem (launchpad_ecosystem/go/): package conflicts fixed. main.go is the only package main; the gorm-backed service lives in subpackage launchpad/ (package launchpad). IMPORTANT: module path is github.com/tigerwallet/launchpad-ecosystem and module ROOT dir is launchpad_ecosystem/go/, so the subpackage import is github.com/tigerwallet/launchpad-ecosystem/launchpad (NOT .../go/launchpad - the go/ dir is the module root, not part of the import path). Gin bumped v1.9.1 -> v1.10.0 (v1.9.1 chenzhuoyu/base64x pseudo-version was corrupted in module cache). ClaimTokens/ClaimRewards are fail-closed: return HTTP 501 errors (status not_implemented) and do NOT mutate DB / fabricate empty-hash not_broadcast success. go build ./... exit 0; go vet ./... clean. Go env: PATH=$HOME/.go-sdk/go/bin GOPATH=$HOME/go GOTOOLCHAIN=local; go mod tidy needs rogpeppe/go-internal@v1.12.0 pinned (v1.16.0 requires go >= 1.25, unavailable with GOTOOLCHAIN=local on go 1.23).
+## Session 2026-08-16: Bots + ProjectParty real execution + on-chain launchpad + full cross-platform parity
+
+Built the complete Bots+BotsClients and ProjectParty coin/token listing
+systems. C++ for ultra-low-latency hot paths, Rust for security/safety, Go for
+high-load distributed. No demos/stubs/fakes/mock data. All apps (android, iOS,
+webapp, desktop, extension, Rust, C++) have the same files/features/methods.
+Commit `fe3efb3` pushed to origin/main.
+
+### Bots system (mm_bot_platform/)
+- **bot_api/main.go** (Go, :8471): Replaced fake XOR `encryptSecret` with REAL
+  AES-256-GCM (`crypto/aes`+`crypto/cipher`+`crypto/rand`); `decryptSecret` for
+  reading back; `hashToken` now proper SHA-256 (was UUID+length string). Added
+  REAL dispatch to the Rust bot_core execution plane: `startBot`/`stopBot`/
+  `pauseBot` now call `dispatchBotCore` which POSTs to `BOT_CORE_URL/dispatch/
+  <action>` (default http://localhost:8472). `service` struct gained `httpClient
+  *http.Client` (15s timeout); constructed with `&http.Client{Timeout: 15*time.
+  Second}`. Dispatch is best-effort (logged, not fatal) -- DB status update
+  succeeds first; bot_core may be down for maintenance. `bytes` import added.
+- **bot_core/** (Rust, :8472): Real execution engine -- ethers v2, reqwest,
+  axum (dispatch server on :8472), tokio-postgres, secp256k1, hmac/sha2,
+  tracing. cargo check + cargo build succeed.
+- **bot_admin/** (Solidity, Foundry): `ProjectPartyLaunchpad.sol` -- real token
+  sale contract with on-chain escrow. Functions: createSale (owner-only,
+  bytes32 saleId), startSale, pauseSale, contribute (payable, min/max/soft/
+  hard cap checks), claimTokens (direct formula `tokens = amount * 1e18 /
+  tokenPrice`, NOT balance-dependent), claimRefund, finalizeSale,
+  withdrawProceeds (treasury), withdrawUnsold. 19 Foundry tests (real ECDSA via
+  `vm.sign`, no mocks) -- all pass. `TigerBotPlatform.sol` gained `setFeeRecipient`
+  (ADMIN-only, rejects zero address). `foundry.toml` has `via_ir = true` (contract
+  hits stack-too-deep without IR). 42/42 tests pass (23 TigerBotPlatform + 19
+  Launchpad). lib/ (forge-std + openzeppelin-contracts) is git-ignored via
+  `mm_bot_platform/bot_admin/.gitignore` -- must `forge install OpenZeppelin/
+  openzeppelin-contracts foundry-rs/forge-std --no-git` after a fresh clone.
+- **Cross-platform clients** (6 platforms): bots/{android (Kotlin
+  BotApiService.kt), ios (Swift BotApiService.swift), desktop (Node.js
+  bot-api.js), extensions/{chrome,firefox,safari} (JS bot-api.js), rust
+  (reqwest bot_api.rs), cpp (libcurl bot_api.cpp)}. All implement the same 40+
+  method set as the web reference (auth, bots CRUD + lifecycle, executions,
+  logs, subscriptions, fees, api-keys, CEX/DEX connectors, stats, users).
+- **bots/web** (React+TS): Added 18 missing API methods (getStats, getUsers,
+  getBotUser, listBotUsers, createBotUser, deleteUser, setUserStatus,
+  listBotTransactions, listBotInstances, createBotAlias, getSubscription,
+  logout, listCEX/createCEX/deleteCEX, listDEX/createDEX/deleteDEX,
+  listFeeAddresses/createFeeAddress/deleteFeeAddress, deleteApiKey,
+  setBotStatus, updateFees). tsc 0 errors.
+
+### ProjectParty system (project_party/)
+- **go/cmd/main.go** (Go, :8106): Real JWT auth (golang-jwt/jwt/v5) + bcrypt
+  password hashing; `authMiddleware` + `RequireAdmin` middleware; `pp_users`
+  table; routes restructured (public discovery vs authed mutations vs
+  admin-only approve/reject); DB-backed `fee_schedule` (removed hardcoded
+  fallbacks); `payFeesHandler` uses 'pending' status (not 'completed');
+  `LaunchpadContribution` struct gained `TxHash` + `ConfirmedAt` fields;
+  `contributeHandler` + `claimTokensHandler` now do REAL on-chain transactions
+  via go-ethereum (fail-closed 503 if unconfigured, NEVER fabricate tx hashes).
+  `math/big` import added.
+- **go/cmd/launchpad_onchain.go** (NEW): Real on-chain ProjectPartyLaunchpad
+  contract interaction. `LaunchpadOnChain` struct with ethclient + secp256k1
+  signing. `contributeOnChain` (real eth_sendRawTransaction + waits for receipt
+  + computes token claim from on-chain tokenPrice), `claimTokensOnChain`,
+  `getTokenPrice` (eth_call via abi). Env: `PP_RPC_URL`, `PP_LAUNCHPAD_PRIVATE_KEY`,
+  `PP_LAUNCHPAD_CONTRACT_ADDRESS`. If any unset, on-chain disabled (503).
+- **Cross-platform clients** (6 platforms): project_party/{android (Kotlin
+  ProjectPartyApiService.kt), ios (Swift ProjectPartyApiService.swift), desktop
+  (Node.js project-party-api.js), extensions/{chrome,firefox,safari} (JS
+  party-api.js), rust (reqwest party_api.rs), cpp (libcurl party_api.cpp)}.
+  All implement the same 50+ method set (coins, search, featured, trending,
+  market, tokens, listings, launchpad, market-making, pricing, analytics,
+  compliance, fees, favorites).
+- **project_party/web** (React+TS): Added pricing (getTokenPrice,
+  getTokenHistory, getMarketData), analytics (getHolders, getTransactions,
+  getTokenVolume, getTokenLiquidity), compliance (getKYCStatus, submitKYC,
+  submitAudit, getAuditReport, getTokenStatus) API methods. tsc 0 errors.
+
+### Build verification (ALL GREEN)
+| Component | Result |
+|-----------|--------|
+| bot_api (Go) | go build exit 0 |
+| project_party (Go) | go build + go vet exit 0 |
+| bot_core (Rust) | cargo check exit 0 |
+| Foundry (bot_admin) | forge build exit 0; forge test 42/42 pass |
+| bots/web | tsc 0 errors |
+| project_party/web | tsc 0 errors |
+| bots/rust + project_party/rust | cargo check exit 0 |
+| bots/cpp + project_party/cpp | g++ -std=c++20 -fsyntax-only exit 0 |
+| 8 JS clients (desktop+extensions) | node --check OK |
+| 4 Kotlin/Swift | brace-balanced (no compilers in env) |
+
+### Architecture (what can be performed)
+**Bots system actions:** register/login (JWT), create/list/get/update/delete
+bots, start/stop/pause bots (dispatches to real Rust bot_core execution plane),
+list bot executions + logs, create/list subscriptions (4 tiers), create/list
+fee configs, create/list/delete API keys (AES-256-GCM at rest), create/list/
+delete CEX + DEX connectors (AES-GCM at rest), list fee addresses, get stats
+(real COUNT from PG), list/create/delete bot users, set user status, list bot
+transactions + instances. 39 routes total.
+
+**ProjectParty system actions:** register/login (JWT+bcrypt), create/list/get/
+update/delete tokens, create/list listings, create/list/get launchpad projects,
+participate (REAL on-chain contribute tx), claim tokens (REAL on-chain claim tx),
+list participations, create/list market-making configs, create/list fee configs,
+add/list/remove favorites, get token price/history/market data, get holders/
+transactions/volume/liquidity (analytics), get KYC status, submit KYC/audit,
+get audit report, get token compliance status. 40 routes total.
