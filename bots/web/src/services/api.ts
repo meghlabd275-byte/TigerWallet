@@ -227,6 +227,13 @@ class ApiService {
   }
 
   // ---- API keys (AES-GCM at rest on the backend) ----
+
+  // Bots↔ProjectParty linkage: fetch market-making configs linked to listed
+  // tokens from the ProjectParty backend (proxied via bot_api).
+  listMMConfigs() {
+    return this.request<{ market_making_configs: any[]; count: number }>('/mm-configs');
+  }
+
   createApiKey(data: CreateApiKeyInput) {
     return this.request<ApiKey>('/api-keys', { method: 'POST', body: JSON.stringify(data) });
   }
@@ -311,7 +318,7 @@ class ApiService {
     return this.request<{ dex_connectors: any[]; count: number }>('/dex');
   }
 
-  createDEX(data: { chain: string; rpc_url: string; wallet_seed: string }) {
+  createDEX(data: { dex: string; chain_id: number; rpc_url: string; wallet_seed: string }) {
     return this.request<any>('/dex', { method: 'POST', body: JSON.stringify(data) });
   }
 

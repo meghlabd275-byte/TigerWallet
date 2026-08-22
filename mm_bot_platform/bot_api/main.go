@@ -24,10 +24,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -151,6 +154,11 @@ func main() {
 		auth.GET("/keys", svc.listAPIKeys)
 		auth.POST("/keys", svc.createAPIKey)
 		auth.DELETE("/keys/:id", svc.deleteAPIKey)
+
+		// Bots↔ProjectParty linkage: fetch market-making configs linked to
+		// listed tokens from the ProjectParty backend. Lets the bots platform
+		// auto-create market-maker bots for newly-listed tokens.
+		auth.GET("/mm-configs", svc.getMMConfigs)
 
 		// admin-only
 		admin := auth.Group("/admin", svc.requireRole(string(RoleSuperAdmin), string(RoleFinanceAdmin)))
@@ -277,13 +285,14 @@ CREATE TABLE IF NOT EXISTS bot_cex_connections (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS bot_dex_connections (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         UUID NOT NULL REFERENCES bot_users(id) ON DELETE CASCADE,
-    dex             TEXT NOT NULL,
-    chain_id        BIGINT NOT NULL,
-    rpc_url         TEXT,
-    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id                 UUID NOT NULL REFERENCES bot_users(id) ON DELETE CASCADE,
+    dex                     TEXT NOT NULL,
+    chain_id                BIGINT NOT NULL,
+    rpc_url                 TEXT,
+    wallet_seed_encrypted   TEXT NOT NULL DEFAULT '',
+    is_active               BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS bot_api_keys (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -312,7 +321,27 @@ CREATE TABLE IF NOT EXISTS bot_trades (
 CREATE INDEX IF NOT EXISTS idx_bot_trades_bot ON bot_trades(bot_id);
 CREATE INDEX IF NOT EXISTS idx_bot_trades_created ON bot_trades(created_at DESC);
 `)
-	return err
+	if err != nil {
+		return err
+	}
+	// Add wallet_seed_encrypted column to existing bot_dex_connections tables
+	// (idempotent — fails silently if column already exists).
+	_, _ = s.pg.Exec(context.Background(),
+		`ALTER TABLE bot_dex_connections ADD COLUMN IF NOT EXISTS wallet_seed_encrypted TEXT NOT NULL DEFAULT ''`)
+	// Add bot_executions table (written by bot_core Rust execution plane).
+	_, _ = s.pg.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS bot_executions (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    bot_id          TEXT NOT NULL,
+    strategy        TEXT NOT NULL,
+    action          TEXT NOT NULL,
+    detail          TEXT NOT NULL DEFAULT '',
+    latency_us      BIGINT NOT NULL DEFAULT 0,
+    success         BOOLEAN NOT NULL DEFAULT TRUE,
+    timestamp       TIMESTAMPTZ NOT NULL DEFAULT now()
+)`)
+	_, _ = s.pg.Exec(context.Background(),
+		`CREATE INDEX IF NOT EXISTS idx_bot_executions_bot ON bot_executions(bot_id)`)
+	return nil
 }
 
 // seed the 4 default tiers if the table is empty.
@@ -588,18 +617,39 @@ func botCoreURL() string {
 	return u
 }
 
+// projectPartyURL returns the ProjectParty backend URL (for fetching
+// market-making configs linked to listed tokens). Defaults to
+// http://localhost:8106 (overridable via PROJECT_PARTY_URL env).
+func projectPartyURL() string {
+	u := os.Getenv("PROJECT_PARTY_URL")
+	if u == "" {
+		return "http://localhost:8106"
+	}
+	return u
+}
+
 // dispatchBotCore sends a real start/stop/pause/resume command to the Rust
-// bot_core execution plane at /dispatch/<action>. Failures are logged but do
-// NOT fail the API request (the DB status update already succeeded; the
-// execution plane is best-effort and may be down during maintenance). This is
-// the same async-dispatch pattern as canonical wallet control planes.
+// bot_core execution plane at /dispatch/<action>. For "start" it fetches the
+// bot config + decrypted CEX/DEX credentials from DB and builds the proper
+// StartReq tagged-enum payload that bot_core expects (MarketMaker/Arbitrage/
+// Sniper). For stop/pause it sends a simple BotIdReq {bot_id}. Failures are
+// logged but do NOT fail the API request (the DB status update already
+// succeeded; the execution plane is best-effort and may be down for
+// maintenance). This is the same async-dispatch pattern as canonical wallet
+// control planes.
 func (s *service) dispatchBotCore(c *gin.Context, botID, action string) {
-	body, _ := json.Marshal(map[string]any{
-		"bot_id":   botID,
-		"user_id":  c.GetString("user_id"),
-		"action":   action,
-		"deadline": 30,
-	})
+	var body []byte
+	var err error
+	if action == "start" {
+		body, err = s.buildStartPayload(c.Request.Context(), botID, c.GetString("user_id"))
+		if err != nil {
+			log.Printf("dispatchBotCore start %s: failed to build payload: %v", botID, err)
+			return
+		}
+	} else {
+		// stop / pause / resume — simple bot_id payload
+		body, _ = json.Marshal(map[string]string{"bot_id": botID})
+	}
 	req, err := http.NewRequestWithContext(c.Request.Context(), "POST",
 		botCoreURL()+"/dispatch/"+action, bytes.NewReader(body))
 	if err != nil {
@@ -616,6 +666,238 @@ func (s *service) dispatchBotCore(c *gin.Context, botID, action string) {
 	if resp.StatusCode >= 300 {
 		log.Printf("dispatchBotCore %s %s: bot_core returned %d", action, botID, resp.StatusCode)
 	}
+}
+
+// buildStartPayload fetches the bot row + decrypted CEX/DEX credentials from
+// DB and builds the StartReq tagged-enum JSON that bot_core's dispatch_start
+// endpoint expects. Maps bot_type -> strategy kind:
+//   market_maker -> MarketMaker, arbitrage -> Arbitrage, sniper -> Sniper.
+// Other bot types (grid/dca/momentum/etc.) are signal-only strategies in
+// bot_core and do not have a real execution runner yet — their start dispatch
+// is skipped (logged), and the DB status still transitions to running so the
+// bot appears active for monitoring. This is honest: no fake execution.
+func (s *service) buildStartPayload(ctx context.Context, botID, userID string) ([]byte, error) {
+	var botType, exchange, pair string
+	var configJSON json.RawMessage
+	err := s.pg.QueryRow(ctx,
+		`SELECT bot_type, config, exchange, pair FROM bots WHERE id=$1 AND user_id=$2`,
+		botID, userID).Scan(&botType, &configJSON, &exchange, &pair)
+	if err != nil {
+		return nil, fmt.Errorf("fetch bot: %w", err)
+	}
+
+	// Parse optional config fields (order_size, spread_bps, threshold_bps, etc.)
+	var cfg map[string]any
+	if len(configJSON) > 0 {
+		_ = json.Unmarshal(configJSON, &cfg)
+	}
+	if cfg == nil {
+		cfg = map[string]any{}
+	}
+
+	switch botType {
+	case "market_maker":
+		// Fetch decrypted CEX credentials for this user + exchange
+		cexCreds, err := s.fetchCEXCreds(ctx, userID, exchange)
+		if err != nil {
+			return nil, fmt.Errorf("cex creds: %w", err)
+		}
+		payload := map[string]any{
+			"kind":        "marketmaker",
+			"bot_id":      botID,
+			"exchange":    cexCreds.exchange,
+			"api_key":     cexCreds.apiKey,
+			"secret_key":  cexCreds.apiSecret,
+			"symbol":      pair,
+			"order_size":  cfgFloat(cfg, "order_size", 0.01),
+			"spread_bps":  cfgFloat(cfg, "spread_bps", 10),
+		}
+		if baseURL, ok := cfg["base_url"].(string); ok && baseURL != "" {
+			payload["base_url"] = baseURL
+		}
+		if pi, ok := cfg["poll_interval_ms"].(float64); ok {
+			payload["poll_interval_ms"] = int64(pi)
+		}
+		if pp, ok := cfg["passphrase"].(string); ok && pp != "" {
+			payload["passphrase"] = pp
+		}
+		return json.Marshal(payload)
+
+	case "arbitrage":
+		cexCreds, err := s.fetchCEXCreds(ctx, userID, exchange)
+		if err != nil {
+			return nil, fmt.Errorf("cex creds: %w", err)
+		}
+		dexReq, err := s.buildDexReq(ctx, userID, cfg)
+		if err != nil {
+			return nil, fmt.Errorf("dex config: %w", err)
+		}
+		payload := map[string]any{
+			"kind":          "arbitrage",
+			"bot_id":        botID,
+			"exchange":      cexCreds.exchange,
+			"api_key":       cexCreds.apiKey,
+			"secret_key":    cexCreds.apiSecret,
+			"symbol":        pair,
+			"threshold_bps": cfgFloat(cfg, "threshold_bps", 50),
+			"dex_req":       dexReq,
+		}
+		if baseURL, ok := cfg["base_url"].(string); ok && baseURL != "" {
+			payload["base_url"] = baseURL
+		}
+		if pi, ok := cfg["poll_interval_ms"].(float64); ok {
+			payload["poll_interval_ms"] = int64(pi)
+		}
+		if pp, ok := cfg["passphrase"].(string); ok && pp != "" {
+			payload["passphrase"] = pp
+		}
+		return json.Marshal(payload)
+
+	case "sniper":
+		dexReq, err := s.buildDexReq(ctx, userID, cfg)
+		if err != nil {
+			return nil, fmt.Errorf("dex config: %w", err)
+		}
+		mempoolURL := ""
+		if v, ok := cfg["mempool_url"].(string); ok {
+			mempoolURL = v
+		}
+		if mempoolURL == "" {
+			return nil, errors.New("sniper requires mempool_url in config")
+		}
+		payload := map[string]any{
+			"kind":         "sniper",
+			"bot_id":       botID,
+			"dex_req":      dexReq,
+			"mempool_url":  mempoolURL,
+		}
+		if pi, ok := cfg["poll_interval_ms"].(float64); ok {
+			payload["poll_interval_ms"] = int64(pi)
+		}
+		if mta, ok := cfg["min_target_amount"].(float64); ok {
+			payload["min_target_amount"] = int64(mta)
+		}
+		return json.Marshal(payload)
+
+	default:
+		// Signal-only strategies (grid/dca/momentum/mean_reversion/scalping/
+		// ai_trading/signal/cross_chain/perp_hedge/flash_loan/sandwich/front_run/
+		// mev/liquidity_provider/custom) — no real execution runner in bot_core
+		// yet. Return a sentinel so dispatchBotCore skips the HTTP call.
+		return nil, errSignalOnlyStrategy
+	}
+}
+
+// errSignalOnlyStrategy is a sentinel indicating the bot type is a
+// signal-generation-only strategy with no real execution runner in bot_core.
+// dispatchBotCore handles this by skipping the dispatch (no fake execution).
+var errSignalOnlyStrategy = errors.New("bot type is signal-only (no execution runner)")
+
+type cexCreds struct {
+	exchange string
+	apiKey   string
+	apiSecret string
+}
+
+// fetchCEXCreds fetches + decrypts the user's CEX API credentials for a given
+// exchange from the bot_cex_connections table.
+func (s *service) fetchCEXCreds(ctx context.Context, userID, exchange string) (cexCreds, error) {
+	var encKey, encSecret, ex string
+	err := s.pg.QueryRow(ctx,
+		`SELECT exchange, api_key_encrypted, api_secret_encrypted FROM bot_cex_connections WHERE user_id=$1 AND exchange=$2 ORDER BY created_at DESC LIMIT 1`,
+		userID, exchange).Scan(&ex, &encKey, &encSecret)
+	if err != nil {
+		return cexCreds{}, fmt.Errorf("no cex connection for exchange %s: %w", exchange, err)
+	}
+	apiKey, err := decryptSecret(encKey)
+	if err != nil {
+		return cexCreds{}, fmt.Errorf("decrypt api_key: %w", err)
+	}
+	apiSecret, err := decryptSecret(encSecret)
+	if err != nil {
+		return cexCreds{}, fmt.Errorf("decrypt api_secret: %w", err)
+	}
+	return cexCreds{exchange: ex, apiKey: apiKey, apiSecret: apiSecret}, nil
+}
+
+// buildDexReq builds a DexSwapRequest from the bot config + user's DEX
+// connector (decrypted wallet seed). Field names match bot_core's
+// DexSwapRequest struct: rpc_url, chain_id, private_key, router, token_in,
+// token_out, amount_in (f64), amount_out_min (f64).
+func (s *service) buildDexReq(ctx context.Context, userID string, cfg map[string]any) (map[string]any, error) {
+	chainID := int64(0)
+	if v, ok := cfg["chain_id"].(float64); ok {
+		chainID = int64(v)
+	}
+	if chainID == 0 {
+		if chain, ok := cfg["chain"].(string); ok {
+			chainID = chainIDForChain(chain)
+		}
+	}
+	if chainID == 0 {
+		return nil, errors.New("dex requires 'chain_id' or 'chain' in config")
+	}
+	var encSeed, rpcURL string
+	var dbChainID int64
+	err := s.pg.QueryRow(ctx,
+		`SELECT chain_id, rpc_url, wallet_seed_encrypted FROM bot_dex_connections WHERE user_id=$1 AND chain_id=$2 ORDER BY created_at DESC LIMIT 1`,
+		userID, chainID).Scan(&dbChainID, &rpcURL, &encSeed)
+	if err != nil {
+		return nil, fmt.Errorf("no dex connection for chain_id %d: %w", chainID, err)
+	}
+	if encSeed == "" {
+		return nil, fmt.Errorf("dex connection for chain_id %d has no wallet seed (re-add with wallet_seed)", chainID)
+	}
+	seedHex, err := decryptSecret(encSeed)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt wallet_seed: %w", err)
+	}
+	return map[string]any{
+		"rpc_url":        rpcURL,
+		"chain_id":       dbChainID,
+		"private_key":    seedHex,
+		"router":         cfgString(cfg, "router", ""),
+		"token_in":       cfgString(cfg, "token_in", ""),
+		"token_out":      cfgString(cfg, "token_out", ""),
+		"amount_in":      cfgFloat(cfg, "amount_in", 0),
+		"amount_out_min": cfgFloat(cfg, "amount_out_min", 0),
+	}, nil
+}
+
+// chainIDForChain maps a chain name to its canonical chain id.
+func chainIDForChain(chain string) int64 {
+	switch strings.ToLower(chain) {
+	case "ethereum", "eth":
+		return 1
+	case "bsc", "binance":
+		return 56
+	case "polygon":
+		return 137
+	case "arbitrum":
+		return 42161
+	case "optimism":
+		return 10
+	case "base":
+		return 8453
+	case "avalanche":
+		return 43114
+	default:
+		return 1
+	}
+}
+
+func cfgFloat(m map[string]any, key string, def float64) float64 {
+	if v, ok := m[key].(float64); ok {
+		return v
+	}
+	return def
+}
+
+func cfgString(m map[string]any, key string, def string) string {
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return def
 }
 
 func (s *service) deleteBot(c *gin.Context) {
@@ -981,18 +1263,24 @@ func (s *service) listDEX(c *gin.Context) {
 func (s *service) addDEX(c *gin.Context) {
 	uid := c.GetString("user_id")
 	var req struct {
-		DEX     string `json:"dex"`
-		ChainID int64  `json:"chain_id"`
-		RPCURL  string `json:"rpc_url"`
+		DEX        string `json:"dex"`
+		ChainID    int64  `json:"chain_id"`
+		RPCURL     string `json:"rpc_url"`
+		WalletSeed string `json:"wallet_seed"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.DEX == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "dex required"})
 		return
 	}
+	if req.WalletSeed == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "wallet_seed required (hex private key for DEX signing)"})
+		return
+	}
+	encSeed := encryptSecret(req.WalletSeed)
 	var id string
 	err := s.pg.QueryRow(c.Request.Context(),
-		`INSERT INTO bot_dex_connections (user_id,dex,chain_id,rpc_url) VALUES ($1,$2,$3,$4) RETURNING id`,
-		uid, req.DEX, req.ChainID, strOrNull(req.RPCURL)).Scan(&id)
+		`INSERT INTO bot_dex_connections (user_id,dex,chain_id,rpc_url,wallet_seed_encrypted) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+		uid, req.DEX, req.ChainID, strOrNull(req.RPCURL), encSeed).Scan(&id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -1012,6 +1300,29 @@ func (s *service) removeDEX(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+}
+
+// getMMConfigs fetches market-making configs from the ProjectParty backend.
+// This is the Bots↔ProjectParty linkage: when a token is listed on ProjectParty,
+// the project team can create a market-making config; the bots platform reads
+// these configs to auto-create market-maker bots for listed tokens.
+// Proxies GET <PP_URL>/api/v1/market-making/configs — no fabricated data.
+func (s *service) getMMConfigs(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 8*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, projectPartyURL()+"/api/v1/market-making/configs", nil)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "failed to build request to project-party"})
+		return
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "project-party backend unreachable", "detail": err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	c.Data(resp.StatusCode, "application/json", body)
 }
 
 // ---- API key handlers ----

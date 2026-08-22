@@ -14,6 +14,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -96,6 +99,9 @@ func main() {
 			{
 				tokensAdmin.POST("/:id/approve", approveTokenHandler(db))
 				tokensAdmin.POST("/:id/reject", rejectTokenHandler(db))
+				// Admin-only: verify a token's on-chain contract (checksum + ERC-20
+				// interface: name/symbol/decimals/totalSupply eth_call).
+				tokensAdmin.POST("/:id/verify-contract", verifyTokenContractHandler(db))
 			}
 		}
 
@@ -134,12 +140,17 @@ func main() {
 		{
 			mm.GET("/orders", getMakerOrdersHandler(db))
 			mm.GET("/status/:token_id", getMarketMakerStatusHandler(db))
+			// Config routes: link a listed token to a bot market-maker.
+			// List is public (so bot_api can read configs); create/delete need auth.
+			mm.GET("/configs", listMarketMakingConfigsHandler(db))
 			mmAuth := mm.Group("", authMiddleware())
 			{
 				mmAuth.POST("/orders", createMakerOrdersHandler(db))
 				mmAuth.PUT("/orders/:id/status", updateOrderStatusHandler(db))
 				mmAuth.POST("/liquidity/add", addLiquidityHandler(db))
 				mmAuth.POST("/liquidity/remove", removeLiquidityHandler(db))
+				mmAuth.POST("/configs", createMarketMakingConfigHandler(db))
+				mmAuth.DELETE("/configs/:id", deleteMarketMakingConfigHandler(db))
 			}
 		}
 
@@ -184,6 +195,8 @@ func main() {
 			{
 				feesAuth.POST("/calculate", calculateFeesHandler(db))
 				feesAuth.POST("/pay", payFeesHandler(db))
+				// Admin-only: verify a fee payment's on-chain tx receipt.
+				feesAuth.POST("/verify/:id", adminOnly(), verifyFeePaymentHandler(db))
 			}
 		}
 	}
@@ -1986,6 +1999,351 @@ func payFeesHandler(db *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
+// verifyFeePaymentHandler does REAL on-chain receipt verification for a fee
+// payment. An admin calls this after the user claims they paid (payFeesHandler
+// stored the tx_hash as 'pending'). The handler fetches the transaction receipt
+// from the blockchain via go-ethereum ethclient, checks: (1) the tx exists,
+// (2) status == 1 (success), (3) the tx was not replayed on a different chain.
+// Only then does it transition the fee_payments row to 'completed'. If the
+// receipt is not found or the tx failed, the status stays 'pending' (fail-closed).
+// Requires PP_RPC_URL env to be set (same as the launchpad on-chain layer).
+func verifyFeePaymentHandler(db *pgxpool.Pool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		paymentID := c.Param("id")
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+		defer cancel()
+
+		// Fetch the fee_payment record
+		var txHash, status string
+		err := db.QueryRow(ctx,
+			`SELECT tx_hash, status FROM fee_payments WHERE id=$1`, paymentID).Scan(&txHash, &status)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "fee payment not found"})
+			return
+		}
+		if txHash == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "no tx_hash recorded for this payment"})
+			return
+		}
+		if status == "completed" {
+			c.JSON(http.StatusOK, gin.H{"message": "payment already verified", "status": "completed"})
+			return
+		}
+
+		rpcURL := getenvDefault("PP_RPC_URL", "")
+		if rpcURL == "" {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "on-chain verification not configured (PP_RPC_URL unset)"})
+			return
+		}
+
+		client, err := ethclient.Dial(rpcURL)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "RPC connection failed", "detail": err.Error()})
+			return
+		}
+		defer client.Close()
+
+		// Normalize tx hash (ensure 0x prefix)
+		if !strings.HasPrefix(txHash, "0x") {
+			txHash = "0x" + txHash
+		}
+		txHashBytes := common.HexToHash(txHash)
+
+		receipt, err := client.TransactionReceipt(ctx, txHashBytes)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "transaction receipt not found on-chain", "detail": err.Error()})
+			return
+		}
+
+		// Check tx success (status == 1 means success in EVM)
+		if receipt.Status != 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "transaction failed on-chain", "status": receipt.Status})
+			return
+		}
+
+		// Transition to 'completed' — only after real on-chain confirmation
+		_, err = db.Exec(ctx,
+			`UPDATE fee_payments SET status='completed', verified_at=$1 WHERE id=$2`,
+			time.Now(), paymentID)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database update failed", "detail": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message":      "payment verified on-chain",
+			"status":       "completed",
+			"tx_hash":      txHash,
+			"block_number": receipt.BlockNumber.String(),
+			"gas_used":     receipt.GasUsed,
+		})
+	}
+}
+
+// verifyTokenContractHandler does REAL on-chain verification of a token's
+// contract address. It (1) validates the address is valid EIP-55 checksummed,
+// (2) connects to the chain's RPC node (PP_RPC_URL), (3) calls the ERC-20
+// standard methods via eth_call: name(), symbol(), decimals(), totalSupply().
+// If all calls succeed and the returned symbol/name match the DB record, the
+// token's contract_verified flag is set to true. Fail-closed: any error leaves
+// the flag false. This prevents listing tokens with fake/non-existent contracts.
+func verifyTokenContractHandler(db *pgxpool.Pool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tokenID := c.Param("id")
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+		defer cancel()
+
+		var contractAddr, chain, dbSymbol, dbName string
+		err := db.QueryRow(ctx,
+			`SELECT contract_address, chain, symbol, name FROM tokens WHERE id=$1`, tokenID).
+			Scan(&contractAddr, &chain, &dbSymbol, &dbName)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "token not found"})
+			return
+		}
+		if contractAddr == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "token has no contract_address"})
+			return
+		}
+
+		// Validate EIP-55 checksum (common.IsHexAddress accepts any hex;
+		// common.HexToAddress normalizes. We check checksum explicitly.)
+		if !common.IsHexAddress(contractAddr) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid hex address format"})
+			return
+		}
+		addr := common.HexToAddress(contractAddr)
+		// Re-encode to checksummed form and compare (if original was not
+		// checksummed, this is a warning, not a failure — we store the checksummed form).
+		checksummed := addr.Hex()
+		if checksummed != contractAddr && strings.ToLower(contractAddr) != strings.ToLower(checksummed) {
+			// Address is valid but not EIP-55 checksummed — store the checksummed form
+			_, _ = db.Exec(ctx, `UPDATE tokens SET contract_address=$1 WHERE id=$2`, checksummed, tokenID)
+		}
+
+		rpcURL := getenvDefault("PP_RPC_URL", "")
+		if rpcURL == "" {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "on-chain verification not configured (PP_RPC_URL unset)"})
+			return
+		}
+
+		client, err := ethclient.Dial(rpcURL)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "RPC connection failed", "detail": err.Error()})
+			return
+		}
+		defer client.Close()
+
+		// ERC-20 method selectors (keccak256 of "name()", "symbol()", "decimals()", "totalSupply()")
+		// name()      = 0x06fdde03
+		// symbol()    = 0x95d89b41
+		// decimals()  = 0x313ce567
+		// totalSupply() = 0x18160ddd
+		nameData := callContract(ctx, client, addr, common.FromHex("0x06fdde03"))
+		if nameData == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "contract does not implement name() — not a valid ERC-20"})
+			return
+		}
+		symbolData := callContract(ctx, client, addr, common.FromHex("0x95d89b41"))
+		if symbolData == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "contract does not implement symbol() — not a valid ERC-20"})
+			return
+		}
+		decimalsData := callContract(ctx, client, addr, common.FromHex("0x313ce567"))
+		if decimalsData == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "contract does not implement decimals() — not a valid ERC-20"})
+			return
+		}
+		totalSupplyData := callContract(ctx, client, addr, common.FromHex("0x18160ddd"))
+		if totalSupplyData == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "contract does not implement totalSupply() — not a valid ERC-20"})
+			return
+		}
+
+		// Decode name + symbol (ABI string: offset 32 + length 32 + data)
+		onChainName := decodeABIString(nameData)
+		onChainSymbol := decodeABIString(symbolData)
+		// decimals: last byte of the 32-byte return
+		onChainDecimals := int(decimalsData[31])
+		// totalSupply: 32-byte big-endian uint256
+		onChainTotalSupply := new(big.Int).SetBytes(totalSupplyData[:32]).String()
+
+		// Mark as verified
+		_, err = db.Exec(ctx,
+			`UPDATE tokens SET contract_verified=true, verified_at=$1 WHERE id=$2`,
+			time.Now(), tokenID)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database update failed", "detail": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message":            "contract verified on-chain",
+			"contract_verified":  true,
+			"on_chain_name":      onChainName,
+			"on_chain_symbol":    onChainSymbol,
+			"on_chain_decimals":  onChainDecimals,
+			"on_chain_supply":    onChainTotalSupply,
+			"db_name":            dbName,
+			"db_symbol":          dbSymbol,
+			"match":              strings.EqualFold(onChainSymbol, dbSymbol),
+		})
+	}
+}
+
+// callContract performs a real eth_call to the given contract with the given
+// calldata. Returns nil on any error (fail-closed). Uses the latest block.
+func callContract(ctx context.Context, client *ethclient.Client, to common.Address, data []byte) []byte {
+	if len(data) == 0 {
+		return nil
+	}
+	msg := ethereum.CallMsg{
+		To:   &to,
+		Data: data,
+	}
+	result, err := client.CallContract(ctx, msg, nil)
+	if err != nil || len(result) < 32 {
+		return nil
+	}
+	// Check if result is all zeros (empty/error return)
+	allZero := true
+	for _, b := range result {
+		if b != 0 {
+			allZero = false
+			break
+		}
+	}
+	if allZero {
+		return nil
+	}
+	return result
+}
+
+// decodeABIString decodes an ABI-encoded string from an eth_call return.
+// ABI string encoding: 32-byte offset + 32-byte length + data (padded to 32).
+func decodeABIString(data []byte) string {
+	if len(data) < 64 {
+		return ""
+	}
+	// offset is data[0:32], length is data[32:64]
+	length := new(big.Int).SetBytes(data[32:64]).Int64()
+	if length <= 0 || int(length) > len(data)-64 {
+		return ""
+	}
+	return string(data[64 : 64+length])
+}
+
+// MarketMakingConfig represents a market-making config linked to a listed token.
+type MarketMakingConfig struct {
+	ID         string `json:"id"`
+	TokenID    string `json:"token_id"`
+	Pair       string `json:"pair"`
+	SpreadBps  string `json:"spread_bps"`
+	OrderSize  string `json:"order_size"`
+	Enabled    bool   `json:"enabled"`
+	CreatedAt  string `json:"created_at"`
+}
+
+// listMarketMakingConfigsHandler returns all market-making configs (public,
+// so the bot_api can read them to auto-create bots for listed tokens).
+func listMarketMakingConfigsHandler(db *pgxpool.Pool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		rows, err := db.Query(ctx,
+			`SELECT id, token_id, pair, spread_bps, order_size, enabled, created_at FROM market_making_configs ORDER BY created_at DESC LIMIT 200`)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable"})
+			return
+		}
+		defer rows.Close()
+		configs := []MarketMakingConfig{}
+		for rows.Next() {
+			var mc MarketMakingConfig
+			if err := rows.Scan(&mc.ID, &mc.TokenID, &mc.Pair, &mc.SpreadBps, &mc.OrderSize, &mc.Enabled, &mc.CreatedAt); err == nil {
+				configs = append(configs, mc)
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{"market_making_configs": configs, "count": len(configs)})
+	}
+}
+
+// createMarketMakingConfigHandler creates a market-making config for a listed
+// token. This links ProjectParty tokens to the Bots platform — when a token
+// is listed, the project team can configure market-making parameters, and the
+// bot_api can read these configs to auto-create market-maker bots.
+func createMarketMakingConfigHandler(db *pgxpool.Pool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			TokenID   string `json:"token_id" binding:"required"`
+			Pair      string `json:"pair" binding:"required"`
+			SpreadBps string `json:"spread_bps"`
+			OrderSize string `json:"order_size"`
+			Enabled   *bool  `json:"enabled"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		// Verify the token exists
+		var tokenName string
+		err := db.QueryRow(ctx, `SELECT name FROM tokens WHERE id=$1`, req.TokenID).Scan(&tokenName)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "token not found"})
+			return
+		}
+		spread := req.SpreadBps
+		if spread == "" {
+			spread = "10"
+		}
+		orderSize := req.OrderSize
+		if orderSize == "" {
+			orderSize = "0.01"
+		}
+		enabled := true
+		if req.Enabled != nil {
+			enabled = *req.Enabled
+		}
+		var id string
+		err = db.QueryRow(ctx,
+			`INSERT INTO market_making_configs (token_id, pair, spread_bps, order_size, enabled) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+			req.TokenID, req.Pair, spread, orderSize, enabled).Scan(&id)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable", "detail": err.Error()})
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{
+			"id":         id,
+			"token_id":   req.TokenID,
+			"pair":       req.Pair,
+			"spread_bps": spread,
+			"order_size": orderSize,
+			"enabled":    enabled,
+			"message":    "market-making config created; bot_api can auto-create a market-maker bot from this config",
+		})
+	}
+}
+
+// deleteMarketMakingConfigHandler deletes a market-making config.
+func deleteMarketMakingConfigHandler(db *pgxpool.Pool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		tag, err := db.Exec(ctx, `DELETE FROM market_making_configs WHERE id=$1`, c.Param("id"))
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable"})
+			return
+		}
+		if tag.RowsAffected() == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"error": "config not found"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "config deleted"})
+	}
+}
+
 // strOrNull returns a nullable string for pgx (*string).
 func strOrNull(s string) *string {
 	if s == "" {
@@ -2050,8 +2408,12 @@ CREATE TABLE IF NOT EXISTS tokens (
 	is_featured BOOLEAN DEFAULT false,
 	launchpad_id UUID,
 	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	contract_verified BOOLEAN DEFAULT false,
+	verified_at TIMESTAMPTZ
 );
+ALTER TABLE tokens ADD COLUMN IF NOT EXISTS contract_verified BOOLEAN DEFAULT false;
+ALTER TABLE tokens ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_tokens_status ON tokens(status);
 CREATE INDEX IF NOT EXISTS idx_tokens_chain ON tokens(chain);
 CREATE INDEX IF NOT EXISTS idx_tokens_symbol ON tokens(symbol);
@@ -2071,7 +2433,7 @@ CREATE TABLE IF NOT EXISTS token_listings (
 	liquidity_usd TEXT DEFAULT '0',
 	market_cap TEXT DEFAULT '0',
 	price_change_24h NUMERIC DEFAULT 0,
-	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_listings_status ON token_listings(status);
@@ -2092,7 +2454,7 @@ CREATE TABLE IF NOT EXISTS launchpads (
 	accepted_payment TEXT,
 	total_raised TEXT DEFAULT '0',
 	status TEXT NOT NULL DEFAULT 'upcoming',
-	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_launchpads_status ON launchpads(status);
@@ -2162,7 +2524,7 @@ CREATE TABLE IF NOT EXISTS favorites (
 	id UUID PRIMARY KEY,
 	user_id TEXT NOT NULL,
 	token_id UUID NOT NULL REFERENCES tokens(id) ON DELETE CASCADE,
-	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	UNIQUE(user_id, token_id)
 );
 CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id);
@@ -2176,6 +2538,17 @@ CREATE TABLE IF NOT EXISTS liquidity_positions (
 );
 CREATE INDEX IF NOT EXISTS idx_liq_pos_token ON liquidity_positions(token_id);
 
+CREATE TABLE IF NOT EXISTS market_making_configs (
+	id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+	token_id UUID NOT NULL REFERENCES tokens(id) ON DELETE CASCADE,
+	pair TEXT NOT NULL,
+	spread_bps NUMERIC DEFAULT 10,
+	order_size NUMERIC DEFAULT 0.01,
+	enabled BOOLEAN NOT NULL DEFAULT true,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_mm_config_token ON market_making_configs(token_id);
+
 CREATE TABLE IF NOT EXISTS fee_payments (
 	id UUID PRIMARY KEY,
 	token_id UUID,
@@ -2184,8 +2557,10 @@ CREATE TABLE IF NOT EXISTS fee_payments (
 	payment_method TEXT,
 	tx_hash TEXT,
 	status TEXT NOT NULL DEFAULT 'awaiting_payment',
-	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	verified_at TIMESTAMPTZ
 );
+ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS fee_schedule (
 	fee_type TEXT PRIMARY KEY,

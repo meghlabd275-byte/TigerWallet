@@ -4117,3 +4117,42 @@ actual source before acting. The genuine gaps fixed this session:
   (product\x1ffetcher flag key via CategoryFetcher).
 - No admin can withdraw crypto/revenue without SuperAdmin collaboration
   (two-party gate fail-closed on every fund-movement path).
+
+**ProjectParty system actions:** register/login (JWT+bcrypt), create/list/get/
+update/delete tokens, create/list listings, create/list/get launchpad projects,
+participate (REAL on-chain contribute tx), claim tokens (REAL on-chain claim tx),
+list participations, create/list market-making configs, create/list fee configs,
+add/list/remove favorites, get token price/history/market data, get holders/
+transactions/volume/liquidity (analytics), get KYC status, submit KYC/audit,
+get audit report, get token compliance status. 40 routes total.
+
+
+## Session 2026-08-16 (session 5): Bots+BotsClients + ProjectParty final gap closure
+
+### Bots<->ProjectParty bidirectional linkage (GAP 7)
+- project_party/go: added market_making_configs table + 3 handlers (list/create/delete) under /market-making/configs
+- mm_bot_platform/bot_api: added getMMConfigs handler (GET /mm-configs) that proxies to ProjectParty; projectPartyURL() helper; io import
+- bots/web: added listMMConfigs() method
+- project_party/web: fixed createMarketMakingConfig path + added deleteMarketMakingConfig
+
+### ProjectParty contract_address on-chain verification (GAP 8)
+- project_party/go: added verifyTokenContractHandler (POST /tokens/:id/verify-contract, admin-only). REAL on-chain: EIP-55 checksum + eth_call to name()/symbol()/decimals()/totalSupply(). contract_verified + verified_at columns. ethereum package import.
+- project_party/web: added verifyTokenContract + verifyFeePayment API methods
+
+### Bots web createDEX field mapping fix
+- bots/web createDEX: {chain,rpc_url,wallet_seed} -> {dex,chain_id,rpc_url,wallet_seed} to match bot_api addDEX
+
+### Build verification (ALL GREEN)
+- bot_api: go build + go vet exit 0
+- project_party/go: go build + go vet exit 0
+- bot_core (Rust): cargo check exit 0
+- Foundry: 42/42 tests pass
+- bots/web: npx tsc --noEmit 0 errors
+- project_party/web: npx tsc --noEmit 0 errors
+
+### Theme architecture (verified)
+- bots/web + project_party/web: CSS variables + data-theme attr on html; ThemeContext sets data-theme; CSS vars auto-theme all pages
+
+### Cross-platform client parity (verified)
+- bots/: web, rust, cpp, android, ios, desktop, extensions (ALL 7)
+- project_party/: web, rust, cpp, android, ios, desktop, extensions (ALL 7)

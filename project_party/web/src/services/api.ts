@@ -158,11 +158,15 @@ class ApiService {
   async createMarketMakingConfig(data: {
     token_id: string; pair: string; spread?: string; enabled?: boolean;
   }) {
-    return this.request('/market-making', { method: 'POST', body: JSON.stringify(data) });
+    return this.request('/market-making/configs', { method: 'POST', body: JSON.stringify(data) });
   }
 
   async listMarketMakingConfigs() {
-    return this.request<{ market_making_configs: any[] }>('/market-making');
+    return this.request<{ market_making_configs: any[] }>('/market-making/configs');
+  }
+
+  async deleteMarketMakingConfig(id: string) {
+    return this.request(`/market-making/configs/${id}`, { method: 'DELETE' });
   }
 
   // ==================== Fee configs ====================
@@ -176,6 +180,20 @@ class ApiService {
 
   async listFeeConfigs() {
     return this.request<{ fee_configs: any[] }>('/fees');
+  }
+
+  // Admin-only: verify a fee payment's on-chain tx receipt.
+  async verifyFeePayment(paymentId: string) {
+    return this.request<{ message: string; status: string; tx_hash: string; block_number: string; gas_used: number }>(
+      `/fees/verify/${paymentId}`, { method: 'POST' }
+    );
+  }
+
+  // Admin-only: verify a token's on-chain contract (ERC-20 interface check).
+  async verifyTokenContract(tokenId: string) {
+    return this.request<{ message: string; contract_verified: boolean; on_chain_name: string; on_chain_symbol: string; on_chain_decimals: number; on_chain_supply: string; match: boolean }>(
+      `/tokens/${tokenId}/verify-contract`, { method: 'POST' }
+    );
   }
 
   // ==================== Favorites ====================
