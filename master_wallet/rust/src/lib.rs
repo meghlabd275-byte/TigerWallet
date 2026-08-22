@@ -582,6 +582,10 @@ impl BackendClient {
         self.post(&format!("/api/v1/master-wallet/{}/fees", master_wallet_id), fee).await
     }
 
+    pub async fn update_fee(&self, master_wallet_id: &str, fee_id: &str, updates: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.put(&format!("/api/v1/master-wallet/{}/fees/{}", master_wallet_id, fee_id), updates).await
+    }
+
     pub async fn delete_fee(&self, master_wallet_id: &str, fee_id: &str) -> Result<serde_json::Value, MasterError> {
         self.delete(&format!("/api/v1/master-wallet/{}/fees/{}", master_wallet_id, fee_id)).await
     }
@@ -596,6 +600,10 @@ impl BackendClient {
         self.post(&format!("/api/v1/master-wallet/{}/auto-sign", master_wallet_id), rule).await
     }
 
+    pub async fn update_auto_sign_rule(&self, master_wallet_id: &str, rule_id: &str, updates: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.put(&format!("/api/v1/master-wallet/{}/auto-sign/{}", master_wallet_id, rule_id), updates).await
+    }
+
     pub async fn delete_auto_sign_rule(&self, master_wallet_id: &str, rule_id: &str) -> Result<serde_json::Value, MasterError> {
         self.delete(&format!("/api/v1/master-wallet/{}/auto-sign/{}", master_wallet_id, rule_id)).await
     }
@@ -608,6 +616,10 @@ impl BackendClient {
 
     pub async fn create_user(&self, master_wallet_id: &str, user: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
         self.post(&format!("/api/v1/master-wallet/{}/users", master_wallet_id), user).await
+    }
+
+    pub async fn update_user(&self, master_wallet_id: &str, user_id: &str, updates: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.put(&format!("/api/v1/master-wallet/{}/users/{}", master_wallet_id, user_id), updates).await
     }
 
     pub async fn delete_user(&self, master_wallet_id: &str, user_id: &str) -> Result<serde_json::Value, MasterError> {
@@ -638,6 +650,10 @@ impl BackendClient {
         self.post(&format!("/api/v1/master-wallet/{}/notifications", master_wallet_id), notification).await
     }
 
+    pub async fn update_notification(&self, master_wallet_id: &str, notification_id: &str, updates: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.put(&format!("/api/v1/master-wallet/{}/notifications/{}", master_wallet_id, notification_id), updates).await
+    }
+
     // ---- Webhooks ----
 
     pub async fn list_webhooks(&self, master_wallet_id: &str) -> Result<WebhooksListResponse, MasterError> {
@@ -646,6 +662,10 @@ impl BackendClient {
 
     pub async fn create_webhook(&self, master_wallet_id: &str, webhook: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
         self.post(&format!("/api/v1/master-wallet/{}/webhooks", master_wallet_id), webhook).await
+    }
+
+    pub async fn update_webhook(&self, master_wallet_id: &str, webhook_id: &str, updates: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.put(&format!("/api/v1/master-wallet/{}/webhooks/{}", master_wallet_id, webhook_id), updates).await
     }
 
     pub async fn delete_webhook(&self, master_wallet_id: &str, webhook_id: &str) -> Result<serde_json::Value, MasterError> {

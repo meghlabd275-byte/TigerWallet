@@ -82,31 +82,41 @@ func (svc *Service) CreatePolicy(c *gin.Context) {
 }
 
 func (svc *Service) UpdatePolicy(c *gin.Context) {
-	id := c.Param("id")
+	id := c.Param("pid")
 	var req policyReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	ctx := c.Request.Context()
-	_, err := svc.store.db.Exec(ctx,
+	res, err := svc.store.db.Exec(ctx,
 		`UPDATE policies SET name=$1, policy_type=$2, conditions=$3, actions=$4, priority=$5 WHERE id=$6`,
 		req.Name, req.PolicyType, detailsJSON(req.Conditions), detailsJSON(req.Actions), req.Priority, id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	if res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "policy not found"})
+		return
+	}
+	svc.store.audit(ctx, c.Param("id"), "policy.update", "policy", "user", currentUserID(c), "policy", id, "normal", gin.H{"name": req.Name})
 	c.JSON(http.StatusOK, gin.H{"id": id, "updated": true})
 }
 
 func (svc *Service) DeletePolicy(c *gin.Context) {
-	id := c.Param("id")
+	id := c.Param("pid")
 	ctx := c.Request.Context()
-	_, err := svc.store.db.Exec(ctx, `DELETE FROM policies WHERE id = $1`, id)
+	res, err := svc.store.db.Exec(ctx, `DELETE FROM policies WHERE id = $1`, id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	if res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "policy not found"})
+		return
+	}
+	svc.store.audit(ctx, c.Param("id"), "policy.delete", "policy", "user", currentUserID(c), "policy", id, "normal", nil)
 	c.JSON(http.StatusOK, gin.H{"id": id, "deleted": true})
 }
 
@@ -170,15 +180,67 @@ func (svc *Service) CreateFeeConfig(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"id": fid, "fee_type": req.FeeType, "fee_percentage": req.FeePercentage})
 }
 
-func (svc *Service) DeleteFeeConfig(c *gin.Context) {
-	id := c.Param("id")
+// feeUpdateReq is the partial-update form of feeReq: every field is optional;
+// a nil/empty value leaves the column unchanged (pointer fields distinguish
+// "unset" from "set to zero").
+type feeUpdateReq struct {
+	FeeType       string   `json:"fee_type"`
+	FeePercentage *float64 `json:"fee_percentage"`
+	FeeFixed      string   `json:"fee_fixed"`
+	IsActive      *bool    `json:"is_active"`
+}
+
+// UpdateFeeConfig — PUT /:id/fees/:fid. The MasterWallet owner can update any
+// UserWallet fee (percentage / fixed / active state). Fee percentage is capped
+// at 20%, matching the client-side cap in master_wallet/rust local_fee_config.
+func (svc *Service) UpdateFeeConfig(c *gin.Context) {
+	masterID := c.Param("id")
+	fid := c.Param("fid")
+	var req feeUpdateReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.FeePercentage != nil && (*req.FeePercentage < 0 || *req.FeePercentage > 20) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "fee_percentage must be between 0 and 20"})
+		return
+	}
 	ctx := c.Request.Context()
-	_, err := svc.store.db.Exec(ctx, `DELETE FROM fee_config WHERE id = $1`, id)
+	res, err := svc.store.db.Exec(ctx,
+		`UPDATE fee_config
+		 SET fee_type = COALESCE(NULLIF($1, ''), fee_type),
+		     fee_percentage = COALESCE($2, fee_percentage),
+		     fee_fixed = COALESCE(NULLIF($3, ''), fee_fixed),
+		     is_active = COALESCE($4, is_active),
+		     updated_at = NOW()
+		 WHERE id = $5 AND master_wallet_id = $6`,
+		req.FeeType, req.FeePercentage, req.FeeFixed, req.IsActive, fid, masterID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"id": id, "deleted": true})
+	if res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "fee config not found"})
+		return
+	}
+	svc.store.audit(ctx, masterID, "fee.update", "fee", "user", currentUserID(c), "fee_config", fid, "normal",
+		gin.H{"fee_type": req.FeeType, "fee_percentage": req.FeePercentage})
+	c.JSON(http.StatusOK, gin.H{"id": fid, "updated": true})
+}
+
+func (svc *Service) DeleteFeeConfig(c *gin.Context) {
+	fid := c.Param("fid")
+	ctx := c.Request.Context()
+	res, err := svc.store.db.Exec(ctx, `DELETE FROM fee_config WHERE id = $1 AND master_wallet_id = $2`, fid, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "fee config not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": fid, "deleted": true})
 }
 
 // --- Auto-sign rules ---
@@ -241,15 +303,66 @@ func (svc *Service) CreateAutoSignRule(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"id": rid, "name": req.Name, "rule_type": req.RuleType})
 }
 
-func (svc *Service) DeleteAutoSignRule(c *gin.Context) {
-	id := c.Param("id")
+// autoSignUpdateReq is the partial-update form of autoSignReq.
+type autoSignUpdateReq struct {
+	Name       string                 `json:"name"`
+	RuleType   string                 `json:"rule_type"`
+	Conditions map[string]interface{} `json:"conditions"`
+	MaxAmount  *string                `json:"max_amount"`
+	IsActive   *bool                  `json:"is_active"`
+}
+
+// UpdateAutoSignRule — PUT /:id/auto-sign/:rid. MasterWallet owner edits an
+// auto-sign rule in place (name/conditions/limit/active state).
+func (svc *Service) UpdateAutoSignRule(c *gin.Context) {
+	masterID := c.Param("id")
+	rid := c.Param("rid")
+	var req autoSignUpdateReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var conditions []byte
+	if req.Conditions != nil {
+		conditions = detailsJSON(req.Conditions)
+	}
 	ctx := c.Request.Context()
-	_, err := svc.store.db.Exec(ctx, `DELETE FROM auto_sign_rules WHERE id = $1`, id)
+	res, err := svc.store.db.Exec(ctx,
+		`UPDATE auto_sign_rules
+		 SET name = COALESCE(NULLIF($1, ''), name),
+		     rule_type = COALESCE(NULLIF($2, ''), rule_type),
+		     conditions = COALESCE($3, conditions),
+		     max_amount = COALESCE(NULLIF($4, ''), max_amount),
+		     is_active = COALESCE($5, is_active),
+		     updated_at = NOW()
+		 WHERE id = $6 AND master_wallet_id = $7`,
+		req.Name, req.RuleType, conditions, req.MaxAmount, req.IsActive, rid, masterID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"id": id, "deleted": true})
+	if res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "auto-sign rule not found"})
+		return
+	}
+	svc.store.audit(ctx, masterID, "auto_sign.update", "auto_sign", "user", currentUserID(c), "auto_sign_rule", rid, "normal",
+		gin.H{"name": req.Name})
+	c.JSON(http.StatusOK, gin.H{"id": rid, "updated": true})
+}
+
+func (svc *Service) DeleteAutoSignRule(c *gin.Context) {
+	rid := c.Param("rid")
+	ctx := c.Request.Context()
+	res, err := svc.store.db.Exec(ctx, `DELETE FROM auto_sign_rules WHERE id = $1 AND master_wallet_id = $2`, rid, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "auto-sign rule not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": rid, "deleted": true})
 }
 
 // --- Users ---
@@ -317,15 +430,84 @@ func (svc *Service) CreateUser(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"id": uid, "email": req.Email, "role": role})
 }
 
-func (svc *Service) DeleteUser(c *gin.Context) {
-	id := c.Param("id")
+// userUpdateReq is the partial-update form of userReq. Password is optional:
+// when supplied it is re-hashed (bcrypt) and rotated.
+type userUpdateReq struct {
+	Email    string `json:"email"`
+	Name     *string `json:"name"`
+	Role     string `json:"role"`
+	IsActive *bool   `json:"is_active"`
+	Password string `json:"password"`
+}
+
+// validMWRoles is the closed set of roles a master-wallet user may hold.
+var validMWRoles = map[string]bool{"user": true, "admin": true, "operator": true, "treasury": true, "super_admin": true}
+
+// UpdateUser — PUT /:id/users/:uid. MasterWallet owner edits a user's name,
+// role, active state, or password. Role changes are validated against the
+// closed role set; a user cannot be deleted here (use DELETE).
+func (svc *Service) UpdateUser(c *gin.Context) {
+	masterID := c.Param("id")
+	uid := c.Param("uid")
+	var req userUpdateReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Role != "" && !validMWRoles[req.Role] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid role"})
+		return
+	}
+	var newHash *string
+	if req.Password != "" {
+		if len(req.Password) < 8 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "password must be at least 8 characters"})
+			return
+		}
+		h, err := hashPassword(req.Password)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to hash password"})
+			return
+		}
+		newHash = &h
+	}
 	ctx := c.Request.Context()
-	_, err := svc.store.db.Exec(ctx, `DELETE FROM mw_users WHERE id = $1`, id)
+	res, err := svc.store.db.Exec(ctx,
+		`UPDATE mw_users
+		 SET name = COALESCE($1, name),
+		     role = COALESCE(NULLIF($2, ''), role),
+		     is_active = COALESCE($3, is_active),
+		     password_hash = COALESCE($4, password_hash),
+		     updated_at = NOW()
+		 WHERE id = $5 AND master_wallet_id = $6`,
+		req.Name, req.Role, req.IsActive, newHash, uid, masterID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"id": id, "deleted": true})
+	if res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	svc.store.audit(ctx, masterID, "user.update", "user", "user", currentUserID(c), "user", uid, "normal",
+		gin.H{"role": req.Role})
+	c.JSON(http.StatusOK, gin.H{"id": uid, "updated": true})
+}
+
+func (svc *Service) DeleteUser(c *gin.Context) {
+	uid := c.Param("uid")
+	ctx := c.Request.Context()
+	res, err := svc.store.db.Exec(ctx, `DELETE FROM mw_users WHERE id = $1 AND master_wallet_id = $2`, uid, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	svc.store.audit(ctx, c.Param("id"), "user.delete", "user", "user", currentUserID(c), "user", uid, "normal", nil)
+	c.JSON(http.StatusOK, gin.H{"id": uid, "deleted": true})
 }
 
 // --- Audit logs ---
@@ -460,6 +642,49 @@ func (svc *Service) GetNotifications(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"notifications": out})
 }
 
+// notificationUpdateReq is the partial-update form of notificationReq. The
+// primary use is marking a notification read/unread; content fields are
+// updatable for corrections.
+type notificationUpdateReq struct {
+	Title    string `json:"title"`
+	Message  string `json:"message"`
+	Priority string `json:"priority"`
+	IsRead   *bool  `json:"is_read"`
+}
+
+// UpdateNotification — PUT /:id/notifications/:nid. Supports marking
+// read/unread and correcting title/message/priority.
+func (svc *Service) UpdateNotification(c *gin.Context) {
+	masterID := c.Param("id")
+	nid := c.Param("nid")
+	var req notificationUpdateReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	ctx := c.Request.Context()
+	res, err := svc.store.db.Exec(ctx,
+		`UPDATE notifications
+		 SET title = COALESCE(NULLIF($1, ''), title),
+		     message = COALESCE(NULLIF($2, ''), message),
+		     priority = COALESCE(NULLIF($3, ''), priority),
+		     is_read = COALESCE($4, is_read),
+		     read_at = CASE WHEN $4 IS NULL THEN read_at
+		                    WHEN $4 THEN NOW()
+		                    ELSE NULL END
+		 WHERE id = $5 AND master_wallet_id = $6`,
+		req.Title, req.Message, req.Priority, req.IsRead, nid, masterID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "notification not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": nid, "updated": true})
+}
+
 // --- Webhooks ---
 
 type webhookReq struct {
@@ -467,6 +692,49 @@ type webhookReq struct {
 	URL        string   `json:"url" binding:"required"`
 	Events     []string `json:"events" binding:"required"`
 	RetryCount int      `json:"retry_count"`
+}
+
+// webhookUpdateReq is the partial-update form of webhookReq.
+type webhookUpdateReq struct {
+	Name       string   `json:"name"`
+	URL        string   `json:"url"`
+	Events     []string `json:"events"`
+	IsActive   *bool    `json:"is_active"`
+	RetryCount *int     `json:"retry_count"`
+}
+
+// UpdateWebhook — PUT /:id/webhooks/:wid. MasterWallet owner edits a webhook
+// endpoint's name/url/events/active state/retry policy in place.
+func (svc *Service) UpdateWebhook(c *gin.Context) {
+	masterID := c.Param("id")
+	wid := c.Param("wid")
+	var req webhookUpdateReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	ctx := c.Request.Context()
+	res, err := svc.store.db.Exec(ctx,
+		`UPDATE webhooks
+		 SET name = COALESCE(NULLIF($1, ''), name),
+		     url = COALESCE(NULLIF($2, ''), url),
+		     events = COALESCE($3, events),
+		     is_active = COALESCE($4, is_active),
+		     retry_count = COALESCE($5, retry_count),
+		     updated_at = NOW()
+		 WHERE id = $6 AND master_wallet_id = $7`,
+		req.Name, req.URL, req.Events, req.IsActive, req.RetryCount, wid, masterID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "webhook not found"})
+		return
+	}
+	svc.store.audit(ctx, masterID, "webhook.update", "webhook", "user", currentUserID(c), "webhook", wid, "normal",
+		gin.H{"url": req.URL})
+	c.JSON(http.StatusOK, gin.H{"id": wid, "updated": true})
 }
 
 func (svc *Service) CreateWebhook(c *gin.Context) {
@@ -513,14 +781,18 @@ func (svc *Service) GetWebhooks(c *gin.Context) {
 }
 
 func (svc *Service) DeleteWebhook(c *gin.Context) {
-	id := c.Param("id")
+	wid := c.Param("wid")
 	ctx := c.Request.Context()
-	_, err := svc.store.db.Exec(ctx, `DELETE FROM webhooks WHERE id = $1`, id)
+	res, err := svc.store.db.Exec(ctx, `DELETE FROM webhooks WHERE id = $1 AND master_wallet_id = $2`, wid, c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"id": id, "deleted": true})
+	if res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "webhook not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": wid, "deleted": true})
 }
 
 // rawJSON safely converts a []byte JSONB column to an object; nil -> empty map.

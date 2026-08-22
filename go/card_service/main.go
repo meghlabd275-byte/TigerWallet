@@ -233,6 +233,9 @@ type txReq struct {
 }
 
 func (s *service) createTransaction(c *gin.Context) {
+	if !s.enforceFeature(c, GatedFeature) {
+		return
+	}
 	user := c.GetString("user_id")
 	var req txReq
 	if err := c.ShouldBindJSON(&req); err != nil {

@@ -55,6 +55,10 @@ func main() {
 
 	// POST /api/v1/coupon/validate — validate a coupon code
 	mux.HandleFunc("/api/v1/coupon/validate", func(w http.ResponseWriter, r *http.Request) {
+		if !enforceFeature(w, GatedFeature) {
+			return
+		}
+
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return
@@ -78,6 +82,10 @@ func main() {
 
 	// POST /api/v1/coupon/create — create a coupon (admin)
 	mux.HandleFunc("/api/v1/coupon/create", func(w http.ResponseWriter, r *http.Request) {
+		if !enforceFeature(w, GatedFeature) {
+			return
+		}
+
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return

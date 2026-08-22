@@ -716,6 +716,9 @@ type CreateCollectionRequest struct {
 }
 
 func (ns *NFTService) CreateCollection(c *gin.Context) {
+	if !ns.enforceFeature(c, GatedFeature) {
+		return
+	}
 	if ns.pg == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
 		return
@@ -771,6 +774,9 @@ type MintNFTRequest struct {
 }
 
 func (ns *NFTService) MintNFT(c *gin.Context) {
+	if !ns.enforceFeature(c, GatedFeature) {
+		return
+	}
 	if ns.pg == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
 		return
@@ -852,6 +858,9 @@ type ListNFTRequest struct {
 }
 
 func (ns *NFTService) ListNFT(c *gin.Context) {
+	if !ns.enforceFeature(c, GatedFeature) {
+		return
+	}
 	if ns.pg == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
 		return
@@ -922,6 +931,9 @@ type BuyNFTRequest struct {
 }
 
 func (ns *NFTService) BuyNFT(c *gin.Context) {
+	if !ns.enforceFeature(c, GatedFeature) {
+		return
+	}
 	if ns.pg == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
 		return
@@ -1037,6 +1049,9 @@ type MakeOfferRequest struct {
 }
 
 func (ns *NFTService) MakeOffer(c *gin.Context) {
+	if !ns.enforceFeature(c, GatedFeature) {
+		return
+	}
 	if ns.pg == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
 		return

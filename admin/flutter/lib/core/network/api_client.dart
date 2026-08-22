@@ -152,4 +152,16 @@ abstract class ApiClient {
   Future<List<Map<String, dynamic>>> getAdminMarginPositions();
   Future<Map<String, dynamic>> getAdminMarginLiquidationStats();
   Future<void> liquidateMarginPosition(String id);
+
+  // Admin domain governance (admin/go :9093). The domain segment is one of:
+  // futures, options, copy-trading, convert, onramp, offramp, p2p-clients,
+  // partners, rewards, marketing, bots, bots-clients, project-teams,
+  // liquidity-sources, crypto-cards, margin-trading.
+  Future<List<Map<String, dynamic>>> getDomainItems(String domain);
+  Future<Map<String, dynamic>> createDomainItem(String domain, Map<String, dynamic> data);
+  Future<Map<String, dynamic>> updateDomainItem(String domain, String id, Map<String, dynamic> data);
+  Future<void> deleteDomainItem(String domain, String id);
+  Future<void> setDomainStatus(String domain, String id, String status);
+  Future<void> approveDomainItem(String domain, String id);
+  Future<void> rejectDomainItem(String domain, String id, String reason);
 }

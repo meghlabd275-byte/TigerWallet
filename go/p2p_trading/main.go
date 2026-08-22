@@ -216,6 +216,10 @@ func (s *Server) getAdverts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createAdvert(w http.ResponseWriter, r *http.Request) {
+	if !enforceFeature(w, GatedFeature) {
+		return
+	}
+
 	var a Advert
 	if err := json.NewDecoder(r.Body).Decode(&a); err != nil {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
@@ -302,6 +306,10 @@ func (s *Server) getOrders(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createOrder(w http.ResponseWriter, r *http.Request) {
+	if !enforceFeature(w, GatedFeature) {
+		return
+	}
+
 	var req struct {
 		AdvertID      string  `json:"advert_id"`
 		TakerID       string  `json:"taker_id"`

@@ -122,17 +122,20 @@ func main() {
 			// Fees
 			mw.GET("/:id/fees", svc.GetFeeConfigs)
 			mw.POST("/:id/fees", svc.CreateFeeConfig)
-			mw.DELETE("/:id/fees/:fid", svc.DeleteFeeConfig)
+			mw.PUT("/:id/fees/:fid", svc.UpdateFeeConfig)
+				mw.DELETE("/:id/fees/:fid", svc.DeleteFeeConfig)
 
 			// Auto-sign rules
 			mw.GET("/:id/auto-sign", svc.GetAutoSignRules)
 			mw.POST("/:id/auto-sign", svc.CreateAutoSignRule)
-			mw.DELETE("/:id/auto-sign/:rid", svc.DeleteAutoSignRule)
+			mw.PUT("/:id/auto-sign/:rid", svc.UpdateAutoSignRule)
+				mw.DELETE("/:id/auto-sign/:rid", svc.DeleteAutoSignRule)
 
 			// Users
 			mw.GET("/:id/users", svc.GetUsers)
 			mw.POST("/:id/users", svc.CreateUser)
-			mw.DELETE("/:id/users/:uid", svc.DeleteUser)
+			mw.PUT("/:id/users/:uid", svc.UpdateUser)
+				mw.DELETE("/:id/users/:uid", svc.DeleteUser)
 
 			// Audit
 			mw.GET("/:id/audit", svc.GetAuditLogs)
@@ -145,11 +148,13 @@ func main() {
 			// Notifications
 			mw.GET("/:id/notifications", svc.GetNotifications)
 			mw.POST("/:id/notifications", svc.CreateNotification)
+				mw.PUT("/:id/notifications/:nid", svc.UpdateNotification)
 
 			// Webhooks
 			mw.GET("/:id/webhooks", svc.GetWebhooks)
 			mw.POST("/:id/webhooks", svc.CreateWebhook)
-			mw.DELETE("/:id/webhooks/:wid", svc.DeleteWebhook)
+			mw.PUT("/:id/webhooks/:wid", svc.UpdateWebhook)
+				mw.DELETE("/:id/webhooks/:wid", svc.DeleteWebhook)
 
 			// Treasury (admin/operator only)
 			treasury := mw.Group("/:id/treasury")

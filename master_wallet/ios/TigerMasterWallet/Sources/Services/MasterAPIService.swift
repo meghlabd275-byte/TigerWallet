@@ -151,6 +151,11 @@ class MasterAPIService {
         return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/fees", method: "POST", body: body)
     }
 
+    func updateFee(walletId: String, feeId: String, updates: [String: Any]) async throws {
+        let body = try JSONSerialization.data(withJSONObject: updates)
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/fees/\(feeId)", method: "PUT", body: body)
+    }
+
     func deleteFee(walletId: String, feeId: String) async throws {
         let _: EmptyResponse = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/fees/\(feeId)", method: "DELETE")
     }
@@ -164,6 +169,11 @@ class MasterAPIService {
         return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/auto-sign", method: "POST", body: body)
     }
 
+    func updateAutoSignRule(walletId: String, ruleId: String, updates: [String: Any]) async throws {
+        let body = try JSONSerialization.data(withJSONObject: updates)
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/auto-sign/\(ruleId)", method: "PUT", body: body)
+    }
+
     func deleteAutoSignRule(walletId: String, ruleId: String) async throws {
         let _: EmptyResponse = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/auto-sign/\(ruleId)", method: "DELETE")
     }
@@ -175,6 +185,11 @@ class MasterAPIService {
     func createUser(walletId: String, user: CreateUserRequest) async throws -> MasterUser {
         let body = try JSONEncoder().encode(user)
         return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/users", method: "POST", body: body)
+    }
+
+    func updateUser(walletId: String, userId: String, updates: [String: Any]) async throws {
+        let body = try JSONSerialization.data(withJSONObject: updates)
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/users/\(userId)", method: "PUT", body: body)
     }
 
     func deleteUser(walletId: String, userId: String) async throws {
@@ -211,6 +226,11 @@ class MasterAPIService {
         return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/notifications", method: "POST", body: body)
     }
 
+    func updateNotification(walletId: String, notificationId: String, updates: [String: Any]) async throws {
+        let body = try JSONSerialization.data(withJSONObject: updates)
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/notifications/\(notificationId)", method: "PUT", body: body)
+    }
+
     // MARK: - Webhooks
 
     func getWebhooks(walletId: String) async throws -> [Webhook] {
@@ -221,6 +241,11 @@ class MasterAPIService {
     func createWebhook(walletId: String, webhook: CreateWebhookRequest) async throws -> Webhook {
         let body = try JSONEncoder().encode(webhook)
         return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/webhooks", method: "POST", body: body)
+    }
+
+    func updateWebhook(walletId: String, webhookId: String, updates: [String: Any]) async throws {
+        let body = try JSONSerialization.data(withJSONObject: updates)
+        let _: EmptyResponse = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/webhooks/\(webhookId)", method: "PUT", body: body)
     }
 
     func deleteWebhook(walletId: String, webhookId: String) async throws {

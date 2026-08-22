@@ -71,6 +71,10 @@ func main() {
 
 	// POST /api/v1/airdrop/campaigns — create campaign
 	mux.HandleFunc("/api/v1/airdrop/campaigns/create", func(w http.ResponseWriter, r *http.Request) {
+		if !enforceFeature(w, GatedFeature) {
+			return
+		}
+
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return
@@ -90,6 +94,10 @@ func main() {
 
 	// POST /api/v1/airdrop/claim — create a claim
 	mux.HandleFunc("/api/v1/airdrop/claim", func(w http.ResponseWriter, r *http.Request) {
+		if !enforceFeature(w, GatedFeature) {
+			return
+		}
+
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return

@@ -71,6 +71,10 @@ func main() {
 
 	// POST /api/v1/earn/products — create product (admin)
 	mux.HandleFunc("/api/v1/earn/products/create", func(w http.ResponseWriter, r *http.Request) {
+		if !enforceFeature(w, GatedFeature) {
+			return
+		}
+
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return
@@ -90,6 +94,10 @@ func main() {
 
 	// POST /api/v1/earn/deposit — create deposit
 	mux.HandleFunc("/api/v1/earn/deposit", func(w http.ResponseWriter, r *http.Request) {
+		if !enforceFeature(w, GatedFeature) {
+			return
+		}
+
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return
@@ -109,6 +117,10 @@ func main() {
 
 	// POST /api/v1/earn/withdraw — withdraw from deposit
 	mux.HandleFunc("/api/v1/earn/withdraw", func(w http.ResponseWriter, r *http.Request) {
+		if !enforceFeature(w, GatedFeature) {
+			return
+		}
+
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return
@@ -131,6 +143,10 @@ func main() {
 
 	// POST /api/v1/earn/claim — claim rewards
 	mux.HandleFunc("/api/v1/earn/claim", func(w http.ResponseWriter, r *http.Request) {
+		if !enforceFeature(w, GatedFeature) {
+			return
+		}
+
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return

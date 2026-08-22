@@ -27,6 +27,15 @@ import 'features/tickets/presentation/screens/tickets_screen.dart';
 import 'features/analytics/presentation/screens/analytics_screen.dart';
 import 'features/settings/presentation/screens/settings_screen.dart';
 import 'features/settings/presentation/screens/profile_screen.dart';
+import 'features/settings/presentation/screens/more_screen.dart';
+import 'features/crypto_cards/crypto_cards_screen.dart';
+import 'features/margin_trading/margin_trading_screen.dart';
+import 'features/feature_flags/feature_flags_screen.dart';
+import 'features/billing/billing_screen.dart';
+import 'features/p2p_merchant/p2p_merchant_screen.dart';
+import 'features/liquidity/liquidity_screen.dart';
+import 'features/master_wallet/master_wallet_screen.dart';
+import 'features/domains/domain_screen.dart';
 
 // API Client Provider
 final apiClientProvider = Provider<ApiClient>((ref) {
@@ -157,6 +166,55 @@ final routerProvider = Provider<GoRouter>((ref) {
                 builder: (context, state) => const ProfileScreen(),
               ),
             ],
+          ),
+
+          // More hub
+          GoRoute(
+            path: AppConstants.moreRoute,
+            builder: (context, state) => const MoreScreen(),
+          ),
+
+          // Feature surfaces
+          GoRoute(
+            path: '/crypto-cards',
+            builder: (context, state) => const CryptoCardsScreen(),
+          ),
+          GoRoute(
+            path: '/margin-trading',
+            builder: (context, state) => const MarginTradingScreen(),
+          ),
+          GoRoute(
+            path: '/feature-flags',
+            builder: (context, state) => const FeatureFlagsScreen(),
+          ),
+          GoRoute(
+            path: '/billing',
+            builder: (context, state) => const BillingScreen(),
+          ),
+          GoRoute(
+            path: '/p2p-merchants',
+            builder: (context, state) => const P2PMerchantScreen(),
+          ),
+          GoRoute(
+            path: '/liquidity',
+            builder: (context, state) => const LiquidityScreen(),
+          ),
+          GoRoute(
+            path: '/master-wallet',
+            builder: (context, state) => const MasterWalletScreen(),
+          ),
+
+          // Generic domain governance surfaces (14 domains)
+          GoRoute(
+            path: '/domain/:domain',
+            builder: (context, state) {
+              final segment = state.pathParameters['domain'] ?? '';
+              final cfg = kAdminDomains.firstWhere(
+                (d) => d.domain == segment,
+                orElse: () => kAdminDomains.first,
+              );
+              return DomainScreen(config: cfg);
+            },
           ),
         ],
       ),

@@ -215,6 +215,10 @@ class MasterWalletService {
     return authedFetch('/master-wallet/' + this._wid(id) + '/fees', { method: 'POST', body: fee });
   }
 
+  async updateFee(id, fid, updates) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/fees/' + fid, { method: 'PUT', body: updates });
+  }
+
   async deleteFee(id, fid) {
     return authedFetch('/master-wallet/' + this._wid(id) + '/fees/' + fid, { method: 'DELETE' });
   }
@@ -230,6 +234,10 @@ class MasterWalletService {
     return authedFetch('/master-wallet/' + this._wid(id) + '/auto-sign', { method: 'POST', body: rule });
   }
 
+  async updateAutoSignRule(id, rid, updates) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/auto-sign/' + rid, { method: 'PUT', body: updates });
+  }
+
   async deleteAutoSignRule(id, rid) {
     return authedFetch('/master-wallet/' + this._wid(id) + '/auto-sign/' + rid, { method: 'DELETE' });
   }
@@ -243,6 +251,10 @@ class MasterWalletService {
 
   async createUser(id, user) {
     return authedFetch('/master-wallet/' + this._wid(id) + '/users', { method: 'POST', body: user });
+  }
+
+  async updateUser(id, uid, updates) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/users/' + uid, { method: 'PUT', body: updates });
   }
 
   async deleteUser(id, uid) {
@@ -280,6 +292,10 @@ class MasterWalletService {
     return authedFetch('/master-wallet/' + this._wid(id) + '/notifications', { method: 'POST', body: n });
   }
 
+  async updateNotification(id, nid, updates) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/notifications/' + nid, { method: 'PUT', body: updates });
+  }
+
   async listWebhooks(id) {
     const res = await authedFetch('/master-wallet/' + this._wid(id) + '/webhooks', { method: 'GET' });
     return res.webhooks || res || [];
@@ -287,6 +303,10 @@ class MasterWalletService {
 
   async createWebhook(id, w) {
     return authedFetch('/master-wallet/' + this._wid(id) + '/webhooks', { method: 'POST', body: w });
+  }
+
+  async updateWebhook(id, wid, updates) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/webhooks/' + wid, { method: 'PUT', body: updates });
   }
 
   async deleteWebhook(id, wid) {

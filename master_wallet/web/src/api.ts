@@ -583,6 +583,17 @@ class MasterWalletAPI {
     });
   }
 
+  async updateFeeConfig(
+    masterId: string,
+    fid: string,
+    updates: Partial<FeeConfig>
+  ): Promise<void> {
+    await this.request(`/api/v1/master-wallet/${masterId}/fees/${fid}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
+  }
+
   async deleteFeeConfig(masterId: string, fid: string): Promise<void> {
     await this.request(`/api/v1/master-wallet/${masterId}/fees/${fid}`, {
       method: 'DELETE',
@@ -608,6 +619,17 @@ class MasterWalletAPI {
     });
   }
 
+  async updateAutoSignRule(
+    masterId: string,
+    rid: string,
+    updates: Partial<AutoSignRule>
+  ): Promise<void> {
+    await this.request(`/api/v1/master-wallet/${masterId}/auto-sign/${rid}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
+  }
+
   async deleteAutoSignRule(masterId: string, rid: string): Promise<void> {
     await this.request(`/api/v1/master-wallet/${masterId}/auto-sign/${rid}`, {
       method: 'DELETE',
@@ -630,6 +652,17 @@ class MasterWalletAPI {
     return this.request<MasterUser>(`/api/v1/master-wallet/${masterId}/users`, {
       method: 'POST',
       body: JSON.stringify(user),
+    });
+  }
+
+  async updateUser(
+    masterId: string,
+    uid: string,
+    updates: { name?: string; role?: string; is_active?: boolean; password?: string }
+  ): Promise<void> {
+    await this.request(`/api/v1/master-wallet/${masterId}/users/${uid}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
     });
   }
 
@@ -688,6 +721,17 @@ class MasterWalletAPI {
     });
   }
 
+  async updateNotification(
+    masterId: string,
+    nid: string,
+    updates: { title?: string; message?: string; priority?: string; is_read?: boolean }
+  ): Promise<void> {
+    await this.request(`/api/v1/master-wallet/${masterId}/notifications/${nid}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
+  }
+
   async getWebhooks(masterId: string): Promise<Webhook[]> {
     const data = await this.request<{ webhooks: Webhook[] }>(
       `/api/v1/master-wallet/${masterId}/webhooks`
@@ -699,6 +743,17 @@ class MasterWalletAPI {
     return this.request<Webhook>(`/api/v1/master-wallet/${masterId}/webhooks`, {
       method: 'POST',
       body: JSON.stringify(wh),
+    });
+  }
+
+  async updateWebhook(
+    masterId: string,
+    wid: string,
+    updates: Partial<Webhook>
+  ): Promise<void> {
+    await this.request(`/api/v1/master-wallet/${masterId}/webhooks/${wid}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
     });
   }
 

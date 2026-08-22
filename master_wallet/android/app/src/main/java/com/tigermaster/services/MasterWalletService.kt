@@ -600,6 +600,25 @@ class MasterWalletService {
         apiPost("/api/v1/master-wallet/$walletId/fees", body)
     }
 
+    suspend fun updateFee(
+        walletId: String,
+        feeId: String,
+        feeType: String? = null,
+        feePercentage: Double? = null,
+        feeFixed: String? = null,
+        isActive: Boolean? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .apply {
+                feeType?.let { put("fee_type", it) }
+                feePercentage?.let { put("fee_percentage", it) }
+                feeFixed?.let { put("fee_fixed", it) }
+                isActive?.let { put("is_active", it) }
+            }
+            .toString()
+        apiPut("/api/v1/master-wallet/$walletId/fees/$feeId", body)
+    }
+
     suspend fun deleteFee(walletId: String, feeId: String): Boolean =
         withContext(Dispatchers.IO) { apiDelete("/api/v1/master-wallet/$walletId/fees/$feeId") }
 
@@ -627,6 +646,27 @@ class MasterWalletService {
             }
             .toString()
         apiPost("/api/v1/master-wallet/$walletId/auto-sign", body)
+    }
+
+    suspend fun updateAutoSignRule(
+        walletId: String,
+        ruleId: String,
+        name: String? = null,
+        ruleType: String? = null,
+        conditions: Map<String, String>? = null,
+        maxAmount: String? = null,
+        isActive: Boolean? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .apply {
+                name?.let { put("name", it) }
+                ruleType?.let { put("rule_type", it) }
+                conditions?.let { put("conditions", JSONObject(it)) }
+                maxAmount?.let { put("max_amount", it) }
+                isActive?.let { put("is_active", it) }
+            }
+            .toString()
+        apiPut("/api/v1/master-wallet/$walletId/auto-sign/$ruleId", body)
     }
 
     suspend fun deleteAutoSignRule(walletId: String, ruleId: String): Boolean =
@@ -696,6 +736,25 @@ class MasterWalletService {
         apiPost("/api/v1/master-wallet/$walletId/users", body)
     }
 
+    suspend fun updateUser(
+        walletId: String,
+        userId: String,
+        name: String? = null,
+        role: String? = null,
+        isActive: Boolean? = null,
+        password: String? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .apply {
+                name?.let { put("name", it) }
+                role?.let { put("role", it) }
+                isActive?.let { put("is_active", it) }
+                password?.let { put("password", it) }
+            }
+            .toString()
+        apiPut("/api/v1/master-wallet/$walletId/users/$userId", body)
+    }
+
     suspend fun deleteUser(walletId: String, userId: String): Boolean =
         withContext(Dispatchers.IO) { apiDelete("/api/v1/master-wallet/$walletId/users/$userId") }
 
@@ -746,6 +805,25 @@ class MasterWalletService {
         apiPost("/api/v1/master-wallet/$walletId/notifications", body)
     }
 
+    suspend fun updateNotification(
+        walletId: String,
+        notificationId: String,
+        title: String? = null,
+        message: String? = null,
+        priority: String? = null,
+        isRead: Boolean? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .apply {
+                title?.let { put("title", it) }
+                message?.let { put("message", it) }
+                priority?.let { put("priority", it) }
+                isRead?.let { put("is_read", it) }
+            }
+            .toString()
+        apiPut("/api/v1/master-wallet/$walletId/notifications/$notificationId", body)
+    }
+
     // MARK: - Webhooks (GET/POST /webhooks, DELETE /webhooks/:wid)
 
     suspend fun getWebhooks(walletId: String): String? =
@@ -767,6 +845,27 @@ class MasterWalletService {
             .put("retry_count", retryCount)
             .toString()
         apiPost("/api/v1/master-wallet/$walletId/webhooks", body)
+    }
+
+    suspend fun updateWebhook(
+        walletId: String,
+        webhookId: String,
+        name: String? = null,
+        url: String? = null,
+        events: List<String>? = null,
+        isActive: Boolean? = null,
+        retryCount: Int? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .apply {
+                name?.let { put("name", it) }
+                url?.let { put("url", it) }
+                events?.let { list -> put("events", JSONArray().apply { list.forEach { put(it) } }) }
+                isActive?.let { put("is_active", it) }
+                retryCount?.let { put("retry_count", it) }
+            }
+            .toString()
+        apiPut("/api/v1/master-wallet/$walletId/webhooks/$webhookId", body)
     }
 
     suspend fun deleteWebhook(walletId: String, webhookId: String): Boolean =

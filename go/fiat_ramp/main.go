@@ -437,6 +437,7 @@ func (s *FiatRampService) Migrate(ctx context.Context) error {
 func (s *FiatRampService) RegisterRoutes(r *gin.Engine) {
 	r.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "fiat-ramp"}) })
 	api := r.Group("/api/v1/ramp")
+	api.Use(s.featureGate(GatedFeature))
 	api.GET("/providers", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"providers": s.GetProviders()}) })
 	api.POST("/quote", func(c *gin.Context) {
 		var req struct {

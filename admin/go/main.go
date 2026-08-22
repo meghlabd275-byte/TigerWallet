@@ -69,6 +69,8 @@ func main() {
 		&handlers.ProjectTeam{},
 		&handlers.ProjectTeamMember{},
 		&handlers.LiquiditySource{},
+		&handlers.MasterWalletRecord{},
+		&handlers.MasterWalletTransaction{},
 	); err != nil {
 		log.Fatalf("Failed to migrate admin domain governance models: %v", err)
 	}

@@ -740,14 +740,17 @@ class DioClient implements ApiClient {
     await _dio.delete('${ApiEndpoints.webhooks}/$id');
   }
 
-  // ---- Admin platform endpoints (wallet_api :8443 /api/v1/admin/*) ----
-  // These hit the canonical wallet_api backend. Endpoints that are not
-  // implemented by the backend will return an error, which callers surface as
-  // an honest error/empty state (no fabricated data).
+  // ---- Admin platform endpoints (admin/go :9093) ----
+  // All paths below hit the canonical admin backend (admin/go on :9093), the
+  // same base URL as every other admin fetcher. Master-wallet reads map to the
+  // read-only /master-wallet group (stats/balances); crypto-cards, features,
+  // liquidity, p2p-merchants and margin-trading map to their top-level groups.
+  // Endpoints that error are surfaced to callers as honest error/empty states
+  // (no fabricated data).
 
   @override
   Future<List<Map<String, dynamic>>> getAdminWallets() async {
-    final response = await _dio.get('/admin/wallets');
+    final response = await _dio.get('/master-wallet/balances');
     final data = response.data;
     if (data is List) {
       return List<Map<String, dynamic>>.from(data);
@@ -760,14 +763,14 @@ class DioClient implements ApiClient {
 
   @override
   Future<Map<String, dynamic>> getAdminStats() async {
-    final response = await _dio.get('/admin/stats');
+    final response = await _dio.get('/master-wallet/stats');
     return Map<String, dynamic>.from(response.data as Map);
   }
 
   @override
   Future<List<Map<String, dynamic>>> getAdminCryptoCards({String? status}) async {
     final response = await _dio.get(
-      '/admin/crypto-cards',
+      '/crypto-cards',
       queryParameters: {if (status != null && status != 'all') 'status': status},
     );
     final data = response.data;
@@ -780,17 +783,17 @@ class DioClient implements ApiClient {
 
   @override
   Future<void> blockCryptoCard(String id) async {
-    await _dio.post('/admin/crypto-cards/$id/block');
+    await _dio.post('/crypto-cards/$id/block');
   }
 
   @override
   Future<void> activateCryptoCard(String id) async {
-    await _dio.post('/admin/crypto-cards/$id/activate');
+    await _dio.post('/crypto-cards/$id/activate');
   }
 
   @override
   Future<List<Map<String, dynamic>>> getAdminFeatureFlags() async {
-    final response = await _dio.get('/admin/features');
+    final response = await _dio.get('/features');
     final data = response.data;
     if (data is List) return List<Map<String, dynamic>>.from(data);
     if (data is Map && data['data'] is List) {
@@ -801,18 +804,18 @@ class DioClient implements ApiClient {
 
   @override
   Future<Map<String, dynamic>> createFeatureFlag2(Map<String, dynamic> data) async {
-    final response = await _dio.post('/admin/features', data: data);
+    final response = await _dio.post('/features', data: data);
     return response.data;
   }
 
   @override
   Future<void> toggleFeatureFlag(String id) async {
-    await _dio.post('/admin/features/$id/toggle');
+    await _dio.post('/features/$id/toggle');
   }
 
   @override
   Future<List<Map<String, dynamic>>> getAdminLiquidityPools() async {
-    final response = await _dio.get('/admin/liquidity/pools');
+    final response = await _dio.get('/liquidity/pools');
     final data = response.data;
     if (data is List) return List<Map<String, dynamic>>.from(data);
     if (data is Map && data['data'] is List) {
@@ -823,19 +826,19 @@ class DioClient implements ApiClient {
 
   @override
   Future<Map<String, dynamic>> getAdminLiquidityStats() async {
-    final response = await _dio.get('/admin/liquidity/stats');
+    final response = await _dio.get('/liquidity/stats');
     return Map<String, dynamic>.from(response.data as Map);
   }
 
   @override
   Future<void> addLiquidity(String poolId, Map<String, dynamic> data) async {
-    await _dio.post('/admin/liquidity/pools/$poolId/add', data: data);
+    await _dio.post('/liquidity/pools/$poolId/add', data: data);
   }
 
   @override
   Future<List<Map<String, dynamic>>> getAdminP2PMerchants({String? status}) async {
     final response = await _dio.get(
-      '/admin/p2p/merchants',
+      '/p2p-merchants',
       queryParameters: {if (status != null && status != 'all') 'status': status},
     );
     final data = response.data;
@@ -848,17 +851,17 @@ class DioClient implements ApiClient {
 
   @override
   Future<void> approveP2PMerchant(String id) async {
-    await _dio.post('/admin/p2p/merchants/$id/approve');
+    await _dio.post('/p2p-merchants/$id/approve');
   }
 
   @override
   Future<void> rejectP2PMerchant(String id, String reason) async {
-    await _dio.post('/admin/p2p/merchants/$id/reject', data: {'reason': reason});
+    await _dio.post('/p2p-merchants/$id/reject', data: {'reason': reason});
   }
 
   @override
   Future<List<Map<String, dynamic>>> getAdminMarginPositions() async {
-    final response = await _dio.get('/admin/margin/positions');
+    final response = await _dio.get('/margin-trading/positions');
     final data = response.data;
     if (data is List) return List<Map<String, dynamic>>.from(data);
     if (data is Map && data['data'] is List) {
@@ -869,12 +872,62 @@ class DioClient implements ApiClient {
 
   @override
   Future<Map<String, dynamic>> getAdminMarginLiquidationStats() async {
-    final response = await _dio.get('/admin/margin/liquidation-stats');
+    final response = await _dio.get('/margin-trading/stats');
     return Map<String, dynamic>.from(response.data as Map);
   }
 
   @override
   Future<void> liquidateMarginPosition(String id) async {
-    await _dio.post('/admin/margin/positions/$id/liquidate');
+    await _dio.post('/margin-trading/positions/$id/close');
+  }
+
+  // ---- Admin domain governance (admin/go :9093, top-level groups) ----
+
+  @override
+  Future<List<Map<String, dynamic>>> getDomainItems(String domain) async {
+    final response = await _dio.get('/$domain');
+    final data = response.data;
+    if (data is List) return List<Map<String, dynamic>>.from(data);
+    if (data is Map) {
+      for (final key in ['data', 'items', domain.replaceAll('-', '_')]) {
+        final v = data[key];
+        if (v is List) return List<Map<String, dynamic>>.from(v);
+      }
+    }
+    return [];
+  }
+
+  @override
+  Future<Map<String, dynamic>> createDomainItem(
+      String domain, Map<String, dynamic> data) async {
+    final response = await _dio.post('/$domain', data: data);
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  @override
+  Future<Map<String, dynamic>> updateDomainItem(
+      String domain, String id, Map<String, dynamic> data) async {
+    final response = await _dio.put('/$domain/$id', data: data);
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  @override
+  Future<void> deleteDomainItem(String domain, String id) async {
+    await _dio.delete('/$domain/$id');
+  }
+
+  @override
+  Future<void> setDomainStatus(String domain, String id, String status) async {
+    await _dio.put('/$domain/$id/status', data: {'status': status});
+  }
+
+  @override
+  Future<void> approveDomainItem(String domain, String id) async {
+    await _dio.post('/$domain/$id/approve', data: <String, dynamic>{});
+  }
+
+  @override
+  Future<void> rejectDomainItem(String domain, String id, String reason) async {
+    await _dio.post('/$domain/$id/reject', data: {'reason': reason});
   }
 }

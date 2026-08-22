@@ -205,6 +205,9 @@ type createPairReq struct {
 }
 
 func (s *service) createPair(c *gin.Context) {
+	if !s.enforceFeature(c, GatedFeature) {
+		return
+	}
 	var req createPairReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -247,6 +250,9 @@ type openPositionReq struct {
 }
 
 func (s *service) openPosition(c *gin.Context) {
+	if !s.enforceFeature(c, GatedFeature) {
+		return
+	}
 	var req openPositionReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -318,6 +324,9 @@ func (s *service) openPosition(c *gin.Context) {
 }
 
 func (s *service) closePosition(c *gin.Context) {
+	if !s.enforceFeature(c, GatedFeature) {
+		return
+	}
 	id := c.Param("id")
 	user := c.GetString("user_id")
 	tx, err := s.pg.Begin(c)

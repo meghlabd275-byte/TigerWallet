@@ -1328,11 +1328,11 @@ class SuperAdminApiService {
   // ==================== Feature Flags ====================
 
   async getFeatureFlags(): Promise<{ name: string; enabled: boolean; description?: string }[]> {
-    return this.request('/api/v1/features');
+    return this.request('/api/v1/admin/features');
   }
 
   async setFeatureFlag(name: string, enabled: boolean): Promise<void> {
-    return this.request(`/api/v1/features/${name}`, {
+    return this.request(`/api/v1/admin/features/${name}`, {
       method: 'PUT',
       body: JSON.stringify({ enabled }),
     });

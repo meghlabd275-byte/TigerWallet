@@ -101,70 +101,33 @@ func NewMasterWalletHandler(db *gorm.DB) *MasterWalletHandler {
 	return &MasterWalletHandler{db: db}
 }
 
+// GetWallets lists master wallet governance records from PostgreSQL.
 func (h *MasterWalletHandler) GetWallets(c *gin.Context) {
-	wallets := []MasterWallet{
-		{
-			ID:       uuid.New(),
-			Name:     "Hot Wallet Main",
-			Address:  "0x742d35Cc6634C0532925a3b844Bc9e7595f6eB2E",
-			Chain:    "Ethereum",
-			Balance:  1500000.0,
-			Currency: "USDT",
-			Status:   "active",
-			Type:     "hot",
-		},
-		{
-			ID:       uuid.New(),
-			Name:     "Cold Wallet Primary",
-			Address:  "0x8ba1f109551bD432803012645Ac136ddd64DBA72",
-			Chain:    "Ethereum",
-			Balance:  10000000.0,
-			Currency: "USDT",
-			Status:   "active",
-			Type:     "cold",
-		},
-		{
-			ID:       uuid.New(),
-			Name:     "Hot Wallet Fee",
-			Address:  "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
-			Chain:    "Bitcoin",
-			Balance:  50000.0,
-			Currency: "BTC",
-			Status:   "active",
-			Type:     "hot",
-		},
-	}
-
-	c.JSON(200, gin.H{
-		"success": true,
-		"data":    wallets,
-	})
-}
-
-func (h *MasterWalletHandler) GetWalletByID(c *gin.Context) {
-	walletID := c.Param("id")
-	if walletID == "" {
-		c.JSON(400, gin.H{"error": "wallet_id required"})
+	var records []MasterWalletRecord
+	if err := h.db.Order("created_at DESC").Find(&records).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch wallets"})
 		return
 	}
-
-	wallet := MasterWallet{
-		ID:       uuid.MustParse(walletID),
-		Name:     "Hot Wallet Main",
-		Address:  "0x742d35Cc6634C0532925a3b844Bc9e7595f6eB2E",
-		Chain:    "Ethereum",
-		Balance:  1500000.0,
-		Currency: "USDT",
-		Status:   "active",
-		Type:     "hot",
-	}
-
-	c.JSON(200, gin.H{
-		"success": true,
-		"data":    wallet,
-	})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": records})
 }
 
+// GetWalletByID returns one wallet record; 404 when it does not exist.
+func (h *MasterWalletHandler) GetWalletByID(c *gin.Context) {
+	walletID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid wallet_id"})
+		return
+	}
+	var rec MasterWalletRecord
+	if err := h.db.First(&rec, "id = ?", walletID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "wallet not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": rec})
+}
+
+// CreateWallet registers a watch-only master-wallet governance record. No key
+// material is accepted or stored — the admin panel never holds private keys.
 func (h *MasterWalletHandler) CreateWallet(c *gin.Context) {
 	var req struct {
 		Name    string `json:"name" binding:"required"`
@@ -172,106 +135,109 @@ func (h *MasterWalletHandler) CreateWallet(c *gin.Context) {
 		Chain   string `json:"chain" binding:"required"`
 		Type    string `json:"type" binding:"required"`
 	}
-
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	wallet := MasterWallet{
+	rec := MasterWalletRecord{
 		ID:       uuid.New(),
 		Name:     req.Name,
 		Address:  req.Address,
 		Chain:    req.Chain,
-		Balance:  0.0,
 		Currency: getCurrencyForChain(req.Chain),
 		Status:   "active",
 		Type:     req.Type,
 	}
-
-	c.JSON(201, gin.H{
-		"success": true,
-		"data":    wallet,
-	})
+	if err := h.db.Create(&rec).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create wallet record"})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": rec})
 }
 
+// UpdateWallet updates mutable metadata (name, status) on a wallet record.
 func (h *MasterWalletHandler) UpdateWallet(c *gin.Context) {
-	walletID := c.Param("id")
-	if walletID == "" {
-		c.JSON(400, gin.H{"error": "wallet_id required"})
-		return
-	}
-
-	var req struct {
-		Name   string `json:"name"`
-		Status string `json:"status"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(200, gin.H{
-		"success": true,
-		"message": "wallet updated",
-	})
-}
-
-func (h *MasterWalletHandler) DeleteWallet(c *gin.Context) {
-	walletID := c.Param("id")
-	if walletID == "" {
-		c.JSON(400, gin.H{"error": "wallet_id required"})
-		return
-	}
-
-	c.JSON(200, gin.H{
-		"success": true,
-		"message": "wallet deleted",
-	})
-}
-
-func (h *MasterWalletHandler) GetBalance(c *gin.Context) {
-	walletID := c.Param("id")
-	if walletID == "" {
-		c.JSON(400, gin.H{"error": "wallet_id required"})
-		return
-	}
-
-	wallet := MasterWallet{
-		ID:       uuid.MustParse(walletID),
-		Name:     "Hot Wallet Main",
-		Address:  "0x742d35Cc6634C0532925a3b844Bc9e7595f6eB2E",
-		Chain:    "Ethereum",
-		Balance:  1500000.0,
-		Currency: "USDT",
-		Status:   "active",
-		Type:     "hot",
-	}
-
-	c.JSON(200, gin.H{
-		"success": true,
-		"data": gin.H{
-			"balance":    wallet.Balance,
-			"currency":   wallet.Currency,
-			"updated_at": time.Now(),
-		},
-	})
-}
-
-func (h *MasterWalletHandler) GetTransactions(c *gin.Context) {
-	walletID := c.Param("id")
-	if walletID == "" {
-		c.JSON(400, gin.H{"error": "wallet_id required"})
-		return
-	}
-
-	walletUUID, err := uuid.Parse(walletID)
+	walletID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid wallet_id"})
 		return
 	}
+	var req struct {
+		Name   string `json:"name"`
+		Status string `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	updates := map[string]interface{}{}
+	if req.Name != "" {
+		updates["name"] = req.Name
+	}
+	if req.Status != "" {
+		updates["status"] = req.Status
+	}
+	if len(updates) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no updatable fields supplied"})
+		return
+	}
+	res := h.db.Model(&MasterWalletRecord{}).Where("id = ?", walletID).Updates(updates)
+	if res.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update wallet"})
+		return
+	}
+	if res.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "wallet not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "wallet updated"})
+}
 
+// DeleteWallet removes a wallet governance record.
+func (h *MasterWalletHandler) DeleteWallet(c *gin.Context) {
+	walletID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid wallet_id"})
+		return
+	}
+	res := h.db.Delete(&MasterWalletRecord{}, "id = ?", walletID)
+	if res.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete wallet"})
+		return
+	}
+	if res.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "wallet not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "wallet deleted"})
+}
+
+// GetBalance returns the recorded balance of one wallet record.
+func (h *MasterWalletHandler) GetBalance(c *gin.Context) {
+	walletID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid wallet_id"})
+		return
+	}
+	var rec MasterWalletRecord
+	if err := h.db.First(&rec, "id = ?", walletID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "wallet not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"balance":    rec.Balance,
+			"currency":   rec.Currency,
+			"updated_at": rec.UpdatedAt,
+		},
+	})
+}
+
+// GetTransactions lists master-wallet movement records. wallet_id is optional:
+// when omitted (the registered /master-wallet/transactions route has no :id
+// param) all records are returned, newest first.
+func (h *MasterWalletHandler) GetTransactions(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	if page < 1 {
 		page = 1
@@ -282,8 +248,17 @@ func (h *MasterWalletHandler) GetTransactions(c *gin.Context) {
 	}
 	offset := (page - 1) * pageSize
 
+	query := h.db.Model(&MasterWalletTransaction{})
+	if walletID := c.Param("id"); walletID != "" {
+		walletUUID, err := uuid.Parse(walletID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid wallet_id"})
+			return
+		}
+		query = query.Where("wallet_id = ?", walletUUID)
+	}
+
 	var total int64
-	query := h.db.Model(&MasterWalletTransaction{}).Where("wallet_id = ?", walletUUID)
 	query.Count(&total)
 
 	var records []MasterWalletTransaction
@@ -292,161 +267,116 @@ func (h *MasterWalletHandler) GetTransactions(c *gin.Context) {
 		return
 	}
 
-	c.JSON(200, gin.H{
-		"success":      true,
-		"data":         records,
-		"total":        total,
-		"page":         page,
-		"page_size":    pageSize,
-		"total_pages":  (total + int64(pageSize) - 1) / int64(pageSize),
+	c.JSON(http.StatusOK, gin.H{
+		"success":     true,
+		"data":        records,
+		"total":       total,
+		"page":        page,
+		"page_size":   pageSize,
+		"total_pages": (total + int64(pageSize) - 1) / int64(pageSize),
 	})
 }
 
+// Transfer is fail-closed: admin panels never move crypto. Fund movement is
+// the wallet owner's action via the canonical wallet backend only. The admin
+// surface is strictly governance/read-only for master wallets.
 func (h *MasterWalletHandler) Transfer(c *gin.Context) {
-	walletID := c.Param("id")
-	if walletID == "" {
-		c.JSON(400, gin.H{"error": "wallet_id required"})
-		return
-	}
-
-	var req struct {
-		ToAddress string  `json:"to_address" binding:"required"`
-		Amount    float64 `json:"amount" binding:"required"`
-		Currency  string  `json:"currency"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
-		return
-	}
-
-	tx := WalletTransaction{
-		ID:            uuid.New(),
-		WalletID:      uuid.MustParse(walletID),
-		TxHash:        "", // not broadcast via RPC; real hash requires on-chain broadcast
-		FromAddress:   "0x742d35Cc6634C0532925a3b844Bc9e7595f6eB2E",
-		ToAddress:     req.ToAddress,
-		Amount:        req.Amount,
-		Currency:      req.Currency,
-		Status:        "pending",
-		Confirmations: 0,
-		CreatedAt:     time.Now(),
-	}
-
-	c.JSON(201, gin.H{
-		"success": true,
-		"data":    tx,
+	c.JSON(http.StatusForbidden, gin.H{
+		"error": "admin fund transfer is prohibited; crypto asset movement is performed only by the wallet owner via the canonical wallet backend",
 	})
 }
 
+// RefreshBalance re-reads the persisted record (the balance is written by the
+// settlement/indexing pipeline, not computed here).
 func (h *MasterWalletHandler) RefreshBalance(c *gin.Context) {
-	walletID := c.Param("id")
-	if walletID == "" {
-		c.JSON(400, gin.H{"error": "wallet_id required"})
-		return
-	}
-
-	c.JSON(200, gin.H{
-		"success": true,
-		"data": gin.H{
-			"balance":    1500000.0,
-			"currency":   "USDT",
-			"updated_at": time.Now(),
-		},
-	})
+	h.GetBalance(c)
 }
 
+// GetStats aggregates real counts and balances from the master_wallets table.
 func (h *MasterWalletHandler) GetStats(c *gin.Context) {
-	stats := WalletStats{
-		TotalWallets: 5,
-		HotWallets:   2,
-		ColdWallets:  2,
-		WarmWallets:  1,
-		TotalBalance: 15000000.0,
+	var stats WalletStats
+	var total int64
+	h.db.Model(&MasterWalletRecord{}).Count(&total)
+	stats.TotalWallets = int(total)
+
+	countByType := func(t string) int {
+		var n int64
+		h.db.Model(&MasterWalletRecord{}).Where("type = ?", t).Count(&n)
+		return int(n)
+	}
+	stats.HotWallets = countByType("hot")
+	stats.ColdWallets = countByType("cold")
+	stats.WarmWallets = countByType("warm")
+
+	var sum *float64
+	h.db.Model(&MasterWalletRecord{}).Select("SUM(balance)").Scan(&sum)
+	if sum != nil {
+		stats.TotalBalance = *sum
 	}
 
-	c.JSON(200, gin.H{
-		"success": true,
-		"data":    stats,
-	})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": stats})
 }
 
+// GetByChain filters wallet records by chain.
 func (h *MasterWalletHandler) GetByChain(c *gin.Context) {
 	chain := c.Param("chain")
 	if chain == "" {
-		c.JSON(400, gin.H{"error": "chain required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "chain required"})
 		return
 	}
-
-	wallets := []MasterWallet{
-		{
-			ID:       uuid.New(),
-			Name:     "Hot Wallet Main",
-			Address:  "0x742d35Cc6634C0532925a3b844Bc9e7595f6eB2E",
-			Chain:    chain,
-			Balance:  1500000.0,
-			Currency: "USDT",
-			Status:   "active",
-			Type:     "hot",
-		},
+	var records []MasterWalletRecord
+	if err := h.db.Where("chain = ?", chain).Order("created_at DESC").Find(&records).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch wallets"})
+		return
 	}
-
-	c.JSON(200, gin.H{
-		"success": true,
-		"data":    wallets,
-	})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": records})
 }
 
+// GetByType filters wallet records by custody type (hot/cold/warm).
 func (h *MasterWalletHandler) GetByType(c *gin.Context) {
 	walletType := c.Param("type")
 	if walletType == "" {
-		c.JSON(400, gin.H{"error": "type required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "type required"})
 		return
 	}
-
-	wallets := []MasterWallet{
-		{
-			ID:       uuid.New(),
-			Name:     "Hot Wallet Main",
-			Address:  "0x742d35Cc6634C0532925a3b844Bc9e7595f6eB2E",
-			Chain:    "Ethereum",
-			Balance:  1500000.0,
-			Currency: "USDT",
-			Status:   "active",
-			Type:     walletType,
-		},
+	var records []MasterWalletRecord
+	if err := h.db.Where("type = ?", walletType).Order("created_at DESC").Find(&records).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch wallets"})
+		return
 	}
-
-	c.JSON(200, gin.H{
-		"success": true,
-		"data":    wallets,
-	})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": records})
 }
 
+// FreezeWallet marks a wallet record frozen (governance flag, no fund action).
 func (h *MasterWalletHandler) FreezeWallet(c *gin.Context) {
-	walletID := c.Param("id")
-	if walletID == "" {
-		c.JSON(400, gin.H{"error": "wallet_id required"})
-		return
-	}
-
-	c.JSON(200, gin.H{
-		"success": true,
-		"message": "wallet frozen",
-	})
+	h.setWalletFrozen(c, true)
 }
 
+// UnfreezeWallet clears the frozen governance flag.
 func (h *MasterWalletHandler) UnfreezeWallet(c *gin.Context) {
-	walletID := c.Param("id")
-	if walletID == "" {
-		c.JSON(400, gin.H{"error": "wallet_id required"})
+	h.setWalletFrozen(c, false)
+}
+
+func (h *MasterWalletHandler) setWalletFrozen(c *gin.Context, frozen bool) {
+	walletID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid wallet_id"})
 		return
 	}
-
-	c.JSON(200, gin.H{
-		"success": true,
-		"message": "wallet unfrozen",
-	})
+	status := "active"
+	if frozen {
+		status = "frozen"
+	}
+	res := h.db.Model(&MasterWalletRecord{}).Where("id = ?", walletID).Update("status", status)
+	if res.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update wallet status"})
+		return
+	}
+	if res.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "wallet not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "status": status})
 }
 
 func getCurrencyForChain(chain string) string {
@@ -498,12 +428,12 @@ func (h *MasterWalletHandler) GetBalances(c *gin.Context) {
 		grandTotal += t.Total
 	}
 
-	c.JSON(200, gin.H{
-		"success":       true,
-		"data":          wallets,
-		"totals":        totals,
-		"grand_total":   grandTotal,
-		"wallet_count":  len(wallets),
-		"updated_at":    time.Now(),
+	c.JSON(http.StatusOK, gin.H{
+		"success":      true,
+		"data":         wallets,
+		"totals":       totals,
+		"grand_total":  grandTotal,
+		"wallet_count": len(wallets),
+		"updated_at":   time.Now(),
 	})
 }

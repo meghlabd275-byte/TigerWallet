@@ -4156,3 +4156,58 @@ get audit report, get token compliance status. 40 routes total.
 ### Cross-platform client parity (verified)
 - bots/: web, rust, cpp, android, ios, desktop, extensions (ALL 7)
 - project_party/: web, rust, cpp, android, ios, desktop, extensions (ALL 7)
+
+- /ramp/* proxy: wallet_api main.go mounts deFiProxy("/ramp", FIAT_RAMP_URL:8451).
+- /cards/* proxy: wallet_api mounts cardsProxy (defi_proxy.go) which strips the
+  client :id path segment (clients call /cards/<id>/balance, upstream serves
+  /api/v1/card/balance). card_service gained GET /api/v1/card/rates (real CoinGecko,
+  Redis-cached 60s, fail-closed; COINGECKO_API_KEY env). NOTE: Gin panics on
+  static+param sibling routes -- do NOT add /api/v1/card/:id/* variants.
+- /dapp/* + /walletconnect/* proxy: deFiProxyRewrite strips the prefix so
+  /api/v1/dapp/pairings -> :8083 /pairings, /api/v1/walletconnect/ws/<topic> ->
+  :8083 /ws/<topic> (WS upgrade passes through httputil.ReverseProxy).
+- docker-compose: 8 new services (lending 8009, copy-trading 8006, governance
+  8454, prediction 8455, p2p 8475, fiat-ramp 8451, card 8457, dapp-browser 8083)
+  each with a golang:1.23-alpine multi-stage Dockerfile; wallet-api now gets all
+  *_SERVICE_URL envs; init.sql gained the walletconnect DB.
+- POST /api/v1/gas/estimate (gas_estimate.go NEW): real eth_estimateGas via
+  ethclient.EstimateGas against the chain's RPC; fail-closed 502/503, never a
+  fabricated limit. 6/7 clients already called this route (it 404'd); the 7th
+  (production/react estimateGas) was fabricating gasPrice*21000 client-side and
+  is now wired to the real endpoint.
+- Rust client /api/v1 normalization bug (was ~40 broken fetchers): rust
+  url() helper did not prepend /api/v1, so every bare-path fetcher 404'd. Fixed
+  at the choke point (url() prepends /api/v1 unless path already has it or is
+  /health). p2p_listings() repointed /p2p/listings -> /p2p/adverts (real route).
+- 3 new fetchers on all 7 clients: getTokenRegistry (?chain_id),
+  getTerminalKline (symbol, days=1), getTerminalTicker (symbol) -- consume the
+  previously-orphaned /api/v1/tokens/registry + /api/v1/terminal/* endpoints.
+- WalletConnect WS live-event helpers on all 7 clients: real WebSocket to
+  ws(s)://<host>/api/v1/dapp/ws/<topic> (JSON-RPC frames {id,method,params}).
+  web/production-react: services/walletconnect.ts; desktop: services/walletconnect.js;
+  extension: src/walletconnect.js (loaded in popup.html, window.WalletConnectSocket);
+  android: util/WalletConnectSocket.kt (OkHttp newWebSocket); ios:
+  App/WalletConnectSocket.swift (URLSessionWebSocketTask); rust: src/wc.rs
+  WalletConnectSocket (tokio-tungstenite 0.20 with connect+rustls features;
+  Message::Frame(_) arm required). Rust also gained UserWalletClient
+  .connect_walletconnect(topic) convenience + 2 URL-derivation tests.
+- Extension popup UI: added DeFi tab (9-section hub: lending markets/positions,
+  perpetual, margin, DAO, prediction, launchpool, token-sales, copy-trading) and
+  dApps tab (wc: pairing URI create + pending-pairing approve/reject + active
+  session list). Theme-aware via existing CSS vars; switchTab extended.
+- Build gate (all green): go build+vet+test wallet_api (ok 3.0s) + card_service;
+  cargo check + test user_wallet/rust (8/8); tsc --noEmit web + production/react
+  (0 errors, npm install --legacy-peer-deps for CRA web / plain for react);
+  node --check desktop+extension; string-aware brace-balance android+ios
+  (Kotlin supports NESTED block comments -- the checker must track comment depth
+  or KDoc with inline /* */ false-positives).
+
+
+## Session 2026-08-21: G1-G6 gap closure (MasterWallet parity + admin/flutter + feature-flag sweep)
+
+- G1/G1b: MasterWallet backend UPDATE endpoints + all 9 client update methods done, builds green.
+- G2: admin/flutter API layer retargeted from wrong /admin/* (:8443) paths to real admin/go (:9093) routes in lib/core/network/dio_client.dart; generic domain CRUD added to ApiClient/DioClient (getDomainItems/setDomainStatus/approveDomainItem/rejectDomainItem/deleteDomainItem). New generic features/domains/domain_screen.dart renders all 14 admin domains (futures, options, copy-trading, convert, onramp, offramp, p2p-clients, partners, rewards, marketing, bots, bots-clients, project-teams, liquidity-sources) with status/approve/reject/delete actions + dark/light toggle. New features/settings/presentation/screens/more_screen.dart hub lists every feature surface; routes /crypto-cards, /margin-trading, /feature-flags, /billing, /p2p-merchants, /liquidity, /master-wallet, /more, and /domain/:domain wired in lib/app.dart. admin/go master_wallet_handler.go rewritten to real GORM DB-backed handlers (fake data removed, Transfer fail-closed); MasterWalletRecord + MasterWalletTransaction added to AutoMigrate. admin/go builds clean. Dart files balance-checked (no Dart SDK in env).
+- G3: Feature-flag enforcement added to 11 DeFi services. Gin+redis/v9 services (perpetual, prediction, governance, card) + nft_service (NFTService receiver) + fiat_ramp (go-redis/redis/v8 import - DIFFERENT path!) get feature_flags.go with enforceFeature(c, GatedFeature) (fail-closed, 423 Locked, 5s cache); gates inserted at top of all write handlers. Stdlib net/http services WITHOUT a go-redis dep (red_packets, airdrop, earn, coupon, p2p_trading) get a dependency-free feature_flags.go with a minimal RESP GET client (redisGet) reading tigerwallet:feature:<name> from REDIS_ADDR; gates on create/claim/deposit/withdraw/validate/order/advert writes. All 11 go build + go vet exit 0.
+- G4: production/react UI parity already complete (18 routes + 17 sidebar links); tsc exit 0.
+- G6: super_admin/web per-fetcher feature-flag UI already exists (Governance.tsx FeatureFlagsTab via licenseApi). Fixed dead route in api.ts: /api/v1/features -> /api/v1/admin/features. tsc exit 0.
+- Build verification (ALL GREEN): go build+vet for master_wallet/backend (tests pass), wallet_api, admin/go, super_admin/go, all 11 gated DeFi services. master_wallet/web + super_admin/web + production/react tsc exit 0. master_wallet/rust + user_wallet/rust cargo check exit 0. master_wallet/desktop C++ cmake+make exit 0. All 5 master_wallet extensions node --check OK. Kotlin/Swift/Dart brace-balanced via string-aware checker.

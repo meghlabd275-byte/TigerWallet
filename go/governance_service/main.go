@@ -196,6 +196,9 @@ type createProposalReq struct {
 }
 
 func (s *service) createProposal(c *gin.Context) {
+	if !s.enforceFeature(c, GatedFeature) {
+		return
+	}
 	var req createProposalReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -291,6 +294,9 @@ type castVoteReq struct {
 }
 
 func (s *service) castVote(c *gin.Context) {
+	if !s.enforceFeature(c, GatedFeature) {
+		return
+	}
 	var req castVoteReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -382,6 +388,9 @@ type delegateReq struct {
 }
 
 func (s *service) delegate(c *gin.Context) {
+	if !s.enforceFeature(c, GatedFeature) {
+		return
+	}
 	var req delegateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -427,6 +436,9 @@ func (s *service) votingPower(c *gin.Context) {
 // the status to "succeeded" if for-votes exceed against-votes, otherwise
 // "defeated". It refuses to execute still-active or already-finalized proposals.
 func (s *service) executeProposal(c *gin.Context) {
+	if !s.enforceFeature(c, GatedFeature) {
+		return
+	}
 	id := c.Param("id")
 	var status, forV, against string
 	var endTime time.Time

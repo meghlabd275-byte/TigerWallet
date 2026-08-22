@@ -652,6 +652,21 @@ class MasterWalletService {
     return jsonDecode(r.body) as Map<String, dynamic>;
   }
 
+  /// PUT /master-wallet/:id/fees/:fid — partial update body
+  Future<Map<String, dynamic>> updateFee(
+    String walletId,
+    String feeId,
+    Map<String, dynamic> updates,
+  ) async {
+    final r = await http.put(
+      Uri.parse('$_apiV1/master-wallet/$walletId/fees/$feeId'),
+      headers: _headers,
+      body: jsonEncode(updates),
+    );
+    if (r.statusCode != 200) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
   /// DELETE /master-wallet/:id/fees/:fid
   Future<bool> deleteFee(String walletId, String feeId) async {
     final r = await http.delete(
@@ -689,6 +704,21 @@ class MasterWalletService {
       body: jsonEncode(rule),
     );
     if (r.statusCode != 200 && r.statusCode != 201) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// PUT /master-wallet/:id/auto-sign/:rid — partial update body
+  Future<Map<String, dynamic>> updateAutoSignRule(
+    String walletId,
+    String ruleId,
+    Map<String, dynamic> updates,
+  ) async {
+    final r = await http.put(
+      Uri.parse('$_apiV1/master-wallet/$walletId/auto-sign/$ruleId'),
+      headers: _headers,
+      body: jsonEncode(updates),
+    );
+    if (r.statusCode != 200) throw _error(r);
     return jsonDecode(r.body) as Map<String, dynamic>;
   }
 
@@ -805,6 +835,21 @@ class MasterWalletService {
   }
 
   /// DELETE /master-wallet/:id/users/:uid
+  /// PUT /master-wallet/:id/users/:uid — partial update body (name/role/is_active/password)
+  Future<Map<String, dynamic>> updateUser(
+    String walletId,
+    String userId,
+    Map<String, dynamic> updates,
+  ) async {
+    final r = await http.put(
+      Uri.parse('$_apiV1/master-wallet/$walletId/users/$userId'),
+      headers: _headers,
+      body: jsonEncode(updates),
+    );
+    if (r.statusCode != 200) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
   Future<bool> deleteUser(String walletId, String userId) async {
     final r = await http.delete(
       Uri.parse('$_apiV1/master-wallet/$walletId/users/$userId'),
@@ -843,6 +888,21 @@ class MasterWalletService {
     return jsonDecode(r.body) as Map<String, dynamic>;
   }
 
+  /// PUT /master-wallet/:id/notifications/:nid — partial update body (title/message/priority/is_read)
+  Future<Map<String, dynamic>> updateNotification(
+    String walletId,
+    String notificationId,
+    Map<String, dynamic> updates,
+  ) async {
+    final r = await http.put(
+      Uri.parse('$_apiV1/master-wallet/$walletId/notifications/$notificationId'),
+      headers: _headers,
+      body: jsonEncode(updates),
+    );
+    if (r.statusCode != 200) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
   // ==================== Webhooks ====================
 
   /// GET /master-wallet/:id/webhooks → {webhooks: [...]}
@@ -868,6 +928,21 @@ class MasterWalletService {
       body: jsonEncode(webhook),
     );
     if (r.statusCode != 200 && r.statusCode != 201) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// PUT /master-wallet/:id/webhooks/:wid — partial update body (name/url/events/is_active/retry_count)
+  Future<Map<String, dynamic>> updateWebhook(
+    String walletId,
+    String webhookId,
+    Map<String, dynamic> updates,
+  ) async {
+    final r = await http.put(
+      Uri.parse('$_apiV1/master-wallet/$walletId/webhooks/$webhookId'),
+      headers: _headers,
+      body: jsonEncode(updates),
+    );
+    if (r.statusCode != 200) throw _error(r);
     return jsonDecode(r.body) as Map<String, dynamic>;
   }
 

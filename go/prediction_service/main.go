@@ -207,6 +207,9 @@ type createMarketReq struct {
 }
 
 func (s *service) createMarket(c *gin.Context) {
+	if !s.enforceFeature(c, GatedFeature) {
+		return
+	}
 	var req createMarketReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -292,6 +295,9 @@ type betReq struct {
 }
 
 func (s *service) placeBet(c *gin.Context) {
+	if !s.enforceFeature(c, GatedFeature) {
+		return
+	}
 	id := c.Param("id")
 	var req betReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -409,6 +415,9 @@ type resolveReq struct {
 }
 
 func (s *service) resolveMarket(c *gin.Context) {
+	if !s.enforceFeature(c, GatedFeature) {
+		return
+	}
 	id := c.Param("id")
 	var req resolveReq
 	if err := c.ShouldBindJSON(&req); err != nil {

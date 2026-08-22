@@ -1008,6 +1008,9 @@ std::string MasterWalletService::getFees(const WalletID& walletId) {
 std::string MasterWalletService::createFee(const WalletID& walletId, const std::string& body) {
     return api::backendPost("/api/v1/master-wallet/" + walletId + "/fees", body);
 }
+std::string MasterWalletService::updateFee(const WalletID& walletId, const std::string& feeId, const std::string& body) {
+    return api::backendPut("/api/v1/master-wallet/" + walletId + "/fees/" + feeId, body);
+}
 bool MasterWalletService::deleteFee(const WalletID& walletId, const std::string& feeId) {
     try { api::backendDelete("/api/v1/master-wallet/" + walletId + "/fees/" + feeId); return true; }
     catch (const api::APIException&) { return false; }
@@ -1019,6 +1022,9 @@ std::string MasterWalletService::getAutoSignRules(const WalletID& walletId) {
 std::string MasterWalletService::createAutoSignRule(const WalletID& walletId, const std::string& body) {
     return api::backendPost("/api/v1/master-wallet/" + walletId + "/auto-sign", body);
 }
+std::string MasterWalletService::updateAutoSignRule(const WalletID& walletId, const std::string& ruleId, const std::string& body) {
+    return api::backendPut("/api/v1/master-wallet/" + walletId + "/auto-sign/" + ruleId, body);
+}
 bool MasterWalletService::deleteAutoSignRule(const WalletID& walletId, const std::string& ruleId) {
     try { api::backendDelete("/api/v1/master-wallet/" + walletId + "/auto-sign/" + ruleId); return true; }
     catch (const api::APIException&) { return false; }
@@ -1029,6 +1035,9 @@ std::string MasterWalletService::getUsers(const WalletID& walletId) {
 }
 std::string MasterWalletService::createUser(const WalletID& walletId, const std::string& body) {
     return api::backendPost("/api/v1/master-wallet/" + walletId + "/users", body);
+}
+std::string MasterWalletService::updateUser(const WalletID& walletId, const std::string& userId, const std::string& body) {
+    return api::backendPut("/api/v1/master-wallet/" + walletId + "/users/" + userId, body);
 }
 bool MasterWalletService::deleteUser(const WalletID& walletId, const std::string& userId) {
     try { api::backendDelete("/api/v1/master-wallet/" + walletId + "/users/" + userId); return true; }
@@ -1058,11 +1067,17 @@ std::string MasterWalletService::getNotifications(const WalletID& walletId) {
 std::string MasterWalletService::createNotification(const WalletID& walletId, const std::string& body) {
     return api::backendPost("/api/v1/master-wallet/" + walletId + "/notifications", body);
 }
+std::string MasterWalletService::updateNotification(const WalletID& walletId, const std::string& notificationId, const std::string& body) {
+    return api::backendPut("/api/v1/master-wallet/" + walletId + "/notifications/" + notificationId, body);
+}
 std::string MasterWalletService::getWebhooks(const WalletID& walletId) {
     return api::backendGet("/api/v1/master-wallet/" + walletId + "/webhooks");
 }
 std::string MasterWalletService::createWebhook(const WalletID& walletId, const std::string& body) {
     return api::backendPost("/api/v1/master-wallet/" + walletId + "/webhooks", body);
+}
+std::string MasterWalletService::updateWebhook(const WalletID& walletId, const std::string& webhookId, const std::string& body) {
+    return api::backendPut("/api/v1/master-wallet/" + walletId + "/webhooks/" + webhookId, body);
 }
 bool MasterWalletService::deleteWebhook(const WalletID& walletId, const std::string& webhookId) {
     try { api::backendDelete("/api/v1/master-wallet/" + walletId + "/webhooks/" + webhookId); return true; }

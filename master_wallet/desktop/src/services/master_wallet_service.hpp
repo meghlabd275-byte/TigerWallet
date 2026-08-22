@@ -261,14 +261,17 @@ public:
 
     std::string getFees(const WalletID& walletId);
     std::string createFee(const WalletID& walletId, const std::string& body);
+    std::string updateFee(const WalletID& walletId, const std::string& feeId, const std::string& body);
     bool deleteFee(const WalletID& walletId, const std::string& feeId);
 
     std::string getAutoSignRules(const WalletID& walletId);
     std::string createAutoSignRule(const WalletID& walletId, const std::string& body);
+    std::string updateAutoSignRule(const WalletID& walletId, const std::string& ruleId, const std::string& body);
     bool deleteAutoSignRule(const WalletID& walletId, const std::string& ruleId);
 
     std::string getUsers(const WalletID& walletId);
     std::string createUser(const WalletID& walletId, const std::string& body);
+    std::string updateUser(const WalletID& walletId, const std::string& userId, const std::string& body);
     bool deleteUser(const WalletID& walletId, const std::string& userId);
 
     // Audit + Analytics
@@ -280,8 +283,10 @@ public:
     // Notifications + Webhooks
     std::string getNotifications(const WalletID& walletId);
     std::string createNotification(const WalletID& walletId, const std::string& body);
+    std::string updateNotification(const WalletID& walletId, const std::string& notificationId, const std::string& body);
     std::string getWebhooks(const WalletID& walletId);
     std::string createWebhook(const WalletID& walletId, const std::string& body);
+    std::string updateWebhook(const WalletID& walletId, const std::string& webhookId, const std::string& body);
     bool deleteWebhook(const WalletID& walletId, const std::string& webhookId);
 
     // Treasury (real balances via backend)

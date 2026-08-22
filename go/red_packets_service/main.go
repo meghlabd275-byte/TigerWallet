@@ -55,6 +55,10 @@ func main() {
 
 	// POST /api/v1/red-packets/create — create a red packet
 	mux.HandleFunc("/api/v1/red-packets/create", func(w http.ResponseWriter, r *http.Request) {
+		if !enforceFeature(w, GatedFeature) {
+			return
+		}
+
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return
@@ -99,6 +103,10 @@ func main() {
 
 	// POST /api/v1/red-packets/claim — claim a red packet
 	mux.HandleFunc("/api/v1/red-packets/claim", func(w http.ResponseWriter, r *http.Request) {
+		if !enforceFeature(w, GatedFeature) {
+			return
+		}
+
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return
