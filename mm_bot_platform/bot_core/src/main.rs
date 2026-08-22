@@ -1,579 +1,466 @@
-// TigerSwap MM Bot - Market Making Bot Platform
-// Ultra-low latency Rust implementation for competitive DEX trading
+//! TigerSwap bot_core - REAL axum HTTP dispatch server (port 8472).
+//!
+//! bot_api (the Go control plane) calls `http://localhost:8472/dispatch/*`.
+//! Secrets arrive already-decrypted in the dispatch request body; this binary
+//! only signs and broadcasts real orders. Fail-closed: if PostgreSQL is
+//! unavailable, the health/stats endpoints return 503.
 
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::net::SocketAddr;
+use std::sync::Arc;
 
-// ============================================================================
-// TOP 20 DEXs (by trading volume & speed - matching competitors like Uniswap, Hyperliquid)
-// ============================================================================
-pub const TOP_DEXS: [&str; 20] = [
-    "uniswap_v4",        // Ethereum - Highest volume
-    "uniswap_v3",        // Ethereum, Arbitrum, etc.
-    "pancakeswap_v4",    // BNB Chain
-    "curve_finance",     // Stablecoin specialist
-    "sushiswap",         // Multi-chain
-    "hyperliquid",       // Perpetuals leader
-    "dydx_v4",           // Perpetuals orderbook
-    "jupiter",           // Solana aggregator
-    "raydium",           // Solana AMM
-    "orca",              // Solana concentrated liquidity
-    "balancer_v2",       // Weighted pools
-    "1inch",             // Aggregator
-    "odos",              // Aggregator
-    "maverick",          // Movement AMM
-    "velodrome_v3",      // Optimism
-    "aerodrome",         // Base
-    "odos_aggregator",   // Multi-chain
-    "woofi",             // Cross-chain
-    "spirit_swap",       // Fantom
-    "spookyswap",        // Fantom
-];
+use axum::{
+    extract::State,
+    http::StatusCode,
+    response::{IntoResponse, Json, Response},
+    routing::{get, post},
+    Router,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use tokio::sync::{watch, RwLock};
+use tokio::task::JoinHandle;
+use tracing_subscriber::EnvFilter;
 
-// ============================================================================
-// TOP 200 CEXs (major centralized exchanges)
-pub const TOP_CEXS: [&str; 176] = [
-    "binance", "coinbase", "kraken", "okx", "bybit", "kucoin", "htx", "gateio",
-    "bitget", "mexc", "binance_us", "crypto_com", "lbank", "bitmart", "bitex",
-    "cryptology", "luno", "valr", "bit2c", "koinearth", "bitso", "btcmex",
-    "coinex", "whitebit", "hotcoin", "bitrue", "pex", "digifinex", "bitbank",
-    "fmfw", "bitforex", "oceanex", "zbg", "tidex", "btcbox", "btcturk",
-    "coinw", "indodax", "probit", "bitinka", "latoken", "btcusd", "vinex",
-    "exmo", "coinbene", "stex", "crex24", "safe_coin", "dsx", "localbitcoins",
-    "acx", "aax", "aofg", "bequant", "bigONE", "bitci", "bithumb", "bitmas",
-    "bitmax", "bitopro", "bitsdaq", "bkex", "blofin", "cex", "chainex",
-    "chipmixer", "clf", "cmc", "cob", "coinall", "coineal", "coinfield",
-    "coingi", "coinlist", "coinmate", "coinmetro", "coinsbit", "cointiger",
-    "cryptobadge", "cryptocom", "cryptoforce", "depo", "deribit", "digifinex",
-    "drift", "dxcm", "emirex", "enclave", "eternal", "excambior", "exio",
-    "fasset", "finexbox", "ftx", "gbg", "gemini", "hbtc", "hks", "hkcex",
-    "huobi", "idex", "ifiny", "incor", "iohk", "joy", "joytec", "kanga",
-    "kann", "kersa", "kiyoung", "koyn", "kraken", "kuna", "latoken",
-    "liquid", "luno", "lykke", "mercado", "mercadobitcoin", "mx", "nak",
-    "nbc", "nexo", "nocks", "novadax", "nt", "oceanswap", "okcoin",
-    "okex", "otc", "paymium", "pex", "pika", "poloniex", "qtrade",
-    "quadency", "ripio", "safecoin", "satoshi", "simplex", "simex",
-    "slex", "southxchange", "stacker", "stream", "sistemkoin", "taiko",
-    "terr", "texit", "theRock", "tidex", "timex", "tokerextract", "trezor",
-    "trubit", "txbit", "ubt", "uncjy", "uphold", "usd", "utorg",
-    "valr", "vcc", "virgo", "wazirx", "whirl", "wings", "xbtpro",
-    "xt", "yobit", "za", "zbg", "zb", "zeon", "zipmex", "zonda",
-];
+use tigerswap_bot_core::cex::{CexClient, CexCredentials, CexExchange, CexOrderRequest};
+use tigerswap_bot_core::dex::{self, DexSwapRequest};
+use tigerswap_bot_core::store::{PgPool, TradeRecord};
+use tigerswap_bot_core::strategies::{
+    ArbitrageRunner, MarketMakerRunner, SniperRunner,
+};
 
-// ============================================================================
-// Bot Types (All strategies)
-// ============================================================================
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum BotType {
-    MarketMaker,      // Standard MM - earn spread
-    Arbitrage,        // Cross-exchange/arbitrage
-    Sniper,           // Fast trade execution
-    Liquidity,        // Provide liquidity
-    FrontRun,         // Anticipate large trades (MEV)
-    MevBot,           // MEV extraction
-    Sandwich,        // Sandwich attacks
-    FlashLoan,       // Flash loan strategies
-    CrossChain,       // Bridge arbitrage
-    PerpHedge,        // Perpetual hedging
+const PORT: u16 = 8472;
+
+/// A running strategy task: its JoinHandle plus the run-flag sender used to
+/// pause/resume/stop it.
+struct BotHandle {
+    task: JoinHandle<()>,
+    run_tx: watch::Sender<bool>,
+    kind: BotKind,
 }
 
-impl BotType {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            BotType::MarketMaker => "Market Maker",
-            BotType::Arbitrage => "Arbitrage",
-            BotType::Sniper => "Sniper",
-            BotType::Liquidity => "Liquidity Provider",
-            BotType::FrontRun => "Front Run",
-            BotType::MevBot => "MEV Bot",
-            BotType::Sandwich => "Sandwich",
-            BotType::FlashLoan => "Flash Loan",
-            BotType::CrossChain => "Cross-Chain",
-            BotType::PerpHedge => "Perpetual Hedge",
+#[derive(Debug, Clone, Copy)]
+enum BotKind {
+    MarketMaker,
+    Arbitrage,
+    Sniper,
+}
+
+#[derive(Default)]
+struct AppState {
+    pool: Option<Arc<PgPool>>,
+    bots: RwLock<HashMap<String, BotHandle>>,
+}
+
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .init();
+
+    let pg_config = std::env::var("BOT_CORE_PG").unwrap_or_else(|_| {
+        "host=localhost port=5432 user=tigerwallet password=tigerwallet dbname=tigerwallet".to_string()
+    });
+    let pool = PgPool::new(pg_config);
+    let pool_state = match pool.ping().await {
+        Ok(()) => {
+            tracing::info!("postgres connected");
+            Some(pool)
         }
-    }
-}
-
-// ============================================================================
-// Fee Configuration
-// ============================================================================
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FeeConfig {
-    pub monthly_fee_usdt: f64,
-    pub per_exchange_fee_usdt: f64,
-    pub description: String,
-}
-
-impl FeeConfig {
-    pub fn new(bot_type: BotType) -> Self {
-        match bot_type {
-            BotType::MarketMaker => FeeConfig {
-                monthly_fee_usdt: 5000.0,
-                per_exchange_fee_usdt: 1000.0,
-                description: "Market Maker Bot - $5000/month + $1000 per exchange".to_string(),
-            },
-            _ => FeeConfig {
-                monthly_fee_usdt: 2500.0,
-                per_exchange_fee_usdt: 500.0,
-                description: "Standard Bot - $2500/month + $500 per exchange".to_string(),
-            }
+        Err(e) => {
+            tracing::error!("postgres unavailable (fail-closed on /health and /stats): {e}");
+            None
         }
-    }
-    
-    pub fn total_fee(&self, num_exchanges: u32) -> f64 {
-        self.monthly_fee_usdt + (self.per_exchange_fee_usdt * num_exchanges as f64)
+    };
+
+    let state = Arc::new(AppState {
+        pool: pool_state,
+        bots: RwLock::new(HashMap::new()),
+    });
+
+    let app = Router::new()
+        .route("/health", get(health))
+        .route("/stats", get(stats))
+        .route("/dispatch/start", post(dispatch_start))
+        .route("/dispatch/stop", post(dispatch_stop))
+        .route("/dispatch/pause", post(dispatch_pause))
+        .route("/dispatch/resume", post(dispatch_resume))
+        .route("/dispatch/execute", post(dispatch_execute))
+        .with_state(state);
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], PORT));
+    tracing::info!("bot_core dispatch server listening on {addr}");
+    let listener = tokio::net::TcpListener::bind(addr).await.expect("bind 8472");
+    axum::serve(listener, app).await.expect("server run");
+}
+
+// ---------------- Handlers ----------------
+
+async fn health(State(state): State<Arc<AppState>>) -> Response {
+    match &state.pool {
+        Some(pool) => match pool.ping().await {
+            Ok(()) => (StatusCode::OK, Json(json!({"status":"ok","db":"up"}))).into_response(),
+            Err(e) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({"status":"degraded","db":"down","error":e.to_string()})),
+            )
+                .into_response(),
+        },
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"status":"degraded","db":"unconfigured"})),
+        )
+            .into_response(),
     }
 }
 
-// ============================================================================
-// Strategy Configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StrategyConfig {
-    pub id: String,
-    pub name: String,
-    pub bot_type: BotType,
-    pub pair: (String, String),
-    pub chain_id: u32,
-    pub dexes: Vec<String>,
-    pub cexes: Vec<String>,
-    pub enabled: bool,
-    pub base_spread_bps: u32,
-    pub spread_adjustment: f64,
-    pub max_spread_bps: u32,
-    pub min_spread_bps: u32,
-    pub inventory_balance_limit: f64,
-    pub inventory_skew_threshold: f64,
-    pub order_size_min: f64,
-    pub order_size_max: f64,
-    pub max_orders_per_side: u32,
-    pub max_position_usd: f64,
-    pub latency_target_us: u64,  // Target latency in microseconds
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Order {
-    pub id: String,
-    pub side: String,
-    pub pair: (String, String),
-    pub price: f64,
-    pub size: f64,
-    pub status: String,
-    pub exchange: String,
-    pub created_at: i64,
-    pub execution_latency_us: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BotStats {
-    pub total_pnl: f64,
-    pub daily_pnl: f64,
-    pub total_volume: f64,
-    pub filled_orders: u64,
-    pub open_orders: u32,
-    pub avg_execution_latency_us: u64,
-    pub total_saved_fees: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BotInstance {
-    pub id: String,
-    pub bot_type: BotType,
-    pub strategies: Vec<StrategyConfig>,
-    pub connected_dexes: Vec<String>,
-    pub connected_cexes: Vec<String>,
-    pub is_running: bool,
-    pub stats: BotStats,
-    pub orders: HashMap<String, Order>,
-    pub fee_config: FeeConfig,
-}
-
-impl BotInstance {
-    pub fn new(id: String, bot_type: BotType) -> Self {
-        let fee_config = FeeConfig::new(bot_type);
-        Self {
-            id,
-            bot_type,
-            strategies: Vec::new(),
-            connected_dexes: Vec::new(),
-            connected_cexes: Vec::new(),
-            is_running: false,
-            stats: BotStats {
-                total_pnl: 0.0,
-                daily_pnl: 0.0,
-                total_volume: 0.0,
-                filled_orders: 0,
-                open_orders: 0,
-                avg_execution_latency_us: 0,
-                total_saved_fees: 0.0,
-            },
-            orders: HashMap::new(),
-            fee_config,
+async fn stats(State(state): State<Arc<AppState>>) -> Response {
+    let pool = match &state.pool {
+        Some(p) => p,
+        None => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({"error":"postgres unavailable"})),
+            )
+                .into_response()
         }
-    }
-
-    pub fn add_strategy(&mut self, config: StrategyConfig) {
-        self.strategies.push(config);
-    }
-
-    pub fn connect_dex(&mut self, dex: String) {
-        if !self.connected_dexes.contains(&dex) {
-            self.connected_dexes.push(dex);
-        }
-    }
-
-    pub fn connect_cex(&mut self, cex: String) {
-        if !self.connected_cexes.contains(&cex) {
-            self.connected_cexes.push(cex);
-        }
-    }
-
-    pub fn connect_all_top_dexs(&mut self) {
-        for dex in TOP_DEXS.iter() {
-            self.connect_dex(dex.to_string());
-        }
-    }
-
-    pub fn connect_all_top_cexes(&mut self) {
-        for cex in TOP_CEXS.iter() {
-            self.connect_cex(cex.to_string());
-        }
-    }
-
-    pub fn start(&mut self) {
-        self.is_running = true;
-    }
-
-    pub fn stop(&mut self) {
-        self.is_running = false;
-    }
-
-    pub fn calculate_spread(&self, strategy: &StrategyConfig, volatility: f64) -> f64 {
-        let base = strategy.base_spread_bps as f64 / 10000.0;
-        let adjusted = base + (volatility * strategy.spread_adjustment);
-        adjusted.max(strategy.min_spread_bps as f64 / 10000.0)
-               .min(strategy.max_spread_bps as f64 / 10000.0)
-    }
-
-    pub fn calculate_bid_price(&self, mid_price: f64, spread: f64) -> f64 {
-        mid_price * (1.0 - spread)
-    }
-
-    pub fn calculate_ask_price(&self, mid_price: f64, spread: f64) -> f64 {
-        mid_price * (1.0 + spread)
-    }
-
-    pub fn execute_order(&mut self, side: String, pair: (String, String), price: f64, size: f64, exchange: String) -> Order {
-        let start = SystemTime::now();
-        let timestamp = start.duration_since(UNIX_EPOCH).unwrap().as_millis() as i64;
-        
-        let order = Order {
-            id: format!("{}_{}_{}", self.id, timestamp, rand_id()),
-            side,
-            pair: pair.clone(),
-            price,
-            size,
-            status: "filled".to_string(),
-            exchange,
-            created_at: timestamp,
-            execution_latency_us: 0, // Will be calculated
-        };
-        
-        let elapsed = start.elapsed().unwrap().as_micros() as u64;
-        let mut final_order = order;
-        final_order.execution_latency_us = elapsed;
-        
-        self.stats.filled_orders += 1;
-        self.stats.total_volume += size * price;
-        
-        // Update average latency
-        let total = self.stats.avg_execution_latency_us * (self.stats.filled_orders - 1) + elapsed;
-        self.stats.avg_execution_latency_us = total / self.stats.filled_orders;
-        
-        self.orders.insert(final_order.id.clone(), final_order.clone());
-        final_order
+    };
+    match pool.stats().await {
+        Ok(s) => (StatusCode::OK, Json(serde_json::to_value(s).unwrap_or_default())).into_response(),
+        Err(e) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error":e.to_string()})),
+        )
+            .into_response(),
     }
 }
 
-fn rand_id() -> String {
-    use std::time::SystemTime;
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    format!("{:x}", now.subsec_nanos())
+// ---------------- Dispatch DTOs ----------------
+
+#[derive(Debug, Deserialize)]
+struct StartMarketMaker {
+    bot_id: String,
+    exchange: CexExchange,
+    #[serde(flatten)]
+    creds: CexCredentials,
+    base_url: Option<String>,
+    symbol: String,
+    order_size: f64,
+    spread_bps: f64,
+    poll_interval_ms: Option<u64>,
 }
 
-// ============================================================================
-// MM Bot Engine - Main orchestrator
-// ============================================================================
-pub struct MMBotEngine {
-    pub id: String,
-    pub bots: HashMap<String, Arc<RwLock<BotInstance>>>,
-    pub connected_dexes: HashMap<String, bool>,
-    pub connected_cexes: HashMap<String, bool>,
-    pub is_running: bool,
+#[derive(Debug, Deserialize)]
+struct StartArbitrage {
+    bot_id: String,
+    dex_req: DexSwapRequest,
+    exchange: CexExchange,
+    #[serde(flatten)]
+    creds: CexCredentials,
+    base_url: Option<String>,
+    symbol: String,
+    threshold_bps: f64,
+    poll_interval_ms: Option<u64>,
 }
 
-impl MMBotEngine {
-    pub fn new(id: String) -> Self {
-        Self {
-            id,
-            bots: HashMap::new(),
-            connected_dexes: HashMap::new(),
-            connected_cexes: HashMap::new(),
-            is_running: false,
-        }
-    }
-
-    pub fn create_bot(&mut self, id: String, bot_type: BotType) -> Arc<RwLock<BotInstance>> {
-        let bot = BotInstance::new(id.clone(), bot_type);
-        let bot_arc = Arc::new(RwLock::new(bot));
-        self.bots.insert(id.clone(), bot_arc.clone());
-        bot_arc
-    }
-
-    pub fn create_mm_bot(&mut self, id: String) -> Arc<RwLock<BotInstance>> {
-        self.create_bot(id, BotType::MarketMaker)
-    }
-
-    pub fn create_arbitrage_bot(&mut self, id: String) -> Arc<RwLock<BotInstance>> {
-        self.create_bot(id, BotType::Arbitrage)
-    }
-
-    pub fn create_sniper_bot(&mut self, id: String) -> Arc<RwLock<BotInstance>> {
-        self.create_bot(id, BotType::Sniper)
-    }
-
-    pub fn get_bot(&self, id: &str) -> Option<Arc<RwLock<BotInstance>>> {
-        self.bots.get(id).cloned()
-    }
-
-    pub fn start_all(&mut self) {
-        self.is_running = true;
-        for (_, bot) in &self.bots {
-            if let Ok(mut b) = bot.write() {
-                b.start();
-            }
-        }
-    }
-
-    pub fn stop_all(&mut self) {
-        self.is_running = false;
-        for (_, bot) in &self.bots {
-            if let Ok(mut b) = bot.write() {
-                b.stop();
-            }
-        }
-    }
-
-    pub fn get_total_stats(&self) -> BotStats {
-        let mut total = BotStats {
-            total_pnl: 0.0,
-            daily_pnl: 0.0,
-            total_volume: 0.0,
-            filled_orders: 0,
-            open_orders: 0,
-            avg_execution_latency_us: 0,
-            total_saved_fees: 0.0,
-        };
-
-        for (_, bot) in &self.bots {
-            if let Ok(b) = bot.read() {
-                total.total_pnl += b.stats.total_pnl;
-                total.daily_pnl += b.stats.daily_pnl;
-                total.total_volume += b.stats.total_volume;
-                total.filled_orders += b.stats.filled_orders;
-                total.open_orders += b.stats.open_orders;
-                total.total_saved_fees += b.stats.total_saved_fees;
-            }
-        }
-
-        if total.filled_orders > 0 {
-            let mut latency_sum: u64 = 0;
-            let mut count = 0;
-            for (_, bot) in &self.bots {
-                if let Ok(b) = bot.read() {
-                    latency_sum += b.stats.avg_execution_latency_us * b.stats.filled_orders;
-                    count += b.stats.filled_orders;
-                }
-            }
-            if count > 0 {
-                total.avg_execution_latency_us = latency_sum / count;
-            }
-        }
-
-        total
-    }
+#[derive(Debug, Deserialize)]
+struct StartSniper {
+    bot_id: String,
+    dex_req: DexSwapRequest,
+    mempool_url: String,
+    poll_interval_ms: Option<u64>,
+    min_target_amount: Option<u64>,
 }
 
-// ============================================================================
-// Latency Performance Tracker
-// ============================================================================
-#[derive(Debug, Clone)]
-pub struct LatencyTracker {
-    pub dex_latencies: HashMap<String, Vec<u64>>,
-    pub cex_latencies: HashMap<String, Vec<u64>>,
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+enum StartReq {
+    MarketMaker(StartMarketMaker),
+    Arbitrage(StartArbitrage),
+    Sniper(StartSniper),
 }
 
-impl LatencyTracker {
-    pub fn new() -> Self {
-        Self {
-            dex_latencies: HashMap::new(),
-            cex_latencies: HashMap::new(),
-        }
-    }
-
-    pub fn record_dex_latency(&mut self, dex: &str, latency_us: u64) {
-        self.dex_latencies
-            .entry(dex.to_string())
-            .or_insert_with(Vec::new)
-            .push(latency_us);
-    }
-
-    pub fn record_cex_latency(&mut self, cex: &str, latency_us: u64) {
-        self.cex_latencies
-            .entry(cex.to_string())
-            .or_insert_with(Vec::new)
-            .push(latency_us);
-    }
-
-    pub fn get_avg_latency(&self, name: &str, is_dex: bool) -> u64 {
-        let latencies = if is_dex {
-            self.dex_latencies.get(name)
-        } else {
-            self.cex_latencies.get(name)
-        };
-
-        if let Some(lats) = latencies {
-            if lats.is_empty() {
-                return 0;
-            }
-            let sum: u64 = lats.iter().sum();
-            sum / lats.len() as u64
-        } else {
-            0
-        }
-    }
+#[derive(Debug, Deserialize)]
+struct BotIdReq {
+    bot_id: String,
 }
 
-fn main() {
-    println!("===========================================");
-    println!("  TigerSwap MM Bot Platform v1.0");
-    println!("  Ultra-low latency trading infrastructure");
-    println!("===========================================");
-    println!();
-    
-    let mut engine = MMBotEngine::new("main_engine".to_string());
-    
-    // Create Market Maker Bot
-    println!("[+] Creating Market Maker Bot...");
-    let mm_bot = engine.create_mm_bot("mm_bot_001".to_string());
-    
-    // Configure MM bot with full features
-    {
-        let mut bot = mm_bot.write().unwrap();
-        bot.connect_all_top_dexs();
-        bot.connect_all_top_cexes();
-        
-        // Add multiple trading strategies
-        let strategies = vec![
-            ("ETH/USDT", "uniswap_v4", 1),
-            ("BTC/USDT", "pancakeswap_v4", 56),
-            ("SOL/USDT", "jupiter", 101),
-            ("ETH/USDT", "hyperliquid", 42161),
-        ];
-        
-        for (pair_str, dex, chain_id) in strategies {
-            let pair: Vec<&str> = pair_str.split('/').collect();
-            let strategy = StrategyConfig {
-                id: format!("{}_{}", dex, pair_str.replace("/", "_")),
-                name: format!("{} on {}", pair_str, dex),
-                bot_type: BotType::MarketMaker,
-                pair: (pair[0].to_string(), pair[1].to_string()),
-                chain_id,
-                dexes: vec![dex.to_string()],
-                cexes: vec![],
-                enabled: true,
-                base_spread_bps: 50,
-                spread_adjustment: 0.5,
-                max_spread_bps: 200,
-                min_spread_bps: 10,
-                inventory_balance_limit: 50000.0,
-                inventory_skew_threshold: 0.3,
-                order_size_min: 100.0,
-                order_size_max: 10000.0,
-                max_orders_per_side: 5,
-                max_position_usd: 100000.0,
-                latency_target_us: 1000, // 1ms target
+#[derive(Debug, Serialize)]
+struct DispatchAck {
+    ok: bool,
+    bot_id: String,
+    action: &'static str,
+}
+
+async fn dispatch_start(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<StartReq>,
+) -> Response {
+    let pool = match &state.pool {
+        Some(p) => Arc::clone(p),
+        None => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({"error":"postgres unavailable"})),
+            )
+                .into_response()
+        }
+    };
+
+    let (bot_id, kind, task, run_tx) = match req {
+        StartReq::MarketMaker(m) => {
+            let (run_tx, run_rx) = watch::channel(true);
+            let runner = MarketMakerRunner {
+                bot_id: m.bot_id.clone(),
+                exchange: m.exchange,
+                creds: m.creds,
+                base_url: m.base_url,
+                symbol: m.symbol,
+                order_size: m.order_size,
+                spread_bps: m.spread_bps,
+                poll_interval_ms: m.poll_interval_ms.unwrap_or(2000),
             };
-            bot.add_strategy(strategy);
+            let p = Arc::clone(&pool);
+            let task = tokio::spawn(async move { runner.run(run_rx, p).await });
+            (m.bot_id, BotKind::MarketMaker, task, run_tx)
         }
-        
-        bot.start();
-        println!("  -> Connected to {} DEXs", bot.connected_dexes.len());
-        println!("  -> Connected to {} CEXs", bot.connected_cexes.len());
-        println!("  -> Monthly Fee: ${:.0}", bot.fee_config.monthly_fee_usdt);
-        println!("  -> Per Exchange Fee: ${:.0}", bot.fee_config.per_exchange_fee_usdt);
+        StartReq::Arbitrage(a) => {
+            let (run_tx, run_rx) = watch::channel(true);
+            let runner = ArbitrageRunner {
+                bot_id: a.bot_id.clone(),
+                dex_req: a.dex_req,
+                exchange: a.exchange,
+                creds: a.creds,
+                base_url: a.base_url,
+                symbol: a.symbol,
+                threshold_bps: a.threshold_bps,
+                poll_interval_ms: a.poll_interval_ms.unwrap_or(5000),
+            };
+            let p = Arc::clone(&pool);
+            let task = tokio::spawn(async move { runner.run(run_rx, p).await });
+            (a.bot_id, BotKind::Arbitrage, task, run_tx)
+        }
+        StartReq::Sniper(s) => {
+            let (run_tx, run_rx) = watch::channel(true);
+            let runner = SniperRunner {
+                bot_id: s.bot_id.clone(),
+                dex_req: s.dex_req,
+                mempool_url: s.mempool_url,
+                poll_interval_ms: s.poll_interval_ms.unwrap_or(1000),
+                min_target_amount: s.min_target_amount.unwrap_or(0),
+            };
+            let p = Arc::clone(&pool);
+            let task = tokio::spawn(async move { runner.run(run_rx, p).await });
+            (s.bot_id, BotKind::Sniper, task, run_tx)
+        }
+    };
+
+    let mut bots = state.bots.write().await;
+    if let Some(prev) = bots.insert(
+        bot_id.clone(),
+        BotHandle {
+            task,
+            run_tx,
+            kind,
+        },
+    ) {
+        // Stop the previous instance: drop the sender to end the loop.
+        let _ = prev.run_tx.send(false);
+        prev.task.abort();
     }
-    
-    // Create Arbitrage Bot
-    println!("\n[+] Creating Arbitrage Bot...");
-    let arb_bot = engine.create_arbitrage_bot("arb_bot_001".to_string());
-    {
-        let mut bot = arb_bot.write().unwrap();
-        bot.connect_all_top_dexs();
-        bot.connect_all_top_cexes();
-        bot.start();
-        println!("  -> Connected to {} DEXs", bot.connected_dexes.len());
-        println!("  -> Connected to {} CEXs", bot.connected_cexes.len());
-    }
-    
-    // Create Sniper Bot
-    println!("\n[+] Creating Sniper Bot...");
-    let sniper_bot = engine.create_sniper_bot("sniper_bot_001".to_string());
-    {
-        let mut bot = sniper_bot.write().unwrap();
-        bot.connect_all_top_dexs();
-        bot.connect_all_top_cexes();
-        bot.start();
-        println!("  -> Low latency target: <500μs");
-    }
-    
-    engine.start_all();
-    
-    // Print summary
-    println!("\n===========================================");
-    println!("  Engine Summary");
-    println!("===========================================");
-    println!("  Total Bots: {}", engine.bots.len());
-    println!("  Supported DEXs: {}", TOP_DEXS.len());
-    println!("  Supported CEXs: {}", TOP_CEXS.len());
-    println!("  Bot Types: {:?}", BotType::iter_all());
-    
-    let stats = engine.get_total_stats();
-    println!("  Total Volume: ${:.2}", stats.total_volume);
-    println!("  Total Orders: {}", stats.filled_orders);
-    println!("  Avg Latency: {}μs", stats.avg_execution_latency_us);
-    println!("===========================================");
-    println!("  FEE SCHEDULE:");
-    println!("  - Market Maker Bot: $5000/month");
-    println!("  - Per Exchange Fee: $1000/month");
-    println!("  - Other Bots: $2500/month + $500/exchange");
-    println!("===========================================");
+    (StatusCode::OK, Json(DispatchAck { ok: true, bot_id, action: "start" })).into_response()
 }
 
-impl BotType {
-    pub fn iter_all() -> Vec<&'static str> {
-        vec![
-            "Market Maker",
-            "Arbitrage",
-            "Sniper",
-            "Liquidity",
-            "Front Run",
-            "MEV Bot",
-            "Sandwich",
-            "Flash Loan",
-            "Cross-Chain",
-            "Perpetual Hedge",
-        ]
+async fn dispatch_stop(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<BotIdReq>,
+) -> Response {
+    let removed = state.bots.write().await.remove(&req.bot_id);
+    if let Some(h) = removed {
+        let _ = h.run_tx.send(false);
+        h.task.abort();
+        (
+            StatusCode::OK,
+            Json(DispatchAck { ok: true, bot_id: req.bot_id, action: "stop" }),
+        )
+            .into_response()
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error":"bot not found","bot_id":req.bot_id})),
+        )
+            .into_response()
+    }
+}
+
+async fn dispatch_pause(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<BotIdReq>,
+) -> Response {
+    let bots = state.bots.read().await;
+    if let Some(h) = bots.get(&req.bot_id) {
+        let _ = h.run_tx.send(false);
+        (
+            StatusCode::OK,
+            Json(DispatchAck { ok: true, bot_id: req.bot_id, action: "pause" }),
+        )
+            .into_response()
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error":"bot not found","bot_id":req.bot_id})),
+        )
+            .into_response()
+    }
+}
+
+async fn dispatch_resume(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<BotIdReq>,
+) -> Response {
+    let bots = state.bots.read().await;
+    if let Some(h) = bots.get(&req.bot_id) {
+        let _ = h.run_tx.send(true);
+        (
+            StatusCode::OK,
+            Json(DispatchAck { ok: true, bot_id: req.bot_id, action: "resume" }),
+        )
+            .into_response()
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error":"bot not found","bot_id":req.bot_id})),
+        )
+            .into_response()
+    }
+}
+
+// ---------------- Single trade execution ----------------
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "venue", rename_all = "lowercase")]
+enum ExecuteReq {
+    Dex(DexSwapRequest),
+    Cex {
+        exchange: CexExchange,
+        #[serde(flatten)]
+        creds: CexCredentials,
+        base_url: Option<String>,
+        #[serde(flatten)]
+        order: CexOrderFields,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+struct CexOrderFields {
+    symbol: String,
+    side: String,
+    order_type: String,
+    #[serde(default)]
+    price: Option<f64>,
+    quantity: f64,
+}
+
+async fn dispatch_execute(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<ExecuteReq>,
+) -> Response {
+    let pool = match &state.pool {
+        Some(p) => Arc::clone(p),
+        None => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({"error":"postgres unavailable"})),
+            )
+                .into_response()
+        }
+    };
+
+    let start = std::time::Instant::now();
+    match req {
+        ExecuteReq::Dex(d) => match dex::execute_swap(&d).await {
+            Ok(r) => {
+                let rec = TradeRecord {
+                    bot_id: format!("dex:{}", d.router),
+                    tx_hash: r.tx_hash.clone(),
+                    amount_in: d.amount_in,
+                    amount_out: r.amount_out,
+                    fee: r.gas_used as f64 * r.gas_price as f64 / 1e18,
+                    profit: r.amount_out - d.amount_in,
+                    success: r.success,
+                    timestamp: chrono::Utc::now(),
+                };
+                if let Err(e) = pool.insert_trade(&rec).await {
+                    tracing::error!("insert_trade: {e}");
+                }
+                (
+                    StatusCode::OK,
+                    Json(json!({
+                        "ok": true,
+                        "venue": "dex",
+                        "tx_hash": r.tx_hash,
+                        "amount_out": r.amount_out,
+                        "gas_used": r.gas_used,
+                        "block_number": r.block_number,
+                        "latency_us": start.elapsed().as_micros(),
+                    })),
+                )
+                    .into_response()
+            }
+            Err(e) => (
+                StatusCode::BAD_GATEWAY,
+                Json(json!({"ok": false, "venue": "dex", "error": e.to_string()})),
+            )
+                .into_response(),
+        },
+        ExecuteReq::Cex {
+            exchange,
+            creds,
+            base_url,
+            order,
+        } => {
+            let client = CexClient::new(exchange, creds, base_url);
+            let req = CexOrderRequest {
+                base_url: None,
+                symbol: order.symbol,
+                side: order.side,
+                order_type: order.order_type,
+                price: order.price,
+                quantity: order.quantity,
+            };
+            match client.place_order(&req).await {
+                Ok(r) => {
+                    let rec = TradeRecord {
+                        bot_id: format!("cex:{exchange:?}"),
+                        tx_hash: r.order_id.clone(),
+                        amount_in: req.quantity,
+                        amount_out: req.price.unwrap_or(0.0) * req.quantity,
+                        fee: 0.0,
+                        profit: 0.0,
+                        success: true,
+                        timestamp: chrono::Utc::now(),
+                    };
+                    if let Err(e) = pool.insert_trade(&rec).await {
+                        tracing::error!("insert_trade: {e}");
+                    }
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "ok": true,
+                            "venue": "cex",
+                            "order_id": r.order_id,
+                            "status": r.status,
+                            "latency_us": start.elapsed().as_micros(),
+                        })),
+                    )
+                        .into_response()
+                }
+                Err(e) => (
+                    StatusCode::BAD_GATEWAY,
+                    Json(json!({"ok": false, "venue": "cex", "error": e.to_string()})),
+                )
+                    .into_response(),
+            }
+        }
     }
 }

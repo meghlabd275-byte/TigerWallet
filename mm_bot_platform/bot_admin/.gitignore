@@ -1,0 +1,5 @@
+# Forge vendored dependencies (installed via `forge install`)
+lib/
+# Forge build artifacts
+out/
+cache/

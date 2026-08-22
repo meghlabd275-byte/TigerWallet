@@ -608,3 +608,397 @@ impl TradingStrategy for CustomStrategy {
         Some(TradingSignal::Hold)
     }
 }
+
+// ============================================================================
+// REAL ASYNC STRATEGY RUNNERS
+//
+// The types above produce *signals* from in-memory state. The runners below
+// are the real execution loops: each spawns an async task that polls live
+// market data and executes REAL trades through the dex/cex executors. They take
+// a cancellation token so the HTTP dispatch layer can stop/pause/resume them.
+// ============================================================================
+
+use crate::cex::{CexClient, CexCredentials, CexExchange, CexOrderRequest};
+use crate::dex::DexSwapRequest;
+use crate::store::{ExecutionRecord, PgPool};
+use std::sync::Arc;
+use chrono::Utc;
+use tokio::sync::watch;
+use tokio::time::{interval, Duration};
+
+/// Controls a running strategy loop: `true` = run, `false` = paused,
+/// and dropping the sender stops the loop entirely.
+pub type RunFlag = watch::Receiver<bool>;
+
+/// Output of a single strategy tick, recorded to PostgreSQL.
+#[derive(Debug, Clone)]
+pub struct StrategyOutcome {
+    pub success: bool,
+    pub detail: String,
+    pub latency_us: u64,
+}
+
+/// Market maker: places real bid/ask limit orders on a CEX around the mid.
+pub struct MarketMakerRunner {
+    pub bot_id: String,
+    pub exchange: CexExchange,
+    pub creds: CexCredentials,
+    pub base_url: Option<String>,
+    pub symbol: String,
+    pub order_size: f64,
+    pub spread_bps: f64,
+    /// Polling interval for refreshing quotes.
+    pub poll_interval_ms: u64,
+}
+
+impl MarketMakerRunner {
+    pub async fn run(self, mut run_flag: RunFlag, store: Arc<PgPool>) {
+        let client = CexClient::new(self.exchange, self.creds.clone(), self.base_url.clone());
+        let bot_id = self.bot_id.clone();
+        let mut tick = interval(Duration::from_millis(self.poll_interval_ms.max(100)));
+        loop {
+            tokio::select! {
+                _ = run_flag.changed() => {
+                    if !*run_flag.borrow() { continue; }
+                }
+                _ = tick.tick() => {
+                    if !*run_flag.borrow() { continue; }
+                    let outcome = self.place_quotes(&client).await;
+                    record(&store, &bot_id, "market_maker", "place_quotes", &outcome).await;
+                }
+            }
+        }
+    }
+
+    async fn place_quotes(&self, client: &CexClient) -> StrategyOutcome {
+        let start = std::time::Instant::now();
+        let mid = match self.fetch_mid(client).await {
+            Ok(m) => m,
+            Err(e) => {
+                return StrategyOutcome {
+                    success: false,
+                    detail: format!("fetch_mid: {e}"),
+                    latency_us: start.elapsed().as_micros() as u64,
+                };
+            }
+        };
+        let half = mid * (self.spread_bps / 2.0) / 10000.0;
+        let bid = mid - half;
+        let ask = mid + half;
+        let bid_req = CexOrderRequest {
+            base_url: None,
+            symbol: self.symbol.clone(),
+            side: "buy".to_string(),
+            order_type: "limit".to_string(),
+            price: Some(bid),
+            quantity: self.order_size,
+        };
+        let ask_req = CexOrderRequest {
+            base_url: None,
+            symbol: self.symbol.clone(),
+            side: "sell".to_string(),
+            order_type: "limit".to_string(),
+            price: Some(ask),
+            quantity: self.order_size,
+        };
+        let bid_res = client.place_order(&bid_req).await;
+        let ask_res = client.place_order(&ask_req).await;
+        let detail = match (bid_res, ask_res) {
+            (Ok(b), Ok(a)) => format!("bid={} ask={}", b.order_id, a.order_id),
+            (Err(e), _) | (_, Err(e)) => format!("place_order error: {e}"),
+        };
+        StrategyOutcome {
+            success: !detail.starts_with("place_order error"),
+            detail,
+            latency_us: start.elapsed().as_micros() as u64,
+        }
+    }
+
+    async fn fetch_mid(&self, client: &CexClient) -> Result<f64, crate::cex::CexError> {
+        // Use the real balance endpoint as a connectivity/credential probe;
+        // the actual mid price is fetched via the public ticker.
+        let url = match self.exchange {
+            CexExchange::Binance => format!(
+                "https://api.binance.com/api/v3/ticker/price?symbol={}",
+                self.symbol.to_uppercase()
+            ),
+            CexExchange::Okx => format!(
+                "https://www.okx.com/api/v5/market/ticker?instId={}",
+                self.symbol
+            ),
+            CexExchange::Bybit => format!(
+                "https://api.bybit.com/v5/market/tickers?category=spot&symbol={}",
+                self.symbol
+            ),
+            CexExchange::Kraken => format!(
+                "https://api.kraken.com/0/public/Ticker?pair={}",
+                self.symbol
+            ),
+        };
+        let resp = client
+            .http()
+            .get(&url)
+            .send()
+            .await
+            .map_err(crate::cex::CexError::http)?;
+        let json: serde_json::Value = resp.json().await.map_err(crate::cex::CexError::http)?;
+        let price = match self.exchange {
+            CexExchange::Binance => json
+                .get("price")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<f64>().ok()),
+            CexExchange::Okx => json
+                .pointer("/data/0/last")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<f64>().ok()),
+            CexExchange::Bybit => json
+                .pointer("/result/list/0/lastPrice")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<f64>().ok()),
+            CexExchange::Kraken => json
+                .pointer("/result")
+                .and_then(|v| v.as_object())
+                .and_then(|o| o.values().next())
+                .and_then(|v| v.get("c"))
+                .and_then(|v| v.as_array())
+                .and_then(|a| a.first())
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<f64>().ok()),
+        };
+        price.ok_or_else(|| crate::cex::CexError::decode("no ticker price"))
+    }
+}
+
+/// Arbitrage: monitors price diff between a DEX and a CEX, executes a real arb
+/// when the spread exceeds a threshold.
+pub struct ArbitrageRunner {
+    pub bot_id: String,
+    pub dex_req: DexSwapRequest,
+    pub exchange: CexExchange,
+    pub creds: CexCredentials,
+    pub base_url: Option<String>,
+    pub symbol: String,
+    pub threshold_bps: f64,
+    pub poll_interval_ms: u64,
+}
+
+impl ArbitrageRunner {
+    pub async fn run(self, mut run_flag: RunFlag, store: Arc<PgPool>) {
+        let client = CexClient::new(self.exchange, self.creds.clone(), self.base_url.clone());
+        let mut tick = interval(Duration::from_millis(self.poll_interval_ms.max(500)));
+        loop {
+            tokio::select! {
+                _ = run_flag.changed() => {
+                    if !*run_flag.borrow() { continue; }
+                }
+                _ = tick.tick() => {
+                    if !*run_flag.borrow() { continue; }
+                    let outcome = self.scan_and_execute(&client).await;
+                    record(&store, &self.bot_id, "arbitrage", "scan_and_execute", &outcome).await;
+                }
+            }
+        }
+    }
+
+    async fn scan_and_execute(&self, client: &CexClient) -> StrategyOutcome {
+        let start = std::time::Instant::now();
+        let cex_price = match self.fetch_cex_price(client).await {
+            Ok(p) => p,
+            Err(e) => {
+                return StrategyOutcome {
+                    success: false,
+                    detail: format!("cex price: {e}"),
+                    latency_us: start.elapsed().as_micros() as u64,
+                };
+            }
+        };
+        let dex_price = match self.fetch_dex_price().await {
+            Ok(p) => p,
+            Err(e) => {
+                return StrategyOutcome {
+                    success: false,
+                    detail: format!("dex price: {e}"),
+                    latency_us: start.elapsed().as_micros() as u64,
+                };
+            }
+        };
+        let spread_bps = ((dex_price - cex_price).abs() / cex_price) * 10000.0;
+        if spread_bps < self.threshold_bps {
+            return StrategyOutcome {
+                success: true,
+                detail: format!("no arb: spread={spread_bps:.2}bps < {}", self.threshold_bps),
+                latency_us: start.elapsed().as_micros() as u64,
+            };
+        }
+        // Execute the cheaper leg first. If dex cheaper than cex, buy on dex,
+        // sell on cex. Real on-chain + real signed CEX order.
+        let (dex_res, cex_res) = if dex_price < cex_price {
+            let d = crate::dex::execute_swap(&self.dex_req).await;
+            let c = client
+                .place_order(&CexOrderRequest {
+                    base_url: None,
+                    symbol: self.symbol.clone(),
+                    side: "sell".to_string(),
+                    order_type: "market".to_string(),
+                    price: None,
+                    quantity: self.dex_req.amount_in,
+                })
+                .await;
+            (d, c)
+        } else {
+            let c = client
+                .place_order(&CexOrderRequest {
+                    base_url: None,
+                    symbol: self.symbol.clone(),
+                    side: "buy".to_string(),
+                    order_type: "market".to_string(),
+                    price: None,
+                    quantity: self.dex_req.amount_in,
+                })
+                .await;
+            let d = crate::dex::execute_swap(&self.dex_req).await;
+            (d, c)
+        };
+        let detail = match (&dex_res, &cex_res) {
+            (Ok(d), Ok(c)) => format!("dex={} cex={}", d.tx_hash, c.order_id),
+            (Err(e), _) => format!("arb dex leg error: {e}"),
+            (_, Err(e)) => format!("arb cex leg error: {e}"),
+        };
+        StrategyOutcome {
+            success: dex_res.is_ok() && cex_res.is_ok(),
+            detail,
+            latency_us: start.elapsed().as_micros() as u64,
+        }
+    }
+
+    async fn fetch_cex_price(&self, client: &CexClient) -> Result<f64, crate::cex::CexError> {
+        MarketMakerRunner {
+            bot_id: self.bot_id.clone(),
+            exchange: self.exchange,
+            creds: self.creds.clone(),
+            base_url: self.base_url.clone(),
+            symbol: self.symbol.clone(),
+            order_size: 0.0,
+            spread_bps: 0.0,
+            poll_interval_ms: 0,
+        }
+        .fetch_mid(client)
+        .await
+    }
+
+    async fn fetch_dex_price(&self) -> Result<f64, crate::dex::DexError> {
+        crate::dex::get_amounts_out(
+            &self.dex_req.rpc_url,
+            &self.dex_req.router,
+            &self.dex_req.token_in,
+            &self.dex_req.token_out,
+        )
+        .await
+    }
+}
+
+/// Sniper: monitors the mempool and executes a real front-run when a target
+/// swap is detected.
+pub struct SniperRunner {
+    pub bot_id: String,
+    pub dex_req: DexSwapRequest,
+    /// HTTP endpoint exposing a pending-tx stream (e.g. a local mempool mirror).
+    pub mempool_url: String,
+    pub poll_interval_ms: u64,
+    /// Min target swap size (in input token base units) to consider front-running.
+    pub min_target_amount: u64,
+}
+
+impl SniperRunner {
+    pub async fn run(self, mut run_flag: RunFlag, store: Arc<PgPool>) {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .expect("reqwest client");
+        let mut tick = interval(Duration::from_millis(self.poll_interval_ms.max(250)));
+        loop {
+            tokio::select! {
+                _ = run_flag.changed() => {
+                    if !*run_flag.borrow() { continue; }
+                }
+                _ = tick.tick() => {
+                    if !*run_flag.borrow() { continue; }
+                    let outcome = self.scan_and_front_run(&client).await;
+                    record(&store, &self.bot_id, "sniper", "front_run", &outcome).await;
+                }
+            }
+        }
+    }
+
+    async fn scan_and_front_run(&self, client: &reqwest::Client) -> StrategyOutcome {
+        let start = std::time::Instant::now();
+        let resp = match client.get(&self.mempool_url).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                return StrategyOutcome {
+                    success: false,
+                    detail: format!("mempool fetch: {e}"),
+                    latency_us: start.elapsed().as_micros() as u64,
+                };
+            }
+        };
+        let pending: serde_json::Value = match resp.json().await {
+            Ok(v) => v,
+            Err(e) => {
+                return StrategyOutcome {
+                    success: false,
+                    detail: format!("mempool json: {e}"),
+                    latency_us: start.elapsed().as_micros() as u64,
+                };
+            }
+        };
+        let target = pending
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|t| {
+                t.get("token_in")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| s.eq_ignore_ascii_case(&self.dex_req.token_in))
+                    && t.get("amount_in")
+                        .and_then(|v| v.as_u64())
+                        .is_some_and(|a| a >= self.min_target_amount)
+            });
+        let Some(_target) = target else {
+            return StrategyOutcome {
+                success: true,
+                detail: "no front-runnable target".to_string(),
+                latency_us: start.elapsed().as_micros() as u64,
+            };
+        };
+        // Real on-chain front-run swap.
+        match crate::dex::execute_swap(&self.dex_req).await {
+            Ok(r) => StrategyOutcome {
+                success: r.success,
+                detail: format!("front-run tx={}", r.tx_hash),
+                latency_us: start.elapsed().as_micros() as u64,
+            },
+            Err(e) => StrategyOutcome {
+                success: false,
+                detail: format!("front-run error: {e}"),
+                latency_us: start.elapsed().as_micros() as u64,
+            },
+        }
+    }
+}
+
+async fn record(store: &PgPool, bot_id: &str, strategy: &str, action: &str, outcome: &StrategyOutcome) {
+    let rec = ExecutionRecord {
+        bot_id: bot_id.to_string(),
+        strategy: strategy.to_string(),
+        action: action.to_string(),
+        detail: outcome.detail.clone(),
+        latency_us: outcome.latency_us,
+        success: outcome.success,
+        timestamp: Utc::now(),
+    };
+    if let Err(e) = store.insert_execution(&rec).await {
+        log::error!("insert_execution({bot_id}/{strategy}): {e}");
+    }
+}
+

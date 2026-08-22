@@ -234,6 +234,108 @@ class ApiService {
   listApiKeys() {
     return this.request<{ api_keys: ApiKey[]; count: number }>('/api-keys');
   }
+
+  deleteApiKey(id: string) {
+    return this.request<{ id: string }>('/keys/' + id, { method: 'DELETE' });
+  }
+
+  // ---- Bot status (distinct from start/stop/pause lifecycle) ----
+  setBotStatus(id: string, status: string) {
+    return this.request<Bot>(`/bots/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) });
+  }
+
+  // ---- Stats + users ----
+  getStats() {
+    return this.request<{ total_bots: number; running_bots: number; total_users: number; total_executions: number; bot_type_distribution: Record<string, number> }>('/stats');
+  }
+
+  getUsers() {
+    return this.request<{ users: any[]; count: number }>('/users');
+  }
+
+  getBotUser() {
+    return this.request<any>('/bots/me');
+  }
+
+  listBotUsers() {
+    return this.request<{ users: any[]; count: number }>('/bots/users');
+  }
+
+  createBotUser(data: { username: string; email: string; password: string; role?: string }) {
+    return this.request<any>('/bots/users', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  deleteUser(id: string) {
+    return this.request<{ id: string }>(`/bots/users/${id}`, { method: 'DELETE' });
+  }
+
+  setUserStatus(id: string, isActive: boolean) {
+    return this.request<any>(`/users/${id}/status`, { method: 'PUT', body: JSON.stringify({ is_active: isActive }) });
+  }
+
+  listBotTransactions() {
+    return this.request<{ transactions: any[]; count: number }>('/bots/transactions');
+  }
+
+  listBotInstances() {
+    return this.request<{ bots: Bot[]; count: number }>('/bots/instances');
+  }
+
+  createBotAlias(data: Partial<CreateBotInput>) {
+    return this.request<Bot>('/bots/create', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  getSubscription() {
+    return this.request<{ subscription: Subscription | null }>('/subscription');
+  }
+
+  logout() {
+    return this.request<{ message: string }>('/auth/logout', { method: 'POST' });
+  }
+
+  // ---- CEX connectors (AES-GCM at rest) ----
+  listCEX() {
+    return this.request<{ cex_connectors: any[]; count: number }>('/cex');
+  }
+
+  createCEX(data: { exchange: string; api_key: string; api_secret: string }) {
+    return this.request<any>('/cex', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  deleteCEX(id: string) {
+    return this.request<{ id: string }>(`/cex/${id}`, { method: 'DELETE' });
+  }
+
+  // ---- DEX connectors (AES-GCM at rest) ----
+  listDEX() {
+    return this.request<{ dex_connectors: any[]; count: number }>('/dex');
+  }
+
+  createDEX(data: { chain: string; rpc_url: string; wallet_seed: string }) {
+    return this.request<any>('/dex', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  deleteDEX(id: string) {
+    return this.request<{ id: string }>(`/dex/${id}`, { method: 'DELETE' });
+  }
+
+  // ---- Fee addresses ----
+  listFeeAddresses() {
+    return this.request<{ fee_addresses: any[]; count: number }>('/fee-addresses');
+  }
+
+  createFeeAddress(data: { chain: string; address: string; label: string }) {
+    return this.request<any>('/fee-addresses', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  deleteFeeAddress(id: string) {
+    return this.request<{ id: string }>(`/fee-addresses/${id}`, { method: 'DELETE' });
+  }
+
+  // ---- Fee config update ----
+  updateFees(data: Partial<CreateFeeConfigInput>) {
+    return this.request<FeeConfig>('/fees', { method: 'PUT', body: JSON.stringify(data) });
+  }
 }
 
 export const api = new ApiService();

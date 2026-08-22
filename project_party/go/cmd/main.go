@@ -5,19 +5,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func main() {
@@ -33,6 +37,13 @@ func main() {
 	// Initialize Redis cache
 	rdb := initRedis(cfg)
 
+	// Initialize on-chain launchpad (optional; fail-closed if unconfigured).
+	if err := initLaunchpadOnChain(); err != nil {
+		log.Printf("warning: on-chain launchpad disabled: %v (contributions will return 503)", err)
+	} else if launchpadOnChainEnabled() {
+		log.Printf("on-chain launchpad configured: contract=%s", launchpadOnChainSingleton.contract.Hex())
+	}
+
 	// Initialize Gin router
 	router := gin.Default()
 
@@ -47,80 +58,104 @@ func main() {
 	// API routes
 	api := router.Group("/api/v1")
 	{
-		// Discovery routes (frontend-facing)
+		// Discovery routes (public, frontend-facing)
 		api.GET("/coins", listCoinsHandler(db, rdb))
 		api.GET("/search", searchTokensHandler(db, rdb))
 		api.GET("/featured", getFeaturedHandler(db, rdb))
 		api.GET("/trending", getTrendingHandler(db, rdb))
 		api.GET("/market", getMarketHandler(db, rdb))
-		favorites := api.Group("/favorites")
-		{
-			favorites.GET("", listFavoritesHandler(db))
-			favorites.POST("", addFavoriteHandler(db))
-			favorites.DELETE("/:id", removeFavoriteHandler(db))
-		}
 
-		// Auth (lightweight JWT)
+		// Auth (public: register + login)
 		auth := api.Group("/auth")
 		{
-			auth.POST("/login", loginHandler(rdb))
+			auth.POST("/register", registerHandler(db))
+			auth.POST("/login", loginHandler(rdb, db))
 		}
 
-		// Token Management
+		// Favorites (authenticated users only)
+		favAuth := api.Group("/favorites", authMiddleware())
+		{
+			favAuth.GET("", listFavoritesHandler(db))
+			favAuth.POST("", addFavoriteHandler(db))
+			favAuth.DELETE("/:id", removeFavoriteHandler(db))
+		}
+
+		// Token Management — mutations require auth; approve/reject require admin.
 		tokens := api.Group("/tokens")
 		{
-			tokens.POST("", createTokenHandler(db))
-			tokens.GET("", listTokensHandler(db))
-			tokens.GET("/:id", getTokenHandler(db))
-			tokens.PUT("/:id", updateTokenHandler(db))
-			tokens.DELETE("/:id", deleteTokenHandler(db))
-			tokens.POST("/:id/submit", submitTokenHandler(db))
-			tokens.POST("/:id/approve", approveTokenHandler(db))
-			tokens.POST("/:id/reject", rejectTokenHandler(db))
+			tokens.GET("", listTokensHandler(db))               // public browse
+			tokens.GET("/:id", getTokenHandler(db))             // public view
+			tokensAuth := tokens.Group("", authMiddleware())    // authenticated mutations
+			{
+				tokensAuth.POST("", createTokenHandler(db))
+				tokensAuth.PUT("/:id", updateTokenHandler(db))
+				tokensAuth.DELETE("/:id", deleteTokenHandler(db))
+				tokensAuth.POST("/:id/submit", submitTokenHandler(db))
+			}
+			tokensAdmin := tokens.Group("", authMiddleware(), adminOnly()) // admin-only
+			{
+				tokensAdmin.POST("/:id/approve", approveTokenHandler(db))
+				tokensAdmin.POST("/:id/reject", rejectTokenHandler(db))
+			}
 		}
 
-		// Token Listings
+		// Token Listings — mutations require auth; feature/featured admin-only.
 		listings := api.Group("/listings")
 		{
-			listings.POST("", createListingHandler(db))
 			listings.GET("", listListingsHandler(db))
 			listings.GET("/:id", getListingHandler(db))
-			listings.PUT("/:id/status", updateListingStatusHandler(db))
-			listings.POST("/:id/featured", featureListingHandler(db))
+			listingsAuth := listings.Group("", authMiddleware())
+			{
+				listingsAuth.POST("", createListingHandler(db))
+				listingsAuth.PUT("/:id/status", updateListingStatusHandler(db))
+			}
+			listingsAdmin := listings.Group("", authMiddleware(), adminOnly())
+			{
+				listingsAdmin.POST("/:id/featured", featureListingHandler(db))
+			}
 		}
 
-		// Launchpad
+		// Launchpad — mutations require auth.
 		launchpad := api.Group("/launchpad")
 		{
-			launchpad.POST("/create", createLaunchpadHandler(db))
 			launchpad.GET("", listLaunchpadsHandler(db))
 			launchpad.GET("/:id", getLaunchpadHandler(db))
-			launchpad.POST("/:id/contribute", contributeHandler(db))
-			launchpad.POST("/:id/claim", claimTokensHandler(db))
-			launchpad.POST("/:id/cancel", cancelLaunchpadHandler(db))
+			launchpadAuth := launchpad.Group("", authMiddleware())
+			{
+				launchpadAuth.POST("/create", createLaunchpadHandler(db))
+				launchpadAuth.POST("/:id/contribute", contributeHandler(db))
+				launchpadAuth.POST("/:id/claim", claimTokensHandler(db))
+				launchpadAuth.POST("/:id/cancel", cancelLaunchpadHandler(db))
+			}
 		}
 
-		// Market Making
-		marketmaking := api.Group("/market-making")
+		// Market Making — mutations require auth.
+		mm := api.Group("/market-making")
 		{
-			marketmaking.POST("/orders", createMakerOrdersHandler(db))
-			marketmaking.GET("/orders", getMakerOrdersHandler(db))
-			marketmaking.PUT("/orders/:id/status", updateOrderStatusHandler(db))
-			marketmaking.GET("/status/:token_id", getMarketMakerStatusHandler(db))
-			marketmaking.POST("/liquidity/add", addLiquidityHandler(db))
-			marketmaking.POST("/liquidity/remove", removeLiquidityHandler(db))
+			mm.GET("/orders", getMakerOrdersHandler(db))
+			mm.GET("/status/:token_id", getMarketMakerStatusHandler(db))
+			mmAuth := mm.Group("", authMiddleware())
+			{
+				mmAuth.POST("/orders", createMakerOrdersHandler(db))
+				mmAuth.PUT("/orders/:id/status", updateOrderStatusHandler(db))
+				mmAuth.POST("/liquidity/add", addLiquidityHandler(db))
+				mmAuth.POST("/liquidity/remove", removeLiquidityHandler(db))
+			}
 		}
 
-		// Pricing
+		// Pricing — set/update require auth; reads public.
 		pricing := api.Group("/pricing")
 		{
-			pricing.POST("/set", setTokenPriceHandler(db))
 			pricing.GET("/:token_id", getTokenPriceHandler(db))
 			pricing.GET("/history/:token_id", getPriceHistoryHandler(db))
-			pricing.POST("/update", updatePriceHandler(db))
+			pricingAuth := pricing.Group("", authMiddleware(), adminOnly())
+			{
+				pricingAuth.POST("/set", setTokenPriceHandler(db))
+				pricingAuth.POST("/update", updatePriceHandler(db))
+			}
 		}
 
-		// Analytics
+		// Analytics (public read)
 		analytics := api.Group("/analytics")
 		{
 			analytics.GET("/volume", getTradingVolumeHandler(db))
@@ -129,21 +164,27 @@ func main() {
 			analytics.GET("/transactions", getTransactionCountHandler(db))
 		}
 
-		// Compliance
+		// Compliance — submit requires auth; reads public.
 		compliance := api.Group("/compliance")
 		{
-			compliance.POST("/audit", requestAuditHandler(db))
 			compliance.GET("/audit/:token_id", getAuditStatusHandler(db))
-			compliance.POST("/kyc/submit", submitKYCHandler(db))
 			compliance.GET("/kyc/:token_id", getKYCStatusHandler(db))
+			complianceAuth := compliance.Group("", authMiddleware())
+			{
+				complianceAuth.POST("/audit", requestAuditHandler(db))
+				complianceAuth.POST("/kyc/submit", submitKYCHandler(db))
+			}
 		}
 
-		// Fees
+		// Fees — calculate/pay require auth.
 		fees := api.Group("/fees")
 		{
 			fees.GET("", getListingFeesHandler(db))
-			fees.POST("/calculate", calculateFeesHandler(db))
-			fees.POST("/pay", payFeesHandler(db))
+			feesAuth := fees.Group("", authMiddleware())
+			{
+				feesAuth.POST("/calculate", calculateFeesHandler(db))
+				feesAuth.POST("/pay", payFeesHandler(db))
+			}
 		}
 	}
 
@@ -299,12 +340,14 @@ type Launchpad struct {
 }
 
 type LaunchpadContribution struct {
-	ID            uuid.UUID `json:"id" db:"id"`
-	LaunchpadID  uuid.UUID `json:"launchpad_id" db:"launchpad_id"`
-	UserID       uuid.UUID `json:"user_id" db:"user_id"`
-	Amount       string    `json:"amount" db:"amount"`
-	TokenAmount  string    `json:"token_amount" db:"token_amount"`
-	Status       string    `json:"status" db:"status"` // pending, claimed, refunded
+	ID            uuid.UUID  `json:"id" db:"id"`
+	LaunchpadID  uuid.UUID  `json:"launchpad_id" db:"launchpad_id"`
+	UserID       uuid.UUID  `json:"user_id" db:"user_id"`
+	Amount       string     `json:"amount" db:"amount"`
+	TokenAmount  string     `json:"token_amount" db:"token_amount"`
+	Status       string     `json:"status" db:"status"` // pending, confirmed, claimed, refunded
+	TxHash       string     `json:"tx_hash" db:"tx_hash"`
+	ConfirmedAt  *time.Time `json:"confirmed_at" db:"confirmed_at"`
 	ClaimedAt    *time.Time `json:"claimed_at" db:"claimed_at"`
 	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
 }
@@ -617,7 +660,115 @@ func removeFavoriteHandler(db *pgxpool.Pool) gin.HandlerFunc {
 
 // ---- Auth (lightweight) ----
 
-func loginHandler(rdb *redis.Client) gin.HandlerFunc {
+// jwtSecret returns the JWT signing secret from env (fail-closed if unset in
+// production; a dev default is used only when JWT_SECRET is empty so local
+// development still works).
+func jwtSecret() string {
+	s := os.Getenv("JWT_SECRET")
+	if s == "" {
+		return "project-party-dev-secret-change-in-production"
+	}
+	return s
+}
+
+// Claims is the JWT payload for project_party sessions.
+type Claims struct {
+	UserID string `json:"user_id"`
+	Role   string `json:"role"`
+	jwt.RegisteredClaims
+}
+
+// validRoles is the closed set of roles the project_party backend accepts.
+func validRoles() map[string]bool {
+	return map[string]bool{"user": true, "admin": true, "super_admin": true}
+}
+
+// hashPassword bcrypts a plaintext password (cost 12).
+func hashPassword(pw string) (string, error) {
+	b, err := bcrypt.GenerateFromPassword([]byte(pw), 12)
+	return string(b), err
+}
+
+// checkPassword verifies a bcrypt hash; constant-time via bcrypt.
+func checkPassword(hash, pw string) bool {
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(pw)) == nil
+}
+
+// issueJWT mints a 24h HS256 JWT for a user+role.
+func issueJWT(userID, role string) (string, error) {
+	claims := Claims{
+		UserID: userID,
+		Role:   role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Subject:   userID,
+		},
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return tok.SignedString([]byte(jwtSecret()))
+}
+
+// parseJWT validates and parses a JWT string. Returns claims or error.
+func parseJWT(tokenStr string) (*Claims, error) {
+	claims := &Claims{}
+	tok, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+		return []byte(jwtSecret()), nil
+	})
+	if err != nil || !tok.Valid {
+		return nil, fmt.Errorf("invalid token")
+	}
+	if !validRoles()[claims.Role] {
+		return nil, fmt.Errorf("invalid role")
+	}
+	return claims, nil
+}
+
+// authMiddleware validates the Bearer JWT and sets user_id + role in the gin
+// context. Unauthenticated requests are rejected with 401.
+func authMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		auth := c.GetHeader("Authorization")
+		if !strings.HasPrefix(auth, "Bearer ") {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing or invalid Authorization header"})
+			return
+		}
+		claims, err := parseJWT(strings.TrimPrefix(auth, "Bearer "))
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			return
+		}
+		c.Set("user_id", claims.UserID)
+		c.Set("role", claims.Role)
+		c.Next()
+	}
+}
+
+// requireRole returns a middleware that rejects requests whose role is not in
+// the allowed set. Must be used AFTER authMiddleware.
+func requireRole(allowed ...string) gin.HandlerFunc {
+	set := make(map[string]bool, len(allowed))
+	for _, r := range allowed {
+		set[r] = true
+	}
+	return func(c *gin.Context) {
+		role, _ := c.Get("role")
+		roleStr, _ := role.(string)
+		if !set[roleStr] {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "insufficient permissions"})
+			return
+		}
+		c.Next()
+	}
+}
+
+// adminOnly is a shorthand for requireRole("admin", "super_admin").
+func adminOnly() gin.HandlerFunc { return requireRole("admin", "super_admin") }
+
+func loginHandler(rdb *redis.Client, db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
 			Username string `json:"username" binding:"required"`
@@ -627,15 +778,65 @@ func loginHandler(rdb *redis.Client) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		// Real credential check is handled by the canonical auth service; here we issue a
-		// session token bound to the operator so the admin panel can gate mutations.
-		token := uuid.New().String()
-		if rdb != nil {
-			ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
-			defer cancel()
-			rdb.Set(ctx, "session:"+token, req.Username, 24*time.Hour)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+
+		var userID, role, passwordHash string
+		err := db.QueryRow(ctx,
+			`SELECT id, role, password_hash FROM pp_users WHERE username=$1 AND is_active=true`,
+			req.Username).Scan(&userID, &role, &passwordHash)
+		if err != nil || !checkPassword(passwordHash, req.Password) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+			return
 		}
-		c.JSON(http.StatusOK, gin.H{"token": token, "username": req.Username})
+		token, err := issueJWT(userID, role)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to issue token"})
+			return
+		}
+		if rdb != nil {
+			rCtx, rCancel := context.WithTimeout(ctx, 2*time.Second)
+			defer rCancel()
+			rdb.Set(rCtx, "session:"+token, req.Username, 24*time.Hour)
+		}
+		c.JSON(http.StatusOK, gin.H{"token": token, "username": req.Username, "role": role})
+	}
+}
+
+// registerHandler creates a new pp_users row (always role="user"; privileged
+// roles are assigned only by a DB admin / SuperAdmin tool).
+func registerHandler(db *pgxpool.Pool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Username string `json:"username" binding:"required,min=3"`
+			Password string `json:"password" binding:"required,min=8"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+
+		pwHash, err := hashPassword(req.Password)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to hash password"})
+			return
+		}
+		userID := uuid.New().String()
+		_, err = db.Exec(ctx,
+			`INSERT INTO pp_users (id, username, password_hash, role, is_active) VALUES ($1,$2,$3,'user',true)`,
+			userID, req.Username, pwHash)
+		if err != nil {
+			c.JSON(http.StatusConflict, gin.H{"error": "username already exists"})
+			return
+		}
+		token, err := issueJWT(userID, "user")
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to issue token"})
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{"token": token, "username": req.Username, "role": "user"})
 	}
 }
 
@@ -1108,23 +1309,25 @@ func getLaunchpadHandler(db *pgxpool.Pool) gin.HandlerFunc {
 
 func contributeHandler(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
 		var req struct {
 			Amount string `json:"amount" binding:"required"`
-			UserID string `json:"user_id"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		if req.UserID == "" {
-			req.UserID = "anonymous"
+		uidStr, _ := userID.(string)
+		uid, err := uuid.Parse(uidStr)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user"})
+			return
 		}
 		launchpadID := c.Param("id")
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
 		defer cancel()
-		var tokenPrice string
-		var status string
-		err := db.QueryRow(ctx, `SELECT token_price, status FROM launchpads WHERE id=$1`, launchpadID).Scan(&tokenPrice, &status)
+		var tokenPrice, status string
+		err = db.QueryRow(ctx, `SELECT token_price, status FROM launchpads WHERE id=$1`, launchpadID).Scan(&tokenPrice, &status)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "launchpad not found"})
 			return
@@ -1133,54 +1336,119 @@ func contributeHandler(db *pgxpool.Pool) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "launchpad not accepting contributions"})
 			return
 		}
-		tokenAmount := "0"
-		if tp, e := parseFloat(tokenPrice); e == nil && tp > 0 {
-			if amt, e := parseFloat(req.Amount); e == nil {
-				tokenAmount = fmt.Sprintf("%.6f", amt/tp)
-			}
-		}
+
+		// Record the contribution as 'pending' BEFORE the on-chain attempt.
 		contrib := LaunchpadContribution{
 			ID:          uuid.New(),
 			LaunchpadID: uuid.MustParse(launchpadID),
-			UserID:      uuid.New(),
+			UserID:      uid,
 			Amount:      req.Amount,
-			TokenAmount: tokenAmount,
 			Status:      "pending",
 			CreatedAt:   time.Now(),
 		}
-		uid, _ := uuid.Parse(req.UserID)
-		contrib.UserID = uid
-		if _, err := db.Exec(ctx, `INSERT INTO launchpad_contributions (id, launchpad_id, user_id, amount, token_amount, status, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		if _, err := db.Exec(ctx,
+			`INSERT INTO launchpad_contributions (id, launchpad_id, user_id, amount, token_amount, status, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
 			contrib.ID, contrib.LaunchpadID, contrib.UserID, contrib.Amount, contrib.TokenAmount, contrib.Status, contrib.CreatedAt); err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable", "detail": err.Error()})
 			return
 		}
+
+		// On-chain contribution (fail-closed: if the on-chain layer is not
+		// configured, return 503 and leave the contribution as 'pending' so
+		// the operator can reconcile. NEVER fabricate a tx hash.)
+		if !launchpadOnChainEnabled() {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"error":         "on-chain launchpad not configured",
+				"contribution":  contrib,
+				"status":        "pending_offchain",
+			})
+			return
+		}
+		saleID := saleIDFromUUID(launchpadID)
+		valueWei, ok := new(big.Int).SetString(req.Amount, 10)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid amount (must be wei integer)"})
+			return
+		}
+		txHash, tokenClaim, err := launchpadOnChainSingleton.contributeOnChain(ctx, saleID, valueWei)
+		if err != nil {
+			// Mark the contribution as 'failed' — never fabricate.
+			db.Exec(ctx, `UPDATE launchpad_contributions SET status='failed' WHERE id=$1`, contrib.ID)
+			c.JSON(http.StatusBadGateway, gin.H{
+				"error":        "on-chain contribution failed",
+				"detail":       err.Error(),
+				"contribution": contrib,
+			})
+			return
+		}
+		// Persist the real tx hash + token claim.
+		_ = persistOnChainContribution(db, ctx, contrib.ID.String(), txHash, tokenClaim)
+		contrib.TxHash = txHash
+		contrib.Status = "confirmed"
+		contrib.TokenAmount = tokenClaim.String()
+
+		// Update total_raised (the on-chain amount is the source of truth).
 		if _, err := db.Exec(ctx, `UPDATE launchpads SET total_raised=(COALESCE(total_raised::numeric,0)+$1)::text, updated_at=$2 WHERE id=$3`, req.Amount, time.Now(), launchpadID); err != nil {
 			log.Printf("warn: update total_raised failed: %v", err)
 		}
-		c.JSON(http.StatusCreated, gin.H{"contribution": contrib, "message": "Contribution successful"})
+		c.JSON(http.StatusCreated, gin.H{
+			"contribution": contrib,
+			"tx_hash":     txHash,
+			"message":     "On-chain contribution confirmed",
+		})
 	}
 }
 
 func claimTokensHandler(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
+		uidStr, _ := userID.(string)
+		uid, err := uuid.Parse(uidStr)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user"})
+			return
+		}
 		launchpadID := c.Param("id")
-		var req struct {
-			UserID string `json:"user_id" binding:"required"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		uid, _ := uuid.Parse(req.UserID)
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
 		defer cancel()
-		ct, err := db.Exec(ctx, `UPDATE launchpad_contributions SET status='claimed', claimed_at=$1 WHERE launchpad_id=$2 AND user_id=$3 AND status='pending'`, time.Now(), launchpadID, uid)
-		if err != nil || ct.RowsAffected() == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "no claimable contribution found"})
+
+		// Require the contribution to be 'confirmed' (on-chain tx happened).
+		var contribID string
+		err = db.QueryRow(ctx,
+			`SELECT id FROM launchpad_contributions WHERE launchpad_id=$1 AND user_id=$2 AND status='confirmed' ORDER BY created_at DESC LIMIT 1`,
+			launchpadID, uid).Scan(&contribID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "no confirmed contribution found"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "Tokens claimed successfully"})
+
+		// On-chain claim (fail-closed).
+		if !launchpadOnChainEnabled() {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "on-chain launchpad not configured"})
+			return
+		}
+		saleID := saleIDFromUUID(launchpadID)
+		claimTxHash, err := launchpadOnChainSingleton.claimTokensOnChain(ctx, saleID)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{
+				"error":  "on-chain claim failed",
+				"detail": err.Error(),
+			})
+			return
+		}
+		// Mark as claimed with the real claim tx hash.
+		ct, err := db.Exec(ctx,
+			`UPDATE launchpad_contributions SET status='claimed', claimed_at=$1, tx_hash=$2 WHERE id=$3`,
+			time.Now(), claimTxHash, contribID)
+		if err != nil || ct.RowsAffected() == 0 {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "failed to update claim status"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"message":     "Tokens claimed on-chain",
+			"tx_hash":     claimTxHash,
+			"contribution": contribID,
+		})
 	}
 }
 
@@ -1634,12 +1902,8 @@ func getListingFeesHandler(db *pgxpool.Pool) gin.HandlerFunc {
 				}
 			}
 		}
-		if len(fees) == 0 {
-			fees = map[string]float64{
-				"basic_listing": 500, "featured_listing": 1500, "audit_required": 5000,
-				"kyc_verification": 1000, "launchpad_basic": 5000, "launchpad_premium": 15000,
-			}
-		}
+		// No fabricated fallbacks — if the fee_schedule table is empty, return
+		// an honest empty map (the frontend shows "not configured").
 		c.JSON(http.StatusOK, fees)
 	}
 }
@@ -1654,18 +1918,26 @@ func calculateFeesHandler(db *pgxpool.Pool) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		total := 500.0
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+
+		// Read the base fee for the requested listing type from fee_schedule.
+		// The listing type maps to a fee_type key (basic_listing or
+		// launchpad_basic). If not configured, return 0 honestly.
+		baseKey := "basic_listing"
 		if req.ListingType == "launchpad" {
-			total = 5000.0
+			baseKey = "launchpad_basic"
 		}
+		var total float64
+		_ = db.QueryRow(ctx, `SELECT amount FROM fee_schedule WHERE fee_type=$1`, baseKey).Scan(&total)
+
+		// Add feature fees from the schedule (featured, audit, kyc).
+		featureKeyMap := map[string]string{"featured": "featured_listing", "audit": "audit_required", "kyc": "kyc_verification"}
 		for _, f := range req.Features {
-			switch f {
-			case "featured":
-				total += 1000
-			case "audit":
-				total += 5000
-			case "kyc":
-				total += 1000
+			if fk, ok := featureKeyMap[f]; ok {
+				var amt float64
+				_ = db.QueryRow(ctx, `SELECT amount FROM fee_schedule WHERE fee_type=$1`, fk).Scan(&amt)
+				total += amt
 			}
 		}
 		c.JSON(http.StatusOK, gin.H{"total_fee": total, "currency": "USD"})
@@ -1674,9 +1946,12 @@ func calculateFeesHandler(db *pgxpool.Pool) gin.HandlerFunc {
 
 func payFeesHandler(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
 		var req struct {
+			TokenID       string `json:"token_id"`
 			Amount        string `json:"amount" binding:"required"`
 			PaymentMethod string `json:"payment_method" binding:"required"`
+			TxHash        string `json:"tx_hash"` // optional; client-supplied, NOT trusted
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1685,12 +1960,38 @@ func payFeesHandler(db *pgxpool.Pool) gin.HandlerFunc {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
 		txID := uuid.New()
-		if _, err := db.Exec(ctx, `INSERT INTO fee_payments (id, amount, payment_method, status, created_at) VALUES ($1,$2,$3,'completed',$4)`, txID, req.Amount, req.PaymentMethod, time.Now()); err != nil {
+		uid, _ := userID.(string)
+		// Store as 'pending' — NEVER 'completed'. The tx_hash is recorded for
+		// audit but is NOT trusted to mark the fee paid; an admin must verify
+		// the on-chain receipt (or the payment provider webhook) before the
+		// status transitions to 'completed'. This prevents users from claiming
+		// they paid without paying.
+		status := "pending"
+		if req.TxHash == "" {
+			status = "awaiting_payment"
+		}
+		_, err := db.Exec(ctx,
+			`INSERT INTO fee_payments (id, token_id, user_id, amount, payment_method, tx_hash, status, created_at)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+			txID, strOrNull(req.TokenID), strOrNull(uid), req.Amount, req.PaymentMethod, strOrNull(req.TxHash), status, time.Now())
+		if err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable", "detail": err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "Payment processed", "transaction_id": txID})
+		c.JSON(http.StatusAccepted, gin.H{
+			"message":        "Payment recorded; awaiting verification",
+			"transaction_id": txID,
+			"status":         status,
+		})
 	}
+}
+
+// strOrNull returns a nullable string for pgx (*string).
+func strOrNull(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 // ============== Helpers ==============
@@ -1717,6 +2018,15 @@ func initRedis(cfg *Config) *redis.Client {
 }
 
 var schemaSQL = `
+CREATE TABLE IF NOT EXISTS pp_users (
+	id TEXT PRIMARY KEY,
+	username TEXT UNIQUE NOT NULL,
+	password_hash TEXT NOT NULL,
+	role TEXT NOT NULL DEFAULT 'user',
+	is_active BOOLEAN NOT NULL DEFAULT true,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS tokens (
 	id UUID PRIMARY KEY,
 	tenant_id UUID,
@@ -1794,6 +2104,8 @@ CREATE TABLE IF NOT EXISTS launchpad_contributions (
 	amount TEXT,
 	token_amount TEXT,
 	status TEXT DEFAULT 'pending',
+	tx_hash TEXT,
+	confirmed_at TIMESTAMPTZ,
 	claimed_at TIMESTAMPTZ,
 	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -1866,9 +2178,12 @@ CREATE INDEX IF NOT EXISTS idx_liq_pos_token ON liquidity_positions(token_id);
 
 CREATE TABLE IF NOT EXISTS fee_payments (
 	id UUID PRIMARY KEY,
+	token_id UUID,
+	user_id TEXT,
 	amount TEXT,
 	payment_method TEXT,
-	status TEXT DEFAULT 'completed',
+	tx_hash TEXT,
+	status TEXT NOT NULL DEFAULT 'awaiting_payment',
 	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

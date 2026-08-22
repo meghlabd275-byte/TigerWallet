@@ -13,8 +13,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
@@ -24,7 +28,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -96,7 +99,7 @@ func main() {
 	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
 	defer rdb.Close()
 
-	svc := &service{pg: pool, redis: rdb, jwt: cfg.JWTSecret}
+	svc := &service{pg: pool, redis: rdb, jwt: cfg.JWTSecret, httpClient: &http.Client{Timeout: 15 * time.Second}}
 	if err := svc.migrate(ctx); err != nil {
 		log.Fatalf("migrate: %v", err)
 	}
@@ -195,9 +198,10 @@ func loadCfg() config {
 }
 
 type service struct {
-	pg    *pgxpool.Pool
-	redis *redis.Client
-	jwt   string
+	pg        *pgxpool.Pool
+	redis     *redis.Client
+	jwt       string
+	httpClient *http.Client // shared HTTP client for dispatch to bot_core
 }
 
 // ---- schema ----
@@ -560,14 +564,58 @@ func (s *service) getBot(c *gin.Context) {
 
 func (s *service) startBot(c *gin.Context) {
 	s.setBotStatus(c, c.Param("id"), "running")
+	// Dispatch real start to the Rust bot_core execution plane.
+	s.dispatchBotCore(c, c.Param("id"), "start")
 }
 
 func (s *service) stopBot(c *gin.Context) {
 	s.setBotStatus(c, c.Param("id"), "stopped")
+	s.dispatchBotCore(c, c.Param("id"), "stop")
 }
 
 func (s *service) pauseBot(c *gin.Context) {
 	s.setBotStatus(c, c.Param("id"), "paused")
+	s.dispatchBotCore(c, c.Param("id"), "pause")
+}
+
+// botCoreURL returns the Rust bot_core execution plane endpoint. Defaults to
+// http://localhost:8472 (overridable via BOT_CORE_URL env).
+func botCoreURL() string {
+	u := os.Getenv("BOT_CORE_URL")
+	if u == "" {
+		return "http://localhost:8472"
+	}
+	return u
+}
+
+// dispatchBotCore sends a real start/stop/pause/resume command to the Rust
+// bot_core execution plane at /dispatch/<action>. Failures are logged but do
+// NOT fail the API request (the DB status update already succeeded; the
+// execution plane is best-effort and may be down during maintenance). This is
+// the same async-dispatch pattern as canonical wallet control planes.
+func (s *service) dispatchBotCore(c *gin.Context, botID, action string) {
+	body, _ := json.Marshal(map[string]any{
+		"bot_id":   botID,
+		"user_id":  c.GetString("user_id"),
+		"action":   action,
+		"deadline": 30,
+	})
+	req, err := http.NewRequestWithContext(c.Request.Context(), "POST",
+		botCoreURL()+"/dispatch/"+action, bytes.NewReader(body))
+	if err != nil {
+		log.Printf("dispatchBotCore: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		log.Printf("dispatchBotCore %s %s: %v (bot_core unreachable)", action, botID, err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		log.Printf("dispatchBotCore %s %s: bot_core returned %d", action, botID, resp.StatusCode)
+	}
 }
 
 func (s *service) deleteBot(c *gin.Context) {
@@ -1235,8 +1283,8 @@ func strOrNull(s string) interface{} {
 }
 
 func hashToken(t string) string {
-	// sha256 for storage (constant-time compare via subtle where used elsewhere)
-	return uuid.NewSHA1(uuid.NameSpaceDNS, []byte(t)).String() + "_" + strconv.Itoa(len(t))
+	h := sha256.Sum256([]byte(t))
+	return hex.EncodeToString(h[:])
 }
 
 func generateAPIKey() string {
@@ -1245,16 +1293,73 @@ func generateAPIKey() string {
 	return "tb_" + hex.EncodeToString(b)
 }
 
-// encryptSecret is a placeholder envelope for storing CEX secrets at rest.
-// Production must use an HSM/KMS-backed envelope key; here we hex-encode with a
-// marker so the column is non-empty and identifiable. Real CEX execution is
-// performed by the Rust bot_core (never by this control-plane API).
-func encryptSecret(s string) string {
-	b := make([]byte, len(s))
-	for i := range s {
-		b[i] = s[i] ^ 0x5A
+// secretsEncryptionKey derives a 32-byte AES-256 key from the SECRETS_ENC_KEY
+// env var (or JWT_SECRET fallback). The key is SHA-256 of the env value so any
+// non-empty string produces a valid 256-bit key.
+func secretsEncryptionKey() []byte {
+	k := os.Getenv("SECRETS_ENC_KEY")
+	if k == "" {
+		k = os.Getenv("JWT_SECRET")
 	}
-	return "enc1:" + hex.EncodeToString(b)
+	if k == "" {
+		k = "tigerwallet-dev-secret-change-in-production"
+	}
+	h := sha256.Sum256([]byte(k))
+	return h[:]
+}
+
+// encryptSecret encrypts a CEX API key/secret or DEX wallet seed at rest using
+// AES-256-GCM. Output: "enc2:" || hex(nonce(12) || ciphertext+tag). The nonce is
+// random per encryption. Real authenticated encryption — GCM tag detects
+// tampering on decrypt (fail-closed).
+func encryptSecret(s string) string {
+	key := secretsEncryptionKey()
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		log.Fatalf("encryptSecret: %v", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		log.Fatalf("encryptSecret: %v", err)
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		log.Fatalf("encryptSecret: %v", err)
+	}
+	ct := gcm.Seal(nonce, nonce, []byte(s), nil)
+	return "enc2:" + hex.EncodeToString(ct)
+}
+
+// decryptSecret reverses encryptSecret. Returns plaintext or error on any
+// tampering / wrong key (fail-closed). Legacy "enc1:" XOR blobs return an
+// error (owner must re-enter to migrate).
+func decryptSecret(enc string) (string, error) {
+	if len(enc) < 5 || enc[:5] != "enc2:" {
+		return "", errors.New("secret blob is not enc2 format (re-enter credential to migrate)")
+	}
+	raw, err := hex.DecodeString(enc[5:])
+	if err != nil {
+		return "", err
+	}
+	key := secretsEncryptionKey()
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	ns := gcm.NonceSize()
+	if len(raw) < ns {
+		return "", errors.New("ciphertext too short")
+	}
+	nonce, ct := raw[:ns], raw[ns:]
+	pt, err := gcm.Open(nil, nonce, ct, nil)
+	if err != nil {
+		return "", err
+	}
+	return string(pt), nil
 }
 
 // silence unused import for subtle (used for future constant-time compares)

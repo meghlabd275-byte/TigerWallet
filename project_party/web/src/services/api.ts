@@ -191,6 +191,62 @@ class ApiService {
   async removeFavorite(id: string) {
     return this.request(`/favorites/${id}`, { method: 'DELETE' });
   }
+
+  // ==================== Pricing ====================
+  async getTokenPrice(tokenId: string) {
+    return this.request<{ token_id: string; price: string; change_24h: string; market_cap: string; volume_24h: string }>(`/pricing?token_id=${tokenId}`);
+  }
+
+  async getTokenHistory(tokenId: string) {
+    return this.request<{ history: any[] }>(`/pricing/history/${tokenId}`);
+  }
+
+  async getMarketData() {
+    return this.request<{ tokens: any[]; total_market_cap: string; total_volume: string; active_tokens: number }>(`/pricing/market`);
+  }
+
+  // ==================== Analytics ====================
+  async getHolders(tokenId?: string) {
+    const query = tokenId ? `?token_id=${tokenId}` : '';
+    return this.request<{ holders: any[]; total: number }>(`/analytics/holders${query}`);
+  }
+
+  async getTransactions(tokenId?: string, limit = 50) {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (tokenId) params.set('token_id', tokenId);
+    return this.request<{ transactions: any[]; total: number }>(`/analytics/transactions?${params}`);
+  }
+
+  async getTokenVolume(tokenId?: string) {
+    const query = tokenId ? `?token_id=${tokenId}` : '';
+    return this.request<{ volume_24h: string; volume_7d: string; total: string }>(`/analytics/volume${query}`);
+  }
+
+  async getTokenLiquidity(tokenId?: string) {
+    const query = tokenId ? `?token_id=${tokenId}` : '';
+    return this.request<{ liquidity: any[]; total: string }>(`/analytics/liquidity${query}`);
+  }
+
+  // ==================== Compliance ====================
+  async getKYCStatus(tokenId: string) {
+    return this.request<{ kyc_status: string; audit_status: string; verified: boolean }>(`/compliance/kyc/${tokenId}`);
+  }
+
+  async submitKYC(data: { token_id: string; documents: string[] }) {
+    return this.request<{ message: string; submission_id: string }>(`/compliance/kyc/submit`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async submitAudit(data: { token_id: string; audit_report: string; auditor: string }) {
+    return this.request<{ message: string; audit_id: string }>(`/compliance/audit`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async getAuditReport(tokenId: string) {
+    return this.request<{ audit: any }>(`/compliance/audit/${tokenId}`);
+  }
+
+  async getTokenStatus(tokenId: string) {
+    return this.request<{ status: string; kyc_verified: boolean; audit_passed: boolean; listing_approved: boolean }>(`/compliance/status/${tokenId}`);
+  }
 }
 
 export const api = new ApiService();

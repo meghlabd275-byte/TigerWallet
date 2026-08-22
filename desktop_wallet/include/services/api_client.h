@@ -45,6 +45,7 @@ public:
     // Configuration
     void setBaseUrl(const std::string& baseUrl);
     void setAuthToken(const std::string& token);
+    std::string getAuthToken() const { return authToken_; }
     void clearAuthToken();
     void setTimeout(int seconds);
     bool isInitialized() const { return initialized_; }

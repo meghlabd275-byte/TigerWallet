@@ -1,0 +1,18 @@
+[package]
+name = "tigerbots_client"
+version = "1.0.0"
+edition = "2021"
+description = "TigerBots Rust client — async reqwest client delegating to the standalone Bots backend (mm_bot_platform/bot_api, :8471)"
+
+[lib]
+name = "tigerbots_client"
+path = "src/lib.rs"
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
