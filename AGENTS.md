@@ -3798,3 +3798,94 @@ Python balance check on Swift/Kotlin/Java (all balanced).
 | user_wallet/android | 16 .kt files balanced (interpolation-aware tokenizer) |
 | user_wallet/ios | 13 .swift files balanced (committed 46740ee) |
 | browser_extensions/chrome | 36 .js files node --check 0 failures |
+
+## Session 2026-08-16 (session 5): WL governance genuine gap audit + 3 fixes
+
+A fresh source audit (NOT docs - real files) of the WL governance system
+against the 9 user requirements found 3 GENUINE gaps (the rest were already
+real from prior sessions). All 3 fixed in commit f2ad068. All builds+vet clean.
+
+### GAP #1 (CRITICAL): Two-party withdrawal auth bridge was DEAD
+- wlgate.TwoPartyGate used a static ControlPlaneToken Bearer to call
+  license_service endpoints that were JWT-gated (RequireSuperAdmin/
+  RequireWLClientOrSuperAdmin) -> 401 -> IsWithdrawalApproved always false
+  -> 403 forever. No fund withdrawal could EVER pass the gate.
+- PLUS RequestWithdrawal payload mismatch: wlgate sent
+  {wallet_id,to_address,amount_wei,currency,chain_id} but the handler
+  required {product,resource_type,resource_id,amount_wei,to_address,
+  chain_id} (all binding:required) -> 400.
+- FIX: license_service new ServiceToken (env SERVICE_AUTH_TOKEN) + new
+  ServiceOrUserAuth middleware (accepts EITHER the service token with
+  X-WL-Client-ID/X-Service-Product headers for machine-to-machine, OR a
+  normal user JWT). Moved /withdrawals/request, /:id/approved, /:id/
+  executed into a twoParty group with ServiceOrUserAuth+
+  RequireWLClientOrSuperAdmin. SuperAdmin co-sign (/approve, /reject,
+  list) STAYS JWT+RequireSuperAdmin - a service token can NEVER approve.
+  wlgate.TwoPartyGate + wl_user_wallet duplicate now send the full
+  contract + service headers + correct (non-super-admin) URLs.
+  NewTwoPartyGate/InitTwoPartyGate now take product+wlClientID.
+
+### GAP #2 (CRITICAL): Scoped-role taxonomy dead at the product layer
+- The 13 scoped roles (white_label_admin/internal/roles) were enforced
+  ONLY inside white_label_admin (RequireScope). The 4 product backends
+  used their OWN local role strings (wl_master_wallet: admin/treasury/
+  operator/super_admin; wl_bots: super_admin/finance_admin/bot_operator/
+  client; wl_project_party: admin/super_admin; wl_user_wallet: none) read
+  from their own users.role, ignoring the JWT scopes claim. So
+  AssignAdminRole(bot_admin) in white_label_admin had ZERO effect on wl_bots.
+- FIX (all 4 backends, same pattern): added scopes TEXT[] column (CREATE
+  + ALTER for existing DBs) + Scopes []string to user struct + updated
+  ALL user queries to SELECT/scan scopes + added UpdateUserScopes(ctx,
+  id, scopes). Login now issues the user assigned DB scopes (default
+  ["user"]) via wlgate.IssueJWT. RequireRole now checks wlgate.HasScope(
+  "wl_client") (WL owner always passes) -> wlgate.HasScope(
+  "<canonical_scope>") (bot_admin for wl_bots, wallet_admin for
+  wl_master_wallet/wl_user_wallet, listing_admin for wl_project_party)
+  -> legacy local-role DB fallback (backward compatible).
+  UpdateAdminScopes handler (wl_client-only, validates canonical
+  whitelist) + PUT /users/:id/scopes route.
+
+### GAP #3 (PARTIAL): wl_user_wallet had NO admin-role governance surface
+- All wl_user_wallet routes were per-user-ownership only - no admin surface
+  on which a wallet_admin scoped role could exert control.
+- FIX: added is_active BOOLEAN column to users + AdminUserRow (no
+  password_hash) + ListAllUsers, ListAllWallets (encrypted_seed NEVER
+  selected), SetUserActive, GetUserActive, CountWalletsByUser store
+  methods. requireWalletAdmin gate (wl_client OR wallet_admin scope) +
+  AdminListUsers, AdminListWallets, AdminSuspendUser, AdminActivateUser
+  handlers. Routes: GET /admin/users, GET /admin/wallets, POST /admin/
+  users/:id/suspend, POST /admin/users/:id/activate. NO fund movement
+  (withdrawals stay two-party gated). RequireActiveUser middleware
+  (store-backed via SetActiveUserChecker to avoid circular dep) 403-locks
+  a suspended user on every fund-moving route (send/sign/swap/execute/
+  staking stake/unstake/claim/non_evm sign/send) even with a valid
+  stateless HS256 JWT - immediate lockout. wl_client/wallet_admin
+  governance callers are exempt.
+
+### Fully-met requirements (verified, NOT gaps)
+- Req 1/2/3: 4 standalone WL backends (wl_user_wallet, wl_master_wallet,
+  wl_bots, wl_project_party) with own PG + own BIP-39/32/44 + own JWT.
+- Req 4/5: every wl_* backend wires gate.Middleware + HeartbeatLoop phones
+  home to license_service /license/validate every 30s; gate starts dead
+  until first heartbeat; resumeClient is RequireSuperAdmin-gated (WL
+  client cannot self-resume).
+- Req 6: per-fetcher granularity end-to-end (SetFeatureFlag->PG
+  feature_flags->ValidateLicense->gate.SetFlags->FetcherEnabled->
+  middleware 403).
+- Req 7: two-party policy logic correct (only transport was broken).
+- Req 8/9 within white_label_admin: 13 roles, RequireScope,
+  AssignAdminRole/UpdateAdmin restricted to wl_client.
+
+### Build verification (ALL GREEN)
+| Component | Result |
+|-----------|--------|
+| wl_shared/go | build+vet exit 0 |
+| license_service/go | build+vet exit 0 |
+| wl_bots/go | build+vet exit 0 |
+| wl_master_wallet/go | build+vet exit 0 |
+| wl_user_wallet/go | build+vet exit 0 |
+| wl_project_party/go | build+vet exit 0 |
+| Go toolchain | 1.23.12 at $HOME/.go-sdk/go/bin (GOTOOLCHAIN=local) |
+
+### Commit
+- f2ad068 (19 files, +813/-102) pushed to origin/main.
