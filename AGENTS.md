@@ -1,4 +1,4 @@
-# TigerWallet ” Agent Memory
+# TigerWallet ŌĆØ Agent Memory
 
 ## ERC-4337 / Account Abstraction contracts
 
@@ -34,7 +34,7 @@
   extends the audited `BasePaymaster` and sponsors gas only when an off-chain
   sponsor's real ECDSA signature over the EIP-191-prefixed `userOpHash`
   recovers to the registered `signingSigner` (Pimlico/Stackup
-  verifying-paymaster pattern ” the GetGas-equivalent gas-subsidy product).
+  verifying-paymaster pattern ŌĆØ the GetGas-equivalent gas-subsidy product).
   Fail-closed sender whitelist, `validUntil`/`validAfter` time-range bounds,
   owner-gated signer rotation, inherited stake/deposit/withdraw via
   `Stakeable`/`BasePaymaster`. `test_aa/VerifyingPaymaster.t.sol`: 8 passing
@@ -44,7 +44,7 @@
   account). A tx executes only after `threshold` owner ECDSA signatures over an
   EIP-712 typed-data hash (`domain(chainId,verifyingContract) ||
   Transaction(to,value,dataHash,nonce)`) are collected. Verification uses OZ v5
-  `ECDSA.recover` (real secp256k1, low-s) ” NOT length checks. Sorted-sig
+  `ECDSA.recover` (real secp256k1, low-s) ŌĆØ NOT length checks. Sorted-sig
   convention (`recovered > lastOwner`) dedups without storage. `ReentrancyGuard`,
   nonce replay protection, threshold clamped to `[1, ownerCount]`, self-governed
   owner mgmt (add/remove/changeThreshold) via the wallet's own execute path,
@@ -94,7 +94,7 @@
 - Module: `tigerwallet/dapp_browser` (go.mod created in `dapp_browser/go/`).
 - `walletconnect.go`: `handlePersonalSign` / `handleEthSignTypedData_v4` now do
   REAL signing via `github.com/ethereum/go-ethereum/crypto` (ECDSA secp256k1).
-  NEVER return a fake all-zero `0x0000...` signature ” if no signer key is
+  NEVER return a fake all-zero `0x0000...` signature ŌĆØ if no signer key is
   configured, reject the request with JSON-RPC error `-32000`
   ("Signing not available: wallet not connected").
 - The signer ECDSA private key is loaded from env `SIGNER_PRIVATE_KEY` (hex,
@@ -129,11 +129,11 @@
 
 ## Network / package install
 
-## go/wallet_api (canonical wallet backend ” REAL)
+## go/wallet_api (canonical wallet backend ŌĆØ REAL)
 
 - The canonical Go wallet backend at `go/wallet_api/` is the ONLY service that
   performs key management and signing. It replaces the old `go/wallet_service`
-  (which used NIST P-256 + `sha512(seed)` ” NOT secp256k1/BIP-32). Do NOT use
+  (which used NIST P-256 + `sha512(seed)` ŌĆØ NOT secp256k1/BIP-32). Do NOT use
   `go/wallet_service` for signing.
 - Real BIP-39 mnemonic generation (`tyler-smith/go-bip39`), real BIP-32 HD
   derivation (`hd_derive.go`: HMAC-SHA512 "Bitcoin seed" master + CKDpriv mod-n
@@ -155,7 +155,7 @@
   prices via CoinGecko, gas via `eth_feeHistory`/`eth_gasPrice`.
 - Curated dApp directory (`dapp_directory.go`): ~20 real protocol entries
   (Uniswap, Aave, OpenSea, Curve, 1inch, Jupiter, Stargate, Lido, ENS, Lens,
-  Farcaster, etc.) with categories/chains/verified flag ” NO fabricated metrics
+  Farcaster, etc.) with categories/chains/verified flag ŌĆØ NO fabricated metrics
   (no invented user counts/ratings). Public REST `GET /api/v1/dapps`
   (`?category=&chain=`), `/dapps/categories`, `/dapps/:id`. Frontend
   `dapp-store` + `dapp-browser` pages fetch this instead of hardcoding.
@@ -163,7 +163,7 @@
   per-chain token lists (mainnet contract addresses/decimals/symbols for
   Ethereum/BSC/Polygon/Arbitrum/Optimism/Base). Public REST
   `GET /api/v1/tokens/registry` (full registry grouped by chain, or
-  `?chain_id=N`; 404 for unknown chain ” never fabricated).
+  `?chain_id=N`; 404 for unknown chain ŌĆØ never fabricated).
 - REST API (gin, port 8443): `/api/v1/auth/{register,login}`,
   `/api/v1/wallets` (POST create, GET list), `/api/v1/{balance,tokens,transactions,nfts}`,
   `/api/v1/send`, `/api/v1/sign`, `/api/v1/gas`, `/api/v1/price`, `/api/v1/chains`,
@@ -184,7 +184,7 @@
   via `BACKEND_URL = 'http://localhost:8443'`. All fake stubs removed
   (`generateMnemonic`, `deriveAddress`, `signTransaction`, `personalSign`,
   `signTypedData`, `exportPrivateKey` now call the backend or throw). No more
-  hardcoded `"abandon "`Ă—12 or `0x`+fake signatures.
+  hardcoded `"abandon "`─éŌĆö12 or `0x`+fake signatures.
 
 ## docker-compose.yml (cleaned)
 
@@ -207,7 +207,7 @@
   `cargo check` / `cargo test --lib` from `core/rust/zk_infrastructure`.
   Toolchain installed 2026-08-11: cargo/rustc 1.97.1 (stable, minimal profile).
 
-## hardware_wallet/rust (Ledger APDU layer ” real, fail-closed)
+## hardware_wallet/rust (Ledger APDU layer ŌĆØ real, fail-closed)
 
 - `hardware_wallet/rust/src/ledger/mod.rs` is a REAL Ledger Ethereum-app APDU
   protocol layer (NOT a fake). Implements: APDU constants (CLA 0xE0,
@@ -215,30 +215,30 @@
   P1_FIRST/P1_MORE, P2_TRANSACTION/P2_TYPED_DATA/P2_MESSAGE, status words
   0x9000/0x6985/0x6A80/0x6700/0x6A86); real APDU builders
   (`build_get_public_key_apdu`, `build_sign_apdu`, `build_get_app_configuration_apdu`
-  ” BIP-32 path BE-encoded, Lc length); real response parsers
+  ŌĆØ BIP-32 path BE-encoded, Lc length); real response parsers
   (`parse_get_public_key_response` pubKey+address, `parse_sign_response`
   v||r||s with v normalized 0/1->27/28, `split_status_word`, `check_status`,
   `parse_app_config_response`); real EIP-191 host-side message prefixing
   (`eip191_personal_message`). `ApduTransport` trait + fail-closed `NoTransport`
-  default ” NO fake signature is ever produced. `derive_bip32_path` accepts
+  default ŌĆØ NO fake signature is ever produced. `derive_bip32_path` accepts
   `'`/`h`/`H` hardened suffixes, rejects oversized indices + empty paths.
 - The fake `"02"+zeros` public key and `vec![0u8;64]` signature are GONE.
   `cargo test --lib` -> 20/20 pass (19 ledger via a canned-response transport).
 - Trezor/OneKey/Ellipal/SafePal modules are now fail-closed (DeviceNotFound)
-  ” removed fake all-zero keys/sigs + the compile-broken `"0x" + &hex::encode()`
+  ŌĆØ removed fake all-zero keys/sigs + the compile-broken `"0x" + &hex::encode()`
   string concat. AirGap is a legitimate QR-code air-gapped protocol (kept).
 - Production next step: wire `ApduTransport` to a HID/BLE backend (hidapi /
-  ledger-rs) ” the protocol layer above is unchanged.
+  ledger-rs) ŌĆØ the protocol layer above is unchanged.
 
-## wallet_core (Rust core) ” keystore_v3
+## wallet_core (Rust core) ŌĆØ keystore_v3
 
 - `wallet_core/src/keystore_v3.rs` is a REAL Web3 Secret Storage v3
-  implementation (Geth/MetaMask/MyCrypto keystore JSON format ”
+  implementation (Geth/MetaMask/MyCrypto keystore JSON format ŌĆØ
   https://github.com/ethereum/wiki/wiki/Web3-Secret-Storage-Definition).
 - Both real KDFs: `scrypt` (default N=131072,r=8,p=1,dklen=32) and
   `pbkdf2` (HMAC-SHA256, 262144 iters). Power-of-two N validation.
 - Cipher AES-128-CTR (real `aes`+`ctr` crates). MAC =
-  keccak256(derived_key[16:32]–ciphertext), constant-time compared via
+  keccak256(derived_key[16:32]ŌĆōciphertext), constant-time compared via
   `subtle::ConstantTimeEq`. Wrong password / tampered ciphertext ->
   `MacMismatch` (fail-closed). Derived material zeroized.
 - serde structs match the spec field names exactly (`crypto.cipher`,
@@ -256,7 +256,7 @@
   (Go backend already had the scrypt variant + REST endpoints); both
   now produce spec-valid keystores importable across wallets.
 
-## solana/rust (Solana core ” real Ed25519 + PDA)
+## solana/rust (Solana core ŌĆØ real Ed25519 + PDA)
 
 - New crate `tiger_solana_core` (`solana/rust/src/lib.rs`). Replaces the
   C++ `solana_core.cpp` fakes (SHA256-as-pubkey, unsalted-SHA256 PDA).
@@ -265,7 +265,7 @@
   `scalar_mult(seed)` via SHA-512 clamping, NOT SHA-256. Validates the
   result decompresses to a real on-curve point.
 - `find_program_address` / `create_program_address`: the canonical Solana
-  PDA algorithm ” `sha256(seeds || program_id || bump)` with
+  PDA algorithm ŌĆØ `sha256(seeds || program_id || bump)` with
   `PDA_MARKER = b"ProgramDerivedAddress"`, 255->1 bump-seed search, and
   curve25519 on-curve REJECTION (a PDA must NOT be a valid Ed25519
   pubkey). Matches `solana-program`.
@@ -280,7 +280,7 @@
 - C++ side: the three fake SHA-256 derivations (`derive_public_key`,
   `TokenAddress::create`, `NFTMetadata::get_metadata_address`) are now
   fail-closed (return all-zero sentinel + comment). The legitimate
-  `Message::hash` (SHA-256 of the serialized message ” used for signing)
+  `Message::hash` (SHA-256 of the serialized message ŌĆØ used for signing)
   is kept; that one is real.
 
 ## zk_infrastructure / ZK prover
@@ -296,7 +296,7 @@
 ## desktop_wallet (C++)
 
 - CMake project at `desktop_wallet/`, C++20. Depends on CURL + OpenSSL
-  (dev pkgs: `libcurl4-openssl-dev libssl-dev`; `cmake` was not preinstalled ”
+  (dev pkgs: `libcurl4-openssl-dev libssl-dev`; `cmake` was not preinstalled ŌĆØ
   `sudo apt-get install -y cmake`). `g++` 14.x is available.
 - UI is NOT a GUI toolkit (no ImGui/Qt/wx). UI components under
   `src/ui/components/**.hpp` are header-only HTML-string generators. Themes
@@ -315,7 +315,7 @@
   standard build command above works.
 - NEW (2026-08-11): `src/services/swap_service.cpp` now calls the real on-chain
   AMM router (`GET /api/v1/amm/quote` for `getAmountsOut`, then the two-step
-  `POST /api/v1/amm/swap` + `POST /api/v1/send` for real tx broadcast) ” same
+  `POST /api/v1/amm/swap` + `POST /api/v1/send` for real tx broadcast) ŌĆØ same
   backend path as the web frontend. NEW `include/services/multisig_service.h`
   + `src/services/multisig_service.cpp`: C++ service calling the
   `go/multisig_service` REST API (port 8450) for threshold multisig
@@ -323,7 +323,7 @@
   executeTransaction/revokeTransaction/pendingTransactions). Uses a dedicated
   `APIClient` instance (NOT the wallet_api singleton) pointed at the multisig
   port. Added to `CMakeLists.txt`. Singleton ctor moved to public (copy ctor
-  stays deleted in private) so `std::make_shared` works ” same fix pattern as
+  stays deleted in private) so `std::make_shared` works ŌĆØ same fix pattern as
   the other desktop services.
 - SINGLETON PATTERN FIX: service headers (`include/services/*` +
   `include/services/master/master_wallet_service.h`) used the singleton pattern
@@ -340,9 +340,9 @@
   `ConvertToken`/`ConvertPair` in `src/services/convert_service.h` and
   `Trader` in `src/services/copy_trading_service.h`). Include `<utility>` for
   `std::move` in those headers.
-- `std::cerr` requires `#include <iostream>` ” was missing in
+- `std::cerr` requires `#include <iostream>` ŌĆØ was missing in
   `src/models/wallet_models.cpp`; added. `std::remove_if` requires
-  `#include <algorithm>` ” was missing in `src/services/margin_trading_service.cpp`;
+  `#include <algorithm>` ŌĆØ was missing in `src/services/margin_trading_service.cpp`;
   added.
 - Note: the bundled `cpp/rpc_manager/json.hpp` referenced as
   `<nlohmann/json.hpp>` is a stub; not on the current build's include path for
@@ -414,7 +414,7 @@
   In this env: `cd /tmp && curl -sSfL https://go.dev/dl/go1.23.12.linux-amd64.tar.gz -o go.tar.gz && mkdir -p $HOME/.go-sdk && tar -C $HOME/.go-sdk -xzf go.tar.gz`,
   then `export PATH="$HOME/.go-sdk/go/bin:$PATH" && export GOPATH="$HOME/go" && export GOTOOLCHAIN=local`.
   Verify: `go version` -> `go1.23.12 linux/amd64`. Build any `go/<svc>` with
-  `cd go/<svc> && go build ./...`. NOTE: `/usr/local` is read-only ” install
+  `cd go/<svc> && go build ./...`. NOTE: `/usr/local` is read-only ŌĆØ install
   into `$HOME`.
 - Two modules: go/multisig_service (github.com/tigerwallet/multisig-service), go/mpc (github.com/tigerwallet/mpc).
 - All signing uses github.com/ethereum/go-ethereum/crypto (real ECDSA secp256k1, low-s). No sha256/sha3 fakes.
@@ -454,7 +454,7 @@
   staking/staking.go: SetString returns (*Int,bool) not (*Int,error); added
   missing LastClaimTime field to UserStake. Build+vet OK.
 - go/payment/main.go: processWithdrawal now does a REAL on-chain ERC-20
-  transfer(address,uint256) ” manual calldata (selector 0xa9059cbb + padded
+  transfer(address,uint256) ŌĆØ manual calldata (selector 0xa9059cbb + padded
   addr + amount) + types.NewTx(DynamicFeeTx) + types.SignTx(NewLondonSigner)
   + ethclient.SendTransaction. No more `0x%x` of timestamp. If no hot-wallet
   key/RPC, status="requires_signing" (not failed, not faked).
@@ -482,7 +482,7 @@
   tokens,transactions,nfts,gas,chains,auth/login,auth/register,
   public/balance,public/tokens,public/transactions,public/nfts}/route.ts.
 - tsc --noEmit: 0 errors in all changed files (57 pre-existing errors in
-  OTHER pages like hardware-wallet/launchpad/lending/bridge remain ” not
+  OTHER pages like hardware-wallet/launchpad/lending/bridge remain ŌĆØ not
   from these changes).
 
 ## user_wallet/* retarget + fake-crypto elimination (2026-08-11)
@@ -494,20 +494,20 @@
   wallet_api (stdlib net/http/httputil only). The dead
   `handlers/user_wallet_handler.go`, `wallet_service.go`, `swap_service.go`
   were removed (they fabricated tx hashes / fake swap quotes and were never
-  wired — Android depended on them = trap). `go build ./...` exit 0.
+  wired ŌĆö Android depended on them = trap). `go build ./...` exit 0.
 - `getProfile()` in clients decodes the local JWT (no fake /profile route).
 - `rust/userwallet_fetchers` now has a `Cargo.toml`, compiles clean
   (`cargo check` exit 0), and delegates to the backend with fail-closed
-  errors — no stubs. Replaces the 21 dead uncompilable fetcher structs.
+  errors ŌĆö no stubs. Replaces the 21 dead uncompilable fetcher structs.
 - `frontend/web_nextjs/app/wallet/lib/transactions.ts`: the 9 "unavailable"
   boundaries are wired to real backend (`/send`, `/gas`, `/swap/quote`).
   Solana/Bitcoin throw honest fail-closed errors (backend has no Solana/BTC
-  signer — not stubs).
+  signer ŌĆö not stubs).
 
 ### Security fixes (auth bypass / key leakage / XSS / fake crypto)
 - iOS `SuperAdminService.verifyTwoFactor`: was accepting ANY 6-digit code
   (2FA bypass). Now real RFC 6238 TOTP (CommonCrypto HMAC-SHA1 over
-  base32-decoded secret, 30s step, ±1 window, dynamic truncation).
+  base32-decoded secret, 30s step, ┬▒1 window, dynamic truncation).
 - `desktop_app/src/app.js` unlockWallet: was "for demo, accept any
   password". Now verifies PBKDF2-SHA256 (600k iter) hash. hashPassword is
   real PBKDF2 (was DJB2). Demo wallet/transactions removed; real backend
@@ -537,7 +537,7 @@
   (ethers v6 getCreate2Address + keccak256) (was DJB2-fabricated 0x addr).
 - production-react `HardwareWalletService.hashMessage`: real
   `ethers.hashMessage` (was DJB2 simpleHash). deriveMockPublicKey throws.
-- `swiftc` is NOT installed in this env — iOS files are syntax-verified by
+- `swiftc` is NOT installed in this env ŌĆö iOS files are syntax-verified by
   manual review only. `node --check` used for all JS.
 
 ## frontend/web_nextjs fixes 2026-08-09/10 (TS strict + wallet hook)
@@ -589,7 +589,7 @@
 ## Rust crate compile audit (2026-08-10)
 
 - Toolchain: rustc 1.97.1 stable (minimal profile). libssl-dev / pkg-config are NOT
-  installed ” every crate depending on openssl-sys fails its build script.
+  installed ŌĆØ every crate depending on openssl-sys fails its build script.
   Installing libssl-dev + pkg-config is a precondition, not a code fix.
 - 88 Rust crates total (no workspaces; each Cargo.toml is standalone). cargo check
   (offline first, online fallback), per-crate timeout ~240s: 23 clean, 65 fail (exit 101).
@@ -668,7 +668,7 @@ Notes:
   `decimals()` per token for human<->wei. 0.5% slippage default from the
   live `getAmountsOut`. `GET /api/v1/amm/quote` + `POST /api/v1/amm/swap`
   (constructs calldata; client broadcasts via real `/api/v1/send`). 503 on
-  RPC failure ” never fabricates. 8 Go tests (byte-exact selector + encoding,
+  RPC failure ŌĆØ never fabricates. 8 Go tests (byte-exact selector + encoding,
   decode roundtrip, short-return reject, router resolution, humanToWei +
   zero/negative reject). `go build` + `go vet` clean. Frontend parity:
   `app/api/v1/amm/{quote,swap}/route.ts` (wallet_api auth group), `tsc` clean.
@@ -681,7 +681,7 @@ Notes:
   createWallet(name,password,mnemonic) (suspend). Flutter is unaffected: real
   on-device BIP-39/32/44 + flutter_secure_storage (self-custody, no backend pw).
 
-## Frontend (web_nextjs) ” light/dark theme switching
+## Frontend (web_nextjs) ŌĆØ light/dark theme switching
 
 - `ThemeProvider` at `frontend/web_nextjs/app/components/ThemeProvider.tsx` exposes `useTheme()` returning `{ theme, isDark, colors, ... }`.
 - Reference implementation: `app/convert/page.tsx` (zero `dark:` Tailwind variants; uses `isDark ? '...' : '...'` ternaries).
@@ -693,7 +693,7 @@ Notes:
 - Pages already converted (all under `app/<route>/page.tsx`): themes, tx-simulation, gas-estimation, approvals, address_book, nft-marketplace, bug-bounty, defi, staking, token_sale, ieo, master_wallet, copy_trading, swap, walletconnect, fiat-ramps, price-feeds, protection-fund, kyc, history, social_recovery, gift_cards, biometric, insurance_fund, widgets, dao, perpetual, notifications_center, launchpool, fiat_onramp, i18n. Verify with `grep -rn "dark:" app/` (should be 0 in themed pages). Full `npx tsc --noEmit` passes with 0 errors after `npm install`.
 - NOTE: `approvals/page.tsx` `RISK_COLORS` badges are intentionally light-tinted and not theme-dependent.
 
-## Frontend (web_nextjs) ” perpetual/margin_trading/token_sale/dao real backend (2026-08-11)
+## Frontend (web_nextjs) ŌĆØ perpetual/margin_trading/token_sale/dao real backend (2026-08-11)
 
 Converted four `app/<route>/page.tsx` pages from MOCK_* consts to real wallet_api
 (:8443) PostgreSQL-backed fetch calls, following the launchpool/approvals/defi
@@ -713,7 +713,7 @@ Per-page:
 - **perpetual/page.tsx**: removed `MOCK_POSITIONS`; GET `/perpetual/positions`;
   POST `/perpetual/positions` (create) + POST `/perpetual/positions/:id/close`
   replaced `setTimeout` simulators.
-- **margin_trading/page.tsx**: `MOCK_PAIRS` (BTC/USDT, ETH/USDT ” chain/reference
+- **margin_trading/page.tsx**: `MOCK_PAIRS` (BTC/USDT, ETH/USDT ŌĆØ chain/reference
   config, NOT user data) renamed to local const `TRADING_PAIRS` (kept, not from
   backend); positions now come from GET `/margin/positions`; POST create +
   POST `/margin/positions/:id/close` are real fetchAPI calls.
@@ -729,14 +729,14 @@ Per-page:
   proposer/proposer_name). Stats block uses real data. Vote modal submit
   disabled while submitting/empty.
 - JSX gotcha fixed in dao: nested ternary `{loading ? ... : empty ? ... : (
-  arr.map(...) )}` ” the `.map` branch MUST close with `})` then `)}` (arrow
+  arr.map(...) )}` ŌĆØ the `.map` branch MUST close with `})` then `)}` (arrow
   body + map call, then ternary `)` + JSX `}`); a stray extra `)` causes
   TS1005/TS1381.
 
 ### Pitfalls observed during conversion
 - A half-converted file may already reference `isDark` in JSX but be **missing the import + hook declaration** -> compiles to "isDark is not defined". Always confirm both `import { useTheme }` and `const { isDark } = useTheme();` exist (token_sale and ieo hit this).
 - When converting a static multi-class `className` to a template literal, keep ALL original classes inside the backticks; accidentally leaving trailing classes (e.g. `px-4 py-3`) outside the closing backtick produces an unbalanced template literal (syntax error). Verify backtick count is even after edits (gas-estimation error banner hit this).
-- `master_wallet/page.tsx` contains REAL BIP-39/AES-GCM/PBKDF2/WebCrypto logic ” only change its colors, never its crypto code.
+- `master_wallet/page.tsx` contains REAL BIP-39/AES-GCM/PBKDF2/WebCrypto logic ŌĆØ only change its colors, never its crypto code.
 
 
 ## Go toolchain + real-NFT-fetcher + keystore V3 (2026-08-11)
@@ -758,14 +758,14 @@ Per-page:
   ownerOf/tokenURI/name/symbol/totalSupply via `eth_call`), with HTTP metadata
   fetch + `ipfs://`->gateway resolution + Redis cache (60s TTL, capped 200
   tokens/owner). If `ETH_RPC_URL` is unset, `GetUserNFTs?contract=` returns 503
-  "unavailable" ” NEVER fabricates data. The old `initializeDefaultData()`
+  "unavailable" ŌĆØ NEVER fabricates data. The old `initializeDefaultData()`
   (mock BAYC/CryptoPunks/Azuki/DeGods with `Owner:"0x000"`) was REMOVED;
   service starts empty. `NFT` struct has NO `Standard` field (only
-  `NFTCollection` does) ” don't set it in fetcher literals. `cfg.Port` is a
+  `NFTCollection` does) ŌĆØ don't set it in fetcher literals. `cfg.Port` is a
   string. go build + go vet clean.
 - **go/wallet_api/keystore_v3.go (new)**: real Web3 Secret Storage V3 (scrypt
-  variant) ” `ExportKeystoreV3`/`ImportKeystoreV3`. scrypt N=1<<18/r=8/p=1/
-  dklen=32, AES-128-CTR, MAC = keccak256(dk[16:32]–ciphertext), constant-time
+  variant) ŌĆØ `ExportKeystoreV3`/`ImportKeystoreV3`. scrypt N=1<<18/r=8/p=1/
+  dklen=32, AES-128-CTR, MAC = keccak256(dk[16:32]ŌĆōciphertext), constant-time
   MAC compare, v4 UUID. 2 tests pass (round-trip + wrong-password MAC failure).
   REST: `POST /api/v1/keystore/{export,import}` (AuthMiddleware-protected) +
   Next.js proxy routes `app/api/v1/keystore/{export,import}/route.ts` (use
@@ -785,29 +785,29 @@ Per-page:
   9 wallet-api (balance, transactions, tokens, nfts, gas, price, swap, staking,
   dapps) + **8 REAL DeFi-service fetchers** added via a multi-service
   `UserWalletClient::service_get()` that mirrors the Next.js `_proxy.ts` service
-  map: lending→:8009, copy_trading→:8006, dao→:8454, futures→:8464,
-  margin→:8464 (perpetual covers margin), prediction→:8455, nft_trading→:8085,
-  fiat_ramp→:8008. 5 remain HONEST fail-closed (bridge=no HTTP server —
+  map: lendingŌåÆ:8009, copy_tradingŌåÆ:8006, daoŌåÆ:8454, futuresŌåÆ:8464,
+  marginŌåÆ:8464 (perpetual covers margin), predictionŌåÆ:8455, nft_tradingŌåÆ:8085,
+  fiat_rampŌåÆ:8008. 5 remain HONEST fail-closed (bridge=no HTTP server ŌĆö
   go/bridge is a library; options/p2p/gift_card/price_alerts=no service). The
   `services` HashMap field is populated by `default_service_urls()` in
-  `fetchers.rs`. `block_on(async {...})?` — the `?` is REQUIRED because
+  `fetchers.rs`. `block_on(async {...})?` ŌĆö the `?` is REQUIRED because
   `block_on` returns `Result<F::Output, String>` (double-wrapped). `cargo test`
   3/3 pass. NEVER regress the wired fetchers to `UnavailableFetcher`.
 - **mobile/flutter** now has a `pubspec.yaml` (deps: http, crypto, path_provider,
-  provider, shared_preferences — the 5 packages its lib imports). Flutter SDK
+  provider, shared_preferences ŌĆö the 5 packages its lib imports). Flutter SDK
   is NOT installed in this env; the pubspec makes it buildable where Flutter is
-  present. `AppConstants.baseUrl` default changed from `api.tigerwallet.io` →
+  present. `AppConstants.baseUrl` default changed from `api.tigerwallet.io` ŌåÆ
   `http://localhost:8443` (configurable via `--dart-define=API_BASE_URL=...`),
   matching the canonical wallet_api. `wallet_service.dart` already calls real
   `/api/v1/auth/*`, `/wallets`, `/send`, `/sign`, `/transactions` on :8443.
-- **user_wallet/production/react** retargeted :8080→:8443. `AuthService.ts` +
+- **user_wallet/production/react** retargeted :8080ŌåÆ:8443. `AuthService.ts` +
   `WalletService.ts` REWRITTEN to the canonical wallet_api flat contract (NOT
-  the nested `/wallets/:id/send` RESTful design — that 404s against wallet_api).
+  the nested `/wallets/:id/send` RESTful design ŌĆö that 404s against wallet_api).
   Real routes: `/auth/login`, `/auth/register`, `/wallets`, `/public/balance`,
   `/send`, `/sign`, `/swap/quote`, `/gas`, `/transactions`, `/nfts`,
   `/staking/*`. Features the backend doesn't expose (bridges, nft/transfer,
   dapp/connect, 2FA, refresh tokens, password reset, sessions) throw real
-  errors — never fake success. Added `tsconfig.json`. The two service files
+  errors ŌĆö never fake success. Added `tsconfig.json`. The two service files
   compile clean (0 errors); the 35 remaining `tsc` errors are all in the
   PRE-EXISTING `src/services/master/*` files (HardwareWalletService etc.),
   outside UserWallet scope. Both files export BOTH named `{ AuthService }`/
@@ -816,7 +816,7 @@ Per-page:
   "unavailable until the canonical Rust wallet-core bridge is configured"
   stubs now delegate to the backend via Next.js proxy routes (`/send`, `/sign`,
   `/transactions`, `/swap/quote`, `/gas`, `/bridge/quote`, `/lending/markets`).
-  Proxy route bug fixed: `proxyGet(req, '/wallet/transactions')` →
+  Proxy route bug fixed: `proxyGet(req, '/wallet/transactions')` ŌåÆ
   `proxyGet(req, '/transactions')`.
 - **Theme switching verified on EVERY app**: web (ThemeProvider sets
   `data-theme` on documentElement + CSS vars in theme.css), desktop (same),
@@ -826,10 +826,10 @@ Per-page:
   ternaries, 0 dark: variants in themed pages). All apply theme globally, not
   per-page.
 - **Production-vs-dev target split (now clean)**: dev frontends (`user_wallet/*`,
-  `frontend/web_nextjs`) → `localhost:8443` (canonical wallet_api); production
+  `frontend/web_nextjs`) ŌåÆ `localhost:8443` (canonical wallet_api); production
   frontends (`desktop_app`, `browser_extensions/chrome`) previously pointed at
   `api.tigerwallet.com` BUT origin/main commit `041bb49` "Repo-wide: remove ALL
-  fake api.tigerwallet.com backend URLs" removed those — so all clients now use
+  fake api.tigerwallet.com backend URLs" removed those ŌĆö so all clients now use
   the real canonical backend. No orphan/stub targets remain.
 - **Go DeFi services with main.go (real HTTP servers)**: lending_service
   (:8009, real Aave V3, group `/api/v1/lending`), copy_trading_service (:8006,
@@ -838,7 +838,7 @@ Per-page:
   prediction_service (:8455, `/api/v1/prediction`), nft_prices (:8085
   canonical nft_service, `/api/v1/nft`), fiat (:8008), fiat_ramp (:8008,
   `/api/v1/ramp`). `bridge`/`red_packets_service`/`nft` (the dir, not
-  nft_service) have NO main.go — they're libraries.
+  nft_service) have NO main.go ŌĆö they're libraries.
 
 ## Session 2026-08-12 #4: All non-English content converted to English (COMPLETE)
 
@@ -855,21 +855,21 @@ Found and fixed non-English / mojibake content in markdown docs AND source:
 - `competitor_analysis/04-GAP-ANALYSIS.md`: triple-corrupted emoji mojibake -> English markers
 
 **Source files (9 files, commits b7a73b4 + 40fdc73):**
-- `go/wallet_api/dapp_directory.go`: Raydium Logo "射线" -> "ray"
-- `smart_contracts/evm_contracts/contracts/Pair.sol`: comment "清算" -> "liquidation"
-- `admin/android AdminApiService.kt`: Retrofit path "request更多信息" -> "request-more-info"
-- `services/go/hardware_wallet_service/main.go`: comment "人对" -> "for"
-- `backend_services/api_gateway/platform_services.go`: key "其他" -> "OTHER"
-- `fiat_onramp/go/cmd/main.go`: Transak URL "c报价" -> "currencies"
-- `mobile/flutter app_constants.dart`: explorer key "g链" -> "gchain"
+- `go/wallet_api/dapp_directory.go`: Raydium Logo "Õ░äń║┐" -> "ray"
+- `smart_contracts/evm_contracts/contracts/Pair.sol`: comment "µĖģń«Ś" -> "liquidation"
+- `admin/android AdminApiService.kt`: Retrofit path "requestµø┤ÕżÜõ┐Īµü»" -> "request-more-info"
+- `services/go/hardware_wallet_service/main.go`: comment "õ║║Õ»╣" -> "for"
+- `backend_services/api_gateway/platform_services.go`: key "ÕģČõ╗¢" -> "OTHER"
+- `fiat_onramp/go/cmd/main.go`: Transak URL "cµŖźõ╗Ę" -> "currencies"
+- `mobile/flutter app_constants.dart`: explorer key "gķōŠ" -> "gchain"
 - `mobile_apps/tigerwallet BlockchainService.ts`: corrupted WMATIC address (had
-  "弥" mid-hex) -> correct canonical 0x7D1AfA7B718fb893dB30A3aBc0Cfc608A36CdeD8
+  "Õ╝ź" mid-hex) -> correct canonical 0x7D1AfA7B718fb893dB30A3aBc0Cfc608A36CdeD8
 - `browser_extensions/chrome account-abstraction-service.js`: Japanese var
-  "エントロピー" -> "entropy"
-- `desktop_wallet p2p_trading_service.hpp`: C++ struct field "限流" -> "rate_limit"
+  "Ńé©Ńā│ŃāłŃāŁŃāöŃā╝" -> "entropy"
+- `desktop_wallet p2p_trading_service.hpp`: C++ struct field "ķÖÉµĄü" -> "rate_limit"
 
 **Kept intentionally (legitimate i18n):** `libs/i18n/translations.ts` and
-language picker UIs retain native language names ("中文", "日本語", etc.) — a
+language picker UIs retain native language names ("õĖŁµ¢ć", "µŚźµ£¼Ķ¬×", etc.) ŌĆö a
 language selector must display each language's native name.
 
 **Final repo-wide scan: 0 stray CJK characters anywhere outside the i18n files.**
@@ -883,11 +883,11 @@ All 4 commits pushed to `origin/main` (53492cb, 7ec6f6e, b7a73b4, 40fdc73).
   chains (curated public RPC docs), including Pi Network. Non-EVM registry
   IDs live in namespace >= 9,000,000,000 (derived from SLIP-44 coin_type) so
   there are ZERO collisions with EVM chain ids. Pi's RPC is honestly empty
-  (admin-configurable) — no fabricated endpoint. EVM coin_type = 60 (BIP-44
+  (admin-configurable) ŌĆö no fabricated endpoint. EVM coin_type = 60 (BIP-44
   `m/44'/60'/...`) for all EVM chains regardless of the registry's per-asset
   slip44 (714/966 are SLIP-44 asset registry values, NOT the wallet derivation
   coin type).
-- **Go (`go/wallet_api` — system of record)**: `chains_evm_data.go` (var
+- **Go (`go/wallet_api` ŌĆö system of record)**: `chains_evm_data.go` (var
   `evmMainnet`, 120), `chains_nonevm_data.go` (var `nonEVMMainnet`, 66),
   `chains.go` (`ChainConfig` struct with `ChainType`/`Decimals`/`CoinType`/
   `ExplorerURL`; `chainByID`/`listSupportedChains`/`listChainsByType`/
@@ -900,23 +900,23 @@ All 4 commits pushed to `origin/main` (53492cb, 7ec6f6e, b7a73b4, 40fdc73).
   `wallet_engine_test.go` asserts >=100 EVM, >=50 non-EVM, Pi present, no
   testnets, Ethereum/Polygon names. `go build` + `go test ./...` + `go vet`
   all clean. Fixed a flaky seed-encrypt test (`strings.Contains(enc,"0000")`
-  false positive → length check).
-- **Rust (`rust/blockchain_registry` — security layer)**: rewrote with a real
+  false positive ŌåÆ length check).
+- **Rust (`rust/blockchain_registry` ŌĆö security layer)**: rewrote with a real
   `Cargo.toml` (deps serde/parking_lot/hex/tiny-keccak). Removed the duplicate
   `Polkadot` enum variant, id:0 collisions, and testnets. `BlockchainRegistry`
   (lock-free `RwLock<HashMap>`), `ChainType`, `ChainConfig`. REAL per-family
-  address validation — EVM EIP-55 (real keccak256 via `tiny-keccak`), Bitcoin
+  address validation ŌĆö EVM EIP-55 (real keccak256 via `tiny-keccak`), Bitcoin
   base58check (real base58 + a compact real SHA-256 verified against the "abc"
   FIPS-180-4 vector), Solana base58 32-byte, Cosmos/bech32 (real BIP-173
   polymod checksum), Ripple base58check, Stellar/Nano sanity. `AddressCheck`
   enum (`Valid`/`Invalid`/`ValidNoRpc`). `cargo test`: 13/13 pass (no mocks).
-- **C++ (`cpp/chain_registry` — ultra-low-latency hot path)**: header-only
+- **C++ (`cpp/chain_registry` ŌĆö ultra-low-latency hot path)**: header-only
   `ChainResolver.hpp` (wait-free O(1) `findById` via hash index after a one-
   time frozen build; `loadExtra` for admin additions before first lookup) +
   generated `chain_registry_data.cpp` (120+66). `test_chain_resolver.cpp`
   compiles + runs with g++ 14 (`-std=c++20 -O2`): asserts >=100 EVM, >=50
   non-EVM, Pi present, admin merge.
-- **Frontend**: `frontend/web_nextjs/app/chains/page.tsx` — removed the 14-entry
+- **Frontend**: `frontend/web_nextjs/app/chains/page.tsx` ŌĆö removed the 14-entry
   hardcoded fake chain list; now fetches live via `walletService.getSupported
   Chains()` (`GET /api/v1/chains`), with loading/error states, an
   EVM/non-EVM/all filter, and a theme-aware detail modal (useTheme `isDark`).
@@ -933,7 +933,7 @@ All 4 commits pushed to `origin/main` (53492cb, 7ec6f6e, b7a73b4, 40fdc73).
 
 ## Session 2026-08-12: Chain registry wired across ALL client platforms
 
-Closed the "registry not wired into mobile/desktop/extension" gap — every
+Closed the "registry not wired into mobile/desktop/extension" gap ŌĆö every
 TigerWallet client now fetches the same live `GET /api/v1/chains` registry
 instead of a divergent hardcoded list. No fabricated chains introduced; each
 client keeps its built-in list only as an offline fallback.
@@ -942,13 +942,13 @@ client keeps its built-in list only as an offline fallback.
   `jsonArrayOfObjects` JSON array parser in `api_client.cpp`). Replaces the
   in-memory `chains_` map with live backend data; preseeded mainnet defaults
   remain only if the backend is unreachable. Added `chainTypeFromString`
-  (backend `chain_type` string → `ChainType` enum). `cmake`+`make -j4` exit 0
+  (backend `chain_type` string ŌåÆ `ChainType` enum). `cmake`+`make -j4` exit 0
   (cmake 3.31.6 + libcurl4-openssl-dev + libssl-dev installed this session).
 - **Chrome extension:** `BridgeService.getChains()`/`getSupportedChains()`
-  retargeted from non-canonical `/bridge/chains` → `/api/v1/chains`, unwraps
+  retargeted from non-canonical `/bridge/chains` ŌåÆ `/api/v1/chains`, unwraps
   the `{chains:[...]}` envelope (was returning raw/bare response). `node --check` clean.
 - **iOS (`mobile_apps/ios_app`):** `SwapStakingBridgeService.getSupported
-  Chains()` → `/api/v1/chains`, decodes full `ChainsResponse` envelope (was
+  Chains()` ŌåÆ `/api/v1/chains`, decodes full `ChainsResponse` envelope (was
   bare `[ChainInfo]`); `ChainInfo` now carries all backend fields.
 - **Android (`mobile_apps/android_app`):** `MasterWalletService.loadNetworks()`
   fetches `/api/v1/chains` via OkHttp, parses `{chains:[...]}` into
@@ -967,36 +967,36 @@ client keeps its built-in list only as an offline fallback.
   `node --check` clean. iOS/Android/Flutter verified by manual review
   (no swiftc/kotlinc/flutter SDK in env).
 - **COMPLETED (2026-08-12):** per-non-EVM transaction signing + admin
-  chain-management UI panel are now REAL — see "Session 2026-08-12:
+  chain-management UI panel are now REAL ŌĆö see "Session 2026-08-12:
   Non-EVM signing layer + admin chain UI" section below.
 
 
 ## Session 2026-08-12: UserWallet backend param-contract parity + dedup
 
 ### Parity audit findings (real bugs, now fixed)
-A fresh frontend↔backend parity audit confirmed route coverage was complete
-(no 404s — every client call has a matching route), but the **parameter
+A fresh frontendŌåöbackend parity audit confirmed route coverage was complete
+(no 404s ŌĆö every client call has a matching route), but the **parameter
 contracts** were broken (400s / wrong data). All fixed in `go/wallet_api` by
 making the backend permissive (accept the conventions the clients already
 send), so all 6 clients work without client-side churn:
-- `POST /auth/register` — `username` was `binding:"required,min=3"`; 5/6
-  clients (web/desktop/android/ios/react) omit it → 400. Now optional; derived
+- `POST /auth/register` ŌĆö `username` was `binding:"required,min=3"`; 5/6
+  clients (web/desktop/android/ios/react) omit it ŌåÆ 400. Now optional; derived
   from email local-part via new `auth.go:emailLocalPart` if absent.
-- `GET /price` — `handlePrice` read only `?coin=`; web/desktop send `?symbol=`,
-  android/ios send `?token=` → silently always priced ETH. Now accepts
+- `GET /price` ŌĆö `handlePrice` read only `?coin=`; web/desktop send `?symbol=`,
+  android/ios send `?token=` ŌåÆ silently always priced ETH. Now accepts
   `coin`/`symbol`/`token` (first non-empty).
-- `GET /swap/quote` — read `from`/`to`/`amount`; 4 clients send
-  `from_token`/`to_token`/`from_amount` → 400. Now accepts both via new
+- `GET /swap/quote` ŌĆö read `from`/`to`/`amount`; 4 clients send
+  `from_token`/`to_token`/`from_amount` ŌåÆ 400. Now accepts both via new
   `defi_handlers.go:firstNonEmpty` helper.
-- `POST /swap/execute` — required `dex_router`+`call_data`; clients send
-  `from`/`to`/`amount` → 400. Now constructs the swap calldata **server-side**
+- `POST /swap/execute` ŌĆö required `dex_router`+`call_data`; clients send
+  `from`/`to`/`amount` ŌåÆ 400. Now constructs the swap calldata **server-side**
   from the chain's V2 router (real on-chain `getAmountsOut` +
   `swapExactTokensForTokens` ABI, reusing `amm_router.go` logic) when the
   client omits router+calldata; honest 404 if no router configured for the
   chain. Added `expectedHumanStr` helper (single-value wrapper around
   `weiToHuman` which returns `(string, *big.Float)`).
-- `POST /staking/{stake,unstake,claim}` — required `staking_contract`+
-  `call_data` → 400. Now returns `202 Accepted` with
+- `POST /staking/{stake,unstake,claim}` ŌĆö required `staking_contract`+
+  `call_data` ŌåÆ 400. Now returns `202 Accepted` with
   `action_required: provide_staking_contract` (protocol-specific contract
   cannot be fabricated); accepts react's `wallet_id`/`password`/`token` fields.
 - `defi_handlers.go` imports added: `encoding/hex`, `github.com/ethereum/go-ethereum/common`.
@@ -1009,15 +1009,15 @@ send), so all 6 clients work without client-side churn:
   length check. True duplicate of `go/wallet_api`; its "unique" KYC/2FA/profile
   features were themselves stubs (fake TOTP).
 - Converted `user_services/go/main.go` to a **clean stdlib reverse-proxy shim**
-  to `go/wallet_api` (:8443) — same proven pattern as `user_wallet/go`. No
+  to `go/wallet_api` (:8443) ŌĆö same proven pattern as `user_wallet/go`. No
   external deps (no go.mod needed; `go build main.go` exit 0). Port :8081
   preserved for legacy clients; no key handling, no fabricated data.
 - Old fake-crypto impl retained as `user_services/go/legacy_main.go.txt`
-  (NOT compiled/served — reference of non-crypto data models only).
-- `user_wallet/go` was ALREADY a reverse-proxy shim (:8105 → :8443) from
-  a prior session — confirmed still correct.
+  (NOT compiled/served ŌĆö reference of non-crypto data models only).
+- `user_wallet/go` was ALREADY a reverse-proxy shim (:8105 ŌåÆ :8443) from
+  a prior session ŌĆö confirmed still correct.
 
-### SQLite — confirmed fully removed
+### SQLite ŌĆö confirmed fully removed
 Repo-wide audit: ZERO active SQLite usage. No source creates/opens a SQLite
 DB; no go.mod/Cargo.toml/package.json declares a SQLite driver. Residuals
 (non-active): 2 doc comments (`audit/legacy/android_admin/AdminDatabase.kt`,
@@ -1036,7 +1036,7 @@ co-located bundles (`frontend/web_nextjs`, `mobile_apps/*`) are NOT duplicates.
 | Component | Result |
 |-----------|--------|
 | `go/wallet_api` | build+vet+test exit 0 (BIP-44 vector passes) |
-| 9 DeFi Go services | nft_service, lending, copy_trading, governance, perpetual, prediction, payment, ens — all build exit 0 |
+| 9 DeFi Go services | nft_service, lending, copy_trading, governance, perpetual, prediction, payment, ens ŌĆö all build exit 0 |
 | `rust/userwallet_fetchers` | cargo check exit 0; 3/3 tests pass |
 | `rust/masterwallet_fetchers` | cargo check exit 0 (warnings only) |
 | `rust/admin_fetchers` | cargo check exit 0 (1 warning) |
@@ -1102,8 +1102,8 @@ co-located bundles (`frontend/web_nextjs`, `mobile_apps/*`) are NOT duplicates.
 
 ## Session 2026-08-12: Build verification + full UserWallet client parity
 
-### Rust fetchers — both broken crates now compile + pass real-crypto tests
-- **rust/masterwallet_fetchers**: 51 → 0 compile errors. Real secp256k1 0.28
+### Rust fetchers ŌĆö both broken crates now compile + pass real-crypto tests
+- **rust/masterwallet_fetchers**: 51 ŌåÆ 0 compile errors. Real secp256k1 0.28
   ECDSA signer (`signer.rs`): `RecoverableSignature`/`RecoveryId`/`sign_ecdsa_recoverable`/
   `recover_ecdsa` (recover-address roundtrip test), Solana path fail-closed.
   `DatabasePool` owns its own `Runtime` (no borrowed runtime); `CacheManager` uses
@@ -1112,27 +1112,27 @@ co-located bundles (`frontend/web_nextjs`, `mobile_apps/*`) are NOT duplicates.
   fabricated analytics metrics (`total_volume="1500000000.00"`, `revenue`, `growth`,
   hardcoded top-tokens/pairs). Rewrote `database.rs` (sync PG wrappers owning a Runtime),
   `cache.rs` (sync Redis via `Mutex<Option<Connection>>`), `fetchers.rs` (8 fetchers
-  impl the `AdminFetcher` trait, real SQL, NO fabricated metrics — analytics now does
+  impl the `AdminFetcher` trait, real SQL, NO fabricated metrics ŌĆö analytics now does
   real `SUM(amount)`/`GROUP BY token` and is honestly empty when DB has no data).
   Added `Cargo.toml` (tokio, tokio-postgres, redis 0.23, serde, chrono). The duplicate
   `AdminFetcher` trait def in `lib.rs` was removed (it lives in `fetchers.rs`).
   **cargo test --lib: 5/5 pass.** `RedisConfig::with_password` URL is `redis://:secret@host`
   (password prefixed with colon, per redis URL spec).
 
-### Foundry / smart contracts — verified
+### Foundry / smart contracts ŌĆö verified
 - Foundry installed on demand (`foundryup`): forge/cast/anvil/chisel 1.7.1 at
-  `~/.foundry/bin`. OpenZeppelin v5 was NOT present in `lib/` (shallow clone) —
+  `~/.foundry/bin`. OpenZeppelin v5 was NOT present in `lib/` (shallow clone) ŌĆö
   installed via `forge install OpenZeppelin/openzeppelin-contracts --no-git`.
   `cd smart_contracts/evm_contracts && forge build` exit 0. **`forge test`: 31/31
-  pass** (MultisigWallet 13, AccountFactory 5, VerifyingPaymaster, TigerWalletAAFactory) —
+  pass** (MultisigWallet 13, AccountFactory 5, VerifyingPaymaster, TigerWalletAAFactory) ŌĆö
   all real ECDSA via `vm.sign`, no mocks.
 
-### UserWallet clients — FULL feature parity (web/desktop/android/ios)
+### UserWallet clients ŌĆö FULL feature parity (web/desktop/android/ios)
 - ALL four UserWallet native clients now expose the SAME fetcher set against the
   canonical `go/wallet_api` (:8443): login/register, getWallets/createWallet,
   getBalances/getBalance(fetchBalance), getTransactions, sendTransaction, signMessage,
   getTokenBalances, getNFTs, getTokenPrice/getPrice, getChains/getNetworks, getGasPrice,
-  getNetworkStatus (derived from /chains, block_number honestly 0 — no dedicated status
+  getNetworkStatus (derived from /chains, block_number honestly 0 ŌĆö no dedicated status
   route), getSwapQuote, getStakingQuote.
 - `user_wallet/android/.../UserWalletApiService.kt`: added getTokenBalances/getNFTs/
   getGasPrice/getTokenPrice/getChains/getNetworkStatus/getSwapQuote/getStakingQuote
@@ -1142,15 +1142,15 @@ co-located bundles (`frontend/web_nextjs`, `mobile_apps/*`) are NOT duplicates.
   getTokenBalances/getNFTs/getGasPrice/getTokenPrice/getChains/getNetworkStatus/
   getSwapQuote/getStakingQuote (+ Codable structs).
 - `user_wallet/web/src/services/api.ts`: added getSwapQuote/getStakingQuote (send/sign
-  already existed — avoid duplicate method definitions, TS2393).
+  already existed ŌĆö avoid duplicate method definitions, TS2393).
 - `user_wallet/desktop/src/services/api.js`: added getNFTs/getSwapQuote/getStakingQuote.
 - The dead `user_wallet/go/handlers/` (user_wallet_handler.go, wallet_service.go,
   swap_service.go) trap is GONE (removed in a prior session). desktop route mismatch
   (`/wallet/balances`) is fixed (`/balances`). All clients target :8443, not :8105/:8080.
 
-### Build verification — all green
-- `frontend/web_nextjs`: `npx tsc --noEmit` → 0 errors (npm install done).
-- `user_wallet/web`: `npx tsc --noEmit` → 0 errors (`npm install --legacy-peer-deps`;
+### Build verification ŌĆö all green
+- `frontend/web_nextjs`: `npx tsc --noEmit` ŌåÆ 0 errors (npm install done).
+- `user_wallet/web`: `npx tsc --noEmit` ŌåÆ 0 errors (`npm install --legacy-peer-deps`;
   CRA needs legacy-peer-deps due to old react-scripts peer ranges).
 - `go/wallet_api`: `go build ./...` exit 0, `go test ./...` pass (incl. BIP-44 vector).
   Key DeFi Go services (nft_service, payment, ens_service, lending_service,
@@ -1161,7 +1161,7 @@ co-located bundles (`frontend/web_nextjs`, `mobile_apps/*`) are NOT duplicates.
   (CoinGecko 403 in sandbox is live-API rate-limiting, not a code failure).
 - Flutter SDK NOT installed in this env; `mobile/flutter` + `mobile_apps/flutter_app`
   have `pubspec.yaml` and all services target :8443 (buildable where Flutter present).
-- swiftc NOT installed — iOS verified by manual review (Codable structs + async/await).
+- swiftc NOT installed ŌĆö iOS verified by manual review (Codable structs + async/await).
 
 ### user_wallet/* client wiring (all verified -> :8443)
 - web, desktop, ios, android, production/react all target :8443 with correct
@@ -1171,7 +1171,7 @@ co-located bundles (`frontend/web_nextjs`, `mobile_apps/*`) are NOT duplicates.
   data). Replaced with WalletService.getDapps()/getDappCategories() hitting
   GET /dapps + /dapps/categories. Added those methods to WalletService.ts.
   SwapPage + StakingPage already used real WalletService calls (getSwapQuote/
-  swap/getStakingPositions/stake/claimRewards) — no fake data. production/
+  swap/getStakingPositions/stake/claimRewards) ŌĆö no fake data. production/
   react remaining tsc errors are all pre-existing & out-of-scope (services/
   master/* = MasterWallet product; missing Header/Sidebar/LoadingSpinner
   components; NFTsPage/Home/SendPage).
@@ -1311,11 +1311,11 @@ more via the registry.
 ### Problem
 4 Go services (airdrop, earn, coupon, red_packets) had real business logic
 (CreateCampaign, Deposit, ValidateCoupon, Claim, etc.) in their `*_service.go`
-files but NO `main.go` — they compiled as libraries but ran no HTTP server, so
+files but NO `main.go` ŌĆö they compiled as libraries but ran no HTTP server, so
 the frontend had no backend to proxy to. Additionally, several frontend API
 client methods called endpoints with no matching proxy route.
 
-### Go service HTTP servers (NEW main.go, stdlib net/http, real logic — no stubs)
+### Go service HTTP servers (NEW main.go, stdlib net/http, real logic ŌĆö no stubs)
 Each service's `*_service.go` was moved into a subpackage (to resolve the
 two-packages-one-directory conflict with the new `package main`), then a
 `main.go` HTTP server was added that wraps the existing service methods:
@@ -1333,23 +1333,23 @@ two-packages-one-directory conflict with the new `package main`), then a
 All 4: `go build ./...` + `go vet ./...` exit 0.
 
 ### Frontend proxy routes (NEW, all forward to REAL Go backends)
-- `/api/v1/wallet/{create,import}` → wallet_api `:8443` `/wallets` (POST)
-- `/api/v1/wallet/list` → wallet_api `:8443` `/wallets` (GET)
-- `/api/v1/wallet/send` → wallet_api `:8443` `/send` (POST)
-- `/api/v1/copy-trading/start` → copy_trading_service `:8006` `/copytrading/follow`
-- `/api/v1/perpetual/open` → perpetual_service `:8464` `/perpetual/position`
-- `/api/v1/perpetual/close` → perpetual_service `:8464` `/perpetual/position/{id}/close`
-- `/api/v1/insurance/coverage` → insurance_service `:8459` `/insurance/positions`
-- `/api/v1/multisig/create` → multisig_service `:8450` `/multisig/wallets`
-- `/api/v1/multisig/sign` → multisig_service `:8450` `/multisig/transactions/{id}/sign`
-- `/api/v1/airdrop/{campaigns,claim}` → airdrop_service `:8465`
-- `/api/v1/earn/{products,deposit,withdraw,claim}` → earn_service `:8466`
-- `/api/v1/coupon/validate` → coupon_service `:8467`
-- `/api/v1/red-packets/{create,claim}` → red_packets_service `:8468`
+- `/api/v1/wallet/{create,import}` ŌåÆ wallet_api `:8443` `/wallets` (POST)
+- `/api/v1/wallet/list` ŌåÆ wallet_api `:8443` `/wallets` (GET)
+- `/api/v1/wallet/send` ŌåÆ wallet_api `:8443` `/send` (POST)
+- `/api/v1/copy-trading/start` ŌåÆ copy_trading_service `:8006` `/copytrading/follow`
+- `/api/v1/perpetual/open` ŌåÆ perpetual_service `:8464` `/perpetual/position`
+- `/api/v1/perpetual/close` ŌåÆ perpetual_service `:8464` `/perpetual/position/{id}/close`
+- `/api/v1/insurance/coverage` ŌåÆ insurance_service `:8459` `/insurance/positions`
+- `/api/v1/multisig/create` ŌåÆ multisig_service `:8450` `/multisig/wallets`
+- `/api/v1/multisig/sign` ŌåÆ multisig_service `:8450` `/multisig/transactions/{id}/sign`
+- `/api/v1/airdrop/{campaigns,claim}` ŌåÆ airdrop_service `:8465`
+- `/api/v1/earn/{products,deposit,withdraw,claim}` ŌåÆ earn_service `:8466`
+- `/api/v1/coupon/validate` ŌåÆ coupon_service `:8467`
+- `/api/v1/red-packets/{create,claim}` ŌåÆ red_packets_service `:8468`
 
 ### Service URL constants added to `_proxy.ts`
 `AIRDROP_SERVICE_URL` (:8465), `EARN_SERVICE_URL` (:8466),
-`COUPON_SERVICE_URL` (:8467), `RED_PACKETS_SERVICE_URL` (:8468) — all use
+`COUPON_SERVICE_URL` (:8467), `RED_PACKETS_SERVICE_URL` (:8468) ŌĆö all use
 ports 8465-8468 to avoid conflicts with existing service assignments.
 
 ### Route-path gotchas fixed
@@ -1357,12 +1357,12 @@ ports 8465-8468 to avoid conflicts with existing service assignments.
 - perpetual_service uses `/perpetual/position` (singular, NOT `/positions`).
 - insurance_service uses `/insurance/positions` (NOT `/insurance/coverage`).
 - multisig_service sign route is `/multisig/transactions/{id}/sign` (NOT `/multisig/sign`).
-- `proxyMutation(req, path, method)` requires 3 args — the method arg is mandatory.
+- `proxyMutation(req, path, method)` requires 3 args ŌĆö the method arg is mandatory.
 
 ### Build verification
-- `frontend/web_nextjs`: `npx tsc --noEmit` → 0 errors.
+- `frontend/web_nextjs`: `npx tsc --noEmit` ŌåÆ 0 errors.
 
-- All 4 Go services: `go build ./...` + `go vet ./...` → exit 0.
+- All 4 Go services: `go build ./...` + `go vet ./...` ŌåÆ exit 0.
 ## Session 2026-08-12: Non-EVM signing layer + admin chain UI
 
 Closed the last two functional gaps identified in the prior survey:
@@ -1370,25 +1370,25 @@ per-non-EVM transaction signing (Solana/Bitcoin/Cosmos) and the admin
 chain-management UI panel. All real crypto, all mainnet, no fakes/stubs/mocks.
 
 ### Non-EVM signing layer (`go/wallet_api/non_evm_signing.go` + `_handlers.go`)
-- **Solana** — SLIP-0010 Ed25519 hardened HD derivation
+- **Solana** ŌĆö SLIP-0010 Ed25519 hardened HD derivation
   (`slip10DeriveEd25519`, master = HMAC-SHA512("ed25519 seed", seed),
   hardened-only children) + `golang.org/x/crypto/ed25519` sign/verify.
   Path `m/44'/501'/0'/0'/0'` (corrected the registry entry from the
   mixed-hardening `m/44'/501'/0'/0/0` which is invalid under SLIP-0010).
   64-byte Ed25519 signature verifiable on-chain. base58 address.
-- **Bitcoin** — legacy P2PKH transaction builder + SIGHASH_ALL signer via
+- **Bitcoin** ŌĆö legacy P2PKH transaction builder + SIGHASH_ALL signer via
   `btcec/v2/ecdsa` (real secp256k1, low-S DER). Manual legacy wire
   serialization (version, varint input/output counts, prevout, scriptSig,
   sequence, value, pkScript, lockTime), real SIGHASH_ALL computation
   (substitute subscript, zero others, append sighash type LE, double-SHA256).
   Real base58check P2PKH address (hash160 = RIPEMD160(SHA256(pubkey)),
   version 0x00 mainnet). Broadcast-ready raw tx hex output.
-- **Cosmos** — `SIGN_MODE_LEGACY_AMINO_JSON` SignDoc canonicalization
+- **Cosmos** ŌĆö `SIGN_MODE_LEGACY_AMINO_JSON` SignDoc canonicalization
   (Go `json.Marshal` sorts struct keys alphabetically = canonical amino)
   + SHA-256 + secp256k1 sign (r||s, 64 bytes, no recovery byte).
   Real bech32 (BIP-173) account address with per-chain prefix
   (polymod checksum, hrp expand, 8->5 bit conversion).
-- **Tests**: `non_evm_signing_test.go` — 8 tests pass (real BIP-39
+- **Tests**: `non_evm_signing_test.go` ŌĆö 8 tests pass (real BIP-39
   "abandon...about" seed via `tyler-smith/go-bip39`, no mocks): Solana
   deterministic derivation + sign/verify roundtrip + tamper detection,
   Bitcoin mainnet P2PKH address (starts with '1', checksum validates) +
@@ -1401,13 +1401,13 @@ chain-management UI panel. All real crypto, all mainnet, no fakes/stubs/mocks.
   JWT-authenticated (AuthMiddleware) + wallet-ownership-verified, same
   pattern as EVM `/send` + `/sign`. `loadOwnedSeed` decrypts via the
   existing scrypt + AES-256-GCM path.
-- **Frontend**: `app/wallet/lib/transactions.ts` `nonevm` block rewritten —
+- **Frontend**: `app/wallet/lib/transactions.ts` `nonevm` block rewritten ŌĆö
   the fail-closed throws are GONE. `createSolanaTransaction` /
   `createBitcoinTransaction` / `createCosmosTransaction` /
   `getSolanaAddress` now POST to the real backend endpoints via
   same-origin proxy. Broadcast helpers honestly document that non-EVM
   broadcast is performed by the chain-native RPC node from the signed
-  payload (standard architecture — the backend signs but does not host
+  payload (standard architecture ŌĆö the backend signs but does not host
   non-EVM nodes). Next.js proxy routes added:
   `app/api/v1/non_evm/{sign,send,address}/route.ts`. `tsc` 0 errors on all
   changed files.
@@ -1429,7 +1429,7 @@ chain-management UI panel. All real crypto, all mainnet, no fakes/stubs/mocks.
 - `frontend/web_nextjs` changed files: `tsc --noEmit --skipLibCheck` 0 errors
   (transactions.ts, 3 non_evm proxy routes, admin/chains page).
 
-### Toolchain (env was fresh — reinstalled)
+### Toolchain (env was fresh ŌĆö reinstalled)
 - Go 1.23.12 at `$HOME/.go-sdk/go/bin` (GOTOOLCHAIN=local, GOPATH=$HOME/go).
 - Rust 1.97.1 stable (minimal) at `$HOME/.cargo/env`.
 
@@ -1437,28 +1437,28 @@ chain-management UI panel. All real crypto, all mainnet, no fakes/stubs/mocks.
 ## Build-state audit (2026-08-13)
 - Toolchains were NOT preinstalled; installed on demand: Go 1.23.12 ($HOME/.go-sdk/go/bin, GOPATH=$HOME/go, GOTOOLCHAIN=local), Rust/cargo 1.97.1 ($HOME/.cargo/env), Foundry/forge 1.7.1 ($HOME/.foundry/bin). Also apt-installed cmake 3.31.6 + libcurl4-openssl-dev + libssl-dev for desktop_wallet.
 - RESULTS:
-  1. go/wallet_api go build ./... — PASS (exit 0).
-  2. go/wallet_api go vet ./... — PASS (exit 0).
-  3. rust/userwallet_fetchers cargo check --lib — PASS (0 errors).
-  4. rust/masterwallet_fetchers cargo check --lib — PASS (0 errors, warnings: unused fields like cache in TreasuryFetcher/PolicyFetcher fetchers.rs:154,221).
-  5. rust/admin_fetchers cargo check --lib — PASS (0 errors, 1 warning: unused import std::sync::Arc src/database.rs:7).
-  6. rust/blockchain_registry cargo check --lib — PASS (0 errors, 0 warnings).
-  7. smart_contracts/evm_contracts forge build — FIXED: installed lib/openzeppelin-contracts + lib/forge-std via `forge install OpenZeppelin/openzeppelin-contracts foundry-rs/forge-std --no-git`. `forge build` exit 0; `forge test` 31/31 pass (MultisigWallet 13, VerifyingPaymaster 8, AccountFactory 5, TigerWalletAAFactory). NOTE: lib/ is git-ignored (vendor deps), so `forge install` must be re-run after a fresh clone.
-  8. frontend/web_nextjs npx tsc --noEmit — PASS (0 errors, after npm install).
-  9. user_wallet/web npx tsc --noEmit — PASS (0 errors, after npm install --legacy-peer-deps).
-  10. user_wallet/production/react npx tsc --noEmit — PASS (0 errors, after npm install).
-  11. desktop_wallet cmake+make — PASS (cmake found CURL 8.14.1 + OpenSSL 3.5.6; make -j4 100%, built libtigerwallet_core.a + tigerwallet_test, exit 0).
+  1. go/wallet_api go build ./... ŌĆö PASS (exit 0).
+  2. go/wallet_api go vet ./... ŌĆö PASS (exit 0).
+  3. rust/userwallet_fetchers cargo check --lib ŌĆö PASS (0 errors).
+  4. rust/masterwallet_fetchers cargo check --lib ŌĆö PASS (0 errors, warnings: unused fields like cache in TreasuryFetcher/PolicyFetcher fetchers.rs:154,221).
+  5. rust/admin_fetchers cargo check --lib ŌĆö PASS (0 errors, 1 warning: unused import std::sync::Arc src/database.rs:7).
+  6. rust/blockchain_registry cargo check --lib ŌĆö PASS (0 errors, 0 warnings).
+  7. smart_contracts/evm_contracts forge build ŌĆö FIXED: installed lib/openzeppelin-contracts + lib/forge-std via `forge install OpenZeppelin/openzeppelin-contracts foundry-rs/forge-std --no-git`. `forge build` exit 0; `forge test` 31/31 pass (MultisigWallet 13, VerifyingPaymaster 8, AccountFactory 5, TigerWalletAAFactory). NOTE: lib/ is git-ignored (vendor deps), so `forge install` must be re-run after a fresh clone.
+  8. frontend/web_nextjs npx tsc --noEmit ŌĆö PASS (0 errors, after npm install).
+  9. user_wallet/web npx tsc --noEmit ŌĆö PASS (0 errors, after npm install --legacy-peer-deps).
+  10. user_wallet/production/react npx tsc --noEmit ŌĆö PASS (0 errors, after npm install).
+  11. desktop_wallet cmake+make ŌĆö PASS (cmake found CURL 8.14.1 + OpenSSL 3.5.6; make -j4 100%, built libtigerwallet_core.a + tigerwallet_test, exit 0).
 - Fake-crypto grep (12): 0 real hits. 8 raw matches are all // comment lines saying "no fakes/no stubs/not a fake hash"; filtered to 0.
 - SQLite grep (13): NO active SQLite in source. Hits were only transitive deps in go.sum/Cargo.lock (mattn/go-sqlite3, gorm.io/driver/sqlite, libsqlite3-sys, sqlx-sqlite) and one compiled binary go/wallet_api/wallet-api (build artifact containing stdlib MIME string application/x-sqlite3). No .go/.rs source file imports sqlite.
 
 ## Session 2026-08-13 (cont): DeFi page + AA bundler + copy-trading gap closure
 
 Closed the genuine remaining stubs flagged by COMPETITOR_WALLET_COMPARISON_REPORT.md
-(staking/swap/lending/bridge/NFT pages were already fixed in prior sessions —
+(staking/swap/lending/bridge/NFT pages were already fixed in prior sessions ŌĆö
 re-verified; their "MOCK_POSITIONS" flag is STALE). Real backend wiring only,
 no mocks/stubs/fakes.
 
-### Frontend (web_nextjs) — tsc 0 errors
+### Frontend (web_nextjs) ŌĆö tsc 0 errors
 - `app/gift_cards/page.tsx`: real gift_card_service (:8469) API for
   brands/buy/redeem/list with loading/error/empty states. Removed
   AVAILABLE_CARDS + MY_CARDS mock consts.
@@ -1481,7 +1481,7 @@ no mocks/stubs/fakes.
   PostgreSQL-backed copy_trading_service (:8006), and POSTs follow/copy via
   `/follow`. Fail-closed empty list on error.
 
-### Backend (Go) — all build + vet clean
+### Backend (Go) ŌĆö all build + vet clean
 - `account_abstraction/go/main.go`: added the standard ERC-4337 JSON-RPC
   surface the frontend expects, wrapping the REAL service methods (no
   fabricated data):
@@ -1499,14 +1499,14 @@ no mocks/stubs/fakes.
 - `options_trading/go/cmd/main.go`: real spot price fetched from the
   wallet_api `/api/v1/price?symbol=` endpoint for Black-Scholes premium
   (was `currentPrice := strikePrice`). Created `go.mod` + `go.sum`
-  (gin v1.10, gorm v1.25.10, go-redis/v9 v9.0.0 — pinned for Go 1.23).
+  (gin v1.10, gorm v1.25.10, go-redis/v9 v9.0.0 ŌĆö pinned for Go 1.23).
   Removed unused `math/rand` + `context` + `strings` imports.
 - `go/gift_card_service` (NEW): PostgreSQL-backed gift card microservice
   with CSPRNG (`crypto/rand` + `math/big`) code generation. Endpoints:
   `GET /api/v1/gift-cards/brands`, `POST /buy`, `POST /redeem`,
   `GET /list?user_id=`. Port :8469.
 
-### Proxy routes (web_nextjs) — tsc 0 errors
+### Proxy routes (web_nextjs) ŌĆö tsc 0 errors
 - `app/api/v1/aa/[...path]/route.ts` (catch-all GET/POST/PUT/DELETE -> :8081/v1)
 - `app/api/v1/gift-cards/{brands,buy,redeem,list}/route.ts` -> :8469
 - `app/api/v1/kyc/submit/route.ts` -> listing_service
@@ -1537,7 +1537,7 @@ no mocks/stubs/fakes.
   history+bookmark items is a legitimate client-side key (the backend
   assigns the real DB id on POST), NOT fabricated data.
 - `BlockchainService.writeContract` (mobile) throws fail-closed
-  ("Contract write requires signer") — acceptable, not a fake.
+  ("Contract write requires signer") ŌĆö acceptable, not a fake.
 
 ## Session 2026-08-13: Final gap closure (route mismatches + fake data + stubs)
 
@@ -1636,7 +1636,7 @@ source before acting.
 ## Session 2026-08-12 (continued): RBAC + Flutter critical crypto fix
 
 ### Role-based access control (admin endpoints)
-- **Problem**: ANY authenticated user could call `/api/v1/admin/*` — no role
+- **Problem**: ANY authenticated user could call `/api/v1/admin/*` ŌĆö no role
   check. **Fixed**:
   - `store.go`: `users.role` column (user|admin|wl_admin|master_wallet_admin)
     + `last_login_at`; ALTER TABLE backfills existing DBs; `GetUserRole()`.
@@ -1649,7 +1649,7 @@ source before acting.
     self-demotion guard; `validAdminRoles` whitelist.
   - `config.go`: `AdminBootstrapEmail` field.
   - Frontend proxy: `app/api/v1/admin/users/[id]/role/route.ts` (import depth
-    `../../../../_proxy` — 4 levels from `users/[id]/role/route.ts` to
+    `../../../../_proxy` ŌĆö 4 levels from `users/[id]/role/route.ts` to
     `api/v1/_proxy.ts`).
   - Build+vet+test (BIP-44 vector) all pass; tsc 0 errors. Committed `bd2f35e`.
 
@@ -1672,13 +1672,13 @@ source before acting.
     (v = chainId*2 + 35 + recoveryId). Produces valid raw signed tx hex for
     `eth_sendRawTransaction`.
   - BIP-39 mnemonic-to-seed (PBKDF2-HMAC-SHA512, 2048 iters) + BIP-32
-    HMAC-SHA512 CKD were ALREADY correct — unchanged.
+    HMAC-SHA512 CKD were ALREADY correct ŌĆö unchanged.
   - Flutter SDK NOT installed in this env; verified by construction (matches
     go/wallet_api's real signing path) + brace balance. Committed `c8b4de8`.
 
 ### Chain coverage (verified, all mainnet, no testnets)
-- 120 EVM chains (`chains_evm_data.go`) — meets >=100 requirement.
-- 66 non-EVM chains (`chains_nonevm_data.go`) — meets >=50 requirement.
+- 120 EVM chains (`chains_evm_data.go`) ŌĆö meets >=100 requirement.
+- 66 non-EVM chains (`chains_nonevm_data.go`) ŌĆö meets >=50 requirement.
 - Pi Network: ID 9000004242, ChainType "pi", explorer blockexplorer.minepi.com,
   RPC empty (Pi mainnet is enclosed). All `IsTestnet: false`.
 
@@ -1716,7 +1716,7 @@ source before acting.
 - Syntax fixes this session: TaxAnalyticsService missing `{` (line ~120),
   App.tsx `;`->`,` in useState, removed unused setApiUrl/toggleTheme/id.
 - **Two-party revenue gate (treasury UI):** added `requestWithdrawal` +
-  `revenuePayout` to `src/api.ts` and a `TreasuryPage` ("🏛️ Treasury" tab) to
+  `revenuePayout` to `src/api.ts` and a `TreasuryPage` ("­¤Åø’ĖÅ Treasury" tab) to
   `App.tsx`. The Go handlers (`backend/handlers.go` WithdrawalRequest /
   RevenuePayout) use DIFFERENT field names than the task spec described:
   WithdrawalRequest body is `{to_address, amount_wei, currency, chain_id}`
@@ -1730,7 +1730,7 @@ source before acting.
 
 ## Android master_wallet client remediation (2026-08-13)
 
-Location: `master_wallet/android/app/src/main/java/`. Source-only tree — NO
+Location: `master_wallet/android/app/src/main/java/`. Source-only tree ŌĆö NO
 `build.gradle`/Gradle scaffolding present in checkout, so `org.web3j:core`
 dependency (required by the real crypto: `Sign.signMessage`, `Hash.sha3`,
 `ECKeyPair`) must be added when the full Gradle project is assembled. `kotlinc`
@@ -1740,7 +1740,7 @@ Fake-crypto/stub remediations verified in place:
 - **AccountAbstractionService.kt**: `signUserOperation` uses REAL
   `Hash.sha3` (keccak256) + `Sign.signMessage` (secp256k1 ECDSA) via Web3j;
   fail-closed (throws `AccountAbstractionException` when no signer key for
-  owner — never returns all-zero sig). AA submission POSTs to canonical
+  owner ŌĆö never returns all-zero sig). AA submission POSTs to canonical
   `/api/aa/submit` at `http://localhost:8450`. `simulateValidation` throws
   (no canonical bundler endpoint).
 - **PaymasterService.kt**: gas from real `GET /api/v1/gas` (not hardcoded);
@@ -1886,7 +1886,7 @@ This-session Flutter changes:
 - Verify with: `cd master_wallet/rust && . "$HOME/.cargo/env" && cargo check --lib`
   (must be 0 errors). `cargo test --lib` runs the 5 crypto tests; the scrypt
   KDF test (SCRYPT_N=2^18) takes ~80s, so allow a long timeout.
-## MasterWallet Desktop (C++) — parity notes
+## MasterWallet Desktop (C++) ŌĆö parity notes
 - Canonical backend on :8450; API contract at master_wallet/CANONICAL_API_CONTRACT.md.
 - Desktop C++ client in master_wallet/desktop/src/services/. HTTP via libcurl APIClient; helpers api::backendGet/Post/Put/Delete carry Bearer JWT from APIClient::setAuthToken.
 - Auth endpoints /api/v1/auth/login & /api/v1/auth/register are PUBLIC: clearAuthToken() before calling; setAuthToken(token) on success.
@@ -1912,13 +1912,13 @@ wallet owner governs the UserWallet ecosystem. All real crypto, no fakes/stubs.
 - **`user_wallet_management.go`** (NEW): 22 REST endpoints for EVM/non-EVM chain
   CRUD, token CRUD, address derivation (24-word seed -> any chain), auto-sign
   (signs+broadcasts send/claim/swap/trade), feature-flag governance.
-- **`non_evm_crypto.go`** (NEW): real non-EVM address derivation + signing —
+- **`non_evm_crypto.go`** (NEW): real non-EVM address derivation + signing ŌĆö
   Solana SLIP-0010 Ed25519 (hardened-only), Bitcoin P2PKH base58check (native,
   no btcd dep), Cosmos secp256k1+bech32 (BIP-173).
 - **`non_evm_crypto_test.go`** (NEW): 8 tests pass (real BIP-39 seed, no mocks).
 - **`store.go`**: 6 new PostgreSQL tables auto-migrated: user_chains_evm,
   user_chains_nonevm, user_tokens, user_wallet_addresses, auto_sign_log,
-  feature_flags. Only seed_hash (SHA-256) stored — NEVER the seed.
+  feature_flags. Only seed_hash (SHA-256) stored ŌĆö NEVER the seed.
 - **`main.go`**: 22 new routes under protected.Group.
 - **`schema.sql`** + **`CANONICAL_API_CONTRACT.md`**: updated with new tables/endpoints.
 - Go build+vet+test green. Full suite: BIP-44 vector + 8 non-EVM crypto tests.
@@ -1926,7 +1926,7 @@ wallet owner governs the UserWallet ecosystem. All real crypto, no fakes/stubs.
 ### Client parity (all 7 platforms)
 All 7 platforms (web, desktop C++, android Kotlin, ios Swift, flutter Dart,
 extensions x4, rust) now implement all 20 UserWallet management fetcher methods.
-All hit http://localhost:8450 with Bearer JWT — no stubs.
+All hit http://localhost:8450 with Bearer JWT ŌĆö no stubs.
 - Web api.ts: 20 new methods, tsc --noEmit 0 errors.
 - Extensions: 20 new methods, byte-identical across 4 browsers, node --check pass.
 - Rust lib.rs: 20 new methods, cargo check exit 0, 5/5 tests pass.
@@ -1936,7 +1936,7 @@ All hit http://localhost:8450 with Bearer JWT — no stubs.
 - Master wallet owner adds/removes/updates EVM + non-EVM blockchains for UserWallet.
 - Master wallet owner adds/removes/updates coins/tokens for UserWallet.
 - One master wallet owns billions of UserWallet addresses (from user seeds).
-- Users control wallets via 24-word BIP-39 seed — losing seed = losing control.
+- Users control wallets via 24-word BIP-39 seed ŌĆö losing seed = losing control.
 - 24-word seed generates ALL EVM + non-EVM wallets (BIP-44 secp256k1 for EVM,
   SLIP-0010 Ed25519 for Solana, secp256k1 P2PKH for Bitcoin, secp256k1+bech32 for Cosmos).
 - Master wallet auto-signs + auto-approves ALL UserWallet txs (send/claim/swap/trade).
@@ -1956,13 +1956,13 @@ All hit http://localhost:8450 with Bearer JWT — no stubs.
   into `user_chains_evm` + `user_chains_nonevm` via pgx `CopyFrom` (bulk insert)
   only when the tables are empty. `bech32PrefixForChainType()` maps Cosmos-SDK
   chain types to their bech32 address prefix (cosmos/osmo/terra/kava/inj/etc.).
-- `master_wallet/backend/chain_seeding_test.go` (NEW): 10 tests — assert
+- `master_wallet/backend/chain_seeding_test.go` (NEW): 10 tests ŌĆö assert
   >=120 EVM + >=50 non-EVM, Ethereum/BTC/Solana/Cosmos present, no testnets,
   bech32 prefix mapping, Cosmos real sign (64-byte sig, non-zero).
 
 ### Cosmos auto-sign (was missing)
 - `user_wallet_management.go`: added `case "cosmos", "osmosis", "atom":` to the
-  auto-sign dispatch switch -> `svc.autoSignCosmos()`. Was the only gap —
+  auto-sign dispatch switch -> `svc.autoSignCosmos()`. Was the only gap ŌĆö
   derivation worked but the switch omitted Cosmos.
 - `autoSignCosmos`: real secp256k1 over SIGN_MODE_LEGACY_AMINO_JSON SignDoc
   (canonical amino JSON of cosmos-sdk/MsgSend). Returns 64-byte r||s sig hex.
@@ -1986,7 +1986,7 @@ All hit http://localhost:8450 with Bearer JWT — no stubs.
 
 ### Solana auto-sign (real transfer message)
 - `autoSignSolana` now signs the canonical transfer instruction message
-  with real SLIP-0010 Ed25519 (was a bare toAddress+value string — now structured).
+  with real SLIP-0010 Ed25519 (was a bare toAddress+value string ŌĆö now structured).
 
 ### ERC-20 token decimals (was hardcoded 18)
 - `autoSignEVM` now fetches REAL token decimals via `FetchERC20Metadata`
@@ -2009,7 +2009,7 @@ All hit http://localhost:8450 with Bearer JWT — no stubs.
 
 ## Session 2026-08-13 (cont): Final stub/mock/fake-data audit + cleanup
 
-### analytics_service (the ONE genuine remaining mock) — FIXED
+### analytics_service (the ONE genuine remaining mock) ŌĆö FIXED
 - `go/analytics_service/main.go` was the last service returning hardcoded mock
   metrics: "150000 users", "1.5B volume", fabricated token prices, invented
   chain distribution. REWROTE to real PostgreSQL aggregation via `pgxpool`
@@ -2022,25 +2022,25 @@ All hit http://localhost:8450 with Bearer JWT — no stubs.
 - `go/analytics_service/go.mod`: pinned go 1.23, gin v1.10.0 (was v1.12 which
   needs Go 1.25), added `pgx/v5 v5.6.0` + `puddle/v2`.
 
-### Duplicate analytics services — DELETED
+### Duplicate analytics services ŌĆö DELETED
 - `go/analytics` (:8088, orphan) and `go/advanced_analytics_service` (fabricated
   demo events via `rand`) removed. `frontend/web_nextjs/app/api/v1/_proxy.ts`
   `ANALYTICS_SERVICE_URL` retargeted :8088 -> canonical :8010.
 
-### real_time_charts CORS — FIXED
+### real_time_charts CORS ŌĆö FIXED
 - `go/real_time_charts/main.go` WebSocket `CheckOrigin` returned `true`
   ("Allow all origins for demo"). Replaced with a configurable origin
   allowlist (`CHARTS_ALLOWED_ORIGINS` env, comma-separated) defaulting to
   same-host origins only when unset. Non-browser clients (no Origin) still
   allowed. Market data was ALREADY real (live CoinGecko prices/OHLC/order
-  books seeded around the real last-traded price) — unchanged. `go build` 0.
+  books seeded around the real last-traded price) ŌĆö unchanged. `go build` 0.
 
-### signature_service misleading comment — FIXED
+### signature_service misleading comment ŌĆö FIXED
 - `go/signature_service/main.go:263` had "Auto-sign for demo" comment; the
   code does NOT auto-sign (returns a pending request; real ECDSA signing
   happens in SignMessage with an explicit key). Comment corrected. `go build` 0.
 
-### Android orphan trading/CopyTradingService fake data — FIXED
+### Android orphan trading/CopyTradingService fake data ŌĆö FIXED
 - `mobile/android/.../trading/CopyTradingService.java` fabricated 5 fake
   traders (hardcoded `0x1234.../0xabcd...` addresses, win rates, follower
   counts, `entryPrice=43250.0`). REWROTE to fail-closed
@@ -2050,16 +2050,16 @@ All hit http://localhost:8450 with Bearer JWT — no stubs.
   screens import it); the canonical Android app `mobile_apps/android_app`
   consumes the real `copy_trading_service` (:8006). Data classes retained.
 
-### Desktop C++ hardware_wallet_service fake address — FIXED
+### Desktop C++ hardware_wallet_service fake address ŌĆö FIXED
 - `desktop_wallet/.../hardware_wallet_service.hpp::getAddress` fabricated a
   `0x...` address via DJB hash of the derivation path ("Simple hash of
   derivation path for demo"). Replaced with fail-closed empty return (real
   address derivation needs a HID/USB APDU exchange; no transport wired).
 - Removed the `std::this_thread::sleep_for(100ms)` "Simulate signing delay" in
   signTransaction. signTransaction/signMessage already returned empty
-  signatures (fail-closed) — unchanged.
+  signatures (fail-closed) ŌĆö unchanged.
 
-### Desktop C++ gas_service Alchemy demo keys — FIXED
+### Desktop C++ gas_service Alchemy demo keys ŌĆö FIXED
 - `gas_service.hpp` used shared Alchemy `/v2/demo` keys for Ethereum + Polygon
   (real RPC but rate-limited/unreliable). Replaced with env-overridable
   public RPC endpoints (`ETH_RPC_URL`/`POLYGON_RPC_URL`, default
@@ -2088,7 +2088,7 @@ All hit http://localhost:8450 with Bearer JWT — no stubs.
   `lib/utils/theme.dart` + `lib/providers/theme_provider.dart`; production-react
   `src/contexts/ThemeContext.tsx`; mobile/flutter `lib/core/theme/app_theme.dart`.
 
-### Toolchains (reinstalled — env was fresh)
+### Toolchains (reinstalled ŌĆö env was fresh)
 - Go 1.23.12 at `$HOME/.go-sdk/go/bin` (GOTOOLCHAIN=local, GOPATH=$HOME/go).
 - Rust 1.97.1 at `$HOME/.cargo/env` (minimal profile).
 - Foundry 1.7.1 at `$HOME/.foundry/bin` (foundryup).
@@ -2344,25 +2344,25 @@ Cosmos chain.
 
 ## Session 2026-08-13 (session 3): wallet_core hardware_wallet fail-closed
 
-### wallet_core/src/hardware_wallet/mod.rs (Rust — fail-closed, no fake sigs/addrs)
+### wallet_core/src/hardware_wallet/mod.rs (Rust ŌĆö fail-closed, no fake sigs/addrs)
 - The 4 device types (LedgerWallet, TrezorWallet, YubiKeyWallet, AwsKmsWallet)
   had TWO genuine fakes:
   1. **`simulated_sign`** produced a fake 65-byte signature
-     (`r = s = simple_hash(data)` via DJB FNV hash, `v = 0`) — NOT real ECDSA.
-  2. **`get_address`** returned `0x{:040x}` of `device_id.len()` — a fake address
+     (`r = s = simple_hash(data)` via DJB FNV hash, `v = 0`) ŌĆö NOT real ECDSA.
+  2. **`get_address`** returned `0x{:040x}` of `device_id.len()` ŌĆö a fake address
      derived from the *length* of the device-id string, NOT a real public key.
 - Both are now **fail-closed**:
   - `simulated_sign` returns `SigningFailed` ("connected but no signing transport
     is wired; real hardware signing requires a HID/BLE or KMS transport backend")
-    — NEVER fabricates a signature.
+    ŌĆö NEVER fabricates a signature.
   - `get_address` returns `DeviceNotFound` ("connected but no
-    address-derivation transport is wired") — NEVER fabricates an address.
+    address-derivation transport is wired") ŌĆö NEVER fabricates an address.
 - This matches the canonical `hardware_wallet/rust/src/ledger/mod.rs` APDU
   layer pattern (real protocol + fail-closed `ApduTransport` trait).
 - Tests updated: `test_sign_transaction_fail_closed` + `test_connect_then_sign_
   fail_closed` assert the fail-closed behavior (was asserting fake 65-byte sigs).
 - `cargo test --lib`: **64/64 pass** (7 hardware_wallet tests incl. the 2 new
-  fail-closed ones); `cargo check --lib` exit 0 (warnings only — pre-existing
+  fail-closed ones); `cargo check --lib` exit 0 (warnings only ŌĆö pre-existing
   snake_case naming).
 
 ### Report-verified status (re-checked this session)
@@ -2371,7 +2371,7 @@ Cosmos chain.
   lending `DEFAULT_MARKETS`/fake-success, swap hardcoded gas, NFT/bridge
   "unavailable until" throws.
 - `wallet_core/src/key_vault/mod.rs` is real (AES-256-GCM at-rest encryption,
-  access control, audit log, key rotation) — no fakes (the report's "STUB"
+  access control, audit log, key rotation) ŌĆö no fakes (the report's "STUB"
   mark was stale).
 - `multisig/rust/src/main.rs` `0x1234...` is example-usage input in a library
   demo binary (real multisig SERVICE is `go/multisig_service` :8450); the
@@ -2382,7 +2382,7 @@ Cosmos chain.
 |-----------|--------|
 | wallet_core (Rust) | `cargo check --lib` exit 0; `cargo test --lib` 64/64 pass |
 
-### privacy_features/cpp (C++ privacy layer — real crypto, fail-closed)
+### privacy_features/cpp (C++ privacy layer ŌĆö real crypto, fail-closed)
 - `privacy.cpp` had THREE fabricated-crypto paths, all now real/fail-closed:
   1. **Poseidon hash was a no-op** -> replaced with **real Keccak-256**
      (`PoseidonKeccakImpl`: full `keccak_f` 24-round permutation + standard
@@ -2390,7 +2390,7 @@ Cosmos chain.
      and nullifier. `pi_perm`/`rho`/`theta`/`rho_pi`/`chi`/`iota` all real.
   2. **ZK range proof always `is_valid=true`** -> `generate_range_proof` now
      sets `proof.is_valid = false` (fail-closed; delegates to the
-     `zk_infrastructure` backend Ristretto255 Schnorr prover — never a fake
+     `zk_infrastructure` backend Ristretto255 Schnorr prover ŌĆö never a fake
      all-zero proof). `verify_proof` checks the real signature field, not the
      `is_valid` flag.
   3. **`encrypt_note`/`decrypt_note` were no-ops** (only prefixed plaintext
@@ -2398,14 +2398,14 @@ Cosmos chain.
      from viewing key, random 12-byte nonce (`RAND_bytes`), GCM auth tag,
      output `nonce(12)||ciphertext||tag(16)` as hex. `decrypt_note` hex-decodes
      (via `hexval` helper), verifies the GCM tag, returns plaintext or empty
-     on any error (fail-closed — never a fake prefix).
+     on any error (fail-closed ŌĆö never a fake prefix).
 - CoinJoin `process_round` uses the real round denomination/amounts (was
   fabricated `100`).
 - `privacy.hpp`: added `<condition_variable>` include; `MerkleTree::Impl::mtx`
   is `mutable` (locked from const getters).
 - Build: `g++ -std=c++17 -fsyntax-only -Iprivacy_features/cpp/include` exit 0.
 
-### notifications/go (canonical notification service, :9004 — real PostgreSQL)
+### notifications/go (canonical notification service, :9004 ŌĆö real PostgreSQL)
 - `cmd/main.go` had a `mockDB` struct (no DB connection) + stub handlers that
   returned `{"status":"sent"}` or fabricated `uuid.New()` notifications
   without persisting. Now:
@@ -2416,13 +2416,13 @@ Cosmos chain.
     `(user_id, created_at DESC)`).
   - All send (email/sms/push/webhook), broadcast, create, list, read, delete
     handlers now parse the request body + persist/query the real DB. Template
-    handlers return 501 (no template table) — honest, not fabricated.
+    handlers return 501 (no template table) ŌĆö honest, not fabricated.
     Preferences GET returns honest channel defaults; PUT returns 501.
   - Pre-existing `for i := 0; i cfg.WorkerCount` syntax typo fixed.
   - Created `go.mod` (gin/uuid/pgx v5/redis v9 + gorm v1.25.12/driver
     postgres v1.5.11 pinned for the gorm sibling packages).
   - Removed orphan `cmd/notification-service/main.go` (duplicate with fake
-    Firebase push + gorm requiring Go 1.25 — incompatible; service preserved
+    Firebase push + gorm requiring Go 1.25 ŌĆö incompatible; service preserved
     by canonical `cmd/main.go`). Created the missing
     `infrastructure/docker/notifications/Dockerfile` context.
   - Sibling packages (`notification_service.go`, `email/`, `sms/`, `push/`)
@@ -2430,9 +2430,9 @@ Cosmos chain.
     `RFC1123Z`, `&now`->`now`, unused vars blanked.
   - Build: `cd notifications/go && go build ./...` exit 0.
 
-### security_center/wallet_guardian/security.go (scam DB — fail-safe)
+### security_center/wallet_guardian/security.go (scam DB ŌĆö fail-safe)
 - `ScamDatabase` had a fabricated hardcoded `"Example Scam Contract"` at fake
-  `0x1234567890abcdef...`. Now starts **empty** (fail-safe — no address is
+  `0x1234567890abcdef...`. Now starts **empty** (fail-safe ŌĆö no address is
   falsely flagged as a scam). `RegisterScamAddress` populates it at runtime
   from real verified reports.
 - Removed unused imports (`errors`/`io`/`net/http`). Builds clean.
@@ -2762,9 +2762,9 @@ require (auth).
 
 
 
-## Session 2026-08-14 (cont): Final gap closure — frontend pages + PG bridge + bot API
+## Session 2026-08-14 (cont): Final gap closure ŌĆö frontend pages + PG bridge + bot API
 
-### Frontend (web_nextjs) — 4 new pages + 3 proxy routes (tsc 0 errors)
+### Frontend (web_nextjs) ŌĆö 4 new pages + 3 proxy routes (tsc 0 errors)
 - app/airdrop/page.tsx: browse + claim airdrop campaigns (real /airdrop/campaigns GET + /airdrop/claim POST).
 - app/earn/page.tsx: earn products + user deposits (real /earn/products + /earn/deposits + deposit/withdraw/claim POST).
 - app/coupon/page.tsx: validate coupon (real /coupon/validate POST).
@@ -2773,15 +2773,15 @@ require (auth).
 - prediction-markets/page.tsx: fixed field mismatch (outcome->side), added ?user_id= param, removed mock fallback.
 - All pages use useTheme() + isDark ternaries (0 dark: variants), loading/error/empty states, NO mock data.
 
-### ProjectParty web — 7 new pages (tsc 0 + vite build 0)
-- Listings, Launchpad, MarketMaking, Pricing, Analytics, Compliance, Fees pages — all fetch real data from :8106 backend, theme-aware, registered in App.tsx + Layout sidebar.
+### ProjectParty web ŌĆö 7 new pages (tsc 0 + vite build 0)
+- Listings, Launchpad, MarketMaking, Pricing, Analytics, Compliance, Fees pages ŌĆö all fetch real data from :8106 backend, theme-aware, registered in App.tsx + Layout sidebar.
 
-### Backend (Go) — bridge_service PostgreSQL migration
+### Backend (Go) ŌĆö bridge_service PostgreSQL migration
 - go/bridge_service/main.go: converted from in-memory map to PostgreSQL via pgxpool. bridge_transactions table + indexes. migrateDB() on boot. DATABASE_URL env. go.mod added pgx/v5 v5.6.0. Build+vet clean.
-- NOTE: var rows pgx.Rows (NOT pgxpool.Rows) — Rows interface is in github.com/jackc/pgx/v5.
+- NOTE: var rows pgx.Rows (NOT pgxpool.Rows) ŌĆö Rows interface is in github.com/jackc/pgx/v5.
 - Dockerfile + docker-compose bridge-api (:8007) + database/init.sql tigerwallet_bridge DB.
 
-### mm_bot_platform/bot_api — Go 1.23 fix
+### mm_bot_platform/bot_api ŌĆö Go 1.23 fix
 - go.mod go 1.25 -> go 1.23 + replace rogpeppe/go-internal v1.16.0 -> v1.12.0 (needs Go 1.25). Build+vet clean.
 
 ### Deleted orphan duplicates
@@ -2801,7 +2801,7 @@ require (auth).
 
 ## Session 2026-08-14 (session 3): bots/web completion + white_label tsc fix + MD doc updates
 
-### bots/web — skeleton to full buildable app
+### bots/web ŌĆö skeleton to full buildable app
 - Was a SKELETON: had React source files (App.tsx, Layout.tsx, 6 pages, contexts,
   services/api.ts) but NO package.json, NO index.html, NO main.tsx, NO vite.config,
   NO tsconfig, NO CSS at all. The theme context set data-theme attr + className
@@ -2809,19 +2809,19 @@ require (auth).
 - Built out COMPLETE: package.json (React 18 + react-router-dom 6 + TS 5.3 + Vite 5),
   index.html, main.tsx, vite.config.ts (dev :8472, /api proxy -> :8471), tsconfig.json
   + tsconfig.node.json, vite-env.d.ts.
-- src/index.css: FULL theme-aware CSS — CSS vars under [data-theme=light] and
+- src/index.css: FULL theme-aware CSS ŌĆö CSS vars under [data-theme=light] and
   [data-theme=dark] (bg, text, borders, card/sidebar/topbar bg, hover, badges) +
   every className used across all pages (.layout, .sidebar, .stats-grid, .stat-card,
   .bot-card, .strategy-card, .trades-table, .login-card, .settings-page, .btn, etc).
 - Fixed relative imports (../../contexts -> ../contexts, ../../services -> ../services
-  — pages/components sit directly under src/).
+  ŌĆö pages/components sit directly under src/).
 - api.ts: VITE_API_URL with fallback http://localhost:8471/api/v1 (real bot_api port).
 - AuthContext: process.env.REACT_APP_API_URL -> import.meta.env.VITE_API_URL (Vite).
 - All 6 pages themed (useTheme + isDark). tsc 0 errors, vite build succeeds.
 
-### white_label/frontend — 106 tsc errors fixed to 0
+### white_label/frontend ŌĆö 106 tsc errors fixed to 0
 - Wrong import paths: ../../context/ThemeContext -> ../context/ThemeContext (7 pages).
-- Removed all unused MUI imports (TS6133 — noUnusedLocals/noUnusedParameters enabled).
+- Removed all unused MUI imports (TS6133 ŌĆö noUnusedLocals/noUnusedParameters enabled).
 - Exported themeColors from ThemeContext.tsx (was missing export).
 - Imported CheckCircle from @mui/icons-material in AdminManagement.tsx.
 - Prefixed unused event params with _event in onPageChange handlers (5 pages).
@@ -2838,7 +2838,7 @@ require (auth).
 - LIQUIDITY_TRADING_PAIRS.md: admin/super_admin frontend UIs documented.
 - PROJECT_PARTY_BOTS_CLIENTS_LIQUIDITY_README.md: frontend completeness + theme noted.
 
-### Build verification (ALL GREEN — 2026-08-14 session 3)
+### Build verification (ALL GREEN ŌĆö 2026-08-14 session 3)
 | Component | Result |
 |-----------|--------|
 | 12 Go backends (wallet_api, bridge_service, airdrop, earn, coupon, red_packets, project_party, super_admin, admin, white_label, mm_bot_platform/bot_api, bots/go) | go build exit 0 |
@@ -2856,7 +2856,7 @@ Built the complete white-label governance system per the WL client/admin
 requirements. Five pillars, all real crypto, fail-closed, no stubs/fakes/mocks.
 Committed `829ea25` + pushed to origin/main.
 
-### Pillar 1 — SuperAdmin license/kill-switch control plane (Go)
+### Pillar 1 ŌĆö SuperAdmin license/kill-switch control plane (Go)
 - `license_service/go/`: real PostgreSQL-backed control plane. Ed25519 signed
   license tokens (real `crypto.Sign`), SuperAdmin-gated halt/resume/revoke,
   WL-cannot-self-resume (resume requires SuperAdmin), heartbeat staleness
@@ -2869,7 +2869,7 @@ Committed `829ea25` + pushed to origin/main.
 - Dockerfile created. docker-compose `license-service` (:8460).
 - Build+vet+test clean.
 
-### Pillar 2 — Cross-language gate + per-fetcher governance
+### Pillar 2 ŌĆö Cross-language gate + per-fetcher governance
 - `white_level_sdk/rust/`: real Ed25519 verifier (ed25519-dalek 2.x).
   `verifier.rs` validates signed license tokens (payload = canonical JSON,
   signature = Ed25519 over payload). 6/6 tests pass (sign+verify roundtrip,
@@ -2884,7 +2884,7 @@ Committed `829ea25` + pushed to origin/main.
   balance` alive). The C++ gate checks `product\x1ffetcher` in the flag map;
   `product\x1f*` disables the whole product.
 
-### Pillar 3 — WL admin backend (13 scoped roles + tenant isolation)
+### Pillar 3 ŌĆö WL admin backend (13 scoped roles + tenant isolation)
 - `white_label_admin/go/`: ALL stub handlers replaced with real PostgreSQL.
   13 scoped sub-admin roles: trading_admin, p2p_admin, bot_admin,
   listing_admin, liquidity_admin, wallet_admin, customer_service_admin,
@@ -2905,13 +2905,13 @@ Committed `829ea25` + pushed to origin/main.
   his WL admin panel (matches the requirement).
 - Build+vet clean; tsc 0 errors.
 
-### Pillar 4 — Two-party SuperAdmin-collaboration withdrawal gate
+### Pillar 4 ŌĆö Two-party SuperAdmin-collaboration withdrawal gate
 - `master_wallet/backend/license_gate.go`: fail-closed gate client.
   `IsWithdrawalApproved` checks the control plane; returns false on any error
   (no payout without SuperAdmin co-sign).
 - `SignTransaction` (handlers.go): when `withdrawal_id` is present in the
   request, the gate MUST be approved before broadcast. Fail-closed 403.
-- `/revenue-payout` endpoint (NEW): ALWAYS requires two-party approval —
+- `/revenue-payout` endpoint (NEW): ALWAYS requires two-party approval ŌĆö
   revenue can NEVER move without SuperAdmin collaboration, regardless of
   amount. The caller supplies a pre-approved `withdrawal_id`; the gate is
   checked fail-closed before broadcast.
@@ -2919,7 +2919,7 @@ Committed `829ea25` + pushed to origin/main.
   in the control plane (WL-side). SuperAdmin approves separately.
 - Build+vet clean.
 
-### Pillar 5 — Independent external hosting (standalone WL-UserWallet)
+### Pillar 5 ŌĆö Independent external hosting (standalone WL-UserWallet)
 - `wl_user_wallet/go/`: standalone WL-UserWallet backend that runs
   INDEPENDENTLY in the WL client's own cloud/OS. Own BIP-39/32/44 key
   management + real EVM signing (secp256k1 + keccak256 + EIP-1559) + own
@@ -2961,7 +2961,7 @@ Committed `829ea25` + pushed to origin/main.
 - Lives at `wl_master_wallet/go/`, module `github.com/tigerwallet/wl-master-wallet`.
 - Replace directive for wl-shared is `../../wl_shared/go` (NOT `../wl_shared/go`) because the module lives one level deeper than sibling services (`wl_user_wallet/go` is at root; `wl_master_wallet/go` is nested under `wl_master_wallet/`).
 - Uses shared `wlgate` (New + HeartbeatLoop + Middleware(product, SimpleFetcher) + JWTAuth + IssueJWT + NewTwoPartyGate with IsWithdrawalApproved/RequestWithdrawal) and `wlcrypto` (GenerateMnemonic, DeriveEVMPrivateKey, EncryptSeedAtRest, DecryptSeedAtRest, SignTransaction, SignMessage).
-- RequestWithdrawal signature: `(ctx, walletID, to, amountWei string, currency, chainID)` — amount must be `.String()` of a `*big.Int`.
+- RequestWithdrawal signature: `(ctx, walletID, to, amountWei string, currency, chainID)` ŌĆö amount must be `.String()` of a `*big.Int`.
 - Default port 8450. Every protected route wrapped with `wlgate.JWTAuth(secret)` + `gate.Middleware("master_wallet", wlgate.SimpleFetcher)`. RevenuePayout ALWAYS requires two-party gate co-sign.
 
 ## wl_project_party Go backend (standalone)
@@ -2971,7 +2971,7 @@ Committed `829ea25` + pushed to origin/main.
 - Uses shared `wlgate` only: `New` + `HeartbeatLoop` + `Middleware("project_party", wlgate.SimpleFetcher)` + `JWTAuth` + `IssueJWT`. Fail-closed: gate starts dead until first heartbeat validates license.
 - Default port 8106. Every protected route wrapped with `wlgate.JWTAuth(secret)` + `gate.Middleware("project_party", wlgate.SimpleFetcher)`.
 - CreateParticipation is a tx that atomically increments `launchpad_projects.sold_amount`. ParticipateInLaunchpad enforces project exists + status active/upcoming + end_time not passed.
-- Build: `cd wl_project_party/go && GOFLAGS=-mod=mod go build ./... && go vet ./...` → both exit 0.
+- Build: `cd wl_project_party/go && GOFLAGS=-mod=mod go build ./... && go vet ./...` ŌåÆ both exit 0.
 
 ## white_label_admin/web (Next.js 14 frontend)
 
@@ -2999,7 +2999,7 @@ Committed `829ea25` + pushed to origin/main.
 ## Session 2026-08-16: Admin ecosystem security + RBAC + domain backends + parity
 
 Built the missing TigerWallet admin ecosystem gaps. Three SEPARATED admin app
-families (admin/, super_admin/, white_label_admin/) — none imports UserWallet
+families (admin/, super_admin/, white_label_admin/) ŌĆö none imports UserWallet
 or MasterWallet client fetchers. All Go backends real PostgreSQL, no stubs,
 no fund movement. Commits on main: 3a45977, 8565d1b, 321474f, c0a653c, 9c76750.
 
@@ -3042,7 +3042,7 @@ SuperAdmin can add/remove/halt/pause/start/resume each feature.
 
 ### white_label_admin/go rewrite (112 handlers, real PG)
 Was 112 stub handlers returning canned empty data (and `[]` is invalid Go
-syntax — build was broken). All promoted to real PostgreSQL CRUD via
+syntax ŌĆö build was broken). All promoted to real PostgreSQL CRUD via
 database.Pool (pgxpool): users/KYC/transactions/tokens/pairs/blockchains/fees/
 webhooks/notifications/tickets/white-labels/stats/admins/workflows/approvals/
 backups/knowledge-base/archival/reports/SLA/integrations. Withdrawal
@@ -3071,12 +3071,12 @@ nav links registered. Loading/error/empty states. No fund-movement UI.
 
 ---
 
-## bots/web — TigerBots frontend (Vite + React + TS)
+## bots/web ŌĆö TigerBots frontend (Vite + React + TS)
 
 - **Stack:** Vite 5 + React 18 + react-router-dom 6 + plain CSS (no Tailwind).
   TypeScript strict. Build: `npm install && npx tsc --noEmit -p tsconfig.json`
   (0 errors) and `npx vite build` (0 errors).
-- **Backend target:** the standalone WL-Bots backend at `wl_bots/go/` — runs on
+- **Backend target:** the standalone WL-Bots backend at `wl_bots/go/` ŌĆö runs on
   port **8471** internally, mapped to **8463** externally. The Vite dev proxy
   (`vite.config.ts`) forwards `/api` AND `/health` -> `http://localhost:8463`.
   `src/services/api.ts` uses a relative base (`/api/v1`) by default;
@@ -3084,7 +3084,7 @@ nav links registered. Loading/error/empty states. No fund-movement UI.
   backend, NOT the old `localhost:8471` TigerWallet platform).
 - **All 17 backend routes have real consumers (100% parity):** `/health`
   (Settings page), `/auth/register` + `/auth/login` (AuthContext), and the 14
-  protected routes via `api.*` methods — bots CRUD + start/stop/pause +
+  protected routes via `api.*` methods ŌĆö bots CRUD + start/stop/pause +
   executions + logs, subscriptions, fees, api-keys. NO stubs/fakes/mocks.
 - **Backend field names (from `internal/handlers/handlers.go`):** bots use
   `bot_type` (NOT `strategy`), `pair` (NOT `trading_pairs`), `exchange`,
@@ -3096,7 +3096,7 @@ nav links registered. Loading/error/empty states. No fund-movement UI.
 - **Theme:** `ThemeContext` sets `data-theme="light|dark"` on `<html>`; all
   styling uses CSS variables defined in `src/index.css` under
   `:root,[data-theme='light']` and `[data-theme='dark']`. Use the CSS vars
-  (e.g. `var(--card-bg)`) for new components — they automatically theme. Pages
+  (e.g. `var(--card-bg)`) for new components ŌĆö they automatically theme. Pages
   can also read `useTheme().isDark` for conditional content. Toggle button in
   `Layout.tsx` top bar.
 - **Routes (App.tsx):** `/login`, `/register`, `/dashboard`, `/bots`,
@@ -3107,7 +3107,7 @@ nav links registered. Loading/error/empty states. No fund-movement UI.
   `AuthContext` calls `api.setToken()` on load. Protected routes will return
   401/402/503 if the token is missing or the WL license gate is down (fail-closed).
 
-## Admin Domain API Contract (canonical — drives admin/go on :9093)
+## Admin Domain API Contract (canonical ŌĆö drives admin/go on :9093)
 
 All endpoints under `/api/v1/`, JWT Bearer auth. Verified against admin/go main.go
 route registrations and admin/web/src/services/api.ts (reference client, tsc 0).
@@ -3127,7 +3127,7 @@ Per-domain methods (native clients MUST mirror exactly):
                   /permissions      : permissions CRUD (list/get/create/update/delete)
                   /admins/:id/roles : GET (list) + POST {roleId} (assign) + DELETE /:roleId (revoke)
                   /admins/:id/permissions : GET (effective)
-                  (RBAC is NOT under /roles/* — it lives at /permissions and /admins/:id/*)
+                  (RBAC is NOT under /roles/* ŌĆö it lives at /permissions and /admins/:id/*)
 - p2p-merchants   /p2p-merchants    : CRUD (NO delete, NO status) + POST /:id/approve + POST /:id/reject
                   /p2p-merchants/:id/transactions : GET (sub-resource)
 
@@ -3137,7 +3137,7 @@ CRUD = GET /, POST /, GET /:id, PUT /:id, DELETE /:id
 Native client status: admin/rust (cargo check 0), admin/cpp (g++ syntax-only 0),
 admin/go (verified, do NOT touch), admin/web (done). TODO: android, ios, desktop, extensions.
 
-## white_label_admin family — COMPLETE (2026-08-16)
+## white_label_admin family ŌĆö COMPLETE (2026-08-16)
 
 All 11 domain backends + full client parity verified. Port = 8082 (NOT 9092).
 
@@ -3156,9 +3156,9 @@ All 11 domain backends + full client parity verified. Port = 8082 (NOT 9092).
   p2p-clients/rewards/marketing/partners; + /:id/approve + /:id/reject {reason}
   for onramp/offramp/partners. RBAC: admin-roles CRUD, admin-permissions
   GET/POST, admins/:id/role POST + DELETE, admins/:id/permissions GET.
-  Integrated with existing RequireScope — NOT a parallel system.
+  Integrated with existing RequireScope ŌĆö NOT a parallel system.
 - 11 CREATE TABLE migrations in internal/database/postgres.go (mirror
-  super_admin schema commit 0cb13d7). NO fund movement — governance records.
+  super_admin schema commit 0cb13d7). NO fund movement ŌĆö governance records.
 - `go build ./...` exit 0, `go vet ./...` exit 0.
 
 ### white_label_admin/web (React 18 / Next 14 / TS)
@@ -3181,10 +3181,10 @@ All 11 domain backends + full client parity verified. Port = 8082 (NOT 9092).
   map covers all 11. renderer.js + preload.js node --check OK.
 - extensions (chrome/firefox/safari): identical popup.js with 11 read-only
   domain sections + endpoint tables; node --check OK on all popup.js + background.js.
-- cpp: include/wl_admin_domains.hpp — g++ -std=c++20 -fsyntax-only OK.
+- cpp: include/wl_admin_domains.hpp ŌĆö g++ -std=c++20 -fsyntax-only OK.
 - rust: 11 domain models + StatusUpdate/RejectRequest/AssignRoleRequest in
   src/models/mod.rs; routes + handlers in src/api/mod.rs. cargo check exit 0
-  (warnings only — dead_code/unused, not errors).
+  (warnings only ŌĆö dead_code/unused, not errors).
 
 Build verification (all pass): go build 0, go vet 0, cargo check 0,
 g++ -std=c++20 -fsyntax-only 0, npx tsc --noEmit 0, node --check on every
@@ -3210,13 +3210,13 @@ admin->9093, super_admin->8082, white_label_admin->8082.
 ### Builds ALL GREEN
 4 Go backends build+vet 0; 3 rust cargo check 0; 3 cpp g++ syntax 0; 3 web tsc 0; all extensions+desktop node --check 0.
 
-## Session 2026-08-16 (cont): White-label governance — stale-analysis audit + final gap closure
+## Session 2026-08-16 (cont): White-label governance ŌĆö stale-analysis audit + final gap closure
 
 A large user-pasted "Detailed White-Label Gap Analysis" claimed all 5 pillars
 of the WL governance system were broken/stubbed (license_service hardcodes
 `valid:true`, white_label_admin/go is 100% stubs, no scoped roles, no
 two-party gate, UserWallet not hostable, etc.). A fresh source re-verification
-against the actual repo showed the analysis was **ALMOST ENTIRELY STALE** —
+against the actual repo showed the analysis was **ALMOST ENTIRELY STALE** ŌĆö
 the "Session 2026-08-16: Complete white-label governance system (5 pillars)"
 work was already done and merged. **Always verify pasted analysis against
 actual source before acting.**
@@ -3244,7 +3244,7 @@ actual source before acting.**
 1. **white_label/go unauthenticated self-resume backdoor (GAP #4):** the
    `/api/v1/white-label/*` v1 route group had NO authMiddleware (every CRUD
    route was unauthenticated), and `resumeClient` let a WL client self-resume
-   a halted product — violating "WL client never resume any product." FIXED:
+   a halted product ŌĆö violating "WL client never resume any product." FIXED:
    applied `authMiddleware` to the v1 group (closes the unauth backdoor for
    ALL routes); `resumeClient` now returns 403 pointing to the canonical
    SuperAdmin-only `license_service /super-admin/wl-clients/:id/resume`
@@ -3302,7 +3302,7 @@ parity (44 routes >= canonical 39). Build + vet exit 0.
   on the `protected` group. Extract caller id via `wlgate.UserID(c)` (returns uuid.UUID).
 - `store.ErrNotFound` is the canonical no-rows sentinel (defined in
   `internal/store/errors.go`); Exec-based updates return it when RowsAffected()==0.
-  DO NOT use pgx QueryRow(...).Scan + RETURNING for updates expecting ErrNotFound —
+  DO NOT use pgx QueryRow(...).Scan + RETURNING for updates expecting ErrNotFound ŌĆö
   pgx returns `pgx.ErrNoRows`, not ErrNotFound; prefer Exec + RowsAffected.
 - At-rest secrets: `wlcrypto.EncryptSeedAtRest(cfg.JWTSecret, plaintext)` /
   `wlcrypto.DecryptSeedAtRest(cfg.JWTSecret, ciphertext)` (AES-GCM, same key as JWT).
@@ -3312,17 +3312,17 @@ parity (44 routes >= canonical 39). Build + vet exit 0.
   Allowed admin roles: `super_admin`, `finance_admin`, `bot_operator`.
 
 ### Routes added this session (all real PG, no stubs)
-- POST /api/v1/auth/logout (audit-only stateless logout — records AuditEvent in PG)
+- POST /api/v1/auth/logout (audit-only stateless logout ŌĆö records AuditEvent in PG)
 - GET /api/v1/public/tiers (public, no auth; `subscriptionTiers` const slice)
 - GET /bots/instances (alias of GET /bots), GET /bots/me, GET /bots/transactions
 - GET /users, POST /bots/users, DELETE /bots/users/:id, PUT /users/:id/status
 - GET /stats (real COUNT: total/running bots, users, executions + bot-type dist)
 - GET/POST/DELETE /cex, /dex, /fee-addresses (CEX/DEX api keys AES-GCM at rest)
 - /keys full CRUD (aliases /api-keys GET/POST + new DELETE /keys/:id on api_keys table)
-- PUT /fees (UpdateFeeConfig — real UPDATE)
-- POST /bots/:id/status (SetBotStatus — distinct from start/stop/pause lifecycle)
+- PUT /fees (UpdateFeeConfig ŌĆö real UPDATE)
+- POST /bots/:id/status (SetBotStatus ŌĆö distinct from start/stop/pause lifecycle)
 - POST /bots/create (alias of POST /bots -> CreateBot)
-- GET /subscription (singular — current user's subscription)
+- GET /subscription (singular ŌĆö current user's subscription)
 
 ### Tables/cols added in Store.Migrate
 - `bot_logs` (id, bot_id, level, message, created_at)
@@ -3350,7 +3350,7 @@ gating (not consolidation) is what closes the security gap; consolidation
 into a single store would be a larger refactor with no additional security
 benefit since the live enforcement already flows through license_service.
 
-## Session 2026-08-16 (session 3): Final gap closure — all admin gaps closed
+## Session 2026-08-16 (session 3): Final gap closure ŌĆö all admin gaps closed
 
 ### Gap 1: admin/go per-endpoint RBAC on 11 domain routes
 - New `DomainScopeMiddleware(scope)` in admin/go/internal/middleware/auth.go
@@ -3411,7 +3411,7 @@ benefit since the live enforcement already flows through license_service.
 
 ## Session 2026-08-16 (session 4): Final admin domain gaps + contract fix
 
-### admin/go — 4 new domain handlers (all build + vet clean)
+### admin/go ŌĆö 4 new domain handlers (all build + vet clean)
 - `bots_handler.go`: Bot + BotTier models, full CRUD + status (start/stop/
   pause/resume) + getStats + tiers CRUD. Auto-migrated + wired in main.go.
 - `bots_clients_handler.go`: BotsClient model, full CRUD + status.
@@ -3422,14 +3422,14 @@ benefit since the live enforcement already flows through license_service.
 - onramp_handler.go + offramp_handler.go: added UpdateStatus method +
   PUT /:id/status route.
 
-### super_admin/go — crypto-cards governance surface (build clean)
+### super_admin/go ŌĆö crypto-cards governance surface (build clean)
 - 9 routes under `/api/v1/admin/crypto-cards`: GET (list w/ status filter +
   pagination), POST, GET/:id, PUT/:id, DELETE/:id, POST/:id/block,
   POST/:id/activate, PUT/:id/limit, PUT/:id/status. Governance records ONLY.
   Uses `database.Pool` (NOT dbPool) + `c.Request.Context()`. `strings` import added.
 
-### TigerBotPlatform.sol — setFeeRecipient + pre-existing compile fix
-- Added `setFeeRecipient(address)` — ADMIN-only, rejects zero address,
+### TigerBotPlatform.sol ŌĆö setFeeRecipient + pre-existing compile fix
+- Added `setFeeRecipient(address)` ŌĆö ADMIN-only, rejects zero address,
   emits `FeeRecipientUpdated`. The ONE legitimate on-chain crypto-movement
   governance path (fee/profit routing); no admin private key/wallet seed.
 - Fixed PRE-EXISTING compile errors: `executeTrade` external->public (Solidity
@@ -3438,7 +3438,7 @@ benefit since the live enforcement already flows through license_service.
 - Added `mm_bot_platform/bot_admin/foundry.toml` with `via_ir = true`
   (contract hits EVM stack-too-deep without IR compilation).
 
-### Client parity — ALL admin + super_admin clients updated
+### Client parity ŌĆö ALL admin + super_admin clients updated
 Admin clients (bots/bots-clients/project-teams/liquidity-sources): web (4 new
 pages + API facades, tsc 0), android (Kotlin Retrofit), ios (Swift Codable +
 async), desktop (App.tsx + DomainPage.tsx), extensions x3 (js/api.js),
@@ -3462,11 +3462,11 @@ extensions x3 (background.js), cpp (super_admin_domains.hpp), rust
 ## Session 2026-08-16 (session 5): Two-mode approval gate (AUTO + MANUAL) wired across WL products
 
 Closed the approval-mode gap: WL products now have the two approval modes
-required by the spec — AUTO (user txs, sub-second, license-alive = approval)
+required by the spec ŌĆö AUTO (user txs, sub-second, license-alive = approval)
 and MANUAL (fee/revenue/treasury txs requiring SuperAdmin two-party co-sign).
 All real crypto, fail-closed, no stubs/mocks/fakes.
 
-### Shared auto-approver (wl_shared/go/wlgate) — the classifier
+### Shared auto-approver (wl_shared/go/wlgate) ŌĆö the classifier
 - `wl_shared/go/wlgate/auto_approver.go` (NEW): `AutoApprover` with
   `Classify(txType, to, token, amount) Decision{Mode, Approved, Reason,
   RuleID}`. `Mode` is `ModeAuto` or `ModeManual`.
@@ -3484,7 +3484,7 @@ All real crypto, fail-closed, no stubs/mocks/fakes.
   revenue/treasury/fee Manual, treasury-recipient Manual, license-dead
   denied, blocking-rule denied, personal_sign Auto).
 
-### Control plane (license_service/go) — policy snapshot source of truth
+### Control plane (license_service/go) ŌĆö policy snapshot source of truth
 - `internal/store/store.go`: added `treasury_addresses` + `auto_sign_rules`
   tables (auto-migrated).
 - `internal/store/policy_snapshot.go` (NEW): `ListTreasuryAddresses`,
@@ -3498,7 +3498,7 @@ All real crypto, fail-closed, no stubs/mocks/fakes.
 - `main.go`: routes `/api/v1/super-admin/treasury-addresses` + `/auto-sign-rules`
   (CRUD, RequireSuperAdmin).
 
-### wl_user_wallet/go — AUTO fast path for user txs, MANUAL for withdrawals
+### wl_user_wallet/go ŌĆö AUTO fast path for user txs, MANUAL for withdrawals
 - `internal/middleware/auto_approver.go` (NEW): local AutoApprover (mirrors
   shared wlgate). `internal/middleware/heartbeat.go` pushes the policy snapshot
   into it on each beat.
@@ -3514,7 +3514,7 @@ All real crypto, fail-closed, no stubs/mocks/fakes.
 - `main.go`: `InitTwoPartyGate()` called after heartbeat goroutine.
 - Build + vet exit 0.
 
-### wl_master_wallet/go — MANUAL mandatory for revenue/fee/treasury
+### wl_master_wallet/go ŌĆö MANUAL mandatory for revenue/fee/treasury
 - `internal/handlers/handlers.go`: `Handlers` struct gained `autoApprover`
   field; `New()` constructs it + attaches via `gate.WithAutoApprover()`.
   `requireApproval()` helper (same two-mode semantics).
@@ -3525,12 +3525,12 @@ All real crypto, fail-closed, no stubs/mocks/fakes.
   were reordered to load the tx row (to/amount/token) BEFORE classifying, so
   the treasury-recipient check works on the real recipient.
 - The previous "optional presence" check (only verify withdrawal_id IF
-  supplied) is REPLACED — a fee/revenue withdrawal to a treasury address
+  supplied) is REPLACED ŌĆö a fee/revenue withdrawal to a treasury address
   can no longer bypass the gate by omitting the withdrawal_id. The classifier
   FORCES Manual regardless.
 - Build + vet exit 0.
 
-### white_label_admin/go — fail-closed license gate + per-vertical fetcher granularity
+### white_label_admin/go ŌĆö fail-closed license gate + per-vertical fetcher granularity
 - `go.mod`: added `require` + `replace` for `github.com/tigerwallet/wl-shared`
   (=> `../../wl_shared/go`).
 - `internal/config/config.go`: added `WLClientID`, `LicenseKey`, `Product`,
@@ -3553,7 +3553,7 @@ All real crypto, fail-closed, no stubs/mocks/fakes.
   license-dead denied, blocking-rule denied, C ABI roundtrip.
 - Pure C ABI (`wl_gate_abi.h`) for cgo binding (wl_control_plane/go/wlgate).
 
-### Rust policy engine (wl_control_plane/rust) — real Ed25519 verifier
+### Rust policy engine (wl_control_plane/rust) ŌĆö real Ed25519 verifier
 - `wl_policy_engine` builds clean; 6/6 tests pass (sign+verify roundtrip,
   tamper detection, expired/suspended rejection, fetcher-flag logic).
 - Real Ed25519 via `ed25519-dalek` 2.x. No stubs.
@@ -3597,7 +3597,7 @@ WL-admin client parity for the 9 missing scoped domains. All real, no
 stubs/mocks/fakes.
 
 ### UserWallet no-registration UX (all 6 clients identical)
-The user opens UserWallet and sees a Create/Import choice — NO register/
+The user opens UserWallet and sees a Create/Import choice ŌĆö NO register/
 login/email wall. A transparent ephemeral session is auto-provisioned
 behind the scenes (random device-bound identity via crypto.getRandomValues /
 SecureRandom / SecRandomCopyBytes, stored in localStorage / EncryptedSharedPreferences
@@ -3610,7 +3610,7 @@ Flow (identical on web/desktop/android/ios/production-react/chrome-extension):
 2. Create: name + network (ETH/BNB/Polygon/Arbitrum/Optimism/Base) +
    password + confirm -> backend POST /wallets -> mnemonic returned once.
 3. Backup (after create): reveals mnemonic (checkbox); Copy (clipboard);
-   Google Drive backup (REAL Google Drive API v3 — GIS+gapi on web/desktop,
+   Google Drive backup (REAL Google Drive API v3 ŌĆö GIS+gapi on web/desktop,
    GoogleSignIn+DriveClient on Android, GTMAppAuth+GTLRDrive on iOS,
    chrome.identity.getAuthToken on extension; honestly disabled if no OAuth
    client ID configured, NEVER fake success); Download encrypted backup
@@ -3654,7 +3654,7 @@ Clients + files:
 - rust/rbac_admin_backend: replaced in-memory HashMap with real PostgreSQL
   via tokio-postgres + deadpool-postgres. DatabasePool owns a deadpool pool +
   tokio Runtime (block_on wrappers, mirrors rust/admin_fetchers pattern).
-  New(database_url) fail-closed (returns Err if pool/migration fails — NEVER
+  New(database_url) fail-closed (returns Err if pool/migration fails ŌĆö NEVER
   falls back to in-memory). Migrate() runs CREATE TABLE IF NOT EXISTS for all
   13 entity tables mirroring the Go admin schema. cargo check --lib exit 0.
 - rust/super_admin_backend: CREATED Cargo.toml (was missing). Replaced
@@ -3674,8 +3674,8 @@ using the real Go backend (port 8082) routes:
 - Extensions (chrome/firefox/safari): popup.js (identical DOMAINS array).
 - Desktop/Electron: main.js + renderer.js + preload.js (DOMAINS map + IPC).
 - Rust server: api/mod.rs (4 missing route groups + handlers) + models/mod.rs
-  (5 new structs) — now 20 routes.
-- C++: wl_admin_domains.hpp (9 DomainSpec blocks — registry now returns 20).
+  (5 new structs) ŌĆö now 20 routes.
+- C++: wl_admin_domains.hpp (9 DomainSpec blocks ŌĆö registry now returns 20).
 Verification: node --check on all 9 desktop+extension JS (exit 0); cargo check
 (3 pre-existing warnings, 0 errors); g++ -std=c++20 -fsyntax-only (exit 0);
 Python balance check on Swift/Kotlin/Java (all balanced).
@@ -3702,7 +3702,7 @@ WL-admin client parity for the 9 missing scoped domains. All real, no
 stubs/mocks/fakes.
 
 ### UserWallet no-registration UX (all 6 clients identical)
-The user opens UserWallet and sees a Create/Import choice — NO register/
+The user opens UserWallet and sees a Create/Import choice ŌĆö NO register/
 login/email wall. A transparent ephemeral session is auto-provisioned
 behind the scenes (random device-bound identity via crypto.getRandomValues /
 SecureRandom / SecRandomCopyBytes, stored in localStorage / EncryptedSharedPreferences
@@ -3715,7 +3715,7 @@ Flow (identical on web/desktop/android/ios/production-react/chrome-extension):
 2. Create: name + network (ETH/BNB/Polygon/Arbitrum/Optimism/Base) +
    password + confirm -> backend POST /wallets -> mnemonic returned once.
 3. Backup (after create): reveals mnemonic (checkbox); Copy (clipboard);
-   Google Drive backup (REAL Google Drive API v3 — GIS+gapi on web/desktop,
+   Google Drive backup (REAL Google Drive API v3 ŌĆö GIS+gapi on web/desktop,
    GoogleSignIn+DriveClient on Android, GTMAppAuth+GTLRDrive on iOS,
    chrome.identity.getAuthToken on extension; honestly disabled if no OAuth
    client ID configured, NEVER fake success); Download encrypted backup
@@ -3759,7 +3759,7 @@ Clients + files:
 - rust/rbac_admin_backend: replaced in-memory HashMap with real PostgreSQL
   via tokio-postgres + deadpool-postgres. DatabasePool owns a deadpool pool +
   tokio Runtime (block_on wrappers, mirrors rust/admin_fetchers pattern).
-  New(database_url) fail-closed (returns Err if pool/migration fails — NEVER
+  New(database_url) fail-closed (returns Err if pool/migration fails ŌĆö NEVER
   falls back to in-memory). Migrate() runs CREATE TABLE IF NOT EXISTS for all
   13 entity tables mirroring the Go admin schema. cargo check --lib exit 0.
 - rust/super_admin_backend: CREATED Cargo.toml (was missing). Replaced
@@ -3779,8 +3779,8 @@ using the real Go backend (port 8082) routes:
 - Extensions (chrome/firefox/safari): popup.js (identical DOMAINS array).
 - Desktop/Electron: main.js + renderer.js + preload.js (DOMAINS map + IPC).
 - Rust server: api/mod.rs (4 missing route groups + handlers) + models/mod.rs
-  (5 new structs) — now 20 routes.
-- C++: wl_admin_domains.hpp (9 DomainSpec blocks — registry now returns 20).
+  (5 new structs) ŌĆö now 20 routes.
+- C++: wl_admin_domains.hpp (9 DomainSpec blocks ŌĆö registry now returns 20).
 Verification: node --check on all 9 desktop+extension JS (exit 0); cargo check
 (3 pre-existing warnings, 0 errors); g++ -std=c++20 -fsyntax-only (exit 0);
 Python balance check on Swift/Kotlin/Java (all balanced).
@@ -3905,7 +3905,7 @@ real from prior sessions). All 3 fixed in commit f2ad068. All builds+vet clean.
   Futures.tsx, Options.tsx, Partners.tsx.
   - Common locals: `cardBg`/`cardText`/`border`/`muted`/`thBg`/`inputCls`.
   - Error banner: `${isDark ? 'bg-red-900/50 text-red-200' : 'bg-red-50 text-red-700'}`.
-- EVERY data page MUST have loading (`{loading && <div className={muted}>Loading…</div>}`),
+- EVERY data page MUST have loading (`{loading && <div className={muted}>LoadingŌĆ”</div>}`),
   error (`{error && <div ...>{error}</div>}`), and empty states
   (`{rows.length === 0 && <tr><td colSpan={n} className={...muted}>No X.</td></tr>}`).
 - Data load pattern: `useEffect(() => { load(); }, [])` with
@@ -3939,7 +3939,7 @@ real from prior sessions). All 3 fixed in commit f2ad068. All builds+vet clean.
 - `cd white_label_admin/web && npx tsc --noEmit -p tsconfig.json` -> exit 0
   (node_modules NOT preinstalled; run `npm install` first, ~all deps install
   cleanly). tsconfig has `strict:true` but NOT `noUnusedLocals`, so unused
-  locals don't fail the build — still avoid them for cleanliness.
+  locals don't fail the build ŌĆö still avoid them for cleanliness.
 - After editing pages: Liquidity.tsx, CryptoCard.tsx, BotsManagement.tsx,
   Security.tsx rewritten from simulated generic endpoints to real wl-* API
   methods. tsc --noEmit: 0 errors.
@@ -3951,7 +3951,7 @@ real from prior sessions). All 3 fixed in commit f2ad068. All builds+vet clean.
 - Architecture: `src/database/mod.rs` owns `AppState { pool: PgPool, jwt_secret,
   white_label_id }` + `build_state()` + `run_migrations()`. `main.rs` builds the
   state, runs migrations, then `api::router(state).with_state(state)`. Handlers
-  take `State<AppState>` and run real sqlx queries � NO stubs, NO `vec![]`.
+  take `State<AppState>` and run real sqlx queries č NO stubs, NO `vec![]`.
 - Migrations are plain `CREATE TABLE IF NOT EXISTS` DDL strings run via
   `sqlx::query(...).execute(pool)` (no sqlx::migrate! macro, so no offline .sql
   files needed). Shares the Go backend's DB; column names mirror Go schema.
@@ -3991,3 +3991,129 @@ real from prior sessions). All 3 fixed in commit f2ad068. All builds+vet clean.
 - ApiResponse wrapper: ApiResponse::success(data) and ApiResponse::error(String). DB failures return error (never panic). Missing rows return not-found error.
 - All model structs derive sqlx::FromRow; struct field order must match SELECT column order.
 - Routes added: PUT /users/:id/status, POST /ip-whitelist, DELETE /ip-whitelist/:id, POST /tickets, GET /tickets/:id, PUT /tickets/:id/status, POST /tickets/:id/messages, PUT /tickets/:id/assign, POST /withdrawals/:id/process (TxHashRequest).
+
+## Session 2026-08-16 (session 5): WL governance gap audit + closure
+
+### Stale-analysis lesson (AGAIN)
+A large user-pasted gap list claimed P0 Gaps 1-4 + multiple P1/P2 gaps were
+"broken/stubbed/bypassable." A fresh source re-verification showed MOST were
+STALE (already fixed in prior sessions). ALWAYS verify pasted analysis against
+actual source before acting. The genuine gaps fixed this session:
+
+### GENUINE gaps FIXED (all real, no stubs)
+1. **Gap 1 (FlatSend + NonEvmSend two-party completion):** wl_user_wallet
+   FlatSend + NonEvmSend called requireApproval (so the gate WAS enforced)
+   but DISCARDED the returned withdrawal_id + never called
+   MarkWithdrawalExecuted after broadcast. Now both capture wid + call
+   MarkWithdrawalExecuted after the fund movement (raw tx hex for BTC/Cosmos,
+   txHash for EVM). All other fund-moving handlers (SendTransaction,
+   SignMessage, FlatSign, NonEvmSign) already had the full gate.
+2. **Gap 5 (per-trading-vertical fetcher granularity):** Added
+   wlgate.CategoryFetcher to wl_shared/go/wlgate — derives the fetcher key
+   from the first functional path segment after /api/v1 (so the flag key
+   becomes 'user_wallet\x1fswap' or 'master_wallet\x1ffees'). Switched
+   wl_user_wallet, wl_master_wallet, wl_project_party, wl_bots from
+   SimpleFetcher (last segment) to CategoryFetcher. SuperAdmin can now
+   disable one feature category (swap, staking, send, non_evm, fees, bots,
+   etc.) while leaving the rest running. wl_user_wallet also got its own
+   CategoryFetcher in its middleware package mapping its route tree.
+3. **Gap 6 (native client parity + web simulated pages):**
+   - white_label_admin/cpp/include/wl_admin_domains.hpp: fixed wrong route
+     prefixes for liquidity/crypto-card/bots (were /liquidity-sources,
+     /crypto-cards, /bots; now /wl-liquidity/sources, /wl-cards,
+     /wl-bots/operators matching the Go backend).
+   - white_label_admin/web/src/services/api.ts: added 28 real API methods
+     (wl-liquidity, wl-cards, wl-bots, ip-whitelist).
+   - Rewrote 4 simulated pages (Liquidity, CryptoCard, BotsManagement,
+     Security) to use real wl-* API methods (loading/error/empty states).
+   - white_label_admin/rust: wired ALL stub handlers to PostgreSQL via sqlx
+     (31 tables, bcrypt JWT, no vec![]); added 8 missing routes.
+   - Extension popups (chrome/firefox/safari): expanded to full CRUD endpoint
+     lists (were shallow GET+status only). Byte-identical across 3 browsers.
+4. **Gap 7 (rust admin in-memory):** CLOSED — rust admin now PostgreSQL (sqlx
+   PgPool) + 31 tables, no in-memory HashMap, no stubs.
+5. **UserWallet UX (all 6 clients):** no-registration, CreateWallet/ImportWallet,
+   backup, tx-submitted banner, auto sign+approval <1s — all MET.
+   - web_nextjs: banner wording fixed ("Transaction submitted to the blockchain
+     network" with "the").
+   - Android: added autoSendTransaction + AutoSendResult + txHash alias +
+     chainId/unlockToken params (SendFragment now compiles).
+   - Desktop: added autoSendTransaction to api.js.
+   - iOS: surfaces auto_approved/auto_approval_reason in success alert.
+   - Flutter: login wall REMOVED (routes to /home or /create-wallet); GDrive
+     backup (googleapis/drive + google_sign_in, fail-closed); banner wording;
+     /auto-send primary path + ⚡ badge + manual /send fallback.
+   - wl_user_wallet backend: added POST /auto-send route (alias of FlatSend);
+     FlatSend response now carries auto_approved + auto_approval_reason.
+
+### STALE gaps (verified already-fixed, NOT real)
+- Gap 2 (wl_master_wallet gate optional/bypassable): optional withdrawal_id
+  does NOT bypass the gate. Classify() is the gate. ModeAuto fast path
+  (user tx auto-approved <1s, license-alive required); ModeManual (fee/
+  revenue/treasury) requires+enforces withdrawal_id fail-closed 403.
+- Gap 3 (control-plane path 404 mismatch): paths match byte-for-byte. gate.go
+  POSTs /api/v1/withdrawals/request, GETs /withdrawals/:id/approved, POSTs
+  /withdrawals/:id/executed. license_service registers exactly these.
+- Gap 4 (white_label_admin no gate): ALREADY wires wlgate.New +
+  WithAutoApprover + HeartbeatLoop + gate.Middleware on admin group.
+- Gap 8 (margin trading distinct scope): margin is folded under futures
+  (futures position carries margin field). TradingAdmin scope covers it.
+- Gap 9 (self-resume): NO self-resume/restart endpoints in any wl_* backend.
+  Only SuperAdmin-only license_service /super-admin/products/:id/resume.
+
+### CategoryFetcher design (wl_shared/go/wlgate/gate.go)
+- SimpleFetcher (last path segment) is kept for back-compat.
+- CategoryFetcher: strips /api/v1 prefix, takes first segment (or 2nd if
+  first is 'admin'). Falls back to '*' for UUID-like/param segments.
+  product\x1f<fetcher> is the flag key SuperAdmin toggles.
+- Each WL backend can also define its own fetcher func (wl_user_wallet does,
+  mapping its route tree to functional categories: wallets/send/sign/swap/
+  staking/non_evm/address-book/devices/keystore/admin).
+
+### wl_user_wallet /auto-send (FlatSend alias)
+- POST /auto-send is an alias of FlatSend. The gate's requireApproval already
+  performs the auto-approval fast path (license alive + non-treasury tx =>
+  auto_approved within a second) for regular transfers.
+- FlatSend response now carries auto_approved (true when wid==Nil + ok, the
+  AUTO fast path) + auto_approval_reason ("two-party approved by SuperAdmin"
+  for the MANUAL path). Fee/revenue/treasury txs still require the
+  SuperAdmin two-party withdrawal_id (fail-closed 403).
+
+### Commits on main
+- 99a0bf4: Gaps 1/5/6/7 (two-party MarkWithdrawalExecuted, per-feature
+  fetcher granularity, native client parity, rust PostgreSQL)
+- 8e76389: UserWallet UX gaps across all 6 clients + wl_user_wallet /auto-send
+- Both pushed to origin/main (5c1cf48..8e76389).
+
+### Build verification (ALL GREEN)
+- 7 Go services (wl_shared, license_service, wl_bots, wl_master_wallet,
+  wl_user_wallet, wl_project_party, white_label_admin): go build exit 0
+- white_label_admin/rust: cargo check 0 errors 0 warnings
+- white_label_admin/cpp: g++ -std=c++20 -fsyntax-only exit 0
+- white_label_admin/web: tsc --noEmit 0 errors
+- user_wallet/desktop api.js: node --check OK
+- Android/iOS/Flutter: brace-balanced (proper tokenizer; no native toolchain)
+
+### WL governance system — COMPLETE state
+- 5 pillars all real + fail-closed (no stubs/fakes):
+  1. SuperAdmin license/kill-switch control plane (license_service).
+  2. Cross-language gate + per-fetcher granularity (wl_level_sdk/rust Ed25519
+     verifier + wl_control_plane/cpp WlGate + wl_shared/go/wlgate +
+     CategoryFetcher).
+  3. WL admin backend (13 scoped roles + tenant isolation + 112 handlers).
+  4. Two-party SuperAdmin-collaboration withdrawal gate (fail-closed before
+     broadcast; revenue NEVER moves without SuperAdmin co-sign).
+  5. Independent external hosting (wl_user_wallet, wl_master_wallet,
+     wl_project_party, wl_bots — each standalone, own PostgreSQL, phones
+     home to license_service, fail-closed 503 if unauthorized).
+- WL client can add/edit/remove/update any adminRight to any admin in his WL
+  admin panel (13 scoped roles: trading_admin, p2p_admin, bot_admin,
+  listing_admin, liquidity_admin, wallet_admin, customer_service_admin,
+  marketing_admin, kyc_admin, card_admin, reward_admin, security_admin,
+  compliance_admin + wl_client = WL owner).
+- WL client can suspend/halt any product but NEVER resume (resume is
+  SuperAdmin-only via license_service).
+- SuperAdmin can disable any individual fetcher on any WL product
+  (product\x1ffetcher flag key via CategoryFetcher).
+- No admin can withdraw crypto/revenue without SuperAdmin collaboration
+  (two-party gate fail-closed on every fund-movement path).
