@@ -59,9 +59,11 @@ async function initTheme() {
   const toggle = document.getElementById('theme-toggle');
   const res = await window.wlAdmin.theme.get();
   if (res && res.dark) document.body.classList.add('dark');
+  document.documentElement.dataset.theme = res && res.dark ? 'dark' : 'light';
   toggle.addEventListener('click', async () => {
     const next = !document.body.classList.contains('dark');
     document.body.classList.toggle('dark', next);
+    document.documentElement.dataset.theme = next ? 'dark' : 'light';
     await window.wlAdmin.theme.set(next);
   });
 }

@@ -8,7 +8,7 @@
 ./admin_system/go/go.mod
 ./api_gateway/go.mod
 ./asset_management/go.mod
-./auto_approval_workflow/go/go.mod
+./kyc_onboarding_workflow/go/go.mod
 ./backend/go/go.mod
 ./backend_services/go.mod
 ./backend_services/go/listing_service/go.mod
@@ -590,19 +590,19 @@ go/cmd/main.go:19:2: missing go.sum entry for module providing package github.co
 	go get github.com/tigerwallet/asset-management/go/cmd
 go/cmd/main.go:20:2: missing go.sum entry for module providing package github.com/redis/go-redis/v9 (imported by github.com/tigerwallet/asset-management/go/cmd); to add:
 	go get github.com/tigerwallet/asset-management/go/cmd
--- ./auto_approval_workflow/go
-main.go:19:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/auto_approval_workflow); to add:
-	go get github.com/tigerwallet/auto_approval_workflow
-main.go:20:2: missing go.sum entry for module providing package github.com/go-redis/redis/v8 (imported by github.com/tigerwallet/auto_approval_workflow); to add:
-	go get github.com/tigerwallet/auto_approval_workflow
-main.go:21:2: missing go.sum entry for module providing package github.com/jackc/pgx/v4 (imported by github.com/tigerwallet/auto_approval_workflow); to add:
-	go get github.com/tigerwallet/auto_approval_workflow
-main.go:22:2: missing go.sum entry for module providing package github.com/jackc/pgx/v4/pgxpool (imported by github.com/tigerwallet/auto_approval_workflow); to add:
-	go get github.com/tigerwallet/auto_approval_workflow
-main.go:23:2: missing go.sum entry for module providing package github.com/rs/zerolog (imported by github.com/tigerwallet/auto_approval_workflow); to add:
-	go get github.com/tigerwallet/auto_approval_workflow
-main.go:24:2: missing go.sum entry for module providing package golang.org/x/crypto/bcrypt (imported by github.com/tigerwallet/auto_approval_workflow); to add:
-	go get github.com/tigerwallet/auto_approval_workflow
+-- ./kyc_onboarding_workflow/go
+main.go:19:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/kyc_onboarding_workflow); to add:
+	go get github.com/tigerwallet/kyc_onboarding_workflow
+main.go:20:2: missing go.sum entry for module providing package github.com/go-redis/redis/v8 (imported by github.com/tigerwallet/kyc_onboarding_workflow); to add:
+	go get github.com/tigerwallet/kyc_onboarding_workflow
+main.go:21:2: missing go.sum entry for module providing package github.com/jackc/pgx/v4 (imported by github.com/tigerwallet/kyc_onboarding_workflow); to add:
+	go get github.com/tigerwallet/kyc_onboarding_workflow
+main.go:22:2: missing go.sum entry for module providing package github.com/jackc/pgx/v4/pgxpool (imported by github.com/tigerwallet/kyc_onboarding_workflow); to add:
+	go get github.com/tigerwallet/kyc_onboarding_workflow
+main.go:23:2: missing go.sum entry for module providing package github.com/rs/zerolog (imported by github.com/tigerwallet/kyc_onboarding_workflow); to add:
+	go get github.com/tigerwallet/kyc_onboarding_workflow
+main.go:24:2: missing go.sum entry for module providing package golang.org/x/crypto/bcrypt (imported by github.com/tigerwallet/kyc_onboarding_workflow); to add:
+	go get github.com/tigerwallet/kyc_onboarding_workflow
 -- ./backend/go
 cmd/api/main.go:16:2: missing go.sum entry for module providing package github.com/gin-gonic/gin (imported by github.com/tigerwallet/backend/cmd/api); to add:
 	go get github.com/tigerwallet/backend/cmd/api

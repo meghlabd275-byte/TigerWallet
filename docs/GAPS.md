@@ -3,6 +3,33 @@
 > Companion document to `PROJECT_PARTY.md`, `BOTS_CLIENTS.md`, and
 > `LIQUIDITY_TRADING_PAIRS.md`.
 
+> ✅ **STATUS UPDATE (2026-08-23, session 8 — naming clarity + documentation):**
+>
+> - [RESOLVED] **Auto-signer daemon** — implemented in
+>   `master_wallet/backend/auto_signer.go`: <1s auto-sign for user-initiated
+>   txs, with velocity limits (`max_txs_per_hour`, `max_value_per_day` from the
+>   rule `conditions` JSONB, counted against the real `auto_sign_log`) in
+>   `checkAutoSignRules`. `RevenuePayout` / `TreasuryTransfer` /
+>   `TreasurySweep` / `FeeWithdrawal` are NEVER auto-approved — they require
+>   the SuperAdmin two-party co-sign (`wl_control_plane/rust/src/classifier.rs`,
+>   `wl_control_plane/cpp/include/wl_auto_approver.hpp` force them to MANUAL).
+> - [RESOLVED] **App-separation violations** — relocations done: dead master/
+>   admin service copies deleted from user apps (session 4b item 7); canonical
+>   functionality lives in `master_wallet/`, `admin/`, `super_admin/`; all
+>   duplicate consolidations executed (sessions 5–7 items 9–11).
+> - [RESOLVED] **Rename `approval_manager` → `allowance_manager`** — the
+>   ERC-20 allowance scan+revoke tool (`allowance_manager/frontend/src/
+>   page.tsx`); not tx-signing approval.
+> - [RESOLVED] **Rename `auto_approval_workflow` → `kyc_onboarding_workflow`**
+>   — the KYC / white-label tenant-onboarding auto-approval workflow
+>   (`kyc_onboarding_workflow/go/main.go`; risk-based routing: auto-approve
+>   `riskScore<=0.2`, auto-reject `>=0.8`, else manual review); not tx signing.
+> - [RESOLVED] **Admin architecture documentation** — root `README.md`'s
+>   `./ADMIN_ARCHITECTURE.md` link no longer dangles; per-app READMEs added
+>   for `master_wallet/`, `user_wallet/`, `admin/`, `super_admin/`,
+>   `white_label_admin/`, `wl_control_plane/`, `selfhosted_masterwallet/`,
+>   `allowance_manager/`, `kyc_onboarding_workflow/`.
+>
 > ✅ **STATUS UPDATE (2026-08-22, session 4 — kill-switch control plane):**
 > 1. ✅ **`kill_switch/` implemented (was an empty `go.mod` stub)** — full Go
 >    service on :8469. SuperAdmin can halt/resume four scopes: `global` (whole

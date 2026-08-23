@@ -254,6 +254,7 @@ const Sidebar = ({ currentPage, setCurrentPage, isDark, masterAddress, onLogout 
 // ---------------- Header ----------------
 
 const Header = ({ isDark, onCreate }: { isDark: boolean; onCreate: () => void }) => {
+  const { toggleTheme } = useTheme();
   return (
     <header className={`h-16 ${isDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} border-b flex items-center justify-between px-6`}>
       <div className="flex items-center space-x-4">
@@ -267,6 +268,13 @@ const Header = ({ isDark, onCreate }: { isDark: boolean; onCreate: () => void })
       </div>
 
       <div className="flex items-center space-x-4">
+        <button
+          onClick={toggleTheme}
+          aria-label="Toggle theme"
+          className={`p-2 rounded-lg border ${isDark ? 'border-gray-700 hover:bg-gray-800' : 'border-gray-300 hover:bg-gray-100'}`}
+        >
+          {isDark ? '☀️' : '🌙'}
+        </button>
         <button
           onClick={onCreate}
           className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700 text-sm text-white"

@@ -136,7 +136,7 @@ go: toolchain upgrade needed to resolve github.com/rogpeppe/go-internal/fmtsort
 go: github.com/rogpeppe/go-internal@v1.16.0 requires go >= 1.25 (running go 1.22.2; GOTOOLCHAIN=local)
 STATUS=1
 
-== ./auto_approval_workflow/go ==
+== ./kyc_onboarding_workflow/go ==
 go: downloading github.com/jackc/pgx/v4 v4.18.1
 go: downloading github.com/jackc/pgconn v1.14.0
 go: downloading github.com/jackc/pgio v1.0.0

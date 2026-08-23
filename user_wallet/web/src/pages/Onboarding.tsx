@@ -23,7 +23,7 @@ type Mode = 'choose' | 'create' | 'import' | 'backup';
 
 export default function Onboarding() {
   const { ready, createWallet, importWallet, rememberWallet } = useOnboarding();
-  const { isDark } = useTheme();
+  const { isDark, toggleTheme } = useTheme();
   const [mode, setMode] = useState<Mode>('choose');
   const [label, setLabel] = useState('My Wallet');
   const [password, setPassword] = useState('');
@@ -103,7 +103,12 @@ export default function Onboarding() {
   return (
     <div className={`onboarding-root ${isDark ? 'dark' : 'light'}`}>
       <div className="onboarding-card">
-        <div className="onboarding-logo">🐯 UserWallet</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="onboarding-logo" style={{ flex: 1 }}>🐯 UserWallet</div>
+          <button onClick={toggleTheme} className="theme-toggle" aria-label="Toggle theme">
+            {isDark ? '☀️' : '🌙'}
+          </button>
+        </div>
 
         {mode === 'choose' && (
           <div className="choose-grid">

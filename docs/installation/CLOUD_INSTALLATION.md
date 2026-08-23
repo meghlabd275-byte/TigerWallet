@@ -281,7 +281,7 @@ cd TigerWallet
 cd white_label/marketplace/go
 go build -o tiger-wl-marketplace main.go
 
-cd ../../auto_approval_workflow/go
+cd ../../kyc_onboarding_workflow/go
 go build -o tiger-auto-approval main.go
 
 # Build all Rust services

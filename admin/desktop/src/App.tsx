@@ -719,6 +719,7 @@ const AdminDesktopApp: React.FC = () => {
     localStorage.setItem('admin_theme', theme);
     document.documentElement.classList.remove('light', 'dark');
     document.documentElement.classList.add(theme);
+    document.documentElement.dataset.theme = theme;
   }, [theme]);
 
   const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');

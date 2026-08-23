@@ -3,6 +3,7 @@
 // performs a real login immediately after to obtain a session token.
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useNavigate, Link } from 'react-router-dom';
 
 export default function Register() {
@@ -13,6 +14,7 @@ export default function Register() {
   const [busy, setBusy] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
+  const { isDark, toggleTheme } = useTheme();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,7 +41,12 @@ export default function Register() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <h1>UserWallet</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h1>UserWallet</h1>
+          <button type="button" onClick={toggleTheme} className="theme-toggle" aria-label="Toggle theme">
+            {isDark ? '☀️' : '🌙'}
+          </button>
+        </div>
         <h2>Create Account</h2>
         <form onSubmit={handleSubmit}>
           {error && <div className="error">{error}</div>}

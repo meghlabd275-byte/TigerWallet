@@ -1,37 +1,24 @@
 /**
  * TigerWallet Admin - Theme Hook
- * Dark/Light theme switching for all components
+ * Dark/Light theme switching for all components.
+ *
+ * Delegates to the shared ThemeContext so every page and the header toggle
+ * stay in sync (single source of truth, single localStorage key).
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useTheme as useThemeContext } from '../contexts/ThemeContext';
 
 type Theme = 'light' | 'dark';
 
 export const useTheme = () => {
-  const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem('admin_theme');
-    return (saved as Theme) || 'light';
-  });
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('admin_theme', theme);
-  }, [theme]);
-
-  const toggleTheme = useCallback(() => {
-    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
-  }, []);
-
-  const setThemeMode = useCallback((mode: Theme) => {
-    setTheme(mode);
-  }, []);
+  const { resolvedTheme, toggleTheme, setTheme } = useThemeContext();
 
   return {
-    theme,
-    isDark: theme === 'dark',
-    isLight: theme === 'light',
+    theme: resolvedTheme as Theme,
+    isDark: resolvedTheme === 'dark',
+    isLight: resolvedTheme === 'light',
     toggleTheme,
-    setThemeMode,
+    setThemeMode: (mode: Theme) => setTheme(mode),
   };
 };
 

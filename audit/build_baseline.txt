@@ -43,7 +43,7 @@ exit=127
 ===== go test ./asset_management =====
 bash: go: command not found
 exit=127
-===== go test ./auto_approval_workflow/go =====
+===== go test ./kyc_onboarding_workflow/go =====
 bash: go: command not found
 exit=127
 ===== go test ./backend/go =====

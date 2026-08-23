@@ -9,6 +9,7 @@
 // email" toggle as an OPTIONAL account-recovery path.
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useNavigate, Link } from 'react-router-dom';
 
 // Stable per-browser device id (generated once, persisted in localStorage).
@@ -33,6 +34,7 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const { login, guestAuth } = useAuth();
   const navigate = useNavigate();
+  const { isDark, toggleTheme } = useTheme();
 
   const startCreate = async () => {
     setError('');
@@ -77,7 +79,12 @@ export default function Login() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <h1>TigerWallet</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h1>TigerWallet</h1>
+          <button type="button" onClick={toggleTheme} className="theme-toggle" aria-label="Toggle theme">
+            {isDark ? '☀️' : '🌙'}
+          </button>
+        </div>
         {mode === 'start' ? (
           <>
             <h2>Your Wallet, Your Keys</h2>

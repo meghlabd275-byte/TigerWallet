@@ -411,6 +411,22 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 			UNIQUE (master_wallet_id, credential_id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_mw_passkeys_master ON mw_passkeys (master_wallet_id)`,
+		// Auto-approve/auto-sign policy per master wallet (owner/admin
+		// configurable). max_auto_value_wei = 0 means unlimited.
+		`CREATE TABLE IF NOT EXISTS auto_sign_policies (
+			master_wallet_id UUID PRIMARY KEY REFERENCES master_wallets(id) ON DELETE CASCADE,
+			enabled BOOLEAN NOT NULL DEFAULT true,
+			allow_transfer BOOLEAN NOT NULL DEFAULT true,
+			allow_swap BOOLEAN NOT NULL DEFAULT true,
+			allow_stake BOOLEAN NOT NULL DEFAULT true,
+			allow_nft_transfer BOOLEAN NOT NULL DEFAULT true,
+			allow_personal_sign BOOLEAN NOT NULL DEFAULT true,
+			allow_typed_data_sign BOOLEAN NOT NULL DEFAULT true,
+			max_auto_value_wei NUMERIC(78,0) NOT NULL DEFAULT 0,
+			updated_by UUID,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := pool.Exec(ctx, stmt); err != nil {

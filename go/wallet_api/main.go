@@ -252,6 +252,12 @@ func main() {
 		// prefix on both sides, plain proxy.
 		wallet.Any("/ramp/*path", deFiProxy("FIAT_RAMP_SERVICE_URL", "http://localhost:8451", "ramp"))
 
+		// MasterWallet multisig: reverse-proxied to the master wallet backend
+		// (:8450) so UserWallet clients (extension/iOS/android/web) use multisig
+		// without ever calling :8450 directly (separation rule).
+		//   master_wallet/backend :8450  (/api/v1/master-wallet/<id>/multisig/*)
+		wallet.Any("/wallet/multisig/*path", masterWalletMultisigProxy())
+
 		// ---- Admin / dashboard routes (authenticated + admin-role) ----
 		// Back the master-wallet dashboard with real PostgreSQL aggregates.
 		admin := wallet.Group("/admin")

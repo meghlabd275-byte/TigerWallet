@@ -2,10 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"crypto/tls"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -21,7 +17,6 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/rs/zerolog"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // ============================================================================
@@ -35,6 +30,17 @@ var (
 	dbPool         *pgxpool.Pool
 	workflowEngine *WorkflowEngine
 )
+
+// initLogger configures the global zerolog logger. JSON in production,
+// pretty console output when LOG_FORMAT=pretty.
+func initLogger() {
+	zerolog.TimeFieldFormat = time.RFC3339
+	if os.Getenv("LOG_FORMAT") == "pretty" {
+		logger = zerolog.New(zerolog.NewConsoleWriter()).With().Timestamp().Logger()
+	} else {
+		logger = zerolog.New(os.Stdout).With().Timestamp().Logger()
+	}
+}
 
 // Configuration
 type Config struct {

@@ -838,10 +838,18 @@ func (svc *Service) CreateTransaction(c *gin.Context) {
 	if fromAddr == "" {
 		_ = svc.store.db.QueryRow(ctx, `SELECT address FROM master_wallets WHERE id = $1`, masterID).Scan(&fromAddr)
 	}
+	// Provenance for the auto-signer guard: the destination was chosen by the
+	// user and recorded at creation. Without this marker the auto-sign daemon
+	// refuses to sign (fail-closed).
+	metadata, _ := jsonMarshal(gin.H{
+		"user_initiated":    true,
+		"created_by":        currentUserID(c),
+		"destination_chosen_by_user": true,
+	})
 	_, err := svc.store.db.Exec(ctx,
-		`INSERT INTO transactions (id, master_wallet_id, sub_wallet_id, tx_hash, tx_type, status, blockchain, from_address, to_address, amount, token_symbol, chain_id)
-		 VALUES ($1,$2,$3,$4,$5,$6,'ethereum',$7,$8,$9,$10,$11)`,
-		txRec, masterID, req.SubWalletID, req.TxHash, req.TxType, status, fromAddr, req.To, req.Amount, req.Token, chainID)
+		`INSERT INTO transactions (id, master_wallet_id, sub_wallet_id, tx_hash, tx_type, status, blockchain, from_address, to_address, amount, token_symbol, chain_id, metadata)
+		 VALUES ($1,$2,$3,$4,$5,$6,'ethereum',$7,$8,$9,$10,$11,$12)`,
+		txRec, masterID, nilIfEmpty(req.SubWalletID), req.TxHash, req.TxType, status, fromAddr, req.To, req.Amount, req.Token, chainID, string(metadata))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

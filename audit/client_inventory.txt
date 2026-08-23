@@ -162,7 +162,7 @@
 ./admin_system/web/src/pages/Notifications.tsx
 ./admin_system/web/src/pages/Settings.tsx
 ./admin_system/web/src/pages/Users.tsx
-./approval_manager/frontend/src/page.tsx
+./allowance_manager/frontend/src/page.tsx
 ./bots/desktop/src/styles.css
 ./bots/web/src/components/Layout.tsx
 ./bots/web/src/contexts/ThemeContext.tsx

@@ -47,7 +47,8 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
 
     const effective: ResolvedTheme = theme === 'system' ? getSystemTheme() : theme;
 
-    // Update document class
+    // Update document class and data-theme attribute
+    document.documentElement.setAttribute('data-theme', effective);
     if (effective === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
@@ -61,6 +62,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
       const mq = window.matchMedia('(prefers-color-scheme: dark)');
       const handler = () => {
         const sys = getSystemTheme();
+        document.documentElement.setAttribute('data-theme', sys);
         if (sys === 'dark') {
           document.documentElement.classList.add('dark');
         } else {

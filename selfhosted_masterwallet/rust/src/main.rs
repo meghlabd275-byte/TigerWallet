@@ -17,14 +17,22 @@ use actix_web::{middleware, web, App, HttpRequest, HttpResponse, HttpServer};
 use base64::Engine;
 use chrono::{Duration, Utc};
 use hmac::{Hmac, Mac};
+use k256::elliptic_curve::sec1::ToEncodedPoint;
 use rand::RngCore;
 use serde::Deserialize;
-use sha2::Sha256;
+use sha2::{Digest as _, Sha256};
 use sqlx::{postgres::PgPoolOptions, PgPool, Row};
 use std::env;
 use thiserror::Error;
 use tracing::{error, info};
 use uuid::Uuid;
+
+mod chains_data;
+mod crypto;
+mod evm_tx;
+mod multisig;
+mod non_evm;
+mod rlp;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -78,6 +86,7 @@ impl AppState {
         });
         let pool = PgPoolOptions::new().max_connections(10).connect(&db_url).await?;
         run_migrations(&pool).await?;
+        seed_chains(&pool).await?;
         let jwt_secret = env::var("JWT_SECRET").unwrap_or_else(|_| "dev-only-change-me-in-prod".into());
         let bind_addr = env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8470".into());
         Ok(Self { pool, jwt_secret, bind_addr })
@@ -287,7 +296,211 @@ async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
             rpc_url TEXT NOT NULL DEFAULT ''
         )"#,
     ).execute(pool).await?;
+
+    // Canonical MasterWallet columns (mirrors master_wallets in the Go backend).
+    for stmt in [
+        "ALTER TABLE shmw_master_wallets ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE shmw_master_wallets ADD COLUMN IF NOT EXISTS blockchain TEXT NOT NULL DEFAULT 'ethereum'",
+        "ALTER TABLE shmw_master_wallets ADD COLUMN IF NOT EXISTS public_key TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE shmw_master_wallets ADD COLUMN IF NOT EXISTS wallet_type TEXT NOT NULL DEFAULT 'hot'",
+        "ALTER TABLE shmw_master_wallets ADD COLUMN IF NOT EXISTS encrypted_seed TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE shmw_master_wallets ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE",
+    ] {
+        sqlx::query(stmt).execute(pool).await?;
+    }
+
+    // Canonical chain registry (seeded from the embedded registry data).
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS shmw_user_chains_evm (
+            chain_id BIGINT PRIMARY KEY,
+            name TEXT NOT NULL,
+            symbol TEXT NOT NULL DEFAULT '',
+            rpc_url TEXT NOT NULL DEFAULT '',
+            explorer_url TEXT NOT NULL DEFAULT '',
+            decimals INT NOT NULL DEFAULT 18,
+            derivation_path TEXT NOT NULL DEFAULT 'm/44''/60''/0''/0/0'
+        )"#,
+    ).execute(pool).await?;
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS shmw_user_chains_nonevm (
+            chain_id BIGINT PRIMARY KEY,
+            name TEXT NOT NULL,
+            symbol TEXT NOT NULL DEFAULT '',
+            chain_type TEXT NOT NULL DEFAULT '',
+            rpc_url TEXT NOT NULL DEFAULT '',
+            explorer_url TEXT NOT NULL DEFAULT '',
+            decimals INT NOT NULL DEFAULT 18,
+            derivation_path TEXT NOT NULL DEFAULT '',
+            address_prefix TEXT NOT NULL DEFAULT ''
+        )"#,
+    ).execute(pool).await?;
+
+    // Multisig: threshold wallets + pending transactions with owner signatures.
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS shmw_multisig_wallets (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            chain_id BIGINT NOT NULL,
+            owners TEXT[] NOT NULL,
+            threshold INT NOT NULL,
+            nonce BIGINT NOT NULL DEFAULT 0,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )"#,
+    ).execute(pool).await?;
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS shmw_multisig_transactions (
+            id TEXT PRIMARY KEY,
+            wallet_id TEXT NOT NULL REFERENCES shmw_multisig_wallets(id) ON DELETE CASCADE,
+            to_address TEXT NOT NULL,
+            value_wei TEXT NOT NULL,
+            data TEXT NOT NULL DEFAULT '',
+            nonce BIGINT NOT NULL,
+            signatures JSONB NOT NULL DEFAULT '[]'::jsonb,
+            threshold INT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            tx_hash TEXT,
+            chain_id BIGINT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )"#,
+    ).execute(pool).await?;
+
+    // Deterministic derived addresses per (wallet, chain, account index).
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS shmw_user_wallet_addresses (
+            id UUID PRIMARY KEY,
+            master_wallet_id UUID NOT NULL REFERENCES shmw_master_wallets(id) ON DELETE CASCADE,
+            seed_hash TEXT NOT NULL,
+            chain_id BIGINT NOT NULL,
+            chain_type TEXT NOT NULL,
+            address TEXT NOT NULL,
+            derivation_path TEXT NOT NULL,
+            account_index INT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (master_wallet_id, seed_hash, chain_id, account_index)
+        )"#,
+    ).execute(pool).await?;
     Ok(())
+}
+
+// ---- Chain registry seeding + RPC resolution (canonical, fail-closed) ----
+
+/// SeedChains — idempotently insert the canonical chain registry (120 EVM +
+/// 66 non-EVM mainnet chains). Mirrors chain_seeding.go: ON CONFLICT DO
+/// NOTHING so user edits to rpc_url/explorer_url are never overwritten.
+async fn seed_chains(pool: &PgPool) -> Result<(), sqlx::Error> {
+    let mut evm_count = 0u32;
+    for c in chains_data::EVM_CHAINS {
+        sqlx::query(
+            "INSERT INTO shmw_user_chains_evm (chain_id, name, symbol, rpc_url, explorer_url, decimals, derivation_path) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (chain_id) DO NOTHING",
+        )
+        .bind(c.chain_id).bind(c.name).bind(c.symbol).bind(c.rpc_url)
+        .bind(c.explorer_url).bind(c.decimals as i32).bind(c.derivation_path)
+        .execute(pool).await?;
+        evm_count += 1;
+    }
+    let mut non_evm_count = 0u32;
+    for c in chains_data::NON_EVM_CHAINS {
+        sqlx::query(
+            "INSERT INTO shmw_user_chains_nonevm (chain_id, name, symbol, chain_type, rpc_url, explorer_url, decimals, derivation_path, address_prefix) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (chain_id) DO NOTHING",
+        )
+        .bind(c.chain_id).bind(c.name).bind(c.symbol).bind(c.chain_type).bind(c.rpc_url)
+        .bind(c.explorer_url).bind(c.decimals as i32).bind(c.derivation_path).bind(c.address_prefix)
+        .execute(pool).await?;
+        non_evm_count += 1;
+    }
+    info!("chain registry seeded: {evm_count} EVM + {non_evm_count} non-EVM mainnet chains");
+    Ok(())
+}
+
+/// chainRPCEndpoint — resolve the RPC URL for a chain id from env vars only
+/// (no fabricated endpoints). Mirrors the canonical env-var mapping, with a
+/// generic CHAIN_RPC_URL_<chain_id> fallback for the rest of the registry.
+pub fn chain_rpc_endpoint(chain_id: i64) -> String {
+    let var = match chain_id {
+        1 => Some("ETH_RPC_URL"),
+        56 => Some("BSC_RPC_URL"),
+        137 => Some("POLYGON_RPC_URL"),
+        42161 => Some("ARBITRUM_RPC_URL"),
+        10 => Some("OPTIMISM_RPC_URL"),
+        43114 => Some("AVALANCHE_RPC_URL"),
+        8453 => Some("BASE_RPC_URL"),
+        42220 => Some("CELO_RPC_URL"),
+        250 => Some("FANTOM_RPC_URL"),
+        25 => Some("CRONOS_RPC_URL"),
+        59144 => Some("LINEA_RPC_URL"),
+        534352 => Some("SCROLL_RPC_URL"),
+        11155111 => Some("ETH_SEPOLIA_RPC_URL"),
+        _ => None,
+    };
+    if let Some(v) = var {
+        if let Ok(url) = env::var(v) {
+            if !url.trim().is_empty() {
+                return url;
+            }
+        }
+    }
+    env::var(format!("CHAIN_RPC_URL_{chain_id}")).unwrap_or_default()
+}
+
+/// Canonical curated chain metadata (mirrors chains.go supportedChains):
+/// chain_id → (blockchain name, decimals). Falls back to the seeded registry.
+fn canonical_chain(chain_id: i64) -> Option<(String, u32)> {
+    let curated: Option<&'static str> = match chain_id {
+        1 => Some("ethereum"),
+        56 => Some("bsc"),
+        137 => Some("polygon"),
+        42161 => Some("arbitrum"),
+        10 => Some("optimism"),
+        43114 => Some("avalanche"),
+        8453 => Some("base"),
+        42220 => Some("celo"),
+        250 => Some("fantom"),
+        25 => Some("cronos"),
+        59144 => Some("linea"),
+        534352 => Some("scroll"),
+        11155111 => Some("sepolia"),
+        _ => None,
+    };
+    if let Some(name) = curated {
+        return Some((name.to_string(), 18));
+    }
+    chains_data::EVM_CHAINS
+        .iter()
+        .find(|c| c.chain_id == chain_id)
+        .map(|c| (c.symbol.to_lowercase(), c.decimals as u32))
+}
+
+/// bech32PrefixForChainID — per-chain Cosmos-SDK bech32 account prefix
+/// (mirrors chain_seeding.go). Falls back to "cosmos".
+fn bech32_prefix_for_chain_id(chain_id: i64) -> &'static str {
+    match chain_id {
+        9000000118 => "cosmos",
+        9000026317 => "osmo",
+        9000000330 => "terra",
+        9000073068 => "inj",
+        9000014648 => "celestia",
+        9000049823 => "dydx",
+        9000073741 => "sei",
+        9000041857 => "kujira",
+        9000012099 => "stride",
+        9000090063 => "neutron",
+        9000005267 => "juno",
+        9000007183 => "akash",
+        9000018759 => "persistence",
+        9000034677 => "evmos",
+        9000054841 => "canto",
+        9000003318 => "kava",
+        9000062954 => "cro",
+        9000016892 => "stars",
+        9000021252 => "saga",
+        9000086660 => "noble",
+        9000040572 => "axelar",
+        9000007153 => "umee",
+        9000000529 => "secret",
+        _ => "cosmos",
+    }
 }
 
 // ---- Request/response DTOs ----
@@ -299,13 +512,50 @@ struct RegisterReq { email: String, username: String, password: String }
 struct LoginReq { email: String, password: String }
 
 #[derive(Deserialize)]
-struct CreateMasterWalletReq { label: String, chain_id: i64, address: Option<String> }
+struct CreateMasterWalletReq {
+    name: Option<String>,
+    label: Option<String>,
+    password: Option<String>,
+    mnemonic: Option<String>,
+    chain_id: Option<i64>,
+    wallet_type: Option<String>,
+    address: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct UpdateMasterWalletReq { name: Option<String>, wallet_type: Option<String>, is_active: Option<bool> }
 
 #[derive(Deserialize)]
 struct CreateTransactionReq { to: String, value: String, token: Option<String>, data: Option<String>, chain_id: i64 }
 
+/// Canonical sendReq (mirrors handlers.go): human-readable amount, optional
+/// ERC-20 token contract, password to decrypt the stored seed.
 #[derive(Deserialize)]
-struct SignReq { to: String, amount: String, token: Option<String> }
+struct SignReq {
+    to: String,
+    amount: String,
+    token: Option<String>,
+    password: String,
+    gas_limit: Option<u64>,
+    withdrawal_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct SignMessageReq {
+    password: String,
+    chain_type: Option<String>,
+    message: String,
+    account_index: Option<u32>,
+    derivation_path: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct DeriveUserAddressReq {
+    password: String,
+    chain_id: i64,
+    chain_type: String,
+    account_index: Option<u32>,
+}
 
 #[derive(Deserialize)]
 struct FeeReq { chain_id: i64, fee_bps: i32 }
@@ -352,25 +602,96 @@ async fn login(state: web::Data<AppState>, body: web::Json<LoginReq>) -> ApiResu
     Ok(HttpResponse::Ok().json(serde_json::json!({ "token": token, "user_id": id, "role": role })))
 }
 
+/// CreateMasterWallet — POST /api/v1/master-wallet (canonical contract).
+///
+/// Generates a real BIP-39 24-word mnemonic (256-bit entropy) unless one is
+/// supplied (validated, never logged), derives the EVM address at
+/// m/44'/60'/0'/0/0, encrypts the seed with scrypt+AES-256-GCM under the
+/// operator's password, and returns the mnemonic ONCE.
 async fn create_master_wallet(state: web::Data<AppState>, req: HttpRequest, body: web::Json<CreateMasterWalletReq>) -> ApiResult<HttpResponse> {
     let (uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let name = body
+        .name
+        .clone()
+        .or_else(|| body.label.clone())
+        .unwrap_or_default();
+    if name.trim().is_empty() {
+        return Err(ApiError::BadRequest("name required".into()));
+    }
+    let password = body.password.clone().unwrap_or_default();
+    if password.len() < 8 {
+        return Err(ApiError::BadRequest("password required (min 8 chars) to encrypt the wallet seed".into()));
+    }
+    let chain_id = body.chain_id.unwrap_or(1);
+    let (blockchain, _decimals) = canonical_chain(chain_id)
+        .ok_or_else(|| ApiError::BadRequest(format!("unsupported chain id {chain_id}")))?;
+    let wallet_type = body.wallet_type.clone().unwrap_or_else(|| "hot".into());
+    if !matches!(wallet_type.as_str(), "hot" | "cold" | "multisig") {
+        return Err(ApiError::BadRequest("wallet_type must be hot, cold, or multisig".into()));
+    }
+
+    // Mnemonic: operator-supplied (validated) or freshly generated. Real BIP-39.
+    let mnemonic = match body.mnemonic.as_deref() {
+        Some(m) => {
+            let m = m.trim().to_string();
+            if !crypto::validate_mnemonic(&m) {
+                return Err(ApiError::BadRequest("invalid BIP-39 mnemonic".into()));
+            }
+            m
+        }
+        None => crypto::generate_mnemonic(),
+    };
+    let seed = crypto::mnemonic_to_seed(&mnemonic);
+    let priv_key = crypto::derive_evm_private_key(&seed, 0)
+        .map_err(|e| ApiError::Internal(format!("key derivation failed: {e}")))?;
+    let address = crypto::private_key_to_address(&priv_key)
+        .map_err(|e| ApiError::Internal(format!("address derivation failed: {e}")))?;
+    // Compressed public key (matches the canonical backend).
+    let sk = k256::SecretKey::from_slice(&priv_key).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let public_key = hex::encode(sk.public_key().to_encoded_point(true).as_bytes());
+    let enc_seed = crypto::encrypt_seed(&seed, &password)
+        .map_err(|e| ApiError::Internal(format!("seed encryption failed: {e}")))?;
+
     let id = Uuid::new_v4();
-    sqlx::query("INSERT INTO shmw_master_wallets (id, owner_id, label, chain_id, address) VALUES ($1,$2,$3,$4,$5)")
-        .bind(id).bind(uid).bind(&body.label).bind(body.chain_id).bind(body.address.as_deref().unwrap_or(""))
-        .execute(&state.pool).await.map_err(db_err)?;
-    Ok(HttpResponse::Created().json(serde_json::json!({ "wallet_id": id, "label": body.label, "chain_id": body.chain_id })))
+    sqlx::query(
+        "INSERT INTO shmw_master_wallets (id, owner_id, label, name, blockchain, address, public_key, wallet_type, chain_id, encrypted_seed) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+    )
+    .bind(id).bind(uid).bind(name.trim()).bind(name.trim()).bind(&blockchain)
+    .bind(&address).bind(&public_key).bind(&wallet_type).bind(chain_id).bind(&enc_seed)
+    .execute(&state.pool).await.map_err(db_err)?;
+
+    Ok(HttpResponse::Created().json(serde_json::json!({
+        "wallet_id": id,
+        "id": id,
+        "name": name.trim(),
+        "blockchain": blockchain,
+        "address": address,
+        "public_key": public_key,
+        "wallet_type": wallet_type,
+        "chain_id": chain_id,
+        "mnemonic": mnemonic,
+    })))
 }
 
 async fn list_master_wallets(state: web::Data<AppState>, req: HttpRequest) -> ApiResult<HttpResponse> {
     let (uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
-    let rows = sqlx::query("SELECT id, label, chain_id, address, created_at FROM shmw_master_wallets WHERE owner_id = $1 ORDER BY created_at DESC")
+    let rows = sqlx::query(
+        "SELECT id, name, blockchain, address, public_key, wallet_type, chain_id, is_active, created_at \
+         FROM shmw_master_wallets WHERE owner_id = $1 ORDER BY created_at DESC",
+    )
         .bind(uid)
         .fetch_all(&state.pool).await.map_err(db_err)?;
     let wallets: Vec<_> = rows.iter().map(|r| serde_json::json!({
         "id": r.get::<Uuid, _>("id"),
-        "label": r.get::<String, _>("label"),
-        "chain_id": r.get::<i64, _>("chain_id"),
+        "name": r.get::<String, _>("name"),
+        "blockchain": r.get::<String, _>("blockchain"),
         "address": r.get::<String, _>("address"),
+        "public_key": r.get::<String, _>("public_key"),
+        "wallet_type": r.get::<String, _>("wallet_type"),
+        "chain_id": r.get::<i64, _>("chain_id"),
+        "is_active": r.get::<bool, _>("is_active"),
+        "created_at": r.get::<chrono::DateTime<Utc>, _>("created_at"),
     })).collect();
     Ok(HttpResponse::Ok().json(serde_json::json!({ "wallets": wallets })))
 }
@@ -378,24 +699,91 @@ async fn list_master_wallets(state: web::Data<AppState>, req: HttpRequest) -> Ap
 async fn get_master_wallet(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>) -> ApiResult<HttpResponse> {
     let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
     let id = path.into_inner();
-    let row = sqlx::query("SELECT id, label, chain_id, address, created_at FROM shmw_master_wallets WHERE id = $1")
+    let row = sqlx::query(
+        "SELECT id, name, blockchain, address, public_key, wallet_type, chain_id, is_active, created_at \
+         FROM shmw_master_wallets WHERE id = $1",
+    )
         .bind(id).fetch_optional(&state.pool).await.map_err(db_err)?;
     let row = row.ok_or_else(|| ApiError::NotFound(format!("master wallet {id}")))?;
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "id": row.get::<Uuid, _>("id"),
-        "label": row.get::<String, _>("label"),
-        "chain_id": row.get::<i64, _>("chain_id"),
+        "name": row.get::<String, _>("name"),
+        "blockchain": row.get::<String, _>("blockchain"),
         "address": row.get::<String, _>("address"),
+        "public_key": row.get::<String, _>("public_key"),
+        "wallet_type": row.get::<String, _>("wallet_type"),
+        "chain_id": row.get::<i64, _>("chain_id"),
+        "is_active": row.get::<bool, _>("is_active"),
+        "created_at": row.get::<chrono::DateTime<Utc>, _>("created_at"),
     })))
 }
 
+/// UpdateMasterWallet — PUT /api/v1/master-wallet/:id. Mutable metadata only
+/// (name, wallet_type, is_active); address/seed/public_key are immutable.
+async fn update_master_wallet(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>, body: web::Json<UpdateMasterWalletReq>) -> ApiResult<HttpResponse> {
+    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let id = path.into_inner();
+    if body.name.is_none() && body.wallet_type.is_none() && body.is_active.is_none() {
+        return Err(ApiError::BadRequest("no updatable fields provided".into()));
+    }
+    if let Some(n) = &body.name {
+        if n.trim().is_empty() {
+            return Err(ApiError::BadRequest("name cannot be empty".into()));
+        }
+        sqlx::query("UPDATE shmw_master_wallets SET name=$2, label=$2 WHERE id=$1")
+            .bind(id).bind(n.trim()).execute(&state.pool).await.map_err(db_err)?;
+    }
+    if let Some(wt) = &body.wallet_type {
+        if !matches!(wt.as_str(), "hot" | "cold" | "multisig") {
+            return Err(ApiError::BadRequest("wallet_type must be hot, cold, or multisig".into()));
+        }
+        sqlx::query("UPDATE shmw_master_wallets SET wallet_type=$2 WHERE id=$1")
+            .bind(id).bind(wt).execute(&state.pool).await.map_err(db_err)?;
+    }
+    if let Some(active) = body.is_active {
+        sqlx::query("UPDATE shmw_master_wallets SET is_active=$2 WHERE id=$1")
+            .bind(id).bind(active).execute(&state.pool).await.map_err(db_err)?;
+    }
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "id": id, "updated": true })))
+}
+
+/// DeleteMasterWallet — DELETE /api/v1/master-wallet/:id.
+async fn delete_master_wallet(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>) -> ApiResult<HttpResponse> {
+    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let id = path.into_inner();
+    let res = sqlx::query("DELETE FROM shmw_master_wallets WHERE id=$1")
+        .bind(id).execute(&state.pool).await.map_err(db_err)?;
+    if res.rows_affected() == 0 {
+        return Err(ApiError::NotFound(format!("master wallet {id}")));
+    }
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "deleted": true, "id": id })))
+}
+
+/// GetMasterWalletBalance — LIVE native balance from the chain RPC.
+/// Fail-closed: without a configured RPC the balance is reported as unknown.
 async fn get_balance(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>) -> ApiResult<HttpResponse> {
     let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
     let id = path.into_inner();
-    let row = sqlx::query("SELECT COALESCE(SUM(balance_usd),0)::TEXT AS total FROM shmw_sub_wallets WHERE master_wallet_id = $1")
-        .bind(id).fetch_one(&state.pool).await.map_err(db_err)?;
-    let total: String = row.try_get("total").unwrap_or_else(|_| "0".into());
-    Ok(HttpResponse::Ok().json(serde_json::json!({ "balance_usd": total })))
+    let row = sqlx::query("SELECT address, chain_id FROM shmw_master_wallets WHERE id = $1")
+        .bind(id).fetch_optional(&state.pool).await.map_err(db_err)?;
+    let row = row.ok_or_else(|| ApiError::NotFound(format!("master wallet {id}")))?;
+    let address: String = row.get("address");
+    let chain_id: i64 = row.get("chain_id");
+    let rpc = chain_rpc_endpoint(chain_id);
+    if rpc.is_empty() {
+        return Err(ApiError::BadRequest(format!("RPC endpoint not configured for chain {chain_id}")));
+    }
+    let wei = evm_tx::rpc_get_balance(&rpc, &address)
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("balance fetch failed: {e}")))?;
+    let (_chain, decimals) = canonical_chain(chain_id).unwrap_or_else(|| ("ethereum".into(), 18));
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "master_wallet_id": id,
+        "address": address,
+        "chain_id": chain_id,
+        "balance_wei": wei,
+        "balance": evm_tx::wei_to_human(&wei, decimals),
+    })))
 }
 
 async fn list_transactions(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>) -> ApiResult<HttpResponse> {
@@ -454,21 +842,328 @@ async fn reject_transaction(state: web::Data<AppState>, req: HttpRequest, path: 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "transaction_id": tid, "status": "rejected" })))
 }
 
+/// SignTransaction — POST /api/v1/master-wallet/:id/sign (canonical contract).
+///
+/// Real in-process signing: decrypt the stored seed with the operator
+/// password, derive m/44'/60'/0'/0/0, fetch nonce + EIP-1559 fees from the
+/// chain RPC, sign a type-2 transaction, and broadcast it. Fail-closed:
+/// no RPC → 503; bad password → 400; RPC failure → 502; never fabricates a
+/// transaction hash.
 async fn sign_and_broadcast(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>, body: web::Json<SignReq>) -> ApiResult<HttpResponse> {
     let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
     let mw_id = path.into_inner();
-    // Record the broadcast intent as a transaction row. Real on-chain signing +
-    // broadcast is delegated to the chain-native signer service configured by
-    // the self-hosting operator (SIGNER_SERVICE_URL) — this self-hosted node
-    // owns governance, not raw keys, so it never fabricates a transaction hash.
-    // The transaction is recorded as `requires_signing` for the operator's
-    // signer to pick up; when SIGNER_SERVICE_URL is set, an operator-side
-    // worker signs + broadcasts and back-fills the `transaction_hash`.
-    let id = Uuid::new_v4();
-    sqlx::query("INSERT INTO shmw_transactions (id, master_wallet_id, to_address, value, token, chain_id, status) VALUES ($1,$2,$3,$4,$5,$6,'requires_signing')")
-        .bind(id).bind(mw_id).bind(&body.to).bind(&body.amount).bind(body.token.as_deref().unwrap_or("")).bind(1i64)
-        .execute(&state.pool).await.map_err(db_err)?;
-    Ok(HttpResponse::Accepted().json(serde_json::json!({ "status": "requires_signing", "transaction_id": id, "message": "Transaction recorded; operator signer will broadcast" })))
+
+    // Two-party withdrawal gate: the self-hosted node has no license control
+    // plane, so gated withdrawals fail closed honestly.
+    if let Some(wid) = &body.withdrawal_id {
+        if !wid.trim().is_empty() {
+            return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+                "error": "two-party SuperAdmin collaboration required before withdrawal; self-hosted node has no license gate",
+            })));
+        }
+    }
+    if evm_tx::parse_hex_fixed::<20>(&body.to).is_err() {
+        return Err(ApiError::BadRequest("invalid to address".into()));
+    }
+
+    let row = sqlx::query("SELECT address, encrypted_seed, chain_id FROM shmw_master_wallets WHERE id = $1")
+        .bind(mw_id).fetch_optional(&state.pool).await.map_err(db_err)?;
+    let row = row.ok_or_else(|| ApiError::NotFound("master wallet not found".into()))?;
+    let from_addr: String = row.get("address");
+    let enc_seed: String = row.get("encrypted_seed");
+    let chain_id: i64 = row.get("chain_id");
+    if enc_seed.is_empty() {
+        return Err(ApiError::BadRequest("wallet has no managed seed (operator-supplied address only)".into()));
+    }
+    let seed = crypto::decrypt_seed(&enc_seed, &body.password)
+        .map_err(|_| ApiError::BadRequest("invalid password (seed decryption failed)".into()))?;
+    let priv_key = crypto::derive_evm_private_key(&seed, 0)
+        .map_err(|e| ApiError::Internal(format!("key derivation failed: {e}")))?;
+
+    let rpc = chain_rpc_endpoint(chain_id);
+    if rpc.is_empty() {
+        return Ok(HttpResponse::ServiceUnavailable().json(serde_json::json!({
+            "error": format!("RPC endpoint not configured for chain {chain_id}"),
+        })));
+    }
+    let (_chain, decimals) = canonical_chain(chain_id).unwrap_or_else(|| ("ethereum".into(), 18));
+
+    let nonce = evm_tx::rpc_get_nonce(&rpc, &from_addr)
+        .await
+        .map_err(|e| ApiError::Internal(format!("fetch nonce: {e}")))?;
+    let tip = evm_tx::rpc_max_priority_fee(&rpc)
+        .await
+        .unwrap_or_else(|_| "1000000000".into()); // 1 Gwei fallback (canonical)
+    // Canonical: maxFee = tip + baseFee when the head block has one, else gasPrice.
+    let max_fee = match evm_tx::rpc_call(&rpc, "eth_getBlockByNumber", serde_json::json!(["latest", false])).await {
+        Ok(block) => block
+            .get("baseFeePerGas")
+            .and_then(|b| b.as_str())
+            .and_then(|b| evm_tx::hex_quantity_to_dec(b).ok())
+            .and_then(|base| add_dec(&base, &tip).ok()),
+        Err(_) => None,
+    };
+    let max_fee = match max_fee {
+        Some(f) => f,
+        None => evm_tx::rpc_gas_price(&rpc)
+            .await
+            .map_err(|e| ApiError::Internal(format!("fetch gas price: {e}")))?,
+    };
+
+    let gas_limit = body.gas_limit.unwrap_or(21_000);
+    let (to_addr, value_wei, data) = match body.token.as_deref().filter(|t| !t.trim().is_empty()) {
+        None => {
+            let wei = evm_tx::human_to_wei(&body.amount, decimals)
+                .map_err(|_| ApiError::BadRequest("invalid amount".into()))?;
+            (body.to.clone(), wei, Vec::new())
+        }
+        Some(token) => {
+            if evm_tx::parse_hex_fixed::<20>(token).is_err() {
+                return Err(ApiError::BadRequest("invalid token contract address".into()));
+            }
+            // ERC-20 transfer(to, amount) — token decimals default to 18 (canonical).
+            let wei = evm_tx::human_to_wei(&body.amount, 18)
+                .map_err(|_| ApiError::BadRequest("invalid amount".into()))?;
+            let to_bytes = evm_tx::parse_hex_fixed::<20>(&body.to).unwrap();
+            let amount_be = evm_tx::dec_to_be(&wei).map_err(|_| ApiError::BadRequest("invalid amount".into()))?;
+            (token.to_string(), "0".to_string(), evm_tx::erc20_transfer_calldata(&to_bytes, &amount_be))
+        }
+    };
+
+    let params = evm_tx::TxParams {
+        chain_id: chain_id as u64,
+        nonce,
+        gas_limit,
+        to: to_addr,
+        value_wei,
+        data,
+        gas_price_wei: String::new(),
+        max_priority_fee_wei: tip,
+        max_fee_wei: max_fee,
+        eip1559: true,
+    };
+    let signed = evm_tx::sign_transaction(&priv_key, &params)
+        .map_err(|e| ApiError::Internal(format!("sign: {e}")))?;
+    let tx_hash = evm_tx::rpc_send_raw_transaction(&rpc, &signed.raw)
+        .await
+        .map_err(|e| ApiError::Internal(format!("broadcast: {e}")))?;
+
+    // Persist the transaction record (canonical response shape).
+    let tx_rec = Uuid::new_v4();
+    let _ = sqlx::query(
+        "INSERT INTO shmw_transactions (id, master_wallet_id, to_address, value, token, data, chain_id, status, transaction_hash) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8)",
+    )
+    .bind(tx_rec).bind(mw_id).bind(&body.to).bind(&body.amount)
+    .bind(body.token.as_deref().unwrap_or("")).bind("").bind(chain_id).bind(&tx_hash)
+    .execute(&state.pool).await;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "transaction_hash": tx_hash,
+        "status": "broadcast",
+        "from": from_addr,
+        "chain_id": chain_id,
+    })))
+}
+
+/// Add two decimal-string non-negative integers.
+fn add_dec(a: &str, b: &str) -> Result<String, String> {
+    let mut x = evm_tx::dec_to_be(a)?;
+    let y = evm_tx::dec_to_be(b)?;
+    if y.len() > x.len() {
+        x = [vec![0u8; y.len() - x.len()], x].concat();
+    }
+    let mut out = vec![0u8; x.len().max(y.len())];
+    let ypad = [vec![0u8; out.len() - y.len()], y].concat();
+    let mut carry = 0u16;
+    for i in (0..out.len()).rev() {
+        let cur = x[i] as u16 + ypad[i] as u16 + carry;
+        out[i] = (cur & 0xff) as u8;
+        carry = cur >> 8;
+    }
+    let mut full = if carry > 0 { vec![carry as u8] } else { Vec::new() };
+    full.extend_from_slice(&out);
+    evm_tx::hex_quantity_to_dec(&format!("0x{}", hex::encode(full)))
+}
+
+/// SignMessage — POST /api/v1/master-wallet/:id/sign-message.
+///
+/// Real message signing with the wallet's decrypted seed: EIP-191
+/// personal_sign for EVM, Ed25519 for Solana, Bitcoin signed-message format
+/// for BTC, amino-style for Cosmos.
+async fn sign_message(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>, body: web::Json<SignMessageReq>) -> ApiResult<HttpResponse> {
+    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let mw_id = path.into_inner();
+    if body.message.is_empty() {
+        return Err(ApiError::BadRequest("message required".into()));
+    }
+    let row = sqlx::query("SELECT encrypted_seed FROM shmw_master_wallets WHERE id = $1")
+        .bind(mw_id).fetch_optional(&state.pool).await.map_err(db_err)?;
+    let row = row.ok_or_else(|| ApiError::NotFound("master wallet not found".into()))?;
+    let enc_seed: String = row.get("encrypted_seed");
+    if enc_seed.is_empty() {
+        return Err(ApiError::BadRequest("wallet has no managed seed (operator-supplied address only)".into()));
+    }
+    let seed = crypto::decrypt_seed(&enc_seed, &body.password)
+        .map_err(|_| ApiError::BadRequest("invalid password (seed decryption failed)".into()))?;
+
+    let chain_type = body.chain_type.as_deref().unwrap_or("evm").to_lowercase();
+    let index = body.account_index.unwrap_or(0);
+    let msg = body.message.as_bytes();
+    let (address, signature, algorithm) = match chain_type.as_str() {
+        "evm" => {
+            let path = body
+                .derivation_path
+                .clone()
+                .unwrap_or_else(|| crypto::derive_path_for_account(60, index));
+            let key = crypto::derive_private_key_from_path(&seed, &path)
+                .map_err(|e| ApiError::Internal(format!("key derivation failed: {e}")))?;
+            let addr = crypto::private_key_to_address(&key)
+                .map_err(|e| ApiError::Internal(format!("address derivation failed: {e}")))?;
+            let sig = evm_tx::personal_sign(&key, msg)
+                .map_err(|e| ApiError::Internal(format!("signing failed: {e}")))?;
+            (addr, format!("0x{}", hex::encode(sig)), "eip191-ecdsa-secp256k1")
+        }
+        "solana" => {
+            let path = body
+                .derivation_path
+                .clone()
+                .unwrap_or_else(|| format!("m/44'/501'/{}'/0'", index));
+            let addr = non_evm::solana_address_from_seed(&seed, &path)
+                .map_err(|e| ApiError::Internal(format!("address derivation failed: {e}")))?;
+            let sig = non_evm::solana_sign(&seed, &path, msg)
+                .map_err(|e| ApiError::Internal(format!("signing failed: {e}")))?;
+            (addr, non_evm::base58_encode(&sig), "ed25519")
+        }
+        "bitcoin" => {
+            let path = body
+                .derivation_path
+                .clone()
+                .unwrap_or_else(|| crypto::derive_path_for_account(0, index));
+            let addr = non_evm::btc_address_from_seed(&seed, &path)
+                .map_err(|e| ApiError::Internal(format!("address derivation failed: {e}")))?;
+            let sig = non_evm::btc_sign(&seed, &path, msg)
+                .map_err(|e| ApiError::Internal(format!("signing failed: {e}")))?;
+            (addr, sig, "bitcoin-signed-message")
+        }
+        "cosmos" => {
+            let path = body
+                .derivation_path
+                .clone()
+                .unwrap_or_else(|| crypto::derive_path_for_account(118, index));
+            let addr = non_evm::cosmos_address_from_seed(&seed, &path, "cosmos")
+                .map_err(|e| ApiError::Internal(format!("address derivation failed: {e}")))?;
+            let key = crypto::derive_private_key_from_path(&seed, &path)
+                .map_err(|e| ApiError::Internal(format!("key derivation failed: {e}")))?;
+            let digest: [u8; 32] = sha2::Sha256::digest(msg).into();
+            let sk = k256::ecdsa::SigningKey::from_slice(&key).map_err(|e| ApiError::Internal(e.to_string()))?;
+            let (sig, recid) = sk.sign_prehash_recoverable(&digest).map_err(|e| ApiError::Internal(e.to_string()))?;
+            let mut sig65 = sig.to_bytes().to_vec();
+            sig65.push(recid.is_y_odd() as u8);
+            (addr, hex::encode(sig65), "secp256k1-sha256")
+        }
+        other => {
+            return Err(ApiError::BadRequest(format!("unsupported chain_type: {other}")));
+        }
+    };
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "address": address,
+        "chain_type": chain_type,
+        "signature": signature,
+        "algorithm": algorithm,
+    })))
+}
+
+/// DeriveUserAddress — POST /api/v1/master-wallet/:id/derive-user-address
+/// (canonical contract). Deterministic per (seed, chain, account_index);
+/// persisted for idempotent re-derivation.
+async fn derive_user_address(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>, body: web::Json<DeriveUserAddressReq>) -> ApiResult<HttpResponse> {
+    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let mw_id = path.into_inner();
+    if body.chain_id <= 0 {
+        return Err(ApiError::BadRequest("chain_id must be positive".into()));
+    }
+    let chain_type = body.chain_type.to_lowercase();
+    let account_index = body.account_index.unwrap_or(0);
+    let row = sqlx::query("SELECT encrypted_seed FROM shmw_master_wallets WHERE id = $1")
+        .bind(mw_id).fetch_optional(&state.pool).await.map_err(db_err)?;
+    let row = row.ok_or_else(|| ApiError::NotFound("master wallet not found".into()))?;
+    let enc_seed: String = row.get("encrypted_seed");
+    if enc_seed.is_empty() {
+        return Err(ApiError::BadRequest("wallet has no managed seed (operator-supplied address only)".into()));
+    }
+    let seed = crypto::decrypt_seed(&enc_seed, &body.password)
+        .map_err(|_| ApiError::BadRequest("invalid password (seed decryption failed)".into()))?;
+
+    let (address, derivation_path) = match chain_type.as_str() {
+        "evm" => {
+            let path = crypto::derive_path_for_account(60, account_index);
+            let key = crypto::derive_private_key_from_path(&seed, &path)
+                .map_err(|e| ApiError::Internal(format!("evm derivation failed: {e}")))?;
+            let addr = crypto::private_key_to_address(&key)
+                .map_err(|e| ApiError::Internal(format!("evm address failed: {e}")))?;
+            (addr, path)
+        }
+        "solana" => {
+            let path = format!("m/44'/501'/{account_index}'/0'");
+            let addr = non_evm::solana_address_from_seed(&seed, &path)
+                .map_err(|e| ApiError::Internal(format!("solana derivation failed: {e}")))?;
+            (addr, path)
+        }
+        "bitcoin" => {
+            let path = crypto::derive_path_for_account(0, account_index);
+            let addr = non_evm::btc_address_from_seed(&seed, &path)
+                .map_err(|e| ApiError::Internal(format!("bitcoin derivation failed: {e}")))?;
+            (addr, path)
+        }
+        "cosmos" => {
+            let prefix = bech32_prefix_for_chain_id(body.chain_id);
+            let path = crypto::derive_path_for_account(118, account_index);
+            let addr = non_evm::cosmos_address_from_seed(&seed, &path, prefix)
+                .map_err(|e| ApiError::Internal(format!("cosmos derivation failed: {e}")))?;
+            (addr, path)
+        }
+        other => return Err(ApiError::BadRequest(format!("unsupported chain_type: {other}"))),
+    };
+
+    let seed_hash = hex::encode(sha2::Sha256::digest(&seed));
+    sqlx::query(
+        "INSERT INTO shmw_user_wallet_addresses (id, master_wallet_id, seed_hash, chain_id, chain_type, address, derivation_path, account_index) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) \
+         ON CONFLICT (master_wallet_id, seed_hash, chain_id, account_index) DO NOTHING",
+    )
+    .bind(Uuid::new_v4()).bind(mw_id).bind(&seed_hash).bind(body.chain_id)
+    .bind(&chain_type).bind(&address).bind(&derivation_path).bind(account_index as i32)
+    .execute(&state.pool).await.map_err(db_err)?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "address": address,
+        "chain_id": body.chain_id,
+        "chain_type": chain_type,
+        "derivation_path": derivation_path,
+        "account_index": account_index,
+    })))
+}
+
+/// ListUserWalletAddresses — GET /api/v1/master-wallet/:id/user-wallet-addresses.
+async fn list_user_wallet_addresses(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>) -> ApiResult<HttpResponse> {
+    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let mw_id = path.into_inner();
+    let rows = sqlx::query(
+        "SELECT chain_id, chain_type, address, derivation_path, account_index, created_at \
+         FROM shmw_user_wallet_addresses WHERE master_wallet_id=$1 ORDER BY chain_id, account_index LIMIT 1000",
+    )
+    .bind(mw_id).fetch_all(&state.pool).await.map_err(db_err)?;
+    let addrs: Vec<_> = rows.iter().map(|r| serde_json::json!({
+        "chain_id": r.get::<i64, _>("chain_id"),
+        "chain_type": r.get::<String, _>("chain_type"),
+        "address": r.get::<String, _>("address"),
+        "derivation_path": r.get::<String, _>("derivation_path"),
+        "account_index": r.get::<i32, _>("account_index"),
+        "created_at": r.get::<chrono::DateTime<Utc>, _>("created_at"),
+    })).collect();
+    let count = addrs.len();
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "addresses": addrs, "count": count })))
 }
 
 async fn list_fees(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>) -> ApiResult<HttpResponse> {
@@ -629,29 +1324,80 @@ async fn analytics_wallets(state: web::Data<AppState>, req: HttpRequest, path: w
     })))
 }
 
+/// ListChains — GET /api/v1/chains. The canonical seeded registry: EVM and
+/// non-EVM mainnet chains with metadata; RPC URLs resolve from env vars.
 async fn list_chains(state: web::Data<AppState>, req: HttpRequest) -> ApiResult<HttpResponse> {
-    // Public read: list the chains this self-hosted node is configured for.
-    // The chain list is operator-configured (no fabricated RPCs); an empty
-    // list is honest when none are configured.
     require_auth(req.headers(), &state.jwt_secret)?;
-    let rows = sqlx::query("SELECT chain_id, name, rpc_url FROM shmw_chains ORDER BY chain_id")
-        .fetch_all(&state.pool).await;
-    let chains = match rows {
-        Ok(rs) => rs.iter().map(|r| serde_json::json!({
-            "chain_id": r.get::<i64, _>("chain_id"),
+    let evm_rows = sqlx::query(
+        "SELECT chain_id, name, symbol, rpc_url, explorer_url, decimals, derivation_path \
+         FROM shmw_user_chains_evm ORDER BY chain_id",
+    )
+        .fetch_all(&state.pool).await.map_err(db_err)?;
+    let mut chains: Vec<_> = evm_rows.iter().map(|r| {
+        let chain_id = r.get::<i64, _>("chain_id");
+        serde_json::json!({
+            "chain_id": chain_id,
             "name": r.get::<String, _>("name"),
+            "symbol": r.get::<String, _>("symbol"),
+            "chain_type": "evm",
+            "is_evm": true,
+            "rpc_url": chain_rpc_endpoint(chain_id),
+            "explorer_url": r.get::<String, _>("explorer_url"),
+            "decimals": r.get::<i32, _>("decimals"),
+            "derivation_path": r.get::<String, _>("derivation_path"),
+        })
+    }).collect();
+    let non_evm_rows = sqlx::query(
+        "SELECT chain_id, name, symbol, chain_type, rpc_url, explorer_url, decimals, derivation_path, address_prefix \
+         FROM shmw_user_chains_nonevm ORDER BY chain_id",
+    )
+        .fetch_all(&state.pool).await.map_err(db_err)?;
+    for r in &non_evm_rows {
+        let chain_id = r.get::<i64, _>("chain_id");
+        chains.push(serde_json::json!({
+            "chain_id": chain_id,
+            "name": r.get::<String, _>("name"),
+            "symbol": r.get::<String, _>("symbol"),
+            "chain_type": r.get::<String, _>("chain_type"),
+            "is_evm": false,
             "rpc_url": r.get::<String, _>("rpc_url"),
-        })).collect::<Vec<_>>(),
-        Err(_) => Vec::new(),
-    };
-    Ok(HttpResponse::Ok().json(serde_json::json!({ "chains": chains })))
+            "explorer_url": r.get::<String, _>("explorer_url"),
+            "decimals": r.get::<i32, _>("decimals"),
+            "derivation_path": r.get::<String, _>("derivation_path"),
+            "address_prefix": r.get::<String, _>("address_prefix"),
+        }));
+    }
+    let count = chains.len();
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "chains": chains, "count": count })))
 }
 
+/// GetGas — GET /api/v1/gas?chain_id=N. Real fee data from the chain RPC;
+/// fail-closed without an operator-configured endpoint.
 async fn get_gas(state: web::Data<AppState>, req: HttpRequest) -> ApiResult<HttpResponse> {
     require_auth(req.headers(), &state.jwt_secret)?;
-    // Gas is chain-specific and fetched from the operator's RPC; without an
-    // RPC configured we honestly return unavailable rather than fabricating gwei.
-    Err(ApiError::BadRequest("gas estimation requires operator RPC configuration (CHAIN_RPC_URL)".into()))
+    let chain_id: i64 = req
+        .uri()
+        .query()
+        .and_then(|q| {
+            q.split('&').find_map(|kv| {
+                let (k, v) = kv.split_once('=')?;
+                if k == "chain_id" { v.parse().ok() } else { None }
+            })
+        })
+        .unwrap_or(1);
+    let rpc = chain_rpc_endpoint(chain_id);
+    if rpc.is_empty() {
+        return Err(ApiError::BadRequest(format!("RPC endpoint not configured for chain {chain_id}")));
+    }
+    let gas_price = evm_tx::rpc_gas_price(&rpc)
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("gas price fetch failed: {e}")))?;
+    let tip = evm_tx::rpc_max_priority_fee(&rpc).await.ok();
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "chain_id": chain_id,
+        "gas_price_wei": gas_price,
+        "max_priority_fee_wei": tip,
+    })))
 }
 
 async fn get_price(state: web::Data<AppState>, req: HttpRequest) -> ApiResult<HttpResponse> {
@@ -694,12 +1440,17 @@ async fn main() -> std::io::Result<()> {
                     .route("/master-wallet", web::post().to(create_master_wallet))
                     .route("/master-wallet", web::get().to(list_master_wallets))
                     .route("/master-wallet/{id}", web::get().to(get_master_wallet))
+                    .route("/master-wallet/{id}", web::put().to(update_master_wallet))
+                    .route("/master-wallet/{id}", web::delete().to(delete_master_wallet))
                     .route("/master-wallet/{id}/balance", web::get().to(get_balance))
                     .route("/master-wallet/{id}/transactions", web::get().to(list_transactions))
                     .route("/master-wallet/{id}/transactions", web::post().to(create_transaction))
                     .route("/master-wallet/{id}/transactions/{tid}/approve", web::post().to(approve_transaction))
                     .route("/master-wallet/{id}/transactions/{tid}/reject", web::post().to(reject_transaction))
                     .route("/master-wallet/{id}/sign", web::post().to(sign_and_broadcast))
+                    .route("/master-wallet/{id}/sign-message", web::post().to(sign_message))
+                    .route("/master-wallet/{id}/derive-user-address", web::post().to(derive_user_address))
+                    .route("/master-wallet/{id}/user-wallet-addresses", web::get().to(list_user_wallet_addresses))
                     .route("/master-wallet/{id}/fees", web::get().to(list_fees))
                     .route("/master-wallet/{id}/fees", web::post().to(set_fee))
                     .route("/master-wallet/{id}/fees/{fid}", web::delete().to(delete_fee))
@@ -716,7 +1467,16 @@ async fn main() -> std::io::Result<()> {
                     .route("/chains", web::get().to(list_chains))
                     .route("/gas", web::get().to(get_gas))
                     .route("/price", web::get().to(get_price))
-                    .route("/health", web::get().to(health)),
+                    .route("/health", web::get().to(health))
+                    .service(
+                        web::scope("/multisig")
+                            .route("/wallets", web::post().to(multisig::create_multisig_wallet))
+                            .route("/wallets", web::get().to(multisig::list_multisig_wallets))
+                            .route("/wallets/{id}/transactions", web::get().to(multisig::list_multisig_transactions))
+                            .route("/transactions", web::post().to(multisig::create_multisig_transaction))
+                            .route("/transactions/{tx_id}/sign", web::post().to(multisig::sign_multisig_transaction))
+                            .route("/transactions/{tx_id}/execute", web::post().to(multisig::execute_multisig_transaction)),
+                    ),
             )
     })
     .bind(&bind)?

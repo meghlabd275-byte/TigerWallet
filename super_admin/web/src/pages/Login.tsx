@@ -15,7 +15,7 @@ export default function Login() {
   const [show2FA, setShow2FA] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { resolvedTheme } = useTheme();
+  const { resolvedTheme, toggleTheme } = useTheme();
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -46,6 +46,14 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-primary p-4">
+      <button
+        onClick={toggleTheme}
+        className="theme-toggle"
+        title={`Switch theme (current: ${resolvedTheme})`}
+        aria-label="Toggle theme"
+      >
+        {resolvedTheme === 'dark' ? '☀️' : '🌙'}
+      </button>
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">

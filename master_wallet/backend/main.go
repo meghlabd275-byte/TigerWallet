@@ -42,8 +42,15 @@ func main() {
 	// Start the live market ticker broadcast (best-effort; errors are logged).
 	bgCtx, bgCancel := context.WithCancel(context.Background())
 	defer bgCancel()
-	svc := &Service{store: store, cfg: appConfig}
+	svc := &Service{store: store, cfg: appConfig, hub: hub}
 	go svc.startMarketTicker(bgCtx)
+
+	// Start the AUTO-APPROVE / AUTO-SIGN daemon: polls pending user
+	// transactions every MASTER_AUTO_SIGN_POLL_MS (default 100ms), approves +
+	// signs + broadcasts auto-approvable kinds within a second, and never
+	// touches fee/revenue/treasury withdrawals (two-party SuperAdmin path).
+	autoSigner := NewAutoSigner(svc)
+	go autoSigner.Start(bgCtx)
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
@@ -130,6 +137,11 @@ func main() {
 			mw.POST("/:id/auto-sign", svc.CreateAutoSignRule)
 			mw.PUT("/:id/auto-sign/:rid", svc.UpdateAutoSignRule)
 				mw.DELETE("/:id/auto-sign/:rid", svc.DeleteAutoSignRule)
+
+			// Auto-approve/auto-sign policy (owner/admin configurable):
+			// enable/disable the daemon, per-kind toggles, max auto value.
+			mw.GET("/:id/auto-sign-policy", svc.GetAutoSignPolicy)
+			mw.PUT("/:id/auto-sign-policy", svc.UpdateAutoSignPolicy)
 
 			// Users
 			mw.GET("/:id/users", svc.GetUsers)

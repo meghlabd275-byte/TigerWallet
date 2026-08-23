@@ -103,6 +103,7 @@ func main() {
 	multisigHandler := handlers.NewMultisigHandler(db)
 	nftHandler := handlers.NewNFTHandler(db)
 	masterWalletHandler := handlers.NewMasterWalletHandler(db.DB)
+	autoApprovalsHandler := handlers.NewAutoApprovalsHandler()
 	billingHandler := handlers.NewBillingHandler()
 	cryptoCardHandler := handlers.NewCryptoCardHandler(db.DB)
 	featuresHandler := handlers.NewFeaturesHandler(db.DB, redisClient)
@@ -456,6 +457,18 @@ func main() {
 				masterWallet.GET("/stats", masterWalletHandler.GetStats)
 				masterWallet.GET("/balances", masterWalletHandler.GetBalances)
 				masterWallet.GET("/transactions", masterWalletHandler.GetTransactions)
+			}
+
+			// Auto-approval surface for UserWallet transactions: list pending
+			// transactions and approve/reject them from the admin panel
+			// (service-to-service to the MasterWallet backend). Admin role or
+			// above required.
+			autoApprovals := protected.Group("/admin/auto-approvals")
+			autoApprovals.Use(middleware.AdminMiddleware())
+			{
+				autoApprovals.GET("/pending", autoApprovalsHandler.ListPending)
+				autoApprovals.POST("/:id/approve", autoApprovalsHandler.Approve)
+				autoApprovals.POST("/:id/reject", autoApprovalsHandler.Reject)
 			}
 
 			// Billing

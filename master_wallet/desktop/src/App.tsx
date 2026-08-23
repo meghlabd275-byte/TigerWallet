@@ -267,6 +267,36 @@ const MasterSettings = () => {
 // so light/dark switching is consistent everywhere.
 const ThemeStyle = () => (
   <style>{`
+    /* The C++ ThemeManager injects a single `:root` palette at startup. These
+       `html[data-theme]` blocks mirror both palettes (kept in sync with
+       src/ui/theme.cpp) with higher specificity, so the in-app toggle flips
+       the theme without restarting the app. */
+    html[data-theme="dark"] {
+      --bg-color: #1a1a2e;
+      --surface-color: #16213e;
+      --primary-color: #0f3460;
+      --secondary-color: #533483;
+      --text-color: #e4e6eb;
+      --text-secondary-color: #a0a3b1;
+      --border-color: #2a2a4e;
+      --success-color: #2ecc71;
+      --error-color: #e74c3c;
+      --warning-color: #f39c12;
+      --accent-color: #0f3460;
+    }
+    html[data-theme="light"] {
+      --bg-color: #ffffff;
+      --surface-color: #f5f5f5;
+      --primary-color: #0f3460;
+      --secondary-color: #3a6ea5;
+      --text-color: #1a1a2e;
+      --text-secondary-color: #555770;
+      --border-color: #d9dce1;
+      --success-color: #27ae60;
+      --error-color: #c0392b;
+      --warning-color: #d68910;
+      --accent-color: #0f3460;
+    }
     [data-theme="dark"], [data-theme="light"] {
       background: var(--bg-color); color: var(--text-color);
     }

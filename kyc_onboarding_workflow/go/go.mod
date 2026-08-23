@@ -1,4 +1,4 @@
-module github.com/tigerwallet/auto_approval_workflow
+module github.com/tigerwallet/kyc_onboarding_workflow
 
 go 1.21
 

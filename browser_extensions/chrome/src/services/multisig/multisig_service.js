@@ -1,14 +1,15 @@
 /**
  * TigerWallet Chrome Extension - Multi-Sig Service
  *
- * Wired to the REAL go/multisig_service backend (http://localhost:8450),
- * which assembles threshold owner signatures off-chain and broadcasts the
- * on-chain MultisigWallet.executeTransaction call via eth_sendRawTransaction.
- * Same backend as the web + desktop clients. Honest results only: never
+ * SEPARATION: the extension talks ONLY to the UserWallet backend
+ * (go/wallet_api, http://localhost:8443). The wallet_api multisig proxy
+ * delegates threshold signature assembly and on-chain broadcast to the
+ * MasterWallet backend server-side — the client NEVER calls the
+ * MasterWallet backend (:8450) directly. Honest results only: never
  * fabricates a wallet address, tx id, or transaction hash.
  */
 
-const MULTISIG_API_BASE = 'http://localhost:8450';
+const MULTISIG_API_BASE = 'http://localhost:8443/api/v1/wallet/multisig';
 
 class MultiSigService {
     constructor() {

@@ -11,7 +11,9 @@ import Foundation
 
 struct APIConfig {
     static let baseURL = "http://localhost:8443"
-    static let multisigBaseURL = "http://localhost:8450"
+    // SEPARATION: UserWallet talks ONLY to its own backend (go/wallet_api :8443).
+    // Multi-sig and all signing/approval are delegated server-side; the client
+    // NEVER calls the MasterWallet backend (:8450) directly.
     static let timeout: TimeInterval = 30
     static let maxRetries = 3
 }

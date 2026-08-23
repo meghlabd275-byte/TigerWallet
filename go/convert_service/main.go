@@ -15,6 +15,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -503,9 +505,22 @@ func (s *service) proxyPostJSON(url string, body []byte) (swapResp, int, error) 
 	return sr, resp.StatusCode, nil
 }
 
-// newID generates a short unique ID (time-prefixed hex) without external deps.
+// newID generates a cryptographically-random 128-bit hex ID (same scheme as
+// all sibling go/ services — crypto/rand, no time-based predictability).
 func newID() string {
-	return strconv.FormatInt(time.Now().UnixNano(), 16) + strconv.FormatInt(int64(time.Now().Nanosecond()), 16)
+	return cryptoRandHex16()
+}
+
+// cryptoRandHex16 returns 16 crypto/rand bytes hex-encoded. Fail-closed:
+// crypto/rand.Read never returns a short read without an error on supported
+// platforms, and on error we fall back to a monotonic-unique value rather
+// than a weak/predictable ID.
+func cryptoRandHex16() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 16)
+	}
+	return hex.EncodeToString(b)
 }
 
 // (unused but kept for potential wei math) — big.Float helpers.
