@@ -69,3 +69,27 @@ func (h *Hub) PublishFlagChange(ctx context.Context, wlClientID uuid.UUID, produ
 	ch := fmt.Sprintf("wl:flags:%s:%s", wlClientID, product)
 	return h.rdb.Publish(ctx, ch, `{"event":"flags_changed"}`).Err()
 }
+
+// Killed reports whether the kill-switch service has halted the platform, this
+// WL client, or this product. A halt is a positive signal (key exists). A
+// Redis error fails OPEN here — the kill-switch republishes active halts from
+// PostgreSQL every few seconds, so a Redis blip self-heals and can never be
+// mistaken for a halt, and a halt is never inferred from missing data.
+func (h *Hub) Killed(ctx context.Context, wlClientID uuid.UUID, product string) (bool, string) {
+	keys := []string{
+		"kill:global",
+		"kill:client:" + wlClientID.String(),
+		"kill:product:" + wlClientID.String() + ":" + product,
+	}
+	vals, err := h.rdb.MGet(ctx, keys...).Result()
+	if err != nil {
+		return false, ""
+	}
+	for i, v := range vals {
+		if v != nil {
+			reason, _ := v.(string)
+			return true, fmt.Sprintf("killed:%s:%s", keys[i], reason)
+		}
+	}
+	return false, ""
+}

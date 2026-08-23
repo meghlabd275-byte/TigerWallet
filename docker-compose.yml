@@ -616,6 +616,30 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ===== Kill-switch control plane =====
+  # Emergency halt/resume for the whole platform, one WL client, one product,
+  # or one fetcher. Durable state in PostgreSQL, sub-second propagation via
+  # Redis keys + pub/sub; license-service heartbeats consult the same Redis
+  # keys and fail closed. SuperAdmin JWT only.
+  kill-switch:
+    build:
+      context: ./kill_switch
+      dockerfile: Dockerfile
+    container_name: tigerwallet-kill-switch
+    ports:
+      - "8469:8469"
+    environment:
+      PORT: "8469"
+      DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      JWT_SECRET: "${JWT_SECRET:-tigerwallet-license-secret-change-me}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   # ===== Standalone WL-UserWallet backend =====
   # Runs INDEPENDENTLY in the WL client's own environment. Own PG, own signing,
   # own DB. Phones home to license-service on heartbeat (fail-closed).

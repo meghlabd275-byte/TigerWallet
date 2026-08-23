@@ -482,6 +482,13 @@ func (h *Handlers) Heartbeat(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"alive": false, "reason": "license not found"})
 		return
 	}
+	// Kill-switch check first: a halted scope (global / client / product) fails
+	// closed immediately with an explicit halt command, ahead of every other
+	// lifecycle check. This is what makes the emergency stop sub-heartbeat.
+	if killed, reason := h.hub.Killed(ctx, lic.WLClientID, req.Product); killed {
+		c.JSON(http.StatusForbidden, gin.H{"alive": false, "reason": reason, "command": "halt"})
+		return
+	}
 	alive, reason, _ := h.store.IsProductAlive(ctx, lic.WLClientID, req.Product, h.cfg.HeartbeatTimeout+h.cfg.GracePeriod)
 	if !alive {
 		c.JSON(http.StatusForbidden, gin.H{"alive": false, "reason": reason, "command": "halt"})

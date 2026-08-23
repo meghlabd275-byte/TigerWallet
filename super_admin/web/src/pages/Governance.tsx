@@ -18,12 +18,100 @@ import licenseApi, {
   type FeatureFlag,
   type WithdrawalApproval,
 } from '../services/licenseApi';
+import killApi, { type ActiveHalt } from '../services/killApi';
 
 type TabKey = 'clients' | 'licenses' | 'flags' | 'withdrawals';
 
 const PRODUCTS = ['master_wallet', 'user_wallet', 'bots', 'project_party'] as const;
 const PLANS = ['basic', 'starter', 'professional', 'enterprise'] as const;
 const TIERS = ['basic', 'starter', 'professional', 'enterprise'] as const;
+
+// GlobalKillBar — platform-wide emergency stop. Reads live kill-switch state
+// (PostgreSQL-backed via kill_switch :8469) and lets SuperAdmin halt or resume
+// the entire platform. A global halt propagates to every white-label product
+// through Redis and fails every license heartbeat closed within one interval.
+function GlobalKillBar() {
+  const [halts, setHalts] = useState<ActiveHalt[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const res = await killApi.state();
+      setHalts(res.halts || []);
+      setError(null);
+    } catch (e: any) {
+      setError(e?.message || 'kill-switch unreachable');
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    const t = setInterval(refresh, 15000);
+    return () => clearInterval(t);
+  }, [refresh]);
+
+  const globalHalt = halts.find((h) => h.scope_type === 'global');
+  const scoped = halts.filter((h) => h.scope_type !== 'global');
+
+  const act = async (fn: () => Promise<any>, confirmMsg: string) => {
+    if (!window.confirm(confirmMsg)) return;
+    setBusy(true);
+    try {
+      await fn();
+      await refresh();
+    } catch (e: any) {
+      window.alert(e?.message || 'Action failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="mb-6 p-4"
+      style={{
+        border: `1px solid ${globalHalt ? 'var(--error, #dc2626)' : 'var(--border-primary)'}`,
+        borderRadius: 8,
+        backgroundColor: globalHalt ? 'var(--error-bg, rgba(220,38,38,0.08))' : 'var(--bg-secondary)',
+      }}
+    >
+      <div className="flex items-center justify-between" style={{ flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <strong style={{ color: 'var(--text-primary)' }}>
+            {globalHalt ? '⛔ PLATFORM HALTED' : 'Kill switch: platform running'}
+          </strong>
+          <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+            {globalHalt
+              ? `Halted since ${new Date(globalHalt.since).toLocaleString()}${globalHalt.reason ? ` — ${globalHalt.reason}` : ''}`
+              : scoped.length > 0
+                ? `${scoped.length} scoped halt(s) active (client/product/fetcher)`
+                : 'No active halts.'}
+            {error ? ` — ${error}` : ''}
+          </div>
+        </div>
+        {globalHalt ? (
+          <button
+            className="btn btn-primary"
+            disabled={busy}
+            onClick={() => act(() => killApi.resume({ scope_type: 'global' }), 'Resume the ENTIRE platform? All halted products will recover on next heartbeat.')}
+          >
+            ▶ Resume platform
+          </button>
+        ) : (
+          <button
+            className="btn"
+            style={{ backgroundColor: 'var(--error, #dc2626)', color: '#fff' }}
+            disabled={busy}
+            onClick={() => act(() => killApi.halt({ scope_type: 'global', reason: 'Global emergency stop from Governance' }), 'KILL SWITCH: Halt the ENTIRE platform — every white-label product for every client will stop serving on next heartbeat. Continue?')}
+          >
+            ⛔ HALT ENTIRE PLATFORM
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function Governance() {
   const { resolvedTheme } = useTheme();
@@ -48,6 +136,8 @@ export default function Governance() {
           {resolvedTheme}
         </span>
       </div>
+
+      <GlobalKillBar />
 
       {/* Tabs */}
       <div
@@ -489,7 +579,13 @@ function WLClientsTab() {
                             disabled={actionLoading}
                             onClick={() =>
                               run(
-                                () => licenseApi.haltWLClient(w.id),
+                                // Kill-switch first (sub-second Redis halt on
+                                // every product heartbeat), then the license
+                                // lifecycle transition (durable status=halted).
+                                async () => {
+                                  await killApi.halt({ scope_type: 'client', wl_client_id: w.id, reason: 'WL client halt from Governance' });
+                                  await licenseApi.haltWLClient(w.id);
+                                },
                                 true,
                                 'KILL SWITCH: Halt ALL products for this WL client immediately? Externally-hosted products will stop serving on next heartbeat.'
                               )
@@ -512,7 +608,12 @@ function WLClientsTab() {
                           <ActionButton
                             variant="resume"
                             disabled={actionLoading}
-                            onClick={() => run(() => licenseApi.resumeWLClient(w.id), true, 'Resume this WL client and all its licenses?')}
+                            onClick={() =>
+                              run(async () => {
+                                await killApi.resume({ scope_type: 'client', wl_client_id: w.id });
+                                await licenseApi.resumeWLClient(w.id);
+                              }, true, 'Resume this WL client and all its licenses?')
+                            }
                             title="SuperAdmin-only resume"
                           >
                             ▶ Resume

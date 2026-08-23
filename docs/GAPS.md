@@ -3,6 +3,42 @@
 > Companion document to `PROJECT_PARTY.md`, `BOTS_CLIENTS.md`, and
 > `LIQUIDITY_TRADING_PAIRS.md`.
 
+> ✅ **STATUS UPDATE (2026-08-22, session 4 — kill-switch control plane):**
+> 1. ✅ **`kill_switch/` implemented (was an empty `go.mod` stub)** — full Go
+>    service on :8469. SuperAdmin can halt/resume four scopes: `global` (whole
+>    platform), `client` (one WL client), `product` (one product of one
+>    client), `fetcher` (one fetcher of one product). Durable state + full
+>    audit trail in PostgreSQL (`kill_state`, `kill_events`), sub-second
+>    propagation via Redis keys (`kill:global`, `kill:client:<id>`,
+>    `kill:product:<id>:<product>`, `kill:fetcher:<id>:<product>:<fetcher>`)
+>    + pub/sub channel `kill:events`. Self-healing loop republishes active
+>    halts from PG into Redis every 10s (survives Redis flush/restart; a halt
+>    is a positive signal, never inferred from missing data). Auth: the same
+>    SuperAdmin HS256 JWT as license_service (shared JWT_SECRET), role
+>    `superadmin` only, 401/403 fail-closed everywhere.
+> 2. ✅ **license_service heartbeat consults the kill-switch** — new
+>    `Hub.Killed()` (MGET on the three scope keys); the heartbeat handler
+>    fails closed with `{"alive": false, "command": "halt"}` before every
+>    other lifecycle check, so a halt reaches every WL product within one
+>    heartbeat interval. Redis errors fail OPEN on the *check* (a blip cannot
+>    nuke the fleet) while halts fail CLOSED on products.
+> 3. ✅ **SuperAdmin Governance UI wired** — new `killApi.ts` client, Vite
+>    `/kill-api` proxy → :8469, a **GlobalKillBar** on the Governance page
+>    (platform-wide HALT/RESUME with live state, 15s refresh), and the
+>    per-client ⛔ Halt All / ▶ Resume buttons now call the kill-switch
+>    (instant) + license lifecycle (durable status) together.
+> 4. ✅ **Orchestration** — `kill-switch` service added to docker-compose
+>    (port 8469, healthcheck, postgres+redis deps) with its own Dockerfile.
+> 5. ✅ **SQLite audit** — zero `sqlite` references in any Go module, Rust
+>    crate, or mobile client source; the entire platform is PostgreSQL +
+>    Redis only. Nothing to remove.
+>
+> **Build verification (session 4 — ALL GREEN):** `kill_switch` build+vet ✅ ·
+> `license_service/go` build+vet ✅ (with kill-check patch) ·
+> `super_admin/web` tsc 0 errors ✅. Runtime PG/Redis not available in the
+> build environment; integration verification path is `docker compose up
+> kill-switch license-service` then Governance → Halt.
+>
 > ✅ **STATUS UPDATE (2026-08-22, session 3 — UserWallet feature-parity):**
 > A full UserWallet audit (all 7 clients vs the canonical `go/wallet_api`
 > backend) found the stack solid (90+/100) but missing four capabilities that

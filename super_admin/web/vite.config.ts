@@ -14,6 +14,13 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/license-api/, ''),
       },
+      // Kill-switch control plane (kill_switch :8469). /kill-api/* is
+      // forwarded with the prefix stripped.
+      '/kill-api': {
+        target: 'http://localhost:8469',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/kill-api/, ''),
+      },
     }
   },
   build: {
