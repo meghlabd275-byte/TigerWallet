@@ -39,6 +39,59 @@
 > build environment; integration verification path is `docker compose up
 > kill-switch license-service` then Governance → Halt.
 >
+> ✅ **STATUS UPDATE (2026-08-22, session 4b — risk controls, separation, consolidation):**
+> 6. ✅ **Auto-approval velocity limits (MasterWallet)** — `checkAutoSignRules`
+>    now enforces per-rule `max_txs_per_hour` and `max_value_per_day` from the
+>    rule `conditions` JSONB (settable via the existing auto-sign CRUD API, no
+>    schema change), counted against the real `auto_sign_log` in PostgreSQL
+>    (non-failed txs, per rule_type or all types for `any/*`). Exhausted rules
+>    fall through like max_amount caps; query errors fail closed. Applies to
+>    BOTH the server-to-server `/check-auto-sign-policy` gate (wallet_api →
+>    master_wallet, 3s timeout) and direct `UserWalletAutoSign`.
+> 7. ✅ **App-separation violations removed** — deleted dead, unreferenced
+>    master/admin service copies inside user apps (never compiled/never
+>    imported): `mobile_apps/android_app .../master/{MasterWalletService,
+>    SuperAdminService}.kt`, `mobile_apps/flutter_app/.../super_admin_service
+>    .dart`, `desktop_wallet/src/services/master/{master_wallet_service,
+>    super_admin_service}.{cpp,hpp}`. Canonical functionality lives in
+>    `master_wallet/` + `admin/` + `super_admin/`; nothing was lost.
+> 8. ✅ **Light/dark theme audit** — all 8 web frontends (user_wallet/web,
+>    production/react, desktop, master_wallet/web, admin/web, super_admin/web,
+>    white_label_admin/web, frontend/web_nextjs) have ThemeContext/ThemeProvider
+>    + CSS-variable theming; `user_wallet/extension` has theme support.
+> 9. 📌 **Duplicate-consolidation map (decision record)** — duplicates are
+>    preserved (per "don't delete anything") with ONE canonical target each;
+>    unique feature services in the secondary copies are the port source:
+>    - UserWallet web: canonical = `user_wallet/production/react` (secondary:
+>      `user_wallet/web`)
+>    - UserWallet extension: canonical = `user_wallet/extension` (theme, WC v2,
+>      ENS/simulate/gas); secondary `browser_extensions/chrome` holds 28 unique
+>      service modules (futures/margin/options/P2P/NFT-DAO/launchpad/
+>      prediction/RWA/MEV/AA/MPC/social-recovery) to port into canonical;
+>      `browser_extension/chrome` is the minimal legacy build.
+>    - Admin panel: canonical = `admin/web` (React/MUI, 29 pages); secondary
+>      `frontend/web_nextjs/app/admin*` (Next.js adminPanel).
+>    - Desktop: canonical per product = `user_wallet/desktop` (Electron),
+>      `desktop_app` (Tauri) for the Rust-backed build; `desktop_wallet` (C++)
+>      is the crypto-core reference; `desktop/` README-only placeholder.
+>    - White-label: canonical control plane = `license_service` + `kill_switch`
+>      + `wl_shared`; `white_label_system/portal/marketplace/templates` are
+>      secondary surfaces.
+> 10. 📌 **ogbadmin decision** — `ogbadmin` has zero matches in code/history.
+>     It is the OGB admin panel = the canonical `admin/` product (platform
+>     admin panel :9093 with Go backend, web/android/ios/desktop/extensions),
+>     NOT a separate 8th admin surface. Creating another admin app would add a
+>     duplicate, not a feature. All requested ogbadmin capabilities (RBAC, KYC,
+>     tokens, chains, fees, withdrawals, feature flags, WL records, bots,
+>     liquidity, cards, P2P, trading governance, tickets, audit) exist in
+>     `admin/`; SuperAdmin-only powers (licenses, kill switch, WL lifecycle,
+>     withdrawal co-sign) exist in `super_admin/` + `license_service` +
+>     `kill_switch`.
+>
+> **Build verification (session 4b):** `master_wallet/backend` build+vet ✅.
+> Separation deletions verified reference-free and outside all build manifests
+> (explicit CMake list, no GLOB; no KT/Dart imports).
+>
 > ✅ **STATUS UPDATE (2026-08-22, session 3 — UserWallet feature-parity):**
 > A full UserWallet audit (all 7 clients vs the canonical `go/wallet_api`
 > backend) found the stack solid (90+/100) but missing four capabilities that
