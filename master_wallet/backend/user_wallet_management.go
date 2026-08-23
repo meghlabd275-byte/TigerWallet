@@ -20,6 +20,7 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
@@ -905,9 +906,15 @@ func (svc *Service) CheckAutoSignPolicy(c *gin.Context) {
 // of the matching type whose max_amount (if set) is >= the tx value. Fail-closed
 // (deny) when no active matching rule exists. The value is parsed as a decimal;
 // unparseable values are denied.
+//
+// Velocity limits live in the rule's conditions JSONB and are enforced against
+// the real auto_sign_log (PostgreSQL):
+//   {"max_txs_per_hour": 50, "max_value_per_day": "1000000"}
+// A rule whose velocity budget is exhausted does not approve; evaluation falls
+// through to the next matching rule, exactly like max_amount caps.
 func (svc *Service) checkAutoSignRules(ctx context.Context, masterID, txType, valueStr string) (bool, string) {
 	rows, err := store.DB().Query(ctx,
-		`SELECT rule_type, max_amount, is_active FROM auto_sign_rules WHERE master_wallet_id = $1 AND is_active = true`,
+		`SELECT rule_type, max_amount, is_active, conditions FROM auto_sign_rules WHERE master_wallet_id = $1 AND is_active = true`,
 		masterID)
 	if err != nil {
 		return false, "policy lookup failed"
@@ -923,7 +930,8 @@ func (svc *Service) checkAutoSignRules(ctx context.Context, masterID, txType, va
 	for rows.Next() {
 		var rtype, maxAmt string
 		var active bool
-		if err := rows.Scan(&rtype, &maxAmt, &active); err != nil {
+		var conditions []byte
+		if err := rows.Scan(&rtype, &maxAmt, &active, &conditions); err != nil {
 			continue
 		}
 		if !active {
@@ -945,12 +953,85 @@ func (svc *Service) checkAutoSignRules(ctx context.Context, masterID, txType, va
 				continue // exceeds this rule's cap; try the next
 			}
 		}
+		// Velocity limits from the rule's conditions JSONB.
+		var cond struct {
+			MaxTxsPerHour  int    `json:"max_txs_per_hour"`
+			MaxValuePerDay string `json:"max_value_per_day"`
+		}
+		_ = json.Unmarshal(conditions, &cond)
+		if cond.MaxTxsPerHour > 0 {
+			count, err := svc.velocityCount(ctx, masterID, rtype, "1 hour")
+			if err != nil {
+				return false, "velocity check failed: " + err.Error()
+			}
+			if count >= cond.MaxTxsPerHour {
+				continue // this rule's hourly budget is exhausted; try the next
+			}
+		}
+		if strings.TrimSpace(cond.MaxValuePerDay) != "" {
+			dayCap, ok := new(big.Float).SetString(strings.TrimSpace(cond.MaxValuePerDay))
+			if !ok {
+				continue
+			}
+			spent, err := svc.velocityValue(ctx, masterID, rtype, "1 day")
+			if err != nil {
+				return false, "velocity check failed: " + err.Error()
+			}
+			if new(big.Float).Add(spent, txValue).Cmp(dayCap) > 0 {
+				continue // would exceed this rule's daily value cap; try the next
+			}
+		}
 		return true, "approved by rule"
 	}
 	if matched {
-		return false, "tx value exceeds all matching rule max_amount caps"
+		return false, "tx exceeds all matching rule caps (max_amount / velocity limits)"
 	}
 	return false, "no active auto-sign rule for tx_type: " + txType
+}
+
+// velocityCount returns how many non-failed auto-signed txs the master wallet
+// approved inside the window ("1 hour"). "any"/"*" rule types count all tx
+// types; a specific rule type counts only its own.
+func (svc *Service) velocityCount(ctx context.Context, masterID, ruleType, window string) (int, error) {
+	var count int
+	var err error
+	if ruleType == "any" || ruleType == "*" {
+		err = store.DB().QueryRow(ctx,
+			`SELECT COUNT(*) FROM auto_sign_log
+			 WHERE master_wallet_id=$1 AND status <> 'failed' AND created_at > NOW() - $2::interval`,
+			masterID, window).Scan(&count)
+	} else {
+		err = store.DB().QueryRow(ctx,
+			`SELECT COUNT(*) FROM auto_sign_log
+			 WHERE master_wallet_id=$1 AND tx_type=$2 AND status <> 'failed' AND created_at > NOW() - $3::interval`,
+			masterID, ruleType, window).Scan(&count)
+	}
+	return count, err
+}
+
+// velocityValue returns the summed value of non-failed auto-signed txs inside
+// the window ("1 day"). Non-numeric legacy values are excluded by the regex
+// guard instead of erroring the whole policy check.
+func (svc *Service) velocityValue(ctx context.Context, masterID, ruleType, window string) (*big.Float, error) {
+	var sum string
+	var err error
+	const numGuard = `value ~ '^[0-9]+(\.[0-9]+)?$'`
+	if ruleType == "any" || ruleType == "*" {
+		err = store.DB().QueryRow(ctx,
+			`SELECT COALESCE(SUM(value::numeric),0)::text FROM auto_sign_log
+			 WHERE master_wallet_id=$1 AND status <> 'failed' AND `+numGuard+` AND created_at > NOW() - $2::interval`,
+			masterID, window).Scan(&sum)
+	} else {
+		err = store.DB().QueryRow(ctx,
+			`SELECT COALESCE(SUM(value::numeric),0)::text FROM auto_sign_log
+			 WHERE master_wallet_id=$1 AND tx_type=$2 AND status <> 'failed' AND `+numGuard+` AND created_at > NOW() - $3::interval`,
+			masterID, ruleType, window).Scan(&sum)
+	}
+	if err != nil {
+		return nil, err
+	}
+	f, _ := new(big.Float).SetString(sum)
+	return f, nil
 }
 
 
