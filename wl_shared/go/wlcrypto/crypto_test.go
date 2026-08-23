@@ -60,3 +60,20 @@ func TestMnemonicGeneration(t *testing.T) {
 		t.Error("generated mnemonic failed validation")
 	}
 }
+
+// TestSignMessage verifies a personal_sign signature recovers to the signer.
+func TestSignMessage(t *testing.T) {
+	mnemonic := strings.Repeat("abandon ", 11) + "about"
+	seed := bip39.NewSeed(mnemonic, "")
+	priv, err := DeriveEVMPrivateKey(seed, 0)
+	if err != nil {
+		t.Fatalf("derive failed: %v", err)
+	}
+	sig, err := SignMessage(priv, "hello")
+	if err != nil {
+		t.Fatalf("sign failed: %v", err)
+	}
+	if len(sig) != 132 { // 0x + 130 hex chars (65 bytes)
+		t.Errorf("unexpected signature length: %d", len(sig))
+	}
+}

@@ -143,7 +143,24 @@
 >       `docs/launch/REAL_WORLD_LAUNCH_PLAN.md`.
 >     Verified with Go 1.27: `go build ./...` passes in `api_gateway/go`,
 >     `api_gateway/go/gateway_v1`, and `backend_services`.
-> 11. 📌 **ogbadmin decision** — `ogbadmin` has zero matches in code/history.
+> 11. ✅ **Duplicate-consolidation ROUND 3 (2026-08-23, session 7)** — deep
+>     byte-level scan: md5-hashed all 644 files across backend, backend_services,
+>     selfhosted_masterwallet, staking_hub, user_wallet, wallet_cloud,
+>     wallet_core, wallet_ecosystem, embedded_wallet, governance, white_label,
+>     white_label_admin, all wl_* products, portfolio, user_features. Result:
+>     NO remaining cross-module duplicates. The only identical files are
+>     white_label_admin per-browser extension popups (chrome/firefox/safari)
+>     which are required per-platform packaging, not duplication. One
+>     near-duplicate pair exists BY DESIGN: wl_user_wallet/go/internal/crypto
+>     is a vendored copy of wl_shared/go/wlcrypto (identical except package
+>     name) — required so the WL UserWallet Docker image builds standalone in
+>     the client's own environment (its Dockerfile copies only its own module).
+>     Best-of-both sync: ported the vendored copy's extra TestSignMessage into
+>     the canonical wl_shared/wlcrypto so the shared library is now the
+>     superset. Verified with Go 1.27: go build ./... passes in wl_shared,
+>     wl_user_wallet, wl_master_wallet, wl_bots, wl_card, wl_liquidity,
+>     wl_project_party, white_label; go test passes for both crypto packages.
+> 12. 📌 **ogbadmin decision** — `ogbadmin` has zero matches in code/history.
 >     It is the OGB admin panel = the canonical `admin/` product (platform
 >     admin panel :9093 with Go backend, web/android/ios/desktop/extensions),
 >     NOT a separate 8th admin surface. Creating another admin app would add a
