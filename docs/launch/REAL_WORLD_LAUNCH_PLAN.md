@@ -38,7 +38,7 @@ This plan converts the Trust Wallet / Bitget Wallet readiness gaps into launch g
 - `rust/security/src/social_recovery.rs`: guardian recovery engine with threshold approvals, timelock execution, cancellation, and emergency contact storage.
 - `rust/security/src/launch_readiness.rs`: launch gates that product, security, legal, infrastructure, and operations must satisfy before full mainnet release.
 - `rust/security/src/transaction_preview.rs`: pre-signing transaction classification and DApp risk scoring for approvals, Permit2 flows, blocked domains, malicious contracts, and simulation-required decisions.
-- `backend_services/api_gateway/main.go`: wallet creation now proxies to the configured wallet service, strips returned secrets, and refuses to generate mock wallets in the gateway. Market and portfolio endpoints now proxy configured upstream services and fail closed instead of returning fabricated price, chart, portfolio, or history data.
+- `api_gateway/go/gateway_v1/main.go`: wallet creation now proxies to the configured wallet service, strips returned secrets, and refuses to generate mock wallets in the gateway. Market and portfolio endpoints now proxy configured upstream services and fail closed instead of returning fabricated price, chart, portfolio, or history data.
 - `.github/workflows/launch-readiness.yml`: CI now runs the security crate tests and includes targeted static checks to prevent API gateway mock-wallet/market regressions and obvious committed secrets.
 
 ## Mainnet release rule

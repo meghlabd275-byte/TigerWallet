@@ -132,6 +132,14 @@ Duplicate top-level directories were merged into one canonical home each
 | Notifications | `notifications/` | `notification/` → `go/cmd/gateway/` |
 | Staking | `staking_hub/` (go, rust) | `staking/` → `go/legacy/` |
 | White label | `white_label/` (+ `white_label_admin/`) | `white_label_portal/`, `white_label_system/`, `white_label_marketplace/`, `white_label_templates/`, `white_label_analytics_ai/`, `white_label_sdk/` → `sdk/cpp/`, `white_level_sdk/` → `sdk/rust/` |
+| Embedded wallet | `embedded_wallet/sdk/` | `embedded_wallet_sdk/` (README) → `embedded_wallet/sdk/javascript/README.md` |
+| Portfolio analytics | `portfolio/` (go, rust) | `portfolio_analytics/` (README) → `portfolio/README.md` |
+| Governance / DAO | `governance/` (go service + 4 contract variants) | `governance_dao/` → `governance/smart_contracts/ethereum/TigerGovernance.sol` |
+| API gateway | `api_gateway/` (unified_gateway canonical) | `backend_services/api_gateway/` → `api_gateway/go/gateway_v1/` (feature-rich Gin/Redis/WebSocket gateway, own go.mod; CI + Dockerfile updated) |
+| Legacy service shims | `backend_services/` (:8080 backend shim) | `user_services/` → `backend_services/go/user_service_shim/` (:8081 shim + legacy_main.go.txt) |
+
+Round 2 verified with Go 1.27: `api_gateway/go/gateway_v1`, `api_gateway/go`,
+and `backend_services` all pass `go build ./...`.
 
 Language placement rule: **C++** for ultra-low-latency speed paths,
 **Rust** where safety/security is critical (also ultra-low-latency),

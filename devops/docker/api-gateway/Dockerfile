@@ -7,11 +7,11 @@ WORKDIR /app
 RUN apk add --no-cache git ca-certificates tzdata
 
 # Copy go modules
-COPY backend_services/api_gateway/go.mod backend_services/api_gateway/go.sum ./
+COPY api_gateway/go/gateway_v1/go.mod api_gateway/go/gateway_v1/go.sum ./
 RUN go mod download
 
 # Copy source
-COPY backend_services/api_gateway/ ./
+COPY api_gateway/go/gateway_v1/ ./
 
 # Build with optimizations
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /api-gateway

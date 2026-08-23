@@ -58,7 +58,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Reject API gateway wallet/market mocks
         run: |
-          ! rg -n "For now, return mock data|Generate mock chart data|Generate mock history|Mnemonic:\\s+generateMnemonic|price := \"2500\\.00\"|Simulate price updates|price_update" backend_services/api_gateway/main.go
+          ! rg -n "For now, return mock data|Generate mock chart data|Generate mock history|Mnemonic:\\s+generateMnemonic|price := \"2500\\.00\"|Simulate price updates|price_update" api_gateway/go/gateway_v1/main.go
       - name: Reject obvious committed secrets
         run: |
           ! rg -n "(PRIVATE_KEY|MNEMONIC|SEED_PHRASE|JWT_SECRET|ENCRYPTION_KEY)=[^[:space:]]+" -g '!node_modules' -g '!*.lock' .

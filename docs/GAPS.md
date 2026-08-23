@@ -121,7 +121,29 @@
 >    canonical paths. Language placement rule retained: C++ for
 >    ultra-low-latency, Rust for safety/security, Go for high-load
 >    distributed services.
-> 10. 📌 **ogbadmin decision** — `ogbadmin` has zero matches in code/history.
+> 10. ✅ **Duplicate-consolidation ROUND 2 (2026-08-23, session 6)** — five
+>     more duplicate clusters merged (full functionality preserved via git mv):
+>     - `embedded_wallet_sdk/` (README-only) → `embedded_wallet/sdk/javascript/README.md`;
+>       canonical SDK = `embedded_wallet/sdk/` (671-line TS SDK + Solidity).
+>     - `portfolio_analytics/` (README-only) → `portfolio/README.md`; canonical
+>       = `portfolio/` (Go analytics service + Rust lib).
+>     - `governance_dao/` (141-line multi-sig-treasury governance contract
+>       variant) → `governance/smart_contracts/ethereum/TigerGovernance.sol`;
+>       canonical = `governance/` (Go service + now 4 contract variants).
+>     - `user_services/` (deprecated :8081 reverse-proxy shim to
+>       `go/wallet_api` + legacy_main.go.txt reference) →
+>       `backend_services/go/user_service_shim/`; sits beside the :8080 shim.
+>     - `backend_services/api_gateway/` (903-line feature-rich Gin/Redis/
+>       WebSocket gateway) → `api_gateway/go/gateway_v1/` with its own
+>       go.mod/go.sum (also fixes the Dockerfile, which copied a go.mod that
+>       never existed); canonical gateway stays
+>       `api_gateway/go/cmd/unified_gateway`. References updated:
+>       `devops/docker/api-gateway/Dockerfile`,
+>       `.github/workflows/launch-readiness.yml`,
+>       `docs/launch/REAL_WORLD_LAUNCH_PLAN.md`.
+>     Verified with Go 1.27: `go build ./...` passes in `api_gateway/go`,
+>     `api_gateway/go/gateway_v1`, and `backend_services`.
+> 11. 📌 **ogbadmin decision** — `ogbadmin` has zero matches in code/history.
 >     It is the OGB admin panel = the canonical `admin/` product (platform
 >     admin panel :9093 with Go backend, web/android/ios/desktop/extensions),
 >     NOT a separate 8th admin surface. Creating another admin app would add a
