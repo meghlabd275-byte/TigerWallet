@@ -3,19 +3,20 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"sync"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/rs/zerolog"
@@ -37,7 +38,8 @@ type Config struct {
 	Port        string
 	DatabaseURL string
 	RedisURL    string
-	MaxLevels   int // Maximum nesting depth
+	MaxLevels   int    // Maximum nesting depth
+	JWTSecret   string // SuperAdmin control-plane secret (shared) for auth
 }
 
 // Hierarchical White Label
@@ -664,9 +666,44 @@ func nullString(s string) interface{} {
 }
 
 // Router setup
-func setupRouter() *gin.Engine {
-	r := gin.Default()
+// superAdminOnly enforces the no-resale / no-sublicensing boundary. The
+// hierarchy service (parent/child white labels, sub-accounts, commissions) is a
+// TigerWallet-internal governance surface. A WL client must NEVER be able to
+// mint its own child WLs (which would be reselling the white label). Only the
+// SuperAdmin control-plane role may create/move/read hierarchy nodes, enforced
+// with the SAME JWT secret and role claim used by license_service.
+func superAdminOnly(secret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		h := c.GetHeader("Authorization")
+		if h == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authorization header required"})
+			return
+		}
+		parts := strings.Split(h, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization header"})
+			return
+		}
+		claims := &struct {
+			Role string `json:"role"`
+			jwt.RegisteredClaims
+		}{}
+		tok, err := jwt.ParseWithClaims(parts[1], claims, func(t *jwt.Token) (any, error) {
+			return []byte(secret), nil
+		})
+		if err != nil || !tok.Valid || claims.Role != "superadmin" {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "SuperAdmin privilege required"})
+			return
+		}
+		c.Next()
+	}
+}
 
+// setupProtectedRouter wires the hierarchy endpoints behind the SuperAdmin-only
+// JWT gate. This is the no-resale/no-sublicensing enforcement: only a
+// control-plane SuperAdmin (never a wl_client) may create/move/read hierarchy.
+func setupProtectedRouter(secret string) *gin.Engine {
+	r := gin.Default()
 	r.Use(func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -683,6 +720,7 @@ func setupRouter() *gin.Engine {
 	})
 
 	v1 := r.Group("/api/v1")
+	v1.Use(superAdminOnly(secret))
 	{
 		v1.POST("/white-label/hierarchy", CreateHierarchicalWhiteLabel)
 		v1.GET("/white-label/hierarchy/:id/tree", GetHierarchyTree)
@@ -703,6 +741,13 @@ func main() {
 		Port:        getEnv("PORT", "8088"),
 		DatabaseURL: getEnv("DATABASE_URL", "postgres://tigerwallet:tigerpass@localhost:5432/tigerwallet?sslmode=disable"),
 		RedisURL:    getEnv("REDIS_URL", "localhost:6379"),
+		JWTSecret:   getEnv("JWT_SECRET", ""),
+	}
+
+	// Fail closed: without a JWT secret we cannot authenticate the SuperAdmin and
+	// therefore cannot safely guard the hierarchy endpoints from WL-client resale.
+	if config.JWTSecret == "" {
+		log.Fatal("JWT_SECRET environment variable is required for the multi-level white-label hierarchy service")
 	}
 
 	var err error
@@ -721,7 +766,7 @@ func main() {
 	})
 	defer redisClient.Close()
 
-	router := setupRouter()
+	router := setupProtectedRouter(config.JWTSecret)
 
 	srv := &http.Server{
 		Addr:         ":" + config.Port,

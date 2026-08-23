@@ -408,6 +408,17 @@ func (s *Store) CreateLicense(ctx context.Context, wlClientID uuid.UUID, product
 	return s.GetLicenseByKey(ctx, key)
 }
 
+// IsProductApproved reports whether SuperAdmin has listed product in the
+// client's allowed_products. A license can only be issued for an approved
+// product, keeping license issuance and the allowed_products gate in sync.
+func (s *Store) IsProductApproved(ctx context.Context, wlClientID uuid.UUID, product string) (bool, error) {
+	var allowed []string
+	if err := s.db.QueryRow(ctx, `SELECT allowed_products FROM wl_clients WHERE id=$1`, wlClientID).Scan(&allowed); err != nil {
+		return false, err
+	}
+	return IsProductAllowed(allowed, product), nil
+}
+
 func (s *Store) GetLicenseByKey(ctx context.Context, key string) (*License, error) {
 	l := &License{}
 	err := s.db.QueryRow(ctx,
@@ -559,12 +570,20 @@ func (s *Store) RecordHeartbeat(ctx context.Context, wlClientID uuid.UUID, produ
 // fail-closed check.
 func (s *Store) IsProductAlive(ctx context.Context, wlClientID uuid.UUID, product string, heartbeatTimeout time.Duration) (bool, string, error) {
 	var clientStatus string
-	err := s.db.QueryRow(ctx, `SELECT status FROM wl_clients WHERE id=$1`, wlClientID).Scan(&clientStatus)
+	var allowed []string
+	err := s.db.QueryRow(ctx, `SELECT status, allowed_products FROM wl_clients WHERE id=$1`, wlClientID).Scan(&clientStatus, &allowed)
 	if err != nil {
 		return false, "wl_client_not_found", err
 	}
 	if clientStatus != "approved" && clientStatus != "active" {
 		return false, "wl_client_" + clientStatus, nil
+	}
+	// Authoritative gate: the client must have been approved for THIS product.
+	// A license alone is not enough — SuperAdmin must also list the product in
+	// the client's allowed_products. This closes the hole where a license for an
+	// unapproved product would still validate/heartbeat.
+	if !IsProductAllowed(allowed, product) {
+		return false, "product_not_allowed", nil
 	}
 	var licStatus string
 	err = s.db.QueryRow(ctx, `SELECT status FROM licenses WHERE wl_client_id=$1 AND product IN ($2,'all')`, wlClientID, product).Scan(&licStatus)

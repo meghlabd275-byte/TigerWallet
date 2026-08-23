@@ -109,6 +109,10 @@ func main() {
 			twoParty.POST("/withdrawals/:id/executed", h.MarkWithdrawalExecuted)
 		}
 
+		// Public catalog — lists the exact products + fetchers the SuperAdmin can
+		// grant and toggle. Read-only, non-sensitive (no client/tenant data).
+		api.GET("/catalog", h.Catalog)
+
 		// SuperAdmin-only governance area. A WL client can NEVER reach these.
 		sa := authed.Group("/super-admin")
 		sa.Use(handlers.RequireSuperAdmin())

@@ -115,8 +115,12 @@ func (h *Handlers) CreateWLClient(c *gin.Context) {
 		req.Tier = "basic"
 	}
 	if len(req.Products) == 0 {
-		req.Products = []string{"master_wallet", "user_wallet", "bots", "project_party"}
+		req.Products = store.DefaultProductList()
 	}
+	// Canonicalize and drop any unknown/duplicate product names. A malformed or
+	// malicious product list can never inject a SuperAdmin-internal product (it
+	// simply isn't in the catalog).
+	req.Products = store.NormalizeProducts(req.Products)
 	ctx := c.Request.Context()
 	wlc, err := h.store.CreateWLClient(ctx, req.Name, req.Slug, req.ContactEmail, req.Tier, req.Products)
 	if err != nil {
@@ -240,6 +244,10 @@ func (h *Handlers) UpdateWLClient(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// Canonicalize the product list. Only catalogued WL products may be granted.
+	if req.Products != nil {
+		req.Products = store.NormalizeProducts(req.Products)
+	}
 	ctx := c.Request.Context()
 	if err := h.store.UpdateWLClient(ctx, id, req.Tier, req.Products); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -274,6 +282,10 @@ func (h *Handlers) IssueLicense(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !store.IsValidProduct(req.Product) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown product (not a catalogued self-hosted WL product)"})
+		return
+	}
 	if req.Plan == "" {
 		req.Plan = "basic"
 	}
@@ -292,6 +304,15 @@ func (h *Handlers) IssueLicense(c *gin.Context) {
 	wlID, err := uuid.Parse(req.WLClientID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid wl_client_id"})
+		return
+	}
+	oks, err := h.store.IsProductApproved(c.Request.Context(), wlID, req.Product)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "wl client not found"})
+		return
+	}
+	if !oks {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "product not in wl_client.allowed_products (approve the product first)"})
 		return
 	}
 	key := generateLicenseKey()
@@ -369,6 +390,14 @@ func (h *Handlers) SetFeatureFlag(c *gin.Context) {
 	if req.Fetcher == "" {
 		req.Fetcher = "*" // whole-product toggle
 	}
+	if !store.IsValidProduct(req.Product) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown product (not a catalogued self-hosted WL product)"})
+		return
+	}
+	if !store.IsValidFetcher(req.Product, req.Fetcher) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown fetcher for product " + req.Product})
+		return
+	}
 	wlID, err := uuid.Parse(req.WLClientID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid wl_client_id"})
@@ -382,6 +411,17 @@ func (h *Handlers) SetFeatureFlag(c *gin.Context) {
 	_ = h.hub.PublishFlagChange(ctx, wlID, req.Product)
 	h.store.Audit(ctx, adminID(c), "flag.set", "feature_flag", req.Product+"/"+req.Fetcher, gin.H{"enabled": req.Enabled})
 	c.JSON(http.StatusOK, gin.H{"updated": true, "product": req.Product, "fetcher": req.Fetcher, "enabled": req.Enabled})
+}
+
+// Catalog returns the authoritative product + fetcher catalog. SuperAdmin UI
+// uses this to render the exact toggle set; any runtime update re-applies this
+// closed set, so a WL client can never be granted something outside of it.
+func (h *Handlers) Catalog(c *gin.Context) {
+	var out []gin.H
+	for p, fs := range store.FetchersByProduct {
+		out = append(out, gin.H{"product": p, "fetchers": fs})
+	}
+	c.JSON(http.StatusOK, gin.H{"products": out})
 }
 
 func (h *Handlers) ListFeatureFlags(c *gin.Context) {
@@ -401,6 +441,31 @@ func (h *Handlers) ListFeatureFlags(c *gin.Context) {
 
 // ==================== WL-product-facing: validate + heartbeat ====================
 
+// overlayKilledFetchers merges fetcher-scope kill-switch halts into the flag
+// snapshot as disabled flags. A halted fetcher is pushed as Enabled=false (or
+// overrides an existing flag), so the product's gate denies it on the next beat.
+func overlayKilledFetchers(flags []*store.FeatureFlag, killed map[string]string, product string) []*store.FeatureFlag {
+	if len(killed) == 0 {
+		return flags
+	}
+	byFetcher := map[string]*store.FeatureFlag{}
+	out := make([]*store.FeatureFlag, 0, len(flags)+len(killed))
+	for _, f := range flags {
+		if f != nil {
+			byFetcher[f.Fetcher] = f
+			out = append(out, f)
+		}
+	}
+	for fetcher := range killed {
+		if f, ok := byFetcher[fetcher]; ok {
+			f.Enabled = false
+			continue
+		}
+		out = append(out, &store.FeatureFlag{Product: product, Fetcher: fetcher, Enabled: false})
+	}
+	return out
+}
+
 // ValidateLicense is called by an externally-hosted WL product on startup and
 // on each token renewal. Returns a fresh signed license token + the current
 // flag set + pending commands. Fail-closed: any non-active status returns 403.
@@ -416,13 +481,26 @@ func (h *Handlers) ValidateLicense(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !store.IsValidProduct(req.Product) {
+		c.JSON(http.StatusForbidden, gin.H{"valid": false, "alive": false, "reason": "unknown product"})
+		return
+	}
 	ctx := c.Request.Context()
 	lic, err := h.store.GetLicenseByKey(ctx, req.LicenseKey)
 	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"valid": false, "error": "license not found"})
 		return
 	}
-	// Authoritative fail-closed check: WL client + license + heartbeat all alive.
+	// Kill-switch check FIRST: a halted scope (global / client / product) fails
+	// closed immediately with an explicit halt, ahead of every lifecycle check.
+	// This makes the emergency stop effective on the validate path that the Go
+	// WL products actually call (they do not call /heartbeat).
+	if killed, kReason := h.hub.Killed(ctx, lic.WLClientID, req.Product); killed {
+		c.JSON(http.StatusForbidden, gin.H{"valid": false, "alive": false, "reason": kReason, "command": "halt"})
+		return
+	}
+	// Authoritative fail-closed check: WL client + allowed_products + license +
+	// heartbeat all alive.
 	alive, reason, err := h.store.IsProductAlive(ctx, lic.WLClientID, req.Product, h.cfg.HeartbeatTimeout)
 	if err != nil || !alive {
 		c.JSON(http.StatusForbidden, gin.H{"valid": false, "alive": false, "reason": reason})
@@ -440,6 +518,9 @@ func (h *Handlers) ValidateLicense(c *gin.Context) {
 	}
 	// Attach current flag set so the product refreshes its cache.
 	flags, _ := h.store.ListFeatureFlags(ctx, lic.WLClientID, lic.Product)
+	// Overlay any fetcher-scope kill-switch halts as disabled flags, so a
+	// per-fetcher emergency halt reaches the product on its very next beat.
+	flags = overlayKilledFetchers(flags, h.hub.KilledFetchers(ctx, lic.WLClientID, req.Product), lic.Product)
 	// Attach the AutoApprover policy snapshot: treasury addresses + auto-sign
 	// rules. These define the security boundary (fee/revenue => Manual).
 	treasury, _ := h.store.ListTreasuryAddresses(ctx, lic.WLClientID, lic.Product)
@@ -497,6 +578,7 @@ func (h *Handlers) Heartbeat(c *gin.Context) {
 	_ = h.store.RecordHeartbeat(ctx, lic.WLClientID, req.Product, req.InstanceID, req.LatencyMs, req.Version, req.Hostname, req.Metrics)
 	cmds, _ := h.store.DeliverPendingCommands(ctx, lic.WLClientID, req.Product)
 	flags, _ := h.store.ListFeatureFlags(ctx, lic.WLClientID, req.Product)
+	flags = overlayKilledFetchers(flags, h.hub.KilledFetchers(ctx, lic.WLClientID, req.Product), req.Product)
 	// Refresh the AutoApprover policy snapshot on each heartbeat.
 	treasury, _ := h.store.ListTreasuryAddresses(ctx, lic.WLClientID, req.Product)
 	rules, _ := h.store.ListAutoSignRules(ctx, lic.WLClientID, req.Product)

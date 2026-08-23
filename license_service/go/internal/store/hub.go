@@ -93,3 +93,35 @@ func (h *Hub) Killed(ctx context.Context, wlClientID uuid.UUID, product string) 
 	}
 	return false, ""
 }
+
+// KilledFetchers returns which fetchers of a product are currently halted by
+// the kill-switch (keys kill:fetcher:<client>:<product>:<fetcher>). The result
+// is overlaid onto the feature-flag snapshot delivered on validate/heartbeat so
+// a fetcher-scope emergency halt reaches the product on the next beat — products
+// only ever receive their flags on beat, so this is the single enforcement path.
+// A Redis error returns nil (fail OPEN on the read): the halt still lives in
+// PostgreSQL and the kill-switch self-heal loop republishes it, so a transient
+// blip cannot be silently mistaken for "no halt".
+func (h *Hub) KilledFetchers(ctx context.Context, wlClientID uuid.UUID, product string) map[string]string {
+	fs := FetchersByProduct[product]
+	if len(fs) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(fs))
+	for _, f := range fs {
+		keys = append(keys, "kill:fetcher:"+wlClientID.String()+":"+product+":"+f)
+	}
+	vals, err := h.rdb.MGet(ctx, keys...).Result()
+	if err != nil {
+		return nil
+	}
+	out := map[string]string{}
+	for i, v := range vals {
+		if v != nil {
+			if reason, ok := v.(string); ok {
+				out[fs[i]] = reason
+			}
+		}
+	}
+	return out
+}
