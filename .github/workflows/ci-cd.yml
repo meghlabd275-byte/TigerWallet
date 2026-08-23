@@ -119,9 +119,9 @@ jobs:
     strategy:
       matrix:
         app:
-          - admin_frontend_complete
-          - white_label_portal
-          - admin_panel
+          - admin/web
+          - white_label/frontend
+          - super_admin/web
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

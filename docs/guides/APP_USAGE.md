@@ -100,7 +100,7 @@ GET    /api/v1/admin/analytics/kyc            # KYC analytics
 #### Android
 ```bash
 # Using Expo
-cd user_app/react
+cd user_wallet/react_app
 npx expo install
 npx expo run:android
 
@@ -111,7 +111,7 @@ npx expo build:android -t apk
 #### iOS
 ```bash
 # Using Expo
-cd user_app/react
+cd user_wallet/react_app
 npx expo install
 npx expo run:ios
 
@@ -206,7 +206,7 @@ const swap = await wallet.swap({
 #### Windows
 ```bash
 # Build executable
-cd user_app/desktop
+cd user_wallet/desktop
 npm run build:win
 
 # Output in dist/
@@ -215,7 +215,7 @@ npm run build:win
 #### macOS
 ```bash
 # Build executable
-cd user_app/desktop
+cd user_wallet/desktop
 npm run build:mac
 
 # Output in dist/
@@ -224,7 +224,7 @@ npm run build:mac
 #### Linux
 ```bash
 # Build executable
-cd user_app/desktop
+cd user_wallet/desktop
 npm run build:linux
 
 # Output in dist/
@@ -246,7 +246,7 @@ npm run build:linux
 1. Open `chrome://extensions/`
 2. Enable "Developer mode"
 3. Click "Load unpacked"
-4. Select `user_app/extension/dist` folder
+4. Select `user_wallet/extension/dist` folder
 
 #### Firefox
 1. Open `about:debugging`

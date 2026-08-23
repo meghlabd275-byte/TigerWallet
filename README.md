@@ -111,6 +111,32 @@ TigerWallet/
 └── frontend/                  # UI applications
 ```
 
+### Consolidated canonical layout (2026-08-23)
+
+Duplicate top-level directories were merged into one canonical home each
+(full functionality and fetchers preserved; see `docs/GAPS.md` item 9):
+
+| Domain | Canonical root | Absorbed duplicates |
+|--------|----------------|---------------------|
+| UserWallet apps (android, ios, desktop, extension, web) | `user_wallet/` | `user_app/react` → `user_wallet/react_app/` |
+| MasterWallet apps | `master_wallet/` | — (already canonical) |
+| Admin apps | `admin/` | — (already canonical) |
+| SuperAdmin apps | `super_admin/` | — (already canonical) |
+| Browser extension | `browser_extensions/chrome/` | `browser_extension/` → `legacy/` |
+| Mobile apps | `mobile_apps/` | `mobile/` → `android_legacy/`, `ios_legacy/`, `flutter_legacy/`, `tigerswap_wallet/` |
+| Desktop | `desktop_wallet/` (C++), `desktop_app/` (Tauri), `user_wallet/desktop` (Electron) | `desktop/` (README-only) |
+| SDKs | `sdks/` (go, javascript, python, cpp) | `sdk/`, `developer_sdk/` |
+| Hardware wallet | `hardware_wallet/` (go, rust, cpp) | `hardware_backend/`, `hardware_wallet_deep/` |
+| Blockchain explorer | `blockchain_explorer_system/` | `blockchain_explorer/` |
+| NFT | `nft_ecosystem/` (go, rust, cpp) | `nft_marketplace/` |
+| Notifications | `notifications/` | `notification/` → `go/cmd/gateway/` |
+| Staking | `staking_hub/` (go, rust) | `staking/` → `go/legacy/` |
+| White label | `white_label/` (+ `white_label_admin/`) | `white_label_portal/`, `white_label_system/`, `white_label_marketplace/`, `white_label_templates/`, `white_label_analytics_ai/`, `white_label_sdk/` → `sdk/cpp/`, `white_level_sdk/` → `sdk/rust/` |
+
+Language placement rule: **C++** for ultra-low-latency speed paths,
+**Rust** where safety/security is critical (also ultra-low-latency),
+**Go** for worldwide distributed high-load services.
+
 ## Quick Start
 
 ```bash

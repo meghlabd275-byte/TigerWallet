@@ -467,7 +467,7 @@ POST /webhooks
 package main
 
 import (
-    "github.com/tigerwallet/sdk/go/fetcher"
+    "github.com/tigerwallet/sdks/go/fetcher"
 )
 
 func main() {

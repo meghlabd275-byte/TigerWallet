@@ -27,7 +27,7 @@ access model. It is distinct from the plain "Bots" product.
 
 ## 1. Products & Access Model
 
-`WhiteLevelProduct` values (defined in `white_level_sdk/rust/src/types.rs` /
+`WhiteLevelProduct` values (defined in `white_label/sdk/rust/src/types.rs` /
 `connection_api` / `permission_service`):
 
 `MasterWallet`, `UserWallet`, `Bots`, `BotsClients`, `ProjectParty`
@@ -279,7 +279,7 @@ last sync tracking.
 - The Super Admin `handle*BotsClient*` handlers now perform **real PostgreSQL CRUD**
   (part of the 195 real `dbQuery`/`database.Pool` calls in `super_admin/go/main.go` —
   commit `e0ca6ef`). The **connection/permission infrastructure** (connection_api,
-  permission_service, white_level_sdk) remains the real access-control implementation.
+  permission_service, white_label/sdk/rust) remains the real access-control implementation.
 - The `mm_bot_platform` bot API server is now **PostgreSQL-backed** (pgxpool, 19 SQL
   refs — commit `3c78991`); the `bots/web` frontend is fully wired to it (`:8471`)
   via `/api/v1/bots/*` proxy routes. The `bots/web` app is a complete, buildable

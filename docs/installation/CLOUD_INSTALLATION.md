@@ -278,14 +278,14 @@ git clone https://github.com/meghlabd275-byte/TigerWallet.git
 cd TigerWallet
 
 # Build all Go services
-cd white_label_marketplace/go
+cd white_label/marketplace/go
 go build -o tiger-wl-marketplace main.go
 
 cd ../../auto_approval_workflow/go
 go build -o tiger-auto-approval main.go
 
 # Build all Rust services
-cd ../../white_label_analytics_ai/rust
+cd ../../white_label/rust/analytics_ai
 cargo build --release
 
 # (Repeat for other services)
@@ -294,8 +294,8 @@ cargo build --release
 #### 2. Environment Configuration
 Create `.env` file for each service:
 ```bash
-# Example for white_label_marketplace
-cat > white_label_marketplace/go/.env << EOF
+# Example for white_label/marketplace
+cat > white_label/marketplace/go/.env << EOF
 PORT=8085
 DATABASE_URL=postgres://user:password@host:5432/tigerwallet
 REDIS_URL=redis://password@host:6379
@@ -315,8 +315,8 @@ After=network.target postgresql.service redis.service
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/home/ubuntu/TigerWallet/white_label_marketplace/go
-ExecStart=/home/ubuntu/TigerWallet/white_label_marketplace/go/tiger-wl-marketplace
+WorkingDirectory=/home/ubuntu/TigerWallet/white_label/marketplace/go
+ExecStart=/home/ubuntu/TigerWallet/white_label/marketplace/go/tiger-wl-marketplace
 Restart=always
 RestartSec=10
 
@@ -355,7 +355,7 @@ services:
       - "6379:6379"
 
   wl-marketplace:
-    build: ./white_label_marketplace/go
+    build: ./white_label/marketplace/go
     ports:
       - "8085:8085"
     environment:

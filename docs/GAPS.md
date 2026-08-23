@@ -59,24 +59,68 @@
 >    production/react, desktop, master_wallet/web, admin/web, super_admin/web,
 >    white_label_admin/web, frontend/web_nextjs) have ThemeContext/ThemeProvider
 >    + CSS-variable theming; `user_wallet/extension` has theme support.
-> 9. 📌 **Duplicate-consolidation map (decision record)** — duplicates are
->    preserved (per "don't delete anything") with ONE canonical target each;
->    unique feature services in the secondary copies are the port source:
->    - UserWallet web: canonical = `user_wallet/production/react` (secondary:
->      `user_wallet/web`)
->    - UserWallet extension: canonical = `user_wallet/extension` (theme, WC v2,
->      ENS/simulate/gas); secondary `browser_extensions/chrome` holds 28 unique
->      service modules (futures/margin/options/P2P/NFT-DAO/launchpad/
->      prediction/RWA/MEV/AA/MPC/social-recovery) to port into canonical;
->      `browser_extension/chrome` is the minimal legacy build.
+> 9. ✅ **Duplicate-consolidation EXECUTED (2026-08-23, session 5)** —
+>    supersedes the old "preserve duplicates" record. 19 duplicate top-level
+>    directories were merged into their canonical targets (full functionality
+>    and fetchers preserved byte-for-byte via git mv) and then deleted.
+>    Nothing was lost; no cross-family boundaries were crossed:
+>    - Browser extension: `browser_extension/chrome` →
+>      `browser_extensions/chrome/legacy/` (manifest, popup, background,
+>      content, dist injector + service worker). Canonical EIP-1193 provider
+>      remains `browser_extensions/chrome/src/injected/injected.js`.
+>    - Desktop: `desktop/README.md` → `desktop_wallet/README.md`
+>      (`desktop/` was README-only). Canonical per product unchanged:
+>      `user_wallet/desktop` (Electron), `desktop_app` (Tauri/Rust),
+>      `desktop_wallet` (C++ crypto core).
+>    - SDKs: `sdk/go` → `sdks/go/basic/`, `sdk/go/README.md` → `sdks/go/`,
+>      `sdk/cpp/tigerwallet_sdk.hpp` → `sdks/cpp/`, `developer_sdk/cpp` →
+>      `sdks/cpp/developer/`. Canonical SDK set = `sdks/` (go/js/python/cpp).
+>      `developer/go` portal service is unique and stays.
+>    - Hardware wallet: `hardware_backend/go` → `hardware_wallet/go/backend/`;
+>      `hardware_wallet_deep` → `hardware_wallet/rust/src/deep.rs`
+>      (registered as `pub mod deep`). Canonical = `hardware_wallet/`.
+>    - Mobile: `mobile/android` → `mobile_apps/android_legacy`,
+>      `mobile/ios` → `mobile_apps/ios_legacy`,
+>      `mobile/flutter` → `mobile_apps/flutter_legacy`,
+>      `mobile/tigerswap-wallet` → `mobile_apps/tigerswap_wallet`.
+>      Canonical = `mobile_apps/` (android_app Kotlin Compose, ios_app,
+>      flutter_app, tigerwallet RN, tablet_app, harmonyos_app).
+>    - NFT: `nft_marketplace/go` → `nft_ecosystem/go/marketplace/`,
+>      `nft_marketplace/cpp/core/nft_marketplace.cpp` →
+>      `nft_ecosystem/cpp/core/`. Canonical = `nft_ecosystem/`.
+>    - Notifications: `notification/go/cmd/main.go` →
+>      `notifications/go/cmd/gateway/main.go` (adds subscribe, batch send,
+>      history, stats, channels CRUD, delivery-status webhooks on top of the
+>      canonical Redis-queue + PG service). Canonical = `notifications/`.
+>    - Staking: `staking/go/main.go` → `staking_hub/go/legacy/main.go`
+>      (multi-chain validator/rewards/governance impl). Canonical =
+>      `staking_hub/` (Go dashboard service + Rust models/service).
+>    - Explorer: `blockchain_explorer/go/explorer_service.go` →
+>      `blockchain_explorer_system/go/cmd/explorer_api/main.go`,
+>      `blockchain_explorer/go/services` → `blockchain_explorer_system/go/services`,
+>      `blockchain_explorer/frontend/Explorer.tsx` →
+>      `blockchain_explorer_system/frontend/`. Canonical =
+>      `blockchain_explorer_system/` (300+ chain management + explorer API).
+>    - UserWallet UI: `user_app/react` → `user_wallet/react_app/`
+>      (futures/options/convert/red-packet/claim/copy-trading/dapps/
+>      hardware-wallet pages). Canonical UserWallet web remains
+>      `user_wallet/production/react`; `user_wallet/web` secondary.
+>    - White label: `white_label_portal/src/App.tsx` → `white_label/portal/`;
+>      `white_label_system/{main.go,static}` → `white_label/system/`;
+>      `white_label_marketplace/go` → `white_label/marketplace/go`;
+>      `white_label_templates/rust` → `white_label/rust/templates/`;
+>      `white_label_analytics_ai/rust` → `white_label/rust/analytics_ai/`;
+>      `white_label_sdk/cpp` → `white_label/sdk/cpp/`;
+>      `white_level_sdk/rust` → `white_label/sdk/rust/`.
+>      Canonical WL root = `white_label/`; control plane stays
+>      `license_service` + `kill_switch` + `wl_shared`.
 >    - Admin panel: canonical = `admin/web` (React/MUI, 29 pages); secondary
 >      `frontend/web_nextjs/app/admin*` (Next.js adminPanel).
->    - Desktop: canonical per product = `user_wallet/desktop` (Electron),
->      `desktop_app` (Tauri) for the Rust-backed build; `desktop_wallet` (C++)
->      is the crypto-core reference; `desktop/` README-only placeholder.
->    - White-label: canonical control plane = `license_service` + `kill_switch`
->      + `wl_shared`; `white_label_system/portal/marketplace/templates` are
->      secondary surfaces.
+>    All docs (BUILD_DEPLOY, CLOUD_INSTALLATION, BOTS_CLIENTS, APP_USAGE,
+>    FETCHER_API) and the `license_service` path comment updated to the new
+>    canonical paths. Language placement rule retained: C++ for
+>    ultra-low-latency, Rust for safety/security, Go for high-load
+>    distributed services.
 > 10. 📌 **ogbadmin decision** — `ogbadmin` has zero matches in code/history.
 >     It is the OGB admin panel = the canonical `admin/` product (platform
 >     admin panel :9093 with Go backend, web/android/ios/desktop/extensions),

@@ -49,7 +49,7 @@ redis-cli --version  # 6.x+
 
 ### Build Android APK
 ```bash
-cd /workspace/project/TigerWallet/mobile/flutter
+cd /workspace/project/TigerWallet/mobile_apps/flutter_legacy
 
 # Clean and get dependencies
 flutter clean
@@ -66,7 +66,7 @@ flutter build apk --release
 
 ### Build iOS (requires macOS)
 ```bash
-cd /workspace/project/TigerWallet/mobile/flutter
+cd /workspace/project/TigerWallet/mobile_apps/flutter_legacy
 
 # Get dependencies
 flutter pub get
@@ -82,7 +82,7 @@ flutter build ios --release
 
 ### Build Web
 ```bash
-cd /workspace/project/TigerWallet/mobile/flutter
+cd /workspace/project/TigerWallet/mobile_apps/flutter_legacy
 
 # Build for web
 flutter build web --release
@@ -106,7 +106,7 @@ flutter run -d <device_id>  # Run on specific device
 
 ### Build Debug APK
 ```bash
-cd /workspace/project/TigerWallet/mobile/android
+cd /workspace/project/TigerWallet/mobile_apps/android_legacy
 
 # Using Gradle
 ./gradlew assembleDebug
@@ -118,7 +118,7 @@ cd /workspace/project/TigerWallet/mobile/android
 
 ### Build Release APK
 ```bash
-cd /workspace/project/TigerWallet/mobile/android
+cd /workspace/project/TigerWallet/mobile_apps/android_legacy
 
 # Create release build
 ./gradlew assembleRelease
@@ -140,7 +140,7 @@ cd /workspace/project/TigerWallet/mobile/android
 
 ### Build with Xcode
 ```bash
-cd /workspace/project/TigerWallet/mobile/ios
+cd /workspace/project/TigerWallet/mobile_apps/ios_legacy
 
 # Open in Xcode
 open Runner.xcworkspace
@@ -790,7 +790,7 @@ cd backend/go/cmd/api && go build -o tigerwallet-api .
 cd ../../frontend/web_nextjs && npm install && npm run build
 
 # Mobile
-cd ../../mobile/flutter && flutter build apk --release
+cd ../../mobile_apps/flutter_legacy && flutter build apk --release
 
 # Desktop
 cd ../../desktop_wallet && mkdir build && cd build && cmake .. && cmake --build .

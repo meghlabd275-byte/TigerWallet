@@ -7,7 +7,7 @@
 // cryptographic license-token signing (Ed25519) is in internal/crypto. The
 // ultra-low-latency per-request checker that WL products embed is the C++ shared
 // library (wl_control_plane/cpp). The fail-closed heartbeat client + token
-// verifier that WL products embed is the Rust SDK (white_level_sdk/rust).
+// verifier that WL products embed is the Rust SDK (white_label/sdk/rust).
 package main
 
 import (

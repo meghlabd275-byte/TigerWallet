@@ -7,6 +7,7 @@ pub mod onekey;
 pub mod airgap;
 pub mod ellipal;
 pub mod safepal;
+pub mod deep;
 
 pub use ledger::*;
 pub use trezor::*;
