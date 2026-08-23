@@ -26,6 +26,7 @@ type Config struct {
 	HeartbeatInterval time.Duration
 	CoinGeckoAPIKey   string
 	EtherscanAPIKey   string
+	CanonicalRegistryURL string // canonical wallet_api base URL for chain-registry sync
 }
 
 func Load() *Config {
@@ -44,6 +45,7 @@ func Load() *Config {
 		HeartbeatInterval:  getDuration("HEARTBEAT_INTERVAL", 30*time.Second),
 		CoinGeckoAPIKey:    getEnv("COINGECKO_API_KEY", ""),
 		EtherscanAPIKey:    getEnv("ETHERSCAN_API_KEY", ""),
+		CanonicalRegistryURL: getEnv("CANONICAL_WALLET_API_URL", ""),
 	}
 }
 

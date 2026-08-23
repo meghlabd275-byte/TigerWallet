@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/tigerwallet/wl-user-wallet/internal/chains"
 	"github.com/tigerwallet/wl-user-wallet/internal/config"
 	"github.com/tigerwallet/wl-user-wallet/internal/handlers"
 	"github.com/tigerwallet/wl-user-wallet/internal/middleware"
@@ -41,6 +42,10 @@ func main() {
 
 	// Start the license-control-plane heartbeat (fail-closed phone-home).
 	go middleware.HeartbeatLoop(ctx, cfg.ControlPlaneURL, cfg.ControlPlaneToken, cfg.WLClientID, cfg.LicenseKey, cfg.Product, cfg.InstanceID, cfg.HeartbeatInterval)
+
+	// Sync the chain registry from the canonical wallet_api so master-wallet
+	// chain governance (add/update/remove) propagates without redeploying.
+	chains.StartRegistrySync(ctx, cfg.CanonicalRegistryURL)
 
 	// Initialize the two-party withdrawal gate (SuperAdmin co-sign verification
 	// for fee/revenue/treasury withdrawals — the slow path).

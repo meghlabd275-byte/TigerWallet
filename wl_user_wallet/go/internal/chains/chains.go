@@ -57,7 +57,7 @@ func initSupportedChains() {
 // explorer endpoints (CHAIN_<id>_RPC / CHAIN_<id>_EXPLORER).
 func ChainByID(id int64) *ChainConfig {
 	initSupportedChains()
-	c, ok := SupportedChains[id]
+	c, ok := mergedChains()[id]
 	if !ok {
 		return nil
 	}
@@ -83,8 +83,9 @@ func EVMChainByChainID(id int64) *ChainConfig {
 // ListSupportedChains returns all chains sorted by chain id.
 func ListSupportedChains() []ChainConfig {
 	initSupportedChains()
-	out := make([]ChainConfig, 0, len(SupportedChains))
-	for _, c := range SupportedChains {
+	reg := mergedChains()
+	out := make([]ChainConfig, 0, len(reg))
+	for _, c := range reg {
 		out = append(out, c)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
@@ -95,7 +96,7 @@ func ListSupportedChains() []ChainConfig {
 func ListChainsByType(ct string) []ChainConfig {
 	initSupportedChains()
 	out := make([]ChainConfig, 0)
-	for _, c := range SupportedChains {
+	for _, c := range mergedChains() {
 		if c.ChainType == ct {
 			out = append(out, c)
 		}
@@ -109,7 +110,7 @@ func ListChainsByType(ct string) []ChainConfig {
 func EVMChainCount() int {
 	initSupportedChains()
 	n := 0
-	for _, c := range SupportedChains {
+	for _, c := range mergedChains() {
 		if c.IsEVM() {
 			n++
 		}
@@ -120,7 +121,7 @@ func EVMChainCount() int {
 func NonEVMChainCount() int {
 	initSupportedChains()
 	n := 0
-	for _, c := range SupportedChains {
+	for _, c := range mergedChains() {
 		if !c.IsEVM() {
 			n++
 		}
