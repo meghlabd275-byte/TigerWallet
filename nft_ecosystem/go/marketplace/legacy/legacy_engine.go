@@ -865,60 +865,9 @@ func init() {
 }
 
 // ============================================================================
-// MAIN FUNCTION
+// NOTE: The seed-data `func main()` of this legacy engine was removed during
+// consolidation. The production entrypoint is `nft_marketplace_service.go`
+// (PostgreSQL/Redis/JWT Gin service). This file retains the full in-memory
+// marketplace engine (collections, tokens, listings, orders, aggregation) so
+// none of its functionality is lost.
 // ============================================================================
-
-func main() {
-	service := NewNFTMarketplaceService()
-
-	// Add sample collections
-	collections := []*NFTCollection{
-		{
-			ID:              "bored_ape_yacht_club",
-			Address:         "0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D",
-			ChainID:         1,
-			Name:            "Bored Ape Yacht Club",
-			Symbol:          "BAYC",
-			Description:     "The Bored Ape Yacht Club is a collection of 10,000 unique Bored Ape NFTs.",
-			ImageURL:        "https://ipfs.io/ipfs/QmRRPWG96cmgTn2qSzjwr2qvfNEuhunv6FNeMFGa9bx6mQ",
-			FloorPrice:      "18.5",
-			FloorPriceUSD:   64750.0,
-			Volume24h:      "1250",
-			Volume24hUSD:    4375000.0,
-			TotalSupply:     10000,
-			OwnerCount:      6500,
-			IsVerified:      true,
-			Marketplaces:    []string{"opensea", "magiceden", "blur"},
-			CreatedAt:        time.Now().Add(-365 * 24 * time.Hour),
-		},
-		{
-			ID:              "pudgy_penguins",
-			Address:         "0x235717DA177392De0C8E5aF3d8Cb32A8aB3e7d3",
-			ChainID:         1,
-			Name:            "Pudgy Penguins",
-			Symbol:          "PPG",
-			Description:     "Pudgy Penguins is a collection of 8,888 NFTs.",
-			ImageURL:        "https://ipfs.io/ipfs/QmWXvC7C7Zz7mT8C4vqQxYyYqYvXzY8XqK9PzYqXqK9Pz",
-			FloorPrice:      "2.8",
-			FloorPriceUSD:   9800.0,
-			Volume24h:      "350",
-			Volume24hUSD:    1225000.0,
-			TotalSupply:     8888,
-			OwnerCount:      5200,
-			IsVerified:      true,
-			Marketplaces:    []string{"opensea", "magiceden"},
-			CreatedAt:        time.Now().Add(-180 * 24 * time.Hour),
-		},
-	}
-
-	for _, col := range collections {
-		service.collections[col.Address] = col
-	}
-
-	fmt.Println("Starting NFT Marketplace Service on :8082")
-	http.HandleFunc("/", service.ServeHTTP)
-
-	if err := http.ListenAndServe(":8082", nil); err != nil {
-		fmt.Printf("Server error: %v\n", err)
-	}
-}

@@ -478,11 +478,13 @@ func setupRouter() {
 		AllowCredentials: true,
 	}))
 
-	// Static files for frontend
+	// Static files for frontend. index.html is a single-page app that contains
+	// both the login and dashboard sections (login/logout/2FA/theme handled by
+	// static/app.js), so /login and /dashboard serve the same SPA shell.
 	router.Static("/static", "./static")
 	router.StaticFile("/", "./static/index.html")
-	router.StaticFile("/dashboard", "./static/dashboard.html")
-	router.StaticFile("/login", "./static/login.html")
+	router.StaticFile("/dashboard", "./static/index.html")
+	router.StaticFile("/login", "./static/index.html")
 
 	// Health check
 	router.GET("/health", healthCheck)
@@ -598,7 +600,7 @@ func publicHealthCheck(c *gin.Context) {
 type LoginRequest struct {
 	Email    string `json:"email" binding:"required"`
 	Password string `json:"password" binding:"required"`
-	2FACode  string `json:"2faCode"`
+	        TwoFACode string `json:"2faCode"`
 }
 
 type LoginResponse struct {

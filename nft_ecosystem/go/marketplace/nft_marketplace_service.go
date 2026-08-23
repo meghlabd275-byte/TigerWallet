@@ -108,7 +108,7 @@ type NFTCollection struct {
 	TotalItems    uint      `json:"total_items"`
 	TotalOwners   uint      `json:"total_owners"`
 	FloorPrice    string    `json:"floor_price"` // In wei
-	Volume traded string    `json:"volume_traded"` // In wei
+	        VolumeTraded  string    `json:"volume_traded"` // In wei
 	
 	// Status
 	IsVerified    bool      `json:"is_verified"`
