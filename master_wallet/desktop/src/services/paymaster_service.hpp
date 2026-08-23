@@ -11,6 +11,7 @@
 #include <atomic>
 #include <optional>
 #include <stdexcept>
+#include <algorithm>
 #include <thread>
 #include <cstdint>
 

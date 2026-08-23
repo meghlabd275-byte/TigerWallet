@@ -4,6 +4,7 @@
  */
 
 #include "paymaster_service.hpp"
+#include <algorithm>
 #include <chrono>
 #include <random>
 #include <sstream>

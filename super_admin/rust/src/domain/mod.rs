@@ -25,6 +25,9 @@ use serde_json::Value;
 /// Upstream Go super-admin backend base.
 pub const UPSTREAM_BASE: &str = "http://localhost:8082/api/v1/admin";
 
+/// Upstream Go backend API root (no `/admin` suffix); auth endpoints live here.
+pub const UPSTREAM_API_BASE: &str = "http://localhost:8082/api/v1";
+
 /// Shared reqwest client (connection-pooled).
 #[derive(Clone)]
 pub struct DomainClient {
@@ -51,9 +54,23 @@ impl DomainClient {
         headers: &HeaderMap,
         body: bytes::Bytes,
     ) -> Result<Response> {
+        self.forward_base(UPSTREAM_BASE, method, path, headers, body).await
+    }
+
+    /// Forward a request to `{base}/{path}` using the given method,
+    /// forwarding the `Authorization` and `Content-Type` headers and the
+    /// request body.
+    pub(crate) async fn forward_base(
+        &self,
+        base: &str,
+        method: Method,
+        path: &str,
+        headers: &HeaderMap,
+        body: bytes::Bytes,
+    ) -> Result<Response> {
         // path already begins with the domain segment, e.g. "futures" or
         // "futures/UUID/status"; it may also carry a query string.
-        let url = format!("{}/{}", UPSTREAM_BASE, path);
+        let url = format!("{}/{}", base, path);
 
         // Bridge axum (http 1.x) Method -> reqwest (http 0.2) Method.
         let rw_method = match method.as_str() {
@@ -180,6 +197,42 @@ pub async fn proxy_domain(
     }
 }
 
+/// Proxy admin-account registration to the Go backend's governed auth
+/// endpoint (`POST /api/v1/auth/register`). The Rust service never creates
+/// admin accounts locally.
+pub async fn proxy_auth_register(
+    State(state): State<AppState>,
+    req: Request,
+) -> Response {
+    let headers = req.headers().clone();
+    let body = match to_bytes(req.into_body(), 1024 * 1024).await {
+        Ok(b) => b,
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, "invalid body").into_response();
+        }
+    };
+
+    match state
+        .client
+        .forward_base(UPSTREAM_API_BASE, Method::POST, "auth/register", &headers, body)
+        .await
+    {
+        Ok(resp) => resp,
+        Err(e) => {
+            let msg = format!(
+                "{{\"error\":\"upstream unreachable: {}\"}}",
+                e.to_string().replace('"', "\\\"")
+            );
+            (
+                StatusCode::BAD_GATEWAY,
+                [(HeaderName::from_static("content-type"), "application/json")],
+                msg,
+            )
+                .into_response()
+        }
+    }
+}
+
 /// Description of one admin domain.
 #[derive(Debug, Clone, Serialize)]
 pub struct DomainInfo {
@@ -210,4 +263,15 @@ pub fn domain_manifest() -> Vec<DomainInfo> {
 /// Handler returning the domain manifest as JSON.
 pub async fn list_domains(State(_): State<AppState>) -> axum::Json<Value> {
     axum::Json(serde_json::json!({ "domains": domain_manifest() }))
+}
+
+/// Router extension registering the domain-introspection route.
+pub trait DomainRouterExt {
+    fn register_domains(self) -> Self;
+}
+
+impl DomainRouterExt for axum::Router<AppState> {
+    fn register_domains(self) -> Self {
+        self.route("/api/v1/admin/domains", axum::routing::get(list_domains))
+    }
 }

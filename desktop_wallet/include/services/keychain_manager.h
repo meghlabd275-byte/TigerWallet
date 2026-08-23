@@ -10,6 +10,7 @@
 #include <vector>
 #include <optional>
 #include <memory>
+#include <stdexcept>
 
 namespace tiger {
 namespace wallet {

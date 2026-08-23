@@ -53,7 +53,7 @@ type OnboardingRequest struct {
 }
 
 var db *pgxpool.Pool
-var redis *redis.Client
+var redisClient *redis.Client
 var config Config
 var logger *log.Logger
 
@@ -73,8 +73,8 @@ func main() {
 	logger.Println("Database connected")
 
 	opt, _ := redis.ParseURL(config.RedisURL)
-	redis = redis.NewClient(opt)
-	redis.Ping(context.Background())
+	redisClient = redis.NewClient(opt)
+	redisClient.Ping(context.Background())
 	logger.Println("Redis connected")
 
 	gin.SetMode(gin.ReleaseMode)
@@ -128,7 +128,7 @@ func main() {
 	defer cancel()
 	srv.Shutdown(ctx)
 	db.Close()
-	redis.Close()
+	redisClient.Close()
 	logger.Println("Server exited")
 }
 
@@ -174,7 +174,7 @@ func submitOnboarding(c *gin.Context) {
 		"request": onboarding,
 	}
 	notifJSON, _ := json.Marshal(notif)
-	redis.Publish(context.Background(), "notifications", notifJSON)
+	redisClient.Publish(context.Background(), "notifications", notifJSON)
 
 	c.JSON(http.StatusCreated, onboarding)
 }
@@ -305,7 +305,7 @@ func rejectOnboarding(c *gin.Context) {
 }
 
 func getOnboardingConfig(c *gin.Context) {
-	configJSON, err := redis.Get(context.Background(), "onboarding_config").Result()
+	configJSON, err := redisClient.Get(context.Background(), "onboarding_config").Result()
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"products": []string{"master_wallet", "user_wallet", "bots", "project_party"},
@@ -326,7 +326,7 @@ func updateOnboardingConfig(c *gin.Context) {
 	}
 
 	configJSON, _ := json.Marshal(config)
-	redis.Set(context.Background(), "onboarding_config", configJSON, 0)
+	redisClient.Set(context.Background(), "onboarding_config", configJSON, 0)
 
 	c.JSON(http.StatusOK, gin.H{"message": "config updated"})
 }
