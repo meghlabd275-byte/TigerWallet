@@ -161,3 +161,4 @@ admin/go/admin-api
 super_admin/go/super-admin
 project_party/cmd
 project_party/go/project-party-api
+kill_switch/kill-switch
