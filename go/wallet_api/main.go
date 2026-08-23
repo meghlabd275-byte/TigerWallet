@@ -73,6 +73,13 @@ func main() {
 	r.GET("/api/v1/network-status", handleNetworkStatus)
 	r.GET("/api/v1/chart/history", handleChartHistory)
 
+	// ---- Transaction simulation (pre-sign dry-run, read-only) ----
+	r.POST("/api/v1/simulate", handleSimulateTransaction)
+
+	// ---- ENS resolution (real on-chain registry lookup on mainnet) ----
+	r.GET("/api/v1/ens/resolve", handleENSResolve)
+	r.GET("/api/v1/ens/lookup", handleENSLookup)
+
 	// ---- Security / scam-scan routes (read-only public) ----
 	r.GET("/api/v1/security/check-url", handleCheckURL)
 	r.GET("/api/v1/security/check-address", handleCheckAddress)

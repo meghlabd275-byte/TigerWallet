@@ -17,14 +17,15 @@ import (
 //   - solana: SLIP-0010 Ed25519 from BIP-44 m/44'/501'/0'/0'  → ed25519 sign
 //   - bitcoin: BIP-32 secp256k1 from BIP-44 m/44'/0'/0'/0/0    → secp256k1 sign
 //   - cosmos:  BIP-32 secp256k1 + Amino SignDoc                 → secp256k1 sign
+//
 // The seed is decrypted from the user's wallet with their password (fail-closed).
 func (s *Svc) NonEvmSign(c *gin.Context) {
 	var req struct {
-		WalletID       uuid.UUID      `json:"wallet_id" binding:"required"`
-		Password       string         `json:"password" binding:"required"`
-		Chain          string         `json:"chain" binding:"required"` // solana|bitcoin|cosmos
-		DerivationPath string         `json:"derivation_path"`
-		Message        string         `json:"message"`
+		WalletID       uuid.UUID             `json:"wallet_id" binding:"required"`
+		Password       string                `json:"password" binding:"required"`
+		Chain          string                `json:"chain" binding:"required"` // solana|bitcoin|cosmos
+		DerivationPath string                `json:"derivation_path"`
+		Message        string                `json:"message"`
 		SignDoc        *nonevm.CosmosSignDoc `json:"sign_doc"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -80,14 +81,14 @@ func (s *Svc) NonEvmSign(c *gin.Context) {
 // legacy P2PKH tx; Cosmos signs the Amino SignDoc. Fail-closed on bad input.
 func (s *Svc) NonEvmSend(c *gin.Context) {
 	var req struct {
-		WalletID       uuid.UUID `json:"wallet_id" binding:"required"`
-		Password       string    `json:"password" binding:"required"`
-		Chain          string    `json:"chain" binding:"required"`
-		DerivationPath string    `json:"derivation_path"`
-		Inputs         []nonevm.BTCInput `json:"inputs"`
-		Outputs        []nonevm.BTCOutput `json:"outputs"`
+		WalletID       uuid.UUID             `json:"wallet_id" binding:"required"`
+		Password       string                `json:"password" binding:"required"`
+		Chain          string                `json:"chain" binding:"required"`
+		DerivationPath string                `json:"derivation_path"`
+		Inputs         []nonevm.BTCInput     `json:"inputs"`
+		Outputs        []nonevm.BTCOutput    `json:"outputs"`
 		SignDoc        *nonevm.CosmosSignDoc `json:"sign_doc"`
-		WithdrawalID   string    `json:"withdrawal_id"`
+		WithdrawalID   string                `json:"withdrawal_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -152,10 +153,10 @@ func (s *Svc) NonEvmSend(c *gin.Context) {
 			}
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"signature":   sigHex,
-			"public_key":   hex.EncodeToString(pub),
-			"chain":        "cosmos",
-			"action":       "broadcast_cosmos",
+			"signature":  sigHex,
+			"public_key": hex.EncodeToString(pub),
+			"chain":      "cosmos",
+			"action":     "broadcast_cosmos",
 		})
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported chain " + req.Chain})

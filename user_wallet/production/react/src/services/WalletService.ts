@@ -146,6 +146,18 @@ interface SwapQuote {
   price_impact: number;
   gas_estimate: number;
 }
+export interface SimulateResult {
+  chain_id: number;
+  success: boolean;
+  gas_estimate: number;
+  will_revert: boolean;
+  revert_reason?: string;
+  estimate_error?: string;
+  gas_price?: string;
+  max_fee_per_gas?: string;
+  max_priority_fee?: string;
+  estimated_cost_wei?: string;
+}
 
 class WalletService {
   private api: AxiosInstance;
@@ -294,17 +306,23 @@ class WalletService {
     _token?: string,
     password?: string,
     chainId?: number,
-    unlockToken?: string
+    unlockToken?: string,
+    maxFeeGwei?: string,
+    maxPriorityGwei?: string
   ): Promise<string> {
     if (!password && !unlockToken) throw new Error('password or unlock_token is required to sign on the backend');
-    const response = await this.api.post('/send', {
+    const body: Record<string, unknown> = {
       wallet_id: walletId,
       password,
       unlock_token: unlockToken,
       to,
       value: amount,
       chain_id: chainId ?? 1,
-    });
+    };
+    // Optional EIP-1559 fee overrides (gwei strings) — only sent when set.
+    if (maxFeeGwei) body.max_fee_gwei = maxFeeGwei;
+    if (maxPriorityGwei) body.max_priority_gwei = maxPriorityGwei;
+    const response = await this.api.post('/send', body);
     return response.data.tx_hash;
   }
 
@@ -338,19 +356,25 @@ class WalletService {
     password: string,
     chainId?: number,
     masterWalletId?: string,
-    unlockToken?: string
+    unlockToken?: string,
+    maxFeeGwei?: string,
+    maxPriorityGwei?: string
   ): Promise<{ txHash: string; autoApproved: boolean; autoApprovalReason: string }> {
     if (!password && !unlockToken) throw new Error('password or unlock_token is required to sign on the backend');
+    const body: Record<string, unknown> = {
+      wallet_id: walletId,
+      password,
+      unlock_token: unlockToken,
+      to,
+      value: amount,
+      chain_id: chainId ?? 1,
+    };
+    // Optional EIP-1559 fee overrides (gwei strings) — only sent when set.
+    if (maxFeeGwei) body.max_fee_gwei = maxFeeGwei;
+    if (maxPriorityGwei) body.max_priority_gwei = maxPriorityGwei;
     const response = await this.api.post(
       '/auto-send',
-      {
-        wallet_id: walletId,
-        password,
-        unlock_token: unlockToken,
-        to,
-        value: amount,
-        chain_id: chainId ?? 1,
-      },
+      body,
       masterWalletId ? { params: { master_wallet_id: masterWalletId } } : undefined
     );
     return {
@@ -358,6 +382,40 @@ class WalletService {
       autoApproved: Boolean(response.data.auto_approved),
       autoApprovalReason: String(response.data.auto_approval_reason ?? ''),
     };
+  }
+
+  // ---- Transaction simulation (pre-sign dry-run) ----
+  // POST /simulate { chain_id, from, to, value?, data? } -> success, gas
+  // estimate, revert prediction + projected cost at the safe max fee. Lets the
+  // send form preview success/gas/revert BEFORE signing (Phantom/Rabby parity).
+  async simulateTransaction(params: {
+    chainId: number;
+    from: string;
+    to: string;
+    value?: string;
+    data?: string;
+  }): Promise<SimulateResult> {
+    const response = await this.api.post('/simulate', {
+      chain_id: params.chainId,
+      from: params.from,
+      to: params.to,
+      value: params.value,
+      data: params.data,
+    });
+    return response.data as SimulateResult;
+  }
+
+  // ---- ENS (real on-chain lookups via the backend) ----
+  // GET /ens/resolve?name=alice.eth -> { name, address } (forward resolution).
+  async resolveENS(name: string): Promise<{ name: string; address: string }> {
+    const response = await this.api.get('/ens/resolve', { params: { name } });
+    return response.data;
+  }
+
+  // GET /ens/lookup?address=0x... -> { address, name } (reverse resolution).
+  async lookupENS(address: string): Promise<{ address: string; name: string }> {
+    const response = await this.api.get('/ens/lookup', { params: { address } });
+    return response.data;
   }
 
   // ---- Transaction status (explorer proxy) ----
@@ -918,7 +976,9 @@ class WalletService {
   // ---- Networks ----
 
   async getNetworks(): Promise<unknown> {
-    const response = await this.api.get('/networks');
+    // The backend exposes the chain registry at /chains (no separate /networks
+    // route); both names refer to the same list of supported networks.
+    const response = await this.api.get('/chains');
     return response.data;
   }
 

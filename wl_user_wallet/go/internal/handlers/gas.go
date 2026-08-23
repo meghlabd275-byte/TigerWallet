@@ -31,10 +31,10 @@ func (s *Svc) GetGas(c *gin.Context) {
 		return
 	}
 	resp := gin.H{
-		"chain_id":            chainID,
-		"gas_price":           gasPrice.String(),
-		"max_priority_fee":    nil,
-		"max_fee_per_gas":     nil,
+		"chain_id":         chainID,
+		"gas_price":        gasPrice.String(),
+		"max_priority_fee": nil,
+		"max_fee_per_gas":  nil,
 	}
 	if prioFee != nil {
 		resp["max_priority_fee"] = prioFee.String()

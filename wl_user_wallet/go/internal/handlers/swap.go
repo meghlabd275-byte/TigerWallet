@@ -213,16 +213,16 @@ func (s *Svc) SwapExecute(c *gin.Context) {
 	deadline := big.NewInt(time.Now().Unix() + 1200) // 20 min
 	calldata := onchain.SwapExactTokensForTokensData(amountIn, amountOutMin, path, recipient, deadline)
 	c.JSON(http.StatusOK, gin.H{
-		"chain_id":     req.ChainID,
-		"router":       routerAddr,
-		"to":           routerAddr,
-		"data":         onchain.HexEncode(calldata),
-		"value":        "0",
-		"amount_in":    amountIn.String(),
-		"amount_out":   expectedOut.String(),
-		"min_out":      amountOutMin.String(),
-		"recipient":    recipient.Hex(),
-		"action":       "send_raw_tx",
+		"chain_id":   req.ChainID,
+		"router":     routerAddr,
+		"to":         routerAddr,
+		"data":       onchain.HexEncode(calldata),
+		"value":      "0",
+		"amount_in":  amountIn.String(),
+		"amount_out": expectedOut.String(),
+		"min_out":    amountOutMin.String(),
+		"recipient":  recipient.Hex(),
+		"action":     "send_raw_tx",
 	})
 }
 

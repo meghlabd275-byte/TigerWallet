@@ -3,6 +3,57 @@
 > Companion document to `PROJECT_PARTY.md`, `BOTS_CLIENTS.md`, and
 > `LIQUIDITY_TRADING_PAIRS.md`.
 
+> ✅ **STATUS UPDATE (2026-08-22, session 3 — UserWallet feature-parity):**
+> A full UserWallet audit (all 7 clients vs the canonical `go/wallet_api`
+> backend) found the stack solid (90+/100) but missing four capabilities that
+> MetaMask/Trust/Coinbase/Phantom ship by default, plus four dead-code bugs.
+> All are now RESOLVED with real, on-chain logic (no mocks):
+>
+> 1. ✅ **Canonical MasterWallet orchestration** — `master-wallet-backend`
+>    (canonical `master_wallet/backend`, `:8450`) added to
+>    `docker-compose.yml` with a healthcheck + postgres/redis deps. The
+>    `frontend` nginx route for `/api/` already proxied here; the service was
+>    simply never started by compose before.
+> 2. ✅ **Pre-sign transaction simulation** — `POST /api/v1/simulate`
+>    (`go/wallet_api/simulate_ens.go`) dry-runs the exact tx via
+>    `eth_estimateGas` + `eth_call` against the live chain RPC and returns
+>    success / gas_estimate / will_revert / revert_reason / EIP-1559 fee
+>    breakdown / estimated_cost_wei. Mirrored in `wl_user_wallet/go`
+>    (`POST /simulate`, used by the Android/iOS clients) and surfaced in the
+>    Send screens of **all 7 clients** (web, desktop, extension, android, ios,
+>    production-react).
+> 3. ✅ **ENS name resolution** — `GET /api/v1/ens/resolve?name=` +
+>    `GET /api/v1/ens/lookup?address=` against the canonical ENS registry
+>    (EIP-137 namehash + registry/resolver `eth_call`, mainnet RPC, fail-closed
+>    when no RPC is configured). Also mirrored in `wl_user_wallet/go`
+>    (`/ens/resolve`, `/ens/lookup`). Every Send form accepts `name.eth`
+>    recipients and shows the resolved 0x address.
+> 4. ✅ **Editable EIP-1559 gas** — `/send` + `/auto-send` on BOTH backends
+>    (`go/wallet_api/handlers.go`, `wl_user_wallet/go` FlatSend +
+>    nested SendTransaction) accept optional `max_fee_gwei` /
+>    `max_priority_gwei` overrides applied after chain fee suggestion. Every
+>    Send form has Advanced gas controls (max fee + priority fee in gwei) with
+>    auto-suggested values prefilled.
+> 5. ✅ **WalletConnect v2 disconnect + per-method permissions** —
+>    `dapp_browser/go/walletconnect.go` gains `DELETE /sessions/:topic`
+>    (user-initiated disconnect, 404 on unknown topic) and the approve handler
+>    binds per-namespace `{methods, events, chains}`. Backend per-method
+>    enforcement already existed in `SendRequest` (403 on non-granted methods).
+>    The extension pairing UI now shows a per-method permission checklist
+>    (two-step approve) and a Disconnect button per session.
+> 6. ✅ **Latent route mismatches (dead code) fixed** —
+>    `desktop/api.js` + `extension/popup.js` P2P fetchers now call the real
+>    `/p2p/adverts` (no `/p2p/listings` route exists);
+>    `production/react/WalletService.getNetworks()` now calls `/chains`
+>    (no `/networks` route exists).
+>
+> **Build verification (session 3 — ALL GREEN):**
+> `go/wallet_api` build+vet ✅ · `wl_user_wallet/go` build+vet ✅ ·
+> `dapp_browser/go` build ✅ · `master_wallet/backend` build ✅ ·
+> `user_wallet/web` tsc 0 errors ✅ · `user_wallet/production/react`
+> tsc 0 errors ✅ · `user_wallet/desktop` vite build ✅ ·
+> `user_wallet/extension` node --check ✅.
+
 > ✅ **STATUS UPDATE (2026-08-14, session 2): ALL gaps below are RESOLVED.**
 > Every service now uses real PostgreSQL persistence (pgx/GORM), no in-memory
 > maps, no stubs, no fake data, no SQLite. The orphan duplicate backends were

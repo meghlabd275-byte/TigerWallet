@@ -24,13 +24,19 @@ export interface WalletState {
   error: string | null;
 }
 
+// Optional EIP-1559 fee overrides (gwei strings) forwarded to /send.
+export interface FeeOverrides {
+  maxFeeGwei?: string;
+  maxPriorityGwei?: string;
+}
+
 interface WalletContextType extends WalletState {
   createWallet: (mnemonic: string | undefined, password: string, chain: Chain) => Promise<Wallet>;
   importWallet: (mnemonic: string, password: string, chain: Chain) => Promise<void>;
   importFromMnemonic: (mnemonic: string, password: string, chain: Chain) => Promise<void>;
   switchChain: (chain: Chain) => Promise<void>;
   refreshBalances: () => Promise<void>;
-  sendTransaction: (to: string, amount: string, token?: string) => Promise<string>;
+  sendTransaction: (to: string, amount: string, token?: string, fees?: FeeOverrides) => Promise<string>;
   getAddress: (chain: Chain) => string;
   signMessage: (message: string) => Promise<string>;
 }
@@ -150,18 +156,23 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, [activeWallet, walletService]);
 
-  const sendTransaction = useCallback(async (to: string, amount: string, token?: string): Promise<string> => {
+  const sendTransaction = useCallback(async (to: string, amount: string, token?: string, fees?: FeeOverrides): Promise<string> => {
     if (!activeWallet) throw new Error('No active wallet');
-    
+
     setIsLoading(true);
     setError(null);
-    
+
     try {
       const txHash = await walletService.sendTransaction(
         activeWallet.id,
         to,
         amount,
-        token
+        token,
+        undefined,
+        undefined,
+        undefined,
+        fees?.maxFeeGwei,
+        fees?.maxPriorityGwei
       );
       
       // Refresh balances after transaction

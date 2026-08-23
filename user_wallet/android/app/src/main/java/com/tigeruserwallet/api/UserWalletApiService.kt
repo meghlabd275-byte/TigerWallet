@@ -11,6 +11,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.net.URLEncoder
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
 
@@ -596,7 +597,9 @@ object UserWalletApiService {
         value: String,
         chainId: Int? = null,
         unlockToken: String? = null,
-        gasLimit: Int? = null
+        gasLimit: Int? = null,
+        maxFeeGwei: String? = null,
+        maxPriorityGwei: String? = null
     ): SendResult {
         val body = JSONObject().apply {
             put("to", to)
@@ -605,6 +608,8 @@ object UserWalletApiService {
             if (chainId != null) put("chain_id", chainId)
             if (unlockToken != null && unlockToken.isNotEmpty()) put("unlock_token", unlockToken)
             if (gasLimit != null) put("gas_limit", gasLimit)
+            if (!maxFeeGwei.isNullOrEmpty()) put("max_fee_gwei", maxFeeGwei)
+            if (!maxPriorityGwei.isNullOrEmpty()) put("max_priority_gwei", maxPriorityGwei)
         }.toString()
         val req = requestBuilder("/wallets/$walletId/send")
             .post(body.toRequestBody(jsonMediaType))
@@ -634,7 +639,9 @@ object UserWalletApiService {
         value: String,
         chainId: Int? = null,
         gasLimit: Int? = null,
-        unlockToken: String? = null
+        unlockToken: String? = null,
+        maxFeeGwei: String? = null,
+        maxPriorityGwei: String? = null
     ): AutoSendResult {
         val body = JSONObject().apply {
             put("to", to)
@@ -643,6 +650,8 @@ object UserWalletApiService {
             if (chainId != null) put("chain_id", chainId)
             if (gasLimit != null) put("gas_limit", gasLimit)
             if (unlockToken != null && unlockToken.isNotEmpty()) put("unlock_token", unlockToken)
+            if (!maxFeeGwei.isNullOrEmpty()) put("max_fee_gwei", maxFeeGwei)
+            if (!maxPriorityGwei.isNullOrEmpty()) put("max_priority_gwei", maxPriorityGwei)
         }.toString()
         val req = requestBuilder("/wallets/$walletId/auto-send")
             .post(body.toRequestBody(jsonMediaType))
@@ -652,6 +661,113 @@ object UserWalletApiService {
             txHash = json.optString("transaction_hash"),
             autoApproved = json.optBoolean("auto_approved", false),
             autoApprovalReason = json.optString("auto_approval_reason")
+        )
+    }
+
+    /**
+     * WL POST /wallets/:id/unlock { passcode? } -> { unlock_token, expires_in }.
+     * Releases a short-lived unlock_token used to sign transactions without
+     * re-entering the wallet password on every send (mirror web unlockWallet).
+     */
+    data class UnlockParams(
+        val passcode: String? = null,
+        val password: String? = null
+    )
+
+    fun unlockWallet(walletId: String, params: UnlockParams): JSONObject {
+        val body = JSONObject().apply {
+            if (!params.passcode.isNullOrEmpty()) put("passcode", params.passcode)
+            if (!params.password.isNullOrEmpty()) put("password", params.password)
+        }.toString()
+        val req = requestBuilder("/wallets/$walletId/unlock")
+            .post(body.toRequestBody(jsonMediaType))
+            .build()
+        return execute(req)
+    }
+
+    // ==================== Simulate / ENS (mirror web services/api.ts) ====================
+
+    /**
+     * Result of POST /simulate — a dry-run of the exact tx the user is about
+     * to send, against the chain RPC (eth_estimateGas + eth_call revert check
+     * + EIP-1559 cost projection).
+     */
+    data class SimulationResult(
+        val chainId: Int,
+        val success: Boolean,
+        val gasEstimate: Long,
+        val willRevert: Boolean,
+        val revertReason: String?,
+        val estimateError: String?,
+        val gasPrice: String?,
+        val maxFeePerGas: String?,
+        val maxPriorityFee: String?,
+        val estimatedCostWei: String?
+    )
+
+    /**
+     * WL POST /simulate { chain_id, from, to, value?, data? }
+     * -> { chain_id, success, gas_estimate, will_revert, revert_reason?,
+     *     estimate_error?, gas_price?, max_fee_per_gas?, max_priority_fee?,
+     *     estimated_cost_wei? }
+     *
+     * `value` is a human-readable native amount (e.g. "0.05"), same as /send.
+     */
+    fun simulateTransaction(
+        chainId: Int,
+        from: String,
+        to: String,
+        value: String? = null,
+        data: String? = null
+    ): SimulationResult {
+        val body = JSONObject().apply {
+            put("chain_id", chainId)
+            put("from", from)
+            put("to", to)
+            if (!value.isNullOrEmpty()) put("value", value)
+            if (!data.isNullOrEmpty()) put("data", data)
+        }.toString()
+        val req = requestBuilder("/simulate")
+            .post(body.toRequestBody(jsonMediaType))
+            .build()
+        val json = execute(req)
+        return SimulationResult(
+            chainId = json.optInt("chain_id", chainId),
+            success = json.optBoolean("success", false),
+            gasEstimate = json.optLong("gas_estimate", 0L),
+            willRevert = json.optBoolean("will_revert", false),
+            revertReason = json.optString("revert_reason").ifEmpty { null },
+            estimateError = json.optString("estimate_error").ifEmpty { null },
+            gasPrice = json.optString("gas_price").ifEmpty { null },
+            maxFeePerGas = json.optString("max_fee_per_gas").ifEmpty { null },
+            maxPriorityFee = json.optString("max_priority_fee").ifEmpty { null },
+            estimatedCostWei = json.optString("estimated_cost_wei").ifEmpty { null }
+        )
+    }
+
+    data class EnsResolution(val name: String, val address: String)
+
+    /** WL GET /ens/resolve?name=alice.eth -> { name, address } (real on-chain). */
+    fun resolveENS(name: String): EnsResolution {
+        val encoded = URLEncoder.encode(name, "UTF-8")
+        val req = requestBuilder("/ens/resolve?name=$encoded").get().build()
+        val json = execute(req)
+        return EnsResolution(
+            name = json.optString("name"),
+            address = json.optString("address")
+        )
+    }
+
+    data class EnsLookup(val address: String, val name: String)
+
+    /** WL GET /ens/lookup?address=0x... -> { address, name } (reverse lookup). */
+    fun lookupENS(address: String): EnsLookup {
+        val encoded = URLEncoder.encode(address, "UTF-8")
+        val req = requestBuilder("/ens/lookup?address=$encoded").get().build()
+        val json = execute(req)
+        return EnsLookup(
+            address = json.optString("address"),
+            name = json.optString("name")
         )
     }
 

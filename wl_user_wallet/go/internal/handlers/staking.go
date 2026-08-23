@@ -53,9 +53,9 @@ func (s *Svc) StakingQuote(c *gin.Context) {
 // RPC/router for the asset's chain.
 func (s *Svc) StakingStake(c *gin.Context) {
 	var req struct {
-		Asset    string `json:"asset" binding:"required"`
-		Amount   string `json:"amount" binding:"required"`
-		ChainID  int64  `json:"chain_id"`
+		Asset   string `json:"asset" binding:"required"`
+		Amount  string `json:"amount" binding:"required"`
+		ChainID int64  `json:"chain_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -80,14 +80,14 @@ func (s *Svc) StakingStake(c *gin.Context) {
 	amountWei, _ := new(big.Float).Mul(amount, big.NewFloat(1e18)).Int(nil)
 	calldata := buildSelectorCalldata(asset.StakeMethod, nil)
 	c.JSON(http.StatusOK, gin.H{
-		"chain_id":       asset.ChainID,
-		"staking_addr":   asset.StakingAddr,
-		"to":             asset.StakingAddr,
-		"data":           onchain.HexEncode(calldata),
-		"value":          amountWei.String(),
-		"amount":         req.Amount,
-		"asset":          asset.Symbol,
-		"action":         "send_raw_tx",
+		"chain_id":     asset.ChainID,
+		"staking_addr": asset.StakingAddr,
+		"to":           asset.StakingAddr,
+		"data":         onchain.HexEncode(calldata),
+		"value":        amountWei.String(),
+		"amount":       req.Amount,
+		"asset":        asset.Symbol,
+		"action":       "send_raw_tx",
 	})
 }
 
@@ -95,9 +95,9 @@ func (s *Svc) StakingStake(c *gin.Context) {
 // is via withdrawal queue (requestWithdrawals); we return that selector.
 func (s *Svc) StakingUnstake(c *gin.Context) {
 	var req struct {
-		Asset    string `json:"asset" binding:"required"`
-		Amount   string `json:"amount" binding:"required"`
-		ChainID  int64  `json:"chain_id"`
+		Asset   string `json:"asset" binding:"required"`
+		Amount  string `json:"amount" binding:"required"`
+		ChainID int64  `json:"chain_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -114,12 +114,12 @@ func (s *Svc) StakingUnstake(c *gin.Context) {
 	}
 	calldata := buildSelectorCalldata(asset.UnstakeMethod, nil)
 	c.JSON(http.StatusOK, gin.H{
-		"chain_id":     asset.ChainID,
-		"to":           asset.StakingAddr,
-		"data":         onchain.HexEncode(calldata),
-		"value":        "0",
-		"asset":        asset.Symbol,
-		"action":       "send_raw_tx",
+		"chain_id": asset.ChainID,
+		"to":       asset.StakingAddr,
+		"data":     onchain.HexEncode(calldata),
+		"value":    "0",
+		"asset":    asset.Symbol,
+		"action":   "send_raw_tx",
 	})
 }
 
@@ -146,10 +146,10 @@ func (s *Svc) StakingClaim(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"chain_id": asset.ChainID,
 		"to":       asset.StakingAddr,
-		"data":      onchain.HexEncode(calldata),
-		"value":     "0",
-		"asset":     asset.Symbol,
-		"action":    "send_raw_tx",
+		"data":     onchain.HexEncode(calldata),
+		"value":    "0",
+		"asset":    asset.Symbol,
+		"action":   "send_raw_tx",
 	})
 }
 

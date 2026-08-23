@@ -26,7 +26,7 @@ import (
 )
 
 type Svc struct {
-	cfg  *config.Config
+	cfg   *config.Config
 	store *store.Store
 }
 
@@ -230,11 +230,11 @@ func (s *Svc) AdminActivateUser(c *gin.Context) {
 func (s *Svc) CreateWallet(c *gin.Context) {
 	userID := middleware.UserID(c)
 	var req struct {
-		Label     string `json:"label"`
-		Password  string `json:"password" binding:"required,min=8"`
-		Mnemonic  string `json:"mnemonic"` // optional; if empty, generate
+		Label      string `json:"label"`
+		Password   string `json:"password" binding:"required,min=8"`
+		Mnemonic   string `json:"mnemonic"`   // optional; if empty, generate
 		Passphrase string `json:"passphrase"` // BIP-39 passphrase
-		ChainID   int64  `json:"chain_id"`
+		ChainID    int64  `json:"chain_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -340,6 +340,9 @@ func (s *Svc) SendTransaction(c *gin.Context) {
 		GasLimit     uint64 `json:"gas_limit"`
 		Token        string `json:"token"`
 		WithdrawalID string `json:"withdrawal_id"` // required for fee/revenue/treasury
+		// Optional EIP-1559 editable fee overrides (gwei) — parity with FlatSend.
+		MaxFeeGwei      string `json:"max_fee_gwei,omitempty"`
+		MaxPriorityGwei string `json:"max_priority_gwei,omitempty"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -402,7 +405,14 @@ func (s *Svc) SendTransaction(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "head fetch failed"})
 		return
 	}
-	rawTx, err := crypto.SignTransaction(priv, chainID, common.HexToAddress(req.To), amountInt, req.GasLimit, head.BaseFee, gasTipCap, nonce, nil)
+	feeCap := new(big.Int).Add(new(big.Int).Mul(head.BaseFee, big.NewInt(2)), gasTipCap)
+	if v := gweiToWeiString(req.MaxFeeGwei); v != nil {
+		feeCap = v
+	}
+	if v := gweiToWeiString(req.MaxPriorityGwei); v != nil {
+		gasTipCap = v
+	}
+	rawTx, err := crypto.SignTransaction(priv, chainID, common.HexToAddress(req.To), amountInt, req.GasLimit, feeCap, gasTipCap, nonce, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -559,9 +569,9 @@ func broadcastRawTx(ctx context.Context, client *ethclient.Client, rawTxHex stri
 
 func (s *Svc) Health(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"status":      "healthy",
-		"service":     "wl-user-wallet",
-		"licensed":    middleware.IsAlive(),
+		"status":       "healthy",
+		"service":      "wl-user-wallet",
+		"licensed":     middleware.IsAlive(),
 		"wl_client_id": s.cfg.WLClientID,
 	})
 }

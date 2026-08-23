@@ -410,6 +410,8 @@ class ApiService {
     chainId?: number;
     gasLimit?: number;
     data?: string;
+    maxFeeGwei?: string;
+    maxPriorityGwei?: string;
     unlockToken?: string;
   }): Promise<{ transaction_hash: string; status: string; from: string }> {
     const { data } = await this.client.post('/send', {
@@ -421,6 +423,8 @@ class ApiService {
       chain_id: params.chainId ?? 1,
       gas_limit: params.gasLimit,
       data: params.data,
+      max_fee_gwei: params.maxFeeGwei || undefined,
+      max_priority_gwei: params.maxPriorityGwei || undefined,
     });
     return data;
   }
@@ -437,6 +441,8 @@ class ApiService {
     data?: string;
     masterWalletId?: string;
     unlockToken?: string;
+    maxFeeGwei?: string;
+    maxPriorityGwei?: string;
   }): Promise<{
     transaction_hash: string;
     status: string;
@@ -456,9 +462,53 @@ class ApiService {
         chain_id: params.chainId ?? 1,
         gas_limit: params.gasLimit,
         data: params.data,
+        max_fee_gwei: params.maxFeeGwei || undefined,
+        max_priority_gwei: params.maxPriorityGwei || undefined,
       },
       { params: query },
     );
+    return data;
+  }
+
+  // POST /simulate — dry-run a transaction before signing. Returns success,
+  // gas estimate, revert reason, and a projected cost at the safe max fee.
+  async simulateTransaction(params: {
+    chainId: number;
+    from: string;
+    to: string;
+    value?: string;
+    data?: string;
+  }): Promise<{
+    chain_id: number;
+    success: boolean;
+    gas_estimate: number;
+    will_revert: boolean;
+    revert_reason?: string;
+    estimate_error?: string;
+    gas_price?: string;
+    max_fee_per_gas?: string;
+    max_priority_fee?: string;
+    estimated_cost_wei?: string;
+  }> {
+    const { data } = await this.client.post('/simulate', {
+      chain_id: params.chainId,
+      from: params.from,
+      to: params.to,
+      value: params.value,
+      data: params.data,
+    });
+    return data;
+  }
+
+  // GET /ens/resolve?name=alice.eth -> { name, address } (real on-chain lookup).
+  async resolveENS(name: string): Promise<{ name: string; address: string }> {
+    const { data } = await this.client.get('/ens/resolve', { params: { name } });
+    return data;
+  }
+
+  // GET /ens/lookup?address=0x... -> { address, name } (reverse ENS lookup).
+  async lookupENS(address: string): Promise<{ address: string; name: string }> {
+    const { data } = await this.client.get('/ens/lookup', { params: { address } });
     return data;
   }
 

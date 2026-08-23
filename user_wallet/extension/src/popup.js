@@ -69,6 +69,10 @@ function bindEvents() {
   // Feature handlers
   const sendBtn = document.getElementById('sendBtn');
   if (sendBtn) sendBtn.addEventListener('click', handleSend);
+  const simulateBtn = document.getElementById('simulateBtn');
+  if (simulateBtn) simulateBtn.addEventListener('click', handleSimulate);
+  const sendToInput = document.getElementById('sendTo');
+  if (sendToInput) sendToInput.addEventListener('input', handleRecipientInput);
   const unlockBtn = document.getElementById('unlockBtn');
   if (unlockBtn) unlockBtn.addEventListener('click', handleUnlock);
   const createPasskeyBtn = document.getElementById('createPasskeyBtn');
@@ -286,9 +290,21 @@ const WalletAPI = {
 
   // Transactions / send / sign
   getTransactions: (address, chainId) => api(`/transactions?address=${encodeURIComponent(address)}&chain_id=${chainId}`),
-  sendTransaction: (walletId, password, to, amount, chainId, tokenAddress, unlockToken) =>
-    api('/send', { method: 'POST', body: { wallet_id: walletId, password, unlock_token: unlockToken, to, amount, chain_id: chainId, token_address: tokenAddress || undefined } }),
+  // maxFeeGwei / maxPriorityGwei are optional EIP-1559 overrides (gwei
+  // strings); max_fee_gwei / max_priority_gwei are omitted when unset.
+  sendTransaction: (walletId, password, to, amount, chainId, tokenAddress, unlockToken, maxFeeGwei, maxPriorityGwei) =>
+    api('/send', { method: 'POST', body: { wallet_id: walletId, password, unlock_token: unlockToken, to, amount, chain_id: chainId, token_address: tokenAddress || undefined, max_fee_gwei: maxFeeGwei || undefined, max_priority_gwei: maxPriorityGwei || undefined } }),
   signMessage: (walletId, password, message) => api('/sign', { method: 'POST', body: { wallet_id: walletId, password, message } }),
+
+  // Pre-sign dry-run — POST /simulate { chain_id, from, to, value?, data? }
+  // -> { success, gas_estimate, will_revert, revert_reason?, ... }.
+  simulate: (chainId, from, to, value, data) =>
+    api('/simulate', { method: 'POST', body: { chain_id: chainId || 1, from, to, value: value || undefined, data: data || undefined } }),
+
+  // ENS — GET /ens/resolve?name=alice.eth -> { name, address } (forward);
+  // GET /ens/lookup?address=0x... -> { address, name } (reverse).
+  resolveENS: (name) => api(`/ens/resolve?name=${encodeURIComponent(name)}`),
+  lookupENS: (address) => api(`/ens/lookup?address=${encodeURIComponent(address)}`),
 
   // Guest auth — POST /auth/guest { device_id } -> { user_id, token, guest: true }.
   // Public (no auth). Provisions an anonymous guest account so the user can
@@ -304,11 +320,11 @@ const WalletAPI = {
   // Auto-send — POST /auto-send with the SAME body as /send, plus optional
   // ?master_wallet_id=<id> query. Same Bearer JWT auth as /send. Returns the
   // existing send response PLUS { auto_approved, auto_approval_reason }.
-  autoSendTransaction: (walletId, password, to, amount, chainId, tokenAddress, masterWalletId, unlockToken) => {
+  autoSendTransaction: (walletId, password, to, amount, chainId, tokenAddress, masterWalletId, unlockToken, maxFeeGwei, maxPriorityGwei) => {
     const query = masterWalletId ? `?master_wallet_id=${encodeURIComponent(masterWalletId)}` : '';
     return api(`/auto-send${query}`, {
       method: 'POST',
-      body: { wallet_id: walletId, password, unlock_token: unlockToken, to, amount, chain_id: chainId, token_address: tokenAddress || undefined },
+      body: { wallet_id: walletId, password, unlock_token: unlockToken, to, amount, chain_id: chainId, token_address: tokenAddress || undefined, max_fee_gwei: maxFeeGwei || undefined, max_priority_gwei: maxPriorityGwei || undefined },
     });
   },
 
@@ -341,7 +357,8 @@ const WalletAPI = {
   getFiatOfframpQuote: (providerId, amount, fiat, crypto) =>
     api('/ramp/offramp-quote', { method: 'POST', body: { providerId, amount, fiatCurrency: fiat, cryptoCurrency: crypto } }),
   getCryptoCardRates: () => api('/cards/rates'),
-  getP2PListings: () => api('/p2p/listings'),
+  // P2P listings — backend route is /p2p/adverts (kept name for compatibility).
+  getP2PListings: () => api('/p2p/adverts'),
   parsePaymentUri,
 
   // ---- Canonical backend fetcher additions (parity with web/desktop/ios/android/rust) ----
@@ -575,9 +592,10 @@ const WalletAPI = {
   // dApp browser / WalletConnect (proxied dapp_browser :8083)
   getDappPairings: () => api('/dapp/pairings'),
   createDappPairing: (body) => api('/dapp/pairings', { method: 'POST', body: JSON.stringify(body) }),
-  approveDappPairing: (topic) => api(`/dapp/pairings/${topic}/approve`, { method: 'POST', body: '{}' }),
+  approveDappPairing: (topic, namespaces) => api(`/dapp/pairings/${topic}/approve`, { method: 'POST', body: JSON.stringify(namespaces ? { namespaces } : {}) }),
   rejectDappPairing: (topic) => api(`/dapp/pairings/${topic}/reject`, { method: 'POST', body: '{}' }),
   getDappSessions: () => api('/dapp/sessions'),
+  disconnectDappSession: (topic) => api(`/dapp/sessions/${topic}`, { method: 'DELETE' }),
   sendDappRequest: (topic, body) => api(`/dapp/sessions/${topic}/request`, { method: 'POST', body: JSON.stringify(body) }),
   getDappRequests: (topic) => api(`/dapp/sessions/${topic}/request`),
   respondToDappRequest: (topic, requestId, body) =>
@@ -648,16 +666,92 @@ async function handleUnlock() {
   }
 }
 
+// ---- ENS + simulation (send tab) ----
+// The recipient field accepts an ENS name (alice.eth). It resolves live via
+// the backend /ens/resolve endpoint; the resolved address is shown to the
+// user and used for simulation + send. Plain 0x addresses are used as-is.
+let resolvedEns = null; // { name, address } when the recipient is an ENS name
+
+async function handleRecipientInput() {
+  const raw = document.getElementById('sendTo').value.trim();
+  const statusEl = document.getElementById('ensStatus');
+  const simEl = document.getElementById('simResult');
+  if (simEl) simEl.textContent = '';
+  if (raw.toLowerCase().endsWith('.eth')) {
+    statusEl.textContent = 'Resolving ENS…';
+    try {
+      const r = await WalletAPI.resolveENS(raw);
+      // Ignore stale resolutions if the user kept typing.
+      if (document.getElementById('sendTo').value.trim() !== raw) return;
+      resolvedEns = { name: r.name, address: r.address };
+      statusEl.textContent = '✓ ' + r.name + ' → ' + r.address;
+    } catch (err) {
+      resolvedEns = null;
+      statusEl.textContent = '⚠ ' + err.message;
+    }
+  } else {
+    resolvedEns = null;
+    statusEl.textContent = '';
+  }
+}
+
+function currentRecipient() {
+  return resolvedEns ? resolvedEns.address : document.getElementById('sendTo').value.trim();
+}
+
+function currentFeeOverrides() {
+  const maxFee = document.getElementById('sendMaxFee').value.trim() || null;
+  const priority = document.getElementById('sendPriorityFee').value.trim() || null;
+  return { maxFee, priority };
+}
+
+// Pre-sign dry-run: POST /simulate with { chain_id, from: active wallet
+// address, to: resolved recipient, value: amount } and show success/revert
+// plus the backend gas estimate.
+async function handleSimulate() {
+  const w = activeWallet();
+  const simEl = document.getElementById('simResult');
+  if (!w) { simEl.textContent = 'No wallet available.'; return; }
+  const to = currentRecipient();
+  const amount = document.getElementById('sendAmount').value.trim();
+  if (!/^0x[a-fA-F0-9]{40}$/.test(to)) {
+    simEl.textContent = 'Enter a valid recipient address (or resolvable ENS name).';
+    return;
+  }
+  simEl.textContent = 'Simulating…';
+  try {
+    const sim = await WalletAPI.simulate(w.chain_id, w.address, to, amount || null);
+    if (sim.success && !sim.will_revert) {
+      let msg = '✓ Simulation succeeded — estimated gas: ' + sim.gas_estimate;
+      if (sim.estimated_cost_wei) {
+        msg += ' (~' + (Number(sim.estimated_cost_wei) / 1e18).toFixed(6) + ' native)';
+      }
+      simEl.textContent = msg;
+    } else {
+      let msg = '⚠ Transaction will revert: ' + (sim.revert_reason || sim.estimate_error || 'unknown reason');
+      if (sim.gas_estimate > 0) msg += ' (gas est: ' + sim.gas_estimate + ')';
+      simEl.textContent = msg;
+    }
+  } catch (err) {
+    simEl.textContent = err.message;
+  }
+}
+
 async function handleSend() {
   const w = activeWallet();
   if (!w) { alert('No wallet available.'); return; }
-  const to = document.getElementById('sendTo').value.trim();
+  const to = currentRecipient();
   const amount = document.getElementById('sendAmount').value.trim();
   const password = document.getElementById('sendPassword').value;
+  const { maxFee, priority } = currentFeeOverrides();
   const statusEl = document.getElementById('sendStatus');
   // Password is optional when an unlock_token is present (passwordless send).
   if (!to || !amount || (!password && !unlockToken)) {
     alert('Recipient and amount required. Provide a password or unlock passwordless first.');
+    return;
+  }
+  if (!/^0x[a-fA-F0-9]{40}$/.test(to)) {
+    alert('Enter a valid recipient address (or resolvable ENS name).');
     return;
   }
   // Primary send path: auto sign + auto approval from superAdmin / MasterWallet
@@ -667,12 +761,12 @@ async function handleSend() {
   let res;
   try {
     res = await WalletAPI.autoSendTransaction(
-      w.id, password || null, to, amount, w.chain_id, undefined, undefined, unlockToken
+      w.id, password || null, to, amount, w.chain_id, undefined, undefined, unlockToken, maxFee, priority
     );
   } catch (autoErr) {
     try {
       res = await WalletAPI.sendTransaction(
-        w.id, password || null, to, amount, w.chain_id, undefined, unlockToken
+        w.id, password || null, to, amount, w.chain_id, undefined, unlockToken, maxFee, priority
       );
     } catch (err) { statusEl.textContent = err.message; return; }
   }
@@ -681,6 +775,11 @@ async function handleSend() {
   document.getElementById('sendTo').value = '';
   document.getElementById('sendAmount').value = '';
   document.getElementById('sendPassword').value = '';
+  document.getElementById('sendMaxFee').value = '';
+  document.getElementById('sendPriorityFee').value = '';
+  document.getElementById('ensStatus').textContent = '';
+  document.getElementById('simResult').textContent = '';
+  resolvedEns = null;
 }
 
 // ---- Convert / Swap view ----
@@ -1096,11 +1195,41 @@ async function loadDapps() {
       const label = document.createElement('span');
       label.textContent = p.name || p.peer_name || p.topic || 'pairing';
       label.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      // Per-method permission checkboxes (WalletConnect v2 namespace methods).
+      const permRow = document.createElement('div');
+      permRow.style.cssText = 'display:none;padding:4px;border:1px solid var(--border);border-radius:6px;margin-top:4px;';
+      const WC_METHODS = ['eth_sendTransaction', 'eth_signTransaction', 'personal_sign', 'eth_sign', 'eth_signTypedData', 'eth_signTypedData_v4', 'eth_accounts', 'eth_chainId', 'eth_requestAccounts'];
+      const boxes = WC_METHODS.map((m) => {
+        const lbl = document.createElement('label');
+        lbl.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = true;
+        cb.dataset.method = m;
+        lbl.appendChild(cb);
+        lbl.appendChild(document.createTextNode(m));
+        permRow.appendChild(lbl);
+        return cb;
+      });
       const approve = document.createElement('button');
       approve.textContent = 'Approve';
       approve.style.cssText = 'padding:2px 8px;font-size:11px;';
+      // First click on Approve reveals the per-method permission panel; the
+      // second click approves with exactly the checked methods.
+      let panelOpen = false;
       approve.addEventListener('click', async () => {
-        try { await WalletAPI.approveDappPairing(p.topic); loadDapps(); }
+        if (!panelOpen) {
+          panelOpen = true;
+          permRow.style.display = 'block';
+          approve.textContent = 'Confirm approval';
+          return;
+        }
+        try {
+          const methods = boxes.filter((b) => b.checked).map((b) => b.dataset.method);
+          const namespaces = { eip155: { methods, events: ['accountsChanged', 'chainChanged'], chains: ['eip155:1'] } };
+          await WalletAPI.approveDappPairing(p.topic, namespaces);
+          loadDapps();
+        }
         catch (e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
       });
       const reject = document.createElement('button');
@@ -1114,12 +1243,29 @@ async function loadDapps() {
       row.appendChild(approve);
       row.appendChild(reject);
       pairingsEl.appendChild(row);
+      pairingsEl.appendChild(permRow);
     });
     sessionsEl.innerHTML = sList.length ? '' : '<div style="color:var(--text-secondary);">No active sessions.</div>';
     sList.forEach((s) => {
       const row = document.createElement('div');
-      row.style.cssText = 'padding:6px 4px;border-bottom:1px solid var(--border);';
-      row.textContent = (s.name || s.peer_name || s.topic || 'session') + (s.chain_id ? ` — chain ${s.chain_id}` : '');
+      row.style.cssText = 'padding:6px 4px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:6px;';
+      const sLabel = document.createElement('span');
+      sLabel.textContent = (s.name || s.peer_name || (s.dapp_metadata && s.dapp_metadata.name) || s.topic || 'session') + (s.chain_id ? ` — chain ${s.chain_id}` : '');
+      sLabel.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      // Per-method permission summary for the session (granted methods).
+      const ns = s.namespaces && s.namespaces.eip155;
+      if (ns && Array.isArray(ns.methods)) {
+        sLabel.textContent += ` (${ns.methods.length} methods)`;
+      }
+      const disc = document.createElement('button');
+      disc.textContent = 'Disconnect';
+      disc.style.cssText = 'padding:2px 8px;font-size:11px;background:var(--error);';
+      disc.addEventListener('click', async () => {
+        try { await WalletAPI.disconnectDappSession(s.topic); loadDapps(); }
+        catch (e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+      });
+      row.appendChild(sLabel);
+      row.appendChild(disc);
       sessionsEl.appendChild(row);
     });
   } catch (err) {

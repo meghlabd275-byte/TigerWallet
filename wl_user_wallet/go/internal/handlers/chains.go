@@ -28,9 +28,9 @@ func (s *Svc) GetChains(c *gin.Context) {
 		list = chains.ListSupportedChains()
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"chains":          list,
-		"count":           len(list),
-		"evm_count":       chains.EVMChainCount(),
-		"nonevm_count":    chains.NonEVMChainCount(),
+		"chains":       list,
+		"count":        len(list),
+		"evm_count":    chains.EVMChainCount(),
+		"nonevm_count": chains.NonEVMChainCount(),
 	})
 }

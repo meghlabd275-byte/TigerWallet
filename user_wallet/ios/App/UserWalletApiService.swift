@@ -243,15 +243,20 @@ final class UserWalletApiService {
         let value: String
         let chain_id: Int
         let unlock_token: String?
+        // Optional EIP-1559 fee overrides (gwei strings). Nil values are
+        // omitted from the JSON, letting the backend pick chain defaults.
+        let max_fee_gwei: String?
+        let max_priority_gwei: String?
     }
     struct SendResult: Codable { let tx_hash: String; let raw_tx: String?; let nonce: Int? }
 
     /// Broadcast a signed transaction via POST /send. `password` decrypts the
     /// local seed; an optional `unlockToken` (from /unlock) authorizes the
     /// action without re-entering the password. Both are sent in the JSON body.
+    /// `maxFeeGwei` / `maxPriorityGwei` optionally override the EIP-1559 fees.
     @discardableResult
-    func sendTransaction(walletId: String, password: String, to: String, value: String, chainId: Int = 1, unlockToken: String? = nil) async throws -> SendResult {
-        let body = try encode(SendBody(wallet_id: walletId, password: password, to: to, value: value, chain_id: chainId, unlock_token: unlockToken))
+    func sendTransaction(walletId: String, password: String, to: String, value: String, chainId: Int = 1, maxFeeGwei: String? = nil, maxPriorityGwei: String? = nil, unlockToken: String? = nil) async throws -> SendResult {
+        let body = try encode(SendBody(wallet_id: walletId, password: password, to: to, value: value, chain_id: chainId, unlock_token: unlockToken, max_fee_gwei: maxFeeGwei, max_priority_gwei: maxPriorityGwei))
         return try await request("/send", method: "POST", body: body)
     }
 
@@ -267,12 +272,12 @@ final class UserWalletApiService {
     }
 
     /// Auto-approval variant of /send. Same body as `sendTransaction`
-    /// (password + optional unlock_token) plus an optional
-    /// ?master_wallet_id=<id> query. Returns the send response augmented with
-    /// { auto_approved, auto_approval_reason }.
+    /// (password + optional unlock_token + optional EIP-1559 fee overrides)
+    /// plus an optional ?master_wallet_id=<id> query. Returns the send
+    /// response augmented with { auto_approved, auto_approval_reason }.
     @discardableResult
-    func autoSendTransaction(walletId: String, password: String, to: String, value: String, chainId: Int = 1, masterWalletId: String? = nil, unlockToken: String? = nil) async throws -> AutoSendResult {
-        let body = try encode(SendBody(wallet_id: walletId, password: password, to: to, value: value, chain_id: chainId, unlock_token: unlockToken))
+    func autoSendTransaction(walletId: String, password: String, to: String, value: String, chainId: Int = 1, maxFeeGwei: String? = nil, maxPriorityGwei: String? = nil, masterWalletId: String? = nil, unlockToken: String? = nil) async throws -> AutoSendResult {
+        let body = try encode(SendBody(wallet_id: walletId, password: password, to: to, value: value, chain_id: chainId, unlock_token: unlockToken, max_fee_gwei: maxFeeGwei, max_priority_gwei: maxPriorityGwei))
         var path = "/auto-send"
         if let mw = masterWalletId {
             path += "?master_wallet_id=\(mw)"
@@ -300,6 +305,52 @@ final class UserWalletApiService {
         let body = try encode(SignBody(wallet_id: walletId, password: password, message: message))
         let res: SignResult = try await request("/sign", method: "POST", body: body)
         return res.signature
+    }
+
+    // MARK: - Simulation (dry-run) / ENS
+
+    struct SimulateBody: Encodable {
+        let chain_id: Int
+        let from: String
+        let to: String
+        let value: String?
+        let data: String?
+    }
+
+    struct SimulationResult: Codable {
+        let chain_id: Int?
+        let success: Bool
+        let gas_estimate: Int?
+        let will_revert: Bool?
+        let revert_reason: String?
+        let estimate_error: String?
+        let gas_price: String?
+        let max_fee_per_gas: String?
+        let max_priority_fee: String?
+        let estimated_cost_wei: String?
+    }
+
+    /// POST /simulate — dry-run a transaction before signing. Returns success,
+    /// gas estimate, revert reason, and a projected cost at the safe max fee.
+    /// Mirrors the web client's simulateTransaction 1:1.
+    func simulateTransaction(chainId: Int, from: String, to: String, value: String? = nil, data: String? = nil) async throws -> SimulationResult {
+        let body = try encode(SimulateBody(chain_id: chainId, from: from, to: to, value: value, data: data))
+        return try await request("/simulate", method: "POST", body: body)
+    }
+
+    struct ENSResolveResult: Codable { let name: String; let address: String }
+    struct ENSLookupResult: Codable { let address: String; let name: String }
+
+    /// GET /ens/resolve?name=alice.eth -> { name, address } (real on-chain lookup).
+    func resolveENS(name: String) async throws -> ENSResolveResult {
+        let safe = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
+        return try await request("/ens/resolve?name=\(safe)")
+    }
+
+    /// GET /ens/lookup?address=0x... -> { address, name } (reverse ENS lookup).
+    func lookupENS(address: String) async throws -> ENSLookupResult {
+        let safe = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? address
+        return try await request("/ens/lookup?address=\(safe)")
     }
 
     // MARK: - Tokens (real ERC-20 balanceOf via backend)

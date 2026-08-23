@@ -485,6 +485,11 @@ type sendTxReq struct {
 	GasLimit    uint64 `json:"gas_limit"`
 	Data        string `json:"data"`
 	ChainID     int64  `json:"chain_id"`
+	// Optional EIP-1559 editable fee overrides (in gwei). When either is set,
+	// it overrides the chain's suggested fee, giving users full
+	// max-fee / priority-fee control before signing.
+	MaxFeeGwei      string `json:"max_fee_gwei,omitempty"`
+	MaxPriorityGwei string `json:"max_priority_gwei,omitempty"`
 }
 
 func handleSendTransaction(c *gin.Context) {
@@ -690,6 +695,18 @@ func executeSend(c *gin.Context, req sendTxReq) {
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to fetch gas price: " + err.Error()})
 		return
+	}
+	// EIP-1559 editable fee overrides (gwei -> wei): when the client supplies a
+	// max fee or priority fee, it takes precedence over the chain suggestion.
+	if req.MaxFeeGwei != "" {
+		if mf := gweiToWei(req.MaxFeeGwei); mf != nil {
+			maxFee = mf
+		}
+	}
+	if req.MaxPriorityGwei != "" {
+		if mp := gweiToWei(req.MaxPriorityGwei); mp != nil {
+			maxPrioFee = mp
+		}
 	}
 	gasLimit := req.GasLimit
 	if gasLimit == 0 {

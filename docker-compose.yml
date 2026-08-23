@@ -791,6 +791,38 @@ services:
       - wl-bots
     restart: unless-stopped
 
+  # ===== Canonical MasterWallet backend (Go, :8450) =====
+  # The single source of truth for the MasterWallet REST contract. HD wallet
+  # custody, sub-wallets, multisig, treasury, policies/fees/auto-sign, and the
+  # UserWallet governance surface (user-chains/user-tokens/derive/auto-sign/
+  # feature-flags). PostgreSQL persistence + Redis cache; seeded 120 EVM + 66
+  # non-EVM chains. nginx in master_wallet/web proxies /api/ to this service.
+  master-wallet-backend:
+    build:
+      context: ./master_wallet/backend
+      dockerfile: Dockerfile
+    container_name: tigerwallet-master-wallet-backend
+    ports:
+      - "8450:8450"
+    environment:
+      MASTER_WALLET_PORT: "8450"
+      MASTER_WALLET_DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
+      MASTER_WALLET_REDIS_ADDR: "redis:6379"
+      MASTER_WALLET_REDIS_PASSWORD: ""
+      MASTER_WALLET_REDIS_DB: "0"
+      MASTER_WALLET_JWT_SECRET: "${MASTER_WALLET_JWT_SECRET:-tigerwallet-master-jwt-change-in-production}"
+      COINGECKO_API_KEY: "${COINGECKO_API_KEY:-}"
+      ETHERSCAN_API_KEY: "${ETHERSCAN_API_KEY:-}"
+      MASTER_WALLET_TREASURY_KEY_HEX: "${MASTER_WALLET_TREASURY_KEY_HEX:-}"
+      MASTER_WALLET_BUNDLER_URL: "${MASTER_WALLET_BUNDLER_URL:-}"
+      MASTER_WALLET_PAYMASTER_URL: "${MASTER_WALLET_PAYMASTER_URL:-}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   # ===== MasterWallet frontend (Vite + React) =====
   master-wallet-frontend:
     build:
@@ -802,7 +834,7 @@ services:
     ports:
       - "8452:80"
     depends_on:
-      - wl-master-wallet
+      - master-wallet-backend
     restart: unless-stopped
 
 volumes:

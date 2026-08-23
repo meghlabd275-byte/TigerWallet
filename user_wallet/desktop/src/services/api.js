@@ -182,36 +182,72 @@ export const api = {
 
   // ---- Send / Sign (real on-chain) ----
   // WL POST /wallets/:id/send -> { transaction_hash, status, from }
-  async sendTransaction({ walletId, password, to, value, chainId, gasLimit, data: txData }) {
+  async sendTransaction({ walletId, password, to, value, chainId, gasLimit, data: txData, maxFeeGwei, maxPriorityGwei }) {
+    const body = {
+      to,
+      amount: value,
+      password,
+      gas_limit: gasLimit,
+      data: txData,
+      chain_id: chainId,
+    };
+    // Optional EIP-1559 fee overrides (gwei strings) — only sent when set.
+    if (maxFeeGwei) body.max_fee_gwei = maxFeeGwei;
+    if (maxPriorityGwei) body.max_priority_gwei = maxPriorityGwei;
     return request(`/wallets/${encodeURIComponent(walletId)}/send`, {
       method: 'POST',
-      body: JSON.stringify({
-        to,
-        amount: value,
-        password,
-        gas_limit: gasLimit,
-        data: txData,
-        chain_id: chainId,
-      }),
+      body: JSON.stringify(body),
     });
   },
 
   // WL POST /wallets/:id/auto-send -> { transaction_hash, auto_approved, auto_approval_reason }
   // The backend auto-signs + auto-approves (fast path, license alive + non-treasury tx);
   // returns auto_approved=false + reason when two-party co-sign is required.
-  async autoSendTransaction({ walletId, password, to, value, chainId, gasLimit, data: txData, unlockToken }) {
+  async autoSendTransaction({ walletId, password, to, value, chainId, gasLimit, data: txData, unlockToken, maxFeeGwei, maxPriorityGwei }) {
+    const body = {
+      to,
+      amount: value,
+      password,
+      gas_limit: gasLimit,
+      data: txData,
+      chain_id: chainId,
+      unlock_token: unlockToken,
+    };
+    // Optional EIP-1559 fee overrides (gwei strings) — only sent when set.
+    if (maxFeeGwei) body.max_fee_gwei = maxFeeGwei;
+    if (maxPriorityGwei) body.max_priority_gwei = maxPriorityGwei;
     return request(`/wallets/${encodeURIComponent(walletId)}/auto-send`, {
       method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  // ---- Transaction simulation (pre-sign dry-run) ----
+  // WL POST /simulate { chain_id, from, to, value?, data? } -> { success,
+  // gas_estimate, will_revert, revert_reason?, estimated_cost_wei?, ... }.
+  // Lets the send form preview success/gas/revert BEFORE signing.
+  async simulateTransaction({ chainId, from, to, value, data: txData }) {
+    return request('/simulate', {
+      method: 'POST',
       body: JSON.stringify({
+        chain_id: chainId ?? 1,
+        from,
         to,
-        amount: value,
-        password,
-        gas_limit: gasLimit,
+        value,
         data: txData,
-        chain_id: chainId,
-        unlock_token: unlockToken,
       }),
     });
+  },
+
+  // ---- ENS (real on-chain lookups via the backend) ----
+  // WL GET /ens/resolve?name=alice.eth -> { name, address } (forward resolution).
+  async resolveENS(name) {
+    return request(`/ens/resolve?name=${encodeURIComponent(name)}`);
+  },
+
+  // WL GET /ens/lookup?address=0x... -> { address, name } (reverse resolution).
+  async lookupENS(address) {
+    return request(`/ens/lookup?address=${encodeURIComponent(address)}`);
   },
 
   async signMessage({ walletId, password, message }) {
@@ -271,7 +307,8 @@ export const api = {
     return request('/ramp/offramp-quote', { method: 'POST', body: JSON.stringify({ providerId, amount, fiatCurrency: fiat, cryptoCurrency: crypto }) });
   },
   async getCryptoCardRates() { return request('/cards/rates'); },
-  async getP2PListings() { return request('/p2p/listings'); },
+  // P2P adverts — the backend route is /p2p/adverts (no /p2p/listings route).
+  async getP2PListings() { return request('/p2p/adverts'); },
   async getConvertQuote({ fromToken, toToken, fromAmount, chainId = 1 }) {
     return request(`/swap/quote?from_token=${fromToken}&to_token=${toToken}&from_amount=${fromAmount}&chain_id=${chainId}`);
   },

@@ -653,6 +653,21 @@ func (s *WalletConnectService) RejectPairingHandler(c *gin.Context) {
 	c.JSON(200, gin.H{"status": "rejected"})
 }
 
+// DisconnectSessionHandler deletes a session (user-initiated disconnect).
+func (s *WalletConnectService) DisconnectSessionHandler(c *gin.Context) {
+	topic := c.Param("topic")
+
+	if _, ok := s.GetSession(topic); !ok {
+		c.JSON(404, gin.H{"error": "session not found"})
+		return
+	}
+	if err := s.DeleteSession(topic); err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"status": "disconnected"})
+}
+
 func (s *WalletConnectService) SendRequestHandler(c *gin.Context) {
 	topic := c.Param("topic")
 
@@ -826,6 +841,7 @@ func main() {
 	r.POST("/pairings/:topic/approve", service.ApprovePairingHandler)
 	r.POST("/pairings/:topic/reject", service.RejectPairingHandler)
 	r.GET("/sessions", service.GetSessions)
+	r.DELETE("/sessions/:topic", service.DisconnectSessionHandler)
 	r.POST("/sessions/:topic/request", service.SendRequestHandler)
 	r.GET("/sessions/:topic/request", service.GetRequests)
 	r.POST("/sessions/:topic/request/:id/respond", service.Respond)

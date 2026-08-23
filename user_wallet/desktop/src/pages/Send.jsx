@@ -26,6 +26,21 @@ function Send() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
 
+  // ENS state: recipient input may be an ENS name (alice.eth); resolve to a
+  // real 0x address, show it to the user, then send to the resolved address.
+  const [ensName, setEnsName] = useState(null);
+  const [resolvedTo, setResolvedTo] = useState(null);
+  const [resolvingEns, setResolvingEns] = useState(false);
+  const [ensError, setEnsError] = useState('');
+
+  // Optional EIP-1559 gas overrides (gwei strings, forwarded to /send).
+  const [maxFeeGwei, setMaxFeeGwei] = useState('');
+  const [maxPriorityGwei, setMaxPriorityGwei] = useState('');
+
+  // Simulation (pre-sign dry-run) state.
+  const [sim, setSim] = useState(null);
+  const [simulating, setSimulating] = useState(false);
+
   // Passwordless unlock state.
   const [unlockPasscode, setUnlockPasscode] = useState('');
   const [unlockToken, setUnlockToken] = useState('');
@@ -53,6 +68,9 @@ function Send() {
       return;
     }
     setError('');
+    setEnsName(null);
+    setResolvedTo(null);
+    setEnsError('');
     setForm((f) => ({
       ...f,
       to: parsed.address || f.to,
@@ -64,14 +82,76 @@ function Send() {
     setQrInput('');
   };
 
+  const selectedWallet = wallets.find((w) => (w.id || w.wallet_id) === form.walletId);
+
+  // Resolve the recipient field live: ENS names resolve to a real address via
+  // the backend; plain 0x addresses are used as-is.
+  const handleRecipientChange = async (raw) => {
+    setForm((f) => ({ ...f, to: raw }));
+    setSim(null);
+    const trimmed = raw.trim();
+    if (trimmed.toLowerCase().endsWith('.eth')) {
+      setResolvingEns(true);
+      setEnsError('');
+      try {
+        const r = await api.resolveENS(trimmed);
+        setEnsName(r.name);
+        setResolvedTo(r.address);
+      } catch (err) {
+        setEnsName(null);
+        setResolvedTo(null);
+        setEnsError(err.message || 'ENS resolution failed');
+      } finally {
+        setResolvingEns(false);
+      }
+    } else {
+      setEnsName(null);
+      setResolvedTo(null);
+      setEnsError('');
+    }
+  };
+
+  const resolvedRecipient = () => (resolvedTo || form.to.trim());
+
   const buildPayload = () => ({
     walletId: form.walletId,
     password: form.password,
-    to: form.to.trim(),
+    to: resolvedRecipient(),
     value: form.value,
     chainId: CHAIN_IDS[form.network] || 1,
     unlockToken: unlockToken || undefined,
+    maxFeeGwei: maxFeeGwei.trim() || undefined,
+    maxPriorityGwei: maxPriorityGwei.trim() || undefined,
   });
+
+  // Pre-sign dry-run: POST /simulate with the current form values and show
+  // success/revert + the backend gas estimate.
+  const handleSimulate = async () => {
+    setError('');
+    setSim(null);
+    if (!form.walletId) { setError('Select a wallet'); return; }
+    const to = resolvedRecipient();
+    if (!/^0x[a-fA-F0-9]{40}$/.test(to)) {
+      setError('Enter a valid recipient address (or resolvable ENS name)');
+      return;
+    }
+    const from = selectedWallet && selectedWallet.address;
+    if (!from) { setError('Selected wallet has no address'); return; }
+    setSimulating(true);
+    try {
+      const result = await api.simulateTransaction({
+        chainId: CHAIN_IDS[form.network] || 1,
+        from,
+        to,
+        value: form.value || undefined,
+      });
+      setSim(result);
+    } catch (err) {
+      setError(err.message || 'Simulation failed');
+    } finally {
+      setSimulating(false);
+    }
+  };
 
   const unlockWallet = async () => {
     setError('');
@@ -106,6 +186,10 @@ function Send() {
     setSuccess(null);
     if (!form.walletId) { setError('Select a wallet'); return null; }
     if (!form.to.trim()) { setError('Recipient address is required'); return null; }
+    if (!/^0x[a-fA-F0-9]{40}$/.test(resolvedRecipient())) {
+      setError('Enter a valid recipient address (or resolvable ENS name)');
+      return null;
+    }
     // Either a wallet password or an unlock token must be present.
     if (!unlockToken && form.password.length < 8) {
       setError('Enter your wallet password or unlock passwordlessly');
@@ -176,13 +260,22 @@ function Send() {
             {CHAIN_OPTIONS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>
 
-          <label>Recipient address</label>
+          <label>Recipient address or ENS name</label>
           <input
-            placeholder="0x..."
+            placeholder="0x... or alice.eth"
             value={form.to}
-            onChange={(e) => setForm({ ...form, to: e.target.value })}
+            onChange={(e) => handleRecipientChange(e.target.value)}
             required
           />
+          {resolvingEns && <p className="backup-msg">Resolving ENS…</p>}
+          {resolvedTo && ensName && (
+            <p className="backup-msg" style={{ color: isDark ? '#4CAF50' : 'var(--accent)' }}>
+              ✓ {ensName} → <span className="mono">{resolvedTo}</span>
+            </p>
+          )}
+          {ensError && (
+            <p className="backup-msg" style={{ color: '#dc2626' }}>⚠ {ensError}</p>
+          )}
 
           <label>Amount</label>
           <input
@@ -190,9 +283,55 @@ function Send() {
             inputMode="decimal"
             placeholder="0.0"
             value={form.value}
-            onChange={(e) => setForm({ ...form, value: e.target.value })}
+            onChange={(e) => { setForm({ ...form, value: e.target.value }); setSim(null); }}
             required
           />
+
+          <label>EIP-1559 gas overrides (optional, gwei)</label>
+          <div className="qr-row">
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="Max fee (gwei) — auto"
+              value={maxFeeGwei}
+              onChange={(e) => setMaxFeeGwei(e.target.value)}
+            />
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="Priority fee (gwei) — auto"
+              value={maxPriorityGwei}
+              onChange={(e) => setMaxPriorityGwei(e.target.value)}
+            />
+          </div>
+
+          {sim && (
+            <div
+              className="backup-msg"
+              style={{
+                padding: '10px',
+                borderRadius: '8px',
+                border: `1px solid ${sim.success && !sim.will_revert ? (isDark ? '#4CAF50' : 'var(--accent)') : '#dc2626'}`,
+              }}
+            >
+              {sim.success && !sim.will_revert ? (
+                <p style={{ color: isDark ? '#4CAF50' : 'var(--accent)', margin: 0 }}>
+                  ✓ Simulation succeeded — estimated gas: <span className="mono">{sim.gas_estimate}</span>
+                  {sim.estimated_cost_wei && (
+                    <> · est. cost <span className="mono">{(Number(sim.estimated_cost_wei) / 1e18).toFixed(6)}</span> native</>
+                  )}
+                </p>
+              ) : (
+                <div style={{ color: '#dc2626' }}>
+                  <p style={{ margin: 0, fontWeight: 600 }}>⚠ Transaction will revert</p>
+                  <p className="mono" style={{ wordBreak: 'break-all' }}>
+                    {sim.revert_reason || sim.estimate_error || 'unknown reason'}
+                  </p>
+                  {sim.gas_estimate > 0 && <p className="mono">Estimated gas: {sim.gas_estimate}</p>}
+                </div>
+              )}
+            </div>
+          )}
 
           <label>Wallet password {unlockToken && <span style={{ color: isDark ? '#4CAF50' : 'var(--accent)' }}>(optional — unlocked)</span>}</label>
           <input
@@ -239,8 +378,11 @@ function Send() {
           </div>
 
           <div className="send-actions">
-            <button type="submit" disabled={busy}>{busy ? 'Sending…' : 'Send Transaction'}</button>
-            <button type="button" disabled={busy} onClick={() => doSend(true)}>
+            <button type="button" disabled={busy || simulating} onClick={handleSimulate}>
+              {simulating ? 'Simulating…' : '🧪 Simulate'}
+            </button>
+            <button type="submit" disabled={busy || simulating}>{busy ? 'Sending…' : 'Send Transaction'}</button>
+            <button type="button" disabled={busy || simulating} onClick={() => doSend(true)}>
               ⚡ Auto-Send (auto-approved)
             </button>
           </div>

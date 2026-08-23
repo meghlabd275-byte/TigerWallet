@@ -156,10 +156,17 @@
     <!-- Send tab -->
     <div id="sendTab" class="card hidden">
       <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Send</div>
-      <label for="sendTo">Recipient address</label>
-      <input type="text" id="sendTo" placeholder="0x..." />
+      <label for="sendTo">Recipient address or ENS name</label>
+      <input type="text" id="sendTo" placeholder="0x... or alice.eth" />
+      <div id="ensStatus" class="wallet-balance"></div>
       <label for="sendAmount">Amount</label>
       <input type="text" id="sendAmount" placeholder="0.0" />
+      <label for="sendMaxFee">Max fee (gwei, optional)</label>
+      <input type="text" id="sendMaxFee" placeholder="auto" />
+      <label for="sendPriorityFee">Priority fee (gwei, optional)</label>
+      <input type="text" id="sendPriorityFee" placeholder="auto" />
+      <button class="secondary" id="simulateBtn" style="margin-bottom:8px;">🧪 Simulate</button>
+      <div id="simResult" class="wallet-balance"></div>
       <label for="sendPassword">Wallet password</label>
       <input type="password" id="sendPassword" placeholder="••••••••" />
       <label for="unlockPasscode">Passcode (passwordless unlock)</label>

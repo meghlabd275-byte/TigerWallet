@@ -1,6 +1,8 @@
 package com.tigeruserwallet.fragments
 
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -17,6 +19,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Locale
 
 class SendFragment : Fragment() {
     private lateinit var walletSpinner: Spinner
@@ -25,9 +28,14 @@ class SendFragment : Fragment() {
     private lateinit var amountInput: EditText
     private lateinit var passwordInput: EditText
     private lateinit var passcodeInput: EditText
+    private lateinit var maxFeeInput: EditText
+    private lateinit var maxPriorityInput: EditText
     private lateinit var sendButton: Button
     private lateinit var autoSendButton: Button
+    private lateinit var simulateButton: Button
     private lateinit var unlockButton: Button
+    private lateinit var ensStatusText: TextView
+    private lateinit var simulateResultText: TextView
     private lateinit var statusTextView: TextView
 
     private val chains = arrayOf("Ethereum (1)", "BNB Chain (56)", "Polygon (137)")
@@ -38,6 +46,10 @@ class SendFragment : Fragment() {
     // Short-lived unlock token issued by /wallets/:id/unlock. While present, the
     // wallet password is optional and the token authorizes send/auto-send.
     private var unlockToken: String? = null
+
+    // Resolved 0x recipient when the user typed an ENS name (mirror web Send.tsx).
+    private var resolvedEnsName: String? = null
+    private var resolvedEnsAddress: String? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -55,9 +67,14 @@ class SendFragment : Fragment() {
         amountInput = view.findViewById(R.id.amountInput)
         passwordInput = view.findViewById(R.id.passwordInput)
         passcodeInput = view.findViewById(R.id.passcodeInput)
+        maxFeeInput = view.findViewById(R.id.maxFeeInput)
+        maxPriorityInput = view.findViewById(R.id.maxPriorityInput)
         sendButton = view.findViewById(R.id.sendButton)
         autoSendButton = view.findViewById(R.id.autoSendButton)
+        simulateButton = view.findViewById(R.id.simulateButton)
         unlockButton = view.findViewById(R.id.unlockButton)
+        ensStatusText = view.findViewById(R.id.ensStatusText)
+        simulateResultText = view.findViewById(R.id.simulateResultText)
         statusTextView = view.findViewById(R.id.statusTextView)
 
         chainSpinner.adapter =
@@ -65,9 +82,157 @@ class SendFragment : Fragment() {
 
         sendButton.setOnClickListener { performSend(autoFirst = true) }
         autoSendButton.setOnClickListener { performSend(autoFirst = true) }
+        simulateButton.setOnClickListener { performSimulate() }
         unlockButton.setOnClickListener { unlockWallet() }
 
+        recipientInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                onRecipientChanged(s?.toString()?.trim() ?: "")
+            }
+        })
+
         loadWallets()
+    }
+
+    /**
+     * Live ENS feedback while typing (mirror web resolveRecipient): a full 0x
+     * address is accepted as-is; a name ending in .eth is resolved through the
+     * backend and the resolved address is shown under the input.
+     */
+    private fun onRecipientChanged(raw: String) {
+        resolvedEnsName = null
+        resolvedEnsAddress = null
+        simulateResultText.text = ""
+        when {
+            raw.isEmpty() -> ensStatusText.text = ""
+            ADDRESS_REGEX.matches(raw) -> ensStatusText.text = ""
+            raw.endsWith(".eth", ignoreCase = true) -> {
+                ensStatusText.text = "Resolving ENS…"
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        val res = UserWalletApiService.resolveENS(raw)
+                        withContext(Dispatchers.Main) {
+                            // Ignore stale results if the user kept typing.
+                            if (recipientInput.text.toString().trim() != raw) return@withContext
+                            resolvedEnsName = res.name
+                            resolvedEnsAddress = res.address
+                            ensStatusText.text =
+                                "✓ ${res.name} → ${shortenAddress(res.address)}"
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            if (recipientInput.text.toString().trim() != raw) return@withContext
+                            ensStatusText.text = "✗ ${e.message ?: "ENS resolution failed"}"
+                        }
+                    }
+                }
+            }
+            else -> ensStatusText.text = ""
+        }
+    }
+
+    /**
+     * Resolve the recipient field to a 0x address: returns the input directly
+     * when it is already an address, resolves it via /ens/resolve when it ends
+     * in .eth, and throws otherwise. Callers run on Dispatchers.IO.
+     */
+    private suspend fun resolveRecipientAddress(raw: String): String {
+        if (ADDRESS_REGEX.matches(raw)) return raw
+        resolvedEnsAddress?.let { cached ->
+            if (resolvedEnsName.equals(raw, ignoreCase = true) && ADDRESS_REGEX.matches(cached)) {
+                return cached
+            }
+        }
+        if (raw.endsWith(".eth", ignoreCase = true)) {
+            val res = UserWalletApiService.resolveENS(raw)
+            withContext(Dispatchers.Main) {
+                resolvedEnsName = res.name
+                resolvedEnsAddress = res.address
+                ensStatusText.text = "✓ ${res.name} → ${shortenAddress(res.address)}"
+            }
+            return res.address
+        }
+        throw IllegalArgumentException("Enter a valid recipient (0x address or .eth name)")
+    }
+
+    /**
+     * Pre-sign simulation (mirror web handleSimulate): dry-runs the exact tx
+     * the user is about to send — from the selected wallet address to the
+     * resolved recipient with the entered amount on the selected chain — and
+     * surfaces success / revert reason / gas estimate before signing.
+     */
+    private fun performSimulate() {
+        val wallet = wallets.getOrNull(walletSpinner.selectedItemPosition) ?: run {
+            Toast.makeText(requireContext(), "Select a wallet", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val rawTo = recipientInput.text.toString().trim()
+        val value = amountInput.text.toString().trim()
+        val chainId = chainIds[chainSpinner.selectedItemPosition]
+
+        if (rawTo.isEmpty() || value.isEmpty()) {
+            Toast.makeText(requireContext(), "Enter recipient and amount", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        simulateButton.isEnabled = false
+        simulateResultText.text = "Simulating…"
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val to = resolveRecipientAddress(rawTo)
+                val sim = UserWalletApiService.simulateTransaction(
+                    chainId = chainId,
+                    from = wallet.address,
+                    to = to,
+                    value = value
+                )
+                withContext(Dispatchers.Main) {
+                    simulateResultText.text = buildSimMessage(sim)
+                    simulateButton.isEnabled = true
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    simulateResultText.text = "✗ ${e.message ?: "Simulation failed"}"
+                    simulateButton.isEnabled = true
+                }
+            }
+        }
+    }
+
+    private fun buildSimMessage(sim: UserWalletApiService.SimulationResult): String {
+        val sb = StringBuilder()
+        if (sim.success && !sim.willRevert) {
+            sb.append("✓ Simulation succeeded")
+            sb.append("\nGas estimate: ").append(sim.gasEstimate)
+        } else {
+            sb.append("✗ Transaction will revert")
+            if (!sim.revertReason.isNullOrEmpty()) sb.append("\n").append(sim.revertReason)
+            if (!sim.estimateError.isNullOrEmpty()) sb.append("\n").append(sim.estimateError)
+        }
+        sim.estimatedCostWei?.takeIf { it.isNotEmpty() }?.let { costWei ->
+            val cost = UserWalletApiService.weiToFloat(costWei)
+            sb.append("\nEstimated cost: ")
+                .append(String.format(Locale.US, "%.6f", cost))
+                .append(" ")
+                .append(UserWalletApiService.symbolFor(sim.chainId))
+        }
+        return sb.toString()
+    }
+
+    private fun shortenAddress(address: String): String =
+        if (address.length > 16) "${address.take(10)}…${address.takeLast(6)}" else address
+
+    /** Optional EIP-1559 overrides; blank inputs fall back to backend auto. */
+    private fun maxFeeGwei(): String? =
+        maxFeeInput.text.toString().trim().ifEmpty { null }
+
+    private fun maxPriorityGwei(): String? =
+        maxPriorityInput.text.toString().trim().ifEmpty { null }
+
+    companion object {
+        private val ADDRESS_REGEX = Regex("^0x[a-fA-F0-9]{40}$")
     }
 
     private fun loadWallets() {
@@ -103,12 +268,14 @@ class SendFragment : Fragment() {
             Toast.makeText(requireContext(), "Select a wallet", Toast.LENGTH_SHORT).show()
             return
         }
-        val to = recipientInput.text.toString().trim()
+        val rawTo = recipientInput.text.toString().trim()
         val value = amountInput.text.toString().trim()
         val password = passwordInput.text.toString()
         val chainId = chainIds[chainSpinner.selectedItemPosition]
+        val maxFee = maxFeeGwei()
+        val maxPriority = maxPriorityGwei()
 
-        if (to.isEmpty() || value.isEmpty()) {
+        if (rawTo.isEmpty() || value.isEmpty()) {
             Toast.makeText(requireContext(), "Enter recipient and amount", Toast.LENGTH_SHORT).show()
             return
         }
@@ -129,25 +296,37 @@ class SendFragment : Fragment() {
         autoSendButton.isEnabled = false
         statusTextView.text = "Submitting..."
         CoroutineScope(Dispatchers.IO).launch {
-            val message = try {
-                // Primary: auto-send (auto sign + auto approval).
-                val r = UserWalletApiService.autoSendTransaction(
-                    wallet.id, password, to, value, chainId, null, unlockToken
-                )
-                buildMessage(r.txHash, r.autoApproved, r.autoApprovalReason)
-            } catch (autoErr: Exception) {
-                if (!autoFirst) throw autoErr
-                // Fallback: manual on-chain send when auto-send is unavailable
-                // (e.g. no auto-approval policy / Admin panel offline).
-                val r = UserWalletApiService.sendTransaction(
-                    wallet.id, password, to, value, chainId, unlockToken
-                )
-                buildMessage(r.txHash, null, null)
-            }
-            withContext(Dispatchers.Main) {
-                statusTextView.text = message
-                sendButton.isEnabled = true
-                autoSendButton.isEnabled = true
+            try {
+                // Resolve ENS names (.eth) to a 0x address before signing.
+                val to = resolveRecipientAddress(rawTo)
+                val message = try {
+                    // Primary: auto-send (auto sign + auto approval).
+                    val r = UserWalletApiService.autoSendTransaction(
+                        wallet.id, password, to, value, chainId, null, unlockToken,
+                        maxFeeGwei = maxFee, maxPriorityGwei = maxPriority
+                    )
+                    buildMessage(r.txHash, r.autoApproved, r.autoApprovalReason)
+                } catch (autoErr: Exception) {
+                    if (!autoFirst) throw autoErr
+                    // Fallback: manual on-chain send when auto-send is unavailable
+                    // (e.g. no auto-approval policy / Admin panel offline).
+                    val r = UserWalletApiService.sendTransaction(
+                        wallet.id, password, to, value, chainId, unlockToken,
+                        maxFeeGwei = maxFee, maxPriorityGwei = maxPriority
+                    )
+                    buildMessage(r.txHash, null, null)
+                }
+                withContext(Dispatchers.Main) {
+                    statusTextView.text = message
+                    sendButton.isEnabled = true
+                    autoSendButton.isEnabled = true
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    statusTextView.text = "✗ ${e.message ?: "Send failed"}"
+                    sendButton.isEnabled = true
+                    autoSendButton.isEnabled = true
+                }
             }
         }
     }

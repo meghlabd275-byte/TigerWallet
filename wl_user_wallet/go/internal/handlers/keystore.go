@@ -47,11 +47,11 @@ func (s *Svc) ExportKeystore(c *gin.Context) {
 func (s *Svc) ImportKeystore(c *gin.Context) {
 	userID := middleware.UserID(c)
 	var req struct {
-		Keystore       []byte   `json:"keystore" binding:"required"`
-		ImportPassword string   `json:"import_password" binding:"required"`
-		WalletPassword string   `json:"wallet_password" binding:"required,min=8"`
-		Label          string   `json:"label"`
-		ChainID        int64    `json:"chain_id"`
+		Keystore       []byte `json:"keystore" binding:"required"`
+		ImportPassword string `json:"import_password" binding:"required"`
+		WalletPassword string `json:"wallet_password" binding:"required,min=8"`
+		Label          string `json:"label"`
+		ChainID        int64  `json:"chain_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

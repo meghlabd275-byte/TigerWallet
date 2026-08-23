@@ -42,7 +42,6 @@ func main() {
 	// Start the license-control-plane heartbeat (fail-closed phone-home).
 	go middleware.HeartbeatLoop(ctx, cfg.ControlPlaneURL, cfg.ControlPlaneToken, cfg.WLClientID, cfg.LicenseKey, cfg.Product, cfg.InstanceID, cfg.HeartbeatInterval)
 
-
 	// Initialize the two-party withdrawal gate (SuperAdmin co-sign verification
 	// for fee/revenue/treasury withdrawals — the slow path).
 	middleware.InitTwoPartyGate(cfg.ControlPlaneURL, cfg.ControlPlaneToken, cfg.Product, cfg.WLClientID)
@@ -90,6 +89,11 @@ func main() {
 
 			// Send / sign (flat, wallet_id in body/query).
 			wallet.POST("/send", middleware.RequireActiveUser(), svc.FlatSend)
+			// Pre-sign transaction simulation + ENS resolution
+			// (parity with go/wallet_api for Android/iOS clients).
+			wallet.POST("/simulate", svc.SimulateTransaction)
+			wallet.GET("/ens/resolve", svc.ENSResolve)
+			wallet.GET("/ens/lookup", svc.ENSLookup)
 			// /auto-send is an alias of /send (FlatSend). The gate's
 			// requireApproval already performs the auto-approval fast path
 			// (license alive + non-treasury tx => auto_approved within a

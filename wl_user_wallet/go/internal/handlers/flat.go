@@ -73,6 +73,10 @@ func (s *Svc) FlatSend(c *gin.Context) {
 		GasLimit     uint64    `json:"gas_limit"`
 		Token        string    `json:"token"`
 		WithdrawalID string    `json:"withdrawal_id"`
+		// Optional EIP-1559 editable fee overrides (gwei) — parity with
+		// go/wallet_api /send. When set, overrides the chain suggestion.
+		MaxFeeGwei      string `json:"max_fee_gwei,omitempty"`
+		MaxPriorityGwei string `json:"max_priority_gwei,omitempty"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -142,7 +146,16 @@ func (s *Svc) FlatSend(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "head fetch failed"})
 		return
 	}
-	rawTx, err := crypto.SignTransaction(priv, chainID, common.HexToAddress(req.To), amountInt, req.GasLimit, head.BaseFee, gasTipCap, nonce, nil)
+	// EIP-1559 editable fee overrides (gwei -> wei). Defaults: fee cap is
+	// 2*baseFee + tip (standard safe ceiling), tip from the node suggestion.
+	feeCap := new(big.Int).Add(new(big.Int).Mul(head.BaseFee, big.NewInt(2)), gasTipCap)
+	if v := gweiToWeiString(req.MaxFeeGwei); v != nil {
+		feeCap = v
+	}
+	if v := gweiToWeiString(req.MaxPriorityGwei); v != nil {
+		gasTipCap = v
+	}
+	rawTx, err := crypto.SignTransaction(priv, chainID, common.HexToAddress(req.To), amountInt, req.GasLimit, feeCap, gasTipCap, nonce, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
