@@ -136,6 +136,14 @@ func main() {
 			mw.POST("/auto-sign-transaction", svc.AutoSignTransaction)
 			mw.GET("/auto-sign-logs", svc.ListAutoSignLogs)
 
+			// Multisig wallets (threshold-governed wallets + tx flow).
+			mw.POST("/master-wallet/:id/multisig", svc.CreateMultisigWallet)
+			mw.GET("/master-wallet/:id/multisig", svc.GetMultisigWallets)
+			mw.POST("/master-wallet/:id/multisig/:wid/transactions", svc.CreateMultisigTransaction)
+			mw.GET("/master-wallet/:id/multisig/:wid/transactions", svc.GetMultisigTransactions)
+			mw.POST("/multisig/transactions/:tid/sign", svc.SignMultisigTransaction)
+			mw.POST("/multisig/transactions/:tid/execute", svc.ExecuteMultisigTransaction)
+
 			// Treasury (two-party gate REQUIRED before broadcast — fail-closed).
 			mw.POST("/transfer", svc.TreasuryTransfer)
 			mw.POST("/sweep", svc.TreasurySweep)
