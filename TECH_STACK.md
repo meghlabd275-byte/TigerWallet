@@ -31,10 +31,12 @@ PyTorch, TensorFlow, LangChain, scikit-learn. The ecosystem for ML/AI is unmatch
 
 Web3 ecosystem standard (ethers.js, wagmi, viem). React + Vite for extensions. Next.js for admin console. Type-safe Web3 interactions.
 
-### Flutter / Dart - Mobile & Desktop Layer
-**Components**: android_app, ios_app, harmonyos_app, tablet_app, desktop_wallet
+### Mobile & Desktop Layer
+**Components**: user_wallet/android, user_wallet/ios, desktop_app (Tauri)
 
-One codebase for Android, iOS, desktop. Pixel-perfect UI, native performance via Rust FFI for crypto ops. Trust Wallet uses similar architecture.
+Native Android (Gradle) and iOS (Swift) clients, plus a Tauri (Rust + WebView)
+desktop app. Native performance via Rust FFI for crypto ops. Trust Wallet uses
+similar architecture.
 
 ### Java / Kotlin - Enterprise & Fiat Layer
 **Components**: fiat_gateway, enterprise_features, compliance_tools, banking_integrations

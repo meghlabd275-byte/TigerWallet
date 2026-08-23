@@ -91,10 +91,8 @@ jobs:
       matrix:
         service:
           - master_wallet/go/cmd/master_wallet_service
-          - user_wallet/go
           - admin_platform/go
           - api_gateway/go
-          - backend_services/go
     
     steps:
       - name: Checkout code

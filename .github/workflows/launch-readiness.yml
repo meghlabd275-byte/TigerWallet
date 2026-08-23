@@ -39,8 +39,6 @@ jobs:
         with:
           go-version: '1.22'
       - run: go test ./...
-        working-directory: backend_services
-      - run: go test ./...
         working-directory: admin_platform/go
 
   rust:
@@ -48,7 +46,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --manifest-path backend_services/rust/Cargo.toml
       - run: cargo test --manifest-path core/rust/wallet_service/Cargo.toml
       - run: cargo test --manifest-path rust/security/Cargo.toml
 
