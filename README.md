@@ -118,13 +118,13 @@ Duplicate top-level directories were merged into one canonical home each
 
 | Domain | Canonical root | Absorbed duplicates |
 |--------|----------------|---------------------|
-| UserWallet apps (android, ios, desktop, extension, web) | `user_wallet/` | `user_app/react` → `user_wallet/react_app/` |
+| UserWallet apps (android, ios, extension, web) | `user_wallet/` | `user_app/react`, `user_wallet/react_app/`, `user_wallet/production/react/` → `user_wallet/web/` (canonical) |
 | MasterWallet apps | `master_wallet/` | — (already canonical) |
 | Admin apps | `admin/` | — (already canonical) |
 | SuperAdmin apps | `super_admin/` | — (already canonical) |
 | Browser extension | `browser_extensions/chrome/` | `browser_extension/` → `legacy/` |
-| Mobile apps | `mobile_apps/` | `mobile/` → `android_legacy/`, `ios_legacy/`, `flutter_legacy/`, `tigerswap_wallet/` |
-| Desktop | `desktop_wallet/` (C++), `desktop_app/` (Tauri), `user_wallet/desktop` (Electron) | `desktop/` (README-only) |
+| Mobile apps | `user_wallet/android`, `user_wallet/ios` | `mobile_apps/` removed (legacy/flutter/tigerswap duplicates) |
+| Desktop | `desktop_app/` (Tauri) | `desktop_wallet/` (C++), `user_wallet/desktop` (Electron) removed |
 | SDKs | `sdks/` (go, javascript, python, cpp) | `sdk/`, `developer_sdk/` |
 | Hardware wallet | `hardware_wallet/` (go, rust, cpp) | `hardware_backend/`, `hardware_wallet_deep/` |
 | Blockchain explorer | `blockchain_explorer_system/` | `blockchain_explorer/` |
@@ -136,10 +136,24 @@ Duplicate top-level directories were merged into one canonical home each
 | Portfolio analytics | `portfolio/` (go, rust) | `portfolio_analytics/` (README) → `portfolio/README.md` |
 | Governance / DAO | `governance/` (go service + 4 contract variants) | `governance_dao/` → `governance/smart_contracts/ethereum/TigerGovernance.sol` |
 | API gateway | `api_gateway/` (unified_gateway canonical) | `backend_services/api_gateway/` → `api_gateway/go/gateway_v1/` (feature-rich Gin/Redis/WebSocket gateway, own go.mod; CI + Dockerfile updated) |
-| Legacy service shims | `backend_services/` (:8080 backend shim) | `user_services/` → `backend_services/go/user_service_shim/` (:8081 shim + legacy_main.go.txt) |
+| Perpetuals | `user_features/perpetual_trading/` | `perpetuals_engine/` (Rust matching/risk/margin/liquidation engines) → `engine/`, `perpetuals_backend/` (Go services) → `backend/`, `perpetual_trading/` (C++ engine, Go service, frontend) → `cpp_engine/`, `go/`, `frontend/` |
+| Options | `user_features/options_trading/` | `options_trading/go/cmd/main.go` (full options platform) merged in |
 
-Round 2 verified with Go 1.27: `api_gateway/go/gateway_v1`, `api_gateway/go`,
-and `backend_services` all pass `go build ./...`.
+Round 2 verified with Go 1.27: `api_gateway/go/gateway_v1` and `api_gateway/go`
+pass `go build ./...`.
+
+Round 3 (2026-08-23): removed deprecated shims (`backend_services/` :8080,
+`user_wallet/go/` :8105 — both only proxied to the canonical `go/wallet_api`
+:8443), legacy mobile builds (`mobile_apps/*_legacy`, `harmonyos_app`,
+`tablet_app` stubs), duplicate mobile apps (`mobile_apps/` — canonical clients
+are `user_wallet/android` + `user_wallet/ios`), duplicate desktop apps
+(`desktop_wallet/` C++, `user_wallet/desktop` Electron — canonical is
+`desktop_app/` Tauri), and duplicate web apps (`user_wallet/react_app/`,
+`user_wallet/production/` — canonical is `user_wallet/web/`). All fetchers
+(`go/full_fetchers`, `fetcher_core`, `fetcher_gateway`) and unique
+functionality were preserved; perpetuals/options engines were merged into
+`user_features/`, not deleted, and the unique `listing_service` was moved from
+`backend_services/go/listing_service` to `listing_service/go`.
 
 Language placement rule: **C++** for ultra-low-latency speed paths,
 **Rust** where safety/security is critical (also ultra-low-latency),

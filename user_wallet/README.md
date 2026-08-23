@@ -13,19 +13,16 @@ in the platform that performs key management and signing for users.
 | Client | Location |
 |---|---|
 | Web (React/CRA) | `user_wallet/web` |
-| Production React web | `user_wallet/production/react` |
-| Secondary pages app | `user_wallet/react_app` |
 | Android | `user_wallet/android` |
 | iOS | `user_wallet/ios` |
-| Desktop | `user_wallet/desktop` |
+| Desktop (Tauri) | `desktop_app/` |
 | Browser extension | `user_wallet/extension` |
 | Rust core | `user_wallet/rust` |
-| Backend shim (:8105 → :8443 proxy) | `user_wallet/go` |
 
 All clients share the same canonical API: `go/wallet_api` on :8443. The
-`user_wallet/go` service is a deprecated thin reverse-proxy that forwards to
-`WALLET_API_URL` (default `http://localhost:8443`) so legacy clients pointing
-at :8105 keep working; it performs no key handling.
+deprecated `user_wallet/go` reverse-proxy (:8105 → :8443) and the duplicate
+`react_app`, `production/react`, and Electron `desktop` clients have been
+removed; point all clients directly at :8443.
 
 ## No-Registration UX
 

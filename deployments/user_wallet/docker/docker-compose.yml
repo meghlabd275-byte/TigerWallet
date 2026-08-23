@@ -3,10 +3,10 @@
 version: '3.8'
 
 services:
-  # UserWallet Backend
+  # UserWallet Backend (canonical wallet_api on :8443)
   user-wallet-backend:
     build:
-      context: ../../user_wallet/go
+      context: ../../../go/wallet_api
       dockerfile: Dockerfile
     container_name: ${TENANT_SLUG}-user-wallet-backend
     environment:
@@ -20,7 +20,7 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - KYC_ENABLED=true
     ports:
-      - "8002:8002"
+      - "8443:8443"
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,8 +37,8 @@ services:
       dockerfile: Dockerfile
     container_name: ${TENANT_SLUG}-user-wallet-frontend
     environment:
-      - REACT_APP_API_URL=http://user-wallet-backend:8002
-      - REACT_APP_WS_URL=ws://user-wallet-backend:8002
+      - REACT_APP_API_URL=http://user-wallet-backend:8443
+      - REACT_APP_WS_URL=ws://user-wallet-backend:8443
       - REACT_APP_TENANT_SLUG=${TENANT_SLUG}
     ports:
       - "3002:80"

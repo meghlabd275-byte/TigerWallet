@@ -2,10 +2,10 @@
 
 ## Table of Contents
 1. [Prerequisites](#prerequisites)
-2. [Flutter Mobile Apps](#flutter-mobile)
+2. [Mobile Apps](#mobile-apps-canonical-user_walletandroid-user_walletios)
 3. [Android Native](#android-native)
 4. [iOS Native](#ios-native)
-5. [Desktop App (C++)](#desktop-cpp)
+5. [Desktop App (Tauri)](#desktop-tauri--canonical-desktop_app)
 6. [Web App (NextJS)](#web-nextjs)
 7. [Browser Extensions](#browser-extensions)
 8. [Backend Services](#backend-services)
@@ -45,59 +45,42 @@ redis-cli --version  # 6.x+
 
 ---
 
-## Flutter Mobile Apps
+## Mobile Apps (canonical: user_wallet/android, user_wallet/ios)
 
 ### Build Android APK
 ```bash
-cd /workspace/project/TigerWallet/mobile_apps/flutter_legacy
-
-# Clean and get dependencies
-flutter clean
-flutter pub get
+cd /workspace/project/TigerWallet/user_wallet/android
 
 # Build debug APK
-flutter build apk --debug
+./gradlew assembleDebug
 
 # Build release APK
-flutter build apk --release
+./gradlew assembleRelease
 
-# Output: build/app/outputs/flutter-apk/app-release.apk
+# Output: app/build/outputs/apk/release/app-release.apk
 ```
 
 ### Build iOS (requires macOS)
 ```bash
-cd /workspace/project/TigerWallet/mobile_apps/flutter_legacy
+cd /workspace/project/TigerWallet/user_wallet/ios
 
-# Get dependencies
-flutter pub get
+# Open the App/ Swift sources in Xcode and build, or:
+xcodebuild -scheme TigerWallet \
+  -configuration Release \
+  -destination 'generic/platform=iOS' \
+  build
 
-# Build for simulator
-flutter build ios --simulator --no-codesign
-
-# Build for device (requires Apple Developer account)
-flutter build ios --release
-
-# Output: build/ios/iphoneos/Runner.ipa
+# Output: build/Build/Products/Release-iphoneos/TigerWallet.app
 ```
 
 ### Build Web
 ```bash
-cd /workspace/project/TigerWallet/mobile_apps/flutter_legacy
+cd /workspace/project/TigerWallet/user_wallet/web
 
-# Build for web
-flutter build web --release
+npm install
+npm run build
 
-# Output: build/web/
-```
-
-### Running Flutter
-```bash
-# Run on connected device/emulator
-flutter run
-
-# Run on specific device
-flutter devices              # List devices
-flutter run -d <device_id>  # Run on specific device
+# Output: build/
 ```
 
 ---
@@ -106,7 +89,7 @@ flutter run -d <device_id>  # Run on specific device
 
 ### Build Debug APK
 ```bash
-cd /workspace/project/TigerWallet/mobile_apps/android_legacy
+cd /workspace/project/TigerWallet/user_wallet/android
 
 # Using Gradle
 ./gradlew assembleDebug
@@ -118,7 +101,7 @@ cd /workspace/project/TigerWallet/mobile_apps/android_legacy
 
 ### Build Release APK
 ```bash
-cd /workspace/project/TigerWallet/mobile_apps/android_legacy
+cd /workspace/project/TigerWallet/user_wallet/android
 
 # Create release build
 ./gradlew assembleRelease
@@ -140,69 +123,52 @@ cd /workspace/project/TigerWallet/mobile_apps/android_legacy
 
 ### Build with Xcode
 ```bash
-cd /workspace/project/TigerWallet/mobile_apps/ios_legacy
+cd /workspace/project/TigerWallet/user_wallet/ios
 
-# Open in Xcode
-open Runner.xcworkspace
-
-# Or build from command line
-xcodebuild -workspace Runner.xcworkspace \
-  -scheme Runner \
+# Open the App/ Swift sources in Xcode, or build from command line
+xcodebuild -scheme TigerWallet \
   -configuration Debug \
   -destination 'platform=iOS Simulator,name=iPhone 15' \
   build
 
 # Build for App Store
-xcodebuild -workspace Runner.xcworkspace \
-  -scheme Runner \
+xcodebuild -scheme TigerWallet \
   -configuration Release \
   -destination 'generic/platform=iOS' \
   archive
 ```
 
 ### Output
-- Debug: `build/Build/Products/Debug-iphoneos/Runner.app`
-- Release: `build/Build/Products/Archive/Runner.xcarchive`
+- Debug: `build/Build/Products/Debug-iphoneos/TigerWallet.app`
+- Release: `build/Build/Products/Archive/TigerWallet.xcarchive`
 
 ---
 
-## Desktop C++
+## Desktop (Tauri — canonical: desktop_app/)
 
 ### Build for Linux
 ```bash
-cd /workspace/project/TigerWallet/desktop_wallet
+cd /workspace/project/TigerWallet/desktop_app/tauri
 
-# Create build directory
-mkdir -p build && cd build
+cargo build --release
 
-# Configure with CMake
-cmake .. -DCMAKE_BUILD_TYPE=Release
-
-# Build
-cmake --build . --config Release
-
-# Output: build/tigerwallet
+# Output: target/release/tigerwallet
 ```
 
 ### Build for Windows
 ```bash
-# Using MSVC
-mkdir build
-cd build
-cmake .. -G "Visual Studio 17 2022" -A x64
-cmake --build . --config Release
+cd /workspace/project/TigerWallet/desktop_app/tauri
 
-# Output: build/Release/tigerwallet.exe
+cargo build --release
+
+# Output: target/release/tigerwallet.exe
 ```
 
 ### Build for macOS
 ```bash
-cd /workspace/project/TigerWallet/desktop_wallet
+cd /workspace/project/TigerWallet/desktop_app/tauri
 
-mkdir -p build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_OSX_ARCHITECTURES=arm64;x86_64
-cmake --build . --config Release
+cargo build --release
 
 # Output: build/tigerwallet.app
 ```
@@ -790,10 +756,10 @@ cd backend/go/cmd/api && go build -o tigerwallet-api .
 cd ../../frontend/web_nextjs && npm install && npm run build
 
 # Mobile
-cd ../../mobile_apps/flutter_legacy && flutter build apk --release
+cd ../../user_wallet/android && ./gradlew assembleRelease
 
 # Desktop
-cd ../../desktop_wallet && mkdir build && cd build && cmake .. && cmake --build .
+cd ../../desktop_app/tauri && cargo build --release
 
 # Run
 ./backend/go/cmd/api/tigerwallet-api &

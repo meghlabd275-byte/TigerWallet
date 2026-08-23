@@ -44,7 +44,7 @@ services:
   # Listing Service
   listing-service:
     build:
-      context: ./backend_services/go/listing_service
+      context: ./listing_service/go
       dockerfile: Dockerfile
     container_name: tigerwallet-listing-service
     ports:
