@@ -353,14 +353,11 @@ type BalanceResponse struct {
 	Locked    float64 `json:"locked"`
 }
 
-// GetBalance gets balance from connected wallet/exchange
+// GetBalance gets balance from connected wallet/exchange. A real balance must
+// come from the connected exchange API; since no exchange client is wired up
+// here, fabricating numbers would be wrong. Fail-closed like the trading calls.
 func GetBalance(conn *ExchangeConnection, symbol string) (*BalanceResponse, error) {
-	return &BalanceResponse{
-		Symbol:    symbol,
-		Amount:    1000.0,
-		Available: 900.0,
-		Locked:    100.0,
-	}, nil
+	return nil, fmt.Errorf("balance query for %s not implemented - requires a live exchange client", symbol)
 }
 
 // TransferRequest represents transfer request

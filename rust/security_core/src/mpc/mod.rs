@@ -1,14 +1,12 @@
-/**
- * TigerWallet Security Core - MPC (Multi-Party Computation)
- * 
- * Implementation of:
- * - Shamir's Secret Sharing
- * - Threshold signatures (TSS)
- * - Distributed key generation (DKG)
- * - Party-based signing
- * 
- * This module provides secure key management without single points of failure.
- */
+//! TigerWallet Security Core - MPC (Multi-Party Computation)
+//!
+//! Implementation of:
+//! - Shamir's Secret Sharing
+//! - Threshold signatures (TSS)
+//! - Distributed key generation (DKG)
+//! - Party-based signing
+//!
+//! This module provides secure key management without single points of failure.
 
 #![allow(dead_code)]
 #![allow(unused_variables)]
@@ -70,7 +68,7 @@ pub struct Commitment {
     /// Index this commitment corresponds to
     pub index: u32,
     /// Commitment value
-    pub value: Vec<u8>>,
+    pub value: Vec<u8>,
 }
 
 /// Secret shares for all participants
@@ -367,28 +365,14 @@ impl MPCEngine {
             });
         }
         
-        // In production, implement proper threshold ECDSA
-        // This is a simplified version
-        let mut combined_r = vec![0u8; 32];
-        let mut combined_s = vec![0u8; 32];
-        
-        for partial in self.partial_signatures.values().take(self.threshold) {
-            for (i, &b) in partial.value.iter().enumerate() {
-                if i < 32 {
-                    combined_r[i] ^= b;
-                } else if i < 64 {
-                    combined_s[i - 32] ^= b;
-                }
-            }
-        }
-        
-        Ok(Signature {
-            r: combined_r,
-            s: combined_s,
-            v: 0,
-        })
+        // Combining partial signatures into a valid threshold ECDSA signature
+        // requires the real multi-round TSS protocol (see rust/mpc). XOR-ing
+        // partial values does NOT produce a valid signature, so fail-closed
+        // instead of returning a forged (r, s) pair.
+        Err(MPCError::SigningFailed(
+            "threshold combine not linked - no valid signature produced".to_string()
+        ))
     }
-    
     /// Sign a message with the threshold key
     pub fn sign(&mut self, message: &[u8]) -> Result<Signature, MPCError> {
         // In production, this would involve multiple rounds:
@@ -402,30 +386,36 @@ impl MPCEngine {
             return Err(MPCError::SigningFailed("No share available".to_string()));
         }
         
-        // Simplified signing - in production use proper threshold signing
-        let mut signature_data = Vec::new();
-        signature_data.extend_from_slice(message);
-        if let Some(ref share) = self.own_share {
-            signature_data.extend_from_slice(&share.value);
+        // A real threshold signature requires the multi-round DKG + signing
+        // protocol (see rust/mpc). Returning a zeroed (r, s) pair would be a
+        // forgery, so fail-closed.
+        if message.is_empty() {
+            return Err(MPCError::SigningFailed("Empty message".to_string()));
         }
-        
-        // For now, return a placeholder
-        Ok(Signature {
-            r: vec![0u8; 32],
-            s: vec![0u8; 32],
-            v: 0,
-        })
+        Err(MPCError::SigningFailed(
+            "threshold signing backend not linked - no signature produced".to_string()
+        ))
     }
     
-    /// Verify a signature
+    /// Verify a signature. Verification must be done with a real secp256k1
+    /// public key. Returning Ok(true) unconditionally would be a critical
+    /// vulnerability, so until a public key is bound we fail-closed.
     pub fn verify_signature(&self, message: &[u8], signature: &Signature) -> Result<bool, MPCError> {
-        if let Some(ref public_key) = self.public_key {
-            // Use secp256k1 to verify
-            // In production implement proper verification
-            Ok(true)
-        } else {
-            Err(MPCError::VerificationFailed("No public key available".to_string()))
+        if self.public_key.is_none() {
+            return Err(MPCError::VerificationFailed("No public key available".to_string()));
         }
+        if message.is_empty() {
+            return Err(MPCError::VerificationFailed("Empty message".to_string()));
+        }
+        if signature.r.is_empty() || signature.s.is_empty() {
+            return Err(MPCError::VerificationFailed("Malformed signature".to_string()));
+        }
+        // A real secp256k1 ECDSA verification requires the k256/noble curve
+        // crate. Rather than claim success (Ok(true)), fail-closed so callers
+        // cannot be lulled into accepting an unverified signature.
+        Err(MPCError::VerificationFailed(
+            "secp256k1 verification backend not linked - signature NOT verified".to_string()
+        ))
     }
     
     /// Get party status
