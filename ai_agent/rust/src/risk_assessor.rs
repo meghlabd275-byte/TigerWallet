@@ -18,7 +18,7 @@ impl RiskAssessor {
         user_portfolio: &Portfolio,
     ) -> Result<RiskAssessment, AgentError> {
         let mut risk_factors = Vec::new();
-        let mut risk_score = 0.0;
+        let mut risk_score: f64 = 0.0;
         
         // Check if amount is significant compared to portfolio
         let portfolio_value = user_portfolio.total_value_usd;
@@ -89,7 +89,7 @@ impl RiskAssessor {
     /// Assess portfolio risk
     pub fn assess_portfolio(&self, portfolio: &Portfolio) -> Result<RiskAssessment, AgentError> {
         let mut risk_factors = Vec::new();
-        let mut risk_score = 0.0;
+        let mut risk_score: f64 = 0.0;
         
         // Check concentration risk
         if let Some(largest) = portfolio.positions.iter().max_by(|a, b| a.allocation_percent.partial_cmp(&b.allocation_percent).unwrap()) {

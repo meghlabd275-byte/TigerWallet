@@ -296,31 +296,18 @@ NEXT_PUBLIC_NETWORK=mainnet
 
 ## Browser Extensions
 
-### Build for Chrome/Edge/Brave
+The MasterWallet extension has a single canonical source at
+`master_wallet/extensions/extension/` with per-browser manifest variants
+(no more five duplicated extension trees).
+
+### Build for Chrome/Edge/Brave/Firefox/Safari
 
 ```bash
-cd /workspace/project/TigerWallet/browser_extensions/chrome_extension
+cd /workspace/project/TigerWallet/master_wallet/extensions/extension
 
-# Install dependencies
-npm install
-
-# Build
-npm run build
-
-# Package
-npm run package
-```
-
-### Build for Firefox
-
-```bash
-cd /workspace/project/TigerWallet/browser_extensions/firefox_extension
-
-# Install dependencies
-npm install
-
-# Build
-npm run build
+# Build the browser package you need (copies shared sources + the
+# browser-specific manifest into dist/<browser>/)
+./build.sh chrome    # also: brave, edge, firefox, safari
 ```
 
 ### Load Extension
@@ -329,12 +316,17 @@ npm run build
 1. Open `chrome://extensions/`
 2. Enable "Developer mode"
 3. Click "Load unpacked"
-4. Select `browser_extensions/chrome_extension/dist`
+4. Select `master_wallet/extensions/extension/dist/chrome` (or `dist/brave`, `dist/edge`)
 
 **Firefox:**
 1. Open `about:debugging#/runtime/this-firefox`
 2. Click "Load Temporary Add-on"
-3. Select `browser_extensions/firefox_extension/dist/manifest.json`
+3. Select `master_wallet/extensions/extension/dist/firefox/manifest.json`
+
+**Safari:**
+1. `./build.sh safari`
+2. `xcrun safari-web-extension-converter dist/safari --app-name "TigerMasterWallet"`
+3. Open the generated Xcode project and run it
 
 ---
 

@@ -1,0 +1,12 @@
+[package]
+name = "tiger-ai-layer"
+version = "1.0.0"
+edition = "2021"
+description = "TigerWallet AI layer - price prediction engine, technical indicators, scam detection"
+
+[lib]
+name = "tiger_ai_layer"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }

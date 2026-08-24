@@ -438,6 +438,14 @@ func (s *FiatRampService) RegisterRoutes(r *gin.Engine) {
 	r.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "fiat-ramp"}) })
 	api := r.Group("/api/v1/ramp")
 	api.Use(s.featureGate(GatedFeature))
+
+	// Provider webhooks: signature-verified order status callbacks.
+	// Unauthenticated by design (providers cannot hold user JWTs); the
+	// HMAC signature check is the authentication.
+	api.POST("/webhooks/stripe", s.handleStripeWebhook)
+	api.POST("/webhooks/moonpay", s.handleMoonPayWebhook)
+	api.POST("/webhooks/transak", s.handleTransakWebhook)
+
 	api.GET("/providers", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"providers": s.GetProviders()}) })
 	api.POST("/quote", func(c *gin.Context) {
 		var req struct {

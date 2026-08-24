@@ -2,9 +2,8 @@
 //! 
 //! Analyzes transactions and provides smart suggestions
 
-use crate::{AgentConfig, TokenInfo, Portfolio, TransactionSuggestion, SuggestionType, RiskLevel, SuggestionAction, ActionType, AgentError};
+use crate::{AgentConfig, TokenInfo, Portfolio, PortfolioPosition, TransactionSuggestion, SuggestionType, RiskLevel, SuggestionAction, ActionType, AgentError};
 use chrono::Utc;
-use rand::Rng;
 
 /// Transaction Analyzer
 pub struct TransactionAnalyzer {
@@ -18,7 +17,7 @@ impl TransactionAnalyzer {
     }
     
     /// Analyze portfolio and generate suggestions
-    pub fn analyze_portfolio(&self, portfolio: &Portfolio) -> Result<Vec<TransactionSuggestion>, AgentError> {
+    pub async fn analyze_portfolio(&self, portfolio: &Portfolio) -> Result<Vec<TransactionSuggestion>, AgentError> {
         let mut suggestions = Vec::new();
         
         // Check for rebalancing opportunities
@@ -28,7 +27,7 @@ impl TransactionAnalyzer {
         
         // Check for gas optimization
         if self.config.enable_gas_optimization {
-            suggestions.extend(self.check_gas_optimization(portfolio)?);
+            suggestions.extend(self.check_gas_optimization(portfolio).await?);
         }
         
         // Check for diversification
@@ -83,13 +82,38 @@ impl TransactionAnalyzer {
         Ok(suggestions)
     }
     
+    /// Fetch the current network gas price (gwei) from the configured EVM
+    /// RPC endpoint via `eth_gasPrice`. Returns None when no RPC is
+    /// configured or the node is unreachable — callers must not fabricate a
+    /// value in that case.
+    async fn fetch_current_gas_gwei() -> Option<f64> {
+        let rpc_url = std::env::var("EVM_RPC_URL").ok()?;
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .ok()?;
+        let body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "eth_gasPrice",
+            "params": [],
+            "id": 1
+        });
+        let resp: serde_json::Value = client.post(&rpc_url).json(&body).send().await.ok()?.json().await.ok()?;
+        let hex_price = resp.get("result")?.as_str()?;
+        let wei = u128::from_str_radix(hex_price.trim_start_matches("0x"), 16).ok()?;
+        Some(wei as f64 / 1e9)
+    }
+
     /// Check for gas optimization opportunities
-    fn check_gas_optimization(&self, _portfolio: &Portfolio) -> Result<Vec<TransactionSuggestion>, AgentError> {
+    async fn check_gas_optimization(&self, _portfolio: &Portfolio) -> Result<Vec<TransactionSuggestion>, AgentError> {
         let mut suggestions = Vec::new();
-        
-        // Generate gas optimization suggestion
-        let mut rng = rand::thread_rng();
-        let current_gas = rng.gen_range(20.0..100.0);
+
+        // Real network gas price from the configured RPC. If we cannot
+        // obtain one we emit no gas suggestion rather than inventing a price.
+        let current_gas = match Self::fetch_current_gas_gwei().await {
+            Some(g) => g,
+            None => return Ok(suggestions),
+        };
         let optimal_gas = current_gas * 0.7;
         let savings = (1.0 - optimal_gas / current_gas) * 100.0;
         
@@ -231,8 +255,6 @@ impl TransactionAnalyzer {
         amount: f64,
         expected_price_impact: f64,
     ) -> Result<TransactionSuggestion, AgentError> {
-        let mut rng = rand::thread_rng();
-        
         // Determine risk based on price impact
         let risk = if expected_price_impact > 10.0 {
             RiskLevel::VeryHigh
@@ -254,7 +276,7 @@ impl TransactionAnalyzer {
                 amount, from_token, to_token, expected_price_impact),
             expected_outcome: "Token swap executed".to_string(),
             confidence,
-            estimated_gas: 150000 + rng.gen_range(0..50000),
+            estimated_gas: 150000, // typical AMM swap gas usage
             estimated_value_usd: amount,
             risk_level: risk,
             action: SuggestionAction {
@@ -316,13 +338,13 @@ mod tests {
         }
     }
     
-    #[test]
-    fn test_analyzer_creation() {
+    #[tokio::test]
+    async fn test_analyzer_creation() {
         let config = AgentConfig::default();
         let analyzer = TransactionAnalyzer::new(config);
         
         let portfolio = create_test_portfolio();
-        let suggestions = analyzer.analyze_portfolio(&portfolio).unwrap();
+        let suggestions = analyzer.analyze_portfolio(&portfolio).await.unwrap();
         
         // Should have rebalancing and diversification suggestions
         assert!(!suggestions.is_empty());

@@ -189,8 +189,8 @@ impl TechnicalIndicators {
         
         for i in 1..=period {
             let high_low = self.highs[i] - self.lows[i];
-            let high_close = (self.highs[i] - self.closes[i-1]).abs();
-            let low_close = (self.lows[i] - self.closes[i-1]).abs();
+            let high_close = (self.highs[i] - self.prices[i-1]).abs();
+            let low_close = (self.lows[i] - self.prices[i-1]).abs();
             true_ranges.push(high_low.max(high_close).max(low_close));
         }
         
@@ -247,6 +247,22 @@ impl Default for TechnicalIndicators {
     }
 }
 
+impl TechnicalIndicators {
+    /// Find support and resistance levels from price clusters.
+    /// Ported from the retired ai_agent crate (its only unique feature).
+    /// Returns (support_levels, resistance_levels); needs >= 50 data points.
+    pub fn support_resistance(&self) -> Option<(Vec<f64>, Vec<f64>)> {
+        if self.prices.len() < 50 {
+            return None;
+        }
+        let mut prices: Vec<f64> = self.prices.iter().copied().collect();
+        prices.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let support = vec![prices[0], prices[prices.len() / 4]];
+        let resistance = vec![prices[prices.len() * 3 / 4], prices[prices.len() - 1]];
+        Some((support, resistance))
+    }
+}
+
 // ============================================================================
 // PRICE PREDICTION ENGINE
 // ============================================================================
@@ -287,12 +303,12 @@ impl PricePredictionEngine {
 
     /// Add price data
     pub fn add_price_data(&self, point: PricePoint) {
-        self.indicators.write().add_data_point(&point);
+        self.indicators.write().unwrap_or_else(|e| e.into_inner()).add_data_point(&point);
     }
 
     /// Generate prediction
     pub fn predict(&self, symbol: &str, timeframe: &str) -> Prediction {
-        let indicators = self.indicators.read();
+        let indicators = self.indicators.read().unwrap_or_else(|e| e.into_inner());
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -346,7 +362,7 @@ impl PricePredictionEngine {
         let volume_ratio = indicators.volume_ratio(20);
         
         // Calculate confidence
-        let mut confidence = 0.5;
+        let mut confidence: f64 = 0.5;
         let mut factors = Vec::new();
         
         // RSI alignment
@@ -588,7 +604,7 @@ impl ScamDetectionEngine {
             flags.push("infinite_mint".to_string());
         }
         
-        if data.owner_percent > 50 {
+        if data.owner_percent > 50.0 {
             risk_score += 40;
             flags.push("high_owner_supply".to_string());
         }
@@ -603,7 +619,7 @@ impl ScamDetectionEngine {
             flags.push("unlocked_liquidity".to_string());
         }
         
-        if data.trade_tax > 10 {
+        if data.trade_tax > 10.0 {
             risk_score += 20;
             flags.push("high_tax".to_string());
         }

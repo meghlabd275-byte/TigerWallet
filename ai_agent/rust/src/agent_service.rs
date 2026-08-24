@@ -36,7 +36,7 @@ impl AgentService {
     
     /// Get transaction suggestions for portfolio
     pub async fn get_suggestions(&self, portfolio: &Portfolio) -> Result<Vec<TransactionSuggestion>, AgentError> {
-        self.transaction_analyzer.analyze_portfolio(portfolio)
+        self.transaction_analyzer.analyze_portfolio(portfolio).await
     }
     
     /// Analyze specific transaction

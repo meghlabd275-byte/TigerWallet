@@ -3,7 +3,10 @@
   "name": "TigerWallet Super Admin",
   "version": "1.0.0",
   "description": "Super Admin extension for TigerWallet management",
-  "permissions": ["activeTab", "storage"],
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
@@ -13,12 +16,11 @@
     }
   },
   "background": {
-    "service_worker": "background.js"
+    "scripts": [
+      "background.js"
+    ],
+    "persistent": false
   },
-  "content_scripts": [{
-    "matches": ["<all_urls>"],
-    "js": ["content.js"]
-  }],
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",

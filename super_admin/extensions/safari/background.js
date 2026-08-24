@@ -1,3 +1,15 @@
+// WebExtension API compatibility shim.
+// Firefox MV2 exposes the promise-based `browser.*` namespace but not
+// `chrome.*` promises; Chromium MV3 exposes `chrome.*` (with promises in
+// service workers) but not `browser.*`. Alias whichever is present so the
+// same source runs in both engines without per-browser code copies.
+if (typeof browser !== "undefined" && typeof chrome === "undefined") {
+  // eslint-disable-next-line no-global-assign
+  chrome = browser;
+} else if (typeof chrome !== "undefined" && typeof browser === "undefined") {
+  // eslint-disable-next-line no-global-assign
+  browser = chrome;
+}
 // Super Admin Chrome Extension - Background Service Worker
 // Drives the real super_admin/go backend on port 8082 (JWT bearer auth).
 const API_BASE_URL = 'http://localhost:8082/api/v1/admin';

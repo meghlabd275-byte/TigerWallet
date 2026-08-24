@@ -177,7 +177,7 @@ mod tests {
                     balance: 2000.0,
                     value_usd: 2000.0,
                     allocation_percent: 20.0,
-                    pnl_percent: 0.0,
+                    pnl_percent: -15.0,
                 },
             ],
             last_updated: Utc::now(),

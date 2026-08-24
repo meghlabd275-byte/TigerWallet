@@ -63,7 +63,7 @@ impl GasOptimizer {
     
     /// Get optimal gas price
     pub fn get_optimal_gas(&self) -> Result<GasOptimization, AgentError> {
-        let current = self.current_gas
+        let current = self.current_gas.clone()
             .ok_or_else(|| AgentError::AnalysisError("No gas data available".to_string()))?;
         
         // Analyze historical data to find patterns
@@ -128,7 +128,7 @@ impl GasOptimizer {
         
         // Simple linear regression for prediction
         let n = self.gas_history.len();
-        let sum_t: i64 = (0..n).sum();
+        let sum_t: i64 = (0..n).map(|i| i as i64).sum();
         let sum_gas: f64 = self.gas_history.iter().map(|p| p.gas_price_gwei).sum();
         let sum_t2: i64 = (0..n).map(|i| i as i64 * i as i64).sum();
         let sum_tgas: f64 = self.gas_history.iter()
@@ -156,7 +156,7 @@ impl GasOptimizer {
     
     /// Get fee estimates for different urgency levels
     pub fn get_fee_estimates(&self, gas_limit: u64) -> Result<FeeEstimates, AgentError> {
-        let current = self.current_gas
+        let current = self.current_gas.clone()
             .ok_or_else(|| AgentError::AnalysisError("No gas data available".to_string()))?;
         
         Ok(FeeEstimates {
