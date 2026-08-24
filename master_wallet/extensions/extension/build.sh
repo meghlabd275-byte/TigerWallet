@@ -17,6 +17,7 @@ mkdir -p "$OUT"
 
 # Shared sources are byte-identical across browsers — copy them once.
 cp -r "$SRC/background.js" "$SRC/injected.js" "$SRC/popup.html" "$SRC/popup.js" "$SRC/services" "$OUT/"
+cp "$SRC"/icon*.png "$OUT/" 2>/dev/null || true
 
 # Chrome uses the canonical MV3 manifest; other browsers use their variant.
 if [ "$BROWSER" = "chrome" ]; then
