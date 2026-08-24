@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/nav_dashboard" android:title="@string/nav_dashboard" />
+    <item android:id="@+id/nav_users" android:title="@string/nav_users" />
+    <item android:id="@+id/nav_kyc" android:title="@string/nav_kyc" />
+    <item android:id="@+id/nav_tokens" android:title="@string/nav_tokens" />
+    <item android:id="@+id/nav_transactions" android:title="@string/nav_transactions" />
+    <item android:id="@+id/nav_withdrawals" android:title="@string/nav_withdrawals" />
+    <item android:id="@+id/nav_system" android:title="@string/nav_system" />
+</menu>
