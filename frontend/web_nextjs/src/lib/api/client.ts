@@ -507,12 +507,29 @@ class TigerWalletAPI {
   }
 
   // Wallet
-  async createWallet(name: string, chainIds: number[]): Promise<APIResponse<Wallet>> {
-    return (await this.client.post('/wallet/create', { name, chainIds })).data;
+  // Both create and mnemonic-import are served by the wallet-api backend's
+  // POST /api/v1/wallets endpoint, which derives the secp256k1 key + EVM
+  // address and stores the encrypted seed. Import is simply create-with-a-
+  // mnemonic; omit `mnemonic` to generate a fresh wallet, include it to import.
+  async createWallet(params: {
+    password: string;
+    label?: string;
+    chainId?: number;
+    mnemonic?: string;
+    accountIndex?: number;
+    entropyBits?: number;
+  }): Promise<APIResponse<Wallet>> {
+    return (await this.client.post('/wallet/create', params)).data;
   }
 
-  async importWallet(mnemonic: string, name: string): Promise<APIResponse<Wallet>> {
-    return (await this.client.post('/wallet/import', { mnemonic, name })).data;
+  async importWallet(params: {
+    mnemonic: string;
+    password: string;
+    label?: string;
+    chainId?: number;
+    accountIndex?: number;
+  }): Promise<APIResponse<Wallet>> {
+    return (await this.client.post('/wallet/import', params)).data;
   }
 
   async getWallets(): Promise<APIResponse<Wallet[]>> {

@@ -132,95 +132,16 @@ type LiFiStep struct {
 	Description string `json:"description"`
 }
 
-// Stargate API Client
-type StargateClient struct {
-	httpClient *http.Client
-	baseURL    string
-}
-
-func NewStargateClient() *StargateClient {
-	return &StargateClient{
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		baseURL:    "https://api.stargate.io/stargate",
-	}
-}
-
-func (c *StargateClient) GetQuote(req RouteRequest) (*StargateQuote, error) {
-	return nil, fmt.Errorf("Stargate quote not implemented: configure a real Stargate API endpoint to enable")
-}
-
-type StargateQuote struct {
-	RouteID      string  `json:"routeId"`
-	SrcChainID   uint64  `json:"srcChainId"`
-	DstChainID   uint64  `json:"dstChainId"`
-	SrcToken     string  `json:"srcToken"`
-	DstToken     string  `json:"dstToken"`
-	FromAmount   string  `json:"fromAmount"`
-	ToAmount     string  `json:"toAmount"`
-	GasEstimate  string  `json:"gasEstimate"`
-	GasFeeUSD    float64 `json:"gasFeeUSD"`
-	BridgeFeeUSD float64 `json:"bridgeFeeUSD"`
-	ReceivalTime int     `json:"receivalTime"` // in seconds
-}
-
-// Celer API Client
-type CelerClient struct {
-	httpClient *http.Client
-	baseURL    string
-}
-
-func NewCelerClient() *CelerClient {
-	return &CelerClient{
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		baseURL:    "https://cbridge-prod2.celer.network/v1",
-	}
-}
-
-func (c *CelerClient) GetQuote(req RouteRequest) (*CelerQuote, error) {
-	return nil, fmt.Errorf("Celer quote not implemented: configure a real cBridge API endpoint to enable")
-}
-
-type CelerQuote struct {
-	TransferID        string `json:"transferId"`
-	FromChainID       uint64 `json:"fromChainId"`
-	ToChainID         uint64 `json:"toChainId"`
-	FromToken         string `json:"fromToken"`
-	ToToken           string `json:"toToken"`
-	AmountIn          string `json:"amountIn"`
-	AmountOut         string `json:"amountOut"`
-	SlippageTolerance int    `json:"slippageTolerance"`
-	Deadline          int64  `json:"deadline"`
-	EstimatedDuration int    `json:"estimatedDuration"` // in seconds
-}
-
-// Across API Client
-type AcrossClient struct {
-	httpClient *http.Client
-	baseURL    string
-}
-
-func NewAcrossClient() *AcrossClient {
-	return &AcrossClient{
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		baseURL:    "https://across.to/api",
-	}
-}
-
-func (c *AcrossClient) GetQuote(req RouteRequest) (*AcrossQuote, error) {
-	return nil, fmt.Errorf("Across quote not implemented: configure a real Across API endpoint to enable")
-}
-
-type AcrossQuote struct {
-	RouteID        string `json:"routeId"`
-	InputToken     string `json:"inputToken"`
-	OutputToken    string `json:"outputToken"`
-	InputAmount    string `json:"inputAmount"`
-	OutputAmount   string `json:"outputAmount"`
-	FillDeadline   int    `json:"fillDeadline"`
-	Expiration     int64  `json:"expiration"`
-	EstimatedL1Fee string `json:"estimatedL1Fee"`
-	RelayerFeePct  string `json:"relayerFeePct"`
-}
+// Direct Stargate / Celer / Across quote clients are intentionally NOT
+// implemented here. Stargate is an on-chain (LayerZero messaging) protocol with
+// no public REST quote endpoint; Celer cBridge and Across each expose REST
+// quotes, but both are already aggregated -- with real on-chain route data --
+// by the Li.Fi integration below (getLiFiQuote, which calls Li.Fi's live
+// /v1/quote endpoint and surfaces Stargate/Across/Celer/Hop routes). The
+// getStargateQuote/getCelerQuote/getAcrossQuote methods therefore return no
+// direct quote (nil) unless an explicit direct endpoint is configured, and
+// rely on Li.Fi for real coverage. This avoids a redundant, untested
+// duplicate of the Li.Fi aggregation path.
 
 // ============================================================================
 // Configuration
@@ -454,15 +375,14 @@ func (s *BridgeAggregator) GetQuotes(req RouteRequest) ([]*BridgeQuote, error) {
 }
 
 func (s *BridgeAggregator) getStargateQuote(req RouteRequest) *BridgeQuote {
-	// No fabricated quotes: only return a quote if a real Stargate API endpoint
-	// is configured. The Stargate SDK / Router API is integrated via Li.Fi below
-	// (getLiFiQuote) which aggregates Stargate among other bridges with real
-	// on-chain route data.
+	// Stargate is an on-chain (LayerZero messaging) protocol with no public
+	// REST quote endpoint; direct integration requires on-chain SDK calls.
+	// Stargate routes are surfaced for real via the Li.Fi aggregation path
+	// (getLiFiQuote below). Only return a direct quote if a future explicit
+	// direct SDK hook is configured; otherwise rely on Li.Fi.
 	if s.config.StargateAPI == "" {
 		return nil
 	}
-	// A real Stargate REST call would go here against s.config.StargateAPI.
-	// Until configured, return no quote rather than a fabricated one.
 	return nil
 }
 

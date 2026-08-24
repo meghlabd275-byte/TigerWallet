@@ -9,11 +9,13 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"math/big"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -332,28 +334,143 @@ func (g *GoogleDriveStorage) Upload(path string, data []byte) error {
 	if g.token == "" {
 		return g.notConfiguredError()
 	}
-	return fmt.Errorf("Google Drive upload not implemented for %s", path)
+	// Drive REST API v3 multipart upload: metadata (name + parent folder) plus
+	// the encrypted blob. The folderID is the TigerWallet backup folder; when
+	// unset the file is uploaded to the authenticated user's root My Drive.
+	boundary := "tigerwallet-" + hex.EncodeToString(randBytes(16))
+	var meta bytes.Buffer
+	fmt.Fprintf(&meta, "{\"name\":%q", path)
+	if g.folderID != "" {
+		fmt.Fprintf(&meta, ",\"parents\":[%q]", g.folderID)
+	}
+	meta.WriteString("}")
+
+	var body bytes.Buffer
+	fmt.Fprintf(&body, "--%s\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n%s\r\n", boundary, meta.String())
+	fmt.Fprintf(&body, "--%s\r\nContent-Type: application/octet-stream\r\n\r\n", boundary)
+	body.Write(data)
+	fmt.Fprintf(&body, "\r\n--%s--\r\n", boundary)
+
+	req, err := http.NewRequestWithContext(context.Background(), "POST",
+		"https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", &body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+g.token)
+	req.Header.Set("Content-Type", "multipart/related; boundary="+boundary)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("Google Drive upload failed for %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("Google Drive upload failed for %s: HTTP %d", path, resp.StatusCode)
+	}
+	return nil
 }
 
 func (g *GoogleDriveStorage) Download(path string) ([]byte, error) {
 	if g.token == "" {
 		return nil, g.notConfiguredError()
 	}
-	return nil, fmt.Errorf("Google Drive download not implemented for %s", path)
+	fileID, err := g.findFileID(path)
+	if err != nil {
+		return nil, err
+	}
+	url := "https://www.googleapis.com/drive/v3/files/" + fileID + "?alt=media"
+	req, err := http.NewRequestWithContext(context.Background(), "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+g.token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Google Drive download failed for %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("Google Drive download failed for %s: HTTP %d", path, resp.StatusCode)
+	}
+	return io.ReadAll(resp.Body)
 }
 
 func (g *GoogleDriveStorage) Delete(path string) error {
 	if g.token == "" {
 		return g.notConfiguredError()
 	}
-	return fmt.Errorf("Google Drive delete not implemented for %s", path)
+	fileID, err := g.findFileID(path)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(context.Background(), "DELETE",
+		"https://www.googleapis.com/drive/v3/files/"+fileID, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+g.token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("Google Drive delete failed for %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 && resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("Google Drive delete failed for %s: HTTP %d", path, resp.StatusCode)
+	}
+	return nil
 }
 
 func (g *GoogleDriveStorage) GetSignedURL(path string, expiry time.Duration) (string, error) {
 	if g.token == "" {
 		return "", g.notConfiguredError()
 	}
-	return "", fmt.Errorf("Google Drive signed URL not implemented for %s", path)
+	// Google Drive has no pre-signed URL primitive (unlike S3). Returning a
+	// bearer-tokenized direct-download URL would leak the long-lived OAuth
+	// token, so we refuse to mint a shareable URL. Callers that need the
+	// content must use Download; S3 is the supported presigned-URL backend.
+	return "", fmt.Errorf("Google Drive does not support presigned URLs; use Download or S3 for %s", path)
+}
+
+// findFileID resolves the Drive file ID for a backup path by name. Drive keys
+// files by opaque IDs, not by path; backups are uploaded by unique name, so a
+// name query (restricted to the configured folder) is unambiguous.
+func (g *GoogleDriveStorage) findFileID(path string) (string, error) {
+	q := fmt.Sprintf("name = %q and trashed = false", path)
+	if g.folderID != "" {
+		q += fmt.Sprintf(" and %q in parents", g.folderID)
+	}
+	u := "https://www.googleapis.com/drive/v3/files?fields=files(id,name)&q=" + url.QueryEscape(q)
+	req, err := http.NewRequestWithContext(context.Background(), "GET", u, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+g.token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("Google Drive lookup failed for %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("Google Drive lookup failed for %s: HTTP %d", path, resp.StatusCode)
+	}
+	var res struct {
+		Files []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"files"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return "", fmt.Errorf("Google Drive lookup decode failed: %w", err)
+	}
+	if len(res.Files) == 0 {
+		return "", fmt.Errorf("Google Drive file not found: %s", path)
+	}
+	return res.Files[0].ID, nil
+}
+
+func randBytes(n int) []byte {
+	b := make([]byte, n)
+	_, _ = rand.Read(b)
+	return b
 }
 
 // ============================================================================

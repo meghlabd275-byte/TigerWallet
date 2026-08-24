@@ -486,6 +486,19 @@ func (s *FiatService) saveOrder(order *Order) error {
 	return nil
 }
 
+// isCompletedStatus reports whether a provider status represents a successfully
+// fulfilled order. Used by webhook handlers to set CompletedAt. Status strings
+// are normalised to lower case; both provider-native ("completed") and
+// generic ("success", "fulfilled") variants are accepted.
+func isCompletedStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "completed", "complete", "success", "fulfilled", "delivered",
+		"pendingdelivery", "successful":
+		return true
+	}
+	return false
+}
+
 func (s *FiatService) validateCreateOrderRequest(req *CreateOrderRequest) error {
 	if req.FiatAmount < s.config.MinOrderUSD {
 		return fmt.Errorf("minimum order amount is %.2f USD", s.config.MinOrderUSD)
@@ -768,15 +781,47 @@ func (c *MoonPayClient) GetOrderStatus(ctx context.Context, providerOrderID stri
 }
 
 func (c *MoonPayClient) HandleWebhook(ctx context.Context, payload []byte) (*Order, error) {
-	// MoonPay webhooks are signed with a secret in the X-Webhook-Signature
-	// header. Without the secret we CANNOT verify the payload - returning
-	// "completed" would be a payment-confirmation vulnerability.
+	// Signature is already verified by FiatService.verifyWebhookSignature before
+	// this method is reached, so the payload is trusted. Parse the MoonPay
+	// transaction webhook event into an Order.
 	if c.config.WebhookSecret == "" {
 		return nil, fmt.Errorf("MoonPay webhook secret not configured; payload cannot be verified")
 	}
-	// Caller must extract the signature header and pass it; this stub rejects
-	// all webhooks until real signature verification is wired (fail-closed).
-	return nil, fmt.Errorf("webhook signature verification not implemented; rejecting unverified payload")
+	var ev struct {
+		Type string `json:"type"`
+		Data struct {
+			ID            string  `json:"id"`
+			Status        string  `json:"status"`
+			BaseCurrency  string  `json:"baseCurrency"`
+			BaseAmount    float64 `json:"baseAmount"`
+			Currency      string  `json:"currency"`
+			QuoteAmount   float64 `json:"quoteAmount"`
+			WalletAddress string  `json:"walletAddress"`
+			FeeAmount     float64 `json:"feeAmount"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &ev); err != nil {
+		return nil, fmt.Errorf("invalid MoonPay webhook payload: %w", err)
+	}
+	now := time.Now()
+	o := &Order{
+		Provider:        "moonpay",
+		ProviderOrderID: ev.Data.ID,
+		Status:          ev.Data.Status,
+		FiatCurrency:    ev.Data.BaseCurrency,
+		FiatAmount:      ev.Data.BaseAmount,
+		CryptoCurrency:  ev.Data.Currency,
+		CryptoAmount:    ev.Data.QuoteAmount,
+		CryptoAddress:   ev.Data.WalletAddress,
+		WalletAddress:   ev.Data.WalletAddress,
+		FeeAmount:       ev.Data.FeeAmount,
+		ProviderFee:     ev.Data.FeeAmount,
+		UpdatedAt:       now,
+	}
+	if isCompletedStatus(ev.Data.Status) {
+		o.CompletedAt = &now
+	}
+	return o, nil
 }
 
 type TransakClient struct{ config ProviderConfig }
@@ -876,10 +921,47 @@ func (c *TransakClient) GetOrderStatus(ctx context.Context, providerOrderID stri
 }
 
 func (c *TransakClient) HandleWebhook(ctx context.Context, payload []byte) (*Order, error) {
+	// Signature already verified by FiatService.verifyWebhookSignature.
 	if c.config.WebhookSecret == "" {
 		return nil, fmt.Errorf("Transak webhook secret not configured; payload cannot be verified")
 	}
-	return nil, fmt.Errorf("webhook signature verification not implemented; rejecting unverified payload")
+	var ev struct {
+		Event string `json:"event"`
+		Data  struct {
+			ID            string  `json:"id"`
+			OrderID       string  `json:"orderId"`
+			Status        string  `json:"status"`
+			FiatCurrency  string  `json:"fiatCurrency"`
+			FiatAmount    float64 `json:"fiatAmount"`
+			CryptoCurrency string `json:"cryptoCurrency"`
+			CryptoAmount  float64 `json:"cryptoAmount"`
+			WalletAddress string  `json:"walletAddress"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &ev); err != nil {
+		return nil, fmt.Errorf("invalid Transak webhook payload: %w", err)
+	}
+	id := ev.Data.OrderID
+	if id == "" {
+		id = ev.Data.ID
+	}
+	now := time.Now()
+	o := &Order{
+		Provider:        "transak",
+		ProviderOrderID: id,
+		Status:          ev.Data.Status,
+		FiatCurrency:    ev.Data.FiatCurrency,
+		FiatAmount:      ev.Data.FiatAmount,
+		CryptoCurrency:  ev.Data.CryptoCurrency,
+		CryptoAmount:    ev.Data.CryptoAmount,
+		CryptoAddress:   ev.Data.WalletAddress,
+		WalletAddress:   ev.Data.WalletAddress,
+		UpdatedAt:       now,
+	}
+	if isCompletedStatus(ev.Data.Status) {
+		o.CompletedAt = &now
+	}
+	return o, nil
 }
 
 type StripeClient struct{ config ProviderConfig }
@@ -966,10 +1048,45 @@ func (c *StripeClient) GetOrderStatus(ctx context.Context, providerOrderID strin
 }
 
 func (c *StripeClient) HandleWebhook(ctx context.Context, payload []byte) (*Order, error) {
+	// Signature already verified by FiatService.verifyWebhookSignature.
 	if c.config.WebhookSecret == "" {
 		return nil, fmt.Errorf("Stripe webhook secret not configured; payload cannot be verified")
 	}
-	return nil, fmt.Errorf("webhook signature verification not implemented; rejecting unverified payload")
+	var ev struct {
+		Type string `json:"type"`
+		Data struct {
+			Object struct {
+				ID                string  `json:"id"`
+				Status            string  `json:"status"`
+				SourceCurrency    string  `json:"source_currency"`
+				SourceAmount      float64 `json:"source_amount"`
+				DestinationCurrency string `json:"destination_currency"`
+				DestinationAmount float64 `json:"destination_amount"`
+				DestinationAddress string `json:"destination_address"`
+			} `json:"object"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &ev); err != nil {
+		return nil, fmt.Errorf("invalid Stripe webhook payload: %w", err)
+	}
+	obj := ev.Data.Object
+	now := time.Now()
+	o := &Order{
+		Provider:        "stripe",
+		ProviderOrderID: obj.ID,
+		Status:          obj.Status,
+		FiatCurrency:    obj.SourceCurrency,
+		FiatAmount:      obj.SourceAmount,
+		CryptoCurrency:  obj.DestinationCurrency,
+		CryptoAmount:    obj.DestinationAmount,
+		CryptoAddress:   obj.DestinationAddress,
+		WalletAddress:   obj.DestinationAddress,
+		UpdatedAt:       now,
+	}
+	if isCompletedStatus(obj.Status) {
+		o.CompletedAt = &now
+	}
+	return o, nil
 }
 
 type WyreClient struct{ config ProviderConfig }
@@ -1074,10 +1191,42 @@ func (c *WyreClient) GetOrderStatus(ctx context.Context, providerOrderID string)
 }
 
 func (c *WyreClient) HandleWebhook(ctx context.Context, payload []byte) (*Order, error) {
+	// Signature already verified by FiatService.verifyWebhookSignature.
 	if c.config.WebhookSecret == "" {
 		return nil, fmt.Errorf("Wyre webhook secret not configured; payload cannot be verified")
 	}
-	return nil, fmt.Errorf("webhook signature verification not implemented; rejecting unverified payload")
+	var ev struct {
+		ID            string  `json:"id"`
+		Status        string  `json:"status"`
+		Source        string  `json:"sourceCurrency"`
+		SourceAmount  float64 `json:"sourceAmount"`
+		Dest          string  `json:"destCurrency"`
+		DestAmount    float64 `json:"destAmount"`
+		DestAddress   string  `json:"dest"`
+		Fee           float64 `json:"fee"`
+	}
+	if err := json.Unmarshal(payload, &ev); err != nil {
+		return nil, fmt.Errorf("invalid Wyre webhook payload: %w", err)
+	}
+	now := time.Now()
+	o := &Order{
+		Provider:        "wyre",
+		ProviderOrderID: ev.ID,
+		Status:          ev.Status,
+		FiatCurrency:    ev.Source,
+		FiatAmount:      ev.SourceAmount,
+		CryptoCurrency:  ev.Dest,
+		CryptoAmount:    ev.DestAmount,
+		CryptoAddress:   ev.DestAddress,
+		WalletAddress:   ev.DestAddress,
+		FeeAmount:       ev.Fee,
+		ProviderFee:     ev.Fee,
+		UpdatedAt:       now,
+	}
+	if isCompletedStatus(ev.Status) {
+		o.CompletedAt = &now
+	}
+	return o, nil
 }
 
 // ============================================================================
