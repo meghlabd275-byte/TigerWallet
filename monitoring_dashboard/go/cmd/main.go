@@ -170,7 +170,20 @@ func initDatabase() error {
 
 		CREATE INDEX IF NOT EXISTS idx_health_service ON service_health(service);
 		CREATE INDEX IF NOT EXISTS idx_alerts_status ON monitoring_alerts(status);
+		CREATE TABLE IF NOT EXISTS incidents (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			title VARCHAR(255) NOT NULL,
+			description TEXT DEFAULT '',
+			severity VARCHAR(50) NOT NULL DEFAULT 'minor',
+			status VARCHAR(50) NOT NULL DEFAULT 'open',
+			affected_services JSONB DEFAULT '[]',
+			timeline JSONB DEFAULT '[]',
+			created_at TIMESTAMP DEFAULT NOW(),
+			resolved_at TIMESTAMP
+		);
+
 		CREATE INDEX IF NOT EXISTS idx_metrics_timestamp ON metrics_history(timestamp);
+		CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);
 	`)
 
 	return err
@@ -626,6 +639,101 @@ func getEnv(key, defaultValue string) string {
 
 // ============ MAIN ============
 
+
+// ============ INCIDENT HANDLERS ============
+
+type Incident struct {
+	ID               string     `json:"id"`
+	Title            string     `json:"title"`
+	Description      string     `json:"description"`
+	Severity         string     `json:"severity"`
+	Status           string     `json:"status"`
+	AffectedServices []string   `json:"affected_services"`
+	Timeline         []string   `json:"timeline"`
+	CreatedAt        time.Time  `json:"created_at"`
+	ResolvedAt       *time.Time `json:"resolved_at,omitempty"`
+}
+
+func GetIncidents(c *gin.Context) {
+	status := c.Query("status")
+	query := `SELECT id, title, description, severity, status, affected_services, timeline, created_at, resolved_at FROM incidents`
+	args := []interface{}{}
+	if status != "" {
+		query += ` WHERE status = $1`
+		args = append(args, status)
+	}
+	query += ` ORDER BY created_at DESC LIMIT 200`
+
+	rows, err := db.Query(context.Background(), query, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	incidents := []Incident{}
+	for rows.Next() {
+		var inc Incident
+		var services, timeline []byte
+		if err := rows.Scan(&inc.ID, &inc.Title, &inc.Description, &inc.Severity, &inc.Status, &services, &timeline, &inc.CreatedAt, &inc.ResolvedAt); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		json.Unmarshal(services, &inc.AffectedServices)
+		json.Unmarshal(timeline, &inc.Timeline)
+		incidents = append(incidents, inc)
+	}
+	c.JSON(http.StatusOK, gin.H{"incidents": incidents})
+}
+
+func CreateIncident(c *gin.Context) {
+	var req struct {
+		Title            string   `json:"title" binding:"required"`
+		Description      string   `json:"description"`
+		Severity         string   `json:"severity" binding:"required"`
+		AffectedServices []string `json:"affected_services"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	switch req.Severity {
+	case "critical", "major", "minor":
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "severity must be critical, major or minor"})
+		return
+	}
+	services, _ := json.Marshal(req.AffectedServices)
+	timeline, _ := json.Marshal([]string{"incident created"})
+
+	var id string
+	var createdAt time.Time
+	err := db.QueryRow(context.Background(),
+		`INSERT INTO incidents (title, description, severity, affected_services, timeline) VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at`,
+		req.Title, req.Description, req.Severity, services, timeline).Scan(&id, &createdAt)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"id": id, "status": "open", "created_at": createdAt})
+}
+
+func ResolveIncident(c *gin.Context) {
+	id := c.Param("id")
+	tag, err := db.Exec(context.Background(),
+		`UPDATE incidents SET status = 'resolved', resolved_at = NOW(), timeline = timeline || $2::jsonb WHERE id = $1 AND status != 'resolved'`,
+		id, `"incident resolved"`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "open incident not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Incident resolved"})
+}
+
 func main() {
 	logger = log.New(os.Stdout, "Monitoring Dashboard: ", log.LstdFlags)
 	logger.Println("Starting Monitoring Dashboard...")
@@ -682,6 +790,11 @@ func main() {
 	// Alerts
 	router.GET("/api/v1/alerts", GetAlerts)
 	router.PUT("/api/v1/alerts/:id/resolve", ResolveAlert)
+
+	// Incidents
+	router.GET("/api/v1/incidents", GetIncidents)
+	router.POST("/api/v1/incidents", CreateIncident)
+	router.PUT("/api/v1/incidents/:id/resolve", ResolveIncident)
 
 	logger.Printf("Starting server on port %s", config.Port)
 	srv := &http.Server{

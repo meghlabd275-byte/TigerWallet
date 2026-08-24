@@ -18,6 +18,7 @@ mod db;
 mod auth;
 mod error;
 mod domain;
+mod totp;
 
 use handlers::*;
 use domain::domain_routes;

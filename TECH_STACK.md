@@ -27,7 +27,7 @@ Goroutines handle millions of concurrent connections. Fast compile, low memory, 
 PyTorch, TensorFlow, LangChain, scikit-learn. The ecosystem for ML/AI is unmatched. Also ideal for data pipelines and analytics warehousing.
 
 ### TypeScript - Web / Browser Layer
-**Components**: browser_extensions, web3_browser, admin_console, nft_frontend, launchpad_ui
+**Components**: browser_extensions, dapp_browser, admin_console, nft_frontend, launchpad_ui
 
 Web3 ecosystem standard (ethers.js, wagmi, viem). React + Vite for extensions. Next.js for admin console. Type-safe Web3 interactions.
 

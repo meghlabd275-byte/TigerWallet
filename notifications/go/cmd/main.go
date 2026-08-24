@@ -5,16 +5,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"errors"
 	"net/http"
+	"net/smtp"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	firebase "firebase.google.com/go/v4"
+	"firebase.google.com/go/v4/messaging"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"google.golang.org/api/option"
 )
 
 func main() {
@@ -258,10 +265,31 @@ type NotificationPreference struct {
 
 type NotificationQueue struct {
 	redis *redis.Client
+	fcm   *messaging.Client
 }
 
 func NewNotificationQueue(rdb *redis.Client) *NotificationQueue {
-	return &NotificationQueue{redis: rdb}
+	q := &NotificationQueue{redis: rdb}
+	if creds := os.Getenv("FCM_CREDENTIALS"); creds != "" {
+		var opt option.ClientOption
+		if _, err := os.Stat(creds); err == nil {
+			opt = option.WithCredentialsFile(creds)
+		} else {
+			opt = option.WithCredentialsJSON([]byte(creds))
+		}
+		ctx := context.Background()
+		app, err := firebase.NewApp(ctx, &firebase.Config{ProjectID: os.Getenv("FCM_PROJECT_ID")}, opt)
+		if err != nil {
+			log.Printf("FCM initialization failed: %v (push channel disabled)", err)
+		} else if client, err := app.Messaging(ctx); err != nil {
+			log.Printf("FCM messaging client failed: %v (push channel disabled)", err)
+		} else {
+			q.fcm = client
+		}
+	} else {
+		log.Printf("FCM_CREDENTIALS not set: push channel will report errors until configured")
+	}
+	return q
 }
 
 type QueuedNotification struct {
@@ -306,39 +334,129 @@ func (q *NotificationQueue) Worker(id int, cfg *Config) {
 			continue
 		}
 
+		var sendErr error
 		switch notification.Channel {
 		case "email":
-			q.sendEmail(cfg, notification)
+			sendErr = q.sendEmail(cfg, notification)
 		case "sms":
-			q.sendSMS(cfg, notification)
+			sendErr = q.sendSMS(cfg, notification)
 		case "push":
-			q.sendPush(cfg, notification)
+			sendErr = q.sendPush(cfg, notification)
 		case "webhook":
-			q.sendWebhook(cfg, notification)
+			sendErr = q.sendWebhook(cfg, notification)
+		default:
+			sendErr = fmt.Errorf("unknown channel %q", notification.Channel)
 		}
 
-		log.Printf("Worker %d processed notification %s", id, notification.ID)
+		if sendErr != nil {
+			log.Printf("Worker %d failed notification %s: %v", id, notification.ID, sendErr)
+		} else {
+			log.Printf("Worker %d processed notification %s", id, notification.ID)
+		}
 	}
 }
 
-func (q *NotificationQueue) sendEmail(cfg *Config, n *QueuedNotification) {
-	// In production, implement actual email sending
-	log.Printf("Sending email to user %s: %s", n.UserID, n.Title)
+func notificationRecipient(n *QueuedNotification, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := n.Data[k].(string); ok && v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
-func (q *NotificationQueue) sendSMS(cfg *Config, n *QueuedNotification) {
-	// In production, implement Twilio SMS
-	log.Printf("Sending SMS to user %s: %s", n.UserID, n.Message)
+func (q *NotificationQueue) sendEmail(cfg *Config, n *QueuedNotification) error {
+	recipient := notificationRecipient(n, "recipient", "email")
+	if recipient == "" {
+		return errors.New("email notification missing data.recipient")
+	}
+	if cfg.SMTP.Username == "" || cfg.SMTP.Password == "" {
+		return errors.New("SMTP not configured: set SMTP_USERNAME and SMTP_PASSWORD")
+	}
+	msg := "From: " + cfg.SMTP.From + "\r\n" +
+		"To: " + recipient + "\r\n" +
+		"Subject: " + n.Title + "\r\n" +
+		"Content-Type: text/plain; charset=utf-8\r\n\r\n" + n.Message
+	auth := smtp.PlainAuth("", cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.Host)
+	addr := fmt.Sprintf("%s:%d", cfg.SMTP.Host, cfg.SMTP.Port)
+	return smtp.SendMail(addr, auth, cfg.SMTP.From, []string{recipient}, []byte(msg))
 }
 
-func (q *NotificationQueue) sendPush(cfg *Config, n *QueuedNotification) {
-	// In production, implement FCM push
-	log.Printf("Sending push to user %s: %s", n.UserID, n.Title)
+func (q *NotificationQueue) sendSMS(cfg *Config, n *QueuedNotification) error {
+	recipient := notificationRecipient(n, "recipient", "phone")
+	if recipient == "" {
+		return errors.New("sms notification missing data.recipient")
+	}
+	if cfg.Twilio.AccountSid == "" || cfg.Twilio.AuthToken == "" || cfg.Twilio.PhoneNumber == "" {
+		return errors.New("Twilio not configured: set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER")
+	}
+	endpoint := fmt.Sprintf("https://api.twilio.com/2010-04-01/Accounts/%s/Messages.json", cfg.Twilio.AccountSid)
+	form := url.Values{}
+	form.Set("From", cfg.Twilio.PhoneNumber)
+	form.Set("To", recipient)
+	form.Set("Body", n.Message)
+	req, err := http.NewRequest(http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth(cfg.Twilio.AccountSid, cfg.Twilio.AuthToken)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("twilio request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("twilio error: %s", resp.Status)
+	}
+	return nil
 }
 
-func (q *NotificationQueue) sendWebhook(cfg *Config, n *QueuedNotification) {
-	// In production, implement webhook
-	log.Printf("Sending webhook for notification %s", n.ID)
+func (q *NotificationQueue) sendPush(cfg *Config, n *QueuedNotification) error {
+	token := notificationRecipient(n, "device_token", "recipient")
+	if token == "" {
+		return errors.New("push notification missing data.device_token")
+	}
+	if q.fcm == nil {
+		return errors.New("FCM not configured: set FCM_CREDENTIALS")
+	}
+	stringData := map[string]string{}
+	for k, v := range n.Data {
+		stringData[k] = fmt.Sprintf("%v", v)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	_, err := q.fcm.Send(ctx, &messaging.Message{
+		Token:        token,
+		Notification: &messaging.Notification{Title: n.Title, Body: n.Message},
+		Data:         stringData,
+	})
+	return err
+}
+
+func (q *NotificationQueue) sendWebhook(cfg *Config, n *QueuedNotification) error {
+	webhookURL := notificationRecipient(n, "webhook_url")
+	if webhookURL == "" {
+		return errors.New("webhook notification missing data.webhook_url")
+	}
+	payload, err := json.Marshal(map[string]interface{}{
+		"id": n.ID, "user_id": n.UserID, "type": n.Type,
+		"title": n.Title, "message": n.Message, "data": n.Data,
+	})
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Post(webhookURL, "application/json", strings.NewReader(string(payload)))
+	if err != nil {
+		return fmt.Errorf("webhook request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("webhook endpoint returned %s", resp.Status)
+	}
+	return nil
 }
 
 // ============== HTTP Handlers ==============

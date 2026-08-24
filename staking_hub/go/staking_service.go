@@ -7,12 +7,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"math/big"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 

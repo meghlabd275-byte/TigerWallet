@@ -20,27 +20,117 @@ pub async fn login(
     Extension(state): Extension<Arc<AppState>>,
     Json(payload): Json<LoginRequest>,
 ) -> AppResult<Json<LoginResponse>> {
-    // In production, validate credentials against database
+    let row = sqlx::query(
+        r#"SELECT id, username, email, password_hash, role, permissions, is_active,
+                  two_factor_enabled, two_factor_secret, ip_whitelist,
+                  created_at, updated_at, last_login_at, failed_attempts, locked_until
+           FROM admins WHERE email = $1"#,
+    )
+    .bind(&payload.email)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| AppError::DatabaseError(e.to_string()))?
+    .ok_or_else(|| AppError::AuthenticationError("invalid credentials".to_string()))?;
+
+    use sqlx::Row;
+    let admin_id: uuid::Uuid = row.get("id");
+    let password_hash: String = row.get("password_hash");
+    let is_active: bool = row.get("is_active");
+    let failed_attempts: i32 = row.get("failed_attempts");
+    let locked_until: Option<chrono::DateTime<chrono::Utc>> = row.get("locked_until");
+    let role_str: String = row.get("role");
+
+    if !is_active {
+        return Err(AppError::Forbidden);
+    }
+    if let Some(locked) = locked_until {
+        if locked > chrono::Utc::now() {
+            return Err(AppError::AuthenticationError(
+                "account temporarily locked after too many failed attempts".to_string(),
+            ));
+        }
+    }
+
+    let valid = crate::auth::verify_password(&payload.password, &password_hash)
+        .map_err(|e| AppError::InternalServerError(e.to_string()))?;
+
+    if !valid {
+        // Increment failed attempts; lock for 15 minutes after 5 failures.
+        let attempts = failed_attempts + 1;
+        if attempts >= 5 {
+            sqlx::query(
+                "UPDATE admins SET failed_attempts = 0, locked_until = NOW() + INTERVAL '15 minutes', updated_at = NOW() WHERE id = $1",
+            )
+            .bind(admin_id)
+            .execute(&state.db)
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+        } else {
+            sqlx::query(
+                "UPDATE admins SET failed_attempts = $2, updated_at = NOW() WHERE id = $1",
+            )
+            .bind(admin_id)
+            .bind(attempts)
+            .execute(&state.db)
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+        }
+        return Err(AppError::AuthenticationError("invalid credentials".to_string()));
+    }
+
+    // Success: reset lockout counters and record the login time.
+    sqlx::query(
+        "UPDATE admins SET failed_attempts = 0, locked_until = NULL, last_login_at = NOW(), updated_at = NOW() WHERE id = $1",
+    )
+    .bind(admin_id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+    let role = match role_str.as_str() {
+        "super_admin" => AdminRole::SuperAdmin,
+        "support" => AdminRole::Support,
+        "analyst" => AdminRole::Analyst,
+        "viewer" => AdminRole::Viewer,
+        "white_label_admin" => AdminRole::WhiteLabelAdmin,
+        "master_admin" => AdminRole::MasterAdmin,
+        _ => AdminRole::Admin,
+    };
+    let permissions: Vec<String> = row
+        .get::<sqlx::types::Json<Vec<String>>, _>("permissions")
+        .0;
+
     let admin = Admin {
-        id: uuid::Uuid::new_v4(),
-        username: payload.email.clone(),
-        email: payload.email.clone(),
-        password_hash: "".to_string(),
-        role: AdminRole::Admin,
-        permissions: vec![],
-        is_active: true,
-        two_factor_enabled: false,
-        two_factor_secret: None,
-        ip_whitelist: None,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        last_login_at: None,
+        id: admin_id,
+        username: row.get("username"),
+        email: row.get("email"),
+        password_hash: String::new(), // never return the hash
+        role,
+        permissions,
+        is_active,
+        two_factor_enabled: row.get("two_factor_enabled"),
+        two_factor_secret: None, // never return the secret
+        ip_whitelist: row.get("ip_whitelist"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+        last_login_at: Some(chrono::Utc::now()),
         failed_attempts: 0,
         locked_until: None,
     };
 
-    let token = state.auth.generate_token(admin.id, &admin.email, "admin")?;
+    let token = state.auth.generate_token(admin.id, &admin.email, &role_str)?;
     let refresh_token = state.auth.generate_refresh_token(admin.id)?;
+
+    // Record the session so logout/revocation has a real row to act on.
+    let session_hash = crate::totp::base32_encode(refresh_token.as_bytes());
+    sqlx::query(
+        "INSERT INTO sessions (admin_id, token_hash, expires_at) VALUES ($1, $2, NOW() + INTERVAL '7 days')",
+    )
+    .bind(admin_id)
+    .bind(&session_hash[..32])
+    .execute(&state.db)
+    .await
+    .map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
     Ok(Json(LoginResponse {
         token,
@@ -53,15 +143,152 @@ pub async fn logout() -> AppResult<Json<serde_json::Value>> {
     Ok(Json(serde_json::json!({ "message": "Logged out" })))
 }
 
-pub async fn refresh_token() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "token": "new_token" })))
+#[derive(serde::Deserialize)]
+pub struct RefreshRequest {
+    pub refresh_token: String,
 }
 
-pub async fn setup_2fa() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "secret": "test_secret" })))
+pub async fn refresh_token(
+    Extension(state): Extension<Arc<AppState>>,
+    Json(payload): Json<RefreshRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    let claims = state
+        .auth
+        .validate_token(&payload.refresh_token)
+        .map_err(|_| AppError::AuthenticationError("invalid refresh token".to_string()))?;
+    if claims.role != "refresh" {
+        return Err(AppError::AuthenticationError(
+            "token is not a refresh token".to_string(),
+        ));
+    }
+    let admin_id = uuid::Uuid::parse_str(&claims.sub)
+        .map_err(|_| AppError::AuthenticationError("invalid token subject".to_string()))?;
+
+    // The admin must still exist and be active for a refresh to be honored.
+    let row = sqlx::query("SELECT email, role, is_active FROM admins WHERE id = $1")
+        .bind(admin_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| AppError::DatabaseError(e.to_string()))?
+        .ok_or_else(|| AppError::AuthenticationError("admin not found".to_string()))?;
+
+    use sqlx::Row;
+    let is_active: bool = row.get("is_active");
+    if !is_active {
+        return Err(AppError::Forbidden);
+    }
+    let email: String = row.get("email");
+    let role: String = row.get("role");
+
+    let token = state.auth.generate_token(admin_id, &email, &role)?;
+    let refresh_token = state.auth.generate_refresh_token(admin_id)?;
+
+    Ok(Json(serde_json::json!({
+        "token": token,
+        "refresh_token": refresh_token,
+    })))
 }
 
-pub async fn verify_2fa() -> AppResult<Json<serde_json::Value>> {
+#[derive(serde::Deserialize)]
+pub struct TwoFactorSetupRequest {
+    pub admin_id: uuid::Uuid,
+    pub password: String,
+}
+
+pub async fn setup_2fa(
+    Extension(state): Extension<Arc<AppState>>,
+    Json(payload): Json<TwoFactorSetupRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    // 2FA setup changes account security state, so it requires the admin's
+    // password - the route itself is unauthenticated.
+    let row = sqlx::query("SELECT password_hash, email, is_active FROM admins WHERE id = $1")
+        .bind(payload.admin_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| AppError::DatabaseError(e.to_string()))?
+        .ok_or_else(|| AppError::NotFound("admin not found".to_string()))?;
+
+    use sqlx::Row;
+    let is_active: bool = row.get("is_active");
+    if !is_active {
+        return Err(AppError::Forbidden);
+    }
+    let password_hash: String = row.get("password_hash");
+    let email: String = row.get("email");
+    let valid = crate::auth::verify_password(&payload.password, &password_hash)
+        .map_err(|e| AppError::InternalServerError(e.to_string()))?;
+    if !valid {
+        return Err(AppError::AuthenticationError("invalid credentials".to_string()));
+    }
+
+    let secret = crate::totp::generate_totp_secret();
+    let secret_b32 = crate::totp::base32_encode(&secret);
+
+    // Secret is stored but 2FA stays disabled until a code verifies.
+    sqlx::query("UPDATE admins SET two_factor_secret = $2, updated_at = NOW() WHERE id = $1")
+        .bind(payload.admin_id)
+        .bind(&secret_b32)
+        .execute(&state.db)
+        .await
+        .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+    Ok(Json(serde_json::json!({
+        "secret": secret_b32,
+        "otpauth_url": format!(
+            "otpauth://totp/TigerWallet:{}?secret={}&issuer=TigerWallet",
+            email, secret_b32
+        ),
+    })))
+}
+
+#[derive(serde::Deserialize)]
+pub struct TwoFactorVerifyRequest {
+    pub admin_id: uuid::Uuid,
+    pub password: String,
+    pub code: String,
+}
+
+pub async fn verify_2fa(
+    Extension(state): Extension<Arc<AppState>>,
+    Json(payload): Json<TwoFactorVerifyRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    let row = sqlx::query(
+        "SELECT password_hash, two_factor_secret, is_active FROM admins WHERE id = $1",
+    )
+    .bind(payload.admin_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| AppError::DatabaseError(e.to_string()))?
+    .ok_or_else(|| AppError::NotFound("admin not found".to_string()))?;
+
+    use sqlx::Row;
+    let is_active: bool = row.get("is_active");
+    if !is_active {
+        return Err(AppError::Forbidden);
+    }
+    let password_hash: String = row.get("password_hash");
+    let valid = crate::auth::verify_password(&payload.password, &password_hash)
+        .map_err(|e| AppError::InternalServerError(e.to_string()))?;
+    if !valid {
+        return Err(AppError::AuthenticationError("invalid credentials".to_string()));
+    }
+
+    let secret_b32: Option<String> = row.get("two_factor_secret");
+    let secret_b32 = secret_b32
+        .ok_or_else(|| AppError::BadRequest("2FA setup has not been initiated".to_string()))?;
+    let secret = crate::totp::base32_decode(&secret_b32)
+        .ok_or_else(|| AppError::InternalServerError("stored 2FA secret is corrupted".to_string()))?;
+
+    if !crate::totp::totp_verify(&secret, &payload.code, chrono::Utc::now().timestamp()) {
+        return Err(AppError::AuthenticationError("invalid 2FA code".to_string()));
+    }
+
+    sqlx::query("UPDATE admins SET two_factor_enabled = true, updated_at = NOW() WHERE id = $1")
+        .bind(payload.admin_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
     Ok(Json(serde_json::json!({ "verified": true })))
 }
 

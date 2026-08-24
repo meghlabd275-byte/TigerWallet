@@ -31,6 +31,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
 )
@@ -116,6 +119,7 @@ type QuoteRequest struct {
 	Amount    string  `json:"amount" binding:"required"`
 	Slippage  float64 `json:"slippage"`
 	ChainID   int     `json:"chain_id"`
+	Recipient string  `json:"recipient"`
 }
 
 type DEXPool struct {
@@ -131,6 +135,7 @@ type DEXPool struct {
 
 type SwapResult struct {
 	Route        SwapRoute `json:"route"`
+	To           string    `json:"to"`
 	TxData       string    `json:"tx_data"`
 	TxHash       string    `json:"tx_hash"`
 	EstimatedGas uint64    `json:"estimated_gas"`
@@ -143,7 +148,6 @@ type SwapResult struct {
 
 type DEXQuoteProvider interface {
 	GetQuote(ctx context.Context, tokenIn, tokenOut string, amountIn *big.Int, chainID int) (*SwapRoute, error)
-	GetPools(ctx context.Context, tokenA, tokenB string, chainID int) ([]DEXPool, error)
 }
 
 type HTTPClient struct {
@@ -239,8 +243,7 @@ func (p *UniswapProvider) GetQuote(ctx context.Context, tokenIn, tokenOut string
 	}
 
 	if err := json.Unmarshal(data, &quote); err != nil {
-		// Return simulated quote if API fails
-		return p.simulateQuote(tokenIn, tokenOut, amountIn.String(), "uniswap_v3"), nil
+		return nil, fmt.Errorf("uniswap quote parse error: %w", err)
 	}
 
 	gasUsed := uint64(150000)
@@ -272,39 +275,9 @@ func (p *UniswapProvider) GetQuote(ctx context.Context, tokenIn, tokenOut string
 	}, nil
 }
 
-func (p *UniswapProvider) GetPools(ctx context.Context, tokenA, tokenB string, chainID int) ([]DEXPool, error) {
-	// In production, query subgraph for pools
-	// For now, return empty slice
-	return []DEXPool{}, nil
-}
 
-func (p *UniswapProvider) simulateQuote(tokenIn, tokenOut, amountIn, dex string) *SwapRoute {
-	amt, _ := new(big.Int).SetString(amountIn, 10)
-	// Simulate 0.3% fee and price impact
-	toAmount := new(big.Int).Mul(amt, big.NewInt(997))
-	toAmount.Div(toAmount, big.NewInt(1000))
 
-	return &SwapRoute{
-		FromToken:   tokenIn,
-		ToToken:     tokenOut,
-		FromAmount:  amountIn,
-		ToAmount:    toAmount.String(),
-		MinToAmount: new(big.Int).Div(new(big.Int).Mul(toAmount, big.NewInt(99)), big.NewInt(100)).String(),
-		Routes: []RouteStep{
-			{
-				DEX:        dex,
-				FromToken:  tokenIn,
-				ToToken:    tokenOut,
-				FromAmount: amountIn,
-				ToAmount:   toAmount.String(),
-				GasUsed:    150000,
-			},
-		},
-		GasUsed:     150000,
-		GasPrice:    "30000000000",
-		PriceImpact: 0.3,
-	}
-}
+
 
 type PancakeSwapProvider struct {
 	http   *HTTPClient
@@ -333,7 +306,7 @@ func (p *PancakeSwapProvider) GetQuote(ctx context.Context, tokenIn, tokenOut st
 
 	data, err := p.http.Get(ctx, "/quote", params)
 	if err != nil {
-		return p.simulateQuote(tokenIn, tokenOut, amountIn.String(), "pancakeswap_v3"), nil
+		return nil, fmt.Errorf("pancakeswap quote error: %w", err)
 	}
 
 	var quote struct {
@@ -343,7 +316,7 @@ func (p *PancakeSwapProvider) GetQuote(ctx context.Context, tokenIn, tokenOut st
 	}
 
 	if err := json.Unmarshal(data, &quote); err != nil {
-		return p.simulateQuote(tokenIn, tokenOut, amountIn.String(), "pancakeswap_v3"), nil
+		return nil, fmt.Errorf("pancakeswap quote parse error: %w", err)
 	}
 
 	gasUsed := uint64(200000)
@@ -375,81 +348,90 @@ func (p *PancakeSwapProvider) GetQuote(ctx context.Context, tokenIn, tokenOut st
 	}, nil
 }
 
-func (p *PancakeSwapProvider) GetPools(ctx context.Context, tokenA, tokenB string, chainID int) ([]DEXPool, error) {
-	return []DEXPool{}, nil
-}
 
-func (p *PancakeSwapProvider) simulateQuote(tokenIn, tokenOut, amountIn, dex string) *SwapRoute {
-	amt, _ := new(big.Int).SetString(amountIn, 10)
-	toAmount := new(big.Int).Mul(amt, big.NewInt(997))
-	toAmount.Div(toAmount, big.NewInt(1000))
 
-	return &SwapRoute{
-		FromToken:   tokenIn,
-		ToToken:     tokenOut,
-		FromAmount:  amountIn,
-		ToAmount:    toAmount.String(),
-		MinToAmount: new(big.Int).Div(new(big.Int).Mul(toAmount, big.NewInt(99)), big.NewInt(100)).String(),
-		Routes: []RouteStep{
-			{
-				DEX:        dex,
-				FromToken:  tokenIn,
-				ToToken:    tokenOut,
-				FromAmount: amountIn,
-				ToAmount:   toAmount.String(),
-				GasUsed:    200000,
-			},
-		},
-		GasUsed:     200000,
-		GasPrice:    "5000000000",
-		PriceImpact: 0.3,
-	}
-}
+
 
 type SushiSwapProvider struct {
-	http *HTTPClient
+	client *ethclient.Client
 }
 
-func NewSushiSwapProvider() *SushiSwapProvider {
-	return &SushiSwapProvider{
-		http: NewHTTPClient("https://api.sushi.com"),
+// Well-known SushiSwap V2 router deployments.
+var sushiRouters = map[int]common.Address{
+	1:     common.HexToAddress("0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F"),
+	56:    common.HexToAddress("0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506"),
+	137:   common.HexToAddress("0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506"),
+	42161: common.HexToAddress("0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506"),
+	250:   common.HexToAddress("0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506"),
+}
+
+func NewSushiSwapProvider(ethRPC string) (*SushiSwapProvider, error) {
+	client, err := ethclient.Dial(ethRPC)
+	if err != nil {
+		return nil, err
 	}
+	return &SushiSwapProvider{client: client}, nil
+}
+
+// getAmountsOut performs a real eth_call to a UniswapV2-style router.
+func getAmountsOut(ctx context.Context, client *ethclient.Client, router common.Address, amountIn *big.Int, path []common.Address) (*big.Int, error) {
+	selector := crypto.Keccak256([]byte("getAmountsOut(uint256,address[])"))[:4]
+	data := append([]byte{}, selector...)
+	data = append(data, common.BigToHash(amountIn).Bytes()...)
+	data = append(data, common.BigToHash(big.NewInt(64)).Bytes()...)
+	data = append(data, common.BigToHash(big.NewInt(int64(len(path)))).Bytes()...)
+	for _, addr := range path {
+		data = append(data, common.BytesToHash(addr.Bytes()).Bytes()...)
+	}
+	out, err := client.CallContract(ctx, ethereum.CallMsg{To: &router, Data: data}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("router call failed: %w", err)
+	}
+	if len(out) < 64 {
+		return nil, fmt.Errorf("router returned %d bytes", len(out))
+	}
+	count := new(big.Int).SetBytes(out[32:64]).Int64()
+	if count < 2 || len(out) < 64+int(count)*32 {
+		return nil, fmt.Errorf("router returned %d amounts", count)
+	}
+	last := out[64+int(count-1)*32 : 64+int(count)*32]
+	return new(big.Int).SetBytes(last), nil
 }
 
 func (p *SushiSwapProvider) GetQuote(ctx context.Context, tokenIn, tokenOut string, amountIn *big.Int, chainID int) (*SwapRoute, error) {
-	return p.simulateQuote(tokenIn, tokenOut, amountIn.String(), "sushiswap"), nil
-}
-
-func (p *SushiSwapProvider) GetPools(ctx context.Context, tokenA, tokenB string, chainID int) ([]DEXPool, error) {
-	return []DEXPool{}, nil
-}
-
-func (p *SushiSwapProvider) simulateQuote(tokenIn, tokenOut, amountIn, dex string) *SwapRoute {
-	amt, _ := new(big.Int).SetString(amountIn, 10)
-	toAmount := new(big.Int).Mul(amt, big.NewInt(997))
-	toAmount.Div(toAmount, big.NewInt(1000))
-
+	router, ok := sushiRouters[chainID]
+	if !ok {
+		return nil, fmt.Errorf("sushiswap: unsupported chain %d", chainID)
+	}
+	path := []common.Address{common.HexToAddress(tokenIn), common.HexToAddress(tokenOut)}
+	amountOut, err := getAmountsOut(ctx, p.client, router, amountIn, path)
+	if err != nil {
+		return nil, fmt.Errorf("sushiswap quote error: %w", err)
+	}
+	minOut := new(big.Int).Div(new(big.Int).Mul(amountOut, big.NewInt(99)), big.NewInt(100))
 	return &SwapRoute{
 		FromToken:   tokenIn,
 		ToToken:     tokenOut,
-		FromAmount:  amountIn,
-		ToAmount:    toAmount.String(),
-		MinToAmount: new(big.Int).Div(new(big.Int).Mul(toAmount, big.NewInt(99)), big.NewInt(100)).String(),
+		FromAmount:  amountIn.String(),
+		ToAmount:    amountOut.String(),
+		MinToAmount: minOut.String(),
 		Routes: []RouteStep{
 			{
-				DEX:        dex,
+				DEX:        "sushiswap",
 				FromToken:  tokenIn,
 				ToToken:    tokenOut,
-				FromAmount: amountIn,
-				ToAmount:   toAmount.String(),
-				GasUsed:    180000,
+				FromAmount: amountIn.String(),
+				ToAmount:   amountOut.String(),
+				GasUsed:    150000,
 			},
 		},
-		GasUsed:     180000,
-		GasPrice:    "30000000000",
-		PriceImpact: 0.3,
-	}
+		GasUsed: 150000,
+	}, nil
 }
+
+
+
+
 
 // ============================================================================
 // Aggregator Service
@@ -476,7 +458,10 @@ func NewDEXAggregator(config *Config) (*DEXAggregator, error) {
 		log.Printf("Warning: Failed to connect to PancakeSwap: %v", err)
 	}
 
-	sushiswap := NewSushiSwapProvider()
+	sushiswap, err := NewSushiSwapProvider(config.EthRPCURL)
+	if err != nil {
+		log.Printf("Warning: Failed to connect to SushiSwap: %v", err)
+	}
 
 	return &DEXAggregator{
 		config:      config,
@@ -538,9 +523,8 @@ func (s *DEXAggregator) GetQuote(ctx context.Context, req QuoteRequest) ([]*Swap
 		}
 	}
 
-	// If no quotes from APIs, generate best available quote
 	if len(quotes) == 0 {
-		quotes = append(quotes, s.generateBestQuote(req.FromToken, req.ToToken, amount.String(), chainID))
+		return nil, fmt.Errorf("no quotes available for chain %d", chainID)
 	}
 
 	// Sort by output amount (best price first)
@@ -553,55 +537,7 @@ func (s *DEXAggregator) GetQuote(ctx context.Context, req QuoteRequest) ([]*Swap
 	return quotes, nil
 }
 
-func (s *DEXAggregator) generateBestQuote(tokenIn, tokenOut, amountIn string, chainID int) *SwapRoute {
-	amt, _ := new(big.Int).SetString(amountIn, 10)
 
-	// Calculate best output (simulating optimal routing)
-	// In production, this would use actual pool data
-	fee := 0.003 // 0.3% typical fee
-	toAmount := new(big.Int).Mul(amt, big.NewInt(int64((1-fee)*10000)))
-	toAmount.Div(toAmount, big.NewInt(10000))
-
-	slippage := 0.5
-	minAmount := new(big.Int).Mul(toAmount, big.NewInt(int64((100-slippage)*100)))
-	minAmount.Div(minAmount, big.NewInt(10000))
-
-	var dexName string
-	switch chainID {
-	case 1:
-		dexName = "uniswap_v3"
-	case 56:
-		dexName = "pancakeswap_v3"
-	case 42161:
-		dexName = "uniswap_v3_arb"
-	case 10:
-		dexName = "uniswap_v3_opt"
-	default:
-		dexName = "aggregator"
-	}
-
-	return &SwapRoute{
-		FromToken:   tokenIn,
-		ToToken:     tokenOut,
-		FromAmount:  amountIn,
-		ToAmount:    toAmount.String(),
-		MinToAmount: minAmount.String(),
-		Routes: []RouteStep{
-			{
-				DEX:        dexName,
-				FromToken:  tokenIn,
-				ToToken:    tokenOut,
-				FromAmount: amountIn,
-				ToAmount:   toAmount.String(),
-				GasUsed:    150000,
-			},
-		},
-		GasUsed:     150000,
-		GasPrice:    "30000000000",
-		TotalFee:    float64(amt.Int64()) * fee,
-		PriceImpact: 0.3,
-	}
-}
 
 func (s *DEXAggregator) ExecuteSwap(req QuoteRequest) (*SwapResult, error) {
 	ctx := context.Background()
@@ -615,14 +551,22 @@ func (s *DEXAggregator) ExecuteSwap(req QuoteRequest) (*SwapResult, error) {
 		return nil, fmt.Errorf("no routes available")
 	}
 
+	if req.Recipient == "" {
+		return nil, fmt.Errorf("recipient is required to build swap calldata")
+	}
+
 	// Use best quote
 	bestRoute := quotes[0]
 
 	// Generate transaction data
-	txData := s.buildTxData(bestRoute)
+	routerAddr, txData, err := s.buildTxData(bestRoute, req.Recipient)
+	if err != nil {
+		return nil, err
+	}
 
 	result := &SwapResult{
 		Route:        *bestRoute,
+		To:           routerAddr,
 		TxData:       txData,
 		EstimatedGas: bestRoute.GasUsed,
 		ExecutedAt:   time.Now(),
@@ -631,25 +575,55 @@ func (s *DEXAggregator) ExecuteSwap(req QuoteRequest) (*SwapResult, error) {
 	return result, nil
 }
 
-func (s *DEXAggregator) buildTxData(route *SwapRoute) string {
-	// Build swap transaction data
-	// In production, this would call the router contract
-	// For now, return encoded function call
-
-	type SwapData struct {
-		Path      []string `json:"path"`
-		AmountOut string   `json:"amountOut"`
-		AmountIn  string   `json:"amountIn"`
+func (s *DEXAggregator) buildTxData(route *SwapRoute, recipient string) (string, string, error) {
+	amountIn, ok := new(big.Int).SetString(route.FromAmount, 10)
+	if !ok {
+		return "", "", fmt.Errorf("invalid from amount")
+	}
+	minOut, ok := new(big.Int).SetString(route.MinToAmount, 10)
+	if !ok {
+		return "", "", fmt.Errorf("invalid min out amount")
+	}
+	chainID := 1
+	dex := ""
+	if len(route.Routes) > 0 {
+		dex = route.Routes[0].DEX
+	}
+	var router common.Address
+	switch dex {
+	case "sushiswap":
+		r, ok := sushiRouters[chainID]
+		if !ok {
+			return "", "", fmt.Errorf("no sushiswap router for chain %d", chainID)
+		}
+		router = r
+	case "pancakeswap_v3", "pancakeswap":
+		router = common.HexToAddress("0x10ED43C718714eb63d5aA57B78B54704E256024E") // PancakeSwap V2 router (BSC)
+	case "uniswap_v3":
+		return "", "", fmt.Errorf("uniswap_v3 calldata must come from the quote API; resubmit quote with recipient")
+	default:
+		return "", "", fmt.Errorf("cannot build calldata for dex %q", dex)
 	}
 
-	data, _ := json.Marshal(SwapData{
-		Path:      []string{route.FromToken, route.ToToken},
-		AmountOut: route.MinToAmount,
-		AmountIn:  route.FromAmount,
-	})
+	// swapExactTokensForTokens(uint256,uint256,address[],address,uint256)
+	selector := crypto.Keccak256([]byte("swapExactTokensForTokens(uint256,uint256,address[],address,uint256)"))[:4]
+	path := []common.Address{common.HexToAddress(route.FromToken), common.HexToAddress(route.ToToken)}
+	deadline := big.NewInt(time.Now().Add(10 * time.Minute).Unix())
 
-	return "0x" + hex.EncodeToString(data)
+	data := append([]byte{}, selector...)
+	data = append(data, common.BigToHash(amountIn).Bytes()...)
+	data = append(data, common.BigToHash(minOut).Bytes()...)
+	data = append(data, common.BigToHash(big.NewInt(160)).Bytes()...) // path offset (5*32)
+	data = append(data, common.BytesToHash(common.HexToAddress(recipient).Bytes()).Bytes()...)
+	data = append(data, common.BigToHash(deadline).Bytes()...)
+	data = append(data, common.BigToHash(big.NewInt(int64(len(path)))).Bytes()...)
+	for _, addr := range path {
+		data = append(data, common.BytesToHash(addr.Bytes()).Bytes()...)
+	}
+	return router.Hex(), "0x" + hex.EncodeToString(data), nil
 }
+
+
 
 // ============================================================================
 // API Handlers

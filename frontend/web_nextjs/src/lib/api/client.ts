@@ -1087,7 +1087,7 @@ class TigerWalletAPI {
   }
 
   async unfollowTrader(traderId: string): Promise<APIResponse<any>> {
-    return (await this.client.post('/copy-trading/stop', { traderId })).data;
+    return (await this.client.post('/copy-trading/stop-all', { traderId })).data;
   }
 
   async copyTrader(traderId: string, amount: string): Promise<APIResponse<any>> {
@@ -1104,15 +1104,15 @@ class TigerWalletAPI {
   }
 
   async getCopyPositions(): Promise<APIResponse<CopyPosition[]>> {
-    return (await this.client.get('/copy-trading/positions')).data;
+    return (await this.client.get('/copy-trading/copiers')).data;
   }
 
   async startCopying(traderId: string, amount: string): Promise<APIResponse<CopyPosition>> {
-    return (await this.client.post('/copy-trading/start', { traderId, amount })).data;
+    return (await this.client.post('/copy-trading/follow', { traderId, allocation: amount })).data;
   }
 
   async stopCopying(positionId: string): Promise<APIResponse<any>> {
-    return (await this.client.post('/copy-trading/stop', { positionId })).data;
+    return (await this.client.post(`/copy-trading/copiers/${positionId}/stop`)).data;
   }
 
   // Security Scanner

@@ -17,7 +17,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/time/rate"
@@ -178,67 +177,11 @@ func NewPaymentService(redisAddr string) *PaymentService {
 	}
 
 	// Seed demo cards
-	svc.seedDemoData()
 
 	return svc
 }
 
-func (s *PaymentService) seedDemoData() {
-	now := uint64(time.Now().UnixMilli())
-	
-	// Demo card for user 1
-	user1Cards := map[string]*CardToken{
-		"tok_visa_001": {
-			TokenID:         "tok_visa_001",
-			LastFour:        "4532",
-			CardType:        "debit",
-			Network:         "visa",
-			ExpMonth:        12,
-			ExpYear:         2028,
-			CardholderName:  "John Doe",
-			CreatedAt:        now,
-			LastUsedAt:       now,
-			IsFrozen:        false,
-			DailyLimit:      10000,
-			MonthlyLimit:    50000,
-		},
-		"tok_mc_001": {
-			TokenID:         "tok_mc_001",
-			LastFour:        "8901",
-			CardType:        "credit",
-			Network:         "mastercard",
-			ExpMonth:        6,
-			ExpYear:         2027,
-			CardholderName:  "John Doe",
-			CreatedAt:        now,
-			LastUsedAt:       now,
-			IsFrozen:        false,
-			DailyLimit:      15000,
-			MonthlyLimit:    100000,
-		},
-	}
-	s.cards["1"] = user1Cards
 
-	// Demo limits
-	s.limits["tok_visa_001"] = &CardLimits{
-		DailyLimit:         10000,
-		MonthlyLimit:       50000,
-		PerTransactionLimit: 5000,
-		DailySpent:         0,
-		MonthlySpent:       0,
-		TransactionCount:   0,
-	}
-	s.limits["tok_mc_001"] = &CardLimits{
-		DailyLimit:         15000,
-		MonthlyLimit:       100000,
-		PerTransactionLimit: 10000,
-		DailySpent:         0,
-		MonthlySpent:       0,
-		TransactionCount:   0,
-	}
-
-	log.Printf("Seeded payment cards for demo")
-}
 
 func (s *PaymentService) CreateCard(userID, cardType, network, cardholderName string, expMonth, expYear uint8) *CardToken {
 	s.mu.Lock()
@@ -559,9 +502,9 @@ func (s *PaymentService) GetStats() *CardStats {
 	dayAgo := now - 24*60*60*1000
 
 	for _, tx := range s.transactions {
-		totalVol += tx.Amount
+		totalVol += uint64(tx.Amount)
 		if tx.Timestamp > dayAgo {
-			vol24h += tx.Amount
+			vol24h += uint64(tx.Amount)
 		}
 		if tx.Status == "approved" || tx.Status == "completed" {
 			approved++
@@ -859,7 +802,6 @@ func main() {
 
 	router := mux.NewRouter()
 	router.Use(handler.RateLimit)
-	router.Use(handlers.ContentTypeHandler(handlers.LoggingHandler(os.Stdout, router), "application/json"))
 
 	// Card management
 	router.HandleFunc("/api/v1/cards", handler.CreateCard).Methods("POST")

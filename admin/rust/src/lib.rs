@@ -5,12 +5,14 @@ pub mod handlers;
 pub mod db;
 pub mod auth;
 pub mod error;
+pub mod totp;
 
 pub use models::*;
 pub use handlers::*;
 pub use db::*;
 pub use auth::*;
 pub use error::*;
+pub use totp::*;
 
 use db::DbPool;
 use auth::AuthState;

@@ -21,8 +21,11 @@ pub struct AuthState {
 
 impl AuthState {
     pub fn new() -> Self {
+        // Fail closed: a missing JWT_SECRET must never fall back to a
+        // hardcoded secret, or every deployment without configuration would
+        // accept tokens signed with a publicly known key.
         let jwt_secret = std::env::var("JWT_SECRET")
-            .unwrap_or_else(|_| "tiger-admin-jwt-secret-key-change-in-production".to_string());
+            .expect("JWT_SECRET environment variable is required");
         
         Self { jwt_secret }
     }

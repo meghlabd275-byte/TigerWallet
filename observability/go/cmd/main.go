@@ -106,7 +106,7 @@ type Dashboard struct {
 // Global variables
 var (
 	db     *pgxpool.Pool
-	redis  *redis.Client
+	rdb    *redis.Client
 	config Config
 	logger *log.Logger
 )
@@ -225,8 +225,8 @@ func initRedis() error {
 		return err
 	}
 
-	redis = redis.NewClient(opt)
-	return redis.Ping(context.Background()).Err()
+	rdb = redis.NewClient(opt)
+	return rdb.Ping(context.Background()).Err()
 }
 
 // Handlers
@@ -643,7 +643,7 @@ func HealthCheck(c *gin.Context) {
 	}
 	
 	redisStatus := "healthy"
-	if err := redis.Ping(ctx).Err(); err != nil {
+	if err := rdb.Ping(ctx).Err(); err != nil {
 		redisStatus = "unhealthy"
 	}
 
@@ -761,6 +761,6 @@ func main() {
 	}
 
 	db.Close()
-	redis.Close()
+	rdb.Close()
 	logger.Println("Server exited")
 }

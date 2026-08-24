@@ -127,6 +127,7 @@ func NewPushService(config *Config) (*PushService, error) {
 	return &PushService{
 		config:    config,
 		messaging: messagingClient,
+		firebaseApp: firebaseApp,
 		redis:     redisClient,
 	}, nil
 }
@@ -422,7 +423,7 @@ func (h *Handler) GetNotifications(c *gin.Context) {
 
 	// Get notification IDs
 	if h.pushService.redis == nil {
-		c.JSON(http.StatusOK, gin.H{"notifications": []})
+		c.JSON(http.StatusOK, gin.H{"notifications": []Notification{}})
 		return
 	}
 

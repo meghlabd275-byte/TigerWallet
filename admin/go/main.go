@@ -104,7 +104,10 @@ func main() {
 	nftHandler := handlers.NewNFTHandler(db)
 	masterWalletHandler := handlers.NewMasterWalletHandler(db.DB)
 	autoApprovalsHandler := handlers.NewAutoApprovalsHandler()
-	billingHandler := handlers.NewBillingHandler()
+	billingHandler, err := handlers.NewBillingHandler(db)
+	if err != nil {
+		log.Fatalf("billing handler init failed: %v", err)
+	}
 	cryptoCardHandler := handlers.NewCryptoCardHandler(db.DB)
 	featuresHandler := handlers.NewFeaturesHandler(db.DB, redisClient)
 	liquidityHandler := handlers.NewLiquidityHandler(db.DB)
